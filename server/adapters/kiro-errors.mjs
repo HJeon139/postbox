@@ -1,4 +1,13 @@
-// Kiro turn failures kept outside kiro-cli.mjs at its size ceiling.
+// Kiro turn failures: readable exit text and a structured network cause for scheduled-wake recovery (#466, #467).
+
+const NETWORK_CODE = /\b(EADDRNOTAVAIL|ENOTFOUND|ECONNRESET)\b/;
+
+/** Keeps a portable network code from Kiro’s structured run error or process error. */
+export function kiroError(message, cause = null) {
+  const code = cause?.code ?? NETWORK_CODE.exec(String(cause?.message ?? cause ?? message))?.[1];
+  const why = code ? Object.assign(cause instanceof Error ? cause : new Error(code), { code }) : cause instanceof Error ? cause : null;
+  return why ? new Error(message, { cause: why }) : new Error(message);
+}
 
 /** Why a turn failed, from its exit code, when the stream didn’t say (kiro.dev/docs/reference/exit-codes). */
 export function kiroExitError(code, stderr = '') {

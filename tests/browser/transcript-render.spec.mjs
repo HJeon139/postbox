@@ -116,10 +116,19 @@ test('#466 the schedule line shows a pending retry and when automatic retries st
   await expect(line).toContainText(/will retry its scheduled wake.*network error · attempt 3/);
   await expect(line.getByRole('button', { name: 'Cancel' })).toBeVisible();
 
+  rt.patchItem(room.id, sc.itemId, { status: 'done', retryAttempt: 3 });
+  await synced(page, app);
+  await expect(line).toContainText(/woke itself/);
+  await expect(line).not.toContainText(/will retry/);
+  rt.patchItem(room.id, sc.itemId, { status: 'canceled', retryAttempt: 3 });
+  await synced(page, app);
+  await expect(line).toContainText(/won’t wake itself \(canceled\)/);
+  await expect(line).not.toContainText(/will retry/);
+
   clearTimeout(rt.timers.get(sc.id));
   rt.timers.delete(sc.id);
   store.emit('schedule', { id: sc.id, removed: true });
-  rt.patchItem(room.id, sc.itemId, { retryStopped: true });
+  rt.patchItem(room.id, sc.itemId, { status: 'pending', retryStopped: true });
   await synced(page, app);
   await expect(line).toContainText(/stopped retrying.*after an hour of network errors/);
   await expect(line.getByRole('button', { name: 'Cancel' })).toHaveCount(0);

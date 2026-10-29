@@ -10,14 +10,14 @@ export function scheduledWakeLine(item) {
     'div.col.sys-line',
     icon('clock', 'i-sm'),
     h('b', `@${item.handle}`),
-    item.retryStopped
-      ? ' stopped retrying its scheduled wake after an hour of network errors; use Retry on its last failed reply'
-      : item.retryAttempt
-        ? ` will retry its scheduled wake at ${timeOf(item.at)} after a network error · attempt ${item.retryAttempt}`
-        : item.status === 'pending'
-          ? ` will wake itself at ${timeOf(item.at)}`
-          : item.status === 'canceled'
-            ? ' won’t wake itself (canceled)'
+    item.status === 'canceled'
+      ? ' won’t wake itself (canceled)'
+      : item.retryStopped
+        ? ' stopped retrying its scheduled wake after an hour of network errors; use Retry on its last failed reply'
+        : item.status === 'pending' && item.retryAttempt
+          ? ` will retry its scheduled wake at ${timeOf(item.at)} after a network error · attempt ${item.retryAttempt}`
+          : item.status === 'pending'
+            ? ` will wake itself at ${timeOf(item.at)}`
             : ` woke itself at ${timeOf(item.at)}`,
     item.note ? ` · “${item.note}”` : '',
     item.status === 'pending' && !item.retryStopped

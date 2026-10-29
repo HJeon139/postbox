@@ -2,6 +2,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createKiroMapper } from '../server/adapters/kiro-cli.mjs';
+import { kiroError } from '../server/adapters/kiro-errors.mjs';
 import { failure, SshFailure } from '../server/remote/ssh-failures.mjs';
 import { fireScheduledWake, isNetworkFailure } from '../server/scheduled-wakes.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
@@ -17,6 +19,15 @@ test('#466 network failures are structured SSH failures or portable network erro
   assert.equal(isNetworkFailure(new SshFailure('unreachable', 'Offline.', 'Reconnect.')), true);
   for (const code of ['EADDRNOTAVAIL', 'ENOTFOUND', 'ECONNRESET']) assert.equal(isNetworkFailure(networkError(code)), true, code);
   assert.equal(isNetworkFailure(Object.assign(new Error('Quota exhausted.'), { code: 'rate_limit' })), false);
+});
+
+test('#466 a real Kiro runError keeps its portable network code as the adapter error’s cause', () => {
+  const mapper = createKiroMapper({ status() {}, activity() {}, reported() {}, denied() {} });
+  mapper.push({
+    type: 'runError',
+    data: { sessionId: 'session-1', stage: 'run', message: 'Internal error (code -32603): {"details":"read EADDRNOTAVAIL"}' },
+  });
+  assert.equal(isNetworkFailure(kiroError(mapper.error, mapper.error)), true);
 });
 
 test('#466 a scheduled wake retries with the same id after a network error before any tool starts', async () => {
@@ -44,12 +55,68 @@ test('#466 a scheduled wake retries with the same id after a network error befor
     'retries update the schedule line instead of adding wake lines',
   );
   assert.deepEqual(
-    f.adapter.calls.map((call) => [call.message.note, call.message.scheduledWake?.id]),
+    f.adapter.calls.map((call) => [call.message.note, call.message.scheduledWakeId]),
     [
       ['Check the run.', sc.id],
       ['Check the run.', sc.id],
     ],
   );
+});
+
+test('#466 Cancel is never undone by Retry from a stale failed reply', async () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check once.' });
+  f.adapter.next.push(async () => {
+    throw networkError();
+  });
+  await fire(f, sc);
+  const failed = f.store.items(sc.threadId).findLast((item) => item.kind === 'agent' && item.status === 'failed');
+  f.rt.cancelSchedule(sc.id);
+  f.adapter.next.push(async () => {
+    throw networkError('ECONNRESET');
+  });
+  f.rt.retry(sc.threadId, failed.id);
+  await settle(f.rt);
+  assert.equal(f.store.state.schedules[sc.id], undefined);
+  assert.equal(f.rt.timers.has(sc.id), false);
+});
+
+test('#466 manual Retry cancels an armed automatic retry, so the instruction runs once', async () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check once.' });
+  f.adapter.next.push(async () => {
+    throw networkError();
+  });
+  await fire(f, sc);
+  const failed = f.store.items(sc.threadId).findLast((item) => item.kind === 'agent' && item.status === 'failed');
+  f.adapter.next.push(async (ctx) => ctx.text('Done after the manual retry.'));
+  f.rt.retry(sc.threadId, failed.id);
+  await settle(f.rt);
+  fireScheduledWake(f.rt, sc.id);
+  await settle(f.rt);
+  assert.equal(f.adapter.calls.length, 2);
+  assert.equal(f.store.state.schedules[sc.id], undefined);
+});
+
+test('#466 manual Retry cannot replace a tool-aware recovery with the original instruction', async () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Deploy and report.' });
+  f.adapter.next.push(async (ctx) => {
+    ctx.activity({ id: 'kiro-tool', label: 'Deploy to test', state: 'running', kind: 'tool' });
+    throw networkError();
+  });
+  await fire(f, sc);
+  const failed = f.store.items(sc.threadId).findLast((item) => item.kind === 'agent' && item.status === 'failed');
+  f.adapter.next.push(async () => {
+    throw networkError('ECONNRESET');
+  });
+  f.rt.retry(sc.threadId, failed.id);
+  await settle(f.rt);
+  const current = f.store.state.schedules[sc.id];
+  assert.deepEqual(current.recoveryTools, ['Deploy to test']);
+  assert.match(current.recoveryNote, /Deploy to test/);
+  assert.notEqual(current.recoveryNote, sc.note);
+  f.rt.cancelSchedule(sc.id);
 });
 
 test('#466 a quota failure stays failed and does not retry', async () => {
@@ -78,6 +145,20 @@ test('#466 a host turn marked lost is attached again, not also retried as a sche
   assert.equal(f.store.state.schedules[sc.id], undefined, 'RemoteTurns owns reconnection, so no second recovery is armed');
   assert.equal(f.rt.timers.has(sc.id), false);
   assert.equal(f.adapter.calls.length, 1);
+});
+
+test('#466 exponential backoff reaches its documented five-minute cap', async () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check later.' });
+  sc.attempt = 9;
+  f.store.emit('schedule', sc);
+  f.adapter.next.push(async () => {
+    throw networkError();
+  });
+  await fire(f, sc);
+  const delay = f.store.state.schedules[sc.id].at - Date.now();
+  assert.ok(delay > 250_000 && delay <= 300_000, `${delay} ms`);
+  f.rt.cancelSchedule(sc.id);
 });
 
 test('#466 retries stop after an hour and leave one visible schedule line', async () => {
@@ -116,7 +197,7 @@ test('#466 a network failure after a tool started runs a recovery turn instead o
 
   assert.equal(f.adapter.calls.length, 2);
   const message = f.adapter.calls[1].message;
-  assert.equal(message.scheduledWake?.id, sc.id);
+  assert.equal(message.scheduledWakeId, sc.id);
   assert.notEqual(message.note, sc.note, 'the original instruction was not replayed');
   assert.match(message.note, /last scheduled turn.*network/i);
   assert.match(message.note, /Deploy/);

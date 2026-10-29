@@ -50,7 +50,7 @@ import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_REMOTE, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
-import { kiroExitError } from './kiro-errors.mjs';
+import { kiroError, kiroExitError } from './kiro-errors.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf } from './setup.mjs';
 
@@ -524,10 +524,11 @@ export class KiroCliAdapter {
         else ctx.signal.addEventListener('abort', onAbort, { once: true });
         child.on('error', (e) =>
           reject(
-            new Error(
+            kiroError(
               e.code === 'ENOENT'
                 ? 'The Kiro CLI isn’t installed, or isn’t on the PATH. Install it, or set POSTBOX_KIRO_BIN.'
                 : `The Kiro CLI couldn’t start: ${e.message}`,
+              e,
             ),
           ),
         );
@@ -563,8 +564,11 @@ export class KiroCliAdapter {
           if (mapper.model) ctx.saveState({ model: mapper.model });
           if (ctx.signal.aborted) return resolve({});
           if (sessionId && mapper.missingSession) return resolve({ missingSession: true });
-          if (mapper.error) return reject(new Error(mapper.error));
-          if (code !== 0 || !mapper.finished) return reject(new Error(kiroExitError(code, stderr)));
+          if (mapper.error) return reject(kiroError(mapper.error, mapper.error));
+          if (code !== 0 || !mapper.finished) {
+            const message = kiroExitError(code, stderr);
+            return reject(kiroError(message, `${message} ${stderr}`));
+          }
           resolve({});
         };
         // A stopped turn ends once the CLI’s whole group has exited, as for the Claude backends (#126).

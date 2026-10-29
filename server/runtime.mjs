@@ -72,7 +72,7 @@ import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere,
 import { RemoteTurns } from './remote/turns.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
-import { armWake, cancelWakeSchedule, rearmWakes, recordScheduledTool, scheduleWake, settleScheduledWake } from './scheduled-wakes.mjs';
+import { armWake, cancelWakeSchedule, prepareScheduledRetry, rearmWakes, recordScheduledTool, scheduleWake, settleScheduledWake } from './scheduled-wakes.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, resolveHop, sideSession, threadPersona, wakeAgent } from './side-threads.mjs';
@@ -554,9 +554,10 @@ export class Runtime {
    */
   deliver(sessionId, message, { summarizeTo = null, threadId = null } = {}) {
     const se = this.session(sessionId);
+    if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
+    message = prepareScheduledRetry(this, message);
     // As it was asked, for Retry (askedOf).
     const asked = { message, summarizeTo, threadId };
-    if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
     if (this.turns.has(sessionId)) {
       // Agent-to-agent messages and events wait for the current turn to end.
       const t = this.turns.get(sessionId);
@@ -796,9 +797,8 @@ export class Runtime {
         rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
         if (se().state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
       },
-      // who: the subagent that took the step, and parent: the step that started it, so the list nests it (#73); detail:
-      // why it failed, the whole thought or narration, or what a subagent returned; kind: 'thought', 'said' (a
-      // subagent’s narration) or 'agent' (a subagent’s own step); job: the id of the background job it started (#129).
+      // who: the subagent that took the step; parent nests it under its starting step; detail holds an error,
+      // thought, narration or subagent result; kind names non-tool work; job names its background job (#73, #129).
       activity({
         id,
         label,
@@ -831,6 +831,7 @@ export class Runtime {
         const s = se();
         // A thought or a subagent’s narration is in the list, but it isn’t a tool call.
         if (kind === 'thought' || kind === 'said') return;
+        if (state === 'running' && !who) recordScheduledTool(rt, turn, { name: label }, false);
         const calls = [{ name: step.label, state: step.state, ms: step.ms }, ...s.toolCalls.filter((c) => c.name !== step.label)].slice(0, 5);
         // A subagent’s step is its own: it moves its arc, not the agent’s state or step (#189).
         const own = state === 'running' && !(i >= 0 ? turn.steps[i] : step).who;
