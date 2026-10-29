@@ -164,7 +164,7 @@ function phaseOf(p) {
   const meta = {};
   let i = 0;
   for (; i < rest.length; i++) {
-    const m = /^- (triggers?|steps|host|host-triggers): (.*)$/.exec(rest[i]);
+    const m = /^- (triggers?|steps|host|host-triggers|fault): (.*)$/.exec(rest[i]);
     if (m) meta[m[1].replace(/s$/, '')] = m[2].trim();
     else if (rest[i].trim()) break;
   }
@@ -180,6 +180,8 @@ function phaseOf(p) {
     host: meta.host?.replace(/^@/, '') || null,
     hostTriggers: triggerList(meta['host-trigger']),
     hostText: hostText.trim(),
+    // `- fault: fail-before-output researcher 1`: the turn tools/uat/fault-launcher.mjs fails in this phase (#508).
+    fault: meta.fault || null,
   };
 }
 
