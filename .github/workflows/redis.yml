@@ -1,0 +1,218 @@
+# Builds the Redis 8 server Postbox downloads at first start, from Redis’s official source tarball, for each platform
+# Postbox runs on, and attaches the builds, the tarball and their SHA-256s to one GitHub release (designs/508/design.md,
+# “Storage: a Redis 8 server that Postbox bundles and runs”, decision 2 and “License and platforms”). Postbox takes
+# Redis 8 under the AGPLv3 and offers the matching source with every release that carries a build, so the tarball the
+# builds came from goes in the same release.
+#
+# The version, the tarball’s URL and its SHA-256 come from server/redis-build.mjs, the pin Postbox itself checks, so
+# there is one place to change them. Push the tag redis-v<version> to build and release; run it by hand to build only.
+# After a release, copy each build’s .sha256 into server/redis-build.mjs’s targets.
+name: redis
+
+on:
+  push:
+    tags: ['redis-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: redis-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source:
+    name: The official source tarball, checked
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.pin.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Read the pin
+        id: pin
+        run: |
+          node --input-type=module -e "
+            import { REDIS } from './server/redis-build.mjs';
+            console.log('version=' + REDIS.version);
+            console.log('name=' + REDIS.source.name);
+            console.log('url=' + REDIS.source.url);
+            console.log('sha256=' + REDIS.source.sha256);
+          " >> "$GITHUB_OUTPUT"
+      # A tag that names another version than the pin would release builds under the wrong name.
+      - name: The tag names the pinned version
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.pin.outputs.version }}
+        run: |
+          if [ "$TAG" != "redis-v$VERSION" ]; then echo "The tag $TAG doesn’t match the pinned Redis $VERSION (server/redis-build.mjs)."; exit 1; fi
+      # Into a folder of its own: the tarball is data until its hash matches, and nothing runs from inside it.
+      - name: Download the tarball
+        env:
+          NAME: ${{ steps.pin.outputs.name }}
+          URL: ${{ steps.pin.outputs.url }}
+        run: |
+          mkdir dist
+          curl -fsSL --retry 3 -o "dist/$NAME" "$URL"
+      # The same spec Postbox’s own suite runs, with the tarball to hash: tests/redis-build.test.mjs.
+      - name: Its SHA-256 is the pinned one
+        env:
+          NAME: ${{ steps.pin.outputs.name }}
+          SHA256: ${{ steps.pin.outputs.sha256 }}
+        run: |
+          POSTBOX_REDIS_TARBALL="$PWD/dist/$NAME" node --test tests/redis-build.test.mjs
+          cd dist
+          echo "$SHA256  $NAME" | sha256sum -c -
+          echo "$SHA256  $NAME" > "$NAME.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: redis-source
+          path: dist/
+          if-no-files-found: error
+
+  build:
+    name: Build for ${{ matrix.target }}
+    needs: source
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-14
+          - target: linux-x64
+            runner: ubuntu-24.04
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    # The search module is C++ and Rust, and takes most of this.
+    timeout-minutes: 120
+    env:
+      TARGET: ${{ matrix.target }}
+      VERSION: ${{ needs.source.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: redis-source
+          path: source
+      # Checked again on this runner before anything in it is unpacked or built.
+      - name: The tarball’s SHA-256 is the pinned one
+        run: POSTBOX_REDIS_TARBALL="$PWD/source/redis-$VERSION.tar.gz" node --test tests/redis-build.test.mjs
+      # The toolchain Redis’s guide to building Redis Open Source with modules lists for Ubuntu 24.04 and for macOS.
+      # Rust comes with the runners’ images; rustup brings it up to date.
+      - name: Install the toolchain (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ca-certificates wget dpkg-dev gcc g++ libc6-dev libssl-dev make git cmake \
+            python3 python3-pip python3-venv python3-dev unzip rsync clang automake autoconf libtool
+          rustup update stable
+      - name: Install the toolchain (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install coreutils make openssl llvm@18 cmake gnu-sed automake libtool wget
+          rustup update stable
+          prefix="$(brew --prefix)"
+          {
+            echo "$prefix/opt/libtool/libexec/gnubin"
+            echo "$prefix/opt/llvm@18/bin"
+            echo "$prefix/opt/make/libexec/gnubin"
+            echo "$prefix/opt/gnu-sed/libexec/gnubin"
+            echo "$prefix/opt/coreutils/libexec/gnubin"
+          } >> "$GITHUB_PATH"
+          echo "LDFLAGS=-L$prefix/opt/llvm@18/lib" >> "$GITHUB_ENV"
+          echo "CPPFLAGS=-I$prefix/opt/llvm@18/include" >> "$GITHUB_ENV"
+      # Outside the checkout. The tarball carries each module’s source at its pinned ref (modules/modules.yaml), so the
+      # build clones nothing; cargo fetches the crates its Cargo.lock pins, checked against their hashes.
+      - name: Build Redis with JSON and search
+        run: |
+          mkdir -p "$RUNNER_TEMP/build"
+          tar -xzf "source/redis-$VERSION.tar.gz" -C "$RUNNER_TEMP/build"
+          make -C "$RUNNER_TEMP/build/redis-$VERSION" -j "$(getconf _NPROCESSORS_ONLN)" BUILD_WITH_MODULES=yes DISABLE_WERRORS=yes all
+      # What Postbox unpacks: the server, the two modules it loads, and Redis’s license. No TLS: Postbox talks to it on
+      # 127.0.0.1 only.
+      - name: Package the build
+        run: |
+          src="$RUNNER_TEMP/build/redis-$VERSION"
+          out="redis-$VERSION-$TARGET"
+          mkdir -p "dist/$out/bin" "dist/$out/modules"
+          cp "$src/src/redis-server" "dist/$out/bin/"
+          cp "$src/modules/redisjson/rejson.so" "$src/modules/redisearch/redisearch.so" "dist/$out/modules/"
+          cp "$src/LICENSE.txt" "dist/$out/"
+          printf 'Redis %s, built by Postbox from redis-%s.tar.gz, which is in the same release. Postbox uses Redis under the AGPLv3.\n' "$VERSION" "$VERSION" > "dist/$out/README.txt"
+      # A build that needs a library only this runner has would fail on the person’s computer instead.
+      - name: It needs only the system’s libraries
+        run: |
+          cd "dist/redis-$VERSION-$TARGET"
+          if [ "$RUNNER_OS" = macOS ]; then
+            otool -L bin/redis-server modules/*.so
+            if otool -L bin/redis-server modules/*.so | grep -E '^\s+(/opt/homebrew|/usr/local)/'; then echo 'A file links a Homebrew library.'; exit 1; fi
+          else
+            ldd bin/redis-server modules/*.so
+            if ldd bin/redis-server modules/*.so | grep 'not found'; then echo 'A file links a library that isn’t there.'; exit 1; fi
+          fi
+      # Starts the packaged server with both modules on a port of its own, and uses JSON and search once.
+      - name: JSON and search work in the packaged build
+        run: |
+          cli="$RUNNER_TEMP/build/redis-$VERSION/src/redis-cli"
+          cd "dist/redis-$VERSION-$TARGET"
+          ./bin/redis-server --port 6390 --bind 127.0.0.1 --save '' --appendonly no \
+            --loadmodule "$PWD/modules/rejson.so" --loadmodule "$PWD/modules/redisearch.so" &
+          for _ in $(seq 50); do "$cli" -p 6390 ping 2>/dev/null | grep -q PONG && break; sleep 0.2; done
+          "$cli" -p 6390 JSON.SET doc '$' '{"n":1}'
+          test "$("$cli" -p 6390 JSON.GET doc '$.n')" = '[1]'
+          "$cli" -p 6390 FT.CREATE idx ON JSON PREFIX 1 doc SCHEMA '$.n' AS n NUMERIC
+          "$cli" -p 6390 FT._LIST | grep -qx idx
+          "$cli" -p 6390 shutdown nosave || true
+      - name: Archive it, with its SHA-256
+        run: |
+          cd dist
+          tar -czf "redis-$VERSION-$TARGET.tar.gz" "redis-$VERSION-$TARGET"
+          if [ "$RUNNER_OS" = macOS ]; then shasum -a 256 "redis-$VERSION-$TARGET.tar.gz"; else sha256sum "redis-$VERSION-$TARGET.tar.gz"; fi > "redis-$VERSION-$TARGET.tar.gz.sha256"
+          cat "redis-$VERSION-$TARGET.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: redis-${{ matrix.target }}
+          path: |
+            dist/redis-*.tar.gz
+            dist/redis-*.tar.gz.sha256
+          if-no-files-found: error
+
+  release:
+    name: Attach the builds and the source to the release
+    needs: [source, build]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The one job that writes: it makes the release and uploads its assets.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Make the release, or add to it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.source.outputs.version }}
+        run: |
+          cd dist
+          ls -l
+          cat ./*.sha256
+          notes="Redis $VERSION for Postbox: builds for macOS on Apple silicon, Linux on arm64 and Linux on x64, with the JSON and search modules, each with its SHA-256. Built from redis-$VERSION.tar.gz, the official source from download.redis.io, which is attached with its SHA-256. Postbox uses Redis 8 under the AGPLv3 (LICENSE.txt in each build)."
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" ./* --clobber
+          else
+            gh release create "$TAG" ./* --title "Redis $VERSION for Postbox" --notes "$notes"
+          fi
