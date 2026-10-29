@@ -27,7 +27,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -49,7 +49,7 @@ import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
-import { readStreams, readTranscripts, readUi, userSetup } from './uat/run-files.mjs';
+import { readStreams, readTranscripts, readUi, runPaths, userSetup } from './uat/run-files.mjs';
 import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { compatBackends, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
@@ -122,16 +122,7 @@ async function main() {
   const budget = runBudget({ cap: parseMaxCost(opt['max-cost']), testerShare: Number(opt.budget) });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
-  const paths = {
-    data: join(dir, 'data'),
-    workspace: join(dir, 'workspace'),
-    streams: join(dir, 'streams'),
-    kiroStreams: join(dir, 'streams', 'kiro'),
-    agyStreams: join(dir, 'streams', 'agy'),
-    codexStreams: join(dir, 'streams', 'codex'),
-    shots: join(dir, 'shots'),
-  };
-  for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
+  const paths = await runPaths(dir);
   const canaries = makeWorkspace(scenario, paths, dir);
   const logLines = [];
   const log = (line) => {
