@@ -1,6 +1,6 @@
 # Functional requirements behind #508
 
-**Status:** revision 4.2, 28 October 2026 (storage requirements ST-1 to ST-4 and the PF-9 exception added; names aligned with the UAT scenarios): adds “Acceptance, test first”, how each requirement is accepted, test first. Derived from #508, its integrator review, the linked issues and `designs/intent.md` at `main`. It says **what** Postbox must do and where each requirement comes from, not how. Use it to check that any version of the design, including the simplified one proposed in the room, covers every requirement and adds nothing that no requirement asks for.
+**Status:** revision 4.3, 29 October 2026 (store security SR-1 to SR-8 added; storage requirements ST-1 to ST-4 and the PF-9 exception added; names aligned with the UAT scenarios): adds “Acceptance, test first”, how each requirement is accepted, test first. Derived from #508, its integrator review, the linked issues and `designs/intent.md` at `main`. It says **what** Postbox must do and where each requirement comes from, not how. Use it to check that any version of the design, including the simplified one proposed in the room, covers every requirement and adds nothing that no requirement asks for.
 
 **How to read it.** Each requirement has an id, a statement, a check that shows it’s met, and its sources. A requirement whose only source is #508 itself is marked **(design-only)**: nothing upstream asked for it, so it needs the person’s decision before it constrains the design. “Where the sources disagree” lists the places where the sources disagree.
 
@@ -97,6 +97,25 @@ From the person’s storage interview of 28 October 2026 and the Redis decisions
 | ST-2 | No state change assumes it is the only writer. Every record transition is atomic in the store, so a second Postbox process can be added later without revisiting the lifecycle. | Two Postbox processes against one store keep every transition consistent. | The person: more than one process or person is likely within a year; storage decision 8 |
 | ST-3 | When the store can’t be written, Postbox refuses writes and stops starting turns, while the page stays readable. It says why, offers Retry, and reopens writes only once it has read back everything the store holds. Nothing is written anywhere else meanwhile. | With the store stopped, a write is refused, the page still reads, and the status names the cause with Retry; after a restart, no committed change is lost or applied twice. | Storage decision 7; INT principle 2; gpt’s Store review findings |
 | ST-4 | A committed change survives a crash of Postbox or of the store. A power cut may lose up to one second of writes; that limit is stated in the release notes. | A kill during a commit leaves documents and the event stream consistent. | Storage decision 3 (`appendfsync everysec`) |
+
+## Store security
+
+**Threat model.** This uses the bar architecture already sets for the page token (“Writes need the page’s token”): **the casual path fails, but it isn’t a boundary against a process running as the person that sets out to get in.** That includes an agent told exactly how, which can already read the data folder today. Within the person’s premise (one person, one computer, no other users or unrelated processes), these requirements cover agents reaching the store through ordinary inputs, tools or commands; web pages in the person’s browser; and remote hosts.
+
+**What Store did when these were written** (`server/redis-supervisor.mjs` at `4e9dde59`; probes of the published 8.10.3 build on 29 October 2026): Redis listened on TCP `127.0.0.1` with `requirepass`; the default user had `+@all`, so `REPLICAOF` and `MIGRATE` succeeded, while `CONFIG SET dir`, `MODULE LOAD` and `DEBUG` were refused only by Redis 8’s defaults; an HTTP request sent to Redis was aborted; the password stayed in `redis.conf` (0600) under a data folder that’s 0755.
+
+| Id | Requirement | Check | Sources |
+|---|---|---|---|
+| SR-1 | Redis isn’t reachable from the network or a browser. On the three supported platforms, it listens only on a Unix socket in a folder only the person can open. | `port 0`; no TCP listener for the store. | The probe; [Redis security](https://redis.io/docs/latest/operate/oss_and_stack/management/security/) |
+| SR-2 | Redis’s credential isn’t public: never on a command line, in a log, in an agent’s context or environment, or in a tool result. If it’s stored, it’s in a file only the person can read. | No `ps` line, log, guide, MCP result or agent environment holds it; a stored copy is 0600. | Architecture, “Remote hosts” |
+| SR-3 | Store access can’t be turned into broader capabilities. The default user is off. Postbox’s user, and Lua run by it, are refused `REPLICAOF`, `SLAVEOF`, `MIGRATE`, `CONFIG SET`, `MODULE`, `DEBUG`, `ACL` changes, `FAILOVER`, `CLUSTER`, `SYNC` and `PSYNC`. Resetting or importing the store is a private startup operation with no public caller; the design picks how. | The exact commands the current code sends, Lua included, succeed. Each refused command fails with no side effect, as `ERR` or `NOPERM`. An unauthenticated connection gets `NOAUTH`. | researcher’s probe; gpt’s ACL probe |
+| SR-4 | Redis 8’s default protections are written into the config, not assumed: `enable-protected-configs no`, `enable-debug-command no`, `enable-module-command no`, `protected-mode yes`. Modules load only from the config at start. | The config names all four. | The probe |
+| SR-5 | The store’s files default to private. Folders under `<data>/redis/` are 0700; data, append-only files, logs and any config are 0600; executables are owner-executable; modules and libraries are owner-readable. | A test reads the modes after a start. | ENG, “Bound everything” |
+| SR-6 | Redis shuts down cleanly with Postbox. A leftover from a crash is recovered safely and in bounded time: Postbox never kills an ambiguous or reused PID, never takes over or stops a Redis another live Postbox owns, and fails closed with a reason when it can’t tell. | After SIGKILL of Postbox, the next start recovers within its bound; a live owner is left alone; an ambiguous case refuses with a reason. | gpt’s review; #354 |
+| SR-7 | Agents don’t get the store through their ordinary inputs or tools: the socket path and credential aren’t in the guide, environment, MCP results or a host’s environment. A direct attempt by an agent follows its backend’s existing permissions in its mode. Auto stays Auto, and each backend’s limits are documented rather than hidden. | No agent-facing text or environment names the socket or credential; Codex’s macOS sandbox refuses the socket (`EPERM`); each backend’s behavior is recorded. | Architecture, “Writes need the page’s token”; INT principle 6; gpt’s sandbox probe |
+| SR-8 | What Postbox runs is what it published. It downloads a pinned build, checks its checksum before unpacking or using it, extracts it safely (no paths out of its folder, no links) and installs it atomically. Re-checking the installed files at every start is optional hardening. | A wrong checksum is refused before unpacking; an archive with `..` or a link is refused; an interrupted install leaves nothing half-installed. | PF-9 |
+
+**Out of scope, by the person’s bound:** a process running as the person that sets out to get in, such as an agent given exact steps to read the data folder or attach to Redis.
 
 ## 6. Agent context
 
@@ -203,6 +222,7 @@ flowchart TD
 | ST-2 | Spec | Two processes against one Redis | none | none | Store step |
 | ST-3 | Spec + Playwright spec | A failed write closes writes; reconciliation reopens them; the page shows the status with Retry | none | none | Store step |
 | ST-4 | Spec | A kill during a commit | none | none | Store step |
+| SR-1 to SR-8 | Spec | Store’s `node:test` specs, one per requirement as its Check column states | none | none | Store step |
 | CX-1 | Spec | Nothing from a thread enters another agent’s envelope unless it reads it or the person sends it | none | *thread-leak* | **Not in rev 6** |
 | CX-2 | Spec | `read_conversation` reaches the first item, locally and on a host | none | none | Covered |
 | CX-3 | Spec + conformance | #515: a tool turned off mid-session shows as off in a resumed Claude session’s next turn | none | none | Covered |

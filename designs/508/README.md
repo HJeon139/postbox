@@ -16,7 +16,7 @@ flowchart TD
 
 | Document | What it holds | Status |
 |---|---|---|
-| [`requirements.md`](requirements.md) | The functional requirements (DL, MD, AT, SW, PF, CX, MS), each with its sources, including storage (ST), and in “Acceptance, test first” the layer and test that decide it | Revision 4.2, approved; [comment 6482761957](https://github.com/HJeon139/postbox/issues/508#issuecomment-6482761957) |
+| [`requirements.md`](requirements.md) | The functional requirements (DL, MD, AT, SW, PF, CX, MS), each with its sources, including storage (ST) and store security (SR), and in “Acceptance, test first” the layer and test that decide it | Revision 4.3, approved; [comment 6482761957](https://github.com/HJeon139/postbox/issues/508#issuecomment-6482761957) |
 | [`design.md`](design.md) | The design: one record collection, delivery decided by how a turn ends, a windowed browser, and storage on a bundled Redis 8 | Revision 11.1, approved |
 | [`testing-strategy.md`](testing-strategy.md) | The `delivery.md` and `bigroom.md` UAT scenarios, with their triggers, checks, seed and fault launcher. A run confirms; a spec written first decides. | Approved, with names aligned to the requirements |
 | [`room-rules.md`](room-rules.md) | How agents on Claude Code, Codex and Antigravity coordinate on this work, and the bug behind each rule | Approved |
