@@ -26,6 +26,7 @@ import { dataFolder } from './home.mjs';
 import { listen as listenServer } from './listen.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
+import { rearmPersonaDeletes } from './persona-delete.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { DEFAULT_MODEL, HOP_LIMIT, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
@@ -139,6 +140,7 @@ export async function start({
     for (const it of list) if (it.status === 'streaming') rt.patchItem(threadId, it.id, { status: 'stopped' });
   rt.rearmSchedules();
   rt.rearmDeletions();
+  rearmPersonaDeletes(rt);
   rt.expireStalePermissions();
   rt.expireStaleCommands();
   rt.ledger.expireStale();

@@ -287,7 +287,7 @@ sequenceDiagram
 ## 10. Sandboxed pages that load nothing
 
 **Decision.** An agent app or diagram page is sandboxed by its response header, `Content-Security-Policy: sandbox allow-scripts; …`, not by the iframe’s `sandbox` attribute. It is self-contained:
-- **Inline:** the kit, the stylesheet and the diagram script are inlined into the page when it’s served.
+- **Inline:** the kit, the stylesheet and the diagram script are inlined into the page when it’s served. Before serving an app version for the first time, the server asks V8 to parse each classic inline script and caches any syntax errors with their source positions (#328). It never runs the script; only the sandboxed page does.
 - **Libraries:** D3, KaTeX and Mermaid reach it as text over the postMessage bridge, and run as inline scripts. KaTeX’s fonts travel inside its stylesheet as `data:` URLs.
 - **Policy:** it allows inline code, `data:` images and fonts, and `blob:` audio, and nothing that loads from a URL.
 

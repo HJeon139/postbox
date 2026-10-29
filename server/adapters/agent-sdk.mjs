@@ -14,11 +14,11 @@ import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { withAskRules } from '../permission-rules.mjs';
 import { commandsOf, createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
-import { agentFolder } from './folder.mjs';
+import { agentFolder, memoryRootFor } from './folder.mjs';
 import { formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
-import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
+import { deniedTools, effortOf, fromContext, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
 
 // Passed explicitly, as for the CLI: an agent set to ask must not inherit a looser mode from your settings.
 const MODES = { auto: 'auto', ask: 'default', acceptEdits: 'acceptEdits', bypass: 'bypassPermissions' };
@@ -37,8 +37,8 @@ export async function loadAgentSdk() {
 /**
  * @param {{ persona: any, cwd: string, addDirs?: string[], sessionId: string, resume: boolean, mcpUrl: string, guide: string,
  *           abortController: AbortController, canUseTool?: Function, fork?: any, allowOnce?: string[],
- *           rules?: { allow?: string[], ask?: string[], deny?: string[] } }} turn
- *   rules: the ones the person made for this conversation only (#66), passed every turn
+ *           rules?: { allow?: string[], ask?: string[], deny?: string[] }, memoryDir?: string|null }} turn
+ *   rules: the ones the person made for this conversation only (#66), passed every turn. memoryDir: the persona’s own (#208).
  */
 export function sdkOptions({
   persona,
@@ -53,6 +53,7 @@ export function sdkOptions({
   fork = null,
   allowOnce = [],
   rules = {},
+  memoryDir = null,
 }) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   const setup = setupOf(persona);
@@ -81,8 +82,8 @@ export function sdkOptions({
     // servers the persona turned off, and none of the tools it may not use (server/adapters/setup.mjs).
     // A ticked tool is never an allow rule: the permission mode still decides.
     settingSources: [...(setup.usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES)],
-    // Writes outside Postbox ask first (#112), through canUseTool, so the card shows the draft.
-    settings: withAskRules(settingsFor(persona), [...writeRules(persona), ...(rules.ask ?? [])]),
+    // The persona’s own memory folder (#208); writes outside Postbox ask first (#112), through canUseTool, so the card shows the draft.
+    settings: withAskRules(settingsFor(persona, memoryDir), [...writeRules(persona), ...(rules.ask ?? [])]),
     ...(denied.length ? { disallowedTools: denied } : {}),
     // Readable thinking, and subagents’ own messages, so Postbox can show what the agent is on.
     thinking: { type: 'adaptive', display: 'summarized' },
@@ -252,8 +253,7 @@ export class AgentSdkAdapter {
         abortController,
         canUseTool,
         fork,
-        allowOnce: ctx.allowOnce ?? [],
-        rules: ctx.rules ?? {},
+        ...fromContext(ctx, memoryRootFor(this.workRoot)),
       }),
       spawnClaudeCodeProcess,
     };
