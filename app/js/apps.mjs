@@ -3,6 +3,7 @@
 // Also renders Mermaid diagrams (in their own sandbox) and KaTeX math in messages.
 
 import { MIN_TEXT_PX } from '/shared/diagram-lint.mjs';
+import { afterAppChecks, appChecksRunning, installAppChecks, recordAppCheck } from './app-check.mjs';
 import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
 import { api, client, itemsOf } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
@@ -11,7 +12,6 @@ import { openMenu, toast } from './ui.mjs';
 export { renderAppSendCard };
 
 const frames = new Set(); // { appId, version, iframe, check, review, onPin, onAnchors, onCrash }
-const checks = new Map(); // `${appId}:${v}` → { results: Map(width → problems), frames }
 const crashes = new Map(); // `${appId}:${v}` → message (a script error after the app was shown)
 const reloaded = new Set(); // `${appId}:${v}` you chose Reload for after its check crashed: run it, don’t show the crash again
 const viewing = new Map(); // appId → an older version you’re looking at, read-only
@@ -126,13 +126,9 @@ addEventListener('message', async (e) => {
         rec.onCrash?.();
       }
       break;
-    case 'check': {
-      const c = checks.get(`${rec.appId}:${rec.version}`);
-      if (!c) return;
-      c.results.set(m.width, m.problems);
-      if (c.results.size === 2) finishCheck(rec.appId, rec.version);
+    case 'check':
+      recordAppCheck(rec.appId, rec.version, m.width, m.problems);
       break;
-    }
   }
 });
 
@@ -417,47 +413,52 @@ function frame(appId, version, { check = false, width = null, review = false, on
   frames.add({ appId, version, iframe, check, review, onPin, onAnchors, onCrash });
   return iframe;
 }
-
-// ── The pre-display check ────────────────────────────────────────────────────────────────
-
-// ?nocheck turns off checks in this browser (a second, passive window such as a screenshot tool).
-const NO_CHECK = new URLSearchParams(location.search).has('nocheck');
-
-function startCheck(appId, version) {
-  const key = `${appId}:${version}`;
-  if (NO_CHECK || checks.has(key)) return;
-  const c = { results: new Map(), frames: [] };
-  checks.set(key, c);
-  for (const w of [375, 1280]) {
-    const f = frame(appId, version, { check: true, width: w });
-    c.frames.push(f);
-    document.body.append(f);
+const isOnScreen = (iframe) => {
+  const rect = iframe.getBoundingClientRect();
+  return rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth;
+};
+function pauseAppFrames() {
+  const bodies = new Set();
+  for (const rec of frames) {
+    // Never interrupt a frame the person can see, points at, or uses with the keyboard (#37).
+    if (rec.check || !rec.iframe.isConnected || isOnScreen(rec.iframe) || rec.iframe === live || rec.iframe === owner) continue;
+    const body = rec.iframe.closest('.app-body');
+    if (body?._unmount) {
+      bodies.add(body);
+      body._unmount('checking');
+    }
   }
-  c.timer = setTimeout(() => {
-    for (const w of [375, 1280])
-      if (!c.results.has(w)) c.results.set(w, [{ code: 'no-answer', message: `The app didn’t finish loading within 10 seconds at ${w} px.` }]);
-    finishCheck(appId, version);
-  }, 10000);
+  return bodies;
 }
 
-function finishCheck(appId, version) {
-  const key = `${appId}:${version}`;
-  const c = checks.get(key);
-  if (!c || c.done) return;
-  c.done = true;
-  clearTimeout(c.timer);
-  for (const f of c.frames) f.remove();
-  const seen = new Set();
-  const problems = [...c.results.values()].flat().filter((p) => {
-    const k = p.code + p.message;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-  api(`/api/apps/${encodeURIComponent(appId)}/check`, { version, problems }).catch(() => {
-    checks.delete(key);
-  });
+function resumeAppFrames(bodies) {
+  for (const body of bodies) if (body.isConnected && !unloaded.has(body.dataset.appId)) body._remount?.();
 }
+
+function mountAfterChecks(body, mount, placeholder) {
+  const deferred = () => body.isConnected && mount();
+  if (appChecksRunning()) {
+    body.append(placeholder([h('span', 'Waiting for another app’s check to finish…')]));
+    afterAppChecks(deferred);
+  } else mount();
+  body._remount = () => (appChecksRunning() ? afterAppChecks(deferred) : mount());
+}
+
+function pausedApp(placeholder, reason, height) {
+  const checking = reason === 'checking';
+  return placeholder(
+    [
+      h(
+        'span.row-flex',
+        h('b', { style: { color: 'var(--text)', fontWeight: 500 } }, checking ? 'Paused while another app is checked' : 'Unloaded while off screen'),
+      ),
+      h('span', checking ? 'It resumes when the check finishes. Its saved state is kept.' : 'It reloads from its saved state as you scroll near it.'),
+    ],
+    height,
+  );
+}
+
+installAppChecks(frame, { pause: pauseAppFrames, resume: resumeAppFrames });
 
 // ── App frames in the transcript ─────────────────────────────────────────────────────────
 
@@ -559,7 +560,6 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
       ),
     );
   } else if (status === 'pending') {
-    startCheck(appId, v);
     body.append(
       placeholder([
         h(
@@ -587,19 +587,9 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
     );
   } else {
     const mount = () => body.replaceChildren(frame(appId, v, { review, onPin, onCrash: () => mountApp(container, appId, { review, onPin, onBack }) }));
-    mount();
-    body._remount = () => mount();
-    body._unmount = () => {
-      const hgt = body.firstElementChild?.offsetHeight || 200;
-      body.replaceChildren(
-        placeholder(
-          [
-            h('span.row-flex', h('b', { style: { color: 'var(--text)', fontWeight: 500 } }, 'Unloaded while off screen')),
-            h('span', 'It reloads from its saved state as you scroll near it.'),
-          ],
-          hgt,
-        ),
-      );
+    mountAfterChecks(body, mount, placeholder);
+    body._unmount = (reason = 'offscreen') => {
+      body.replaceChildren(pausedApp(placeholder, reason, body.firstElementChild?.offsetHeight || 200));
     };
     if (!review) observer.observe(body);
   }

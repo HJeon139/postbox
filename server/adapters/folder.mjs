@@ -2,8 +2,9 @@
 // sessions start, per designs/intent.md, “Agents and sessions”), else a workspace of its own. Its permission mode
 // decides what it may change there.
 
-import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, rm } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { personaMemory } from './setup.mjs';
 
 /**
  * The agent’s folder, made if it’s missing. A folder that can’t be made fails the turn with its reason: a CLI
@@ -25,3 +26,17 @@ export async function agentFolder(persona, project, workRoot) {
   }
   return dir;
 }
+
+/**
+ * Where personas’ own memory folders go on this computer (#208, setup.mjs’s memoryFolder): `memory` in the data
+ * folder, beside the workspaces at workRoot.
+ * @param {string} workRoot
+ */
+export const memoryRootFor = (workRoot) => join(dirname(workRoot), 'memory');
+
+/**
+ * Removes a deleted persona’s memory folders on this computer (#208), for the Claude Code and Agent SDK adapters,
+ * which share them. On a host they stay, in Postbox’s folder there: nothing removes a host’s files yet.
+ * @param {string} workRoot @param {{ id?: string, handle: string }} persona
+ */
+export const forgetMemory = (workRoot, persona) => rm(personaMemory(memoryRootFor(workRoot), persona), { recursive: true, force: true });

@@ -128,8 +128,8 @@ export function apply(s, type, d) {
         delete s.glossary[d.id];
         if (s.work) delete s.work[d.id];
       }
-      if (d.kind === 'session') delete s.sessions[d.id];
-      if (d.kind === 'app') delete s.apps[d.id];
+      const kept = { session: 'sessions', app: 'apps', persona: 'personas' }[d.kind];
+      if (kept) delete s[kept][d.id];
       break;
     }
     case 'notify':

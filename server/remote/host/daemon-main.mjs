@@ -191,6 +191,14 @@ async function startServe({ p, connect, spawn, now, sleep, say }) {
 }
 
 /**
+ * A promise nothing awaited that rejects is logged with its stack, and the daemon keeps serving: Node’s default exits,
+ * which would end every turn on this host for one failed callback (#510). @param {(line: string) => void} say
+ */
+function logRejections(say) {
+  process.on('unhandledRejection', (e) => say(`The daemon kept running after an error nothing handled: ${e instanceof Error ? e.stack : String(e)}`));
+}
+
+/**
  * The daemon: takes daemon.pid, binds the socket and serves until it’s idle or told to stop.
  * @param {{ p: ReturnType<typeof paths>, home?: string, say: (line: string) => void, connect: (path: string) => import('node:net').Socket,
  *   proc: LockProc }} o
@@ -199,6 +207,7 @@ async function serve({ p, home, say, connect, proc }) {
   process.umask(0o077);
   // An ssh session that ends can send SIGHUP; turns and the next attach don’t need this one to go.
   process.on('SIGHUP', () => {});
+  logRejections(say);
   const lock = takeDaemonLock(p.code, proc);
   if (lock.held === false) {
     say(lock.why);

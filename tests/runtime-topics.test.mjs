@@ -18,7 +18,8 @@ async function topicOnReply() {
   const topic = store.state.threads[rt.startTopic(t.id, reply.id).threadId];
   return { ...ctx, reply, topic };
 }
-const context = (call) => (call.message.context ?? []).join('\n');
+const contexts = (call) => [call.message.taskContext, ...(call.message.context ?? [])].filter(Boolean);
+const context = (call) => contexts(call).join('\n');
 
 test('#228: a topic thread has no session of its own; the conversation’s agent answers there, and sees the message it’s on once', async () => {
   const { store, rt, adapter, t, alpha, reply, topic } = await topicOnReply();
@@ -269,7 +270,7 @@ test('#228: the catch-up in a thread is capped, as the conversation’s is, keep
     rt.addItem(topic.id, { kind: 'agent', sessionId: 'se_other', handle: 'beta', text: `${i} ${'word '.repeat(400)}`, status: 'done' });
   rt.sendMessage(topic.id, { text: '@alpha and now?' });
   await settle(rt);
-  const there = adapter.calls.at(-1).message.context.find((x) => x.includes('What was said there since you last took part'));
+  const there = contexts(adapter.calls.at(-1)).find((x) => x.includes('What was said there since you last took part'));
   assert.ok(there.length <= 16000 + 600, `${there.length} characters`);
   assert.match(there, /@beta: 29 word/);
   assert.doesNotMatch(there, /@beta: 0 word/);

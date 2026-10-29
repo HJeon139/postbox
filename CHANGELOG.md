@@ -2,6 +2,77 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.44.3 (2026-10-29)
+
+### Fixes
+
+- **threads:** distinguish missing thread tasks
+- **threads:** cover every kind of thread turn
+- **threads:** put a topic request before room context
+
+## 0.44.2 (2026-10-29)
+
+### Fixes
+
+- **threads:** keep CJK and long tokens in glimpses
+- **threads:** retain spaces across streamed glimpses
+- **threads:** bound glimpse sentence scans
+- **threads:** show whole-sentence thinking glimpses
+
+## 0.44.1 (2026-10-29)
+
+### Fixes
+
+- **review:** use preview width for detailed drafts
+
+## 0.44.0 (2026-10-29)
+
+### Features
+
+- **personas:** delete an agent, with Undo, and its memory with it (#208)
+
+### Fixes
+
+- **personas:** the purge skips an erased session; session Undo waits for its persona's (#208)
+- **personas:** a purge cut short by a restart starts again (#208)
+- **personas:** the delete sheet goes back after 3 s if the stream misses the delete (#208)
+- **agents:** the overview says when Claude Code is too old to keep a memory per agent (#208)
+- **personas:** refuse a session for a persona being deleted, and purge it whole (#208)
+- **personas:** attaching a terminal session names around a persona being deleted (#208)
+- **personas:** finish a persona delete pending at a restart, and hold its name until then (#208)
+- **adapters:** each Claude Code and Agent SDK persona keeps its own memory (#208)
+
+## 0.43.3 (2026-10-29)
+
+### Fixes
+
+- **apps:** keep every on-screen app running
+- **apps:** parse apostrophes in unquoted attributes
+- **apps:** ignore duplicate browser checks
+- **apps:** pause unused frames and queue one check
+- **apps:** preserve visible apps during checks
+- **apps:** preserve Unicode offsets while scanning scripts
+- **apps:** scan malformed script end tags safely
+- **apps:** check every pending app safely
+- **apps:** locate sandbox script errors
+- **apps:** report stylesheet class collisions
+
+## 0.43.2 (2026-10-29)
+
+### Fixes
+
+- **uat:** the verifier's prompt counts its three readings
+- **uat:** the verifier reads what a wake's answer means, and judges a finding's own claim
+- **uat:** the verifier can search a run's records, and is told what they hold
+- **uat:** the runner's flag reactions use the inline buttons
+
+## 0.43.1 (2026-10-29)
+
+### Fixes
+
+- **remote:** a rejection nothing handled on a host is logged, and its daemon keeps serving
+- **server:** a rejection nothing handled is logged, and Postbox keeps running
+
 ## 0.43.0 (2026-10-28)
 
 ### Features

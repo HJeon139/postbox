@@ -228,6 +228,18 @@ export function formatMessage(message, pathOf = () => null) {
   const body = message.messages?.length ? formatQueuedMessages(message.messages, pathOf, formatMessage) : formatBody(message, pathOf);
   // A command is the whole prompt: Claude Code runs it only when the prompt is /name and its arguments (#67).
   if (message.slash || typeof message.attach === 'string') return body;
+  // A topic or side thread’s turn: what was said there, then its request as the task (#504, #511); then what changes
+  // during a room (#515); then the room's catch-up, already labeled as background by turnContext.
+  if (message.taskContext)
+    return [
+      message.taskContext,
+      '[Postbox] Your task in this topic or side thread is the request below. Answer it here.',
+      body,
+      message.facts ? `[Postbox] What’s current in this room:\n\n${message.facts}` : '',
+      ...(message.context ?? []),
+    ]
+      .filter(Boolean)
+      .join('\n\n');
   // The request leads (DL-4, #504); then what changes during a room (#515); then what waited for this turn and the
   // catch-up, labeled as background (designs/508, “Delivering a turn”, the envelope).
   return [
