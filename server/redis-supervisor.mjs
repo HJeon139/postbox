@@ -174,7 +174,12 @@ export class RedisSupervisor extends EventEmitter {
       'port 0',
       `unixsocket ${q(/** @type {string} */ (this.socket))}`,
       'unixsocketperm 600',
+      // Redis 8’s defaults, written rather than assumed (SR-4): no runtime change to protected settings, no DEBUG, and no
+      // MODULE command, so the modules are the two loaded below at start and no others.
       'protected-mode yes',
+      'enable-protected-configs no',
+      'enable-debug-command no',
+      'enable-module-command no',
       `requirepass ${q(this.password)}`,
       `dir ${q(join(dir, 'data'))}`,
       'appendonly yes',

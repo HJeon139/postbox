@@ -79,3 +79,17 @@ test('SR-1: a data folder too long for a socket path gets a short private folder
     await sup.stop();
   }
 });
+
+test('SR-4: Redis 8’s protections are written into the config, and modules load only from it', async () => {
+  const dataDir = join(tmp, 'sr4');
+  const sup = new RedisSupervisor({ home: HOME, dataDir });
+  await sup.start();
+  try {
+    const conf = readFileSync(join(dataDir, 'redis', 'redis.conf'), 'utf8');
+    for (const line of ['enable-protected-configs no', 'enable-debug-command no', 'enable-module-command no', 'protected-mode yes'])
+      assert.match(conf, new RegExp(`^${line}$`, 'm'), line);
+    assert.equal(conf.match(/^loadmodule /gm)?.length, 2, 'the two modules, and no others');
+  } finally {
+    await sup.stop();
+  }
+});

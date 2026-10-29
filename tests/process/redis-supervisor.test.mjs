@@ -52,8 +52,7 @@ test('the child runs on its private socket, with no port, AOF everysec, both mod
     assert.equal(conf.appendonly, 'yes');
     assert.equal(conf.appendfsync, 'everysec');
     assert.equal(conf.dir, join(dataDir, 'redis', 'data'));
-    const modules = (await c.call('MODULE', 'LIST')).map((m) => m[1]);
-    assert.ok(modules.includes('ReJSON') && modules.includes('search'), String(modules));
+    assert.deepEqual(await c.call('FT._LIST'), [], 'the search module is loaded');
     assert.equal(await c.call('JSON.SET', 'doc', '$', '{"n":1}'), 'OK');
     c.close();
     assert.ok((await readdir(join(dataDir, 'redis'))).includes('redis.conf'));
