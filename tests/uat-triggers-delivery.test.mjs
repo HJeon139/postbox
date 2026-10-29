@@ -96,6 +96,32 @@ test('edit-while-waiting stays silent when the edited message arrived twice', ()
   assert.deepEqual(fires('edit-while-waiting', editRoom({ twice: true })), []);
 });
 
+test('edit-while-waiting stays silent when only the old revision arrived, the edit past the first 60 letters', () => {
+  // gpt’s regression (#523 review): the change comes after a long shared start, and the prompt carries the old text.
+  const r = room();
+  r.agent('critic');
+  const prefix = '@critic Please review the proposed release checklist and the changelog wording carefully before publishing. ';
+  const old = `${prefix}Use version 1.0.`;
+  r.add({ id: 'it_edit', at: s(1), kind: 'user', text: old });
+  r.patch('it_edit', { text: `${prefix}Use version 2.0.` });
+  r.add({ id: 'it_time', at: s(2), kind: 'voice', text: 'Edited message' });
+  r.turn('critic', s(3), { prompt: old });
+  assert.deepEqual(fires('edit-while-waiting', r.f), [], 'the agent never received version 2.0');
+});
+
+test('edit-while-waiting counts only prompts after the edit', () => {
+  // The new text in a prompt from before the edit can’t be the edit arriving: it was some other message.
+  const r = room();
+  r.agent('critic');
+  const edited = '@critic check the changelog wording and the version number for the 2.0 release';
+  r.turn('critic', s(1), { prompt: edited });
+  r.add({ id: 'it_ask', at: s(10), kind: 'user', text: '@critic check the changelog wording for the 2.0 release' });
+  r.patch('it_ask', { text: edited });
+  r.add({ id: 'it_next', at: s(12), kind: 'voice', text: 'later' });
+  r.turn('critic', s(40), { prompt: edited });
+  assert.equal(fires('edit-while-waiting', r.f).length, 1);
+});
+
 /** @researcher asked; its first turn writes nothing, and the next carries the request, or doesn’t. */
 function failRoom({ carried = true, output = false } = {}) {
   const r = room();

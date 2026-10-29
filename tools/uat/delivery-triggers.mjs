@@ -55,18 +55,31 @@ function mentionPastCap(f) {
     });
 }
 
-/** An addressed message edited before its agent’s next turn, whose new text then reached it in one prompt only. */
+/** When the item added last before seq was: a patch carries no time, so it happened at or after this. */
+const timeBefore = (events, seq) => {
+  let at = null;
+  for (const e of events ?? []) if (e.seq < seq && e.type === 'item.add' && Number.isFinite(e.data?.item?.at)) at = e.data.item.at;
+  return at;
+};
+
+/**
+ * An addressed message edited before its agent’s next turn, whose new text then reached it in one prompt only. The
+ * new revision counts whole, every letter and digit of it, so a prompt with only the old one doesn’t hold it however
+ * long a start the two share; and only from the edit on, since a prompt before the edit can’t have carried it.
+ */
 function editWhileWaiting(f) {
   const due = new Map(addressed(f).map((a) => [`${a.to}:${a.itemId}`, a]));
   const out = [];
   for (const e of f.events ?? []) {
     if (e.type !== 'item.patch' || typeof e.data?.patch?.text !== 'string') continue;
     const at = timeAfter(f.events, e.seq);
+    const since = timeBefore(f.events, e.seq);
     for (const a of [...due.values()].filter((x) => x.itemId === e.data.id)) {
       const turn = turnsOf(f, a.to).find((t) => t.started > a.due);
       if (at === null || !turn || at > turn.started) continue;
-      const head = headOf(e.data.patch.text);
-      const got = head ? prompts(f, a.to).filter((x) => x.key.includes(head)) : [];
+      const all = headOf(e.data.patch.text) ? plain(e.data.patch.text) : null;
+      const from = Math.max(a.from, since ?? a.from);
+      const got = all ? prompts(f, a.to).filter((x) => x.at >= from && x.key.includes(all)) : [];
       if (got.length === 1) out.push({ at, evidence: `${a.itemId} was edited while it waited for @${a.to}, and its new text reached @${a.to} once.` });
     }
   }
