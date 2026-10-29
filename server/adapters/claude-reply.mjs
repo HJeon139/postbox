@@ -2,8 +2,16 @@
 // recorded stream (tests/fixtures/claude-code/background-moved.jsonl, cut) has replies only in `result.result`, and a
 // reply Postbox never shows reaches no one.
 
-/** Text with its runs of whitespace as one space, to compare streamed text with a result’s. @param {string} s */
-const squash = (s) => s.split(/\s+/).filter(Boolean).join(' ');
+/**
+ * Text without Markdown’s emphasis and code marks, its runs of whitespace as one space, to compare streamed text with a
+ * result’s, which may be plain. @param {string} s
+ */
+const squash = (s) =>
+  s
+    .replace(/[*_`~]/g, '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(' ');
 
 /**
  * What the stream mapper writes reply text through. write: a piece of reply text, kept (its last 200,000 characters).
