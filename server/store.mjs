@@ -16,7 +16,8 @@ import { catchUp, commit } from './store-commit.mjs';
 import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-docs.mjs';
 import { Hold } from './store-hold.mjs';
 import { importLegacy } from './store-import.mjs';
-import { readState, redisFor, releaseRedis, streamAfter, writeBatch } from './store-redis.mjs';
+import { readState, redisFor, releaseRedis, streamAfter } from './store-redis.mjs';
+import { failedStatus, pump, recovered } from './store-write.mjs';
 
 export { emptyState };
 
@@ -60,7 +61,11 @@ export class Store {
     this.client = null;
     /** @type {ReturnType<typeof redisFor> | null} the data folder’s child, once load() started it; null in memory */
     this.redis = null;
+    /** @type {Error & { code?: string } | null} why writes stopped: a write Redis failed (ESEQ: until a restart) */
     this.failed = null;
+    /** @type {ReturnType<typeof setTimeout> | null} the next try of a failed write */
+    this.retry = null;
+    this.backoff = 0; // ms before that try; doubles to RETRY_MAX
   }
 
   async load() {
@@ -88,7 +93,7 @@ export class Store {
       return;
     }
     this.client = (await this.redis?.sup.client().catch(() => null)) ?? null;
-    this.failed = null;
+    this.recovered();
     // A batch whose reply was lost when the child stopped may be in Redis already.
     await (this.inflight ?? null);
     await this.catchUp().catch((e) => console.error(`Couldn’t read the store back: ${e.message}`));
@@ -100,9 +105,9 @@ export class Store {
     return !this.redis || (!!this.client?.connected && this.redis?.sup.status.state === 'running' && !this.failed);
   }
 
-  /** The child’s status, for the page: running, or down with its cause and what to do. */
+  /** The child’s status, for the page: running, or down with its cause and what to do; down too while writes fail. */
   get status() {
-    return this.redis ? this.redis.sup.status : { state: 'running' };
+    return this.redis ? (failedStatus(this) ?? this.redis.sup.status) : { state: 'running' };
   }
 
   refuse() {
@@ -191,26 +196,14 @@ export class Store {
     for (const [k, v] of later) if (!this.dirty.has(k)) this.dirty.set(k, v);
   }
 
-  /** Writes what waits, one batch at a time. A failed batch waits for the next start of the child. */
-  pump() {
-    if (this.inflight || this.hold || this.failed || !this.lines.length || !this.client?.connected) return;
-    const batch = this.take();
-    const client = this.client;
-    this.inflight = writeBatch(client, { prev: this.confirmed, events: batch.events, writes: batch.writes })
-      .then(
-        (r) => {
-          this.confirmed = r.seq;
-        },
-        (e) => {
-          this.untake(batch);
-          if (e.code === 'ESEQ') this.failed = e;
-          console.error(`Couldn’t write to the store: ${e.message}`);
-        },
-      )
-      .finally(() => {
-        this.inflight = null;
-        this.pump();
-      });
+  /** Writes what waits, one batch at a time (server/store-write.mjs). @param {boolean} [retrying] a failed batch’s retry */
+  pump(retrying = false) {
+    pump(this, retrying);
+  }
+
+  /** Ends the failed state: a write succeeded, or the child started again. */
+  recovered() {
+    recovered(this);
   }
 
   /** Waits for every event emitted so far to reach Redis, or for the store to be unable to write it. */
@@ -287,6 +280,12 @@ export class Store {
   async close() {
     if (!this.redis || !this.dir) return;
     await this.flush();
+    const failed = this.failed;
+    this.recovered();
+    if (this.lines.length)
+      console.error(
+        `The store couldn’t save the last ${this.lines.length} changes before Postbox stopped: ${failed?.message ?? 'its Redis wasn’t answering.'}`,
+      );
     this.client?.close();
     this.client = null;
     await releaseRedis(this.dir);

@@ -54,6 +54,8 @@ function listOf(events, s) {
 
 /** @param {import('./store.mjs').Store} store @param {Events} given @param {string} opId */
 async function writeOnce(store, given, opId) {
+  // A store that can’t write refuses at once, rather than wait on a write in flight (server/store-write.mjs).
+  if (!store.writable) throw store.refuse();
   while (store.inflight) await store.inflight;
   if (!store.writable) throw store.refuse();
   // Everything is read from the state before the held emits: the commit comes before them.

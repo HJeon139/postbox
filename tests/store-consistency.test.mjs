@@ -197,3 +197,64 @@ test('a commit Redis rejects part way leaves every document unchanged', async ()
   c.close();
   await consistent(s);
 });
+
+// Review finding 6 on #525 (gpt’s regression): an optimistic write Redis refuses (out of memory) left the store
+// writable and retried at once, over and over. It fails closed: writable is false while it waits to try again.
+test('an optimistic write Redis refuses makes the store refuse new writes until a retry succeeds', async () => {
+  const s = await open(await tmp());
+  s.emit('settings', { theme: 'dark' });
+  await s.flush();
+  const c = await raw(s);
+  await c.call('CONFIG', 'SET', 'maxmemory', '1');
+  const client = /** @type {any} */ (s).client;
+  const call = client.call.bind(client);
+  let n = 0;
+  let notify = () => {};
+  let resume = () => {};
+  const hit = new Promise((ok) => (notify = ok));
+  const pause = new Promise((ok) => (resume = ok));
+  client.call = async (...a) => {
+    if (a[0] === 'EVAL' && ++n === 3) {
+      notify();
+      await pause;
+    }
+    return call(...a);
+  };
+  s.emit('settings', { theme: 'auto' });
+  await hit;
+  const writable = s.writable;
+  const status = s.status;
+  assert.throws(
+    () => s.emit('settings', { theme: 'light' }),
+    (e) => e.code === 'ESTOREDOWN',
+  );
+  await assert.rejects(s.commit([{ type: 'settings', data: { theme: 'light' } }], 'op-failed'), (e) => e.code === 'ESTOREDOWN');
+  await c.call('CONFIG', 'SET', 'maxmemory', '0');
+  resume();
+  await s.flush();
+  assert.equal(writable, false);
+  assert.equal(status.state, 'down');
+  assert.match(/** @type {any} */ (status).message, /OOM/);
+  assert.equal(s.writable, true, 'the retry that succeeded ends it');
+  assert.equal(s.status.state, 'running');
+  assert.equal(JSON.parse(await c.call('JSON.GET', 'settings', '$'))[0].d.theme, 'auto', 'the queued write was kept and written');
+  c.close();
+  await consistent(s);
+});
+
+test('flush() returns while writes fail, and a retry later writes what waited', async () => {
+  const s = await open(await tmp());
+  s.emit('settings', { theme: 'dark' });
+  await s.flush();
+  const c = await raw(s);
+  await c.call('CONFIG', 'SET', 'maxmemory', '1');
+  s.emit('settings', { theme: 'auto' });
+  await s.flush();
+  assert.equal(s.writable, false);
+  assert.equal(s.lines.length, 1, 'the write waits');
+  await c.call('CONFIG', 'SET', 'maxmemory', '0');
+  c.close();
+  await until(() => s.writable);
+  assert.equal(s.lines.length, 0);
+  await consistent(s);
+});
