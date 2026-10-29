@@ -1,6 +1,9 @@
 // The routes for one session (an agent in a conversation): Stop, delete with undo, Stop’s question
-// about background jobs and a job’s own Stop (#129), and the composer’s /model and /effort for it (#67). Moved out of
-// server/index.mjs, whose route() keeps one line that calls this.
+// about background jobs and a job’s own Stop (#129), and the composer’s /model and /effort for it (#67); and deleting a
+// persona with undo, which deletes its sessions (#208). Moved out of server/index.mjs, whose route() keeps one line that
+// calls this.
+
+import { deletePersona, undoDeletePersona } from './persona-delete.mjs';
 
 /** A route’s answer: its status and its JSON body. */
 const done = (status, body) => ({ status, body });
@@ -30,5 +33,9 @@ export async function sessionRoute(rt, path, method, body) {
     return done(200, await rt.stopJob(m[1], decodeURIComponent(m[2])));
   // The composer’s commands (#67): /model and /effort for this conversation, an agent’s skill as its turn, and !.
   if ((m = path.match(/^\/api\/sessions\/([^/]+)\/run$/)) && method === 'POST') return done(200, await rt.setSessionRun(m[1], body));
+  // Deleting a persona, with Undo (#208, server/persona-delete.mjs).
+  if ((m = path.match(/^\/api\/personas\/([^/]+)$/)) && method === 'DELETE') return done(200, deletePersona(rt, m[1]));
+  if ((m = path.match(/^\/api\/personas\/([^/]+)\/undo-delete$/)) && method === 'POST')
+    return done(200, { ok: true, result: undoDeletePersona(rt, m[1]) ?? null });
   return null;
 }

@@ -2,6 +2,23 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.44.0 (2026-10-29)
+
+### Features
+
+- **personas:** delete an agent, with Undo, and its memory with it (#208)
+
+### Fixes
+
+- **personas:** the purge skips an erased session; session Undo waits for its persona's (#208)
+- **personas:** a purge cut short by a restart starts again (#208)
+- **personas:** the delete sheet goes back after 3 s if the stream misses the delete (#208)
+- **agents:** the overview says when Claude Code is too old to keep a memory per agent (#208)
+- **personas:** refuse a session for a persona being deleted, and purge it whole (#208)
+- **personas:** attaching a terminal session names around a persona being deleted (#208)
+- **personas:** finish a persona delete pending at a restart, and hold its name until then (#208)
+- **adapters:** each Claude Code and Agent SDK persona keeps its own memory (#208)
+
 ## 0.43.3 (2026-10-29)
 
 ### Fixes
