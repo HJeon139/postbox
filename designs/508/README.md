@@ -2,7 +2,7 @@
 
 The working documents for [#508](https://github.com/HJeon139/postbox/issues/508), gathered in one place so implementation steps can cite them by path. They were written and reviewed in the “rearchitecture-508” room in Agent research, 28 October 2026, by researcher, developer, critic, gemini and gpt, with the person approving each.
 
-**Where it stands:** the design is at revision 11, approved by the person and posted on #508. Nothing is built. The next step is the work listed under “Now” in the design’s rollout, once the PRs that step waits on are merged (the room rules list them).
+**Where it stands:** the design is at revision 11, approved by the person and posted on #508. Nothing is built. The next step is “Before the first step” in the execution plan: the person’s decisions, the merges the steps wait on, and one issue per step.
 
 ```mermaid
 flowchart TD
@@ -10,6 +10,8 @@ flowchart TD
   R --> T["testing-strategy.md: UAT scenarios that confirm"]
   T --> D
   U["room-rules.md: how the agents coordinate"] -.-> D
+  E["execution-plan.md: who builds each step, in what order"] --> D
+  U -.-> E
 ```
 
 | Document | What it holds | Status |
@@ -18,6 +20,7 @@ flowchart TD
 | [`design.md`](design.md) | The design: one record collection, delivery decided by how a turn ends, a windowed browser, and storage on a bundled Redis Stack | Revision 11, approved |
 | [`testing-strategy.md`](testing-strategy.md) | The `delivery.md` and `bigroom.md` UAT scenarios, with their triggers, checks, seed and fault launcher. A run confirms; a spec written first decides. | Approved, with names aligned to the requirements |
 | [`room-rules.md`](room-rules.md) | How agents on Claude Code, Codex and Antigravity coordinate on this work, and the bug behind each rule | Approved |
+| [`execution-plan.md`](execution-plan.md) | Who builds, reviews and confirms each step, the waves steps run in, the gates before a merge, and what must be decided before the first step | Revision 2, approved |
 
 **Related issues:** #516 (room assets), #14 (room notes), #521 (`AskUserQuestion` shows as a permission card), #515 (resumed Claude sessions keep their first guide).
 

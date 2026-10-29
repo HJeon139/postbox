@@ -2,7 +2,7 @@
 
 Two targeted scenarios, plus the triggers, checks, seeds and runner changes they need. They follow `tests/uat/e2e/README.md`: **a run confirms a fix; it doesn’t decide it.** Each phase names the deterministic test that decides its step (layer 1 or 2) and the requirements it confirms (layer 3). A requirement counts as confirmed in a run when its phase’s triggers fired and its checks stayed silent.
 
-Requirement ids, and the trigger and check each requirement names, are from `requirements.md` section 10 (revision 4, approved). Step names (A1–A4, B1–B3) are from design revision 6, section 14.
+Requirement ids, and the trigger and check each requirement names, are from `requirements.md`, “Acceptance, test first” (revision 4.1, approved). Step names (A1–A4, B1–B3) are from `design.md`, “Rollout” (revision 11).
 
 ---
 
@@ -58,7 +58,7 @@ While @critic works on a long job, send it three separate short messages. Edit t
 
 ## Phase 6: A scheduled wake (A4)
 
-- triggers: wake-scheduled, wake-cancelled
+- triggers: wake-scheduled, wake-canceled
 - steps: 5
 
 Ask @developer to schedule a wake for itself in two minutes, to check on the build, and then to cancel it. Say what the conversation shows.
@@ -155,6 +155,8 @@ PF-1 and PF-2 (performance) aren’t in either scenario. Real agents add noise a
 
 Each one carries the requirement ids it serves, beside today’s `issue` field, so a run’s coverage table can be read per requirement. Each is tested from a run’s recorded records, never from results written by hand (#451).
 
+**Every check reads only what `main` already records:** items, sessions, the agents’ raw streams and the page’s probes. None depends on the new delivery records, because each must first run on `main` and catch the defect there, before the step that fixes it. A check may read records as extra evidence once they exist.
+
 **Triggers** (in `tools/uat/triggers.mjs`)
 
 | Trigger | Requirements | Postbox showed that |
@@ -167,7 +169,7 @@ Each one carries the requirement ids it serves, beside today’s `issue` field, 
 | `resend-labeled` | DL-2, DL-3 | a resend reached the agent with its label |
 | `urgent-note-delivered` | MD-2 | a delivery reached a working agent on a Postbox tool result, and the turn went on |
 | `person-queue-three` | AT-6, DL-6 | three of the person’s messages waited for one agent at once |
-| `wake-scheduled`, `wake-cancelled`, `wake-after-drop` | SW-1, SW-2 | as named |
+| `wake-scheduled`, `wake-canceled`, `wake-after-drop` | SW-1, SW-2 | as named |
 | `compaction` | CX-4 | a backend compacted a session’s context (`compact_boundary` on Claude Code) |
 | `window-paged-back`, `jump-outside-window`, `needs-far-back`, `move-from-unloaded`, `search-outside-window`, `switch-conversations` | PF-3 to PF-8 | as named, read from the page’s probes |
 
@@ -175,17 +177,17 @@ Each one carries the requirement ids it serves, beside today’s `issue` field, 
 
 | Check | Requirements | Looks for |
 |---|---|---|
-| `delivery-dropped` | DL-1, SW-2 | an item addressed to an agent with no delivery record, or one closed other than delivered, superseded or expired |
+| `delivery-dropped` | DL-1, SW-2 | an item addressed to an agent (a mention, an allowed wake, a queued message, a due scheduled wake) that never appears in that agent’s raw prompts or tool results by the end of its next two turns. Where delivery records exist, also one closed other than delivered, superseded or expired |
 | `unlabeled-repeat` | DL-2, INV-4 | the same `(to, sourceId, rev)` in two prompts, the second without the resend label, read from the agents’ raw prompts |
 | `marker-before-output` | DL-3, INV-6 | a session marker that moved in a turn that produced no output |
-| `ask-dropped` | AT-1 | a held wake or ask closed without an answer, a withdrawal or an expiry |
+| `ask-dropped` | AT-1 | a wake the limit held, seen as a hop item or a held line, that leaves the page and the state without the person answering it and without reaching its target |
 | `needs-mismatch` | AT-4 | rings and “Next that needs you” disagreeing with the open asks |
 | `queued-superseded` | AT-6 | a person’s queued message superseded |
 | `thread-leak` | CX-1 | a topic thread’s text in another agent’s prompt, unless the person sent it there |
 | `context-loss-unannounced` | CX-4 | a turn after a compaction whose envelope doesn’t say earlier messages may have been summarized |
 | `stream-gap-or-dup` | PF-5 | an item missing from, or shown twice in, a window after a switch or reconnect, read from the page’s probes |
 | `view-moved` | PF-3 | what the person was reading moved without a scroll, read from the page’s probes |
-| Existing: `wake-text-clipped` (DL-1), `thread-request-first` (DL-4), `needs-jump-missed` (AT-4, PF-4), `updated-app-far-up` (PF-6, to be extended to blocks), `check-starved` (PF-7), `page-errors` (PF-5) | | reused, as section 10 maps them |
+| Existing: `wake-text-clipped` (DL-1), `thread-request-first` (DL-4), `needs-jump-missed` (AT-4, PF-4), `updated-app-far-up` (PF-6, to be extended to blocks), `check-starved` (PF-7), `page-errors` (PF-5) | | reused, as `requirements.md`, “Acceptance, test first”, maps them |
 
 **Seeds and runner changes**
 

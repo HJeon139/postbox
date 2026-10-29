@@ -1,8 +1,8 @@
 # Functional requirements behind #508
 
-**Status:** revision 4.1, 28 October 2026 (names aligned with the UAT scenarios): adds section 10, how each requirement is accepted, test first. Derived from #508, its integrator review, the linked issues and `designs/intent.md` at `main`. It says **what** Postbox must do and where each requirement comes from, not how. Use it to check that any version of the design, including the simplified one proposed in the room, covers every requirement and adds nothing that no requirement asks for.
+**Status:** revision 4.1, 28 October 2026 (names aligned with the UAT scenarios): adds “Acceptance, test first”, how each requirement is accepted, test first. Derived from #508, its integrator review, the linked issues and `designs/intent.md` at `main`. It says **what** Postbox must do and where each requirement comes from, not how. Use it to check that any version of the design, including the simplified one proposed in the room, covers every requirement and adds nothing that no requirement asks for.
 
-**How to read it.** Each requirement has an id, a statement, a check that shows it’s met, and its sources. A requirement whose only source is #508 itself is marked **(design-only)**: nothing upstream asked for it, so it needs the person’s decision before it constrains the design. Section 8 lists the places where the sources disagree.
+**How to read it.** Each requirement has an id, a statement, a check that shows it’s met, and its sources. A requirement whose only source is #508 itself is marked **(design-only)**: nothing upstream asked for it, so it needs the person’s decision before it constrains the design. “Where the sources disagree” lists the places where the sources disagree.
 
 ## Sources
 
@@ -13,19 +13,19 @@
 | D508 | [#508](https://github.com/HJeon139/postbox/issues/508), the design, by change number |
 | R508 | The integrator review on #508 |
 | CR | critic’s review of the simplified design, in the “Agent research” room, 28 October 2026 |
-| #n | The issue with that number; P0/P1 where it’s labelled |
+| #n | The issue with that number; P0/P1 where it’s labeled |
 
 ## How the requirements group
 
 ```mermaid
 flowchart TD
-  P2["Principle 2: get the loop right"] --> DL["Delivery to agents (§1)"]
-  P2 --> AT["The person’s attention (§3)"]
-  P6["Principle 6: you stay in charge"] --> MD["Ways to reach an agent (§2)"]
+  P2["Principle 2: get the loop right"] --> DL["Delivery to agents"]
+  P2 --> AT["The person’s attention"]
+  P6["Principle 6: you stay in charge"] --> MD["Ways to reach an agent"]
   P6 --> AT
-  P6 --> SW["Scheduled wakes (§4)"]
-  P7["Principle 7: you decide memory"] --> CX["Agent context (§6)"]
-  P3["Principle 3: calm by default"] --> PF["Large rooms (§5)"]
+  P6 --> SW["Scheduled wakes"]
+  P7["Principle 7: you decide memory"] --> CX["Agent context"]
+  P3["Principle 3: calm by default"] --> PF["Large rooms"]
 ```
 
 ## 1. Delivery to agents
@@ -35,7 +35,7 @@ flowchart TD
 | DL-1 | A message addressed to an agent reaches that agent. No cap, limit or open card drops it. | With more than 40 items since its last turn, one of them a mention of the agent and the oldest, the mention is in the agent’s context. | INT principle 2; #484; #439 (P0) |
 | DL-2 | A message reaches an agent’s context in full once, whatever route it takes (queue, catch-up, mid-turn note). A repeat happens only as a resend after a failed turn, and is labeled as one (decision 8.2). | A mention given in catch-up and then drained from the queue appears in full once; the count of unlabeled repeats on a copied room is 0. | #484; #374; #470 item 4 (“a retry or reconnect can’t deliver it twice”) |
 | DL-3 | A message counts as delivered only once it reached the agent, not when Postbox built the prompt. A turn that fails before the agent got it leaves it undelivered. A message given mid-turn (the urgent note on a tool result, a backend’s own input) counts as delivered when Postbox hands it over. | A run that fails at startup leaves its messages waiting, and the next turn carries them; a mid-turn note is marked delivered when its tool result returns. | #484 (marker moves past what was left out); #470; D508 change 7; R508 point 4; CR finding 5 |
-| DL-4 | Each turn opens with the request being answered, where it was asked and where the reply goes; everything else is labelled background. | #504’s unit test and its `thread-request-first` check pass. | #504 (P0) |
+| DL-4 | Each turn opens with the request being answered, where it was asked and where the reply goes; everything else is labeled background. | #504’s unit test and its `thread-request-first` check pass. | #504 (P0) |
 | DL-5 | When catch-up leaves items out, the agent is told how many, what kind, and how to read them in order. | The summary names what it left out and a `read_conversation` cursor. | #484 proposal 2 |
 | DL-6 | Messages waiting for a busy agent are delivered together in one turn, in order, with each sender and time. A waker’s newer post supersedes its own older queued wake. Superseded isn’t dropped: its content still reaches the agent. | Three queued wakes give one turn carrying all three; an overtaken wake is delivered once. | INT Conversation, “Messages sent mid-reply…”; #374 |
 | DL-7 | Any change to an item reaches the agents it concerns once, as a change, not as a new request (decision 8.5). It starts no turn, except an answer to a block, which wakes the agent that asked, as today. Changes: an answer, an edit shown as a diff, a review verdict, a thread outcome, a reply in its thread, and a reaction, 🚩 included. A reaction reaches the same agents today’s catch-up tells. | An edited message is reported once in other agents’ next turn; a reaction starts no turn. | #212; #472 table (#212 row); #382; decision 8.5; the person’s 🚩 decision |
@@ -103,17 +103,17 @@ flowchart TD
 | Id | Requirement | Check | Sources |
 |---|---|---|---|
 | MS-1 | Delivery completeness, duplicate rate and lag can be counted for any room, before and after each step. | The counts come out for a copied room. | D508 change 10; R508 point 5 (keep the deterministic numbers) |
-| MS-2 | Each step’s “done when” is a number, not a judgement. | | R508 point 5 |
+| MS-2 | Each step’s “done when” is a number, not a judgment. | | R508 point 5 |
 | MS-3 | Every tuning setting is named in one place with its draft value, the metric that judges it and how it’s set, and each value cites a dated calibration report from copied rooms. | A check fails on a tuning value without a report. | D508 change 10 (calibration table, deterministic rows); the person’s decision, 28 October; critic’s review of revision 1 |
 
-The probe sets, hand-labelled judgments, model judge and replays in D508 change 10 meet no requirement above; R508 moves them to a research issue.
+The probe sets, hand-labeled judgments, model judge and replays in D508 change 10 meet no requirement above; R508 moves them to a research issue.
 
 ## 8. Where the sources disagree
 
 Each needed a decision before the design could satisfy both sides. Where it’s settled, the outcome is noted.
 
 1. **Search across threads.** INT “Not in scope, for now” lists it; D508 records the person moving it into scope; R508 says it fixes neither root problem and should be its own design. **Decided:** agent search is its own issue, not part of this design; its scope and in-memory index were decided on 28 October. CX-5 stays a requirement of that issue.
-2. **Lost or duplicated, when it’s unclear.** INT says the loop “never loses a message” and the stream “loses or duplicates nothing”; #470 says a retry “can’t deliver it twice”. When Postbox can’t tell whether an agent got a message, one must give. The developer’s draft picks “at worst lost, never twice”; D508 sets both duplicates 0 and completeness ≥ 99%. CR argues the other way, from principle 2: send at least once, and label a resend (“sent again after a failed turn”) so it’s recognizable; then DL-2 becomes “no *unlabelled* repeat”. It also notes a failed Claude Code or Codex turn may already have saved the prompt, unconfirmed until a recorded failing turn per backend. **Decided (8.2):** DL-1 holds. Delivery is at least once, and every resend is labeled; DL-2 is now “no unlabeled repeat”.
+2. **Lost or duplicated, when it’s unclear.** INT says the loop “never loses a message” and the stream “loses or duplicates nothing”; #470 says a retry “can’t deliver it twice”. When Postbox can’t tell whether an agent got a message, one must give. The developer’s draft picks “at worst lost, never twice”; D508 sets both duplicates 0 and completeness ≥ 99%. CR argues the other way, from principle 2: send at least once, and label a resend (“sent again after a failed turn”) so it’s recognizable; then DL-2 becomes “no *unlabeled* repeat”. It also notes a failed Claude Code or Codex turn may already have saved the prompt, unconfirmed until a recorded failing turn per backend. **Decided (8.2):** DL-1 holds. Delivery is at least once, and every resend is labeled; DL-2 is now “no unlabeled repeat”.
 3. **One card at a time.** INT Attention says “Only one wake waits for your confirm at a time”; AT-1 (#439) needs several. **Settled:** INT’s row changes with the design’s step A1.
 4. **`wake_agent`.** INT Attention says agents wake each other by mention “or its wake_agent message”; MD-5 (#481) removes it. **Settled:** INT’s row changes when #481 ships.
 5. **Which changes reach agents.** D508 bumps an item’s revision on a reaction and delivers revision changes as amendments; MD-7 (INT, #331) says a reaction wakes no one. **Decided (8.5):** every change is delivered, as a notification that starts no turn, so a reaction still wakes no one. DL-7 lists the changes. Still open: whether “the agents it concerns” means an item’s author and recipients.
@@ -176,7 +176,7 @@ flowchart TD
 | AT-5 | Spec | #492: hand-offs carrying new text pass the old limit; repeated acknowledgments still raise a card | none | none | **Not in rev 6** (non-goal; its own issue) |
 | AT-6 | Playwright spec | A queued message can be edited and removed, isn’t in the transcript until delivered, and ten fold into one row | *person-queue-three* | none | Covered |
 | AT-7 | Spec | A wake for a persona not in the conversation raises the Add card as an ask, and is held, not dropped | none | *ask-dropped* | **Not in rev 6** |
-| SW-1 | Spec | #458: an agent cancels its own wake by id, including after a host replay (#498’s test) | *wake-scheduled*, *wake-cancelled* | none | Covered |
+| SW-1 | Spec | #458: an agent cancels its own wake by id, including after a host replay (#498’s test) | *wake-scheduled*, *wake-canceled* | none | Covered |
 | SW-2 | Spec | #466: a wake lost to a network drop is retried, labeled “check what ran” | *wake-after-drop* | *unlabeled-repeat* | Covered |
 | SW-3 | Spec | Archiving a conversation expires its wakes and posts the line | none | none | Covered |
 | PF-1 | Playwright spec only | Key-to-frame p95 within 10% of a small room’s on copies of three rooms | seed *big-room* (spec input, no agentic UAT) | none | Covered |

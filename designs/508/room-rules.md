@@ -20,7 +20,7 @@ Drop a rule once its cause is fixed, in the same change that fixes it.
 4. **The person starts each round,** naming every reviewer in one message. Reviewers post findings without mentioning developer, and developer folds them in once all have answered. (#492, in code: `PAIR_LIMIT` is 2, so a third wake between two agents always waits for the person’s Allow.)
 5. **Mention an agent only when it must act next;** acknowledge with a reaction. (#331, #481)
 6. **Work in the main conversation, not in topic threads,** until #511 and #507 merge. (#504 and #507, in code: a thread’s catch-up keeps only its newest 20 items and puts the room first.)
-7. **No scheduled wakes for coordination** until #498 and the fix for #466 merge. (In code: they can’t be cancelled, and one lost to a network drop isn’t retried.)
+7. **No scheduled wakes for coordination** until #498 and the fix for #466 merge. (In code: they can’t be canceled, and one lost to a network drop isn’t retried.)
 
 ## Conversations
 
