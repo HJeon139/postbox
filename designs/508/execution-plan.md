@@ -18,8 +18,8 @@ Each reviewer has a primary focus, so a PR isn’t reviewed twice for the same t
 
 | # | What | Owner | Blocks |
 |---|---|---|---|
-| 1 | Pin the Redis Stack or Redis 8 version, and approve its license for Postbox to download it for the person. This is a decision; Store’s checksum spec only proves the pinned file is the approved one | The person decides; researcher reports the license terms | Store |
-| 2 | Decide whether Windows is a target | The person | Store |
+| 1 | Pin the Redis 8 version, and approve its license for Postbox to download it for the person. This is a decision; Store’s checksum spec only proves the pinned file is the approved one. **Decided 28 October:** Redis 8.10.3, built by Postbox’s CI and hosted with its source, under AGPLv3 (`design.md`, “Storage”) | The person decides; researcher reports the license terms | Store |
+| 2 | Decide whether Windows is a target. **Decided 28 October:** no; macOS on Intel isn’t either. Postbox refuses to start on both | The person | Store |
 | 3 | Merge the PRs the steps wait on (room rule 9): #498 and #514 any time; #511 and #496 before “Now”; #513, #451 and the #466 branch before A1 and A2; #509 before B1; #495 before B3 | developer | Each named step |
 | 4 | Fix the docs branch: section references by title, not number; `testing-strategy.md`’s stale “revision 6” line; critic’s corrected checks, which read only what `main` already records; `npm run check` green; the diff shown for review, then a PR | developer | Citing the documents from step issues |
 | 5 | File one issue per step, each marked “Blocked by” its dependencies, each naming its requirement ids and its scenario phase | developer drafts, the person approves | Every step |
