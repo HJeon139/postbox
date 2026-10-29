@@ -65,21 +65,28 @@ export function prepareScheduledRetry(rt, message, threadId) {
   return { ...message, note: sc.recoveryNote ?? sc.note };
 }
 
-/** A tool start for the recovery, once per call: Claude Code reports one through both toolUse and activity, by its id. */
-const addTool = (turn, name, id) => {
-  if (!turn.asked?.message?.scheduledWakeId || typeof name !== 'string') return;
+/**
+ * A tool start for the recovery, once per call: Claude Code reports one through both toolUse and activity, by its id.
+ * Saved on the schedule as it starts, so a restart in the middle of the turn still knows (rearmWakes).
+ */
+const addTool = (rt, turn, name, id) => {
+  const scheduleId = turn.asked?.message?.scheduledWakeId;
+  if (!scheduleId || typeof name !== 'string') return;
   turn.scheduledToolIds ??= new Set();
   if (id != null && turn.scheduledToolIds.has(id)) return;
   if (id != null) turn.scheduledToolIds.add(id);
   const clipped = name.slice(0, TOOL_NAME_CHARS);
   turn.scheduledTools ??= [];
-  if (!turn.scheduledTools.includes(clipped) && turn.scheduledTools.length < TOOL_LIMIT) turn.scheduledTools.push(clipped);
+  if (turn.scheduledTools.includes(clipped) || turn.scheduledTools.length >= TOOL_LIMIT) return;
+  turn.scheduledTools.push(clipped);
+  const sc = rt.s.schedules[scheduleId];
+  if (sc) rt.store.emit('schedule', { ...sc, startedTools: [...turn.scheduledTools] });
 };
 
 /** Records a tool start, by toolUse or by activity, including what scheduled-wake recovery will need. */
 export function recordScheduledTool(rt, turn, call, ledger = true) {
   if (ledger) rt.ledger.toolUse(turn, call);
-  addTool(turn, call?.name, call?.id);
+  addTool(rt, turn, call?.name, call?.id);
 }
 
 /** Whether a structured error says the network was unavailable. #467 can add Kiro’s code without message matching. */
@@ -90,8 +97,8 @@ export function isNetworkFailure(error) {
 
 /** The bounded delay before retry number attempt. */
 const retryDelay = (attempt) => Math.min(RETRY_MAX_MS, 1000 * 2 ** Math.min(Math.max(0, attempt - 1), 9));
-const recoveryText = (turn, tools) =>
-  `[Postbox] Your last scheduled turn (${turn.id}) failed because the network dropped after it started ${tools.join(', ')}. Check what those calls changed or sent before you continue. Do not repeat them until you have checked their effects.`;
+const recoveryText = (turn, tools, why = 'failed because the network dropped') =>
+  `[Postbox] Your last scheduled turn${turn ? ` (${turn.id})` : ''} ${why} after it started ${tools.join(', ')}. Check what those calls changed or sent before you continue. Do not repeat them until you have checked their effects.`;
 
 /** Settles a scheduled wake’s turn, re-arming only the current schedule after a network failure. */
 export function settleScheduledWake(rt, turn, err) {
@@ -146,10 +153,19 @@ export function cancelWakeSchedule(rt, scheduleId) {
   finishSchedule(rt, sc, 'canceled');
 }
 
-/** Re-arms schedules after restart; one interrupted while running becomes due again. */
+/**
+ * Re-arms schedules after restart. One interrupted while running becomes due again, as a recovery if a tool had started,
+ * so its instruction isn’t replayed. One whose turn still runs on a host is that turn’s: RemoteTurns attaches it again.
+ */
 export function rearmWakes(rt) {
   for (const sc of Object.values(rt.s.schedules)) {
-    const pending = sc.running ? { ...sc, running: false, at: Date.now() } : sc;
+    if (sc.running && rt.s.sessions[sc.sessionId]?.remoteTurn?.state === 'running') {
+      finishSchedule(rt, sc, 'done');
+      continue;
+    }
+    const tools = [...new Set([...(sc.recoveryTools ?? []), ...(sc.startedTools ?? [])])].slice(0, TOOL_LIMIT);
+    const interrupted = tools.length ? { recoveryTools: tools, recoveryNote: recoveryText(null, tools, 'was interrupted when Postbox stopped') } : {};
+    const pending = sc.running ? { ...sc, running: false, at: Date.now(), startedTools: undefined, ...interrupted } : sc;
     if (pending !== sc) rt.store.emit('schedule', pending);
     armWake(rt, pending);
   }

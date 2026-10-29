@@ -65,3 +65,41 @@ test('#466 Stop ends a running scheduled wake: no schedule, timer or turn comes 
   await settle(f.rt);
   assert.equal(f.adapter.calls.length, 1, 'and no second turn runs');
 });
+
+// The integrator’s re-review at 3a03ff3.
+
+test('#466 a restart during a scheduled turn whose tool started sends the recovery, not the instruction again', async () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Deploy production.' });
+  const h = held();
+  f.adapter.next.push(async (ctx) => {
+    ctx.toolUse({ id: 'tool-1', name: 'Deploy production', input: {} });
+    await h.step(ctx);
+  });
+  clearTimeout(f.rt.timers.get(sc.id));
+  fireScheduledWake(f.rt, sc);
+  await new Promise((r) => setTimeout(r, 5));
+  f.rt.stop(f.alpha.id, { by: 'shutdown' });
+  h.release();
+  await settle(f.rt);
+  // As at the next start: the schedule was saved running.
+  rearmWakes(f.rt);
+  const again = f.store.state.schedules[sc.id];
+  assert.ok(again, 'it comes back due');
+  f.adapter.next.push(async (ctx) => ctx.text('Checked the deployment first.'));
+  await fire(f, again);
+  const sent = f.adapter.calls.at(-1).message.note;
+  assert.notEqual(sent, 'Deploy production.', 'the instruction isn’t replayed word for word');
+  assert.match(sent, /Deploy production/);
+  assert.match(sent, /Do not repeat them until you have checked their effects/);
+});
+
+test('#466 a scheduled wake still running on a host at a restart is left to that host turn, not started again', () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check the host.' });
+  f.store.emit('schedule', { ...f.store.state.schedules[sc.id], running: true });
+  f.rt.updateSession(f.alpha.id, { remoteTurn: { state: 'running', turn: 'host-turn-1' } });
+  rearmWakes(f.rt);
+  assert.equal(f.rt.timers.has(sc.id), false, 'no second turn is armed');
+  assert.equal(f.store.state.schedules[sc.id], undefined);
+});
