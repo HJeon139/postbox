@@ -34,9 +34,8 @@ export function hopBlock(it, ctx) {
             : `That would be agent wake ${it.n} since your last message. After ${client.config?.hopLimit ?? 10} in a row, the next one waits for you.`,
       ),
       it.reason ? h('p.dim.small', `@${it.from}’s reason: “${it.reason}”`) : null,
-      !open
-        ? h('span.answered-note', icon('check', 'i-sm'), it.status === 'allowed' ? (it.join ? 'Added' : 'Allowed') : it.join ? 'Not added' : 'Not allowed')
-        : null,
+      open && it.held?.length ? heldLine(it.held) : null,
+      !open ? h('span.answered-note', icon('check', 'i-sm'), answeredNote(it)) : null,
     ),
     open
       ? h(
@@ -46,4 +45,19 @@ export function hopBlock(it, ctx) {
         )
       : null,
   );
+}
+
+/** The wakes held on a waiting card (#439): they go, or don’t, with your answer, so the card says whose they are. */
+function heldLine(held) {
+  const who = held.map((w) => `@${w.from}’s message to @${w.to}`);
+  const list = who.length > 3 ? `${who.slice(0, 3).join(', ')} and ${who.length - 3} more` : who.join(who.length === 2 ? ' and ' : ', ');
+  return h('p.small.hop-held', `Also waiting on your answer: ${list}. Allowing this sends ${held.length === 1 ? 'it' : 'them'} too.`);
+}
+
+/** What became of an answered card; a retired one closed because its target got a turn another way (#439). */
+function answeredNote(it) {
+  if (it.status === 'retired')
+    return `Closed: @${it.to} got a turn another way (${it.retiredWhy ?? 'before you answered'}), so its message went on, or asks again`;
+  if (it.status === 'allowed') return it.join ? 'Added' : 'Allowed';
+  return it.join ? 'Not added' : 'Not allowed';
 }

@@ -53,6 +53,7 @@ export const POSTBOX_TOOLS = [
   'react',
   'propose_agent',
   'schedule_wake',
+  'cancel_wake',
   'wake_agent',
   'bring_to_conversation',
   'read_conversation',
