@@ -15,12 +15,13 @@ async function replied() {
   return { ...f, reply };
 }
 const react = (f, item, emoji, threadId = f.t.id) => f.rt.act(threadId, item.id, '@react', { emoji });
+const turnContext = (call) => [call.message.taskContext, ...(call.message.context ?? [])].filter(Boolean).join('\n');
 /** What each agent’s next turn starts with. */
 async function nextTurns(f, text) {
   const before = f.adapter.calls.length;
   f.rt.sendMessage(f.t.id, { text });
   await settle(f.rt);
-  return f.adapter.calls.slice(before).map((c) => [c.handle, (c.message.context ?? []).join('\n')]);
+  return f.adapter.calls.slice(before).map((c) => [c.handle, turnContext(c)]);
 }
 
 test('#251: a reaction is added, and clicking it again takes it back', async () => {
@@ -97,11 +98,11 @@ test('#251: a reaction in a topic thread reaches the agent answering there, and 
   const before = f.adapter.calls.length;
   f.rt.sendMessage(topic, { text: '@alpha and?' });
   await settle(f.rt);
-  const heard = (f.adapter.calls[before].message.context ?? []).join('\n');
+  const heard = turnContext(f.adapter.calls[before]);
   assert.match(heard, /You reacted 🚩 to @alpha’s message \(yours: take it as feedback\)/);
   f.rt.sendMessage(topic, { text: '@alpha once more?' });
   await settle(f.rt);
-  assert.doesNotMatch((f.adapter.calls.at(-1).message.context ?? []).join('\n'), /reacted/);
+  assert.doesNotMatch(turnContext(f.adapter.calls.at(-1)), /reacted/);
 });
 
 test('#251: an agent’s card action named react stays the card’s, and the event records what the reaction was', async () => {

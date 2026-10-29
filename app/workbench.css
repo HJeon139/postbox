@@ -377,8 +377,8 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .steps li.said details > p { margin: 4px 0 0; white-space: pre-wrap; }
 .steps li:has(> ul.steps) { flex-wrap: wrap; }
 .steps li > ul.steps { flex-basis: 100%; margin-top: 0; }
-/* While an agent works: one line of what it’s thinking or writing (the working row, the overview card). */
-.glimpse { font-size: 12px; color: var(--dim); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* While an agent works: its latest one or two sentences, wrapped to at most three lines (#478). */
+.glimpse { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; font-size: 12px; line-height: 1.35; color: var(--dim); font-style: italic; white-space: normal; overflow: hidden; overflow-wrap: break-word; max-height: calc(3 * 1.35em); max-width: 100%; }
 .glimpse:empty { display: none; }
 .working { display: flex; flex-direction: column; gap: 6px; }
 .working:empty { display: none; }

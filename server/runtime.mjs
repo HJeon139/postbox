@@ -9,7 +9,7 @@ import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
 import { commentAt } from '../shared/review-comments.mjs';
-import { formatDuration, parseMentions } from '../shared/text.mjs';
+import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
@@ -81,7 +81,7 @@ import { newId } from './store.mjs';
 import { guardContext, heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { eraseThreads } from './thread-erase.mjs';
-import { settleThread, threadCatchUp } from './thread-summary.mjs';
+import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
@@ -590,8 +590,8 @@ export class Runtime {
     // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
     // (#120, message.attach): it sends the agent nothing, and replays what the host has.
     const slash = message.slash === true || typeof message.attach === 'string';
-    // A queued mention its last summary already gave it comes as a pointer, not as new (#484).
-    message = pointerIfSeen(this, se, message);
+    // A queued mention its last room summary already gave it comes as a pointer there, never as a thread’s direct task (#484, #504).
+    if (where === se.threadId) message = pointerIfSeen(this, se, message);
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
     if (se.context?.length && !slash) {
       // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
@@ -600,12 +600,8 @@ export class Runtime {
     }
     // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead.
     if (message.kind !== 'lint' && !slash) message = this.foldLint(sessionId, message);
-    // And before that, what happened in the conversation since this agent last took part: a room is shared
-    // memory, so an agent that wasn’t woken for something can still catch up on it (issue #1).
-    // …and in the topic or side thread it answers in, what was said there since it last took part (#228).
-    const there = slash || where === se.threadId ? null : threadCatchUp(this, this.s.sessions[sessionId], where, message.itemId);
-    const catchUp = [slash ? null : this.catchUp(this.s.sessions[sessionId], message.itemId), there].filter(Boolean);
-    if (catchUp.length) message = { ...message, context: [...catchUp, ...(message.context ?? [])] };
+    // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
+    message = turnContext(this, this.s.sessions[sessionId], where, message, slash);
     const persona = this.persona(se.personaId);
     const adapter = this.adapters.get(persona?.backend ?? 'mock');
     const abort = new AbortController();
@@ -624,6 +620,7 @@ export class Runtime {
       // The backend it started on: a persona changed mid-turn reaches the next turn, not this one (#220).
       backend: persona?.backend ?? 'mock',
       threadId: where,
+      promptFirst: firstPromptSection(message, where !== se.threadId),
       segment: null,
       first: null,
       steps: [],
@@ -872,7 +869,7 @@ export class Runtime {
           }));
         if (typeof patch.currentStep === 'string') allowed.currentStep = patch.currentStep.slice(0, 200);
         // A line of what it’s thinking or writing right now; cleared when the turn ends.
-        if (typeof patch.glimpse === 'string') allowed.glimpse = patch.glimpse.slice(0, 200);
+        if (typeof patch.glimpse === 'string') allowed.glimpse = glimpseOf(patch.glimpse);
         rt.updateSession(turn.sessionId, allowed);
       },
       compaction({ kept, total, summary }) {
@@ -989,6 +986,7 @@ export class Runtime {
           turnId: turn.id,
           text: '',
           status: 'failed',
+          ...replyMarks(turn),
         }).id;
       this.patchItem(turn.threadId, target, {
         status: 'failed',
@@ -1156,6 +1154,7 @@ export class Runtime {
         handle: this.s.sessions[sessionId].handle,
         turnId: turn.id,
         text: '',
+        ...replyMarks(turn),
         ...ended,
       });
     }
