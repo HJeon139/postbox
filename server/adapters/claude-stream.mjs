@@ -547,7 +547,6 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         if (d.type === 'text_delta' && d.text) {
           if (st.current) st.streamed.add(st.current);
           reply.write(d.text);
-          st.wroteText = true;
           st.said = (st.said + d.text).slice(-400);
           glimpse(st.said);
         } else if (d.type === 'thinking_delta' && d.thinking && blk) {
@@ -591,9 +590,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
           thought(b.thinking);
         } else if (b.type === 'text' && b.text && !st.streamed.has(m.id)) {
           // Without partial messages, text arrives whole.
-          if (st.wroteText) ctx.text('\n\n');
-          reply.write(b.text);
-          st.wroteText = true;
+          reply.whole(b.text);
         }
       }
       // A message that calls no tool, while subagents it started work on in the background: it waits on them (#189).
