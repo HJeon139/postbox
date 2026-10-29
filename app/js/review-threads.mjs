@@ -69,6 +69,13 @@ function draftOf(c, { d, done, rerender }) {
   );
 }
 
+/** Restores focus and the saved selection after the box is rebuilt. */
+function restoreComposer(ta, saved, text) {
+  ta.focus();
+  const start = Math.min(saved[0] ?? text.length, text.length);
+  ta.setSelectionRange(start, Math.min(saved[1] ?? start, text.length));
+}
+
 /** The box a new comment is written in, focused as it opens. @param {any} key @param {any} env */
 function composer(key, { b, d, closeComposer }) {
   const label =
@@ -77,9 +84,20 @@ function composer(key, { b, d, closeComposer }) {
       : b.format === 'app'
         ? `Comment on ${key}`
         : `Comment on line ${key}`;
+  const text = typeof d.composingText === 'string' ? d.composingText : '';
+  const saved = Array.isArray(d.composingSelection) ? d.composingSelection : [text.length, text.length];
+  const remember = () => {
+    d.composingText = ta.value;
+    d.composingSelection = [ta.selectionStart, ta.selectionEnd];
+  };
   const ta = h('textarea.textarea', {
     'aria-label': label,
     style: { minHeight: '56px' },
+    value: text,
+    oninput: remember,
+    onselect: remember,
+    onkeyup: remember,
+    onmouseup: remember,
     onkeydown: (e) => {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
         e.preventDefault();
@@ -98,7 +116,7 @@ function composer(key, { b, d, closeComposer }) {
     d.comments.push(typeof key === 'object' ? { ...key, text } : b.format === 'app' ? { anchor: key, text } : { line: key, text });
     closeComposer(key);
   };
-  queueMicrotask(() => ta.focus());
+  queueMicrotask(() => restoreComposer(ta, saved, text));
   return h(
     'div.rv-thread',
     h(

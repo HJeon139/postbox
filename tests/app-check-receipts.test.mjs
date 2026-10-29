@@ -33,6 +33,16 @@ test('#337 saving a new version reports pending instead of claiming its check pa
   assert.equal(second.check.status, 'pending');
 });
 
+test('#337 a late second tab cannot overwrite the first browser check', () => {
+  const { rt, tools } = setup();
+  tools.show_app({ id: 'lab', title: 'Lab', code: '<p>First</p>' });
+  assert.equal(rt.appCheck('lab', { version: 1, problems: [{ code: 'class-collision', message: 'Rename .app.' }] }).status, 'fixing');
+
+  assert.deepEqual(rt.appCheck('lab', { version: 1, problems: [] }), { ignored: true });
+  assert.equal(rt.s.apps.lab.check.status, 'fixing');
+  assert.deepEqual(rt.s.apps.lab.check.problems, [{ code: 'class-collision', message: 'Rename .app.' }]);
+});
+
 test('#337 an agent can read the current version’s recorded check without triggering one', () => {
   const { rt, tools } = setup();
   tools.show_app({ id: 'lab', title: 'Lab', code: '<p>First</p>' });

@@ -625,13 +625,14 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .status-tag.ok { color: var(--good); } .status-tag.open { color: var(--accent); } .status-tag.draft { color: var(--dim); border-style: dashed; }
 .review-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* A review takes the transcript’s width, past the reading column, while its agent’s name and work line keep to it
-   (#179). Its prose keeps a readable measure (.md p, .md li). */
+   (#179). Preview prose uses that width for detailed feedback (#486). */
 .col.turn:has(> .block.rv-wide) { max-width: none; }
 .col.turn:has(> .block.rv-wide) > :not(.block) { width: 100%; max-width: 760px; margin-inline: auto; }
 /* Preview: the draft as it reads, with each thread after the part it’s on, and the Comment button beside a selection. */
 .rv-doc.rv-preview { display: block; padding: 12px 16px 16px; }
 .rv-preview:focus:not(:focus-visible) { outline: none; }
-.rv-preview .rv-thread { margin: 0; max-width: 72ch; }
+.rv-preview .md p, .rv-preview .md li, .rv-preview .rv-thread { max-width: none; }
+.rv-preview .rv-thread { margin: 0; }
 .rv-preview .rv-sel { position: absolute; z-index: 2; }
 .rv-preview .md > *, .rv-preview .rv-fig { cursor: text; }
 ::highlight(rv-quote) { background-color: var(--mark); }
@@ -1169,7 +1170,10 @@ code.wc-name { font-size: 12px; }
 .agent-rows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 /* The ring beside the name, a button of its own while its agent needs you (#320); the name opens the panel. */
 .agent-line { display: flex; align-items: center; gap: 2px; }
-.agent-line > .ring-slot { padding-left: 8px; }
+/* As wide as its ring needs (#475): with subagents, a sm ring is 30 px and its “+N” follows, so neither runs under the name. */
+.agent-line > .ring-slot { padding-left: 8px; width: auto; min-width: 30px; }
+/* Its subagents’ toggle (#477): a chevron and their count, so the name keeps its room. */
+.agent-line > .sub-toggle { flex: none; gap: 2px; padding: 0 6px; margin-right: 4px; color: var(--dim); }
 .agent-btn { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; min-height: 40px; padding: 6px 8px; border: 1px solid transparent; border-radius: 6px;
   background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .agent-btn:hover, .agent-btn[aria-expanded="true"] { border-color: var(--line); background: var(--panel); }

@@ -15,7 +15,7 @@ import { modeWhen } from '/shared/mode-when.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
 import { everyMinute, hostSection, modelOptions } from './agent-host.mjs';
 import { toolSwitch } from './agent-tools.mjs';
-import { paintSubagents, subagentsOf, treeEntry, treeOf, treeSig } from './agent-tree.mjs';
+import { paintTree, subagentToggle } from './agent-tree.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
 import { fill, h, syncList } from './dom.mjs';
 import { openAsksEl } from './open-asks.mjs';
@@ -98,9 +98,14 @@ function agentRow(se) {
   button.append(h('span.name'));
   const n = h(
     'li.agent-row',
-    h('div.agent-line', h('span.ring-slot', ring), button),
+    h(
+      'div.agent-line',
+      h('span.ring-slot', ring),
+      button,
+      subagentToggle(se.id, () => paintRow(n, S().sessions[se.id] ?? se)),
+    ),
     h('div.agent-asks', openAsksEl(se)),
-    h('ul.agent-subs', { 'aria-label': `Where @${se.handle} is at work, and its subagents` }),
+    h('ul.agent-subs', { id: `agent-subs-${se.id}`, 'aria-label': `Where @${se.handle} is at work, and its subagents` }),
   );
   paintRow(n, se, true);
   return n;
@@ -114,16 +119,7 @@ function paintRow(n, se, fresh = false) {
   const where = hostLine(se);
   const there = turnLine(se);
   const sig = JSON.stringify([se.handle, f.mock, se.state, runs, joined, where, there]);
-  ringFor(se, 'sm', n.querySelector('.agent-line pb-ring'));
-  const tree = treeOf(se);
-  const subagents = subagentsOf(se);
-  const subs = n.querySelector('.agent-subs');
-  subs.hidden = !tree.length && !subagents.length;
-  if (fresh || subs.dataset.sig !== treeSig(tree)) {
-    subs.dataset.sig = treeSig(tree);
-    subs.replaceChildren(...tree.map(treeEntry), ...subs.querySelectorAll(':scope > li.subagent'));
-  }
-  paintSubagents(subs, tree.length, subagents, se);
+  paintTree(n, se, fresh);
   if (!fresh && n.dataset.sig === sig) return;
   n.dataset.sig = sig;
   fill(
