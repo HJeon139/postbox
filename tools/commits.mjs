@@ -8,6 +8,9 @@
 //
 // A breaking change is marked with `!` before the colon, or a `BREAKING CHANGE:` footer. Even before 1.0.0, a
 // breaking change moves the major version, as decided for Postbox.
+//
+// A commit and its git revert, both since the last release, are left out of the version and the changelog: together
+// they changed nothing (withoutReverted).
 
 /** The types a header may use. Only feat, fix and perf change the version on their own. */
 export const TYPES = ['feat', 'fix', 'perf', 'refactor', 'docs', 'test', 'build', 'ci', 'chore', 'style', 'revert'];
@@ -39,6 +42,27 @@ export function parseCommit(message) {
   if (lines.length > 1 && lines[1].trim() !== '') return { ok: false, error: 'Leave a blank line between the header and the body.' };
   const breaking = Boolean(bang) || /^BREAKING[ -]CHANGE: \S/m.test(lines.slice(1).join('\n'));
   return { ok: true, type, scope: scope ?? null, breaking, subject, ...(type === 'chore' && scope === 'release' ? { skip: true } : {}) };
+}
+
+/**
+ * The messages of commits since the last release, less each commit `git revert` undid and its revert, when both are
+ * among them. Reverting a revert brings the commit back: the newest pair goes first. A revert of a commit an earlier
+ * release holds stays.
+ * @param {{ sha: string, message: string }[]} commits  newest first, as git log gives them
+ * @returns {string[]}
+ */
+export function withoutReverted(commits) {
+  const gone = new Set();
+  for (const c of commits) {
+    if (gone.has(c.sha)) continue;
+    const m = /^This reverts commit ([0-9a-f]{7,40})\b/m.exec(String(c.message));
+    if (parseCommit(c.message).type !== 'revert' || !m) continue;
+    const undone = commits.find((o) => o !== c && !gone.has(o.sha) && o.sha.startsWith(m[1]));
+    if (!undone) continue;
+    gone.add(c.sha);
+    gone.add(undone.sha);
+  }
+  return commits.filter((c) => !gone.has(c.sha)).map((c) => c.message);
 }
 
 /** What one commit asks of the version: 'major', 'minor', 'patch' or null. */

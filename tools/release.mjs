@@ -8,7 +8,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { changelogSection, nextVersion } from './commits.mjs';
+import { changelogSection, nextVersion, withoutReverted } from './commits.mjs';
 
 const git = (...a) => execFileSync('git', a, { encoding: 'utf8' }).trim();
 const dry = process.argv.includes('--dry-run');
@@ -16,11 +16,18 @@ const check = process.argv.includes('--check');
 
 const tag = git('describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*.[0-9]*.[0-9]*');
 const current = tag.slice(1);
-const out = git('log', '--no-merges', '--format=%B%x1e', `${tag}..HEAD`);
-const messages = out
-  .split('\x1e')
-  .map((m) => m.trim())
-  .filter(Boolean);
+const out = git('log', '--no-merges', '--format=%H%x00%B%x1e', `${tag}..HEAD`);
+// A commit and its revert, both since the tag, leave nothing to release (tools/commits.mjs, withoutReverted).
+const messages = withoutReverted(
+  out
+    .split('\x1e')
+    .map((m) => m.trim())
+    .filter(Boolean)
+    .map((m) => {
+      const [sha, message] = m.split('\x00');
+      return { sha, message: message.trim() };
+    }),
+);
 const next = nextVersion(current, messages);
 
 if (check) {
