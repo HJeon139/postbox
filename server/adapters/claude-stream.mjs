@@ -3,7 +3,10 @@
 // compactions. Pure apart from the ctx calls, so recorded streams can test it (tests/claude-stream.test.mjs).
 
 import { appendGlimpseSource, glimpseOf } from '../../shared/text.mjs';
+import { contentBlocks } from './claude-content.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
+
+export { describePermission } from './claude-permission.mjs';
 
 // Postbox’s own UI tools show up in the thread as what they make, so they aren’t listed as activity;
 // nor is Claude Code loading tool definitions. They still name the step on the agent’s ring.
@@ -409,7 +412,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
   const subagentEvent = (parent, e) => {
     const by = { who: st.subNames.get(parent) ?? 'subagent', parent };
     if (e.type === 'assistant')
-      for (const b of e.message?.content ?? [])
+      for (const b of contentBlocks(e.message?.content))
         if (b.type === 'tool_use') {
           startTool(b.id, b.name, b.input, by);
           labelTool(b.id, b.input);
@@ -433,9 +436,9 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     }
     if (e.type === 'assistant') {
       // Its messages arrive whole (recorded: subagent-tree.jsonl), so the last block says what it’s on.
-      const last = e.message?.content?.at(-1)?.type;
+      const last = contentBlocks(e.message?.content).at(-1)?.type;
       if (last) sub.state = last === 'thinking' || last === 'redacted_thinking' ? 'think' : last === 'text' ? 'gen' : 'tool';
-      for (const b of e.message?.content ?? []) {
+      for (const b of contentBlocks(e.message?.content)) {
         if (b.type === 'tool_use') doing(sub, describeTool(b.name, b.input));
         else if (b.type === 'thinking' && b.thinking) doing(sub, firstSentence(b.thinking, 120), true);
         else if (b.type === 'text' && b.text?.trim()) {
@@ -574,7 +577,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         st.answered = m.model;
         ctx.reported?.({ model: m.model });
       }
-      for (const b of m.content ?? []) {
+      for (const b of contentBlocks(m.content)) {
         if (b.type === 'tool_use' || b.type === 'server_tool_use' || b.type === 'mcp_tool_use') {
           startTool(b.id, b.name, b.input);
           labelTool(b.id, b.input);
@@ -589,12 +592,12 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
         }
       }
       // A message that calls no tool, while subagents it started work on in the background: it waits on them (#189).
-      if (!(m.content ?? []).some((b) => /tool_use$/.test(b.type))) waiting([], asyncAgents());
+      if (!contentBlocks(m.content).some((b) => /tool_use$/.test(b.type))) waiting([], asyncAgents());
       return;
     }
 
     if (e.type === 'user') {
-      const results = (e.message?.content ?? []).filter((b) => b.type === 'tool_result');
+      const results = contentBlocks(e.message?.content).filter((b) => b.type === 'tool_result');
       for (const b of results) {
         // A command that went on in the background becomes a job (#129), and a subagent that did works on (#73): the
         // step stays open until it ends.
@@ -714,31 +717,4 @@ export function forkPointMissing(result, also = '') {
   if (result && !result.is_error) return false;
   const said = [...(Array.isArray(result?.errors) ? result.errors : []), also].map(String).join('\n');
   return /No message found with message\.uuid/.test(said);
-}
-
-/** What a tool call would do, for the permission card: a short summary (“run a command”) and the detail. */
-export function describePermission(name, input = {}) {
-  const i = input ?? {};
-  switch (name) {
-    case 'Bash':
-      return { summary: i.description ? `run a command: ${clip(i.description, 80)}` : 'run a command', detail: String(i.command ?? '') };
-    case 'Write':
-      return { summary: `write ${base(i.file_path)}`, detail: String(i.file_path ?? '') };
-    case 'Edit':
-    case 'MultiEdit':
-      return { summary: `edit ${base(i.file_path)}`, detail: String(i.file_path ?? '') };
-    case 'NotebookEdit':
-      return { summary: `edit ${base(i.notebook_path)}`, detail: String(i.notebook_path ?? '') };
-    case 'WebFetch':
-      return { summary: `fetch ${clip(String(i.url ?? '').replace(/^https?:\/\//, ''), 60)}`, detail: String(i.url ?? '') };
-    case 'WebSearch':
-      return { summary: `search the web for “${clip(i.query, 60)}”`, detail: String(i.query ?? '') };
-    default:
-      return {
-        summary: `use ${String(name)
-          .replace(/^mcp__([^_]+(?:_[^_]+)*)__(.+)$/, '$2 from $1')
-          .replace(/_/g, ' ')}`,
-        detail: JSON.stringify(i, null, 2).slice(0, 4000),
-      };
-  }
 }
