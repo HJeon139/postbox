@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.43.1 (2026-10-29)
+
+### Fixes
+
+- **remote:** a rejection nothing handled on a host is logged, and its daemon keeps serving
+- **server:** a rejection nothing handled is logged, and Postbox keeps running
+
 ## 0.43.0 (2026-10-28)
 
 ### Features
