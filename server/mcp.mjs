@@ -17,6 +17,7 @@
 
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { offersBring } from './bring.mjs';
+import { noteAnswer } from './empty-reply.mjs';
 import { sameToken } from './helpers.mjs';
 import { asksByPrompt, NOT_YOUR_PROMPT, permission } from './permission-prompt.mjs';
 import { reactTool } from './reactions.mjs';
@@ -84,6 +85,7 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
         // An app’s code and data files may come from files in the agent’s folder, which Postbox reads itself (#54).
         const app = name === 'show_app' || name === 'update_app' ? await rt.appFiles(sessionId, args) : { args };
         const r = await tools[name](app.args, app.files ? { files: app.files } : {});
+        noteAnswer(rt.turns.get(sessionId) ?? null, name, r);
         // An urgent note for the agent comes first (#229): this is how it hears one mid-turn.
         const text = withUrgent(rt, sessionId, r.results ? JSON.stringify(r.results) : r.message);
         return reply({ content: [{ type: 'text', text }], isError: r.ok === false && !r.waiting });

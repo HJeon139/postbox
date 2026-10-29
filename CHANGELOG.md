@@ -2,6 +2,30 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.44.6 (2026-10-29)
+
+### Fixes
+
+- **runtime:** every failed item carries whom earlier failures woke (#485)
+- **adapters:** keepShape narrows on its argument, so the typecheck passes (#485)
+- **adapters:** a result that repeats streamed Markdown isn't posted again (#485)
+- **adapters:** an empty reply keeps its stream's shape, not its text (#485)
+- **runtime:** a slash turn may end quietly, and Retry skips agents already woken (#485)
+- **runtime:** a host turn that goes on wakes its mentions when it ends (#485)
+- **runtime:** a failed reply's @-mentions wake their agents, marked as failed (#485)
+- **adapters:** post a result's text when no text event carried it (#485)
+- **runtime:** a Postbox call that acts counts as the turn's answer (#485)
+- **runtime:** other agents read a failed reply's text, marked as failed (#485)
+- **runtime:** a turn that ends without a reply says so, with Retry (#485)
+
+## 0.44.5 (2026-10-29)
+
+### Fixes
+
+- **adapters:** preserve permission summary whitespace
+- **checks:** normalize remaining Claude blocks
+- **adapters:** normalize Claude message content blocks
+
 ## 0.44.4 (2026-10-29)
 
 ### Fixes
