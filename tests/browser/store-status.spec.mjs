@@ -2,7 +2,7 @@
 // spec stops under it:
 // - while the store can’t be written, one line at the window’s bottom names the cause in plain words, with Retry; the
 //   page stays readable (nothing covers the conversation), and a message you send is refused, saying why;
-// - Retry starts the store again, and the line goes;
+// - Retry starts the store again; the line stays, saying so, while it starts, and goes once writes reopen;
 // - a turn running when Redis is killed stops, and once the store is back its reply says the store stopped it.
 // Redis is kept from starting again by moving its build away (cause binary-missing), so the line holds still to be
 // checked; putting the build back is what Retry then finds.
@@ -31,6 +31,22 @@ async function stopRedis() {
   await expect.poll(() => /** @type {any} */ (app.store.status).cause, { message: 'the store to be down for good' }).toBe('binary-missing');
   return () => {
     sup.home = home;
+  };
+}
+
+/** Holds the store’s next start of Redis once it says starting; returns how to let it go on. */
+function holdStart() {
+  const sup = /** @type {any} */ (app.store).redis.sup;
+  const writeConf = sup.writeConf;
+  let go = () => {};
+  const opened = new Promise((ok) => (go = ok));
+  sup.writeConf = async (/** @type {any} */ m) => {
+    await opened;
+    return writeConf.call(sup, m);
+  };
+  return () => {
+    sup.writeConf = writeConf;
+    go();
   };
 }
 
@@ -64,9 +80,17 @@ test('ST-3: with the store down, the status line names the cause with Retry, the
   await box.press('Enter');
   await expect.soft(page.getByText('Your message didn’t send')).toBeVisible();
   await expect.soft(page.getByText(/Postbox can’t save changes right now, so it didn’t make this one/)).toBeVisible();
-  // Retry, with Redis’s build back: the store starts, reads back, and the line goes.
+  // Retry, with Redis’s build back: the store starts, reads back, and the line goes. While it starts, writes are still
+  // refused, so the line stays and says so: the start is held there until the line has been checked.
   back();
-  await retry.click();
+  const release = holdStart();
+  try {
+    await retry.click();
+    await expect(line).toContainText('it’s starting its store');
+    expect(app.store.writable).toBe(false);
+  } finally {
+    release();
+  }
   await expect(line).toBeHidden({ timeout: 15_000 });
   expect(app.store.writable).toBe(true);
 });

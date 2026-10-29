@@ -18,9 +18,10 @@ import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-
 import { Hold } from './store-hold.mjs';
 import { importLegacy } from './store-import.mjs';
 import { broadcast } from './store-publish.mjs';
-import { attach, onStatus, reconcilingStatus, stopReconciling } from './store-recover.mjs';
+import { attach, onStatus, stopReconciling } from './store-recover.mjs';
 import { readState, redisFor, releaseRedis, streamAfter } from './store-redis.mjs';
-import { failedStatus, pump, recovered } from './store-write.mjs';
+import { statusOf } from './store-status.mjs';
+import { pump, recovered } from './store-write.mjs';
 
 export { emptyState };
 
@@ -104,14 +105,13 @@ export class Store {
     return !this.redis || (!!this.client?.connected && this.redis?.sup.status.state === 'running' && !this.failed && !this.reconciling);
   }
 
-  /** The child’s status, for the page: running, or down with its cause and what to do; down too while writes fail or it reads back. */
+  /** The status for the page: running exactly when writable; otherwise down, with its cause (server/store-status.mjs). */
   get status() {
-    return this.redis ? (reconcilingStatus(this) ?? failedStatus(this) ?? this.redis.sup.status) : { state: 'running' };
+    return statusOf(this);
   }
 
   refuse() {
-    const s = this.redis?.sup.status;
-    const why = this.failed?.message ?? (s?.state === 'down' ? s.message : (reconcilingStatus(this)?.message ?? 'The store’s Redis isn’t answering.'));
+    const why = this.failed?.message ?? /** @type {any} */ (this.status).message ?? 'The store’s Redis isn’t answering.';
     return storeError('ESTOREDOWN', `Postbox can’t save changes right now, so it didn’t make this one. ${why}`);
   }
 

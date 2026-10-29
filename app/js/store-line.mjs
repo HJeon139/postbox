@@ -16,6 +16,8 @@ const LEAD = {
   died: 'Postbox can’t save changes: its store stopped, and Postbox is starting it again.',
   'write-failed': 'Postbox can’t save changes: its store refused a write.',
   reconciling: 'Postbox can’t save changes yet: it’s reading back what its store holds.',
+  starting: 'Postbox can’t save changes yet: it’s starting its store.',
+  stopped: 'Postbox can’t save changes: it stopped its store.',
 };
 
 const line = h('div.store-line', { role: 'status', hidden: true });
@@ -23,6 +25,7 @@ document.body.append(line);
 let wasDown = false;
 let retrying = false;
 
+/** Shows the line exactly while the store is down: the server says down, with a cause, whenever it can’t save. */
 function paint() {
   const st = client.store;
   const down = st?.state === 'down';

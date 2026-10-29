@@ -137,3 +137,53 @@ test('ST-3: while Redis can’t start, a write is refused with 503 and its cause
   await until(() => store.writable, 'writes to reopen after Retry');
   assert.equal((await call({ method: 'PUT', path: '/api/settings', cookie, body: { theme: 'light' } })).status, 200);
 });
+
+// ST-3’s gap (the merge run’s flaky store-status spec): between Retry and Redis running, the supervisor says
+// starting, and the status passed that through, so the page hid its line while writes were still refused. The status
+// the page gets must say down whenever the store isn’t writable, and running only when it is.
+test('ST-3: while Redis starts again after Retry, the status says down (starting) until writes reopen', async () => {
+  const { store } = app;
+  await store.flush();
+  const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
+  const sup = /** @type {any} */ (store).redis.sup;
+  const home = sup.home;
+  sup.home = join(dir, 'no-redis-here');
+  sup.child.kill('SIGKILL');
+  await until(() => /** @type {any} */ (store.status).cause === 'binary-missing', 'the cause to be the missing build');
+  // Every status the watchers (the page’s live stream) hear agrees with whether the store can be written.
+  /** @type {string[]} */
+  const heard = [];
+  const watch = (/** @type {boolean} */ w, /** @type {any} */ st) => heard.push(`${w}:${st.state}${st.cause ? `:${st.cause}` : ''}`);
+  store.watchers.add(watch);
+  // Retry, with the build back, but the start held after the supervisor says starting.
+  sup.home = home;
+  let go = () => {};
+  const opened = new Promise((ok) => (go = ok));
+  let held = () => {};
+  const hit = new Promise((ok) => (held = ok));
+  const writeConf = sup.writeConf;
+  sup.writeConf = async (/** @type {any} */ m) => {
+    held();
+    await opened;
+    return writeConf.call(sup, m);
+  };
+  const retried = call({ method: 'POST', path: '/api/store/retry', cookie });
+  await hit;
+  try {
+    assert.equal(sup.status.state, 'starting');
+    assert.equal(store.writable, false);
+    assert.deepEqual([store.status.state, /** @type {any} */ (store.status).cause], ['down', 'starting'], 'down, starting, while it starts');
+    assert.ok(/** @type {any} */ (store.status).message, 'with what’s happening, in words');
+    const read = await call({ path: '/api/state' });
+    assert.deepEqual([read.json.store.state, read.json.store.cause], ['down', 'starting'], 'the page reads it too');
+  } finally {
+    sup.writeConf = writeConf;
+    go();
+  }
+  assert.equal((await retried).status, 200);
+  await until(() => store.writable, 'writes to reopen after Retry');
+  store.watchers.delete(watch);
+  assert.equal(store.status.state, 'running');
+  for (const h of heard) assert.ok(h.startsWith('true:') === h.endsWith(':running'), `${h}: running exactly when writable`);
+  assert.equal(heard.at(-1), 'true:running');
+});
