@@ -60,7 +60,7 @@ export class Store {
     this.redis = null;
     /** @type {Error & { code?: string } | null} why writes stopped: a write Redis failed (ESEQ: until a restart; EREJECTED: until Retry, server/store-reject.mjs) */
     this.failed = null;
-    /** @type {{ at: number, changes: string[], message: string } | null} */ this.rejected = null; // the batch Redis refused for good, waiting for Retry
+    /** @type {import('./store-reject.mjs').Rejected | null} */ this.rejected = null; // the batch Redis refused for good, waiting for Retry (server/store-reject.mjs)
     /** @type {ReturnType<typeof setTimeout> | null} the next try of a failed write */
     this.retry = null;
     this.backoff = 0; // ms before that try; doubles to RETRY_MAX

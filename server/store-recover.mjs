@@ -101,6 +101,9 @@ async function once(store) {
     await store.commits;
     store.recovered();
     await store.catchUp();
+    // A refused batch still queued (its repair didn’t land, or none ran) keeps the store refused: Retry repairs it,
+    // nothing writes it again on its own (server/store-reject.mjs).
+    if (store.rejected) store.failed = store.rejected.failed;
   } catch (e) {
     if (e.code === 'ESEQ') return open(store, e);
     console.error(`Couldn’t read the store back: ${e.message}`);

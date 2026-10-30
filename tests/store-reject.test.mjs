@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { retry } from '../server/store-recover.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
-import { admin, consistent, open, poison, raw, tmp } from './store-fixture.mjs';
+import { admin, consistent, open, poison, raw, tmp, until } from './store-fixture.mjs';
 
 /**
  * A store with a refused batch queued: 2 adds item x with text one, 3 is the poison (a project Redis won’t hold), 4
@@ -160,4 +160,95 @@ test('Retry’s probes commit nothing: the connection lost before its write leav
   assert.equal(await c.call('GET', 'seq'), '1', 'nothing committed');
   assert.deepEqual(await c.call('KEYS', 'stage:*'), [], 'no staging key is left behind');
   c.close();
+});
+
+/**
+ * Loses the reply to Retry’s one committing EVAL (the one that carries events) on a store’s connection: with `landed`,
+ * after Redis ran it, so Redis holds what it wrote and only the reply is gone; without, before it reached Redis.
+ * Returns a flag that says whether the loss happened, and counts the committing EVALs after it.
+ * @param {any} client @param {boolean} landed
+ */
+function loseCommit(client, landed) {
+  const call = client.call;
+  const lost = { happened: false, writesAfter: 0 };
+  client.call = async (...a) => {
+    const committing = a[0] === 'EVAL' && Number(a[5]) > 0;
+    if (lost.happened && committing) lost.writesAfter++;
+    if (lost.happened || !committing) return call(...a);
+    lost.happened = true;
+    if (landed) await call(...a);
+    throw Object.assign(new Error('The connection to the store’s Redis closed before it answered.'), { code: 'ESTOREDOWN' });
+  };
+  return lost;
+}
+
+test('Retry recovers a repair whose single commit succeeded but its reply was lost (gpt’s r4 review)', async () => {
+  const { s, client, done } = await queued();
+  const lost = loseCommit(client, true);
+  try {
+    await retry(s);
+    assert.equal(lost.happened, true, 'the committing write’s reply was lost');
+    // The connection that lost the reply drops, as it does for real; the store reconnects and reads Redis back.
+    client.ondrop();
+    await until(() => !s.reconciling, 'the store to finish reading Redis back', s);
+  } finally {
+    done();
+  }
+  const c = await raw(s);
+  try {
+    assert.equal(await c.call('GET', 'seq'), '4', 'Redis holds the accepted events');
+    assert.deepEqual(
+      (await c.call('XRANGE', 'events', '-', '+')).map(([id]) => id),
+      ['1-0', '2-0', '4-0'],
+    );
+  } finally {
+    c.close();
+  }
+  assert.equal(s.writable, true, `recovery stayed closed: ${s.failed?.code}: ${s.failed?.message}`);
+  assert.equal(s.failed, null);
+  assert.equal(s.rejected, null, 'nothing is refused any more');
+  assert.equal(s.lines.length, 0, 'nothing is queued: the stream holds what Redis took, and what it refused is gone');
+  assert.equal(s.state.projects.bad, undefined, 'the refused project is removed from memory');
+  assert.equal(s.state.items.t[0].text, 'two');
+  assert.deepEqual(/** @type {any} */ (s.status).dropped.changes, ['3: project bad'], 'the status reports what was dropped');
+  const { fresh } = await consistent(s);
+  assert.deepEqual(s.state, fresh.state, 'memory is what Redis holds');
+});
+
+test('a repair whose commit never reached Redis, its reply lost, leaves the batch queued and refused; Retry runs again', async () => {
+  const { s, client, done } = await queued();
+  const lost = loseCommit(client, false);
+  try {
+    await retry(s);
+    assert.equal(lost.happened, true, 'the committing write was lost before Redis ran it');
+    client.ondrop();
+    await until(() => !s.reconciling, 'the store to finish reading Redis back', s);
+    const c = await raw(s);
+    try {
+      assert.equal(await c.call('GET', 'seq'), '1', 'nothing committed');
+      assert.equal(await c.call('HLEN', 'ops').catch(() => '0'), '0', 'no repair is recorded');
+    } finally {
+      c.close();
+    }
+    assert.equal(s.writable, false, 'the store stays closed: the batch wasn’t saved');
+    assert.equal(s.failed?.code, 'EREJECTED', `the store is still refused, not ${s.failed?.code}: ${s.failed?.message}`);
+    assert.deepEqual(
+      s.lines.map((l) => l.seq),
+      [2, 3, 4],
+      'the whole batch is queued again, in order',
+    );
+    assert.equal(s.state.projects.bad?.name, 'poison', 'memory still shows the change, as before Retry');
+    assert.equal(lost.writesAfter, 0, 'reading Redis back wrote nothing: a refused batch waits for Retry');
+    // Retry again, with the connection whole: the repair runs as it would have.
+    await retry(s);
+    assert.equal(lost.writesAfter, 1, 'Retry wrote the batch once');
+  } finally {
+    done();
+  }
+  assert.equal(s.writable, true, `Retry didn’t repair the store: ${s.failed?.code}: ${s.failed?.message}`);
+  assert.deepEqual(/** @type {any} */ (s.status).dropped.changes, ['3: project bad']);
+  assert.equal(s.state.projects.bad, undefined);
+  assert.equal(s.state.items.t[0].text, 'two');
+  const { fresh } = await consistent(s);
+  assert.deepEqual(s.state, fresh.state, 'memory is what Redis holds');
 });

@@ -18,6 +18,7 @@ import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-
 import { Hold } from './store-hold.mjs';
 import { closeWrites } from './store-recover.mjs';
 import { streamAfter, writeBatch } from './store-redis.mjs';
+import { repaired } from './store-reject.mjs';
 
 /** @typedef {{ type: string, data: any }[] | ((state: any) => { type: string, data: any }[])} Events */
 
@@ -126,6 +127,8 @@ export function applyWritten(store, e, positions) {
  * Brings the store up to what Redis holds. Events past `confirmed` that this store sent itself (a reply lost when Redis
  * stopped) are dropped from what waits; any others another process wrote are applied and broadcast. When this store
  * has emits of its own numbered past them, it can’t renumber what browsers saw, so it stops writing (fails closed).
+ * Redis ahead while Retry’s write on a refused batch lost its reply is asked about first: if that write landed, the
+ * repair is completed from what Redis holds instead (server/store-reject.mjs, repaired()).
  * @param {import('./store.mjs').Store} store
  */
 export async function catchUp(store) {
@@ -133,6 +136,7 @@ export async function catchUp(store) {
   if (!c?.connected) return;
   const seq = Number((await c.call('GET', 'seq')) ?? 0);
   if (seq <= store.confirmed) return;
+  if (await repaired(store)) return;
   const theirs = await streamAfter(c, store.confirmed, seq);
   if (!theirs) throw Object.assign(new Error('The store’s events stream was trimmed past this store; restart Postbox to read it again.'), { code: 'ESEQ' });
   const written = () => {

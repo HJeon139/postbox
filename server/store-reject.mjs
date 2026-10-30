@@ -17,13 +17,23 @@
 // reads Redis back and replaces its state with what Redis holds (documents are the truth), tells every page to resync,
 // and writes again. The refused changes are gone from memory as from Redis; the status carries them as `dropped`, which
 // the page shows as a notice. Closing the store does the first half, so a restart loses nothing Redis would take; the
-// restart itself reads Redis back. A child that restarts while a batch is refused writes it once more, and is refused
-// once more, so the person decides.
+// restart itself reads Redis back. A Redis child that restarts, or a connection that drops, while a batch is refused
+// leaves it queued and refused once the store has read Redis back: nothing writes it again on its own, so the person
+// decides.
+//
+// The one write carries an opId, recorded in `ops` by the same script, and the store remembers it with the batch
+// (store.rejected.repair) until the repair completes. So when its reply is lost (gpt’s r4 review of #553, blocker on
+// 701d64e0), the write has an outcome reconciliation can tell: catch-up finds the opId in `ops`, and the repair landed,
+// so it completes it from there, reading Redis back as Retry would have (repaired()); or it doesn’t, and Redis is as it
+// was, so the batch stays queued and refused, for Retry to run again. Either way the gap the refused event left in the
+// stream is never taken for another process’s write.
 
+import { randomBytes } from 'node:crypto';
 import { apply } from '../shared/state.mjs';
 import { storeError } from './redis-client.mjs';
 import { refKey, touched, writesFor } from './store-docs.mjs';
 import { Hold } from './store-hold.mjs';
+import { closeWrites } from './store-recover.mjs';
 import { probeWrites, readState, writeBatch } from './store-redis.mjs';
 import { changed } from './store-status.mjs';
 
@@ -32,6 +42,16 @@ export const TRANSIENT = new Set(['ESTOREDOWN', 'EPROTO', 'ESEQ', 'OOM', 'LOADIN
 
 /** @typedef {import('./store.mjs').Store} Store */
 /** @typedef {{ seq: number, line: string, refs?: import('./store-docs.mjs').Ref[] }} Line */
+/**
+ * @typedef {{ rejected: Line[], documents: number, message: string }} Outcome  what Redis refused of a salvage: the
+ *   events, how many documents, and its reason
+ */
+/** @typedef {Outcome & { opId: string }} Repair  Retry’s one write, under way or its reply lost, with what it leaves out */
+/**
+ * @typedef {{ at: number, changes: string[], message: string, failed: Error & { code?: string }, repair: Repair | null }} Rejected
+ *   the batch Redis refused for good: when, which changes, why, the error that closed the store, and the repair writing
+ *   it, once Retry has
+ */
 
 /**
  * Fails closed on a batch Redis refused for good: the batch goes back in front of what waits, and the status says why
@@ -43,12 +63,12 @@ export function reject(store, batch, e) {
   store.untake(batch);
   const changes = batch.events.map(describe);
   const n = changes.length;
-  store.rejected = { at: Date.now(), changes, message: e.message };
   store.failed = storeError(
     'EREJECTED',
     `The store’s Redis refused a write for a reason a retry can’t change: ${e.message} ${n === 1 ? 'This change is' : `One or more of these ${n} changes are`} shown but not saved: ${changes.join('; ')}. Retry saves the changes Redis takes and shows what it holds; so does starting Postbox again.`,
     e,
   );
+  store.rejected = { at: Date.now(), changes, message: e.message, failed: store.failed, repair: null };
   console.error(`${store.failed.message} Postbox stopped saving changes until then.`);
   changed(store);
 }
@@ -75,9 +95,10 @@ export function describe(l) {
  * Redis holds (triage()), and the events Redis takes are written as one batch from the replayed state, so the documents
  * Redis commits are what the stream’s events replay to at every point. A failure a retry can change puts the whole
  * queue back and throws: the store is failed as for any such write. Nothing is left half-written: before the one write,
- * Redis is as it was.
+ * Redis is as it was. The write’s opId and what it leaves out stay on the batch (store.rejected.repair) while the write
+ * runs and after a lost reply, for catch-up to tell whether it landed (repaired()).
  * @param {Store} store
- * @returns {Promise<{ rejected: Line[], documents: number, message: string }>}
+ * @returns {Promise<Outcome>}
  */
 export async function salvage(store) {
   const client = /** @type {import('./redis-client.mjs').RedisClient} */ (store.client);
@@ -91,10 +112,14 @@ export async function salvage(store) {
   const { accepted, rejected, dirty, refused, message } = await triage(client, s, positions, batch.events, store.rejected?.message ?? '').catch(back);
   if (accepted.length) {
     const writes = writesFor(s, dirty.values(), itemIn(s), (t, id) => positions.score(t, id));
+    const repair = { opId: `repair:${randomBytes(8).toString('hex')}`, rejected, documents: refused.size, message };
+    if (store.rejected) store.rejected.repair = repair;
     try {
-      const r = await writeBatch(client, { prev: store.confirmed, events: accepted.map(({ seq, line }) => ({ seq, line })), writes });
+      const r = await writeBatch(client, { opId: repair.opId, prev: store.confirmed, events: accepted.map(({ seq, line }) => ({ seq, line })), writes });
       store.confirmed = r.seq;
     } catch (e) {
+      // A reply Redis gave says the write didn’t land; one that was lost leaves the opId to ask Redis about.
+      if (e.code !== 'ESTOREDOWN' && store.rejected) store.rejected.repair = null;
       // Probed and still refused: something the probe can’t see. Fail closed as before, so Retry can try once more.
       back(
         TRANSIENT.has(e.code) ? e : storeError('EREJECTED', `The store’s Redis refused the changes it had agreed to take: ${e.message} Retry tries again.`, e),
@@ -189,32 +214,15 @@ export async function repair(store) {
   try {
     await store.inflight;
     await store.commits;
-    const { rejected, documents, message } = await salvage(store);
-    const { state, positions } = await readState(store.client, store.shapes);
-    reload(store, state, positions);
-    const seqs = rejected.map((x) => x.seq);
-    store.dropped = {
-      at: Date.now(),
-      events: seqs.length,
-      from: seqs[0] ?? null,
-      to: seqs.at(-1) ?? null,
-      documents,
-      message,
-      changes: rejected.map(describe),
-    };
-    if (!seqs.length) store.dropped = null;
-    store.rejected = null;
-    store.failed = null;
-    console.error(
-      seqs.length
-        ? `The store’s Redis refused ${seqs.length} change(s) for a reason a retry can’t change, so they weren’t saved: ${store.dropped?.changes.join('; ')}. ${message} Postbox saved the other changes that waited and now shows what Redis holds.`
-        : 'The store’s Redis took on Retry what it had refused; Postbox saved what waited and shows what Redis holds.',
-    );
+    const outcome = await salvage(store);
+    await settle(store, outcome);
   } catch (e) {
     // What’s left waits, as for any failed write: the status says what to do, from its cause.
     console.error(`Couldn’t repair the store after a refused write: ${e.message}`);
-    store.failed = e;
     store.reconciling = false;
+    // The reply was lost, so the write may be in Redis: no write until catch-up has read it back (repaired()).
+    if (e.code === 'ESTOREDOWN') return closeWrites(store);
+    store.failed = e;
     changed(store);
     return;
   }
@@ -223,6 +231,43 @@ export async function repair(store) {
   if (store.hold && !store.waiting) store.release();
   else store.pump();
   changed(store);
+}
+
+/**
+ * Catch-up’s question when Redis is ahead of the store while a repair’s reply was lost: did Retry’s one write land? Its
+ * opId is in `ops` if it did; then the repair is completed from here, as Retry would have (settle()), the pages told to
+ * load the state again, and true returned, so catch-up doesn’t take the stream’s gap for another process’s write. False
+ * when no repair is under way or it didn’t land: Redis is as it was, and the batch stays queued and refused.
+ * @param {Store} store
+ */
+export async function repaired(store) {
+  const repair = store.rejected?.repair;
+  if (!repair || !store.client?.connected) return false;
+  if ((await store.client.call('HGET', 'ops', repair.opId)) === null) return false;
+  await settle(store, repair);
+  for (const fn of store.reloads) fn();
+  return true;
+}
+
+/**
+ * Completes a repair once its write is in Redis: reads Redis back so memory is what’s saved, reports what Redis refused
+ * as `dropped`, and ends the refused state.
+ * @param {Store} store @param {Outcome} outcome
+ */
+async function settle(store, { rejected, documents, message }) {
+  const { state, positions } = await readState(/** @type {import('./redis-client.mjs').RedisClient} */ (store.client), store.shapes);
+  reload(store, state, positions);
+  const seqs = rejected.map((x) => x.seq);
+  store.dropped = seqs.length
+    ? { at: Date.now(), events: seqs.length, from: seqs[0] ?? null, to: seqs.at(-1) ?? null, documents, message, changes: rejected.map(describe) }
+    : null;
+  store.rejected = null;
+  store.failed = null;
+  console.error(
+    seqs.length
+      ? `The store’s Redis refused ${seqs.length} change(s) for a reason a retry can’t change, so they weren’t saved: ${store.dropped?.changes.join('; ')}. ${message} Postbox saved the other changes that waited and now shows what Redis holds.`
+      : 'The store’s Redis took on Retry what it had refused; Postbox saved what waited and shows what Redis holds.',
+  );
 }
 
 /**
