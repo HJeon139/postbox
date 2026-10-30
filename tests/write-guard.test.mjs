@@ -122,6 +122,13 @@ test('#296 a git push is a write outside: it asks in every mode but Run everythi
   assert.equal(decide({ call: 'Bash(git push -u origin feat/now)', rules: { deny: [], ask, allow: [] }, ...where }).decision, 'ask');
   assert.deepEqual(whereOf('Bash', { command: 'git push -u origin feat/now' }), { server: 'git', target: { what: 'remote', name: 'origin' } });
   assert.deepEqual(whereOf('Bash', { command: 'git push' }), { server: 'git', target: null });
+  // --repo names where a push lands; a chain that also writes with gh says both.
+  assert.deepEqual(whereOf('Bash', { command: 'git push --repo=other origin' }), { server: 'git', target: { what: 'remote', name: 'other' } });
+  assert.deepEqual(whereOf('Bash', { command: 'git push -u origin feat/now && gh pr create -R HJeon139/postbox --title x --body y' }), {
+    server: 'git',
+    target: { what: 'remote', name: 'origin' },
+    also: [{ server: 'gh', target: { what: 'repository', name: 'HJeon139/postbox' } }],
+  });
 });
 
 test('the panel’s effective view: a write asks, unless an Always allow names that tool, or the persona may publish it', () => {

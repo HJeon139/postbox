@@ -112,7 +112,9 @@ test('#296 a call the confirmed block asks for runs without a card; Stop brings 
   });
 });
 
-test('#296 with the setting off, a push the person asked for waits on a card that names its remote', async ({ page }) => {
+test('#296 with the setting off, a push the person asked for waits on a card that names its remote, and gh’s repository in the same command', async ({
+  page,
+}) => {
   const { rt } = app;
   rt.updatePersona(persona.id, { allowRequested: false });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
@@ -120,11 +122,13 @@ test('#296 with the setting off, a push the person asked for waits on a card tha
   const before = permissionCards().length;
   const replies = [];
   script.push(async (ctx) => {
-    replies.push(await ctx.askPermission(ask('git push -u origin feat/now')));
+    replies.push(await ctx.askPermission(ask('git push -u origin feat/now && gh pr create -R HJeon139/postbox --title Now --body Ready')));
   });
   rt.sendMessage(thread.id, { text: 'Push it to origin.' });
-  const card = page.locator('.transcript .block', { hasText: 'run git push -u origin feat/now' });
-  await expect(card).toContainText('This writes outside Postbox, to git (remote “origin”). Nothing is created, sent or changed until you allow it.');
+  const card = page.locator('.transcript .block', { hasText: 'run git push -u origin feat/now && gh pr create -R HJeon139/postbox' });
+  await expect(card).toContainText(
+    'This writes outside Postbox, to git (remote “origin”) and gh (repository “HJeon139/postbox”). Nothing is created, sent or changed until you allow it.',
+  );
   await synced(page, app);
   await card.locator('.block-foot').getByRole('button', { name: 'Allow', exact: true }).click();
   await expect.poll(() => replies.length, { message: 'the answer to reach the agent' }).toBe(1);

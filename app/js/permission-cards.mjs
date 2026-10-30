@@ -35,6 +35,14 @@ const doneText = (it) =>
         ? 'Expired: nobody answered in time'
         : (PERMISSION_DONE[it.status] ?? it.status);
 /**
+ * Where a write outside Postbox lands, as the card says it: each place in bold, with its target (server/write-guard.mjs,
+ * whereOf), joined by “and” when a command writes to more than one, as git push && gh pr create does (#296).
+ * @param {{ server: string, target: { what: string, name: string } | null, also?: any[] }} where
+ */
+const whereWords = (where) =>
+  [where, ...(where.also ?? [])].flatMap((w, i) => [i ? ' and ' : '', h('b', w.server), w.target ? ` (${w.target.what} “${w.target.name}”)` : '']);
+
+/**
  * The answers (#66, #10): Allow; Always allow, with the rule and where it’s saved shown in words first; Edit, which
  * changes the command (or the input’s JSON) and allows that; Don’t allow, with an optional reason the agent reads.
  */
@@ -163,7 +171,7 @@ export function permissionBlock(it, ctx) {
         ? h(
             'p.small',
             h('b', 'This writes outside Postbox'),
-            it.where ? [', to ', h('b', it.where.server), it.where.target ? ` (${it.where.target.what} “${it.where.target.name}”)` : ''] : '',
+            it.where ? [', to ', ...whereWords(it.where)] : '',
             '.',
             open ? ' Nothing is created, sent or changed until you allow it.' : '',
           )
