@@ -60,3 +60,16 @@ test('#466 a recovery keeps another MCP server’s name on its tools, and drops 
   assert.deepEqual(f.store.state.schedules[sc.id]?.recoveryTools, ['mcp__github__create_issue', 'define_term']);
   f.rt.cancelSchedule(sc.id);
 });
+
+test('#466 one show_app call is one tool in the recovery, not show_app and show_block', async () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Show the lab.' });
+  f.adapter.next.push(async (ctx) => {
+    ctx.tools.show_app({ id: 'lab', title: 'Lab', code: '<p>First</p>' });
+    throw networkError();
+  });
+  fire(f.rt, sc);
+  await settle(f.rt);
+  assert.deepEqual(f.store.state.schedules[sc.id]?.recoveryTools, ['show_app']);
+  f.rt.cancelSchedule(sc.id);
+});

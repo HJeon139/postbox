@@ -104,12 +104,13 @@ const READS = new Set(['read_conversation', 'read_message', 'corpus_search']);
  */
 export function recordedTools(rt, turn, tools) {
   if (!turn) return tools;
-  for (const [name, fn] of Object.entries(tools))
+  // Called on the tools as they were: show_app calls this.show_block or this.update_app, which is still one call.
+  const raw = { ...tools };
+  for (const [name, fn] of Object.entries(raw))
     if (!READS.has(name))
-      // Called on the tools, as the runtime calls them: show_app calls this.show_block.
       tools[name] = (...args) => {
         addTool(rt, turn, name, null);
-        return fn.apply(tools, args);
+        return fn.apply(raw, args);
       };
   return tools;
 }
