@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.0.1 (2026-10-30)
+
+### Fixes
+
+- **thread:** defining a glossary term redraws only the replies that use it
+
 ## 1.0.0 (2026-10-30)
 
 ### Breaking changes
