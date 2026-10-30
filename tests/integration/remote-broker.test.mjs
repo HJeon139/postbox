@@ -127,6 +127,25 @@ async function promptAcrossRestart(s, shim, pb) {
   return pb2;
 }
 
+/**
+ * @param {ReturnType<typeof startShim>} shim
+ * @param {Awaited<ReturnType<Awaited<ReturnType<typeof serveDaemon>>['postbox']>>} pb
+ */
+async function checkReadingTools(shim, pb) {
+  const readConv = shim.tool('read_conversation', {});
+  const convTool = await pb.msgs.next('tool', 5000);
+  assert.equal(convTool.name, 'read_conversation');
+  pb.send('reply', { turn: 't1', id: convTool.id, ok: true, text: '[i1] You: fix the build' });
+  assert.deepEqual(await shim.response(readConv), { text: '[i1] You: fix the build', isError: false });
+
+  const readMsg = shim.tool('read_message', { id: 'nope' });
+  const msgTool = await pb.msgs.next('tool', 5000);
+  assert.equal(msgTool.name, 'read_message');
+  pb.send('reply', { turn: 't1', id: msgTool.id, ok: false, text: 'There’s no item “nope” in this conversation.' });
+  const missing = await shim.response(readMsg);
+  assert.equal(missing.isError, true);
+}
+
 test('broker and shim: queued and asked calls, the snapshot’s reading tools, a prompt across a daemon restart, and Stop', { skip: NO_UNIX }, async () => {
   const h = makeHost();
   const s = await serveDaemon(h);
@@ -154,10 +173,8 @@ test('broker and shim: queued and asked calls, the snapshot’s reading tools, a
     assert.deepEqual([tool.turn, tool.name, tool.args.block.id], ['t1', 'show_block', 'pick']);
     pb.send('reply', { turn: 't1', id: tool.id, ok: true, text: 'Shown block pick.' });
 
-    // Reading tools are answered on the host, from the snapshot sent before start.
-    assert.deepEqual(await shim.response(shim.tool('read_conversation', {})), { text: '[i1] You: fix the build', isError: false });
-    const missing = await shim.response(shim.tool('read_message', { id: 'nope' }));
-    assert.equal(missing.isError, true);
+    // Reading tools cross to Postbox as tool when connected.
+    await checkReadingTools(shim, pb);
 
     // An asked call waits for Postbox’s reply.
     const asked = shim.tool('corpus_search', { query: 'build' });

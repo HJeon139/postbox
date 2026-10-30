@@ -119,6 +119,54 @@ const take = (b, k, t) =>
     return full;
   });
 
+const OFFLINE_NOTE = '\n\n(Read offline as of this turn’s start; earlier or changed items may be missing.)';
+
+/**
+ * Reads from the turn’s snapshot locally.
+ * @param {Broker} b @param {string} turn @param {string} name @param {Record<string, any>} args @param {boolean} [offline]
+ */
+async function readLocal(b, turn, name, args, offline = false) {
+  const snap = await snapshotOf(b, turn);
+  if (!snap) return { ok: false, text: `Postbox hasn’t sent this host the conversation yet, so ${name} can’t read it. Try again in a moment.` };
+  const r = name === 'read_message' ? readMessage(snap, args) : readConversation(snap, args);
+  return { ok: r.ok, text: r.ok && offline ? `${r.text}${OFFLINE_NOTE}` : r.text };
+}
+
+/** An already answered or queued call sent again after a reconnect. @param {Tool} known */
+function answerKnown(known) {
+  if (known.route === 'queue') return { ok: true, text: QUEUED_TEXT };
+  if (known.result) return { ok: known.result.ok, text: known.result.text };
+  if (known.replied)
+    return { ok: false, text: `Postbox answered ${known.name} before this host’s daemon restarted, but the answer wasn’t kept. Call it again.` };
+  return null;
+}
+
+/**
+ * Takes a call, records it, and sends it to Postbox.
+ * @param {Broker} b @param {string} k @param {Tool} t @param {(ok: boolean, text: string) => void} result
+ */
+async function queueTool(b, k, t, result) {
+  const admitted = await take(b, k, t);
+  // Another of the turn’s shims sent the call meanwhile: try again.
+  if (admitted === 'again') return 'again';
+  if (admitted) {
+    b.log(`Turn ${t.turn}’s ${t.name} (${t.id}) was refused: ${admitted}`);
+    return result(false, admitted);
+  }
+  // Written down before the shim hears it, so on restart it replays.
+  t.saved = record(b, t.turn, 'tools', { op: 'call', id: t.id, name: t.name, route: t.route, args: t.args }).then(
+    () => '',
+    (e) => unrecorded(t.name, e),
+  );
+  const saved = await t.saved;
+  if (saved) {
+    if (b.tools.get(k) === t) b.tools.delete(k);
+    return result(false, saved);
+  }
+  if (t.route === 'queue') result(true, QUEUED_TEXT);
+  b.toPostbox('tool', toolBody(t));
+}
+
 /** A shim’s tool call. @param {Broker} b @param {ShimConn} c @param {string} turn @param {any} m */
 export async function call(b, c, turn, m) {
   const result = (ok, text) => c.send('result', { id: m.id, ok, text: text.slice(0, REMOTE_LIMITS.replyChars) });
@@ -129,22 +177,30 @@ export async function call(b, c, turn, m) {
   }
   const route = TOOL_ROUTES[/** @type {keyof typeof TOOL_ROUTES} */ (m.name)];
   if (route === 'host') {
-    const snap = await snapshotOf(b, turn);
-    if (!snap) return result(false, `Postbox hasn’t sent this host the conversation yet, so ${m.name} can’t read it. Try again in a moment.`);
-    const r = m.name === 'read_message' ? readMessage(snap, m.args) : readConversation(snap, m.args);
+    const r = await readLocal(b, turn, m.name, m.args, false);
     return result(r.ok, r.text);
   }
   const k = key(turn, m.id);
+  // Sent again after a reconnect: return the kept answer, or wait if it hasn’t settled.
   const known = b.tools.get(k);
   if (known) {
-    // Sent again after a reconnect: settled already, or still waiting on Postbox. One still being written down waits
-    // for that, so it isn’t acknowledged before it’s on disk.
     const saved = await known.saved;
     if (saved) return result(false, saved);
-    if (known.route === 'queue') return result(true, QUEUED_TEXT);
-    if (known.result) return result(known.result.ok, known.result.text);
-    if (known.replied) return result(false, `Postbox answered ${known.name} before this host’s daemon restarted, but the answer wasn’t kept. Call it again.`);
+    const ans = answerKnown(known);
+    if (ans) return result(ans.ok, ans.text);
+    // An unsettled in-flight read resent while disconnected: answer from the snapshot and mark it settled.
+    if (route === 'read' && !b.attached()) {
+      const r = await readLocal(b, turn, m.name, m.args, true);
+      known.replied = true;
+      known.result = r;
+      record(b, turn, 'tools', { op: 'reply', id: known.id, ok: r.ok, text: r.text });
+      return result(r.ok, r.text);
+    }
     return;
+  }
+  if (route === 'read' && !b.attached()) {
+    const r = await readLocal(b, turn, m.name, m.args, true);
+    return result(r.ok, r.text);
   }
   if (route === 'ask' && !b.attached() && m.name !== 'add_dataset')
     return result(false, `Postbox isn’t connected to this host right now, so ${m.name} can’t run. Try again once Postbox is open and connected.`);
@@ -155,27 +211,8 @@ export async function call(b, c, turn, m) {
   }
   const bytes = toolBytes(turn, m.name, r.args);
   /** @type {Tool} */
-  const t = { turn, id: m.id, name: m.name, route: /** @type {'queue' | 'ask'} */ (route), args: r.args, replied: false, bytes };
-  const admitted = await take(b, k, t);
-  // Another of the turn’s shims sent the same call meanwhile: answered as a call sent again.
-  if (admitted === 'again') return call(b, c, turn, m);
-  if (admitted) {
-    b.log(`Turn ${turn}’s ${m.name} (${m.id}) was refused: ${admitted}`);
-    return result(false, admitted);
-  }
-  // Written down before the shim hears or Postbox sees it, so a queued call outlives a crash right after. One that
-  // can’t be written isn’t kept: the shim hears why, and the same call can go once the file can be written.
-  t.saved = record(b, turn, 'tools', { op: 'call', id: t.id, name: t.name, route: t.route, args: t.args }).then(
-    () => '',
-    (e) => unrecorded(t.name, e),
-  );
-  const saved = await t.saved;
-  if (saved) {
-    if (b.tools.get(k) === t) b.tools.delete(k);
-    return result(false, saved);
-  }
-  if (route === 'queue') result(true, QUEUED_TEXT);
-  b.toPostbox('tool', toolBody(t));
+  const t = { turn, id: m.id, name: m.name, route: /** @type {'queue' | 'ask' | 'read'} */ (route), args: r.args, replied: false, bytes };
+  if ((await queueTool(b, k, t, result)) === 'again') return call(b, c, turn, m);
 }
 
 /**
@@ -192,7 +229,7 @@ export async function onReply(b, m, reply) {
   }
   // Written down before it’s taken or the shim hears it: an asked call’s answer is kept, with its text, for a
   // shim that sends the call again after the daemon restarts. One that can’t be written leaves the call waiting.
-  t.replying = written(b, m.turn, 'tools', { op: 'reply', id: t.id, ok: m.ok, ...(t.route === 'ask' ? { text: m.text } : {}) });
+  t.replying = written(b, m.turn, 'tools', { op: 'reply', id: t.id, ok: m.ok, ...(t.route === 'ask' || t.route === 'read' ? { text: m.text } : {}) });
   const why = await t.replying;
   t.replying = undefined;
   if (why) {
@@ -204,7 +241,7 @@ export async function onReply(b, m, reply) {
   }
   t.replied = true;
   t.args = null;
-  if (t.route === 'ask') {
+  if (t.route === 'ask' || t.route === 'read') {
     t.result = { ok: m.ok, text: m.text };
     toShims(b, m.turn, 'result', { id: t.id, ok: m.ok, text: m.text });
   } else if (!m.ok) b.log(`Postbox refused turn ${m.turn}’s ${t.name} (${t.id}): ${m.text}`);

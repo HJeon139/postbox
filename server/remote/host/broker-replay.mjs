@@ -44,7 +44,7 @@ async function loadTurn(b, turn) {
   for (const r of await lines(b.p.turn(turn, TURN_FILES.tools))) {
     const k = key(turn, r.id);
     if (r.op === 'stopping') b.stopping.add(turn);
-    else if (r.op === 'call' && !b.tools.has(k) && (r.route === 'queue' || r.route === 'ask') && Object.hasOwn(TOOL_ROUTES, r.name)) {
+    else if (r.op === 'call' && !b.tools.has(k) && (r.route === 'queue' || r.route === 'ask' || r.route === 'read') && Object.hasOwn(TOOL_ROUTES, r.name)) {
       const body = { turn, id: r.id, name: r.name, args: r.args ?? {} };
       // A record that wouldn’t make a valid tool message is left out, never sent.
       if (validateMessage('daemon-to-postbox', { type: 'tool', ...body }).ok)
@@ -54,7 +54,7 @@ async function loadTurn(b, turn) {
       if (t) {
         t.replied = true;
         t.args = null;
-        if (t.route === 'ask' && typeof r.ok === 'boolean' && typeof r.text === 'string' && r.text.length <= REMOTE_LIMITS.replyChars)
+        if ((t.route === 'ask' || t.route === 'read') && typeof r.ok === 'boolean' && typeof r.text === 'string' && r.text.length <= REMOTE_LIMITS.replyChars)
           t.result = { ok: r.ok, text: r.text };
       }
     }
