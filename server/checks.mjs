@@ -96,7 +96,8 @@ export function formatLint(message, { folded = false } = {}) {
   if (apps.length) todo.push('Fix each app with update_app.');
   const blocks = groups('block');
   for (const ps of blocks) parts.push(`Your block “${ps[0].scope.title ?? ps[0].scope.id}” (id ${ps[0].scope.id}):\n${lines(ps)}`);
-  if (folded) return `[Postbox] Postbox checked your last reply, and found what to fix along with the message below.\n\n${[...parts, ...todo].join('\n\n')}`;
+  // Folded into another turn: it sits after that turn’s request and the room’s facts (formatMessage), so it points up.
+  if (folded) return `[Postbox] Postbox checked your last reply, and found what to fix along with the request above.\n\n${[...parts, ...todo].join('\n\n')}`;
   if (!diagrams.length && !reply.length) todo.push('No reply is needed: once you’ve made the changes, end your turn without writing anything.');
   return `[Postbox] ${[...parts, ...todo].join('\n\n')}`;
 }

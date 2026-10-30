@@ -95,3 +95,13 @@ test('a recorded room keeps a session’s session.patch as the whole session, so
   );
   assert.ok(kept.some((e) => e.data.state === 'think' && e.data.finishedAt === null) && kept.at(-1).data.finishedAt !== null, 'a turn starting and ending');
 });
+
+test('#508: the checks’ history ignores a session.patch for a session it hasn’t seen whole, rather than building one from the patch', () => {
+  // A stream that starts after a session existed would otherwise keep it as { id, ...patch }, and blockHistory would
+  // misread its turns (integrator review of #537).
+  const sessions = new Map();
+  assert.equal(keepEvent(5, 'session.patch', { id: 'se_new', patch: { state: 'think', updatedAt: 5 } }, sessions), null);
+  assert.equal(sessions.has('se_new'), false);
+  keepEvent(6, 'session', { id: 'se_new', state: 'idle', finishedAt: 1, updatedAt: 6 }, sessions);
+  assert.equal(keepEvent(7, 'session.patch', { id: 'se_new', patch: { state: 'think', updatedAt: 7 } }, sessions)?.data.state, 'think');
+});

@@ -8,6 +8,10 @@ const same = (a, b) => a === b || (typeof a === 'object' && typeof b === 'object
 /**
  * The session.patch event for a change to a session: the fields it sets to something new, and by name those it sets
  * to undefined that the session holds, since JSON drops an undefined.
+ *
+ * A field is compared with what the session holds, so a change that mutated a field’s object or array in place (say,
+ * pushing onto se.jobs) and passed it back is invisible here, and nothing is emitted for it. No caller does that today:
+ * every change passes a new array or object (updateSession’s callers build them with spreads and map). Keep it so.
  * @param {Record<string, any>} se  the session as it is
  * @param {Record<string, any>} change  the fields to set
  * @returns {{ id: string, patch: Record<string, any>, unset?: string[] }}
