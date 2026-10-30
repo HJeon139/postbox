@@ -142,6 +142,7 @@ export function settleScheduledWake(rt, turn, err) {
   const next = {
     ...sc,
     running: false,
+    turnId: undefined,
     at: now + retryDelay(attempt),
     attempt,
     firstFailureAt,
@@ -175,18 +176,35 @@ export function cancelWakeSchedule(rt, scheduleId) {
 }
 
 /**
+ * The wake’s own turn, saved on its schedule as the turn goes to a host, so a restart can tell it from another turn
+ * there (rearmWakes). @param {any} rt @param {any} turn
+ */
+export function noteScheduledTurn(rt, turn) {
+  const id = turn?.asked?.message?.scheduledWakeId;
+  const sc = typeof id === 'string' ? rt.s.schedules[id] : null;
+  if (sc && sc.turnId !== turn.id) rt.store.emit('schedule', { ...sc, turnId: turn.id });
+}
+
+/** Whether a running schedule’s own turn is still running on its host. */
+const onHost = (rt, sc) => {
+  const r = rt.s.sessions[sc.sessionId]?.remoteTurn;
+  return typeof sc.turnId === 'string' && r?.state === 'running' && r.rtTurn === sc.turnId;
+};
+
+/**
  * Re-arms schedules after restart. One interrupted while running becomes due again, as a recovery if a tool had started,
- * so its instruction isn’t replayed. One whose turn still runs on a host is that turn’s: RemoteTurns attaches it again.
+ * so its instruction isn’t replayed. One whose own turn still runs on a host is that turn’s: RemoteTurns attaches it
+ * again. One queued behind another turn there never started its own, so it’s due again too.
  */
 export function rearmWakes(rt) {
   for (const sc of Object.values(rt.s.schedules)) {
-    if (sc.running && rt.s.sessions[sc.sessionId]?.remoteTurn?.state === 'running') {
+    if (sc.running && onHost(rt, sc)) {
       finishSchedule(rt, sc, 'done');
       continue;
     }
     const tools = [...new Set([...(sc.recoveryTools ?? []), ...(sc.startedTools ?? [])])].slice(0, TOOL_LIMIT);
     const interrupted = tools.length ? { recoveryTools: tools, recoveryNote: recoveryText(null, tools, 'was interrupted when Postbox stopped') } : {};
-    const pending = sc.running ? { ...sc, running: false, at: Date.now(), startedTools: undefined, ...interrupted } : sc;
+    const pending = sc.running ? { ...sc, running: false, at: Date.now(), startedTools: undefined, turnId: undefined, ...interrupted } : sc;
     if (pending !== sc) rt.store.emit('schedule', pending);
     armWake(rt, pending);
   }
