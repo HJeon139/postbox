@@ -379,6 +379,8 @@ export function setupOf(persona) {
   return {
     usesHostSetup: persona?.usesHostSetup !== false,
     canPublish: persona?.canPublish === true,
+    // In Auto, a call the person asked for runs without a card (#296), unless the persona turns that off.
+    allowRequested: persona?.allowRequested !== false,
     mcpOff: Array.isArray(persona?.mcpOff) ? persona.mcpOff.filter((n) => typeof n === 'string' && n && n !== POSTBOX_SERVER) : [],
   };
 }

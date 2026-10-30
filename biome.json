@@ -147,6 +147,10 @@
       }
     },
     {
+      "includes": ["app/js/system-line.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 96 } } } } }
+    },
+    {
       "includes": ["app/js/thread.mjs"],
       "linter": {
         "rules": {

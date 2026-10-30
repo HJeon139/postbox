@@ -5,7 +5,8 @@ import { POSTBOX_TIMEOUT_MS } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
 import { editedInput, MAX_EDIT_INPUT, MAX_REASON } from './permission-edit.mjs';
 import { addAllowRule, alwaysAllow, cleanRule, rulesFor, takeBackRule } from './permission-rules.mjs';
-import { draftOf, isWriteCall, whereOf, writePasses } from './write-guard.mjs';
+import { draftOf, isWriteCall, whereOf } from './write-guard.mjs';
+import { settledCall } from './write-intent.mjs';
 
 // ── Permission prompts ─────────────────────────────────────────────────────────────
 // A real agent in “ask” mode stops before anything risky, such as running a command. Postbox shows a card
@@ -33,8 +34,9 @@ export const CARD_WAIT_MS = POSTBOX_TIMEOUT_MS - EXPIRY_MARGIN_MS;
  * @returns {Promise<{ allow: boolean, message?: string, updatedInput?: Record<string, any>, updatedPermissions?: any[] }>}
  */
 export async function requestPermission(rt, sessionId, req) {
-  // A write outside Postbox the person already settled runs without a card (#112).
-  if (isWriteCall(req.tool, req.input) && rt.s.sessions[sessionId] && (await writePasses(rt, sessionId, req).catch(() => false))) return { allow: true };
+  // A write outside Postbox the person already settled runs without a card (#112), as does a call they asked for (#296).
+  const settled = rt.s.sessions[sessionId] ? await settledCall(rt, sessionId, req) : null;
+  if (settled) return settled;
   return rt.askPerson(sessionId, req);
 }
 
