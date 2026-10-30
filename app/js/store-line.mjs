@@ -5,7 +5,7 @@
 
 import { api, client } from './client.mjs';
 import { h } from './dom.mjs';
-import { say } from './ui.mjs';
+import { say, toast } from './ui.mjs';
 
 /** What each cause means for you, first: the server’s message after it says what happened and what to do. */
 const LEAD = {
@@ -24,10 +24,29 @@ const line = h('div.store-line', { role: 'status', hidden: true });
 document.body.append(line);
 let wasDown = false;
 let retrying = false;
+let toldDropped = 0; // the `at` of the last dropped write the page has told of
+
+/**
+ * A write the store’s Redis refused for good was dropped (server/store-write.mjs): the store runs on, so the line
+ * stays hidden, and a notice says which changes weren’t saved.
+ */
+function noteDropped(st) {
+  const d = st?.dropped;
+  if (!d || d.at === toldDropped) return;
+  toldDropped = d.at;
+  const range = d.from === d.to ? `change ${d.from}` : `changes ${d.from}–${d.to}`;
+  toast({
+    title: `Postbox couldn’t save ${d.events === 1 ? 'one change' : `${d.events} changes`}`,
+    text: `Its store refused ${range} for a reason a retry can’t change: ${d.message} What you see stays as it is, but a restart won’t have ${d.events === 1 ? 'it' : 'them'}.`,
+    level: 'blocking',
+    timeout: 0,
+  });
+}
 
 /** Shows the line exactly while the store is down: the server says down, with a cause, whenever it can’t save. */
 function paint() {
   const st = client.store;
+  noteDropped(st);
   const down = st?.state === 'down';
   document.documentElement.classList.toggle('store-down', down);
   line.hidden = !down;

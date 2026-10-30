@@ -64,6 +64,8 @@ export class Store {
     /** @type {ReturnType<typeof setTimeout> | null} the next try of a failed write */
     this.retry = null;
     this.backoff = 0; // ms before that try; doubles to RETRY_MAX
+    /** @type {{ at: number, events: number, from: number|null, to: number|null, documents: number, message: string } | null} the last batch dropped for a refusal no retry changes (server/store-write.mjs) */
+    this.dropped = null;
     this.reconciling = false; // reading Redis back after a lost reply or a restart; writes are closed meanwhile
     /** @type {import('./store-recover.mjs').Reconciler} */
     this.rc = { run: null, again: false, timer: null, backoff: 0 };
