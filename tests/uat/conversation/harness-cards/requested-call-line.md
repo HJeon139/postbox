@@ -14,7 +14,8 @@ You approved a push or a PR, and the agent’s `gh pr create` then asked you aga
 - **Limits Postbox keeps in code,** whatever you asked:
   - Only these can pass: `gh pr|issue create`, `comment` and `edit`, on the project’s own repository or one you named, and a comment or an edit only on an item this conversation made or you named; commands that only read files in the project, and never a hidden file such as `.env`; a title or a body with no `$variable` or command in it; and MCP tools whose names create, add, edit, update, comment, post, append, reply or write, with only text, a PR’s branches, and a repository or an item you named in their input.
   - Everything else asks, wherever it appears in a command, including inside a `$( )`: deletes, merges, force pushes, `+` or `:` refspecs, labels, locks, settings, secrets, `gh api`, a shell or an interpreter, a redirect, a `VAR=value`, an alias.
-  - A git command always asks, even one that only reads, and so does a command that chains one with `gh`.
+  - A git command always asks, even one that only reads, and so does a command that chains one with `gh`. The one exception is a lone `git push`, below.
+- **A push you asked for** is Postbox’s own, never the agent’s command. Set the project’s **Repository to push to** in Settings › Projects first; without one, a push asks on a card. Postbox pushes the branch to that repository with no force, and with none of the repository’s git settings or hooks. A branch you didn’t name must be the one checked out, and never the default branch. The agent’s `git push` is answered no, with what landed where, and the line says “Pushed `2d7c9a6` to feat/now of https://github.com/… for @now, in place of its own git push: you asked: ‘push it’”. If Postbox’s push fails, the line says why, and the push asks you on a card.
   - Five calls a turn at most. A timeout, an error, or an answer the check can’t read gets the card.
 - Each call that runs leaves a line: “Ran `gh pr create --title …` for @now without a card: you confirmed ‘Push 2d7c9a65’”, or “… you asked: ‘open the PR’”. **The whole call** opens the call as it ran.
 - **Stop these calls** ends that turn’s request. The line says “· Stopped”, a line in your voice says “Stopped: @now’s next call asks you first”, and its next call gets the card.
@@ -31,11 +32,14 @@ You approved a push or a PR, and the agent’s `gh pr create` then asked you aga
    3. Start Postbox: `node server/index.mjs --port 4181 --data /tmp/pb-uat-tally --fresh`. Claude Code must be installed and signed in. Add the scratch folder as a project, and a Claude Code agent in Auto.
 3. Send: “Create a tally ticket titled ‘Search misses plurals’ with a one-line body, right away, no draft.” Then: “Delete ticket 1.”
 4. Send: “Thanks, looks good. Can you check the README?”, and see that any ticket the agent then creates gets a card.
+5. Give the scratch folder a remote on this computer: `git init` it, `git init --bare ../remote.git`, then `git remote add origin ../remote.git` and push `main` once yourself. In Settings › Projects, set the project’s **Repository to push to** to the full path of `remote.git`. Then make a second bare repository, `../elsewhere.git`, and run `git remote set-url origin ../elsewhere.git` and `git config remote.origin.mirror true` in the scratch folder, as an agent could.
+6. Send: “Make a branch feat/try, commit a one-line change to README.md, and push it.”
 
 **Pass if:**
 - The first ticket is created with no permission card, with its line quoting your words. `/tmp/tally.jsonl` shows its `POST /tickets`.
 - The delete gets a card, and the log has no `DELETE` unless you allowed it.
 - A create after a message that doesn’t ask for one gets a card.
+- The push runs with no card, its line says “Pushed … to feat/try of …/remote.git … in place of its own git push”, and `git -C ../remote.git branch` shows `feat/try` and still shows `main`. `git -C ../elsewhere.git branch` shows nothing.
 
 ## Related
 
