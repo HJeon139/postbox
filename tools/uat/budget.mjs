@@ -85,6 +85,8 @@ export class RunBudget {
   tester = { spent: 0 };
   log = (/** @type {string} */ _line) => {};
   after = { verifier: 0, telemetry: 0 };
+  /** What the verifier calls running now may spend: held from what’s left, so two at once can’t both spend it. */
+  verifying = 0;
   testerBefore = 0;
   largestStep = 0;
   step = 0;
@@ -183,19 +185,27 @@ export class RunBudget {
     if (typeof amount === 'number' && Number.isFinite(amount) && amount > 0) this.after[who] += amount;
   }
 
-  /** askOnce for the verifier, each call capped at what’s left of the whole cap, and its cost counted, failed or not. */
+  /**
+   * askOnce for the verifier, each call capped at what’s left of the whole cap, and its cost counted, failed or not.
+   * The verifier’s calls run at once (tools/uat/review.mjs), so each holds its cap until it ends: the next gets what’s
+   * left after that.
+   */
   verifier(ask = askOnce) {
     return async (/** @type {any} */ args) => {
-      const left = this.cap - this.spent().total;
+      const left = this.cap - this.spent().total - this.verifying;
       if (left < VERIFY_MIN_USD)
         throw new Error(`the run’s budget has ${usd(Math.max(0, left))} left, too little to verify. Verify later with --recheck <run> --verify yes.`);
+      const hold = Math.min(args.budgetUsd ?? 2, left);
+      this.verifying += hold;
       try {
-        const r = await ask({ ...args, budgetUsd: Math.min(args.budgetUsd ?? 2, left) });
+        const r = await ask({ ...args, budgetUsd: hold });
         this.spend('verifier', r?.cost);
         return r;
       } catch (e) {
         this.spend('verifier', e?.cost);
         throw e;
+      } finally {
+        this.verifying -= hold;
       }
     };
   }
