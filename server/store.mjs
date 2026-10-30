@@ -13,6 +13,7 @@ import { mkdir, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { apply, emptyState } from '../shared/state.mjs';
 import { storeError } from './redis-client.mjs';
+import { storableLine } from './store-check.mjs';
 import { catchUp, commit } from './store-commit.mjs';
 import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-docs.mjs';
 import { Hold } from './store-hold.mjs';
@@ -112,14 +113,15 @@ export class Store {
   emit(type, data) {
     if (!this.writable) throw this.refuse();
     roundEventCosts(type, data);
+    // The reducer keeps an event’s objects in the state, where later events change them in place, so the backlog
+    // keeps each event as JSON: a reconnecting browser gets it as it was emitted, not as the state is now. Taken
+    // before anything is applied, since Redis must take it too (storableLine).
+    const json = storableLine(type, data);
     const refs = this.redis ? touched(this.state, type, data) : [];
     this.hold?.save(this.state, refs);
     apply(this.state, type, data);
     this.track(type, data, refs);
     const ev = { seq: 0, type, data };
-    // The reducer keeps an event’s objects in the state, where later events change them in place, so the backlog
-    // keeps each event as JSON: a reconnecting browser gets it as it was emitted, not as the state is now.
-    const json = JSON.stringify(data);
     if (this.hold) this.hold.emits.push({ ev, json, refs });
     else this.publish(ev, json, refs);
     return ev;

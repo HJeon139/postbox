@@ -182,7 +182,7 @@ The global postbox gives you:
   - "corpus.search" with { query, k?, mode?: "both" | "lexical" | "semantic", books?: [ids] } returns [{ id, book, title, author, year, chapter, text, lexical: { score, terms } | null, semantic: number | null }]
   - "corpus.read" with { id } returns one, without scores
   - "corpus.stats" returns { books: [{ id, title, author, year, passages, chapters }], passages }
-- postbox.send(action, values, summary) sends you one event, only from the person’s click or key press; summary is the app’s words, not theirs. Up to 5 a minute; more wait for the person. An event carries up to ${n('eventBytes')} of JSON (more rejects), so hand over many items by id.
+- postbox.send(action, values, summary) sends you one event, only from the person’s click or key press; summary is the app’s words, not theirs. Up to 5 a minute; more wait for the person. An event carries up to ${n('eventBytes')} of JSON (more rejects), nested up to ${n('jsonDepth')} levels, as is the state an app saves, so hand over many items by id.
 - postbox.saveState(obj) and postbox.restoreState() keep state over reloads and versions
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view

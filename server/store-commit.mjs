@@ -13,6 +13,7 @@
 // before them, and its events are applied to the state before them too (server/store-hold.mjs has the rule).
 
 import { apply, map } from '../shared/state.mjs';
+import { storableLine } from './store-check.mjs';
 import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-docs.mjs';
 import { Hold } from './store-hold.mjs';
 import { closeWrites } from './store-recover.mjs';
@@ -75,7 +76,10 @@ async function writeOnce(store, given, opId) {
   const pending = store.take(before, hold.itemOf(before, store.itemOf));
   const staged = stage(before, events, store.positions);
   const first = store.state.seq + 1;
-  const lines = events.map((e, i) => ({ seq: first + i, line: JSON.stringify({ seq: first + i, type: e.type, data: e.data }) }));
+  const lines = events.map((e, i) => ({
+    seq: first + i,
+    line: `{"seq":${first + i},"type":${JSON.stringify(e.type)},"data":${storableLine(e.type, e.data)}}`,
+  }));
   let r;
   try {
     const writes = [...pending.writes, ...writesFor(staged.state, staged.dirty, staged.itemOf, (t, id) => staged.positions.score(t, id))];

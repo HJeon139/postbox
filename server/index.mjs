@@ -194,7 +194,8 @@ export async function start({
       await route(req, res);
     } catch (e) {
       // A write while the store can’t take one is refused with its cause, which the page’s status line shows (ST-3).
-      const status = e.code === 'ESTOREDOWN' ? 503 : (e.status ?? 500);
+      // A change the store can’t hold (nested past LIMITS.jsonDepth) is the caller’s to fix (shared/storable.mjs).
+      const status = e.code === 'ESTOREDOWN' ? 503 : e.code === 'EUNSTORABLE' ? 422 : (e.status ?? 500);
       if (status === 500) console.error(e);
       if (!res.headersSent)
         send(res, status, {

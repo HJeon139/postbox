@@ -34,6 +34,11 @@ export const LIMITS = Object.freeze({
   progressSteps: 60,
   cardFacts: 16,
   cardActions: 3,
+  /**
+   * How deep the JSON an app saves (its state) or sends (an event’s values) may nest. The store’s Redis refuses a
+   * document 128 levels deep, and each document holds the value one level in (shared/storable.mjs).
+   */
+  jsonDepth: 100,
 });
 
 /**

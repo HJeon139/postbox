@@ -180,11 +180,20 @@ test('a commit Redis rejects part way leaves every document unchanged', async ()
   await s.flush();
   let deep = {};
   for (let i = 0; i < 200; i++) deep = { next: deep };
+  // The store refuses a deep event before Redis sees it (shared/storable.mjs), so this one reads deep once, when the
+  // commit copies it for the document it stages, and shallow when the store checks its JSON: a refusal only Redis makes.
+  let reads = 0;
+  const data = {
+    id: 'a',
+    get state() {
+      return reads++ === 0 ? deep : { shallow: true };
+    },
+  };
   await assert.rejects(
     s.commit(
       [
         { type: 'settings', data: { theme: 'light' } },
-        { type: 'app', data: { id: 'a', state: deep } },
+        { type: 'app', data },
       ],
       'depth',
     ),
