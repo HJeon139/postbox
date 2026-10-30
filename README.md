@@ -88,7 +88,7 @@ Each conversation has a **Work** view, opened with **Work** in the top bar: ever
 - **Commands** exactly as they ran, with their exit, duration and all their output, background commands included.
 - **Effort:** turns, wall time, tool calls, tokens and spend, by agent, with what they produced, and the turns that left nothing lasting.
 
-It opens in the right pane, beside a thread if one is open, in a compact form: what needs review, files by where they stand, commands and how many failed, what was written outside Postbox, spend, and each turn’s line. Its full-screen icon shows all of the above over the whole window, as a thread’s does for the thread. Under each reply, a line such as “3 files +40 −12 · 2 commands · $0.31” opens the pane at that turn. It’s built from the turn’s tool calls; changes a command makes, such as a formatter’s, aren’t seen. Git is only read, without its optional locks, so an agent’s own git never waits on Postbox.
+It opens in the right pane, beside a thread if one is open, in a compact form: what needs review, files by where they stand, commands and how many failed, what was written outside Postbox, spend, and each turn’s line. Its full-screen icon shows all of the above over the whole window, as a thread’s does for the thread. Under each reply, a line such as “3 files +40 −12 · 2 commands · $0.31” opens the pane at that turn. It’s built from the turn’s tool calls, on Claude Code, the Agent SDK, Codex and Antigravity; Kiro agents’ work isn’t recorded yet ([#555](https://github.com/HJeon139/postbox/issues/555)). Changes a command makes, such as a formatter’s, aren’t seen. Git is only read, without its optional locks, so an agent’s own git never waits on Postbox.
 
 ## How it fits together
 
@@ -399,6 +399,7 @@ Postbox uses [semantic versioning](https://semver.org/), from [Conventional Comm
 
 ## Known limits
 
+- **You can’t go back to a build before the `session.patch` event.** Once this version has written to your data folder, a build from before it (v0.44.x and earlier) won’t start: its reducer doesn’t know the `session.patch` event the log now holds, and it replays the log after the snapshot at every start. To run an older build, give it a copy of your data folder from before the upgrade, or a new folder with `--data`. Don’t start it with `--fresh` on your data folder: that deletes every conversation in it.
 - **Each open tab holds one connection.** Browsers allow 6 connections per host over HTTP/1.1, so with about six Postbox tabs open, new requests wait. Postbox closes its stream when a tab is put away, but it doesn’t yet share one stream across tabs.
 - **The pre-display check is approximate.** It finds overflow, missing labels and alt text, positive tabindex, low contrast and script errors. It doesn’t yet detect every keyboard trap or verify that saved state restores correctly.
 - **Semantic search is a stub.** It uses a small table of related words until your own index is connected. Lexical search (BM25) is real.

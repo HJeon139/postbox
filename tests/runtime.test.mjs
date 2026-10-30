@@ -818,8 +818,8 @@ test('a wake an archived agent scheduled doesn’t wake it, or stop the server (
   const se = rt.sessionsIn(t.id)[0];
   const sc = rt.schedule(se.id, { inMs: 60000, note: 'later' });
   rt.archiveThread(t.id);
-  // Due now, as at a startup after it was due.
-  rt.arm({ ...sc, at: Date.now() });
+  store.emit('schedule', { ...sc, at: Date.now() }); // Due now, as at a startup after it was due, where arming reads it (#466).
+  rt.arm(sc);
   await sleep(20);
   assert.equal(Object.keys(store.state.schedules).length, 0);
   assert.equal(store.items(t.id).filter((i) => i.variant === 'wake').length, 0);
@@ -972,8 +972,8 @@ test('a message during the settle takes the lint’s problems with it, and no li
   await settle(rt);
   assert.equal(lints(adapter).length, 0);
   const next = adapter.calls.find((c) => c.message.text === 'and next?');
-  assert.match(next.message.context[0], /^\[Postbox\] Postbox checked your last reply/);
-  assert.match(next.message.context[0], /- Step 6/);
+  assert.match(next.message.lint, /^\[Postbox\] Postbox checked your last reply[\s\S]*- Step 6/, 'the lint has its own place in the turn');
+  assert.ok(!(next.message.context ?? []).some((c) => /checked your last reply/.test(c)), 'and isn’t background');
 });
 
 test('#55: a numbered term the person introduced isn’t linted, and one the agent coined still is', async () => {

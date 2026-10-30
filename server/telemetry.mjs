@@ -209,9 +209,11 @@ export function watchTelemetry(rt) {
   const unsubscribe = rt.store.subscribe((ev) => {
     // Whether or not it records now: a room that once did may have saved reports (R11).
     if (ev.type === 'remove' && ev.data?.kind === 'thread') purgeRoom(rt, ev.data.id);
-    const threadId = ev.data?.threadId;
+    // A session.patch carries only what changed; the store has applied it, so the session it leaves is in the state.
+    const whole = ev.type === 'session.patch' ? rt.s.sessions[ev.data?.id] : null;
+    const threadId = whole ? whole.threadId : ev.data?.threadId;
     if (!threadId || !rt.s.threads[threadId]) return;
-    const kept = keepEvent(ev.seq, ev.type, ev.data);
+    const kept = whole ? keepEvent(ev.seq, 'session', whole) : keepEvent(ev.seq, ev.type, ev.data);
     const dir = kept && recordingDir(rt, threadId);
     // A failed write here would throw into the store’s other listeners: it’s a gap instead.
     try {

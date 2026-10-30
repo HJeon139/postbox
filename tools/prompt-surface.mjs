@@ -20,7 +20,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { agyRules } from '../server/adapters/antigravity-cli.mjs';
-import { agentGuide, formatMessage, offText } from '../server/adapters/guide.mjs';
+import { agentGuide, formatMessage, offText, turnFacts } from '../server/adapters/guide.mjs';
 import { KIRO_TOOL_RULES } from '../server/adapters/kiro-cli.mjs';
 import { TOOL_RULES, toolsOff } from '../server/adapters/setup.mjs';
 import { TOOL_DEFS } from '../server/mcp.mjs';
@@ -84,6 +84,16 @@ export function render(out) {
   const agent = { handle: 'agent', tools: Object.keys(TOOL_RULES) };
   const guide = agentGuide({ persona: agent, handles: ['agent'] });
   write('scan/guide.md', guide);
+  // What changes during a room goes in each turn’s message, not the system prompt (#515).
+  write(
+    'scan/turn-facts.md',
+    turnFacts({
+      persona: { handle: 'agent', tools: [] },
+      handles: ['agent', 'reviewer'],
+      room: [{ handle: 'reviewer', role: 'Reviews' }],
+      brief: 'You were asked in.',
+    }),
+  );
   write(
     'scan/queued-messages.md',
     formatMessage({
@@ -104,7 +114,11 @@ export function render(out) {
     write(join('scan', 'personas', `${source}-${p.handle}.md`), personaText(p));
     write(
       join('agents', `${source}-${p.handle}.md`),
-      agentGuide({ persona: p, handles: [p.handle], session: { backend }, toolRules: RULES_OF[backend] ?? null }),
+      // The system prompt, then what each turn’s message adds about the room (#515).
+      [
+        agentGuide({ persona: p, session: { backend } }),
+        turnFacts({ persona: p, handles: [p.handle], session: { backend }, toolRules: RULES_OF[backend] ?? null }),
+      ].join('\n\n'),
     );
   }
   const repo = [

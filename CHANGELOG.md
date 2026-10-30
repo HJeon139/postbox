@@ -2,6 +2,112 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.1.3 (2026-10-30)
+
+### Fixes
+
+- **thread:** an activity step repaints only its reply's activity list
+
+## 1.1.2 (2026-10-30)
+
+### Fixes
+
+- **reactions:** draw the light theme's icon rim into the icons, not as a filter on each
+- **transcript:** find the reply across the middle by halving, not from the top
+
+## 1.1.1 (2026-10-30)
+
+### Fixes
+
+- **apps:** a check overtaken by a newer version stops, so the new one starts at once
+
+## 1.1.0 (2026-10-30)
+
+### Features
+
+- **uat:** marker-before-output says it can’t check an agent on Codex, Kiro or Antigravity
+- **uat:** the delivery checks say a topic thread’s mentions aren’t checked, rather than nothing
+- **uat:** `- chain-limit: N` sets the chain limit of the run’s Postbox (POSTBOX_CHAIN_LIMIT)
+- **uat:** --phases plays only the chosen phases and checks only their triggers
+- **uat:** keep the agents' transcript lines the checks read in the run folder, for --recheck
+- **uat:** wire #508's big-room seed and fault launcher into the runner
+- **uat:** add the big-room seed's generated room
+- **uat:** add the fault launcher that fails a turn before any output
+- **uat:** add #508's delivery checks and triggers
+
+### Fixes
+
+- **uat:** marker-before-output exempts only a stopped turn; a saved prompt isn't delivery
+- **uat:** unlabeled-repeat exempts Retry’s resend, which sends the same message again by design
+- **uat:** marker-before-output skips a stopped turn, and one whose prompt reached the transcript
+- **uat:** ask-dropped skips a held wake Stop, archive or removal took off its card by design
+- **uat:** delivery-dropped matches a short message by its whole text, and says when it can’t tell it
+- **uat:** the chain-limit setting can only lower the backstop, to a whole number from 1 to 50
+- **uat:** delivery checks don't judge a turn still running as ended
+- **uat:** delivery-dropped waits for a held mention's card to settle
+- **uat:** edit-while-waiting serves AT-6 as well as DL-7
+- **uat:** unlabeled-repeat leaves every same-text item a prompt could belong to unverified
+- **uat:** ask-dropped follows a held wake a retired card moved to the next card
+- **uat:** unlabeled-repeat counts a prompt only for the item it names or whose window it's in
+- **uat:** edit-while-waiting matches the whole edited text, and only after the edit
+- **uat:** seed the big room's review as approved, so needs-mismatch doesn't fire on the seed
+- **uat:** say a delivery check can't read a turn with no recorded transcript
+- **uat:** say when a delivery check can't read an agent's inputs
+- **uat:** key deliveries by item id so two alike messages stay two
+- **uat:** treat a topic thread's starting message as labeled, not a repeat
+- **uat:** don't count Claude Code's compaction summary or meta lines as prompts
+
+## 1.0.1 (2026-10-30)
+
+### Fixes
+
+- **thread:** defining a glossary term redraws only the replies that use it
+
+## 1.0.0 (2026-10-30)
+
+### Breaking changes
+
+- **readme:** going back to a build before session.patch isn’t supported
+
+### Features
+
+- **agents:** a constant system prompt, and each turn opens with its request
+- **store:** a session's changes travel as session.patch, with only the fields that changed
+
+### Fixes
+
+- **agents:** folded lint has its own place in the turn, after the request and before the background
+- **uat:** readReceived applies session.patch, so the hostwakes checks see delivered wakes again
+- **rings:** a working ring moves as one overlay, so the page isn't repainted each frame
+
+## 0.44.9 (2026-10-30)
+
+### Fixes
+
+- **wakes:** one show_app call is one tool in a scheduled wake's recovery
+- **wakes:** a scheduled wake's recovery keeps other MCP servers' names on their tools
+- **wakes:** a react a scheduled turn calls counts toward its recovery
+- **wakes:** a scheduled wake's host turn waiting or lost at a restart isn't started a second time
+- **wakes:** a restart leaves a scheduled wake to a host turn only when that turn is its own
+- **wakes:** a scheduled wake queued behind a turn at shutdown stays due for the restart
+- **wakes:** a scheduled wake queued behind a turn you stop is settled, not left running
+- **wakes:** every backend's Postbox tool calls count toward a scheduled wake's recovery
+- **wakes:** a restart in a scheduled turn whose tool started sends the recovery, not the instruction
+- **adapters:** kiroError types its cause, so the type check passes
+- **wakes:** your Stop ends a scheduled wake, so a restart doesn't run it again
+- **wakes:** one tool call reported twice is one entry in a scheduled wake's recovery
+- **wakes:** a Retry after you cancel a tool-aware recovery still sends the recovery
+- **wakes:** keep retry state authoritative
+- **wakes:** leave lost host turns to reconnect
+- **wakes:** bound network retry attempts
+- **wakes:** recover scheduled checks after network loss
+
+## 0.44.8 (2026-10-30)
+
+### Fixes
+
+- **adapters:** Codex and Antigravity tool calls reach the work ledger
+
 ## 0.44.7 (2026-10-29)
 
 ### Fixes

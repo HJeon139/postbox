@@ -13,6 +13,7 @@ const EVENT_TYPES = [
   'boilerplate',
   'thread',
   'session',
+  'session.patch',
   'app',
   'file',
   'dataset',
@@ -80,7 +81,12 @@ export function connect() {
       const data = JSON.parse(e.data);
       apply(client.state, t, data);
       client.seq = seq || client.seq;
-      client.emit({ type: t, data });
+      // A session’s change comes as only its changed fields (designs/508, “Store events”); listeners hear the whole
+      // session, as they did when the server sent it whole.
+      if (t === 'session.patch') {
+        const se = client.state.sessions[data.id];
+        if (se) client.emit({ type: 'session', data: se });
+      } else client.emit({ type: t, data });
     });
   }
   es.addEventListener('resync', async () => {

@@ -12,6 +12,7 @@
 
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { availableParallelism } from 'node:os';
 import { expect, test } from '@playwright/test';
 import { play } from '../../tools/demo.mjs';
 import { settled, startPostbox, synced } from './postbox.mjs';
@@ -23,6 +24,10 @@ const VARIANTS = [
   { theme: 'dark', width: 375, height: 812, scale: 2 },
   { theme: 'light', width: 375, height: 812, scale: 2 },
 ];
+// How many variants load at once. All four only with cores to spare: on CI’s 4-core runner, with 4 workers, four
+// contexts a scene left each page behind the event stream, and “the page to hear event” timed out in every repeat.
+// POSTBOX_A11Y_AT_ONCE overrides it.
+const AT_ONCE = Math.min(VARIANTS.length, Number(process.env.POSTBOX_A11Y_AT_ONCE) || (availableParallelism() >= 8 ? VARIANTS.length : 1));
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -137,7 +142,7 @@ async function axe(page) {
 }
 
 test('every demo scene has no axe violations, at 1280 and 375 px in dark and light', async ({ page, browser }) => {
-  // The whole demo, 23 scenes in four variants each: about two minutes on a laptop.
+  // The whole demo, 23 scenes in four variants each.
   test.setTimeout(15 * 60_000);
   let hash = '#/';
   let loads = 0;
@@ -156,32 +161,37 @@ test('every demo scene has no axe violations, at 1280 and 375 px in dark and lig
     },
     shot: (name, { prepare } = {}) =>
       test.step(name, async () => {
-        for (const { theme, width, height, scale } of VARIANTS) {
-          const variant = `${theme} at ${width} px`;
-          await test.step(variant, async () => {
-            const context = await browser.newContext({
-              viewport: { width, height },
-              deviceScaleFactor: scale,
-              isMobile: width < 768,
-              colorScheme: /** @type {'dark' | 'light'} */ (theme),
-            });
-            try {
-              const shown = await context.newPage();
-              const shownErrors = errorsOf(shown, () => name === '09-errors');
-              await shown.goto(`${app.origin}/?nocheck${hash}`);
-              await synced(shown, app);
-              await drawn(shown);
-              if (prepare) {
-                await prepare(ui(shown));
-                await drawn(shown);
-              }
-              expect.soft(await axe(shown), `axe in ${name}, ${variant}`).toEqual([]);
-              expect.soft(shownErrors, `${name}, ${variant}: the page threw no exceptions and logged no errors`).toEqual([]);
-            } finally {
-              await context.close();
-            }
-          });
-        }
+        // The variants AT_ONCE at a time: each is a context of its own, and one after another they were most of the
+        // suite’s time. The errors scene’s prepare step puts the server offline in each, which the others ride out.
+        for (let i = 0; i < VARIANTS.length; i += AT_ONCE)
+          await Promise.all(
+            VARIANTS.slice(i, i + AT_ONCE).map(({ theme, width, height, scale }) => {
+              const variant = `${theme} at ${width} px`;
+              return test.step(variant, async () => {
+                const context = await browser.newContext({
+                  viewport: { width, height },
+                  deviceScaleFactor: scale,
+                  isMobile: width < 768,
+                  colorScheme: /** @type {'dark' | 'light'} */ (theme),
+                });
+                try {
+                  const shown = await context.newPage();
+                  const shownErrors = errorsOf(shown, () => name === '09-errors');
+                  await shown.goto(`${app.origin}/?nocheck${hash}`);
+                  await synced(shown, app);
+                  await drawn(shown);
+                  if (prepare) {
+                    await prepare(ui(shown));
+                    await drawn(shown);
+                  }
+                  expect.soft(await axe(shown), `axe in ${name}, ${variant}`).toEqual([]);
+                  expect.soft(shownErrors, `${name}, ${variant}: the page threw no exceptions and logged no errors`).toEqual([]);
+                } finally {
+                  await context.close();
+                }
+              });
+            }),
+          );
       }),
   });
   expect.soft(errors, 'the page that checks the apps threw no exceptions and logged no errors').toEqual([]);

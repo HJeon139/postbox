@@ -18,8 +18,8 @@ const DRAWN = new Map([
   ['❓', 'unclear'],
   ['✅', 'done'],
 ]);
-/** A reaction’s icon, which says its emoji to a screen reader. */
-const drawn = (emoji) => h('img.react-icon', { src: `/media/reactions/reaction-${DRAWN.get(emoji)}-64.png`, alt: emoji, width: 20, height: 20 });
+/** A reaction’s icon, which says its emoji to a screen reader. workbench.css draws it, from the theme’s file. */
+const drawn = (emoji) => h('span.react-icon', { role: 'img', 'aria-label': emoji, dataset: { icon: DRAWN.get(emoji) } });
 /** The act that reacts: server/reactions.mjs, REACT. */
 const REACT = '@react';
 
