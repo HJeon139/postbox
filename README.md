@@ -399,6 +399,7 @@ Postbox uses [semantic versioning](https://semver.org/), from [Conventional Comm
 
 ## Known limits
 
+- **You can’t go back to a build before the `session.patch` event.** Once this version has written to your data folder, a build from before it (v0.44.x and earlier) won’t start: its reducer doesn’t know the `session.patch` event the log now holds, and it replays the log after the snapshot at every start. To run an older build, start it with `--fresh`, or with a copy of your data folder from before the upgrade.
 - **Each open tab holds one connection.** Browsers allow 6 connections per host over HTTP/1.1, so with about six Postbox tabs open, new requests wait. Postbox closes its stream when a tab is put away, but it doesn’t yet share one stream across tabs.
 - **The pre-display check is approximate.** It finds overflow, missing labels and alt text, positive tabindex, low contrast and script errors. It doesn’t yet detect every keyboard trap or verify that saved state restores correctly.
 - **Semantic search is a stub.** It uses a small table of related words until your own index is connected. Lexical search (BM25) is real.
