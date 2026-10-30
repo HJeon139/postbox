@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.1.3 (2026-10-30)
+
+### Fixes
+
+- **thread:** an activity step repaints only its reply's activity list
+
 ## 1.1.2 (2026-10-30)
 
 ### Fixes
