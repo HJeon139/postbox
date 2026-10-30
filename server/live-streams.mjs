@@ -37,7 +37,17 @@ export function liveStreams(store) {
     const since = Number(req.headers['last-event-id'] ?? url.searchParams.get('since') ?? store.state.seq);
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
     res.write(`retry: 1500\n\n${storeLine(store.status)}`);
-    const backlog = await store.backlog(since); // from memory, or after a restart from the store’s events stream
+    // Ahead of the store: an emit is broadcast before Redis acknowledges it, and a restart reads back Redis without
+    // what it didn’t take (server/store-write.mjs), so a tab can hold events the store no longer has. The browser
+    // would drop every later event as one it had seen; it refetches the whole state instead (#553’s review, blocker 3).
+    let backlog = since > store.state.seq ? null : await store.backlog(since); // from memory, or after a restart from the store’s events stream
+    // The read of the events stream awaited Redis, and an emit meanwhile reached only the streams already open: what
+    // the store applied since the backlog ends is in memory, taken here, in the same tick that adds this stream, so
+    // the emit reaches it exactly once and after the backlog.
+    if (backlog !== null) {
+      const more = store.since(backlog.at(-1)?.seq ?? since);
+      backlog = more === null ? null : [...backlog, ...more];
+    }
     // Too far behind: the browser refetches the whole state, then resumes from its sequence number.
     if (backlog === null) res.write(`event: resync\ndata: {}\n\n`);
     else for (const ev of backlog) res.write(`id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`);
