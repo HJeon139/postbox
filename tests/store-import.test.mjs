@@ -217,6 +217,24 @@ test('#553: the backup folder and its copies are the person’s alone (0700 and 
   for (const f of await readdir(join(dir, 'backups', backup))) assert.equal((await stat(join(dir, 'backups', backup, f))).mode & 0o777, 0o600, f);
 });
 
+test('#553: a line that isn’t JSON before the end of the log is said in the log, and the rest of its segment skipped; a torn last line is quiet', async () => {
+  const { dir, evs } = await oldFolder(3);
+  // A damaged line in the middle of a segment before the last, with sound lines after it.
+  await writeFile(join(dir, 'events-5.jsonl'), `${JSON.stringify(evs[4])}\n{"seq":6,"type":"thread","data":{"id":"half"\n${JSON.stringify(evs[6])}\n`);
+  await rename(join(dir, 'events-4.jsonl'), join(dir, 'events-9.jsonl'));
+  const logged = [];
+  const { error } = console;
+  console.error = (m) => logged.push(String(m));
+  try {
+    await open(dir);
+  } finally {
+    console.error = error;
+  }
+  const said = logged.filter((m) => /isn’t JSON/.test(m));
+  assert.equal(said.length, 1, `one warning, for the damaged segment: ${logged.join(' | ')}`);
+  assert.match(said[0], /Line 2 of .*events-5\.jsonl isn’t JSON.*1 line\(s\) after it/);
+});
+
 test('#553: a fresh start removes the store’s files, not the *.migrated copies an import left', async () => {
   const { dir } = await oldFolder(3);
   await open(dir);

@@ -42,14 +42,21 @@ export async function readOld(dir, files) {
   if (files[0] === 'snapshot.json' || files[0] === 'store.json')
     state = ownState({ ...emptyState(), ...JSON.parse(await readFile(join(dir, files[0]), 'utf8')) });
   const events = [];
-  for (const name of files.filter((f) => f.startsWith('events-'))) {
-    for (const line of (await readFile(join(dir, name), 'utf8')).split('\n')) {
+  const segments = files.filter((f) => f.startsWith('events-'));
+  for (const name of segments) {
+    const lines = (await readFile(join(dir, name), 'utf8')).split('\n');
+    for (const [i, line] of lines.entries()) {
       if (!line.trim()) continue;
       let ev;
       try {
         ev = JSON.parse(line);
       } catch {
-        break; // a torn last line: the old server stopped mid-write
+        // A torn last line: the old server stopped mid-write. One with lines after it, or in a segment before the last,
+        // is damage the person should hear of, as the old store said; the rest of that segment is skipped, as it was.
+        const rest = lines.slice(i + 1).filter((l) => l.trim()).length;
+        if (rest || name !== segments.at(-1))
+          console.error(`Line ${i + 1} of ${join(dir, name)} isn’t JSON, so the import skipped it and the ${rest} line(s) after it in that file.`);
+        break;
       }
       if (ev.seq <= state.seq) continue;
       apply(state, ev.type, ev.data);
