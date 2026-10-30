@@ -62,6 +62,7 @@ import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
+import { agyResult } from './work-calls.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117, #370). The adapter adds the models it found. */
 export const AGY_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false, promptTool: true });
@@ -334,8 +335,11 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
       /** @type {string|null} */ state: null,
       output: false,
       ms: 0,
+      // agy reading its own files isn’t the agent’s work (see AGY_FILE), so the work ledger doesn’t hear of it.
+      work: tool.name !== 'ToolSearch',
     };
     st.tools.set(key(s), t);
+    if (t.work) ctx.toolUse?.({ id: t.id, name: tool.name, input: tool.input });
     st.refusedLast = null;
     st.textSinceTool = false;
     if (!t.quiet) ctx.activity({ id: t.id, label: t.label, state: 'running' });
@@ -355,6 +359,7 @@ export function createAgyMapper(ctx, { now = Date.now, effort = null, resumed = 
     const detail = refused ? refusalOf(ctx.persona?.permissionMode) : failed ? firstSentence(hookWhy || why || 'It failed without saying why.', 300) : '';
     const ms = typeof s.duration_seconds === 'number' ? Math.round(s.duration_seconds * 1000) : now() - t.started;
     Object.assign(t, { state, ms, output: s.tool_info?.output !== undefined });
+    if (t.work) ctx.toolResult?.(agyResult(t.id, s, failed));
     if (refused) st.refusedLast = t.label;
     // Postbox’s own tools stay quiet, unless agy refused one: then the allow rule in your settings is missing.
     const ownRefused = `Antigravity refused Postbox’s own tool. Add "${ALLOW_POSTBOX}" to permissions.allow in your agy settings.`;

@@ -16,7 +16,7 @@ The person directs agents that edit code, run commands, commit, push and file is
 - **Room for the conversation** (#197, #7): beside the pane, the conversation column never gets narrower than 640 px. To keep it, the sidebar hides while the pane needs its room (below about 1,330 px with the pane at 440 px), and comes back when the pane closes; **Show the sidebar** (⌘\\) brings it back sooner, where the pane still fits beside it (1,208 px and up); below that, the button says why it can’t. Then the pane gives up width, down to 320 px. Where even that doesn’t fit, Work or the thread opens full screen instead, and Escape or the icon, which reads **Back to the conversation**, brings the conversation back, closing what was open. The address says only what’s open, so widening the window puts the pane back beside the conversation.
 - **Compact, in the pane:** **To review** (only when something is flagged), **Files** by where they stand (uncommitted, committed but not pushed, pushed, not in git) with their counts and lines, **Commands** with how many failed (failed ones first), **Outside Postbox** with links, **Spend** (spend, turns, time and tokens, by agent, and the turns that left nothing lasting), and **Turns**, each turn’s line, newest first. Each list shows a few items and **All N**; each item opens Work full screen, at that item. Nothing in the pane moves or pulses.
 - **Full screen:** everything below, over the whole window, as a dialog. Escape or the icon (now **Exit full screen**) returns to the pane, with focus on what opened it: the icon, or the item you chose. A thread in the pane has the same icon: full screen it’s the same transcript and composer at the message column’s width, and the draft, where you were and a reply that’s streaming carry on.
-- **Scope:** every session in the conversation, its side and topic threads included. In a room, **All agents** or one agent.
+- **Scope:** every session in the conversation, its side and topic threads included. In a room, **All agents** or one agent. Agents on Claude Code, the Agent SDK, Codex and Antigravity are recorded alike (#545); Kiro agents aren’t yet (#555).
 - **Summary:** the files that are uncommitted, committed but not pushed, and pushed (and not in git, when any are), each with its file count and lines added and deleted. Then the effort: turns, wall time, tool calls, tokens and spend, and what it produced (“→ 4 files +15 −3”, with the lines written along the way when more were written than kept). Turns that tried something and left nothing lasting are counted, with a link to them. Changes to review are counted.
 - **Files:** each file an agent’s Edit, Write or NotebookEdit changed. A file a command changes (a formatter, a `sed`) isn’t listed yet, and the section says so (#240). Each file has:
   - its state from git (asked when the view opens and after each turn, with read-only commands);
@@ -45,6 +45,7 @@ The person directs agents that edit code, run commands, commit, push and file is
 7. At 1280 px, with the sidebar open, open the topic thread under the explainer app (or any app), then close it. Narrow the window to 800 px, with the sidebar open, and choose **Work**. Press Escape. Choose **Work** again, and widen the window to 1440 px.
 8. Narrow the window to 375 px and repeat steps 3, 5 and 6.
 9. With a real agent in a git repository you can lose, ask it to edit a file, run a failing command, commit on a new branch and push to a local bare remote (`git init --bare /tmp/remote.git`). Open Work, and compare its files and lines with `git diff --stat` and `git show --stat`.
+10. In a room with a Codex agent and an Antigravity agent, ask each to edit a different file that already exists and to run a command. Open Work.
 
 **Pass if:**
 - The pane lists `notes.md`, `refs.bib` and `cite.mjs` under **To review**, the files by state, “5 commands · 2 failed”, the issue under **Outside Postbox**, and two turns. `refs.bib` opens full screen, already open with its diff, and Escape returns focus to `refs.bib` in the pane.
@@ -59,6 +60,7 @@ The person directs agents that edit code, run commands, commit, push and file is
 - The second turn is listed under **Left nothing lasting**, and **Open this turn** on it shows only the benchmark command.
 - With the real agent: the counts match git’s, the commit is listed with its branch and **Pushed**, and the branch is listed as made.
 - With the real agent, a `sed -i` across three files and `git add -A && git commit -q -m …` in one command list the commit, with its three files (#156). The files under the command are #240’s.
+- With the Codex and Antigravity agents: each reply has its line (“1 file +1 −0 · 1 command · …”), and Work lists both files with lines that match `git diff --stat`, both commands as the agents wrote them with their exits, and both agents’ turns.
 
 ## Related
 
