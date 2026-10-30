@@ -8,6 +8,7 @@ import { LIMITS } from '../../shared/limits.mjs';
 import { REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
 import { noteAnswer } from '../empty-reply.mjs';
 import { reactTool } from '../reactions.mjs';
+import { recordedTools } from '../scheduled-wakes.mjs';
 import { withUrgent } from '../subagent-end.mjs';
 import { linkOf } from './turns-need.mjs';
 import { KEPT_REPLIES, KEPT_REPLY_CHARS, key, STOPPED_TEXT, send, sessionOfTurn, TOOL_QUEUED, updateRemote } from './turns-shared.mjs';
@@ -58,8 +59,9 @@ export async function onTool(rts, hostId, m) {
 
 /** @param {RemoteTurns} rts @param {Live} live @param {{ name: string, args: Record<string, any> }} m @returns {Promise<{ ok: boolean, text: string }>} */
 async function applyTool(rts, live, m) {
-  // react is the reactions’ own (server/reactions.mjs), beside the runtime’s tools, as server/mcp.mjs adds it.
-  const tools = { ...rts.rt.toolsFor(live.sessionId, live.rt), react: (/** @type {any} */ a) => reactTool(rts.rt, rts.rt.session(live.sessionId), a) };
+  // react is the reactions’ own (server/reactions.mjs), beside the runtime’s tools and recorded as they are, as server/mcp.mjs adds it.
+  const react = { react: (/** @type {any} */ a) => reactTool(rts.rt, rts.rt.session(live.sessionId), a) };
+  const tools = { ...rts.rt.toolsFor(live.sessionId, live.rt), ...recordedTools(rts.rt, live.rt, react) };
   if (m.name === 'add_dataset')
     return {
       ok: false,
