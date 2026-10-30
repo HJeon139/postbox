@@ -22,6 +22,7 @@ import { sameToken } from './helpers.mjs';
 import { asksByPrompt, NOT_YOUR_PROMPT, permission } from './permission-prompt.mjs';
 import { reactTool } from './reactions.mjs';
 import { AgentFileError } from './runtime.mjs';
+import { recordedTools } from './scheduled-wakes.mjs';
 import { withUrgent } from './subagent-end.mjs';
 
 // The tools live in shared/mcp-tools.mjs, which the host’s shim serves too (#120); this keeps their old import working.
@@ -77,8 +78,9 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
         return fail(-32001, 'This call came from an agent turn that was stopped or has ended, so Postbox didn’t run it.');
       const name = msg.params?.name;
       const args = msg.params?.arguments ?? {};
-      // react is the reactions’ own (server/reactions.mjs), beside the runtime’s tools.
-      const tools = { ...rt.toolsFor(sessionId, rt.turns.get(sessionId) ?? null), react: (a) => reactTool(rt, rt.session(sessionId), a) };
+      // react is the reactions’ own (server/reactions.mjs), beside the runtime’s tools, and recorded as they are (#466).
+      const turn = rt.turns.get(sessionId) ?? null;
+      const tools = { ...rt.toolsFor(sessionId, turn), ...recordedTools(rt, turn, { react: (a) => reactTool(rt, rt.session(sessionId), a) }) };
       if (name === 'permission_prompt') return reply(asksByPrompt(rt, sessionId) ? await permission(rt, sessionId, args, closeOrSignal) : NOT_YOUR_PROMPT);
       if (!(name in tools) || !TOOL_DEFS.some((t) => t.name === name)) return fail(-32602, `There’s no tool called “${name}”.`);
       try {

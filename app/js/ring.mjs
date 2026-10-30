@@ -2,7 +2,8 @@
 // adds a thinner ring outside it with its own context and activity. Motion shows the state, and every
 // motion eases in, eases out, then rests: generating turns the arc once; thinking runs a short bulge of
 // thickness along it; calling tools sends a dot across the free part of the ring and back. Needs-you
-// pulses amber. With reduced motion everything holds still (see workbench.css).
+// pulses amber. With reduced motion everything holds still (see workbench.css). What moves is drawn in an
+// overlay of its own that turns and fades as one, so the page isn’t painted again each frame (#463).
 //
 //   <pb-ring name="@indexer" state="tool" ctx="62" subs="gen:22:chunker,tool:31:embedder" size="sm">
 //
@@ -34,6 +35,13 @@ export function paintStateWords(root, sessions, latestItemOf) {
   }
 }
 
+/**
+ * One ring of a <pb-ring>: what holds still, drawn in the ring’s own SVG, and what moves, if anything, drawn in an SVG
+ * of its own laid over it (#463). Only that overlay animates, by transform and opacity, one animation a ring: Safari
+ * repainted a ring’s SVG every frame while any shape inside it animated, and a thinking ring had about 12 (one swell
+ * per segment), so the compositor moves the overlay instead and the page isn’t painted again.
+ * @returns {{ still: string, moving: { kind: 'turn'|'cross'|'sweep', style: string, inner: string } | null }}
+ */
 function ringSvg(c, r, sw, state, ctx) {
   const color = `var(${STATE_VAR[state] ?? '--st-idle'})`;
   const C = 2 * Math.PI * r;
@@ -41,29 +49,48 @@ function ringSvg(c, r, sw, state, ctx) {
   // generating show as the dot that crosses the ring, as calling tools does, so the activity still shows. The label
   // says the context is unknown.
   const L = ctx != null ? (C * ctx) / 100 : 0;
-  const moving = state === 'tool' || (ctx == null && (state === 'think' || state === 'gen'));
-  let out = `<circle class="track" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${sw}"/>`;
+  const arc = (len, width = sw) =>
+    `<g transform="rotate(-90 ${c} ${c})"><circle class="arc" cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-dasharray="${len} ${C - len}"/></g>`;
+  const track = `<circle class="track" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${sw}"/>`;
+  // Generating: the arc turns once, then rests.
+  if (state === 'gen' && L > 0) return { still: track, moving: { kind: 'turn', style: '', inner: arc(L) } };
+  // Thinking: a short swell of the arc’s thickness travels along it, fading in and out.
   if (state === 'think' && L > 0) {
-    const n = Math.max(6, Math.round(L / (sw * 1.1)));
-    const seg = L / n;
-    out += `<g transform="rotate(-90 ${c} ${c})" style="--sw:${sw}px">`;
-    for (let i = 0; i < n; i++) {
-      const delay = Math.round((1400 * Math.acos(1 - (2 * i) / (n - 1))) / Math.PI);
-      out += `<circle class="arc seg" cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${seg} ${C - seg}" stroke-dashoffset="${-i * seg}" style="--d:${delay}ms"/>`;
-    }
-    out += '</g>';
-  } else {
-    out += `<g transform="rotate(-90 ${c} ${c})"><circle class="arc" cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${color}" stroke-width="${sw}" stroke-linecap="round" stroke-dasharray="${L} ${C - L}"/></g>`;
+    const seg = Math.min(L, Math.max(sw * 1.1, L / 6));
+    const sweep = ((L - seg) / C) * 360;
+    return { still: track + arc(L), moving: { kind: 'sweep', style: `--a2:${sweep}deg`, inner: arc(seg, sw * 2) } };
   }
-  if (moving) {
-    const margin = ((sw * 1.6) / r) * (180 / Math.PI);
-    const ctxNum = ctx ?? 0;
-    const a1 = 3.6 * ctxNum + margin,
-      a2 = 360 - margin;
-    const rest = a1 < a2 ? a1 : 3.6 * ctxNum + (360 - 3.6 * ctxNum) / 2;
-    out += `<circle class="dot${a1 >= a2 ? ' still' : ''}" cx="${c}" cy="${c - r}" r="${Math.max(1.3, sw * 0.8)}" fill="${color}" style="--a1:${a1}deg;--a2:${a2}deg;transform:rotate(${rest}deg)"/>`;
-  }
-  return out;
+  const moving = state === 'tool' || (ctx == null && (state === 'think' || state === 'gen'));
+  if (!moving) return { still: track + arc(L), moving: null };
+  // Calling tools: a dot crosses the free part of the ring and back.
+  const margin = ((sw * 1.6) / r) * (180 / Math.PI);
+  const ctxNum = ctx ?? 0;
+  const a1 = 3.6 * ctxNum + margin,
+    a2 = 360 - margin;
+  const rest = a1 < a2 ? a1 : 3.6 * ctxNum + (360 - 3.6 * ctxNum) / 2;
+  const dot = (style) => `<circle class="dot" cx="${c}" cy="${c - r}" r="${Math.max(1.3, sw * 0.8)}" fill="${color}"${style ? ` style="${style}"` : ''}/>`;
+  // No room to cross: the dot holds still where it rests.
+  if (a1 >= a2) return { still: track + arc(L) + dot(`transform:rotate(${rest}deg)`), moving: null };
+  return { still: track + arc(L), moving: { kind: 'cross', style: `--a1:${a1}deg;--a2:${a2}deg;transform:rotate(${rest}deg)`, inner: dot('') } };
+}
+
+/** An SVG of a ring’s size, S by S, holding what ringSvg() drew. */
+function ringBox(S, html) {
+  const el = document.createElementNS(NS, 'svg');
+  el.setAttribute('width', S);
+  el.setAttribute('height', S);
+  el.setAttribute('viewBox', `0 0 ${S} ${S}`);
+  el.innerHTML = html; // lint-allow dom: ringSvg() builds it from numbers and Postbox’s fixed state names.
+  return el;
+}
+
+/** What moves in one ring, laid over it and hidden from assistive tech: the ring’s label says the state. */
+function moverBox(S, m) {
+  const el = ringBox(S, m.inner);
+  el.setAttribute('class', `mover ${m.kind}`);
+  el.setAttribute('aria-hidden', 'true');
+  if (m.style) el.setAttribute('style', m.style);
+  return el;
 }
 
 const parseSubs = (spec) =>
@@ -101,17 +128,12 @@ class PbRing extends HTMLElement {
     const R = rb + shown.length * pitch;
     const S = Math.ceil(2 * (R + sw / 2 + 1));
     const c = S / 2;
-    let inner = ringSvg(c, rb, sw, state, ctx);
-    shown.forEach((s, i) => {
-      inner += ringSvg(c, rb + (i + 1) * pitch, sw * 0.8, s.state, s.ctx);
-    });
+    const rings = [ringSvg(c, rb, sw, state, ctx), ...shown.map((s, i) => ringSvg(c, rb + (i + 1) * pitch, sw * 0.8, s.state, s.ctx))];
+    let inner = rings.map((x) => x.still).join('');
     if (state === 'needs') inner += `<circle class="pulse" cx="${c}" cy="${c}" r="${R + sw}" fill="none" stroke-width="1.4"/>`;
-    const svg = document.createElementNS(NS, 'svg');
-    svg.setAttribute('width', S);
-    svg.setAttribute('height', S);
-    svg.setAttribute('viewBox', `0 0 ${S} ${S}`);
-    svg.innerHTML = inner; // lint-allow dom: ringSvg() builds it from numbers and Postbox’s fixed state names.
+    const svg = ringBox(S, inner);
     svg.setAttribute('role', 'img');
+    const movers = rings.map((x) => x.moving && moverBox(S, x.moving)).filter((m) => m !== null);
     const subText = subs.length
       ? `; ${subs.length} subagent${subs.length === 1 ? '' : 's'}: ` +
         subs.map((x) => `${x.name} ${stateWord(x.state).toLowerCase()}, ${x.ctx == null ? 'context unknown' : `${x.ctx}%`}`).join('; ')
@@ -123,7 +145,7 @@ class PbRing extends HTMLElement {
     const title = document.createElementNS(NS, 'title');
     title.textContent = label;
     svg.prepend(title);
-    const parts = [svg];
+    const parts = [svg, ...movers];
     if (subs.length > cap) {
       const more = document.createElement('span');
       more.className = 'ring-more';
