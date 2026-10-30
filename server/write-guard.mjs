@@ -54,6 +54,25 @@ export async function writePasses(rt, sessionId, { tool, input }) {
   return calls.every((c) => allow.some((a) => passesWriteCheck(a.rule, c, { cwd: folder ?? '/', home: rt.home, root: a.root ?? folder ?? '/' })));
 }
 
+/**
+ * Whether one of the person’s own ask rules covers this call: in their settings files, or this conversation’s. Their
+ * “always ask me” keeps its card even where Postbox’s rules for writes outside also catch the call (#296). A settings
+ * file Postbox can’t read might hold one, so it counts as one.
+ * @param {any} rt  the Runtime @param {string} sessionId @param {{ tool: string, input?: any }} req
+ */
+export async function personAsks(rt, sessionId, { tool, input }) {
+  const { se, persona, folder } = await rt.panelTarget({ sessionId });
+  const { usesHostSetup } = setupOf(persona);
+  const files = folder && rt.readsRules(persona.backend) ? await readRules({ folder, home: rt.home, configDir: rt.configDir, usesHostSetup }) : [];
+  if (files.some((f) => f.error)) return true;
+  const ask = [
+    ...files.flatMap((f) => f.ask.map((rule) => ({ rule, root: f.source === 'user' ? rt.home : folder }))),
+    ...(se?.rules?.ask ?? []).map((rule) => ({ rule, root: folder })),
+  ];
+  const calls = tool === 'Bash' ? splitCommand(String(input?.command ?? '')).map((arg) => ({ tool, arg })) : [{ tool: String(tool), arg: null }];
+  return calls.some((c) => ask.some((a) => ruleMatches(a.rule, c, { cwd: folder ?? '/', home: rt.home, root: a.root ?? folder ?? '/' })));
+}
+
 // The input fields that name where a write lands, most specific first.
 const TARGET_FIELDS = [
   ['folder', 'folder'],

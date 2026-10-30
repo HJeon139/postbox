@@ -808,10 +808,21 @@ html.store-down .rpane { bottom: 56px; }
 .react-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .react-count { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--dim); }
 .react-btn[aria-pressed="true"] .react-count { color: var(--text); }
-.react-icon { display: block; flex: none; width: 20px; height: 20px; }
+.react-icon { display: block; flex: none; width: 20px; height: 20px; background: center / 100% no-repeat; }
+.react-icon[data-icon="approve"] { background-image: url(/media/reactions/reaction-approve-64.png); }
+.react-icon[data-icon="disapprove"] { background-image: url(/media/reactions/reaction-disapprove-64.png); }
+.react-icon[data-icon="flag"] { background-image: url(/media/reactions/reaction-flag-64.png); }
+.react-icon[data-icon="unclear"] { background-image: url(/media/reactions/reaction-unclear-64.png); }
+.react-icon[data-icon="done"] { background-image: url(/media/reactions/reaction-done-64.png); }
 /* The icons’ cream borders vanish on light: a thin rim keeps each one’s shape off the wash and the panel (at least 3:1,
-   as on dark). */
-:root[data-theme="light"] .react-icon { filter: drop-shadow(1px 0 0 var(--dim)) drop-shadow(-1px 0 0 var(--dim)) drop-shadow(0 1px 0 var(--dim)) drop-shadow(0 -1px 0 var(--dim)); }
+   as on dark). It is drawn into a copy of each icon (tools/rim-reactions.mjs), with room around it for the rim, not as a
+   filter: a filter on each of a long conversation’s thousands of icons made every scroll repaint slow (#572). */
+:root[data-theme="light"] .react-icon { width: 22.5px; height: 22.5px; margin: -1.25px; }
+:root[data-theme="light"] .react-icon[data-icon="approve"] { background-image: url(/media/reactions/reaction-approve-rim-72.png); }
+:root[data-theme="light"] .react-icon[data-icon="disapprove"] { background-image: url(/media/reactions/reaction-disapprove-rim-72.png); }
+:root[data-theme="light"] .react-icon[data-icon="flag"] { background-image: url(/media/reactions/reaction-flag-rim-72.png); }
+:root[data-theme="light"] .react-icon[data-icon="unclear"] { background-image: url(/media/reactions/reaction-unclear-rim-72.png); }
+:root[data-theme="light"] .react-icon[data-icon="done"] { background-image: url(/media/reactions/reaction-done-rim-72.png); }
 
 /* Sent back from a topic thread. */
 .shared-card { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }

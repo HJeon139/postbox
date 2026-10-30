@@ -12,6 +12,7 @@ import { BACKEND_NAMES } from '/shared/agent-facts.mjs';
 import { decide } from '/shared/permission-match.mjs';
 import { api, client, sessionsOf } from './client.mjs';
 import { fill, h, icon } from './dom.mjs';
+import { checkField } from './hosts-parts.mjs';
 import { MODES } from './run-choice.mjs';
 import { capsOf, MCP_SCOPE, MCP_STATUS, modeHelp, openFolderPicker } from './sheets.mjs';
 import { keepFocus, openDialog, say, toast } from './ui.mjs';
@@ -283,21 +284,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
           );
       }
       // Writes outside Postbox (#112): many rules with one cause, and what lets a call through without asking.
-      if (b === 'ask' && view.writes?.rules.length)
-        rows.push(
-          h(
-            'li',
-            h(
-              'span.grow',
-              h('code.perm-rule', `${view.writes.rules.slice(0, 3).join(', ')}…`),
-              h('span.small.dim', ` and ${view.writes.rules.length - 3} more, from ${SOURCE.writes}`),
-              h(
-                'span.small.dim',
-                `: tools and gh commands that create, change or delete something outside Postbox. Always allow on a card lets that one tool through${view.writes.unless.length ? ', and so does “Can publish outside Postbox” for the tools it covers' : ''}.`,
-              ),
-            ),
-          ),
-        );
+      if (b === 'ask' && view.writes?.rules.length) rows.push(writesRow(view.writes), requestedRow(p, change));
       if (b === 'allow')
         rows.push(h('li', h('code.perm-rule', 'mcp__postbox'), h('span.small.dim.grow', `from ${SOURCE.postbox}: they only show things here`)));
       return h(
@@ -610,4 +597,45 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
   load().then(() => {
     if (focus) document.getElementById(focus === 'mcp' ? 'perm-mcp' : 'perm-dir')?.scrollIntoView({ block: 'center' });
   });
+}
+
+/**
+ * The ask rules for writes outside Postbox (#112) as one row: many rules with one cause, and what lets a call through
+ * without asking. Moved out of openPermissions.
+ * @param {{ rules: string[], unless: string[] }} writes
+ */
+function writesRow(writes) {
+  return h(
+    'li',
+    h(
+      'span.grow',
+      h('code.perm-rule', `${writes.rules.slice(0, 3).join(', ')}…`),
+      h('span.small.dim', ` and ${writes.rules.length - 3} more, from ${SOURCE.writes}`),
+      h(
+        'span.small.dim',
+        `: tools and gh commands that create, change or delete something outside Postbox. Always allow on a card lets that one tool through${writes.unless.length ? ', and so does “Can publish outside Postbox” for the tools it covers' : ''}.`,
+      ),
+    ),
+  );
+}
+
+/**
+ * Whether, in Auto, a call the person asked for runs without a card (#296): on unless the persona turns it off.
+ * @param {{ id: string, handle: string, allowRequested?: boolean }} p @param {(fn: () => Promise<any>, done: string) => Promise<void>} change
+ */
+function requestedRow(p, change) {
+  return h(
+    'li',
+    checkField({
+      id: 'perm-requested',
+      label: 'Writes you asked for run without a card',
+      help: `In Auto mode, a write outside Postbox that you asked @${p.handle} for runs without a card: one a confirm you confirmed shows word for word, or one your message asks for, as a quick check by Claude Haiku finds. That check sends the call and your message to Anthropic. Each such write leaves a line in the conversation with Stop, five at most a turn. Only plain pushes, gh creates, comments and edits, and tools that create or edit can pass; deletes, merges, force pushes, your own ask rules and Ask me mode always ask.`,
+      on: p.allowRequested !== false,
+      onToggle: (on) =>
+        change(
+          () => api(`/api/personas/${p.id}`, { allowRequested: on }, 'PATCH'),
+          on ? `Calls you ask @${p.handle} for run without a card.` : `Every call that comes to Postbox asks you first, even one you asked for.`,
+        ),
+    }),
+  );
 }

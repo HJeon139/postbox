@@ -1,10 +1,26 @@
-// What the UAT runner reads from files after each step: the person’s own Claude Code setup, to spot it leaking into
+// The run’s folders (runPaths), and what the UAT runner reads from files after each step: the person’s own Claude Code setup, to spot it leaking into
 // agents (or missing from them), each agent turn’s recorded stream, and the agents’ own Claude Code transcripts.
 
-import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { patchSession } from '../../shared/state.mjs';
+
+/** The run’s folders, made: Postbox’s data, the workspace, each backend’s recorded streams, and screenshots. @param {string} dir */
+export async function runPaths(dir) {
+  const paths = {
+    data: join(dir, 'data'),
+    workspace: join(dir, 'workspace'),
+    streams: join(dir, 'streams'),
+    kiroStreams: join(dir, 'streams', 'kiro'),
+    agyStreams: join(dir, 'streams', 'agy'),
+    codexStreams: join(dir, 'streams', 'codex'),
+    shots: join(dir, 'shots'),
+  };
+  for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
+  return paths;
+}
 
 export function userSetup(workspace) {
   const out = { userMcpServers: [], userRulesMarker: null };
@@ -144,6 +160,54 @@ export function readTranscripts(facts, workspace) {
     .filter((t) => existsSync(t.file))
     .map((t) => ({ handle: t.handle, lines: readFileSync(t.file, 'utf8').split('\n') }));
 }
+
+/** Where a run folder keeps its agents’ transcript lines (keepTranscripts). @param {string} dir */
+const keptIn = (dir) => join(dir, 'transcripts');
+
+/**
+ * Keeps the transcript lines the checks read in the run folder, for --recheck once the agents’ own transcripts have
+ * gone: each agent’s user lines (its prompts, tool results and the lines Claude Code writes itself, as
+ * server/room-delivery.mjs’s inputsOf and the telemetry triggers read them), in <dir>/transcripts/<handle>.jsonl.
+ * Not its replies, which no check reads, nor a line cut short.
+ * @param {string} dir  @param {{ handle: string, lines: (string|object)[] }[]} transcripts
+ */
+export function keepTranscripts(dir, transcripts) {
+  /** @type {Map<string, string[]>} */
+  const by = new Map();
+  for (const t of transcripts ?? [])
+    for (const l of t.lines ?? []) {
+      let e;
+      try {
+        e = typeof l === 'string' ? JSON.parse(l) : l;
+      } catch {
+        continue;
+      }
+      if (e?.type !== 'user') continue;
+      by.set(t.handle, [...(by.get(t.handle) ?? []), typeof l === 'string' ? l : JSON.stringify(l)]);
+    }
+  mkdirSync(keptIn(dir), { recursive: true });
+  for (const [handle, lines] of by) writeFileSync(join(keptIn(dir), `${handle.replace(/[^\w-]/g, '_')}.jsonl`), `${lines.join('\n')}\n`);
+}
+
+/** The transcript lines a run folder kept (keepTranscripts), as readTranscripts gives them; null when it kept none. @param {string} dir */
+export function savedTranscripts(dir) {
+  if (!existsSync(keptIn(dir))) return null;
+  return readdirSync(keptIn(dir))
+    .filter((f) => f.endsWith('.jsonl'))
+    .map((f) => ({ handle: f.replace(/\.jsonl$/, ''), lines: readFileSync(join(keptIn(dir), f), 'utf8').split('\n') }));
+}
+
+/**
+ * The run’s keep (tools/uat/stop.mjs’s runStop calls it at the end, early stop or not): the transcript lines the
+ * checks read, kept in the run folder for --recheck, once the run has a state to name its agents.
+ * @param {string} dir  @param {any} facts  @param {string} workspace
+ */
+export const keeper = (dir, facts, workspace) => () => {
+  if (facts.state) keepTranscripts(dir, readTranscripts(facts, workspace));
+};
+
+/** What --recheck reads: the transcripts the run folder kept, or, from a run before it kept them, the agents’ own. */
+export const transcriptsFor = (dir, facts) => savedTranscripts(dir) ?? readTranscripts(facts, join(dir, 'workspace'));
 
 const transcriptOf = (cwd, id) => join(homedir(), '.claude', 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${id}.jsonl`);
 

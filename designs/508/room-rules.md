@@ -11,7 +11,7 @@ Drop a rule once its cause is fixed, in the same change that fixes it.
 
 ## Roles
 
-1. **Only developer writes outside Postbox:** pushes, PRs and GitHub comments, each after a review block the person approves. gemini and gpt review and report in the room. (#400, seen: gemini runs in Run everything with publishing off, and nothing enforces that setting.)
+1. **Every author’s writes outside Postbox** (pushes, PRs and GitHub comments) each follow a review or confirm block the person approves. This holds for developer, engineer, gpt and gemini (from 30 October 2026); critic and researcher post in the room, and push or comment only when the person asks directly. (#400, seen: gemini runs in Run everything with publishing off, and nothing enforces that setting.)
 2. **One shared checkout, read-only for reviewers.** Developer updates `postbox-ctx` to `origin/main` before each round and names the commit. Reviewers don’t run `git checkout`, `fetch` or `reset` in it. (Seen: gemini ran `git checkout origin/main` there during a review.)
 3. **Findings that cite code give the file, line and commit,** and say when the code is on a branch. (Seen: gemini cited `fix/466-wake-retry` as if it were `main`.)
 
@@ -26,6 +26,10 @@ Drop a rule once its cause is fixed, in the same change that fixes it.
 
 8. **Each plan step gets a new conversation,** with the design and that step’s issue as its brief. (#515, in code: a resumed Claude session keeps its first guide. #425: Postbox doesn’t call Codex’s `thread/compact/start` yet, though Codex 0.164.0 has it.)
 9. **A step starts only once the PRs it waits on are merged:** #511 and #496 before “Now”; #451 and the #466 branch before A1 and A2; #513 before A2; #509 before B1; #495 before B3.
+
+## Terms
+
+12. **Define cryptic terms in the Postbox glossary** (from 30 October 2026). The first time a coined or cryptic term appears in a message, block, issue or PR body, call `define_term` for it. Code identifiers in backticks need an entry only when the idea behind them is new; GitHub text defines a term in a sentence instead.
 
 ## Guards
 

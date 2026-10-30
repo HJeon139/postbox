@@ -147,6 +147,10 @@
       }
     },
     {
+      "includes": ["app/js/system-line.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 96 } } } } }
+    },
+    {
       "includes": ["app/js/thread.mjs"],
       "linter": {
         "rules": {
@@ -431,6 +435,10 @@
     {
       "includes": ["tools/lint-lib.mjs"],
       "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 105 } } } } }
+    },
+    {
+      "includes": ["tools/uat/recheck.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 137 } } } } }
     },
     {
       "includes": ["tools/uat-run.mjs"],

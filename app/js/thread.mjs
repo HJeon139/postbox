@@ -4,10 +4,12 @@
 import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
-import { activityLabel, stepTree } from './activity-steps.mjs';
+import { activityParts, paintActivity, stepsOnly } from './activity-paint.mjs';
+import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
-import { agentMarkdown, handles, markTerms } from './agent-markdown.mjs';
+import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
 import { subagentNow } from './agents.mjs';
+import { allowedCallLine } from './allowed-call.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
@@ -20,13 +22,13 @@ import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.m
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
-import { jobRows, runningNote, stoppedTag } from './reply-stop.mjs';
+import { stoppedTag } from './reply-stop.mjs';
 import { replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
-import { scheduledWakeLine } from './scheduled-wake-line.mjs';
 import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
-import { failedOnHost, hostChanged, hostEnd, hostTurnsList, kiroStep, ranHere, remoteSig } from './thread-host.mjs';
+import { systemLine } from './system-line.mjs';
+import { failedOnHost, hostChanged, hostEnd, hostTurnsList, ranHere, remoteSig } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
 import { workList } from './work-list.mjs';
@@ -153,14 +155,36 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   // The anchor is the message across the middle of the view, where you read, not the first one in view: that one
   // usually starts above the view, and when a narrower column (the panel, a smaller window) rewraps it, everything
   // under it moves. A wide font rewraps it where macOS’s doesn’t (#88, seen on Linux in #162).
+  // It runs on every scroll event, so it halves its way to the middle rather than reading every reply above it: in a
+  // room of 1,000 replies, a dozen rects instead of a thousand (#572).
+  const keyed = (n) => n instanceof HTMLElement && !!n.dataset.key;
   const findAnchor = () => {
     const s = box();
     if (!s) return null;
     const top = viewTop(s);
     const mid = top + s.clientHeight / 2;
+    const kids = el.children;
+    let lo = 0;
+    let hi = kids.length;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (kids[m].getBoundingClientRect().bottom > mid) hi = m;
+      else lo = m + 1;
+    }
+    // Back to the reply before the first one across the middle (one that takes no room doesn't count), then on as before.
+    let from = 0;
+    for (let i = lo - 1; i >= 0; i--) {
+      const n = kids[i];
+      if (!keyed(n)) continue;
+      const r = n.getBoundingClientRect();
+      if (!r.height) continue;
+      from = i;
+      if (r.bottom <= mid) break;
+    }
     let last = null;
-    for (const n of el.children) {
-      if (!(n instanceof HTMLElement && n.dataset.key)) continue;
+    for (let i = from; i < kids.length; i++) {
+      const n = kids[i];
+      if (!keyed(n)) continue;
       const r = n.getBoundingClientRect();
       if (r.bottom <= top) continue;
       last = { key: n.dataset.key, at: r.top - top };
@@ -322,7 +346,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       paintWorking();
       grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
-      if (!d.reaction) rerender(d.id);
+      // A step changes only the reply’s activity list (#573); anything else draws the reply again.
+      const it = stepsOnly(d) ? itemsOf(threadId).find((x) => x.id === d.id) : null;
+      if (!d.reaction && !(it && paintActivity(nodes.get(d.id), it))) rerender(d.id);
     } else if (ch.type === 'item.text' && d.threadId === threadId) {
       pending.add(d.id);
       if (!raf)
@@ -332,7 +358,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
           pending.clear();
         });
     } else if (ch.type === 'glossary' && d.threadId === threadId) {
-      for (const it of itemsOf(threadId)) if (it.kind === 'agent') updateText(it.id, true);
+      for (const it of itemsOf(threadId)) if (it.kind === 'agent' && usesTerm(it, d.entry, nodes.get(it.id))) updateText(it.id, true);
     } else if (ch.type === 'session') {
       el.querySelectorAll(`pb-ring[data-session="${CSS.escape(d.id)}"]`).forEach((r) => {
         ringFor(d, r.getAttribute('size'), r);
@@ -373,10 +399,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       rerender(id);
       return;
     }
-    box.innerHTML = agentMarkdown(it, threadId); // lint-allow dom: renderMarkdown() output, escaped.
-    markTerms(box, threadId);
-    if (it.status === 'streaming') box.append(h('span.caret', { 'aria-hidden': 'true' }));
-    else enhanceMarkdown(box);
+    paintAgentMarkdown(box, it, threadId);
+    if (it.status !== 'streaming') enhanceMarkdown(box);
     if (!force) announceStreaming(it.id, it.text, it.status !== 'streaming', `@${it.handle}`);
   };
 
@@ -511,26 +535,10 @@ function renderItem(it, prev, ctx) {
     case 'agent': {
       // Replayed whole from the host after a restart (#120): the replay is the reply, so this part of it shows nothing.
       if (it.status === 'replaced') return h('div.col.replaced', { hidden: true });
-      const [notice, steps] = kiroStep(it);
-      const total = steps.reduce((a, s) => a + (s.ms ?? 0), 0);
       const node = h(
         'div.col.turn',
         showWho ? who(it) : null,
-        notice,
-        steps.length
-          ? h(
-              'details.activity',
-              h(
-                'summary',
-                icon('right', 'i-sm'),
-                activityLabel(steps),
-                total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s in tools` : '',
-                runningNote(it, steps),
-              ),
-              stepTree(steps),
-            )
-          : null,
-        jobRows(it, steps),
+        ...activityParts(it),
         it.text || it.status === 'streaming' ? h('div.md') : null,
         // What the turn changed, ran and published, under its last reply (#132, #195), leading to Work.
         it.work ? workChip(it, ctx) : null,
@@ -581,10 +589,8 @@ function renderItem(it, prev, ctx) {
       );
       const box = node.querySelector(':scope > .md');
       if (box) {
-        box.innerHTML = agentMarkdown(it, ctx.threadId); // lint-allow dom: renderMarkdown() output, escaped.
-        markTerms(box, ctx.threadId);
-        if (it.status === 'streaming') box.append(h('span.caret', { 'aria-hidden': 'true' }));
-        else queueMicrotask(() => enhanceMarkdown(box));
+        paintAgentMarkdown(box, it, ctx.threadId);
+        if (it.status !== 'streaming') queueMicrotask(() => enhanceMarkdown(box));
       }
       return node;
     }
@@ -654,6 +660,8 @@ function renderItem(it, prev, ctx) {
       return denialBlock(it, ctx);
     case 'toolask':
       return toolAskBlock(it, ctx);
+    case 'allowedcall':
+      return allowedCallLine(it, ctx);
     case 'appsend':
       return renderAppSendCard(it, ctx);
     case 'moved':
@@ -702,90 +710,6 @@ function attChip(a) {
     href ? h('a', { href, style: { color: 'inherit' } }, label) : label,
     a.size ? h('span.dim', ` · ${fileSize(a.size)}`) : null,
   );
-}
-
-function systemLine(it, _ctx) {
-  switch (it.variant) {
-    case 'attached':
-      return h(
-        'div.col.sys-line',
-        icon('link', 'i-sm'),
-        h('b', `@${it.handle}`),
-        ' is a Claude Code session from ',
-        h('span.mono', it.folder ?? 'a terminal'),
-        '. What you type there shows up here too.',
-      );
-    case 'wake':
-      if (it.scheduled) return h('div.col.sys-line', icon('clock', 'i-sm'), h('b', `@${it.to}`), ' woke itself, as scheduled');
-      return h(
-        'div.col.sys-line',
-        icon('agent', 'i-sm'),
-        it.from === 'you'
-          ? ['You woke ', h('b', `@${it.to}`)]
-          : [
-              h('b', `@${it.from}`),
-              ' woke ',
-              h('b', `@${it.to}`),
-              // It had no session here, so it joined the conversation to answer (#110).
-              it.joined ? ' · joined the conversation' : '',
-              it.n ? ` · agent wake ${it.n} of ${it.limit ?? 3}` : '',
-            ],
-      );
-    case 'compaction': {
-      const sum = h(
-        'div.block',
-        { hidden: true, style: { marginTop: '8px' } },
-        h('div.block-head', h('span.title.grow', `What @${it.handle} kept`), h('span.kind', 'Compaction')),
-        h('div.block-body', h('div.md', { html: trusted(renderMarkdown(it.summary || 'No summary was kept.')) })),
-      );
-      const btn = h(
-        'button.btn.sm.ghost',
-        {
-          type: 'button',
-          'aria-expanded': 'false',
-          onclick: () => {
-            sum.hidden = !sum.hidden;
-            btn.textContent = sum.hidden ? 'Show summary' : 'Hide summary';
-            btn.setAttribute('aria-expanded', String(!sum.hidden));
-          },
-        },
-        'Show summary',
-      );
-      return h(
-        'div.col',
-        h(
-          'div.sys',
-          h(
-            'span.pill',
-            icon('archive', 'i-sm'),
-            'Context compacted · ',
-            h('b', `@${it.handle}`),
-            ` #${it.n} · kept ${Math.round(it.kept / 1000)}k of ${Math.round(it.total / 1000)}k tokens`,
-            btn,
-          ),
-        ),
-        sum,
-      );
-    }
-    case 'schedule':
-      return scheduledWakeLine(it);
-    case 'dataset':
-      // An agent loaded a dataset into the corpus (#47): searched only when a search names it.
-      return h(
-        'div.col.sys-line',
-        icon('books', 'i-sm'),
-        h('b', `@${it.handle}`),
-        ' loaded the dataset ',
-        h('span.mono', it.dataset),
-        ` · ${plural(it.records, 'record')}, searched only when named`,
-      );
-    case 'joined':
-      return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', `@${it.to}`), ' joined');
-    case 'left':
-      return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', `@${it.to}`), ' left (its session was deleted)');
-    default:
-      return h('div.col.sys-line', it.text ?? '');
-  }
 }
 
 /**
