@@ -85,7 +85,7 @@ Store and the read contract have no scenario phase; their specs and conformance 
   - a reviewer with blocking findings ends with one mention of developer, and one that approves mentions no one;
   - developer’s “ready for confirmation” mentions gemini with the head SHA, and gemini’s report mentions developer once.
 
-  Each is one reply wake, under the pair limit (#492). This replaces room rule 4’s “the person starts each round” for steps in flight.
+  Each is one reply wake. Since #541 (v0.44.7) there’s no pair limit, and a chain waits for the person only past 50 wakes. This replaces room rule 4’s “the person starts each round”.
 - **Every finding** names file, line and commit (room rule 3). gemini’s reports name the run folder and its cost.
 - **gemini, critic and gpt each work in their own worktree,** checked out at the SHAs developer names, never in `postbox-ctx` (room rule 2). Reviewers need theirs to run a PR’s specs on the baseline and on its head.
 - **Questions go to the person as choice or form blocks,** not `AskUserQuestion` (#521).

@@ -2,7 +2,7 @@
 
 The working documents for [#508](https://github.com/HJeon139/postbox/issues/508), gathered in one place so implementation steps can cite them by path. They were written and reviewed in the “rearchitecture-508” room in Agent research, 28 October 2026, by researcher, developer, critic, gemini and gpt, with the person approving each.
 
-**Where it stands** (29 October 2026): the design is at revision 11.2 (with “Store security”), and its decisions are recorded in `architecture.md` (“The store”, “The front end”, “A conversation is shared memory”, “Remote hosts”) and `intent.md` as decided next, each naming the step that builds it. Eleven steps are filed, #523 to #533. Wave 1 is built and in review: Harness (#523), Now (#524) and Store (#525). Nothing has merged yet; `execution-plan.md` gives the gates a step passes before it does.
+**Where it stands** (30 October 2026): the design is at revision 11.2 (with “Store security”), and its decisions are recorded in `architecture.md` (“The store”, “The front end”, “A conversation is shared memory”, “Remote hosts”) and `intent.md` as decided next, each naming the step that builds it. Eleven steps are filed, #523 to #533. Wave 1 is built, merged up to v0.44.7, and in review: Now (#537), Harness (#539) and Store (#525, PR next). #541 removed the pair limit, so AT-5 is met on `main` and room rule 4 is dropped; Harness’s `- chain-limit:` setting lets `delivery.md`’s phase 1 raise its card. `execution-plan.md` gives the gates a step passes before it merges.
 
 ```mermaid
 flowchart TD
