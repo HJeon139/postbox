@@ -3,11 +3,12 @@
 // 30 October comment and the review of #557. The judge here is a stand-in that answers as told; the real one is Haiku.
 
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import { actionWords } from '../server/request-floor.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { allowedQuote, REQUESTED_MAX } from '../server/write-intent.mjs';
@@ -51,7 +52,7 @@ async function setup({ judged = () => allow('open the PR') } = {}) {
   store.emit('project', { id: 'p1', name: 'P', folder });
   const p = rt.createPersona({ handle: 'now', backend: 'claude-code', permissionMode: 'auto', tools: ['shell'] });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
-  return { rt, store, t, p, next, prompts };
+  return { rt, store, t, p, next, prompts, folder };
 }
 const cards = (s) => s.store.items(s.t.id).filter((i) => i.kind === 'permission');
 const lines = (s) => s.store.items(s.t.id).filter((i) => i.kind === 'allowedcall');
@@ -150,6 +151,19 @@ test('#557’s review: a quote proves something only as whole words of the perso
   assert.equal(allowedQuote('{"decision":"allow"', push, 'git push'), null);
 });
 
+test('#557’s re-review: a quote after a no asks for the opposite, and a body the agent wrote ties it to nothing', () => {
+  const quoted = (quote, said, tool, input) => allowedQuote(JSON.stringify({ decision: 'allow', quote }), [said], actionWords(tool, input));
+  const create = { command: 'gh pr create --title "Open the PR" --body "Looks good to me."' };
+  assert.equal(quoted('open the PR', 'Don’t open the PR yet, just tell me what you’d change.', 'Bash', create), null);
+  assert.equal(quoted('never push', 'never push to main', 'Bash', { command: 'git push' }), null);
+  assert.equal(quoted('no push', 'no push today', 'Bash', { command: 'git push' }), null);
+  assert.equal(quoted('looks good', 'Thanks, looks good to me', 'Bash', { command: 'gh pr comment 5 --body "Looks good to me."' }), null);
+  assert.equal(quoted('looks good', 'Thanks, looks good to me', 'mcp__tally__add_ticket_comment', { number: 1, body: 'Looks good.' }), null);
+  // The same words, asked for, still count, wherever else the person said no.
+  assert.equal(quoted('open the PR', 'Not the README. Please open the PR now.', 'Bash', create), 'open the PR');
+  assert.equal(quoted('push it', 'Commit and push it.', 'Bash', { command: 'git push' }), 'push it');
+});
+
 test('the judge’s no, an error, a timeout and an answer it can’t read all get the card', async () => {
   for (const judged of [
     () => ({ text: '{"decision":"ask","quote":""}' }),
@@ -172,6 +186,16 @@ test('#557’s review: the person’s own ask rules, a subagent, Ask me mode and
     false,
   ]);
   assert.equal(s.prompts.length, 0);
+  // The re-review: an ask rule of the person’s that Postbox’s own rules also catch keeps its card.
+  for (const [rule, req] of [
+    ['Bash(gh pr create:*)', CREATE],
+    ['mcp__github__create_pull_request', { tool: 'mcp__github__create_pull_request', input: { title: 'x', body: 'y' } }],
+  ]) {
+    const own = await setup();
+    await writeFile(join(own.folder, '.claude', 'settings.json'), JSON.stringify({ permissions: { ask: [rule] } }));
+    assert.deepEqual(await asks(own, 'Open the PR.', [req]), [false], rule);
+    assert.equal(own.prompts.length, 0, rule);
+  }
   for (const off of [{ permissionMode: 'ask' }, { allowRequested: false }]) {
     const o = await setup();
     o.rt.updatePersona(o.p.id, off);
