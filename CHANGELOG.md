@@ -2,6 +2,23 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.0.0 (2026-10-30)
+
+### Breaking changes
+
+- **readme:** going back to a build before session.patch isn’t supported
+
+### Features
+
+- **agents:** a constant system prompt, and each turn opens with its request
+- **store:** a session's changes travel as session.patch, with only the fields that changed
+
+### Fixes
+
+- **agents:** folded lint has its own place in the turn, after the request and before the background
+- **uat:** readReceived applies session.patch, so the hostwakes checks see delivered wakes again
+- **rings:** a working ring moves as one overlay, so the page isn't repainted each frame
+
 ## 0.44.9 (2026-10-30)
 
 ### Fixes
