@@ -22,7 +22,7 @@ export { keepEvent };
  * reducer’s own rule (keepEvent, patchSession). When the server says resync (its stream no longer holds the events
  * after `last`), the sessions are read whole from /api/state and the stream resumes from its seq: the history has a
  * gap, and the messages those sessions hold then are kept.
- * @param {string} origin
+ * @param {string} origin @param {{ fetch?: typeof globalThis.fetch }} [o]  a fetch to use instead of the global, for tests
  * @returns {{
  *   events: () => any[],
  *   hostStates: () => { at: number, id: string, state: string|null }[],
@@ -30,7 +30,7 @@ export { keepEvent };
  *   close: () => void,
  * }}
  */
-export function followEvents(origin) {
+export function followEvents(origin, { fetch = globalThis.fetch } = {}) {
   /** @type {any[]} */
   const kept = [];
   /** @type {{ at: number, id: string, state: string|null }[]} */
@@ -73,15 +73,17 @@ export function followEvents(origin) {
       if (e?.type === 'session') noteMessages(sessions.get(e.data.id));
     } catch {}
   };
-  follow(origin, abort.signal, take, () => last);
+  follow(origin, abort.signal, take, () => last, fetch);
   return { events: () => kept, hostStates: () => hostStates, received: () => [...received.values()].sort((a, b) => a.at - b.at), close: () => abort.abort() };
 }
 
 /**
  * Reads the stream’s frames to `take` until `signal` aborts, reconnecting from the last event seen if the stream drops,
- * as the page does. @param {string} origin @param {AbortSignal} signal @param {(frame: string) => any} take @param {() => number} last
+ * as the page does.
+ * @param {string} origin @param {AbortSignal} signal @param {(frame: string) => any} take @param {() => number} last
+ * @param {typeof globalThis.fetch} fetch
  */
-async function follow(origin, signal, take, last) {
+async function follow(origin, signal, take, last, fetch) {
   while (!signal.aborted) {
     try {
       const res = await fetch(`${origin}/api/stream?since=${last()}`, { signal });

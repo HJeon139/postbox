@@ -4,7 +4,6 @@
 // the sessions whole from the state and resumes from its seq.
 
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
 import { test } from 'node:test';
 import { followEvents } from '../tools/uat/history.mjs';
 
@@ -12,22 +11,23 @@ const frame = (seq, type, data) => `${seq === null ? '' : `id: ${seq}\n`}event: 
 const msg = (other, text, at) => ({ dir: 'from', other, text, at });
 
 /**
- * A Postbox that streams the given frames (resync among them, as the server sends it when its stream no longer holds
- * the events asked for, and then goes on live) and answers /api/state with `state`.
+ * A Postbox behind an injected fetch, with no network (tests/guard.mjs): its stream sends the given frames (resync
+ * among them, as the server sends it when its stream no longer holds the events asked for, and then goes on live) and
+ * stays open; /api/state answers with `state`.
  */
-async function fakePostbox(frames, state) {
-  const server = createServer((req, res) => {
-    const url = new URL(req.url ?? '/', 'http://x');
-    if (url.pathname === '/api/state') {
-      res.writeHead(200, { 'content-type': 'application/json' });
-      return res.end(JSON.stringify({ seq: state.seq, state }));
-    }
-    res.writeHead(200, { 'content-type': 'text/event-stream' });
-    res.write(`retry: 1500\n\nevent: store\ndata: {"state":"running"}\n\n${frames.join('')}`);
-  });
-  await new Promise((ok) => server.listen(0, '127.0.0.1', () => ok(null)));
-  const { port } = /** @type {any} */ (server.address());
-  return { origin: `http://127.0.0.1:${port}`, close: () => new Promise((ok) => server.close(ok)) };
+function fakePostbox(frames, state) {
+  /** @type {typeof globalThis.fetch} */
+  const fetch = async (url, init) => {
+    if (new URL(String(url)).pathname === '/api/state') return new Response(JSON.stringify({ seq: state.seq, state }));
+    const body = new ReadableStream({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(`retry: 1500\n\nevent: store\ndata: {"state":"running"}\n\n${frames.join('')}`));
+        init?.signal?.addEventListener('abort', () => c.error(init.signal?.reason));
+      },
+    });
+    return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+  };
+  return { origin: 'http://postbox.test', fetch };
 }
 
 const until = async (pred, what) => {
@@ -43,7 +43,7 @@ test('followEvents keeps what each agent received from session and session.patch
       se_g: { id: 'se_g', handle: 'ghost', state: 'idle', agentMessages: [msg('critic', 'a session the stream never showed', 50)] },
     },
   };
-  const pb = await fakePostbox(
+  const pb = fakePostbox(
     [
       frame(10, 'session', { id: 'se_c', handle: 'critic', state: 'idle' }),
       frame(11, 'session.patch', { id: 'se_c', patch: { agentMessages: [msg('researcher', '@critic Ready for your task.', 1)] } }),
@@ -57,11 +57,8 @@ test('followEvents keeps what each agent received from session and session.patch
     ],
     state,
   );
-  const h = followEvents(pb.origin);
-  t.after(async () => {
-    h.close();
-    await pb.close();
-  });
+  const h = followEvents(pb.origin, { fetch: pb.fetch });
+  t.after(() => h.close());
   await until(() => h.received().length === 5, 'the messages from the stream and the state');
   assert.deepEqual(
     h.received().map((r) => [r.handle, r.from, r.text]),
