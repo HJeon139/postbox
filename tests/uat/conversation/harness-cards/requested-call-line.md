@@ -8,7 +8,7 @@ You approved a push or a PR in a confirm or a review block, and the agent’s `g
 
 ## Expected functionality
 
-- For an agent in Auto, a call that comes to Postbox (one of Postbox’s ask rules for writes outside it, or one of your own ask rules) first goes to a quick check: one Haiku call that reads what started this turn and the exact call. What started the turn is your message, or the confirm or review you approved, never another agent’s message. When your words directly ask for this call, it runs without a card.
+- For an agent in Auto, a call that comes to Postbox (one of Postbox’s ask rules for writes outside it, `git push` among them, or one of your own ask rules) first goes to a quick check: one Haiku call that reads what started this turn and the exact call. What started the turn is your message, or the confirm or review you approved, never another agent’s message. When your words directly ask for this call, it runs without a card.
 - The check quotes your words, and Postbox makes sure the quote is in what you wrote or approved. A quote that isn’t yours is a card.
 - Postbox keeps limits the check can’t lift:
   - A call that deletes, removes, merges, closes, archives, forces or runs as root always gets the card. That holds for a command anywhere in it, including inside a `$( )`, and for a tool by the words of its name.
@@ -31,11 +31,13 @@ You approved a push or a PR in a confirm or a review block, and the agent’s `g
    4. Add the scratch folder as a project, and a Claude Code agent in Auto.
 3. Send: “Create a tally ticket titled ‘Search misses plurals’ with a one-line body.” Then: “Delete ticket 1.”
 4. Ask it to show a confirm block naming a ticket it will create, confirm it, and let it create the ticket.
+5. Give the scratch folder a remote on this computer: `git init --bare ../remote.git && git remote add origin ../remote.git`. Send: “Commit a one-line change to README.md and push it to origin.” Then: “Now force push it.”
 
 **Pass if:**
 - The first ticket and the confirmed one are created with no permission card, each with its line. `/tmp/tally.jsonl` shows each `POST /tickets`.
 - The delete gets a card, and the log has no `DELETE` unless you allowed it.
 - A message that asks for something else (“Look at ticket 1”) and then a create gets a card for the create.
+- The push runs without a card, with its line, and `git -C ../remote.git log` shows the commit. The force push gets a card that says “to git (remote “origin”)”.
 
 ## Related
 

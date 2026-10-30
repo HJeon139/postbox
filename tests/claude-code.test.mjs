@@ -625,13 +625,13 @@ test('#66: a recorded subagent’s permission prompt is named by its call, and t
 });
 
 test('#66: a conversation’s rules and added folders reach both backends', () => {
-  const rules = { allow: ['Bash(npm test:*)'], ask: ['Bash(git push:*)'], deny: ['WebFetch'] };
+  const rules = { allow: ['Bash(npm test:*)'], ask: ['Bash(npm publish:*)'], deny: ['WebFetch'] };
   const persona = { model: 'mock', tools: ['shell', 'web.fetch', 'agents.outside'], canPublish: true };
   const args = claudeArgs({ persona, sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g', allowOnce: ['Bash(rm a)'], rules, addDirs: ['/data'] });
   const allowed = args.indexOf('--allowedTools');
   assert.deepEqual(args.slice(allowed, allowed + 4), ['--allowedTools', 'mcp__postbox', 'Bash(rm a)', 'Bash(npm test:*)']);
   assert.deepEqual(args.slice(args.indexOf('--disallowedTools'), args.indexOf('--disallowedTools') + 2), ['--disallowedTools', 'WebFetch']);
-  assert.deepEqual(JSON.parse(args[args.indexOf('--settings') + 1]).permissions, { ask: [...WRITE_TOOLS, 'Bash(git push:*)'] });
+  assert.deepEqual(JSON.parse(args[args.indexOf('--settings') + 1]).permissions, { ask: [...WRITE_TOOLS, 'Bash(npm publish:*)'] });
   assert.deepEqual(args.slice(args.indexOf('--add-dir'), args.indexOf('--add-dir') + 2), ['--add-dir', '/data']);
   const opts = sdkOptions({
     persona,
@@ -646,7 +646,7 @@ test('#66: a conversation’s rules and added folders reach both backends', () =
   });
   assert.deepEqual(opts.allowedTools, ['Bash(npm test:*)']);
   assert.deepEqual(opts.disallowedTools, ['WebFetch']);
-  assert.deepEqual(opts.settings.permissions, { ask: [...WRITE_TOOLS, 'Bash(git push:*)'] });
+  assert.deepEqual(opts.settings.permissions, { ask: [...WRITE_TOOLS, 'Bash(npm publish:*)'] });
   assert.deepEqual(opts.additionalDirectories, ['/data']);
   // No conversation rules: only the asks for writes outside Postbox (#112), and none in bypass.
   const plain = claudeArgs({ persona, sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g' });

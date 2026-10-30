@@ -190,7 +190,9 @@ export const isPublishingTool = (name) => RULES.some((r) => r.test(String(name))
  * - update only on its own, after a prefix (issue_update, notion-update-page, notionUpdatePage), at - (update-page),
  *   or with a named target (update_file, updateIssue), since Postbox’s own update_block and update_app must never
  *   match: ask beats the allow rule for mcp__postbox.
- * - gh commands that file or change issues, pull requests and releases.
+ * - gh commands that file or change issues, pull requests and releases;
+ * - git push, which sends commits outside. Without it, auto mode’s classifier judged each push, and refused one the
+ *   person had just approved (#296); with it, each comes to Postbox, where their request can let it through.
  * tests/claude-code.test.mjs checks that none matches a Postbox tool, and which real tool names they catch.
  */
 const WRITE_VERBS = ['write', 'create', 'edit', 'upload', 'append', 'insert', 'delete', 'remove', 'patch', 'move', 'rename', 'copy', 'add', 'put', 'set'];
@@ -233,6 +235,7 @@ export const WRITE_TOOLS = [
   'mcp__*__*Update*',
   ...UPDATE_TARGETS.flatMap((t) => [`mcp__*__update_${t}`, `mcp__*__update${t.split('_').map(word).join('')}`]),
   ...['issue create', 'issue comment', 'issue edit', 'pr create', 'pr comment', 'pr edit', 'pr review', 'release create'].map((c) => `Bash(gh ${c}:*)`),
+  'Bash(git push:*)',
 ];
 
 /** The ask rules for writes outside Postbox, for a persona’s turn: none in bypass, which runs everything. */

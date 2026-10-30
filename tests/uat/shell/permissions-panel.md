@@ -17,7 +17,7 @@ An agent blocked by a rule shouldn’t send you to a terminal to run `/permissio
   - this conversation;
   - the persona’s Tools: an unticked tool’s rules, with a button to tick it;
   - “Can publish outside Postbox” being off;
-  - Postbox’s check on writes outside it: ask rules for tools and gh commands that create, change or delete something outside Postbox, listed as one row that says what lets a call through (Always allow on its card, or “Can publish” for the tools that covers). None in Run everything ([#112](https://github.com/HJeon139/postbox/issues/112)).
+  - Postbox’s check on writes outside it: ask rules for tools and gh commands that create, change or delete something outside Postbox, and git push, listed as one row that says what lets a call through (Always allow on its card, or “Can publish” for the tools that covers). None in Run everything ([#112](https://github.com/HJeon139/postbox/issues/112)).
   - Under it, “Calls you asked for run without a card”, on by default: in Auto mode, a call that this turn’s message or the block you approved asks for runs without a card, and leaves a line in the conversation ([#296](https://github.com/HJeon139/postbox/issues/296)). Off, every call that comes to Postbox asks.
 - A settings file that isn’t valid JSON is named, and left as it is.
 - **Add a rule:** allow, ask or deny; a tool (Bash, Read, Edit, WebFetch, WebSearch, Agent, or an MCP server or tool); a pattern, with examples for that tool; and where to save it (this folder by default, this conversation only, or your user settings). The rule shows as you type it. Remove takes a rule out of a source Postbox may change.

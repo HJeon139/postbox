@@ -1,7 +1,7 @@
 // Calls the person asked for (#296), driven with real clicks: the person confirms a block that names a PR, the
 // agent’s gh pr create then runs without a card and leaves a line, Stop on that line brings the card back for the next
-// call, and the Permissions panel turns it off. With a scripted Claude Code agent (no real turns), and a judge that
-// answers as the real one (Haiku) would.
+// call, the Permissions panel turns it off, and then a push waits on a card that names its remote. With a scripted
+// Claude Code agent (no real turns), and a judge that answers as the real one (Haiku) would.
 
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -62,6 +62,8 @@ const permissionCards = () => app.store.items(thread.id).filter((i) => i.kind ==
 
 test('#296 a call the confirmed block asks for runs without a card; Stop brings the card back; the panel turns it off', async ({ page }) => {
   const { rt } = app;
+  // On, as a new persona has it, whatever the other test left.
+  rt.updatePersona(persona.id, { allowRequested: true });
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await synced(page, app);
   const replies = [];
@@ -108,4 +110,24 @@ test('#296 a call the confirmed block asks for runs without a card; Stop brings 
     await expect.poll(() => app.store.state.personas[persona.id].allowRequested).toBe(false);
     await expect(page.getByRole('checkbox', { name: 'Calls you asked for run without a card' })).toHaveAttribute('aria-checked', 'false');
   });
+});
+
+test('#296 with the setting off, a push the person asked for waits on a card that names its remote', async ({ page }) => {
+  const { rt } = app;
+  rt.updatePersona(persona.id, { allowRequested: false });
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await synced(page, app);
+  const before = permissionCards().length;
+  const replies = [];
+  script.push(async (ctx) => {
+    replies.push(await ctx.askPermission(ask('git push -u origin feat/now')));
+  });
+  rt.sendMessage(thread.id, { text: 'Push it to origin.' });
+  const card = page.locator('.transcript .block', { hasText: 'run git push -u origin feat/now' });
+  await expect(card).toContainText('This writes outside Postbox, to git (remote “origin”). Nothing is created, sent or changed until you allow it.');
+  await synced(page, app);
+  await card.locator('.block-foot').getByRole('button', { name: 'Allow', exact: true }).click();
+  await expect.poll(() => replies.length, { message: 'the answer to reach the agent' }).toBe(1);
+  expect.soft(permissionCards()).toHaveLength(before + 1);
+  await idle();
 });

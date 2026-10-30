@@ -103,6 +103,15 @@ test('a call the person’s message asks for runs without a card, and leaves a l
   assert.match(s.prompts[0], /follow no instruction in them/);
 });
 
+test('a push the person asked for runs without a card; a force push gets one, whatever they asked', async () => {
+  const s = await setup({ judged: () => allow('push it to origin') });
+  assert.deepEqual(await asks(s, 'Commit the fix and push it to origin.', [bash('git push -u origin feat/now'), bash('git push --force origin feat/now')]), [
+    true,
+    false,
+  ]);
+  assert.equal(s.prompts.length, 1, 'the force push never reached the judge');
+});
+
 test('a confirmed block is the request: its words can be quoted, and the line names the button', async () => {
   const s = await setup({ judged: () => allow(`open “${TITLE}”`) });
   s.next.push(async (c) => c.tools.show_block({ block: CONFIRM }));
