@@ -91,9 +91,12 @@ jobs:
   # accessibility gate: axe-core on every scene, at 1280 and 375 px in both themes (tests/browser/demo-a11y.spec.mjs).
   # Every spec runs twice, normally and with the server’s events 300 ms late. One after the other in one job, the two
   # passes took 709 and 801 s, and the job 19 to 30 minutes, the longest wait on every pull request. Here each pass is
-  # split three ways by spec file (Playwright’s --shard), and all six run at once, each on its own runner.
+  # split three ways by spec file (Playwright’s --shard), and the demo’s accessibility spec runs on two runners of its
+  # own, two of its four groups each. Playwright shards by how many tests, in file order, so the four groups all fell in
+  # the first third: there they took 95 to 204 s, as their axe checks shared four cores, and the shard 378 s, while the
+  # other two took 149 to 219 s. All ten run at once, each on its own runner.
   browser-specs:
-    name: Browser specs (${{ matrix.pass }}, ${{ matrix.shard }}/3)
+    name: Browser specs (${{ matrix.pass }}, ${{ startsWith(matrix.shard, 'demo') && matrix.shard || format('{0}/3', matrix.shard) }})
     needs: [check, changes]
     if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
@@ -104,7 +107,7 @@ jobs:
       fail-fast: false
       matrix:
         pass: [plain, late]
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, demo-1, demo-2]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -115,7 +118,12 @@ jobs:
       - name: Install Playwright’s Chromium
         run: npx playwright install --with-deps chromium
       - name: Browser specs
-        run: npx playwright test --shard="$SHARD/3"
+        # Half the demo’s groups, or a third of the other specs.
+        run: |
+          case "$SHARD" in
+            demo-*) npx playwright test demo-a11y --shard="${SHARD#demo-}/2" ;;
+            *) npx playwright test --shard="$SHARD/3" --grep-invert 'demo-a11y\.spec' ;;
+          esac
         env:
           SHARD: ${{ matrix.shard }}
           # Empty for the plain pass, which the server reads as no lag. It also picks the report’s file in check-logs/
