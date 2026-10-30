@@ -60,7 +60,7 @@ import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
 import { runTiming } from './uat/timing.mjs';
 import { gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
-import { sendThenStop, settle as settleTurns, stopThroughPage, WAIT_MAX_S, watchBudget } from './uat/turns.mjs';
+import { namedWait, sendThenStop, settle as settleTurns, stopThroughPage, testerWait, watchBudget } from './uat/turns.mjs';
 import { withoutPreset } from './uat/verdicts.mjs';
 import { makeWorkspace } from './uat/workspace.mjs';
 
@@ -512,7 +512,8 @@ async function main() {
           const mine = (await d.items()).filter((x) => x.where === 'conversation' && x.attachments > 0).at(-1);
           if (mine) facts.probes.attachments.push({ key: mine.key, images: mine.images, attachments: mine.attachments });
         } else if (a.type === 'fault') actionResult = await hostFault(a);
-        else if (a.type === 'wait') await timing.time('waits', () => sleep(Math.min(WAIT_MAX_S, a.seconds ?? 30) * 1000));
+        else if (a.type === 'wait')
+          actionResult = await timing.time('waits', () => testerWait(a, { named: namedWait(scenario.phases[phase].text), api, threadsUnderTest }));
         else if (a.type === 'stop') await d.stopAll();
         // Stop or Send now while the turn this action started is running (#126).
         if (a.interrupt && ['send', 'thread', 'act', 'review'].includes(a.type)) {

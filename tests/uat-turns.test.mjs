@@ -4,13 +4,15 @@
 // at work), and the runner waited for the turn to end three minutes later instead of showing the question to the
 // tester, which then reported that Stop did nothing. node:test’s mock timers stand in for the clock.
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { stopAskText } from '../server/runtime.mjs';
 import { JOBS_ANSWERS } from '../tools/uat/driver.mjs';
+import { parseScenario } from '../tools/uat/scenario.mjs';
 import * as turns from '../tools/uat/turns.mjs';
 
 // Read from the module, so the test runs (and fails) against the code from before the fix too.
-const { sendThenStop, settle, STOP_AFTER_MAX_S, BLOCK_GRACE_MS } = /** @type {any} */ (turns);
+const { sendThenStop, settle, STOP_AFTER_MAX_S, BLOCK_GRACE_MS, WAIT_MAX_S, TESTER_WAIT_S, namedWait, testerWait } = /** @type {any} */ (turns);
 
 /** Runs `work` while the fake clock moves on a quarter second at a time, until it settles or 20 fake minutes pass. */
 async function onFakeClock(t, work) {
@@ -172,4 +174,45 @@ test('the wait after the last step still lets the turn finish: nobody is left to
     return Date.now();
   });
   assert.ok(took >= 30_000, `waited until the turn ended (${took} ms)`);
+});
+
+// The tester’s wait action (testerWait). In the delivery run of 30 October the tester waited 20 s while three agents
+// worked; the next step waits on their turns anyway, so a wait past them only holds the run.
+const phaseWaits = (name) => parseScenario(readFileSync(new URL(`uat/e2e/scenarios/${name}.md`, import.meta.url), 'utf8')).phases.map((p) => namedWait(p.text));
+const room = () => ['th_main'];
+
+test('a phase’s own waits are read from its text, and send_then_stop’s delay isn’t one', () => {
+  assert.deepEqual(phaseWaits('hostwakes'), [0, 180, 120]);
+  assert.deepEqual(phaseWaits('remotehosts'), [70, 0, 0]);
+  assert.equal(phaseWaits('p0').at(-1), 60, 'twice, a minute apart');
+  assert.deepEqual(phaseWaits('codex'), [0, 0, 0, 0]);
+  assert.equal(namedWait('Leave it open, then wait 10 minutes.'), WAIT_MAX_S);
+});
+
+test('a wait the tester chooses runs at most TESTER_WAIT_S while agents work, and says so', async (t) => {
+  const r = await onFakeClock(t, async () => {
+    const said = await testerWait({ seconds: 60 }, { named: 0, api: fakeApi({ askAt: null }), threadsUnderTest: room });
+    return { said, took: Date.now() };
+  });
+  assert.equal(TESTER_WAIT_S, 30);
+  assert.ok(r.took >= 30_000 && r.took < 31_000, `waited ${r.took} ms`);
+  assert.equal(r.said, 'Waited 30 s. You asked for 60 s; the run waits at most 30 s unless the phase asks for longer.');
+});
+
+test('a wait the tester chooses ends once no agent is working', async (t) => {
+  const r = await onFakeClock(t, async () => {
+    const said = await testerWait({ seconds: 20 }, { named: 0, api: fakeApi({ askAt: null, endAt: 8000 }), threadsUnderTest: room });
+    return { said, took: Date.now() };
+  });
+  assert.ok(r.took >= 8000 && r.took < 12_000, `ended at ${r.took} ms, not 20 s`);
+  assert.match(r.said, /^Waited \d+ s of 20: no agent was working, so the wait ended early\.$/);
+});
+
+test('a wait the phase asks for runs in full, though nobody works', async (t) => {
+  const r = await onFakeClock(t, async () => {
+    const said = await testerWait({ seconds: 180 }, { named: 180, api: fakeApi({ askAt: null, endAt: 0 }), threadsUnderTest: room });
+    return { said, took: Date.now() };
+  });
+  assert.ok(r.took >= 180_000 && r.took < 181_000, `waited ${r.took} ms`);
+  assert.equal(r.said, '');
 });
