@@ -4,7 +4,7 @@
 import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
-import { activityParts } from './activity-paint.mjs';
+import { activityParts, paintActivity, stepsOnly } from './activity-paint.mjs';
 import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
@@ -323,7 +323,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       paintWorking();
       grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
-      if (!d.reaction) rerender(d.id);
+      // A step changes only the reply’s activity list (#573); anything else draws the reply again.
+      const it = stepsOnly(d) ? itemsOf(threadId).find((x) => x.id === d.id) : null;
+      if (!d.reaction && !(it && paintActivity(nodes.get(d.id), it))) rerender(d.id);
     } else if (ch.type === 'item.text' && d.threadId === threadId) {
       pending.add(d.id);
       if (!raf)
