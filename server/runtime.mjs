@@ -74,6 +74,17 @@ import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere,
 import { RemoteTurns } from './remote/turns.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
+import {
+  armWake,
+  cancelWakeSchedule,
+  dropScheduledWake,
+  prepareScheduledRetry,
+  rearmWakes,
+  recordedTools,
+  recordScheduledTool,
+  scheduleWake,
+  settleScheduledWake,
+} from './scheduled-wakes.mjs';
 import { sessionPatch } from './session-patch.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
@@ -576,9 +587,10 @@ export class Runtime {
    */
   deliver(sessionId, message, { summarizeTo = null, threadId = null } = {}) {
     const se = this.session(sessionId);
+    if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
+    message = prepareScheduledRetry(this, message, se.threadId);
     // As it was asked, for Retry (askedOf).
     const asked = { message, summarizeTo, threadId };
-    if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
     if (this.turns.has(sessionId)) {
       // Agent-to-agent messages and events wait for the current turn to end.
       const t = this.turns.get(sessionId);
@@ -799,7 +811,7 @@ export class Runtime {
       // what it returned ({ id, isError, text, result: the tool’s own record, vcsCwd }); a background task’s end
       // ({ toolUseId, status, summary, outputFile }); and the process’s running spend ({ key, costUsd, tokens }).
       toolUse(u) {
-        if (live()) rt.ledger.toolUse(turn, u);
+        if (live()) recordScheduledTool(rt, turn, u);
       },
       toolResult(r) {
         if (live()) rt.ledger.toolResult(turn, r);
@@ -824,9 +836,8 @@ export class Runtime {
         rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
         if (se().state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
       },
-      // who: the subagent that took the step, and parent: the step that started it, so the list nests it (#73); detail:
-      // why it failed, the whole thought or narration, or what a subagent returned; kind: 'thought', 'said' (a
-      // subagent’s narration) or 'agent' (a subagent’s own step); job: the id of the background job it started (#129).
+      // who: the subagent that took the step; parent nests it under its starting step; detail holds an error,
+      // thought, narration or subagent result; kind names non-tool work; job names its background job (#73, #129).
       activity({
         id,
         label,
@@ -859,6 +870,7 @@ export class Runtime {
         const s = se();
         // A thought or a subagent’s narration is in the list, but it isn’t a tool call.
         if (kind === 'thought' || kind === 'said') return;
+        if (state === 'running' && !who) recordScheduledTool(rt, turn, { id, name: label }, false);
         const calls = [{ name: step.label, state: step.state, ms: step.ms }, ...s.toolCalls.filter((c) => c.name !== step.label)].slice(0, 5);
         // A subagent’s step is its own: it moves its arc, not the agent’s state or step (#189).
         const own = state === 'running' && !(i >= 0 ? turn.steps[i] : step).who;
@@ -971,6 +983,7 @@ export class Runtime {
     this.settleSubagentSteps(turn);
     // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
     if (turn.remote) err = this.remote.ended(turn, err);
+    settleScheduledWake(this, turn, err);
     this.endWork(turn, !err ? 'done' : err.name === 'AbortError' ? 'stopped' : 'failed');
     for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
     // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
@@ -1182,6 +1195,8 @@ export class Runtime {
     turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
     turn.closed = true;
     this.turns.delete(sessionId);
+    // Your Stop ends a scheduled wake’s turn for good, so a restart doesn’t run it again; a shutdown leaves it due (#466).
+    if (by !== 'shutdown') settleScheduledWake(this, turn, { name: 'AbortError' });
     settleStoppedSteps(this, turn);
     this.endWork(turn, 'stopped');
     // A tool call waiting for your permission is answered no, so the agent’s process can stop too.
@@ -1219,6 +1234,8 @@ export class Runtime {
     this.clearSummaryPending(turn.threadId);
     for (const p of turn.pending) {
       if (p.summarizeTo && p.threadId) this.clearSummaryPending(p.threadId);
+      // A shutdown leaves it due, for the restart to bring back (rearmWakes), as it does a scheduled turn of its own.
+      if (by !== 'shutdown') dropScheduledWake(this, p.message);
       if (se) queue.rememberStoppedMessages(this, sessionId, p.message);
     }
     // You stopped it: wakes queued for it go too, and their agents are told (#228). Send now keeps them (silent).
@@ -2858,50 +2875,20 @@ export class Runtime {
 
   // ── Scheduled wake-ups ─────────────────────────────────────────────────────────────
 
-  schedule(sessionId, { inMs, note }) {
-    const se = this.session(sessionId);
-    const at = Date.now() + Math.max(1000, Math.min(inMs, 7 * 24 * 3600 * 1000));
-    const sc = { id: newId('sc'), sessionId, threadId: se.threadId, handle: se.handle, at, note: String(note ?? '').slice(0, 200) };
-    this.store.emit('schedule', sc);
-    const it = this.addItem(se.threadId, { kind: 'system', variant: 'schedule', scheduleId: sc.id, handle: se.handle, at, note: sc.note, status: 'pending' });
-    sc.itemId = it.id;
-    this.store.emit('schedule', sc);
-    this.arm(sc);
-    return sc;
+  schedule(sessionId, options) {
+    return scheduleWake(this, sessionId, options);
   }
 
   arm(sc) {
-    clearTimeout(this.timers.get(sc.id));
-    this.timers.set(
-      sc.id,
-      setTimeout(
-        () =>
-          whenWritable(this, () => {
-            this.timers.delete(sc.id);
-            if (!this.s.schedules[sc.id]) return;
-            this.store.emit('schedule', { id: sc.id, removed: true });
-            if (sc.itemId) this.patchItem(sc.threadId, sc.itemId, { status: 'done' });
-            // An archived agent isn’t woken: deliver() would refuse it, here outside any request (#101).
-            if (!this.s.sessions[sc.sessionId] || this.s.sessions[sc.sessionId].archived) return;
-            this.addItem(sc.threadId, { kind: 'system', variant: 'wake', from: sc.handle, to: sc.handle, scheduled: true });
-            this.deliver(sc.sessionId, { kind: 'wake', note: sc.note });
-          }),
-        Math.max(0, sc.at - Date.now()),
-      ).unref(),
-    );
+    return armWake(this, sc);
   }
 
   cancelSchedule(scheduleId) {
-    const sc = this.s.schedules[scheduleId];
-    if (!sc) throw httpError(404, 'That wake-up already happened or was canceled.');
-    clearTimeout(this.timers.get(scheduleId));
-    this.timers.delete(scheduleId);
-    this.store.emit('schedule', { id: scheduleId, removed: true });
-    if (sc.itemId) this.patchItem(sc.threadId, sc.itemId, { status: 'canceled' });
+    return cancelWakeSchedule(this, scheduleId);
   }
 
   rearmSchedules() {
-    for (const sc of Object.values(this.s.schedules)) this.arm(sc);
+    return rearmWakes(this);
   }
 
   // ── Apps (server/apps.mjs) ─────────────────────────────────────────────────────────
@@ -2975,7 +2962,7 @@ export class Runtime {
     };
     // Where the turn speaks: its session’s thread, or the side thread it answers in (#110).
     const threadId = () => turn?.threadId ?? se().threadId;
-    return {
+    return recordedTools(rt, turn, {
       /** @param {{ block: any }} args @param {{ files?: AppFile[] }} [given]  data files Postbox read for show_app (#54) */
       show_block({ block }, given = {}) {
         // An outcome reports what came of an answer (#94). On a new block it would show under whatever the person
@@ -3149,7 +3136,7 @@ export class Runtime {
       corpus_search(args) {
         return { ok: true, results: hostTool(rt, 'corpus.search', args) };
       },
-    };
+    });
   }
 }
 
