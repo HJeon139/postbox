@@ -523,7 +523,7 @@ test('a topic thread’s first turn forks the Claude Code session at its checkpo
     .filter((e) => e.type === 'assistant')
     .at(-1).uuid;
   assert.deepEqual(marks, [{ claudeSessionId: fixture('block')[0].session_id, uuid: last }]);
-  assert.match(runs[0].child.stdin.read().toString(), /^\[Postbox\] This is a topic thread\.\n\nWhy\?/);
+  assert.match(runs[0].child.stdin.read().toString(), /^Why\?\n\n[\s\S]*\[Postbox\] Background for this turn[\s\S]*\[Postbox\] This is a topic thread\./);
 });
 
 test('fork points: a checkpoint, else the latest point of the session it forks', () => {
@@ -726,7 +726,7 @@ test('a topic thread whose branch point is gone forks from the latest point once
   assert.ok(!a.includes('--resume-session-at') && !a.includes('msg-9'), 'the second run starts at the latest point');
   assert.match(
     runs[1].child.stdin.read().toString(),
-    /^\[Postbox\] This thread couldn’t start at the message it branched from, so it starts from the conversation’s latest message\.\n\n\[Postbox\] This is a topic thread\.\n\nWhy\?/,
+    /^\[Postbox\] This thread couldn’t start at the message it branched from, so it starts from the conversation’s latest message\.\n\nWhy\?\n\n[\s\S]*\[Postbox\] This is a topic thread\./,
   );
   const own = fixture('block')[0].session_id;
   assert.equal(ctx.calls.saved.claudeSessionId, own, 'the fallback fork’s own id');
@@ -799,7 +799,7 @@ test('the Agent SDK falls back the same way, and never resumes the failed fork',
     assert.deepEqual([o.resume, o.forkSession, o.resumeSessionAt], ['conv', true, undefined], 'not the failed fork, and not the bad uuid');
     assert.match(
       sdk.calls[1].prompt,
-      /^\[Postbox\] This thread couldn’t start at the message it branched from, so it starts from the conversation’s latest message\.\n\nWhy\?$/,
+      /^\[Postbox\] This thread couldn’t start at the message it branched from, so it starts from the conversation’s latest message\.\n\nWhy\?\n\n\[Postbox\] What’s current in this room:\n\n/,
     );
     const own = fixture('block')[0].session_id;
     assert.equal(ctx.calls.saved.sdkSessionId, own);

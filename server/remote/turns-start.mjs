@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
 import { offersBring } from '../bring.mjs';
 import { asksByPrompt } from '../permission-prompt.mjs';
+import { noteScheduledTurn } from '../scheduled-wakes.mjs';
 import { wokeOf } from '../turn-marks.mjs';
 import { carryAttachments } from './attachments.mjs';
 import { listen, needHost, releaseHost } from './turns-need.mjs';
@@ -202,6 +203,8 @@ function allocate(rts, live, folder) {
       origin: live.origin,
     },
   });
+  // A scheduled wake’s own turn, which a restart leaves to this host turn (rearmWakes).
+  noteScheduledTurn(rts.rt, live.rt);
   sendSnapshot(rts, live, id);
   return id;
 }

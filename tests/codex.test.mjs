@@ -209,7 +209,11 @@ test('a turn starts and saves a Codex thread and supplies Postbox instructions',
   assert.equal(calls.saved.codexThreadId, 'thr_fake');
   assert.deepEqual(calls.checkpoints, [{ turnId: 'turn_fake', threadId: 'thr_fake' }]);
   const turn = seen.find((x) => x.method === 'turn/start');
-  assert.equal(turn.params.input[0].text, 'Say hello.');
+  assert.match(
+    turn.params.input[0].text,
+    /^Say hello\.\n\n\[Postbox\] What’s current in this room:\n\n/,
+    'the request, then what changes during a room (#515)',
+  );
   assert.match(turn.params.settings.developer_instructions, /Postbox/);
   assert.equal(turn.params.sandboxPolicy.type, 'workspaceWrite');
 });

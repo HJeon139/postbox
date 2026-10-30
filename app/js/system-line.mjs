@@ -3,9 +3,8 @@
 // joined or left. Moved out of app/js/thread.mjs.
 
 import { renderMarkdown } from '/shared/markdown.mjs';
-import { api } from './client.mjs';
-import { h, icon, plural, timeOf, trusted } from './dom.mjs';
-import { toast } from './ui.mjs';
+import { h, icon, plural, trusted } from './dom.mjs';
+import { scheduledWakeLine } from './scheduled-wake-line.mjs';
 
 export function systemLine(it, _ctx) {
   switch (it.variant) {
@@ -71,30 +70,7 @@ export function systemLine(it, _ctx) {
       );
     }
     case 'schedule':
-      return h(
-        'div.col.sys-line',
-        icon('clock', 'i-sm'),
-        h('b', `@${it.handle}`),
-        it.status === 'pending'
-          ? ` will wake itself at ${timeOf(it.at)}`
-          : it.status === 'canceled'
-            ? ' won’t wake itself (canceled)'
-            : ` woke itself at ${timeOf(it.at)}`,
-        it.note ? ` · “${it.note}”` : '',
-        it.status === 'pending'
-          ? [
-              ' · ',
-              h(
-                'button.btn.sm.ghost',
-                {
-                  type: 'button',
-                  onclick: () => api(`/api/schedules/${it.scheduleId}/cancel`, {}).catch((e) => toast({ title: 'Couldn’t cancel', text: e.message })),
-                },
-                'Cancel',
-              ),
-            ]
-          : null,
-      );
+      return scheduledWakeLine(it);
     case 'dataset':
       // An agent loaded a dataset into the corpus (#47): searched only when a search names it.
       return h(

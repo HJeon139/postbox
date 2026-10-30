@@ -127,7 +127,7 @@ test('#504 failed and stopped topic turns without text keep their prompt marker'
   assert.deepEqual(THREAD_CHECKS[0].run({ state: stopped.store.state, threads: [stopped.t.id, stopped.topic.id] }), []);
 });
 
-test('#504 a turn in the room keeps the existing context order', async () => {
+test('#504 #508 a turn in the room leads with its request, its catch-up labeled as background after it', async () => {
   const f = setup();
   f.rt.addItem(f.t.id, { kind: 'user', text: 'Earlier room context.' });
   f.rt.sendMessage(f.t.id, { text: '@beta answer in the room.' });
@@ -136,6 +136,9 @@ test('#504 a turn in the room keeps the existing context order', async () => {
   const call = f.adapter.calls.at(-1);
   assert.equal(call.thread, f.t.id);
   assert.equal(call.message.taskContext, undefined);
-  assert.match(formatMessage(call.message), /^\[Postbox\] What happened in this room since your last turn:/);
+  // #508 (DL-4) puts the request first in a room turn too; the catch-up follows as background.
+  const prompt = formatMessage(call.message);
+  assert.match(prompt, /^@beta answer in the room\.\n\n\[Postbox\] Background for this turn:/);
+  assert.ok(prompt.indexOf('[Postbox] What happened in this room since your last turn:') > prompt.indexOf('[Postbox] Background for this turn:'));
   assert.equal(f.store.items(f.t.id).findLast((item) => item.kind === 'agent')?.promptFirst, 'room');
 });

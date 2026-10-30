@@ -12,6 +12,12 @@ export const WAIT_MAX_S = 300;
  */
 export const STOP_AFTER_MAX_S = WAIT_MAX_S;
 /**
+ * The longest a wait the tester chooses runs, unless its phase asks for a longer one in so many words (namedWait). The
+ * tester waits while an agent works, and the next step waits on that agent’s turn anyway, so a longer wait only holds
+ * the run: in the runs of 28 to 30 October it chose 20 and 30 s, and the one 60 s wait was its phase’s “a minute apart”.
+ */
+export const TESTER_WAIT_S = 30;
+/**
  * How long a block that asks may sit while its agent still works before the wait hands it to the tester. In the
  * recorded runs of 24 October, the turns that showed one ended 2.5 to 4.3 s after it (12 blocks in 6 runs), most on a
  * closing line: handing those back at once would show the tester a reply still being written. A turn still at work
@@ -116,6 +122,63 @@ export async function sendThenStop(d, a, { step, probes, log = () => {}, onWait 
     : `Pressed Stop on the active reply after ${seconds} s${clamped}. ${ask ? `Postbox asks: “${ask}” Answer it with jobs.` : 'Postbox didn’t ask about background jobs.'}`;
   log(`send_then_stop: ${said}`);
   return said;
+}
+
+/** Numbers a phase spells out, as in “in two minutes”. */
+const WORDS = ['a', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+const NUM = `(\\d+|an?|${WORDS.slice(1).join('|')})`;
+const UNIT = '(seconds?|minutes?)';
+const units = (n, unit) => {
+  const w = n.toLowerCase();
+  return (w === 'an' ? 1 : WORDS.includes(w) ? Math.max(1, WORDS.indexOf(w)) : Number(n)) * (/^min/i.test(unit) ? 60 : 1);
+};
+// “a wait of 180 seconds”, “wait 70 seconds”, “wait more than a minute”; “a minute apart”; “in two minutes”.
+const NAMED = [
+  new RegExp(`\\bwait(?: of| for)?(?: more than)? ${NUM} ${UNIT}\\b`, 'gi'),
+  new RegExp(`\\b${NUM} ${UNIT} apart\\b`, 'gi'),
+  new RegExp(`\\bin ${NUM} ${UNIT}\\b`, 'gi'),
+];
+
+/**
+ * The longest wait a phase’s text asks for in so many words, in seconds, or 0: “a wait of 180 seconds”, “wait 70
+ * seconds”, “wait more than a minute”, “twice, a minute apart”, or something due “in two minutes”, such as a scheduled
+ * wake (delivery.md’s phase 6), which only a wait can let come due. Numbers up to ten may be words.
+ * @param {string} text
+ */
+export function namedWait(text) {
+  const asked = NAMED.flatMap((re) => [...String(text ?? '').matchAll(re)]);
+  return Math.min(WAIT_MAX_S, Math.max(0, ...asked.map((m) => units(m[1], m[2]))));
+}
+
+/** Whether no agent under test is at a turn and no app of theirs is being checked: what settle waits for. */
+export function settledNow(st, ids) {
+  const busy = ids.flatMap((t) => st.threads[t]?.members ?? []).some((id) => ['think', 'tool', 'gen'].includes(st.sessions[id]?.state));
+  return !busy && !Object.values(st.apps ?? {}).some((a) => ids.includes(a.threadId) && ['pending', 'fixing'].includes(a.check?.status));
+}
+
+/**
+ * The tester’s wait action. In a phase that asks for a wait in so many words (namedWait), it runs the seconds asked, up
+ * to the longest the phase names: those waits hold the room on purpose, such as a card left open. Otherwise it runs at
+ * most TESTER_WAIT_S, and ends once the agents under test have settled for two reads 1.5 s apart, as settle does.
+ * @param {{ seconds?: number }} a  @param {{ named: number, api: (path: string) => Promise<any>, threadsUnderTest: (st: any) => string[] }} o
+ * @returns {Promise<string>}  what happened, for the tester, when it wasn’t the wait asked for
+ */
+export async function testerWait(a, { named, api, threadsUnderTest }) {
+  const n = Math.round(Number(a.seconds ?? 30));
+  const asked = Number.isFinite(n) && n > 0 ? n : 30;
+  const most = Math.min(WAIT_MAX_S, Math.max(TESTER_WAIT_S, named));
+  const seconds = Math.min(asked, most);
+  const capped = seconds < asked ? ` You asked for ${asked} s; the run waits at most ${most} s unless the phase asks for longer.` : '';
+  const start = Date.now();
+  const end = start + seconds * 1000;
+  for (let calm = 0; Date.now() < end; ) {
+    await sleep(Math.min(1500, end - Date.now()));
+    if (named || Date.now() >= end) continue;
+    const st = (await api('/api/state')).state;
+    calm = settledNow(st, threadsUnderTest(st)) ? calm + 1 : 0;
+    if (calm >= 2) return `Waited ${Math.round((Date.now() - start) / 1000)} s of ${seconds}: no agent was working, so the wait ended early.${capped}`;
+  }
+  return capped ? `Waited ${seconds} s.${capped}` : '';
 }
 
 /**

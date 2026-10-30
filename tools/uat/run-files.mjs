@@ -1,9 +1,26 @@
-// What the UAT runner reads from files after each step: the person’s own Claude Code setup, to spot it leaking into
+// The run’s folders (runPaths), and what the UAT runner reads from files after each step: the person’s own Claude Code setup, to spot it leaking into
 // agents (or missing from them), each agent turn’s recorded stream, and the agents’ own Claude Code transcripts.
 
-import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { patchSession } from '../../shared/state.mjs';
+
+/** The run’s folders, made: Postbox’s data, the workspace, each backend’s recorded streams, and screenshots. @param {string} dir */
+export async function runPaths(dir) {
+  const paths = {
+    data: join(dir, 'data'),
+    workspace: join(dir, 'workspace'),
+    streams: join(dir, 'streams'),
+    kiroStreams: join(dir, 'streams', 'kiro'),
+    agyStreams: join(dir, 'streams', 'agy'),
+    codexStreams: join(dir, 'streams', 'codex'),
+    shots: join(dir, 'shots'),
+  };
+  for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
+  return paths;
+}
 
 export function userSetup(workspace) {
   const out = { userMcpServers: [], userRulesMarker: null };
@@ -45,37 +62,44 @@ export function readStreams(folder) {
     }));
 }
 
-/** Where readReceived got to in each run’s store: each segment’s bytes read, the handles seen, the snapshot read. */
+/** Where readReceived got to in each run’s store: each segment’s bytes read, each session as the log left it, the snapshot read. */
 const cursors = new Map();
 
 /**
  * Every message Postbox sent one agent from another, read from the run’s store: recordAgentMessage
- * (server/side-threads.mjs) keeps an agent’s latest six on its session, and each change is a session event in the log.
- * A wake Postbox refuses has none. Each read parses only what the log gained since the last one in this process, and
- * returns it merged with known, what earlier reads found, which the caller keeps; that also covers a snapshot deleting
- * the segments it covers. If one does between two reads, and more than six messages reached one agent meanwhile (the
- * session keeps its latest six, `.slice(0, 6)` in recordAgentMessage), the oldest are lost, and a delivered call reads
- * as refused.
+ * (server/side-threads.mjs) keeps an agent’s latest six on its session, and writes them through updateSession, so each
+ * change is a session.patch in the log (designs/508, “Store events”), carrying only the fields that changed. The
+ * patches are applied onto each session as the log left it (patchSession, shared/state.mjs, the reducer’s own rule),
+ * seeded from the snapshot, which is the state itself; a patch for a session neither held is dropped, as the reducer
+ * drops it. A wake Postbox refuses has none. Each read parses only what the log gained since the last one in this
+ * process, and returns it merged with known, what earlier reads found, which the caller keeps; that also covers a
+ * snapshot deleting the segments it covers. If one does between two reads, and more than six messages reached one
+ * agent meanwhile (the session keeps its latest six, `.slice(0, 6)` in recordAgentMessage), the oldest are lost, and a
+ * delivered call reads as refused.
  * @param {string} data  the run’s Postbox data folder
  * @param {{ handle: string, from: string, text: string, at: number }[]} [known]
  */
 export function readReceived(data, known = []) {
   if (!existsSync(data)) return known;
-  const c = cursors.get(data) ?? { offsets: new Map(), handles: new Map(), snapshot: null };
+  const c = cursors.get(data) ?? { offsets: new Map(), sessions: new Map(), snapshot: null };
   cursors.set(data, c);
   const key = (/** @type {any} */ r) => `${r.handle}|${r.from}|${r.at}|${r.text}`;
   const out = new Map(known.map((r) => [key(r), r]));
+  /** Keeps a session as an event left it, and takes the messages it holds. */
   const take = (/** @type {any} */ se) => {
-    if (se?.handle) c.handles.set(se.id, se.handle);
-    const handle = c.handles.get(se?.id);
-    for (const m of Array.isArray(se?.agentMessages) ? se.agentMessages : [])
+    if (!se?.id) return;
+    // A whole session without a handle (a trimmed fixture) keeps the handle the log gave it before.
+    const handle = se.handle ?? c.sessions.get(se.id)?.handle;
+    c.sessions.set(se.id, handle === undefined ? se : { ...se, handle });
+    for (const m of Array.isArray(se.agentMessages) ? se.agentMessages : [])
       if (handle && m?.dir === 'from' && Number.isFinite(m.at))
         out.set(key({ handle, from: m.other, text: m.text, at: m.at }), { handle, from: m.other, text: m.text, at: m.at });
   };
   try {
     const snap = join(data, 'snapshot.json');
     const changed = statSync(snap).mtimeMs;
-    if (changed !== c.snapshot) for (const se of Object.values(JSON.parse(readFileSync(snap, 'utf8')).state?.sessions ?? {})) take(se);
+    // snapshot.json is the state as of some sequence number (server/store.mjs), with its sessions at the top level.
+    if (changed !== c.snapshot) for (const se of Object.values(JSON.parse(readFileSync(snap, 'utf8')).sessions ?? {})) take(se);
     c.snapshot = changed;
   } catch {}
   const segments = readdirSync(data).filter((n) => /^events-\d+\.jsonl$/.test(n));
@@ -86,6 +110,7 @@ export function readReceived(data, known = []) {
       try {
         const e = JSON.parse(l);
         if (e?.type === 'session') take(e.data);
+        else if (e?.type === 'session.patch' && c.sessions.has(e.data?.id)) take(patchSession(c.sessions.get(e.data.id), e.data));
       } catch {}
     }
   }
@@ -119,6 +144,54 @@ export function readTranscripts(facts, workspace) {
     .filter((t) => existsSync(t.file))
     .map((t) => ({ handle: t.handle, lines: readFileSync(t.file, 'utf8').split('\n') }));
 }
+
+/** Where a run folder keeps its agents’ transcript lines (keepTranscripts). @param {string} dir */
+const keptIn = (dir) => join(dir, 'transcripts');
+
+/**
+ * Keeps the transcript lines the checks read in the run folder, for --recheck once the agents’ own transcripts have
+ * gone: each agent’s user lines (its prompts, tool results and the lines Claude Code writes itself, as
+ * server/room-delivery.mjs’s inputsOf and the telemetry triggers read them), in <dir>/transcripts/<handle>.jsonl.
+ * Not its replies, which no check reads, nor a line cut short.
+ * @param {string} dir  @param {{ handle: string, lines: (string|object)[] }[]} transcripts
+ */
+export function keepTranscripts(dir, transcripts) {
+  /** @type {Map<string, string[]>} */
+  const by = new Map();
+  for (const t of transcripts ?? [])
+    for (const l of t.lines ?? []) {
+      let e;
+      try {
+        e = typeof l === 'string' ? JSON.parse(l) : l;
+      } catch {
+        continue;
+      }
+      if (e?.type !== 'user') continue;
+      by.set(t.handle, [...(by.get(t.handle) ?? []), typeof l === 'string' ? l : JSON.stringify(l)]);
+    }
+  mkdirSync(keptIn(dir), { recursive: true });
+  for (const [handle, lines] of by) writeFileSync(join(keptIn(dir), `${handle.replace(/[^\w-]/g, '_')}.jsonl`), `${lines.join('\n')}\n`);
+}
+
+/** The transcript lines a run folder kept (keepTranscripts), as readTranscripts gives them; null when it kept none. @param {string} dir */
+export function savedTranscripts(dir) {
+  if (!existsSync(keptIn(dir))) return null;
+  return readdirSync(keptIn(dir))
+    .filter((f) => f.endsWith('.jsonl'))
+    .map((f) => ({ handle: f.replace(/\.jsonl$/, ''), lines: readFileSync(join(keptIn(dir), f), 'utf8').split('\n') }));
+}
+
+/**
+ * The run’s keep (tools/uat/stop.mjs’s runStop calls it at the end, early stop or not): the transcript lines the
+ * checks read, kept in the run folder for --recheck, once the run has a state to name its agents.
+ * @param {string} dir  @param {any} facts  @param {string} workspace
+ */
+export const keeper = (dir, facts, workspace) => () => {
+  if (facts.state) keepTranscripts(dir, readTranscripts(facts, workspace));
+};
+
+/** What --recheck reads: the transcripts the run folder kept, or, from a run before it kept them, the agents’ own. */
+export const transcriptsFor = (dir, facts) => savedTranscripts(dir) ?? readTranscripts(facts, join(dir, 'workspace'));
 
 const transcriptOf = (cwd, id) => join(homedir(), '.claude', 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${id}.jsonl`);
 

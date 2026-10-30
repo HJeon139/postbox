@@ -5,6 +5,7 @@
 //
 //   node tools/uat-run.mjs --scenario scifact
 //   node tools/uat-run.mjs --scenario hotpotqa --steps 30 --budget 6 --tester-model claude-opus-5-5
+//   node tools/uat-run.mjs --scenario delivery --phases 1,2   (only those phases: tools/uat/phases.mjs)
 //
 // Real agents and the tester both run on the claude CLI you’re signed in to, so a run costs real usage. --budget caps
 // the tester; --max-cost caps the whole run (agents, tester, verifier and telemetry), stopping it, report and all, before
@@ -25,41 +26,43 @@
 // A run is 15 steps unless its scenario or --steps says otherwise; a targeted scenario’s phases end on their triggers
 // (tools/uat/triggers.mjs). Every finding gets a verdict: the verifier’s after the run, or yours (tools/uat-verdict.mjs).
 
-import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:net';
+import { spawnSync } from 'node:child_process';
+import { writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { launch, sleep } from './browser.mjs';
+import { openBigRoom } from './uat/big-room.mjs';
 import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { goToNeedsStep } from './uat/driver-needs.mjs';
-import { followEvents, readHistory } from './uat/history.mjs';
+import { faultSetup } from './uat/fault-run.mjs';
+import { followEvents } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
-import { HOST_OPTIONS, hostMode } from './uat/hosts-options.mjs';
-import { createHostRun, readHosts, startHosts } from './uat/hosts-run.mjs';
-import { forHosts } from './uat/hosts-scenario.mjs';
+import { HOST_OPTIONS } from './uat/hosts-options.mjs';
+import { createHostRun, startHosts } from './uat/hosts-run.mjs';
 import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
-import { startPostbox } from './uat/postbox.mjs';
+import { portFree, startPostbox } from './uat/postbox.mjs';
 import { newProbes } from './uat/probes.mjs';
+import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
-import { readReceived, readStreams, readTranscripts, readUi, userSetup } from './uat/run-files.mjs';
-import { gitInfo, readRun, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
-import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
+import { keeper, readReceived, readStreams, readTranscripts, readUi, runPaths, userSetup } from './uat/run-files.mjs';
+import { runScenario } from './uat/run-scenario.mjs';
+import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
+import { chainLimitEnv, phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
+import { stepPrompt } from './uat/step-prompt.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
 import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
-import { gapFinding, phaseGoals, unknownTriggers } from './uat/triggers.mjs';
-import { sendThenStop, settle as settleTurns, stopThroughPage, WAIT_MAX_S, watchBudget } from './uat/turns.mjs';
-import { withoutPreset } from './uat/verdicts.mjs';
+import { runTiming } from './uat/timing.mjs';
+import { phaseGoals } from './uat/triggers.mjs';
+import { namedWait, sendThenStop, settle as settleTurns, stopThroughPage, testerWait, watchBudget } from './uat/turns.mjs';
 import { makeWorkspace } from './uat/workspace.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -70,7 +73,9 @@ const { values: opt } = parseArgs({
     // The most steps: the scenario’s own `- steps: N`, else a targeted scenario’s phase caps added up, else 15.
     steps: { type: 'string' },
     // Start at this phase (1 is the first), to rerun a later one without the earlier ones; the tester sets up what it needs.
-    phase: { type: 'string', default: '1' },
+    phase: { type: 'string' },
+    // Play only these phases, such as 1,2, and check only their triggers (tools/uat/phases.mjs). Not with --phase.
+    phases: { type: 'string' },
     'turn-timeout': { type: 'string', default: '900' },
     budget: { type: 'string', default: '8' },
     // The most the whole run may spend, in dollars (tools/uat/budget.mjs). Unset, only --budget caps the tester.
@@ -102,47 +107,18 @@ const { values: opt } = parseArgs({
 // What verifying and filing need from here (tools/uat/review.mjs).
 const REVIEW = { root: ROOT, testerModel: opt['tester-model'] };
 
-const portFree = (port) =>
-  new Promise((ok) => {
-    const s = createServer()
-      .once('error', () => ok(false))
-      .once('listening', () => s.close(() => ok(true)))
-      .listen(port, '127.0.0.1');
-  });
-
 // ── Run ────────────────────────────────────────────────────────────────────────────────────
 
 async function main() {
-  const scenarioFile = existsSync(opt.scenario) ? opt.scenario : join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${opt.scenario}.md`);
-  const name = opt.scenario.replace(/^.*\//, '').replace(/\.md$/, '');
-  // Host mode (#120): agents on other machines over ssh (--host), Claude Code only (tools/uat/hosts-options.mjs).
-  const { hosts, placement, scenario } = hostMode(opt, name, parseScenario(readFileSync(scenarioFile, 'utf8')));
-  const other = compatBackends(scenario);
-  if (other.length && !opt.compat && !opt.release)
-    throw new Error(
-      `This scenario puts agents on ${other.join(' and ')}, so it’s a compatibility run, which runs only when asked: it uses that harness’s credits, and a regular pass is Claude only. Pass --compat to run it.`,
-    );
-  // A release-only backend (none today: tools/uat/scenario.mjs) runs only in a release run; otherwise Postbox starts
-  // without it, so the tester can’t put an agent on it from a sheet either.
-  const gate = releaseGate(scenario, { release: opt.release });
-  if (gate.error) throw new Error(gate.error);
-  const unknown = unknownTriggers(scenario);
-  if (unknown.length) throw new Error(`This scenario names triggers that don’t exist: ${unknown.join(', ')}. See tools/uat/triggers.mjs.`);
+  const { name, hosts, placement, scenario, phases, gate } = runScenario(opt, ROOT);
   const steps = stepCap(scenario, opt.steps);
   const budget = runBudget({ cap: parseMaxCost(opt['max-cost']), testerShare: Number(opt.budget) });
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const dir = join(runsRoot({ root: ROOT }), `${stamp}-${name}`);
-  const paths = {
-    data: join(dir, 'data'),
-    workspace: join(dir, 'workspace'),
-    streams: join(dir, 'streams'),
-    kiroStreams: join(dir, 'streams', 'kiro'),
-    agyStreams: join(dir, 'streams', 'agy'),
-    codexStreams: join(dir, 'streams', 'codex'),
-    shots: join(dir, 'shots'),
-  };
-  for (const p of Object.values(paths)) await mkdir(p, { recursive: true });
+  const paths = await runPaths(dir);
   const canaries = makeWorkspace(scenario, paths, dir);
+  // A phase’s `- fault:` (#508): Postbox starts with the fault launcher in front of the faulted agent’s CLI.
+  const faults = faultSetup({ scenario, root: ROOT, dir, env: process.env });
   const logLines = [];
   const log = (line) => {
     const l = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${line}`;
@@ -150,6 +126,7 @@ async function main() {
     console.log(l);
   };
   const started = Date.now();
+  const timing = runTiming();
   log(`UAT “${scenario.title}” → ${dir}, at most ${steps} steps`);
 
   // Open issues, so the tester and the report can name the ones a run catches again.
@@ -177,6 +154,8 @@ async function main() {
       POSTBOX_AGY_RECORD: paths.agyStreams,
       POSTBOX_CODEX_RECORD: paths.codexStreams,
       ...tm.telemetryEnv(scenario, dir, opt),
+      ...chainLimitEnv(scenario), // the scenario’s `- chain-limit:` (#508), for the Postbox this run starts and restarts
+      ...faults?.env,
     },
     log,
   });
@@ -210,6 +189,7 @@ async function main() {
     ...userSetup(paths.workspace),
     ...(hr ? { hosts: hr.record } : {}),
   };
+  run.keep = keeper(dir, facts, paths.workspace);
   let unwatch = () => {};
   try {
     await page.size(1440, 1000, { theme: 'light' });
@@ -223,6 +203,9 @@ async function main() {
     const mainThread = /#\/t\/([^/]+)/.exec(hash)?.[1];
     if (!mainThread) throw new Error(`Starting the conversation didn’t open it (at ${hash}).`);
     log(`Conversation ${mainThread} started with @${scenario.agents.join(', @')}.`);
+    // `- seed: big-room` (#508): the conversation fills with about 1,000 generated items before the tester arrives.
+    if (scenario.seed === 'big-room')
+      scenario.summary += `\n\n${await openBigRoom({ postbox, data: paths.data, threadId: mainThread, agents: scenario.agents, page, log })}`;
     const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
@@ -325,7 +308,7 @@ async function main() {
 
     // What needs the person that a wait between steps has seen: it hands back to the tester once for each (#289).
     const told = new Set();
-    const settle = (handBack = false) => settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, log });
+    const settle = (handBack = false) => timing.time('agents', () => settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, log }));
 
     const observe = () => observeScreen({ d, labels, keys, seen, paths, timeline, dir, facts });
 
@@ -347,6 +330,7 @@ async function main() {
       if (goal.end === 'now') break;
       if (goal.phase !== phase) log(`phase ${phase + 1} → ${goal.phase + 1}: ${goal.note}`);
       phase = goal.phase;
+      faults?.arm(phase, log);
       const fresh = [...midTurn.splice(0), ...newFindings()];
       // Stop’s question about background jobs (#126) can be a dialog, which isn’t an item: say it’s there.
       const jobsAsk = await d.jobsAsk();
@@ -357,31 +341,12 @@ async function main() {
         const where = facts.state.threads[w.threadId];
         return `${label ? `[${label}] ` : ''}${w.what}${where && w.threadId !== mainThread ? ` (in the thread “${where.title}”${label ? '' : ', not on screen: open it'})` : ''}`;
       });
-      const prompt = [
-        `Step ${step} of at most ${steps}. Phase ${phase + 1} of ${scenario.phases.length}: ${ph.title}`,
-        ph.text,
-        goal.note,
-        lastAction
-          ? `Your last action: ${JSON.stringify(lastAction)}${actionError ? `. It failed: ${actionError}` : ''}${actionResult ? `. Result: ${actionResult}` : ''}`
-          : phase
-            ? `Nothing has happened yet. This run starts at phase ${phase + 1}, skipping the ones before it, so first set up briefly what this phase needs (the earlier phases are only context): ${scenario.phases
-                .slice(0, phase)
-                .map((p) => p.title)
-                .join('; ')}.`
-            : 'Nothing has happened yet: start the phase.',
-        timedOut ? `The run itself pressed Stop: ${timedOut} A “Stopped by you” line is from that, not a bug.` : '',
-        obs.items.length ? `What changed on screen:\n\n${obs.items.join('\n\n')}` : 'Nothing changed on screen.',
-        `Agents: ${obs.states.join('; ') || 'none yet'}`,
-        waiting.length ? `Waiting on you:\n${waiting.map((w) => `- ${w}`).join('\n')}` : 'Nothing is waiting on you.',
-        jobsAsk ? `Postbox is asking about background jobs: “${jobsAsk}” Answer it with jobs.` : '',
-        fresh.length ? `The automatic checks found:\n${fresh.map((f) => `- ${f.title}${f.issue ? ` (#${f.issue})` : ''}: ${f.evidence}`).join('\n')}` : '',
-      ]
-        .filter(Boolean)
-        .join('\n\n');
+      const prompt = stepPrompt({ step, steps, phase, scenario, goal, lastAction, actionError, actionResult, timedOut, obs, waiting, jobsAsk, fresh });
       // With --max-cost, the step goes ahead only if it, and an agent turn it may start, fit what’s left.
       const busy = obs.states.filter((s) => /: (?:think|tool|gen)\b/.test(s)).length;
       if (budget.beforeStep({ step, working: busy })) break;
-      const answer = await tester.step(prompt, system);
+      timing.at(step);
+      const answer = await timing.time('tester', () => tester.step(prompt, system));
       goals.took(phase);
       timeline.push({ step, phase: ph.title, assessment: answer.assessment, action: answer.action });
       log(`step ${step} · ${answer.assessment}`);
@@ -450,7 +415,8 @@ async function main() {
           );
           if (named.length)
             actionResult = `It addresses “${named[0]}” without the @, so it mentions no agent and went to ${last ? `@${last}, who spoke last` : 'whichever agent spoke last'}. Write @${named[0]} to address it.`;
-        } else if (a.type === 'send_then_stop') actionResult = await sendThenStop(d, a, { step, probes: facts.probes, log, onWait: () => midTurnChecks() });
+        } else if (a.type === 'send_then_stop')
+          actionResult = await timing.time('waits', () => sendThenStop(d, a, { step, probes: facts.probes, log, onWait: () => midTurnChecks() }));
         else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
         else if (a.type === 'thread_reply') await d.replyInOpenThread(a.text ?? '');
         else if (a.type === 'act' || a.type === 'review') {
@@ -527,7 +493,8 @@ async function main() {
           const mine = (await d.items()).filter((x) => x.where === 'conversation' && x.attachments > 0).at(-1);
           if (mine) facts.probes.attachments.push({ key: mine.key, images: mine.images, attachments: mine.attachments });
         } else if (a.type === 'fault') actionResult = await hostFault(a);
-        else if (a.type === 'wait') await sleep(Math.min(WAIT_MAX_S, a.seconds ?? 30) * 1000);
+        else if (a.type === 'wait')
+          actionResult = await timing.time('waits', () => testerWait(a, { named: namedWait(scenario.phases[phase].text), api, threadsUnderTest }));
         else if (a.type === 'stop') await d.stopAll();
         // Stop or Send now while the turn this action started is running (#126).
         if (a.interrupt && ['send', 'thread', 'act', 'review'].includes(a.type)) {
@@ -535,9 +502,8 @@ async function main() {
           const panel = a.type === 'thread' || (key ? await d.inPanel(key) : false);
           // A fault mid-turn is the driver’s answer while the agent works, with the fault for its answer.
           const now = a.interrupt.do === 'fault' ? () => hostFault(a.interrupt) : () => answerMidTurn(a.interrupt);
-          const said = await d.interrupt(
-            { ...a.interrupt, do: a.interrupt.do === 'fault' ? 'answer' : a.interrupt.do },
-            { panel, onWait: () => midTurnChecks(), answer: now },
+          const said = await timing.time('waits', () =>
+            d.interrupt({ ...a.interrupt, do: a.interrupt.do === 'fault' ? 'answer' : a.interrupt.do }, { panel, onWait: () => midTurnChecks(), answer: now }),
           );
           facts.probes.interrupts.push({ step, at: Date.now(), do: a.interrupt.do, answered: /You answered “([^”]+)”/.exec(said)?.[1] ?? null });
           actionResult = actionResult ? `${actionResult} ${said}` : said;
@@ -567,17 +533,33 @@ async function main() {
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
     if (facts.telemetry) facts.telemetryOut = { proposals: tm.foldLabels(all, facts.telemetry) };
     if (facts.telemetry) budget.spend('telemetry', tm.telemetryBlock(facts.telemetry, all).classifier?.costUsd);
-    facts.budget = budget.summary();
+    Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
     await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
     if (opt.verify !== 'no' || opt.file !== 'no') {
       const review = { ...REVIEW, ask: budget.verifier() };
-      await reviewFindings({ ...review, dir, scenario, findings: all, timeline, log, verify: opt.verify !== 'no', file: opt.file !== 'no' });
-      facts.budget = budget.summary();
+      await timing.time('verifier', () =>
+        reviewFindings({ ...review, dir, scenario, findings: all, timeline, log, verify: opt.verify !== 'no', file: opt.file !== 'no' }),
+      );
+      Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
       await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
     }
     // The run’s record for a refit (tools/uat-stats.mjs), so it needn’t parse the report.
     writeJsonAtomic(join(dir, 'run.json'), {
-      ...runRecord({ root: ROOT, dir, scenario, name, opt, started, steps: timeline.length, cap: steps, startPhase: startPhase + 1, tester, facts, coverage }),
+      ...runRecord({
+        root: ROOT,
+        dir,
+        scenario,
+        name,
+        opt,
+        started,
+        steps: timeline.length,
+        cap: steps,
+        startPhase: startPhase + 1,
+        phases,
+        tester,
+        facts,
+        coverage,
+      }),
       ...(facts.telemetry ? { telemetry: tm.telemetryBlock(facts.telemetry, all) } : {}),
       ...(facts.budget ? { budget: facts.budget } : {}),
     });
@@ -587,173 +569,8 @@ async function main() {
   }
 }
 
-// ── Recheck ──────────────────────────────────────────────────────────────────────────────────
-// Runs the checks again over a finished run’s saved data (no agents, no tester), for when the checks or the
-// driver improved. Tester findings and the timeline are kept; check findings are recomputed.
-
-const LIVE_ONLY = new Set([
-  'fresh-install-agents',
-  'full-screen-noop',
-  'image-not-shown',
-  'silent-while-working',
-  'agents-section-members',
-  'topbar-title-cut',
-]);
-
-async function recheck(dir) {
-  // A run folder, or a run’s name in the runs folder.
-  dir = existsSync(dir) ? resolve(dir) : join(runsRoot({ root: ROOT }), dir);
-  const saved = JSON.parse(readFileSync(join(dir, 'findings.json'), 'utf8'));
-  // Its record before the report is rewritten: the minutes it took are only in the first report.
-  const record = readRun(dir);
-  const name = existsSync(join(dir, 'run.json')) && record?.scenario ? record.scenario : dir.replace(/^.*-([\w-]+)$/, '$1');
-  // A host-mode run’s record of its hosts (#120): its phases as it played them, and what its checks read.
-  const hostsRec = readHosts(dir);
-  const parsed = parseScenario(readFileSync(join(ROOT, 'tests', 'uat', 'e2e', 'scenarios', `${name}.md`), 'utf8'));
-  const scenario = hostsRec ? forHosts(parsed, hostsRec.placement, hostsRec.hosts) : parsed;
-  const port = Number(opt.port);
-  if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
-  const server = spawn(process.execPath, [join(ROOT, 'server', 'index.mjs'), '--port', String(port), '--data', join(dir, 'data')], {
-    cwd: ROOT,
-    env: { ...process.env, POSTBOX_BACKENDS: 'mock' },
-    stdio: 'ignore',
-  });
-  const origin = `http://127.0.0.1:${port}`;
-  const page = await launch();
-  try {
-    for (let i = 0; i < 80; i++) {
-      try {
-        await fetch(`${origin}/api/state`);
-        break;
-      } catch {
-        await sleep(250);
-      }
-    }
-    const state = (await (await fetch(`${origin}/api/state`)).json()).state;
-    const main = Object.values(state.threads).find((t) => t.title === scenario.conversation && t.kind !== 'topic');
-    if (!main) throw new Error(`No conversation called “${scenario.conversation}” in that run.`);
-    await page.size(1440, 1000, { theme: 'light' });
-    await page.goto(`${origin}/?recheck=1#/t/${main.id}`);
-    await sleep(1500);
-    const d = driver(page);
-    const facts = {
-      state,
-      threads: [
-        main.id,
-        ...Object.values(state.threads)
-          .filter((t) => t.parentId === main.id)
-          .map((t) => t.id),
-      ],
-      startPersonas: [],
-      streams: readStreams(join(dir, 'streams')),
-      kiroStreams: readStreams(join(dir, 'streams', 'kiro')),
-      agyStreams: readStreams(join(dir, 'streams', 'agy')),
-      codexStreams: readStreams(join(dir, 'streams', 'codex')),
-      events: readHistory(dir),
-      console: page.logs,
-      apps: {},
-      probes: { ...newProbes(), ...(saved.probes ?? {}) },
-      samples: saved.samples ?? [],
-      budget: saved.budget ?? null,
-      ui: {},
-      ...userSetup(join(dir, 'workspace')),
-      ...(hostsRec ? { hosts: hostsRec } : {}),
-    };
-    facts.transcripts = readTranscripts(facts, join(dir, 'workspace'));
-    for (const it of await d.items()) if (it.app) facts.apps[it.key] = await d.appInside(it.key);
-    facts.ui.headerText = await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`);
-    facts.ui.reviewRawRows = await page.evaluate(
-      `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
-    );
-    const kept = saved.findings.filter((f) => f.source === 'tester');
-    const checks = runChecks(facts)
-      .filter((f) => !LIVE_ONLY.has(f.check))
-      .map((f) => ({ ...f, source: 'check', step: 'recheck' }));
-    // Checks that read the live run (the fresh install, UI probes, samples while agents worked) can’t run
-    // again; their findings, and the run’s own (a turn past the time limit), are kept as they were.
-    // A check’s own preset is set again below, for these as for the recomputed ones (#213).
-    const live = saved.findings.filter((f) => f.source === 'run' || (f.source === 'check' && LIVE_ONLY.has(f.check))).map(withoutPreset);
-    const gh = spawnSync('gh', ['issue', 'list', '--state', 'all', '--limit', '300', '--json', 'number,title'], { cwd: ROOT, encoding: 'utf8' });
-    const issues = gh.status === 0 ? JSON.parse(gh.stdout) : [];
-    // Verdicts and filed issue numbers from earlier reviews carry over to the recomputed findings. A check’s own
-    // preset doesn’t: it’s set again below, and a match to an issue closed since isn’t preset (#213).
-    const before = new Map(saved.findings.filter((f) => f.source === 'check').map((f) => [`${f.check}:${f.key}`, f]));
-    const carried = [
-      'step',
-      'phase',
-      'filed',
-      'regression',
-      'regressionNote',
-      'regressionComment',
-      'verdict',
-      'verdictBy',
-      'verdictAt',
-      'verdicts',
-      'note',
-      'duplicateOf',
-    ];
-    for (const c of checks) {
-      const b = before.get(`${c.check}:${c.key}`);
-      // Its step too: the refit counts a finding at the step it was first seen.
-      if (b) for (const [k, v] of Object.entries(withoutPreset(b))) if (carried.includes(k) && v !== undefined) c[k] = v;
-    }
-    // Coverage is read again from the whole run: a phase’s triggers either happened in it or didn’t. A gap saved
-    // before keeps its verdict if it’s still a gap.
-    // A run that started at a later phase (--phase) skipped the ones before it: they aren’t gaps.
-    const start = Math.max(0, (Number(record?.startPhase) || 1) - 1);
-    const goals = phaseGoals(scenario, { cap: phaseCap, start, log: (l) => console.log(l) });
-    goals.observe(facts, null);
-    const coverage = goals.coverage();
-    const gapsBefore = new Map(live.filter((f) => f.check === 'coverage-gap').map((f) => [f.key, f]));
-    const gaps = scenario.phases.flatMap((ph, i) => {
-      const missing = coverage.filter((c) => c.phase === i + 1 && c.hit === false && !c.skipped).map((c) => c.trigger);
-      if (!missing.length) return [];
-      const g = { ...gapFinding({ phase: i + 1, title: ph.title, missing, why: 'Over the whole run,' }), step: 'recheck', phase: ph.title };
-      return [{ ...g, ...(gapsBefore.get(g.key)?.verdictBy === 'person' || gapsBefore.get(g.key)?.verdictBy === 'reviewer' ? gapsBefore.get(g.key) : {}) }];
-    });
-    const findings = [...checks, ...live.filter((f) => f.check !== 'coverage-gap'), ...gaps, ...kept];
-    presetFindings(findings, { root: ROOT, commit: record?.commit ?? null });
-    const report = () =>
-      writeReport({
-        dir,
-        scenario,
-        issues,
-        findings,
-        timeline: saved.timeline,
-        started: saved.started ?? Date.now(),
-        tester: { spent: saved.testerSpent ?? 0 },
-        facts,
-        logLines: [`Rechecked ${new Date().toISOString()} with the current checks and driver.`],
-        coverage,
-        rechecked: true,
-      });
-    await report();
-    // A recheck verifies only when it files, unless asked: --recheck --file no makes no model call.
-    const verify = opt.verify ? opt.verify !== 'no' : opt.file !== 'no';
-    if (verify || opt.file !== 'no') {
-      await reviewFindings({
-        ...REVIEW,
-        dir,
-        scenario,
-        findings,
-        timeline: saved.timeline,
-        log: (l) => console.log(l),
-        verify,
-        file: opt.file !== 'no',
-      });
-      await report();
-    }
-    // A run from before run.json gets one, from what its report and streams say.
-    const { dir: _d, findings: _f, ...kept2 } = record ?? {};
-    writeJsonAtomic(join(dir, 'run.json'), { ...kept2, scenario: name, kind: isTargeted(scenario) ? 'targeted' : 'exploratory', coverage });
-  } finally {
-    await page.close().catch(() => {});
-    server.kill();
-  }
-}
-
 if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url))
-  (opt.recheck ? recheck(opt.recheck) : main()).catch((e) => {
+  (opt.recheck ? recheck(opt.recheck, { root: ROOT, opt, review: REVIEW }) : main()).catch((e) => {
     console.error(`UAT run failed: ${e.stack ?? e.message}`);
     // A run stopped by a signal exits as stopped (130, tools/uat/stop.mjs), whatever it failed with meanwhile.
     process.exit(process.exitCode || 1);

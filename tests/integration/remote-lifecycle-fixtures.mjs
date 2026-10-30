@@ -34,9 +34,10 @@ setTimeout(() => {}, Number(ms));
 
 /**
  * A host home and a laptop data folder under one temp folder in /tmp (short enough for the sockets’ paths), the
- * harness beside them, and the host’s settings: the harness’s node as claudePath, and the shortest idleTimeout.
+ * harness beside them, and the host’s settings: the harness’s node as claudePath, and the shortest idleTimeout. `env`
+ * adds to the host’s environment, as POSTBOX_DAEMON_TIMINGS. @param {{ env?: Record<string, string> }} [o]
  */
-export function machines() {
+export function machines({ env = {} } = {}) {
   const root = mkdtempSync('/tmp/pbv-');
   const home = join(root, 'h');
   mkdirSync(home);
@@ -53,7 +54,7 @@ export function machines() {
     p: hostPaths(home, VERSION),
     host: { id: 'ho_life0001', name: DEST, settings },
     settings,
-    env: { HOME: home, PATH: `${dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin` },
+    env: { HOME: home, PATH: `${dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, ...env },
   };
 }
 /** @typedef {ReturnType<typeof machines>} Machines */

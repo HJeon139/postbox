@@ -7,6 +7,8 @@ import { hideSteeringAbove } from './steering.mjs';
 import { askOnce, VERIFY_SCHEMA, verifyPrompt } from './tester.mjs';
 import { setVerdict } from './verdicts.mjs';
 
+/** @typedef {import('./regressions.mjs').Cli} Cli */
+
 // ── Filing ─────────────────────────────────────────────────────────────────────────────────
 // New findings (no open issue matched) are verified in a fresh session, then the confirmed ones are filed
 // with the bug template. A hidden fingerprint in each issue keeps a later run from filing the same one.
@@ -19,16 +21,21 @@ const fingerprint = (f) =>
     .slice(0, 60)}`;
 
 /**
- * Verifies the findings on closed issues against their fixes (tools/uat/regressions.mjs), then the rest.
+ * Verifies the findings on closed issues against their fixes (tools/uat/regressions.mjs), and the rest, at once.
  * ask: askOnce, or a run budget’s, which caps and counts each call (tools/uat/budget.mjs).
- * @param {{ root: string, testerModel: string, dir: string, scenario: any, findings: any[], timeline: any[], log: (l: string) => void, verify: boolean, file: boolean, ask?: typeof askOnce }} o
+ * @param {{ root: string, testerModel: string, dir: string, scenario: any, findings: any[], timeline: any[], log: (l: string) => void, verify: boolean, file: boolean, ask?: typeof askOnce, gh?: Cli }} o
  */
 export async function reviewFindings(o) {
   // The verifier runs in the run’s folder: a run recorded before the steering had no settings there (steering.mjs).
   if (o.verify) hideSteeringAbove(o.dir);
-  if (o.verify) await verifyRegressions(o);
+  // The two passes judge separate findings: a match to a closed issue is verifyRegressions’s alone, and keeps its
+  // issue, so the rest’s duplicate and filing passes never reach it. In sequence they were a quarter of a delivery
+  // run (1.5 to 2.5 min), so they run at once, each with its own prompt as before.
+  // Both end before either’s failure is thrown: the other mustn’t still be changing the findings while the run reports.
+  const passes = await Promise.allSettled([o.verify ? verifyRegressions(o) : null, verifyAndFile(o)]);
+  const failed = passes.find((p) => p.status === 'rejected');
+  if (failed) throw failed.reason;
   if (o.file) commentRegressions(o);
-  await verifyAndFile(o);
 }
 
 /**
@@ -36,8 +43,19 @@ export async function reviewFindings(o) {
  * open issue covers (file). A verdict a person or a reviewer set is never re-verified (tools/uat/verdicts.mjs), and a
  * match to a closed issue is verifyRegressions’s.
  */
-async function verifyAndFile({ root, testerModel, dir, scenario, findings, timeline, log, verify, file, ask = askOnce }) {
-  const gh = (args) => spawnSync('gh', args, { cwd: root, encoding: 'utf8' });
+async function verifyAndFile({
+  root,
+  testerModel,
+  dir,
+  scenario,
+  findings,
+  timeline,
+  log,
+  verify,
+  file,
+  ask = askOnce,
+  gh = (args) => spawnSync('gh', args, { cwd: root, encoding: 'utf8' }),
+}) {
   const open = gh(['issue', 'list', '--state', 'open', '--limit', '300', '--json', 'number,title,body']);
   // Without the open issues, the verifier can’t tell a duplicate, and would confirm it: wait for a recheck with gh.
   if (open.status !== 0) return log('Verifying and filing skipped: the gh CLI isn’t available or signed in. Recheck the run once it is.');

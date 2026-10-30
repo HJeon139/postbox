@@ -53,9 +53,9 @@ export function ownState(s) {
   return s;
 }
 
-// The reducer. Events carry whole objects for upserts, and small patches for items.
+// The reducer. Events carry whole objects for upserts, and small patches for items and sessions (session.patch).
 export function apply(s, type, d) {
-  switch (type) {
+  switch (type === 'session.patch' ? 'session' : type) {
     case 'settings':
       Object.assign(s.settings, d);
       break;
@@ -72,7 +72,7 @@ export function apply(s, type, d) {
       s.threads[d.id] = d;
       break;
     case 'session':
-      s.sessions[d.id] = d;
+      putSession(s, type, d);
       break;
     case 'app':
       s.apps[d.id] = d;
@@ -137,6 +137,29 @@ export function apply(s, type, d) {
     default:
       if (!applyHost(s, type, d)) throw new Error(`Unknown store event “${type}”.`);
   }
+}
+
+/**
+ * A whole session, or a session.patch: only a session’s changed fields (designs/508, “Store events”), with the ones it
+ * unsets by name, since JSON drops an undefined. A patch makes a new object, as a whole session did, so a reference to
+ * the old one still reads as it was; a patch for a session that’s gone changes nothing.
+ */
+function putSession(s, type, d) {
+  if (type === 'session') s.sessions[d.id] = d;
+  else if (s.sessions[d.id]) s.sessions[d.id] = patchSession(s.sessions[d.id], d);
+}
+
+/**
+ * The session a session.patch leaves, as a new object: the session with the patch’s fields set, and the fields it
+ * unsets deleted. The one place that defines what a patch means, so every reader of the log (the reducer, the checks’
+ * history in server/room-events.mjs, the UAT runner’s tools/uat/run-files.mjs) reads a patch the same way.
+ * @param {Record<string, any>} se  the session as it is
+ * @param {{ patch?: Record<string, any>, unset?: string[] }} d  the event’s data
+ */
+export function patchSession(se, d) {
+  const next = { ...se, ...d.patch };
+  for (const k of d.unset ?? []) delete next[k];
+  return next;
 }
 
 /** Apply an ordinary item patch, or one activity step without repeating its accumulated list (#452). */
