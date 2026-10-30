@@ -8,6 +8,7 @@ import { budgetNote } from './budget.mjs';
 import { agyTokens, kiroCredits, waitingOnYou } from './checks.mjs';
 import { agentsSpent } from './cost.mjs';
 import { writeJsonAtomic } from './runs.mjs';
+import { timingLine } from './timing.mjs';
 import { cell as esc } from './trigger-facts.mjs';
 import { coverageSection } from './triggers.mjs';
 import { mergePeopleVerdicts } from './verdicts.mjs';
@@ -23,7 +24,7 @@ function usageLine(facts, tester) {
   const credits = kiroCredits(facts.kiroStreams ?? []);
   // Antigravity reports tokens, not dollars: they’re listed beside the agents’ cost when a run had its turns (#143).
   const tokens = agyTokens(facts.agyStreams ?? []);
-  return `Usage: agents $${agentCost.toFixed(2)}${credits ? ` and ${credits.toFixed(2)} Kiro credits` : ''}${tokens ? ` and ${tokens.toLocaleString('en-US')} Antigravity tokens` : ''}, tester $${tester.spent.toFixed(2)}.${budgetNote(facts.budget)}${facts.agentModels ? ` Agents: ${facts.agentModels}.` : ''}`;
+  return `Usage: agents $${agentCost.toFixed(2)}${credits ? ` and ${credits.toFixed(2)} Kiro credits` : ''}${tokens ? ` and ${tokens.toLocaleString('en-US')} Antigravity tokens` : ''}, tester $${tester.spent.toFixed(2)}.${budgetNote(facts.budget)}${timingLine(facts.timing)}${facts.agentModels ? ` Agents: ${facts.agentModels}.` : ''}`;
 }
 
 export async function writeReport({ dir, scenario, issues, findings, timeline, started, tester, facts, logLines, coverage = [], rechecked = false }) {
