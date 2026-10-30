@@ -2,6 +2,11 @@
 // the demo, moved here from tools/shoot-app.mjs so every browser check runs on Playwright Test (#303). It plays the
 // scenes of tools/demo.mjs, the ones the screenshot tool shoots, with the same speed and the same prepare steps.
 //
+// The scenes are in GROUPS, each a test that can run on a worker, and on a CI shard, of its own. play() builds every
+// scene on the ones before it, against one Postbox, so each group’s test starts a Postbox of its own and plays the
+// demo from the start: the scenes before its group play without being checked, and it stops after its group’s last.
+// As one test, all 23 scenes took 220 s on CI’s runner, and held up the shard it ran in by three minutes.
+//
 // The test’s own page stays on each scene’s conversation at desktop size, as a person’s would, so agent apps get
 // checked there before they’re shown. Each variant loads the scene fresh, in a context of its own, with ?nocheck, as
 // the screenshot tool’s second browser does. axe can’t enter an agent app: it’s a sandboxed frame with an opaque
@@ -28,21 +33,6 @@ const VARIANTS = [
 // contexts a scene left each page behind the event stream, and “the page to hear event” timed out in every repeat.
 // POSTBOX_A11Y_AT_ONCE overrides it.
 const AT_ONCE = Math.min(VARIANTS.length, Number(process.env.POSTBOX_A11Y_AT_ONCE) || (availableParallelism() >= 8 ? VARIANTS.length : 1));
-
-/** @type {Awaited<ReturnType<typeof startPostbox>>} */
-let app;
-/** @type {string | undefined} */
-let speed;
-test.beforeAll(async () => {
-  app = await startPostbox('demo-a11y');
-  // play() sets the mock agents’ pace for this worker’s process; the next spec file it runs gets its own back.
-  speed = process.env.POSTBOX_MOCK_SPEED;
-});
-test.afterAll(async () => {
-  if (speed === undefined) delete process.env.POSTBOX_MOCK_SPEED;
-  else process.env.POSTBOX_MOCK_SPEED = speed;
-  await app?.stop();
-});
 
 /**
  * What the demo’s errors scene (“Index the shelf”) causes on purpose: the shelf map’s script error, which crashes it,
@@ -141,9 +131,69 @@ async function axe(page) {
   );
 }
 
-test('every demo scene has no axe violations, at 1280 and 375 px in dark and light', async ({ page, browser }) => {
-  // The whole demo, 23 scenes in four variants each.
-  test.setTimeout(15 * 60_000);
+/**
+ * The demo’s scenes, in the order play() shows them, in groups that take about as long on CI’s runner: a later group
+ * checks fewer scenes, as it plays more of the demo before its first.
+ */
+const GROUPS = [
+  ['02-empty', '04-corpus-app', '06-catalog', '05-explainer'],
+  ['16-narration', '18-topic-thread', '19-threads', '07-review', '03-thread', '08-wakes'],
+  ['09-errors', '10-plus-menu', '11-new-agent', '15-permission', '15b-refusal', '14-charts', '20-diagram-lint'],
+  ['21a-work-chip', '21-work', '21b-work-file', '01-needs-you', '12-agent-panel', '13-delete-confirm'],
+];
+// Each group’s test has a Postbox to itself, so the groups can run at once, on whichever workers are free.
+test.describe.configure({ mode: 'parallel' });
+
+/** What a group’s test throws once its last scene is checked, to stop play() there. */
+const ENOUGH = new Error('the group’s last scene is checked');
+
+/**
+ * Checks one scene in every variant, AT_ONCE at a time: each is a context of its own, and one after another they were
+ * most of the suite’s time. The errors scene’s prepare step puts the server offline in each, which the others ride out.
+ * @param {import('@playwright/test').Browser} browser  @param {Awaited<ReturnType<typeof startPostbox>>} app
+ * @param {string} name  @param {string} hash  @param {((ui: import('../../tools/demo.mjs').UI) => Promise<void>) | undefined} prepare
+ */
+async function checkScene(browser, app, name, hash, prepare) {
+  for (let i = 0; i < VARIANTS.length; i += AT_ONCE)
+    await Promise.all(
+      VARIANTS.slice(i, i + AT_ONCE).map(({ theme, width, height, scale }) => {
+        const variant = `${theme} at ${width} px`;
+        return test.step(variant, async () => {
+          const context = await browser.newContext({
+            viewport: { width, height },
+            deviceScaleFactor: scale,
+            isMobile: width < 768,
+            colorScheme: /** @type {'dark' | 'light'} */ (theme),
+          });
+          try {
+            const shown = await context.newPage();
+            const shownErrors = errorsOf(shown, () => name === '09-errors');
+            await shown.goto(`${app.origin}/?nocheck${hash}`);
+            await synced(shown, app);
+            await drawn(shown);
+            if (prepare) {
+              await prepare(ui(shown));
+              await drawn(shown);
+            }
+            expect.soft(await axe(shown), `axe in ${name}, ${variant}`).toEqual([]);
+            expect.soft(shownErrors, `${name}, ${variant}: the page threw no exceptions and logged no errors`).toEqual([]);
+          } finally {
+            await context.close();
+          }
+        });
+      }),
+    );
+}
+
+/**
+ * Plays the demo on a fresh Postbox until a group’s last scene, and checks that group’s scenes.
+ * @param {import('@playwright/test').Page} page  @param {import('@playwright/test').Browser} browser
+ * @param {Awaited<ReturnType<typeof startPostbox>>} app  @param {string[]} scenes
+ */
+async function checkGroup(page, browser, app, scenes) {
+  const last = scenes === GROUPS.at(-1);
+  /** @type {string[]} */
+  const shown = [];
   let hash = '#/';
   let loads = 0;
   const errorsHash = () => `#/t/${Object.values(app.rt.s.threads).find((t) => t.title === 'Index the shelf')?.id}`;
@@ -159,40 +209,33 @@ test('every demo scene has no axe violations, at 1280 and 375 px in dark and lig
       hash = h;
       await synced(page, app);
     },
-    shot: (name, { prepare } = {}) =>
-      test.step(name, async () => {
-        // The variants AT_ONCE at a time: each is a context of its own, and one after another they were most of the
-        // suite’s time. The errors scene’s prepare step puts the server offline in each, which the others ride out.
-        for (let i = 0; i < VARIANTS.length; i += AT_ONCE)
-          await Promise.all(
-            VARIANTS.slice(i, i + AT_ONCE).map(({ theme, width, height, scale }) => {
-              const variant = `${theme} at ${width} px`;
-              return test.step(variant, async () => {
-                const context = await browser.newContext({
-                  viewport: { width, height },
-                  deviceScaleFactor: scale,
-                  isMobile: width < 768,
-                  colorScheme: /** @type {'dark' | 'light'} */ (theme),
-                });
-                try {
-                  const shown = await context.newPage();
-                  const shownErrors = errorsOf(shown, () => name === '09-errors');
-                  await shown.goto(`${app.origin}/?nocheck${hash}`);
-                  await synced(shown, app);
-                  await drawn(shown);
-                  if (prepare) {
-                    await prepare(ui(shown));
-                    await drawn(shown);
-                  }
-                  expect.soft(await axe(shown), `axe in ${name}, ${variant}`).toEqual([]);
-                  expect.soft(shownErrors, `${name}, ${variant}: the page threw no exceptions and logged no errors`).toEqual([]);
-                } finally {
-                  await context.close();
-                }
-              });
-            }),
-          );
-      }),
+    shot: async (name, { prepare } = {}) => {
+      shown.push(name);
+      if (!scenes.includes(name)) return;
+      await test.step(name, () => checkScene(browser, app, name, hash, prepare));
+      if (!last && name === scenes.at(-1)) throw ENOUGH;
+    },
+  }).catch((e) => {
+    if (e !== ENOUGH) throw e;
   });
   expect.soft(errors, 'the page that checks the apps threw no exceptions and logged no errors').toEqual([]);
-});
+  expect(shown, 'the demo showed every scene of the group').toEqual(expect.arrayContaining(scenes));
+  // The last group plays the whole demo, so it sees a scene no group has.
+  if (last) expect(shown, 'every scene the demo shows is in a group').toEqual(GROUPS.flat());
+}
+
+for (const scenes of GROUPS)
+  test(`demo scenes ${scenes[0]} to ${scenes.at(-1)} have no axe violations, at 1280 and 375 px in dark and light`, async ({ page, browser }) => {
+    // Up to 23 scenes played, and up to 7 checked in four variants each.
+    test.setTimeout(10 * 60_000);
+    // play() sets the mock agents’ pace for this worker’s process; the next test it runs gets its own back.
+    const speed = process.env.POSTBOX_MOCK_SPEED;
+    const app = await startPostbox('demo-a11y');
+    try {
+      await checkGroup(page, browser, app, scenes);
+    } finally {
+      if (speed === undefined) delete process.env.POSTBOX_MOCK_SPEED;
+      else process.env.POSTBOX_MOCK_SPEED = speed;
+      await app.stop();
+    }
+  });
