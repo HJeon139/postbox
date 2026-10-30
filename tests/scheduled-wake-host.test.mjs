@@ -1,6 +1,6 @@
 // #466, from the integrator’s re-review of #522 at cc950c7: at a restart, a running scheduled wake is left to a host
-// turn only when that host turn is the wake’s own. One queued behind another turn on the host never started, so it’s
-// due again.
+// turn only when that host turn is the wake’s own, in any state RemoteTurns attaches again. One queued behind another
+// turn on the host never started, so it’s due again.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -8,6 +8,7 @@ import { fireScheduledWake, rearmWakes } from '../server/scheduled-wakes.mjs';
 import { Store } from '../server/store.mjs';
 import { createFakeDaemon } from './fake-daemon.mjs';
 import { rig, running, starts, until } from './remote-turns-helpers.mjs';
+import { setup } from './side-threads-fixture.mjs';
 
 const fire = (rt, sc) => {
   clearTimeout(rt.timers.get(sc.id));
@@ -45,3 +46,14 @@ test('#466 a scheduled wake whose own turn still runs on a host at a restart is 
   assert.equal(r.rt.timers.has(sc.id), false, 'no second turn is armed');
   assert.equal(r.store.state.schedules[sc.id], undefined);
 });
+
+for (const state of ['waiting', 'lost'])
+  test(`#466 a scheduled wake whose own host turn is ${state} at a restart is left to that host turn, not started again`, () => {
+    const f = setup();
+    const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Check the host.' });
+    f.store.emit('schedule', { ...f.store.state.schedules[sc.id], running: true, turnId: 'turn_wake' });
+    f.rt.updateSession(f.alpha.id, { remoteTurn: { state, turn: 'host-turn-1', rtTurn: 'turn_wake' } });
+    rearmWakes(f.rt);
+    assert.equal(f.rt.timers.has(sc.id), false, 'no second turn is armed');
+    assert.equal(f.store.state.schedules[sc.id], undefined);
+  });

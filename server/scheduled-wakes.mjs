@@ -1,6 +1,7 @@
 // Scheduled wake lifecycle: persistence, timers, cancellation, restart re-arming and network recovery (#458, #466).
 
 import { httpError } from './helpers.mjs';
+import { ON_HOST } from './remote/turns-shared.mjs';
 import { newId } from './store.mjs';
 
 const DAY = 24 * 3600 * 1000;
@@ -185,15 +186,15 @@ export function noteScheduledTurn(rt, turn) {
   if (sc && sc.turnId !== turn.id) rt.store.emit('schedule', { ...sc, turnId: turn.id });
 }
 
-/** Whether a running schedule’s own turn is still running on its host. */
+/** Whether a running schedule’s own turn is still on its host, in any state RemoteTurns attaches again. */
 const onHost = (rt, sc) => {
   const r = rt.s.sessions[sc.sessionId]?.remoteTurn;
-  return typeof sc.turnId === 'string' && r?.state === 'running' && r.rtTurn === sc.turnId;
+  return typeof sc.turnId === 'string' && ON_HOST.has(r?.state) && r.rtTurn === sc.turnId;
 };
 
 /**
  * Re-arms schedules after restart. One interrupted while running becomes due again, as a recovery if a tool had started,
- * so its instruction isn’t replayed. One whose own turn still runs on a host is that turn’s: RemoteTurns attaches it
+ * so its instruction isn’t replayed. One whose own turn is still on a host is that turn’s: RemoteTurns attaches it
  * again. One queued behind another turn there never started its own, so it’s due again too.
  */
 export function rearmWakes(rt) {
