@@ -67,3 +67,49 @@ test('#572: a scroll event near the end of 1,000 replies reads a few rects, not 
   test.info().annotations.push({ type: 'measured', description: `rects per scroll event: ${reads.join(', ')}` });
   expect(Math.max(...reads), `rects read per scroll event: ${reads.join(', ')}`).toBeLessThanOrEqual(40);
 });
+
+/** Wheels down from the top in 800 px steps, tracing it, and returns the trace’s total ms per event name. */
+async function traced(page, steps) {
+  await page.evaluate(() => scrollTo(0, 0));
+  await settled(page);
+  await page.mouse.move(640, 400);
+  const browser = page.context().browser();
+  await browser.startTracing(page, { categories: ['devtools.timeline', 'disabled-by-default-devtools.timeline', 'cc'] });
+  for (let i = 0; i < steps; i++) {
+    await page.mouse.wheel(0, 800);
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+  }
+  const { traceEvents } = JSON.parse((await browser.stopTracing()).toString());
+  const ms = {};
+  for (const e of traceEvents) if (e.ph === 'X' && e.dur) ms[e.name] = (ms[e.name] ?? 0) + e.dur / 1000;
+  return ms;
+}
+
+// Dark draws its icons with nothing on them, so it is the measure: on light, a filter per icon (5,000 of them here)
+// made each repaint of a scroll lay out, commit and map the images of every one, about 35 times dark’s cost.
+const COMPOSITING = ['Layerize', 'ProxyImpl::Commit', 'DiscardableImageMap::Generate'];
+
+test('#572: scrolling 1,000 replies on light costs about what it does on dark to lay out and commit', async ({ page }) => {
+  test.setTimeout(180_000);
+  await seeded(page, 'icons');
+  /** @type {Record<string, number>} */
+  const cost = {};
+  for (const theme of /** @type {const} */ (['dark', 'light'])) {
+    await page.emulateMedia({ colorScheme: theme });
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    const ms = await traced(page, 60);
+    cost[theme] = Math.round(COMPOSITING.reduce((sum, name) => sum + (ms[name] ?? 0), 0));
+  }
+  const said = `${COMPOSITING.join(' + ')}: light ${cost.light} ms, dark ${cost.dark} ms`;
+  test.info().annotations.push({ type: 'measured', description: said });
+  expect(cost.dark, 'the trace recorded the work it measures').toBeGreaterThan(0);
+  // Light still draws each icon with its rim, from a file of its own, and every one of them is there.
+  const files = await page.evaluate(() => [...new Set([...document.querySelectorAll('.react-icon')].map((n) => getComputedStyle(n).backgroundImage))]);
+  expect(files, 'one file per reaction').toHaveLength(5);
+  for (const f of files) {
+    const url = f.match(/url\("(.+)"\)/)?.[1] ?? '';
+    expect(url, 'the rimmed copy').toMatch(/-rim-72\.png$/);
+    expect((await page.request.get(url)).ok(), `${url} loads`).toBe(true);
+  }
+  expect(cost.light, said).toBeLessThanOrEqual(3 * cost.dark + 50);
+});
