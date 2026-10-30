@@ -15,6 +15,8 @@ import { checkPlatform } from './redis-platform.mjs';
 
 /** A build is a few tens of MB; past this, the download is refused rather than left to fill the disk. */
 const MAX_BYTES = 256 * 1024 * 1024;
+/** A download that hasn’t finished by then is given up, rather than holding Postbox’s start for good. */
+const TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
  * An error with a code to branch on, and its cause kept.
@@ -46,8 +48,9 @@ async function hashOf(path) {
  * @param {string} part  the temporary file, which must not exist yet
  * @param {string} url  for the messages
  * @param {number} maxBytes
+ * @param {AbortSignal} signal  the download’s time limit, which also ends a body that stalls
  */
-async function save(res, part, url, maxBytes) {
+async function save(res, part, url, maxBytes, signal) {
   const hash = createHash('sha256');
   let size = 0;
   const count = new Transform({
@@ -59,13 +62,18 @@ async function save(res, part, url, maxBytes) {
     },
   });
   try {
-    await pipeline(Readable.fromWeb(/** @type {any} */ (res.body)), count, createWriteStream(part, { mode: 0o600, flags: 'wx' }));
+    await pipeline(Readable.fromWeb(/** @type {any} */ (res.body)), count, createWriteStream(part, { mode: 0o600, flags: 'wx' }), { signal });
   } catch (e) {
     if (e.code === 'EDOWNLOAD') throw e;
+    if (signal.aborted) throw timedOut(url, e);
     throw fail('EDOWNLOAD', `Couldn’t download Redis from ${url}: ${e.message}. Check the network, then start Postbox again.`, e);
   }
   return hash.digest('hex');
 }
+
+/** @param {string} url @param {unknown} cause */
+const timedOut = (url, cause) =>
+  fail('EDOWNLOAD', `Couldn’t download Redis from ${url}: it didn’t finish in time, so Postbox gave up. Check the network, then start Postbox again.`, cause);
 
 /**
  * Makes sure this platform’s Redis build is under the data folder, verified, and says where.
@@ -74,8 +82,9 @@ async function save(res, part, url, maxBytes) {
  * @param {string} [o.platform]  `process.platform`, passed in by tests
  * @param {string} [o.arch]  `process.arch`, passed in by tests
  * @param {{ version: string, release: { url: string }, targets: Record<string, { asset: string, sha256: string | null }> }} [o.build]
- * @param {(url: string) => Promise<Response>} [o.fetch]
+ * @param {(url: string, init: { signal: AbortSignal }) => Promise<Response>} [o.fetch]
  * @param {number} [o.maxBytes]
+ * @param {number} [o.timeoutMs]  how long the whole download may take
  * @returns {Promise<{ path: string, sha256: string, downloaded: boolean }>}
  */
 export async function fetchRedisBuild({
@@ -85,6 +94,7 @@ export async function fetchRedisBuild({
   build = REDIS,
   fetch = globalThis.fetch,
   maxBytes = MAX_BYTES,
+  timeoutMs = TIMEOUT_MS,
 }) {
   const where = checkPlatform({ platform, arch });
   if (!where.ok) throw fail('EPLATFORM', where.message);
@@ -99,17 +109,19 @@ export async function fetchRedisBuild({
   if ((await hashOf(path)) === entry.sha256) return { path, sha256: entry.sha256, downloaded: false };
 
   const url = `${build.release.url}/${entry.asset}`;
+  const signal = AbortSignal.timeout(timeoutMs);
   let res;
   try {
-    res = await fetch(url);
+    res = await fetch(url, { signal });
   } catch (e) {
+    if (signal.aborted) throw timedOut(url, e);
     throw fail('EDOWNLOAD', `Couldn’t download Redis from ${url}: ${e.cause?.message ?? e.message}. Check the network, then start Postbox again.`, e);
   }
   if (!res.ok || !res.body) throw fail('EDOWNLOAD', `Couldn’t download Redis from ${url}: the server answered ${res.status}. Start Postbox again later.`);
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const part = join(dir, `.${entry.asset}.${randomBytes(6).toString('hex')}.part`);
   try {
-    const got = await save(res, part, url, maxBytes);
+    const got = await save(res, part, url, maxBytes, signal);
     if (got !== entry.sha256)
       throw fail(
         'ECHECKSUM',

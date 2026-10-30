@@ -191,3 +191,30 @@ test('a kept file that isn’t a regular file is refused, not trusted or replace
   });
   assert.deepEqual(s.requests, []);
 });
+
+test('#553: a download that doesn’t finish in time is given up, whether the request or the body stalls, and nothing is kept', async () => {
+  const dataDir = join(tmp, 'slow');
+  // The request never answers: fetch rejects only when the signal aborts, as undici does.
+  const hanging = (_url, { signal }) => new Promise((_, rej) => signal.addEventListener('abort', () => rej(signal.reason)));
+  await assert.rejects(fetchRedisBuild({ dataDir, ...linux, build: build(), fetch: hanging, timeoutMs: 50 }), (e) => {
+    assert.equal(e.code, 'EDOWNLOAD');
+    assert.match(e.message, /didn’t finish in time/);
+    return true;
+  });
+  // The request answers, and its body stalls after the first chunk.
+  const stalling = async () =>
+    new Response(
+      new ReadableStream({
+        start(c) {
+          c.enqueue(new Uint8Array(GOOD.subarray(0, 4096)));
+        },
+      }),
+    );
+  await assert.rejects(fetchRedisBuild({ dataDir, ...linux, build: build(), fetch: stalling, timeoutMs: 50 }), (e) => {
+    assert.equal(e.code, 'EDOWNLOAD');
+    assert.match(e.message, /didn’t finish in time/);
+    return true;
+  });
+  assert.equal(existsSync(asset(dataDir)), false);
+  assert.deepEqual((await readdir(join(dataDir, 'redis', '8.10.3'))).filter((n) => n.endsWith('.part')), [], 'no temporary file is left');
+});
