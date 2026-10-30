@@ -73,15 +73,17 @@ export const GLIMPSE_SOURCE_CHARS = 2000;
 export const DEFAULT_HOP_LIMIT = 50;
 /**
  * The chain limit POSTBOX_CHAIN_LIMIT asks for, or the default when it isn’t set (#508). The UAT runner sets it for the
- * Postbox it starts, so a scenario’s `- chain-limit: 3` reaches the card in a few wakes; a value that isn’t a whole number
- * from 1 up is refused, so a mistyped one can’t run as 50. Read once, when the module loads: every reader of HOP_LIMIT,
+ * Postbox it starts, so a scenario’s `- chain-limit: 3` reaches the card in a few wakes. It can only lower the limit: a
+ * value that isn’t a whole number from 1 to 50 is refused, so a mistyped one can’t run as 50 and a shell can’t turn the
+ * backstop off. Read once, when the module loads: every reader of HOP_LIMIT,
  * the one that enforces it (server/side-threads.mjs) and the one agents read (shared/mcp-tools.mjs), gets the same number.
  * @param {string|undefined} value  the variable’s text
  */
 export function chainLimit(value) {
   const text = String(value ?? '').trim();
   if (!text) return DEFAULT_HOP_LIMIT;
-  if (!/^\d+$/.test(text) || Number(text) < 1) throw new Error(`POSTBOX_CHAIN_LIMIT takes a whole number from 1 up, not “${text}”.`);
+  if (!/^\d+$/.test(text) || Number(text) < 1 || Number(text) > DEFAULT_HOP_LIMIT)
+    throw new Error(`POSTBOX_CHAIN_LIMIT takes a whole number from 1 to ${DEFAULT_HOP_LIMIT}, not “${text}”.`);
   return Number(text);
 }
 // The browser loads this module too (app/js/composer-to.mjs), where there is no process: it reads the default.

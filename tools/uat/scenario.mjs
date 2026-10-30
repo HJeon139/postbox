@@ -27,6 +27,8 @@
 // on a host: `- host: researcher` names it, `- host-triggers: …` replace its triggers then, and the text under a
 // `### On a host` heading replaces the phase’s text then (tools/uat/hosts-scenario.mjs).
 
+import { DEFAULT_HOP_LIMIT } from '../../shared/limits.mjs';
+
 /** The backends that run Claude. Every other one makes a scenario a compatibility run. */
 export const CLAUDE_BACKENDS = new Set(['claude-code', 'agent-sdk']);
 
@@ -149,11 +151,11 @@ const count = (v) => {
   return Number.isInteger(n) && n >= 1 && n <= 500 ? n : null;
 };
 
-/** The chain limit a scenario asks for: a whole number from 1 to 500, null for none. @param {string|undefined} spec */
+/** The chain limit a scenario asks for, which can only lower the backstop: 1 to 50, null for none. @param {string|undefined} spec */
 function chainLimitOf(spec) {
   if (spec === undefined) return null;
   const n = count(spec);
-  if (!n) throw new Error(`- chain-limit takes a whole number from 1 to 500, not “${String(spec).trim()}”.`);
+  if (!n || n > DEFAULT_HOP_LIMIT) throw new Error(`- chain-limit takes a whole number from 1 to ${DEFAULT_HOP_LIMIT}, not “${String(spec).trim()}”.`);
   return n;
 }
 

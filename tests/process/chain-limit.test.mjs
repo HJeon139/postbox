@@ -1,5 +1,5 @@
 // POSTBOX_CHAIN_LIMIT (#508, tests/uat-chain-limit.test.mjs): a Postbox started under it enforces that chain limit and
-// tells agents that number; without it, the backstop of 50 (#541); with a value that isn’t a whole number from 1 up, it
+// tells agents that number; without it, the backstop of 50 (#541); with a value that isn’t a whole number from 1 to 50, it
 // refuses to start. Each case is a process of its own, since the module reads the variable once, when it loads.
 
 import assert from 'node:assert/strict';

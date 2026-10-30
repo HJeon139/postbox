@@ -15,12 +15,20 @@ import { ROUND_TWO, room, T0 } from './delivery-fixture.mjs';
 
 const s = (n) => T0 + n * 1000;
 
-test('shared/limits.mjs: the chain limit is 50 unless POSTBOX_CHAIN_LIMIT is set to a whole number from 1 up', () => {
+test('shared/limits.mjs: the chain limit is 50 unless POSTBOX_CHAIN_LIMIT lowers it, to a whole number from 1 to 50', () => {
   assert.equal(DEFAULT_HOP_LIMIT, 50);
   assert.equal(HOP_LIMIT, DEFAULT_HOP_LIMIT, 'the tests run without the variable');
   for (const unset of [undefined, '', '  ']) assert.equal(chainLimit(unset), 50, JSON.stringify(unset));
   assert.equal(chainLimit('3'), 3);
   assert.equal(chainLimit(' 12 '), 12);
+  assert.equal(chainLimit('50'), 50);
+  // The setting exists so tests can lower the limit; a shell can’t turn principle 6’s backstop off by raising it.
+  for (const high of ['51', '100000'])
+    assert.throws(
+      () => chainLimit(high),
+      (e) => e.message.includes('POSTBOX_CHAIN_LIMIT') && e.message.includes(`“${high}”`),
+      high,
+    );
   for (const bad of ['0', '-1', '2.5', '3x', 'abc', 'Infinity', '1e2'])
     assert.throws(
       () => chainLimit(bad),
@@ -37,8 +45,8 @@ test('a scenario’s `- chain-limit: 3` is read, and a bad value is refused rath
   const s3 = parseScenario(md('- chain-limit: 3'));
   assert.deepEqual(s3.agents, ['researcher', 'critic']);
   assert.equal(s3.summary, 'A summary.');
-  for (const bad of ['0', 'three', '2.5', '501'])
-    assert.throws(() => parseScenario(md(`- chain-limit: ${bad}`)), /chain-limit takes a whole number from 1 to 500/, bad);
+  for (const bad of ['0', 'three', '2.5', '51', '501'])
+    assert.throws(() => parseScenario(md(`- chain-limit: ${bad}`)), /chain-limit takes a whole number from 1 to 50\b/, bad);
 });
 
 test('the runner passes the scenario’s chain limit to its Postbox as POSTBOX_CHAIN_LIMIT, and nothing without one', () => {
