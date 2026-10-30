@@ -119,3 +119,27 @@ test('a connection hears the current store outage if it starts while the backlog
     .map((s) => JSON.parse(s.split('data: ')[1]));
   assert.equal(statuses.at(-1)?.state, 'down', 'the stream attached after the outage broadcast and retained its stale running status');
 });
+
+for (const seq of [1, 3])
+  test(`a state replacement during stream attachment forces resync even when its seq is ${seq}`, async (t) => {
+    const { store, live } = setup(t);
+    let release = () => {};
+    const gate = new Promise((ok) => (release = ok));
+    const backlog = store.backlog.bind(store);
+    store.backlog = async (since) => {
+      const old = await backlog(since);
+      await gate;
+      return old;
+    };
+    const c = connection({ 'last-event-id': '1' });
+    const opening = live.stream(c.req, c.res, new URL('http://x/api/stream'));
+    // Repair replaces the state and clears replay memory; the resync goes out before this stream is attached.
+    store.state = { ...store.state, seq };
+    store.events.length = 0;
+    for (const fn of store.reloads) fn();
+    release();
+    await opening;
+    assert.deepEqual(c.frames(), ['resync'], 'no events from the replaced state reach the connecting page');
+    store.emit('thread', { id: 'after-reload', members: [] });
+    assert.deepEqual(c.frames(), ['resync', `${seq + 1}:thread`], 'the connection still receives subsequent live changes');
+  });

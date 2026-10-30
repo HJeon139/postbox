@@ -28,14 +28,19 @@ export function liveStreams(store) {
   };
   store.subscribe((ev) => out(`id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`));
   store.watchers.add((_writable, status) => out(storeLine(status)));
-  // The store read its state back from Redis whole (server/store-reject.mjs): the pages load it again.
-  store.reloads?.add(() => out('event: resync\ndata: {}\n\n'));
+  // A replacement invalidates history already being read, even if its sequence number stays the same.
+  let replacements = 0;
+  store.reloads?.add(() => {
+    replacements++;
+    out('event: resync\ndata: {}\n\n');
+  });
   const keepAlive = setInterval(() => {
     for (const res of streams) res.write(': keep-alive\n\n');
   }, 15000);
 
   /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res @param {URL} url */
   async function stream(req, res, url) {
+    const before = replacements;
     const since = Number(req.headers['last-event-id'] ?? url.searchParams.get('since') ?? store.state.seq);
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
     res.write(`retry: 1500\n\n${storeLine(store.status)}`);
@@ -43,6 +48,8 @@ export function liveStreams(store) {
     // what it didn’t take (server/store-write.mjs), so a tab can hold events the store no longer has. The browser
     // would drop every later event as one it had seen; it refetches the whole state instead (#553’s review, blocker 3).
     let backlog = since > store.state.seq ? null : await store.backlog(since); // from memory, or after a restart from the store’s events stream
+    // The replacement’s broadcast reached only existing streams. This page must load the new state too.
+    if (before !== replacements) backlog = null;
     // The read of the events stream awaited Redis, and an emit meanwhile reached only the streams already open: what
     // the store applied since the backlog ends is in memory, taken here, in the same tick that adds this stream, so
     // the emit reaches it exactly once and after the backlog.
