@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import net from 'node:net';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { formatMessage, turnGuide } from '../server/adapters/guide.mjs';
@@ -89,10 +89,21 @@ test('SR-7: an agent’s guide, environment and tool results never name the stor
   for (const [where, text] of Object.entries(texts))
     for (const secret of secrets)
       assert.ok(!text.includes(secret), `${where} doesn’t hold ${secret === sup.password || secret === sup.ownerPassword ? 'a password' : secret}`);
-  // A refused write’s reason can reach an agent: no status message names the socket either.
+  // A refused write’s reason can reach an agent: no status message names the socket, the data folder or the Redis
+  // build’s folder either (#553’s review, hardening); those go to Postbox’s own log.
   const other = new RedisSupervisor({ home: sup.home, dataDir: dir });
-  for (const cause of /** @type {const} */ (['socket', 'owned', 'binary-missing', 'corrupt-aof', 'died'])) {
-    const { message } = other.down(cause, 'detail');
-    assert.ok(!message.includes(sup.socket) && !message.includes(dirname(sup.socket)), cause);
+  const logged = [];
+  const { error } = console;
+  console.error = (m) => logged.push(String(m));
+  try {
+    for (const cause of /** @type {const} */ (['socket', 'owned', 'binary-missing', 'corrupt-aof', 'died'])) {
+      const { message } = other.down(cause, 'detail');
+      assert.ok(!message.includes(sup.socket) && !message.includes(dirname(sup.socket)), cause);
+      assert.ok(!message.includes(dir) && !message.includes(sup.home), `${cause}: ${message}`);
+    }
+  } finally {
+    console.error = error;
   }
+  assert.ok(logged.some((m) => m.includes(sup.home)), 'the log names where the build was looked for');
+  assert.ok(logged.some((m) => m.includes(join(dir, 'redis', 'data'))), 'the log names the damaged files’ folder');
 });

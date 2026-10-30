@@ -51,9 +51,10 @@ const MESSAGES = {
   socket: () =>
     'The store’s Redis couldn’t open its private socket. Check that the data folder’s redis/run folder (or the private folder Postbox made for it in the temporary folder) belongs to you and isn’t a link, then Retry.',
   owned: (_, detail) => `Postbox didn’t start the store’s Redis: it found one already running on this data folder. ${detail}`,
-  'binary-missing': (s) => `The store’s Redis isn’t where Postbox keeps it (${s.home}). Start Postbox again to download it.`,
-  'corrupt-aof': (s) =>
-    `The store’s append-only file in ${join(s.dataDir, 'redis', 'data')} is damaged, so Redis won’t load it. Restore the data folder from its backup, or repair it with redis-check-aof, then Retry.`,
+  // No data path in these: a refused write’s reason reaches /mcp callers, and the server log has the path (down()).
+  'binary-missing': () => 'The store’s Redis isn’t where Postbox keeps it. Start Postbox again to download it.',
+  'corrupt-aof': () =>
+    'The store’s append-only file is damaged, so Redis won’t load it. Restore the data folder from its backup, or repair it with redis-check-aof (the server log names the file), then Retry.',
   died: () => 'The store’s Redis stopped. Postbox is starting it again; writes wait until it’s back.',
 };
 
@@ -119,6 +120,9 @@ export class RedisSupervisor extends EventEmitter {
   /** @param {DownCause} cause @param {string} [detail] */
   down(cause, detail) {
     const message = MESSAGES[cause](this, detail) + (detail && cause === 'died' ? ` (${detail})` : '');
+    // The paths stay in Postbox’s own log, where only the person reads them.
+    if (cause === 'binary-missing') console.error(`${message} Postbox looked in ${this.home}${detail ? ` (${detail})` : ''}.`);
+    if (cause === 'corrupt-aof') console.error(`${message} The files are in ${join(this.dataDir, 'redis', 'data')}; the child’s log is ${join(this.dataDir, 'redis', 'logs', 'redis.log')}.`);
     this.set({ state: 'down', cause, message });
     return storeError('ESTOREDOWN', message);
   }
