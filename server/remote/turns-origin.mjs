@@ -162,6 +162,7 @@ function readMessage(kind, m, max) {
   if (whole === null || whole.length > max || v.kind !== kind || typeof v.attach === 'string') return null;
   if (v.text !== undefined && typeof v.text !== 'string') return null;
   if (v.context !== undefined && !(Array.isArray(v.context) && v.context.every((c) => typeof c === 'string'))) return null;
+  if (v.lint !== undefined && typeof v.lint !== 'string') return null;
   if (v.attachments !== undefined && !(Array.isArray(v.attachments) && v.attachments.every(isObject))) return null;
   if ((kind === 'lint' || kind === 'app-check') && v.problems !== undefined && !Array.isArray(v.problems)) return null;
   if (kind === 'event' && !(isObject(v.event) && typeof v.event.blockId === 'string')) return null;

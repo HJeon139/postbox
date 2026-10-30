@@ -1,0 +1,5 @@
+{"seq":41,"type":"session.patch","data":{"id":"se_c","patch":{"state":"think","updatedAt":2}}}
+{"seq":42,"type":"session.patch","data":{"id":"se_c","patch":{"agentMessages":[{"dir":"from","other":"developer","text":"@critic, I’m ready for your task.","at":2},{"dir":"from","other":"researcher","text":"@critic Ready for your task.","at":1}],"updatedAt":3}}}
+{"seq":43,"type":"session.patch","data":{"id":"se_c","patch":{"updatedAt":4},"unset":["agentMessages"]}}
+{"seq":44,"type":"session.patch","data":{"id":"se_r","patch":{"agentMessages":[{"dir":"from","other":"critic","text":"critic to researcher","at":1793009205000},{"dir":"to","other":"critic","text":"not from anyone","at":1793009206000}],"updatedAt":5}}}
+{"seq":45,"type":"session.patch","data":{"id":"se_gone","patch":{"handle":"ghost","agentMessages":[{"dir":"from","other":"critic","text":"to a session the log never held whole","at":7}]}}}

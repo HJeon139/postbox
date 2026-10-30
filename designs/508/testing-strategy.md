@@ -104,6 +104,8 @@ Give @critic a long job. While it works, send it a second message, which waits i
 
 **Backends (DL-8).** The scenario runs four times, differing only in its header: all on Claude Code (a regular run), then with `--compat` and `- backends: researcher=codex`, `researcher=kiro-cli` and `researcher=antigravity-cli`. Phase 3’s fault applies to whichever backend @researcher runs on. Phase 7 runs on Claude Code only, until Codex’s compaction is wired up (#425); Kiro and Antigravity report a fresh session rather than a compaction, which the design’s marker reset covers.
 
+**Which runs, when.** Eight live runs (four backends, on a baseline and on the head) take 30 to 60 minutes or more, so they aren’t each step’s gate. For a step’s pull request, run only the phases it touches, on Claude Code only (`--phases`, such as `--phases 1,2`), and get its baseline from a stored run rechecked with the step’s checks (`--recheck <run> --file no`) where only the checks differ. The four-backend matrix, every phase and the `--compat` runs are for the nightly or weekly pass and for launch (`tests/uat/e2e/README.md`, “Which runs a change needs”).
+
 ---
 
 ## File 2: `tests/uat/e2e/scenarios/bigroom.md`

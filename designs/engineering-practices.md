@@ -32,7 +32,7 @@ POSTBOX_STREAM_LAG=300 npx playwright test         # with the server’s events 
 npx playwright test needs-nav --repeat-each=10     # a spec ten times, as CI runs one a pull request adds or edits
 ```
 
-CI runs every spec on each pull request, normally and with the server’s events late, and a spec the pull request adds or changes ten times more with the events late. There are no retries: one failure fails the run.
+CI runs every spec on each pull request, normally and with the server’s events late, and a spec the pull request adds or changes ten times more with the events late. There are no retries: one failure fails the run. Each pass is split into three shards by spec file (`npx playwright test --shard=1/3`), and the six run at once; the check “Demo in Chrome, with accessibility checks” passes only when all six did. A pull request that changes only docs (Markdown outside `server/personas/`, `designs/` and `LICENSE`) skips the browser specs and the ten-times pass, and that check passes.
 
 ## Node
 

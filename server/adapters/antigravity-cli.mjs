@@ -59,7 +59,7 @@ import { toolOf } from './agy-tools.mjs';
 import { describeTool } from './claude-stream.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
-import { agentGuide, formatMessage } from './guide.mjs';
+import { formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 import { agyResult } from './work-calls.mjs';
@@ -638,9 +638,9 @@ export class AntigravityCliAdapter {
       console.error(
         `Postbox couldn’t read ${this.settingsFile}, so Antigravity will refuse Postbox’s tools. Add "${ALLOW_POSTBOX}" to permissions.allow there.`,
       );
-    const prompt = formatMessage(message, ctx.pathOf);
     // agy can’t turn tools off (agyRules says what’s off), and its 12,000-character rules file has no room for #131’s sections.
-    const guide = agentGuide({ persona, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief, toolRules: null, setup: false });
+    const { guide, message: turnMessage } = turnGuide(message, { ...ctx, persona, brief: session?.brief, toolRules: null, setup: false });
+    const prompt = formatMessage(turnMessage, ctx.pathOf);
     const useHook = persona?.permissionMode !== 'bypass' && agySupportsHooks(this.version);
     const rulesWith = (hooked) => agyRules({ persona, guide, schemas: join(dirname(this.settingsFile), 'mcp', AGY_SERVER), hooked });
     const rules = rulesWith(useHook);

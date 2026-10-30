@@ -434,7 +434,7 @@ test('a turn: the allow rule, the plugin there while agy runs and gone after, th
   assert.equal(seen[0].mcp.mcpServers.postbox.serverUrl, ctx.mcpUrl);
   assert.match(seen[0].rules, /You are @gem, an agent in Postbox/);
   assert.ok(seen[0].rules.includes(join(root, 'mcp', 'postbox_postbox', 'show_block.json')), 'the schemas beside the settings file');
-  assert.equal(seen[0].args.at(-1), '--print=Tea or coffee?');
+  assert.match(seen[0].args.at(-1), /^--print=Tea or coffee\?\n\n\[Postbox\] What’s current in this room:\n\n/);
   assert.ok(!seen[0].args.includes('--effort'), 'the model names its effort');
   assert.deepEqual(readdirSync(join(root, 'work', 'gem')), [], 'the plugin, and the .agents folder it made, are gone');
   assert.deepEqual(JSON.parse(readFileSync(join(root, 'settings.json'), 'utf8')).permissions.allow, [ALLOW_POSTBOX]);

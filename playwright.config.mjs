@@ -13,6 +13,8 @@ const CI = !!process.env.CI;
 export default defineConfig({
   testDir: 'tests/browser',
   testMatch: '**/*.spec.mjs',
+  // Waits for one of this machine’s heavy-suite slots, so agents’ worktrees don’t all run a suite at once.
+  globalSetup: './tests/browser/heavy-slot.mjs',
   outputDir: 'test-results',
   // A test.only left in fails CI instead of skipping the rest; a test that passed only on a rerun fails it too.
   forbidOnly: CI,

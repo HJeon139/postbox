@@ -7,12 +7,14 @@
 //   saw what runs, so no model is asked;
 // - the person typed a message that asks for it: one Haiku call quotes their words, and Postbox checks the quote is
 //   theirs, on word boundaries, and shares a word with the call. A block’s words are the agent’s, so never quoted.
-// Postbox keeps the rest in code: the call must pass request-floor.mjs’s allow-list, five calls a turn at most, none
+// Postbox keeps the rest in code: the call must pass request-floor.mjs’s allow-list, and git-request.mjs’s reading of
+// the repository’s config, hooks and where a push goes, five calls a turn at most, none
 // after the person stops them on the line each one leaves, none for a subagent, and anything that fails is a card.
 
 import { randomBytes } from 'node:crypto';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { setupOf } from './adapters/setup.mjs';
+import { gitOffRequest } from './git-request.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { actionWords, numberOf, offRequest } from './request-floor.mjs';
 import { SUMMARY_MODEL } from './thread-summary.mjs';
@@ -31,14 +33,14 @@ const FILLER = new Set(
   ),
 );
 
-// Words that turn a request around, in a quote or just before it.
-const NOT = /\b(?:don't|dont|do not|doesn't|never|no|not|without|stop|cancel|hold off|wait|won't|shouldn't|can't|cannot)\b/;
+// Words that turn a request around anywhere in the sentence that holds the quote: “Open the PR, but not yet”.
+const NOT = /\b(?:\w+n't|dont|didnt|do not|never|no|not|without|stop|cancel|hold off|wait)\b/;
 
-/** Up to three words before a place in a text, within its sentence. @param {string} s @param {number|undefined} at */
-function wordsBefore(s, at) {
-  const sentences = s.slice(0, at).split(/[.!?;\n]/);
-  const words = (sentences.at(-1) ?? '').trim().split(' ');
-  return words.slice(-3).join(' ');
+/** The sentence a place in a text is in. @param {string} s @param {number} at @param {number} length */
+function sentenceAt(s, at, length) {
+  const start = Math.max(...['.', '!', '?', ';', '\n'].map((c) => s.lastIndexOf(c, at - 1))) + 1;
+  const ends = ['.', '!', '?', ';', '\n'].map((c) => s.indexOf(c, at + length)).filter((i) => i >= 0);
+  return s.slice(start, ends.length ? Math.min(...ends) : s.length);
 }
 
 /** Lowercase, straight quotes and single spaces, for comparing words. */
@@ -121,7 +123,7 @@ export function judgeOf(rt) {
 
 /**
  * The judge’s answer: allow, with words the person typed that ask for this call. The quote counts only when it’s two
- * or more whole words of what they typed, with no “don’t”, “never” or “not” in it or just before it, and shares a word
+ * or more whole words of what they typed, with no “don’t”, “never” or “not” in its sentence, and shares a word
  * that isn’t filler with the call’s own words (request-floor.mjs, actionWords: not a title or a body the agent wrote).
  * @param {string} text  what the model said @param {string[]} said  what the person typed @param {string} call
  * @returns {string|null} the quote, or null for the card
@@ -141,9 +143,9 @@ export function allowedQuote(text, said, call) {
   if (a?.decision !== 'allow' || words.length < 2) return null;
   // lint-allow regex: the quote is escaped.
   const whole = new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRegExp(norm(quote))}(?:$|[^\\p{L}\\p{N}])`, 'gu');
-  // Each place they typed it, with up to three words before it in its sentence: “don’t open the PR yet” asks for the
-  // opposite, and “Not the README. Please open the PR” doesn’t.
-  const meant = (s) => [...norm(s).matchAll(whole)].some((m) => !NOT.test(`${wordsBefore(norm(s), m.index)} ${norm(quote)}`));
+  // Each place they typed it, with the sentence it’s in: “don’t open the PR yet” and “open the PR, but not yet” ask for
+  // the opposite, and “Not the README. Please open the PR” doesn’t.
+  const meant = (s) => [...norm(s).matchAll(whole)].some((m) => !NOT.test(sentenceAt(norm(s), m.index, m[0].length)));
   if (!said.some(meant)) return null;
   // A call’s words, whole and split at _ . / and -, so “create” is in mcp__tally__create_ticket.
   const inCall = new Set([...wordsOf(call), ...wordsOf(call.replace(/[_./-]+/g, ' '))]);
@@ -200,7 +202,10 @@ export async function requestedCall(rt, sessionId, { tool, input, agentId }) {
   // What the floor reads as named: what the person typed, and a confirm’s statement only when it shows this exact
   // command. Another confirm’s words are the agent’s, and widen nothing.
   const named = norm([...request.said, ...(shown ? [shown.statement] : [])].join('\n'));
-  if (offRequest(tool, input, { named, made: madeBy(rt, turn, request.threadId) })) return null;
+  const { folder } = await rt.panelTarget({ sessionId });
+  if (offRequest(tool, input, { named, made: madeBy(rt, turn, request.threadId), folder })) return null;
+  // What git does past the command’s words: its config, its hooks, and where a push goes.
+  if (tool === 'Bash' && (await gitOffRequest(folder, String(input?.command ?? ''), named))) return null;
   if (shown) return { threadId: request.threadId, how: 'confirmed', label: shown.label };
   const quote = request.said.length ? await judged(rt, turn, request, tool, input) : null;
   // The turn may have ended, or the person stopped these calls, while the judge thought.

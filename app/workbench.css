@@ -206,7 +206,7 @@ pre { max-width: 100%; }
 
 /* ───────── Rings ───────── */
 
-pb-ring { display: inline-flex; flex: none; line-height: 0; }
+pb-ring { display: inline-flex; flex: none; line-height: 0; position: relative; }
 pb-ring svg { overflow: visible; }
 pb-ring .track { stroke: var(--line); }
 pb-ring { align-items: center; gap: 2px; }
@@ -215,24 +215,28 @@ pb-ring { align-items: center; gap: 2px; }
 /* Ring motion: every animation eases in, eases out, then rests, so the screen settles between beats. */
 pb-ring .pulse { stroke: var(--accent); opacity: 0; transform-origin: center; transform-box: fill-box; }
 pb-ring[state="needs"] .pulse { animation: pb-pulse 2.6s ease-out infinite; }
-pb-ring .arc { transform-origin: center; transform-box: fill-box; }
-pb-ring[state="gen"] .arc { animation: pb-turn 2.8s infinite; }
-pb-ring .seg { animation: pb-swell 3.2s infinite; animation-delay: var(--d); }
-pb-ring .dot { transform-box: view-box; transform-origin: center; animation: pb-cross 3.6s infinite; }
-pb-ring .dot.still { animation: none; }
+/* What moves is an overlay of its own, laid over the ring where the ring starts (#463): it turns and fades as one, with
+   transform and opacity, which the compositor runs without painting the page again. Safari repainted the whole SVG
+   each frame while a shape inside it animated, about a dozen per thinking ring. */
+pb-ring .mover { position: absolute; transform-origin: center; pointer-events: none; }
+pb-ring .mover.turn { animation: pb-turn 2.8s infinite; }
+pb-ring .mover.sweep { opacity: 0; animation: pb-sweep 3.2s infinite; }
+pb-ring .mover.cross { animation: pb-cross 3.6s infinite; }
+pb-ring .dot { transform-box: view-box; transform-origin: center; }
 /* A ring beside a past message keeps its agent’s live state and color but holds still. A long conversation has
    hundreds of them, and Safari repaints an SVG animation every frame, which kept the GPU near full while an agent
    waited or worked. The live rings move: the sidebar, the top bar and the working row. Waiting on you shows as the
    steady outer ring reduced motion uses. */
-.who pb-ring :is(.pulse, .arc, .seg, .dot) { animation: none; }
+.who pb-ring :is(.pulse, .mover) { animation: none; }
 .who pb-ring[state="needs"] .pulse { opacity: .8; transform: scale(1.18); }
 @keyframes pb-pulse { 0% { opacity: .9; transform: scale(1); } 45%, 100% { opacity: 0; transform: scale(1.35); } }
 @keyframes pb-turn { 0% { transform: rotate(0deg); animation-timing-function: cubic-bezier(.65, 0, .35, 1); } 55%, 100% { transform: rotate(360deg); } }
-/* Each segment swells for about a quarter second, so only two or three segments are thick at once. */
-@keyframes pb-swell {
-  0% { stroke-width: var(--sw); animation-timing-function: ease-in-out; }
-  4% { stroke-width: calc(var(--sw) * 2); animation-timing-function: ease-in-out; }
-  8%, 100% { stroke-width: var(--sw); } }
+/* The swell fades in at the arc’s start, travels to its end and fades out there, then the ring rests. */
+@keyframes pb-sweep {
+  0% { transform: rotate(0deg); opacity: 0; animation-timing-function: cubic-bezier(.65, 0, .35, 1); }
+  8% { opacity: 1; }
+  40% { opacity: 1; }
+  48%, 100% { transform: rotate(var(--a2)); opacity: 0; } }
 @keyframes pb-cross {
   0% { transform: rotate(var(--a1)); animation-timing-function: cubic-bezier(.65, 0, .35, 1); }
   32% { transform: rotate(var(--a2)); }
@@ -250,8 +254,8 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 /* Screenshots freeze the pulse at a visible frame. */
 .shot pb-ring[state="needs"] .pulse { animation: none; opacity: .7; transform: scale(1.18); }
 .shot * { animation-play-state: paused !important; }
-.shot pb-ring .dot { animation-delay: -.6s; }
-.shot pb-ring .seg { animation-delay: calc(var(--d) - .7s); }
+.shot pb-ring .mover.cross { animation-delay: -.6s; }
+.shot pb-ring .mover.sweep { animation-delay: -.7s; }
 
 /* ───────── App shell ───────── */
 
@@ -795,10 +799,21 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .react-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .react-count { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--dim); }
 .react-btn[aria-pressed="true"] .react-count { color: var(--text); }
-.react-icon { display: block; flex: none; width: 20px; height: 20px; }
+.react-icon { display: block; flex: none; width: 20px; height: 20px; background: center / 100% no-repeat; }
+.react-icon[data-icon="approve"] { background-image: url(/media/reactions/reaction-approve-64.png); }
+.react-icon[data-icon="disapprove"] { background-image: url(/media/reactions/reaction-disapprove-64.png); }
+.react-icon[data-icon="flag"] { background-image: url(/media/reactions/reaction-flag-64.png); }
+.react-icon[data-icon="unclear"] { background-image: url(/media/reactions/reaction-unclear-64.png); }
+.react-icon[data-icon="done"] { background-image: url(/media/reactions/reaction-done-64.png); }
 /* The icons’ cream borders vanish on light: a thin rim keeps each one’s shape off the wash and the panel (at least 3:1,
-   as on dark). */
-:root[data-theme="light"] .react-icon { filter: drop-shadow(1px 0 0 var(--dim)) drop-shadow(-1px 0 0 var(--dim)) drop-shadow(0 1px 0 var(--dim)) drop-shadow(0 -1px 0 var(--dim)); }
+   as on dark). It is drawn into a copy of each icon (tools/rim-reactions.mjs), with room around it for the rim, not as a
+   filter: a filter on each of a long conversation’s thousands of icons made every scroll repaint slow (#572). */
+:root[data-theme="light"] .react-icon { width: 22.5px; height: 22.5px; margin: -1.25px; }
+:root[data-theme="light"] .react-icon[data-icon="approve"] { background-image: url(/media/reactions/reaction-approve-rim-72.png); }
+:root[data-theme="light"] .react-icon[data-icon="disapprove"] { background-image: url(/media/reactions/reaction-disapprove-rim-72.png); }
+:root[data-theme="light"] .react-icon[data-icon="flag"] { background-image: url(/media/reactions/reaction-flag-rim-72.png); }
+:root[data-theme="light"] .react-icon[data-icon="unclear"] { background-image: url(/media/reactions/reaction-unclear-rim-72.png); }
+:root[data-theme="light"] .react-icon[data-icon="done"] { background-image: url(/media/reactions/reaction-done-rim-72.png); }
 
 /* Sent back from a topic thread. */
 .shared-card { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }

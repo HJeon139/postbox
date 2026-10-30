@@ -437,6 +437,10 @@
       "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 105 } } } } }
     },
     {
+      "includes": ["tools/uat/recheck.mjs"],
+      "linter": { "rules": { "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 137 } } } } }
+    },
+    {
       "includes": ["tools/uat-run.mjs"],
       "linter": {
         "rules": {

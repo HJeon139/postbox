@@ -26,13 +26,14 @@
 //
 // Each check names the inputs it reads (`inputs`), so a recorded room runs only those it has (liveChecks, below).
 
-import { ASKING } from '../shared/catalog.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { clip } from '../shared/text.mjs';
 import { contentBlocks } from './adapters/claude-content.mjs';
 import { deniedTools, isPublishingTool, POSTBOX_SERVER, PUBLISHING_TOOLS } from './adapters/setup.mjs';
 import { asksInProse, blockUseTally } from './block-use.mjs';
+import { ASK_CHECKS } from './room-checks-asks.mjs';
 import { BACKEND_CHECKS } from './room-checks-backends.mjs';
+import { DELIVERY_CHECKS } from './room-checks-delivery.mjs';
 import { NEEDS_CHECKS } from './room-checks-needs.mjs';
 import { TELEMETRY_CHECKS } from './room-checks-telemetry.mjs';
 import { THREAD_CHECKS } from './room-checks-threads.mjs';
@@ -43,41 +44,9 @@ export { agyTokens, kiroCredits } from './room-checks-backends.mjs';
 import { freshInstall } from './seed.mjs';
 
 export { callsFor, LONG_TURN_MS, LONG_TURN_TOOLS } from './block-use.mjs';
+export { waitingOnYou } from './waiting-on-you.mjs';
 
 const itemsOf = (facts) => facts.threads.flatMap((t) => (facts.state.items[t] ?? []).map((it) => ({ ...it, threadId: t })));
-
-/**
- * What’s waiting on the person in these threads, as the “needs you” count sees it: a block that asks (choice,
- * form, confirm, review) and isn’t answered, an open wake request or proposal, and whatever a session says it
- * needs (a permission card, a failed turn to retry). The runner shows it to the tester every step, and doesn’t
- * move on while it’s there, so a run answers what an agent asked instead of leaving it behind.
- * @param {any} state  @param {string[]} threads
- * @returns {{ itemId: string|null, threadId: string, what: string }[]}
- */
-export function waitingOnYou(state, threads) {
-  /** @type {Map<string, { itemId: string|null, threadId: string, what: string }>} */
-  const out = new Map();
-  for (const t of threads)
-    for (const it of state.items?.[t] ?? []) {
-      const by = it.handle ? `@${it.handle}’s ` : '';
-      if (it.kind === 'block' && it.valid !== false && ASKING.has(it.block?.type) && !it.answered)
-        out.set(it.id, {
-          itemId: it.id,
-          threadId: t,
-          what: `${by}${it.block.type} “${clip(it.block.title ?? it.block.prompt ?? '', 80)}”${it.block.revision ? `, revision ${it.block.revision}` : ''}`,
-        });
-      else if ((it.kind === 'hop' || it.kind === 'proposal') && it.status === 'open')
-        out.set(it.id, { itemId: it.id, threadId: t, what: it.kind === 'hop' ? 'a wake request' : `${by}proposal for a new teammate` });
-    }
-  for (const t of threads)
-    for (const id of state.threads?.[t]?.members ?? []) {
-      const se = state.sessions?.[id];
-      if (!se?.needs) continue;
-      const key = se.needs.itemId ?? `needs:${se.id}`;
-      if (!out.has(key)) out.set(key, { itemId: se.needs.itemId ?? null, threadId: se.threadId ?? t, what: clip(se.needs.text ?? se.needs.kind, 120) });
-    }
-  return [...out.values()];
-}
 
 // ── The P0 hotfixes (#108, #123, #125, #126) ───────────────────────────────────────────────────────────
 // Read from what main already records: the items in Postbox’s state, the event history (facts.events), each turn’s
@@ -814,6 +783,8 @@ export const CHECKS = [
   ...THREAD_CHECKS,
   ...TELEMETRY_CHECKS,
   ...NEEDS_CHECKS,
+  ...ASK_CHECKS,
+  ...DELIVERY_CHECKS,
   {
     // Two processes in one Claude Code session (#126): a turn that started while the session’s previous turn was still
     // making requests, or a stopped turn whose process went on calling Postbox’s tools after Stop. Claude Code turns
@@ -1204,6 +1175,10 @@ export function runChecks(facts, { only = null, checks = CHECKS } = {}) {
           evidence: x.evidence,
           ...(x.verdict ? { verdict: x.verdict, note: x.note } : {}),
           ...(x.counts ? { counts: x.counts } : {}),
+          // A check it couldn’t make, for an agent on a backend whose inputs it can’t read: the report lists it.
+          ...(x.unverified ? { unverified: x.unverified } : {}),
+          // The requirements it serves (#508’s requirements.md), beside its issue, for a coverage table per requirement.
+          ...(c.requirements ? { requirements: c.requirements } : {}),
         }));
       } catch (e) {
         return [{ check: c.id, issue: null, key: `${c.id}-error`, title: `The ${c.id} check failed`, evidence: e.message }];
@@ -1220,14 +1195,17 @@ export function runChecks(facts, { only = null, checks = CHECKS } = {}) {
 export const LIVE_INPUTS = ['state', 'threads', 'streams', 'kiroStreams', 'agyStreams', 'codexStreams', 'events', 'transcripts'];
 
 /**
- * The checks whose inputs these facts have, run; and the rest, with the inputs they’d need.
+ * The checks whose inputs these facts have, run; and the rest, with the inputs they’d need. What a check said it
+ * couldn’t check, for an agent whose inputs it can’t read, is kept apart (unverified): it isn’t a finding.
  * @param {any} facts  @param {string[]} [have]
- * @returns {{ findings: ReturnType<typeof runChecks>, ran: string[], notRun: { check: string, missing: string[] }[] }}
+ * @returns {{ findings: ReturnType<typeof runChecks>, unverified: ReturnType<typeof runChecks>, ran: string[], notRun: { check: string, missing: string[] }[] }}
  */
 export function liveChecks(facts, have = LIVE_INPUTS) {
   const can = CHECKS.filter((c) => c.inputs.every((i) => have.includes(i)));
+  const all = runChecks(facts, { only: can.map((c) => c.id) });
   return {
-    findings: runChecks(facts, { only: can.map((c) => c.id) }),
+    findings: all.filter((x) => !x.unverified),
+    unverified: all.filter((x) => x.unverified),
     ran: can.map((c) => c.id),
     notRun: CHECKS.filter((c) => !can.includes(c)).map((c) => ({ check: c.id, missing: c.inputs.filter((i) => !have.includes(i)) })),
   };

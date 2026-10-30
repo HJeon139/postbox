@@ -19,7 +19,7 @@ Shows every step of the work without flooding the transcript, including what sub
 - **Failed steps:** say why, in the first sentence of the tool’s error.
 - **Refused steps:** point to their refusal card.
 - **Thoughts:** listed by their first sentence, and open to the whole summary. A subagent’s thoughts are its own, under its name.
-- **While the reply updates:** the activity list and any thought the person opened stay open as new steps arrive. If the person closes the activity list, later updates keep it closed. A new reply starts collapsed (#488).
+- **While the reply updates:** the activity list and any thought the person opened stay open as new steps arrive. If the person closes the activity list, later updates keep it closed. A new reply starts collapsed (#488). A new step changes only the list: the reply’s text, a diagram in it and a selection in it stay as they are (#573).
 
 ## Steps to reproduce
 
@@ -33,6 +33,7 @@ Shows every step of the work without flooding the transcript, including what sub
 - Subagent steps carry the subagent’s name, and nest under the subagent’s step with its narration and thoughts.
 - The refused step reads as refused.
 - The thought opens to its text.
+- While steps arrive, a diagram in the reply doesn’t flash or reload, and text you selected in the reply stays selected.
 
 ## Related
 

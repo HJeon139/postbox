@@ -85,7 +85,7 @@ test('#418 one made only by an agent shows a count; yours stays distinct and rai
   await expect(reaction(page, 'Flag this')).toHaveAttribute('aria-pressed', 'true');
   await expect(reaction(page, 'Flag this').locator('.react-count')).toHaveText('2');
   const box = async (sel) => (await reaction(page, 'Flag this').locator(sel).boundingBox()) ?? { x: 0 };
-  expect((await box('.react-count')).x, 'the count is to the right of the icon').toBeGreaterThan((await box('img')).x);
+  expect((await box('.react-count')).x, 'the count is to the right of the icon').toBeGreaterThan((await box('.react-icon')).x);
 });
 
 test('who reacted shows in a hover card, on hover and on keyboard focus, and in the button’s name', async ({ page }) => {

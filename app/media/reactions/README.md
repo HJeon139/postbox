@@ -1,8 +1,8 @@
 # Reaction icons
 
 The five reactions (#251), each at 64 and 128 px, transparent and square. The page draws the 64 px one at 20 px in each
-reaction button (app/js/reactions.mjs). The emoji stays each icon’s accessible label. The 128 px files
-are kept as the source for larger sizes.
+reaction button (app/js/reactions.mjs, workbench.css), and on light its `-rim-72` copy (see “Contrast”). The emoji stays
+each icon’s accessible label. The 128 px files are kept as the source for larger sizes.
 
 | File | Emoji | Says | Drawing |
 |---|---|---|---|
@@ -31,8 +31,13 @@ the disapprove icon’s image reference is their own (#282).
 
 ## Contrast
 
-On light, the cream borders of the stamp, the slash and the envelope blend into the page. So workbench.css gives every
-icon a 1 px `--dim` rim there; on dark they stand out on their own. The measure is the 80th percentile of an icon’s
+On light, the cream borders of the stamp, the slash and the envelope blend into the page. So every icon has a 1 px
+`--dim` rim there; on dark they stand out on their own. The rim is drawn into a copy of each icon,
+`reaction-<name>-rim-72.png`: the 64 px icon with 4 px of room around it, drawn at 22.5 px so the icon itself stays 20 px.
+`node tools/rim-reactions.mjs` draws them again, after a change to an icon or to light `--dim`. It was once a filter on
+each icon in the page, and a long conversation’s thousands of filters made every scroll repaint slow (#572). The copies
+carry light `--dim` itself, so inside an agent app’s frame, where `--dim` is the stage’s, the rim stays the
+workbench’s. The measure is the 80th percentile of an icon’s
 pixels’ WCAG contrast against what’s behind it, at 20 px on a 2× screen. The person’s own chip is on the amber wash
 (the worse of the wash over the page and over the panel); an agent’s chip is on the panel. Non-text needs 3:1.
 

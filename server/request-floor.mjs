@@ -10,61 +10,9 @@
 //   to judge, each field one the same limits allow: text, a PR’s branches, a repository or an item the person named.
 
 import { splitCommand } from '../shared/permission-match.mjs';
+import { inProject, isText, namesRepo, shellWords, tokensOf } from './request-words.mjs';
 
-/**
- * A command’s words as the shell would split them, with quotes removed, or [] when it can’t be sure (an unclosed
- * quote). Nothing is expanded: a $( ) stays text, and the command it holds is a part of its own (splitCommand).
- * @param {string} s @returns {string[]}
- */
-export function shellWords(s) {
-  const out = [];
-  /** @type {string|null} */
-  let cur = null;
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (/\s/.test(c)) {
-      if (cur !== null) out.push(cur);
-      cur = null;
-    } else if (c === "'") {
-      const end = s.indexOf("'", i + 1);
-      if (end < 0) return [];
-      cur = (cur ?? '') + s.slice(i + 1, end);
-      i = end;
-    } else if (c === '"') {
-      let j = i + 1;
-      let text = '';
-      for (; j < s.length && s[j] !== '"'; j++) text += s[j] === '\\' && /["\\$`]/.test(s[j + 1] ?? '') ? s[++j] : s[j];
-      if (j >= s.length) return [];
-      cur = (cur ?? '') + text;
-      i = j;
-    } else cur = (cur ?? '') + (c === '\\' ? (s[++i] ?? '') : c);
-  }
-  if (cur !== null) out.push(cur);
-  return out;
-}
-
-/**
- * Whether a word a read, a git path or a body file names stays in the project: never a path from / or ~, a ..
- * segment, or a $variable or a `command`, which could read ~/.config/gh/hosts.yml into a PR’s body.
- * @param {string} w
- */
-const inProject = (w) => !/^[~/]|[$`]|(?:^|\/)\.\.(?:\/|$)/.test(w.startsWith('-') && w.includes('=') ? w.slice(w.indexOf('=') + 1) : w);
-
-/**
- * The person’s words one by one, lowercase and without the punctuation around them, so a name is compared whole:
- * eon139/postbox isn’t hjeon139/postbox, and …/issues/12 isn’t …/issues/123.
- * @param {string} named
- */
-const tokensOf = (named) =>
-  new Set(
-    named
-      .split(/\s+/)
-      .map((w) => w.replace(/^[(<"'‘“]+|[)>"'’”.,;:!?]+$/g, '').replace(/\/$/, ''))
-      .filter(Boolean),
-  );
-
-/** Whether the person named a repository, as owner/name or by its link. @param {Set<string>} tokens @param {string} repo */
-const namesRepo = (tokens, repo) => tokens.has(repo.toLowerCase()) || tokens.has(`https://github.com/${repo.toLowerCase()}`);
+export { shellWords };
 
 // git subcommands a request may cover, each with every flag it may carry: flags alone, takes with a value (the next
 // word, or --flag=value), counts a -3. refs: its other words are plain refs, two at most (a push or a fetch).
@@ -90,26 +38,29 @@ const PLAIN_REF = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
 /**
  * Whether a git command is one a request may cover (GIT, above).
- * @param {string[]} args  the words after git
+ * @param {string[]} args  the words after git @param {Scope} scope
  */
-function gitOnRequest(args) {
+function gitOnRequest(args, scope) {
   const [sub, ...rest] = args;
   const rule = sub && Object.hasOwn(GIT, sub) ? GIT[sub] : null;
   if (!rule) return false;
+  const here = (w) => inProject(w, scope.folder);
   const others = [];
   for (let i = 0; i < rest.length; i++) {
     const w = rest[i];
     // After --, paths: never in a push or a fetch.
-    if (w === '--') return !rule.refs && rest.slice(i + 1).every(inProject);
+    if (w === '--') return !rule.refs && rest.slice(i + 1).every(here);
     if (!w.startsWith('-')) others.push(w);
     else if (rule.flags.includes(w) || (rule.counts && /^-\d+$/.test(w))) continue;
     else {
       const eq = w.startsWith('--') ? w.indexOf('=') : -1;
       if (!(rule.takes ?? []).includes(eq > 0 ? w.slice(0, eq) : w)) return false;
-      if (eq < 0 && rest[++i] === undefined) return false;
+      // A value is text: a commit message is pushed, so "$(cat .env)" would publish it.
+      const v = eq < 0 ? rest[++i] : w.slice(eq + 1);
+      if (v === undefined || !isText(v)) return false;
     }
   }
-  return rule.refs ? others.length <= 2 && others.every((w) => PLAIN_REF.test(w)) : others.every(inProject);
+  return rule.refs ? others.length <= 2 && others.every((w) => PLAIN_REF.test(w)) : others.every(here);
 }
 
 const TITLE = ['--title', '-t'];
@@ -147,6 +98,18 @@ function itemOnRequest(target, scope, elsewhere) {
 }
 
 /**
+ * Whether a gh flag’s value is one a request may cover: a title or a body as text (isText), a body file in the
+ * project and never stdin, and a PR’s branches as plain refs, never another owner’s (attacker:evil).
+ * @param {string} flag @param {string} v @param {Scope} scope
+ */
+function flagValueOk(flag, v, scope) {
+  if (flag === '--body-file' || flag === '-F') return v !== '-' && inProject(v, scope.folder);
+  if ([...TITLE, '--body', '-b'].includes(flag)) return isText(v);
+  if (['--head', '-H', '--base', '-B'].includes(flag)) return PLAIN_REF.test(v);
+  return true;
+}
+
+/**
  * Whether a gh write is one a request may cover (#296): on the project’s own repository, or one the person named; a
  * comment or an edit only on an item this conversation made or the person named, by its number or its link.
  * @param {string[]} args  the words after gh @param {Scope} scope
@@ -166,7 +129,7 @@ function ghOnRequest(args, scope) {
     else if (rule.bool.includes(flag) && inline === null) continue;
     else if (rule.flags.includes(flag)) {
       const v = inline ?? rest[++i];
-      if (v === undefined || ((flag === '--body-file' || flag === '-F') && !inProject(v))) return false;
+      if (v === undefined || !flagValueOk(flag, v, scope)) return false;
       if (REPO.includes(flag)) repo = v;
     } else return false;
   }
@@ -177,13 +140,13 @@ function ghOnRequest(args, scope) {
 }
 
 // Commands that only read and print, on files in the project; a redirect, a pipe into a shell or a VAR=value still
-// asks. Not rg, whose --pre runs a program.
-const READS = new Set(['echo', 'cat', 'ls', 'pwd', 'which', 'head', 'tail', 'wc', 'grep', 'date', 'true']);
+// asks. Not rg, whose --pre runs a program, nor date, which can set the clock; tail only without following.
+const READS = new Set(['echo', 'cat', 'ls', 'pwd', 'which', 'head', 'tail', 'wc', 'grep', 'true']);
 
 /**
- * What a request’s floor reads beside the call: the words the person typed or confirmed (lowercase), and the PRs and
- * issues this conversation created, from the work ledger.
- * @typedef {{ named: string, made: { urls: string[], numbers: string[] } }} Scope
+ * What a request’s floor reads beside the call: the words the person typed or confirmed (lowercase), the PRs and
+ * issues this conversation created, from the work ledger, and the agent’s folder, to follow links from.
+ * @typedef {{ named: string, made: { urls: string[], numbers: string[] }, folder?: string|null }} Scope
  */
 
 /** Whether one part of a command is on the allow-list. */
@@ -195,16 +158,17 @@ function partOnRequest(part, scope) {
   const unquoted = part.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, '');
   if (!words.length || /^[A-Za-z_]\w*=/.test(words[0]) || /[<>]/.test(unquoted)) return false;
   const [program, ...rest] = words;
-  if (program === 'git') return gitOnRequest(rest);
+  if (program === 'git') return gitOnRequest(rest, scope);
   if (program === 'gh') return ghOnRequest(rest, scope);
-  return READS.has(program) && rest.every(inProject);
+  if (program === 'tail' && rest.some((w) => /^-[a-zA-Z]*[fF]|^--follow/.test(w))) return false;
+  return READS.has(program) && rest.every((w) => inProject(w, scope.folder));
 }
 
 // The verbs an MCP tool’s name may carry to pass, and the words that keep it off whatever else it says: a take-away,
 // or something #296 never lets a request touch (labels, reviews, files, branches, settings, people).
 const MCP_VERBS = /^(?:create|add|update|edit|comment|post|append|reply|write|insert)$/;
 const MCP_TAKES =
-  /^(?:delete|remove|destroy|drop|purge|merge|close|archive|trash|revoke|transfer|wipe|erase|move|rename|share|invite|set|lock|labels?|reviews?|reviewers?|approve|assignees?|milestone|collaborators?|members?|permissions?|repo|repository|file|files|branch|workflow|secrets?|webhook|fork|visibility|key|token)$/;
+  /^(?:delete|remove|destroy|drop|purge|merge|close|archive|trash|revoke|transfer|wipe|erase|move|rename|share|invite|set|lock|labels?|reviews?|reviewers?|approve|assignees?|milestone|collaborators?|members?|permissions?|repo|repository|file|files|branch|workflow|secrets?|webhook|fork|gists?|visibility|key|token)$/;
 
 // The fields an MCP call may carry, and what each may hold: text the agent writes, a PR’s branches, a draft, the
 // repository (one the person named) and the item (one they named or this conversation made). Any other field gets
@@ -213,8 +177,12 @@ const MCP_TEXT = new Set(['title', 'body', 'text', 'content', 'description', 'co
 const MCP_ITEM = new Set(['number', 'issue_number', 'pull_number', 'pr_number', 'issue', 'ticket', 'ticket_id', 'id']);
 const snake = (k) => k.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
 
-/** Whether every field of an MCP call’s input is one a request may cover (above). @param {any} input @param {Scope} scope */
-function fieldsOnRequest(input, scope) {
+/**
+ * Whether every field of an MCP call’s input is one a request may cover (above). A PR’s branches only as it’s created:
+ * an update’s base retargets the PR.
+ * @param {any} input @param {Scope} scope @param {boolean} creates
+ */
+function fieldsOnRequest(input, scope, creates) {
   const { owner, repo: name } = input;
   if (owner !== undefined && (typeof owner !== 'string' || typeof name !== 'string')) return false;
   let elsewhere = false;
@@ -222,7 +190,7 @@ function fieldsOnRequest(input, scope) {
     const key = snake(k);
     if (MCP_TEXT.has(key) ? typeof v === 'string' : key === 'draft' ? typeof v === 'boolean' : key === 'owner') continue;
     if (key === 'head' || key === 'base') {
-      if (typeof v !== 'string' || !PLAIN_REF.test(v)) return false;
+      if (!creates || typeof v !== 'string' || !PLAIN_REF.test(v)) return false;
     } else if (key === 'repo' || key === 'repository') {
       const full = typeof owner === 'string' ? `${owner}/${v}` : String(v);
       if (typeof v !== 'string' || !namesRepo(tokensOf(scope.named), full)) return false;
@@ -276,5 +244,5 @@ export function offRequest(tool, input, scope) {
     .split(/[\s_\-.]+/);
   if (words.some((w) => MCP_TAKES.test(w))) return 'it takes something away, or touches what a request never does';
   if (!words.some((w) => MCP_VERBS.test(w))) return 'its name doesn’t create, add, edit or comment';
-  return fieldsOnRequest(input, scope) ? null : 'it carries a field a request can’t cover';
+  return fieldsOnRequest(input, scope, words.includes('create')) ? null : 'it carries a field a request can’t cover';
 }

@@ -47,14 +47,16 @@ import { createInterface } from 'node:readline';
 import { checkRemoteContext } from './adapter.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
-import { agentGuide, formatMessage } from './guide.mjs';
+import { formatMessage, turnGuide } from './guide.mjs';
 import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_REMOTE, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
+import { kiroError, kiroExitError } from './kiro-errors.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf } from './setup.mjs';
 
 export { findKiro, kiroModel, kiroModels, kiroVersion, modelIds, postboxModel } from './kiro-cli-models.mjs';
 export { kiroRemoteEnv } from './kiro-cli-remote.mjs';
+export { kiroExitError as exitError } from './kiro-errors.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117), on a remote host too (KIRO_REMOTE). The adapter adds the models it found. */
 export const KIRO_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'deny-list', promptTool: false, remote: KIRO_REMOTE });
@@ -410,21 +412,6 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
   };
 }
 
-/** Why a turn failed, from its exit code, when the stream didn’t say (kiro.dev/docs/reference/exit-codes). */
-export function exitError(code, stderr = '') {
-  if (code === 3)
-    return 'An MCP server didn’t start, so Kiro didn’t run the turn. Check that Postbox is reachable, and your own servers if this persona loads them.';
-  if (code === 4) return 'Kiro couldn’t find the agent Postbox wrote for this turn.';
-  // Kiro logs a lot at INFO on stderr; the lines that aren’t say what went wrong.
-  const why = String(stderr)
-    .split('\n')
-    .filter((l) => l.trim() && !/^\[INFO\]|ExperimentalWarning|--trace-warnings/.test(l))
-    .slice(-3)
-    .join(' ')
-    .slice(0, 400);
-  return `Kiro exited with code ${code}${why ? `: ${why}` : ''}.`;
-}
-
 export class KiroCliAdapter {
   name = 'kiro-cli';
 
@@ -463,8 +450,8 @@ export class KiroCliAdapter {
     const persona = ctx.persona;
     // On a host, its folder there, and the host turn’s copies of attachments; laptop folders don’t cross (the header).
     const cwd = ctx.remote ? ctx.remote.folder : await this.folderFor(persona, ctx.project);
-    const promptOn = (turn = ctx.remote?.turn) => formatMessage(message, attachmentPaths(ctx, turn));
-    const guide = agentGuide({ ...ctx, persona, session, brief: session?.brief, toolRules: KIRO_TOOL_RULES });
+    const { guide, message: turnMessage } = turnGuide(message, { ...ctx, persona, session, brief: session?.brief, toolRules: KIRO_TOOL_RULES });
+    const promptOn = (turn = ctx.remote?.turn) => formatMessage(turnMessage, attachmentPaths(ctx, turn));
     const folders = ctx.remote ? [cwd] : [...new Set([cwd, ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter(Boolean);
     // Before anything starts on the host: the turn ID and version the runtime owns. After a Postbox restart,
     // ctx.remote.attach names a turn already there instead, which is replayed from the start and never started again.
@@ -537,10 +524,11 @@ export class KiroCliAdapter {
         else ctx.signal.addEventListener('abort', onAbort, { once: true });
         child.on('error', (e) =>
           reject(
-            new Error(
+            kiroError(
               e.code === 'ENOENT'
                 ? 'The Kiro CLI isn’t installed, or isn’t on the PATH. Install it, or set POSTBOX_KIRO_BIN.'
                 : `The Kiro CLI couldn’t start: ${e.message}`,
+              e,
             ),
           ),
         );
@@ -576,8 +564,11 @@ export class KiroCliAdapter {
           if (mapper.model) ctx.saveState({ model: mapper.model });
           if (ctx.signal.aborted) return resolve({});
           if (sessionId && mapper.missingSession) return resolve({ missingSession: true });
-          if (mapper.error) return reject(new Error(mapper.error));
-          if (code !== 0 || !mapper.finished) return reject(new Error(exitError(code, stderr)));
+          if (mapper.error) return reject(kiroError(mapper.error, mapper.error));
+          if (code !== 0 || !mapper.finished) {
+            const message = kiroExitError(code, stderr);
+            return reject(kiroError(message, `${message} ${stderr}`));
+          }
           resolve({});
         };
         // A stopped turn ends once the CLI’s whole group has exited, as for the Claude backends (#126).

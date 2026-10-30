@@ -169,6 +169,15 @@ test('#557’s re-review: a quote after a no asks for the opposite, and a body t
   assert.equal(quoted('no push', 'no push today', 'Bash', { command: 'git push' }), null);
   assert.equal(quoted('looks good', 'Thanks, looks good to me', 'Bash', { command: 'gh pr comment 5 --body "Looks good to me."' }), null);
   assert.equal(quoted('looks good', 'Thanks, looks good to me', 'mcp__tally__add_ticket_comment', { number: 1, body: 'Looks good.' }), null);
+  // The re-review of #557: a no anywhere in the quote’s sentence.
+  for (const said of [
+    'Please don’t go ahead and open the PR.',
+    'Open the PR, but not yet.',
+    'Let’s hold off for now on opening the PR, and open the PR tomorrow.',
+    'Wait until CI passes before you open the PR.',
+    'I didn’t ask you to open the PR.',
+  ])
+    assert.equal(quoted('open the PR', said, 'Bash', create), null, said);
   // The same words, asked for, still count, wherever else the person said no.
   assert.equal(quoted('open the PR', 'Not the README. Please open the PR now.', 'Bash', create), 'open the PR');
   assert.equal(quoted('push it', 'Commit and push it.', 'Bash', { command: 'git push' }), 'push it');
