@@ -201,7 +201,7 @@ Refit it as runs accumulate (“Refitting the scale”, below), and change `DEFA
 ## Which runs a change needs
 
 A run takes 5 to 14 minutes, and a matrix of them an hour or more: #508’s plan ran one scenario on four backends, on a baseline and on the head, eight runs. Each run’s `report.md` says where its time went in its first paragraph (“Time: agents …, tester …, waits …, verifier …”), and `run.json`’s `timing` has every step’s. So, by default:
-- **For a pull request:** run only the phases the change touches, on Claude Code only. `--phase N` starts at a phase, and `--steps` set to its cap (its `- steps:` line, else 8) stops the run by the end of it. There’s no flag yet to run a list of phases.
+- **For a pull request:** run only the phases the change touches, on Claude Code only, with `--phases` (`--phases 1,2`).
 - **Nightly, weekly or before a launch:** every scenario, the four-backend matrix, and every `--compat` run.
 - **A baseline:** where what changed is a check or a trigger, recheck a stored run of the baseline with the head’s checks (`--recheck <run> --file no`, no model call) instead of running the baseline again. Run the baseline live only when what’s compared is what the product did.
 
