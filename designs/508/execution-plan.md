@@ -6,7 +6,8 @@
 
 | Agent | Backend | Role | Works from | Produces | Doesn’t |
 |---|---|---|---|---|---|
-| developer | Claude Code | Implements each step, dividing work across subagents, each in its own worktree. Owns the PRs, from opening to merge, and the functional and isolated tests: unit specs, Playwright specs and per-backend conformance fixtures | The step’s issue, `design.md`, the step’s specs in `requirements.md` (“Acceptance, test first”) | Failing specs first, then the code; one PR per step, merged once its gates pass | End-to-end runs; those are gemini’s |
+| developer | Claude Code | Implements each step, dividing work across subagents, each in its own worktree. Owns the PRs, from opening to merge, and the functional and isolated tests (unit specs, Playwright specs and per-backend conformance fixtures), run as the fast loop only; the full gate is CI’s (“Who runs which tests”) | The step’s issue, `design.md`, the step’s specs in `requirements.md` (“Acceptance, test first”) | Failing specs first, then the code; one PR per step, merged once its gates pass | End-to-end runs; those are gemini’s |
+| engineer | Claude Code | A second developer (from 30 October 2026). First fixes the slow tests; then builds the lag hotfix. Same rules as developer, in its own worktrees; stays out of `server/store.mjs` while Store is in review | The step’s or hotfix issue, `design.md` | Failing specs first, then the code; one PR per change | Own Store or #508 steps |
 | critic | Claude Code | Reviews each PR, focused on the **requirements**: every requirement id the step names has its spec, written first and failing on a baseline with the defect; triggers and checks match `testing-strategy.md` | `requirements.md`, `testing-strategy.md` | Findings in the room, naming file, line and the commit reviewed | Push or comment on GitHub |
 | gpt | Codex | Reviews each PR, focused on the **design**: invariants, atomicity in the store, recovery, failure modes, adapters, bounds | `design.md`, `engineering-practices.md` | Findings in the room, naming file, line and the commit reviewed | Push or comment on GitHub (room rule 1) |
 | gemini | Antigravity | End-to-end tester: runs the step’s phase of `delivery.md` or `bigroom.md` with `tools/uat-run.mjs`, first on a baseline with the defect, then on the PR’s head commit, on every backend in scope. Also records A2’s failing turn per backend, with Harness’s fault launcher | `testing-strategy.md`, the runner’s `report.md` | A run report per backend, naming the commit tested: triggers fired, checks silent or not, cost | Decide a fix (a run confirms only, `tests/uat/e2e/README.md`); push; run git in the shared checkout |
@@ -74,6 +75,31 @@ sequenceDiagram
 - Both reviews name the head commit they reviewed, with no blocking findings open. A fix made after a review is re-reviewed where it touches a finding.
 - gemini’s report names the commit it tested. A later change is retested in proportion to what it touched.
 - The step’s specs pass on its branch rebased onto current `main`. This matters when parallel steps both change the store or the runtime.
+- **CI on the pushed head is the full gate.** A green run of `check.yml` counts as the full check, the end-to-end tests and the repeat job. The author, gpt and gemini run locally only what the change touches (below).
+
+## Who runs which tests
+
+The person approved this on 30 October 2026 (block `process-long-tests-1`, revision 3), after critic, gemini and gpt measured where a 7-minute full pass goes: one browser test (`demo-a11y`) is about 4.5 of those minutes across the two Playwright passes, a 61-second real-time integration test, a leaked 20-second timer, and load averages of 90 to 150 when several suites ran at once on an 18-core Mac.
+
+| The change touches | Runs locally |
+|---|---|
+| Server, store, CLI, tools | Focused tests, then `npm test`, integration and process tests. No Playwright. |
+| `app/`, client-facing routes, `tests/browser/` | Focused tests, then the affected Playwright specs, normal pass only |
+| Tests only | The changed tests |
+| A merge of `main` that touches none of the step’s files | The tests the merge affects; CI does the rest |
+
+| Run | Owner |
+|---|---|
+| Failing-first spec, fix, focused tests, lint and types | The author: developer or engineer |
+| The touched suites above, and the release dry run at PR time | gpt, with its review |
+| Affected Playwright specs, the lag pass (`POSTBOX_STREAM_LAG=300`) at PR time, and UAT phases | gemini, only when the diff touches browser or conversation surfaces |
+| Full gate | CI, on the pushed head |
+
+- **“Ready for review”** names the head SHA, the focused tests that ran, and where the failing-first output is.
+- **Evidence is reused by exact SHA and command.** An unchanged head isn’t run again.
+- **Every report** names the commit, the command, the counts and the time taken, and mentions the author only if something failed.
+- **The push confirm** lists each result with its commit.
+- **Heavy suites take a lock,** so at most two Playwright or process suites run on one machine at once.
 
 Store and the read contract have no scenario phase; their specs and conformance tests decide them alone. PF-1 and PF-2 are decided by Playwright specs only.
 
