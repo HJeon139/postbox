@@ -2,6 +2,23 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.4.0 (2026-10-30)
+
+### Features
+
+- **permissions:** judge any call in Auto against the person's request
+- **permissions:** a gh write the approved block names runs without a card
+
+### Fixes
+
+- **permissions:** no git command runs on request; only gh and MCP calls can
+- **permissions:** a git command on request keeps its card when its config, hooks or target say so
+- **permissions:** a request never publishes a variable, a dotfile or a file a link leads out to
+- **permissions:** the person's own ask rules keep their card, and a negated quote counts for nothing
+- **permissions:** the request floor matches names whole, limits MCP fields and git flags
+- **permissions:** only the person's typed words or an exact confirm count
+- **permissions:** an allow-list in code decides what a request may cover
+
 ## 1.3.0 (2026-10-30)
 
 ### Features
