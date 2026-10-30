@@ -46,7 +46,9 @@ test('a new version during the old one’s check is checked at once, and the old
   // One check takes about 2.3 s (600 ms, 800 ms of a still layout, then 900 ms between text measures); waiting behind
   // v1’s first took about 4.6 s. 3.5 s sits between them, with room for the 300 ms lag CI adds and a loaded runner.
   expect.soft(took, `v2 passed ${took} ms after it was made`).toBeLessThan(3_500);
-  expect.soft(posted, 'only v2’s result was posted').toEqual(['overtaken:2']);
+  // Playwright can hand the test a request’s event after the server has handled it, so wait for it. A post from v1
+  // would come first, and then the list never matches.
+  await expect.soft.poll(() => posted, { message: 'only v2’s result was posted' }).toEqual(['overtaken:2']);
 });
 
 test('an app retired during its check posts nothing, and the next app’s check starts', async ({ page }) => {
@@ -57,7 +59,7 @@ test('an app retired during its check posts nothing, and the next app’s check 
   await expect(page.locator('iframe.check-frame[title="Checking Retiring"]'), 'its check frames are gone').toHaveCount(0);
   tools.show_app({ id: 'after-retired', title: 'After retired', code: PLAIN('v1') });
   await expect.poll(() => rt.s.apps['after-retired'].check.status, { timeout: 15_000 }).toBe('passed');
-  expect(posted, 'only the next app’s result was posted').toEqual(['after-retired:1']);
+  await expect.poll(() => posted, { message: 'only the next app’s result was posted' }).toEqual(['after-retired:1']);
 });
 
 test('a version checked again after a drop is checked, not skipped', async ({ page }) => {
