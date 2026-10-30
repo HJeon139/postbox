@@ -24,7 +24,7 @@ import { Corpus } from './corpus.mjs';
 import { listFolder } from './folders.mjs';
 import { dataFolder } from './home.mjs';
 import { listen as listenServer } from './listen.mjs';
-import { liveStreams, storeLine } from './live-streams.mjs';
+import { liveStreams } from './live-streams.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { rearmPersonaDeletes } from './persona-delete.mjs';
@@ -185,7 +185,7 @@ export async function start({
   };
 
   // The pages’ live updates: the store’s events, and its status line (server/live-streams.mjs).
-  const { streams, stop: stopStreams } = liveStreams(store);
+  const { streams, stop: stopStreams, stream } = liveStreams(store);
   let offlineUntil = 0;
 
   /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res */
@@ -497,18 +497,6 @@ export async function start({
       return send(res, 200, { ok: true });
     }
     throw httpError(404, `There’s nothing at ${path}.`);
-  }
-
-  async function stream(req, res, url) {
-    const since = Number(req.headers['last-event-id'] ?? url.searchParams.get('since') ?? store.state.seq);
-    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
-    res.write(`retry: 1500\n\n${storeLine(store.status)}`);
-    const backlog = await store.backlog(since); // from memory, or after a restart from the store’s events stream
-    // Too far behind: the browser refetches the whole state, then resumes from its sequence number.
-    if (backlog === null) res.write(`event: resync\ndata: {}\n\n`);
-    else for (const ev of backlog) res.write(`id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`);
-    streams.add(res);
-    req.on('close', () => streams.delete(res));
   }
 
   async function upload(req) {
