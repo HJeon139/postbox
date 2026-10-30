@@ -108,3 +108,25 @@ test('two verifier calls at once share what’s left of the run’s budget, not 
   assert.deepEqual(caps, [2, 1.5]);
   assert.equal(b.summary()?.spent.verifier, 0.4);
 });
+
+test('on a tight budget, the second verifier call waits for the first instead of being refused', async () => {
+  // $5 less the tester’s $4 leaves $1: the first call holds all of it, and spends $0.30.
+  const b = runBudget({ cap: 5, testerShare: 1 });
+  b.track({ streams: () => [], tester: { spent: 4 } });
+  const caps = [];
+  let open;
+  const gate = new Promise((r) => (open = r));
+  const ask = b.verifier(async (args) => {
+    caps.push(args.budgetUsd);
+    await gate;
+    return { value: { results: [] }, cost: 0.3 };
+  });
+  const both = Promise.all([ask({}), ask({})]);
+  await flush();
+  assert.deepEqual(caps, [1], 'the second call waited');
+  open();
+  await both;
+  assert.equal(caps.length, 2);
+  assert.equal(Math.round(caps[1] * 100) / 100, 0.7);
+  assert.equal(b.summary()?.spent.verifier, 0.6);
+});

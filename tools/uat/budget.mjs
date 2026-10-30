@@ -87,6 +87,8 @@ export class RunBudget {
   after = { verifier: 0, telemetry: 0 };
   /** What the verifier calls running now may spend: held from what’s left, so two at once can’t both spend it. */
   verifying = 0;
+  /** @type {Set<Promise<unknown>>} the verifier calls running now */
+  verifyCalls = new Set();
   testerBefore = 0;
   largestStep = 0;
   step = 0;
@@ -188,25 +190,33 @@ export class RunBudget {
   /**
    * askOnce for the verifier, each call capped at what’s left of the whole cap, and its cost counted, failed or not.
    * The verifier’s calls run at once (tools/uat/review.mjs), so each holds its cap until it ends: the next gets what’s
-   * left after that.
+   * left after that. When too little is left beside the calls running, it waits for them, as when the calls ran one
+   * after the other, rather than skip its findings: on a tight cap, the first call’s hold isn’t what it spends.
    */
   verifier(ask = askOnce) {
     return async (/** @type {any} */ args) => {
-      const left = this.cap - this.spent().total - this.verifying;
+      const leftNow = () => this.cap - this.spent().total - this.verifying;
+      while (leftNow() < VERIFY_MIN_USD && this.verifyCalls.size) await Promise.allSettled([...this.verifyCalls]);
+      const left = leftNow();
       if (left < VERIFY_MIN_USD)
         throw new Error(`the run’s budget has ${usd(Math.max(0, left))} left, too little to verify. Verify later with --recheck <run> --verify yes.`);
       const hold = Math.min(args.budgetUsd ?? 2, left);
       this.verifying += hold;
-      try {
-        const r = await ask({ ...args, budgetUsd: hold });
-        this.spend('verifier', r?.cost);
-        return r;
-      } catch (e) {
-        this.spend('verifier', e?.cost);
-        throw e;
-      } finally {
-        this.verifying -= hold;
-      }
+      // The call, its cost counted and its hold let go: what a call waiting for room waits on.
+      const call = (async () => {
+        try {
+          const r = await ask({ ...args, budgetUsd: hold });
+          this.spend('verifier', r?.cost);
+          return r;
+        } catch (e) {
+          this.spend('verifier', e?.cost);
+          throw e;
+        } finally {
+          this.verifying -= hold;
+        }
+      })();
+      this.verifyCalls.add(call);
+      return call.finally(() => this.verifyCalls.delete(call));
     };
   }
 
