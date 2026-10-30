@@ -63,7 +63,7 @@ export function fakeClock(t0 = 1_760_000_000_000) {
  *   spawn: the daemon’s own spawn, for the sign-in check (the runners are launchRunner’s, faked here). broker: in place
  *   of the daemon’s own.
  */
-export function setup({ token = TOKEN, same = true, clock, onIdle, uid, spawn, broker } = {}) {
+export function setup({ token = TOKEN, same = true, clock, onIdle, uid, spawn, broker, env } = {}) {
   // A short folder name: a turn’s socket path must fit Linux’s 108 bytes, and macOS’s tmpdir is long.
   const home = mkdtempSync(join(tmpdir(), 'pbd-'));
   const p = hostPaths(home, VERSION);
@@ -100,6 +100,7 @@ export function setup({ token = TOKEN, same = true, clock, onIdle, uid, spawn, b
     home,
     version: VERSION,
     ...(clock ? { now: clock.now, timers: clock.timers } : {}),
+    ...(env ? { env } : {}),
     ...fakeRunners(state, { alive, launches, asks, groupLookups }),
     async writeRunner(o) {
       writes.push(o);
