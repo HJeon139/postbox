@@ -10,6 +10,8 @@ const RETRY_WINDOW_MS = 60 * 60_000;
 const NETWORK_CODES = new Set(['EADDRNOTAVAIL', 'ENOTFOUND', 'ECONNRESET']);
 const TOOL_LIMIT = 20;
 const TOOL_NAME_CHARS = 100;
+/** Postbox’s MCP server, as Claude Code names its tools (mcp__postbox__show_block) and agy-tools.mjs names Antigravity’s. */
+const POSTBOX_MCP = /^mcp__postbox__/;
 
 /** Creates and arms one scheduled wake. @param {any} rt @param {string} sessionId @param {{ inMs: number, note?: string }} options */
 export function scheduleWake(rt, sessionId, { inMs, note }) {
@@ -77,7 +79,8 @@ const addTool = (rt, turn, name, id) => {
   turn.scheduledToolIds ??= new Set();
   if (id != null && turn.scheduledToolIds.has(id)) return;
   if (id != null) turn.scheduledToolIds.add(id);
-  const clipped = name.replace(/^mcp__[\w-]+__/, '').slice(0, TOOL_NAME_CHARS);
+  // Only Postbox’s own server name goes: another server’s tool keeps it, so the agent can tell which one ran.
+  const clipped = name.replace(POSTBOX_MCP, '').slice(0, TOOL_NAME_CHARS);
   turn.scheduledTools ??= [];
   if (turn.scheduledTools.includes(clipped) || turn.scheduledTools.length >= TOOL_LIMIT) return;
   turn.scheduledTools.push(clipped);

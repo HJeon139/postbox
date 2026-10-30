@@ -46,3 +46,17 @@ test('#466 a react a scheduled turn on a host calls counts as a tool that starte
   r.d.end(turn);
   await settled(r);
 });
+
+test('#466 a recovery keeps another MCP server’s name on its tools, and drops only Postbox’s', async () => {
+  const f = setup();
+  const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'File the issue.' });
+  f.adapter.next.push(async (ctx) => {
+    ctx.toolUse({ id: 't1', name: 'mcp__github__create_issue', input: {} });
+    ctx.toolUse({ id: 't2', name: 'mcp__postbox__define_term', input: {} });
+    throw networkError();
+  });
+  fire(f.rt, sc);
+  await settle(f.rt);
+  assert.deepEqual(f.store.state.schedules[sc.id]?.recoveryTools, ['mcp__github__create_issue', 'define_term']);
+  f.rt.cancelSchedule(sc.id);
+});
