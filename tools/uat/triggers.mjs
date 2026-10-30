@@ -13,6 +13,7 @@
 import { POSTBOX_SERVER } from '../../server/adapters/setup.mjs';
 import { NEEDS_TRIGGERS } from '../../server/room-checks-needs.mjs';
 import { ALLOW_ONCE_TRIGGERS } from './allowonce-triggers.mjs';
+import { DELIVERY_TRIGGERS } from './delivery-triggers.mjs';
 import { TELEMETRY_TRIGGERS } from './telemetry-triggers.mjs';
 import { clip, cell as esc, itemsOf, resultText } from './trigger-facts.mjs';
 import { HOST_TRIGGERS } from './triggers-host.mjs';
@@ -61,7 +62,7 @@ export function postboxCalls(streams) {
  * The triggers, by id. `says` finishes “Postbox showed that …”, for the tester and the report. `run` returns the times
  * it happened, with evidence; `recorded` says whether this run’s records could show it at all (a run from before the
  * runner kept job history can’t show #126’s).
- * @type {Record<string, { issue: number, says: string, recorded: (f: any) => boolean, run: (f: any) => { at: number|null, evidence: string }[] }>}
+ * @type {Record<string, { issue: number, requirements?: string[], says: string, recorded: (f: any) => boolean, run: (f: any) => { at: number|null, evidence: string }[] }>}
  */
 export const TRIGGERS = {
   'wake-full-text': {
@@ -158,6 +159,7 @@ export const TRIGGERS = {
   ...TELEMETRY_TRIGGERS,
   ...NEEDS_TRIGGERS,
   ...ALLOW_ONCE_TRIGGERS,
+  ...DELIVERY_TRIGGERS,
 };
 
 /**
@@ -213,6 +215,8 @@ export function gapFinding({ phase, title, missing, why }) {
     note: 'Not a defect: a fix this run didn’t test.',
   };
 }
+
+const named = (/** @type {string} */ t) => ({ issue: TRIGGERS[t]?.issue ?? null, requirements: TRIGGERS[t]?.requirements ?? [] }); // a coverage row’s (#508)
 
 /** The steps a phase gets after its triggers happen, to finish what it asks, before the run moves on by itself. */
 export const GRACE = 2;
@@ -339,7 +343,7 @@ export function phaseGoals(scenario, { cap, start = 0, log = () => {} }) {
     gaps: () => gaps,
     /**
      * Coverage per phase and trigger, for the report and run.json.
-     * @returns {{ phase: number, title: string, trigger: string, issue: number, hit: boolean|null, step: number|null, steps: number, cap: number|null, evidence: string|null, skipped: boolean }[]}
+     * @returns {{ phase: number, title: string, trigger: string, issue: number, requirements: string[], hit: boolean|null, step: number|null, steps: number, cap: number|null, evidence: string|null, skipped: boolean }[]}
      */
     coverage: () =>
       scenario.phases.flatMap((ph, i) =>
@@ -347,7 +351,7 @@ export function phaseGoals(scenario, { cap, start = 0, log = () => {} }) {
           phase: i + 1,
           title: ph.title,
           trigger: t,
-          issue: TRIGGERS[t]?.issue ?? null,
+          ...named(t),
           hit: seen.has(t) ? true : unknown.has(t) ? null : false,
           step: seen.get(t)?.step ?? null,
           steps: used.get(i) ?? 0,
