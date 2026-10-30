@@ -224,7 +224,9 @@ async function checkGroup(page, browser, app, scenes) {
   if (last) expect(shown, 'every scene the demo shows is in a group').toEqual(GROUPS.flat());
 }
 
-for (const scenes of GROUPS)
+// CI runs these in halves, on two runners (--shard=1/2 and 2/2, which split them in the order they’re declared): the
+// first group with the third, and the second with the last, so each half has one of the two that play the most.
+for (const scenes of [GROUPS[0], GROUPS[2], GROUPS[1], GROUPS[3]])
   test(`demo scenes ${scenes[0]} to ${scenes.at(-1)} have no axe violations, at 1280 and 375 px in dark and light`, async ({ page, browser }) => {
     // Up to 23 scenes played, and up to 7 checked in four variants each.
     test.setTimeout(10 * 60_000);
