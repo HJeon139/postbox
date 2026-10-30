@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { admin, consistent, gate, open, tmp, until } from './store-fixture.mjs';
+import { admin, consistent, gate, killed, open, tmp, until } from './store-fixture.mjs';
 
 /** A store with a conversation and one item, written. */
 async function withItem() {
@@ -65,12 +65,10 @@ test('a commit survives a SIGKILL of Redis the moment it resolves, every time', 
   const s = await withItem();
   const sup = /** @type {any} */ (s).redis.sup;
   for (let round = 0; round < 8; round++) {
-    await until(() => s.writable);
+    await until(() => s.writable, `round ${round}: writes to reopen`, s);
     const r = await s.commit(append(String(round)), `kill-${round}`);
-    const child = sup.child;
-    child.kill('SIGKILL');
-    await new Promise((ok) => (child.exitCode !== null || child.signalCode !== null ? ok(null) : child.once('exit', ok)));
-    await until(() => sup.status.state === 'running' && s.writable);
+    await killed(s);
+    await until(() => sup.status.state === 'running' && s.writable, `round ${round}: the restart and writes to reopen`, s);
     const c = await sup.client();
     const seq = Number(await c.call('GET', 'seq'));
     c.close();

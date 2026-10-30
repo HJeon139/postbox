@@ -12,6 +12,7 @@ import { Store } from '../server/store.mjs';
 import { readState } from '../server/store-redis.mjs';
 import { apply } from '../shared/state.mjs';
 import { admin } from './redis-fixture-user.mjs';
+import { killed, until } from './store-fixture.mjs';
 
 if (!process.env.POSTBOX_REDIS_HOME) throw new Error('Set POSTBOX_REDIS_HOME (tests/AGENTS.md, “The store’s Redis”).');
 
@@ -118,10 +119,7 @@ test('while the child is down, writes are refused and the state stays readable; 
   const s = await open(await tmp());
   s.emit('thread', { id: 't', members: [] });
   await s.flush();
-  const sup = /** @type {any} */ (s).redis.sup;
-  const down = new Promise((ok) => sup.once('status', ok));
-  sup.child.kill('SIGKILL');
-  await down;
+  await killed(s);
   assert.throws(
     () => s.emit('thread', { id: 'u', members: [] }),
     (e) => e.code === 'ESTOREDOWN',
@@ -129,8 +127,7 @@ test('while the child is down, writes are refused and the state stays readable; 
   await assert.rejects(s.commit([{ type: 'thread', data: { id: 'v', members: [] } }]), (e) => e.code === 'ESTOREDOWN');
   assert.ok(s.state.threads.t);
   assert.equal(s.state.threads.u, undefined);
-  for (let i = 0; i < 100 && !s.writable; i++) await new Promise((ok) => setTimeout(ok, 50));
-  assert.equal(s.writable, true);
+  await until(() => s.writable, 'the restart and writes to reopen', s);
   s.emit('thread', { id: 'w', members: [] });
   await s.flush();
   const b = await open(s.dir ?? '');

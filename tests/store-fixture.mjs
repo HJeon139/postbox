@@ -10,6 +10,7 @@ import { Store } from '../server/store.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 
 export { admin } from './redis-fixture-user.mjs';
+export { killed } from './store-kill-fixture.mjs';
 
 if (!process.env.POSTBOX_REDIS_HOME) throw new Error('Set POSTBOX_REDIS_HOME (tests/AGENTS.md, “The store’s Redis”).');
 
@@ -37,10 +38,15 @@ export const open = async (dir) => {
 /** A raw connection to the store’s Redis. @param {Store} s */
 export const raw = (s) => /** @type {any} */ (s).redis.sup.client();
 
-/** Waits for a condition, up to 5 s. @param {() => boolean} pred */
-export const until = async (pred) => {
+/**
+ * Waits for a condition, up to 5 s, then fails naming it and, given the store, its Redis’s status: a child that didn’t
+ * come back fails with its cause, not at the file’s end.
+ * @param {() => boolean} pred @param {string} [what] @param {Store} [s]
+ */
+export const until = async (pred, what = 'the condition', s) => {
   for (let i = 0; i < 200 && !pred(); i++) await new Promise((ok) => setTimeout(ok, 25));
-  assert.ok(pred());
+  const status = s ? `; the store’s Redis: ${JSON.stringify(/** @type {any} */ (s).redis?.sup?.status ?? 'none')}` : '';
+  assert.ok(pred(), `timed out waiting for ${what}${status}`);
 };
 
 /** The stream’s events after `seq`, as Redis holds them. @param {Store} s @param {number} seq */

@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
+import { killed } from './store-kill-fixture.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
@@ -77,7 +78,7 @@ test('ST-3: a turn running when Redis dies stops with the store named, nothing e
   const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
 
   // Redis dies under the running turn.
-  /** @type {any} */ (store).redis.sup.child.kill('SIGKILL');
+  await killed(store);
   await until(() => !store.writable, 'writes to close');
   // The backend’s stream goes on: a line comes after Redis went away, in a listener, as readline delivers it.
   assert.doesNotThrow(() => agent.stream.emit('line', 'cs_after_outage'), 'a save from a stream listener doesn’t throw out of it');
@@ -119,7 +120,7 @@ test('ST-3: while Redis can’t start, a write is refused with 503 and its cause
   const home = sup.home;
   // Its Redis dies, and can’t start again: its build is gone.
   sup.home = join(dir, 'no-redis-here');
-  sup.child.kill('SIGKILL');
+  await killed(store);
   await until(() => store.status.state === 'down' && /** @type {any} */ (store.status).cause === 'binary-missing', 'the cause to be the missing build');
   const refused = await call({ method: 'PUT', path: '/api/settings', cookie, body: { theme: 'light' } });
   assert.equal(refused.status, 503, 'refused, not a server error');
@@ -148,7 +149,7 @@ test('ST-3: while Redis starts again after Retry, the status says down (starting
   const sup = /** @type {any} */ (store).redis.sup;
   const home = sup.home;
   sup.home = join(dir, 'no-redis-here');
-  sup.child.kill('SIGKILL');
+  await killed(store);
   await until(() => /** @type {any} */ (store.status).cause === 'binary-missing', 'the cause to be the missing build');
   // Every status the watchers (the page’s live stream) hear agrees with whether the store can be written.
   /** @type {string[]} */
