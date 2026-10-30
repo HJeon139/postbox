@@ -62,7 +62,11 @@ export const STORE_COMMANDS = [
   'flushdb',
 ];
 
-/** A password as redis.conf takes it: its SHA-256, so the file doesn’t hold it. @param {string} p */
+/**
+ * A password as redis.conf takes it: its SHA-256, so the file doesn’t hold it. SHA-256 is the only form Redis’s ACL
+ * accepts, so no slower hash is possible here; and the value isn’t a person’s password but 32 random bytes made at each
+ * start (CodeQL alert 116, dismissed as a false positive on 31 October 2026). @param {string} p
+ */
 export const hashed = (p) => `#${createHash('sha256').update(p).digest('hex')}`;
 
 /** A value in redis.conf, quoted. @param {string} v */
