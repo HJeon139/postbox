@@ -70,8 +70,8 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 | Unit tests, with no network and no processes | `node:test` with `tests/guard.mjs` (`npm test`) |
 | The remote host’s programs as real processes: local child processes and Unix sockets only, never the network | `node:test` over `tests/integration/` (`npm run test:integration`), after `npm test` in `npm run check` |
 | Line coverage of the pure modules (the 90% target in architecture.md) | Nothing. `npm run test:coverage` reports it and fails on no threshold |
-| Browser behavior | `npx playwright test`, normally and with `POSTBOX_STREAM_LAG=300`, in CI’s end-to-end job, not in `npm run check` |
-| No axe violations in any demo scene | `tests/browser/demo-a11y.spec.mjs`, with the other specs in CI’s end-to-end job |
+| Browser behavior | `npx playwright test`, normally and with `POSTBOX_STREAM_LAG=300`, in CI’s browser-specs jobs, three shards a pass, not in `npm run check` |
+| No axe violations in any demo scene | `tests/browser/demo-a11y.spec.mjs`, with the other specs in CI’s browser-specs jobs |
 | Conventional Commits | `tools/lint-commits.mjs` on a pull request in CI; the local hook only after `npm run hooks` |
 | Real agents doing the right thing | The end-to-end UAT, which no CI job runs and which costs real usage |
 
@@ -95,7 +95,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 ### Screenshots
 
 The demo’s screenshots are generated and not committed: a refresh adds a full new copy of every image to history, and the 62 MB it had reached made every clone slower.
-- **To see the current ones,** open the `screenshots` artifact of the latest `check` run on `main` (kept 5 days), or run `node tools/shoot-app.mjs` and read `screenshots/latest/app/`. A run that failed uploads its own copy too; a pull request that passed uploads none.
+- **To see the current ones,** open the `screenshots` artifact of the latest `check` run on `main` (kept 5 days), or run `node tools/shoot-app.mjs` and read `screenshots/latest/app/`. CI takes them only on `main`: a pull request uploads none.
 - **What is tracked:** the images a doc embeds. `tests/uat/screenshots/` is the UAT docs’ set, and `tools/shoot-uat.mjs` refreshes it, in the reviewing session’s commit. The README’s picture, `screenshots/app/04-corpus-app-dark-1280.png`, is the one tracked image under `screenshots/`. `.gitignore` holds the rest.
 - **A doc that embeds a new image** gets an exception in `.gitignore` in the same change. A reviewing session doesn’t commit regenerated folders.
 
