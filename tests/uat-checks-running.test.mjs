@@ -15,14 +15,18 @@ const found = (f, id) => runChecks(f, { only: [id] });
 // The delivery run of 29 October 2026, event 1599: @researcher’s marker moved, its turn hadn’t written yet when a live
 // check read it, and it did write later.
 
-/** @researcher’s marker moves as its turn’s prompt is built, and the turn is still running with no output yet. */
+/**
+ * @researcher’s marker moves as its turn’s prompt is built, and the turn is still running with no output yet, and no
+ * line of it in the transcript, as a turn tools/uat/fault-launcher.mjs cuts has none (one that recorded its prompt
+ * delivered what the catch-up gave, DL-3).
+ */
 function runningMarkerRoom() {
   const r = room();
   r.agent('researcher');
   r.add({ id: 'it_a', at: s(1), kind: 'user', text: 'First message' });
   r.marker('researcher', null, s(0));
   r.marker('researcher', 'it_a', s(10));
-  r.turn('researcher', s(10) + 3, { prompt: 'First message', output: false, ms: 5, running: true });
+  r.turn('researcher', s(10) + 3, { prompt: 'First message', output: false, ms: 5, running: true, recorded: false });
   return r;
 }
 

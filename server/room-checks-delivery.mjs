@@ -144,14 +144,37 @@ function sameText(f, a, head, rival, x) {
 }
 
 /**
+ * Whether the person stopped this turn (Stop, or Send now) before its first token: stop() (server/runtime.mjs) adds
+ * the session’s empty agent item, status stopped, when the turn had said nothing, and sets the session to stopping;
+ * either, within the turn’s span (and MARKER_TO_SPAWN_MS after, for a turn whose stream ended late), marks it.
+ * @param {any} f  @param {string} sessionId  @param {{ started: number, ended: number }} turn
+ */
+function stoppedTurn(f, sessionId, turn) {
+  const within = (at) => Number.isFinite(at) && at >= turn.started - 1000 && at <= turn.ended + MARKER_TO_SPAWN_MS;
+  return (f.events ?? []).some(
+    (e) =>
+      (e.type === 'session' && e.data?.id === sessionId && e.data.state === 'stopping' && within(e.data.updatedAt ?? e.data.finishedAt)) ||
+      (e.type === 'item.add' &&
+        e.data?.item?.kind === 'agent' &&
+        e.data.item.sessionId === sessionId &&
+        e.data.item.status === 'stopped' &&
+        within(e.data.item.stoppedAt)),
+  );
+}
+
+/**
  * marker-before-output: a session’s catch-up marker (seenItem) moved for a turn whose stream then produced no
  * output, so what the catch-up gave counts as read though the agent never saw it (DL-3, #508’s design: a turn that
  * fails before output leaves its deliveries waiting and the marker unmoved). The move is the session event that
- * changed it; its turn is that agent’s next stream, started within MARKER_TO_SPAWN_MS of it. It reads the session
- * events and streams, not transcripts, so a turn stopped before its transcript was written is checked all the same.
+ * changed it; its turn is that agent’s next stream, started within MARKER_TO_SPAWN_MS of it. A turn the person stopped
+ * before its first token (stoppedTurn) wrote nothing by their choice, not by a failure; and one whose prompt Claude
+ * Code wrote to its transcript (recorded) delivered what the catch-up gave, which DL-3 counts as delivered: neither is
+ * a finding. The transcript is read when the room has one; without it, the events and streams alone decide, so a turn
+ * cut before any transcript line is checked all the same.
  */
 function markersBeforeOutput(f) {
   const last = new Map();
+  const inputs = new Map();
   const out = [];
   for (const e of f.events ?? []) {
     if (e.type !== 'session' || !Object.hasOwn(e.data ?? {}, 'seenItem')) continue;
@@ -164,6 +187,9 @@ function markersBeforeOutput(f) {
     const turn = turnsOf(f, handle).find((t) => t.started >= e.data.updatedAt - 1000 && t.started <= e.data.updatedAt + MARKER_TO_SPAWN_MS);
     // A turn still running may write yet: only one that ended with nothing counts.
     if (!turn || turn.running || turn.output) continue;
+    if (!inputs.has(handle)) inputs.set(handle, inputsOf(f, handle));
+    const got = inputs.get(handle);
+    if ((got && recorded(got, turn)) || stoppedTurn(f, id, turn)) continue;
     out.push({
       key: `marker-before-output:${id}:${e.seq}`,
       title: `@${handle}’s catch-up marker moved in a turn that produced no output`,
