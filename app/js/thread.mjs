@@ -4,7 +4,8 @@
 import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
-import { activityLabel, stepTree } from './activity-steps.mjs';
+import { activityParts, paintActivity, stepsOnly } from './activity-paint.mjs';
+import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
 import { subagentNow } from './agents.mjs';
@@ -20,13 +21,13 @@ import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.m
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
-import { jobRows, runningNote, stoppedTag } from './reply-stop.mjs';
+import { stoppedTag } from './reply-stop.mjs';
 import { replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { scheduledWakeLine } from './scheduled-wake-line.mjs';
 import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
-import { failedOnHost, hostChanged, hostEnd, hostTurnsList, kiroStep, ranHere, remoteSig } from './thread-host.mjs';
+import { failedOnHost, hostChanged, hostEnd, hostTurnsList, ranHere, remoteSig } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
 import { workList } from './work-list.mjs';
@@ -344,7 +345,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       paintWorking();
       grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
-      if (!d.reaction) rerender(d.id);
+      // A step changes only the reply’s activity list (#573); anything else draws the reply again.
+      const it = stepsOnly(d) ? itemsOf(threadId).find((x) => x.id === d.id) : null;
+      if (!d.reaction && !(it && paintActivity(nodes.get(d.id), it))) rerender(d.id);
     } else if (ch.type === 'item.text' && d.threadId === threadId) {
       pending.add(d.id);
       if (!raf)
@@ -531,26 +534,10 @@ function renderItem(it, prev, ctx) {
     case 'agent': {
       // Replayed whole from the host after a restart (#120): the replay is the reply, so this part of it shows nothing.
       if (it.status === 'replaced') return h('div.col.replaced', { hidden: true });
-      const [notice, steps] = kiroStep(it);
-      const total = steps.reduce((a, s) => a + (s.ms ?? 0), 0);
       const node = h(
         'div.col.turn',
         showWho ? who(it) : null,
-        notice,
-        steps.length
-          ? h(
-              'details.activity',
-              h(
-                'summary',
-                icon('right', 'i-sm'),
-                activityLabel(steps),
-                total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s in tools` : '',
-                runningNote(it, steps),
-              ),
-              stepTree(steps),
-            )
-          : null,
-        jobRows(it, steps),
+        ...activityParts(it),
         it.text || it.status === 'streaming' ? h('div.md') : null,
         // What the turn changed, ran and published, under its last reply (#132, #195), leading to Work.
         it.work ? workChip(it, ctx) : null,
