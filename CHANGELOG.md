@@ -2,6 +2,21 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.3.0 (2026-10-30)
+
+### Features
+
+- **uat:** record where a run's time goes, per step and in all
+
+### Fixes
+
+- **uat:** when one verifier pass throws, wait for the other before rethrowing
+- **uat:** on a tight --max-cost, the second verifier call waits instead of being refused
+- **uat:** read a wait a phase names as "in two minutes"
+- **uat:** a recheck keeps the live run's timing in its report
+- **uat:** cap a tester-chosen wait at 30 s and end it once the agents settle
+- **uat:** verify closed-issue findings and new findings at once
+
 ## 1.2.0 (2026-10-30)
 
 ### Features
