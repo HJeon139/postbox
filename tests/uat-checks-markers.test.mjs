@@ -44,9 +44,15 @@ test('marker-before-output stays silent when the person stopped the turn before 
   assert.deepEqual(found(markerRoom({ output: false, stopped: true }), 'marker-before-output'), []);
 });
 
-test('marker-before-output stays silent when the transcript holds the turn’s prompt, which DL-3 counts as delivered', () => {
-  // Claude Code wrote the prompt before the turn ended with nothing: what the catch-up gave did reach the agent.
-  assert.deepEqual(found(markerRoom({ output: false, recorded: true }), 'marker-before-output'), []);
+test('marker-before-output fires when the prompt is in the transcript but the turn wrote nothing, and says so', () => {
+  // Claude Code writes the prompt before the model produces anything, so a saved prompt isn’t delivery: INV-6 makes
+  // output the signal, because Postbox can’t tell whether a backend saved it (critic’s review of 44e69fe1). The
+  // transcript’s evidence goes into the finding instead: a resend will be a labeled repeat.
+  const [hit, ...rest] = found(markerRoom({ output: false, recorded: true }), 'marker-before-output');
+  assert.ok(hit, 'the check fires');
+  assert.deepEqual(rest, []);
+  assert.match(hit.evidence, /prompt was saved to the transcript/);
+  assert.match(hit.evidence, /labeled repeat/);
 });
 
 test('marker-before-output still fires with no transcript of the agent at all, as a recorded room may have none', () => {

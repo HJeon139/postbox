@@ -184,10 +184,11 @@ function stoppedTurn(f, sessionId, turn) {
  * output, so what the catch-up gave counts as read though the agent never saw it (DL-3, #508’s design: a turn that
  * fails before output leaves its deliveries waiting and the marker unmoved). The move is the session event that
  * changed it; its turn is that agent’s next stream, started within MARKER_TO_SPAWN_MS of it. A turn the person stopped
- * before its first token (stoppedTurn) wrote nothing by their choice, not by a failure; and one whose prompt Claude
- * Code wrote to its transcript (recorded) delivered what the catch-up gave, which DL-3 counts as delivered: neither is
- * a finding. The transcript is read when the room has one; without it, the events and streams alone decide, so a turn
- * cut before any transcript line is checked all the same.
+ * before its first token (stoppedTurn) wrote nothing by their choice, not by a failure, so it isn’t a finding. A prompt
+ * Claude Code saved to its transcript isn’t delivery: it writes the prompt before the model produces anything, and
+ * INV-6 makes output the signal because Postbox can’t tell whether a backend saved the prompt. So such a turn still
+ * fires, and the finding says the prompt was saved, so a resend will be a labeled repeat. Without a transcript, the
+ * events and streams alone decide, so a turn cut before any transcript line is checked all the same.
  */
 function markersBeforeOutput(f) {
   const last = new Map();
@@ -210,11 +211,12 @@ function markersBeforeOutput(f) {
     if (!turn || turn.running || turn.output) continue;
     if (!inputs.has(handle)) inputs.set(handle, inputsOf(f, handle));
     const got = inputs.get(handle);
-    if ((got && recorded(got, turn)) || stoppedTurn(f, id, turn)) continue;
+    if (stoppedTurn(f, id, turn)) continue;
+    const saved = got && recorded(got, turn) ? ' Its prompt was saved to the transcript, so a resend will be a labeled repeat.' : '';
     out.push({
       key: `marker-before-output:${id}:${e.seq}`,
       title: `@${handle}’s catch-up marker moved in a turn that produced no output`,
-      evidence: `Event ${e.seq} moved @${handle}’s marker from ${before ?? 'the start'} to ${e.data.seenItem}, and its turn started at ${new Date(turn.started).toISOString()} wrote nothing before it ended.`,
+      evidence: `Event ${e.seq} moved @${handle}’s marker from ${before ?? 'the start'} to ${e.data.seenItem}, and its turn started at ${new Date(turn.started).toISOString()} wrote nothing before it ended.${saved}`,
     });
   }
   const why =
