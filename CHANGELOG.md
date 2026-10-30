@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.1.2 (2026-10-30)
+
+### Fixes
+
+- **reactions:** draw the light theme's icon rim into the icons, not as a filter on each
+- **transcript:** find the reply across the middle by halving, not from the top
+
+## 1.1.1 (2026-10-30)
+
+### Fixes
+
+- **apps:** a check overtaken by a newer version stops, so the new one starts at once
+
 ## 1.1.0 (2026-10-30)
 
 ### Features

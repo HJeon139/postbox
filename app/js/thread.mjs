@@ -154,14 +154,36 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   // The anchor is the message across the middle of the view, where you read, not the first one in view: that one
   // usually starts above the view, and when a narrower column (the panel, a smaller window) rewraps it, everything
   // under it moves. A wide font rewraps it where macOS’s doesn’t (#88, seen on Linux in #162).
+  // It runs on every scroll event, so it halves its way to the middle rather than reading every reply above it: in a
+  // room of 1,000 replies, a dozen rects instead of a thousand (#572).
+  const keyed = (n) => n instanceof HTMLElement && !!n.dataset.key;
   const findAnchor = () => {
     const s = box();
     if (!s) return null;
     const top = viewTop(s);
     const mid = top + s.clientHeight / 2;
+    const kids = el.children;
+    let lo = 0;
+    let hi = kids.length;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (kids[m].getBoundingClientRect().bottom > mid) hi = m;
+      else lo = m + 1;
+    }
+    // Back to the reply before the first one across the middle (one that takes no room doesn't count), then on as before.
+    let from = 0;
+    for (let i = lo - 1; i >= 0; i--) {
+      const n = kids[i];
+      if (!keyed(n)) continue;
+      const r = n.getBoundingClientRect();
+      if (!r.height) continue;
+      from = i;
+      if (r.bottom <= mid) break;
+    }
     let last = null;
-    for (const n of el.children) {
-      if (!(n instanceof HTMLElement && n.dataset.key)) continue;
+    for (let i = from; i < kids.length; i++) {
+      const n = kids[i];
+      if (!keyed(n)) continue;
       const r = n.getBoundingClientRect();
       if (r.bottom <= top) continue;
       last = { key: n.dataset.key, at: r.top - top };
