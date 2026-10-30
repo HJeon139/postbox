@@ -134,9 +134,11 @@ export function applyWritten(store, e, positions) {
 export async function catchUp(store) {
   const c = store.client;
   if (!c?.connected) return;
+  // A repair whose write landed is finished first, whatever the seq says: its write may already have advanced
+  // `confirmed` when the reload after it lost its connection (gpt’s review of 0e68a9f0).
+  if (store.rejected?.repair && (await repaired(store))) return;
   const seq = Number((await c.call('GET', 'seq')) ?? 0);
   if (seq <= store.confirmed) return;
-  if (await repaired(store)) return;
   const theirs = await streamAfter(c, store.confirmed, seq);
   if (!theirs) throw Object.assign(new Error('The store’s events stream was trimmed past this store; restart Postbox to read it again.'), { code: 'ESEQ' });
   const written = () => {
