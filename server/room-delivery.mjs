@@ -55,14 +55,15 @@ const ownOf = (card) => ({ fromSessionId: card.fromSessionId, from: card.from, t
 
 /**
  * Each card’s history from the events: the card as added, the statuses it went through, when it was settled (null
- * while open), and every wake held on it, with whether a later patch took it off while the card was still open.
+ * while open), and every wake held on it, with whether a later patch took it off while the card was still open, and
+ * that patch’s seq (removedSeq), for what happened around it.
  * Retiring a card sends its own wake and those held on it on (server/wake-cards.mjs’s retireStale), and one that
  * still needs a card raises the next card, or is held on it: movedTo names the card that took a wake over, and
  * movedFrom the card it came from, its own wake’s (own) as a held one’s.
  * @param {any[]} events
  */
 export function cardHistory(events) {
-  /** @typedef {{ w: any, removedOpen: boolean, movedTo: string|null, movedFrom: string|null }} Wake */
+  /** @typedef {{ w: any, removedOpen: boolean, removedSeq: number|null, movedTo: string|null, movedFrom: string|null }} Wake */
   /** @type {Map<string, { card: any, statuses: string[], settled: number|null, own: Wake, held: Map<string, Wake> }>} */
   const cards = new Map();
   /** The wakes of retired cards not yet taken over, by heldKey: each with its card and when it was retired. */
@@ -79,7 +80,7 @@ export function cardHistory(events) {
   for (const e of events ?? []) {
     if (e.type === 'item.add' && e.data?.item?.kind === 'hop') {
       const card = e.data.item;
-      const own = { w: ownOf(card), removedOpen: false, movedTo: null, movedFrom: null };
+      const own = { w: ownOf(card), removedOpen: false, removedSeq: null, movedTo: null, movedFrom: null };
       cards.set(card.id, { card, statuses: [card.status], settled: null, own, held: new Map() });
       takeOver(heldKey(own.w), card.at, card.id, own);
     }
@@ -96,12 +97,16 @@ export function cardHistory(events) {
     const now = new Set(p.held.map(heldKey));
     for (const w of p.held)
       if (!c.held.has(heldKey(w))) {
-        const h = { w, removedOpen: false, movedTo: null, movedFrom: null };
+        const h = { w, removedOpen: false, removedSeq: null, movedTo: null, movedFrom: null };
         c.held.set(heldKey(w), h);
         takeOver(heldKey(w), w.at, c.card.id, h);
       }
     const open = c.statuses.at(-1) === 'open';
-    for (const [k, h] of c.held) if (!now.has(k) && open) h.removedOpen = true;
+    for (const [k, h] of c.held)
+      if (!now.has(k) && open && !h.removedOpen) {
+        h.removedOpen = true;
+        h.removedSeq = e.seq;
+      }
   }
   return cards;
 }

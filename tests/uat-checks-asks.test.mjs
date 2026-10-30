@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { headOf } from '../server/room-delivery.mjs';
 import { runChecks } from '../tools/uat/checks.mjs';
-import { ROOM, ROUND_TWO, room, T0 } from './delivery-fixture.mjs';
+import { archiveAgent, ROOM, ROUND_TWO, removeAgent, room, stopAgent, T0 } from './delivery-fixture.mjs';
 
 const s = (n) => T0 + n * 1000;
 const found = (f, id) => runChecks(f, { only: [id] });
@@ -114,6 +114,71 @@ test('ask-dropped fires for a card that left the state with no answer', () => {
     out.map((x) => x.key),
     ['ask-dropped:it_card'],
   );
+});
+
+/**
+ * @researcher’s card to wake @critic waits on the person, with @critic’s wake of @developer held on it; then @developer,
+ * the held wake’s target, is stopped, archived or removed, which takes the wake off the card by design (#439, #228,
+ * server/wake-cards.mjs’s dropHeld), or the wake is taken off with nothing happening to @developer (lost). @developer
+ * then takes two turns that don’t carry it.
+ */
+function takenOffRoom(how) {
+  const r = room();
+  for (const h of ['researcher', 'critic', 'developer']) r.agent(h);
+  r.add({
+    id: 'it_card',
+    at: s(1),
+    kind: 'hop',
+    from: 'researcher',
+    fromSessionId: 'se_researcher',
+    to: 'critic',
+    text: '@critic please review',
+    status: 'open',
+  });
+  r.patch('it_card', { held: [{ fromSessionId: 'se_critic', from: 'critic', to: 'developer', text: ROUND_TWO, at: s(5) }] });
+  if (how === 'stopped') stopAgent(r, 'developer', s(8));
+  if (how === 'archived') archiveAgent(r, 'developer', s(8));
+  r.patch('it_card', { held: [] });
+  if (how === 'removed') removeAgent(r, 'developer', s(9));
+  r.add({ id: 'it_voice', at: s(10), kind: 'voice', text: 'You wrote to @critic' });
+  if (how !== 'removed') {
+    r.turn('developer', s(12), { prompt: '[Postbox] You: what’s left?' });
+    r.turn('developer', s(30), { prompt: '[Postbox] Nothing new in this room since your last turn.' });
+  }
+  return r.f;
+}
+
+test('ask-dropped doesn’t count a held wake Stop, archive or removal of its target took off the card by design', () => {
+  for (const how of ['stopped', 'archived', 'removed']) assert.deepEqual(found(takenOffRoom(how), 'ask-dropped'), [], how);
+});
+
+test('ask-dropped still fires for a held wake taken off an open card with nothing happening to its target', () => {
+  const out = found(takenOffRoom('lost'), 'ask-dropped');
+  assert.deepEqual(
+    out.map((x) => x.key),
+    [`ask-dropped:it_card:se_critic:developer:${headOf(ROUND_TWO)}`],
+  );
+  assert.match(out[0].evidence, /taken off the card while it still waited/);
+});
+
+test('ask-dropped doesn’t count a retired card’s held wake that sendHeld couldn’t send, its target archived meanwhile', () => {
+  const r = room();
+  for (const h of ['researcher', 'critic', 'developer']) r.agent(h);
+  r.add({
+    id: 'it_card',
+    at: s(1),
+    kind: 'hop',
+    from: 'researcher',
+    fromSessionId: 'se_researcher',
+    to: 'critic',
+    text: '@critic please review',
+    status: 'open',
+  });
+  r.patch('it_card', { held: [{ fromSessionId: 'se_critic', from: 'critic', to: 'developer', text: ROUND_TWO, at: s(5) }] });
+  archiveAgent(r, 'developer', s(7));
+  r.patch('it_card', { status: 'retired', retiredAt: s(9) });
+  r.add({ id: 'it_voice', at: s(9), kind: 'voice', text: 'You wrote to @critic' });
+  assert.deepEqual(found(r.f, 'ask-dropped'), []);
 });
 
 /** @critic’s open choice, with its session needing you for it, or for nothing. */

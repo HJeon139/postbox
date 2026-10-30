@@ -45,7 +45,7 @@ export function room() {
     streams: [],
     transcripts: [],
   };
-  let seq = 0;
+  const next = () => (f.events.at(-1)?.seq ?? 0) + 1;
   const lines = (handle) => /** @type {any} */ (f.transcripts.find((t) => t.handle === handle)).lines;
   return {
     f,
@@ -64,17 +64,17 @@ export function room() {
     /** An item posted, as the state holds it and the history recorded it. */
     add(item) {
       f.state.items[ROOM].push({ ...item });
-      f.events.push({ seq: ++seq, type: 'item.add', data: { threadId: ROOM, item: structuredClone(item) } });
+      f.events.push({ seq: next(), type: 'item.add', data: { threadId: ROOM, item: structuredClone(item) } });
       return item;
     },
     /** A change to an item. */
     patch(id, patch) {
       Object.assign(/** @type {any} */ (f.state.items[ROOM].find((i) => i.id === id)), structuredClone(patch));
-      f.events.push({ seq: ++seq, type: 'item.patch', data: { threadId: ROOM, id, patch: structuredClone(patch) } });
+      f.events.push({ seq: next(), type: 'item.patch', data: { threadId: ROOM, id, patch: structuredClone(patch) } });
     },
     /** A session’s catch-up marker moving, as Postbox does when it builds a turn’s prompt. */
     marker(handle, seenItem, at) {
-      f.events.push({ seq: ++seq, type: 'session', data: { id: `se_${handle}`, seenItem, updatedAt: at } });
+      f.events.push({ seq: next(), type: 'session', data: { id: `se_${handle}`, seenItem, updatedAt: at } });
     },
     /** A user line Claude Code wrote itself, not a prompt: flags { isCompactSummary: true } or { isMeta: true }. */
     written(handle, at, content, flags) {
@@ -102,6 +102,42 @@ export function room() {
     /** The running turn of an agent ends at `at` (endTurn). */
     end: (handle, at, o = {}) => endTurn(f, handle, at, o),
   };
+}
+
+/**
+ * The person stops an agent’s turn before it wrote anything (server/runtime.mjs’s stop): its empty agent item, status
+ * stopped, and its session going to stopping, as the events record them.
+ * @param {ReturnType<typeof room>} r  @param {string} handle  @param {number} at
+ */
+export function stopAgent(r, handle, at) {
+  const seq = (r.f.events.at(-1)?.seq ?? 0) + 1;
+  r.add({
+    id: `it_stop_${seq}`,
+    at,
+    kind: 'agent',
+    handle,
+    sessionId: `se_${handle}`,
+    turnId: `tu_${seq}`,
+    text: '',
+    status: 'stopped',
+    stoppedAt: at,
+    stopReason: 'stop',
+  });
+  r.f.events.push({ seq: seq + 1, type: 'session', data: { id: `se_${handle}`, state: 'stopping', finishedAt: at, updatedAt: at } });
+  Object.assign(r.f.state.sessions[`se_${handle}`], { state: 'idle', finishedAt: at });
+}
+
+/** The person archives an agent: its session stays in the state, archived, and goes idle. @param {ReturnType<typeof room>} r */
+export function archiveAgent(r, handle, at) {
+  Object.assign(r.f.state.sessions[`se_${handle}`], { archived: true, archivedAt: at, state: 'idle' });
+  r.f.events.push({ seq: (r.f.events.at(-1)?.seq ?? 0) + 1, type: 'session', data: { id: `se_${handle}`, state: 'idle', finishedAt: at, updatedAt: at } });
+}
+
+/** The person removes an agent, and the undo window passes: its session goes from the state, and a “left” line is added. @param {ReturnType<typeof room>} r */
+export function removeAgent(r, handle, at) {
+  delete r.f.state.sessions[`se_${handle}`];
+  r.f.state.threads[ROOM].members = r.f.state.threads[ROOM].members.filter((id) => id !== `se_${handle}`);
+  r.add({ id: `it_left_${(r.f.events.at(-1)?.seq ?? 0) + 1}`, at, kind: 'system', variant: 'left', to: handle });
 }
 
 export const ROUND_TWO =

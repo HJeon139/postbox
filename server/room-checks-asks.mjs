@@ -11,11 +11,58 @@ import { notCheckableAll, unreadable } from './room-unverified.mjs';
 
 const ANSWERED = new Set(['allowed', 'declined']);
 /**
+ * How many events before a held patch a Stop’s marks can be: stop() (server/runtime.mjs) records the stopped turn’s
+ * items and its session going to stopping, then what else the turn left, before dropHeld patches the card.
+ */
+const STOP_WINDOW = 60;
+
+/**
+ * Whether a wake held on a card went undelivered by design, not by a defect, so its sender was told and ask-dropped
+ * has nothing to report. dropHeld (server/wake-cards.mjs) takes an agent’s held wakes off an open card when the person
+ * stops it (#439), archives it or removes it (#228); sendHeld reports a retired card’s wake to a target archived
+ * meanwhile as not sent. The events keep no reason on the patch, and no notice, so the reason is read from around it:
+ * the target’s empty stopped item or its session going to stopping within STOP_WINDOW events before the patch; its
+ * session archived or deleting in the state; or no session of its handle in the state, or a “left” line after the patch.
+ * @param {any} f  @param {{ to: string }} w  @param {number|null} seq  the held patch’s seq, when one took it off
+ */
+function byDesign(f, w, seq) {
+  const sessions = Object.values(f.state?.sessions ?? {}).filter((se) => se?.handle === w.to);
+  if (!sessions.length || sessions.every((se) => se.archived || se.deleting)) return true;
+  const ids = new Set(sessions.map((se) => se.id));
+  return (f.events ?? []).some(
+    (e) =>
+      (seq !== null &&
+        e.seq <= seq &&
+        e.seq >= seq - STOP_WINDOW &&
+        ((e.type === 'session' && e.data?.state === 'stopping' && ids.has(e.data.id)) ||
+          (e.type === 'item.add' && e.data?.item?.kind === 'agent' && e.data.item.status === 'stopped' && e.data.item.handle === w.to))) ||
+      (seq !== null && e.seq > seq && e.type === 'item.add' && e.data?.item?.kind === 'system' && e.data.item.variant === 'left' && e.data.item.to === w.to),
+  );
+}
+
+/**
+ * Since when a moved wake could reach its target: when it was first held, on the first card it was on.
+ * @param {ReturnType<typeof cardHistory>} cards  @param {any} h
+ */
+function firstHeld(cards, h) {
+  let w = h;
+  for (let i = 0; i < cards.size && w.movedFrom; i++) {
+    const c = cards.get(w.movedFrom);
+    const k = heldKey(w.w);
+    const before = c && (heldKey(c.own.w) === k && c.own.movedTo ? c.own : c.held.get(k));
+    if (!before) break;
+    w = before;
+  }
+  return w.w.at ?? 0;
+}
+
+/**
  * ask-dropped: a held wake, or a card, that left the state with no answer from the person and never reached its
  * target. The turn it went on in, the target’s first after its card settled, may have no line in the transcript
  * (stopped before Claude Code wrote its prompt): then the check says it couldn’t check it there. A wake a retired
  * card sent on to the next card is that card’s to settle (cardHistory’s movedTo): it counts as dropped only when the
- * last card it was on ends without delivering it.
+ * last card it was on ends without delivering it. One taken off, or not sent on, because its target was stopped,
+ * archived or removed went by design, and its sender was told (byDesign): not dropped.
  */
 function droppedAsks(f) {
   const live = new Set((f.threads ?? []).flatMap((t) => (f.state?.items?.[t] ?? []).map((it) => it.id)));
@@ -38,18 +85,6 @@ function droppedAsks(f) {
   };
   const out = [];
   const cards = cardHistory(f.events);
-  /** Since when a moved wake could reach its target: when it was first held, on the first card it was on. */
-  const first = (h) => {
-    let w = h;
-    for (let i = 0; i < cards.size && w.movedFrom; i++) {
-      const c = cards.get(w.movedFrom);
-      const k = heldKey(w.w);
-      const before = c && (heldKey(c.own.w) === k && c.own.movedTo ? c.own : c.held.get(k));
-      if (!before) break;
-      w = before;
-    }
-    return w.w.at ?? 0;
-  };
   for (const [id, c] of cards) {
     const answered = c.statuses.some((s) => ANSWERED.has(s));
     const own = { to: c.card.to, itemId: c.card.itemId, text: c.card.text ?? c.card.reason, at: c.card.at };
@@ -65,7 +100,9 @@ function droppedAsks(f) {
       const retired = !answered && c.statuses.includes('retired');
       // Settled with its card: Allow or Don’t allow is the person’s answer; retiring sends it on, so it must arrive.
       const cardGone = !answered && !live.has(id);
-      if (!(h.removedOpen || cardGone || retired) || reached(h.w, first(h), retired ? c.settled : null)) continue;
+      if (!(h.removedOpen || cardGone || retired)) continue;
+      if ((h.removedOpen || retired) && byDesign(f, h.w, h.removedOpen ? h.removedSeq : null)) continue;
+      if (reached(h.w, firstHeld(cards, h), retired ? c.settled : null)) continue;
       const via = h.movedFrom ? `, moved from ${h.movedFrom}` : '';
       out.push({
         key: `ask-dropped:${id}:${k}`,
