@@ -61,7 +61,7 @@ From #508’s requirements, SR-7, and designs/architecture.md, “The store”, 
 | Kiro CLI | No OS sandbox. A headless run can’t ask, so in Ask me and Auto a command outside Kiro’s defaults is refused; Run everything (`--trust-all-tools`) runs it. | Not probed. |
 | Antigravity CLI | No OS sandbox that Postbox sets. With Postbox’s hook, each call is decided there: a card in Ask me, routine calls approved in Auto. Without the hook, agy’s own mode decides, and its Auto has a sandbox of its own. Run everything runs every call. | Not probed, including whether agy’s sandbox refuses the socket. |
 
-A command that does reach the socket gets `NOAUTH`: the password lives only in Postbox’s memory, and Redis’s config holds its hash. What a process running as you can still read is the data folder, including `<data>/redis/owner.json` (`0600`), whose password may only `PING` and `SHUTDOWN` the store.
+A command that does reach the socket gets `NOAUTH`: the password lives only in Postbox’s memory, and Redis’s config holds its hash. What a process running as you can still read is the data folder, including `<data>/redis/owner.json` (`0600`), whose password may only `PING` and `SHUTDOWN` the store. Agents’ environments carry `POSTBOX_MEDIA`, the data folder’s `media/` folder, where an app’s images go: it is one step from `redis/owner.json`, so an agent with no sandbox and a shell could stop the store (not read or change it). That is the same-user exclusion above, where a process running as you is out of scope; the variable stays, since apps need it.
 
 ## How the repository keeps it that way
 
