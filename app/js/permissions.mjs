@@ -283,21 +283,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
           );
       }
       // Writes outside Postbox (#112): many rules with one cause, and what lets a call through without asking.
-      if (b === 'ask' && view.writes?.rules.length)
-        rows.push(
-          h(
-            'li',
-            h(
-              'span.grow',
-              h('code.perm-rule', `${view.writes.rules.slice(0, 3).join(', ')}…`),
-              h('span.small.dim', ` and ${view.writes.rules.length - 3} more, from ${SOURCE.writes}`),
-              h(
-                'span.small.dim',
-                `: tools and gh commands that create, change or delete something outside Postbox. Always allow on a card lets that one tool through${view.writes.unless.length ? ', and so does “Can publish outside Postbox” for the tools it covers' : ''}.`,
-              ),
-            ),
-          ),
-        );
+      if (b === 'ask' && view.writes?.rules.length) rows.push(writesRow(view.writes));
       if (b === 'allow')
         rows.push(h('li', h('code.perm-rule', 'mcp__postbox'), h('span.small.dim.grow', `from ${SOURCE.postbox}: they only show things here`)));
       return h(
@@ -610,4 +596,24 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
   load().then(() => {
     if (focus) document.getElementById(focus === 'mcp' ? 'perm-mcp' : 'perm-dir')?.scrollIntoView({ block: 'center' });
   });
+}
+
+/**
+ * The ask rules for writes outside Postbox (#112) as one row: many rules with one cause, and what lets a call through
+ * without asking. Moved out of openPermissions.
+ * @param {{ rules: string[], unless: string[] }} writes
+ */
+function writesRow(writes) {
+  return h(
+    'li',
+    h(
+      'span.grow',
+      h('code.perm-rule', `${writes.rules.slice(0, 3).join(', ')}…`),
+      h('span.small.dim', ` and ${writes.rules.length - 3} more, from ${SOURCE.writes}`),
+      h(
+        'span.small.dim',
+        `: tools and gh commands that create, change or delete something outside Postbox. Always allow on a card lets that one tool through${writes.unless.length ? ', and so does “Can publish outside Postbox” for the tools it covers' : ''}.`,
+      ),
+    ),
+  );
 }
