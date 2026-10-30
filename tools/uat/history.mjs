@@ -22,6 +22,8 @@ export function followEvents(origin) {
   /** @type {{ at: number, id: string, state: string|null }[]} */
   const hostStates = [];
   let last = 0;
+  // Each session as the events so far left it, so a session.patch is kept as a whole session (keepEvent).
+  const sessions = new Map();
   const abort = new AbortController();
   const take = (frame) => {
     let seq = null;
@@ -41,9 +43,9 @@ export function followEvents(origin) {
       } catch {}
       return;
     }
-    if (type !== 'item.add' && type !== 'item.patch' && type !== 'item.move' && type !== 'session') return;
+    if (type !== 'item.add' && type !== 'item.patch' && type !== 'item.move' && type !== 'session' && type !== 'session.patch') return;
     try {
-      const e = keepEvent(seq, type, JSON.parse(data));
+      const e = keepEvent(seq, type, JSON.parse(data), sessions);
       if (e) kept.push(e);
     } catch {}
   };
@@ -88,12 +90,24 @@ const lines = (text) =>
 function logged(dir) {
   const data = join(dir, 'data');
   if (!existsSync(data)) return [];
+  // The log starts at the store’s last snapshot, which holds each session whole as it was there: a session.patch after
+  // it is kept as the whole session it leaves (keepEvent).
+  const sessions = new Map(Object.entries(snapshotOf(data)?.sessions ?? {}));
   return readdirSync(data)
     .filter((n) => /^events-\d+\.jsonl$/.test(n))
     .sort((a, b) => Number(a.slice(7, -6)) - Number(b.slice(7, -6)))
     .flatMap((n) => lines(readFileSync(join(data, n), 'utf8')))
-    .map((e) => keepEvent(e.seq, e.type, e.data))
+    .map((e) => keepEvent(e.seq, e.type, e.data, sessions))
     .filter(Boolean);
+}
+
+/** The store’s snapshot in a data folder, or null when there is none or it can’t be read. @param {string} data */
+function snapshotOf(data) {
+  try {
+    return JSON.parse(readFileSync(join(data, 'snapshot.json'), 'utf8'));
+  } catch {
+    return null; // no snapshot yet: the log starts at the store’s first event
+  }
 }
 
 /**
