@@ -1,21 +1,28 @@
 // #296, the review of #562: a git command a request covers runs as the repository’s config and hooks say, so Postbox
 // reads them, and where a push goes, before it runs without a card. Each case here is one the review reproduced on a
-// local bare repository.
+// local bare repository. It runs git, so it’s a process test: in temp folders it removes, with none of your own git
+// config (HOME and the global config point at an empty folder of its own).
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
-import { gitOffRequest } from '../server/git-request.mjs';
+import { after, test } from 'node:test';
+import { gitOffRequest } from '../../server/git-request.mjs';
 
-// The person’s own git config stays out of it: HOME and the global config point at an empty folder.
+const home = await mkdtemp(join(tmpdir(), 'pb-git-home-'));
+const roots = [home];
+// gitOffRequest runs git with this process’s environment, so this file’s git reads only its own config.
+Object.assign(process.env, { HOME: home, GIT_CONFIG_GLOBAL: join(home, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1' });
+await writeFile(join(home, 'gitconfig'), '[user]\n\tname = t\n\temail = t@example.com\n');
+after(() => Promise.all(roots.map((r) => rm(r, { recursive: true, force: true }))));
+
+/** A clone on feat/now, pushed with its upstream set, of a bare remote whose default branch is main. */
 async function repo() {
   const root = await mkdtemp(join(tmpdir(), 'pb-git-request-'));
-  const env = { ...process.env, HOME: root, GIT_CONFIG_GLOBAL: join(root, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1' };
-  await writeFile(env.GIT_CONFIG_GLOBAL, '[user]\n\tname = t\n\temail = t@example.com\n');
-  const git = (cwd, ...args) => execFileSync('git', args, { cwd, env, stdio: 'pipe' }).toString().trim();
+  roots.push(root);
+  const git = (cwd, ...args) => execFileSync('git', args, { cwd, stdio: 'pipe', timeout: 10000 }).toString().trim();
   const work = join(root, 'work');
   git(root, 'init', '-q', '--bare', '-b', 'main', 'remote.git');
   git(root, 'clone', '-q', join(root, 'remote.git'), 'work');
@@ -24,7 +31,6 @@ async function repo() {
   git(work, 'remote', 'set-head', 'origin', 'main');
   git(work, 'checkout', '-q', '-b', 'feat/now');
   git(work, 'push', '-q', '-u', 'origin', 'feat/now');
-  for (const [k, v] of Object.entries(env)) process.env[k] = v;
   return { work, git: (...args) => git(work, ...args) };
 }
 
