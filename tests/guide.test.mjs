@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { agyRules } from '../server/adapters/antigravity-cli.mjs';
-import { agentGuide, guideText } from '../server/adapters/guide.mjs';
+import { agentGuide, guideText, turnFacts } from '../server/adapters/guide.mjs';
 import { freshInstall } from '../server/seed.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
@@ -18,13 +18,15 @@ test('#131: the guide says to check a setup before blaming it, and to rerun only
   assert.match(g, /Compare the failing command with a working one that changes one thing/);
   assert.match(g, /rerun it yourself only if it just reads or checks something, and otherwise ask first/);
   assert.match(g, /If you can’t confirm the cause, say it’s a guess/);
-  // agy’s rules file has no room for it.
+  // agy’s rules file has no room for it, nor its turn for the session’s facts.
   assert.doesNotMatch(agentGuide({ persona: { handle: 'developer' }, handles: ['developer'], setup: false }), /Before blaming the setup|Your session/);
+  assert.doesNotMatch(turnFacts({ persona: { handle: 'developer' }, handles: ['developer'], setup: false }), /Your session/);
 });
 
-test('#131: the guide says what this session runs on, and not that another command does', () => {
+// What the session runs on changes during a room, so each turn’s message says it, not the system prompt (#515).
+test('#131: the turn says what this session runs on, and not that another command does', () => {
   const persona = { handle: 'developer', backend: 'claude-code', model: 'claude-opus-5-5', effort: 'medium' };
-  const answered = agentGuide({
+  const answered = turnFacts({
     persona,
     session: { personaSnapshot: { model: 'claude-opus-5-5', effort: 'medium' }, lastModel: 'claude-sonnet-5-5', lastEffort: 'high' },
     handles: ['developer'],
@@ -34,7 +36,7 @@ test('#131: the guide says what this session runs on, and not that another comma
     /Your last turn ran on Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · high effort on the last turn, set to medium/,
   );
   assert.match(answered, /That’s this session; a command you run may use other settings/);
-  const unrun = agentGuide({ persona, session: { personaSnapshot: { model: persona.model, effort: persona.effort } }, handles: ['developer'] });
+  const unrun = turnFacts({ persona, session: { personaSnapshot: { model: persona.model, effort: persona.effort } }, handles: ['developer'] });
   assert.match(unrun, /Postbox has you set to Claude Code · claude-opus-5-5 · medium effort, and hasn’t recorded an answered turn yet/);
 });
 
@@ -62,7 +64,8 @@ test('the guide tells agents to report results, and to update an answered block 
 
 test('what agents read about the app check says narrow and wide windows, not phones (#75)', () => {
   const read = [
-    agentGuide({ persona: { handle: 'a' }, handles: ['a'], project: { name: 'P' }, brief: 'You were asked in.' }),
+    agentGuide({ persona: { handle: 'a' } }),
+    turnFacts({ persona: { handle: 'a' }, handles: ['a'], project: { name: 'P' }, brief: 'You were asked in.' }),
     ...TOOL_DEFS.map((t) => t.description),
     readFileSync(new URL('../app/js/apps.mjs', import.meta.url), 'utf8'),
   ].join('\n');
@@ -81,7 +84,7 @@ test('the guide stays short: agents follow defaults more than prose', () => {
 
 test('an agent is told which tools are turned off for it, and how to ask for one, not that the computer lacks them (#104)', () => {
   const who = { persona: { handle: 'critic', tools: ['web.fetch'] }, handles: ['critic'] };
-  const g = agentGuide(who);
+  const g = turnFacts(who);
   assert.match(g, /## Turned off for you/);
   assert.match(g, /running commands \(shell\)/);
   assert.match(g, /messaging, scheduling or starting agents outside Postbox \(agents\.outside\)/);
@@ -89,10 +92,10 @@ test('an agent is told which tools are turned off for it, and how to ask for one
   assert.match(g, /don’t say the computer or the person lacks it: call ask_for_tool \{ tool: "shell"/);
   assert.ok(TOOL_DEFS.some((t) => t.name === 'ask_for_tool'));
   // Nothing off, nothing said; a backend that can’t turn tools off (Codex, agy) passes no rules.
-  assert.doesNotMatch(agentGuide({ ...who, persona: { handle: 'critic', tools: ['shell', 'web.fetch', 'agents.outside'] } }), /Turned off for you/);
-  assert.doesNotMatch(agentGuide({ ...who, toolRules: null }), /Turned off for you/);
+  assert.doesNotMatch(turnFacts({ ...who, persona: { handle: 'critic', tools: ['shell', 'web.fetch', 'agents.outside'] } }), /Turned off for you/);
+  assert.doesNotMatch(turnFacts({ ...who, toolRules: null }), /Turned off for you/);
   // The Kiro CLI turns off only what it has rules for.
-  assert.doesNotMatch(agentGuide({ ...who, toolRules: { shell: ['shell'], 'web.fetch': ['web_fetch'] } }), /agents\.outside/);
+  assert.doesNotMatch(turnFacts({ ...who, toolRules: { shell: ['shell'], 'web.fetch': ['web_fetch'] } }), /agents\.outside/);
 });
 
 test('a write outside the conversation is shown as a draft in a review block first, through any tool (#112)', () => {
@@ -106,14 +109,14 @@ test('the room tells an agent who else is in the conversation and what each does
     { handle: 'researcher', role: 'Finds and reads sources.' },
     { handle: 'critic', role: 'Reviews code and documents.' },
   ];
-  const g = agentGuide({ persona: { handle: 'developer' }, handles: ['researcher', 'developer', 'critic', 'indexer'], room });
+  const g = turnFacts({ persona: { handle: 'developer' }, handles: ['researcher', 'developer', 'critic', 'indexer'], room });
   assert.match(g, /## In this conversation\n\n- @researcher: Finds and reads sources\.\n- @critic: Reviews code and documents\./);
   assert.match(g, /Take the part of a request that’s yours/);
   assert.match(g, /To hand work on, @mention the agent with what it needs to start/);
   // Agents elsewhere in Postbox are listed apart, without the ones already here.
   assert.match(g, /Other agents in Postbox: @indexer\./);
   // Alone in its conversation, an agent gets no team section, only who it could bring in.
-  const alone = agentGuide({ persona: { handle: 'developer' }, handles: ['developer', 'critic'] });
+  const alone = turnFacts({ persona: { handle: 'developer' }, handles: ['developer', 'critic'] });
   assert.doesNotMatch(alone, /In this conversation|Take the part/);
   assert.match(alone, /Agents in Postbox: @critic\. Mention one with @handle/);
   // The persona’s own prompt names no other agent: the team comes from the room.
@@ -152,7 +155,7 @@ test('a Codex agent’s guide says how to write, including wake_agent messages',
 
 // A reply wakes its waker only by an @-mention (#372), so the guide says when to mention: too often loops, never stalls.
 test('#372 a room’s guide says to @mention an agent only when it must act next, and to name it without @ otherwise', () => {
-  const g = agentGuide({ persona: { handle: 'alpha' }, handles: ['alpha', 'beta'], room: [{ handle: 'beta', role: 'Reviews' }] });
+  const g = turnFacts({ persona: { handle: 'alpha' }, handles: ['alpha', 'beta'], room: [{ handle: 'beta', role: 'Reviews' }] });
   assert.match(g, /@mention one only when it must act next \(a hand-off, a question, a review\); else write its name without @\./);
   assert.doesNotMatch(guideText(), /side thread/i);
   assert.doesNotMatch(TOOL_DEFS.find((d) => d.name === 'wake_agent').description, /side thread/);

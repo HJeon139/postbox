@@ -90,12 +90,15 @@ test('#49 at the bottom: a new version shows at the newest point, in view, with 
   expect(await inView(page, item.id), 'the app starts out of view, above').toBe(false);
   app.rt.addItem(t.id, { kind: 'user', text: 'The graph overlaps. Can you fix it?' });
   tools.update_app({ id: 'follow-bottom', code: APP('v2'), summary: 'each group laid out on its own' });
+  // v2’s check is recorded as passed, so its frame loads at once: this spec is about where the new version shows, and
+  // the check itself is app-check’s to test. Waiting for a real one took more than 5 s on CI’s runner.
+  app.rt.appCheck('follow-bottom', { version: 2, problems: [] });
   const stub = await stubOf(page, t, item.id);
   expect(await gap(page), 'the view stays at the bottom').toBeLessThanOrEqual(2);
   expect(await inView(page, item.id), 'the app is in view without scrolling').toBe(true);
   await expect(page.locator(`[data-key="${item.id}"]`), 'one copy on the page').toHaveCount(1);
-  // A new version is checked in a hidden frame before it shows; then exactly one frame runs it.
-  await expect(page.locator(`[data-key="${item.id}"] iframe.app-iframe`), 'v2 passes its check and loads').toBeAttached();
+  // Then exactly one frame runs it.
+  await expect(page.locator(`[data-key="${item.id}"] iframe.app-iframe`), 'v2 loads').toBeAttached();
   await expect(page.locator('iframe.app-iframe'), 'one running frame').toHaveCount(1);
   await expect(page.locator(`[data-key="${stub}"]`)).toContainText(/Pair explorer · updated to v2 below/);
   await expect(page.locator(`[data-key="${stub}"]`)).toContainText('Go to it');

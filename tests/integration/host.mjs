@@ -18,6 +18,16 @@ export const HARNESS = join(FIXTURES, 'harness.mjs');
 export const TOKEN = 'tok_0123456789abcdefghijklmnopqrstuvwxyz';
 export const TURN = 't1';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/**
+ * p, or `value` once ms have passed. The timer is cleared either way: a race against a bare sleep leaves its timer
+ * holding the test file’s process open for the rest of the wait after the test has ended.
+ * @template T, U @param {Promise<T>} p @param {number} ms @param {U} value @returns {Promise<T | U>}
+ */
+export function orAfter(p, ms, value) {
+  /** @type {NodeJS.Timeout | undefined} */
+  let t;
+  return Promise.race([p, new Promise((ok) => (t = setTimeout(ok, ms, value)))]).finally(() => clearTimeout(t));
+}
 export const UNIX = process.platform === 'linux' || process.platform === 'darwin';
 export const NO_UNIX = !UNIX && 'needs Unix sockets and process groups, which this platform doesn’t have';
 

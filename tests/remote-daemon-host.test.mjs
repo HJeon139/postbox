@@ -42,6 +42,29 @@ test('idle: exits after idleTimeout with nobody attached and no turn running, an
   }
 });
 
+test('idle: POSTBOX_DAEMON_TIMINGS can shorten idleTimeout, for the integration test’s real daemon, and never lengthen it', async () => {
+  for (const [given, idle] of [
+    [{ idleTimeout: 3000 }, 3000],
+    [{ idleTimeout: 10 * 24 * 3600_000 }, 1800_000],
+    [{ idleTimeout: 0 }, 1800_000],
+    ['not JSON', 1800_000],
+  ]) {
+    const clock = fakeClock();
+    let idled = 0;
+    const env = { POSTBOX_DAEMON_TIMINGS: typeof given === 'string' ? given : JSON.stringify(given) };
+    const s = setup({ clock, onIdle: () => idled++, env });
+    try {
+      await s.daemon.start();
+      await clock.tick(idle - 1);
+      assert.equal(idled, 0, `${JSON.stringify(given)}: not before ${idle} ms`);
+      await clock.tick(1);
+      assert.equal(idled, 1, `${JSON.stringify(given)}: idle after ${idle} ms`);
+    } finally {
+      s.done();
+    }
+  }
+});
+
 test('the socket: a relayed Postbox is served, and a shim goes to the broker, which refuses a turn it didn’t start, with no token for it', async () => {
   const s = setup();
   try {

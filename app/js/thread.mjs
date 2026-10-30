@@ -6,7 +6,7 @@ import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
 import { activityLabel, stepTree } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
-import { agentMarkdown, handles, markTerms } from './agent-markdown.mjs';
+import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
 import { subagentNow } from './agents.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
@@ -23,6 +23,7 @@ import { hostOf } from './remote.mjs';
 import { jobRows, runningNote, stoppedTag } from './reply-stop.mjs';
 import { replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
+import { scheduledWakeLine } from './scheduled-wake-line.mjs';
 import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
 import { failedOnHost, hostChanged, hostEnd, hostTurnsList, kiroStep, ranHere, remoteSig } from './thread-host.mjs';
@@ -331,7 +332,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
           pending.clear();
         });
     } else if (ch.type === 'glossary' && d.threadId === threadId) {
-      for (const it of itemsOf(threadId)) if (it.kind === 'agent') updateText(it.id, true);
+      for (const it of itemsOf(threadId)) if (it.kind === 'agent' && usesTerm(it, d.entry, nodes.get(it.id))) updateText(it.id, true);
     } else if (ch.type === 'session') {
       el.querySelectorAll(`pb-ring[data-session="${CSS.escape(d.id)}"]`).forEach((r) => {
         ringFor(d, r.getAttribute('size'), r);
@@ -372,10 +373,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       rerender(id);
       return;
     }
-    box.innerHTML = agentMarkdown(it, threadId); // lint-allow dom: renderMarkdown() output, escaped.
-    markTerms(box, threadId);
-    if (it.status === 'streaming') box.append(h('span.caret', { 'aria-hidden': 'true' }));
-    else enhanceMarkdown(box);
+    paintAgentMarkdown(box, it, threadId);
+    if (it.status !== 'streaming') enhanceMarkdown(box);
     if (!force) announceStreaming(it.id, it.text, it.status !== 'streaming', `@${it.handle}`);
   };
 
@@ -580,10 +579,8 @@ function renderItem(it, prev, ctx) {
       );
       const box = node.querySelector(':scope > .md');
       if (box) {
-        box.innerHTML = agentMarkdown(it, ctx.threadId); // lint-allow dom: renderMarkdown() output, escaped.
-        markTerms(box, ctx.threadId);
-        if (it.status === 'streaming') box.append(h('span.caret', { 'aria-hidden': 'true' }));
-        else queueMicrotask(() => enhanceMarkdown(box));
+        paintAgentMarkdown(box, it, ctx.threadId);
+        if (it.status !== 'streaming') queueMicrotask(() => enhanceMarkdown(box));
       }
       return node;
     }
@@ -767,30 +764,7 @@ function systemLine(it, _ctx) {
       );
     }
     case 'schedule':
-      return h(
-        'div.col.sys-line',
-        icon('clock', 'i-sm'),
-        h('b', `@${it.handle}`),
-        it.status === 'pending'
-          ? ` will wake itself at ${timeOf(it.at)}`
-          : it.status === 'canceled'
-            ? ' won’t wake itself (canceled)'
-            : ` woke itself at ${timeOf(it.at)}`,
-        it.note ? ` · “${it.note}”` : '',
-        it.status === 'pending'
-          ? [
-              ' · ',
-              h(
-                'button.btn.sm.ghost',
-                {
-                  type: 'button',
-                  onclick: () => api(`/api/schedules/${it.scheduleId}/cancel`, {}).catch((e) => toast({ title: 'Couldn’t cancel', text: e.message })),
-                },
-                'Cancel',
-              ),
-            ]
-          : null,
-      );
+      return scheduledWakeLine(it);
     case 'dataset':
       // An agent loaded a dataset into the corpus (#47): searched only when a search names it.
       return h(
