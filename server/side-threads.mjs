@@ -3,15 +3,15 @@
 // add an agent the conversation doesn’t have, and the lines of side threads from before #372. Functions take the
 // Runtime first (architecture.md, “What a move may change”).
 
-import { HOP_LIMIT, PAIR_LIMIT } from '../shared/limits.mjs';
+import { HOP_LIMIT } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
 import { askToAdd, askToWake, dropHeld, retireStale } from './wake-cards.mjs';
 
 export { resolveHop } from './wake-cards.mjs';
-// Agent wakes in a row, without you, and between the same two agents, before the next waits for your Allow
-// (shared/limits.mjs: wake_agent’s description on a host names them too).
-export { HOP_LIMIT, PAIR_LIMIT };
+// Agent wakes in a row, without you, before the next waits for your Allow (shared/limits.mjs: wake_agent’s description
+// on a host names it too).
+export { HOP_LIMIT };
 
 // ── Agents waking agents ───────────────────────────────────────────────────────────
 
@@ -46,15 +46,10 @@ export function agentWake(
   // A card keeps the mention’s message, so Allow wakes from it rather than posting it again.
   const card = { text, replyIn: at === parent.id ? null : at, fromTurnId, itemId };
   if (!target) return askToAdd(rt, from, parent, p, card);
-  // Two agents mentioning each other in turn (“pushed @a”, “thanks @b”, “noted @a”) stop after a hand-off and its
-  // answer, as a reply that went back by itself once stopped them. Each pair keeps its own count, so a third agent’s
-  // wakes in between don’t restart it; the person acting does.
-  const pair = [from.handle, p.handle].sort().join('|');
-  const runs = parent.pairRuns ?? {};
-  const run = Object.hasOwn(runs, pair) ? runs[pair] : 0;
-  if (!confirmed && ((parent.hops ?? 0) >= HOP_LIMIT || run >= PAIR_LIMIT)) return askToWake(rt, from, parent, p, card);
+  // No limit between two agents (#492): the room shows the chain’s count, with a hint to Stop past CHAIN_HINT.
+  if (!confirmed && (parent.hops ?? 0) >= HOP_LIMIT) return askToWake(rt, from, parent, p, card);
   const hop = (parent.hops ?? 0) + 1;
-  rt.putThread({ ...rt.s.threads[parent.id], hops: hop, pairRuns: { ...runs, [pair]: run + 1 } });
+  rt.putThread({ ...rt.s.threads[parent.id], hops: hop });
   // A mention is already the waker’s message there, so the wake’s number in the chain (#114, telemetry) goes on the
   // turn’s first item: it marks the turn, not necessarily the paragraph with the mention. One message can wake several
   // agents, so each wake’s number is kept (wakes); hop stays the first. wake_agent’s message is posted as the waker’s.
@@ -105,6 +100,22 @@ export function deliverWake(rt, threadId, q) {
   // No reply-back (#372): the reply posts where the wake was, and wakes the waker only if it @-mentions it.
   rt.deliver(target.id, { kind: 'agent', from: `@${q.from}`, text: q.text, itemId: q.itemId }, { threadId });
   retireStale(rt, threadId, target, `@${q.from} woke it`);
+}
+
+/**
+ * When the last agent working in a conversation ends its turn with nothing left to answer, the chain of wakes has ended,
+ * as when an agent acks a hand-off without waking anyone, so its count starts again (#492): separate chains don’t add up
+ * to the chain limit. A wake waiting on a card keeps it, until you answer the card.
+ * @param {any} rt @param {string} threadId  where the turn that ended spoke
+ */
+export function endChain(rt, threadId) {
+  const conv = rt.lineage(threadId).at(-1);
+  if (!rt.s.threads[conv]?.hops) return;
+  if (rt.sessionsIn(conv).some((se) => rt.turns.has(se.id) || rt.exiting.has(se.id))) return;
+  const threads = Object.values(rt.s.threads).filter((t) => rt.lineage(t.id).at(-1) === conv);
+  if (threads.some((t) => (t.queue ?? []).some((q) => q.kind === 'wake'))) return;
+  if (rt.store.items(conv).some((x) => x.kind === 'hop' && x.status === 'open')) return;
+  rt.putThread({ ...rt.s.threads[conv], hops: 0 });
 }
 
 /**

@@ -72,6 +72,20 @@ test('#120, #377: a wake Interrupted on the host and resumed on its own answers 
   await settled(r);
 });
 
+test('#485: a wake whose link gave up with its reply written wakes no one yet: the turn may still be on the host', async () => {
+  const r = rig({ daemon: { lines: mentioning('lead') } });
+  const { se: a, got } = lead(r);
+  assert.equal(r.rt.agentWake(a.id, 'coder', 'Is hello.txt there?').ok, true);
+  await onHost(r, 1);
+  await until(() => all(r).some((i) => i.kind === 'agent' && i.handle === 'coder' && /@lead/.test(i.text ?? '')), 'its reply, with the mention');
+  r.link.giveUp();
+  await settled(r);
+  assert.equal(r.se().remoteTurn.state, 'lost', 'still on the host, as far as Postbox knows');
+  assert.ok(all(r).some((i) => i.kind === 'agent' && i.handle === 'coder' && i.status === 'failed'));
+  // It’s attached again once the host is back, and its mentions wake their agents when it ends there.
+  assert.equal(got.length, 0, 'the failed reply’s @-mention woke no one');
+});
+
 test('#120, #377: a wake stopped with Sign-in needed and resumed by the person answers where it was woken, and wakes no one by itself', async () => {
   const { lines, result, signIn } = ending();
   const r = rig({ daemon: { lines } });

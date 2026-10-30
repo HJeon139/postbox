@@ -1,11 +1,12 @@
-// What the review of #377 asked for: each pair of agents keeps its own count of wakes in a row, a message that wakes
-// several agents counts each wake in telemetry, and a turn in an old side thread posts its mentions once.
+// What the review of #377 asked for: a message that wakes several agents counts each wake in telemetry, and a turn in
+// an old side thread posts its mentions once. Each pair of agents kept its own count of wakes in a row too, until #492
+// removed the pair limit (tests/wakes-no-pair-limit.test.mjs).
 
 import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { PAIR_LIMIT } from '../server/side-threads.mjs';
+import { HOP_LIMIT } from '../server/side-threads.mjs';
 import { collect, tierA } from '../server/telemetry-record.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
@@ -34,28 +35,6 @@ const oldSide = (rt, t) =>
     archived: false,
   });
 
-test('#372 a third agent’s wakes in between don’t restart a pair’s count: alpha and beta still reach the card', async () => {
-  const { store, rt, t, alpha, beta, gamma } = three();
-  const wake = async (from, to) => {
-    const r = rt.agentWake(from.id, to, `${from.handle} to ${to}`);
-    await settle(rt);
-    return r;
-  };
-  assert.equal((await wake(alpha, 'beta')).ok, true); // alpha|beta 1
-  assert.equal((await wake(gamma, 'alpha')).ok, true); // alpha|gamma 1
-  assert.equal((await wake(beta, 'alpha')).ok, true); // alpha|beta 2
-  assert.equal((await wake(gamma, 'beta')).ok, true); // beta|gamma 1
-  const third = await wake(alpha, 'beta'); // alpha|beta 3: the card
-  assert.equal(third.waiting, true);
-  const card = store.items(t.id).find((x) => x.kind === 'hop' && x.status === 'open');
-  assert.deepEqual([card.from, card.to, card.pair], ['alpha', 'beta', PAIR_LIMIT]);
-  // You acting clears every pair’s count. Your message goes to beta, the card’s target, which retires the card after
-  // it (#439), so the card’s own wake is the first of the run your message starts.
-  rt.sendMessage(t.id, { text: 'carry on' });
-  await settle(rt);
-  assert.deepEqual(store.state.threads[t.id].pairRuns, { 'alpha|beta': 1 });
-});
-
 test('#372 a message that wakes two agents counts as one chain with two wakes in telemetry', async () => {
   const { store, rt, adapter, t } = three();
   adapter.next.push(async (c) => c.text('@beta @gamma please review the totals.'));
@@ -83,7 +62,7 @@ test('#372 a turn in an old side thread that mentions two agents posts its messa
 test('#372 a turn in an old side thread whose wake waits on a card is still told side threads are gone', async () => {
   const { store, rt, adapter, t, alpha } = three();
   const old = oldSide(rt, t);
-  rt.putThread({ ...store.state.threads[t.id], hops: 10 });
+  rt.putThread({ ...store.state.threads[t.id], hops: HOP_LIMIT });
   const h = held();
   adapter.next.push(h.step);
   rt.deliver(alpha.id, { kind: 'user', text: 'carry on' }, { threadId: old.id });
@@ -95,12 +74,12 @@ test('#372 a turn in an old side thread whose wake waits on a card is still told
   await settle(rt);
 });
 
-test('#372 a woken agent is told its reply reaches the waker only by an @-mention, and wake_agent names both limits', async () => {
+test('#372 a woken agent is told its reply reaches the waker only by an @-mention, and wake_agent names the chain limit', async () => {
   const { formatMessage } = await import('../server/adapters/guide.mjs');
   const { TOOL_DEFS } = await import('../server/mcp.mjs');
   assert.match(
     formatMessage({ kind: 'agent', from: '@alpha', text: 'Check the totals.' }),
     /^\[Postbox\] @alpha wrote to you\. Your reply posts here; it reaches @alpha only if you @-mention them/,
   );
-  assert.match(TOOL_DEFS.find((d) => d.name === 'wake_agent').description, new RegExp(`or ${PAIR_LIMIT} in a row between the same two agents`));
+  assert.match(TOOL_DEFS.find((d) => d.name === 'wake_agent').description, new RegExp(`After ${HOP_LIMIT} agent wakes in one chain, the person must allow`));
 });

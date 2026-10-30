@@ -339,7 +339,7 @@ The triggers, for `remotehosts` and for P0’s Stop phase on a host:
 | fault-restart-postbox           | the hosts read Connected again after Postbox restarted on the same data                                         |
 | fault-kill-daemon               | the host read Connected again after its daemon was killed                                                       |
 | remote-card-while-disconnected  | a permission card from a host, open when its ssh connection was killed, was answered after it reconnected       |
-| pair-card-opened                | (hostwakes) a third wake in a row between the same two agents raised a card, which waited for you               |
+| pair-card-opened                | (hostwakes) a wake past a limit raised a card, which waited for you                                             |
 | local-wake-told-in-turn         | (hostwakes) an agent here whose wake was refused got the refusal as `wake_agent`’s own result                   |
 | refused-wake-told-in-turn       | (hostwakes) an agent on a host whose wake was refused was told so, and started a turn, within a minute          |
 | held-wake-delivered-after-allow | (hostwakes) a hand-off refused while a card waited reached its target once you allowed the card, with no resend |
