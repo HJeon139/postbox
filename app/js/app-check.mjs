@@ -2,7 +2,7 @@
 
 import { api, client } from './client.mjs';
 
-const checks = new Map(); // `${appId}:${version}` → { results: Map(width → problems), frames, timer, resolve }
+const checks = new Map(); // `${appId}:${version}` → { appId, version, results: Map(width → problems), frames, timer, resolve }
 const failed = new Set(); // saves to the server that wait for the connection to reopen before retrying
 const WIDTHS = [375, 1280];
 const NO_CHECK = new URLSearchParams(location.search).has('nocheck');
@@ -24,7 +24,7 @@ export function recordAppCheck(appId, version, width, problems) {
 function startAppCheck(appId, version) {
   const key = `${appId}:${version}`;
   if (checks.has(key)) return checks.get(key).promise;
-  const c = { results: new Map(), frames: [], timer: null, done: false, attempt: 0, resolve: null, promise: null };
+  const c = { appId, version, results: new Map(), frames: [], timer: null, done: false, attempt: 0, resolve: null, promise: null };
   c.promise = new Promise((resolve) => {
     c.resolve = resolve;
   });
@@ -79,6 +79,24 @@ async function finishCheck(appId, version) {
   }
 }
 
+/**
+ * Drops each running check whose version is no longer what the app shows: a newer version came, or the app was retired.
+ * The server ignores a result for either (server/apps.mjs, appCheck), so it posts nothing, and drain() moves on to the
+ * current version at once instead of waiting the old check out. Its key is forgotten, not marked failed.
+ */
+function dropOvertaken() {
+  for (const [key, c] of checks) {
+    if (c.done) continue;
+    const app = client.state?.apps?.[c.appId];
+    if (app && !app.retired && app.current === c.version) continue;
+    c.done = true;
+    clearTimeout(c.timer);
+    for (const frame of c.frames) frame.remove();
+    checks.delete(key);
+    c.resolve();
+  }
+}
+
 function pending() {
   return Object.values(client.state?.apps ?? {}).filter(
     (app) => !app.retired && app.check.status === 'pending' && !checks.has(`${app.id}:${app.current}`) && !failed.has(`${app.id}:${app.current}`),
@@ -124,6 +142,7 @@ export function installAppChecks(frame, { pause, resume } = {}) {
   if (resume) resumeFrames = resume;
   client.on((change) => {
     if (change.type === 'connection' && client.connection === 'open') failed.clear();
+    if (change.type === 'load' || change.type === 'app') dropOvertaken();
     if (change.type === 'load' || change.type === 'app' || (change.type === 'connection' && client.connection === 'open')) schedule();
   });
   addEventListener('visibilitychange', schedule);
