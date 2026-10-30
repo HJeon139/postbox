@@ -16,6 +16,13 @@ import { LIMITS } from './limits.mjs';
 export const EVENT_DEPTH = LIMITS.jsonDepth + 20;
 
 /**
+ * The deepest document RedisJSON 8.10.3 holds: it parses with serde_json, whose recursion limit refuses the 128th level.
+ * The import of an old store checks each document against this (server/store-import.mjs), since old Postbox capped an
+ * app’s state by size alone; a running store checks events at EVENT_DEPTH, well inside it.
+ */
+export const REDIS_DEPTH = 127;
+
+/**
  * How deep a JSON text nests: 0 for a scalar, 1 for a flat object or array. Brackets inside strings don’t count.
  * @param {string} text
  */

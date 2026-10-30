@@ -8,94 +8,16 @@
 // 2026-10-22, papersurvey and wikisearch, recorded by tools/uat-run.mjs), written here as an old data folder.
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { appendFile, chmod, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { dataFolder, holdsStore, moveData } from '../server/home.mjs';
 import { Store } from '../server/store.mjs';
 import { clearStore, importLegacy } from '../server/store-import.mjs';
-import { apply, emptyState } from '../shared/state.mjs';
+import { emptyState } from '../shared/state.mjs';
 import { admin } from './redis-fixture-user.mjs';
-
-if (!process.env.POSTBOX_REDIS_HOME) throw new Error('Set POSTBOX_REDIS_HOME (tests/AGENTS.md, “The store’s Redis”).');
-
-const ROOMS = JSON.parse(readFileSync(new URL('./fixtures/uat/m1-turns.json', import.meta.url), 'utf8'));
-
-const dirs = [];
-const stores = [];
-after(async () => {
-  for (const s of stores) await s.close().catch(() => {});
-  for (const d of dirs) await rm(d, { recursive: true, force: true });
-});
-const open = async (dir) => {
-  const s = await new Store(dir).load();
-  stores.push(s);
-  return s;
-};
-
-/** The recorded rooms as events: a thread and a session each, their items, and the changes a live room makes. */
-function roomEvents() {
-  const evs = [];
-  const add = (type, data) => evs.push({ seq: evs.length + 1, type, data });
-  add('settings', { theme: 'dark' });
-  ROOMS.forEach((room, r) => {
-    const t = `th_room${r}`;
-    add('thread', { id: t, title: room.about, members: [`se_${r}`] });
-    // Costs as the room copy has them: sums needing 17 significant digits, which RedisJSON parses to a neighbor.
-    add('work.add', { convId: t, entry: { id: `w_${r}`, kind: 'turn', costUsd: 1.6202103999999997 + r, ms: 1234 } });
-    add('session', { id: `se_${r}`, threadId: t, handle: 'researcher', state: 'idle' });
-    for (const it of room.items) add('item.add', { threadId: t, item: structuredClone(it) });
-  });
-  const last = ROOMS[2].items;
-  add('item.text', { threadId: 'th_room2', id: last[1].id, text: ' (more)' });
-  add('item.patch', { threadId: 'th_room2', id: last[1].id, patch: { status: 'done' }, activityStep: { id: 'st1', kind: 'tool' } });
-  add('item.move', { threadId: 'th_room2', id: last[0].id, stub: { id: 'it_stub', kind: 'stub' }, patch: { movedAt: 1 } });
-  add('session.patch', { id: 'se_0', patch: { state: 'gen' }, unset: ['handle'] });
-  add('glossary', { threadId: 'th_room0', entry: { key: 'aof', term: 'AOF', definition: 'append-only file' } });
-  add('remove', { kind: 'session', id: 'se_1' });
-  add('boilerplate', { id: 'bp1', name: 'one' });
-  add('boilerplate', { id: 'bp2', name: 'two' });
-  add('boilerplate', { id: 'bp1', name: 'one again' });
-  add('work.add', { convId: 'th_room2', entry: { id: 'w_sum', kind: 'turn', costUsd: 0.1 + 0.2, tokens: { input: 7 } } });
-  add('work.patch', { convId: 'th_room2', id: 'w_sum', patch: { summaryCostUsd: 0.0015241999999999999 } });
-  return evs;
-}
-
-/** The state the old store loaded from these: the snapshot, then the log replayed with the shared reducer. */
-function todaysState(evs) {
-  const s = emptyState();
-  for (const ev of evs) {
-    apply(s, ev.type, structuredClone(ev.data));
-    s.seq = ev.seq;
-  }
-  return s;
-}
-
-/** The state with its costs rounded to 12 places, as the import writes them (#525); everything else exact. @param {any} s */
-function costsRounded(s) {
-  const r = (v) => (typeof v === 'number' ? Math.round(v * 1e12) / 1e12 : v);
-  for (const list of Object.values(s.work ?? {})) for (const e of list) for (const k of ['costUsd', 'summaryCostUsd']) if (k in e) e[k] = r(e[k]);
-  return s;
-}
-
-/** An old data folder: a snapshot of the first `cut` events, a segment with the rest, and a torn last line. */
-async function oldFolder(cut) {
-  const dir = await mkdtemp(join(tmpdir(), 'pb-store-import-'));
-  dirs.push(dir);
-  const evs = roomEvents();
-  await writeFile(join(dir, 'snapshot.json'), JSON.stringify(todaysState(evs.slice(0, cut))));
-  await writeFile(
-    join(dir, `events-${cut + 1}.jsonl`),
-    evs
-      .slice(cut)
-      .map((e) => `${JSON.stringify(e)}\n`)
-      .join(''),
-  );
-  await appendFile(join(dir, `events-${cut + 1}.jsonl`), `{"seq":${evs.length + 1},"type":"thread","data":{"id":"torn"`);
-  return { dir, evs };
-}
+import { costsRounded, dirs, oldFolder, open, roomEvents, todaysState } from './store-import-fixture.mjs';
 
 test('importing a recorded room gives the state the old store loaded, and its log’s events in the stream', async () => {
   const { dir, evs } = await oldFolder(20);
@@ -243,4 +165,25 @@ test('#553: a fresh start removes the store’s files, not the *.migrated copies
   const names = await readdir(dir);
   assert.ok(names.includes('snapshot.json.migrated') && names.includes('events-4.jsonl.migrated'), names.join(','));
   assert.ok(!names.includes('snapshot.json'));
+});
+
+test('#553: “already imported” compares the files, not their seq alone: another store’s files at a lower seq are refused, not ignored', async () => {
+  const { dir, evs } = await oldFolder(20);
+  const a = await open(dir);
+  a.emit('thread', { id: 'after', members: [] });
+  await a.flush();
+  await a.close();
+  // Another old store’s files, at a seq this Redis already holds, appear in the data folder.
+  const other = roomEvents().slice(0, 5);
+  await writeFile(join(dir, 'snapshot.json'), JSON.stringify({ ...todaysState(other), threads: { strange: { id: 'strange', members: [] } } }));
+  await assert.rejects(new Store(dir).load(), (e) => {
+    assert.equal(e.code, 'EIMPORT');
+    assert.match(e.message, /aren’t the ones this store was imported from/);
+    assert.ok(e.message.includes(dir));
+    return true;
+  });
+  assert.equal((await readdir(join(dir, 'backups'))).length, 1, 'nothing imported');
+  await rm(join(dir, 'snapshot.json'));
+  const b = await open(dir);
+  assert.equal(b.state.seq, evs.length + 1);
 });
