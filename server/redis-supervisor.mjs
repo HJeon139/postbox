@@ -57,6 +57,18 @@ const MESSAGES = {
   died: () => 'The store’s Redis stopped. Postbox is starting it again; writes wait until it’s back.',
 };
 
+/**
+ * The environment the child gets: PATH, HOME and TMPDIR, where set, and nothing else of Postbox’s, which holds the
+ * page token’s secrets, the agents’ keys and whatever the person’s shell exported (SR-7, the other way round).
+ * @param {NodeJS.ProcessEnv} env
+ */
+export function childEnv(env) {
+  /** @type {Record<string, string>} */
+  const out = {};
+  for (const k of ['PATH', 'HOME', 'TMPDIR']) if (env[k] !== undefined) out[k] = env[k];
+  return out;
+}
+
 export class RedisSupervisor extends EventEmitter {
   /**
    * Tests only: children started while it’s set also have a `fixture` user with every command, for specs that set up
@@ -206,7 +218,7 @@ export class RedisSupervisor extends EventEmitter {
     // Nothing between this check and the spawn waits, so a stop can’t come between them.
     this.halt();
     const log = createWriteStream(join(this.dataDir, 'redis', 'logs', 'redis.log'), { flags: 'a', mode: 0o600 });
-    const child = privately(() => spawn(server, [conf], { stdio: ['ignore', 'pipe', 'pipe'] }));
+    const child = privately(() => spawn(server, [conf], { stdio: ['ignore', 'pipe', 'pipe'], env: childEnv(process.env) }));
     this.child = child;
     process.on('exit', this.killOnExit);
     let seen = '';
