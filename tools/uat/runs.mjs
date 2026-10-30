@@ -150,6 +150,7 @@ export function runRecord({
     minutes: Math.round((now - started) / 60000),
     cost: { agents: Math.round(agents * 100) / 100, tester: Math.round((tester.spent ?? 0) * 100) / 100, kiroCredits: null },
     coverage,
+    ...(facts.timing ? { timing: facts.timing } : {}),
   };
 }
 
@@ -198,6 +199,8 @@ export function readRun(dir, { scenarios } = {}) {
     telemetry: saved.telemetry ?? null,
     // The run’s budget (tools/uat/budget.mjs), when it had --max-cost.
     budget: saved.budget ?? null,
+    // Where the run’s time went (tools/uat/timing.mjs): only a live run measures it, so a recheck keeps it.
+    timing: saved.timing ?? null,
     proposals: Array.isArray(findings.telemetry?.proposals) ? findings.telemetry.proposals : [],
   };
 }

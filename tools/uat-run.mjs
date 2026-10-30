@@ -56,11 +56,13 @@ import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { chainLimitEnv, phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
+import { stepPrompt } from './uat/step-prompt.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
 import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
+import { runTiming } from './uat/timing.mjs';
 import { phaseGoals } from './uat/triggers.mjs';
-import { sendThenStop, settle as settleTurns, stopThroughPage, WAIT_MAX_S, watchBudget } from './uat/turns.mjs';
+import { namedWait, sendThenStop, settle as settleTurns, stopThroughPage, testerWait, watchBudget } from './uat/turns.mjs';
 import { makeWorkspace } from './uat/workspace.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -124,6 +126,7 @@ async function main() {
     console.log(l);
   };
   const started = Date.now();
+  const timing = runTiming();
   log(`UAT “${scenario.title}” → ${dir}, at most ${steps} steps`);
 
   // Open issues, so the tester and the report can name the ones a run catches again.
@@ -305,7 +308,7 @@ async function main() {
 
     // What needs the person that a wait between steps has seen: it hands back to the tester once for each (#289).
     const told = new Set();
-    const settle = (handBack = false) => settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, log });
+    const settle = (handBack = false) => timing.time('agents', () => settleTurns({ api, d, threadsUnderTest, facts, midTurnChecks, opt, told, handBack, log }));
 
     const observe = () => observeScreen({ d, labels, keys, seen, paths, timeline, dir, facts });
 
@@ -338,31 +341,12 @@ async function main() {
         const where = facts.state.threads[w.threadId];
         return `${label ? `[${label}] ` : ''}${w.what}${where && w.threadId !== mainThread ? ` (in the thread “${where.title}”${label ? '' : ', not on screen: open it'})` : ''}`;
       });
-      const prompt = [
-        `Step ${step} of at most ${steps}. Phase ${phase + 1} of ${scenario.phases.length}: ${ph.title}`,
-        ph.text,
-        goal.note,
-        lastAction
-          ? `Your last action: ${JSON.stringify(lastAction)}${actionError ? `. It failed: ${actionError}` : ''}${actionResult ? `. Result: ${actionResult}` : ''}`
-          : phase
-            ? `Nothing has happened yet. This run starts at phase ${phase + 1}, skipping the ones before it, so first set up briefly what this phase needs (the earlier phases are only context): ${scenario.phases
-                .slice(0, phase)
-                .map((p) => p.title)
-                .join('; ')}.`
-            : 'Nothing has happened yet: start the phase.',
-        timedOut ? `The run itself pressed Stop: ${timedOut} A “Stopped by you” line is from that, not a bug.` : '',
-        obs.items.length ? `What changed on screen:\n\n${obs.items.join('\n\n')}` : 'Nothing changed on screen.',
-        `Agents: ${obs.states.join('; ') || 'none yet'}`,
-        waiting.length ? `Waiting on you:\n${waiting.map((w) => `- ${w}`).join('\n')}` : 'Nothing is waiting on you.',
-        jobsAsk ? `Postbox is asking about background jobs: “${jobsAsk}” Answer it with jobs.` : '',
-        fresh.length ? `The automatic checks found:\n${fresh.map((f) => `- ${f.title}${f.issue ? ` (#${f.issue})` : ''}: ${f.evidence}`).join('\n')}` : '',
-      ]
-        .filter(Boolean)
-        .join('\n\n');
+      const prompt = stepPrompt({ step, steps, phase, scenario, goal, lastAction, actionError, actionResult, timedOut, obs, waiting, jobsAsk, fresh });
       // With --max-cost, the step goes ahead only if it, and an agent turn it may start, fit what’s left.
       const busy = obs.states.filter((s) => /: (?:think|tool|gen)\b/.test(s)).length;
       if (budget.beforeStep({ step, working: busy })) break;
-      const answer = await tester.step(prompt, system);
+      timing.at(step);
+      const answer = await timing.time('tester', () => tester.step(prompt, system));
       goals.took(phase);
       timeline.push({ step, phase: ph.title, assessment: answer.assessment, action: answer.action });
       log(`step ${step} · ${answer.assessment}`);
@@ -431,7 +415,8 @@ async function main() {
           );
           if (named.length)
             actionResult = `It addresses “${named[0]}” without the @, so it mentions no agent and went to ${last ? `@${last}, who spoke last` : 'whichever agent spoke last'}. Write @${named[0]} to address it.`;
-        } else if (a.type === 'send_then_stop') actionResult = await sendThenStop(d, a, { step, probes: facts.probes, log, onWait: () => midTurnChecks() });
+        } else if (a.type === 'send_then_stop')
+          actionResult = await timing.time('waits', () => sendThenStop(d, a, { step, probes: facts.probes, log, onWait: () => midTurnChecks() }));
         else if (a.type === 'thread') await d.replyInThread(key, a.text ?? '');
         else if (a.type === 'thread_reply') await d.replyInOpenThread(a.text ?? '');
         else if (a.type === 'act' || a.type === 'review') {
@@ -508,7 +493,8 @@ async function main() {
           const mine = (await d.items()).filter((x) => x.where === 'conversation' && x.attachments > 0).at(-1);
           if (mine) facts.probes.attachments.push({ key: mine.key, images: mine.images, attachments: mine.attachments });
         } else if (a.type === 'fault') actionResult = await hostFault(a);
-        else if (a.type === 'wait') await sleep(Math.min(WAIT_MAX_S, a.seconds ?? 30) * 1000);
+        else if (a.type === 'wait')
+          actionResult = await timing.time('waits', () => testerWait(a, { named: namedWait(scenario.phases[phase].text), api, threadsUnderTest }));
         else if (a.type === 'stop') await d.stopAll();
         // Stop or Send now while the turn this action started is running (#126).
         if (a.interrupt && ['send', 'thread', 'act', 'review'].includes(a.type)) {
@@ -516,9 +502,8 @@ async function main() {
           const panel = a.type === 'thread' || (key ? await d.inPanel(key) : false);
           // A fault mid-turn is the driver’s answer while the agent works, with the fault for its answer.
           const now = a.interrupt.do === 'fault' ? () => hostFault(a.interrupt) : () => answerMidTurn(a.interrupt);
-          const said = await d.interrupt(
-            { ...a.interrupt, do: a.interrupt.do === 'fault' ? 'answer' : a.interrupt.do },
-            { panel, onWait: () => midTurnChecks(), answer: now },
+          const said = await timing.time('waits', () =>
+            d.interrupt({ ...a.interrupt, do: a.interrupt.do === 'fault' ? 'answer' : a.interrupt.do }, { panel, onWait: () => midTurnChecks(), answer: now }),
           );
           facts.probes.interrupts.push({ step, at: Date.now(), do: a.interrupt.do, answered: /You answered “([^”]+)”/.exec(said)?.[1] ?? null });
           actionResult = actionResult ? `${actionResult} ${said}` : said;
@@ -548,12 +533,14 @@ async function main() {
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
     if (facts.telemetry) facts.telemetryOut = { proposals: tm.foldLabels(all, facts.telemetry) };
     if (facts.telemetry) budget.spend('telemetry', tm.telemetryBlock(facts.telemetry, all).classifier?.costUsd);
-    facts.budget = budget.summary();
+    Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
     await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
     if (opt.verify !== 'no' || opt.file !== 'no') {
       const review = { ...REVIEW, ask: budget.verifier() };
-      await reviewFindings({ ...review, dir, scenario, findings: all, timeline, log, verify: opt.verify !== 'no', file: opt.file !== 'no' });
-      facts.budget = budget.summary();
+      await timing.time('verifier', () =>
+        reviewFindings({ ...review, dir, scenario, findings: all, timeline, log, verify: opt.verify !== 'no', file: opt.file !== 'no' }),
+      );
+      Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
       await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
     }
     // The run’s record for a refit (tools/uat-stats.mjs), so it needn’t parse the report.

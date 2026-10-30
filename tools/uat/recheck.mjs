@@ -34,6 +34,39 @@ const LIVE_ONLY = new Set([
 ]);
 
 /**
+ * What a recheck’s checks read from a finished run’s folder: the conversation’s threads, the streams, the history, and
+ * the probes, samples, budget and timing the run saved. What the page shows (its apps and UI) is read after.
+ * @param {string} dir  @param {{ state: any, mainId: string, saved: any, logs: any[], hostsRec: any, record: any }} o
+ */
+export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }) {
+  return {
+    state,
+    threads: [
+      mainId,
+      ...Object.values(state.threads)
+        .filter((t) => t.parentId === mainId)
+        .map((t) => t.id),
+    ],
+    startPersonas: [],
+    streams: readStreams(join(dir, 'streams')),
+    kiroStreams: readStreams(join(dir, 'streams', 'kiro')),
+    agyStreams: readStreams(join(dir, 'streams', 'agy')),
+    codexStreams: readStreams(join(dir, 'streams', 'codex')),
+    events: readHistory(dir),
+    console: logs,
+    apps: {},
+    probes: { ...newProbes(), ...(saved.probes ?? {}) },
+    samples: saved.samples ?? [],
+    budget: saved.budget ?? null,
+    // Where the live run’s time went (tools/uat/timing.mjs): a recheck measures none of its own, so it keeps the run’s.
+    timing: record?.timing ?? null,
+    ui: {},
+    ...userSetup(join(dir, 'workspace')),
+    ...(hostsRec ? { hosts: hostsRec } : {}),
+  };
+}
+
+/**
  * Rechecks a finished run. root: Postbox's checkout; opt: the runner's options; review: what verifying and filing
  * need (tools/uat/review.mjs).
  * @param {string} dir  @param {{ root: string, opt: Record<string, any>, review: Record<string, any> }} o
@@ -74,29 +107,7 @@ export async function recheck(dir, { root, opt, review }) {
     await page.goto(`${origin}/?recheck=1#/t/${main.id}`);
     await sleep(1500);
     const d = driver(page);
-    const facts = {
-      state,
-      threads: [
-        main.id,
-        ...Object.values(state.threads)
-          .filter((t) => t.parentId === main.id)
-          .map((t) => t.id),
-      ],
-      startPersonas: [],
-      streams: readStreams(join(dir, 'streams')),
-      kiroStreams: readStreams(join(dir, 'streams', 'kiro')),
-      agyStreams: readStreams(join(dir, 'streams', 'agy')),
-      codexStreams: readStreams(join(dir, 'streams', 'codex')),
-      events: readHistory(dir),
-      console: page.logs,
-      apps: {},
-      probes: { ...newProbes(), ...(saved.probes ?? {}) },
-      samples: saved.samples ?? [],
-      budget: saved.budget ?? null,
-      ui: {},
-      ...userSetup(join(dir, 'workspace')),
-      ...(hostsRec ? { hosts: hostsRec } : {}),
-    };
+    const facts = savedFacts(dir, { state, mainId: main.id, saved, logs: page.logs, hostsRec, record });
     facts.transcripts = transcriptsFor(dir, facts);
     for (const it of await d.items()) if (it.app) facts.apps[it.key] = await d.appInside(it.key);
     facts.ui.headerText = await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`);
