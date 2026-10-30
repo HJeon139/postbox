@@ -11,7 +11,7 @@
 // finishes, since Postbox imports before it reads the store. Without the mark, a crash after the first batch of events
 // left Redis part way along the log, which the next start refused (review finding 3 on #525).
 
-import { copyFile, mkdir, readdir, readFile, rename, rm } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, readdir, readFile, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { apply, emptyState, ownState } from '../shared/state.mjs';
 import { COLLECTIONS, roundStateCosts, writesFor } from './store-docs.mjs';
@@ -96,9 +96,15 @@ export async function importLegacy(dir, c, { now = new Date() } = {}) {
       'EIMPORT',
       `The store’s Redis holds events up to ${have}, but the old log in ${dir} goes to ${state.seq}. Postbox won’t mix them; move one aside.`,
     );
+  // The backup is a whole copy of every conversation: only the person may open it (0700), whatever the data folder’s mode.
   const backup = marked ?? join(dir, 'backups', `store-${now.toISOString().slice(0, 19).replace(/:/g, '-')}`);
-  await mkdir(backup, { recursive: true });
-  for (const f of files) await copyFile(join(dir, f), join(backup, f));
+  await mkdir(join(dir, 'backups'), { recursive: true, mode: 0o700 });
+  await mkdir(backup, { recursive: true, mode: 0o700 });
+  await chmod(backup, 0o700);
+  for (const f of files) {
+    await copyFile(join(dir, f), join(backup, f));
+    await chmod(join(backup, f), 0o600);
+  }
   await c.call('FLUSHDB'); // what an import cut short wrote
   await c.call('SET', 'importing', backup);
   const writes = everything(state);

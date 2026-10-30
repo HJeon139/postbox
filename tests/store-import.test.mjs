@@ -9,7 +9,7 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { appendFile, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { appendFile, chmod, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
@@ -205,4 +205,14 @@ test('an imported data folder still holds the store: a restart keeps using a clo
   const moved = await open(to);
   assert.equal(moved.state.seq, old.evs.length + 1, 'the moved store has the import and what came after');
   assert.ok(moved.state.threads.after);
+});
+
+test('#553: the backup folder and its copies are the person’s alone (0700 and 0600), whatever the data folder’s mode', async () => {
+  const { dir } = await oldFolder(3);
+  await chmod(dir, 0o755);
+  await open(dir);
+  const [backup] = await readdir(join(dir, 'backups'));
+  assert.equal((await stat(join(dir, 'backups'))).mode & 0o777, 0o700);
+  assert.equal((await stat(join(dir, 'backups', backup))).mode & 0o777, 0o700);
+  for (const f of await readdir(join(dir, 'backups', backup))) assert.equal((await stat(join(dir, 'backups', backup, f))).mode & 0o777, 0o600, f);
 });
