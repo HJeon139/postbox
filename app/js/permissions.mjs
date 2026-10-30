@@ -284,7 +284,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
           );
       }
       // Writes outside Postbox (#112): many rules with one cause, and what lets a call through without asking.
-      if (b === 'ask' && view.writes?.rules.length) rows.push(writesRow(view.writes), approvedWritesRow(p, change));
+      if (b === 'ask' && view.writes?.rules.length) rows.push(writesRow(view.writes), requestedRow(p, change));
       if (b === 'allow')
         rows.push(h('li', h('code.perm-rule', 'mcp__postbox'), h('span.small.dim.grow', `from ${SOURCE.postbox}: they only show things here`)));
       return h(
@@ -620,21 +620,21 @@ function writesRow(writes) {
 }
 
 /**
- * Whether a write the person approved in a block runs without a second card (#296): on unless the persona turns it off.
- * @param {{ id: string, handle: string, writesAsApproved?: boolean }} p @param {(fn: () => Promise<any>, done: string) => Promise<void>} change
+ * Whether, in Auto, a call the person asked for runs without a card (#296): on unless the persona turns it off.
+ * @param {{ id: string, handle: string, allowRequested?: boolean }} p @param {(fn: () => Promise<any>, done: string) => Promise<void>} change
  */
-function approvedWritesRow(p, change) {
+function requestedRow(p, change) {
   return h(
     'li',
     checkField({
-      id: 'perm-approved-writes',
-      label: 'Writes you approved in a block run without asking again',
-      help: `When you confirm a block or approve a review, @${p.handle} may open, comment on or edit the PRs and issues it names with gh, up to five, without a card. Each leaves a line in the conversation with Stop. Merging, closing, labels and other repositories still ask.`,
-      on: p.writesAsApproved !== false,
+      id: 'perm-requested',
+      label: 'Calls you asked for run without a card',
+      help: `In Auto mode, before a card, a quick check reads what you asked @${p.handle} in this turn, or the block you approved, and lets the call run when your words ask for it. Each such call leaves a line in the conversation with Stop, five at most a turn. Anything that deletes, merges, closes or forces still asks, and Ask me mode always asks.`,
+      on: p.allowRequested !== false,
       onToggle: (on) =>
         change(
-          () => api(`/api/personas/${p.id}`, { writesAsApproved: on }, 'PATCH'),
-          on ? `Writes you approve in a block run without asking again.` : `Every write outside Postbox asks you first, even after you approve it in a block.`,
+          () => api(`/api/personas/${p.id}`, { allowRequested: on }, 'PATCH'),
+          on ? `Calls you ask @${p.handle} for run without a card.` : `Every call that comes to Postbox asks you first, even one you asked for.`,
         ),
     }),
   );

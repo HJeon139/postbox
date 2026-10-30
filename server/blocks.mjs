@@ -10,7 +10,7 @@ import { clip, clipText, httpError } from './helpers.mjs';
 import { REACT, toggleReaction } from './reactions.mjs';
 import { keepReviewThreads } from './review-comments.mjs';
 import { resolveToolAsk } from './tool-ask.mjs';
-import { stopApproved } from './write-intent.mjs';
+import { stopRequested } from './write-intent.mjs';
 
 export const CATCH_UP_CHARS = 16000;
 
@@ -26,7 +26,7 @@ export function act(rt, threadId, itemId, action, values, revision) {
   if (it.kind === 'denial') return rt.resolveDenial(threadId, itemId, action);
   if (it.kind === 'appsend') return rt.resolveAppSend(threadId, itemId, action);
   if (it.kind === 'toolask') return resolveToolAsk(rt, threadId, itemId, action);
-  if (it.kind === 'allowedwrite') return stopApproved(rt, threadId, itemId, action);
+  if (it.kind === 'allowedcall') return stopRequested(rt, threadId, itemId, action);
   if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
   if (it.closed?.by === 'agent')
     throw httpError(409, `@${it.closed.handle} withdrew this, so it no longer asks. Only a new block, or an update to it, can ask again.`);
