@@ -39,6 +39,8 @@ export function shellWords(s) {
 // A path a request can’t read from: from / or ~, through .., a hidden file or folder (.env, .git/config,
 // .claude/settings.local.json), a $variable or a `command`, or a glob, whose matches Postbox can’t see.
 const OUTSIDE = /^[~/]|[$`*?[\]{}]|(?:^|\/)\.\.(?:\/|$)|(?:^|\/)\.[^./]/;
+// A file named as a key or a credential, wherever it is: id_rsa, server.pem, credentials.json, secrets.yml.
+const SECRET = /(?:^|\/)(?:id_[a-z0-9_]+(?:\.pub)?|[^/]*\.(?:pem|key|p12|pfx|jks|keystore|kdbx)|credentials?(?:\.[a-z]+)?|secrets?(?:\.[a-z]+)?)$/i;
 
 /**
  * Whether a word a read, a git path or a body file names stays in the project, so a request can’t publish a secret in
@@ -47,7 +49,7 @@ const OUTSIDE = /^[~/]|[$`*?[\]{}]|(?:^|\/)\.\.(?:\/|$)|(?:^|\/)\.[^./]/;
  */
 export function inProject(w, folder = null) {
   const path = w.startsWith('-') && w.includes('=') ? w.slice(w.indexOf('=') + 1) : w;
-  if (OUTSIDE.test(path)) return false;
+  if (OUTSIDE.test(path) || SECRET.test(path)) return false;
   if (!folder) return true;
   try {
     // A path that isn’t there yet is where its nearest folder that is leads.

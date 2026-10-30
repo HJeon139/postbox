@@ -7,14 +7,13 @@
 //   saw what runs, so no model is asked;
 // - the person typed a message that asks for it: one Haiku call quotes their words, and Postbox checks the quote is
 //   theirs, on word boundaries, and shares a word with the call. A block’s words are the agent’s, so never quoted.
-// Postbox keeps the rest in code: the call must pass request-floor.mjs’s allow-list, and git-request.mjs’s reading of
-// the repository’s config, hooks and where a push goes, five calls a turn at most, none
-// after the person stops them on the line each one leaves, none for a subagent, and anything that fails is a card.
+// Postbox keeps the rest in code: the call must pass request-floor.mjs’s allow-list (never a git command), five calls a
+// turn at most, none after the person stops them on the line each one leaves, none for a subagent, and anything that
+// fails is a card.
 
 import { randomBytes } from 'node:crypto';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { setupOf } from './adapters/setup.mjs';
-import { gitOffRequest } from './git-request.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { actionWords, numberOf, offRequest } from './request-floor.mjs';
 import { SUMMARY_MODEL } from './thread-summary.mjs';
@@ -204,8 +203,6 @@ export async function requestedCall(rt, sessionId, { tool, input, agentId }) {
   const named = norm([...request.said, ...(shown ? [shown.statement] : [])].join('\n'));
   const { folder } = await rt.panelTarget({ sessionId });
   if (offRequest(tool, input, { named, made: madeBy(rt, turn, request.threadId), folder })) return null;
-  // What git does past the command’s words: its config, its hooks, and where a push goes.
-  if (tool === 'Bash' && (await gitOffRequest(folder, String(input?.command ?? ''), named))) return null;
   if (shown) return { threadId: request.threadId, how: 'confirmed', label: shown.label };
   const quote = request.said.length ? await judged(rt, turn, request, tool, input) : null;
   // The turn may have ended, or the person stopped these calls, while the judge thought.
