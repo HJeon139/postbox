@@ -2,6 +2,34 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.44.9 (2026-10-30)
+
+### Fixes
+
+- **wakes:** one show_app call is one tool in a scheduled wake's recovery
+- **wakes:** a scheduled wake's recovery keeps other MCP servers' names on their tools
+- **wakes:** a react a scheduled turn calls counts toward its recovery
+- **wakes:** a scheduled wake's host turn waiting or lost at a restart isn't started a second time
+- **wakes:** a restart leaves a scheduled wake to a host turn only when that turn is its own
+- **wakes:** a scheduled wake queued behind a turn at shutdown stays due for the restart
+- **wakes:** a scheduled wake queued behind a turn you stop is settled, not left running
+- **wakes:** every backend's Postbox tool calls count toward a scheduled wake's recovery
+- **wakes:** a restart in a scheduled turn whose tool started sends the recovery, not the instruction
+- **adapters:** kiroError types its cause, so the type check passes
+- **wakes:** your Stop ends a scheduled wake, so a restart doesn't run it again
+- **wakes:** one tool call reported twice is one entry in a scheduled wake's recovery
+- **wakes:** a Retry after you cancel a tool-aware recovery still sends the recovery
+- **wakes:** keep retry state authoritative
+- **wakes:** leave lost host turns to reconnect
+- **wakes:** bound network retry attempts
+- **wakes:** recover scheduled checks after network loss
+
+## 0.44.8 (2026-10-30)
+
+### Fixes
+
+- **adapters:** Codex and Antigravity tool calls reach the work ledger
+
 ## 0.44.7 (2026-10-29)
 
 ### Fixes
