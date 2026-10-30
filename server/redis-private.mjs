@@ -147,3 +147,15 @@ export function privately(fn) {
     process.umask(old);
   }
 }
+
+/**
+ * The environment the child gets: PATH, HOME and TMPDIR, where set, and nothing else of Postbox’s, which holds the
+ * page token’s secrets, the agents’ keys and whatever the person’s shell exported (SR-7, the other way round).
+ * @param {NodeJS.ProcessEnv} env
+ */
+export function childEnv(env) {
+  /** @type {Record<string, string>} */
+  const out = {};
+  for (const k of ['PATH', 'HOME', 'TMPDIR']) if (env[k] !== undefined) out[k] = env[k];
+  return out;
+}

@@ -21,7 +21,7 @@ import { mkdir, rmdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { RedisClient, storeError } from './redis-client.mjs';
 import { claimRedis, clearLeftover } from './redis-owner.mjs';
-import { privateDir, privately, privateTree, redisConf, socketFor, writePrivate } from './redis-private.mjs';
+import { childEnv, privateDir, privately, privateTree, redisConf, socketFor, writePrivate } from './redis-private.mjs';
 
 /** @typedef {'socket' | 'owned' | 'binary-missing' | 'corrupt-aof' | 'died'} DownCause */
 /** @typedef {{ state: 'idle' | 'starting' | 'running' | 'stopped' } | { state: 'down', cause: DownCause, message: string }} RedisStatus */
@@ -57,18 +57,6 @@ const MESSAGES = {
     'The store’s append-only file is damaged, so Redis won’t load it. Restore the data folder from its backup, or repair it with redis-check-aof (the server log names the file), then Retry.',
   died: () => 'The store’s Redis stopped. Postbox is starting it again; writes wait until it’s back.',
 };
-
-/**
- * The environment the child gets: PATH, HOME and TMPDIR, where set, and nothing else of Postbox’s, which holds the
- * page token’s secrets, the agents’ keys and whatever the person’s shell exported (SR-7, the other way round).
- * @param {NodeJS.ProcessEnv} env
- */
-export function childEnv(env) {
-  /** @type {Record<string, string>} */
-  const out = {};
-  for (const k of ['PATH', 'HOME', 'TMPDIR']) if (env[k] !== undefined) out[k] = env[k];
-  return out;
-}
 
 export class RedisSupervisor extends EventEmitter {
   /**
@@ -122,7 +110,10 @@ export class RedisSupervisor extends EventEmitter {
     const message = MESSAGES[cause](this, detail) + (detail && cause === 'died' ? ` (${detail})` : '');
     // The paths stay in Postbox’s own log, where only the person reads them.
     if (cause === 'binary-missing') console.error(`${message} Postbox looked in ${this.home}${detail ? ` (${detail})` : ''}.`);
-    if (cause === 'corrupt-aof') console.error(`${message} The files are in ${join(this.dataDir, 'redis', 'data')}; the child’s log is ${join(this.dataDir, 'redis', 'logs', 'redis.log')}.`);
+    if (cause === 'corrupt-aof')
+      console.error(
+        `${message} The files are in ${join(this.dataDir, 'redis', 'data')}; the child’s log is ${join(this.dataDir, 'redis', 'logs', 'redis.log')}.`,
+      );
     this.set({ state: 'down', cause, message });
     return storeError('ESTOREDOWN', message);
   }

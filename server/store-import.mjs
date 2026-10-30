@@ -19,8 +19,8 @@ import { writeBatch } from './store-redis.mjs';
 
 /** Removes a data folder’s store, for a fresh start: the Redis data and any old log, snapshot or store.json. */
 export async function clearStore(dataDir) {
+  // The store’s own files only: the *.migrated copies an import left are the person’s record, not the store.
   for (const n of await readdir(dataDir).catch(() => []))
-    // The store’s own files only: the *.migrated copies an import left are the person’s record, not the store.
     if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)$/.test(n)) await rm(join(dataDir, n), { force: true });
   await rm(join(dataDir, 'redis', 'data'), { recursive: true, force: true });
 }
