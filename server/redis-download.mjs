@@ -109,15 +109,24 @@ export async function fetchRedisBuild({
   if ((await hashOf(path)) === entry.sha256) return { path, sha256: entry.sha256, downloaded: false };
 
   const url = `${build.release.url}/${entry.asset}`;
-  const signal = AbortSignal.timeout(timeoutMs);
+  // A timer of our own, not AbortSignal.timeout: that one doesn’t keep Node’s event loop alive, so a download with
+  // nothing else pending (a request that never answers) could end the process before the time limit fires.
+  const limit = new AbortController();
+  const timer = setTimeout(() => limit.abort(new DOMException('The download took too long.', 'TimeoutError')), timeoutMs);
+  const { signal } = limit;
   let res;
   try {
-    res = await fetch(url, { signal });
+    try {
+      res = await fetch(url, { signal });
+    } catch (e) {
+      if (signal.aborted) throw timedOut(url, e);
+      throw fail('EDOWNLOAD', `Couldn’t download Redis from ${url}: ${e.cause?.message ?? e.message}. Check the network, then start Postbox again.`, e);
+    }
+    if (!res.ok || !res.body) throw fail('EDOWNLOAD', `Couldn’t download Redis from ${url}: the server answered ${res.status}. Start Postbox again later.`);
   } catch (e) {
-    if (signal.aborted) throw timedOut(url, e);
-    throw fail('EDOWNLOAD', `Couldn’t download Redis from ${url}: ${e.cause?.message ?? e.message}. Check the network, then start Postbox again.`, e);
+    clearTimeout(timer);
+    throw e;
   }
-  if (!res.ok || !res.body) throw fail('EDOWNLOAD', `Couldn’t download Redis from ${url}: the server answered ${res.status}. Start Postbox again later.`);
   await mkdir(dir, { recursive: true, mode: 0o700 });
   const part = join(dir, `.${entry.asset}.${randomBytes(6).toString('hex')}.part`);
   try {
@@ -130,6 +139,7 @@ export async function fetchRedisBuild({
     await rename(part, path);
     return { path, sha256: got, downloaded: true };
   } finally {
+    clearTimeout(timer);
     await rm(part, { force: true });
   }
 }
