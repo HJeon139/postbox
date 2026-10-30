@@ -148,7 +148,10 @@ test('#120 L5: Interrupted (no runner, no exit.json) resumes on its own once the
   const again = starts(r.d)[1];
   assert.equal(again.env.CLAUDE_CODE_RESUME_INTERRUPTED_TURN, '1');
   assert.ok(again.argv.includes('--resume'));
-  assert.match(messageOf(again), /^\[Postbox\] Your last turn on host\.example\.com was interrupted before it finished/);
+  assert.match(
+    messageOf(again),
+    /^\[Postbox\] Postbox resumed your turn on its own\.[\s\S]*\[Postbox\] Your last turn on host\.example\.com was interrupted before it finished/,
+  );
   r.d.end(again.turn);
   await settled(r);
   assert.equal(r.se().remoteTurn.state, 'done');

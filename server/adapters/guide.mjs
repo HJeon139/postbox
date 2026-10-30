@@ -10,22 +10,43 @@ import { formatQueuedMessages } from './queued-messages.mjs';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, TOOL_RULES, TOOL_WORDS, toolsOff } from './setup.mjs';
 
 /**
- * The system prompt Postbox appends for an agent: who it is, who else is here, and how to use the room.
+ * The system prompt Postbox appends for an agent: only what is fixed for a persona version, who it is, its instructions
+ * and how to use Postbox (#515). Claude Code records the system prompt on a conversation’s first request and keeps it
+ * on --resume until a compaction, so anything that changes during a room goes in each turn’s message instead
+ * (turnFacts), and the prompt cache stays warm.
+ * @param {{ persona: any, session?: { backend?: string }|null, setup?: boolean }} who  setup: false leaves out how to
+ *   check a setup (#131), for a backend whose rules file has no room for it (agy)
+ */
+export function agentGuide({ persona, session, setup = true }) {
+  const codex = setup && (persona?.backend ?? session?.backend) === 'codex';
+  return [
+    `You are @${persona.handle}, an agent in Postbox: a chat room where one person directs several AI agents, and where agents reply with Markdown, interactive blocks and small apps they write.`,
+    persona.description ? `Your role: ${persona.description}` : '',
+    persona.instructions ? `The person’s instructions for you:\n${persona.instructions}` : '',
+    setup ? SETUP_CHECK : '',
+    codex ? TURN_ENDS : '',
+    codex ? CODEX_WRITING : '',
+    guideText(),
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+/**
+ * What changes during a room, for each turn’s message (#515, CX-3): who else is here, the project, the brief, what
+ * Postbox knows of the session, and the tools turned off.
  * toolRules: the backend’s map of Tools ids to the tools it turns off (TOOL_RULES for Claude Code and the Agent SDK,
  * the Kiro CLI’s own), or null for a backend that can’t turn a tool off for one agent.
  * room: the other agents in this conversation, with their roles (Runtime.roomOf); handles: every agent in Postbox.
  * @param {{ persona: any, handles: string[], room?: { handle: string, role: string }[], project?: any, brief?: string|null,
  *           session?: { backend?: string, personaSnapshot?: { model?: string, effort?: string }, lastModel?: string, lastEffort?: string }|null,
  *           toolRules?: Record<string, string[]>|null, setup?: boolean }} who  setup: false leaves out what Postbox knows
- *           of the session and how to check a setup (#131), for a backend whose rules file has no room for them (agy)
+ *           of the session (#131), as agentGuide leaves out the setup check
  */
-export function agentGuide({ persona, handles, room = [], project, brief, session, toolRules = TOOL_RULES, setup = true }) {
+export function turnFacts({ persona, handles, room = [], project, brief, session, toolRules = TOOL_RULES, setup = true }) {
   const here = new Set(room.map((r) => r.handle));
   const others = handles.filter((h) => h !== persona.handle && !here.has(h));
   return [
-    `You are @${persona.handle}, an agent in Postbox: a chat room where one person directs several AI agents, and where agents reply with Markdown, interactive blocks and small apps they write.`,
-    persona.description ? `Your role: ${persona.description}` : '',
-    persona.instructions ? `The person’s instructions for you:\n${persona.instructions}` : '',
     roomText(room),
     others.length
       ? `${room.length ? 'Other agents in Postbox' : 'Agents in Postbox'}: ${others.map((h) => `@${h}`).join(', ')}. Mention one with @handle, or use wake_agent, to bring it in.`
@@ -33,15 +54,18 @@ export function agentGuide({ persona, handles, room = [], project, brief, sessio
     project?.name ? `This conversation belongs to the project “${project.name}”.` : '',
     brief ? `How you joined: ${brief}` : '',
     setup ? sessionText(session, persona) : '',
-    setup ? SETUP_CHECK : '',
-    setup && (persona?.backend ?? session?.backend) === 'codex' ? TURN_ENDS : '',
-    setup && (persona?.backend ?? session?.backend) === 'codex' ? CODEX_WRITING : '',
     offText(toolsOff(persona, toolRules)),
-    guideText(),
   ]
     .filter(Boolean)
     .join('\n\n');
 }
+
+/**
+ * A turn’s system prompt (agentGuide), and its message with what changes during a room (turnFacts) for the adapter to
+ * format (formatMessage).
+ * @param {any} message @param {Parameters<typeof turnFacts>[0]} who
+ */
+export const turnGuide = (message, who) => ({ guide: agentGuide(who), message: { ...message, facts: turnFacts(who) } });
 
 /**
  * Who else is in this conversation and what each does, with how to share the work. It comes from the room, not from
@@ -196,22 +220,45 @@ const isReview = (event) =>
   !event.sent && (typeof event.from === 'string' || typeof event.values?.verdict === 'string') && Array.isArray(event.values?.comments);
 
 /**
- * Writes one Postbox message as the text of a turn for the agent.
+ * Writes one Postbox message as the text of a turn for the agent: the turn’s envelope (designs/508, “Delivering a
+ * turn”, the envelope; DL-4, #504, #515). In order:
+ * 1. In a topic or side thread: the thread, and what was said there (message.taskContext), then the line that makes
+ *    the request below the task.
+ * 2. The request being answered (the body): the person’s message, another agent’s, an event, a notice…
+ * 3. What’s current in this room (message.facts, turnFacts): the room list, the brief, the session facts and the tools
+ *    turned off. The brief is part of the task, so it sits here, never in the background.
+ * 4. What Postbox’s checks found in the agent’s last reply, folded into this turn (message.lint, foldLint): fixes the
+ *    agent owes, so it comes with the request, before the background, and points at “the request above”.
+ * 5. The background (message.context): what waited for this turn and what happened since the agent’s last one, the
+ *    room’s catch-up with what came back from topic threads (what changed), and Postbox’s notices about the agent’s
+ *    earlier messages (tellAgent). In a room turn it is labeled as background; in a thread’s turn, turnContext has
+ *    already labeled it “Meanwhile in the room”.
+ * A command (/name) or a remote turn attached again is the body alone.
  * @param {any} message  see server/adapters/adapter.mjs
  * @param {(a: any) => string|null} [pathOf]  where an attachment can be read on disk
  */
 export function formatMessage(message, pathOf = () => null) {
   const body = message.messages?.length ? formatQueuedMessages(message.messages, pathOf, formatMessage) : formatBody(message, pathOf);
+  // A command is the whole prompt: Claude Code runs it only when the prompt is /name and its arguments (#67).
+  if (message.slash || typeof message.attach === 'string') return body;
+  const facts = message.facts ? `[Postbox] What’s current in this room:\n\n${message.facts}` : '';
+  const lint = typeof message.lint === 'string' && message.lint ? message.lint : '';
+  // A topic or side thread’s turn (#504, #511): the room’s catch-up is already labeled as background by turnContext.
   if (message.taskContext)
     return [
       message.taskContext,
       '[Postbox] Your task in this topic or side thread is the request below. Answer it here.',
       body,
+      facts,
+      lint,
       ...(message.context ?? []),
-    ].join('\n\n');
-  // Context that waited for a room turn (a topic thread’s brief, something shared back) comes first.
-  return message.context?.length ? `${message.context.join('\n\n')}\n\n${body}` : body;
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+  return [body, facts, lint, message.context?.length ? `${BACKGROUND}\n\n${message.context.join('\n\n')}` : ''].filter(Boolean).join('\n\n');
 }
+
+const BACKGROUND = '[Postbox] Background for this turn: what waited for it and what happened since your last one. The request above is your task.';
 
 function formatBody(message, pathOf) {
   switch (message.kind) {

@@ -85,6 +85,7 @@ import {
   scheduleWake,
   settleScheduledWake,
 } from './scheduled-wakes.mjs';
+import { sessionPatch } from './session-patch.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import {
@@ -388,7 +389,7 @@ export class Runtime {
   updateSession(id, patch) {
     const se = this.s.sessions[id];
     if (!se) return;
-    this.putSession({ ...se, ...patch, updatedAt: Date.now() });
+    this.store.emit('session.patch', sessionPatch(se, { ...patch, updatedAt: Date.now() }));
   }
   /** threadId: where it happened, when that isn’t the session’s own thread (a turn in a side thread, #110). */
   notify(level, se, title, text, threadId = null) {
@@ -606,13 +607,15 @@ export class Runtime {
     const slash = message.slash === true || typeof message.attach === 'string';
     // A queued mention its last room summary already gave it comes as a pointer there, never as a thread’s direct task (#484, #504).
     if (where === se.threadId) message = pointerIfSeen(this, se, message);
-    // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
+    // Postbox’s notices that waited for this agent’s next turn (tellAgent: what became of its earlier messages) lead the
+    // background; the brief isn’t context, it goes with the room’s facts (turnFacts).
     if (se.context?.length && !slash) {
       // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
       message = { ...message, context: [...notUrgent(se.context), ...(message.context ?? [])] };
       this.updateSession(sessionId, { context: [] });
     }
-    // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead.
+    // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead, as
+    // message.lint: fixes it owes, placed with the request rather than in the background.
     if (message.kind !== 'lint' && !slash) message = this.foldLint(sessionId, message);
     // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
     message = turnContext(this, this.s.sessions[sessionId], where, message, slash);
@@ -1937,7 +1940,8 @@ export class Runtime {
       e.sent = true;
       problems.push(...e.problems);
     }
-    return problems.length ? { ...message, context: [formatLint(lintMessage(problems), { folded: true }), ...(message.context ?? [])] } : message;
+    // Its own place in the turn (formatMessage, server/adapters/guide.mjs): after the request, before the background.
+    return problems.length ? { ...message, lint: formatLint(lintMessage(problems), { folded: true }) } : message;
   }
 
   /** A lint turn that wrote nothing shows as one line, such as “@researcher defined “Step 2””. */

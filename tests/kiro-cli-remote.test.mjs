@@ -26,7 +26,7 @@ test('#120: a remote Isolated turn starts on the host with its agent file in Pos
   assert.equal(start.argv[0], 'chat', 'no program: the daemon runs the kiro-cli it found');
   assert.ok(start.argv.includes('--no-interactive'));
   assert.ok(!start.argv.includes('Remember heron.'), 'the message isn’t in the process arguments');
-  assert.equal(start.files.find((f) => f.name === MESSAGE_FILE)?.text, 'Remember heron.');
+  assert.match(start.files.find((f) => f.name === MESSAGE_FILE)?.text ?? '', /^Remember heron\.\n\n\[Postbox\] What’s current in this room:\n\n/);
   const agent = start.argv[start.argv.indexOf('--agent') + 1];
   assert.deepEqual(Object.keys(start.agentFile), ['name', 'text'], 'the daemon picks the folder, from KIRO_HOME');
   assert.equal(start.agentFile.name, `${agent}.json`);
@@ -99,7 +99,7 @@ test('#436: a remote Kiro turn and its fresh retry send each prompt through stdi
   assert.equal(first.turn, ctx.remote.turn);
   assert.deepEqual(calls.turns, [first.turn, second.turn], 'the fresh start is a second host turn, from nextTurn');
   assert.deepEqual(calls.startsAtNext, [1], 'nextTurn came before its start');
-  assert.equal(first.files.find((f) => f.name === MESSAGE_FILE)?.text, 'hi');
+  assert.match(first.files.find((f) => f.name === MESSAGE_FILE)?.text ?? '', /^hi\n\n\[Postbox\] What’s current in this room:\n\n/);
   assert.match(second.files.find((f) => f.name === MESSAGE_FILE)?.text ?? '', /fresh start/);
   assert.ok(!second.argv.some((arg) => /fresh start/.test(arg)));
   assert.deepEqual(JSON.parse(second.agentFile.text).mcpServers.postbox.args, [SHIM, second.turn]);

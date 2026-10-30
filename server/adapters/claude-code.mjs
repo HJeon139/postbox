@@ -36,7 +36,7 @@ import { claudeArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
-import { agentGuide, formatMessage } from './guide.mjs';
+import { formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { hostMemoryRoot } from './remote-turn.mjs';
 import { effortOf, fromContext, recorderFor } from './setup.mjs';
@@ -142,9 +142,9 @@ export class ClaudeCodeAdapter {
     if (remote) checkRemoteClaude(remote, Boolean(attach));
     const cwd = remote ? remote.folder : await this.folderFor(persona, ctx.project);
     // On a host, each attachment is its copy in the folder of the host turn the message goes to.
-    const promptOn = (/** @type {string | null} */ turn) => formatMessage(message, attachmentPaths(ctx, turn));
-    const local = agentGuide({ persona, session, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief });
-    const guide = remote ? remoteGuide(local, cwd, ctx.addDirs ?? []) : local;
+    const turned = turnGuide(message, { persona, session, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief });
+    const promptOn = (/** @type {string | null} */ turn) => formatMessage(turned.message, attachmentPaths(ctx, turn));
+    const guide = remote ? remoteGuide(turned.guide, cwd, ctx.addDirs ?? []) : turned.guide;
     // The project’s folder, and the folders the person added for this conversation (#66). On a host, none: they’re
     // paths on this computer, and the project’s folder there is cwd.
     const addDirs = remote ? [] : [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && d !== cwd);
