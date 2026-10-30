@@ -110,9 +110,11 @@ jobs:
           exit 1
 
   # Pictures of every scene for the reviewer, not a check: the specs above are the gate, so a screenshot tool that
-  # breaks warns here and doesn’t fail the run.
+  # breaks warns here and doesn’t fail the run. Only on main, whose copy stands in for committed screenshots
+  # (designs/developing.md, “Screenshots”): on a pull request nobody read them, and they cost 253 s a run.
   screenshots:
     name: Play the demo and screenshot every scene
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     needs: check
     timeout-minutes: 20
@@ -128,9 +130,8 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Play the demo and screenshot every scene
         run: node tools/shoot-app.mjs
-      # About 40 MB a run, so only where a reviewer reads them: when the job failed, and on main, whose copy stands in
-      # for committed screenshots (designs/developing.md, “Screenshots”). A pull request that passed uploads none.
-      - if: failure() || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      # About 40 MB a run, kept 5 days. A run that broke partway uploads what it took.
+      - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: screenshots
