@@ -85,6 +85,33 @@ if opId ~= '' then redis.call('HSET', 'ops', opId, last) end
 return {'ok', tostring(last)}
 `;
 
+// ARGV: writes as writesFor() makes them, flattened. Stages every document as WRITE does, under redis.pcall, so
+// RedisJSON’s checks run on it, then deletes the staging keys and returns 'ok', or the first refusal: Redis is left as it
+// was either way. Retry on a refused batch asks this of each queued event’s documents before writing the ones Redis
+// takes in one batch (server/store-reject.mjs).
+const PROBE = `
+local arity = { S = 3, D = 2, Z = 4, ZN = 4, R = 3 }
+local staged = {}
+local j = 1
+while j <= #ARGV do
+  local a = arity[ARGV[j]]
+  if not a then return redis.error_reply('EWRITE unknown write ' .. tostring(ARGV[j])) end
+  if ARGV[j] == 'S' then
+    local tmp = 'stage:' .. #staged
+    local r = redis.pcall('JSON.SET', tmp, '$', ARGV[j + 2])
+    if type(r) == 'table' and r.err then
+      if #staged > 0 then redis.call('DEL', unpack(staged)) end
+      redis.call('DEL', tmp)
+      return r
+    end
+    staged[#staged + 1] = tmp
+  end
+  j = j + a
+end
+if #staged > 0 then redis.call('DEL', unpack(staged)) end
+return 'ok'
+`;
+
 /** @type {Map<string, { sup: RedisSupervisor, ready: Promise<RedisSupervisor>, users: number, canceled: boolean }>} */
 const running = new Map();
 
@@ -151,6 +178,16 @@ export async function writeBatch(c, { opId = '', prev, events, writes }) {
   const [kind, seq] = await c.call('EVAL', WRITE, 0, ...args);
   if (kind === 'seq') throw storeError('ESEQ', `The store’s Redis is at event ${seq}, not ${prev}: another process wrote to it.`);
   return { seq: Number(seq), duplicate: kind === 'dup' };
+}
+
+/**
+ * Asks Redis whether it would hold these writes’ documents, committing nothing: resolves when it would, and throws the
+ * refusal it gives otherwise. Writes that set no document need no asking.
+ * @param {import('./redis-client.mjs').RedisClient} c @param {(string|number)[][]} writes
+ */
+export async function probeWrites(c, writes) {
+  if (!writes.some((w) => w[0] === 'S')) return;
+  await c.call('EVAL', PROBE, 0, ...writes.flat());
 }
 
 /**

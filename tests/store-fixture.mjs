@@ -145,3 +145,37 @@ export function holdCatchUp(s) {
   };
   return g;
 }
+
+/** A value nested n levels deep. @param {number} n */
+const nested = (n) => {
+  let v = /** @type {any} */ (1);
+  for (let i = 0; i < n; i++) v = { a: v };
+  return v;
+};
+
+/**
+ * Makes an EVAL carry a document RedisJSON refuses (nested past its limit): a poison the store’s own check
+ * (server/store-check.mjs) can’t see, standing in for a key of the wrong type or a script error. With `key`, every EVAL
+ * that sets that document is poisoned, as a document Redis won’t ever hold; without, only the next EVAL’s first document,
+ * as gpt’s regression does. Returns the store’s connection, whose `call` it wrapped.
+ * @param {Store} s @param {string} [key]
+ */
+export function poison(s, key) {
+  const client = /** @type {any} */ (s).client;
+  const call = client.call.bind(client);
+  let once = true;
+  client.call = async (...a) => {
+    if (a[0] === 'EVAL') {
+      for (let i = 0; i < a.length; i++) {
+        if (a[i] !== 'S') continue;
+        if (key ? a[i + 1] === key : once) {
+          once = false;
+          a[i + 2] = JSON.stringify(nested(200));
+          break;
+        }
+      }
+    }
+    return call(...a);
+  };
+  return client;
+}

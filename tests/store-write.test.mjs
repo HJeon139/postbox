@@ -1,7 +1,8 @@
 // The store’s optimistic write loop (server/store-write.mjs) on its Redis child when Redis refuses a batch for a reason no
 // retry changes (server/store-reject.mjs; gpt’s r2 review of #553, blocker 1): the store fails closed, with the batch
-// queued and nothing tried again on its own; Retry saves the batch’s events Redis takes, one at a time, then reads
-// Redis back, so memory equals what’s saved and the pages resync. A refusal a retry can change (out of memory) keeps the
+// queued and nothing tried again on its own; Retry saves the batch’s events Redis takes, in one write, then reads
+// Redis back, so memory equals what’s saved and the pages resync. That each saved event’s documents are its own:
+// tests/store-reject.test.mjs. A refusal a retry can change (out of memory) keeps the
 // fail-closed retry: tests/store-consistency.test.mjs.
 
 import assert from 'node:assert/strict';
@@ -9,41 +10,7 @@ import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import { liveStreams } from '../server/live-streams.mjs';
 import { retry } from '../server/store-recover.mjs';
-import { consistent, open, raw, tmp } from './store-fixture.mjs';
-
-/** A value nested n levels deep. @param {number} n */
-const nested = (n) => {
-  let v = /** @type {any} */ (1);
-  for (let i = 0; i < n; i++) v = { a: v };
-  return v;
-};
-
-/**
- * Makes an EVAL carry a document RedisJSON refuses (nested past its limit): a poison the store’s own check
- * (server/store-check.mjs) can’t see, standing in for a key of the wrong type or a script error. With `key`, every EVAL
- * that sets that document is poisoned, as a document Redis won’t ever hold; without, only the next EVAL’s first document,
- * as gpt’s regression does.
- * @param {import('../server/store.mjs').Store} s @param {string} [key]
- */
-function poison(s, key) {
-  const client = /** @type {any} */ (s).client;
-  const call = client.call.bind(client);
-  let once = true;
-  client.call = async (...a) => {
-    if (a[0] === 'EVAL') {
-      for (let i = 0; i < a.length; i++) {
-        if (a[i] !== 'S') continue;
-        if (key ? a[i + 1] === key : once) {
-          once = false;
-          a[i + 2] = JSON.stringify(nested(200));
-          break;
-        }
-      }
-    }
-    return call(...a);
-  };
-  return client;
-}
+import { consistent, open, poison, raw, tmp } from './store-fixture.mjs';
 
 /** A page’s stream on the store: the event names it got, the status line aside. @param {import('../server/store.mjs').Store} s */
 async function page(s) {

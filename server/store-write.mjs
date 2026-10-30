@@ -11,9 +11,9 @@
 // (server/store-recover.mjs).
 //
 // A batch Redis refuses for a reason no retry changes (a document RedisJSON won’t hold, a key of the wrong type, a
-// script error) fails closed too, but is never tried again on its own: Retry writes the batch’s events one at a time,
-// saves the ones Redis takes, and reads Redis back so memory is what’s saved (server/store-reject.mjs; gpt’s r2 review
-// of #553, blocker 1).
+// script error) fails closed too, but is never tried again on its own: Retry asks Redis about each queued event’s
+// documents, writes the events it takes in one batch from a replay of them, and reads Redis back so memory is what’s
+// saved (server/store-reject.mjs; gpt’s r2 review of #553, blocker 1).
 
 import { closeWrites } from './store-recover.mjs';
 import { writeBatch } from './store-redis.mjs';
