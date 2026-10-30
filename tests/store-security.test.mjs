@@ -104,6 +104,12 @@ test('SR-7: an agent’s guide, environment and tool results never name the stor
   } finally {
     console.error = error;
   }
-  assert.ok(logged.some((m) => m.includes(sup.home)), 'the log names where the build was looked for');
-  assert.ok(logged.some((m) => m.includes(join(dir, 'redis', 'data'))), 'the log names the damaged files’ folder');
+  assert.ok(
+    logged.some((m) => m.includes(sup.home)),
+    'the log names where the build was looked for',
+  );
+  assert.ok(
+    logged.some((m) => m.includes(join(dir, 'redis', 'data'))),
+    'the log names the damaged files’ folder',
+  );
 });

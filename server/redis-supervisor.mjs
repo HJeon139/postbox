@@ -19,11 +19,12 @@ import { EventEmitter } from 'node:events';
 import { createWriteStream, existsSync } from 'node:fs';
 import { mkdir, rmdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { causeOf, MESSAGES } from './redis-causes.mjs';
 import { RedisClient, storeError } from './redis-client.mjs';
 import { claimRedis, clearLeftover } from './redis-owner.mjs';
 import { childEnv, privateDir, privately, privateTree, redisConf, socketFor, writePrivate } from './redis-private.mjs';
 
-/** @typedef {'socket' | 'owned' | 'binary-missing' | 'corrupt-aof' | 'died'} DownCause */
+/** @typedef {import('./redis-causes.mjs').DownCause} DownCause */
 /** @typedef {{ state: 'idle' | 'starting' | 'running' | 'stopped' } | { state: 'down', cause: DownCause, message: string }} RedisStatus */
 
 /**
@@ -39,24 +40,6 @@ export function redisFiles(home) {
     if (existsSync(join(home, server))) return { server: join(home, server), modules: [join(home, json), join(home, search)] };
   throw Object.assign(new Error(`There’s no Redis server in ${home} (bin/redis-server or src/redis-server).`), { code: 'ENOENT' });
 }
-
-/** Why the child stopped, from what it logged. @param {string} log @returns {DownCause} */
-function causeOf(log) {
-  if (/Failed opening Unix socket|Could not create server TCP listening socket/i.test(log)) return 'socket';
-  if (/Bad file format reading the append only file|Unrecoverable error reading the append only file|AOF.*(corrupt|format)/i.test(log)) return 'corrupt-aof';
-  return 'died';
-}
-
-const MESSAGES = {
-  socket: () =>
-    'The store’s Redis couldn’t open its private socket. Check that the data folder’s redis/run folder (or the private folder Postbox made for it in the temporary folder) belongs to you and isn’t a link, then Retry.',
-  owned: (_, detail) => `Postbox didn’t start the store’s Redis: it found one already running on this data folder. ${detail}`,
-  // No data path in these: a refused write’s reason reaches /mcp callers, and the server log has the path (down()).
-  'binary-missing': () => 'The store’s Redis isn’t where Postbox keeps it. Start Postbox again to download it.',
-  'corrupt-aof': () =>
-    'The store’s append-only file is damaged, so Redis won’t load it. Restore the data folder from its backup, or repair it with redis-check-aof (the server log names the file), then Retry.',
-  died: () => 'The store’s Redis stopped. Postbox is starting it again; writes wait until it’s back.',
-};
 
 export class RedisSupervisor extends EventEmitter {
   /**

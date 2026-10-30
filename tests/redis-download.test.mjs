@@ -216,5 +216,9 @@ test('#553: a download that doesn’t finish in time is given up, whether the re
     return true;
   });
   assert.equal(existsSync(asset(dataDir)), false);
-  assert.deepEqual((await readdir(join(dataDir, 'redis', '8.10.3'))).filter((n) => n.endsWith('.part')), [], 'no temporary file is left');
+  assert.deepEqual(
+    (await readdir(join(dataDir, 'redis', '8.10.3'))).filter((n) => n.endsWith('.part')),
+    [],
+    'no temporary file is left',
+  );
 });
