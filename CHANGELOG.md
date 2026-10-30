@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.2.0 (2026-10-30)
+
+### Features
+
+- **uat:** telemetry report keeps unverified rows with check ids and counts
+
 ## 1.1.3 (2026-10-30)
 
 ### Fixes
