@@ -5,10 +5,12 @@
 
 import { clip } from '../shared/text.mjs';
 import { addressed, headOf, holds, inputsOf, labeled, plain, recorded, tellable, turnsOf } from './room-delivery.mjs';
-import { backendOf, notCheckableAll, notCheckableText, uncheckedThreads, unreadable } from './room-unverified.mjs';
+import { backendOf, notCheckable, notCheckableAll, notCheckableText, uncheckedThreads, unreadable } from './room-unverified.mjs';
 
 /** A turn’s stream starts a moment after Postbox builds its prompt, which is when the marker moves. */
 const MARKER_TO_SPAWN_MS = 30_000;
+/** The backends whose turns a run records apart from facts.streams (tools/uat/run-files.mjs: codexStreams, kiroStreams, agyStreams). */
+const APART = new Set(['codex', 'kiro-cli', 'antigravity-cli']);
 
 const said = (a) => `${a.how === 'mention' ? 'mention' : a.how === 'held' ? 'wake held on a card' : 'allowed wake'}${a.itemId ? ` ${a.itemId}` : ''}`;
 
@@ -190,6 +192,8 @@ function stoppedTurn(f, sessionId, turn) {
 function markersBeforeOutput(f) {
   const last = new Map();
   const inputs = new Map();
+  /** Marker moves of agents whose turns aren’t in the streams this check reads, by handle. */
+  const apart = new Map();
   const out = [];
   for (const e of f.events ?? []) {
     if (e.type !== 'session' || !Object.hasOwn(e.data ?? {}, 'seenItem')) continue;
@@ -200,6 +204,8 @@ function markersBeforeOutput(f) {
     const handle = f.state?.sessions?.[id]?.handle;
     if (!handle) continue;
     const turn = turnsOf(f, handle).find((t) => t.started >= e.data.updatedAt - 1000 && t.started <= e.data.updatedAt + MARKER_TO_SPAWN_MS);
+    // No turn in reach on a backend recorded apart: this check can’t judge it, and says so (notCheckable, below).
+    if (!turn && APART.has(backendOf(f, handle) ?? '')) apart.set(handle, (apart.get(handle) ?? 0) + 1);
     // A turn still running may write yet: only one that ended with nothing counts.
     if (!turn || turn.running || turn.output) continue;
     if (!inputs.has(handle)) inputs.set(handle, inputsOf(f, handle));
@@ -211,7 +217,9 @@ function markersBeforeOutput(f) {
       evidence: `Event ${e.seq} moved @${handle}’s marker from ${before ?? 'the start'} to ${e.data.seenItem}, and its turn started at ${new Date(turn.started).toISOString()} wrote nothing before it ended.`,
     });
   }
-  return out;
+  const why =
+    'its turns are recorded apart from the Claude Code streams this check reads (streams/codex, streams/kiro, streams/agy), so it has no turn to judge';
+  return [...[...apart].map(([handle, n]) => notCheckable(f, 'marker-before-output', handle, n, { what: ['marker move', 'marker moves'], why })), ...out];
 }
 
 export const DELIVERY_CHECKS = [

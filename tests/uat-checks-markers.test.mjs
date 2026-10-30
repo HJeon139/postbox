@@ -54,3 +54,30 @@ test('marker-before-output still fires with no transcript of the agent at all, a
   f.transcripts = [];
   assert.equal(found(f, 'marker-before-output').length, 1);
 });
+
+test('marker-before-output says it couldn’t check an agent on Codex, Kiro or Antigravity, whose turns aren’t in the streams it reads', () => {
+  for (const backend of ['codex', 'kiro-cli', 'antigravity-cli']) {
+    const r = room();
+    r.agent('coder', { backend });
+    r.add({ id: 'it_a', at: s(1), kind: 'user', text: 'First message' });
+    r.marker('coder', null, s(0));
+    r.marker('coder', 'it_a', s(10));
+    // Its turn is recorded apart (streams/codex, streams/kiro, streams/agy), not in facts.streams: no turn to judge.
+    const out = found(r.f, 'marker-before-output');
+    assert.deepEqual(
+      out.map((x) => [x.key, x.unverified?.backend]),
+      [['marker-before-output:unverified:coder', backend]],
+      backend,
+    );
+    assert.match(out[0].evidence, /1 marker move/);
+  }
+});
+
+test('marker-before-output stays silent, not unverified, for a Claude Code agent whose marker moved with no turn in reach', () => {
+  const r = room();
+  r.agent('researcher');
+  r.add({ id: 'it_a', at: s(1), kind: 'user', text: 'First message' });
+  r.marker('researcher', null, s(0));
+  r.marker('researcher', 'it_a', s(10));
+  assert.deepEqual(found(r.f, 'marker-before-output'), []);
+});

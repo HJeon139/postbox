@@ -30,11 +30,13 @@ export function backendOf(f, handle) {
  * it, on which backend, and for how many deliveries. Not a defect, so it neither fails a run nor gets filed; the
  * report lists it under “Checks not verified”, so a check skipped on Codex, Kiro or Antigravity never reads as a pass.
  * @param {any} f  @param {string} check  @param {string} handle  @param {number} n  the deliveries it couldn’t check
+ * @param {{ what?: [string, string], why?: string }} [o]  what went unchecked, one and many (deliveries unless said), and why, when
+ * it isn’t the transcript
  */
-export function notCheckable(f, check, handle, n) {
+export function notCheckable(f, check, handle, n, { what = ['delivery', 'deliveries'], why = undefined } = {}) {
   const backend = backendOf(f, handle);
   const name = backendName(backend);
-  const why =
+  why ??=
     backend === 'claude-code' || backend === null
       ? 'this run recorded no Claude Code transcript of it'
       : `what reaches an agent is read from its Claude Code transcript, and ${name} writes none`;
@@ -42,7 +44,7 @@ export function notCheckable(f, check, handle, n) {
     key: `${check}:unverified:${handle}`,
     issue: null,
     title: `${check} isn’t checkable for @${handle} on ${name}`,
-    evidence: `${n} ${n === 1 ? 'delivery' : 'deliveries'} to @${handle} went unchecked: ${why}, so what reached it can’t be read.`,
+    evidence: `${n} ${n === 1 ? what[0] : what[1]} ${what[0] === 'delivery' ? 'to' : 'of'} @${handle} went unchecked: ${why}, so what reached it can’t be read.`,
     verdict: 'measurement',
     note: `Not a defect: ${check} couldn’t check @${handle}, so this run doesn’t verify it on ${name}.`,
     unverified: { check, handle, backend },
