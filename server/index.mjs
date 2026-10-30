@@ -535,14 +535,19 @@ export async function start({
     for (const t of rt.timers.values()) clearTimeout(t);
     rt.stopMirrors();
     // `!` commands run in their own process groups, so they’d outlive Postbox: SIGINT, then SIGKILL (#67). So do the
-    // agents’ CLIs, and the background jobs Postbox kept running (#126, #129).
-    await rt.stopShellCommands();
-    await rt.stopTurns();
-    // After the turns, whose Stop goes to their hosts over these links (#120).
-    await stopHosts(hosts, stopWake);
+    // agents’ CLIs, and the background jobs Postbox kept running (#126, #129). After the turns, their hosts, whose Stop
+    // goes over these links (#120). A step that fails while the store is down (ending a kept job writes to it, and the
+    // write is refused with ESTOREDOWN) is logged, and the shutdown goes on to close the store and let go of its Redis.
+    /** @type {[string, () => Promise<unknown>][]} */
+    const steps = [
+      ['shell commands', () => rt.stopShellCommands()],
+      ['turns', () => rt.stopTurns()],
+      ['hosts', () => stopHosts(hosts, stopWake)],
+    ];
+    for (const [what, step] of steps) await step().catch((e) => console.error(`Postbox couldn’t stop its ${what} cleanly as it shut down: ${e.message}`));
     narrator?.stop();
     if (server.listening) await new Promise((ok) => server.close(ok));
-    await rt.ledger.idle();
+    await rt.ledger.idle().catch((e) => console.error(`Postbox couldn’t finish its work ledger as it shut down: ${e.message}`));
     await store.close();
   }
   if (listen) await listenServer(server, port, host, close, () => rt.drainAll()); // listening: drain what waited across a restart (#228)

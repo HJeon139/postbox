@@ -44,3 +44,30 @@ test('shutdown drains the work ledger and final reply annotation before closing 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('#553: a stop that fails while the store is down (a kept job’s end is refused with ESTOREDOWN) still reaches store.close()', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'pb-close-outage-'));
+  const app = await start({ port: 4439, dataDir: dir, demo: false, quiet: true, claudeHome: dir, listen: false, hosts: null });
+  const { rt, store } = app;
+  // stopKeptJobs → endJob → emit throws ESTOREDOWN while writes are closed; the first Ctrl-C’s close() must go on.
+  rt.stopTurns = async () => {
+    throw Object.assign(new Error('Postbox can’t save changes right now, so it didn’t make this one.'), { code: 'ESTOREDOWN' });
+  };
+  let closed = false;
+  const close = store.close.bind(store);
+  store.close = async () => {
+    closed = true;
+    await close();
+  };
+  const logged = [];
+  const { error } = console;
+  console.error = (m) => logged.push(String(m));
+  try {
+    await app.close();
+  } finally {
+    console.error = error;
+    await rm(dir, { recursive: true, force: true });
+  }
+  assert.equal(closed, true, 'the store was closed, and its Redis let go of');
+  assert.match(logged.join('\n'), /couldn’t stop its turns cleanly.*can’t save changes/);
+});
