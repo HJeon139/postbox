@@ -97,6 +97,12 @@ function modesUnder(root) {
 }
 const readJson = (file) => (existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : null);
 
+/** Check ids and counts of check findings or unverified rows, with no message text. */
+export const countByCheck = (items = []) =>
+  [...items.reduce((m, x) => m.set(x.check, (m.get(x.check) ?? 0) + 1), new Map()).entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([check, count]) => ({ check, count }));
+
 /**
  * The run’s facts about telemetry, for its checks and triggers: the saved reports and the files derived from them, the
  * drafts with their local maps, what the view showed and File issue copied, the runner’s flags, the folder’s modes, and
@@ -117,6 +123,7 @@ export function telemetryFacts(facts, o) {
   const have = o.startedBeforeTurns ? LIVE_INPUTS : ['state', 'threads', 'events'];
   const live = liveChecks({ ...facts, ...(o.startedBeforeTurns ? {} : { streams: [], transcripts: [] }) }, have);
   const expected = [...new Set(live.findings.filter((x) => !x.key.endsWith('-error') && !TELEMETRY_CHECK_IDS.includes(x.check)).map((x) => x.check))];
+  const unverified = countByCheck(live.unverified);
   facts.telemetry = {
     canaries: o.canaries,
     root,
@@ -130,6 +137,7 @@ export function telemetryFacts(facts, o) {
     turns: readJsonLines(join(conv, 'recording', 'turns.jsonl')),
     recordingDir: join(conv, 'recording'),
     expected,
+    unverified,
   };
   return facts.telemetry;
 }
@@ -253,8 +261,9 @@ export async function telemetryAction(td, a, key, tel) {
 
 /** run.json’s telemetry block (U5): recall, pinning, labels and why not, proposals, and the classifier’s cost. */
 export function telemetryBlock(t, findings) {
+  const unverified = findings?.some((x) => x.unverified) ? countByCheck(findings.filter((x) => x.unverified)) : (t?.unverified ?? []);
   const n = newestReport(t);
-  if (!n) return { saved: false, recall: null, pinning: null };
+  if (!n) return { saved: false, recall: null, pinning: null, unverified };
   const listed = new Set((n.report.checks?.found ?? []).map((k) => k.check));
   const pinned = (t.flags ?? []).filter((f) => {
     const ref = Object.entries(n.draft?.local ?? {}).find(([, v]) => v.id === f.item)?.[0];
@@ -269,6 +278,7 @@ export function telemetryBlock(t, findings) {
     lines: t.reports.at(-1).text.split('\n').length,
     recall: t.expected.length ? t.expected.filter((c) => listed.has(c)).length / t.expected.length : null,
     expected: t.expected,
+    unverified,
     pinning: t.flags.length ? pinned.length / t.flags.length : null,
     flags: t.flags.length,
     labels: labels.length,

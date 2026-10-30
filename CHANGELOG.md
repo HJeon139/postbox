@@ -2,6 +2,25 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.2.0 (2026-10-30)
+
+### Features
+
+- **uat:** telemetry report keeps unverified rows with check ids and counts
+
+## 1.1.3 (2026-10-30)
+
+### Fixes
+
+- **thread:** an activity step repaints only its reply's activity list
+
+## 1.1.2 (2026-10-30)
+
+### Fixes
+
+- **reactions:** draw the light theme's icon rim into the icons, not as a filter on each
+- **transcript:** find the reply across the middle by halving, not from the top
+
 ## 1.1.1 (2026-10-30)
 
 ### Fixes

@@ -4,7 +4,8 @@
 import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
-import { activityLabel, stepTree } from './activity-steps.mjs';
+import { activityParts, paintActivity, stepsOnly } from './activity-paint.mjs';
+import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
 import { subagentNow } from './agents.mjs';
@@ -20,13 +21,13 @@ import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.m
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
-import { jobRows, runningNote, stoppedTag } from './reply-stop.mjs';
+import { stoppedTag } from './reply-stop.mjs';
 import { replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { scheduledWakeLine } from './scheduled-wake-line.mjs';
 import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
-import { failedOnHost, hostChanged, hostEnd, hostTurnsList, kiroStep, ranHere, remoteSig } from './thread-host.mjs';
+import { failedOnHost, hostChanged, hostEnd, hostTurnsList, ranHere, remoteSig } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
 import { workList } from './work-list.mjs';
@@ -153,14 +154,36 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   // The anchor is the message across the middle of the view, where you read, not the first one in view: that one
   // usually starts above the view, and when a narrower column (the panel, a smaller window) rewraps it, everything
   // under it moves. A wide font rewraps it where macOS’s doesn’t (#88, seen on Linux in #162).
+  // It runs on every scroll event, so it halves its way to the middle rather than reading every reply above it: in a
+  // room of 1,000 replies, a dozen rects instead of a thousand (#572).
+  const keyed = (n) => n instanceof HTMLElement && !!n.dataset.key;
   const findAnchor = () => {
     const s = box();
     if (!s) return null;
     const top = viewTop(s);
     const mid = top + s.clientHeight / 2;
+    const kids = el.children;
+    let lo = 0;
+    let hi = kids.length;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (kids[m].getBoundingClientRect().bottom > mid) hi = m;
+      else lo = m + 1;
+    }
+    // Back to the reply before the first one across the middle (one that takes no room doesn't count), then on as before.
+    let from = 0;
+    for (let i = lo - 1; i >= 0; i--) {
+      const n = kids[i];
+      if (!keyed(n)) continue;
+      const r = n.getBoundingClientRect();
+      if (!r.height) continue;
+      from = i;
+      if (r.bottom <= mid) break;
+    }
     let last = null;
-    for (const n of el.children) {
-      if (!(n instanceof HTMLElement && n.dataset.key)) continue;
+    for (let i = from; i < kids.length; i++) {
+      const n = kids[i];
+      if (!keyed(n)) continue;
       const r = n.getBoundingClientRect();
       if (r.bottom <= top) continue;
       last = { key: n.dataset.key, at: r.top - top };
@@ -322,7 +345,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       paintWorking();
       grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
-      if (!d.reaction) rerender(d.id);
+      // A step changes only the reply’s activity list (#573); anything else draws the reply again.
+      const it = stepsOnly(d) ? itemsOf(threadId).find((x) => x.id === d.id) : null;
+      if (!d.reaction && !(it && paintActivity(nodes.get(d.id), it))) rerender(d.id);
     } else if (ch.type === 'item.text' && d.threadId === threadId) {
       pending.add(d.id);
       if (!raf)
@@ -509,26 +534,10 @@ function renderItem(it, prev, ctx) {
     case 'agent': {
       // Replayed whole from the host after a restart (#120): the replay is the reply, so this part of it shows nothing.
       if (it.status === 'replaced') return h('div.col.replaced', { hidden: true });
-      const [notice, steps] = kiroStep(it);
-      const total = steps.reduce((a, s) => a + (s.ms ?? 0), 0);
       const node = h(
         'div.col.turn',
         showWho ? who(it) : null,
-        notice,
-        steps.length
-          ? h(
-              'details.activity',
-              h(
-                'summary',
-                icon('right', 'i-sm'),
-                activityLabel(steps),
-                total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s in tools` : '',
-                runningNote(it, steps),
-              ),
-              stepTree(steps),
-            )
-          : null,
-        jobRows(it, steps),
+        ...activityParts(it),
         it.text || it.status === 'streaming' ? h('div.md') : null,
         // What the turn changed, ran and published, under its last reply (#132, #195), leading to Work.
         it.work ? workChip(it, ctx) : null,
