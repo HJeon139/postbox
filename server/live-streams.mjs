@@ -48,6 +48,9 @@ export function liveStreams(store) {
       const more = store.since(backlog.at(-1)?.seq ?? since);
       backlog = more === null ? null : [...backlog, ...more];
     }
+    // The status may have changed while the backlog was read, and its line reached only the streams open then: it’s
+    // sent again here, before the backlog, in this same tick (gpt’s r2 review of #553, blocker 2).
+    res.write(storeLine(store.status));
     // Too far behind: the browser refetches the whole state, then resumes from its sequence number.
     if (backlog === null) res.write(`event: resync\ndata: {}\n\n`);
     else for (const ev of backlog) res.write(`id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`);
