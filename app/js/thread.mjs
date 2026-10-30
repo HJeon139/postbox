@@ -15,6 +15,7 @@ import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
 import { asWake, queuedRow } from './composer-queue.mjs';
+import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
@@ -1033,10 +1034,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     },
   });
 
-  const autosize = () => {
-    ta.style.height = 'auto';
-    ta.style.height = `${Math.min(200, ta.scrollHeight)}px`;
-  };
+  const autosize = () => fitDraft(ta);
   const save = () => {
     try {
       localStorage.setItem(key, ta.value);
