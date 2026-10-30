@@ -35,10 +35,10 @@ const LIVE_ONLY = new Set([
 
 /**
  * What a recheck’s checks read from a finished run’s folder: the conversation’s threads, the streams, the history, and
- * the probes, samples and budget the run saved. What the page shows (its apps and UI) is read after.
- * @param {string} dir  @param {{ state: any, mainId: string, saved: any, logs: any[], hostsRec: any }} o
+ * the probes, samples, budget and timing the run saved. What the page shows (its apps and UI) is read after.
+ * @param {string} dir  @param {{ state: any, mainId: string, saved: any, logs: any[], hostsRec: any, record: any }} o
  */
-export function savedFacts(dir, { state, mainId, saved, logs, hostsRec }) {
+export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }) {
   return {
     state,
     threads: [
@@ -58,6 +58,8 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec }) {
     probes: { ...newProbes(), ...(saved.probes ?? {}) },
     samples: saved.samples ?? [],
     budget: saved.budget ?? null,
+    // Where the live run’s time went (tools/uat/timing.mjs): a recheck measures none of its own, so it keeps the run’s.
+    timing: record?.timing ?? null,
     ui: {},
     ...userSetup(join(dir, 'workspace')),
     ...(hostsRec ? { hosts: hostsRec } : {}),
@@ -105,7 +107,7 @@ export async function recheck(dir, { root, opt, review }) {
     await page.goto(`${origin}/?recheck=1#/t/${main.id}`);
     await sleep(1500);
     const d = driver(page);
-    const facts = savedFacts(dir, { state, mainId: main.id, saved, logs: page.logs, hostsRec });
+    const facts = savedFacts(dir, { state, mainId: main.id, saved, logs: page.logs, hostsRec, record });
     facts.transcripts = transcriptsFor(dir, facts);
     for (const it of await d.items()) if (it.app) facts.apps[it.key] = await d.appInside(it.key);
     facts.ui.headerText = await page.evaluate(`document.querySelector('.rail .agents-sec')?.innerText ?? ''`);

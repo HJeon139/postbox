@@ -7,6 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { savedFacts } from '../tools/uat/recheck.mjs';
 import { writeReport } from '../tools/uat/report.mjs';
 import { readRun, runRecord } from '../tools/uat/runs.mjs';
 import { runTiming, timingLine } from '../tools/uat/timing.mjs';
@@ -101,5 +102,9 @@ test('a recheck keeps the timing the live run measured', async (t) => {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   writeFileSync(join(dir, 'findings.json'), JSON.stringify({ findings: [], timeline: [] }));
   writeFileSync(join(dir, 'run.json'), JSON.stringify({ scenario: 'delivery', timing }));
-  assert.deepEqual(readRun(dir)?.timing, timing);
+  const record = readRun(dir);
+  assert.deepEqual(record?.timing, timing);
+  // What the recheck’s report reads: its facts from the run’s folder.
+  const facts = savedFacts(dir, { state: { threads: {} }, mainId: 'th_main', saved: { findings: [] }, logs: [], hostsRec: null, record });
+  assert.deepEqual(facts.timing, timing);
 });
