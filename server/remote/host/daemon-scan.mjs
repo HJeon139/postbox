@@ -47,13 +47,26 @@ async function scanTurn(d, turn) {
   });
 }
 
+/**
+ * The idle time: hello’s idleTimeout, unless POSTBOX_DAEMON_TIMINGS (JSON) shortens it. For tests only, as shim.mjs’s
+ * POSTBOX_SHIM_TIMINGS: the idle-exit integration test runs a real daemon, and the setting’s floor is a minute. A value
+ * can only shorten it. @param {Daemon} d
+ */
+export function idleTimeout(d) {
+  try {
+    const v = JSON.parse(d.env.POSTBOX_DAEMON_TIMINGS ?? 'null')?.idleTimeout;
+    if (Number.isFinite(v) && v >= 1 && v < d.settings.idleTimeout) return v;
+  } catch {}
+  return d.settings.idleTimeout;
+}
+
 /** Arms the idle exit when nobody is attached; it fires once no turn runs, idleTimeout after the last client left. @param {Daemon} d */
 export function checkIdle(d) {
   if (d.closed) return;
   if (d.idleTimer) d.timers.clearTimeout(d.idleTimer);
   d.idleTimer = null;
   if (d.conns.size) return;
-  const wait = Math.max(0, d.lastActive + d.settings.idleTimeout - d.now());
+  const wait = Math.max(0, d.lastActive + idleTimeout(d) - d.now());
   d.idleTimer = d.timers.setTimeout(() => idleFired(d), wait);
 }
 
@@ -61,7 +74,7 @@ export function checkIdle(d) {
 async function idleFired(d) {
   d.idleTimer = null;
   if (d.closed || d.conns.size) return;
-  if (d.now() - d.lastActive < d.settings.idleTimeout) return checkIdle(d);
+  if (d.now() - d.lastActive < idleTimeout(d)) return checkIdle(d);
   const running = (await scan(d)).filter((t) => t.state === 'running');
   if (d.closed || d.conns.size) return;
   if (running.length) {
@@ -71,7 +84,7 @@ async function idleFired(d) {
   }
   await d.cleanup.sweep().catch((e) => d.log(`The cleanup before exiting failed: ${e.message}`));
   if (d.closed || d.conns.size) return;
-  d.log(`Idle for ${Math.round(d.settings.idleTimeout / 1000)} s with no turn running and nobody attached; exiting.`);
+  d.log(`Idle for ${Math.round(idleTimeout(d) / 1000)} s with no turn running and nobody attached; exiting.`);
   d.onIdle();
 }
 
