@@ -8,6 +8,7 @@ import { activityLabel, stepTree } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms } from './agent-markdown.mjs';
 import { subagentNow } from './agents.mjs';
+import { allowedWriteLine } from './allowed-write.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
@@ -654,6 +655,8 @@ function renderItem(it, prev, ctx) {
       return denialBlock(it, ctx);
     case 'toolask':
       return toolAskBlock(it, ctx);
+    case 'allowedwrite':
+      return allowedWriteLine(it, ctx);
     case 'appsend':
       return renderAppSendCard(it, ctx);
     case 'moved':

@@ -2595,6 +2595,7 @@ export class Runtime {
         'permissionMode',
         'usesHostSetup',
         'canPublish',
+        'writesAsApproved',
         'mcpOff',
         'folder',
         'tools',
@@ -3156,10 +3157,13 @@ const MAX_MCP_OFF = 100;
 /**
  * A persona’s setup choices (#57) are true or false, and the MCP servers it turned off (#59) a list of names;
  * anything else is refused. Absent means the default.
+ * @param {{ usesHostSetup?: unknown, canPublish?: unknown, writesAsApproved?: unknown, mcpOff?: unknown }} setup
  */
-function checkSetup({ usesHostSetup, canPublish, mcpOff }) {
+function checkSetup({ usesHostSetup, canPublish, writesAsApproved, mcpOff }) {
   if (usesHostSetup !== undefined && typeof usesHostSetup !== 'boolean') throw httpError(422, '“Uses your Claude Code setup” is true or false.');
   if (canPublish !== undefined && typeof canPublish !== 'boolean') throw httpError(422, '“Can publish outside Postbox” is true or false.');
+  if (writesAsApproved !== undefined && typeof writesAsApproved !== 'boolean')
+    throw httpError(422, '“Writes you approved in a block run without asking again” is true or false.');
   if (
     mcpOff !== undefined &&
     (!Array.isArray(mcpOff) || mcpOff.length > MAX_MCP_OFF || mcpOff.some((n) => typeof n !== 'string' || !n.trim() || n.length > 200))

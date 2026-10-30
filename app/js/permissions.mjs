@@ -12,6 +12,7 @@ import { BACKEND_NAMES } from '/shared/agent-facts.mjs';
 import { decide } from '/shared/permission-match.mjs';
 import { api, client, sessionsOf } from './client.mjs';
 import { fill, h, icon } from './dom.mjs';
+import { checkField } from './hosts-parts.mjs';
 import { MODES } from './run-choice.mjs';
 import { capsOf, MCP_SCOPE, MCP_STATUS, modeHelp, openFolderPicker } from './sheets.mjs';
 import { keepFocus, openDialog, say, toast } from './ui.mjs';
@@ -283,7 +284,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
           );
       }
       // Writes outside Postbox (#112): many rules with one cause, and what lets a call through without asking.
-      if (b === 'ask' && view.writes?.rules.length) rows.push(writesRow(view.writes));
+      if (b === 'ask' && view.writes?.rules.length) rows.push(writesRow(view.writes), approvedWritesRow(p, change));
       if (b === 'allow')
         rows.push(h('li', h('code.perm-rule', 'mcp__postbox'), h('span.small.dim.grow', `from ${SOURCE.postbox}: they only show things here`)));
       return h(
@@ -615,5 +616,26 @@ function writesRow(writes) {
         `: tools and gh commands that create, change or delete something outside Postbox. Always allow on a card lets that one tool through${writes.unless.length ? ', and so does “Can publish outside Postbox” for the tools it covers' : ''}.`,
       ),
     ),
+  );
+}
+
+/**
+ * Whether a write the person approved in a block runs without a second card (#296): on unless the persona turns it off.
+ * @param {{ id: string, handle: string, writesAsApproved?: boolean }} p @param {(fn: () => Promise<any>, done: string) => Promise<void>} change
+ */
+function approvedWritesRow(p, change) {
+  return h(
+    'li',
+    checkField({
+      id: 'perm-approved-writes',
+      label: 'Writes you approved in a block run without asking again',
+      help: `When you confirm a block or approve a review, @${p.handle} may open, comment on or edit the PRs and issues it names with gh, up to five, without a card. Each leaves a line in the conversation with Stop. Merging, closing, labels and other repositories still ask.`,
+      on: p.writesAsApproved !== false,
+      onToggle: (on) =>
+        change(
+          () => api(`/api/personas/${p.id}`, { writesAsApproved: on }, 'PATCH'),
+          on ? `Writes you approve in a block run without asking again.` : `Every write outside Postbox asks you first, even after you approve it in a block.`,
+        ),
+    }),
   );
 }

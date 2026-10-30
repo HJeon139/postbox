@@ -56,7 +56,7 @@ export async function permissionsView(rt, who) {
   const real = persona.backend !== 'mock';
   // The mock shows its rules too (the Tools ones); a real backend that doesn’t read Claude Code’s shows none.
   const readsRules = !real || rt.readsRules(persona.backend);
-  const { usesHostSetup, canPublish } = setupOf(persona);
+  const { usesHostSetup, canPublish, writesAsApproved } = setupOf(persona);
   const files = real && readsRules && folder ? await readRules({ folder, home: rt.home, configDir: rt.configDir, usesHostSetup }) : [];
   const has = new Set(persona.tools ?? []);
   const tools = Object.entries(TOOL_RULES).map(([id, rules]) => ({ id, on: has.has(id), rules }));
@@ -70,6 +70,7 @@ export async function permissionsView(rt, who) {
       permissionMode: persona.permissionMode ?? 'auto',
       usesHostSetup,
       canPublish,
+      writesAsApproved,
       // On a host (#120), its Claude Code reads the settings files there, not the ones this panel reads here.
       host: persona.remote?.hostId ? (rt.s.hosts?.[persona.remote.hostId]?.name ?? 'a host') : null,
     },

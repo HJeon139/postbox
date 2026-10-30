@@ -379,6 +379,8 @@ export function setupOf(persona) {
   return {
     usesHostSetup: persona?.usesHostSetup !== false,
     canPublish: persona?.canPublish === true,
+    // Writes the person approved in a block run without a card (#296), unless the persona turns that off.
+    writesAsApproved: persona?.writesAsApproved !== false,
     mcpOff: Array.isArray(persona?.mcpOff) ? persona.mcpOff.filter((n) => typeof n === 'string' && n && n !== POSTBOX_SERVER) : [],
   };
 }
