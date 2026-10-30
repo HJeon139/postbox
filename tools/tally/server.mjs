@@ -41,6 +41,10 @@ const urlOf = (t) => `${origin}/tickets/${t.id}`;
 const server = createServer(async (req, res) => {
   // Only this computer, by its own name.
   if (req.headers.host !== `127.0.0.1:${port}` && req.headers.host !== `localhost:${port}`) return send(res, 403, { error: 'Wrong host.' });
+  // Not from a web page: a browser sends an Origin, and a form can’t send JSON.
+  if (req.headers.origin) return send(res, 403, { error: 'tally takes no requests from web pages.' });
+  if (req.method !== 'GET' && req.method !== 'DELETE' && !/^application\/json\b/.test(req.headers['content-type'] ?? ''))
+    return send(res, 415, { error: 'Send JSON.' });
   let body = {};
   try {
     body = await read(req);
