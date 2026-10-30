@@ -114,8 +114,11 @@ export async function fetchRedisBuild({
   const limit = new AbortController();
   const timer = setTimeout(() => limit.abort(new DOMException('The download took too long.', 'TimeoutError')), timeoutMs);
   const { signal } = limit;
-  let res;
+  /** The temporary file, once there is one; removed however the download ends. @type {string|null} */
+  let part = null;
+  // One finally for the whole download, so the timer is cleared however it ends: a mkdir that fails must not leave it.
   try {
+    let res;
     try {
       res = await fetch(url, { signal });
     } catch (e) {
@@ -123,13 +126,8 @@ export async function fetchRedisBuild({
       throw fail('EDOWNLOAD', `Couldn’t download Redis from ${url}: ${e.cause?.message ?? e.message}. Check the network, then start Postbox again.`, e);
     }
     if (!res.ok || !res.body) throw fail('EDOWNLOAD', `Couldn’t download Redis from ${url}: the server answered ${res.status}. Start Postbox again later.`);
-  } catch (e) {
-    clearTimeout(timer);
-    throw e;
-  }
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  const part = join(dir, `.${entry.asset}.${randomBytes(6).toString('hex')}.part`);
-  try {
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    part = join(dir, `.${entry.asset}.${randomBytes(6).toString('hex')}.part`);
     const got = await save(res, part, url, maxBytes, signal);
     if (got !== entry.sha256)
       throw fail(
@@ -140,6 +138,6 @@ export async function fetchRedisBuild({
     return { path, sha256: got, downloaded: true };
   } finally {
     clearTimeout(timer);
-    await rm(part, { force: true });
+    if (part) await rm(part, { force: true });
   }
 }

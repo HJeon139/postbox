@@ -222,3 +222,18 @@ test('#553: a download that doesn’t finish in time is given up, whether the re
     'no temporary file is left',
   );
 });
+
+test('#553: a download whose folder can’t be made clears its time limit, so no timer outlives the failure', async () => {
+  // gpt’s review of 8b3a566f: mkdir ran outside the timer’s cleanup, so a failed mkdir left the limit alive for its
+  // whole ten minutes. The count of live timers before and after must match.
+  const dataDir = join(tmp, 'blocked');
+  await mkdir(dataDir, { recursive: true });
+  await writeFile(join(dataDir, 'redis'), 'a file where the folder should be');
+  const timersBefore = process.getActiveResourcesInfo().filter((r) => r === 'Timeout').length;
+  const s = server({ [`${BASE}/redis-8.10.3-linux-x64.tar.gz`]: { body: GOOD } });
+  await assert.rejects(fetchRedisBuild({ dataDir, ...linux, build: build(), fetch: s.fetch, timeoutMs: 60_000 }), (e) => {
+    assert.match(e.code, /^E/);
+    return true;
+  });
+  assert.equal(process.getActiveResourcesInfo().filter((r) => r === 'Timeout').length, timersBefore, 'no timer is left');
+});
