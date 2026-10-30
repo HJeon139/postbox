@@ -2,6 +2,42 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.1.0 (2026-10-30)
+
+### Features
+
+- **uat:** marker-before-output says it can’t check an agent on Codex, Kiro or Antigravity
+- **uat:** the delivery checks say a topic thread’s mentions aren’t checked, rather than nothing
+- **uat:** `- chain-limit: N` sets the chain limit of the run’s Postbox (POSTBOX_CHAIN_LIMIT)
+- **uat:** --phases plays only the chosen phases and checks only their triggers
+- **uat:** keep the agents' transcript lines the checks read in the run folder, for --recheck
+- **uat:** wire #508's big-room seed and fault launcher into the runner
+- **uat:** add the big-room seed's generated room
+- **uat:** add the fault launcher that fails a turn before any output
+- **uat:** add #508's delivery checks and triggers
+
+### Fixes
+
+- **uat:** marker-before-output exempts only a stopped turn; a saved prompt isn't delivery
+- **uat:** unlabeled-repeat exempts Retry’s resend, which sends the same message again by design
+- **uat:** marker-before-output skips a stopped turn, and one whose prompt reached the transcript
+- **uat:** ask-dropped skips a held wake Stop, archive or removal took off its card by design
+- **uat:** delivery-dropped matches a short message by its whole text, and says when it can’t tell it
+- **uat:** the chain-limit setting can only lower the backstop, to a whole number from 1 to 50
+- **uat:** delivery checks don't judge a turn still running as ended
+- **uat:** delivery-dropped waits for a held mention's card to settle
+- **uat:** edit-while-waiting serves AT-6 as well as DL-7
+- **uat:** unlabeled-repeat leaves every same-text item a prompt could belong to unverified
+- **uat:** ask-dropped follows a held wake a retired card moved to the next card
+- **uat:** unlabeled-repeat counts a prompt only for the item it names or whose window it's in
+- **uat:** edit-while-waiting matches the whole edited text, and only after the edit
+- **uat:** seed the big room's review as approved, so needs-mismatch doesn't fire on the seed
+- **uat:** say a delivery check can't read a turn with no recorded transcript
+- **uat:** say when a delivery check can't read an agent's inputs
+- **uat:** key deliveries by item id so two alike messages stay two
+- **uat:** treat a topic thread's starting message as labeled, not a repeat
+- **uat:** don't count Claude Code's compaction summary or meta lines as prompts
+
 ## 1.0.1 (2026-10-30)
 
 ### Fixes
