@@ -112,6 +112,18 @@ test('a write’s card says where it lands: the server, and the target its input
   });
 });
 
+test('#296 a git push is a write outside: it asks in every mode but Run everything, and its card names the remote', () => {
+  for (const command of ['git push', 'git push -u origin feat/now', 'npm test && git push origin HEAD', 'git push --force-with-lease'])
+    assert.ok(isWriteCall('Bash', { command }), command);
+  for (const command of ['git status', 'git commit -m "push the fix"', 'git log origin/main..HEAD', 'echo git push'])
+    assert.ok(!isWriteCall('Bash', { command }), command);
+  const ask = WRITE_TOOLS.map((rule) => ({ rule, source: 'writes', unless: [] }));
+  const where = { mode: 'auto', cwd: '/w', home: '/h' };
+  assert.equal(decide({ call: 'Bash(git push -u origin feat/now)', rules: { deny: [], ask, allow: [] }, ...where }).decision, 'ask');
+  assert.deepEqual(whereOf('Bash', { command: 'git push -u origin feat/now' }), { server: 'git', target: { what: 'remote', name: 'origin' } });
+  assert.deepEqual(whereOf('Bash', { command: 'git push' }), { server: 'git', target: null });
+});
+
 test('the panel’s effective view: a write asks, unless an Always allow names that tool, or the persona may publish it', () => {
   const ask = WRITE_TOOLS.map((rule) => ({ rule, source: 'writes', unless: [] }));
   const where = { mode: 'auto', cwd: '/w', home: '/h' };

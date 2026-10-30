@@ -103,6 +103,15 @@ const TARGET_FIELDS = [
 export function whereOf(tool, input) {
   const name = String(tool ?? '');
   if (name === 'Bash') {
+    // A push lands on its remote, the first word after push that isn’t a flag (#296).
+    const push = /\bgit\s+push\b([^;&|\n]*)/.exec(String(input?.command ?? ''));
+    if (push) {
+      const remote = push[1]
+        .trim()
+        .split(/\s+/)
+        .find((w) => w && !w.startsWith('-'));
+      return { server: 'git', target: remote ? { what: 'remote', name: remote.replace(/^["']|["']$/g, '').slice(0, 120) } : null };
+    }
     const repo = /(?:^|\s)(?:--repo|-R)[=\s]+(\S+)/.exec(String(input?.command ?? ''))?.[1];
     return { server: 'gh', target: repo ? { what: 'repository', name: repo.replace(/^["']|["']$/g, '').slice(0, 120) } : null };
   }
