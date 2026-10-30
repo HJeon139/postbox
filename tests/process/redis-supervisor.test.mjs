@@ -67,9 +67,16 @@ test('the child runs on its private socket, with no port, AOF fsynced on every w
 
 test('a missing binary fails the start with the cause named, and nothing is spawned', async () => {
   const sup = new RedisSupervisor({ home: join(tmp, 'nowhere'), dataDir: join(tmp, 'missing') });
-  await assert.rejects(sup.start(), (e) => e.code === 'ESTOREDOWN' && /nowhere/.test(e.message));
+  await assert.rejects(sup.start(), (e) => {
+    assert.equal(e.code, 'ESTOREDOWN');
+    assert.match(e.message, /Start Postbox again to download it/);
+    assert.equal(e.message.includes(sup.home), false, 'the error doesn’t expose the missing binary’s path');
+    assert.equal(e.message.includes(sup.dataDir), false, 'the error doesn’t expose the data folder');
+    return true;
+  });
   assert.equal(sup.status.state, 'down');
   assert.equal(sup.status.cause, 'binary-missing');
+  assert.equal(sup.child, null, 'a missing binary starts no child');
 });
 
 test('a socket folder that’s a link fails the start as socket, and nothing is spawned', async () => {
