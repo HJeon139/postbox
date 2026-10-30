@@ -1,0 +1,3269 @@
+{
+  "config": {
+    "argv": [
+      "/Users/hohyunjeon/.local/share/mise/installs/node/24.22.1/bin/node",
+      "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/node_modules/.bin/playwright",
+      "test",
+      "--shard=3/3",
+      "--list"
+    ],
+    "configFile": "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/playwright.config.mjs",
+    "rootDir": "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/tests/browser",
+    "failOnFlakyTests": true,
+    "forbidOnly": true,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {},
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "id": "",
+        "name": "",
+        "testDir": "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/tests/browser",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.spec.mjs"
+        ],
+        "timeout": 30000
+      }
+    ],
+    "filteredProjects": [
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {},
+        "name": "",
+        "testDir": "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/tests/browser",
+        "snapshotDir": "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/tests/browser",
+        "testIgnore": [],
+        "testMatch": "**/*.spec.mjs",
+        "timeout": 30000,
+        "use": {
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.8078.4 Safari/537.36",
+          "viewport": {
+            "width": 1280,
+            "height": 900
+          },
+          "screen": {
+            "width": 1920,
+            "height": 1080
+          },
+          "deviceScaleFactor": 1,
+          "isMobile": false,
+          "hasTouch": false,
+          "defaultBrowserType": "chromium",
+          "channel": "chromium",
+          "colorScheme": "dark",
+          "trace": "retain-on-failure"
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": ""
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "check-logs/playwright.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": {
+      "current": 3,
+      "total": 3
+    },
+    "tags": [],
+    "updateSnapshots": "default",
+    "updateSourceMethod": "patch",
+    "version": "1.64.1",
+    "workers": 4,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "review-comments.spec.mjs",
+      "file": "review-comments.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "#179 selecting text shows a Comment button beside it, which Tab reaches; Enter opens the box; adding brings focus back, the text marked",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "62a6a615cbb76d940bbe-44b785e04fb05746d3f7",
+          "file": "review-comments.spec.mjs",
+          "line": 24,
+          "column": 1
+        },
+        {
+          "title": "#179 comments from Preview reach the agent with their line, columns and quote",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "62a6a615cbb76d940bbe-2b361cdc2b36a6708461",
+          "file": "review-comments.spec.mjs",
+          "line": 71,
+          "column": 1
+        },
+        {
+          "title": "#468 text being typed stays in its comment box when another agent comments or the author revises",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "62a6a615cbb76d940bbe-b96fe9880da3a35a60cf",
+          "file": "review-comments.spec.mjs",
+          "line": 86,
+          "column": 1
+        },
+        {
+          "title": "#133 another agent’s comments show on their lines with its name; the bar says who reviewed it, and it still waits on you",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "62a6a615cbb76d940bbe-c08853ca2dee90566bf0",
+          "file": "review-comments.spec.mjs",
+          "line": 117,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "review.spec.mjs",
+      "file": "review.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "#179 the draft opens in Preview, with its diagram and math drawn, and takes the transcript’s width at 1280 px",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "3ae9c15d4f123fe36452-d0c6c1f2f545be00f305",
+          "file": "review.spec.mjs",
+          "line": 28,
+          "column": 1
+        },
+        {
+          "title": "#486 Preview fills a wide review while conversation prose keeps its reading measure, with no narrow change",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "3ae9c15d4f123fe36452-8dba740a810f94b6cf68",
+          "file": "review.spec.mjs",
+          "line": 42,
+          "column": 1
+        },
+        {
+          "title": "#179 Lines opens from the keyboard, focus stays on it, draws the diagram and math whole, shows the comment on its line, and the choice holds across a reload",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "3ae9c15d4f123fe36452-c415f73d5e147c9d6dea",
+          "file": "review.spec.mjs",
+          "line": 84,
+          "column": 1
+        },
+        {
+          "title": "#179 a click on text stays in Preview, and one on the diagram opens Lines at its first line, with its comment box",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "3ae9c15d4f123fe36452-3b4204121fce3d51d927",
+          "file": "review.spec.mjs",
+          "line": 107,
+          "column": 1
+        },
+        {
+          "title": "#179 full screen opens from the keyboard, fills the window with focus on Exit full screen, and Escape brings it back",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "3ae9c15d4f123fe36452-994643d2ff7676f08fb0",
+          "file": "review.spec.mjs",
+          "line": 129,
+          "column": 1
+        },
+        {
+          "title": "#248 a draft revised without a revision of its own opens each revision in Lines, as v2 then v3, with its diff",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "3ae9c15d4f123fe36452-1bd6b27405592b23745f",
+          "file": "review.spec.mjs",
+          "line": 154,
+          "column": 1
+        },
+        {
+          "title": "#248 an outcome recorded on an approved review isn’t a revision: it still reads v1",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "3ae9c15d4f123fe36452-55f0aeca7d685a738808",
+          "file": "review.spec.mjs",
+          "line": 169,
+          "column": 1
+        }
+      ],
+      "suites": [
+        {
+          "title": "dark",
+          "file": "review.spec.mjs",
+          "line": 145,
+          "column": 6,
+          "specs": [
+            {
+              "title": "#179 in the dark theme too, the diagram and math are drawn",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "3ae9c15d4f123fe36452-970451ff36f6e8bff7de",
+              "file": "review.spec.mjs",
+              "line": 148,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "ring-context.spec.mjs",
+      "file": "ring-context.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "#189 a subagent with no reported context says so, and its activity still shows",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "3b55d132df05182cefd3-61426489740c70b343d7",
+          "file": "ring-context.spec.mjs",
+          "line": 52,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "ring-paint.spec.mjs",
+      "file": "ring-paint.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "PF-2: with one agent working (think), neither the transcript nor the page is repainted on each frame over 5 s",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "aa079d479348921f1eb6-dd96d120d1d26d756da7",
+          "file": "ring-paint.spec.mjs",
+          "line": 83,
+          "column": 3
+        },
+        {
+          "title": "PF-2: with one agent working (gen), neither the transcript nor the page is repainted on each frame over 5 s",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "aa079d479348921f1eb6-e8214d1ad7515a86c687",
+          "file": "ring-paint.spec.mjs",
+          "line": 83,
+          "column": 3
+        },
+        {
+          "title": "PF-2: with one agent working (tool), neither the transcript nor the page is repainted on each frame over 5 s",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "aa079d479348921f1eb6-643358de9970ebe0641b",
+          "file": "ring-paint.spec.mjs",
+          "line": 83,
+          "column": 3
+        },
+        {
+          "title": "#463: a thinking ring still moves, with one animation of transform and opacity",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "aa079d479348921f1eb6-942767163590e595aa80",
+          "file": "ring-paint.spec.mjs",
+          "line": 97,
+          "column": 1
+        },
+        {
+          "title": "#463: with reduced motion, every ring holds still, a thinking one included",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "aa079d479348921f1eb6-f373a824fccff59c6e03",
+          "file": "ring-paint.spec.mjs",
+          "line": 120,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "runtime.spec.mjs",
+      "file": "runtime.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "#59 the editor lists your user and project servers and the claude.ai connector, each a checkbox on by default, with its status, and no config",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "7184f6f859cb0facbbbd-42ec7a53b870333a0322",
+          "file": "runtime.spec.mjs",
+          "line": 90,
+          "column": 1
+        },
+        {
+          "title": "#60 the editor shows Effort right after Model, at Medium by default, with every level Claude Code takes and help",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "7184f6f859cb0facbbbd-95156764a802e3731170",
+          "file": "runtime.spec.mjs",
+          "line": 114,
+          "column": 1
+        },
+        {
+          "title": "#59 #60 Space turns a server off, and Save stores it and the effort on the persona",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "7184f6f859cb0facbbbd-5856de7e333d2954a613",
+          "file": "runtime.spec.mjs",
+          "line": 123,
+          "column": 1
+        },
+        {
+          "title": "#59 reopened, a server turned off is still off; Isolated says only Postbox’s server loads, focus kept",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "7184f6f859cb0facbbbd-cfbbae8d0593da1fd6b3",
+          "file": "runtime.spec.mjs",
+          "line": 136,
+          "column": 1
+        },
+        {
+          "title": "#59 #60 #5 the new-agent sheet lists your servers, all on, Effort after Model, and agents.outside unticked with what a tick means",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "7184f6f859cb0facbbbd-1cf7d44d9ad0ade6b2ee",
+          "file": "runtime.spec.mjs",
+          "line": 151,
+          "column": 1
+        }
+      ],
+      "suites": [
+        {
+          "title": "at 375 px",
+          "file": "runtime.spec.mjs",
+          "line": 170,
+          "column": 6,
+          "specs": [
+            {
+              "title": "#59 at 375 px the editor, with a long server name, doesn’t scroll sideways",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "7184f6f859cb0facbbbd-9d9da97765737af79f89",
+              "file": "runtime.spec.mjs",
+              "line": 173,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "session-patch.spec.mjs",
+      "file": "session-patch.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "a session.patch reaches the page’s listeners as a whole-session change, and the agent’s ring follows it",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "09b26aa543b9af45a69b-02239af23ff305779b99",
+          "file": "session-patch.spec.mjs",
+          "line": 19,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "shell-focus.spec.mjs",
+      "file": "shell-focus.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "#69 an older open block shows “1 open confirmation”, not needs-you, and goes to the block",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4040d4f1e06acab4aaee-5c7d38b3262cbbb3564b",
+          "file": "shell-focus.spec.mjs",
+          "line": 40,
+          "column": 1
+        },
+        {
+          "title": "#26 new agent: Space on a Tools checkbox keeps focus on it",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4040d4f1e06acab4aaee-944c3214295cbc47f3ab",
+          "file": "shell-focus.spec.mjs",
+          "line": 63,
+          "column": 1
+        },
+        {
+          "title": "#26 new room: Enter on the @indexer chip keeps focus on it",
+          "ok": true,
+          "tags": [
+            "indexer"
+          ],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4040d4f1e06acab4aaee-be166a0de88e7d0c48b6",
+          "file": "shell-focus.spec.mjs",
+          "line": 81,
+          "column": 1
+        },
+        {
+          "title": "#26 settings: Enter on the Projects tab keeps focus on it, and Escape returns to Settings",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4040d4f1e06acab4aaee-a58100ce108b34e44f3e",
+          "file": "shell-focus.spec.mjs",
+          "line": 95,
+          "column": 1
+        },
+        {
+          "title": "#26 ⋯ › Add an agent… by keyboard, then Escape, returns focus to ⋯",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4040d4f1e06acab4aaee-10d37a1b98c07d193d67",
+          "file": "shell-focus.spec.mjs",
+          "line": 109,
+          "column": 1
+        },
+        {
+          "title": "#26 the folder picker opens with focus on its first entry, and Escape returns to +",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4040d4f1e06acab4aaee-4c565b45163fe536789f",
+          "file": "shell-focus.spec.mjs",
+          "line": 126,
+          "column": 1
+        },
+        {
+          "title": "#29 a second click on the Postbox mark closes its menu",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4040d4f1e06acab4aaee-8d14d99ffdc06c01c620",
+          "file": "shell-focus.spec.mjs",
+          "line": 146,
+          "column": 3
+        },
+        {
+          "title": "#29 a second click on the conversation’s ⋯ closes its menu",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4040d4f1e06acab4aaee-d76876ea4773bd9a6863",
+          "file": "shell-focus.spec.mjs",
+          "line": 146,
+          "column": 3
+        },
+        {
+          "title": "#29 a second click on the composer’s + closes its menu",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4040d4f1e06acab4aaee-7a5a2273879c20dc9117",
+          "file": "shell-focus.spec.mjs",
+          "line": 146,
+          "column": 3
+        },
+        {
+          "title": "#29 a second click closes a menu even after its button repainted under it",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4040d4f1e06acab4aaee-c835e1bff31c80db82b1",
+          "file": "shell-focus.spec.mjs",
+          "line": 160,
+          "column": 1
+        },
+        {
+          "title": "#26 ⋯ › Rename… by keyboard returns focus to ⋯ after the top bar repaints with the new name",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4040d4f1e06acab4aaee-7f1cb5c9317b048505fc",
+          "file": "shell-focus.spec.mjs",
+          "line": 179,
+          "column": 1
+        },
+        {
+          "title": "a conversation opened from the sidebar replaces the last one’s transcript, and Back brings that one back, up to date",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4040d4f1e06acab4aaee-cebc20094ba714b96811",
+          "file": "shell-focus.spec.mjs",
+          "line": 200,
+          "column": 1
+        },
+        {
+          "title": "a fresh install, with no project, offers New project, which opens Settings › Projects (#320)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4040d4f1e06acab4aaee-cac6b1f61b55c1350e6e",
+          "file": "shell-focus.spec.mjs",
+          "line": 218,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "shell.spec.mjs",
+      "file": "shell.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "#/ opens a conversation, the one you were last in, not an overview",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "e9625f2266484f4b811d-3ab394954184c5c99300",
+          "file": "shell.spec.mjs",
+          "line": 32,
+          "column": 1
+        },
+        {
+          "title": "nothing links to an overview: not the sidebar, the breadcrumb or the Postbox menu",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "e9625f2266484f4b811d-47a7a101a10036fb4350",
+          "file": "shell.spec.mjs",
+          "line": 39,
+          "column": 1
+        },
+        {
+          "title": "no Archived page or link, and no Archive in an agent’s quick panel",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "e9625f2266484f4b811d-2fa292ad89274a0ee2d5",
+          "file": "shell.spec.mjs",
+          "line": 48,
+          "column": 1
+        },
+        {
+          "title": "the top bar has no agent rings: the Agents section has them",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "e9625f2266484f4b811d-ca99f7978cc8f6b6026d",
+          "file": "shell.spec.mjs",
+          "line": 58,
+          "column": 1
+        },
+        {
+          "title": "Delete session moved from the overview’s card menu to the agent’s quick panel, with its confirmation",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "e9625f2266484f4b811d-4cc6dc3843da67b9e2a0",
+          "file": "shell.spec.mjs",
+          "line": 65,
+          "column": 1
+        },
+        {
+          "title": "deleting a one-to-one conversation’s only agent leaves the conversation, which goes with it (#320)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "e9625f2266484f4b811d-9c40b57a71baef47540c",
+          "file": "shell.spec.mjs",
+          "line": 75,
+          "column": 1
+        },
+        {
+          "title": "nothing archives a conversation by itself: Settings has no idle archiving (#320)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "e9625f2266484f4b811d-26efb6106f3eed89bdeb",
+          "file": "shell.spec.mjs",
+          "line": 87,
+          "column": 1
+        },
+        {
+          "title": "an archived conversation comes back whole, with all its agents, from one Restore (#320)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "e9625f2266484f4b811d-f840bc24e0e7f4ef1fba",
+          "file": "shell.spec.mjs",
+          "line": 95,
+          "column": 1
+        },
+        {
+          "title": "an agent’s state changing doesn’t rebuild the conversation: a draft and its focus stay (#320)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "e9625f2266484f4b811d-073b8057842551f98865",
+          "file": "shell.spec.mjs",
+          "line": 105,
+          "column": 1
+        },
+        {
+          "title": "#432 the places menu focuses and marks the current project with consistent icons",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "e9625f2266484f4b811d-f3cf846b7d66939a7713",
+          "file": "shell.spec.mjs",
+          "line": 122,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "side-summary.spec.mjs",
+      "file": "side-summary.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "#225 Summarize back in a side thread: pick who writes it, and the summary is posted in the conversation",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "83877bad3dfb138111ed-bfd43bbefdbaa9a71d86",
+          "file": "side-summary.spec.mjs",
+          "line": 40,
+          "column": 1
+        },
+        {
+          "title": "#225 Summarize back asked while its agent is busy in the side thread waits until the summary is posted",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "83877bad3dfb138111ed-1e50c64b433b337a0598",
+          "file": "side-summary.spec.mjs",
+          "line": 62,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "side-threads.spec.mjs",
+      "file": "side-threads.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "a turn still running in a side thread from before #372 shows in its conversation: its agent tree, the side-thread line and the row",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "cb25216d57f157e882a5-1b609e4885176e6bfe33",
+          "file": "side-threads.spec.mjs",
+          "line": 62,
+          "column": 1
+        },
+        {
+          "title": "a wake while that session is busy waits in the conversation’s queue: no fork, no second entry, and it runs there when the turn ends (#228, #372)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "cb25216d57f157e882a5-a2da4791e7a43a6ab352",
+          "file": "side-threads.spec.mjs",
+          "line": 88,
+          "column": 1
+        },
+        {
+          "title": "a side-thread agent waiting on a permission prompt counts in the tab title, and ⌃J opens the side thread at its card",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "cb25216d57f157e882a5-0ca980aeac427a16bddf",
+          "file": "side-threads.spec.mjs",
+          "line": 119,
+          "column": 1
+        },
+        {
+          "title": "/stop in the conversation stops its agents in side threads, and not a topic thread’s",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "cb25216d57f157e882a5-7c0e837c3f653c3d5d6c",
+          "file": "side-threads.spec.mjs",
+          "line": 138,
+          "column": 1
+        },
+        {
+          "title": "the composer’s # links a side thread, and the agent that gets the message has its id and title",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "cb25216d57f157e882a5-3a1f43d83bddd31afa7b",
+          "file": "side-threads.spec.mjs",
+          "line": 165,
+          "column": 1
+        },
+        {
+          "title": "a side thread has Copy link, which gives its whole address",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "cb25216d57f157e882a5-71af2643f9b34b3109dc",
+          "file": "side-threads.spec.mjs",
+          "line": 187,
+          "column": 1
+        },
+        {
+          "title": "an agent that wakes one from outside the conversation brings a card; Add joins it with a note on its row (#228)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "cb25216d57f157e882a5-789485fde827b63509e0",
+          "file": "side-threads.spec.mjs",
+          "line": 200,
+          "column": 1
+        },
+        {
+          "title": "the Threads page lists side threads beside topic threads, with their pair, state, count and last activity (#124)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "cb25216d57f157e882a5-0b1b136f6b0e0bf3ae10",
+          "file": "side-threads.spec.mjs",
+          "line": 220,
+          "column": 1
+        },
+        {
+          "title": "a message in a side thread from before #372 still goes to the conversation by Send to conversation (#128)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "cb25216d57f157e882a5-05dcb9c8211dc23b9c74",
+          "file": "side-threads.spec.mjs",
+          "line": 241,
+          "column": 1
+        },
+        {
+          "title": "a failed side-thread turn shows on its line with Retry, and the line’s Open goes to its card (#151)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "cb25216d57f157e882a5-5949cb523d1c619137a1",
+          "file": "side-threads.spec.mjs",
+          "line": 256,
+          "column": 1
+        }
+      ],
+      "suites": [
+        {
+          "title": "at 375 px",
+          "file": "side-threads.spec.mjs",
+          "line": 285,
+          "column": 6,
+          "specs": [
+            {
+              "title": "at 375 px, the side-thread line with its agent’s state fits without scrolling sideways",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "cb25216d57f157e882a5-568c427747ff1e0f3acf",
+              "file": "side-threads.spec.mjs",
+              "line": 288,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "start-port.spec.mjs",
+      "file": "start-port.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "#367 start() on a taken port throws EADDRINUSE and leaves nothing running, and the next start works",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "fc1526b0156cbfafe69d-c295fbbceaf3e23c187c",
+          "file": "start-port.spec.mjs",
+          "line": 14,
+          "column": 1
+        },
+        {
+          "title": "#367 the startup error handler is gone after a successful bind",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "fc1526b0156cbfafe69d-f1ede324c150355a8e6e",
+          "file": "start-port.spec.mjs",
+          "line": 32,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "stop-steps.spec.mjs",
+      "file": "stop-steps.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "#288 Stop it too: the stopped reply’s header doesn’t say running, and its foreground call reads stopped",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "575213991acbc5a55380-35f4640d85be65e619cf",
+          "file": "stop-steps.spec.mjs",
+          "line": 91,
+          "column": 1
+        },
+        {
+          "title": "#288 Keep running: the header says its background work runs on, not the reply, and the wait reads stopped",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "575213991acbc5a55380-8ff5993b271fe78a2cb3",
+          "file": "stop-steps.spec.mjs",
+          "line": 108,
+          "column": 3
+        },
+        {
+          "title": "#288 Keep running, with a card between, where the steps are on the reply’s first part,: the header says its background work runs on, not the reply, and the wait reads stopped",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "575213991acbc5a55380-d0cc602f4c922a593866",
+          "file": "stop-steps.spec.mjs",
+          "line": 108,
+          "column": 3
+        }
+      ]
+    },
+    {
+      "title": "stop.spec.mjs",
+      "file": "stop.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "#129 a background job shows under its reply, running, with its own Stop",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "b6c477b8e507bee9e017-0f11583453066fcfdf3f",
+          "file": "stop.spec.mjs",
+          "line": 131,
+          "column": 1
+        },
+        {
+          "title": "#129 Stop asks first, with focus on its first choice; Escape leaves the agent running, focus back on Stop",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "b6c477b8e507bee9e017-75d93fbc19b9070b6ad0",
+          "file": "stop.spec.mjs",
+          "line": 140,
+          "column": 1
+        },
+        {
+          "title": "#126 #129 Keep running, by keyboard: the agent reads stopping until it exits, and the job stays listed with its Stop",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "b6c477b8e507bee9e017-70e34e5158ce269bb34e",
+          "file": "stop.spec.mjs",
+          "line": 164,
+          "column": 1
+        },
+        {
+          "title": "#129 the kept job’s own Stop stops its process group, and its step reads stopped",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "b6c477b8e507bee9e017-65c053a39531b8f3a90d",
+          "file": "stop.spec.mjs",
+          "line": 189,
+          "column": 1
+        },
+        {
+          "title": "#129 Stop it too stops the agent and its job",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "b6c477b8e507bee9e017-a0d5b667b68d9f5c2bf5",
+          "file": "stop.spec.mjs",
+          "line": 201,
+          "column": 1
+        },
+        {
+          "title": "#164 a kept job Postbox couldn’t tell apart says so under its row, and its own Stop stops every process it kept",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "b6c477b8e507bee9e017-bab8516b6dcd4e5d53e6",
+          "file": "stop.spec.mjs",
+          "line": 214,
+          "column": 1
+        },
+        {
+          "title": "#167 two kept jobs Postbox couldn’t tell apart: stopping one stops both, and the other’s step says why",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "b6c477b8e507bee9e017-872d061b3b23bd362875",
+          "file": "stop.spec.mjs",
+          "line": 230,
+          "column": 1
+        },
+        {
+          "title": "#215 a queued message’s Send now: the reply it interrupted says so, and its job keeps running",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "b6c477b8e507bee9e017-81fb0925f76be0e82692",
+          "file": "stop.spec.mjs",
+          "line": 244,
+          "column": 1
+        }
+      ],
+      "suites": [
+        {
+          "title": "at 375 px",
+          "file": "stop.spec.mjs",
+          "line": 275,
+          "column": 6,
+          "specs": [
+            {
+              "title": "#129 #215 at 375 px the ask, the job row and each stopped reply’s tag fit without scrolling sideways",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "b6c477b8e507bee9e017-54767df3449691e478f4",
+              "file": "stop.spec.mjs",
+              "line": 278,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "telemetry-flags.spec.mjs",
+      "file": "telemetry-flags.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "the runner’s 🚩 lands on each of the six items whose flags failed (#483)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "582ddba409083bf5f967-aa6dabc1fdb530527016",
+          "file": "telemetry-flags.spec.mjs",
+          "line": 45,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "telemetry.spec.mjs",
+      "file": "telemetry.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "R1, R5: Record this room from the ⋯ menu; the header says so, and nothing appears in the room",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4f8249d6877d5936d41e-7ae6084c04e6a8f34f49",
+          "file": "telemetry.spec.mjs",
+          "line": 78,
+          "column": 1
+        },
+        {
+          "title": "R18: Telemetry swaps in for Work, the Work button brings Work back, and closing Telemetry does too",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4f8249d6877d5936d41e-bb1e96a8208e623f79de",
+          "file": "telemetry.spec.mjs",
+          "line": 87,
+          "column": 1
+        },
+        {
+          "title": "R18: a reload at ?telemetry keeps the view",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4f8249d6877d5936d41e-ea2f418d636f7478baaa",
+          "file": "telemetry.spec.mjs",
+          "line": 107,
+          "column": 1
+        },
+        {
+          "title": "R18, R19: a report made with the history ticked after a message, a line left out by keyboard, discarded, saved, filed with no gh, and deleted",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4f8249d6877d5936d41e-a14d420088887f38c164",
+          "file": "telemetry.spec.mjs",
+          "line": 197,
+          "column": 1
+        },
+        {
+          "title": "R5: the header’s badge adds no listener that stays, on the Threads page or a conversation",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "4f8249d6877d5936d41e-89a8cf82035c44bb2dc0",
+          "file": "telemetry.spec.mjs",
+          "line": 211,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "transcript-render.spec.mjs",
+      "file": "transcript-render.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "#111 a shared reply shows its question apart, and the answer isn’t swallowed by it",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "7ccd3dc6d91a851e765e-20deed0096f073796f1d",
+          "file": "transcript-render.spec.mjs",
+          "line": 81,
+          "column": 1
+        },
+        {
+          "title": "#99 a shared summary draws its math and its Mermaid diagram, and links the conversation’s and its topic’s glossaries",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "7ccd3dc6d91a851e765e-cd6c0b10d1e0106c8daf",
+          "file": "transcript-render.spec.mjs",
+          "line": 89,
+          "column": 1
+        },
+        {
+          "title": "#466 the schedule line shows a pending retry and when automatic retries stop",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "7ccd3dc6d91a851e765e-0d5d8a9aea1ffee2a328",
+          "file": "transcript-render.spec.mjs",
+          "line": 108,
+          "column": 1
+        },
+        {
+          "title": "#135 a later turn of the same agent has its own sender line with its time and what woke it, and wakes from two turns each have one",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "7ccd3dc6d91a851e765e-becfe6f47dc5c853512a",
+          "file": "transcript-render.spec.mjs",
+          "line": 167,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "transcript-wheel.spec.mjs",
+      "file": "transcript-wheel.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "#88 while an agent streams, one turn of the wheel up leaves the view up: nothing pulls it back to the end",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "6584ef3b37784fee83c8-1f2704c4042634e31366",
+          "file": "transcript-wheel.spec.mjs",
+          "line": 89,
+          "column": 3
+        },
+        {
+          "title": "#88 while an agent streams, small steps of the wheel up leaves the view up: nothing pulls it back to the end",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "6584ef3b37784fee83c8-be488d0e5d5dc28e6377",
+          "file": "transcript-wheel.spec.mjs",
+          "line": 89,
+          "column": 3
+        }
+      ]
+    },
+    {
+      "title": "transcript.spec.mjs",
+      "file": "transcript.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "#88 at the bottom: streaming, a patch, a new item and the working row keep the view on the newest message",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "752b9a0fd465cb557481-677dadd442a6baf356a8",
+          "file": "transcript.spec.mjs",
+          "line": 127,
+          "column": 1
+        },
+        {
+          "title": "#88 at the bottom: an app growing from 200 to 700 px leaves the view at the bottom, and the app names its author",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "752b9a0fd465cb557481-00f48c6d52cec58773d2",
+          "file": "transcript.spec.mjs",
+          "line": 145,
+          "column": 1
+        },
+        {
+          "title": "#88 at the bottom: opening and closing the thread panel leaves the view at the bottom, in both panes",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "752b9a0fd465cb557481-e5f8bcd2fde228b83ea8",
+          "file": "transcript.spec.mjs",
+          "line": 164,
+          "column": 1
+        },
+        {
+          "title": "#88 at the bottom: a window resize leaves the view at the bottom",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "752b9a0fd465cb557481-4d65ee604b415b13536f",
+          "file": "transcript.spec.mjs",
+          "line": 185,
+          "column": 1
+        },
+        {
+          "title": "#88 at the bottom: a card that needs you stays still while what follows it shrinks (the working row going, the pill hiding)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "752b9a0fd465cb557481-3d59bf61f314cbf1dbfd",
+          "file": "transcript.spec.mjs",
+          "line": 194,
+          "column": 1
+        },
+        {
+          "title": "#88 scrolled up: streaming, patches, new items, an app growing above, the panel and a resize don’t move what you’re reading",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "752b9a0fd465cb557481-6a8c4d78470531bab7c7",
+          "file": "transcript.spec.mjs",
+          "line": 239,
+          "column": 1
+        },
+        {
+          "title": "#91 the pill counts what arrives while you’re scrolled up, and goes once you scroll to the bottom yourself",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "752b9a0fd465cb557481-da42fa151ca7d063fb45",
+          "file": "transcript.spec.mjs",
+          "line": 295,
+          "column": 1
+        },
+        {
+          "title": "#83 the working row lines up with the message column, with and without the panel, and a long step truncates",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "752b9a0fd465cb557481-8e4627d59dd93fddb3d7",
+          "file": "transcript.spec.mjs",
+          "line": 341,
+          "column": 1
+        },
+        {
+          "title": "#93 Summarize back clicked twice posts one summary; the button waits, and the summary’s reply shows it was sent",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "752b9a0fd465cb557481-f5be53deb3c30b4123ee",
+          "file": "transcript.spec.mjs",
+          "line": 383,
+          "column": 1
+        },
+        {
+          "title": "#93 Send to conversation clicked twice posts once",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "752b9a0fd465cb557481-5d5220955c3cf065864a",
+          "file": "transcript.spec.mjs",
+          "line": 414,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "wake-chain.spec.mjs",
+      "file": "wake-chain.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "after 6 chained wakes the composer says how many, and your message clears it (1280 px)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "855da24f9890832f7d39-5cfad224e84300fef954",
+          "file": "wake-chain.spec.mjs",
+          "line": 33,
+          "column": 3
+        },
+        {
+          "title": "after 6 chained wakes the composer says how many, and your message clears it (375 px)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "855da24f9890832f7d39-6080e38fcf1e0ca36467",
+          "file": "wake-chain.spec.mjs",
+          "line": 33,
+          "column": 3
+        },
+        {
+          "title": "below the hint’s count the composer says nothing about the chain",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "855da24f9890832f7d39-355201ce35e32e3d3f68",
+          "file": "wake-chain.spec.mjs",
+          "line": 45,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "wake-limit.spec.mjs",
+      "file": "wake-limit.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "the card waits after the limit’s wakes, and says the limit the server keeps",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "c92a2fd68801854be8e0-c7daa416e99564c0908f",
+          "file": "wake-limit.spec.mjs",
+          "line": 48,
+          "column": 1
+        },
+        {
+          "title": "a wake held on the waiting card shows on it until you answer, and goes when you allow it (#439)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "c92a2fd68801854be8e0-4bfebbc28c6dbd544d0a",
+          "file": "wake-limit.spec.mjs",
+          "line": 58,
+          "column": 1
+        },
+        {
+          "title": "a card whose target you write to closes, and says why (#439)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "c92a2fd68801854be8e0-5de93b9accd31adb760c",
+          "file": "wake-limit.spec.mjs",
+          "line": 71,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "wakes-in-conversation.spec.mjs",
+      "file": "wakes-in-conversation.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "an agent’s @-mention wakes another in the conversation: both messages show there, with no side thread, and no reply goes back",
+          "ok": true,
+          "tags": [
+            "-mention"
+          ],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "c1db8202d245563e04a1-2241a54cdb34d0d2ce74",
+          "file": "wakes-in-conversation.spec.mjs",
+          "line": 41,
+          "column": 1
+        },
+        {
+          "title": "wake_agent posts its message in the conversation as the waker’s, and the woken agent answers there",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "c1db8202d245563e04a1-05049d76d6dbf6d6ecba",
+          "file": "wakes-in-conversation.spec.mjs",
+          "line": 65,
+          "column": 1
+        },
+        {
+          "title": "a side thread from before #372 opens read-only: its lines, and a note where the composer was",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "c1db8202d245563e04a1-837d49b014148798c20d",
+          "file": "wakes-in-conversation.spec.mjs",
+          "line": 84,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "title": "work-list.spec.mjs",
+      "file": "work-list.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "1280 px: a row follows the ledger after the turn: a background command that ends, and an app retired, say so",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "3686d8e29e7853d4cb7f-d0d1c926ea10c2ac2d08",
+          "file": "work-list.spec.mjs",
+          "line": 186,
+          "column": 1
+        }
+      ],
+      "suites": [
+        {
+          "title": "1280 px",
+          "file": "work-list.spec.mjs",
+          "line": 180,
+          "column": 8,
+          "specs": [
+            {
+              "title": "1280 px: the list is under the turn’s last reply only, its line on top, its rows in the ledger’s order",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "3686d8e29e7853d4cb7f-19cce31a8840f95c932f",
+              "file": "work-list.spec.mjs",
+              "line": 182,
+              "column": 38
+            },
+            {
+              "title": "1280 px: “N more” expands in place, with focus on the first row it showed, and the rows match Work",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "3686d8e29e7853d4cb7f-b509369a75a5cc05a88f",
+              "file": "work-list.spec.mjs",
+              "line": 182,
+              "column": 38
+            },
+            {
+              "title": "1280 px: each row opens Work full screen at its item, and Escape comes back to the row, where the conversation was (at 375 px, Work stays in the pane, #233)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "3686d8e29e7853d4cb7f-343a42ad587f26698620",
+              "file": "work-list.spec.mjs",
+              "line": 182,
+              "column": 38
+            },
+            {
+              "title": "1280 px: a long path keeps its file name, nothing scrolls sideways, and axe finds nothing in the list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "3686d8e29e7853d4cb7f-525c9fa6828116738ba6",
+              "file": "work-list.spec.mjs",
+              "line": 182,
+              "column": 38
+            }
+          ]
+        },
+        {
+          "title": "375 px",
+          "file": "work-list.spec.mjs",
+          "line": 180,
+          "column": 8,
+          "specs": [
+            {
+              "title": "375 px: the list is under the turn’s last reply only, its line on top, its rows in the ledger’s order",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "3686d8e29e7853d4cb7f-0aacbcbef4dd19945e9c",
+              "file": "work-list.spec.mjs",
+              "line": 182,
+              "column": 38
+            },
+            {
+              "title": "375 px: “N more” expands in place, with focus on the first row it showed, and the rows match Work",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "3686d8e29e7853d4cb7f-54f0c35fdeb12c004f01",
+              "file": "work-list.spec.mjs",
+              "line": 182,
+              "column": 38
+            },
+            {
+              "title": "375 px: each row opens Work full screen at its item, and Escape comes back to the row, where the conversation was (at 375 px, Work stays in the pane, #233)",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "3686d8e29e7853d4cb7f-dcd587d14576247cd945",
+              "file": "work-list.spec.mjs",
+              "line": 182,
+              "column": 38
+            },
+            {
+              "title": "375 px: a long path keeps its file name, nothing scrolls sideways, and axe finds nothing in the list",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "3686d8e29e7853d4cb7f-79d92ccb9c5f5a57c991",
+              "file": "work-list.spec.mjs",
+              "line": 182,
+              "column": 38
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "work-pane-thread.spec.mjs",
+      "file": "work-pane-thread.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "1280 px",
+          "file": "work-pane-thread.spec.mjs",
+          "line": 153,
+          "column": 8,
+          "specs": [
+            {
+              "title": "1280 px: the thread goes full screen in place, keeping its draft and its scroll, and comes back as it was",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "93d6ea115910093473d9-83cc3e5dab23389f0789",
+              "file": "work-pane-thread.spec.mjs",
+              "line": 155,
+              "column": 38
+            },
+            {
+              "title": "1280 px: a reply streams into the thread full screen and stays when it comes back; the icon and a reload restore it",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "93d6ea115910093473d9-8b2a2143131c212f0726",
+              "file": "work-pane-thread.spec.mjs",
+              "line": 155,
+              "column": 38
+            }
+          ]
+        },
+        {
+          "title": "375 px",
+          "file": "work-pane-thread.spec.mjs",
+          "line": 153,
+          "column": 8,
+          "specs": [
+            {
+              "title": "375 px: the thread goes full screen in place, keeping its draft and its scroll, and comes back as it was",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "93d6ea115910093473d9-a87005ee1de7ce4b4e52",
+              "file": "work-pane-thread.spec.mjs",
+              "line": 155,
+              "column": 38
+            },
+            {
+              "title": "375 px: a reply streams into the thread full screen and stays when it comes back; the icon and a reload restore it",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "93d6ea115910093473d9-76bac03bb44681a6d97f",
+              "file": "work-pane-thread.spec.mjs",
+              "line": 155,
+              "column": 38
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "work-pane.spec.mjs",
+      "file": "work-pane.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "1280 px",
+          "file": "work-pane.spec.mjs",
+          "line": 288,
+          "column": 8,
+          "specs": [
+            {
+              "title": "1280 px: the top bar’s Work button says Work (#183), opens Work alone in the pane, and it reaches the keyboard",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-0f51a162f6402b06d294",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            },
+            {
+              "title": "1280 px: Close shuts Work, focus goes back to the Work button, and a thread opens alone",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-fa4f2feedcac876ff65f",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            },
+            {
+              "title": "1280 px: Work opens beside the open thread, split above it, with a divider that moves by keyboard and mouse",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-61f958a89ec9aafee082",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            },
+            {
+              "title": "1280 px: Work goes full screen with the app frames’ icon; Escape and the icon bring it back, with focus on the icon",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-02b647943aa3ea8cdd39",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            },
+            {
+              "title": "1280 px: an item in the pane opens full screen at that item",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-2f4163786e3d6a5dedd3",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            },
+            {
+              "title": "1280 px: a reply’s work line opens Work at its turn, beside the thread",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-43ab098e7ac9745a6213",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            },
+            {
+              "title": "1280 px: a reload restores what was open, and the conversation keeps Work open until it’s closed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-9771c449bb17a0a30a28",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            },
+            {
+              "title": "1280 px: #138’s Work page links open the pane",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-90c807aec051a393eaf7",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            }
+          ]
+        },
+        {
+          "title": "375 px",
+          "file": "work-pane.spec.mjs",
+          "line": 288,
+          "column": 8,
+          "specs": [
+            {
+              "title": "375 px: the top bar’s Work button says Work (#183), opens Work alone in the pane, and it reaches the keyboard",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-82639fa9b1333966e399",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            },
+            {
+              "title": "375 px: Close shuts Work, focus goes back to the Work button, and a thread opens alone",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-a77e083e6999e8d689a6",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            },
+            {
+              "title": "375 px: Work opens beside the open thread, split above it, with a divider that moves by keyboard and mouse",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-e238b03e1883c4d26d78",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            },
+            {
+              "title": "375 px: Work goes full screen with the app frames’ icon; Escape and the icon bring it back, with focus on the icon",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-16ce83c935f0b5e3ff24",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            },
+            {
+              "title": "375 px: an item in the pane opens full screen at that item",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-258f68eab2963b8812a2",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            },
+            {
+              "title": "375 px: a reply’s work line opens Work at its turn, beside the thread",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-8c00a2277c9e06629861",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            },
+            {
+              "title": "375 px: a reload restores what was open, and the conversation keeps Work open until it’s closed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-ca3f329d7073c304cee4",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            },
+            {
+              "title": "375 px: #138’s Work page links open the pane",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "c5de42eb028ca412ee9a-34a02cdfd9fbb08e7bc9",
+              "file": "work-pane.spec.mjs",
+              "line": 290,
+              "column": 38
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "work-remote.spec.mjs",
+      "file": "work-remote.spec.mjs",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "the ledger kept the host’s edits as steps, with no file to restore",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [],
+              "status": "skipped"
+            }
+          ],
+          "id": "77d9977fbdbe6e78b771-2d682b269dd249472e9b",
+          "file": "work-remote.spec.mjs",
+          "line": 125,
+          "column": 1
+        }
+      ],
+      "suites": [
+        {
+          "title": "1280 px",
+          "file": "work-remote.spec.mjs",
+          "line": 216,
+          "column": 8,
+          "specs": [
+            {
+              "title": "1280 px: the pane says, in one line with the host’s name, that files on the host aren’t recorded",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "77d9977fbdbe6e78b771-95d2bc6f0417d988576f",
+              "file": "work-remote.spec.mjs",
+              "line": 218,
+              "column": 38
+            },
+            {
+              "title": "1280 px: a turn lists its host’s files, and one opens full screen with no diff and no Restore",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "77d9977fbdbe6e78b771-49208183c1acb70a8268",
+              "file": "work-remote.spec.mjs",
+              "line": 218,
+              "column": 38
+            },
+            {
+              "title": "1280 px: full screen, the files on the host, and a commit there that doesn’t claim to be pushed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "77d9977fbdbe6e78b771-956dabf5e7886885ab68",
+              "file": "work-remote.spec.mjs",
+              "line": 218,
+              "column": 38
+            }
+          ]
+        },
+        {
+          "title": "375 px",
+          "file": "work-remote.spec.mjs",
+          "line": 216,
+          "column": 8,
+          "specs": [
+            {
+              "title": "375 px: the pane says, in one line with the host’s name, that files on the host aren’t recorded",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "77d9977fbdbe6e78b771-f80536b9cceab43f165e",
+              "file": "work-remote.spec.mjs",
+              "line": 218,
+              "column": 38
+            },
+            {
+              "title": "375 px: a turn lists its host’s files, and one opens full screen with no diff and no Restore",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "77d9977fbdbe6e78b771-5165f3eba44eb4de72b2",
+              "file": "work-remote.spec.mjs",
+              "line": 218,
+              "column": 38
+            },
+            {
+              "title": "375 px: full screen, the files on the host, and a commit there that doesn’t claim to be pushed",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [],
+                  "status": "skipped"
+                }
+              ],
+              "id": "77d9977fbdbe6e78b771-43d45991bc4eae620da9",
+              "file": "work-remote.spec.mjs",
+              "line": 218,
+              "column": 38
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-30T18:30:07.188Z",
+    "duration": 264.816,
+    "expected": 0,
+    "skipped": 142,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}
