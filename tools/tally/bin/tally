@@ -1,0 +1,45 @@
+#!/usr/bin/env node
+// tally: a ticket tracker’s command line that exists only for tests (#296). It talks to tools/tally/server.mjs at
+// $TALLY_URL (http://127.0.0.1:4591 by default) and nowhere else, so a real agent can create, comment on, edit, close
+// and delete tickets with nothing leaving this computer.
+//
+//   tally ticket create --title <title> [--body <text>]
+//   tally ticket comment <n> --body <text>
+//   tally ticket edit <n> [--title <title>] [--body <text>]
+//   tally ticket view <n>        tally ticket list
+//   tally ticket close <n>       tally ticket delete <n>
+
+import { parseArgs } from 'node:util';
+
+const base = (process.env.TALLY_URL ?? 'http://127.0.0.1:4591').replace(/\/$/, '');
+const { values: flags, positionals } = parseArgs({ options: { title: { type: 'string', short: 't' }, body: { type: 'string', short: 'b' } }, allowPositionals: true });
+const [noun, verb, n] = positionals;
+
+const usage = 'Usage: tally ticket create|comment|edit|view|list|close|delete … (see tools/tally/bin/tally)';
+async function call(method, path, body) {
+  const r = await fetch(`${base}${path}`, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+  const out = await r.json();
+  if (!r.ok) throw new Error(out.error ?? `tally answered ${r.status}`);
+  return out;
+}
+const need = (v, what) => {
+  if (!v) throw new Error(`${what} is missing. ${usage}`);
+  return v;
+};
+
+try {
+  if (noun !== 'ticket') throw new Error(usage);
+  if (verb === 'create') console.log((await call('POST', '/tickets', { title: need(flags.title, '--title'), body: flags.body ?? '' })).url);
+  else if (verb === 'comment') console.log((await call('POST', `/tickets/${need(n, 'The ticket number')}/comments`, { body: need(flags.body, '--body') })).url);
+  else if (verb === 'edit') console.log((await call('PATCH', `/tickets/${need(n, 'The ticket number')}`, { title: flags.title, body: flags.body })).url);
+  else if (verb === 'view') {
+    const t = await call('GET', `/tickets/${need(n, 'The ticket number')}`);
+    console.log(`#${t.id} ${t.title} (${t.state})\n\n${t.body}\n\n${t.comments.map((c, i) => `Comment ${i + 1}: ${c}`).join('\n')}`);
+  } else if (verb === 'list') for (const t of await call('GET', '/tickets')) console.log(`#${t.id}\t${t.state}\t${t.title}`);
+  else if (verb === 'close') console.log((await call('POST', `/tickets/${need(n, 'The ticket number')}/close`)).url);
+  else if (verb === 'delete') console.log(`Deleted #${(await call('DELETE', `/tickets/${need(n, 'The ticket number')}`)).deleted}`);
+  else throw new Error(usage);
+} catch (e) {
+  console.error(`tally: ${e.cause?.code === 'ECONNREFUSED' ? `nothing answers at ${base}. Start it with node tools/tally/server.mjs.` : e.message}`);
+  process.exit(1);
+}
