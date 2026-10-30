@@ -173,7 +173,8 @@ test('delivery-dropped fires for a mention held on a card that its agent’s nex
     ['delivery-dropped:critic:it_reply'],
   );
   // Due from the Allow, not from when @developer posted it.
-  assert.match(out[0].evidence, new RegExp(new Date(s(50)).toISOString().replace(/[.]/g, '\\.')));
+  // A plain substring check: the time isn’t a pattern, so nothing in it needs escaping (CodeQL alert 115).
+  assert.ok(out[0].evidence.includes(new Date(s(50)).toISOString()), out[0].evidence);
 });
 
 test('delivery-dropped doesn’t count a compaction summary or a meta line as the mention reaching its agent', () => {
