@@ -111,3 +111,15 @@ test('#422: scrolled up, a growing draft moves nothing you’re reading', async 
   await sixLines(page);
   expect(await reading(), 'the same message, where it was').toEqual(before);
 });
+
+test('#360: at the end, sending a six-line draft shrinks the composer, and the reply that streams in is followed', async ({ page }) => {
+  const { t, se } = room('Sending a long draft');
+  await open(page, t, 1280);
+  await sixLines(page);
+  const grown = await composerHeight(page);
+  await page.locator('#composer-input').press('Enter');
+  await expect.poll(() => composerHeight(page), { message: 'the composer to shrink once the draft is sent' }).toBeLessThan(grown - 60);
+  await settled(page);
+  await stream(page, t, se, LONG(98));
+  expect(await clearance(page), 'the reply ends above the composer').toBeGreaterThanOrEqual(0);
+});
