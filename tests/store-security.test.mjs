@@ -89,8 +89,13 @@ test('SR-7: an agent’s guide, environment and tool results never name the stor
   for (const [where, text] of Object.entries(texts))
     for (const secret of secrets)
       assert.ok(!text.includes(secret), `${where} doesn’t hold ${secret === sup.password || secret === sup.ownerPassword ? 'a password' : secret}`);
-  // A refused write’s reason can reach an agent: no status message names the socket, the data folder or the Redis
-  // build’s folder either (#553’s review, hardening); those go to Postbox’s own log.
+});
+
+test('SR-7: a refused write’s reason names neither the socket nor a data path; the server log has the paths (#553)', async () => {
+  // A refused write’s reason reaches an agent, in a tool result or over /mcp.
+  const dir = await tmp();
+  const s = await open(dir);
+  const sup = /** @type {any} */ (s).redis.sup;
   const other = new RedisSupervisor({ home: sup.home, dataDir: dir });
   const logged = [];
   const { error } = console;
