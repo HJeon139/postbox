@@ -6,7 +6,8 @@
 import { ASKING } from '../shared/catalog.mjs';
 import { needsYouNow } from '../shared/needs.mjs';
 import { clip } from '../shared/text.mjs';
-import { cardHistory, heldKey, holds, inputsOf, notCheckableAll, recorded, turnsOf, unreadable } from './room-delivery.mjs';
+import { cardHistory, heldKey, holds, inputsOf, recorded, turnsOf } from './room-delivery.mjs';
+import { notCheckableAll, unreadable } from './room-unverified.mjs';
 
 const ANSWERED = new Set(['allowed', 'declined']);
 /**

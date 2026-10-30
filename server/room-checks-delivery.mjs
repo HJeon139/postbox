@@ -4,7 +4,8 @@
 // names the requirements it serves beside its issue. Part of server/room-checks.mjs’s CHECKS, kept apart for size.
 
 import { clip } from '../shared/text.mjs';
-import { addressed, backendOf, headOf, holds, inputsOf, labeled, notCheckableAll, plain, recorded, turnsOf, unreadable } from './room-delivery.mjs';
+import { addressed, headOf, holds, inputsOf, labeled, plain, recorded, turnsOf } from './room-delivery.mjs';
+import { backendOf, notCheckableAll, unreadable } from './room-unverified.mjs';
 
 /** A turn’s stream starts a moment after Postbox builds its prompt, which is when the marker moves. */
 const MARKER_TO_SPAWN_MS = 30_000;

@@ -108,3 +108,7 @@ export const ROUND_TWO =
   'Round 2 of the review is sent to @researcher, but Postbox is holding it. I accept four of the six changes: items 7, 12a, 12b and 14, and ask for two fixes.';
 export const DRAFT =
   '@researcher please draft a short 2.0 release checklist, about 15 items across packaging, deprecations, docs, CI, security and a migration guide.';
+
+/** Claude Code’s compaction summary, hand-written in its shape: it retells the conversation, a mention included. */
+export const SUMMARY = (text) =>
+  `This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\nSummary:\n1. Primary request and intent: ${text}`;
