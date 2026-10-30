@@ -9,28 +9,21 @@
 // state stays readable. A store with no data folder (tests) keeps everything in memory.
 
 import { randomBytes } from 'node:crypto';
-import { mkdir, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { apply, emptyState } from '../shared/state.mjs';
 import { storeError } from './redis-client.mjs';
 import { catchUp, commit } from './store-commit.mjs';
 import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-docs.mjs';
 import { Hold } from './store-hold.mjs';
-import { importLegacy } from './store-import.mjs';
+import { clearStore, importLegacy } from './store-import.mjs';
 import { broadcast } from './store-publish.mjs';
 import { attach, onStatus, stopReconciling } from './store-recover.mjs';
 import { readState, redisFor, releaseRedis, streamAfter } from './store-redis.mjs';
 import { statusOf } from './store-status.mjs';
 import { pump, recovered } from './store-write.mjs';
 
-export { emptyState };
-
-/** Removes a data folder’s store, for a fresh start: the Redis data and any old log, snapshot or store.json. */
-export async function clearStore(dataDir) {
-  for (const n of await readdir(dataDir).catch(() => []))
-    if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n)) await rm(join(dataDir, n), { force: true });
-  await rm(join(dataDir, 'redis', 'data'), { recursive: true, force: true });
-}
+export { clearStore, emptyState };
 
 export const newId = (prefix) => `${prefix}_${randomBytes(6).toString('base64url').replace(/[-_]/g, '').slice(0, 8) || Date.now().toString(36)}`;
 

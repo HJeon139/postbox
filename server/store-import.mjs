@@ -11,11 +11,18 @@
 // finishes, since Postbox imports before it reads the store. Without the mark, a crash after the first batch of events
 // left Redis part way along the log, which the next start refused (review finding 3 on #525).
 
-import { copyFile, mkdir, readdir, readFile, rename } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, readFile, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { apply, emptyState, ownState } from '../shared/state.mjs';
 import { COLLECTIONS, roundStateCosts, writesFor } from './store-docs.mjs';
 import { writeBatch } from './store-redis.mjs';
+
+/** Removes a data folder’s store, for a fresh start: the Redis data and any old log, snapshot or store.json. */
+export async function clearStore(dataDir) {
+  for (const n of await readdir(dataDir).catch(() => []))
+    if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n)) await rm(join(dataDir, n), { force: true });
+  await rm(join(dataDir, 'redis', 'data'), { recursive: true, force: true });
+}
 
 /** @param {string} code @param {string} message */
 const fail = (code, message) => Object.assign(new Error(message), { code });
