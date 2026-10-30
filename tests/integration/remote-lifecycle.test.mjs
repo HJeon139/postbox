@@ -21,7 +21,6 @@ import { REMOTE_DIR } from '../../shared/remote-protocol.mjs';
 import { gone, sleep } from './host.mjs';
 import {
   commandOf,
-  IDLE_MIN,
   installAndAttach,
   machines,
   pidIn,
@@ -99,11 +98,16 @@ test('install: the real bundle lands in the host’s home, the token comes back 
   }
 });
 
-test('idle exit (G2): with idleTimeout at its minimum, the daemon exits once the last client has gone and no turn runs, and nothing of Postbox’s is left running', {
+// The real daemon’s idle time, shortened from idleTimeout’s minute-long floor by POSTBOX_DAEMON_TIMINGS (for tests only;
+// it can only shorten it), so this test takes seconds, not a minute. tests/remote-daemon-host.test.mjs covers the
+// setting itself on a fake clock.
+const IDLE = 4000;
+
+test('idle exit (G2): with a short idle time, the daemon exits once the last client has gone and no turn runs, and nothing of Postbox’s is left running', {
   skip: SKIP,
-  timeout: IDLE_MIN + 60_000,
+  timeout: IDLE + 60_000,
 }, async () => {
-  const m = machines();
+  const m = machines({ env: { POSTBOX_DAEMON_TIMINGS: JSON.stringify({ idleTimeout: IDLE }) } });
   const ssh = sshHere(m);
   /** @type {Awaited<ReturnType<typeof installAndAttach>> | null} */
   let a = null;
@@ -125,11 +129,11 @@ test('idle exit (G2): with idleTimeout at its minimum, the daemon exits once the
     await a.closed;
     const left = Date.now();
     await waitFor(() => ssh.attaches().length === 0 && relays(m).length === 0, 'the relay to exit', 10_000);
-    await sleep(Math.min(5000, IDLE_MIN / 4));
+    await sleep(IDLE / 4);
     assert.equal(gone(daemon), false, 'the daemon waits out its idle time');
-    await waitFor(() => gone(daemon), 'the daemon to exit on its own', IDLE_MIN + 30_000, 250);
+    await waitFor(() => gone(daemon), 'the daemon to exit on its own', IDLE + 30_000, 250);
     const after = Date.now() - left;
-    assert.ok(after >= IDLE_MIN - 2000, `it exited ${after} ms after the last client left, not before idleTimeout (${IDLE_MIN} ms)`);
+    assert.ok(after >= IDLE - 2000, `it exited ${after} ms after the last client left, not before its idle time (${IDLE} ms)`);
 
     for (const pid of [harness, runner]) assert.equal(gone(pid), true, `process ${pid} is gone`);
     assert.deepEqual(postboxOnHost(m), [], 'no process runs anything under the host’s ~/.postbox-remote');

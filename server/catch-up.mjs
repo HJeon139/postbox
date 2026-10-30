@@ -8,7 +8,7 @@ import { CATCH_UP_CHARS } from './blocks.mjs';
 import { clip } from './helpers.mjs';
 import { reactionLines, threadLines } from './thread-summary.mjs';
 
-const CATCH_UP_ITEMS = 40;
+export const CATCH_UP_ITEMS = 40;
 /** How much a summary keeps of the messages that @-mention its agent, which come before the caps above (#484). */
 const MENTION_CHARS = 2 * CATCH_UP_CHARS;
 

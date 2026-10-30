@@ -1,7 +1,7 @@
 // The specs CI’s ten-times job repeats (#303): those a pull request adds or edits itself. A spec it reaches only
-// through a helper it changes isn’t repeated: the end-to-end job runs every spec twice already, once with the events
-// late. On a later push, only the specs that push changed, or that it brought into the pull request: the rest passed
-// ten times on an earlier push.
+// through a helper it changes isn’t repeated: CI’s browser-specs jobs run every spec twice already, once with the
+// events late. On a later push, only the specs that push changed, or that it brought into the pull request: the rest
+// passed ten times on an earlier push.
 //
 //   node tools/repeat-specs.mjs <base> <head> [<before>]   the specs to repeat, one per line
 //

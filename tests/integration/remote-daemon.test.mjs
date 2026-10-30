@@ -11,7 +11,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { HOST_ENTRY, takeDaemonLock } from '../../server/remote/host/daemon.mjs';
 import { bootId, sameProcess, startTime } from '../../server/remote/host/proc.mjs';
-import { gone, HARNESS, makeHost, NO_UNIX, read, realDaemon, sleep, TURN, until } from './host.mjs';
+import { gone, HARNESS, makeHost, NO_UNIX, orAfter, read, realDaemon, TURN, until } from './host.mjs';
 
 test('daemon and runner: start, held-stdin writes, the liveness check and Stop, over runner.mjs’s own socket', { skip: NO_UNIX }, async () => {
   const h = makeHost();
@@ -125,7 +125,7 @@ function serve(h, node = []) {
     },
     /** Its exit code within ms, or `running` (and it’s killed). */
     async within(ms) {
-      const t = await Promise.race([exited, sleep(ms).then(() => 'running')]);
+      const t = await orAfter(exited, ms, 'running');
       if (t === 'running') child.kill('SIGKILL');
       return t;
     },

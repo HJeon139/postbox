@@ -4,6 +4,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { backendName } from '../../server/room-unverified.mjs';
 import { budgetNote } from './budget.mjs';
 import { agyTokens, kiroCredits, waitingOnYou } from './checks.mjs';
 import { agentsSpent } from './cost.mjs';
@@ -27,6 +28,34 @@ function usageLine(facts, tester) {
   return `Usage: agents $${agentCost.toFixed(2)}${credits ? ` and ${credits.toFixed(2)} Kiro credits` : ''}${tokens ? ` and ${tokens.toLocaleString('en-US')} Antigravity tokens` : ''}, tester $${tester.spent.toFixed(2)}.${budgetNote(facts.budget)}${timingLine(facts.timing)}${facts.agentModels ? ` Agents: ${facts.agentModels}.` : ''}`;
 }
 
+/** A new finding: not a known issue, not the harness’s own, and not a check that said it couldn’t check. */
+const isNew = (f) => !f.issue && f.verdict !== 'harness' && !f.unverified;
+
+/**
+ * The checks this run couldn’t make (server/room-delivery.mjs’s notCheckable): each check, agent and backend whose
+ * inputs it couldn’t read, so a check skipped on Codex, Kiro or Antigravity reads as unverified there, not as a pass.
+ * @param {any[]} findings
+ * @returns {string[]}  Markdown lines
+ */
+export function unverifiedSection(findings) {
+  const rows = findings.filter((f) => f.unverified);
+  if (!rows.length) return [];
+  const backends = [...new Set(rows.filter((f) => !f.unverified.thread).map((f) => backendName(f.unverified.backend)))];
+  return [
+    '## Checks not verified',
+    '',
+    `These checks couldn’t read what reached these agents, so they say nothing about them: **unverified${backends.length ? ` on ${backends.join(', ')}` : ''}** for the checks below. They aren’t defects, and they aren’t passes.`,
+    '',
+    '| Check | Agent | Backend | Requirements | Why |',
+    '|---|---|---|---|---|',
+    ...rows.map(
+      (f) =>
+        `| ${f.check} | ${f.unverified.thread ? `thread ${esc(f.unverified.thread)}` : `@${esc(f.unverified.handle)}`} | ${f.unverified.thread ? '—' : esc(backendName(f.unverified.backend))} | ${(f.requirements ?? []).join(', ') || '—'} | ${esc(String(f.evidence ?? ''))} |`,
+    ),
+    '',
+  ];
+}
+
 export async function writeReport({ dir, scenario, issues, findings, timeline, started, tester, facts, logLines, coverage = [], rechecked = false }) {
   const title = (n) => issues.find((i) => i.number === n)?.title ?? '(closed, or not in the list)';
   const usage = usageLine(facts, tester);
@@ -48,6 +77,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
     })(),
     // A targeted run says first which fixes it reached, and which it didn’t test.
     ...coverageSection(coverage, { rechecked }),
+    ...unverifiedSection(findings),
     '## Known issues caught again',
     '',
     `${caught.size} open issues reproduced. The checks watch ${watched.length} issues; the tester can match any open issue.`,
@@ -75,7 +105,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
     '| Severity | Category | Component | Finding | Evidence | Source | Verdict |',
     '|---|---|---|---|---|---|---|',
     ...findings
-      .filter((f) => !f.issue && f.verdict !== 'harness')
+      .filter(isNew)
       .map(
         (f) =>
           `| ${f.severity ?? '—'} | ${f.category ?? '—'} | ${esc(f.component ?? f.check)} | ${esc(f.title)} | ${esc(String(f.evidence ?? '').slice(0, 260))} | ${f.source} (step ${f.step}) | ${f.filed ? `filed #${f.filed}` : f.duplicateOf ? `duplicate of #${f.duplicateOf}` : esc(f.verdict ?? 'not reviewed')}${f.verdictBy ? ` (${f.verdictBy})` : ''}${f.note ? `: ${esc(f.note)}` : ''} |`,
@@ -115,7 +145,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
   if (rechecked) await writeFile(join(dir, 'run.log'), `${readFileSync(join(dir, 'run.log'), 'utf8')}${logLines.join('\n')}\n`);
   else await writeFile(join(dir, 'run.log'), `${logLines.join('\n')}\n`);
   console.log(
-    `\nReport: ${join(dir, 'report.md')} · ${caught.size} known issues caught again · ${findings.filter((f) => !f.issue && f.verdict !== 'harness').length} new findings`,
+    `\nReport: ${join(dir, 'report.md')} · ${caught.size} known issues caught again · ${findings.filter(isNew).length} new findings${findings.some((f) => f.unverified) ? ` · ${findings.filter((f) => f.unverified).length} checks not verified` : ''}`,
   );
 }
 
