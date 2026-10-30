@@ -54,6 +54,7 @@ import { readReceived, readStreams, readTranscripts, readUi, userSetup } from '.
 import { gitInfo, readRun, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { compatBackends, isTargeted, parseScenario, phaseCap, releaseGate, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
+import { stepPrompt } from './uat/step-prompt.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
 import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
@@ -357,27 +358,7 @@ async function main() {
         const where = facts.state.threads[w.threadId];
         return `${label ? `[${label}] ` : ''}${w.what}${where && w.threadId !== mainThread ? ` (in the thread “${where.title}”${label ? '' : ', not on screen: open it'})` : ''}`;
       });
-      const prompt = [
-        `Step ${step} of at most ${steps}. Phase ${phase + 1} of ${scenario.phases.length}: ${ph.title}`,
-        ph.text,
-        goal.note,
-        lastAction
-          ? `Your last action: ${JSON.stringify(lastAction)}${actionError ? `. It failed: ${actionError}` : ''}${actionResult ? `. Result: ${actionResult}` : ''}`
-          : phase
-            ? `Nothing has happened yet. This run starts at phase ${phase + 1}, skipping the ones before it, so first set up briefly what this phase needs (the earlier phases are only context): ${scenario.phases
-                .slice(0, phase)
-                .map((p) => p.title)
-                .join('; ')}.`
-            : 'Nothing has happened yet: start the phase.',
-        timedOut ? `The run itself pressed Stop: ${timedOut} A “Stopped by you” line is from that, not a bug.` : '',
-        obs.items.length ? `What changed on screen:\n\n${obs.items.join('\n\n')}` : 'Nothing changed on screen.',
-        `Agents: ${obs.states.join('; ') || 'none yet'}`,
-        waiting.length ? `Waiting on you:\n${waiting.map((w) => `- ${w}`).join('\n')}` : 'Nothing is waiting on you.',
-        jobsAsk ? `Postbox is asking about background jobs: “${jobsAsk}” Answer it with jobs.` : '',
-        fresh.length ? `The automatic checks found:\n${fresh.map((f) => `- ${f.title}${f.issue ? ` (#${f.issue})` : ''}: ${f.evidence}`).join('\n')}` : '',
-      ]
-        .filter(Boolean)
-        .join('\n\n');
+      const prompt = stepPrompt({ step, steps, phase, scenario, goal, lastAction, actionError, actionResult, timedOut, obs, waiting, jobsAsk, fresh });
       // With --max-cost, the step goes ahead only if it, and an agent turn it may start, fit what’s left.
       const busy = obs.states.filter((s) => /: (?:think|tool|gen)\b/.test(s)).length;
       if (budget.beforeStep({ step, working: busy })) break;
