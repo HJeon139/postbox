@@ -16,6 +16,7 @@
 // drop usually comes just before the child’s exit is heard, and a connection that keeps dropping isn’t hammered. Retry
 // starts it now.
 
+import { repair } from './store-reject.mjs';
 import { changed } from './store-status.mjs';
 
 const RETRY_MS = 250; // the first wait before a failed catch-up is tried again
@@ -141,8 +142,9 @@ export function reconcilingStatus(store) {
 
 /**
  * Retry, from the page’s status line: starts the child again when it’s down, reconnects and reads Redis back now
- * rather than after a wait, or tries a failed write again now. A write refused because another process took its seq
- * (ESEQ) waits for Postbox to start again, so Retry leaves it. Resolves to the status after.
+ * rather than after a wait, or tries a failed write again now. A write Redis refused for good (EREJECTED) is repaired:
+ * its events Redis takes are saved and the state read back from Redis (server/store-reject.mjs). A write refused because
+ * another process took its seq (ESEQ) waits for Postbox to start again, so Retry leaves it. Resolves to the status after.
  * @param {import('./store.mjs').Store} store
  */
 export async function retry(store) {
@@ -153,7 +155,8 @@ export async function retry(store) {
     stopReconciling(store);
     store.rc.backoff = 0;
     await reconcile(store);
-  } else if (store.failed && store.failed.code !== 'ESEQ') store.pump(true);
+  } else if (store.failed?.code === 'EREJECTED') await repair(store);
+  else if (store.failed && store.failed.code !== 'ESEQ') store.pump(true);
   changed(store);
   return store.status;
 }

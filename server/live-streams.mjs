@@ -28,6 +28,8 @@ export function liveStreams(store) {
   };
   store.subscribe((ev) => out(`id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`));
   store.watchers.add((_writable, status) => out(storeLine(status)));
+  // The store read its state back from Redis whole (server/store-reject.mjs): the pages load it again.
+  store.reloads?.add(() => out('event: resync\ndata: {}\n\n'));
   const keepAlive = setInterval(() => {
     for (const res of streams) res.write(': keep-alive\n\n');
   }, 15000);

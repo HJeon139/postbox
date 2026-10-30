@@ -21,6 +21,7 @@ import { clearStore, importLegacy } from './store-import.mjs';
 import { broadcast } from './store-publish.mjs';
 import { attach, onStatus, stopReconciling } from './store-recover.mjs';
 import { readState, redisFor, releaseRedis, streamAfter } from './store-redis.mjs';
+import { closeRejected } from './store-reject.mjs';
 import { statusOf } from './store-status.mjs';
 import { pump, recovered } from './store-write.mjs';
 
@@ -46,31 +47,31 @@ export class Store {
     this.index = new Map();
     /** @type {Map<string, { ref: import('./store-docs.mjs').Ref, seq: number }>} documents to write */
     this.dirty = new Map();
-    this.lines = []; // events to append
+    /** @type {{ seq: number, line: string, refs?: import('./store-docs.mjs').Ref[] }[]} */ this.lines = []; // events to append, with the documents each touched
     this.confirmed = 0; // the seq Redis holds
     this.inflight = null;
     this.scheduled = false;
     this.commits = Promise.resolve();
-    /** @type {Hold | null} emits made while a commit waits on Redis (server/store-hold.mjs) */
-    this.hold = null;
+    /** @type {Hold | null} */ this.hold = null; // emits made while a commit waits on Redis (server/store-hold.mjs)
     this.waiting = 0; // commits not yet answered
     this.ops = new Map(); // in memory only: opId → seq
-    /** @type {import('./redis-client.mjs').RedisClient | null} */
-    this.client = null;
+    /** @type {import('./redis-client.mjs').RedisClient | null} */ this.client = null;
     /** @type {ReturnType<typeof redisFor> | null} the data folder’s child, once load() started it; null in memory */
     this.redis = null;
-    /** @type {Error & { code?: string } | null} why writes stopped: a write Redis failed (ESEQ: until a restart) */
+    /** @type {Error & { code?: string } | null} why writes stopped: a write Redis failed (ESEQ: until a restart; EREJECTED: until Retry, server/store-reject.mjs) */
     this.failed = null;
+    /** @type {{ at: number, changes: string[], message: string } | null} */ this.rejected = null; // the batch Redis refused for good, waiting for Retry
     /** @type {ReturnType<typeof setTimeout> | null} the next try of a failed write */
     this.retry = null;
     this.backoff = 0; // ms before that try; doubles to RETRY_MAX
-    /** @type {{ at: number, events: number, from: number|null, to: number|null, documents: number, message: string } | null} the last batch dropped for a refusal no retry changes (server/store-write.mjs) */
-    this.dropped = null;
+    /** @type {{ at: number, events: number, from: number|null, to: number|null, documents: number, message: string, changes: string[] } | null} */
+    this.dropped = null; // the changes Retry dropped after Redis refused them for good (server/store-reject.mjs)
     this.reconciling = false; // reading Redis back after a lost reply or a restart; writes are closed meanwhile
     /** @type {import('./store-recover.mjs').Reconciler} */
     this.rc = { run: null, again: false, timer: null, backoff: 0 };
     this.closed = false;
     this.watchers = new Set(); // told when writes close or reopen, and what they last heard (server/store-status.mjs)
+    /** @type {Set<() => void>} */ this.reloads = new Set(); // told when the state was read back from Redis whole, so pages load it again (store-reject.mjs)
     this.seen = '';
   }
 
@@ -135,7 +136,7 @@ export class Store {
     const line = `{"seq":${ev.seq},"type":${JSON.stringify(ev.type)},"data":${json}}`;
     this.broadcast(ev.seq, line);
     if (!this.redis) return;
-    this.lines.push({ seq: ev.seq, line });
+    this.lines.push({ seq: ev.seq, line, refs });
     this.positions.place(refs);
     for (const ref of refs) this.mark(ref, ev.seq);
     this.schedule();
@@ -279,6 +280,7 @@ export class Store {
   async close() {
     if (!this.redis || !this.dir) return;
     await this.flush();
+    if (this.failed?.code === 'EREJECTED') await closeRejected(this); // its other events are saved before Postbox stops
     this.closed = true;
     stopReconciling(this);
     const failed = this.failed;

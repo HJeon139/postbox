@@ -20,7 +20,7 @@ import { failedStatus } from './store-write.mjs';
  * @param {import('./store.mjs').Store} store
  */
 export function statusOf(store) {
-  // A write Redis refused for good is dropped, and the status says so while the store runs on (server/store-write.mjs).
+  // Changes Redis refused for good, dropped by Retry: the status says so while the store runs on (server/store-reject.mjs).
   if (!store.redis || store.writable) return store.dropped ? { state: 'running', dropped: store.dropped } : { state: 'running' };
   const sup = store.redis.sup.status;
   if (sup.state === 'down') return sup;

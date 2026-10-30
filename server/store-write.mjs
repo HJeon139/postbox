@@ -11,26 +11,24 @@
 // (server/store-recover.mjs).
 //
 // A batch Redis refuses for a reason no retry changes (a document RedisJSON won’t hold, a key of the wrong type, a
-// script error) is dropped, since keeping it would refuse every write after it until a restart, which drops it anyway
-// with the innocent events beside it (#553’s review, blocker 2). The store logs it, keeps it in its status as
-// `dropped`, which /api/state and the stream’s status line carry, and goes on writing. Its events were broadcast, so
-// browsers hold changes Redis doesn’t; a restart reads Redis back without them. The store checks every event’s JSON
-// before it’s applied (server/store-check.mjs), so this is a last resort, not the way a deep event is refused.
+// script error) fails closed too, but is never tried again on its own: Retry writes the batch’s events one at a time,
+// saves the ones Redis takes, and reads Redis back so memory is what’s saved (server/store-reject.mjs; gpt’s r2 review
+// of #553, blocker 1).
 
 import { closeWrites } from './store-recover.mjs';
 import { writeBatch } from './store-redis.mjs';
+import { reject, rejectedStatus, TRANSIENT } from './store-reject.mjs';
 import { changed } from './store-status.mjs';
 
 const RETRY_MS = 250; // the first wait before a failed write is tried again
 const RETRY_MAX = 30000; // the longest
 
-/** Why a write failed when a retry can change it: the connection, or Redis short of memory, loading or busy. */
-const TRANSIENT = new Set(['ESTOREDOWN', 'EPROTO', 'ESEQ', 'OOM', 'LOADING', 'BUSY', 'MISCONF', 'TRYAGAIN', 'READONLY', 'NOREPLICAS', 'MASTERDOWN']);
-
 /** @typedef {import('./store.mjs').Store} Store */
 
 /** @param {Store} store @param {boolean} retrying  a failed batch’s retry */
 export function pump(store, retrying) {
+  // A refused batch waits for the person: Retry repairs it (server/store-reject.mjs), no retry writes it again.
+  if (store.failed?.code === 'EREJECTED') return;
   if (store.inflight || store.hold || store.reconciling || (store.failed && !retrying) || !store.lines.length || !store.client?.connected) return;
   const batch = store.take();
   store.inflight = writeBatch(store.client, { prev: store.confirmed, events: batch.events, writes: batch.writes })
@@ -40,7 +38,7 @@ export function pump(store, retrying) {
         if (store.failed) recovered(store);
       },
       (e) => {
-        if (!TRANSIENT.has(e.code)) return drop(store, batch, e);
+        if (!TRANSIENT.has(e.code)) return reject(store, batch, e);
         store.untake(batch);
         // The reply was lost, so the batch may be in Redis: read it back before writing again (server/store-recover.mjs).
         if (e.code === 'ESTOREDOWN') return closeWrites(store);
@@ -54,27 +52,6 @@ export function pump(store, retrying) {
       store.inflight = null;
       store.pump();
     });
-}
-
-/**
- * Drops a batch Redis refused for a reason no retry changes, and says so: in the log, and in the status, which the page
- * shows as a notice. The store stays writable; the next batch follows the seq Redis holds.
- * @param {import('./store.mjs').Store} store @param {ReturnType<Store['take']>} batch @param {Error & { code?: string }} e
- */
-function drop(store, batch, e) {
-  const seqs = batch.events.map((x) => x.seq);
-  store.dropped = {
-    at: Date.now(),
-    events: seqs.length,
-    from: seqs[0] ?? null,
-    to: seqs.at(-1) ?? null,
-    documents: batch.dirty.length,
-    message: e.message,
-  };
-  console.error(
-    `The store’s Redis refused a write for a reason a retry can’t change, so Postbox dropped it: ${seqs.length} event(s) (${seqs[0] ?? '-'}–${seqs.at(-1) ?? '-'}) and ${batch.dirty.length} document(s) weren’t saved. ${e.message} Postbox keeps saving the changes after it; a restart reads back what Redis holds, without them.`,
-  );
-  changed(store);
 }
 
 /** Tries a failed batch again after the backoff. @param {import('./store.mjs').Store} store */
@@ -103,6 +80,7 @@ export function recovered(store) {
 /** The status while writes fail, or null. @param {import('./store.mjs').Store} store */
 export function failedStatus(store) {
   if (!store.failed || store.redis?.sup.status.state !== 'running') return null;
+  if (store.failed.code === 'EREJECTED') return rejectedStatus(store);
   const next = store.failed.code === 'ESEQ' ? 'Start Postbox again to read it.' : 'Postbox keeps what waits and tries again.';
   return {
     state: 'down',

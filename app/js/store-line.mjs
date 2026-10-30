@@ -15,6 +15,7 @@ const LEAD = {
   'corrupt-aof': 'Postbox can’t save changes: its store’s file is damaged.',
   died: 'Postbox can’t save changes: its store stopped, and Postbox is starting it again.',
   'write-failed': 'Postbox can’t save changes: its store refused a write.',
+  rejected: 'Postbox can’t save changes: its store refused one for good, so what you see isn’t all saved.',
   reconciling: 'Postbox can’t save changes yet: it’s reading back what its store holds.',
   starting: 'Postbox can’t save changes yet: it’s starting its store.',
   stopped: 'Postbox can’t save changes: it stopped its store.',
@@ -27,8 +28,8 @@ let retrying = false;
 let toldDropped = 0; // the `at` of the last dropped write the page has told of
 
 /**
- * A write the store’s Redis refused for good was dropped (server/store-write.mjs): the store runs on, so the line
- * stays hidden, and a notice says which changes weren’t saved.
+ * Changes the store’s Redis refused for good were dropped by Retry (server/store-reject.mjs): the page has loaded what’s
+ * saved, the store runs on, so the line stays hidden, and a notice says which changes weren’t saved.
  */
 function noteDropped(st) {
   const d = st?.dropped;
@@ -37,7 +38,7 @@ function noteDropped(st) {
   const range = d.from === d.to ? `change ${d.from}` : `changes ${d.from}–${d.to}`;
   toast({
     title: `Postbox couldn’t save ${d.events === 1 ? 'one change' : `${d.events} changes`}`,
-    text: `Its store refused ${range} for a reason a retry can’t change: ${d.message} What you see stays as it is, but a restart won’t have ${d.events === 1 ? 'it' : 'them'}.`,
+    text: `Its store refused ${range} for a reason a retry can’t change: ${d.message} The page now shows what’s saved, without ${d.events === 1 ? 'it' : 'them'}${d.changes?.length ? ` (${d.changes.join('; ')})` : ''}.`,
     level: 'blocking',
     timeout: 0,
   });
