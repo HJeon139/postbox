@@ -1,8 +1,8 @@
-// The wake-limit card (#108): after ten agent wakes in a row without you (#320), the next one waits for your Allow. The same
+// The wake-limit card (#108): after 50 agent wakes in one chain (#320, #492), the next one waits for your Allow. The same
 // card asks to add an agent the conversation doesn’t have, when another agent wakes it (#228). And focusComposer, which
 // it and the transcript use, so the two modules don't import each other.
 
-import { api, client } from './client.mjs';
+import { api } from './client.mjs';
 import { $, h, icon } from './dom.mjs';
 import { toast } from './ui.mjs';
 
@@ -30,8 +30,9 @@ export function hopBlock(it, ctx) {
         it.join
           ? `@${it.from} wants to wake @${it.to}, which isn’t in this conversation. Added, it joins with a note on why, and gets the message.`
           : it.pair
-            ? `@${it.from} and @${it.to} have woken each other ${it.pair} times in a row, so the next one waits for you.`
-            : `That would be agent wake ${it.n} since your last message. After ${client.config?.hopLimit ?? 10} in a row, the next one waits for you.`,
+            ? // A card the pair limit raised, before #492 removed it, as the conversation keeps it.
+              `@${it.from} and @${it.to} have woken each other ${it.pair} times in a row, so the next one waits for you.`
+            : `That would be agent wake ${it.n} in this chain, past the limit of ${it.n - 1}, so it waits for you.`,
       ),
       it.reason ? h('p.dim.small', `@${it.from}’s reason: “${it.reason}”`) : null,
       open && it.held?.length ? heldLine(it.held) : null,

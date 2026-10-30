@@ -212,12 +212,12 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await setSpeed(speed);
   await settled(room, () => true, 'the indexing run');
 
-  // 7 · Wakes: agents waking each other in the conversation (#372), the limit, and a scheduled wake-up
-  log('@indexer and @researcher wake each other in the room until the limit asks you; @indexer schedules a wake-up.');
+  // 7 · Wakes: agents waking each other in the conversation (#372), the chain’s count (#492), and a scheduled wake-up
+  log('@indexer and @researcher wake each other in the room until the composer counts the chain; @indexer schedules a wake-up.');
   await send(room, '@indexer remind me later about the embedding run');
   await settled(room);
   await send(room, '@indexer check the editions with the researcher, in a loop');
-  s = await until((st) => find(st, room, (i) => i.kind === 'hop' && i.status === 'open') && st, { label: 'the wake limit', timeout: 60000 });
+  s = await until((st) => find(st, room, (i) => /That settles it/.test(i.text ?? '')) && st, { label: 'the chain’s end', timeout: 60000 });
   await view(`#/t/${room.id}`);
   await shot('08-wakes');
 

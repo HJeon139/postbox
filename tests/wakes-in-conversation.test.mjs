@@ -50,7 +50,15 @@ test('#372 a hand-off that needs the waker to act wakes it exactly once', async 
   assert.equal(alphaTurns.length, 2, 'the person’s message, then beta’s hand-off');
   assert.deepEqual([alphaTurns[1].thread, alphaTurns[1].message.from], [t.id, '@beta']);
   assert.equal(store.items(t.id).findLast((x) => x.kind === 'agent').text, 'Re-reviewed abc123: approved.');
-  assert.equal(store.state.threads[t.id].hops, 2);
+  // Two wakes chained, and alpha’s answer, which woke no one, ended the chain, so its count starts again (#492).
+  assert.deepEqual(
+    store
+      .items(t.id)
+      .filter((x) => x.kind === 'agent' && x.hop)
+      .map((x) => x.hop),
+    [1, 2],
+  );
+  assert.equal(store.state.threads[t.id].hops, 0);
 });
 
 test('#372 wake_agent posts its message in the conversation as the waker’s, with its number in the chain', async () => {
