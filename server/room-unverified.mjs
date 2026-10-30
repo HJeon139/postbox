@@ -100,3 +100,35 @@ export function unreadable(unread, handle, turn = null) {
 /** The not-checkable records for a check, from its unreadable deliveries (unreadable). */
 export const notCheckableAll = (f, check, unread) =>
   [...unread.values()].map(({ handle, turn, n }) => (turn ? notCheckableTurn(f, check, handle, turn, n) : notCheckable(f, check, handle, n)));
+
+/** A mention of a handle, as parseMentions (shared/text.mjs) would read one, with no handles to match it against. */
+const MENTION = /(^|[^a-z0-9_])@[a-z0-9][\w-]*/i;
+
+/**
+ * What the delivery checks say of a thread with no members list: a topic thread’s agents are its conversation’s
+ * (members: []), so addressed() has no handle to parse its mentions for, and nothing in it is checked. One record per
+ * such thread with a mention in it, so the report says “not checked” rather than nothing.
+ * @param {any} f  @param {string} check
+ */
+export function uncheckedThreads(f, check) {
+  const out = [];
+  for (const t of f.threads ?? []) {
+    const th = f.state?.threads?.[t];
+    if ((th?.members ?? []).length) continue;
+    const n = (f.state?.items?.[t] ?? []).filter(
+      (it) => (it.kind === 'user' || it.kind === 'agent') && typeof it.text === 'string' && MENTION.test(it.text),
+    ).length;
+    if (!n) continue;
+    const kind = th?.kind === 'topic' ? 'topic thread' : 'thread';
+    out.push({
+      key: `${check}:unverified:thread:${t}`,
+      issue: null,
+      title: `${check} doesn’t check the mentions in ${kind} ${t}`,
+      evidence: `${n} ${n === 1 ? 'message' : 'messages'} in ${kind} “${th?.title ?? t}” (${t}) @-mention someone, and the thread lists no members (a topic thread’s agents are its conversation’s), so ${check} can’t tell whom they address: it didn’t check them.`,
+      verdict: 'measurement',
+      note: `Not a defect: ${check} doesn’t check mentions in ${kind} ${t}, so this run doesn’t verify them there.`,
+      unverified: { check, handle: t, backend: null, thread: t },
+    });
+  }
+  return out;
+}

@@ -5,7 +5,7 @@
 
 import { clip } from '../shared/text.mjs';
 import { addressed, headOf, holds, inputsOf, labeled, plain, recorded, tellable, turnsOf } from './room-delivery.mjs';
-import { backendOf, notCheckableAll, notCheckableText, unreadable } from './room-unverified.mjs';
+import { backendOf, notCheckableAll, notCheckableText, uncheckedThreads, unreadable } from './room-unverified.mjs';
 
 /** A turn’s stream starts a moment after Postbox builds its prompt, which is when the marker moves. */
 const MARKER_TO_SPAWN_MS = 30_000;
@@ -51,7 +51,7 @@ function droppedDeliveries(f) {
       evidence: `The ${said(a)} (“${clip(a.text, 100)}”) was due to @${a.to} from ${new Date(a.due).toISOString()}, and none of its prompts or tool results held it by the end of its next two turns.`,
     });
   }
-  return [...notCheckableAll(f, 'delivery-dropped', unread), ...out];
+  return [...notCheckableAll(f, 'delivery-dropped', unread), ...uncheckedThreads(f, 'delivery-dropped'), ...out];
 }
 
 /**
@@ -125,7 +125,7 @@ function unlabeledRepeats(f) {
       evidence: `The ${said(a)} (“${clip(a.text, 100)}”) was in ${mine.length} of @${a.to}’s prompts, first at ${new Date(mine[0].at).toISOString()}, again at ${new Date(bare.at).toISOString()} with no resend label.`,
     });
   }
-  return [...notCheckableAll(f, 'unlabeled-repeat', unread), ...out];
+  return [...notCheckableAll(f, 'unlabeled-repeat', unread), ...uncheckedThreads(f, 'unlabeled-repeat'), ...out];
 }
 
 /**

@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CHECKS, runChecks } from '../tools/uat/checks.mjs';
-import { ROUND_TWO, room, SUMMARY, T0 } from './delivery-fixture.mjs';
+import { ROOM, ROUND_TWO, room, SUMMARY, T0 } from './delivery-fixture.mjs';
 
 const s = (n) => T0 + n * 1000;
 const found = (f, id) => runChecks(f, { only: [id] });
@@ -188,6 +188,31 @@ test('delivery-dropped doesn’t count a compaction summary or a meta line as th
       JSON.stringify(flags),
     );
   }
+});
+
+test('delivery-dropped and unlabeled-repeat say a topic thread’s mentions aren’t checked, rather than passing them in silence', () => {
+  // A topic thread has members: [] (its agents are its conversation’s), so addressed() finds no handle to parse a mention for.
+  const r = room();
+  r.agent('researcher');
+  r.agent('critic');
+  const topic = 'th_topic';
+  r.f.state.threads[topic] = { id: topic, kind: 'topic', title: 'Versioning', parentId: ROOM, members: [] };
+  r.f.state.items[topic] = [{ id: 'it_topic1', at: s(5), kind: 'user', text: '@critic which version do you want?' }];
+  r.f.threads.push(topic);
+  r.turn('critic', s(10), { prompt: '[Postbox] Nothing new in this room since your last turn.' });
+  r.turn('critic', s(30), { prompt: '[Postbox] Nothing new in this room since your last turn.' });
+  for (const check of ['delivery-dropped', 'unlabeled-repeat']) {
+    const out = found(r.f, check);
+    assert.deepEqual(
+      out.map((x) => [x.key, !!x.unverified, x.unverified?.thread]),
+      [[`${check}:unverified:thread:${topic}`, true, topic]],
+      check,
+    );
+    assert.match(out[0].evidence, /1 message/);
+  }
+  // A topic thread with no mention in it has nothing unchecked.
+  r.f.state.items[topic] = [{ id: 'it_topic1', at: s(5), kind: 'user', text: 'which version do you want?' }];
+  assert.deepEqual(found(r.f, 'delivery-dropped'), []);
 });
 
 test('each delivery check is in CHECKS with the requirements it serves beside its issue', () => {

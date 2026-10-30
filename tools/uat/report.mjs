@@ -39,17 +39,17 @@ const isNew = (f) => !f.issue && f.verdict !== 'harness' && !f.unverified;
 export function unverifiedSection(findings) {
   const rows = findings.filter((f) => f.unverified);
   if (!rows.length) return [];
-  const backends = [...new Set(rows.map((f) => backendName(f.unverified.backend)))];
+  const backends = [...new Set(rows.filter((f) => !f.unverified.thread).map((f) => backendName(f.unverified.backend)))];
   return [
     '## Checks not verified',
     '',
-    `These checks couldn’t read what reached these agents, so they say nothing about them: **unverified on ${backends.join(', ')}** for the checks below. They aren’t defects, and they aren’t passes.`,
+    `These checks couldn’t read what reached these agents, so they say nothing about them: **unverified${backends.length ? ` on ${backends.join(', ')}` : ''}** for the checks below. They aren’t defects, and they aren’t passes.`,
     '',
     '| Check | Agent | Backend | Requirements | Why |',
     '|---|---|---|---|---|',
     ...rows.map(
       (f) =>
-        `| ${f.check} | @${esc(f.unverified.handle)} | ${esc(backendName(f.unverified.backend))} | ${(f.requirements ?? []).join(', ') || '—'} | ${esc(String(f.evidence ?? ''))} |`,
+        `| ${f.check} | ${f.unverified.thread ? `thread ${esc(f.unverified.thread)}` : `@${esc(f.unverified.handle)}`} | ${f.unverified.thread ? '—' : esc(backendName(f.unverified.backend))} | ${(f.requirements ?? []).join(', ') || '—'} | ${esc(String(f.evidence ?? ''))} |`,
     ),
     '',
   ];
