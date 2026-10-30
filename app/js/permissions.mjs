@@ -628,8 +628,8 @@ function requestedRow(p, change) {
     'li',
     checkField({
       id: 'perm-requested',
-      label: 'Calls you asked for run without a card',
-      help: `In Auto mode, before a card, a quick check reads what you asked @${p.handle} in this turn, or the block you approved, and lets the call run when your words ask for it. Each such call leaves a line in the conversation with Stop, five at most a turn. Anything that deletes, merges, closes or forces still asks, and Ask me mode always asks.`,
+      label: 'Writes you asked for run without a card',
+      help: `In Auto mode, a write outside Postbox that you asked @${p.handle} for runs without a card: one a confirm you confirmed shows word for word, or one your message asks for, as a quick check by Claude Haiku finds. That check sends the call and your message to Anthropic. Each such write leaves a line in the conversation with Stop, five at most a turn. Only plain pushes, gh creates, comments and edits, and tools that create or edit can pass; deletes, merges, force pushes, your own ask rules and Ask me mode always ask.`,
       on: p.allowRequested !== false,
       onToggle: (on) =>
         change(
