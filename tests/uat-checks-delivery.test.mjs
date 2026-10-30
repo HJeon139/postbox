@@ -60,6 +60,56 @@ test('delivery-dropped waits for two turns before it calls a mention dropped', (
   assert.deepEqual(found(f, 'delivery-dropped'), []);
 });
 
+/** @critic’s short message to @researcher, under 16 letters and digits, so it has no head: whole, or not, in the next prompt. */
+function shortRoom(text, { delivered }) {
+  const r = room();
+  r.agent('researcher');
+  r.agent('critic');
+  r.add({ id: 'it_short', at: s(10), kind: 'agent', handle: 'critic', sessionId: 'se_critic', text });
+  // A direct message reaches its agent as its text alone, with no item id (server/runtime.mjs’s formatBody).
+  r.turn('researcher', s(20), { prompt: delivered ? `@critic: ${text}` : '[Postbox] You: Allowed: @critic wakes @researcher' });
+  r.turn('researcher', s(40), { prompt: '[Postbox] What happened in this room since your last turn:\n\nYou: are we done?' });
+  return r.f;
+}
+
+test('delivery-dropped matches a short mention, with no head, by its whole text: delivered in the next prompt, no finding', () => {
+  // “researchership”: 14 letters and digits, under headOf’s 16.
+  assert.deepEqual(found(shortRoom('@researcher ship', { delivered: true }), 'delivery-dropped'), []);
+});
+
+test('delivery-dropped fires for a short mention whose whole text is in none of its agent’s prompts', () => {
+  const out = found(shortRoom('@researcher ship', { delivered: false }), 'delivery-dropped');
+  assert.deepEqual(
+    out.map((x) => [x.key, !!x.unverified]),
+    [['delivery-dropped:researcher:it_short', false]],
+  );
+  assert.match(out[0].evidence, /ship/);
+});
+
+test('delivery-dropped says it can’t check a mention too short to tell from other text, rather than calling it dropped', () => {
+  // “aiok”: four letters and digits, which any prompt could hold by chance; the prompt doesn’t name the item either.
+  const r = room();
+  r.agent('ai');
+  r.agent('critic');
+  r.add({ id: 'it_ok', at: s(10), kind: 'agent', handle: 'critic', sessionId: 'se_critic', text: '@ai ok' });
+  r.turn('ai', s(20), { prompt: '[Postbox] You: Allowed: @critic wakes @ai' });
+  r.turn('ai', s(40), { prompt: '[Postbox] Nothing new in this room since your last turn.' });
+  const out = found(r.f, 'delivery-dropped');
+  assert.deepEqual(
+    out.map((x) => [x.key, !!x.unverified]),
+    [['delivery-dropped:unverified:ai:it_ok', true]],
+  );
+  assert.match(out[0].title, /too short/);
+  // Named by its id, it was delivered all the same.
+  const g = room();
+  g.agent('ai');
+  g.agent('critic');
+  g.add({ id: 'it_ok', at: s(10), kind: 'agent', handle: 'critic', sessionId: 'se_critic', text: '@ai ok' });
+  g.turn('ai', s(20), { prompt: '[Postbox] What happened in this room since your last turn:\n\n@critic (it_ok): ok' });
+  g.turn('ai', s(40), { prompt: '[Postbox] Nothing new in this room since your last turn.' });
+  assert.deepEqual(found(g.f, 'delivery-dropped'), []);
+});
+
 /** @developer’s answer to @critic, which Postbox held on @critic’s open card waking @developer. */
 const REPLY =
   'I can’t settle the version number yet, because I don’t have one to propose. @critic, send me the version you want and the file it should live in.';

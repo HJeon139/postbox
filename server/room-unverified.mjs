@@ -3,6 +3,8 @@
 // or Antigravity never reads as a pass (server/room-checks.mjs’s liveChecks, tools/uat/report.mjs). Moved whole from
 // server/room-delivery.mjs, for size.
 
+import { MIN_WHOLE, plain } from './room-delivery.mjs';
+
 /** The backends by their persona’s id (server/adapters/*.mjs’s name), as a report names them. */
 const BACKEND_NAMES = {
   'claude-code': 'Claude Code',
@@ -64,6 +66,24 @@ export function notCheckableTurn(f, check, handle, turn, n) {
     verdict: 'measurement',
     note: `Not a defect: ${check} couldn’t check @${handle}’s turn at ${at}, so this run doesn’t verify it there.`,
     unverified: { check, handle, backend: backendOf(f, handle), turn: at },
+  };
+}
+
+/**
+ * What a check says of a delivery it can’t tell from other text (room-delivery.mjs’s tellable): a message too short for
+ * a head or a whole match, that none of its agent’s inputs names by its id. Unverified, not a defect.
+ * @param {any} f  @param {string} check  @param {{ to: string, itemId: string|null, text: string }} a
+ */
+export function notCheckableText(f, check, a) {
+  const name = a.itemId ?? plain(a.text);
+  return {
+    key: `${check}:unverified:${a.to}:${name}`,
+    issue: null,
+    title: `${check} isn’t checkable for ${a.itemId ?? 'a delivery'} to @${a.to}: its text is too short to tell from other text`,
+    evidence: `The message to @${a.to} (“${a.text}”) has ${plain(a.text).length} letters and digits, fewer than the ${MIN_WHOLE} a whole match needs, and none of @${a.to}’s prompts or tool results names its item, so the check can’t tell whether it arrived.`,
+    verdict: 'measurement',
+    note: `Not a defect: ${check} couldn’t tell ${name} from other text for @${a.to}, so this run doesn’t verify it there.`,
+    unverified: { check, handle: a.to, backend: backendOf(f, a.to), item: a.itemId ?? null },
   };
 }
 

@@ -244,8 +244,34 @@ const HOLD = 200;
  */
 export const recorded = (inputs, turn) => !!turn.running || inputs.some((x) => x.at >= turn.started - 1000 && x.at <= turn.ended);
 
-/** Whether an input holds this delivery: its item’s id, or the start of its text. */
-export const holds = (input, a) => (!!a.itemId && input.text.includes(a.itemId)) || (!!headOf(a.text) && input.key.includes(plain(a.text).slice(0, HOLD)));
+/**
+ * The least a text with no head (under MIN_HEAD) must have, letters and digits, to be matched whole: a shorter one
+ * (“@ai ok” is four) could be in any prompt by chance, so an input holding it says nothing.
+ */
+export const MIN_WHOLE = 6;
+/** A text too short for a head, whole, when it’s long enough to tell from other text; null otherwise. */
+export const wholeOf = (text) => {
+  const p = plain(text);
+  return p.length < MIN_HEAD && p.length >= MIN_WHOLE ? p : null;
+};
+/**
+ * Whether a delivery’s text can be told from other text: by its head, or, with no head, whole (wholeOf). One that
+ * can’t, and that no input names by its item’s id (holds tries that first), can’t be called lost or arrived: a check
+ * says it couldn’t check it (notCheckableText).
+ */
+export const tellable = (a) => !!headOf(a.text) || !!wholeOf(a.text);
+/**
+ * Whether an input holds this delivery: its item’s id, or the start of its text; with no head, its whole text. A direct
+ * message reaches its agent as its text alone (server/runtime.mjs’s formatBody; a catch-up adds the id only when it
+ * clips), so a short message can be matched only whole: the check that calls holds keeps the inputs to the delivery’s
+ * due window, which is what makes a whole short text, rather than its id, enough.
+ */
+export const holds = (input, a) => {
+  if (a.itemId && input.text.includes(a.itemId)) return true;
+  if (headOf(a.text)) return input.key.includes(plain(a.text).slice(0, HOLD));
+  const whole = wholeOf(a.text);
+  return !!whole && input.key.includes(whole);
+};
 
 /** A turn produced output once its model wrote something: an assistant message, or a streamed piece of one. */
 export const hasOutput = (events) =>

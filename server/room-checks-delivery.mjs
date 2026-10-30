@@ -4,8 +4,8 @@
 // names the requirements it serves beside its issue. Part of server/room-checks.mjs’s CHECKS, kept apart for size.
 
 import { clip } from '../shared/text.mjs';
-import { addressed, headOf, holds, inputsOf, labeled, plain, recorded, turnsOf } from './room-delivery.mjs';
-import { backendOf, notCheckableAll, unreadable } from './room-unverified.mjs';
+import { addressed, headOf, holds, inputsOf, labeled, plain, recorded, tellable, turnsOf } from './room-delivery.mjs';
+import { backendOf, notCheckableAll, notCheckableText, unreadable } from './room-unverified.mjs';
 
 /** A turn’s stream starts a moment after Postbox builds its prompt, which is when the marker moves. */
 const MARKER_TO_SPAWN_MS = 30_000;
@@ -14,7 +14,9 @@ const said = (a) => `${a.how === 'mention' ? 'mention' : a.how === 'held' ? 'wak
 
 /**
  * delivery-dropped: due to an agent, and in none of its prompts or tool results by the end of its next two turns,
- * both ended: a turn still running may yet read it.
+ * both ended: a turn still running may yet read it. A message with a head is matched by its start, a short one by its
+ * whole text, within that window (holds); one too short for either, that no input names by its id, can’t be told from
+ * other text, so the check says it couldn’t check it.
  * One of those turns with no line in the transcript (stopped before Claude Code wrote its prompt) may have held it,
  * so the check says it couldn’t check it there.
  */
@@ -34,13 +36,17 @@ function droppedDeliveries(f) {
     const next = turnsOf(f, a.to).filter((t) => t.started > a.due);
     if (next.length < 2 || next[0].running || next[1].running) continue;
     if (got.some((x) => x.at >= a.from - 1000 && x.at <= next[1].ended && holds(x, a))) continue;
+    if (!tellable(a)) {
+      out.push(notCheckableText(f, 'delivery-dropped', a));
+      continue;
+    }
     const blind = next.slice(0, 2).find((t) => !recorded(got, t));
     if (blind) {
       unreadable(unread, a.to, blind);
       continue;
     }
     out.push({
-      key: `delivery-dropped:${a.to}:${a.itemId ?? headOf(a.text)}`,
+      key: `delivery-dropped:${a.to}:${a.itemId ?? headOf(a.text) ?? plain(a.text)}`,
       title: `A message addressed to @${a.to} never reached it`,
       evidence: `The ${said(a)} (“${clip(a.text, 100)}”) was due to @${a.to} from ${new Date(a.due).toISOString()}, and none of its prompts or tool results held it by the end of its next two turns.`,
     });
