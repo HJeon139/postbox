@@ -232,6 +232,34 @@ test('a command is read as the shell would, and what takes something away is fou
   assert.ok(neverOnRequest('mcp__linear__archiveIssue', {}));
 });
 
+test('#296 only a plain git push goes to the judge: a force, a delete, a mirror, a src:dst refspec or an alias asks', () => {
+  for (const ok of ['git push', 'git push origin main', 'git push -u origin feat/now', 'git add -A', 'git commit -m "delete dead code"', 'git status'])
+    assert.equal(neverOnRequest('Bash', { command: ok }), null, ok);
+  for (const command of [
+    'git push origin +main',
+    'git push origin :feature',
+    'git push -d origin feature',
+    'git push --delete origin feature',
+    'git push --mirror',
+    'git push --prune origin',
+    'git push origin HEAD:main',
+    'git push --force-with-lease',
+    'git push -f',
+    'git push --repo=other origin',
+    'git -c alias.p=push p -f',
+    'git -C ../other push',
+    'git p -f',
+    'git tag -d v1',
+    'git branch -D old',
+    'git update-ref -d refs/heads/x',
+    'git checkout -- .',
+    'git restore .',
+    'git reset --hard HEAD~1',
+    'git fetch --prune',
+  ])
+    assert.ok(neverOnRequest('Bash', { command }), command);
+});
+
 test('the judge’s allow counts only with a quote of four or more characters from the person’s own words', () => {
   const request = { threadId: 't', said: ['Push it and open the “Now” PR.'], approved: [] };
   assert.equal(allowedQuote('{"decision":"allow","quote":"open the \\"Now\\" PR"}', request), 'open the "Now" PR', 'curly quotes match straight');

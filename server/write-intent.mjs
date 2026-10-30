@@ -70,13 +70,43 @@ function partTakesAway(part) {
   while (/^[A-Za-z_]\w*=/.test(words[0] ?? '')) words.shift();
   if (!words.length) return true;
   const program = words[0].split('/').at(-1) ?? '';
+  if (program === 'git') return !gitOnRequest(words.slice(1));
   const subs = words
     .slice(1)
     .filter((w) => !w.startsWith('-'))
     .slice(0, 2);
-  // git push -f is a force push; -f elsewhere is often a file.
-  const gitForce = program === 'git' && words.includes('push') && words.includes('-f');
-  return TAKES_AWAY.test(program) || subs.some((w) => TAKES_AWAY.test(w)) || words.some((w) => FORCE.test(w)) || gitForce;
+  return TAKES_AWAY.test(program) || subs.some((w) => TAKES_AWAY.test(w)) || words.some((w) => FORCE.test(w));
+}
+
+// git subcommands a request may cover, each with the flags it may carry; null takes any. Anything else gets the card:
+// a delete or a rewrite (tag -d, branch -D, update-ref -d, checkout -- ., restore, reset), an alias, or a global
+// option before the subcommand (-c alias.p=push, -C).
+const GIT_ON_REQUEST = {
+  status: null,
+  log: null,
+  diff: null,
+  show: null,
+  add: null,
+  commit: null,
+  fetch: ['-q', '--quiet', '--all', '--tags'],
+  push: ['-u', '--set-upstream', '-q', '--quiet', '-v', '--verbose'],
+};
+// A ref a plain push names: a remote or a branch, never a +force, a src:dst or :delete refspec, or a ref expression.
+const PLAIN_REF = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+/**
+ * Whether a git command is one a request may cover (#296). A push is only git push [remote] [branch], with no + or :
+ * refspec and no flag but -u, -q or -v: a force push, a delete (-d, --delete, :branch), --mirror and --prune ask.
+ * @param {string[]} args  the words after git
+ */
+function gitOnRequest(args) {
+  const [sub, ...rest] = args;
+  const flags = sub && Object.hasOwn(GIT_ON_REQUEST, sub) ? GIT_ON_REQUEST[sub] : undefined;
+  if (flags === undefined) return false;
+  if (flags === null) return !rest.some((w) => FORCE.test(w));
+  const refs = rest.filter((w) => !w.startsWith('-'));
+  if (rest.some((w) => w.startsWith('-') && !flags.includes(w))) return false;
+  return sub !== 'push' || (refs.length <= 2 && refs.every((w) => PLAIN_REF.test(w)));
 }
 
 /**
