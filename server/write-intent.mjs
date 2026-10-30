@@ -205,7 +205,8 @@ export async function requestedCall(rt, sessionId, { tool, input, agentId }) {
   const { folder } = await rt.panelTarget({ sessionId });
   if (offRequest(tool, input, { named, made: madeBy(rt, turn, request.threadId), folder })) return null;
   // What git does past the command’s words: its config, its hooks, and where a push goes.
-  if (tool === 'Bash' && (await gitOffRequest(folder, String(input?.command ?? ''), named))) return null;
+  // rt.gitCheck replaces it in unit tests, which start no processes; tests/process/git-request.test.mjs runs git.
+  if (tool === 'Bash' && (await (rt.gitCheck ?? gitOffRequest)(folder, String(input?.command ?? ''), named))) return null;
   if (shown) return { threadId: request.threadId, how: 'confirmed', label: shown.label };
   const quote = request.said.length ? await judged(rt, turn, request, tool, input) : null;
   // The turn may have ended, or the person stopped these calls, while the judge thought.

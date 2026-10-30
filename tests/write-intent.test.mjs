@@ -124,11 +124,26 @@ test('a confirm that shows the exact command lets it run with no model; one that
   assert.deepEqual(await afterBlock(declined, confirm(statement), ['cancel', {}], [CREATE]), [false]);
 });
 
-test('#296 a push the person asked for runs without a card, as does one a confirm shows; a force push asks', async () => {
+test('#296 a push the person asked for runs without a card, as does one a confirm shows; a force push, and one git’s config refuses, ask', async () => {
   const s = await setup({ judged: () => allow('push it to origin') });
-  assert.deepEqual(await asks(s, 'Commit the fix and push it to origin.', [bash('git push origin main'), bash('git push --force origin main')]), [true, false]);
-  assert.equal(s.prompts.length, 1, 'the force push never reached the judge');
+  // What git does past the command’s words is tests/process/git-request.test.mjs’s: here it says nothing, then why not.
+  const read = [];
+  s.rt.gitCheck = async (folder, command, named) => {
+    read.push({ folder, command, named });
+    return command.includes('feat/old') ? 'a git hook (pre-push) would run' : null;
+  };
+  const pushes = [bash('git push origin feat/now'), bash('git push --force origin feat/now'), bash('git push origin feat/old')];
+  assert.deepEqual(await asks(s, 'Commit the fix and push it to origin.', pushes), [true, false, false]);
+  assert.equal(s.prompts.length, 1, 'the force push and the push git refused never reached the judge');
+  assert.deepEqual(
+    read.map((r) => [r.folder, r.command, r.named]),
+    [
+      [s.folder, 'git push origin feat/now', 'commit the fix and push it to origin.'],
+      [s.folder, 'git push origin feat/old', 'commit the fix and push it to origin.'],
+    ],
+  );
   const shown = await setup();
+  shown.rt.gitCheck = async () => null;
   const statement = 'I’ll push Now:\n\n`git push -u origin feat/now`';
   assert.deepEqual(await afterBlock(shown, confirm(statement), ['confirm', {}], [bash('git push -u origin feat/now')]), [true]);
   assert.equal(shown.prompts.length, 0);
