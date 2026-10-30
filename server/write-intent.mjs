@@ -14,9 +14,9 @@ import { randomBytes } from 'node:crypto';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { setupOf } from './adapters/setup.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
-import { numberOf, offRequest } from './request-floor.mjs';
+import { actionWords, numberOf, offRequest } from './request-floor.mjs';
 import { SUMMARY_MODEL } from './thread-summary.mjs';
-import { isWriteCall, writePasses } from './write-guard.mjs';
+import { isWriteCall, personAsks, writePasses } from './write-guard.mjs';
 
 /** Calls one turn may make on the person’s request before the card comes back. */
 export const REQUESTED_MAX = 5;
@@ -30,6 +30,16 @@ const FILLER = new Set(
     ' ',
   ),
 );
+
+// Words that turn a request around, in a quote or just before it.
+const NOT = /\b(?:don't|dont|do not|doesn't|never|no|not|without|stop|cancel|hold off|wait|won't|shouldn't|can't|cannot)\b/;
+
+/** Up to three words before a place in a text, within its sentence. @param {string} s @param {number|undefined} at */
+function wordsBefore(s, at) {
+  const sentences = s.slice(0, at).split(/[.!?;\n]/);
+  const words = (sentences.at(-1) ?? '').trim().split(' ');
+  return words.slice(-3).join(' ');
+}
 
 /** Lowercase, straight quotes and single spaces, for comparing words. */
 const norm = (s) =>
@@ -111,7 +121,8 @@ export function judgeOf(rt) {
 
 /**
  * The judge’s answer: allow, with words the person typed that ask for this call. The quote counts only when it’s two
- * or more whole words of what they typed, and shares a word that isn’t filler with the call.
+ * or more whole words of what they typed, with no “don’t”, “never” or “not” in it or just before it, and shares a word
+ * that isn’t filler with the call’s own words (request-floor.mjs, actionWords: not a title or a body the agent wrote).
  * @param {string} text  what the model said @param {string[]} said  what the person typed @param {string} call
  * @returns {string|null} the quote, or null for the card
  */
@@ -129,8 +140,11 @@ export function allowedQuote(text, said, call) {
   const words = wordsOf(quote);
   if (a?.decision !== 'allow' || words.length < 2) return null;
   // lint-allow regex: the quote is escaped.
-  const whole = new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRegExp(norm(quote))}(?:$|[^\\p{L}\\p{N}])`, 'u');
-  if (!said.some((s) => whole.test(norm(s)))) return null;
+  const whole = new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRegExp(norm(quote))}(?:$|[^\\p{L}\\p{N}])`, 'gu');
+  // Each place they typed it, with up to three words before it in its sentence: “don’t open the PR yet” asks for the
+  // opposite, and “Not the README. Please open the PR” doesn’t.
+  const meant = (s) => [...norm(s).matchAll(whole)].some((m) => !NOT.test(`${wordsBefore(norm(s), m.index)} ${norm(quote)}`));
+  if (!said.some(meant)) return null;
   // A call’s words, whole and split at _ . / and -, so “create” is in mcp__tally__create_ticket.
   const inCall = new Set([...wordsOf(call), ...wordsOf(call.replace(/[_./-]+/g, ' '))]);
   return words.some((w) => !FILLER.has(w) && inCall.has(w)) ? quote : null;
@@ -162,7 +176,7 @@ async function judged(rt, turn, request, tool, input) {
   const cost = r?.costUsd;
   const e = typeof cost === 'number' ? rt.ledger.entry(conv, turn.id) : null;
   if (e && typeof cost === 'number') rt.ledger.patch(conv, e.id, { judgeCostUsd: (e.judgeCostUsd ?? 0) + cost });
-  return r ? allowedQuote(r.text, request.said, call) : null;
+  return r ? allowedQuote(r.text, request.said, actionWords(tool, input)) : null;
 }
 
 /**
@@ -176,14 +190,17 @@ export async function requestedCall(rt, sessionId, { tool, input, agentId }) {
   const persona = se && rt.personaFor(se);
   // A host’s turn asks through its host (#120); Ask me means every card; a subagent didn’t get the person’s request.
   if (!turn || turn.remote || agentId || persona?.permissionMode !== 'auto' || !setupOf(persona).allowRequested) return null;
-  // Only Postbox’s own rules for writes outside: a call the person’s own ask rule caught keeps its card.
+  // Only Postbox’s own rules for writes outside: a call the person’s own ask rule covers keeps its card, even where
+  // Postbox’s rules also catch it.
   if (!isWriteCall(tool, input) || String(tool).startsWith('mcp__postbox__')) return null;
   const request = requestOf(rt, turn);
-  if (!request || !stillOpen(rt, request.threadId, turn)) return null;
-  const named = norm([...request.said, ...request.confirmed.map((c) => c.statement)].join('\n'));
-  if (offRequest(tool, input, { named, made: madeBy(rt, turn, request.threadId) })) return null;
+  if (!request || !stillOpen(rt, request.threadId, turn) || (await personAsks(rt, sessionId, { tool, input }))) return null;
   const command = tool === 'Bash' ? squash(input?.command) : null;
   const shown = command ? request.confirmed.find((c) => codeIn(c.statement).some((code) => squash(code) === command)) : null;
+  // What the floor reads as named: what the person typed, and a confirm’s statement only when it shows this exact
+  // command. Another confirm’s words are the agent’s, and widen nothing.
+  const named = norm([...request.said, ...(shown ? [shown.statement] : [])].join('\n'));
+  if (offRequest(tool, input, { named, made: madeBy(rt, turn, request.threadId) })) return null;
   if (shown) return { threadId: request.threadId, how: 'confirmed', label: shown.label };
   const quote = request.said.length ? await judged(rt, turn, request, tool, input) : null;
   // The turn may have ended, or the person stopped these calls, while the judge thought.
