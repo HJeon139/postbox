@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.44.8 (2026-10-30)
+
+### Fixes
+
+- **adapters:** Codex and Antigravity tool calls reach the work ledger
+
 ## 0.44.7 (2026-10-29)
 
 ### Fixes
