@@ -189,6 +189,16 @@ test('a phase’s own waits are read from its text, and send_then_stop’s delay
   assert.equal(namedWait('Leave it open, then wait 10 minutes.'), WAIT_MAX_S);
 });
 
+test('a wake due in two minutes is a wait the phase asks for, whether its number is a word or digits', () => {
+  // delivery.md’s phase 6: only a wait lets the wake come due, and a wait ended at 3 s burned the phase’s steps.
+  assert.equal(phaseWaits('delivery')[5], 120);
+  assert.equal(namedWait('Ask @developer to schedule a wake for itself in two minutes.'), 120);
+  assert.equal(namedWait('Ask @developer to schedule a wake for itself in 2 minutes.'), 120);
+  assert.equal(namedWait('Then, before you ask anything, use a wait of 180 seconds.'), 180);
+  assert.equal(namedWait('Ask it twice, a minute apart.'), 60);
+  assert.equal(namedWait('Drop the link for 30 seconds, every 5 seconds for 3 minutes.'), 0);
+});
+
 test('a wait the tester chooses runs at most TESTER_WAIT_S while agents work, and says so', async (t) => {
   const r = await onFakeClock(t, async () => {
     const said = await testerWait({ seconds: 60 }, { named: 0, api: fakeApi({ askAt: null }), threadsUnderTest: room });

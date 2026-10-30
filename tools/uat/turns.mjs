@@ -124,18 +124,29 @@ export async function sendThenStop(d, a, { step, probes, log = () => {}, onWait 
   return said;
 }
 
-const units = (n, unit) => (/^(?:a|one)$/i.test(n) ? 1 : Number(n)) * (/^min/i.test(unit) ? 60 : 1);
+/** Numbers a phase spells out, as in “in two minutes”. */
+const WORDS = ['a', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+const NUM = `(\\d+|an?|${WORDS.slice(1).join('|')})`;
+const UNIT = '(seconds?|minutes?)';
+const units = (n, unit) => {
+  const w = n.toLowerCase();
+  return (w === 'an' ? 1 : WORDS.includes(w) ? Math.max(1, WORDS.indexOf(w)) : Number(n)) * (/^min/i.test(unit) ? 60 : 1);
+};
+// “a wait of 180 seconds”, “wait 70 seconds”, “wait more than a minute”; “a minute apart”; “in two minutes”.
+const NAMED = [
+  new RegExp(`\\bwait(?: of| for)?(?: more than)? ${NUM} ${UNIT}\\b`, 'gi'),
+  new RegExp(`\\b${NUM} ${UNIT} apart\\b`, 'gi'),
+  new RegExp(`\\bin ${NUM} ${UNIT}\\b`, 'gi'),
+];
 
 /**
  * The longest wait a phase’s text asks for in so many words, in seconds, or 0: “a wait of 180 seconds”, “wait 70
- * seconds”, “wait more than a minute”, “twice, a minute apart”.
+ * seconds”, “wait more than a minute”, “twice, a minute apart”, or something due “in two minutes”, such as a scheduled
+ * wake (delivery.md’s phase 6), which only a wait can let come due. Numbers up to ten may be words.
  * @param {string} text
  */
 export function namedWait(text) {
-  const asked = [
-    ...String(text ?? '').matchAll(/\bwait(?: of| for)?(?: more than)? (\d+|a|one) (seconds?|minutes?)\b/gi),
-    ...String(text ?? '').matchAll(/\b(\d+|a|one) (seconds?|minutes?) apart\b/gi),
-  ];
+  const asked = NAMED.flatMap((re) => [...String(text ?? '').matchAll(re)]);
   return Math.min(WAIT_MAX_S, Math.max(0, ...asked.map((m) => units(m[1], m[2]))));
 }
 
