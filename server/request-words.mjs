@@ -1,6 +1,9 @@
 // The words of what a request may cover (request-floor.mjs, #296): a command’s words as the shell splits them, the
 // paths it names, and the person’s words, compared whole. Moved out of server/request-floor.mjs.
 
+import { existsSync, realpathSync } from 'node:fs';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
+
 /**
  * A command’s words as the shell would split them, with quotes removed, or [] when it can’t be sure (an unclosed
  * quote). Nothing is expanded: a $( ) stays text, and the command it holds is a part of its own (splitCommand).
@@ -33,12 +36,41 @@ export function shellWords(s) {
   return out;
 }
 
+// A path a request can’t read from: from / or ~, through .., a hidden file or folder (.env, .git/config,
+// .claude/settings.local.json), a $variable or a `command`, or a glob, whose matches Postbox can’t see.
+const OUTSIDE = /^[~/]|[$`*?[\]{}]|(?:^|\/)\.\.(?:\/|$)|(?:^|\/)\.[^./]/;
+
 /**
- * Whether a word a read, a git path or a body file names stays in the project: never a path from / or ~, a ..
- * segment, or a $variable or a `command`, which could read ~/.config/gh/hosts.yml into a PR’s body.
- * @param {string} w
+ * Whether a word a read, a git path or a body file names stays in the project, so a request can’t publish a secret in
+ * a PR’s body (#557’s review): not OUTSIDE, and in the folder once its links are followed.
+ * @param {string} w @param {string|null} [folder]  the agent’s folder, to follow links from
  */
-export const inProject = (w) => !/^[~/]|[$`]|(?:^|\/)\.\.(?:\/|$)/.test(w.startsWith('-') && w.includes('=') ? w.slice(w.indexOf('=') + 1) : w);
+export function inProject(w, folder = null) {
+  const path = w.startsWith('-') && w.includes('=') ? w.slice(w.indexOf('=') + 1) : w;
+  if (OUTSIDE.test(path)) return false;
+  if (!folder) return true;
+  try {
+    // A path that isn’t there yet is where its nearest folder that is leads.
+    let at = resolve(folder, path);
+    while (!existsSync(at) && dirname(at) !== at) at = dirname(at);
+    const rel = relative(realpathSync(folder), realpathSync(at));
+    return !rel.startsWith('..') && !isAbsolute(rel);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a title, a body or a message is text: no $variable or `command`, which the shell fills in ("$GH_TOKEN",
+ * "$(cat .env)"), unless it’s the quoted here-document Claude Code writes a body with, where nothing expands. Its
+ * end word must close it once, on the last line: an earlier one would end it there and run the rest.
+ * @param {string} v
+ */
+export function isText(v) {
+  if (!/[$`]/.test(v)) return true;
+  const doc = /^\$\(cat <<-?'([A-Za-z_]+)'\n([\s\S]*)\n\1\n?\)$/.exec(v);
+  return doc !== null && !doc[2].split('\n').some((line) => line.trim() === doc[1]);
+}
 
 /**
  * The person’s words one by one, lowercase and without the punctuation around them, so a name is compared whole:
@@ -49,7 +81,7 @@ export const tokensOf = (named) =>
   new Set(
     named
       .split(/\s+/)
-      .map((w) => w.replace(/^[(<"'‘“]+|[)>"'’”.,;:!?]+$/g, '').replace(/\/$/, ''))
+      .map((w) => w.replace(/^[(<"'‘“`]+|[)>"'’”`.,;:!?]+$/g, '').replace(/\/$/, ''))
       .filter(Boolean),
   );
 
