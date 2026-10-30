@@ -1,0 +1,56 @@
+{
+  "seq": 57,
+  "state": {
+    "seq": 57,
+    "settings": {},
+    "projects": {},
+    "personas": {},
+    "threads": {},
+    "items": {},
+    "sessions": {
+      "se_c": {
+        "id": "se_c",
+        "handle": "critic",
+        "state": "idle",
+        "agentMessages": [
+          {
+            "dir": "from",
+            "other": "developer",
+            "text": "@critic, I’m ready for your task.",
+            "at": 1793008831000
+          },
+          {
+            "dir": "from",
+            "other": "researcher",
+            "text": "@critic Ready for your task.",
+            "at": 1793008811000
+          }
+        ]
+      },
+      "se_r": {
+        "id": "se_r",
+        "handle": "researcher",
+        "state": "idle",
+        "agentMessages": [
+          {
+            "dir": "to",
+            "other": "critic",
+            "text": "@critic Ready for your task.",
+            "at": 1793008811000
+          },
+          {
+            "dir": "from",
+            "other": "critic",
+            "text": "critic to researcher",
+            "at": 1793009205000
+          }
+        ]
+      },
+      "se_d": {
+        "id": "se_d",
+        "handle": "developer",
+        "state": "idle"
+      }
+    }
+  }
+}
