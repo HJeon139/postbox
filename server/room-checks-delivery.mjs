@@ -109,7 +109,7 @@ function unlabeledRepeats(f) {
     }
     // In full: every letter and digit of it, in order. A pointer to it, or a message that quotes its start, isn’t.
     const { mine, unsure, other } = ownPrompts(a, all, got);
-    const bare = mine.slice(1).find((x) => !labeled(x.text, a.text));
+    const bare = mine.slice(1).find((x) => !labeled(x.text, a.text) && !retriedBetween(f, a.to, mine[0].at, x.at));
     if (!bare) {
       if (unsure.length && mine.length + unsure.length >= 2) {
         out.push(sameText(f, a, head, other, unsure[0]));
@@ -126,6 +126,21 @@ function unlabeledRepeats(f) {
     });
   }
   return [...notCheckableAll(f, 'unlabeled-repeat', unread), ...out];
+}
+
+/**
+ * Whether the person pressed Retry on a failed reply of this agent between two of its prompts: Retry sends the failed
+ * reply’s message again by design (server/runtime.mjs’s retry, #151), with no label of its own, so the second prompt
+ * isn’t a repeat to report. The reply is an agent item of the handle, added between the prompts, patched to retried.
+ * @param {any} f  @param {string} handle  @param {number} from  @param {number} to
+ */
+function retriedBetween(f, handle, from, to) {
+  const added = new Map((f.events ?? []).filter((e) => e.type === 'item.add' && e.data?.item?.id).map((e) => [e.data.item.id, e.data.item]));
+  return (f.events ?? []).some((e) => {
+    if (e.type !== 'item.patch' || e.data?.patch?.status !== 'retried') return false;
+    const it = added.get(e.data.id);
+    return it?.kind === 'agent' && it.handle === handle && Number.isFinite(it.at) && it.at >= from && it.at <= to;
+  });
 }
 
 /** What unlabeled-repeat says of a delivery it can’t tell from another with the same text: unverified, not a defect. */

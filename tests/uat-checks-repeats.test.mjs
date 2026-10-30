@@ -131,3 +131,42 @@ test('unlabeled-repeat still fires for an item given twice by its id beside a sa
     ['unlabeled-repeat:critic:it_first'],
   );
 });
+
+test('unlabeled-repeat doesn’t count Retry’s resend, which sends the same message again by design (#151)', () => {
+  // The agent’s reply to DRAFT failed; the person pressed Retry (server/runtime.mjs’s retry), which patches the failed
+  // reply to retried and sends DRAFT again, with no label of its own.
+  const r = room();
+  r.agent('researcher');
+  r.add({ id: 'it_draft', at: s(1), kind: 'user', text: DRAFT });
+  r.turn('researcher', s(2), { prompt: DRAFT, output: false });
+  r.add({
+    id: 'it_failed',
+    at: s(10),
+    kind: 'agent',
+    handle: 'researcher',
+    sessionId: 'se_researcher',
+    text: '',
+    status: 'failed',
+    error: 'The agent stopped unexpectedly.',
+  });
+  r.patch('it_failed', { status: 'retried' });
+  r.turn('researcher', s(30), { prompt: DRAFT });
+  assert.deepEqual(found(r.f, 'unlabeled-repeat'), []);
+  // Without the Retry, the same second prompt is a repeat.
+  const g = room();
+  g.agent('researcher');
+  g.add({ id: 'it_draft', at: s(1), kind: 'user', text: DRAFT });
+  g.turn('researcher', s(2), { prompt: DRAFT, output: false });
+  g.add({
+    id: 'it_failed',
+    at: s(10),
+    kind: 'agent',
+    handle: 'researcher',
+    sessionId: 'se_researcher',
+    text: '',
+    status: 'failed',
+    error: 'The agent stopped unexpectedly.',
+  });
+  g.turn('researcher', s(30), { prompt: DRAFT });
+  assert.equal(found(g.f, 'unlabeled-repeat').length, 1);
+});
