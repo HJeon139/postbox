@@ -1,0 +1,17 @@
+{
+  "seq": 40,
+  "settings": {},
+  "projects": {},
+  "personas": {},
+  "threads": {},
+  "sessions": {
+    "se_c": {
+      "id": "se_c",
+      "handle": "critic",
+      "state": "idle",
+      "agentMessages": [{ "dir": "from", "other": "researcher", "text": "@critic Ready for your task.", "at": 1 }]
+    },
+    "se_r": { "id": "se_r", "handle": "researcher", "state": "idle", "agentMessages": [] }
+  },
+  "items": {}
+}
