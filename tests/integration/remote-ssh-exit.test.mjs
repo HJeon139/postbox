@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { createSshConnection } from '../../server/remote/ssh.mjs';
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
+import { orAfter } from './host.mjs';
 import { VERSION } from './remote-lifecycle-fixtures.mjs';
 
 const STANDIN = join(import.meta.dirname, '..', 'fixtures', 'remote', 'ssh-with-proxy.mjs');
@@ -37,7 +38,7 @@ test('#120 a killed ssh ends its connection at once, and the ProxyCommand it sta
     const closed = new Promise((ok) => c.once('close', (f) => ok(f)));
     const at = Date.now();
     process.kill(p.ssh, 'SIGKILL');
-    const f = await Promise.race([closed, new Promise((ok) => setTimeout(() => ok('still open'), 5000))]);
+    const f = await orAfter(closed, 5000, 'still open');
     assert.notEqual(f, 'still open', 'the connection ended within 5 s of ssh’s exit');
     assert.ok(Date.now() - at < 3000, `it ended ${Date.now() - at} ms after ssh was killed`);
     assert.equal(c.state, 'closed');
