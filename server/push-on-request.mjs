@@ -12,7 +12,7 @@
 // - then it reads the branch back from the remote, and the line in the conversation says what happened.
 
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -51,30 +51,36 @@ export function pushOf(command) {
 export const isPushUrl = (url) =>
   typeof url === 'string' && url.length <= 500 && !/\s/.test(url) && /^(?:https:\/\/[^/]+\/\S+|ssh:\/\/\S+|[\w.-]+@[\w.-]+:[^-]\S*|\/\S+)$/.test(url);
 
-/** The repository’s git folders, found by walking up from the agent’s folder: its own (HEAD) and the shared one. */
+/**
+ * A small file of .git’s, or '' when it isn’t a regular file of at most `max` bytes: a FIFO or a device the agent
+ * put there would hang the read, and a link could lead anywhere.
+ * @param {string} path @param {number} [max]
+ */
+async function readSmall(path, max = 4096) {
+  const st = await lstat(path).catch(() => null);
+  return st?.isFile() && st.size <= max ? readFile(path, 'utf8') : '';
+}
+
+/** The repository’s git folders, from .git in the agent’s folder itself: its own (HEAD) and the shared one. */
 async function gitDirs(folder) {
-  for (let dir = resolve(folder); ; dir = dirname(dir)) {
-    const dotgit = join(dir, '.git');
-    const st = await stat(dotgit).catch(() => null);
-    if (st?.isDirectory()) return { own: dotgit, common: dotgit };
-    if (st?.isFile()) {
-      // A worktree: .git names its folder, whose commondir names the shared one.
-      const own = /^gitdir: (.+)$/m.exec(await readFile(dotgit, 'utf8'))?.[1];
-      if (!own) return null;
-      const ownDir = resolve(dir, own.trim());
-      const common = (await readFile(join(ownDir, 'commondir'), 'utf8').catch(() => '')).trim();
-      return { own: ownDir, common: common ? resolve(ownDir, common) : ownDir };
-    }
-    if (dirname(dir) === dir) return null;
-  }
+  const dotgit = join(resolve(folder), '.git');
+  const st = await lstat(dotgit).catch(() => null);
+  if (st?.isDirectory()) return { own: dotgit, common: dotgit };
+  if (!st?.isFile()) return null;
+  // A worktree: .git names its folder, whose commondir names the shared one.
+  const own = /^gitdir: (.+)$/m.exec(await readSmall(dotgit))?.[1];
+  if (!own) return null;
+  const ownDir = resolve(folder, own.trim());
+  const common = (await readSmall(join(ownDir, 'commondir'))).trim();
+  return { own: ownDir, common: common ? resolve(ownDir, common) : ownDir };
 }
 
 /** A branch’s commit, from its file or packed-refs. @param {string} common @param {string} branch */
 async function branchSha(common, branch) {
   const ref = `refs/heads/${branch}`;
-  const loose = (await readFile(join(common, ref), 'utf8').catch(() => '')).trim();
+  const loose = (await readSmall(join(common, ref))).trim();
   if (loose) return SHA.test(loose) ? loose : null;
-  const packed = await readFile(join(common, 'packed-refs'), 'utf8').catch(() => '');
+  const packed = await readSmall(join(common, 'packed-refs'), 64 * 1024 * 1024);
   const line = packed.split('\n').find((l) => l.endsWith(` ${ref}`));
   const sha = line?.split(' ')[0];
   return sha && SHA.test(sha) ? sha : null;
@@ -89,7 +95,7 @@ async function branchSha(common, branch) {
 export async function pushPlan(folder, push) {
   const dirs = folder ? await gitDirs(folder) : null;
   if (!dirs) return null;
-  const head = (await readFile(join(dirs.own, 'HEAD'), 'utf8').catch(() => '')).trim();
+  const head = (await readSmall(join(dirs.own, 'HEAD'))).trim();
   const current = /^ref: refs\/heads\/(.+)$/.exec(head)?.[1] ?? null;
   const branch = push.branch ?? current;
   if (!branch || !BRANCH.test(branch)) return null;
@@ -98,14 +104,18 @@ export async function pushPlan(folder, push) {
 }
 
 /**
- * git with nothing the agent could have set: no system, global or local config (the repository is Postbox’s own), no
- * hooks, and the person’s gh for credentials. Only PATH and the SSH agent come from the environment.
- * @param {string} home  an empty folder of Postbox’s @param {string[]} args
+ * git with nothing the agent could have set: no system or global config, and as the repository only Postbox’s own
+ * (GIT_DIR, and no looking up for another: the review of #562 planted $TMPDIR/.git, whose insteadOf and sshCommand an
+ * ls-remote run in a temp folder read), no hooks, ssh with no config file, and the person’s gh for credentials. Only
+ * PATH and the SSH agent come from the environment.
+ * @param {string} home  an empty folder of Postbox’s @param {string} repo  its bare repository @param {string[]} args
  */
-async function cleanGit(home, args) {
+async function cleanGit(home, repo, args) {
   const env = {
     PATH: process.env.PATH ?? '',
     HOME: home,
+    GIT_DIR: repo,
+    GIT_CEILING_DIRECTORIES: dirname(home),
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_GLOBAL: '/dev/null',
     GIT_TERMINAL_PROMPT: '0',
@@ -116,6 +126,7 @@ async function cleanGit(home, args) {
   };
   const config = [
     'core.hooksPath=/dev/null',
+    'core.sshCommand=ssh -F /dev/null',
     'credential.helper=',
     'credential.helper=!gh auth git-credential',
     'protocol.allow=never',
@@ -129,11 +140,25 @@ async function cleanGit(home, args) {
   return stdout.trim();
 }
 
-/** The remote’s default branch, from the remote itself, or null. @param {string} home @param {string} url */
-export async function defaultBranch(home, url) {
-  const out = await cleanGit(home, ['ls-remote', '--symref', url, 'HEAD']).catch(() => '');
-  return /^ref: refs\/heads\/(\S+)\tHEAD$/m.exec(out)?.[1] ?? null;
+/**
+ * Runs `fn` with git in an empty bare repository of Postbox’s, made for it and removed after.
+ * @template T @param {(git: (args: string[]) => Promise<string>, repo: string) => Promise<T>} fn @returns {Promise<T>}
+ */
+async function inOwnRepo(fn) {
+  const home = await mkdtemp(join(tmpdir(), 'pb-push-'));
+  const repo = join(home, 'repo.git');
+  try {
+    const git = (args) => cleanGit(home, repo, args);
+    await git(['init', '-q', '--bare', '--template=']);
+    return await fn(git, repo);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 }
+
+/** The remote’s default branch, from the remote itself, or null. @param {string} url */
+export const defaultBranch = (url) =>
+  inOwnRepo(async (git) => /^ref: refs\/heads\/(\S+)\tHEAD$/m.exec(await git(['ls-remote', '--symref', url, 'HEAD']))?.[1] ?? null).catch(() => null);
 
 /**
  * Postbox’s own push: <sha> to refs/heads/<branch> of <url>, with no force, from an empty bare repository that
@@ -143,16 +168,15 @@ export async function defaultBranch(home, url) {
  */
 export async function runPush({ url, branch, sha, objects }) {
   if (!isPushUrl(url) || !BRANCH.test(branch) || !SHA.test(sha)) return { ok: false, error: 'the push wasn’t one Postbox can make' };
-  const home = await mkdtemp(join(tmpdir(), 'pb-push-'));
   try {
-    const repo = join(home, 'repo.git');
-    await cleanGit(home, ['init', '-q', '--bare', '--template=', repo]);
-    await writeFile(join(repo, 'objects', 'info', 'alternates'), `${objects}\n`);
-    await cleanGit(home, ['--git-dir', repo, 'cat-file', '-e', `${sha}^{commit}`]);
-    await cleanGit(home, ['--git-dir', repo, 'push', '--no-verify', '--porcelain', url, `${sha}:refs/heads/${branch}`]);
-    const there = await cleanGit(home, ['ls-remote', url, `refs/heads/${branch}`]);
-    if (there.split('\t')[0] !== sha) return { ok: false, error: `the remote’s ${branch} isn’t at ${sha.slice(0, 7)} after the push` };
-    return { ok: true };
+    return await inOwnRepo(async (git, repo) => {
+      await writeFile(join(repo, 'objects', 'info', 'alternates'), `${objects}\n`);
+      await git(['cat-file', '-e', `${sha}^{commit}`]);
+      await git(['push', '--no-verify', '--porcelain', url, `${sha}:refs/heads/${branch}`]);
+      const there = await git(['ls-remote', url, `refs/heads/${branch}`]);
+      if (there.split('\t')[0] !== sha) return { ok: false, error: `the remote’s ${branch} isn’t at ${sha.slice(0, 7)} after the push` };
+      return { ok: true };
+    });
   } catch (e) {
     const said = String(e.stderr ?? e.message ?? e)
       .split('\n')
@@ -160,8 +184,6 @@ export async function runPush({ url, branch, sha, objects }) {
       .slice(-2)
       .join(' ');
     return { ok: false, error: said.slice(0, 300) || 'git failed' };
-  } finally {
-    await rm(home, { recursive: true, force: true });
   }
 }
 
@@ -177,11 +199,14 @@ export async function pushConsequence({ folder, url, push, named }) {
   if (!plan) return null;
   if (!tokensOf(named).has(plan.branch.toLowerCase())) {
     if (plan.branch !== plan.current) return null;
-    const home = await mkdtemp(join(tmpdir(), 'pb-push-'));
-    const main = await defaultBranch(home, String(url)).finally(() => rm(home, { recursive: true, force: true }));
+    const main = await defaultBranch(String(url));
     if (!main || main === plan.branch) return null;
   }
-  return { ...plan, url, sentence: `commit ${plan.sha.slice(0, 7)} lands on branch ${plan.branch} of ${url}, with no force` };
+  return {
+    ...plan,
+    url,
+    sentence: `commit ${plan.sha.slice(0, 7)}, with the commits before it that the remote doesn’t have, lands on branch ${plan.branch} of ${url}, with no force`,
+  };
 }
 
 /**

@@ -102,7 +102,10 @@ test('a branch the person didn’t name must be the one checked out, and never t
   const r = await repo();
   const at = (named, push = { branch: null }, url = r.remote) => pushConsequence({ folder: r.work, url, push, named });
   const c = await at('push it.');
-  assert.match(c?.sentence ?? '', /^commit [0-9a-f]{7} lands on branch feat\/now of .*remote\.git, with no force$/);
+  assert.match(
+    c?.sentence ?? '',
+    /^commit [0-9a-f]{7}, with the commits before it that the remote doesn’t have, lands on branch feat\/now of .*remote\.git, with no force$/,
+  );
   assert.equal(await at('push it.', { branch: 'main' }), null, 'main, not named');
   assert.ok(await at('push main too.', { branch: 'main' }), 'main, named');
   assert.equal(await at('push it.', { branch: 'other' }), null, 'a branch with no commit');
@@ -110,4 +113,39 @@ test('a branch the person didn’t name must be the one checked out, and never t
   assert.equal(await at('push it.', { branch: null }, 'ext::sh -c touch% /tmp/x'), null);
   r.git('checkout', '-q', 'main');
   assert.equal(await at('push it.'), null, 'a bare push from the default branch');
+});
+
+test('#562’s review: a repository planted where Postbox makes its own is never read, nor a FIFO for .git’s HEAD', async () => {
+  const r = await repo();
+  // The agent can write to $TMPDIR, where Postbox makes its empty repository: a .git there must change nothing.
+  const planted = await mkdtemp(join(tmpdir(), 'pb-planted-'));
+  roots.push(planted);
+  const elsewhere = join(r.root, 'elsewhere.git');
+  const ran = join(r.root, 'ssh-ran');
+  execFileSync('git', ['init', '-q', '--bare', elsewhere], { env, timeout: 10000 });
+  execFileSync('git', ['init', '-q', planted], { env, timeout: 10000 });
+  for (const [key, value] of [
+    [`url.${elsewhere}.insteadOf`, r.remote],
+    ['core.sshCommand', `touch ${ran}; false`],
+  ])
+    execFileSync('git', ['-C', planted, 'config', key, value], { env, timeout: 10000 });
+  const tmp = process.env.TMPDIR;
+  process.env.TMPDIR = planted;
+  try {
+    // insteadOf would have read elsewhere’s default branch (none), and sent the push there.
+    const c = await pushConsequence({ folder: r.work, url: r.remote, push: { branch: null }, named: 'push it.' });
+    assert.ok(c, 'the default branch was read from the project’s repository');
+    assert.deepEqual(await runPush({ url: r.remote, ...c }), { ok: true });
+    assert.equal(r.at('refs/heads/feat/now'), c.sha);
+    assert.equal(execFileSync('git', ['-C', elsewhere, 'for-each-ref'], { env }).toString(), '', 'nothing went elsewhere');
+    await runPush({ url: 'ssh://git@127.0.0.1:1/x.git', ...c });
+    assert.equal(existsSync(ran), false, 'the planted sshCommand never ran');
+  } finally {
+    process.env.TMPDIR = tmp;
+  }
+  const head = join(r.work, '.git', 'HEAD');
+  await rm(head);
+  execFileSync('mkfifo', [head], { timeout: 10000 });
+  assert.equal(await pushPlan(r.work, { branch: null }), null, 'a FIFO is no HEAD, and reading it doesn’t hang');
+  assert.equal(await pushPlan(join(r.work, 'sub'), { branch: 'feat/now' }), null, 'no walking up out of the agent’s folder');
 });

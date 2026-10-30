@@ -23,7 +23,10 @@ function pushField(p) {
     'div.field',
     h('label.label', { for: id }, 'Repository to push to'),
     h('div.row-flex', input, h('button.btn.sm', { type: 'button', onclick: save }, 'Save repository')),
-    h('p.small.dim', 'When you ask an agent to push, Postbox pushes its branch here itself. Empty, every push asks you first.'),
+    h(
+      'p.small.dim',
+      'When you ask an agent to push, Postbox pushes its branch here itself. Empty, every push asks you first. A folder on this computer runs that repository’s own hooks when it receives a push.',
+    ),
   );
 }
 
