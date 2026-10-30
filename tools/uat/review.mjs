@@ -31,7 +31,10 @@ export async function reviewFindings(o) {
   // The two passes judge separate findings: a match to a closed issue is verifyRegressions’s alone, and keeps its
   // issue, so the rest’s duplicate and filing passes never reach it. In sequence they were a quarter of a delivery
   // run (1.5 to 2.5 min), so they run at once, each with its own prompt as before.
-  await Promise.all([o.verify ? verifyRegressions(o) : null, verifyAndFile(o)]);
+  // Both end before either’s failure is thrown: the other mustn’t still be changing the findings while the run reports.
+  const passes = await Promise.allSettled([o.verify ? verifyRegressions(o) : null, verifyAndFile(o)]);
+  const failed = passes.find((p) => p.status === 'rejected');
+  if (failed) throw failed.reason;
   if (o.file) commentRegressions(o);
 }
 

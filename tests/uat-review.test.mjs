@@ -130,3 +130,36 @@ test('on a tight budget, the second verifier call waits for the first instead of
   assert.equal(Math.round(caps[1] * 100) / 100, 0.7);
   assert.equal(b.summary()?.spent.verifier, 0.6);
 });
+
+test('when one verifier pass fails, the run hears of it only once the other has finished with the findings', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'uat-review-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const calls = [];
+  const findings = deliveryFindings(calls);
+  const v = heldVerifier();
+  // gh answers the open-issue list with something that isn’t JSON, so the new-findings pass throws at once.
+  const broken = (args) => (args[0] === 'issue' && args[1] === 'list' ? ok('<html>') : gh(calls)(args));
+  let settled = false;
+  const done = reviewFindings({
+    root: '.',
+    testerModel: 'm',
+    dir,
+    scenario: { title: 'Delivery' },
+    findings,
+    timeline: [],
+    log: () => {},
+    verify: true,
+    file: false,
+    ask: v.ask,
+    gh: broken,
+  });
+  done.then(
+    () => (settled = true),
+    () => (settled = true),
+  );
+  await flush();
+  assert.equal(settled, false, 'still waiting on the closed-issue pass');
+  v.release();
+  await assert.rejects(done, SyntaxError);
+  assert.equal(findings[0].verdict, 'duplicate', 'the closed-issue pass finished first');
+});
