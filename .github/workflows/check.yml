@@ -46,12 +46,23 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: node tools/lint-commits.mjs "origin/$BASE_REF..HEAD" --since "$(git log -1 --format=%cI v0.2.0)"
 
-  end-to-end:
-    name: Demo in Chrome, with accessibility checks
+  # The browser specs on Playwright Test (#303), on the Chromium build its version pins. They include the demo’s
+  # accessibility gate: axe-core on every scene, at 1280 and 375 px in both themes (tests/browser/demo-a11y.spec.mjs).
+  # Every spec runs twice, normally and with the server’s events 300 ms late. One after the other in one job, the two
+  # passes took 709 and 801 s, and the job 19 to 30 minutes, the longest wait on every pull request. Here each pass is
+  # split three ways by spec file (Playwright’s --shard), and all six run at once, each on its own runner.
+  browser-specs:
+    name: Browser specs (${{ matrix.pass }}, ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
     needs: check
-    # About 11 minutes on this runner (#287), when the old headless checks ran beside the specs.
-    timeout-minutes: 40
+    # A third of a pass is about four minutes of specs, after about two of setup.
+    timeout-minutes: 20
+    strategy:
+      # A failing shard doesn’t cancel the others, so one run reports every failure.
+      fail-fast: false
+      matrix:
+        pass: [plain, late]
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -59,22 +70,63 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
-      # The browser specs on Playwright Test (#303), on the Chromium build its version pins. They include the demo’s
-      # accessibility gate: axe-core on every scene, at 1280 and 375 px in both themes (tests/browser/demo-a11y.spec.mjs).
       - name: Install Playwright’s Chromium
         run: npx playwright install --with-deps chromium
       - name: Browser specs
-        run: npx playwright test
-      - name: Browser specs, with the server’s events late
-        if: success() || failure()
-        run: npx playwright test
+        run: npx playwright test --shard="$SHARD/3"
         env:
-          POSTBOX_STREAM_LAG: 300
-      # Pictures of every scene for the reviewer, not a check: the spec above is the gate, so a screenshot tool that
-      # breaks warns here and doesn’t fail the job.
+          SHARD: ${{ matrix.shard }}
+          # Empty for the plain pass, which the server reads as no lag. It also picks the report’s file in check-logs/
+          # (playwright.config.mjs); each shard uploads its own copy, below.
+          POSTBOX_STREAM_LAG: ${{ matrix.pass == 'late' && '300' || '' }}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: check-logs-${{ matrix.pass }}-${{ matrix.shard }}
+          path: check-logs/
+          retention-days: 14
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-${{ matrix.pass }}-${{ matrix.shard }}
+          path: test-results/
+          retention-days: 14
+
+  # The one check that says whether every browser spec passed, under the name the protect-main ruleset requires.
+  end-to-end:
+    name: Demo in Chrome, with accessibility checks
+    # Always, so it reports a result: a required check that never runs leaves a pull request waiting.
+    if: always()
+    runs-on: ubuntu-latest
+    needs: browser-specs
+    timeout-minutes: 5
+    steps:
+      - name: Every browser spec shard passed
+        env:
+          SPECS: ${{ needs.browser-specs.result }}
+        run: |
+          if [ "$SPECS" = success ]; then echo "Every shard of both passes passed."; exit 0; fi
+          echo "::error::The browser specs’ result is “$SPECS”. Open the failed “Browser specs” job for its log, and its playwright-traces artifact."
+          exit 1
+
+  # Pictures of every scene for the reviewer, not a check: the specs above are the gate, so a screenshot tool that
+  # breaks warns here and doesn’t fail the run.
+  screenshots:
+    name: Play the demo and screenshot every scene
+    runs-on: ubuntu-latest
+    needs: check
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Install Playwright’s Chromium
+        run: npx playwright install --with-deps chromium
       - name: Play the demo and screenshot every scene
-        if: success() || failure()
-        continue-on-error: true
         run: node tools/shoot-app.mjs
       # About 40 MB a run, so only where a reviewer reads them: when the job failed, and on main, whose copy stands in
       # for committed screenshots (designs/developing.md, “Screenshots”). A pull request that passed uploads none.
@@ -84,22 +136,10 @@ jobs:
           name: screenshots
           path: screenshots/latest/app/
           retention-days: 5
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: check-logs
-          path: check-logs/
-          retention-days: 14
-      - if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-traces
-          path: test-results/
-          retention-days: 14
 
   # A spec a pull request adds or edits runs ten times, with the events late, before it counts: one failure fails it.
-  # tools/repeat-specs.mjs picks them. A spec reached only through a changed helper isn't repeated: the end-to-end job
-  # runs every spec twice already. On a later push, only the specs that push changed or brought in are: #387 changed the
+  # tools/repeat-specs.mjs picks them. A spec reached only through a changed helper isn't repeated: the browser-specs
+  # jobs run every spec twice already. On a later push, only the specs that push changed or brought in are: #387 changed the
   # helper every spec imports, and --only-changed ran all 38 specs ten times, 49 minutes, on each push.
   repeat:
     name: New and changed specs, ten times
@@ -154,7 +194,7 @@ jobs:
         env:
           SPECS: ${{ steps.pick.outputs.specs }}
           POSTBOX_STREAM_LAG: 300
-          # Its own report, beside the lag pass’s in the end-to-end job (#317).
+          # Its own report, beside the lag pass’s in the browser-specs jobs (#317).
           PB_REPORT: check-logs/lag/playwright-repeat.json
       - if: always()
         uses: actions/upload-artifact@v4
