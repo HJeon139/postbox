@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { dataFolder, holdsStore, moveData } from '../server/home.mjs';
 import { Store } from '../server/store.mjs';
-import { importLegacy } from '../server/store-import.mjs';
+import { clearStore, importLegacy } from '../server/store-import.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 import { admin } from './redis-fixture-user.mjs';
 
@@ -215,4 +215,14 @@ test('#553: the backup folder and its copies are the person’s alone (0700 and 
   assert.equal((await stat(join(dir, 'backups'))).mode & 0o777, 0o700);
   assert.equal((await stat(join(dir, 'backups', backup))).mode & 0o777, 0o700);
   for (const f of await readdir(join(dir, 'backups', backup))) assert.equal((await stat(join(dir, 'backups', backup, f))).mode & 0o777, 0o600, f);
+});
+
+test('#553: a fresh start removes the store’s files, not the *.migrated copies an import left', async () => {
+  const { dir } = await oldFolder(3);
+  await open(dir);
+  await writeFile(join(dir, 'snapshot.json'), '{}');
+  await clearStore(dir);
+  const names = await readdir(dir);
+  assert.ok(names.includes('snapshot.json.migrated') && names.includes('events-4.jsonl.migrated'), names.join(','));
+  assert.ok(!names.includes('snapshot.json'));
 });
