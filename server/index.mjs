@@ -27,7 +27,7 @@ import { listen as listenServer } from './listen.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { rearmPersonaDeletes } from './persona-delete.mjs';
-import { createProject } from './projects.mjs';
+import { createProject, setPushUrl } from './projects.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
@@ -437,6 +437,7 @@ export async function start({
     if ((m = path.match(/^\/api\/projects\/([^/]+)\/hosts\/([^/]+)\/folder$/)) && req.method === 'PUT')
       return send(res, 200, rt.setProjectHostFolder(m[1], m[2], body.folder));
     if (path === '/api/projects' && req.method === 'POST') return send(res, 201, await createProject(store, body));
+    if ((m = path.match(/^\/api\/projects\/([^/]+)\/push-url$/)) && req.method === 'PUT') return send(res, 200, setPushUrl(store, m[1], body.url));
     if ((m = path.match(/^\/api\/projects\/([^/]+)\/files$/)) && req.method === 'GET')
       return send(res, 200, await listFolder(store.state.projects[m[1]], url.searchParams.get('path') ?? ''));
     if (path === '/api/files' && req.method === 'POST') return send(res, 201, await upload(req));
