@@ -281,6 +281,7 @@ Each run writes to `uat-runs/<time>-<scenario>/` in the main checkout, which git
 - `shots/`: screenshots of every block and app the tester saw
 - `streams/`: each agent turn’s raw stream, with Kiro turns in `streams/kiro/` and Antigravity turns in `streams/agy/` (release runs)
 - `events.jsonl`: Postbox’s events for items and sessions, which `--recheck` reads (Postbox’s own log in `data/` drops its early segments once a snapshot covers them)
+- `transcripts/`: each Claude Code agent’s `user` lines from its own transcript, kept whole and **unredacted** (`tools/uat/run-files.mjs`’s `keepTranscripts`): its prompts, every tool result (so the contents of any file an agent read or command it ran) and the lines Claude Code writes itself. `--recheck` and the regression verifier read them once the agents’ own transcripts are gone, since the delivery checks match the content itself (`server/room-delivery.mjs`’s `inputsOf`), which is why they’re kept whole rather than cut to fields. The run folder is gitignored and nothing uploads it; treat these files as you would the agents’ own transcripts, and deleting the run folder deletes them.
 - `data/`: Postbox’s data, so a run can be reopened with `node server/index.mjs --data uat-runs/<run>/data`
 
 File what a run finds with the bug template in the [UAT README](../README.md), after checking each finding against its screenshot.
