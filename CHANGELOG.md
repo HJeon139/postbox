@@ -2,6 +2,134 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 0.44.8 (2026-10-30)
+
+### Fixes
+
+- **adapters:** Codex and Antigravity tool calls reach the work ledger
+
+## 0.44.7 (2026-10-29)
+
+### Fixes
+
+- **server:** the chain limit stays as a backstop at 50, and a chain that ends starts its count again
+- **server:** no chain limit either; no wake waits on a card for a limit
+- **server:** no wake limit between two agents; the composer shows the chain's count instead
+
+## 0.44.6 (2026-10-29)
+
+### Fixes
+
+- **runtime:** every failed item carries whom earlier failures woke (#485)
+- **adapters:** keepShape narrows on its argument, so the typecheck passes (#485)
+- **adapters:** a result that repeats streamed Markdown isn't posted again (#485)
+- **adapters:** an empty reply keeps its stream's shape, not its text (#485)
+- **runtime:** a slash turn may end quietly, and Retry skips agents already woken (#485)
+- **runtime:** a host turn that goes on wakes its mentions when it ends (#485)
+- **runtime:** a failed reply's @-mentions wake their agents, marked as failed (#485)
+- **adapters:** post a result's text when no text event carried it (#485)
+- **runtime:** a Postbox call that acts counts as the turn's answer (#485)
+- **runtime:** other agents read a failed reply's text, marked as failed (#485)
+- **runtime:** a turn that ends without a reply says so, with Retry (#485)
+
+## 0.44.5 (2026-10-29)
+
+### Fixes
+
+- **adapters:** preserve permission summary whitespace
+- **checks:** normalize remaining Claude blocks
+- **adapters:** normalize Claude message content blocks
+
+## 0.44.4 (2026-10-29)
+
+### Fixes
+
+- **uat:** a retired wake card stops waiting when it was retired
+- **uat:** file host-wake-said-sent against #439
+- **uat:** readReceived reads on from where it got to in the store's log
+- **uat:** host-wake-said-sent's evidence claims only what it checked
+- **uat:** count a card asking to add an agent, which refuses wakes too
+- **uat:** a card isn't counted against the wake_agent call that raised it
+- **uat:** match a wake's target without case, as Postbox does
+- **uat:** refused-wake-lost judges host-mode runs only
+- **uat:** a declined wake card no longer reads as waiting for good
+- **uat:** match hostwakes calls on what the target received, not on what's posted
+- **uat:** judge a hostwakes hand-off lost by whether Postbox delivered it
+- **uat:** count a held hand-off as delivered only when Postbox posts its message
+- **uat:** don't count the person's turns as a hostwakes sender told of its refusal
+- **uat:** tell a refused wake_agent call by the message Postbox didn't post
+
+## 0.44.3 (2026-10-29)
+
+### Fixes
+
+- **threads:** distinguish missing thread tasks
+- **threads:** cover every kind of thread turn
+- **threads:** put a topic request before room context
+
+## 0.44.2 (2026-10-29)
+
+### Fixes
+
+- **threads:** keep CJK and long tokens in glimpses
+- **threads:** retain spaces across streamed glimpses
+- **threads:** bound glimpse sentence scans
+- **threads:** show whole-sentence thinking glimpses
+
+## 0.44.1 (2026-10-29)
+
+### Fixes
+
+- **review:** use preview width for detailed drafts
+
+## 0.44.0 (2026-10-29)
+
+### Features
+
+- **personas:** delete an agent, with Undo, and its memory with it (#208)
+
+### Fixes
+
+- **personas:** the purge skips an erased session; session Undo waits for its persona's (#208)
+- **personas:** a purge cut short by a restart starts again (#208)
+- **personas:** the delete sheet goes back after 3 s if the stream misses the delete (#208)
+- **agents:** the overview says when Claude Code is too old to keep a memory per agent (#208)
+- **personas:** refuse a session for a persona being deleted, and purge it whole (#208)
+- **personas:** attaching a terminal session names around a persona being deleted (#208)
+- **personas:** finish a persona delete pending at a restart, and hold its name until then (#208)
+- **adapters:** each Claude Code and Agent SDK persona keeps its own memory (#208)
+
+## 0.43.3 (2026-10-29)
+
+### Fixes
+
+- **apps:** keep every on-screen app running
+- **apps:** parse apostrophes in unquoted attributes
+- **apps:** ignore duplicate browser checks
+- **apps:** pause unused frames and queue one check
+- **apps:** preserve visible apps during checks
+- **apps:** preserve Unicode offsets while scanning scripts
+- **apps:** scan malformed script end tags safely
+- **apps:** check every pending app safely
+- **apps:** locate sandbox script errors
+- **apps:** report stylesheet class collisions
+
+## 0.43.2 (2026-10-29)
+
+### Fixes
+
+- **uat:** the verifier's prompt counts its three readings
+- **uat:** the verifier reads what a wake's answer means, and judges a finding's own claim
+- **uat:** the verifier can search a run's records, and is told what they hold
+- **uat:** the runner's flag reactions use the inline buttons
+
+## 0.43.1 (2026-10-29)
+
+### Fixes
+
+- **remote:** a rejection nothing handled on a host is logged, and its daemon keeps serving
+- **server:** a rejection nothing handled is logged, and Postbox keeps running
+
 ## 0.43.0 (2026-10-28)
 
 ### Features

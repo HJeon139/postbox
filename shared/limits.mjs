@@ -61,10 +61,21 @@ export const SENDING = Object.freeze({
   message: 50_000,
 });
 
-/** Agent wakes in a row, without you, before the next waits for your Allow: 3 until #320 raised it. */
-export const HOP_LIMIT = 10;
-/** Wakes in a row between the same two agents before the next waits for your Allow (#372): a hand-off and its answer. */
-export const PAIR_LIMIT = 2;
+/** The most characters in the whole-sentence glimpse shown while an agent works (#478). */
+export const GLIMPSE_CHARS = 160;
+/** The most streamed text inspected to find that glimpse, bounding work on each update (#478). */
+export const GLIMPSE_SOURCE_CHARS = 2000;
+
+/**
+ * Agent wakes in a row, without you, before the next waits for your Allow: a backstop against agents that never stop,
+ * until a supervisor agent watches the room (#538). 3 until #320 raised it to 10, and 50 since #492.
+ */
+export const HOP_LIMIT = 50;
+/**
+ * Agent wakes in a row, without you, after which the room shows the count with a hint to Stop agents going nowhere
+ * (#492), well before the chain limit: E2’s replay found no loop past 2 wakes, and ordinary hand-offs run longer.
+ */
+export const CHAIN_HINT = 6;
 /** Wakes held on one waiting wake card, delivered or not as the person answers it (#439); past this, they’re refused. */
 export const HELD_WAKES = 20;
 

@@ -220,8 +220,8 @@ test(`after ${HOP_LIMIT} agent wakes in a row, the next one waits for your confi
   const { rt, store, t, b } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
+  // All while the chain runs: one that ends starts the count again (#492).
   for (let i = 0; i < HOP_LIMIT; i++) assert.equal(rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true }).ok, true);
-  await settle(rt);
   const r = rt.agentWake(alpha.id, 'beta', 'check again');
   assert.equal(r.waiting, true);
   const hop = store.items(t.id).find((i) => i.kind === 'hop');
@@ -241,7 +241,6 @@ test('a wake you allow delivers its whole message, not the card’s preview (#10
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
   for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
-  await settle(rt);
   const long = `Must fix: ${'acceptance bar, '.repeat(200)}`.slice(0, 3000);
   assert.equal(rt.agentWake(alpha.id, 'beta', long).waiting, true);
   const hop = store.items(t.id).find((i) => i.kind === 'hop');
@@ -258,7 +257,6 @@ test('a wake request stored before #108, with only a preview, still delivers tha
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
   for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
-  await settle(rt);
   rt.agentWake(alpha.id, 'beta', 'the whole message');
   const hop = store.items(t.id).find((i) => i.kind === 'hop');
   rt.patchItem(t.id, hop.id, { text: undefined, reason: 'the preview' });
@@ -1853,7 +1851,7 @@ test('#109 a topic thread’s root, cut at 4,000, gives its id, and read_message
   await settle(rt);
   const call = adapter.calls.at(-1);
   assert.equal(call.handle, 'critic');
-  const context = (call.message.context ?? []).join('\n');
+  const context = [call.message.taskContext, ...(call.message.context ?? [])].filter(Boolean).join('\n');
   assert.match(
     context,
     new RegExp(

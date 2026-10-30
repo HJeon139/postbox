@@ -16,10 +16,11 @@ const MODES = {
 /**
  * @param {{ persona: any, sessionId: string, resume: boolean, mcpUrl?: string, guide: string, addDirs?: string[],
  *           fork?: { claudeSessionId: string, uuid?: string }|null, allowOnce?: string[], rules?: { allow?: string[], ask?: string[], deny?: string[] },
- *           server?: Record<string, object>|null, denyPrompts?: boolean }} turn
+ *           server?: Record<string, object>|null, denyPrompts?: boolean, memoryDir?: string|null }} turn
  *   rules: the ones the person made for this conversation only (#66), passed every turn. server: Postbox’s server in
  *   place of the HTTP one at mcpUrl (a remote turn’s shim, shimServer). denyPrompts: --permission-prompts none in place
- *   of the prompt tool, so what would be asked is denied (a host’s denyPrompts, D2).
+ *   of the prompt tool, so what would be asked is denied (a host’s denyPrompts, D2). memoryDir: the persona’s own memory
+ *   folder (#208, setup.mjs’s memoryFolder).
  */
 export function claudeArgs({
   persona,
@@ -33,6 +34,7 @@ export function claudeArgs({
   rules = {},
   server = null,
   denyPrompts = false,
+  memoryDir = null,
 }) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   const setup = setupOf(persona);
@@ -76,8 +78,9 @@ export function claudeArgs({
     '--setting-sources',
     (setup.usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES).join(','),
     '--settings',
-    // With ask rules for writes outside Postbox (#112), so each comes to a card first, and the conversation’s own.
-    JSON.stringify(withAskRules(settingsFor(persona), [...writeRules(persona), ...(rules.ask ?? [])])),
+    // With the persona’s own memory folder (#208), and ask rules for writes outside Postbox (#112), so each comes to a
+    // card first, and the conversation’s own.
+    JSON.stringify(withAskRules(settingsFor(persona, memoryDir), [...writeRules(persona), ...(rules.ask ?? [])])),
     ...(denied.length ? ['--disallowedTools', ...denied] : []),
     ...MODES[mode],
     ...addDirs.flatMap((d) => ['--add-dir', d]),

@@ -109,6 +109,14 @@ test('the overview says how to install Claude Code only when Postbox looked for 
   assert.equal(installNote({}), null);
 });
 
+test('#208: a Claude Code too old to keep a memory per agent says so in the overview', () => {
+  const at = (claudeCode) => installNote({ realBackends: true, versions: { claudeCode }, adapters: ['mock', 'claude-code'] });
+  // autoMemoryDirectory came in 2.1.74 (Claude Code’s CHANGELOG): before it, agents in a project share one memory.
+  assert.match(at('2.1.73 (Claude Code)') ?? '', /Claude Code 2\.1\.73 keeps one memory for every agent in a project\. Update it to 2\.1\.74 or later/);
+  assert.equal(at('2.1.74 (Claude Code)'), null);
+  assert.equal(at('2.1.310'), null);
+});
+
 test('#120 L6: a Codex agent set to auto, or to a Claude model it ignores, reads as Codex’s default, never a Claude model', () => {
   const config = { defaultModel: DEFAULT_MODEL, defaultEffort: DEFAULT_EFFORT };
   for (const model of ['auto', 'claude-opus-5-5']) {

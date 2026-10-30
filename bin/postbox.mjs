@@ -79,6 +79,12 @@ export async function main(argv, start) {
     process.exit(1);
   }
   process.on('exit', release);
+  // A promise nothing awaited that rejects, such as an async timer callback’s, is logged with its stack, and Postbox
+  // keeps running (#510). Node’s default exits, which stopped every conversation for one failed callback, as a persona
+  // delete’s purge did in PR #496. An uncaught exception still exits, as Node advises, with its stack on stderr.
+  process.on('unhandledRejection', (e) =>
+    console.error(`Postbox kept running after an error nothing handled. Please report it, with this:\n${e instanceof Error ? e.stack : String(e)}`),
+  );
   const app = await start({ port, dataDir, fresh: values.fresh, demo: values.demo });
   if (from === 'clone')
     console.log(

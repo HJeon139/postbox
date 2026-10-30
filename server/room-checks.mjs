@@ -1,7 +1,5 @@
-// Deterministic checks the UAT runs alongside the tester. Each looks for one kind of defect in what the run
-// collected and names the GitHub issue it reproduces, so a run’s report says which known issues it caught.
-// They’re pure functions over `facts` (gathered by tools/uat-run.mjs, or for a recorded room by server/telemetry.mjs),
-// so tests can feed them fixtures. They ship with Postbox, so a recorded room runs the same checks (designs/telemetry-persona.md, R8).
+// Deterministic checks the UAT and recorded rooms run alongside the tester. Each finds one defect in `facts`, names
+// its issue, and stays pure so tests can feed it fixtures (designs/telemetry-persona.md, R8).
 //
 // facts = {
 //   state,           Postbox’s /api/state at the time
@@ -31,11 +29,14 @@
 import { ASKING } from '../shared/catalog.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
 import { clip } from '../shared/text.mjs';
+import { contentBlocks } from './adapters/claude-content.mjs';
 import { deniedTools, isPublishingTool, POSTBOX_SERVER, PUBLISHING_TOOLS } from './adapters/setup.mjs';
 import { asksInProse, blockUseTally } from './block-use.mjs';
 import { BACKEND_CHECKS } from './room-checks-backends.mjs';
 import { NEEDS_CHECKS } from './room-checks-needs.mjs';
 import { TELEMETRY_CHECKS } from './room-checks-telemetry.mjs';
+import { THREAD_CHECKS } from './room-checks-threads.mjs';
+import { toolCalls } from './room-checks-tools.mjs';
 
 export { agyTokens, kiroCredits } from './room-checks-backends.mjs';
 
@@ -329,16 +330,6 @@ export const MID_TURN = ['background-step-closed', 'two-processes-one-session'];
 
 // ── The Agents section, the Work ledger and the right pane (#105, #132, #146) ──────────────────────────────
 
-/** Every tool call in a turn’s stream, with its result when the stream has it. */
-const toolCalls = (events) => {
-  const results = new Map();
-  for (const e of events) if (e.type === 'user') for (const c of e.message?.content ?? []) if (c?.type === 'tool_result') results.set(c.tool_use_id, c);
-  const denied = new Set(events.filter((e) => e.type === 'result').flatMap((e) => (e.permission_denials ?? []).map((d) => d.tool_use_id)));
-  return events
-    .filter((e) => e.type === 'assistant')
-    .flatMap((e) => (e.message?.content ?? []).filter((c) => c?.type === 'tool_use'))
-    .map((c) => ({ id: c.id, name: c.name, input: c.input ?? {}, result: results.get(c.id) ?? null, denied: denied.has(c.id) }));
-};
 const ledgerEntries = (f) => Object.values(f.state?.work ?? {}).flat();
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 /** A model as the panel names it (“Opus 5.5”) and as a stream names it (“claude-opus-5-5”), reduced to compare. */
@@ -429,7 +420,7 @@ export const CHECKS = [
         const declined = new Set(
           events
             .filter((e) => e.type === 'user')
-            .flatMap((e) => e.message?.content ?? [])
+            .flatMap((e) => contentBlocks(e.message?.content))
             .filter((b) => b.type === 'tool_result' && /The person didn’t allow/.test(typeof b.content === 'string' ? b.content : JSON.stringify(b.content)))
             .map((b) => b.tool_use_id),
         );
@@ -506,7 +497,7 @@ export const CHECKS = [
       const posts = f.streams.flatMap(({ handle, events }) =>
         events
           .filter((e) => e.type === 'assistant')
-          .flatMap((e) => e.message?.content ?? [])
+          .flatMap((e) => contentBlocks(e.message?.content))
           .filter((b) => b.type === 'tool_use' && b.name === 'Bash' && /\/mcp\?session=/.test(b.input?.command ?? ''))
           .map(() => handle),
       );
@@ -820,6 +811,7 @@ export const CHECKS = [
   },
   // The Kiro CLI’s and the Antigravity CLI’s (#117, #143): server/room-checks-backends.mjs.
   ...BACKEND_CHECKS,
+  ...THREAD_CHECKS,
   ...TELEMETRY_CHECKS,
   ...NEEDS_CHECKS,
   {

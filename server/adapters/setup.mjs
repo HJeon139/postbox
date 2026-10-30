@@ -91,12 +91,46 @@ export const shimServer = ({ command, args, timeout }) => ({
  * How it was checked: a real turn (claude 2.1.296, the person’s setup, outside the repo) with a project server,
  * a claude.ai connector and a plugin server denied by name. Its init no longer listed any of the three in
  * `mcp_servers`, and none of their tools (tests/fixtures/claude-code/host-mcp-init.jsonl). Isolated personas
- * load no other server, so they need no denylist.
+ * load no other server, so they need no denylist. memoryDir: the persona’s memory folder (memoryFolder), on every turn.
+ * @param {any} persona @param {string|null} [memoryDir]
  */
-export function settingsFor(persona) {
+export function settingsFor(persona, memoryDir = null) {
   const { usesHostSetup, mcpOff } = setupOf(persona);
-  return { ...SETTINGS_OVERLAY, ...(usesHostSetup && mcpOff.length ? { deniedMcpServers: mcpOff.map((serverName) => ({ serverName })) } : {}) };
+  return {
+    ...SETTINGS_OVERLAY,
+    ...(memoryDir ? { autoMemoryDirectory: memoryDir } : {}),
+    ...(usesHostSetup && mcpOff.length ? { deniedMcpServers: mcpOff.map((serverName) => ({ serverName })) } : {}),
+  };
 }
+
+/**
+ * The folder a persona keeps its auto memory in for a project (#208): `<root>/<persona id>/<project id>`, passed as
+ * `autoMemoryDirectory` in the overlay. Claude Code keys auto memory by working folder (~/.claude/projects/<project>/
+ * memory/, code.claude.com/docs/en/memory), and every persona in a project runs in the project’s folder, so without it
+ * two personas, and the person’s own sessions there, shared one memory (reproduced with two real agents, 26 October
+ * 2026). “Uses your setup” doesn’t include the person’s memory: that setting is for tooling (decided 27 October), so
+ * every persona gets one. Keyed by id, so a new persona with an old one’s name starts clean. The project’s shared
+ * folder stays as it was, for the person’s own sessions: nothing is copied or deleted.
+ * @param {string} root  where memory folders go: Postbox’s data folder’s, or its folder on a host
+ * @param {{ id?: string, handle: string }} persona @param {{ id?: string } | null | undefined} project
+ */
+export const memoryFolder = (root, persona, project) => `${personaMemory(root, persona)}/${part(project?.id || 'no-project')}`;
+
+/** A persona’s memory folders for every project, which deleting it removes (server/persona-delete.mjs). */
+export const personaMemory = (root, persona) => `${root}/${part(persona.id || persona.handle)}`;
+// Ids are Postbox’s own (newId); anything else in one is replaced, so it stays one folder under root.
+const part = (v) => String(v).replace(/[^\w-]/g, '_');
+
+/**
+ * What both Claude adapters pass from a turn’s context: the rules the person allowed once or for this conversation
+ * (#66), and the persona’s own memory folder under `memoryRoot` (#208).
+ * @param {any} ctx @param {string} memoryRoot
+ */
+export const fromContext = (ctx, memoryRoot) => ({
+  allowOnce: ctx.allowOnce ?? [],
+  rules: ctx.rules ?? {},
+  memoryDir: memoryFolder(memoryRoot, ctx.persona, ctx.project),
+});
 
 /**
  * Deny rules for tools that publish outside Postbox, passed as `--disallowedTools` / `disallowedTools`.
@@ -290,8 +324,44 @@ export function setStreamTap(rt, tap) {
   return () => taps.delete(rt);
 }
 
+/** How much of a turn’s raw stream its context keeps, for a reply that ends empty (#485): its last lines, each bounded. */
+const RAW_TAIL = 12;
+const RAW_LINE = 1000;
+/** The fields whose words a line’s shape keeps: what kind of event it is, and how it ended. */
+const SHAPE_WORDS = new Set(['type', 'subtype', 'name', 'stop_reason', 'status', 'kind', 'operationType', 'sessionUpdate', 'terminal_reason']);
+
+/** A value’s shape: other strings become their length, so no reply, file or secret a tool printed is kept. */
+const shapeOf = (/** @type {unknown} */ v, depth = 0, key = '') => {
+  if (typeof v === 'string') return SHAPE_WORDS.has(key) ? v.slice(0, 60) : v.length;
+  if (Array.isArray(v)) return depth > 3 ? `[${v.length}]` : v.slice(0, 8).map((x) => shapeOf(x, depth + 1));
+  if (!v || typeof v !== 'object') return v;
+  if (depth > 3) return '{…}';
+  return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shapeOf(x, depth + 1, k)]));
+};
+
 /**
- * What one turn writes each raw line to.
+ * Keeps an event’s shape in the turn’s ctx.rawTail, when it has one, for an empty reply’s diagnosis (#485). The item
+ * that keeps it is saved and sent to every page, so it holds kinds and sizes, never text.
+ * @param {any} ctx @param {unknown} event  a parsed event, or a raw line
+ */
+export function keepShape(ctx, event) {
+  const tail = Array.isArray(ctx.rawTail) ? ctx.rawTail : null;
+  if (!tail) return;
+  let e = event;
+  if (typeof event === 'string')
+    try {
+      e = JSON.parse(event);
+    } catch {
+      e = { unparsed: event.length };
+    }
+  // Too long whole (a result’s usage, say), only its top-level fields, so the line still parses.
+  let line = JSON.stringify(shapeOf(e));
+  if (line.length > RAW_LINE) line = JSON.stringify(shapeOf(e, 3));
+  if (tail.push(line.slice(0, RAW_LINE)) > RAW_TAIL) tail.shift();
+}
+
+/**
+ * What one turn writes each raw line to. The last few go in the turn’s ctx.rawTail too, as shapes (keepShape).
  * @param {any} ctx  the turn’s context @param {string|undefined} dir  POSTBOX_*_RECORD @param {string} backend
  * @returns {(line: string) => void}
  */
@@ -299,6 +369,7 @@ export function recorderFor(ctx, dir, backend) {
   const file = dir ? join(dir, `${Date.now()}-${ctx.persona.handle}.jsonl`) : null;
   return (line) => {
     if (file) appendFileSync(file, `${line}\n`);
+    keepShape(ctx, line);
     for (const tap of taps.values()) tap(ctx, line, backend);
   };
 }

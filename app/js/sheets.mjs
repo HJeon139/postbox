@@ -22,6 +22,7 @@ import { api, client, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
 import { hostsPanel } from './hosts.mjs';
 import { openPermissions } from './permissions.mjs';
+import { lifeButtons } from './persona-delete.mjs';
 import { placeField, saveRefused } from './sheets-place.mjs';
 import { appearance, connect } from './sheets-settings.mjs';
 import { keepFocus, navigate, openDialog, toast, undoToast } from './ui.mjs';
@@ -636,7 +637,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
  * it a room; { room: true } starts with that intent and asks for at least two.
  */
 export function openNewThread(projectId, { room = false } = {}) {
-  const personas = Object.values(S().personas).filter((p) => !p.retired);
+  const personas = Object.values(S().personas).filter((p) => !p.retired && !p.deleting);
   const picked = new Set(room ? [] : personas.slice(0, 1).map((p) => p.id));
   const title = h('input.input', { id: 'nt-title', placeholder: room ? 'What will the room work on?' : 'What’s it about?' });
   const list = h('div.chips', { role: 'group', 'aria-label': 'Agents' });
@@ -871,7 +872,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
     fill(panel, ...{ appearance: () => appearance(paint), personas, projects, hosts: () => [hostsPanel()], connect }[cur]());
   };
   const personas = () => {
-    const list = Object.values(S().personas);
+    const list = Object.values(S().personas).filter((p) => !p.deleting);
     const editing = personaId && S().personas[personaId];
     // Between the list and a persona’s form, focus goes to the form’s first field, and back to its Edit button.
     if (editing)
@@ -1037,11 +1038,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
           },
           'Save',
         ),
-        h(
-          'button.btn',
-          { type: 'button', onclick: () => api(`/api/personas/${p.id}`, { retired: !p.retired }, 'PATCH').then(back) },
-          p.retired ? 'Bring back' : 'Retire',
-        ),
+        ...lifeButtons(p, back),
       ),
     ];
   };

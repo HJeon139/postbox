@@ -14,6 +14,7 @@ import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { AUTO_MODEL, effortOf, POSTBOX_SERVER, recorderFor } from './setup.mjs';
+import { codexWork } from './work-calls.mjs';
 
 export { codexModels, codexVersion, findCodex } from './codex-models.mjs';
 export { codexRemoteConfigArgs, createCodexRebuild, INTERRUPT_REACH_MS, interruptedError } from './codex-remote.mjs';
@@ -76,9 +77,10 @@ export function codexConfigArgs(mcpUrl) {
 
 const errorText = (x) => x?.error?.message ?? x?.message ?? 'Codex app-server failed.';
 
-/** Translate app-server notifications into Postbox turn events. */
-export function createCodexMapper(ctx) {
+/** Translate app-server notifications into Postbox turn events. io.read: a file’s text, for the work ledger (work-calls.mjs). */
+export function createCodexMapper(ctx, io = {}) {
   const labels = new Map();
+  const work = codexWork(ctx, io);
   const messageText = new Map();
   let lastMessageId = null;
   const writeMessage = (id, text) => {
@@ -117,9 +119,11 @@ export function createCodexMapper(ctx) {
     switch (msg?.method) {
       case 'item/started':
         pushItem(p.item);
+        work.started(p.item);
         break;
       case 'item/completed': {
         const item = p.item;
+        work.completed(item);
         if (item?.type === 'agentMessage' && item.text && !messageText.has(item.id)) writeMessage(item.id, item.text);
         if (item?.type === 'webSearch' && item.query) labels.set(item.id, `Search the web: ${item.query}`);
         const label = labels.get(item?.id);

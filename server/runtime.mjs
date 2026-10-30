@@ -9,12 +9,12 @@ import { ASKING, validateBlock } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
 import { commentAt } from '../shared/review-comments.mjs';
-import { formatDuration, parseMentions } from '../shared/text.mjs';
+import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
-import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
+import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { appCheckText, appReceipt } from './app-check-status.mjs';
 import { retireApp } from './app-retire.mjs';
@@ -39,9 +39,11 @@ import { bringToConversation } from './bring.mjs';
 import { catchUp, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
+import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { clip, clipText, fenced, httpError } from './helpers.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
+import { sendLint } from './lint-delivery.mjs';
 import * as queue from './message-queue.mjs';
 import {
   allowAlways,
@@ -85,11 +87,22 @@ import {
 } from './scheduled-wakes.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
-import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, resolveHop, sideSession, threadPersona, wakeAgent } from './side-threads.mjs';
+import {
+  agentWake,
+  archiveForks,
+  bumpSideLink,
+  dropWakes,
+  endChain,
+  recordAgentMessage,
+  resolveHop,
+  sideSession,
+  threadPersona,
+  wakeAgent,
+} from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { eraseThreads } from './thread-erase.mjs';
-import { settleThread, threadCatchUp } from './thread-summary.mjs';
+import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
@@ -103,11 +116,7 @@ export { PERMISSION_MODES, readCapped };
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
-const DELETE_UNDO_MS = 10000;
-/** How long a lint turn waits after its agent turn ends for what the browser measures (diagrams, the app check). */
-const LINT_SETTLE_MS = 1500;
-/** …and at most, while an app of the agent’s is still being checked. */
-const LINT_WAIT_MAX_MS = 12000;
+export const DELETE_UNDO_MS = 10000;
 const STEP_STATES = new Set(['running', 'done', 'failed', 'denied', 'stopped']);
 /** What a step is when it isn’t a tool call (#73): a thought, a subagent’s narration, or a subagent’s own step. */
 const STEP_KINDS = /** @type {Set<unknown>} */ (new Set(['thought', 'said', 'agent']));
@@ -284,7 +293,11 @@ export class Runtime {
     );
   }
   personaByHandle(handle) {
-    return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired);
+    return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired && !p.deleting);
+  }
+  /** Whether a persona being deleted holds this name: it keeps it until its Undo window ends, so Undo never makes two (#208). */
+  deletingHandle(handle) {
+    return Object.values(this.s.personas).some((p) => p.deleting && p.handle.toLowerCase() === String(handle).toLowerCase());
   }
   thread(id) {
     const t = this.s.threads[id];
@@ -416,6 +429,8 @@ export class Runtime {
     if (existing) return existing;
     const p = this.persona(personaId);
     if (!p) throw httpError(404, 'That agent doesn’t exist.');
+    // It would outlive its persona, and a turn there would make its memory again (#208).
+    if (p.deleting) throw httpError(409, `@${p.handle} is being deleted. Undo that first to add it to a conversation.`);
     const se = this.putSession({
       id: newId('se'),
       personaId,
@@ -589,8 +604,8 @@ export class Runtime {
     // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
     // (#120, message.attach): it sends the agent nothing, and replays what the host has.
     const slash = message.slash === true || typeof message.attach === 'string';
-    // A queued mention its last summary already gave it comes as a pointer, not as new (#484).
-    message = pointerIfSeen(this, se, message);
+    // A queued mention its last room summary already gave it comes as a pointer there, never as a thread’s direct task (#484, #504).
+    if (where === se.threadId) message = pointerIfSeen(this, se, message);
     // Context that waited for this agent’s next turn (shared from a topic thread, or a topic’s brief) goes first.
     if (se.context?.length && !slash) {
       // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
@@ -599,12 +614,8 @@ export class Runtime {
     }
     // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead.
     if (message.kind !== 'lint' && !slash) message = this.foldLint(sessionId, message);
-    // And before that, what happened in the conversation since this agent last took part: a room is shared
-    // memory, so an agent that wasn’t woken for something can still catch up on it (issue #1).
-    // …and in the topic or side thread it answers in, what was said there since it last took part (#228).
-    const there = slash || where === se.threadId ? null : threadCatchUp(this, this.s.sessions[sessionId], where, message.itemId);
-    const catchUp = [slash ? null : this.catchUp(this.s.sessions[sessionId], message.itemId), there].filter(Boolean);
-    if (catchUp.length) message = { ...message, context: [...catchUp, ...(message.context ?? [])] };
+    // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
+    message = turnContext(this, this.s.sessions[sessionId], where, message, slash);
     const persona = this.persona(se.personaId);
     const adapter = this.adapters.get(persona?.backend ?? 'mock');
     const abort = new AbortController();
@@ -623,6 +634,7 @@ export class Runtime {
       // The backend it started on: a persona changed mid-turn reaches the next turn, not this one (#220).
       backend: persona?.backend ?? 'mock',
       threadId: where,
+      promptFirst: firstPromptSection(message, where !== se.threadId),
       segment: null,
       first: null,
       steps: [],
@@ -632,6 +644,11 @@ export class Runtime {
       checkpoint: null,
       pending: [],
       said: '',
+      rawTail: [],
+      // A skill or command, or a host turn attached again: it may end with nothing to say, as /compact does (#485).
+      slash,
+      // Agents the failed reply this retries already woke: its mentions don’t wake them again (#485).
+      woken: Array.isArray(message.woken) ? message.woken : [],
       startedAt: Date.now(),
       // This turn’s own MCP token: a call that carries another turn’s, such as a stopped one’s, is refused (#126).
       token: randomUUID(),
@@ -670,7 +687,8 @@ export class Runtime {
       currentStep: 'Thinking',
       finishedAt: null,
     });
-    const ctx = this.turnContext(se, turn);
+    // With the turn’s last raw lines, which each adapter’s recorder keeps (recorderFor), for an empty reply (#485).
+    const ctx = Object.assign(this.turnContext(se, turn), { rawTail: turn.rawTail });
     // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
     const run = Promise.resolve().then(async () => {
       if (!hostId) refuseHere(this, se, persona);
@@ -684,7 +702,7 @@ export class Runtime {
       () => this.endTurn(turn, null),
       (err) => this.endTurn(turn, err),
     );
-    turn.exited.then(() => this.turnExited(turn));
+    turn.exited.then(() => this.turnExited(turn)).then(() => endChain(this, turn.threadId));
   }
 
   turnContext(se0, turn) {
@@ -874,7 +892,7 @@ export class Runtime {
           }));
         if (typeof patch.currentStep === 'string') allowed.currentStep = patch.currentStep.slice(0, 200);
         // A line of what it’s thinking or writing right now; cleared when the turn ends.
-        if (typeof patch.glimpse === 'string') allowed.glimpse = patch.glimpse.slice(0, 200);
+        if (typeof patch.glimpse === 'string') allowed.glimpse = glimpseOf(patch.glimpse);
         rt.updateSession(turn.sessionId, allowed);
       },
       compaction({ kept, total, summary }) {
@@ -962,6 +980,8 @@ export class Runtime {
     const se = this.s.sessions[turn.sessionId];
     if (!se) return;
     const items = this.store.items(turn.threadId);
+    // A turn that ends with no reply is never posted as an empty message (#485, empty-reply.mjs): it fails, saying so.
+    if (!err && endedWithoutReply(turn, items)) err = emptyReply(this, se, turn);
     for (const it of items)
       if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming') this.patchItem(turn.threadId, it.id, { status: err ? 'failed' : 'done' });
     if (turn.checkpoint && !err)
@@ -992,6 +1012,7 @@ export class Runtime {
           turnId: turn.id,
           text: '',
           status: 'failed',
+          ...replyMarks(turn),
         }).id;
       this.patchItem(turn.threadId, target, {
         status: 'failed',
@@ -999,6 +1020,7 @@ export class Runtime {
         retry: turn.retry ?? null,
         asked: askedOf(turn),
         ...(err.remote ? { remote: err.remote } : {}),
+        ...(err.rawEnding ? { rawEnding: err.rawEnding } : {}),
       });
       this.updateSession(se.id, {
         state: 'failed',
@@ -1010,6 +1032,12 @@ export class Runtime {
         stopAsk: null,
       });
       this.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
+      // Its @-mentions still wake their agents (#485, the person’s choice): what it wrote may be cut off, so they’re told.
+      // Not a host turn that goes on (Interrupted, Sign-in needed, its link lost): it wakes them when it ends.
+      // The item keeps whom they woke, with those the failures before it woke, so no Retry wakes them again.
+      const wakes = turn.said.trim() && !err.remote && se.remoteTurn?.state !== 'lost';
+      const woke = wakes ? this.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`) : [];
+      if (woke.length || turn.woken.length) this.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
       // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
       // queued messages wait, as before, for you to see the failure.
       this.takePending(se, turn, 'wakes');
@@ -1080,19 +1108,31 @@ export class Runtime {
     if (topic && !viewing && (turn.said || open.length)) this.putThread({ ...this.s.threads[topic.id], unread: (this.s.threads[topic.id].unread ?? 0) + 1 });
     if (turn.threadId !== se.threadId) settleThread(this, turn.threadId);
 
-    // An agent that @-mentions another agent wakes it, there, except in a summary sent back, which wakes no one (#225).
-    // A reply doesn’t go back to the agent that woke this one by itself (#372): it’s in the conversation, read at that
-    // agent’s next turn, and it wakes it only by @-mentioning it, as a hand-off does. The wake limit stops a loop.
-    // Each wake after the first reuses the message the first went out as: a turn in an old side thread posts it once.
-    let said = turn.first;
-    for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, this.handles())) {
-      if (h.toLowerCase() === se.handle.toLowerCase()) continue;
-      // Its turn has ended, so where it spoke comes from the turn: a topic thread it spoke in, else the conversation.
-      const r = this.agentWake(se.id, h, turn.said, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id, itemId: said });
-      if (r.itemId) said = r.itemId;
-      if (!r.ok && !r.waiting) this.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
-    }
+    this.wakeMentions(se, turn, turn.said);
     this.takePending(se, turn, true);
+  }
+
+  /**
+   * An agent that @-mentions another agent wakes it, there, except in a summary sent back, which wakes no one (#225).
+   * A reply doesn’t go back to the agent that woke this one by itself (#372): it’s in the conversation, read at that
+   * agent’s next turn, and it wakes it only by @-mentioning it, as a hand-off does. The chain limit stops a runaway one.
+   * Each wake after the first reuses the message the first went out as: a turn in an old side thread posts it once.
+   * One the failed reply a retry answers already woke isn’t woken again (#485).
+   * @param {any} se @param {any} turn @param {string} text  what the woken agents are sent
+   * @returns {string[]} the handles it woke, or that wait to be
+   */
+  wakeMentions(se, turn, text) {
+    let said = turn.first;
+    const woke = [];
+    for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, this.handles())) {
+      if (h.toLowerCase() === se.handle.toLowerCase() || turn.woken.includes(h)) continue;
+      // Its turn has ended, so where it spoke comes from the turn: a topic thread it spoke in, else the conversation.
+      const r = this.agentWake(se.id, h, text, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id, itemId: said });
+      if (r.itemId) said = r.itemId;
+      if (r.ok || r.waiting) woke.push(h);
+      else this.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
+    }
+    return woke;
   }
 
   /**
@@ -1161,6 +1201,7 @@ export class Runtime {
         handle: this.s.sessions[sessionId].handle,
         turnId: turn.id,
         text: '',
+        ...replyMarks(turn),
         ...ended,
       });
     }
@@ -1473,7 +1514,7 @@ export class Runtime {
     return askedAgain(this, threadId, it, (asked) => {
       this.patchItem(threadId, itemId, { status: 'retried' });
       this.updateSession(it.sessionId, { needs: null, state: 'idle' });
-      this.deliver(it.sessionId, { ...asked.message, retry: true }, { summarizeTo: asked.summarizeTo, threadId });
+      this.deliver(it.sessionId, { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [] }, { summarizeTo: asked.summarizeTo, threadId });
     });
   }
 
@@ -1641,7 +1682,13 @@ export class Runtime {
       case 'user':
         return `You: ${text(i.text)}${i.attachments?.length ? ` [attached: ${i.attachments.map((a) => a.name ?? a.path).join(', ')}]` : ''}`;
       case 'agent':
-        return i.text && i.status !== 'failed' ? `@${i.handle}: ${text(i.text)}` : null;
+        // A reply that wrote its text and then failed still reaches the others, marked: it had been dropped, so a
+        // report written before the turn failed reached no one (#485).
+        // One retried since says so too: the retry’s reply follows it.
+        if (!i.text) return null;
+        return i.status === 'failed' || i.status === 'retried'
+          ? `@${i.handle} (this reply ${i.status === 'retried' ? 'failed and was retried' : 'failed'}: ${clipText(i.error || 'unknown', 200)}): ${text(i.text)}`
+          : `@${i.handle}: ${text(i.text)}`;
       case 'block': {
         if (!i.valid) return null;
         // What it holds comes with it, so another agent can review it (#153).
@@ -1874,26 +1921,7 @@ export class Runtime {
   }
 
   sendLint(turnId) {
-    const e = this.lints.get(turnId);
-    if (!e || e.sent || e.timer) return;
-    const wait = this.config.lintSettleMs ?? LINT_SETTLE_MS;
-    const until = Date.now() + LINT_WAIT_MAX_MS;
-    const send = () => {
-      e.timer = null;
-      // An app this agent showed is still being checked in the browser: its warnings join this lint turn.
-      const checking = Object.values(this.s.apps).some((a) => a.sessionId === e.sessionId && a.check.status === 'pending' && !a.retired);
-      if (wait > 0 && checking && Date.now() < until) {
-        e.timer = setTimeout(send, wait);
-        e.timer.unref?.();
-        return;
-      }
-      e.sent = true;
-      const se = this.s.sessions[e.sessionId];
-      if (se && !se.deleting && !se.archived) this.deliver(e.sessionId, lintMessage(e.problems), { threadId: e.threadId });
-    };
-    if (wait <= 0) return send();
-    e.timer = setTimeout(send, wait);
-    e.timer.unref?.();
+    return sendLint(this, turnId);
   }
 
   /**
@@ -2079,7 +2107,7 @@ export class Runtime {
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
     if (this.turns.has(se.id)) throw httpError(409, `@${se.handle} is busy. Stop it, or wait for it to finish, then run the command.`);
     const item = this.addItem(threadId, { kind: 'user', text: line, attachments: [], command: { sessionId: se.id, handle: se.handle } });
-    this.putThread({ ...this.s.threads[threadId], hops: 0, pairRuns: null });
+    this.putThread({ ...this.s.threads[threadId], hops: 0 });
     if (this.sessionsIn(threadId).length > 1) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
     this.deliver(se.id, { kind: 'user', text: line, attachments: [], itemId: item.id, slash: true });
     return { item };
@@ -2363,7 +2391,7 @@ export class Runtime {
         .replace(/^[^a-z]+/, '')
         .slice(0, 20) || 'terminal';
     let name = base.length >= 2 ? base : `cc-${base}`;
-    for (let n = 2; this.personaByHandle(name); n++) name = `${base.slice(0, 20)}-${n}`;
+    for (let n = 2; this.personaByHandle(name) || this.deletingHandle(name); n++) name = `${base.slice(0, 20)}-${n}`;
     const p = this.createPersona({
       handle: name,
       backend: 'claude-code',
@@ -2448,7 +2476,7 @@ export class Runtime {
         continue;
       }
       if (e.type === 'assistant') {
-        for (const b of e.message?.content ?? []) {
+        for (const b of contentBlocks(e.message?.content)) {
           if (b.type === 'text' && b.text?.trim()) {
             const it = m.agentItem && this.store.item(se.threadId, m.agentItem);
             if (it) this.patchItem(se.threadId, it.id, { text: it.text ? `${it.text}\n\n${b.text}` : b.text });
@@ -2528,6 +2556,7 @@ export class Runtime {
       .trim();
     if (!/^[a-z][a-z0-9_-]{1,23}$/i.test(handle)) throw httpError(422, 'A name uses 2–24 letters, digits, - or _, and starts with a letter.');
     if (this.personaByHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
+    if (this.deletingHandle(handle)) throw httpError(409, `@${handle} is being deleted. Undo that, or wait 10 seconds for the name to be free.`);
     if (!this.adapters.names().includes(backend)) throw httpError(422, notHere(this, backend));
     if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
     checkEffort(effort);
@@ -2730,6 +2759,8 @@ export class Runtime {
   /** Deletes after DELETE_UNDO_MS unless undone. The persona always stays. */
   deleteSession(sessionId) {
     this.stop(sessionId, { silent: true });
+    // A turn of one on a host, waiting to be attached again or to resume, is neither, as deleting a conversation does.
+    this.remote.cancel(sessionId);
     const se = this.session(sessionId);
     const until = Date.now() + DELETE_UNDO_MS;
     this.updateSession(sessionId, { deleting: until });
@@ -2798,9 +2829,11 @@ export class Runtime {
   }
 
   undoDelete(sessionId) {
+    const se = this.session(sessionId);
+    // Its persona’s delete would take it again (persona-delete.mjs): Undo that instead.
+    if (this.s.personas[se.personaId]?.deleting) throw httpError(409, `@${se.handle} is being deleted. Undo that first.`);
     clearTimeout(this.timers.get(`del:${sessionId}`));
     this.timers.delete(`del:${sessionId}`);
-    const _se = this.session(sessionId);
     this.updateSession(sessionId, { deleting: null });
   }
 

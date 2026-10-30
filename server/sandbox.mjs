@@ -8,6 +8,7 @@
 
 import { readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 import { LIMITS } from '../shared/limits.mjs';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -52,11 +53,96 @@ function inline(rel, closer) {
   return text;
 }
 const css = () => `<style>${inline('workbench.css', '</style')}</style>`;
+const syntaxCache = new WeakMap();
+const tagBoundary = (char) => !char || char === '>' || char === '/' || /\s/.test(char);
+const findTag = (text, tag, from) => {
+  for (let i = from; i <= text.length - tag.length; i++) if (text.slice(i, i + tag.length).toLowerCase() === tag) return i;
+  return -1;
+};
+
+/** The closing angle bracket of an HTML tag, ignoring one inside a quoted attribute. */
+function tagEnd(text, from) {
+  let quote = '';
+  let value = false;
+  for (let i = from; i < text.length; i++) {
+    const char = text[i];
+    if (quote) {
+      if (char === quote) quote = '';
+    } else if (char === '=') value = true;
+    else if (value && /\s/.test(char)) continue;
+    else {
+      if (value && (char === '"' || char === "'")) quote = char;
+      value = false;
+      if (char === '>') return i;
+    }
+  }
+  return -1;
+}
+
+/** Inline script attributes and bodies, following script raw-text end tags without treating the regexp as an HTML parser. */
+function inlineScripts(code) {
+  const text = String(code);
+  const scripts = [];
+  let from = 0;
+  while (from < text.length) {
+    const open = findTag(text, '<script', from);
+    if (open < 0) break;
+    const nameEnd = open + '<script'.length;
+    if (!tagBoundary(text[nameEnd])) {
+      from = nameEnd;
+      continue;
+    }
+    const openEnd = tagEnd(text, nameEnd);
+    if (openEnd < 0) break;
+    let close = findTag(text, '</script', openEnd + 1);
+    while (close >= 0 && !tagBoundary(text[close + '</script'.length])) close = findTag(text, '</script', close + 2);
+    if (close < 0) break;
+    const closeEnd = tagEnd(text, close + '</script'.length);
+    if (closeEnd < 0) break;
+    scripts.push({ attributes: text.slice(nameEnd, openEnd), body: text.slice(openEnd + 1, close) });
+    from = closeEnd + 1;
+  }
+  return scripts;
+}
+
+/** Syntax errors in an app’s inline JavaScript, with the script and source position. */
+export function scriptSyntaxErrors(code) {
+  const errors = [];
+  let script = 0;
+  for (const { attributes, body } of inlineScripts(code)) {
+    script++;
+    const type = attributes.match(/\btype\s*=\s*["']([^"']+)["']/i)?.[1]?.toLowerCase();
+    if (type && !['text/javascript', 'application/javascript'].includes(type)) continue;
+    // App code is capped at 600,000 characters and parsed once per cached version, so this synchronous pass stays
+    // bounded while recovering diagnostics the sandboxed browser hides (#328).
+    try {
+      new vm.Script(body, { filename: `app-script-${script}.js` });
+    } catch (error) {
+      const lines = String(error.stack ?? '').split('\n');
+      const line = Number(lines[0]?.match(/:(\d+)$/)?.[1]) || 1;
+      const column = Math.max(1, (lines[2]?.indexOf('^') ?? 0) + 1);
+      errors.push(`${error.name}: ${error.message} (script ${script}, line ${line}, column ${column})`);
+    }
+  }
+  return errors;
+}
+
+function versionSyntaxErrors(version) {
+  if (!syntaxCache.has(version)) syntaxCache.set(version, scriptSyntaxErrors(version.code));
+  return syntaxCache.get(version);
+}
 
 /** The page for one version of an agent-written app. */
 export function sandboxPage({ origin, app, version, theme, check }) {
   // The kit can’t import /shared/ (the page loads no files), so the limits it enforces come with the page.
-  const init = { appId: app.id, version: version.v, title: app.title, check: !!check, limits: { eventBytes: LIMITS.eventBytes } };
+  const init = {
+    appId: app.id,
+    version: version.v,
+    title: app.title,
+    check: !!check,
+    limits: { eventBytes: LIMITS.eventBytes },
+    syntaxErrors: versionSyntaxErrors(version),
+  };
   const html = `<!doctype html>
 <html lang="en" data-theme="${theme}" class="stage pb-sandbox">
 <head>
