@@ -8,9 +8,10 @@ import { join } from 'node:path';
 import { after } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
+import { gate } from './store-kill-fixture.mjs';
 
 export { admin } from './redis-fixture-user.mjs';
-export { killed } from './store-kill-fixture.mjs';
+export { gate, holdCatchUp, holding, killed, loseReply } from './store-kill-fixture.mjs';
 
 if (!process.env.POSTBOX_REDIS_HOME) throw new Error('Set POSTBOX_REDIS_HOME (tests/AGENTS.md, “The store’s Redis”).');
 
@@ -40,7 +41,8 @@ export const raw = (s) => /** @type {any} */ (s).redis.sup.client();
 
 /**
  * Waits for a condition, up to 5 s, then fails naming it and, given the store, its Redis’s status: a child that didn’t
- * come back fails with its cause, not at the file’s end.
+ * come back fails with its cause, not at the file’s end. Its timer holds the event loop, so it’s a safe wait on a store
+ * whose child was killed; for a promise rather than a condition, `holding` does the same.
  * @param {() => boolean} pred @param {string} [what] @param {Store} [s]
  */
 export const until = async (pred, what = 'the condition', s) => {
@@ -78,19 +80,6 @@ export async function consistent(s) {
   return { seq, fresh };
 }
 
-/** A gate: `hit` resolves once something waits at it, and `go()` lets it on. */
-export function gate() {
-  let go = () => {};
-  let enter = () => {};
-  const opened = new Promise((ok) => (go = ok));
-  const hit = new Promise((ok) => (enter = ok));
-  const wait = () => {
-    enter();
-    return opened;
-  };
-  return { hit, go: () => go(), wait };
-}
-
 /** Holds the next EVAL on a store’s connection at a gate. @param {Store} s */
 export function holdEval(s) {
   const g = gate();
@@ -103,45 +92,6 @@ export function holdEval(s) {
       await g.wait();
     }
     return call(...a);
-  };
-  return g;
-}
-
-/**
- * Makes the store’s next EVAL run in Redis, then kills the child before Postbox reads the reply; with `g`, the EVAL
- * waits at that gate first. @param {Store} s @param {ReturnType<typeof gate>} [g]
- */
-export function loseReply(s, g) {
-  const sup = /** @type {any} */ (s).redis.sup;
-  const client = /** @type {any} */ (s).client;
-  const call = client.call.bind(client);
-  client.call = async (...a) => {
-    if (a[0] !== 'EVAL') return call(...a);
-    await g?.wait();
-    await call(...a);
-    sup.child.kill('SIGKILL');
-    throw Object.assign(new Error('The connection to the store’s Redis closed before it answered.'), { code: 'ESTOREDOWN' });
-  };
-}
-
-/** Holds the first `GET seq` on the next connection the store’s child gives (catch-up’s first read) at a gate. @param {Store} s */
-export function holdCatchUp(s) {
-  const g = gate();
-  const sup = /** @type {any} */ (s).redis.sup;
-  const factory = sup.client.bind(sup);
-  let once = true;
-  sup.client = async () => {
-    const c = await factory();
-    const real = c.call.bind(c);
-    c.call = async (...a) => {
-      const r = await real(...a);
-      if (once && a[0] === 'GET' && a[1] === 'seq') {
-        once = false;
-        await g.wait();
-      }
-      return r;
-    };
-    return c;
   };
   return g;
 }

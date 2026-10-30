@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { apply } from '../shared/state.mjs';
-import { holdEval, open, streamed, tmp } from './store-fixture.mjs';
+import { holdEval, holding, open, streamed, tmp } from './store-fixture.mjs';
 
 /** Each event as JSON. @param {any[]} evs */
 const bytes = (evs) => evs.map((e) => JSON.stringify(e));
@@ -25,7 +25,7 @@ test('live subscribers receive a held event as it was emitted, not as later even
   });
   const b = holdEval(s);
   const p = s.commit([{ type: 'item.add', data: { threadId: 't', item: { id: 'c', text: 'commit' } } }], 'commit');
-  await b.hit;
+  await holding(b.hit, 'the commit to reach its EVAL', s);
   s.emit('item.add', { threadId: 't', item: { id: 'e', text: 'hello' } });
   s.emit('item.text', { threadId: 't', id: 'e', text: 'world' });
   b.go();

@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { admin, consistent, gate, killed, open, tmp, until } from './store-fixture.mjs';
+import { admin, consistent, gate, holding, killed, open, tmp, until } from './store-fixture.mjs';
 
 /** A store with a conversation and one item, written. */
 async function withItem() {
@@ -42,7 +42,7 @@ test('a commit is applied and broadcast only once Redis has replied, and sends n
     done = true;
     return r;
   });
-  await Promise.race([g.hit, p]);
+  await holding(Promise.race([g.hit, p]), 'the commit’s reply to arrive at the gate', s);
   try {
     const c = await admin(s);
     const seq = Number(await c.call('GET', 'seq'));

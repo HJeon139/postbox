@@ -12,7 +12,7 @@ import { Store } from '../server/store.mjs';
 import { readState } from '../server/store-redis.mjs';
 import { apply } from '../shared/state.mjs';
 import { admin } from './redis-fixture-user.mjs';
-import { killed, until } from './store-fixture.mjs';
+import { holding, killed, until } from './store-fixture.mjs';
 
 if (!process.env.POSTBOX_REDIS_HOME) throw new Error('Set POSTBOX_REDIS_HOME (tests/AGENTS.md, “The store’s Redis”).');
 
@@ -217,7 +217,7 @@ test('an emit that changes what a waiting commit changes leaves the server, the 
     return call(...a);
   };
   const p = s.commit([{ type: 'session.patch', data: { id: 'se', patch: { n: 1 } } }], 'overlap');
-  await arrived;
+  await holding(arrived, 'the commit to reach its EVAL', s);
   s.emit('session.patch', { id: 'se', patch: { n: 2 } });
   assert.equal(s.state.sessions.se.n, 2, 'the emit is applied at once');
   release();

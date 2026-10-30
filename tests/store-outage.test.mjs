@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
-import { killed } from './store-kill-fixture.mjs';
+import { holding, killed } from './store-kill-fixture.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
@@ -169,7 +169,7 @@ test('ST-3: while Redis starts again after Retry, the status says down (starting
     return writeConf.call(sup, m);
   };
   const retried = call({ method: 'POST', path: '/api/store/retry', cookie });
-  await hit;
+  await holding(hit, 'Retry to reach the child’s start', store);
   try {
     assert.equal(sup.status.state, 'starting');
     assert.equal(store.writable, false);

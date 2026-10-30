@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { retry } from '../server/store-recover.mjs';
-import { admin, consistent, gate, holdCatchUp, loseReply, open, tmp, until } from './store-fixture.mjs';
+import { admin, consistent, gate, holdCatchUp, holding, loseReply, open, tmp, until } from './store-fixture.mjs';
 
 /** A store with a conversation and one item, written. */
 async function withItem() {
@@ -27,7 +27,8 @@ test('a restarted store refuses writes until it has read back a commit whose rep
   const reading = holdCatchUp(s);
   try {
     await assert.rejects(s.commit(append('b'), 'lost-reply'), (e) => e.code === 'ESTOREDOWN');
-    await reading.hit;
+    // The restarted child is unref’d, so this wait holds the loop itself (tests/store-kill-fixture.mjs).
+    await holding(reading.hit, 'catch-up to read seq on the restarted child', s);
     assert.equal(s.writable, false, 'no writes while it reads back');
     assert.equal(s.status.state, 'down');
     assert.equal(/** @type {any} */ (s.status).cause, 'reconciling');
@@ -40,7 +41,7 @@ test('a restarted store refuses writes until it has read back a commit whose rep
   } finally {
     reading.go();
   }
-  await until(() => s.writable);
+  await until(() => s.writable, 'writes to reopen after catch-up', s);
   assert.equal(s.failed, null);
   assert.equal(s.status.state, 'running');
   assert.equal(s.state.items.t[0].text, 'ab', 'the lost commit was read back');
@@ -62,11 +63,11 @@ test('emits held behind a commit whose reply was lost are published after catch-
   const seen = [];
   s.subscribe((ev) => seen.push(ev.seq));
   const p = s.commit(append('b'), 'lost-held');
-  await g.hit;
+  await holding(g.hit, 'the commit to reach its EVAL', s);
   s.emit('item.add', { threadId: 't', item: { id: 'h', text: 'held' } });
   g.go();
   await assert.rejects(p, (e) => e.code === 'ESTOREDOWN');
-  await until(() => s.writable);
+  await until(() => s.writable, 'writes to reopen after catch-up', s);
   await s.flush();
   assert.equal(s.failed, null);
   assert.deepEqual(
@@ -85,7 +86,7 @@ async function dropIdle(s) {
   } finally {
     c.close();
   }
-  await until(() => !s.client?.connected || !s.writable);
+  await until(() => !s.client?.connected || !s.writable, 'the store to notice its connection dropped', s);
 }
 
 // gpt’s regression (store outage review, finding 1): an idle connection drop closed writes without saying so, the
@@ -95,7 +96,7 @@ test('an idle Redis connection drop is shown as down and Retry reconnects withou
   const pid = /** @type {any} */ (s).redis.sup.child.pid;
   await dropIdle(s);
   const before = { writable: s.writable, status: s.status.state, cause: /** @type {any} */ (s.status).cause };
-  await retry(s);
+  await holding(retry(s), 'Retry to reconnect and read Redis back', s);
   assert.deepEqual(
     { before, afterWritable: s.writable, afterStatus: s.status.state },
     { before: { writable: false, status: 'down', cause: 'reconciling' }, afterWritable: true, afterStatus: 'running' },
@@ -116,7 +117,7 @@ test('an idle Redis connection drop reconnects, reads Redis back and reopens wri
   const other = await open(/** @type {string} */ (s.dir));
   other.emit('item.text', { threadId: 't', id: 'i', text: 'x' });
   await other.flush();
-  await until(() => s.writable);
+  await until(() => s.writable, 'writes to reopen after the reconnect', s);
   assert.deepEqual(heard, ['false:down:reconciling', 'true:running']);
   assert.equal(s.state.items.t[0].text, 'ax', 'what another process wrote meanwhile was read back');
   s.emit('item.text', { threadId: 't', id: 'i', text: 'b' });

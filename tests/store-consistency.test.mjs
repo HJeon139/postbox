@@ -10,6 +10,7 @@ import { after, test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 import { admin } from './redis-fixture-user.mjs';
+import { holding } from './store-kill-fixture.mjs';
 
 if (!process.env.POSTBOX_REDIS_HOME) throw new Error('Set POSTBOX_REDIS_HOME (tests/AGENTS.md, “The store’s Redis”).');
 
@@ -231,7 +232,7 @@ test('an optimistic write Redis refuses makes the store refuse new writes until 
     return call(...a);
   };
   s.emit('settings', { theme: 'auto' });
-  await hit;
+  await holding(hit, 'the third write to be tried', s);
   const writable = s.writable;
   const status = s.status;
   assert.throws(

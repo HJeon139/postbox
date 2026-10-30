@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { retry } from '../server/store-recover.mjs';
-import { open, poison, raw, tmp } from './store-fixture.mjs';
+import { open, poison, raw, tmp, until } from './store-fixture.mjs';
 
 test('Retry recovers a repair whose commit succeeded but the following state read lost its reply', async () => {
   const s = await open(await tmp());
@@ -31,7 +31,7 @@ test('Retry recovers a repair whose commit succeeded but the following state rea
   assert.equal(lost, true);
   // A fresh connection sees the successful repair. Simulate the reconnect that follows a real lost connection.
   client.ondrop();
-  for (let i = 0; i < 100 && !s.writable; i++) await new Promise((r) => setTimeout(r, 25));
+  await until(() => s.writable, 'writes to reopen after the reconnect', s);
   const c = await raw(s);
   try {
     assert.equal(await c.call('GET', 'seq'), '4');
