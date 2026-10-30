@@ -67,6 +67,21 @@ test('DL-4: a turn opens with the request; what waited and the catch-up follow i
   assert.doesNotMatch(formatMessage({ kind: 'user', text: 'Hi', facts: turnFacts(base) }), /Background/);
 });
 
+test('#504 #515: a topic thread’s turn is its thread, its task, the request, then the room’s facts, then the room as background', () => {
+  const thread = '[Postbox] You’re answering in the thread “Note” (thread th_1).';
+  const meanwhile = '[Postbox] Meanwhile in the room and other background context (answer room work in the room):\n\nYou: Ship it.';
+  const prompt = formatMessage({ kind: 'user', text: '@coder check the grammar', taskContext: thread, facts: turnFacts(base), context: [meanwhile] });
+  const parts = [
+    thread,
+    'Your task in this topic or side thread is the request below.',
+    '@coder check the grammar',
+    '[Postbox] What’s current in this room:',
+    meanwhile,
+  ];
+  const at = parts.map((s) => prompt.indexOf(s));
+  assert.ok(at[0] === 0 && at.every((n, i) => n >= 0 && (i === 0 || n > at[i - 1])), `the order was: ${at.join(', ')}`);
+});
+
 test('a command’s turn is the command alone: Claude Code runs it only when the prompt is just /name', () => {
   assert.equal(formatMessage({ kind: 'user', text: '/review the ring', slash: true, facts: turnFacts(base) }), '/review the ring');
 });
