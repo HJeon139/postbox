@@ -70,7 +70,22 @@ export const GLIMPSE_SOURCE_CHARS = 2000;
  * Agent wakes in a row, without you, before the next waits for your Allow: a backstop against agents that never stop,
  * until a supervisor agent watches the room (#538). 3 until #320 raised it to 10, and 50 since #492.
  */
-export const HOP_LIMIT = 50;
+export const DEFAULT_HOP_LIMIT = 50;
+/**
+ * The chain limit POSTBOX_CHAIN_LIMIT asks for, or the default when it isn’t set (#508). The UAT runner sets it for the
+ * Postbox it starts, so a scenario’s `- chain-limit: 3` reaches the card in a few wakes; a value that isn’t a whole number
+ * from 1 up is refused, so a mistyped one can’t run as 50. Read once, when the module loads: every reader of HOP_LIMIT,
+ * the one that enforces it (server/side-threads.mjs) and the one agents read (shared/mcp-tools.mjs), gets the same number.
+ * @param {string|undefined} value  the variable’s text
+ */
+export function chainLimit(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return DEFAULT_HOP_LIMIT;
+  if (!/^\d+$/.test(text) || Number(text) < 1) throw new Error(`POSTBOX_CHAIN_LIMIT takes a whole number from 1 up, not “${text}”.`);
+  return Number(text);
+}
+// The browser loads this module too (app/js/composer-to.mjs), where there is no process: it reads the default.
+export const HOP_LIMIT = chainLimit(globalThis.process?.env?.POSTBOX_CHAIN_LIMIT);
 /**
  * Agent wakes in a row, without you, after which the room shows the count with a hint to Stop agents going nowhere
  * (#492), well before the chain limit: E2’s replay found no loop past 2 wakes, and ordinary hand-offs run longer.

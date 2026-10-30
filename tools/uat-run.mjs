@@ -54,7 +54,7 @@ import { reviewFindings } from './uat/review.mjs';
 import { keeper, readReceived, readStreams, readTranscripts, readUi, runPaths, userSetup } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
-import { phaseCap, stepCap } from './uat/scenario.mjs';
+import { chainLimitEnv, phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
 import * as tm from './uat/telemetry-run.mjs';
@@ -151,6 +151,7 @@ async function main() {
       POSTBOX_AGY_RECORD: paths.agyStreams,
       POSTBOX_CODEX_RECORD: paths.codexStreams,
       ...tm.telemetryEnv(scenario, dir, opt),
+      ...chainLimitEnv(scenario), // the scenario’s `- chain-limit:` (#508), for the Postbox this run starts and restarts
       ...faults?.env,
     },
     log,

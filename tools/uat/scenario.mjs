@@ -14,7 +14,8 @@
 // so it runs with --compat like Codex and the Kiro CLI.
 //
 // How long a run is (see tests/uat/e2e/README.md, “How long a run is”): `- steps: N` in the header caps a scenario’s
-// steps, and --steps overrides it. A phase can open with its own settings, before its text:
+// steps, and --steps overrides it. `- chain-limit: 3` in the header starts the run’s Postbox with that chain limit
+// (POSTBOX_CHAIN_LIMIT, shared/limits.mjs), so a phase that needs the wake card reaches it in a few wakes (#508). A phase can open with its own settings, before its text:
 //   - triggers: wake-full-text, stop-keep-jobs   what Postbox must show for the phase to be done (tools/uat/triggers.mjs)
 //   - steps: 10                                  the most steps the phase gets before the run records a coverage gap
 // A phase with triggers ends when they’ve all happened, or at its cap. One without works as it always has: the tester
@@ -72,7 +73,7 @@ export function parseScenario(md) {
   const lines = head.split('\n');
   const meta = Object.fromEntries(
     lines
-      .filter((l) => /^- \w+: /.test(l))
+      .filter((l) => /^- [\w-]+: /.test(l))
       .map((l) =>
         l
           .slice(2)
@@ -99,8 +100,11 @@ export function parseScenario(md) {
     seed: meta.seed ?? null,
     gh: meta.gh === 'none' ? 'none' : 'yes',
     telemetry: meta.telemetry === 'manual' ? 'manual' : 'runner',
-    summary: lines.filter((l) => l && !l.startsWith('#') && !/^- \w+: /.test(l)).join('\n'),
+    summary: lines.filter((l) => l && !l.startsWith('#') && !/^- [\w-]+: /.test(l)).join('\n'),
     steps: count(meta.steps),
+    // `- chain-limit: 3` (#508): the chain limit the run’s Postbox enforces (POSTBOX_CHAIN_LIMIT, shared/limits.mjs), so a
+    // phase reaches the wake card in a few wakes rather than the backstop’s 50. Mistyped, it’s refused, not run as 50.
+    chainLimit: chainLimitOf(meta['chain-limit']),
     phases: phases.map(phaseOf),
   };
 }
@@ -144,6 +148,21 @@ const count = (v) => {
   const n = Number(String(v ?? '').trim());
   return Number.isInteger(n) && n >= 1 && n <= 500 ? n : null;
 };
+
+/** The chain limit a scenario asks for: a whole number from 1 to 500, null for none. @param {string|undefined} spec */
+function chainLimitOf(spec) {
+  if (spec === undefined) return null;
+  const n = count(spec);
+  if (!n) throw new Error(`- chain-limit takes a whole number from 1 to 500, not “${String(spec).trim()}”.`);
+  return n;
+}
+
+/**
+ * What the runner adds to its Postbox’s environment for the scenario’s chain limit: POSTBOX_CHAIN_LIMIT when the scenario
+ * sets one, nothing otherwise, so the server reads its default (shared/limits.mjs).
+ * @param {{ chainLimit?: number|null }} scenario  @returns {Record<string, string>}
+ */
+export const chainLimitEnv = (scenario) => (scenario.chainLimit ? { POSTBOX_CHAIN_LIMIT: String(scenario.chainLimit) } : {});
 
 /** A list of trigger ids, as a phase names them. @param {string|undefined} spec */
 const triggerList = (spec) =>

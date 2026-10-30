@@ -12,16 +12,21 @@ const pair = (a, b) => [a, b].sort().join('+');
 const reached = (f, to, text, itemId, since) => (inputsOf(f, to) ?? []).some((x) => x.at >= since && holds(x, { itemId, text }));
 const prompts = (f, to) => (inputsOf(f, to) ?? []).filter((x) => x.kind === 'prompt');
 
-/** Two pairs’ wakes waiting behind one open card at once: its own, and one held on it from another pair (#439). */
+/**
+ * Two pairs’ wakes waiting behind one open card at once: its own, and one held on it from another pair (#439). The card
+ * records which wake of the chain raised it (n, server/wake-cards.mjs), one past the chain limit the run’s Postbox enforces
+ * (`- chain-limit:`, tools/uat/scenario.mjs), so the evidence says at which wake it came.
+ */
 function heldBehindCard(f) {
   const out = [];
   for (const [id, c] of cardHistory(f.events)) {
     const own = pair(c.card.from, c.card.to);
     const other = [...c.held.values()].find((h) => pair(h.w.from, h.w.to) !== own);
+    const raised = Number.isFinite(c.card.n) ? `, raised by wake ${c.card.n} of the chain,` : '';
     if (other)
       out.push({
         at: other.w.at ?? null,
-        evidence: `Card ${id} (@${c.card.from} → @${c.card.to}) held @${other.w.from}’s wake of @${other.w.to} too, while it waited.`,
+        evidence: `Card ${id} (@${c.card.from} → @${c.card.to})${raised} held @${other.w.from}’s wake of @${other.w.to} too, while it waited.`,
       });
   }
   return out;

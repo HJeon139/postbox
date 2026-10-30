@@ -21,7 +21,7 @@ test('delivery with --phases 1,2 passes the trigger check, and plays only those 
     ['Phase 1: Two wakes held at once (A1)', 'Phase 2: A mention past the catch-up cap (A2)'],
   );
   // Its step cap is those phases’ caps added up, not the whole scenario’s 50.
-  assert.equal(stepCap(scenario, undefined), 14);
+  assert.equal(stepCap(scenario, undefined), 12);
   assert.equal(stepCap(scenario, '20'), 20);
 });
 
@@ -70,7 +70,7 @@ test('--phases in any order or repeated plays them once each, in the scenario’
     opt: {},
     started: 0,
     steps: 3,
-    cap: 14,
+    cap: 12,
     phases,
     tester: { spent: 0 },
     facts: {},

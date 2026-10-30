@@ -3,17 +3,18 @@
 - persona: A maintainer coordinating three agents on a release, who writes short messages, sends a second one before the first is answered, and leaves cards waiting while doing something else. Changes their mind about a queued message and edits it.
 - agents: researcher, critic, developer
 - seed: big-room
+- chain-limit: 3
 - steps: 50
 - conversation: The release, in a long room
 
-All three agents start in a room seeded with about 1,000 items (`- seed: big-room`), so catch-up has to leave things out. The run checks that every message addressed to an agent reaches it: held behind a card, buried past the catch-up cap, sent while the agent works, or resent after a turn that failed before any output. A repeat must say it’s a repeat. The fault launcher fails one chosen turn before any output; the phase that needs it turns it on.
+All three agents start in a room seeded with about 1,000 items (`- seed: big-room`), so catch-up has to leave things out. The run’s Postbox allows three agent wakes in a chain since your last message (`- chain-limit: 3`): the fourth waits for you on a card, and every wake after that is held on the card until you answer it. The run checks that every message addressed to an agent reaches it: held behind a card, buried past the catch-up cap, sent while the agent works, or resent after a turn that failed before any output. A repeat must say it’s a repeat. The fault launcher fails one chosen turn before any output; the phase that needs it turns it on.
 
 ## Phase 1: Two wakes held at once (A1)
 
 - triggers: held-behind-card, held-released
-- steps: 8
+- steps: 6
 
-Ask @critic and @developer to settle the version number between them, by mentioning each other until they agree, and ask @researcher and @critic to do the same for the changelog wording. Don’t answer the first “allow another wake?” card when it appears. Wait until a second pair is held too, then say what the conversation shows is waiting on you. Answer Allow on one card, then the other.
+Ask @critic and @developer to settle the version number between them, by mentioning each other until they agree, and in the same message ask @researcher and @critic to do the same for the changelog wording. The fourth agent wake since your message raises the “allow another wake?” card: don’t answer it. Wait until the card also holds a wake from the other pair, then say what the conversation shows is waiting on you. Answer Allow on the card; when the next one appears, allow it too.
 
 ## Phase 2: A mention past the catch-up cap (A2)
 
