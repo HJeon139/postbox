@@ -6,6 +6,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { contentBlocks } from './adapters/claude-content.mjs';
 import { POSTBOX_SERVER } from './adapters/setup.mjs';
 
 const sha = (s) => createHash('sha256').update(s).digest('hex');
@@ -90,7 +91,7 @@ function secretsOf(f, t) {
   for (const p of walk(t.workspace ?? '')) out.push(['a file path', relative(t.workspace, p)]);
   for (const s of f.streams ?? [])
     for (const e of s.events ?? [])
-      for (const b of e.message?.content ?? [])
+      for (const b of contentBlocks(e.message?.content))
         if (b?.type === 'tool_use' && typeof b.input?.command === 'string') out.push(['a command line', b.input.command]);
   const personas = Object.values(f.state?.personas ?? {});
   for (const p of personas) {
@@ -122,9 +123,9 @@ function postboxWritten(streams, transcripts) {
     const ours = new Set();
     for (const e of s.events ?? []) {
       if (e.type === 'assistant')
-        for (const b of e.message?.content ?? []) if (b?.type === 'tool_use' && String(b.name).startsWith(`mcp__${POSTBOX_SERVER}__`)) ours.add(b.id);
+        for (const b of contentBlocks(e.message?.content)) if (b?.type === 'tool_use' && String(b.name).startsWith(`mcp__${POSTBOX_SERVER}__`)) ours.add(b.id);
       if (e.type !== 'user') continue;
-      const content = typeof e.message?.content === 'string' ? [{ type: 'text', text: e.message.content }] : (e.message?.content ?? []);
+      const content = contentBlocks(e.message?.content);
       for (const b of content) {
         if (b?.type === 'tool_result' && ours.has(b.tool_use_id)) out.push({ handle: s.handle, text: JSON.stringify(b.content ?? '') });
         else if (b?.type === 'text') for (const l of String(b.text).split('\n')) if (l.startsWith('[Postbox]')) out.push({ handle: s.handle, text: l });

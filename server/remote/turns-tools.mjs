@@ -6,6 +6,7 @@
 
 import { LIMITS } from '../../shared/limits.mjs';
 import { REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
+import { noteAnswer } from '../empty-reply.mjs';
 import { reactTool } from '../reactions.mjs';
 import { withUrgent } from '../subagent-end.mjs';
 import { linkOf } from './turns-need.mjs';
@@ -69,6 +70,7 @@ async function applyTool(rts, live, m) {
     // show_app’s and update_app’s files were read on the host (the broker), and come as base64.
     const app = m.name === 'show_app' || m.name === 'update_app' ? await appFiles(rts, m.args) : { args: m.args };
     const r = await tools[m.name](app.args, app.files ? { files: app.files } : {});
+    noteAnswer(live.rt, m.name, r);
     return { ok: !(r.ok === false && !r.waiting), text: r.results ? JSON.stringify(r.results) : String(r.message ?? '') };
   } catch (e) {
     return { ok: false, text: String(e.userMessage ?? e.message) };

@@ -1,5 +1,6 @@
 // The triggers of tests/uat/e2e/scenarios/hostwakes.md: a hand-off between agents while a wake card waits for the person.
-// Two agents waking each other in turn stop after a hand-off and its answer (PAIR_LIMIT, shared/limits.mjs), and while
+// A wake past the chain limit (HOP_LIMIT, shared/limits.mjs) raises a card; until #492 so did two agents waking each
+// other in turn after a hand-off and its answer, which the scenario’s phases were built on. While
 // that card is open a wake that needs a second card is refused (server/side-threads.mjs, askToWake). An agent here gets
 // the refusal as wake_agent’s own result. An agent on a host gets the shim’s answer at once, and the refusal reaches it
 // only at its next turn (server/remote/turns-tools.mjs, tellAgent), so nothing tells it its hand-off was lost.
@@ -10,7 +11,6 @@
 // was refused, whatever else woke the target meanwhile. Whether its sender was told reads which turns follow.
 
 import { clip } from '../../server/helpers.mjs';
-import { PAIR_LIMIT } from '../../shared/limits.mjs';
 import { agentTurns, onHost, placeOf } from './remote-facts.mjs';
 import { resultText } from './trigger-facts.mjs';
 
@@ -255,14 +255,14 @@ export const HOSTWAKE_CHECKS = [
 export const HOSTWAKE_TRIGGERS = {
   'pair-card-opened': {
     issue: 439,
-    says: 'a third wake in a row between the same two agents raised a card, which waited for you',
+    says: 'a wake past a limit raised a card, which waited for you',
     recorded: (f) => !!f.state,
     run: (f) =>
       hopCards(f)
-        .filter((c) => c.pair === PAIR_LIMIT)
+        .filter((c) => !c.join)
         .map((c) => ({
           at: c.at,
-          evidence: `@${c.from}’s third wake of @${c.to} in a row raised a card, ${c.allowedAt ? 'allowed later' : 'still waiting'}.`,
+          evidence: `@${c.from}’s wake of @${c.to} raised a card, ${c.allowedAt ? 'allowed later' : 'still waiting'}.`,
         })),
   },
   'refused-wake-told-in-turn': {

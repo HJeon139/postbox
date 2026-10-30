@@ -12,7 +12,7 @@ export function postAndDeliver(rt, threadId, { text, attachments }, targets) {
 function postUserMessage(rt, threadId, q) {
   const item = rt.addItem(threadId, { kind: 'user', text: q.text, attachments: q.attachments });
   const conv = rt.lineage(threadId).at(-1);
-  rt.putThread({ ...rt.s.threads[conv], hops: 0, pairRuns: null });
+  rt.putThread({ ...rt.s.threads[conv], hops: 0 });
   const refs = rt.threadRefs(threadId, q.text);
   const message = {
     kind: 'user',

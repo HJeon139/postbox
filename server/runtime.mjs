@@ -14,7 +14,7 @@ import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
-import { listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
+import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { appCheckText, appReceipt } from './app-check-status.mjs';
 import { retireApp } from './app-retire.mjs';
@@ -39,6 +39,7 @@ import { bringToConversation } from './bring.mjs';
 import { catchUp, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
+import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { clip, clipText, fenced, httpError } from './helpers.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
@@ -76,7 +77,18 @@ import { cancelWake } from './schedule-tools.mjs';
 import { sessionPatch } from './session-patch.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
-import { agentWake, archiveForks, bumpSideLink, dropWakes, recordAgentMessage, resolveHop, sideSession, threadPersona, wakeAgent } from './side-threads.mjs';
+import {
+  agentWake,
+  archiveForks,
+  bumpSideLink,
+  dropWakes,
+  endChain,
+  recordAgentMessage,
+  resolveHop,
+  sideSession,
+  threadPersona,
+  wakeAgent,
+} from './side-threads.mjs';
 import { newId } from './store.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { eraseThreads } from './thread-erase.mjs';
@@ -621,6 +633,11 @@ export class Runtime {
       checkpoint: null,
       pending: [],
       said: '',
+      rawTail: [],
+      // A skill or command, or a host turn attached again: it may end with nothing to say, as /compact does (#485).
+      slash,
+      // Agents the failed reply this retries already woke: its mentions don’t wake them again (#485).
+      woken: Array.isArray(message.woken) ? message.woken : [],
       startedAt: Date.now(),
       // This turn’s own MCP token: a call that carries another turn’s, such as a stopped one’s, is refused (#126).
       token: randomUUID(),
@@ -659,7 +676,8 @@ export class Runtime {
       currentStep: 'Thinking',
       finishedAt: null,
     });
-    const ctx = this.turnContext(se, turn);
+    // With the turn’s last raw lines, which each adapter’s recorder keeps (recorderFor), for an empty reply (#485).
+    const ctx = Object.assign(this.turnContext(se, turn), { rawTail: turn.rawTail });
     // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
     const run = Promise.resolve().then(async () => {
       if (!hostId) refuseHere(this, se, persona);
@@ -673,7 +691,7 @@ export class Runtime {
       () => this.endTurn(turn, null),
       (err) => this.endTurn(turn, err),
     );
-    turn.exited.then(() => this.turnExited(turn));
+    turn.exited.then(() => this.turnExited(turn)).then(() => endChain(this, turn.threadId));
   }
 
   turnContext(se0, turn) {
@@ -950,6 +968,8 @@ export class Runtime {
     const se = this.s.sessions[turn.sessionId];
     if (!se) return;
     const items = this.store.items(turn.threadId);
+    // A turn that ends with no reply is never posted as an empty message (#485, empty-reply.mjs): it fails, saying so.
+    if (!err && endedWithoutReply(turn, items)) err = emptyReply(this, se, turn);
     for (const it of items)
       if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming') this.patchItem(turn.threadId, it.id, { status: err ? 'failed' : 'done' });
     if (turn.checkpoint && !err)
@@ -988,6 +1008,7 @@ export class Runtime {
         retry: turn.retry ?? null,
         asked: askedOf(turn),
         ...(err.remote ? { remote: err.remote } : {}),
+        ...(err.rawEnding ? { rawEnding: err.rawEnding } : {}),
       });
       this.updateSession(se.id, {
         state: 'failed',
@@ -999,6 +1020,12 @@ export class Runtime {
         stopAsk: null,
       });
       this.notify('blocking', se, `@${se.handle}’s reply failed`, message, turn.threadId);
+      // Its @-mentions still wake their agents (#485, the person’s choice): what it wrote may be cut off, so they’re told.
+      // Not a host turn that goes on (Interrupted, Sign-in needed, its link lost): it wakes them when it ends.
+      // The item keeps whom they woke, with those the failures before it woke, so no Retry wakes them again.
+      const wakes = turn.said.trim() && !err.remote && se.remoteTurn?.state !== 'lost';
+      const woke = wakes ? this.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`) : [];
+      if (woke.length || turn.woken.length) this.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
       // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
       // queued messages wait, as before, for you to see the failure.
       this.takePending(se, turn, 'wakes');
@@ -1069,19 +1096,31 @@ export class Runtime {
     if (topic && !viewing && (turn.said || open.length)) this.putThread({ ...this.s.threads[topic.id], unread: (this.s.threads[topic.id].unread ?? 0) + 1 });
     if (turn.threadId !== se.threadId) settleThread(this, turn.threadId);
 
-    // An agent that @-mentions another agent wakes it, there, except in a summary sent back, which wakes no one (#225).
-    // A reply doesn’t go back to the agent that woke this one by itself (#372): it’s in the conversation, read at that
-    // agent’s next turn, and it wakes it only by @-mentioning it, as a hand-off does. The wake limit stops a loop.
-    // Each wake after the first reuses the message the first went out as: a turn in an old side thread posts it once.
-    let said = turn.first;
-    for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, this.handles())) {
-      if (h.toLowerCase() === se.handle.toLowerCase()) continue;
-      // Its turn has ended, so where it spoke comes from the turn: a topic thread it spoke in, else the conversation.
-      const r = this.agentWake(se.id, h, turn.said, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id, itemId: said });
-      if (r.itemId) said = r.itemId;
-      if (!r.ok && !r.waiting) this.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
-    }
+    this.wakeMentions(se, turn, turn.said);
     this.takePending(se, turn, true);
+  }
+
+  /**
+   * An agent that @-mentions another agent wakes it, there, except in a summary sent back, which wakes no one (#225).
+   * A reply doesn’t go back to the agent that woke this one by itself (#372): it’s in the conversation, read at that
+   * agent’s next turn, and it wakes it only by @-mentioning it, as a hand-off does. The chain limit stops a runaway one.
+   * Each wake after the first reuses the message the first went out as: a turn in an old side thread posts it once.
+   * One the failed reply a retry answers already woke isn’t woken again (#485).
+   * @param {any} se @param {any} turn @param {string} text  what the woken agents are sent
+   * @returns {string[]} the handles it woke, or that wait to be
+   */
+  wakeMentions(se, turn, text) {
+    let said = turn.first;
+    const woke = [];
+    for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, this.handles())) {
+      if (h.toLowerCase() === se.handle.toLowerCase() || turn.woken.includes(h)) continue;
+      // Its turn has ended, so where it spoke comes from the turn: a topic thread it spoke in, else the conversation.
+      const r = this.agentWake(se.id, h, text, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id, itemId: said });
+      if (r.itemId) said = r.itemId;
+      if (r.ok || r.waiting) woke.push(h);
+      else this.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
+    }
+    return woke;
   }
 
   /**
@@ -1459,7 +1498,7 @@ export class Runtime {
     return askedAgain(this, threadId, it, (asked) => {
       this.patchItem(threadId, itemId, { status: 'retried' });
       this.updateSession(it.sessionId, { needs: null, state: 'idle' });
-      this.deliver(it.sessionId, { ...asked.message, retry: true }, { summarizeTo: asked.summarizeTo, threadId });
+      this.deliver(it.sessionId, { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [] }, { summarizeTo: asked.summarizeTo, threadId });
     });
   }
 
@@ -1627,7 +1666,13 @@ export class Runtime {
       case 'user':
         return `You: ${text(i.text)}${i.attachments?.length ? ` [attached: ${i.attachments.map((a) => a.name ?? a.path).join(', ')}]` : ''}`;
       case 'agent':
-        return i.text && i.status !== 'failed' ? `@${i.handle}: ${text(i.text)}` : null;
+        // A reply that wrote its text and then failed still reaches the others, marked: it had been dropped, so a
+        // report written before the turn failed reached no one (#485).
+        // One retried since says so too: the retry’s reply follows it.
+        if (!i.text) return null;
+        return i.status === 'failed' || i.status === 'retried'
+          ? `@${i.handle} (this reply ${i.status === 'retried' ? 'failed and was retried' : 'failed'}: ${clipText(i.error || 'unknown', 200)}): ${text(i.text)}`
+          : `@${i.handle}: ${text(i.text)}`;
       case 'block': {
         if (!i.valid) return null;
         // What it holds comes with it, so another agent can review it (#153).
@@ -2046,7 +2091,7 @@ export class Runtime {
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
     if (this.turns.has(se.id)) throw httpError(409, `@${se.handle} is busy. Stop it, or wait for it to finish, then run the command.`);
     const item = this.addItem(threadId, { kind: 'user', text: line, attachments: [], command: { sessionId: se.id, handle: se.handle } });
-    this.putThread({ ...this.s.threads[threadId], hops: 0, pairRuns: null });
+    this.putThread({ ...this.s.threads[threadId], hops: 0 });
     if (this.sessionsIn(threadId).length > 1) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
     this.deliver(se.id, { kind: 'user', text: line, attachments: [], itemId: item.id, slash: true });
     return { item };
@@ -2415,7 +2460,7 @@ export class Runtime {
         continue;
       }
       if (e.type === 'assistant') {
-        for (const b of e.message?.content ?? []) {
+        for (const b of contentBlocks(e.message?.content)) {
           if (b.type === 'text' && b.text?.trim()) {
             const it = m.agentItem && this.store.item(se.threadId, m.agentItem);
             if (it) this.patchItem(se.threadId, it.id, { text: it.text ? `${it.text}\n\n${b.text}` : b.text });

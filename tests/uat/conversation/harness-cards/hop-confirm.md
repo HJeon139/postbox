@@ -2,7 +2,7 @@
 
 ![Wake-limit confirm](../../screenshots/hop-confirm.png)
 
-**Where:** After ten agent-to-agent wakes in a row (three until #320).
+**Where:** After 50 agent-to-agent wakes in one chain (three until #320, ten until #492). A chain ends when you act or no agent is left working on it.
 
 ## Why it exists
 
