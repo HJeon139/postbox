@@ -17,8 +17,7 @@ Drop a rule once its cause is fixed, in the same change that fixes it.
 
 ## Rounds
 
-4. **The person starts each round,** naming every reviewer in one message. Reviewers post findings without mentioning developer, and developer folds them in once all have answered. (#492, in code: `PAIR_LIMIT` is 2, so a third wake between two agents always waits for the person’s Allow.)
-   **For steps in progress,** the hand-offs in `execution-plan.md`, “How the room talks”, replace this rule: developer’s “ready for review” starts the round, and a reviewer mentions developer only for blocking findings. Each is one reply wake, under the pair limit.
+4. **Dropped 30 October 2026:** “the person starts each round”. #541 (v0.44.7) removed the pair limit, and a chain now waits for the person only past 50 wakes, so the hand-offs in `execution-plan.md`, “How the room talks”, apply to every round.
 5. **Mention an agent only when it must act next;** acknowledge with a reaction. (#331, #481)
 6. **Work in the main conversation, not in topic threads,** until #511 and #507 merge. (#504 and #507, in code: a thread’s catch-up keeps only its newest 20 items and puts the room first.)
 7. **No scheduled wakes for coordination** until #498 and the fix for #466 merge. (In code: they can’t be canceled, and one lost to a network drop isn’t retried.)

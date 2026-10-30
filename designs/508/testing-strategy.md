@@ -23,9 +23,11 @@ All three agents start in a room seeded with about 1,000 items (`- seed: big-roo
 ## Phase 1: Two wakes held at once (A1)
 
 - triggers: held-behind-card, held-released
-- steps: 8
+- steps: 6
 
-Ask @critic and @developer to settle the version number between them, by mentioning each other until they agree, and ask @researcher and @critic to do the same for the changelog wording. Don’t answer the first “allow another wake?” card when it appears. Wait until a second pair is held too, then say what the conversation shows is waiting on you. Answer Allow on one card, then the other.
+The scenario sets `- chain-limit: 3`, so the run’s Postbox raises a card on the fourth agent wake since the person’s message. Since #541 there’s no pair limit, and the default backstop of 50 is out of reach in a phase.
+
+Ask @critic and @developer to settle the version number between them, by mentioning each other until they agree, and in the same message ask @researcher and @critic to do the same for the changelog wording. The fourth agent wake raises the “allow another wake?” card: don’t answer it. Wait until the card also holds a wake from the other pair, then say what the conversation shows is waiting on you. Answer Allow on the card; when the next one appears, allow it too.
 
 ## Phase 2: A mention past the catch-up cap (A2)
 
@@ -203,4 +205,4 @@ Each one carries the requirement ids it serves, beside today’s `issue` field, 
 - **`- seed: big-room`:** a generated room of about 1,000 items, with a mention of @researcher as its oldest addressed item, a review block near its start, and a decision with a known link. It is generated rather than copied from a real room, so no project’s content reaches the tester model, and runs are repeatable.
 - **`tools/uat/fault-launcher.mjs`:** like `claude-launcher.mjs`, it starts the real CLI and passes its stream through. With `- fault: fail-before-output <agent> <n>` it kills the CLI at that agent’s nth turn, after its first session event and before any assistant output. That is the case gpt and gemini found saves the prompt first. Codex, Kiro and Antigravity need a binary override like `POSTBOX_CLAUDE_BIN` where they lack one.
 - **Host link drop:** phase 6’s host variant needs the runner to cut the host link for a set time. Host mode has recovery tooling (`tools/uat/hosts-recovery.mjs`); whether it can drop the link on cue is unchecked.
-- **Not covered here:** MD-1, MD-4 and MD-5 ship with the later modes step, and AT-5 has its own issue (#492); each gets its phases then. AT-7 (an Add card held as an ask, not dropped) fits phase 1 once the design gives it a step. A restart of Postbox in the middle of a host turn (`restart-mid-host-turn`) needs a runner action that doesn’t exist; until then, a node test decides it alone.
+- **Not covered here:** MD-1, MD-4 and MD-5 ship with the later modes step and get their phases then. AT-5 was met on `main` by #541, decided by its specs. AT-7 (an Add card held as an ask, not dropped) fits phase 1 once the design gives it a step. A restart of Postbox in the middle of a host turn (`restart-mid-host-turn`) needs a runner action that doesn’t exist; until then, a node test decides it alone.
