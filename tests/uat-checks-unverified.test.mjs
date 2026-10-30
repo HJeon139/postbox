@@ -11,6 +11,8 @@ import { test } from 'node:test';
 import { liveChecks } from '../server/room-checks.mjs';
 import { runChecks } from '../tools/uat/checks.mjs';
 import { writeReport } from '../tools/uat/report.mjs';
+import { telemetryBlock, telemetryFacts } from '../tools/uat/telemetry-run.mjs';
+import { telemetryTotals } from '../tools/uat/telemetry-stats.mjs';
 import { DRAFT, ROUND_TWO, room, T0 } from './delivery-fixture.mjs';
 
 const s = (n) => T0 + n * 1000;
@@ -106,7 +108,7 @@ test('the report lists each check it couldn’t make, by agent and backend, apar
     timeline: [],
     started: 0,
     tester: { spent: 0 },
-    facts: { streams: [], kiroStreams: [], agyStreams: [], state: null, probes: {}, samples: [] },
+    facts: { streams: [], kiroStreams: [], agyStreams: [], state: null, probes: {}, samples: [], telemetry: {} },
     logLines: [],
   });
   const md = readFileSync(join(dir, 'report.md'), 'utf8');
@@ -115,6 +117,11 @@ test('the report lists each check it couldn’t make, by agent and backend, apar
   assert.match(md, /\| unlabeled-repeat \| @researcher \| Codex \| DL-2, INV-4 \|/);
   const fresh = md.slice(md.indexOf('## New findings'), md.indexOf('## Timeline'));
   assert.doesNotMatch(fresh, /isn’t checkable/);
+  const json = JSON.parse(readFileSync(join(dir, 'findings.json'), 'utf8'));
+  assert.deepEqual(json.telemetry?.unverified, [
+    { check: 'delivery-dropped', count: 1 },
+    { check: 'unlabeled-repeat', count: 1 },
+  ]);
 });
 
 test('a recorded room’s checks keep what they couldn’t check apart from their findings, so telemetry never counts it found', () => {
@@ -127,6 +134,66 @@ test('a recorded room’s checks keep what they couldn’t check apart from thei
     live.unverified.map((x) => x.key),
     ['delivery-dropped:unverified:researcher', 'unlabeled-repeat:unverified:researcher'],
   );
+});
+
+test('the UAT telemetry keeps unverified rows with counts and check ids only, and no message text', () => {
+  const f = mentionRoom('codex');
+  const tf = telemetryFacts(f, {
+    data: '/tmp',
+    main: 'th_room',
+    workspace: '/tmp',
+    flags: [],
+    shown: { views: [], saved: [], issues: [], copied: [], opened: [] },
+    canaries: null,
+    startedBeforeTurns: true,
+  });
+  assert.deepEqual(tf.unverified, [
+    { check: 'delivery-dropped', count: 1 },
+    { check: 'unlabeled-repeat', count: 1 },
+  ]);
+
+  const findings = runChecks(f, { only: ['delivery-dropped', 'unlabeled-repeat'] });
+  const block = telemetryBlock(tf, findings);
+  assert.deepEqual(block.unverified, [
+    { check: 'delivery-dropped', count: 1 },
+    { check: 'unlabeled-repeat', count: 1 },
+  ]);
+  // Verifies no message text or evidence leaked into telemetry
+  assert.equal(JSON.stringify(block.unverified).includes('evidence'), false);
+  assert.equal(JSON.stringify(block.unverified).includes('researcher'), false);
+  assert.equal(JSON.stringify(block.unverified).includes('Codex'), false);
+});
+
+test('telemetryTotals aggregates unverified check counts across runs', () => {
+  const totals = telemetryTotals([
+    {
+      kind: 'targeted',
+      findings: [],
+      telemetry: {
+        saved: true,
+        unverified: [
+          { check: 'delivery-dropped', count: 2 },
+          { check: 'unlabeled-repeat', count: 1 },
+        ],
+      },
+    },
+    {
+      kind: 'targeted',
+      findings: [],
+      telemetry: {
+        saved: true,
+        unverified: [
+          { check: 'delivery-dropped', count: 1 },
+          { check: 'marker-before-output', count: 3 },
+        ],
+      },
+    },
+  ]);
+  assert.deepEqual(totals.unverified, {
+    'delivery-dropped': 3,
+    'unlabeled-repeat': 1,
+    'marker-before-output': 3,
+  });
 });
 
 // An agent with a transcript can still have a turn it holds no line of: Send now stopped @critic’s turn about 5s in,

@@ -9,6 +9,7 @@ import { budgetNote } from './budget.mjs';
 import { agyTokens, kiroCredits, waitingOnYou } from './checks.mjs';
 import { agentsSpent } from './cost.mjs';
 import { writeJsonAtomic } from './runs.mjs';
+import { countByCheck } from './telemetry-run.mjs';
 import { cell as esc } from './trigger-facts.mjs';
 import { coverageSection } from './triggers.mjs';
 import { mergePeopleVerdicts } from './verdicts.mjs';
@@ -53,6 +54,16 @@ export function unverifiedSection(findings) {
     ),
     '',
   ];
+}
+
+/** What findings.json keeps of telemetry: proposals, and unverified check counts with no message text. */
+function telemetryPayload(facts, findings) {
+  const unverified = countByCheck(findings.filter((f) => f.unverified));
+  if (!facts.telemetryOut && (!facts.telemetry || (!unverified.length && !facts.telemetry?.unverified?.length))) return null;
+  return {
+    ...(facts.telemetryOut ?? {}),
+    unverified: unverified.length ? unverified : (facts.telemetry?.unverified ?? []),
+  };
 }
 
 export async function writeReport({ dir, scenario, issues, findings, timeline, started, tester, facts, logLines, coverage = [], rechecked = false }) {
@@ -129,6 +140,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
   ].join('\n');
   await writeFile(join(dir, 'report.md'), md);
   keepPeopleVerdicts(findings, join(dir, 'findings.json'));
+  const telOut = telemetryPayload(facts, findings);
   writeJsonAtomic(join(dir, 'findings.json'), {
     scenario: scenario.title,
     started,
@@ -138,7 +150,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
     probes: facts.probes,
     samples: facts.samples,
     coverage,
-    ...(facts.telemetryOut ? { telemetry: facts.telemetryOut } : {}),
+    ...(telOut ? { telemetry: telOut } : {}),
     ...(facts.budget ? { budget: facts.budget } : {}),
   });
   if (rechecked) await writeFile(join(dir, 'run.log'), `${readFileSync(join(dir, 'run.log'), 'utf8')}${logLines.join('\n')}\n`);
