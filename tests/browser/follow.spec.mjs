@@ -94,8 +94,9 @@ test('#49 at the bottom: a new version shows at the newest point, in view, with 
   expect(await gap(page), 'the view stays at the bottom').toBeLessThanOrEqual(2);
   expect(await inView(page, item.id), 'the app is in view without scrolling').toBe(true);
   await expect(page.locator(`[data-key="${item.id}"]`), 'one copy on the page').toHaveCount(1);
-  // A new version is checked in a hidden frame before it shows; then exactly one frame runs it.
-  await expect(page.locator(`[data-key="${item.id}"] iframe.app-iframe`), 'v2 passes its check and loads').toBeAttached();
+  // A new version is checked in a hidden frame before it shows; then exactly one frame runs it. The check loads the app
+  // at 375 and 1280 px, which took longer than the default 5 s on CI’s 4-core runner, as other app-check specs allow.
+  await expect(page.locator(`[data-key="${item.id}"] iframe.app-iframe`), 'v2 passes its check and loads').toBeAttached({ timeout: 30_000 });
   await expect(page.locator('iframe.app-iframe'), 'one running frame').toHaveCount(1);
   await expect(page.locator(`[data-key="${stub}"]`)).toContainText(/Pair explorer · updated to v2 below/);
   await expect(page.locator(`[data-key="${stub}"]`)).toContainText('Go to it');
