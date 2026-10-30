@@ -5,9 +5,19 @@
 // the same data, as Ctrl-C and a start without --fresh would.
 
 import { spawn } from 'node:child_process';
+import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { sleep } from '../browser.mjs';
 import { untilGone } from './until-gone.mjs';
+
+/** Whether nothing listens on this port here. @param {number} port */
+export const portFree = (port) =>
+  new Promise((ok) => {
+    const s = createServer()
+      .once('error', () => ok(false))
+      .once('listening', () => s.close(() => ok(true)))
+      .listen(port, '127.0.0.1');
+  });
 
 /**
  * @typedef {{ root: string, port: number, data: string, env: Record<string, string>, log: (line: string) => void,
@@ -73,13 +83,21 @@ export async function startPostbox({ root, port, data, env, log }) {
     get pid() {
       return pb.server?.pid;
     },
-    /** Stops it as Ctrl-C does, and starts it again on the same data. Resolves with how long it was down, in ms. */
-    async restart() {
+    /**
+     * Stops it as Ctrl-C does, and starts it again on the same data. Resolves with how long it was down, in ms.
+     * whileDown runs between the two, as a seed that writes into its store does (tools/uat/big-room.mjs).
+     * @param {{ whileDown?: () => Promise<void> }} [o]
+     */
+    async restart({ whileDown } = {}) {
       const old = pb.server;
       const down = Date.now();
       const gone = new Promise((ok) => old?.once('exit', ok));
       old?.kill('SIGINT');
-      if (!(await Promise.race([gone.then(() => true), sleep(20_000).then(() => false)]))) old?.kill('SIGKILL');
+      if (!(await Promise.race([gone.then(() => true), sleep(20_000).then(() => false)]))) {
+        old?.kill('SIGKILL');
+        await gone;
+      }
+      if (whileDown) await whileDown();
       spawnServer(pb, false);
       await ready(pb, api);
       return Date.now() - down;

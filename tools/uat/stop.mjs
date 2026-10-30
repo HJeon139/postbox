@@ -14,7 +14,7 @@ const SIGNALS = /** @type {const} */ (['SIGINT', 'SIGTERM', 'SIGHUP']);
  * when it’s called, so a signal before the page or the hosts exist stops only what does; the exit then stops
  * Postbox and Chrome in any case.
  * @param {{ hr?: import('./hosts-run.mjs').HostRun | null, history?: { close: () => void }, page?: { close: () => Promise<void> },
- *   postbox?: { kill: () => Promise<void> }, log: (line: string) => void }} run
+ *   postbox?: { kill: () => Promise<void> }, keep?: () => void, log: (line: string) => void }} run
  * @returns {() => Promise<void>}
  */
 export function runStop(run) {
@@ -22,6 +22,12 @@ export function runStop(run) {
   let done;
   return () => {
     done ??= (async () => {
+      // The agents’ transcript lines the checks read, kept in the run folder for --recheck, early stop or not.
+      try {
+        run.keep?.();
+      } catch (e) {
+        run.log(`Couldn’t keep the agents’ transcripts: ${/** @type {Error} */ (e).message}`);
+      }
       if (run.hr) await cleanUp(run.hr).catch((e) => run.log(`Couldn’t clean the hosts up: ${e.message}`));
       run.history?.close();
       await run.page?.close().catch(() => {});
