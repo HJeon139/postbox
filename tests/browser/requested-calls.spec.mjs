@@ -1,8 +1,7 @@
 // Writes the person asked for (#296), driven with real clicks: the person confirms a confirm that shows the exact
 // commands, the agent’s gh pr create then runs without a card and leaves a line with the whole call, Stop on that line
-// brings the card back for the next command the confirm showed, and the Permissions panel turns it off. With it off,
-// a push and a gh write in one command wait on a card that names both places. With a scripted Claude Code agent (no
-// real turns), and no model: a judge that was asked fails the spec.
+// brings the card back for the next command the confirm showed, and the Permissions panel turns it off. With a
+// scripted Claude Code agent (no real turns), and no model: a judge that was asked fails the spec.
 
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -142,4 +141,74 @@ test('#296 with the setting off, a push the person asked for waits on a card tha
   await expect.poll(() => replies.length, { message: 'the answer to reach the agent' }).toBe(1);
   expect.soft(permissionCards()).toHaveLength(before + 1);
   await idle();
+});
+
+/**
+ * Postbox’s own push, answering as told: it runs git, and tests/process/push-on-request.test.mjs runs it for real.
+ * @param {any[]} made  each push it was asked to make
+ */
+const fakePushes = (made) => ({
+  consequence: async ({ url }) =>
+    url
+      ? {
+          branch: 'feat/now',
+          current: 'feat/now',
+          sha: '2d7c9a65'.padEnd(40, '0'),
+          objects: '/x',
+          url,
+          sentence: `commit 2d7c9a6 lands on branch feat/now of ${url}, with no force`,
+        }
+      : null,
+  run: async (p) => {
+    made.push(p);
+    return { ok: true };
+  },
+});
+
+test('#562 a push the person confirmed is Postbox’s own, to the repository they set on the project, and the line says what landed where', async ({ page }) => {
+  const { rt } = app;
+  rt.updatePersona(persona.id, { allowRequested: true });
+  const REPO = 'https://github.com/HJeon139/postbox.git';
+  const PUSH = 'git push -u origin feat/now';
+  const made = [];
+  rt.pushes = fakePushes(made);
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await synced(page, app);
+
+  await test.step('the person sets the project’s repository in Settings', async () => {
+    await page.locator('header.topbar').getByRole('button', { name: 'Settings', exact: true }).click();
+    const settings = page.getByRole('dialog', { name: 'Settings' });
+    await settings.getByRole('tab', { name: 'Projects' }).click();
+    const row = settings.locator('li', { hasText: 'Check' });
+    await row.getByLabel('Repository to push to').fill(REPO);
+    await row.getByRole('button', { name: 'Save repository' }).click();
+    await expect.poll(() => app.store.state.projects.pr_check.pushUrl).toBe(REPO);
+    await page.keyboard.press('Escape');
+    await expect(settings).toHaveCount(0);
+  });
+
+  await test.step('the agent’s git push answers no, Postbox pushes, and the line says what landed where', async () => {
+    const before = permissionCards().length;
+    script.push(async (ctx) =>
+      ctx.tools.show_block({ block: { ...CONFIRM, id: 'push-now', title: 'Push Now', statement: `Push Now:\n\n\`${PUSH}\``, confirmLabel: 'Push feat/now' } }),
+    );
+    rt.sendMessage(thread.id, { text: 'Get Now ready.' });
+    await idle();
+    const replies = [];
+    script.push(async (ctx) => {
+      replies.push(await ctx.askPermission(ask(PUSH)));
+    });
+    await page.locator('.transcript .block', { hasText: 'Push Now:' }).getByRole('button', { name: 'Push feat/now' }).click();
+    const line = page.locator('[data-allowed-call]').last();
+    await expect(line).toHaveText(
+      /Pushed 2d7c9a6 to feat\/now of https:\/\/github\.com\/HJeon139\/postbox\.git for @now, in place of its own git push: you confirmed “Push feat\/now”/,
+    );
+    await expect.poll(() => replies.length, { message: 'the answer to reach the agent' }).toBe(1);
+    expect.soft(replies[0].allow, 'the agent’s own push never runs').toBe(false);
+    expect.soft(replies[0].message).toMatch(/^Postbox pushed this for you, as the person asked/);
+    expect.soft(made.map((p) => [p.url, p.branch])).toEqual([[REPO, 'feat/now']]);
+    expect.soft(permissionCards(), 'no card').toHaveLength(before);
+    await idle();
+  });
+  delete rt.pushes;
 });

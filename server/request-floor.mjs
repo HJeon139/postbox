@@ -2,9 +2,10 @@
 // allow-list: a call passes only when each part of it is something listed here, and everything else gets the card,
 // whatever the person asked. A list of what to block can’t be the floor. The review of #557 found a force push by
 // refspec, deletes by short flag, API deletes, a shell inside a string and aliases, all past a blocklist.
-// - a command: each part a git command with only the flags listed for it, a gh create, comment or edit within #296’s
-//   limits, a command that only reads files in the project, or a quoted here-document for a body; no redirect, and no
-//   VAR=value, which can run code;
+// - a command: each part a gh create, comment or edit within #296’s limits, a command that only reads files in the
+//   project, or a quoted here-document for a body; no redirect, and no VAR=value, which can run code. Never git: a
+//   push or a commit does what the repository’s config, hooks and remotes say, which the agent can change with calls
+//   Postbox never sees, so four rounds of review found a way past every list of what to check (#557, #562);
 // - an MCP tool: one whose name creates, adds, edits, updates, comments, posts, appends, replies or writes, never one
 //   that also deletes, merges or closes, or touches labels, reviews, files or settings, and only with its input there
 //   to judge, each field one the same limits allow: text, a PR’s branches, a repository or an item the person named.
@@ -14,54 +15,8 @@ import { inProject, isText, namesRepo, shellWords, tokensOf } from './request-wo
 
 export { shellWords };
 
-// git subcommands a request may cover, each with every flag it may carry: flags alone, takes with a value (the next
-// word, or --flag=value), counts a -3. refs: its other words are plain refs, two at most (a push or a fetch).
-// Anything else gets the card: a force or a delete (+main, :main, -d), a flag that writes a file (diff --output), an
-// alias, a global option before the subcommand (-c alias.p=push, -C), or a subcommand not listed (tag, reset).
-/** @type {Record<string, { flags: string[], takes?: string[], counts?: boolean, refs?: boolean }>} */
-const GIT = {
-  status: { flags: ['-s', '--short', '-b', '--branch', '--porcelain'] },
-  log: {
-    flags: ['--oneline', '--stat', '--graph', '--decorate', '--name-only', '--name-status', '-p', '--patch'],
-    takes: ['-n', '--max-count', '--format', '--pretty', '--since', '--author'],
-    counts: true,
-  },
-  diff: { flags: ['--stat', '--shortstat', '--cached', '--staged', '--name-only', '--name-status', '--check'] },
-  show: { flags: ['--stat', '--name-only', '--name-status', '--oneline', '-s', '--no-patch'], takes: ['--format', '--pretty'], counts: true },
-  add: { flags: ['-A', '--all', '-u', '--update'] },
-  commit: { flags: ['-a', '--all'], takes: ['-m', '--message', '-am'] },
-  fetch: { flags: ['-q', '--quiet', '--all', '--tags'], refs: true },
-  push: { flags: ['-u', '--set-upstream', '-q', '--quiet', '-v', '--verbose'], refs: true },
-};
-// A ref a push or a fetch names: a remote or a branch, never a +force, a src:dst or :delete refspec, or a ref expression.
+// A branch a PR names: never another owner’s (attacker:evil), a src:dst refspec, or a ref expression.
 const PLAIN_REF = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
-
-/**
- * Whether a git command is one a request may cover (GIT, above).
- * @param {string[]} args  the words after git @param {Scope} scope
- */
-function gitOnRequest(args, scope) {
-  const [sub, ...rest] = args;
-  const rule = sub && Object.hasOwn(GIT, sub) ? GIT[sub] : null;
-  if (!rule) return false;
-  const here = (w) => inProject(w, scope.folder);
-  const others = [];
-  for (let i = 0; i < rest.length; i++) {
-    const w = rest[i];
-    // After --, paths: never in a push or a fetch.
-    if (w === '--') return !rule.refs && rest.slice(i + 1).every(here);
-    if (!w.startsWith('-')) others.push(w);
-    else if (rule.flags.includes(w) || (rule.counts && /^-\d+$/.test(w))) continue;
-    else {
-      const eq = w.startsWith('--') ? w.indexOf('=') : -1;
-      if (!(rule.takes ?? []).includes(eq > 0 ? w.slice(0, eq) : w)) return false;
-      // A value is text: a commit message is pushed, so "$(cat .env)" would publish it.
-      const v = eq < 0 ? rest[++i] : w.slice(eq + 1);
-      if (v === undefined || !isText(v)) return false;
-    }
-  }
-  return rule.refs ? others.length <= 2 && others.every((w) => PLAIN_REF.test(w)) : others.every(here);
-}
 
 const TITLE = ['--title', '-t'];
 const BODY = ['--body', '-b', '--body-file', '-F'];
@@ -158,7 +113,6 @@ function partOnRequest(part, scope) {
   const unquoted = part.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, '');
   if (!words.length || /^[A-Za-z_]\w*=/.test(words[0]) || /[<>]/.test(unquoted)) return false;
   const [program, ...rest] = words;
-  if (program === 'git') return gitOnRequest(rest, scope);
   if (program === 'gh') return ghOnRequest(rest, scope);
   if (program === 'tail' && rest.some((w) => /^-[a-zA-Z]*[fF]|^--follow/.test(w))) return false;
   return READS.has(program) && rest.every((w) => inProject(w, scope.folder));
