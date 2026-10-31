@@ -101,6 +101,7 @@ import {
   wakeAgent,
 } from './side-threads.mjs';
 import { newId } from './store.mjs';
+import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { eraseThreads } from './thread-erase.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
@@ -225,6 +226,12 @@ export class Runtime {
    */
   constructor({ store, adapters, corpus, config, blobs, narrator, spawnShell, signalProcess, listProcesses: list, ledger, hosts }) {
     this.store = store;
+    // While the store can’t be written, no turn runs or starts, and what would write waits (ST-3, server/store-outage.mjs).
+    /** @type {(() => void)[]} */
+    this.storeWait = [];
+    /** @type {Map<string, Record<string, any>>} a backend’s state saved meanwhile, per session, merged (saveBackendState) */
+    this.backendWait = new Map();
+    watchStore(this);
     this.adapters = adapters;
     this.corpus = corpus;
     this.config = config;
@@ -584,6 +591,8 @@ export class Runtime {
     message = prepareScheduledRetry(this, message, se.threadId);
     // As it was asked, for Retry (askedOf).
     const asked = { message, summarizeTo, threadId };
+    // The store can’t be written: the turn starts once it can (ST-3).
+    if (heldTurn(this, sessionId, () => this.deliver(sessionId, asked.message, { summarizeTo, threadId }))) return;
     if (this.turns.has(sessionId)) {
       // Agent-to-agent messages and events wait for the current turn to end.
       const t = this.turns.get(sessionId);
@@ -705,7 +714,9 @@ export class Runtime {
       () => this.endTurn(turn, null),
       (err) => this.endTurn(turn, err),
     );
-    turn.exited.then(() => this.turnExited(turn)).then(() => endChain(this, turn.threadId));
+    // The chain’s count resets once the chain ends (#541). While the store can’t be written, that write waits behind the
+    // exit’s own (turnExited), which also waits, so it runs after the session has left exiting and sees the chain ended.
+    turn.exited.then(() => this.turnExited(turn)).then(() => whenWritable(this, () => endChain(this, turn.threadId)));
   }
 
   turnContext(se0, turn) {
@@ -748,10 +759,7 @@ export class Runtime {
       room: rt.roomOf(turn.threadId, se0),
       /** What the adapter saved for this session last time, such as its own session id. */
       state: { ...(se0.backendState ?? {}) },
-      saveState(patch) {
-        const s = se();
-        if (s) rt.updateSession(s.id, { backendState: { ...(s.backendState ?? {}), ...patch } });
-      },
+      saveState: (patch) => saveBackendState(rt, turn.sessionId, patch),
       /** Where an attachment can be read on disk, or null. */
       pathOf: (a) => rt.attachmentPath(turn.threadId, a),
       /**
@@ -1241,6 +1249,8 @@ export class Runtime {
    * then the queue.
    */
   turnExited(turn) {
+    // What the exit writes waits for writes to reopen (ST-3), behind the stop’s own records (server/store-outage.mjs).
+    if (!this.store.writable) return whenWritable(this, () => this.turnExited(turn));
     this.settleJobs(turn);
     const ex = this.exiting.get(turn.sessionId);
     if (ex?.turn !== turn) return;
@@ -1249,7 +1259,8 @@ export class Runtime {
     if (!se) return;
     // Something else may have set the state meanwhile (archive, an answered card); “Stopping” goes either way.
     // A remote turn Postbox stopped because it hung says so instead (#120).
-    const stoppedBy = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id ? se.remoteTurn.message : 'Stopped by you';
+    const hung = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id;
+    const stoppedBy = turn.stopReason === 'store' ? STORE_STOPPED : hung ? se.remoteTurn.message : 'Stopped by you';
     if (se.state === 'stopping' || se.currentStep === 'Stopping')
       this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
     else if (se.sideTurn) this.updateSession(se.id, { sideTurn: null });
@@ -1471,9 +1482,23 @@ export class Runtime {
   async stopTurns({ graceMs = 4000 } = {}) {
     this.closing = true;
     // A turn on a remote host doesn’t need Postbox: it goes on there, and is attached again after the restart (#120).
-    for (const [id, turn] of [...this.turns]) if (!turn.remote) this.stop(id, { silent: true, by: 'shutdown' });
-    this.remote.close();
-    await this.stopKeptJobs(Object.keys(this.s.sessions), 'Postbox stopped it as it shut down.');
+    // A stop that fails is logged, and the others still happen: one turn’s failure mustn’t leave the other turns’ CLIs,
+    // the hosts’ link or the kept jobs running.
+    const failed = (what, e) => console.error(`Postbox couldn’t stop ${what} cleanly as it shut down: ${e.message}`);
+    for (const [id, turn] of [...this.turns]) {
+      if (turn.remote) continue;
+      try {
+        this.stop(id, { silent: true, by: 'shutdown' });
+      } catch (e) {
+        failed(`the turn of session ${id}`, e);
+      }
+    }
+    try {
+      this.remote.close();
+    } catch (e) {
+      failed('the hosts’ link', e);
+    }
+    await this.stopKeptJobs(Object.keys(this.s.sessions), 'Postbox stopped it as it shut down.').catch((e) => failed('the background jobs it kept running', e));
     /** @type {NodeJS.Timeout|undefined} */
     let timer;
     const late = new Promise((r) => {

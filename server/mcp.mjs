@@ -19,6 +19,7 @@ import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
 /** The tools that read and never write: they answer while the store is closed. */
 const READ_TOOLS = new Set(['read_conversation', 'read_message', 'corpus_search']);
+
 import { offersBring } from './bring.mjs';
 import { noteAnswer } from './empty-reply.mjs';
 import { sameToken } from './helpers.mjs';

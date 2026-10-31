@@ -1,0 +1,110 @@
+// Turns while the store is closed (#508’s storage design, “When a write fails (ST-3)”; the 1b invariants, I1 and I3;
+// server/store-outage.mjs): a turn running when a write fails stops with the store named, a save from a stream listener
+// doesn’t throw out of it, no turn starts while writes are closed, a message of yours is refused with the cause, the page
+// still reads, and Retry brings the stopped turn’s records, the saved session id and the waiting wake back, in order.
+// A real Postbox (start({ listen: false })) on a data folder, a scripted agent, and the store’s own fail().
+
+import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, before, test } from 'node:test';
+import { fakeRequest, NAVIGATION } from './fake-http.mjs';
+
+process.env.POSTBOX_BACKENDS = 'mock';
+const { start } = await import('../server/index.mjs');
+
+const PORT = 4441;
+const eio = () => Object.assign(new Error('disk sync refused'), { code: 'EIO' });
+let app;
+let dir;
+const call = (r) => fakeRequest(app.handle, { host: `127.0.0.1:${PORT}`, ...r });
+
+before(async () => {
+  dir = await mkdtemp(join(tmpdir(), 'pb-outage-'));
+  app = await start({ port: PORT, dataDir: dir, fresh: true, demo: false, quiet: true, claudeHome: dir, listen: false, hosts: null });
+});
+after(async () => {
+  await app.close();
+  await rm(dir, { recursive: true, force: true });
+});
+
+/** Waits for a condition, up to 10 s. @param {() => boolean} pred @param {string} what */
+const until = async (pred, what) => {
+  for (let i = 0; i < 400 && !pred(); i++) await new Promise((ok) => setTimeout(ok, 25));
+  assert.ok(pred(), `waited for ${what}`);
+};
+
+/** A scripted agent: its turn says it’s working, then waits until it’s stopped. Its stream is an EventEmitter, as a real adapter’s readline is. */
+function scripted() {
+  const a = {
+    name: 'mock',
+    /** @type {{ message: any, ctx: any }[]} */
+    calls: [],
+    stream: new EventEmitter(),
+    async deliver(_se, message, ctx) {
+      a.calls.push({ message, ctx });
+      a.stream.removeAllListeners();
+      a.stream.on('line', (id) => {
+        ctx.saveState({ claudeSessionId: id });
+        ctx.text(' and more');
+      });
+      ctx.text('Working');
+      await new Promise((ok) => ctx.signal.addEventListener('abort', ok, { once: true }));
+    },
+  };
+  return a;
+}
+
+test('ST-3: a turn running when a write fails stops with the store named, nothing starts until Retry, then what waited runs in order', async () => {
+  const { rt, store } = app;
+  const agent = scripted();
+  rt.adapters.register(agent);
+  const projectId = 'pr_outage';
+  store.emit('project', { id: projectId, name: 'Outage', folder: dir });
+  const p = rt.createPersona({ handle: 'builder', backend: 'mock' });
+  const t = rt.createThread({ projectId, title: 'Outage', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  rt.sendMessage(t.id, { text: 'Build it' });
+  await until(() => agent.calls.length === 1 && rt.turns.has(se.id), 'the turn to start');
+  const turn = rt.turns.get(se.id);
+  await store.flush();
+  const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
+
+  // A write fails under the running turn.
+  store.fail(eio());
+  assert.equal(store.writable, false);
+  // The backend’s stream goes on: a line comes after the failure, in a listener, as readline delivers it.
+  assert.doesNotThrow(() => agent.stream.emit('line', 'cs_after_outage'), 'a save from a stream listener doesn’t throw out of it');
+  await until(() => !rt.turns.has(se.id), 'the running turn to stop');
+  assert.equal(turn.abort.signal.aborted, true, 'the agent was told to stop');
+  assert.match(String(turn.abort.signal.reason?.message), /save changes/, 'the stop names the store');
+
+  // No turn starts while writes are closed: a wake for the agent waits, and a message of yours is refused, naming why.
+  rt.deliver(se.id, { kind: 'agent', from: '@someone', text: 'Are you there?' });
+  assert.equal(agent.calls.length, 1, 'no turn started while the store is closed');
+  const refused = await call({ method: 'POST', path: `/api/threads/${t.id}/messages`, cookie, body: { text: 'Hello?' } });
+  assert.equal(refused.status, 503, 'a write is refused with 503, not a server error');
+  assert.equal(refused.json.code, 'store-closed');
+  assert.match(refused.json.error, /can’t write its event log.*EIO/);
+  const read = await call({ path: '/api/state' });
+  assert.equal(read.status, 200, 'the page still reads');
+  assert.equal(read.json.store.writable, false);
+  assert.equal(read.json.store.cause.code, 'EIO');
+
+  // Retry reopens; what waited runs after the install, in order: the session id first, the stop’s records, then the wake.
+  const retried = await call({ method: 'POST', path: '/api/store/retry', cookie });
+  assert.equal(retried.status, 200, JSON.stringify(retried.json));
+  await until(() => store.writable, 'writes to reopen');
+  await until(() => agent.calls.length === 2, 'the waiting wake to start its turn');
+  assert.equal(agent.calls[1].message.text, 'Are you there?');
+  const stopped = store.items(t.id).find((it) => it.turnId === turn.id && it.kind === 'agent');
+  assert.equal(stopped?.status, 'stopped', 'the stopped turn’s reply is marked stopped');
+  assert.equal(stopped?.stopReason, 'store', 'and says the store stopped it');
+  assert.equal(store.state.sessions[se.id].backendState?.claudeSessionId, 'cs_after_outage', 'the session id it couldn’t save then is saved now');
+  rt.stop(se.id, { silent: true });
+  await store.flush();
+  const b = await call({ path: '/api/state' });
+  assert.equal(b.json.store.writable, true);
+});
