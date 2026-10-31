@@ -15,6 +15,8 @@
 // reads whatever landed (server/store-recover.mjs, the one recovery path). Retry as a reload is 1b’s; the generation
 // check is its seam: a loop whose generation is no longer the store’s finishes its step and publishes nothing.
 
+import { snapshotFailed, snapshotSucceeded } from './store-retry.mjs';
+
 /** The segment the log is being appended to, opened once. @param {import('./store.mjs').Store} store */
 async function handle(store) {
   store.fh ??= await store.io.open(store.at(store.segment), 'a');
@@ -41,15 +43,18 @@ export async function writeAll(fh, buf, name) {
  * Appends text at the end of the segment, fsyncing it (and, the first time a commit lands in a fresh segment, the folder)
  * when `sync` says. Throws `fenced()` after any step a reload overtook, so a late completion publishes nothing.
  * @param {import('./store.mjs').Store} store @param {string} text @param {number} gen @param {boolean} sync
+ * @param {number} through  the last seq the text carries, for savedThrough
  */
-async function append(store, text, gen, sync) {
+async function append(store, text, gen, sync, through) {
   const fh = await handle(store);
   if (store.generation !== gen) throw fenced();
   await writeAll(fh, Buffer.from(text), `The event log ${store.segment}`);
   if (store.generation !== gen) throw fenced();
+  if (through > store.writtenThrough) store.writtenThrough = through;
   if (!sync) return;
   await fh.sync();
   if (store.generation !== gen) throw fenced();
+  store.savedThrough = store.writtenThrough;
   if (store.freshSegment) {
     await syncDir(store);
     if (store.generation !== gen) throw fenced();
@@ -129,7 +134,7 @@ async function writeCommits(store, gen) {
     if (c.opId !== undefined) pending.set(c.opId, c);
   }
   try {
-    if (written.length && store.dir) await append(store, written.map((c) => lineOf(c.events)).join(''), gen, true);
+    if (written.length && store.dir) await append(store, written.map((c) => lineOf(c.events)).join(''), gen, true, written.at(-1).events.at(-1).seq);
     applyCommits(store, written);
   } catch (e) {
     // The numbers these commits took are given back first, so the held emits fail() releases, and every emit after,
@@ -145,46 +150,29 @@ async function writeCommits(store, gen) {
 /** Writes the lines at the head of the queue, releasing held emits (numbered and applied now) in their order. */
 async function writeLines(store, gen) {
   const lines = [];
+  let through = 0;
   while (store.queue[0]?.line !== undefined || store.queue[0]?.held) {
     const job = store.queue.shift();
     if (job.held) {
       const line = store.release(job);
+      through = job.held.seq;
       if (store.dir) lines.push(`${line}\n`);
-    } else lines.push(job.line);
+    } else {
+      lines.push(job.line);
+      through = job.seq;
+    }
   }
   if (!lines.length) return;
   try {
-    await append(store, lines.join(''), gen, false);
+    await append(store, lines.join(''), gen, false, through);
   } catch (e) {
     if (e.code !== 'ERELOADED') fail(store, e);
   }
 }
 
-/**
- * Closes the store to commits on a write that failed (#508’s storage design, “When a write fails”, Q9): every queued
- * commit, flush and snapshot is rejected with the cause, held emits are released onto memory (applied and broadcast,
- * not written), and the loop ends. Nothing is written again; restarting Postbox is the recovery.
- * @param {import('./store.mjs').Store} store @param {Error & { code?: string }} e
- */
+/** A write that failed closes the store (server/store-retry.mjs). */
 function fail(store, e) {
-  const cause = Object.assign(
-    new Error(`Postbox can’t write its event log (${e.code ?? 'error'}): ${e.message}. Reads go on; commits are refused until Postbox restarts.`),
-    {
-      code: e.code,
-      cause: e,
-    },
-  );
-  console.error(cause.message);
-  store.writable = false;
-  store.cause = cause;
-  const queue = store.queue;
-  store.queue = [];
-  for (const job of queue) {
-    if (job.held)
-      store.release(job); // applied and broadcast on the memory the page reads, not written, like every emit from now on
-    else if (job.commit) store.waitingCommits--;
-    (job.commit ?? job.flush ?? job.snapshot)?.reject(cause);
-  }
+  store.fail(e);
 }
 
 /**
@@ -199,16 +187,22 @@ export async function run(store, gen) {
     else if (job.line !== undefined || job.held) await writeLines(store, gen);
     else if (job.flush) {
       store.queue.shift();
-      await (store.fh ? store.fh.sync() : Promise.resolve()).then(job.flush.resolve, (e) => {
-        fail(store, e); // a flush that can’t sync the log is the first failed fsync: the store closes to commits (Q9)
-        job.flush.reject(store.cause);
-      });
+      await (store.fh ? store.fh.sync() : Promise.resolve()).then(
+        () => {
+          store.savedThrough = store.writtenThrough;
+          job.flush.resolve();
+        },
+        (e) => {
+          fail(store, e); // a flush that can’t sync the log is the first failed fsync: the store closes to commits (Q9)
+          job.flush.reject(store.cause);
+        },
+      );
     } else if (job.snapshot) {
       store.queue.shift();
-      await takeSnapshot(store).then(job.snapshot.resolve, job.snapshot.reject);
+      await snapshotNow(store).then(job.snapshot.resolve, job.snapshot.reject);
     }
-    if (store.dir && store.writable && store.generation === gen && store.sinceSnapshot >= store.snapshotEvery)
-      await takeSnapshot(store).catch((e) => console.error(`Couldn’t write a snapshot: ${e.message}`));
+    if (store.dir && store.writable && store.generation === gen && store.sinceSnapshot >= store.snapshotEvery && Date.now() >= store.nextSnapshotAt)
+      await snapshotNow(store).catch(() => {}); // recorded as a warning with a next-attempt time, never a close
   }
 }
 
@@ -263,6 +257,17 @@ export async function syncDir(store) {
     await dh.sync();
   } finally {
     await dh.close();
+  }
+}
+
+/** A snapshot attempt under the one failure policy (I5): success clears the warning, failure warns and backs off. */
+async function snapshotNow(store) {
+  try {
+    await takeSnapshot(store);
+    snapshotSucceeded(store);
+  } catch (e) {
+    snapshotFailed(store, e);
+    throw e;
   }
 }
 

@@ -4,7 +4,7 @@
 // and backs off instead of closing; the last durable seq the page marks unsaved changes against.
 import assert from 'node:assert/strict';
 import * as realFs from 'node:fs/promises';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -121,7 +121,6 @@ test('a write still in flight on the old descriptor past the bound makes Retry r
   };
   const hanging = s.commit([thread('hung')], { opId: 'hung' });
   await new Promise((r) => setTimeout(r, 10));
-  s.close = s.close; // keep the lock: the store is still ours
   // The failure of another path closes the store while the write hangs.
   s.fail(eio('disk sync refused'));
   assert.equal(s.writable, false);
@@ -173,7 +172,7 @@ test('install keeps store.state’s identity, a held sub-object goes stale, and 
   assert.equal(s.state, stateRef, 'the state object is the same one');
   assert.equal(s.state.threads.held, undefined, 'the memory-only emit is gone');
   assert.ok(threadsRef.held, 'a sub-object held across the install is stale');
-  assert.equal(s.since(0)?.length ?? null, 0, 'the backlog is reset: a page must reload the state, which the epoch tells it');
+  assert.equal(s.since(0), null, 'the backlog is reset: a page must reload the state, which the epoch tells it');
   assert.equal(s.ahead, 0);
   assert.equal(s.held, 0);
   assert.equal(s.waitingCommits, 0);
@@ -200,7 +199,7 @@ test('a failed snapshot warns and backs off; it does not close the store, and is
   assert.equal(s.writable, true, 'a failed snapshot closes nothing');
   assert.match(s.status.warning ?? '', /snapshot/);
   assert.equal(attempts, 1, 'one attempt, then the backoff window');
-  assert.ok(s.status.nextSnapshotAt > Date.now(), 'a stored next-attempt time');
+  assert.ok(s.nextSnapshotAt > Date.now(), 'a stored next-attempt time');
   failing = false;
   s.nextSnapshotAt = 0; // the window has passed
   s.emit('thread', { id: 'again', members: [] });

@@ -70,13 +70,21 @@ async function readSnapshot(c) {
  * @param {import('./store.mjs').Store} store @param {Candidate} c
  */
 export function install(store, c) {
-  store.state = c.state;
+  // The state object keeps its identity: the runtime and the ledger hold it. Its collections are the candidate’s, so a
+  // sub-object held across the install is stale (the 1b invariants, I3a).
+  for (const key of Object.keys(store.state)) delete store.state[key];
+  Object.assign(store.state, c.state);
   store.ops = c.ops;
   store.sinceSnapshot = c.sinceSnapshot;
   store.lost = c.lost;
   store.segment = c.segment;
   store.freshSegment = c.freshSegment;
   store.ahead = 0;
+  store.held = 0;
+  store.waitingCommits = 0;
+  store.queue = [];
   store.events = [];
+  store.writtenThrough = store.state.seq;
+  store.savedThrough = store.state.seq;
   store.epoch = store.newEpoch();
 }

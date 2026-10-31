@@ -21,23 +21,27 @@ import { apply, emptyState } from '../shared/state.mjs';
 import { commit, run } from './store-commit.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
 import { install, recover } from './store-recover.mjs';
+import { fail, reload } from './store-retry.mjs';
 
 export { emptyState };
 
 const KEEP_EVENTS = 20000; // events kept in memory for reconnecting browsers
 const SNAPSHOT_EVERY = 5000; // events between snapshots
+const RETRY_BOUND_MS = 3000; // how long Retry waits for a write still in flight
 
 export const newId = (prefix) => `${prefix}_${randomBytes(6).toString('base64url').replace(/[-_]/g, '').slice(0, 8) || Date.now().toString(36)}`;
 
 export class Store {
   /**
    * @param {string|null} dir  the data folder; null keeps everything in memory (tests)
-   * @param {{ snapshotEvery?: number, io?: typeof fs }} [options]  `io` stands in for node:fs/promises
+   * @param {{ snapshotEvery?: number, io?: typeof fs, retryBoundMs?: number }} [options]  `io` stands in for
+   *   node:fs/promises; `retryBoundMs` is how long Retry waits for a write still in flight before it refuses
    */
-  constructor(dir, { snapshotEvery = SNAPSHOT_EVERY, io = fs } = {}) {
+  constructor(dir, { snapshotEvery = SNAPSHOT_EVERY, io = fs, retryBoundMs = RETRY_BOUND_MS } = {}) {
     this.dir = dir;
     this.io = io;
     this.snapshotEvery = snapshotEvery;
+    this.retryBoundMs = retryBoundMs;
     this.state = emptyState();
     this.events = []; // the backlog for reconnecting browsers: { seq, line }
     // The history the seqs count within: a token new at each load(), so a page from before, whose seq may
@@ -59,12 +63,51 @@ export class Store {
     this.waitingCommits = 0; // commits queued or pending; emits are held behind them
     this.held = 0; // emits held in the queue, still to be numbered
     this.lock = null; // the folder’s lock while this store holds it (server/store-lock.mjs)
-    // Writes are open, or closed with the cause after a write failed: commits are refused until Postbox restarts
-    // (#508’s storage design, “When a write fails”; Retry as a reload is 1b’s).
+    // Writes are open, or closed with the cause after a write failed: commits are refused until reload() (Retry) or a
+    // restart (#508’s storage design, “When a write fails”; server/store-retry.mjs).
     this.writable = true;
     this.cause = null;
     this.warned = false; // an emit while closed logged the cause
     this.lost = null; // history the log lost, { from, to, count }, found at load (server/store-replay.mjs)
+    this.warning = null; // a snapshot that failed, while the log goes on
+    this.retrying = null; // reload()’s promise while one runs
+    this.writtenThrough = 0; // the last seq whose line was appended
+    this.savedThrough = 0; // the last seq whose line was fsynced: the page marks later changes unsaved
+    this.nextSnapshotAt = 0; // after a failed snapshot, no attempt before this time
+    this.snapshotBackoff = 0;
+    this.statusListeners = new Set(); // told each time writes close or reopen, a Retry starts or ends, or the warning changes
+    this.reloaders = new Set(); // told after a reload installs a new epoch
+  }
+
+  /** What the page and the runtime read about the store’s health (server/live-streams.mjs sends it as a frame). */
+  get status() {
+    return { writable: this.writable, cause: this.cause, lost: this.lost, warning: this.warning, retrying: !!this.retrying, savedThrough: this.savedThrough };
+  }
+
+  onStatus(fn) {
+    this.statusListeners.add(fn);
+    return () => this.statusListeners.delete(fn);
+  }
+
+  /** Calls fn after each reload: the store runs on a new epoch, and every reader must load the state again. */
+  onReload(fn) {
+    this.reloaders.add(fn);
+    return () => this.reloaders.delete(fn);
+  }
+
+  tellStatus() {
+    const status = this.status;
+    for (const fn of this.statusListeners) fn(status);
+  }
+
+  /** Closes the store to commits with the cause (server/store-retry.mjs). */
+  fail(e) {
+    fail(this, e);
+  }
+
+  /** Retry: reloads the folder on a new epoch and reopens writes, or rejects and stays closed (server/store-retry.mjs). */
+  reload() {
+    return reload(this);
   }
 
   newEpoch() {
@@ -148,7 +191,7 @@ export class Store {
       if (!this.warned) console.error(`An event wasn’t written: ${this.cause.message}`);
       this.warned = true;
     } else if (this.dir) {
-      this.queue.push({ line: `${line}\n` });
+      this.queue.push({ line: `${line}\n`, seq: ev.seq });
       this.sinceSnapshot++;
       this.pump();
     }
