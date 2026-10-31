@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -46,6 +46,47 @@ test('a blob is readable by its owner only, in a folder only its owner can open'
     const { path } = await new Blobs(dir).put(bytes);
     assert.equal((await stat(path)).mode & 0o777, 0o600);
     assert.equal((await stat(join(dir, sha(bytes).slice(0, 2)))).mode & 0o777, 0o700);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a folder sync that fails with EIO makes the put reject, so nothing can name a blob that isn’t durable', async () => {
+  const dir = await tmp();
+  try {
+    /** @type {any} */
+    const failingFolderSync = async (/** @type {string} */ path, /** @type {any} */ flags, /** @type {any} */ mode) => {
+      const fh = await open(path, flags, mode);
+      if (flags !== 'r') return fh;
+      return Object.assign(Object.create(fh), {
+        sync: async () => {
+          throw Object.assign(new Error('EIO: i/o error, fsync'), { code: 'EIO' });
+        },
+        close: () => fh.close(),
+      });
+    };
+    await assert.rejects(new Blobs(dir, { open: failingFolderSync }).put(Buffer.from('an archive file')), (e) => e instanceof Error && /EIO/.test(e.message));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a folder sync a platform doesn’t support (EINVAL) doesn’t fail the put', async () => {
+  const dir = await tmp();
+  try {
+    /** @type {any} */
+    const unsupported = async (/** @type {string} */ path, /** @type {any} */ flags, /** @type {any} */ mode) => {
+      const fh = await open(path, flags, mode);
+      if (flags !== 'r') return fh;
+      return Object.assign(Object.create(fh), {
+        sync: async () => {
+          throw Object.assign(new Error('EINVAL'), { code: 'EINVAL' });
+        },
+        close: () => fh.close(),
+      });
+    };
+    const { sha256 } = await new Blobs(dir, { open: unsupported }).put(Buffer.from('still stored'));
+    assert.equal(sha256.length, 64);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
