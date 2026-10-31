@@ -17,6 +17,15 @@
 
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
+import { offersBring } from './bring.mjs';
+import { noteAnswer } from './empty-reply.mjs';
+import { sameToken } from './helpers.mjs';
+import { asksByPrompt, NOT_YOUR_PROMPT, permission } from './permission-prompt.mjs';
+import { reactTool } from './reactions.mjs';
+import { AgentFileError } from './runtime.mjs';
+import { recordedTools } from './scheduled-wakes.mjs';
+import { withUrgent } from './subagent-end.mjs';
+
 /** The tools that read and never write: they answer while the store is closed. */
 const READ_TOOLS = new Set(['read_conversation', 'read_message', 'corpus_search']);
 
@@ -26,15 +35,6 @@ const READ_TOOLS = new Set(['read_conversation', 'read_message', 'corpus_search'
  * @param {any} rt @param {string} name
  */
 const storeClosedTo = (rt, name) => !rt.store.writable && !READ_TOOLS.has(name);
-
-import { offersBring } from './bring.mjs';
-import { noteAnswer } from './empty-reply.mjs';
-import { sameToken } from './helpers.mjs';
-import { asksByPrompt, NOT_YOUR_PROMPT, permission } from './permission-prompt.mjs';
-import { reactTool } from './reactions.mjs';
-import { AgentFileError } from './runtime.mjs';
-import { recordedTools } from './scheduled-wakes.mjs';
-import { withUrgent } from './subagent-end.mjs';
 
 // The tools live in shared/mcp-tools.mjs, which the host’s shim serves too (#120); this keeps their old import working.
 export { TOOL_DEFS };

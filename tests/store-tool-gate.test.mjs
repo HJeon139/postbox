@@ -18,14 +18,17 @@ test('while the store is closed, a writing tool is refused with the cause and a 
   await sleep(5);
   const token = rt.turns.get(alpha.id).token;
   const call = (name, args) => handleMcp(rt, alpha.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, token);
-  store.fail(eio());
+  // The gate itself: writes closed without the runtime’s stop (which fail() triggers and the outage spec covers), so the
+  // turn is still running and its call reaches the tool entry.
+  store.writable = false;
+  store.cause = Object.assign(new Error(`Postbox can’t write its event log (EIO): ${eio().message}.`), { code: 'EIO' });
   const write = await call('define_term', { term: 'W', definition: 'D' });
   assert.equal(write.result.isError, true);
   assert.match(write.result.content[0].text, /can’t write its event log.*EIO/);
   assert.deepEqual(store.state.glossary[t.id] ?? {}, {}, 'the refused call defined nothing');
   const read = await call('read_conversation', {});
   assert.notEqual(read.result?.isError, true, JSON.stringify(read).slice(0, 300));
-  // An in-memory store has no folder to reload; reopening by hand stands in for Retry here.
+  // Reopened by hand: an in-memory store has no folder for Retry to reload.
   store.writable = true;
   store.cause = null;
   const again = await call('define_term', { term: 'W', definition: 'D' });
