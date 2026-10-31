@@ -16,13 +16,13 @@
 import { eventsOf } from '../shared/log-lines.mjs';
 import { apply } from '../shared/state.mjs';
 
-/** Replays the segments after the snapshot, in order, leaving the writer at the end of the last. @param {import('./store-reload.mjs').Candidate} store */
+/** Replays the segments after the snapshot, in order, leaving the writer at the end of the last. @param {import('./store-recover.mjs').Candidate} store */
 export async function replay(store) {
   const segs = await store.segments();
   for (const [i, seg] of segs.entries()) await replaySegment(store, seg, i === segs.length - 1);
 }
 
-/** @param {import('./store-reload.mjs').Candidate} store @param {{ name: string }} seg @param {boolean} last */
+/** @param {import('./store-recover.mjs').Candidate} store @param {{ name: string }} seg @param {boolean} last */
 async function replaySegment(store, seg, last) {
   const path = store.at(seg.name);
   const text = await store.io.readFile(path, 'utf8');

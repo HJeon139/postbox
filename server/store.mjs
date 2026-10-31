@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import { apply, emptyState } from '../shared/state.mjs';
 import { commit, run } from './store-commit.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
-import { install, recover } from './store-reload.mjs';
+import { install, recover } from './store-recover.mjs';
 
 export { emptyState };
 

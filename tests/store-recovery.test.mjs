@@ -163,3 +163,40 @@ test('Q9: the first failed sync closes the store to commits; later commits and a
   await b.close();
   await rm(dir, { recursive: true });
 });
+
+test('Q9: the numbers a failed commit took are given back, so the held emit and the next one follow the applied seq', async () => {
+  const dir = await tmp();
+  let fail = false;
+  const io = disk({
+    async open(path, flags, mode) {
+      const handle = await (await import('node:fs/promises')).open(path, flags, mode);
+      if (!String(path).includes('events-')) return handle;
+      return handleWith(handle, { sync: () => (fail ? Promise.reject(Object.assign(new Error('disk sync refused'), { code: 'EIO' })) : handle.sync()) });
+    },
+  });
+  const s = await new Store(dir, { io }).load();
+  s.emit('thread', { id: 't1', members: [] });
+  await s.flush();
+  assert.equal(s.state.seq, 1);
+  fail = true;
+  const failing = s.commit(
+    [
+      { type: 'thread', data: { id: 'a', members: [] } },
+      { type: 'thread', data: { id: 'b', members: [] } },
+    ],
+    { opId: 'x' },
+  );
+  const held = s.emit('thread', { id: 'held', members: [] });
+  await assert.rejects(failing, /EIO/);
+  assert.equal(held.seq, 2, 'the held emit takes the number after the applied seq, not after the failed commit’s');
+  assert.equal(s.ahead, 0);
+  const next = s.emit('thread', { id: 'next', members: [] });
+  assert.equal(next.seq, 3);
+  assert.deepEqual(
+    s.since(1).map((e) => e.seq),
+    [2, 3],
+    'the stream has no gap',
+  );
+  await s.close();
+  await rm(dir, { recursive: true });
+});

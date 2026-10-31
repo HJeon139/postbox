@@ -12,7 +12,7 @@
 //
 // When a write or an fsync fails, the line may be on disk, whole or torn, and nothing here settles that: every queued
 // commit is rejected with the cause and the store closes to commits until Postbox restarts (#508’s Q9), when load()
-// reads whatever landed (server/store-reload.mjs, the one recovery path). Retry as a reload is 1b’s; the generation
+// reads whatever landed (server/store-recover.mjs, the one recovery path). Retry as a reload is 1b’s; the generation
 // check is its seam: a loop whose generation is no longer the store’s finishes its step and publishes nothing.
 
 /** The segment the log is being appended to, opened once. @param {import('./store.mjs').Store} store */
@@ -122,6 +122,9 @@ async function writeCommits(store, gen) {
     if (written.length && store.dir) await append(store, written.map((c) => lineOf(c.events)).join(''), gen, true);
     applyCommits(store, written);
   } catch (e) {
+    // The numbers these commits took are given back first, so the held emits fail() releases, and every emit after,
+    // go on from the applied seq with no gap (critic’s finding on 1a).
+    for (const c of written) store.ahead -= c.events.length;
     if (e.code !== 'ERELOADED') fail(store, e); // the written commits get the same cause as every later one
     for (const c of written) c.reject(store.writable ? e : store.cause);
   } finally {
