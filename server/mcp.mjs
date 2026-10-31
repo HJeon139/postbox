@@ -20,6 +20,13 @@ import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 /** The tools that read and never write: they answer while the store is closed. */
 const READ_TOOLS = new Set(['read_conversation', 'read_message', 'corpus_search']);
 
+/**
+ * While the store can’t be written (#508’s storage design, “When a write fails (ST-3)”), a tool that would write is
+ * refused with the cause at the MCP entry, the one gate for tools, as the router is for the page; reads still answer.
+ * @param {any} rt @param {string} name
+ */
+const storeClosedTo = (rt, name) => !rt.store.writable && !READ_TOOLS.has(name);
+
 import { offersBring } from './bring.mjs';
 import { noteAnswer } from './empty-reply.mjs';
 import { sameToken } from './helpers.mjs';
@@ -82,9 +89,7 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
         return fail(-32001, 'This call came from an agent turn that was stopped or has ended, so Postbox didn’t run it.');
       const name = msg.params?.name;
       const args = msg.params?.arguments ?? {};
-      // While the store can’t be written (#508’s storage design, “When a write fails (ST-3)”), a tool that would write
-      // is refused with the cause here, the one gate for tools, as the router is for the page; reads still answer.
-      if (!rt.store.writable && !READ_TOOLS.has(name)) return reply({ content: [{ type: 'text', text: rt.store.cause.message }], isError: true });
+      if (storeClosedTo(rt, name)) return reply({ content: [{ type: 'text', text: rt.store.cause.message }], isError: true });
       // react is the reactions’ own (server/reactions.mjs), beside the runtime’s tools, and recorded as they are (#466).
       const turn = rt.turns.get(sessionId) ?? null;
       const tools = { ...rt.toolsFor(sessionId, turn), ...recordedTools(rt, turn, { react: (a) => reactTool(rt, rt.session(sessionId), a) }) };
