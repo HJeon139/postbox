@@ -123,3 +123,35 @@ test('#360: at the end, sending a six-line draft shrinks the composer, and the r
   await stream(page, t, se, LONG(98));
   expect(await clearance(page), 'the reply ends above the composer').toBeGreaterThanOrEqual(0);
 });
+
+test('#422 in the thread panel: a six-line draft keeps the panel’s newest message above its composer', async ({ page }) => {
+  const { rt } = app;
+  const { t, se } = room('Draft in the panel');
+  const root = rt.store.items(t.id).find((i) => i.kind === 'agent');
+  const { threadId } = rt.startTopic(t.id, root.id);
+  for (let i = 1; i <= 30; i++)
+    rt.addItem(threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(i), status: 'done' });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${app.origin}/#/t/${t.id}/side/${threadId}`);
+  await synced(page, app);
+  await expect(page.locator(`.sidepanel .transcript[data-thread="${threadId}"] .item`).first()).toBeVisible();
+  await settled(page);
+  const panelClearance = () =>
+    page.evaluate(() => {
+      const items = document.querySelectorAll('.sidepanel .sp-body .item');
+      const foot = document.querySelector('.sidepanel .sp-foot');
+      return Math.round((foot?.getBoundingClientRect().top ?? 0) - (items[items.length - 1]?.getBoundingClientRect().bottom ?? 0));
+    });
+  expect(await panelClearance(), 'the panel’s newest message starts above its composer').toBeGreaterThanOrEqual(0);
+  const input = page.locator('.sidepanel textarea');
+  const height = () => page.locator('.sidepanel .sp-foot').evaluate((c) => Math.round(c.getBoundingClientRect().height));
+  const before = await height();
+  await input.click();
+  for (let i = 1; i <= 6; i++) {
+    await input.pressSequentially(`Line ${i} of the draft`);
+    if (i < 6) await input.press('Shift+Enter');
+  }
+  await expect.poll(height, { message: 'the panel’s composer to grow with the draft' }).toBeGreaterThan(before + 60);
+  await settled(page);
+  expect(await panelClearance(), 'the panel’s newest message is still above its composer').toBeGreaterThanOrEqual(0);
+});

@@ -8,7 +8,8 @@
  * anything else sees it. @param {HTMLTextAreaElement} ta
  */
 export function fitDraft(ta) {
-  const views = [document.scrollingElement, ta.closest('.sp-body')].filter((v) => v instanceof Element);
+  // The panel’s composer sits in its foot, beside the scroll box it can clamp, not inside it.
+  const views = [document.scrollingElement, ta.closest('.sidepanel')?.querySelector('.sp-body')].filter((v) => v instanceof Element);
   const tops = views.map((v) => v.scrollTop);
   ta.style.height = 'auto';
   ta.style.height = `${Math.min(200, ta.scrollHeight)}px`;
