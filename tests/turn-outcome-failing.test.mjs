@@ -32,26 +32,60 @@ function fakeContext() {
   };
 }
 
+/**
+ * Verifies that the raw event stream for a failed turn contains zero qualifying tool calls
+ * or assistant output blocks, independently of mapper/UI suppression (e.g. quiet tools or Postbox MCP tools).
+ */
+function assertNoQualifyingToolCallsOrOutput(backend, events) {
+  if (backend === 'claude-code') {
+    for (const e of events) {
+      assert.notEqual(e.type, 'assistant', 'Raw Claude event stream must contain no assistant messages');
+      if (e.type === 'stream_event') {
+        assert.notEqual(e.event?.type, 'content_block_start', 'No content blocks started');
+        assert.notEqual(e.event?.type, 'content_block_delta', 'No content block deltas');
+      }
+      assert.ok(!e.tool_use, 'No tool_use fields');
+    }
+  } else if (backend === 'antigravity-cli') {
+    for (const e of events) {
+      const stepType = e.step_update?.step_type;
+      assert.notEqual(stepType, 'tool', 'Raw Antigravity event stream must contain no tool steps');
+      assert.ok(!e.step_update?.text_delta, 'No text deltas');
+      if (e.event === 'result') {
+        assert.ok(!e.result?.response, 'No result response');
+      }
+    }
+  } else if (backend.startsWith('codex')) {
+    for (const e of events) {
+      // Reject any item/* method: item/started, item/completed, item/agentMessage/delta, etc.
+      assert.ok(!e.method?.startsWith('item/'), `Raw Codex event stream must contain no item methods, found ${e.method}`);
+      // Reject any item payload in turn or result objects
+      const itemType = e.params?.item?.type ?? e.result?.item?.type;
+      assert.ok(!itemType, `No item payload permitted, found item type ${itemType}`);
+      const turnItems = e.params?.turn?.items ?? e.result?.turn?.items;
+      if (Array.isArray(turnItems)) {
+        assert.equal(turnItems.length, 0, 'Turn items array must be empty');
+      }
+    }
+  }
+}
+
 test('Claude Code recorded failing turn produces no output or tool calls; resume fetches history and answers', () => {
   const failEvents = readJsonl('fixtures/claude-code/fail-before-output.jsonl');
   const failCtx = fakeContext();
   const failMapper = createStreamMapper(failCtx);
   for (const e of failEvents) failMapper.push(e);
 
-  // Cut after init: zero text, zero tool calls, no completed result
   assert.equal(failCtx.calls.text, '');
   assert.equal(failCtx.calls.activity.length, 0, 'No qualifying tool calls emitted before failure');
   assert.equal(failMapper.result, null);
-
-  // Raw events contain no assistant content blocks or tool calls
-  assert.ok(!failEvents.some((e) => e.type === 'assistant' || e.type === 'stream_event'));
+  assertNoQualifyingToolCallsOrOutput('claude-code', failEvents);
 
   const resumeEvents = readJsonl('fixtures/claude-code/resume-after-failure.jsonl');
   const resumeCtx = fakeContext();
   const resumeMapper = createStreamMapper(resumeCtx);
   for (const e of resumeEvents) resumeMapper.push(e);
 
-  // Resume fetched conversation history using read_conversation tool call
   const readConvCall = resumeEvents.find((e) => e.type === 'assistant' && e.message?.content?.some((c) => c.name === 'mcp__postbox__read_conversation'));
   assert.ok(readConvCall, 'Resume turn must call read_conversation to inspect previous prompt');
   assert.match(resumeCtx.calls.text, /Eagle/i);
@@ -68,9 +102,7 @@ test('Antigravity CLI recorded failing turn produces no output or tool calls; re
   assert.equal(failCtx.calls.activity.length, 0, 'No qualifying tool calls emitted before failure');
   assert.equal(failEvents[0].event, 'init');
   const convId = failEvents[0].conversation_id;
-
-  // Raw events contain zero tool steps or assistant delta steps
-  assert.ok(!failEvents.some((e) => e.step_update?.step_type === 'tool' || e.step_update?.text_delta));
+  assertNoQualifyingToolCallsOrOutput('antigravity-cli', failEvents);
 
   const resumeEvents = readJsonl('fixtures/antigravity-cli/resume-after-failure.jsonl');
   const resumeCtx = fakeContext();
@@ -91,9 +123,7 @@ test('Codex app-server init-fail fixture: zero output, zero tool calls, uncommit
 
   assert.equal(failCtx.calls.text, '');
   assert.equal(failCtx.calls.activity.length, 0, 'No qualifying tool calls emitted before failure');
-
-  // Verify zero turn deltas or item completions
-  assert.ok(!failEvents.some((e) => e.method?.startsWith('item/') || e.method === 'turn/started'));
+  assertNoQualifyingToolCallsOrOutput('codex-init', failEvents);
 
   const resumeEvents = readJsonl('fixtures/codex-app-server/resume-after-failure.jsonl');
   const errEvent = resumeEvents.find((e) => e.error?.message?.includes('no rollout found'));
@@ -101,7 +131,7 @@ test('Codex app-server init-fail fixture: zero output, zero tool calls, uncommit
   assert.equal(errEvent.error.code, -32600);
 });
 
-test('Codex app-server turn-start fixture: zero output, zero tool calls, resume hydrates interrupted turn', () => {
+test('Codex app-server turn-start fixture: zero output, zero tool calls; resume hydrates turn with empty items', () => {
   const failEvents = readJsonl('fixtures/codex-app-server/turn-fail-before-output.jsonl');
   const failCtx = fakeContext();
   const failMapper = createCodexMapper(failCtx);
@@ -110,16 +140,16 @@ test('Codex app-server turn-start fixture: zero output, zero tool calls, resume 
   assert.equal(failCtx.calls.text, '');
   assert.equal(failCtx.calls.activity.length, 0, 'No qualifying tool calls emitted before failure');
 
-  // Verify turn was accepted (turn/started exists) but zero deltas or tool calls occurred
+  // Verify turn acceptance event exists, but zero item methods or qualifying tool calls occurred
   assert.ok(failEvents.some((e) => e.method === 'turn/started'));
-  assert.ok(!failEvents.some((e) => e.method?.startsWith('item/') && e.method !== 'item/started'));
+  assertNoQualifyingToolCallsOrOutput('codex-turn', failEvents);
 
   const resumeEvents = readJsonl('fixtures/codex-app-server/resume-turn-after-failure.jsonl');
   const resumeCtx = fakeContext();
   const resumeMapper = createCodexMapper(resumeCtx);
   for (const e of resumeEvents) resumeMapper.push(e);
 
-  // Resume succeeds: thread response contains the interrupted turn
+  // Resume succeeds: thread response contains the interrupted turn with empty items
   const threadRes = resumeEvents.find((e) => e.id === 2 && e.result?.thread);
   assert.ok(threadRes, 'thread/resume response exists');
   const turns = threadRes.result.thread.turns;
@@ -127,7 +157,7 @@ test('Codex app-server turn-start fixture: zero output, zero tool calls, resume 
   assert.equal(turns[0].status, 'interrupted');
   assert.deepEqual(turns[0].items, []);
 
-  // Assistant completed the follow-up turn
+  // Assistant completed the follow-up turn stating it does not have the earlier question
   assert.match(resumeCtx.calls.text, /earlier question/i);
 });
 
@@ -160,5 +190,6 @@ test('DL-3 and DL-8 outcome matrix: all confirmed backends produce zero output a
     }
     assert.equal(ctx.calls.text, '', `${row.backend} must produce no text output before failure`);
     assert.equal(ctx.calls.activity.length, 0, `${row.backend} must produce no qualifying tool calls before failure`);
+    assertNoQualifyingToolCallsOrOutput(row.backend, events);
   }
 });
