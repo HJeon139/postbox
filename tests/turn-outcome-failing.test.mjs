@@ -70,6 +70,22 @@ function assertNoQualifyingToolCallsOrOutput(backend, events) {
   }
 }
 
+test('negative control: assertNoQualifyingToolCallsOrOutput rejects resume streams containing output or tool calls', () => {
+  const resumes = [
+    ['claude-code', 'fixtures/claude-code/resume-after-failure.jsonl'],
+    ['antigravity-cli', 'fixtures/antigravity-cli/resume-after-failure.jsonl'],
+    ['codex', 'fixtures/codex-app-server/resume-turn-after-failure.jsonl'],
+  ];
+  for (const [backend, file] of resumes) {
+    const events = readJsonl(file);
+    assert.throws(
+      () => assertNoQualifyingToolCallsOrOutput(backend, events),
+      (err) => err instanceof assert.AssertionError,
+      `assertNoQualifyingToolCallsOrOutput must reject resume stream for ${backend}`,
+    );
+  }
+});
+
 test('Claude Code recorded failing turn produces no output or tool calls; resume fetches history and answers', () => {
   const failEvents = readJsonl('fixtures/claude-code/fail-before-output.jsonl');
   const failCtx = fakeContext();
