@@ -1,17 +1,22 @@
 // Postbox’s store: an append-only event log (JSON Lines) plus periodic snapshots, with all reads served
-// from an in-memory projection. See designs/architecture.md, “The store”.
+// from an in-memory projection. See designs/architecture.md, “The store”, and #508’s design, “Storage”.
 //
-// Every change goes through emit(), which applies it with the shared reducer, numbers it, appends it to
-// the log and tells subscribers. A browser that reconnects asks for everything after the last number it
-// saw, so nothing is lost or duplicated.
+// Every change goes through emit(), one event applied, numbered, appended and told at once, or commit(), several
+// events written as ONE fsynced line and applied only once the disk has them (server/store-commit.mjs). Both number
+// their events through sequence(), the one place a seq is assigned. A browser that reconnects asks for everything
+// after the last number it saw, so nothing is lost or duplicated.
 //
 //   <dir>/snapshot.json          the state as of some sequence number (written atomically)
-//   <dir>/events-<from>.jsonl    events after that, one per line; a new segment starts at each snapshot
+//   <dir>/events-<from>.jsonl    events after that, one per line, or one commit’s array per line; a new segment
+//                                starts at each snapshot
+//
+// Every file access goes through this.io (node:fs/promises unless a test gives one), so a test can fail one operation.
 
 import { randomBytes } from 'node:crypto';
-import { appendFile, mkdir, open, readdir, readFile, rename, rm, stat, truncate, writeFile } from 'node:fs/promises';
+import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
 import { apply, emptyState, ownState } from '../shared/state.mjs';
+import { commit, replay, run, writeSnapshot } from './store-commit.mjs';
 
 export { emptyState };
 
@@ -21,64 +26,57 @@ const SNAPSHOT_EVERY = 5000; // events between snapshots
 export const newId = (prefix) => `${prefix}_${randomBytes(6).toString('base64url').replace(/[-_]/g, '').slice(0, 8) || Date.now().toString(36)}`;
 
 export class Store {
-  /** @param {string|null} dir  the data folder; null keeps everything in memory (tests) */
-  constructor(dir, { snapshotEvery = SNAPSHOT_EVERY } = {}) {
+  /**
+   * @param {string|null} dir  the data folder; null keeps everything in memory (tests)
+   * @param {{ snapshotEvery?: number, io?: typeof fs }} [options]  `io` stands in for node:fs/promises
+   */
+  constructor(dir, { snapshotEvery = SNAPSHOT_EVERY, io = fs } = {}) {
     this.dir = dir;
+    this.io = io;
     this.snapshotEvery = snapshotEvery;
     this.state = emptyState();
-    this.events = [];
+    this.events = []; // the backlog for reconnecting browsers: { seq, line }
     this.listeners = new Set();
-    this.queue = []; // lines waiting to be appended
-    this.writing = null; // the append in progress
+    // The writer’s jobs (server/store-commit.mjs), in order: a line to append, a held emit, a commit, a flush or a
+    // snapshot; and its loop, while one runs.
+    this.queue = [];
+    this.running = null;
     this.segment = 'events-1.jsonl'; // the current log file; load() picks the real one
+    this.fh = null; // the segment, open for appending
+    this.offset = 0; // where the segment ends, so a failed write can be read back
+    this.uncertain = null; // a write whose outcome the writer has still to read back
     this.sinceSnapshot = 0;
+    this.ops = new Map(); // opId → the seq of its commit’s first event, for the commits since the latest snapshot
+    this.ahead = 0; // events numbered but not yet applied: a commit’s, before its fsync
+    this.waitingCommits = 0; // commits queued or pending; emits are held behind them
+    this.held = 0; // emits held in the queue, still to be numbered
   }
 
   async load() {
     if (!this.dir) return this;
-    await mkdir(this.dir, { recursive: true });
-    const snapPath = join(this.dir, 'snapshot.json');
+    await this.io.mkdir(this.dir, { recursive: true });
+    await this.readSnapshot();
+    await replay(this);
+    this.segment = (await this.segments()).at(-1)?.name ?? `events-${this.state.seq + 1}.jsonl`;
+    return this;
+  }
+
+  /** Reads the snapshot, or once, Stage 2’s store.json as the first snapshot. */
+  async readSnapshot() {
+    const snapPath = this.at('snapshot.json');
     try {
-      this.state = ownState({ ...emptyState(), ...JSON.parse(await readFile(snapPath, 'utf8')) });
+      this.state = ownState({ ...emptyState(), ...JSON.parse(await this.io.readFile(snapPath, 'utf8')) });
     } catch (e) {
       if (e.code !== 'ENOENT') throw new Error(`Couldn’t read the snapshot at ${snapPath}: ${e.message}`);
-      // Stage 2 kept everything in one store.json; read it once as the first snapshot.
-      const legacy = join(this.dir, 'store.json');
+      const legacy = this.at('store.json');
       try {
-        this.state = ownState({ ...emptyState(), ...JSON.parse(await readFile(legacy, 'utf8')) });
-        await this.writeSnapshot();
-        await rename(legacy, `${legacy}.migrated`);
+        this.state = ownState({ ...emptyState(), ...JSON.parse(await this.io.readFile(legacy, 'utf8')) });
+        await writeSnapshot(this);
+        await this.io.rename(legacy, `${legacy}.migrated`);
       } catch (le) {
         if (le.code !== 'ENOENT') throw new Error(`Couldn’t read the old store at ${legacy}: ${le.message}`);
       }
     }
-    // Replay the log after the snapshot. A torn last line (a crash mid-write) is dropped.
-    for (const seg of await this.segments()) {
-      const path = join(this.dir, seg.name);
-      const text = await readFile(path, 'utf8');
-      let offset = 0;
-      for (const line of text.split('\n')) {
-        const end = offset + Buffer.byteLength(line) + 1;
-        if (line.trim()) {
-          let ev;
-          try {
-            ev = JSON.parse(line);
-          } catch {
-            await truncate(path, offset);
-            console.warn(`Dropped an incomplete event at the end of ${seg.name} (the server stopped mid-write).`);
-            break;
-          }
-          if (ev.seq > this.state.seq) {
-            apply(this.state, ev.type, ev.data);
-            this.state.seq = ev.seq;
-            this.sinceSnapshot++;
-          }
-        }
-        offset = end;
-      }
-    }
-    this.segment = (await this.segments()).at(-1)?.name ?? `events-${this.state.seq + 1}.jsonl`;
-    return this;
   }
 
   /** A path in the data folder. Only the disk-backed paths call this, after checking there is one. */
@@ -88,77 +86,104 @@ export class Store {
 
   async segments() {
     if (!this.dir) return [];
-    return (await readdir(this.dir))
+    return (await this.io.readdir(this.dir))
       .filter((n) => /^events-\d+\.jsonl$/.test(n))
       .map((name) => ({ name, from: Number(name.slice(7, -6)) }))
       .sort((a, b) => a.from - b.from);
   }
 
-  /** Applies a change and broadcasts it. The shared reducer is the only place state changes. */
-  emit(type, data) {
-    const ev = { seq: this.state.seq + 1, type, data };
+  /**
+   * Numbers an event: the ONE place a seq is assigned, for emit() and commit() alike, in the order the writer takes
+   * them. (#508’s delivery number `n`, PR 1b, will be assigned here too.) The event is applied later, by record().
+   */
+  sequence(ev) {
+    ev.seq = this.state.seq + ++this.ahead;
+    return ev;
+  }
+
+  /** Applies a numbered event with the shared reducer, the only place state changes, and keeps it for since(). */
+  record(ev) {
     // The reducer keeps an event’s objects in the state, where later events change them in place, so the backlog
     // keeps each event as JSON: a reconnecting browser gets it as it was emitted, not as the state is now.
     const line = JSON.stringify(ev);
-    apply(this.state, type, data);
+    apply(this.state, ev.type, ev.data);
     this.state.seq = ev.seq;
+    this.ahead--;
     this.events.push({ seq: ev.seq, line });
     if (this.events.length > KEEP_EVENTS) this.events.splice(0, this.events.length - KEEP_EVENTS);
+    return line;
+  }
+
+  notify(ev) {
     for (const fn of this.listeners) fn(ev);
+  }
+
+  /**
+   * Applies a change and broadcasts it, unless a commit is pending: then it’s held, and numbered, applied and
+   * broadcast in its turn once the commit resolves or fails (the returned event gets its seq then).
+   */
+  emit(type, data) {
+    const ev = { type, data };
+    if (this.waitingCommits || this.uncertain || this.held) {
+      this.held++;
+      this.queue.push({ held: ev });
+      this.pump();
+      return ev;
+    }
+    this.sequence(ev);
+    const line = this.record(ev);
+    this.notify(ev);
     if (this.dir) {
-      this.queue.push(line + '\n');
+      this.queue.push({ line: `${line}\n` });
       this.sinceSnapshot++;
       this.pump();
     }
     return ev;
   }
 
-  /** Appends queued lines in order, one write at a time. */
+  /**
+   * Commits several events as one line, all durable or none (server/store-commit.mjs). With an opId, a repeat
+   * resolves `{ seq, duplicate: true }` without writing.
+   * @param {any[] | ((state: any) => any[])} events @param {{ opId?: string }} [options]
+   */
+  commit(events, options) {
+    return commit(this, events, options);
+  }
+
+  /** Starts the writer’s loop if it isn’t running. After a failure it waits for the next emit, commit or flush. */
   pump() {
-    if (this.writing || !this.queue.length) return;
-    const chunk = this.queue.splice(0).join('');
-    const file = this.at(this.segment);
-    this.writing = appendFile(file, chunk)
-      .catch((e) => console.error(`Couldn’t append to the event log: ${e.message}`))
-      .then(async () => {
-        if (this.sinceSnapshot >= this.snapshotEvery) await this.snapshot();
-        this.writing = null;
-        this.pump();
-      });
+    if (this.running || !this.queue.length) return;
+    this.running = run(this).finally(() => {
+      this.running = null;
+      if (this.queue.length && !this.uncertain) this.pump();
+    });
   }
 
-  /** Writes a snapshot, starts a new log segment, and deletes segments the snapshot covers. */
-  async snapshot() {
-    await this.writeSnapshot();
-    const old = await this.segments();
-    this.segment = `events-${this.state.seq + 1}.jsonl`;
-    this.sinceSnapshot = 0;
-    for (const seg of old) if (seg.name !== this.segment) await rm(this.at(seg.name), { force: true });
-  }
-
-  async writeSnapshot() {
-    const path = this.at('snapshot.json');
-    const tmp = `${path}.${process.pid}.tmp`;
-    await writeFile(tmp, JSON.stringify(this.state));
-    const fh = await open(tmp, 'r+');
-    await fh.sync();
-    await fh.close();
-    await rename(tmp, path);
+  /** A job for the writer’s loop, resolved when it has run. @param {'flush' | 'snapshot'} kind */
+  job(kind) {
+    return new Promise((resolve, reject) => {
+      this.queue.push({ [kind]: { resolve, reject } });
+      this.pump();
+    });
   }
 
   /** Waits for every queued event to reach the disk. */
   async flush() {
-    if (!this.dir) return;
-    while (this.writing || this.queue.length) {
-      this.pump();
-      await this.writing;
-    }
+    await this.job('flush');
+  }
+
+  /** Writes a snapshot, starts a new log segment, and deletes the segments the snapshot covers. */
+  async snapshot() {
+    if (this.dir) await this.job('snapshot');
+  }
+
+  /** Flushes, and lets go of the log. */
+  async close() {
     try {
-      const fh = await open(this.at(this.segment), 'r+');
-      await fh.sync();
-      await fh.close();
-    } catch {
-      /* nothing written yet */
+      await this.flush();
+    } finally {
+      await this.fh?.close();
+      this.fh = null;
     }
   }
 
@@ -178,7 +203,7 @@ export class Store {
   async size() {
     if (!this.dir) return 0;
     let total = 0;
-    for (const n of await readdir(this.dir)) if (n === 'snapshot.json' || /^events-/.test(n)) total += (await stat(join(this.dir, n))).size;
+    for (const n of await this.io.readdir(this.dir)) if (n === 'snapshot.json' || /^events-/.test(n)) total += (await this.io.stat(this.at(n))).size;
     return total;
   }
 
