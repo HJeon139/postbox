@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft 3, 31 October 2026, after peer review by gpt, critic, gemini and engineer (developer still to answer). Then principal-engineer review by the person and the integrator |
+| **Status** | Draft 4, 31 October 2026, after peer review by all five developers and critic. Ready for principal-engineer review by the person and the integrator Then principal-engineer review by the person and the integrator |
 | **Editor** | researcher |
 | **Contributors** | developer (writer and load), gpt (recovery contract and storage specs), engineer (measurements, positions), gemini (benchmark, UAT tools), critic (requirements audit) |
 | **Replaces** | `design.md` §6.6 “Storage: a Redis 8 server…” (the 28 October decision, recalled on 31 October 2026) |
@@ -131,9 +131,9 @@ A **commit** of more than one event has to be recognizable as a group on load. T
 | (b) Plain event for one, array for several | A plain event line with `op` on it | An array | Readable until the first multi-event commit (A1), then silent omission | Readers must unwrap arrays from A1 on |
 | (c) Grouped plain lines | A plain event line with `op` | Plain event lines, each with `{op, i, of}` | Readable throughout: an older build applies them one by one | A longer recovery rule: apply a group only when all `of` lines are present, else cut back to its first line |
 
-gpt and critic prefer (b); critic offers (c) as the way to have no point of no return. (c) also needs no change to the UAT log readers (below). developer’s view is pending; developer holds that 1a itself carries the `BREAKING CHANGE` note because the array is 1a’s format, which is true of (a) but not of (b) or (c). **Whichever is chosen:** an older build must not be pointed at a folder a newer one wrote, the release notes say it silently omits commits as well as may fail to start, and a characterization test on `main` pins what the older loader does.
+gpt, critic and developer prefer (b). critic offered (c) as the way to have no point of no return; developer rejects it: an older build would read a group’s lines one by one and apply a **partial group after a crash**, silently breaking the atomicity the commit exists for, so “readable throughout” means “half-applied throughout”. **Recommended: (b).** developer’s 1a switches from (a), its current code, to (b) with one expression. The `BREAKING CHANGE` note then belongs to A1, the first multi-event commit. **Whichever is chosen:** an older build must not be pointed at a folder a newer one wrote, the release notes say it silently omits commits as well as may fail to start, and a characterization test on `main` pins what the older loader does.
 
-**The UAT log readers.** gemini found that `readLogged` (`tools/uat/run-files.mjs`) and `lines()` and `logged` (`tools/uat/history.mjs`) parse each line as one event and read `.type` and `.seq`. An array has neither, so `readReceived`, `readHistory` and `--recheck` would silently drop every commit under (a) or (b). The fix is one shared parse function that unwraps arrays, in 1a. (c) needs none.
+**The UAT log readers.** gemini found that `readLogged` (`tools/uat/run-files.mjs`) and `lines()` and `logged` (`tools/uat/history.mjs`) parse each line as one event and read `.type` and `.seq`. An array has neither, so `readReceived`, `readHistory` and `--recheck` would silently drop every commit under (a) or (b). The fix is one shared parse function that unwraps arrays, in 1a, so A1 does not have to touch the readers.
 
 ### 6.3 The writer
 
@@ -142,7 +142,7 @@ State: `queue` (entries), `open` (a file handle for the current segment, kept op
 **Sequencing.** `emit` and `commit` both pass through one function that assigns `seq` (and, from step B1, `n`), so the two cannot interleave their numbers. Because an event can be applied only after the events before it are, this function also decides **when** an event is applied:
 
 - An `emit` with **no commit in flight** is applied, numbered and broadcast at call time, as today, and its line is queued.
-- An `emit` made **while a commit is in flight** is **held**: it is not numbered or applied until the commit has published, then it is, in order. Code that reads state right after such an `emit` sees the old state for up to one sync (4 to 6 ms). `runtime.mjs:349` is one such call site; they are audited in 1a (§8).
+- An `emit` made while a commit is **queued, in flight, or being settled after an uncertain write** is **held**: it is not numbered or applied until the commit has published, then it is, in order. Code that reads state right after such an `emit` sees the old state for up to one sync (4 to 6 ms) or, while a write is being settled, longer. `runtime.mjs:349` is one such call site; they are audited in 1a (§8).
 - A **commit’s** events are applied and broadcast **only after the sync**. Emits are never applied twice: an emit’s application happens once, at call time or at release.
 
 **`commit(events | (state) => events, { opId })`.**
@@ -197,7 +197,7 @@ flowchart TD
 - **A newline-terminated line that does not parse** refuses to start, even when it is the last line: it could be damaged acknowledged history (gpt). So does an unparsable line in any segment that is not the last, and any bad line with lines after it. The message names the file and byte offset. This replaces today’s silent truncation (P4).
 - **A group must be well formed:** a nonempty array of consecutive integer `seq`s, or under (c) all `of` lines present. An incomplete group at the tail is cut back to its first line; elsewhere it refuses to start.
 - **The first unapplied `seq`** must be `state.seq + 1`. A group that overlaps the snapshot boundary is rejected, not partly applied.
-- **A gap in `seq` is counted against the applied `seq`,** not against the previous line (a real segment begins with events the snapshot already holds, §2). A gap means acknowledged history was lost. Because today’s silent append failures (P2) can leave a gap in a user’s existing store, refusing to start would brick it; the refusal therefore offers an explicit override, named in the message, that starts anyway and logs what was lost.
+- **A gap in `seq` is counted against the applied `seq`,** not against the previous line (a real segment begins with events the snapshot already holds, §2). A gap means acknowledged history was lost, and refusing to start does not recover it. Today’s silent append failures (P2) can leave a gap in a user’s existing store, so refusing would brick it. **Recommended (developer): start anyway, log the range and the count lost, and show it once on 1b’s status line,** with no override flag for every such user to learn. Refusal stays for what refusing can protect: a damaged line, or a malformed group. critic proposed an explicit start-anyway override in the refusal message instead (Q8).
 - A commit whose events’ `seq` are already applied is skipped as a whole, as single events are today.
 
 ### 6.6 When a write fails (ST-3)
@@ -333,7 +333,7 @@ Written first and failing on `main`. The specs of gpt (branch `test/508-jsonl-re
 | T-15 | A snapshot waits for pending commits; a crash before the rename, after it before the directory sync, and before pruning, all recover | gpt, `store-jsonl-snapshot`; add snapshot-waits-for-commit |
 | T-16 | The epoch changes at each `load()`; a mismatch resyncs; a page adopts an epoch only with a loaded state | `store-epoch`, `client-epoch`, `stream-epoch` |
 | T-17 | A second Postbox is refused; a stale lock is replaced; **two simultaneous starts over a stale lock: exactly one wins**; release is owner-checked (real process kill) | `store-lock`; **add** |
-| T-18 | A replay of a copy of a real log equals the live state | **add** |
+| T-18 | A replay of a synthetic log generated by the test equals the live state (the room rule on fixtures forbids a copy of a real room) | **add** |
 | T-19 | The folder is 0700 and its files 0600 | **add** |
 | T-20 | An event and a shard written in an older shape lift on read, with nothing run at startup | partly legacy tests; **add** |
 | T-21 (S2) | A crash between two shard writes uses the old manifest; a missing or mismatched shard is an error; a replay with snapshots at random points equals the live state; a rebuild of `snapshot.json` equals the original; the `EISDIR` guard holds on `main` | S2 |
@@ -344,7 +344,7 @@ Written first and failing on `main`. The specs of gpt (branch `test/508-jsonl-re
 | T-26 | Open, snapshot, prune, close: the metrics counts are unchanged | **add** |
 | T-28 (S2) | Pause between two shard writes, edit, finish, restart: equals an in-memory store that never snapshotted; a crash at every step; a retry at the same S; a failed publish keeps its dirty marks | S2, engineer’s seam and real-room fixtures (`real-check.mjs`, `stall.mjs`) |
 | T-29 | The snapshot is written in pieces: the block on a 14 MB state falls below the one-call figure | **add** |
-| T-27 | **Characterization on `main`:** the older loader skips an array line, and reuses its sequence numbers | **add** |
+| T-27 | **Characterization on `main`:** the older loader skips an array line, and reuses its sequence numbers. The old loader no longer exists on the 1a branch, so the run on `main` is recorded in 1a’s PR body and here, as Q7’s was | **record** |
 
 gemini’s UAT checks: the at-rest rows of §7 (leave a truncated segment, an un-renamed temp snapshot, unreferenced shards, or a stale lock, then restart) can be run end to end with `postbox.restart({ whileDown })`. The in-flight rows cannot, because the fault launcher wraps agent CLIs, not the store; they are unit specs. critic reads every PR against ST-3 and ST-4.
 
@@ -371,13 +371,13 @@ Nothing needs a migration: events, segments and `snapshot.json` keep their forma
 ## 13. Open questions for review
 
 1. **Q1. The S2 budget.** gemini: keep 50 ms and 40 MB. critic: trigger earlier, at 40 ms. engineer: write the snapshot in pieces now (§6.9), which cuts the block to about 21 ms, and keep 50 ms; a 40 ms trigger without that fix would fire almost at once. The stall is about 37 ms today and the 50 ms line is days away without the fix. Recommended: **write in pieces now, keep 50 ms, and drop 40 MB as the binding limit** (the stall reaches 50 ms near 18.7 MB first); measure with the corrected benchmark on a fresh copy.
-2. **Q2. How a multi-event commit is written:** (a), (b) or (c) (§6.2). gpt and critic prefer (b); critic offers (c). developer’s view pending.
+2. **Q2. How a multi-event commit is written:** (a), (b) or (c) (§6.2). gpt, critic and developer prefer (b); developer rejects (c) because an older build would apply a partial group after a crash. Recommended: (b).
 3. **Q3. Receipts.** Resolved in draft 2: derived, checkpointed with the snapshot, whole receipt in its opening month. For confirmation by the integrator, who proposed a shard of their own.
 4. **Q4. Held emits.** Resolved: keep the JSON line taken when the event is made and apply it from `JSON.parse(line)` on release (critic, engineer); no deep snapshot of state is needed.
 5. **Q5. ST-2.** Deferred with a lock file. Dropped, not deferred, if Postbox stays one process.
 6. **Q6. The lock’s staleness test.** Resolved: pid plus start time, taken over by rename (critic). A heartbeat is not needed.
 7. **Q7. The S2 rollback guard.** Resolved: `snapshot.json` as a folder is safe, pinned by a passing characterization test on `main`. Open only where the test lives, in 1a’s PR or S2’s.
-8. **Q8. The gap override.** Is an explicit start-anyway override right for a store with a gap, or should it only be a repair tool?
+8. **Q8. A gap in `seq`.** developer: start, log what was lost and show it once on the status line, with no override. critic: refuse, with an explicit override named in the message. A repair tool, if wanted later, fits S2’s rebuild tool. Which?
 
 ## 14. References
 
