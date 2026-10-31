@@ -8,15 +8,15 @@ These recordings document the baseline behavior on `main`, not a contract: on ev
 
 ## File hashes
 
-| File | SHA-256 |
-|---|---|
-| `tests/fixtures/antigravity-cli/fail-before-output.jsonl` | `7287fb3bf213d106bf943acf9eca8b290d2b6a80a45c2a65b4871180e1bf0607` |
-| `tests/fixtures/antigravity-cli/resume-after-failure.jsonl` | `876b80993f40536d72acafb862223f6b185fd257ac9c10d358f9ccb286ec4122` |
-| `tests/fixtures/claude-code/fail-before-output.jsonl` | `d2ab22472d1ceb891b9e2711446d96f92a616e3b65af3616ab9456998cc67df6` |
-| `tests/fixtures/claude-code/resume-after-failure.jsonl` | `699f0c6be2b0e359a82e7cb32410b147e5306190cfb8fc00a143e78fcba3d6f0` |
-| `tests/fixtures/codex-app-server/fail-before-output.jsonl` | `f6bd046aa0c5cec214fe8323b93f45df715ea216d78c55c711acd96af060e058` |
-| `tests/fixtures/codex-app-server/resume-after-failure.jsonl` | `6718a25277fc537e275b0020b9c84446baae14ecfe3d43a9eb156792572d9de6` |
-| `tests/fixtures/codex-app-server/turn-fail-before-output.jsonl` | `01e5bbd4d48aebb50c4f9ab434338feb2e71b5c99722ec4bc5f42e77b11872bc` |
+| File                                                              | SHA-256                                                            |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------ |
+| `tests/fixtures/antigravity-cli/fail-before-output.jsonl`         | `7287fb3bf213d106bf943acf9eca8b290d2b6a80a45c2a65b4871180e1bf0607` |
+| `tests/fixtures/antigravity-cli/resume-after-failure.jsonl`       | `876b80993f40536d72acafb862223f6b185fd257ac9c10d358f9ccb286ec4122` |
+| `tests/fixtures/claude-code/fail-before-output.jsonl`             | `d2ab22472d1ceb891b9e2711446d96f92a616e3b65af3616ab9456998cc67df6` |
+| `tests/fixtures/claude-code/resume-after-failure.jsonl`           | `699f0c6be2b0e359a82e7cb32410b147e5306190cfb8fc00a143e78fcba3d6f0` |
+| `tests/fixtures/codex-app-server/fail-before-output.jsonl`        | `f6bd046aa0c5cec214fe8323b93f45df715ea216d78c55c711acd96af060e058` |
+| `tests/fixtures/codex-app-server/resume-after-failure.jsonl`      | `6718a25277fc537e275b0020b9c84446baae14ecfe3d43a9eb156792572d9de6` |
+| `tests/fixtures/codex-app-server/turn-fail-before-output.jsonl`   | `01e5bbd4d48aebb50c4f9ab434338feb2e71b5c99722ec4bc5f42e77b11872bc` |
 | `tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl` | `5a6e1a8b0b07ec2e67d4251c0a0fea2e9bdf7a3415aff5b460f48d67067db64b` |
 
 ---
