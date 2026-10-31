@@ -1,39 +1,11 @@
 // 1b at the store (#508’s storage design, “When a write fails (ST-3)”; the 1b invariants, revision 4): the status the
 // page and the runtime read; Retry as a reload, one at a time, refusing while a write is still in flight; what install
-// resets and what a held reference sees; a torn tail trimmed before the new writer appends; a failed snapshot that warns
-// and backs off instead of closing; the last durable seq the page marks unsaved changes against.
+// resets and what a held reference sees; a torn tail trimmed before the new writer appends.
 import assert from 'node:assert/strict';
-import * as realFs from 'node:fs/promises';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { rm } from 'node:fs/promises';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
-import { disk, handleWith } from './store-jsonl-fixture.mjs';
-
-const tmp = () => mkdtemp(join(tmpdir(), 'pb-retry-'));
-const thread = (id) => ({ type: 'thread', data: { id, members: [] } });
-const eio = (what) => Object.assign(new Error(what), { code: 'EIO' });
-
-/** A disk whose event-log handles answer to `faults`: { sync?, write? } are called before the real operation. */
-function logDisk(faults) {
-  return disk({
-    async open(path, flags, mode) {
-      const handle = await realFs.open(path, flags, mode);
-      if (!String(path).includes('events-')) return handle;
-      return handleWith(handle, {
-        sync: async () => {
-          if (faults.sync) await faults.sync();
-          return handle.sync();
-        },
-        write: async (...args) => {
-          if (faults.write) return faults.write(handle, ...args);
-          return handle.write(...args);
-        },
-      });
-    },
-  });
-}
+import { eio, logDisk, thread, tmp } from './store-retry-fixture.mjs';
 
 test('the status says writable, the cause, what was lost, a warning, whether a Retry runs, and the last durable seq', async () => {
   const dir = await tmp();
@@ -177,127 +149,5 @@ test('install keeps store.state’s identity, a held sub-object goes stale, and 
   assert.equal(s.held, 0);
   assert.equal(s.waitingCommits, 0);
   await s.close();
-  await rm(dir, { recursive: true });
-});
-
-test('a failed snapshot warns and backs off; it does not close the store, and is not retried on every event', async () => {
-  const dir = await tmp();
-  let attempts = 0;
-  let failing = true;
-  const io = disk({
-    async open(path, flags, mode) {
-      if (String(path).includes('snapshot.json') && String(path).endsWith('.tmp')) {
-        attempts++;
-        if (failing) throw eio('snapshot refused');
-      }
-      return realFs.open(path, flags, mode);
-    },
-  });
-  const s = await new Store(dir, { io, snapshotEvery: 3 }).load();
-  for (let i = 0; i < 12; i++) s.emit('thread', { id: `t${i}`, members: [] });
-  await s.flush();
-  assert.equal(s.writable, true, 'a failed snapshot closes nothing');
-  assert.match(s.status.warning ?? '', /snapshot/);
-  assert.equal(attempts, 1, 'one attempt, then the backoff window');
-  assert.ok(s.nextSnapshotAt > Date.now(), 'a stored next-attempt time');
-  failing = false;
-  s.nextSnapshotAt = 0; // the window has passed
-  s.emit('thread', { id: 'again', members: [] });
-  await s.flush();
-  assert.equal(attempts, 2);
-  assert.equal(s.status.warning, null, 'the warning clears when a snapshot succeeds');
-  assert.ok((await readdir(dir)).includes('snapshot.json'));
-  await s.close();
-  await rm(dir, { recursive: true });
-});
-
-test('T-12: ENOSPC and EROFS on a write close the store with that cause, like EIO', async () => {
-  for (const code of ['ENOSPC', 'EROFS']) {
-    const dir = await tmp();
-    const faults = {};
-    const s = await new Store(dir, { io: logDisk(faults) }).load();
-    faults.write = async () => {
-      throw Object.assign(new Error(`${code} from the disk`), { code });
-    };
-    await assert.rejects(s.commit([thread('x')], { opId: 'x' }), new RegExp(code));
-    assert.equal(s.writable, false);
-    assert.equal(s.status.cause.code, code);
-    await s.close();
-    await rm(dir, { recursive: true });
-  }
-});
-
-test('I8: a commit made by a reload listener runs after the install and lands in the new history, once', async () => {
-  const dir = await tmp();
-  const faults = {};
-  const s = await new Store(dir, { io: logDisk(faults) }).load();
-  s.emit('thread', { id: 't1', members: [] });
-  await s.flush();
-  faults.sync = () => Promise.reject(eio('disk sync refused'));
-  await assert.rejects(s.commit([thread('x')], { opId: 'x' }), /EIO/);
-  faults.sync = null;
-  let reconciled;
-  s.onReload(() => {
-    // Reconciliation that writes: through commit, after the install, as a stand-in for A1’s records going back to waiting.
-    reconciled = s.commit([thread('reconciled')], { opId: 'reconcile' });
-  });
-  await s.reload();
-  // The failed commit’s line landed before its sync failed, so the reload recovered it as seq 2 (I7); the listener’s
-  // commit comes after the install, as seq 3.
-  assert.deepEqual(await reconciled, { seq: 3, duplicate: false });
-  assert.ok(s.state.threads.reconciled);
-  await s.close();
-  const b = await new Store(dir).load();
-  assert.deepEqual(Object.keys(b.state.threads).sort(), ['reconciled', 't1', 'x']);
-  await b.close();
-  await rm(dir, { recursive: true });
-});
-
-test('Retry on a store that never failed is a no-op: memory stays ahead of the disk’s view, no second handle (critic’s finding)', async () => {
-  const dir = await tmp();
-  let opens = 0;
-  const io = disk({
-    async open(path, flags, mode) {
-      if (String(path).includes('events-')) opens++;
-      return realFs.open(path, flags, mode);
-    },
-  });
-  const s = await new Store(dir, { io }).load();
-  for (let i = 0; i < 50; i++) s.emit('thread', { id: `t${i}`, members: [] });
-  const epoch = s.epoch;
-  const retried = s.reload(); // writes are open: nothing to retry
-  for (let i = 50; i < 60; i++) s.emit('thread', { id: `t${i}`, members: [] });
-  await retried;
-  await s.flush();
-  assert.equal(s.epoch, epoch, 'no new history');
-  assert.equal(Object.keys(s.state.threads).length, 60, 'memory kept every emit');
-  assert.equal(s.state.seq, 60);
-  assert.equal(opens, 1, 'one handle on the segment');
-  await s.close();
-  const b = await new Store(dir).load();
-  assert.equal(b.state.seq, 60, 'the disk has them all');
-  await b.close();
-  await rm(dir, { recursive: true });
-});
-
-test('after a Retry whose barrier failed, a second Retry succeeds once the disk answers', async () => {
-  const dir = await tmp();
-  const faults = {};
-  const s = await new Store(dir, { io: logDisk(faults) }).load();
-  s.emit('thread', { id: 't1', members: [] });
-  await s.flush();
-  faults.sync = () => Promise.reject(eio('disk sync refused'));
-  await assert.rejects(s.commit([thread('x')], { opId: 'x' }), /EIO/);
-  await assert.rejects(s.reload(), /Retry couldn’t reopen/); // the barrier’s sync fails too
-  assert.equal(s.writable, false);
-  assert.ok(s.state.threads.t1, 'the old view is still readable');
-  faults.sync = null;
-  await s.reload();
-  assert.equal(s.writable, true);
-  await s.commit([thread('after')], { opId: 'after' });
-  await s.close();
-  const b = await new Store(dir).load();
-  assert.ok(b.state.threads.after);
-  await b.close();
   await rm(dir, { recursive: true });
 });
