@@ -15,7 +15,7 @@ test('events are appended to the log and replayed after a restart', async () => 
   a.emit('thread', { id: 't1', members: [] });
   a.emit('item.add', { threadId: 't1', item: { id: 'i1', text: 'Hel' } });
   a.emit('item.text', { threadId: 't1', id: 'i1', text: 'lo' });
-  await a.flush();
+  await a.close();
   const b = await new Store(dir).load();
   assert.equal(b.state.seq, 3);
   assert.equal(b.state.items.t1[0].text, 'Hello');
@@ -26,7 +26,7 @@ test('a torn last line from a crash is dropped, and earlier events survive', asy
   const dir = await tmp();
   const a = await new Store(dir).load();
   a.emit('thread', { id: 't1', members: [] });
-  await a.flush();
+  await a.close();
   const seg = (await readdir(dir)).find((n) => n.startsWith('events-'));
   await appendFile(join(dir, seg), '{"seq":2,"type":"thread","data":{"id":"t2"');
   const b = await new Store(dir).load();
@@ -34,7 +34,7 @@ test('a torn last line from a crash is dropped, and earlier events survive', asy
   assert.ok(b.state.threads.t1);
   assert.equal(b.state.threads.t2, undefined);
   b.emit('thread', { id: 't3', members: [] });
-  await b.flush();
+  await b.close();
   const c = await new Store(dir).load();
   assert.ok(c.state.threads.t3, 'new events append cleanly after the dropped line');
   await rm(dir, { recursive: true });
@@ -50,6 +50,7 @@ test('a snapshot starts a new segment and deletes the ones it covers', async () 
   const files = await readdir(dir);
   assert.ok(files.includes('snapshot.json'));
   assert.equal(files.filter((n) => n.startsWith('events-')).length, 1, 'only the segment after the last snapshot remains');
+  await a.close();
   const b = await new Store(dir).load();
   assert.equal(b.state.seq, 12);
   assert.equal(Object.keys(b.state.threads).length, 12);

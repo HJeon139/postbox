@@ -556,7 +556,7 @@ export async function start({
     await stopHosts(hosts, stopWake);
     narrator?.stop();
     if (server.listening) await new Promise((ok) => server.close(ok));
-    await store.flush();
+    await store.close(); // flushes, and releases the data folder’s lock for the next Postbox
   }
   if (listen) await listenServer(server, port, host, close, () => rt.drainAll()); // listening: drain what waited across a restart (#228)
   const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));

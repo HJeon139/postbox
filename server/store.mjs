@@ -9,6 +9,7 @@
 //   <dir>/snapshot.json          the state as of some sequence number (written atomically)
 //   <dir>/events-<from>.jsonl    events after that, one per line, or one commit’s array per line; a new segment
 //                                starts at each snapshot
+//   <dir>/store.lock             the pid of the process whose store holds the folder (server/store-lock.mjs)
 //
 // Every file access goes through this.io (node:fs/promises unless a test gives one), so a test can fail one operation.
 
@@ -17,6 +18,7 @@ import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
 import { apply, emptyState, ownState } from '../shared/state.mjs';
 import { commit, replay, run, writeSnapshot } from './store-commit.mjs';
+import { lockStore, unlockStore } from './store-lock.mjs';
 
 export { emptyState };
 
@@ -50,14 +52,23 @@ export class Store {
     this.ahead = 0; // events numbered but not yet applied: a commit’s, before its fsync
     this.waitingCommits = 0; // commits queued or pending; emits are held behind them
     this.held = 0; // emits held in the queue, still to be numbered
+    this.lock = null; // the lock file’s path while this store holds the folder
   }
 
+  /** Takes the folder (one store per folder, or load() rejects naming the holder), reads it, and leaves the writer at its end. */
   async load() {
     if (!this.dir) return this;
     await this.io.mkdir(this.dir, { recursive: true });
-    await this.readSnapshot();
-    await replay(this);
-    this.segment = (await this.segments()).at(-1)?.name ?? `events-${this.state.seq + 1}.jsonl`;
+    this.lock = await lockStore(this.io, this.dir);
+    try {
+      await this.readSnapshot();
+      await replay(this);
+      this.segment = (await this.segments()).at(-1)?.name ?? `events-${this.state.seq + 1}.jsonl`;
+    } catch (e) {
+      await unlockStore(this.io, this.lock);
+      this.lock = null;
+      throw e;
+    }
     return this;
   }
 
@@ -177,13 +188,15 @@ export class Store {
     if (this.dir) await this.job('snapshot');
   }
 
-  /** Flushes, and lets go of the log. */
+  /** Flushes, lets go of the log, and releases the folder for the next store. */
   async close() {
     try {
       await this.flush();
     } finally {
       await this.fh?.close();
       this.fh = null;
+      await unlockStore(this.io, this.lock);
+      this.lock = null;
     }
   }
 

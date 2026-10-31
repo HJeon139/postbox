@@ -59,10 +59,11 @@ test('#120: where a persona runs survives a store reload', async () => {
     const h = rt.addHost({ name: 'host.example.com' });
     const p = rt.createPersona({ handle: 'far', backend: 'claude-code', remote: { hostId: h.id } });
     const q = rt.createPersona({ handle: 'near', backend: 'claude-code' });
-    await store.flush();
+    await store.close();
     const again = await new Store(dir).load();
     assert.deepEqual(again.state.personas[p.id].remote, { hostId: h.id });
     assert.equal(again.state.personas[q.id].remote, null);
+    await again.close();
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
