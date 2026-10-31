@@ -45,6 +45,8 @@ test('#120: a remote Codex turn starts on the host with a held stdin, the shim a
     spawnImpl: () => assert.fail('a remote turn never spawns locally'),
   });
   const { ctx, calls } = context(link);
+  ctx.persona.backend = 'codex';
+  ctx.persona.instructions = 'Remote pinned instructions.';
   await adapter.deliver({}, { kind: 'user', text: 'Say hello.' }, ctx);
   host.stop();
   const [start] = sent(d, 'start');
@@ -64,6 +66,9 @@ test('#120: a remote Codex turn starts on the host with a held stdin, the shim a
     ['initialize', 'initialized', 'mcpServerStatus/list', 'thread/start', 'turn/start'],
   );
   assert.equal(writes[3].params.cwd, FOLDER, 'the thread works in the host’s folder');
+  assert.match(writes[3].params.developerInstructions, /Remote pinned instructions\./);
+  assert.match(writes[3].params.developerInstructions, /## How you write here/);
+  assert.equal('settings' in writes[4].params, false);
   assert.equal(writes[4].params.sandboxPolicy.type, 'readOnly');
   assert.equal(calls.text, 'Hello from Codex.');
   assert.equal(calls.saved.codexThreadId, 'thr_postbox_1');
