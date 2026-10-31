@@ -60,7 +60,7 @@ test('T-10: a build that doesn’t know an event refuses to load a log holding i
 
 test('turn.archive removes the turn’s entries and leaves its summary where they were, in turn order', () => {
   const s = threeTurns();
-  apply(s, 'turn.archive', { convId: C, turnId: 't1', sha256: summary.sha256, summary, items: ['r_t1'] });
+  apply(s, 'turn.archive', { convId: C, turnId: 't1', sha256: summary.sha256, summary, items: [{ threadId: C, id: 'r_t1' }] });
   assert.deepEqual(
     s.work[C].map((e) => e.id),
     ['wa_t1', 'w_t2_1', 'w_t2_2', 'w_t3_1', 'w_t3_2'],
@@ -70,14 +70,14 @@ test('turn.archive removes the turn’s entries and leaves its summary where the
 
 test('turn.archive replaces the activity of the turn’s replies with how many steps they had and where they are', () => {
   const s = threeTurns();
-  apply(s, 'turn.archive', { convId: C, turnId: 't1', sha256: summary.sha256, summary, items: ['r_t1'] });
-  assert.deepEqual(s.items[C][0].activity, { archived: summary.sha256, steps: 1 });
+  apply(s, 'turn.archive', { convId: C, turnId: 't1', sha256: summary.sha256, summary, items: [{ threadId: C, id: 'r_t1' }] });
+  assert.deepEqual(s.items[C][0].activity, { archived: summary.sha256, count: 1 }, 'count, not steps: an older page reads steps as a list');
   assert.equal(s.items[C][1].activity.steps.length, 1, 'other turns’ replies keep their steps');
 });
 
 test('turn.archive is idempotent: a turn already archived changes nothing', () => {
   const s = threeTurns();
-  const data = { convId: C, turnId: 't1', sha256: summary.sha256, summary, items: ['r_t1'] };
+  const data = { convId: C, turnId: 't1', sha256: summary.sha256, summary, items: [{ threadId: C, id: 'r_t1' }] };
   apply(s, 'turn.archive', data);
   const once = JSON.stringify(s);
   apply(s, 'turn.archive', data);
