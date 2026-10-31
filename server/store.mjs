@@ -10,9 +10,8 @@ import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
 import { apply, emptyState } from '../shared/state.mjs';
-import { commit, run, syncDir } from './store-commit.mjs';
-import { lockStore, unlockStore } from './store-lock.mjs';
-import { install, recover } from './store-recover.mjs';
+import { commit, run } from './store-commit.mjs';
+import { close, load } from './store-recover.mjs';
 import { fail, reload } from './store-retry.mjs';
 
 export { emptyState };
@@ -59,6 +58,7 @@ export class Store {
     this.warned = false; // an emit while closed logged the cause
     this.lost = null; // history the log lost, { from, to, count }, found at load (server/store-replay.mjs)
     this.closed = false; // close() ran: nothing is applied or written here again
+    this.closing = false; // close() has begun: no Retry starts, no commit or emit is taken, no destructive step runs
     this.warning = null; // a snapshot that failed, while the log goes on
     this.retrying = null; // reload()’s promise while one runs
     this.reconciling = false; // Retry runs the reload listeners: reconcile() writes while `writable` stays false (I3)
@@ -68,6 +68,11 @@ export class Store {
     this.snapshotBackoff = 0;
     this.statusListeners = new Set(); // told at each change of the status
     this.reloaders = new Set(); // told after a reload installs a new epoch
+  }
+
+  /** close() has begun or finished: the store is retiring, and nothing may start or destroy anything on its behalf. */
+  get retiring() {
+    return this.closing || this.closed;
   }
 
   /** What the page and the runtime read about the store’s health (server/live-streams.mjs sends it as a frame). */
@@ -113,33 +118,9 @@ export class Store {
     return newId('ep');
   }
 
-  /** Takes the folder (one store per folder, or load() rejects naming the holder), reads it, and leaves the writer at its end. */
-  async load({ fresh = false } = {}) {
-    if (!this.dir) {
-      this.epoch = this.newEpoch();
-      return this;
-    }
-    await this.io.mkdir(this.dir, { recursive: true });
-    this.lock = await lockStore(this.io, this.dir);
-    try {
-      // A fresh start empties the folder only once it holds the lock, so a running Postbox’s files are never deleted
-      // under it (the integrator’s review of 1a).
-      if (fresh)
-        for (const n of await this.io.readdir(this.dir))
-          if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n)) await this.io.rm(this.at(n), { force: true });
-      install(this, await recover(this));
-      // The folder’s entries are made durable once per start: a segment rotated by an earlier run that only ever held
-      // emits may never have had its entry synced (the integrator’s review of 1a). A filesystem that can’t sync a
-      // folder is tolerated; any other error refuses the start.
-      await syncDir(this).catch((e) => {
-        if (!['EINVAL', 'ENOTSUP', 'EPERM', 'EISDIR'].includes(e.code)) throw e;
-      });
-    } catch (e) {
-      await unlockStore(this.io, this.lock);
-      this.lock = null;
-      throw e;
-    }
-    return this;
+  /** Takes the folder (one store per folder), reads it, and leaves the writer at its end (server/store-recover.mjs). */
+  load(options) {
+    return load(this, options);
   }
 
   /** A path in the data folder. Only the disk-backed paths call this, after checking there is one. */
@@ -185,8 +166,8 @@ export class Store {
    */
   emit(type, data) {
     const ev = { type, data };
-    if (this.closed) {
-      // Applied nowhere: the store has been handed over. Said once, so an exit callback’s stream doesn’t flood the log.
+    if (this.retiring) {
+      // Applied nowhere: the store is being handed over. Said once, so an exit callback’s stream doesn’t flood the log.
       if (!this.warned) console.error(`An event after the store closed was dropped: ${this.cause?.message}`);
       this.warned = true;
       return ev;
@@ -260,26 +241,9 @@ export class Store {
     if (this.dir) await this.job('snapshot');
   }
 
-  /**
-   * Flushes, releases the folder and closes this store for good: a late emit or commit (an adapter’s exit callback after
-   * shutdown) is refused and never reopens the segment, since another store may hold the folder by then.
-   */
-  async close() {
-    try {
-      // A Retry or a writer pass under way finishes first: closing in the middle would release the lock while a
-      // candidate could still install or a snapshot still prune segments after another store took the folder.
-      await this.retrying?.catch(() => {});
-      await this.running?.catch(() => {});
-      if (this.writable) await this.flush();
-    } finally {
-      this.closed = true;
-      this.writable = false;
-      this.cause = Object.assign(new Error('The store is closed: Postbox shut it down, so nothing more is saved here.'), { code: 'ECLOSED' });
-      await this.fh?.close();
-      this.fh = null;
-      await unlockStore(this.io, this.lock);
-      this.lock = null;
-    }
+  /** Flushes, releases the folder and closes this store for good (server/store-recover.mjs). */
+  close() {
+    return close(this);
   }
 
   /** Events after `seq`, or null when they’re no longer kept and the client must refetch the state. */

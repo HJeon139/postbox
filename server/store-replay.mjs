@@ -33,6 +33,7 @@ async function replaySegment(store, seg, last) {
     if (line.trim()) {
       if (n === lines.length - 1) {
         if (!last) throw refusal(seg, n, offset, 'has no newline, so its write never finished, and a later segment follows it');
+        if (store.retiring) throw refusal(seg, n, offset, 'is a torn tail, left as it is: the store closed while it was reading'); // never trim another owner’s line
         await store.io.truncate(path, offset);
         console.warn(`Dropped an incomplete event at the end of ${seg.name} (the server stopped mid-write).`);
         break;

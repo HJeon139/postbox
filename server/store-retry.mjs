@@ -56,7 +56,7 @@ export function reload(store) {
   if (store.retrying) return store.retrying;
   // Nothing to retry while writes are open: a reload then would install the disk’s view over memory that is ahead of
   // it, and lose the events in flight (critic’s finding on 1b). A stale tab’s Retry, or a second click, is a no-op.
-  if (store.closed) return Promise.reject(store.cause); // closed for good: another store may hold the folder
+  if (store.retiring) return Promise.reject(store.cause); // closing or closed: another store may hold the folder soon
   if (store.writable || !store.dir) return Promise.resolve();
   store.retrying = retry(store).finally(() => {
     store.retrying = null;
@@ -68,22 +68,22 @@ export function reload(store) {
 
 /** The header’s order. @param {import('./store.mjs').Store} store */
 async function retry(store) {
-  if (store.running && !(await settled(store.running, store.retryBoundMs))) {
+  if (store.running && !(await settledWithin(store.running, store.retryBoundMs))) {
     throw closedBy(store, Object.assign(new Error('a write is still in flight and the disk isn’t answering; restart Postbox'), { code: store.cause?.code }));
   }
-  if (store.closed) throw gone(store); // close() may run between any two awaits here: each step checks before it acts
+  if (store.retiring) throw gone(store); // close() may begin between any two awaits here: each step checks before it acts
   store.generation++; // a.
   const old = store.fh;
   store.fh = null;
   await old?.close().catch(() => {});
-  if (store.closed) throw gone(store);
+  if (store.retiring) throw gone(store);
   let c;
   try {
     c = await recover(store); // b.
   } catch (e) {
     throw closedBy(store, e);
   }
-  if (store.closed) throw gone(store);
+  if (store.retiring) throw gone(store);
   const fh = await store.io.open(store.at(c.segment), 'a').catch((e) => {
     throw closedBy(store, e);
   });
@@ -94,8 +94,8 @@ async function retry(store) {
     await fh.close().catch(() => {});
     throw closedBy(store, e);
   }
-  if (store.closed) {
-    await fh.close().catch(() => {}); // close() ran meanwhile: nothing installs or reopens
+  if (store.retiring) {
+    await fh.close().catch(() => {}); // close() began meanwhile: nothing installs or reopens
     throw gone(store);
   }
   install(store, c); // d.
@@ -113,7 +113,7 @@ async function retry(store) {
   } finally {
     store.reconciling = false;
   }
-  if (store.closed) throw gone(store);
+  if (store.retiring) throw gone(store);
   store.writable = true;
   store.cause = null;
   store.warned = false;
@@ -121,7 +121,7 @@ async function retry(store) {
 }
 
 /** Whether a promise settles within `ms`; the timer is cleared either way, so it never holds the process open. */
-function settled(promise, ms) {
+export function settledWithin(promise, ms) {
   let timer;
   return Promise.race([
     promise.then(

@@ -151,7 +151,7 @@ test('close() during a Retry held in reconciliation waits, and the Retry ends wi
   await rm(dir, { recursive: true });
 });
 
-test('close() during a snapshot in flight waits for it, so no segment is pruned after the lock has gone', async () => {
+test('close() during a snapshot in flight: the snapshot is abandoned, nothing pruned or renamed, and the next store loads the log whole', async () => {
   const dir = await tmp();
   let hold = null;
   const io = disk({
@@ -174,12 +174,86 @@ test('close() during a snapshot in flight waits for it, so no segment is pruned 
     closed = true;
   });
   await new Promise((r) => setTimeout(r, 20));
-  assert.equal(closed, false, 'close() waits for the snapshot');
+  assert.equal(closed, false, 'close() waits for the snapshot pass to end');
   release();
-  await snap;
+  await assert.rejects(snap, /closed while it was written/, 'the snapshot resumed into a closing store and abandoned itself');
   await closing;
+  const names = (await realFs.readdir(dir)).sort();
+  assert.ok(!names.includes('snapshot.json') && !names.some((n) => n.endsWith('.tmp')), `nothing renamed or left behind: ${names.join()}`);
+  assert.ok(names.includes('events-1.jsonl'), 'the log was not pruned');
   const b = await new Store(dir).load();
-  assert.equal(b.state.seq, 3, 'the snapshot and the log agree');
+  assert.equal(b.state.seq, 3, 'the next store loads the whole log');
+  await b.close();
+  await rm(dir, { recursive: true });
+});
+
+test('a Retry started right after close() begins is refused at once, and the next owner’s partial line is never trimmed (gpt’s repro)', async () => {
+  const dir = await tmp();
+  const faults = {};
+  const a = await new Store(dir, { io: logDisk(faults) }).load();
+  a.emit('thread', { id: 't1', members: [] });
+  await a.flush();
+  faults.sync = () => Promise.reject(eio('disk sync refused'));
+  await assert.rejects(a.commit([thread('x')], { opId: 'x' }), /EIO/);
+  faults.sync = null;
+  const closing = a.close();
+  const retried = a.reload(); // in close()’s first gap
+  // Refused at once, before close() has awaited anything: a Retry that merely failed later would already have read the
+  // folder, and could have trimmed another owner’s line on the way.
+  const outcome = await Promise.race([
+    retried.then(
+      () => 'resolved',
+      () => 'rejected',
+    ),
+    new Promise((r) => setTimeout(() => r('pending'), 0)),
+  ]);
+  assert.equal(outcome, 'rejected', 'no Retry starts once close() has begun');
+  await assert.rejects(retried, /closed/);
+  await closing;
+  // B owns the folder and writes a commit in two halves: nothing of A may touch the file in between.
+  const bFaults = {};
+  const b = await new Store(dir, { io: logDisk(bFaults) }).load();
+  let finish;
+  const half = new Promise((r) => {
+    finish = r;
+  });
+  bFaults.write = async (handle, buf, off, len) => {
+    bFaults.write = null;
+    const first = await handle.write(buf, off, Math.floor(len / 2));
+    await half;
+    const rest = await handle.write(buf, off + first.bytesWritten, len - first.bytesWritten);
+    return { bytesWritten: first.bytesWritten + rest.bytesWritten };
+  };
+  const commit = b.commit([thread('b1')], { opId: 'b1' });
+  await new Promise((r) => setTimeout(r, 20));
+  finish();
+  assert.deepEqual(await commit, { seq: 3, duplicate: false });
+  await b.close();
+  const c = await new Store(dir).load();
+  assert.deepEqual(Object.keys(c.state.threads).sort(), ['b1', 't1', 'x'], 'the restart loads cleanly');
+  await c.close();
+  await rm(dir, { recursive: true });
+});
+
+test('a Retry whose barrier never resolves doesn’t hang close(): within the bound the lock is released and no descriptor stays', async () => {
+  const dir = await tmp();
+  const faults = {};
+  const a = await new Store(dir, { io: logDisk(faults), retryBoundMs: 50 }).load();
+  a.emit('thread', { id: 't1', members: [] });
+  await a.flush();
+  faults.sync = () => Promise.reject(eio('disk sync refused'));
+  await assert.rejects(a.commit([thread('x')], { opId: 'x' }), /EIO/);
+  faults.sync = () => new Promise(() => {}); // the barrier’s fsync never answers
+  a.reload().catch(() => {});
+  await new Promise((r) => setTimeout(r, 20));
+  const t0 = Date.now();
+  await a.close();
+  assert.ok(Date.now() - t0 < 1000, 'close() returned within the bound');
+  assert.equal(a.closed, true);
+  assert.equal(a.fh, null, 'no descriptor stays open');
+  faults.sync = null;
+  const b = await new Store(dir).load(); // the lock was released
+  assert.ok(b.state.threads.t1);
   await b.close();
   await rm(dir, { recursive: true });
 });
