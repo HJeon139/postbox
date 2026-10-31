@@ -88,8 +88,7 @@ export class Store {
   }
 
   tellStatus() {
-    const status = this.status;
-    for (const fn of this.statusListeners) fn(status);
+    for (const fn of this.statusListeners) fn(this.status);
   }
 
   /** Closes the store to commits with the cause (server/store-retry.mjs). */
@@ -97,7 +96,7 @@ export class Store {
     fail(this, e);
   }
 
-  /** Retry: reloads the folder on a new epoch and reopens writes, or rejects and stays closed (server/store-retry.mjs). */
+  /** Retry: reloads the folder on a new epoch and reopens writes, or rejects and stays closed. */
   reload() {
     return reload(this);
   }
@@ -262,15 +261,15 @@ export class Store {
   }
 
   /**
-   * Flushes, lets go of the log, releases the folder for the next store, and closes this store for good: a late emit or
-   * commit (an adapter’s exit callback after shutdown) is refused and never reopens the segment, since another store may
-   * hold the folder by then and two must never interleave lines in one log (the integrator’s review of 1a).
+   * Flushes, releases the folder and closes this store for good: a late emit or commit (an adapter’s exit callback after
+   * shutdown) is refused and never reopens the segment, since another store may hold the folder by then.
    */
   async close() {
     try {
-      // A Retry under way finishes first, one way or the other: closing in the middle of it would release the lock while
-      // its candidate could still install, reopen and run listeners after another store took the folder (gpt’s finding).
+      // A Retry or a writer pass under way finishes first: closing in the middle would release the lock while a
+      // candidate could still install or a snapshot still prune segments after another store took the folder.
       await this.retrying?.catch(() => {});
+      await this.running?.catch(() => {});
       if (this.writable) await this.flush();
     } finally {
       this.closed = true;

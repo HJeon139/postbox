@@ -71,16 +71,19 @@ async function retry(store) {
   if (store.running && !(await settled(store.running, store.retryBoundMs))) {
     throw closedBy(store, Object.assign(new Error('a write is still in flight and the disk isn’t answering; restart Postbox'), { code: store.cause?.code }));
   }
+  if (store.closed) throw gone(store); // close() may run between any two awaits here: each step checks before it acts
   store.generation++; // a.
   const old = store.fh;
   store.fh = null;
   await old?.close().catch(() => {});
+  if (store.closed) throw gone(store);
   let c;
   try {
     c = await recover(store); // b.
   } catch (e) {
     throw closedBy(store, e);
   }
+  if (store.closed) throw gone(store);
   const fh = await store.io.open(store.at(c.segment), 'a').catch((e) => {
     throw closedBy(store, e);
   });
@@ -92,9 +95,8 @@ async function retry(store) {
     throw closedBy(store, e);
   }
   if (store.closed) {
-    // close() ran meanwhile (it waits for this Retry, so this is a second guard): nothing installs or reopens.
-    await fh.close().catch(() => {});
-    throw closedBy(store, Object.assign(new Error('the store was closed while Retry ran'), { code: 'ECLOSED' }));
+    await fh.close().catch(() => {}); // close() ran meanwhile: nothing installs or reopens
+    throw gone(store);
   }
   install(store, c); // d.
   store.fh = fh;
@@ -111,7 +113,7 @@ async function retry(store) {
   } finally {
     store.reconciling = false;
   }
-  if (store.closed) throw closedBy(store, Object.assign(new Error('the store was closed while Retry reconciled'), { code: 'ECLOSED' }));
+  if (store.closed) throw gone(store);
   store.writable = true;
   store.cause = null;
   store.warned = false;
@@ -131,6 +133,9 @@ function settled(promise, ms) {
     }),
   ]).finally(() => clearTimeout(timer));
 }
+
+/** Retry found the store closed between two of its steps: it ends here, having changed nothing public. */
+const gone = (store) => closedBy(store, Object.assign(new Error('the store was closed while Retry ran'), { code: 'ECLOSED' }));
 
 /** Records why Retry failed as the store’s cause (the status line shows the latest reason) and gives the error to throw. */
 function closedBy(store, e) {
