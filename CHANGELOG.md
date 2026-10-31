@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.6.0 (2026-10-31)
+
+### Features
+
+- **remote:** remote read contract and protocol 3 fallback (#530)
+
 ## 1.5.0 (2026-10-31)
 
 ### Features
