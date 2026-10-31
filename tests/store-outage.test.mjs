@@ -158,18 +158,8 @@ test('a scheduled wake’s turn stopped by the outage is settled like any stop, 
   await store.flush();
 });
 
-test('while Retry reconciles, the router, the tools’ gate and a turn start stay closed; they open once the reconciling commit has landed', async () => {
-  const { rt, store } = app;
-  const agent = rt.adapters.get('mock');
-  const before = agent.calls.length;
-  const p = rt.createPersona({ handle: 'waiter', backend: 'mock' });
-  const t = rt.createThread({ projectId: 'pr_outage', title: 'Reconcile', personaIds: [p.id] });
-  const se = rt.sessionsIn(t.id)[0];
-  await store.flush();
-  const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
-  store.fail(eio());
-  // The reload listener reconciles through the one internal path, and its fsync is held: the store’s own io hands out
-  // handles whose sync waits on a gate, for the segment only, from here on.
+/** Makes the store’s segment handles wait on a gate for their fsync once hold() is called, until release(). */
+function heldSync(store) {
   let release;
   const gate = new Promise((r) => {
     release = r;
@@ -194,9 +184,32 @@ test('while Retry reconciles, the router, the tools’ gate and a turn start sta
       });
     },
   };
+  return {
+    hold: () => {
+      holding = true;
+    },
+    release: () => {
+      holding = false;
+      release();
+    },
+  };
+}
+
+test('while Retry reconciles, the router, the tools’ gate and a turn start stay closed; they open once the reconciling commit has landed', async () => {
+  const { rt, store } = app;
+  const agent = rt.adapters.get('mock');
+  const before = agent.calls.length;
+  const p = rt.createPersona({ handle: 'waiter', backend: 'mock' });
+  const t = rt.createThread({ projectId: 'pr_outage', title: 'Reconcile', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  await store.flush();
+  const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
+  store.fail(eio());
+  // The reload listener reconciles through the one internal path, and its fsync is held (heldSync).
+  const held = heldSync(store);
   let reconciled;
   const off = store.onReload(() => {
-    holding = true; // after the barrier: only the reconciling commit’s sync waits
+    held.hold(); // after the barrier: only the reconciling commit’s sync waits
     reconciled = store.reconcile([{ type: 'thread', data: { id: 'reconciled', members: [] } }], { opId: 'reconcile' });
     return reconciled;
   });
@@ -209,8 +222,7 @@ test('while Retry reconciles, the router, the tools’ gate and a turn start sta
   rt.deliver(se.id, { kind: 'agent', from: '@someone', text: 'Are you there?' });
   await new Promise((r) => setTimeout(r, 30));
   assert.equal(agent.calls.length, before, 'no turn started while reconciling');
-  holding = false;
-  release();
+  held.release();
   assert.equal((await retried).status, 200);
   assert.ok(store.writable);
   assert.ok(store.state.threads.reconciled, 'the reconciling commit landed before anything opened');
