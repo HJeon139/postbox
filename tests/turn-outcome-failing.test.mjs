@@ -1,4 +1,4 @@
-// Baseline replay fixtures for turn outcomes (#508, DL-3, DL-8; designs/508/storage-design.md, “Turn outcome”).
+// Baseline replay fixtures for turn outcomes (#508, DL-3, DL-8; designs/508/design.md, “Turn outcome”).
 // Recorded turns that fail before output and the turn immediately after them on main, for each confirmed backend
 // (Claude Code, Antigravity CLI, Codex app-server init-fail and turn-start-fail).
 //
