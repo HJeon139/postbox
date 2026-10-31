@@ -1,14 +1,16 @@
 // The store’s commit (server/store.mjs, commit(); #508’s PR 1a, “one-line commit”): several events written as one log
-// line, fsynced before the commit resolves, so a crash leaves all of them or none; an opId that makes a retry write
-// nothing; and commits issued together sharing one fsync. The store takes an injectable `sync` so a test can count
-// and hold the fsyncs without timing.
+// line, fsynced before any of them is applied, broadcast or served, so a crash leaves all of them or none; an opId that
+// makes a retry write nothing; and commits issued together sharing one fsync. The store takes an injectable `io` (its
+// node:fs/promises), so a test can count and hold the log’s fsyncs at the fault boundary, without timing.
 
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs/promises';
 import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
+import { disk, handleWith } from './store-jsonl-fixture.mjs';
 import { gate, holding } from './store-kill-fixture.mjs';
 
 const tmp = () => mkdtemp(join(tmpdir(), 'pb-commit-'));
@@ -17,29 +19,39 @@ const segmentOf = async (dir) => join(dir, /** @type {string} */ ((await readdir
 const lines = async (dir) => (await readFile(await segmentOf(dir), 'utf8')).split('\n').filter((l) => l.trim());
 /** @param {string} id */
 const thread = (id) => ({ type: 'thread', data: { id, members: [] } });
+/** An io whose log segments fsync through `sync(realSync)`. @param {(real: () => Promise<void>) => Promise<void>} sync */
+const syncing = (sync) =>
+  disk({
+    open: async (path, ...args) => {
+      const handle = await fs.open(path, ...args);
+      return /events-\d+\.jsonl$/.test(String(path)) ? handleWith(handle, { sync: () => sync(() => handle.sync()) }) : handle;
+    },
+  });
 
 test('a commit writes its events as one fsynced log line with their opId, beside old single-event lines, and a reload replays them', async () => {
   const dir = await tmp();
   let syncs = 0;
   const a = await new Store(dir, {
-    sync: async (fh) => {
+    io: syncing((real) => {
       syncs++;
-      await fh.sync();
-    },
+      return real();
+    }),
   }).load();
   a.emit('thread', { id: 't0', members: [] }); // the form every line had before commits
   await a.flush();
   syncs = 0;
-  const r = await a.commit([thread('t1'), thread('t2'), { type: 'item.add', data: { threadId: 't1', item: { id: 'i1', text: 'hi' } } }], 'op-1');
+  const r = await a.commit([thread('t1'), thread('t2'), { type: 'item.add', data: { threadId: 't1', item: { id: 'i1', text: 'hi' } } }], { opId: 'op-1' });
   assert.deepEqual(r, { seq: 2, duplicate: false }, 'a commit resolves with the seq of its first event');
   assert.ok(syncs >= 1, 'the line was fsynced before the commit resolved');
   assert.equal(a.state.seq, 4);
   const written = await lines(dir);
   assert.equal(written.length, 2, 'one line for the emit, one for the whole commit');
   const line = JSON.parse(written[1]);
-  assert.equal(line.op, 'op-1');
+  assert.ok(Array.isArray(line), 'a commit’s line is the array of its events');
+  assert.equal(line[0].op, 'op-1', 'the opId rides on the first event');
+  assert.equal(line[1].op, undefined);
   assert.deepEqual(
-    line.events.map((e) => [e.seq, e.type]),
+    line.map((e) => [e.seq, e.type]),
     [
       [2, 'thread'],
       [3, 'thread'],
@@ -56,15 +68,15 @@ test('a commit writes its events as one fsynced log line with their opId, beside
   await rm(dir, { recursive: true });
 });
 
-test('a commit is applied to memory at once, but broadcast and served by since() only after its fsync', async () => {
+test('nothing of a commit is applied, broadcast or served by since() before its fsync', async () => {
   const dir = await tmp();
   const g = gate();
   let hold = false;
   const s = await new Store(dir, {
-    sync: async (fh) => {
+    io: syncing(async (real) => {
       if (hold) await g.wait();
-      await fh.sync();
-    },
+      await real();
+    }),
   }).load();
   s.emit('thread', { id: 't0', members: [] });
   await s.flush();
@@ -72,18 +84,20 @@ test('a commit is applied to memory at once, but broadcast and served by since()
   s.subscribe((ev) => heard.push(ev.seq));
   hold = true;
   let resolved = false;
-  const p = s.commit([thread('t1'), thread('t2')], 'held').then((r) => {
+  const p = s.commit([thread('t1'), thread('t2')], { opId: 'held' }).then((r) => {
     resolved = true;
     return r;
   });
   await holding(g.hit, 'the commit’s line to reach its fsync');
   assert.equal(resolved, false, 'not resolved before the fsync');
-  assert.equal(s.state.seq, 3, 'applied to memory at once: the server reads its own writes');
-  assert.ok(s.state.threads.t2);
+  assert.equal(s.state.seq, 1, 'not applied before the fsync: the state is what the disk has');
+  assert.equal(s.state.threads.t2, undefined);
   assert.deepEqual(heard, [], 'not broadcast before the fsync');
   assert.deepEqual(s.since(1), [], 'since() doesn’t serve it before the fsync');
   g.go();
   assert.deepEqual(await p, { seq: 2, duplicate: false });
+  assert.equal(s.state.seq, 3, 'applied once the fsync is done');
+  assert.ok(s.state.threads.t2);
   assert.deepEqual(heard, [2, 3], 'broadcast once the fsync is done, in order');
   assert.deepEqual(
     s.since(1).map((e) => e.seq),
@@ -93,31 +107,33 @@ test('a commit is applied to memory at once, but broadcast and served by since()
   await rm(dir, { recursive: true });
 });
 
-test('an emit while a commit’s fsync is pending is applied at once, numbered after the commit and broadcast after it', async () => {
+test('an emit while a commit’s fsync is pending is held: numbered, applied and broadcast after the commit, in order', async () => {
   const dir = await tmp();
   const g = gate();
   let hold = false;
   const s = await new Store(dir, {
-    sync: async (fh) => {
+    io: syncing(async (real) => {
       if (hold) await g.wait();
-      await fh.sync();
-    },
+      await real();
+    }),
   }).load();
   s.emit('thread', { id: 't0', members: [] });
   await s.flush();
   const heard = [];
   s.subscribe((ev) => heard.push(`${ev.seq}:${ev.data.id}`));
   hold = true;
-  const p = s.commit([thread('c1'), thread('c2')], 'pending');
+  const p = s.commit([thread('c1'), thread('c2')], { opId: 'pending' });
   await holding(g.hit, 'the commit’s line to reach its fsync');
   const ev = s.emit('thread', { id: 'e', members: [] });
-  assert.equal(ev.seq, 4, 'numbered after the commit’s events');
-  assert.ok(s.state.threads.e, 'applied at once');
+  assert.equal(ev.seq, undefined, 'not numbered while the commit is pending');
+  assert.equal(s.state.threads.e, undefined, 'not applied while the commit is pending');
   assert.deepEqual(heard, [], 'held behind the commit’s broadcast');
   assert.deepEqual(s.since(1), [], 'and not served ahead of it');
   g.go();
   await p;
   await s.flush();
+  assert.equal(ev.seq, 4, 'numbered after the commit’s events, on the object emit() returned');
+  assert.ok(s.state.threads.e, 'applied once released');
   assert.deepEqual(heard, ['2:c1', '3:c2', '4:e'], 'the commit’s events, then the emit');
   assert.deepEqual(
     s.since(1).map((e) => e.seq),
@@ -125,7 +141,7 @@ test('an emit while a commit’s fsync is pending is applied at once, numbered a
   );
   const written = (await lines(dir)).map((l) => JSON.parse(l));
   assert.deepEqual(
-    written.map((l) => (l.events ? l.events.map((e) => e.seq) : l.seq)),
+    written.map((l) => (Array.isArray(l) ? l.map((e) => e.seq) : l.seq)),
     [1, [2, 3], 4],
     'memory, log and stream keep one order',
   );
@@ -138,10 +154,10 @@ test('a commit given a function builds its events from the state the store holds
   const s = await new Store(dir).load();
   s.emit('thread', { id: 't', members: [] });
   s.emit('item.add', { threadId: 't', item: { id: 'i', text: 'a' } });
-  const r = await s.commit((state) => [{ type: 'item.text', data: { threadId: 't', id: 'i', text: `+${state.items.t[0].text}` } }], 'fn');
+  const r = await s.commit((state) => [{ type: 'item.text', data: { threadId: 't', id: 'i', text: `+${state.items.t[0].text}` } }], { opId: 'fn' });
   assert.deepEqual(r, { seq: 3, duplicate: false });
   assert.equal(s.state.items.t[0].text, 'a+a');
-  const r2 = await s.commit(() => [], 'empty');
+  const r2 = await s.commit(() => [], { opId: 'empty' });
   assert.equal(r2.duplicate, false);
   assert.equal(s.state.seq, 3, 'a commit of no events moves nothing');
   await s.close();
@@ -151,19 +167,19 @@ test('a commit given a function builds its events from the state the store holds
 test('a repeated opId writes nothing and returns the first commit’s seq, in the running store and after a reload', async () => {
   const dir = await tmp();
   const a = await new Store(dir).load();
-  const first = await a.commit([thread('t1'), thread('t2')], 'once');
+  const first = await a.commit([thread('t1'), thread('t2')], { opId: 'once' });
   assert.deepEqual(first, { seq: 1, duplicate: false });
   const size = (await stat(await segmentOf(dir))).size;
-  assert.deepEqual(await a.commit([thread('t3')], 'once'), { seq: 1, duplicate: true });
+  assert.deepEqual(await a.commit([thread('t3')], { opId: 'once' }), { seq: 1, duplicate: true });
   assert.equal(a.state.seq, 2, 'nothing applied');
   assert.equal(a.state.threads.t3, undefined);
   assert.equal((await stat(await segmentOf(dir))).size, size, 'nothing written');
   await a.close();
   const b = await new Store(dir).load();
-  assert.deepEqual(await b.commit([thread('t3')], 'once'), { seq: 1, duplicate: true }, 'the opIds in the log are remembered across a reload');
+  assert.deepEqual(await b.commit([thread('t3')], { opId: 'once' }), { seq: 1, duplicate: true }, 'the opIds in the log are remembered across a reload');
   assert.equal(b.state.threads.t3, undefined);
   assert.equal((await stat(await segmentOf(dir))).size, size);
-  assert.deepEqual(await b.commit([thread('t3')], 'twice'), { seq: 3, duplicate: false }, 'another opId writes');
+  assert.deepEqual(await b.commit([thread('t3')], { opId: 'twice' }), { seq: 3, duplicate: false }, 'another opId writes');
   await b.close();
   await rm(dir, { recursive: true });
 });
@@ -171,14 +187,14 @@ test('a repeated opId writes nothing and returns the first commit’s seq, in th
 test('a snapshot forgets the opIds before it, so a commit with one of them writes again', async () => {
   const dir = await tmp();
   const a = await new Store(dir, { snapshotEvery: 3 }).load();
-  await a.commit([thread('t1')], 'old');
-  assert.deepEqual(await a.commit([thread('t1')], 'old'), { seq: 1, duplicate: true }, 'remembered before the snapshot');
+  await a.commit([thread('t1')], { opId: 'old' });
+  assert.deepEqual(await a.commit([thread('t1')], { opId: 'old' }), { seq: 1, duplicate: true }, 'remembered before the snapshot');
   for (let i = 0; i < 3; i++) {
     a.emit('thread', { id: `s${i}`, members: [] });
     await a.flush();
   }
   assert.ok((await readdir(dir)).includes('snapshot.json'), 'the snapshot was taken');
-  const again = await a.commit([thread('t9')], 'old');
+  const again = await a.commit([thread('t9')], { opId: 'old' });
   assert.deepEqual(again, { seq: 5, duplicate: false }, 'forgotten in the running store');
   assert.ok(a.state.threads.t9);
   await a.close();
@@ -193,15 +209,19 @@ test('commits issued in the same tick share one fsync', async () => {
   const dir = await tmp();
   let syncs = 0;
   const s = await new Store(dir, {
-    sync: async (fh) => {
+    io: syncing((real) => {
       syncs++;
-      await fh.sync();
-    },
+      return real();
+    }),
   }).load();
   s.emit('thread', { id: 't0', members: [] });
   await s.flush();
   syncs = 0;
-  const results = await Promise.all([s.commit([thread('a')], 'op-a'), s.commit([thread('b'), thread('c')], 'op-b'), s.commit([thread('d')], 'op-c')]);
+  const results = await Promise.all([
+    s.commit([thread('a')], { opId: 'op-a' }),
+    s.commit([thread('b'), thread('c')], { opId: 'op-b' }),
+    s.commit([thread('d')], { opId: 'op-c' }),
+  ]);
   assert.deepEqual(results, [
     { seq: 2, duplicate: false },
     { seq: 3, duplicate: false },
@@ -219,7 +239,7 @@ test('a commit line cut at any byte loads with all of the commit’s events or n
   const dir = await tmp();
   const a = await new Store(dir).load();
   a.emit('thread', { id: 't0', members: [] });
-  await a.commit([thread('t1'), thread('t2'), { type: 'item.add', data: { threadId: 't1', item: { id: 'i1', text: 'hi' } } }], 'cut');
+  await a.commit([thread('t1'), thread('t2'), { type: 'item.add', data: { threadId: 't1', item: { id: 'i1', text: 'hi' } } }], { opId: 'cut' });
   await a.flush();
   const text = await readFile(await segmentOf(dir), 'utf8');
   await a.close();
