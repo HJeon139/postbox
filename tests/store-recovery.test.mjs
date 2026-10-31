@@ -120,3 +120,46 @@ test('T-29: the snapshot’s text goes to the disk in pieces, not one write', as
   await b.close();
   await rm(dir, { recursive: true });
 });
+
+test('Q9: the first failed sync closes the store to commits; later commits and a repeat of the failed opId are refused, emits go on in memory', async () => {
+  const dir = await tmp();
+  let fail = false;
+  const io = disk({
+    async open(path, flags, mode) {
+      const handle = await (await import('node:fs/promises')).open(path, flags, mode);
+      if (!String(path).includes('events-')) return handle;
+      return handleWith(handle, {
+        sync: () => (fail ? Promise.reject(Object.assign(new Error('disk sync refused'), { code: 'EIO' })) : handle.sync()),
+      });
+    },
+  });
+  const s = await new Store(dir, { io }).load();
+  await s.commit([{ type: 'thread', data: { id: 'before', members: [] } }], { opId: 'ok' });
+  fail = true;
+  const heard = [];
+  s.subscribe((e) => heard.push(e.type === 'thread' ? e.data.id : e.type));
+  const failing = s.commit([{ type: 'thread', data: { id: 'lost', members: [] } }], { opId: 'failed' });
+  const held = s.emit('thread', { id: 'meanwhile', members: [] }); // held behind the commit, released when it fails
+  await assert.rejects(failing, /EIO/);
+  assert.equal(s.writable, false);
+  assert.equal(s.state.threads.lost, undefined, 'nothing of the failed commit is applied');
+  assert.ok(s.state.threads.meanwhile, 'the held emit was released onto memory');
+  assert.ok(held.seq > 0, 'and numbered');
+  assert.deepEqual(heard, ['meanwhile'], 'the page heard the emit, not the commit');
+  fail = false; // the disk is fine again, but the store stays closed: restarting is the recovery
+  await assert.rejects(s.commit([{ type: 'thread', data: { id: 'later', members: [] } }], { opId: 'later' }), /EIO/);
+  await assert.rejects(
+    s.commit([{ type: 'thread', data: { id: 'lost', members: [] } }], { opId: 'failed' }),
+    /EIO/,
+    'a repeat of the failed opId is refused too',
+  );
+  s.emit('thread', { id: 'after', members: [] });
+  assert.ok(s.state.threads.after, 'emits keep applying while closed');
+  await s.close();
+  const b = await new Store(dir).load();
+  assert.ok(b.state.threads.before);
+  assert.equal(b.state.threads.after, undefined, 'what was emitted while closed was never written');
+  assert.equal(b.state.threads.later, undefined);
+  await b.close();
+  await rm(dir, { recursive: true });
+});

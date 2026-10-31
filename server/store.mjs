@@ -4,8 +4,8 @@
 // Every change goes through emit(), one event applied, numbered, appended and told at once, or commit(), several
 // events written as ONE fsynced line and applied only once the disk has them (server/store-commit.mjs). Both number
 // their events through sequence(), the one place a seq is assigned. A browser that reconnects asks for everything
-// after the last number it saw, so nothing is lost or duplicated. A write that fails closes the store and reloads it
-// from the disk (server/store-reload.mjs), on a new epoch that resyncs every page.
+// after the last number it saw, so nothing is lost or duplicated. A write that fails closes the store to commits
+// (server/store-commit.mjs, fail); restarting Postbox is the recovery, since load() handles whatever the disk holds.
 //
 //   <dir>/snapshot.json          the state as of some sequence number (written atomically)
 //   <dir>/events-<from>.jsonl    events after that, one per line, or one commit’s events per line (shared/log-lines.mjs);
@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import { apply, emptyState } from '../shared/state.mjs';
 import { commit, run } from './store-commit.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
-import { install, recover, reload } from './store-reload.mjs';
+import { install, recover } from './store-reload.mjs';
 
 export { emptyState };
 
@@ -40,13 +40,12 @@ export class Store {
     this.snapshotEvery = snapshotEvery;
     this.state = emptyState();
     this.events = []; // the backlog for reconnecting browsers: { seq, line }
-    // The history the seqs count within: a token new at each load() and reload(), so a page from before, whose seq may
+    // The history the seqs count within: a token new at each load(), so a page from before, whose seq may
     // name events this store never kept, is told to resync whatever its seq (server/live-streams.mjs).
     this.epoch = this.newEpoch();
     this.listeners = new Set();
-    this.reloaders = new Set(); // told after a reload installs a new epoch
     // The writer’s jobs (server/store-commit.mjs), in order: a line to append, a held emit, a commit, a flush or a
-    // snapshot; its loop, while one runs; and the generation a loop runs as, which a reload bumps to fence it.
+    // snapshot; its loop, while one runs; and the generation a loop runs as (1b’s Retry bumps it to fence a loop).
     this.queue = [];
     this.running = null;
     this.generation = 0;
@@ -60,12 +59,11 @@ export class Store {
     this.waitingCommits = 0; // commits queued or pending; emits are held behind them
     this.held = 0; // emits held in the queue, still to be numbered
     this.lock = null; // the folder’s lock while this store holds it (server/store-lock.mjs)
-    // Writes are open, or closed with the cause after a write failed (server/store-reload.mjs); reload() runs then,
-    // and this.reloading is its promise while it does.
+    // Writes are open, or closed with the cause after a write failed: commits are refused until Postbox restarts
+    // (#508’s storage design, “When a write fails”; Retry as a reload is 1b’s).
     this.writable = true;
     this.cause = null;
     this.warned = false; // an emit while closed logged the cause
-    this.reloading = null;
     this.lost = null; // history the log lost, { from, to, count }, found at load (server/store-replay.mjs)
   }
 
@@ -89,18 +87,6 @@ export class Store {
       throw e;
     }
     return this;
-  }
-
-  /**
-   * Reads the folder again and publishes what it holds on a new epoch, with writes closed meanwhile (the header of
-   * server/store-reload.mjs says the order). Runs by itself after a write fails; one at a time.
-   */
-  reload() {
-    if (!this.dir) return Promise.resolve();
-    this.reloading ??= reload(this).finally(() => {
-      this.reloading = null;
-    });
-    return this.reloading;
   }
 
   /** A path in the data folder. Only the disk-backed paths call this, after checking there is one. */
@@ -143,13 +129,13 @@ export class Store {
   }
 
   /**
-   * Applies a change and broadcasts it, unless a commit is queued or in flight, or the store is reloading: then it’s
-   * held, and numbered, applied and broadcast in its turn once the commit resolves or fails, or the reload is done
-   * (the returned event gets its seq then). While writes are closed it’s applied and broadcast but not written.
+   * Applies a change and broadcasts it, unless a commit is queued or in flight: then it’s held, and numbered, applied
+   * and broadcast in its turn once the commit resolves or fails (the returned event gets its seq then). While writes
+   * are closed it’s applied and broadcast but not written.
    */
   emit(type, data) {
     const ev = { type, data };
-    if (this.waitingCommits || this.held || this.reloading) {
+    if (this.waitingCommits || this.held) {
       this.held++;
       this.queue.push({ held: ev, json: JSON.stringify(ev) }); // as it is now: the caller may change its object later
       this.pump();
@@ -195,7 +181,7 @@ export class Store {
 
   /** Starts the writer’s loop if it isn’t running, writes are open and no reload is under way. */
   pump() {
-    if (this.running || this.reloading || !this.writable || !this.queue.length) return;
+    if (this.running || !this.writable || !this.queue.length) return;
     const gen = this.generation;
     this.running = run(this, gen).finally(() => {
       if (this.generation !== gen) return; // a reload took the loop over
@@ -226,7 +212,6 @@ export class Store {
   /** Flushes, lets go of the log, and releases the folder for the next store. */
   async close() {
     try {
-      await this.reloading?.catch(() => {}); // a reload under way ends first, either way
       if (this.writable) await this.flush();
     } finally {
       await this.fh?.close();
@@ -247,12 +232,6 @@ export class Store {
   subscribe(fn) {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
-  }
-
-  /** Calls fn after each reload: the store runs on a new epoch, and every reader must load the state again. */
-  onReload(fn) {
-    this.reloaders.add(fn);
-    return () => this.reloaders.delete(fn);
   }
 
   async size() {

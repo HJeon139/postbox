@@ -1,25 +1,13 @@
-// Loading and reloading the store from its folder (server/store.mjs; #508’s storage design, “Recovery on load” and
-// “When a write fails”). There is ONE recovery path: recover() reads the snapshot and replays the segments
-// (server/store-replay.mjs) into a PRIVATE candidate, a fresh state with the opIds of the commits in the log, and
-// touches nothing the store publishes. load() installs the candidate at start. reload() is Retry: a store whose write
-// or fsync failed runs it at once (writes are closed meanwhile), and a test runs it by hand. In this order:
-//
-//   a. quiesce the writer: bump the generation, so a late callback of the old loop (an append or a sync that completes
-//      after this) publishes nothing, and close its descriptor; the data-folder lock is kept throughout;
-//   b. recover() the candidate, without touching the public state or the epoch;
-//   c. open a FRESH descriptor on the retained segment and fsync it, then the folder: a reload reads through the page
-//      cache, so a line may be there that a failed fsync never flushed, and a second fsync on the old descriptor can
-//      report success without writing it. If that fails, the previous published view stays readable, writes stay
-//      closed, and reload() rejects with the cause;
-//   d. install the candidate’s state and a new epoch together, tell the reload listeners (the live streams send
-//      `resync`), release the held emits onto the new state and reopen writes.
-//
-// A commit whose line landed despite the fsync error is in the candidate, so its caller’s retry with the same opId
-// gets `duplicate`; what a failed write of a plain emit lost is gone with the epoch, which resyncs every page.
+// Loading the store from its folder (server/store.mjs; #508’s storage design, “Recovery on load”). There is ONE
+// recovery path: recover() reads the snapshot and replays the segments (server/store-replay.mjs) into a PRIVATE
+// candidate, a fresh state with the opIds of the commits in the log, touching nothing the store publishes, and load()
+// installs it. A commit whose line landed despite a failed fsync is in the candidate at the next start, so its caller’s
+// retry with the same opId gets `duplicate`. Retry as a reload (quiesce, candidate, fresh-descriptor barrier, install)
+// is 1b’s and will reuse recover() and install().
 
 import { join } from 'node:path';
 import { emptyState, ownState } from '../shared/state.mjs';
-import { syncDir, writeSnapshot } from './store-commit.mjs';
+import { writeSnapshot } from './store-commit.mjs';
 import { replay } from './store-replay.mjs';
 
 /**
@@ -91,61 +79,4 @@ export function install(store, c) {
   store.ahead = 0;
   store.events = [];
   store.epoch = store.newEpoch();
-}
-
-/**
- * Retry, in the header’s order. Resolves once writes are open again; rejects with the cause, the store closed and its
- * old view readable, when the folder can’t be read or the fresh descriptor can’t be synced.
- * @param {import('./store.mjs').Store} store
- */
-export async function reload(store) {
-  store.generation++; // a. the old loop, and any late callback of it, is fenced from here on
-  store.running = null;
-  const old = store.fh;
-  store.fh = null;
-  await old?.close().catch(() => {}); // a descriptor whose write failed may refuse to close; it’s let go either way
-  /** @type {import('node:fs/promises').FileHandle | null} */
-  let fh = null;
-  try {
-    const c = await recover(store); // b.
-    fh = await store.io.open(join(/** @type {string} */ (store.dir), c.segment), 'a'); // c.
-    await fh.sync();
-    await syncDir(store);
-    install(store, c); // d.
-  } catch (e) {
-    await fh?.close().catch(() => {}); // the segment stays as it was; nothing of the candidate is kept
-    closed(store, e);
-    throw store.cause;
-  }
-  store.fh = fh;
-  store.writable = true;
-  store.cause = null;
-  store.warned = false;
-  for (const fn of store.reloaders) fn();
-  store.pump();
-}
-
-/**
- * Keeps the store closed after a reload that failed: the cause names the error’s code, the held emits are released onto
- * the old view (applied and broadcast, not written, as every emit is while the store is closed) and every other queued
- * job is rejected, so nothing waits on a disk that can’t be read back.
- * @param {import('./store.mjs').Store} store @param {Error & { code?: string }} e
- */
-function closed(store, e) {
-  store.writable = false;
-  store.cause = Object.assign(
-    new Error(`Postbox couldn’t reload its event log (${e.code ?? 'error'}): ${e.message}. Reads go on; writes stay closed until a reload succeeds.`),
-    {
-      code: e.code,
-      cause: e,
-    },
-  );
-  console.error(store.cause.message);
-  const queue = store.queue;
-  store.queue = [];
-  for (const job of queue) {
-    if (job.held) store.release(job);
-    else if (job.commit) store.waitingCommits--;
-    (job.commit ?? job.flush ?? job.snapshot)?.reject(store.cause);
-  }
 }

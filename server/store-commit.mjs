@@ -11,9 +11,9 @@
 // moment ago can’t vanish with an acknowledged commit in it.
 //
 // When a write or an fsync fails, the line may be on disk, whole or torn, and nothing here settles that: every queued
-// commit is rejected with the cause, writes close, and the store reloads itself from the disk (server/store-reload.mjs),
-// which is the one recovery path and the one load() runs at every start. A loop fenced by a reload (its generation is
-// no longer the store’s) finishes its step and publishes nothing.
+// commit is rejected with the cause and the store closes to commits until Postbox restarts (#508’s Q9), when load()
+// reads whatever landed (server/store-reload.mjs, the one recovery path). Retry as a reload is 1b’s; the generation
+// check is its seam: a loop whose generation is no longer the store’s finishes its step and publishes nothing.
 
 /** The segment the log is being appended to, opened once. @param {import('./store.mjs').Store} store */
 async function handle(store) {
@@ -21,9 +21,9 @@ async function handle(store) {
   return store.fh;
 }
 
-/** The error a writer fenced by a reload fails its step with: the commit may be on disk, and the reload decides. */
+/** The error a fenced writer fails its step with: the commit may be on disk, and the next load decides. */
 const fenced = () =>
-  Object.assign(new Error('The store reloaded while this write was in flight; its outcome is whatever the reload read back.'), { code: 'ERELOADED' });
+  Object.assign(new Error('The store was reset while this write was in flight; its outcome is whatever the next load reads back.'), { code: 'ERELOADED' });
 
 /**
  * Writes a buffer whole through a handle: a write may take fewer bytes than given.
@@ -122,8 +122,8 @@ async function writeCommits(store, gen) {
     if (written.length && store.dir) await append(store, written.map((c) => lineOf(c.events)).join(''), gen, true);
     applyCommits(store, written);
   } catch (e) {
-    for (const c of written) c.reject(e);
-    if (e.code !== 'ERELOADED') fail(store, e);
+    if (e.code !== 'ERELOADED') fail(store, e); // the written commits get the same cause as every later one
+    for (const c of written) c.reject(store.writable ? e : store.cause);
   } finally {
     store.waitingCommits -= group.length;
   }
@@ -148,14 +148,14 @@ async function writeLines(store, gen) {
 }
 
 /**
- * Closes the store on a write that failed (#508’s storage design, “When a write fails”): every queued commit, flush
- * and snapshot is rejected with the cause, held emits stay queued for the reload to release, and the loop ends; run()
- * then starts the reload.
+ * Closes the store to commits on a write that failed (#508’s storage design, “When a write fails”, Q9): every queued
+ * commit, flush and snapshot is rejected with the cause, held emits are released onto memory (applied and broadcast,
+ * not written), and the loop ends. Nothing is written again; restarting Postbox is the recovery.
  * @param {import('./store.mjs').Store} store @param {Error & { code?: string }} e
  */
 function fail(store, e) {
   const cause = Object.assign(
-    new Error(`Postbox can’t write its event log (${e.code ?? 'error'}): ${e.message}. Reads go on; writes are closed until a reload succeeds.`),
+    new Error(`Postbox can’t write its event log (${e.code ?? 'error'}): ${e.message}. Reads go on; commits are refused until Postbox restarts.`),
     {
       code: e.code,
       cause: e,
@@ -164,16 +164,19 @@ function fail(store, e) {
   console.error(cause.message);
   store.writable = false;
   store.cause = cause;
-  store.queue = store.queue.filter((job) => {
-    if (job.commit) store.waitingCommits--;
+  const queue = store.queue;
+  store.queue = [];
+  for (const job of queue) {
+    if (job.held)
+      store.release(job); // applied and broadcast on the memory the page reads, not written, like every emit from now on
+    else if (job.commit) store.waitingCommits--;
     (job.commit ?? job.flush ?? job.snapshot)?.reject(cause);
-    return job.held || job.line !== undefined;
-  });
+  }
 }
 
 /**
  * The writer’s loop: one job, or one group of like jobs, at a time, in queue order, until the queue is empty, the store
- * closes (then it reloads at once, #508’s Q9) or a reload fences this loop.
+ * closes, or its generation moves on.
  * @param {import('./store.mjs').Store} store @param {number} gen  the generation this loop runs as
  */
 export async function run(store, gen) {
@@ -191,7 +194,6 @@ export async function run(store, gen) {
     if (store.dir && store.writable && store.generation === gen && store.sinceSnapshot >= store.snapshotEvery)
       await takeSnapshot(store).catch((e) => console.error(`Couldn’t write a snapshot: ${e.message}`));
   }
-  if (!store.writable && store.generation === gen) store.reload().catch((e) => console.error(e.message));
 }
 
 /**
