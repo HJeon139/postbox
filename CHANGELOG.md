@@ -2,6 +2,22 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.5.0 (2026-10-31)
+
+### Features
+
+- **projects:** set the repository a push you ask for goes to, in Settings
+- **permissions:** Postbox makes a push the person asked for itself, by its consequence
+- **permissions:** a git push comes to Postbox as a write outside
+- **permissions:** a git push comes to Postbox as a write outside
+
+### Fixes
+
+- **permissions:** Postbox's push reads only its own repository, never one planted in temp
+- **permissions:** a write's card names every place its command writes
+- **permissions:** a write's card names every place its command writes
+- **permissions:** only a plain git push goes to the request check
+
 ## 1.4.0 (2026-10-30)
 
 ### Features
