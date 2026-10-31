@@ -132,3 +132,28 @@ test('T-32: a scheduled wake armed before the failure runs only after Retry has 
   await until(() => !rt.turns.has(se.id), 'the turn to stop');
   await store.flush();
 });
+
+test('a scheduled wake’s turn stopped by the outage is settled like any stop, and no timer of the old state survives Retry', async () => {
+  const { rt, store } = app;
+  const agent = rt.adapters.get('mock');
+  const p = rt.createPersona({ handle: 'sleeper', backend: 'mock' });
+  const t = rt.createThread({ projectId: 'pr_outage', title: 'Sleep', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  await store.flush();
+  const sc = rt.schedule(se.id, { inMs: 1000, note: 'now' });
+  await until(() => rt.turns.has(se.id), 'the wake’s turn to start');
+  assert.equal(rt.s.schedules[sc.id]?.running, true);
+  await store.flush();
+  store.fail(eio());
+  await until(() => !rt.turns.has(se.id), 'the turn to stop');
+  const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
+  assert.equal((await call({ method: 'POST', path: '/api/store/retry', cookie })).status, 200);
+  await until(() => store.writable && !rt.s.schedules[sc.id]?.running, 'the schedule to leave running after Retry');
+  assert.equal(rt.timers.has(sc.id), false, 'no timer left for it');
+  const item = store.items(t.id).find((it) => it.scheduleId === sc.id);
+  assert.notEqual(item?.status, 'running', `the schedule item is settled: ${item?.status}`);
+  const stopped = store.items(t.id).find((it) => it.kind === 'agent' && it.sessionId === se.id);
+  assert.equal(stopped?.stopReason, 'store');
+  agent.calls.length = 0;
+  await store.flush();
+});

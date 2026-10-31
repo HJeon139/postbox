@@ -35,8 +35,6 @@ function alive(pid) {
   }
 }
 
-const OWN_START = Math.round((Date.now() - process.uptime() * 1000) / 1000) * 1000; // to the second, as `ps` reports it
-
 /**
  * When a process started, in a unit that only has to agree between the writer of a lock and its reader: on Linux the
  * start field of /proc/<pid>/stat (clock ticks since boot, fixed for the process’s life); elsewhere, known only for this
@@ -50,9 +48,14 @@ export async function started(io, pid) {
     const fields = !stat || after < 0 ? [] : stat.slice(after + 2).split(' ');
     return fields.length > 20 ? Number(fields[19]) : null;
   }
-  if (pid === process.pid) return OWN_START;
+  // One source for the writer and every reader (gpt’s finding on 1b: an owner’s time from uptime and a reader’s from
+  // `ps` differed by a second, and a live holder read as stale). This process’s own time is read once and kept.
+  if (pid === process.pid) return (ownStart ??= psStart(pid));
   return psStart(pid);
 }
+
+/** @type {Promise<number | null> | null} this process’s start time by the same reader as everyone else’s */
+let ownStart = null;
 
 const PS_TIMEOUT_MS = 1500;
 
@@ -65,12 +68,15 @@ const PS_TIMEOUT_MS = 1500;
  */
 export function psStart(pid) {
   return new Promise((resolve) => {
-    execFile('ps', ['-o', 'lstart=', '-p', String(pid)], { env: { ...process.env, LC_ALL: 'C' }, timeout: PS_TIMEOUT_MS }, (err, out) => {
-      if (err) return resolve(null);
-      const ms = Date.parse(String(out).trim());
-      // Rounded to the second: `ps` prints seconds, and OWN_START (from uptime) is finer than that.
-      resolve(Number.isFinite(ms) ? Math.round(ms / 1000) * 1000 : null);
-    });
+    try {
+      execFile('ps', ['-o', 'lstart=', '-p', String(pid)], { env: { ...process.env, LC_ALL: 'C' }, timeout: PS_TIMEOUT_MS }, (err, out) => {
+        if (err) return resolve(null);
+        const ms = Date.parse(String(out).trim());
+        resolve(Number.isFinite(ms) ? Math.round(ms / 1000) * 1000 : null); // `ps` prints seconds
+      });
+    } catch {
+      resolve(null); // no way to run `ps` here (the unit tests forbid spawning): unknown, so a holder reads as live
+    }
   });
 }
 

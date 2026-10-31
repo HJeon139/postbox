@@ -76,9 +76,11 @@ test('closed: writes are refused with 503 and the cause; reads, Retry and Stop s
   assert.match(write.json.error, /can’t write its event log.*EIO/);
   const stop = await fakeRequest(app.handle, { host: host(), method: 'POST', path: '/api/threads/t1/shell/none/stop', headers: headers(), body: {} });
   assert.notEqual(stop.status, 503, 'Stop is not refused by the gate (it may fail for its own reason)');
-  const statuses = s.frames().filter((f) => f.event === 'status');
-  assert.equal(statuses.length, 1, 'one status frame for the close');
-  assert.equal(JSON.parse(statuses[0].data).writable, false);
+  const statuses = s
+    .frames()
+    .filter((f) => f.event === 'status')
+    .map((f) => JSON.parse(f.data).writable);
+  assert.deepEqual(statuses, [true, false], 'the stream’s first frame said open; the close sent one more');
   s.close();
 });
 
@@ -106,6 +108,21 @@ test('the gate is one check before the routes: any write path is refused while c
   assert.equal(unknown.status, 503, 'refused before any route matched');
   const read = await fakeRequest(app.handle, { host: host(), path: '/api/no-such-route' });
   assert.notEqual(read.status, 503, 'a read reaches the routes');
+  const r = await fakeRequest(app.handle, { host: host(), method: 'POST', path: '/api/store/retry', headers: headers(), body: {} });
+  assert.equal(r.status, 200, r.text);
+});
+
+test('a stream that connects while the store is closed gets the status as its first frames, after the epoch', async () => {
+  app.store.fail(eio());
+  const s = openStream();
+  await s.opened;
+  const first = s
+    .frames()
+    .slice(0, 2)
+    .map((f) => f.event);
+  assert.deepEqual(first, ['epoch', 'status']);
+  assert.equal(JSON.parse(s.frames()[1].data).writable, false);
+  s.close();
   const r = await fakeRequest(app.handle, { host: host(), method: 'POST', path: '/api/store/retry', headers: headers(), body: {} });
   assert.equal(r.status, 200, r.text);
 });

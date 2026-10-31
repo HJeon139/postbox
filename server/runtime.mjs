@@ -1195,27 +1195,7 @@ export class Runtime {
     turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
     turn.closed = true;
     this.turns.delete(sessionId);
-    // Your Stop ends a scheduled wake’s turn for good, so a restart doesn’t run it again; a shutdown leaves it due (#466).
-    if (by !== 'shutdown') settleScheduledWake(this, turn, { name: 'AbortError' });
-    settleStoppedSteps(this, turn);
-    this.endWork(turn, 'stopped');
-    // A tool call waiting for your permission is answered no, so the agent’s process can stop too.
-    for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', 'You stopped the agent.');
-    for (const it of this.store.items(turn.threadId)) {
-      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming') this.patchItem(turn.threadId, it.id, ended);
-    }
-    if (!turn.segment && !turn.first) {
-      this.addItem(turn.threadId, {
-        kind: 'agent',
-        sessionId,
-        personaId: this.s.sessions[sessionId].personaId,
-        handle: this.s.sessions[sessionId].handle,
-        turnId: turn.id,
-        text: '',
-        ...replyMarks(turn),
-        ...ended,
-      });
-    }
+    this.recordStopped(turn, ended, { by, why: 'You stopped the agent.' });
     this.updateSession(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
     // Progress steps running as you keep its jobs running may follow one of them: they run on with it (#129).
     if (keep.length) this.updateSession(sessionId, { heldSteps: { threadId: turn.threadId, keys: this.runningProgress(turn.threadId, sessionId) } });
@@ -1248,6 +1228,37 @@ export class Runtime {
    * reported the end of went with it, and a stopped session takes what waited for it: the messages sent meanwhile,
    * then the queue.
    */
+  /**
+   * What every stop of a turn records, whoever stopped it: your Stop, a shutdown, or the store closing (server/store-outage.mjs).
+   * One path, so no way of ending a turn skips a step (gpt’s finding on 1b: a scheduled turn the outage stopped stayed
+   * running). A shutdown leaves a scheduled wake due for the restart (#466); every other stop ends it.
+   * @param {any} turn @param {{ status: string, stoppedAt: number, stopReason: string | null }} ended
+   * @param {{ by: string, why: string }} o  who, and what a waiting permission is told
+   */
+  recordStopped(turn, ended, { by, why }) {
+    const { sessionId } = turn;
+    if (by !== 'shutdown') settleScheduledWake(this, turn, { name: 'AbortError' });
+    settleStoppedSteps(this, turn);
+    this.endWork(turn, 'stopped');
+    // A tool call waiting for your permission is answered no, so the agent’s process can stop too.
+    for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', why);
+    for (const it of this.store.items(turn.threadId)) {
+      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming') this.patchItem(turn.threadId, it.id, ended);
+    }
+    const se = this.s.sessions[sessionId];
+    if (se && !turn.segment && !turn.first)
+      this.addItem(turn.threadId, {
+        kind: 'agent',
+        sessionId,
+        personaId: se.personaId,
+        handle: se.handle,
+        turnId: turn.id,
+        text: '',
+        ...replyMarks(turn),
+        ...ended,
+      });
+  }
+
   turnExited(turn) {
     // What the exit writes waits for writes to reopen (ST-3), behind the stop’s own records (server/store-outage.mjs).
     if (!this.store.writable) return whenWritable(this, () => this.turnExited(turn));

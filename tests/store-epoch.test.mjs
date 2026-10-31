@@ -63,7 +63,7 @@ async function stream(query, headers = {}) {
     return id ? `${id}:${ev}` : ev;
   };
   return {
-    frames: frames.filter((f) => !f.startsWith('event: epoch')).map(name),
+    frames: frames.filter((f) => !f.startsWith('event: epoch') && !f.startsWith('event: status')).map(name), // the status is 1b’s first frame
     epochs: frames.filter((f) => f.startsWith('event: epoch')).map((f) => JSON.parse(f.split('data: ')[1])),
     first: name(frames[0] ?? ''),
   };

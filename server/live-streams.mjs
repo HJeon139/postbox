@@ -28,7 +28,9 @@ export function liveStreams(store) {
   const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
   store.subscribe((ev) => {
     const line = `id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`;
+    const epoch = store.epoch; // the history the event belongs to: a send held back past a Retry says nothing (gpt’s finding)
     const send = () => {
+      if (store.epoch !== epoch) return;
       for (const res of streams) res.write(line);
     };
     if (lag > 0) setTimeout(send, lag).unref();
@@ -52,7 +54,9 @@ export function liveStreams(store) {
   function stream(req, res, url) {
     const { since, lost } = place(req, url, store);
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
-    res.write(`retry: 1500\n\nevent: epoch\ndata: ${JSON.stringify(store.epoch)}\n\n`);
+    // The epoch, then the store’s status, so a page that connects or reconnects while writes are closed sees it even
+    // though it missed the frame that closed them (critic’s finding on 1b).
+    res.write(`retry: 1500\n\nevent: epoch\ndata: ${JSON.stringify(store.epoch)}\n\nevent: status\ndata: ${JSON.stringify(store.status)}\n\n`);
     const backlog = lost ? null : store.since(since);
     // Too far behind, or on a lost timeline: the browser refetches the whole state, then resumes from its seq.
     if (backlog === null) res.write(`event: resync\ndata: {}\n\n`);

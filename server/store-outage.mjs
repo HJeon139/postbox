@@ -13,7 +13,7 @@
 // and only then does what waited run, so no reconciled work starts before the durability barrier has passed (I3). A
 // restart while the store is closed starts again from what the disk holds, as any restart does.
 
-import { settleStoppedSteps } from './turn-steps.mjs';
+import { rearmWakes } from './scheduled-wakes.mjs';
 
 /** @typedef {import('./runtime.mjs').Runtime} Runtime */
 
@@ -34,6 +34,19 @@ export function watchStore(rt) {
       // A listener runs inside the store’s writer: an error here must not end Postbox.
       console.error(`Postbox couldn’t handle the store’s change: ${e instanceof Error ? e.stack : e}`);
     }
+  });
+  // Retry installed a recovered state: every schedule timer was armed under the old one, so none of them acts (gpt’s
+  // finding: an old timer fired a wake the recovered state didn’t hold); they are re-armed from what the disk held,
+  // as a restart does, with a wake caught running marked interrupted (rearmWakes). This runs before reopened(): the
+  // store tells its reload listeners before its status listeners hear writes reopen (server/store-retry.mjs).
+  rt.store.onReload(() => {
+    for (const [id, timer] of rt.timers) {
+      if (!id.startsWith('del')) {
+        clearTimeout(timer);
+        rt.timers.delete(id);
+      }
+    }
+    rearmWakes(rt);
   });
 }
 
@@ -112,19 +125,13 @@ function stopForStore(rt, sessionId) {
   rt.storeWait.push(() => recordStop(rt, turn));
 }
 
-/** What a Stop writes, for a turn the outage stopped, once writes reopen. @param {Runtime} rt @param {any} turn */
+/** What a Stop writes, for a turn the outage stopped, once writes reopen: the one path every stop takes. @param {Runtime} rt @param {any} turn */
 function recordStop(rt, turn) {
   const { sessionId } = turn;
   const ended = { status: 'stopped', stoppedAt: Date.now(), stopReason: 'store' };
-  settleStoppedSteps(rt, turn);
-  rt.endWork(turn, 'stopped');
-  for (const [id, w] of rt.permissionWaits) if (w.sessionId === sessionId) rt.settlePermission(id, 'expired', WHY);
-  for (const it of rt.store.items(turn.threadId))
-    if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming') rt.patchItem(turn.threadId, it.id, ended);
+  rt.recordStopped(turn, ended, { by: 'store', why: WHY });
   const se = rt.s.sessions[sessionId];
   if (!se) return;
-  if (!turn.segment && !turn.first)
-    rt.addItem(turn.threadId, { kind: 'agent', sessionId, personaId: se.personaId, handle: se.handle, turnId: turn.id, text: '', ...ended });
   // Its process may not have exited yet: the session reads as stopping until it has (turnExited).
   if (rt.exiting.get(sessionId)?.turn === turn)
     rt.updateSession(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
