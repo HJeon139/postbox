@@ -311,9 +311,11 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     lastTop = s?.scrollTop ?? 0;
   };
   let jump = null;
+  // What arrived counts as unseen when the view isn’t on the newest message, including when follow() finds you
+  // scrolled up in this frame, before its scroll event told the transcript (#341).
   const grew = () => {
     if (stuck) follow();
-    else {
+    if (!stuck) {
       unseen++;
       showJump(box());
     }
