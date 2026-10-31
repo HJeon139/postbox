@@ -211,7 +211,7 @@ flowchart TD
 | PF-9 | Spec | `package.json` has no new runtime dependency | none | none | Step 1a |
 | ST-1 | Spec | An event or shard written in an older shape reads in the current shape | none | none | Steps 1a and S2 |
 | ST-2 | Spec | A second Postbox against the same folder is refused (the two-writer check is deferred) | none | none | Step 1b |
-| ST-3 | Spec + Playwright spec | A failed write rejects the queue, closes writes and reloads memory; Retry reloads and reopens; the page shows the status with Retry; a bad middle line refuses to start | none | none | Steps 1a and 1b |
+| ST-3 | Spec + Playwright spec | A failed write rejects the queue and closes writes; Retry quiesces the old writer, reloads, reconciles the runtime and reopens; the page shows the status with Retry; a bad middle line refuses to start | none | none | Steps 1a and 1b |
 | ST-4 | Spec | A kill at every byte of the last commit | none | none | Step 1a |
 | SR-5 | Spec | The data folder is 0700 and its files 0600 after a start | none | none | Step 1a |
 | CX-1 | Spec | Nothing from a thread enters another agent’s envelope unless it reads it or the person sends it | none | *thread-leak* | **Not in rev 6** |

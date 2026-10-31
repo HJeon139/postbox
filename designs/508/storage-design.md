@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft 5, 31 October 2026, after the integrator’s review of draft 4 (#581) and the team’s answers. Folds the integrator’s two simplifications in. Open: Q9 and Q10 |
+| **Status** | Draft 6, 31 October 2026. Retry is a reload (the integrator’s first simplification, with gpt’s conditions). The integrator’s second simplification is recorded as an alternative, not adopted, until its readers are named (gpt’s review, approved by the person). Open: Q9 and Q11 |
 | **Editor** | researcher |
 | **Contributors** | developer (writer and load), gpt (recovery contract and storage specs), engineer (measurements, positions), gemini (benchmark, UAT tools), critic (requirements audit and the store’s makeup) |
 | **Replaces** | `design.md`, “Storage: a Redis 8 server that Postbox bundles and runs” (the 28 October decision, recalled on 31 October 2026) |
@@ -24,7 +24,7 @@ Postbox keeps its state as an append-only JSON Lines log plus a snapshot, with a
 
 - **A commit is written whole and fsynced,** so a turn’s records and marker are all or nothing and are on disk before anything outside the process depends on them.
 - **Recovery never drops acknowledged history:** it cuts an unterminated tail, and refuses to start on a corrupt line.
-- **A write that fails closes writes,** rejects what was queued, and the page stays readable. Retry is a reload, the same recovery a restart runs.
+- **A write that fails closes writes,** rejects what was queued, and the page stays readable. Retry is a reload, the same recovery a restart runs, with the writer quiesced first and a durability barrier after.
 - **A history epoch and a data-folder lock,** so a tab on a lost timeline resyncs and a second Postbox is refused.
 - **Less in the snapshot first, then a sharded snapshot (S2) only if a stall still passes the budget.**
 
@@ -88,18 +88,17 @@ It replaces the 28 October decision to move onto a bundled Redis 8. That decisio
 
 ```mermaid
 flowchart TD
-  C["Caller: emit or commit"] --> S["Sequencer: assigns seq, n; applies to memory"]
+  C["Caller: emit or commit"] --> S["Sequencer: assigns seq, n"]
   S --> Q["Write queue"]
   Q --> W["Writer: write, fsync"]
-  W --> P["Publish: advance the published seq"]
-  P --> X["Broadcast, since(), state, read tools, promise"]
+  W --> P["Publish: apply to public state, broadcast"]
   W --> L[("events-N.jsonl")]
   SN["Snapshot"] --> F[("snapshot.json")]
   LD["load()"] --> F
   LD --> L
 ```
 
-One serialized writer owns the queue, the open segment, rotation and snapshots. Every change enters through one sequencing function that assigns `seq` and applies the event to memory **in call order**. What waits for the sync is what leaves the process.
+One serialized writer owns the queue, the open segment, rotation and snapshots. Every change enters through one sequencing function that assigns `seq`. A commit is applied to the public state, and so becomes visible to anything, only after its lines are synced; an `emit` with no commit in flight stays on today’s optimistic path.
 
 ## 6. Detailed design
 
@@ -136,23 +135,20 @@ A line is one JSON value followed by `\n`. **An event line** is today’s format
 
 ### 6.3 The writer
 
-State: `queue` (entries), `open` (a file handle for the current segment, kept open), `published` (the highest `seq` that has been synced), `writable`, `failed` (a cause or null).
+State: `queue` (entries), `open` (a file handle for the current segment, kept open), `held` (emits made while a commit is queued, in flight or being settled), `writable`, `failed` (a cause or null).
 
-**Sequencing.** `emit` and `commit` both pass through one function that assigns `seq` (and, from step B1, `n`) and **applies the event to memory in call order**, so memory order always equals log order. The line is queued for the writer.
+**Sequencing.** `emit` and `commit` both pass through one function that assigns `seq` (and, from step B1, `n`), so the two cannot interleave their numbers. Because an event can be applied only after the events before it are, this function also decides **when** an event is applied:
 
-**What waits for the sync is what leaves the process.** Until an event’s line is synced:
-- the **broadcast** to subscribers and the stream, and **`since()`**, do not include it;
-- the **commit’s promise** is not resolved, so every adapter start that awaits it waits;
-- **`/api/state`**, the **items routes** and the broker’s **read tools** (`read_conversation`, `read_message`) serve the state as of `published`, waiting one pass if the event is mid-flight (one `await store.published()` at those exits, four or five call sites);
-- a **reply to a caller** that reports a commit’s effect is not sent.
+- An `emit` with **no commit queued or in flight** is applied, numbered and broadcast at call time, as today, and its line is queued.
+- An `emit` made while a commit is **queued, in flight, or being settled** is **held**: it is not numbered or applied until the commit has published, then it is, in order, from the JSON line made when it was called (`JSON.parse(line)`), not from the caller’s object, so memory and the log cannot differ if the caller changes its object meanwhile. Code that reads state right after such an `emit` sees the old state for up to one sync (4 to 6 ms). `runtime.mjs:349` is one such call site; **1a lists every call site it audited in its PR body, with a spec for each one that reads back.**
+- A **commit’s** events are applied to the public state and broadcast **only after the sync**. Emits are never applied twice: an emit’s application happens once, at call time or at release.
 
-Emits behind an unsynced commit are applied to memory at once but are broadcast in order after it, so that ids stay in order. There is **no held queue, no re-read of the emit’s line, and no stale-read audit** of the runtime’s direct reads of memory: the runtime’s own logic sees its own writes at once.
-
-**The rule for any code that does something outside the process** (starts an adapter, wakes an agent, sends a reply, writes a file for an agent): it must act only after awaiting a commit whose sync covers what it read. Because the log is single and ordered, a later commit’s sync covers every earlier event, so an adapter start that awaits its own commit is covered for everything its envelope read. Code that only reads memory may see an unsynced commit; it starts nothing. Open: **Q10**, whether the wake paths that read `store.state` directly (gpt) satisfy this rule.
+**Why the public state, and not only the broadcast, waits.** gpt’s review (approved by the person) found that the runtime reads `store.state` directly, so a speculative state would reach, before any sync: a running agent’s read tools (`runtime.mjs:1752`, `:1756`, `:3110`; `read-message.mjs:18`); turn delivery (`runtime.mjs:581`, `:602`, `:698`); scheduled wakes (`scheduled-wakes.mjs:30–49`); and HTTP actions that change state and deliver at once (`blocks.mjs:54–62`, `wake-cards.mjs:100–126`). A page resync after a failure cannot retract what an agent already read or did. The integrator’s alternative is under “Alternatives considered”.
 
 **`commit(events | (state) => events, { opId })`.**
-- The function form decides on the current memory, which includes earlier unsynced commits, so commits of either form may share a pass.
-- A commit is validated and frozen before it is written (events are copied and frozen).
+- **The array form** may share a pass with other commits.
+- **The function form** decides on the current public state, so it runs after every earlier commit has published, and one at a time. Two function-form commits issued back to back run in two passes; the second sees the first’s events (test T-22).
+- A commit is validated and frozen before it is written (events are copied and frozen), and all its events are applied before any is published.
 
 **One pass of the writer:**
 
@@ -162,16 +158,17 @@ join their lines into one buffer
 loop: write(buffer, offset) until every byte, including each final \n, is written    // check bytesWritten
 if the file is new (the first segment, or a rotation): fsync the directory before acknowledging
 if any entry is a commit: fsync(handle)                                                // once for the pass
-on success: advance `published` to the last seq of the pass; broadcast its events, in order;
-            resolve each commit's promise
+on success: apply and broadcast each commit's events, in order; resolve its promise;
+            then number, apply and broadcast the held emits, in order
 on error: go to “When a write fails (ST-3)”
 ```
 
 Rules this encodes:
-- **Nothing leaves the process before the sync (settled).** critic ruled it from INV-12 and DL-2: an adapter started early cannot be taken back by the epoch, and the resend would lose its label. Under this design DL-2 holds because memory applies in call order, so a failure drops a suffix of the log, never a middle, and every adapter start awaits its own commit.
+- **Nothing leaves the process before the sync (settled).** `state`, API reads, `since()`, the read tools and subscribers see a commit only after its lines are fsynced. critic ruled it from INV-12 and DL-2: an adapter started early cannot be taken back by the epoch, and the resend would lose its label.
 - **Several commits in a pass share one `fsync`.**
 - **A snapshot waits for every pending commit** before it runs, so it can never prune an unresolved one.
-- **A complete batch is broadcast in order, with `published` advanced first.**
+- **A complete batch is applied before its first subscriber is notified.**
+- **Serving old published state while writes are closed must stay possible:** the page does not wait on a failed writer.
 
 ### 6.4 `commit`
 
@@ -181,7 +178,7 @@ store.commit(events | (state) => events, { opId? }) → Promise<{ seq, duplicate
 
 - `seq` is the last sequence number of the commit.
 - A repeated `opId` returns `{ seq: <earlier>, duplicate: true }` and writes nothing. The set of recent operation ids is rebuilt on load from the current segments and kept in memory only for commits newer than the latest snapshot. This suffices because there is one writer and a snapshot never passes an unresolved commit; across a restart the lifecycles’ persisted ids (A1) deduplicate older requests.
-- **An uncertain outcome.** If `fsync` fails, the lines may still have reached the disk. The commit is **rejected to its caller with the cause**, and it may nevertheless be present after the reload that Retry runs. That is safe only because the caller’s records are **rebuilt from the reloaded state**, not from the rejection: a rejected commit’s records are `waiting` or `sent` according to what is on disk. A retry of the same operation with the same `opId` then returns `duplicate`, after the segment has been synced on a fresh descriptor (“When a write fails (ST-3)”).
+- **An uncertain outcome.** If `fsync` fails, the lines may still have reached the disk. The commit is **rejected to its caller with the cause**, and it may nevertheless be present after the reload that Retry runs. That is safe only because the caller’s records are **rebuilt from the reloaded state**, not from the rejection: a rejected commit’s records are `waiting` or `sent` according to what is on disk. **Rejection means uncertain, not absent:** a complete `sent` transaction may survive, and A2 handles any interrupted attempt from the recovered state; the outcome is never inferred from the rejection alone. A retry of the same operation with the same `opId` then returns `duplicate`, after the log has been synced on a fresh descriptor (“When a write fails (ST-3)”).
 
 ### 6.5 Recovery on load
 
@@ -214,13 +211,17 @@ stateDiagram-v2
   Recovering --> Closed: still failing
 ```
 
-**Retry is a reload, not a repair (the integrator’s simplification).** There is no second recovery path beside `load()`.
+**Retry is a reload, not a repair (the integrator’s simplification, with gpt’s conditions).** There is no second recovery path beside `load()`, and no queue comparison or queue replay.
 
-- **At the failure:** every queued commit is rejected with the cause (none was acknowledged, so its records stay as the log has them). Writes close: later commits and emits are refused with the cause (HTTP 503 and a tool error), turns do not start, and the page shows one status line with a Retry. **Memory that was ahead of the disk is discarded by reloading from disk at once,** not at Retry, so `/api/state` and a tab opened during a long disk-full never show the effects of rejected commits (critic). The page stays readable.
-- **Retry** runs one function that **startup also runs**, not only `store.load()`: it stops running turns first, then reloads the folder with a new epoch, then rebuilds what startup rebuilds outside the store (timers, schedules, records `sent` with no live turn going back to `waiting`, labeled) (critic). `load()` already handles a commit that landed despite the `fsync` error, a fragment and a gap. A landed commit is kept exactly as a restart would keep it, and pages resync through the epoch.
-- **Sync before trusting the read.** A live reload reads through the page cache, so a line may be there that a failed `fsync` never flushed, and on Linux a second `fsync` on the same descriptor can report success without writing it. So after the reload, **`fsync` the segment on a fresh descriptor, and its directory, before writes reopen and before answering `duplicate`.** If that sync fails, stay closed (critic, gpt).
-- **What is lost:** queued emits (streamed text and activity steps). That is ST-4’s stated limit, and T-23 accepts it.
-- **Interim in 1a** (before 1b’s refusal exists): developer keeps applying emits to memory after a failure and logs one error, rather than throwing into streaming code that does not expect it. critic asks for the reload at the failure so `/api/state` never serves them. **Open: Q9.**
+- **At the failure:** every queued commit is rejected with the cause, and the volatile queue is discarded. Writes close: later commits and emits are refused with the cause (HTTP 503 and a tool error), turns do not start, and the page shows one status line with a Retry. The page keeps serving the published state.
+- **Retry, in this order:**
+  1. **Quiesce the old writer.** Stop it, close its descriptor, **fence its late callbacks**, and keep the data-folder claim throughout. A second Store taking the claim, or an old append completing after the reload, is not a valid Retry.
+  2. **Stop running turns,** then reload the folder into **fresh state** with a **new epoch**, replacing state and epoch together, and rebuild the `opId` results. `load()` already handles a commit that landed despite the `fsync` error, a fragment and a gap.
+  3. **Reconcile the runtime** with the recovered state: timers, scheduled wakes, pending turns and callbacks, and records `sent` with no live turn going back to `waiting`, labeled. The same function runs at startup; reloading the Store alone does not clear those objects.
+  4. **Establish durability.** A reload reads through the page cache, so a line may be there that a failed `fsync` never flushed, and on Linux a second `fsync` on the same descriptor can report success without writing it. So `fsync` the retained segment **on a fresh descriptor**, and its directory, **before** lifecycle execution reopens and before a recovered commit is returned as `duplicate`. A fresh descriptor avoids relying on the failed descriptor’s error history; it is not by itself proof that the bytes are durable. If durability cannot be established, **stay closed**.
+  5. **Resync connected readers** through the epoch.
+- **What is lost:** queued emits (streamed text and activity steps). That is ST-4’s stated limit, and T-23 accepts it. After an `EIO` from `fsync`, no recovery can prove that lines read back are on the disk (ST-4).
+- **Interim in 1a** (before 1b’s refusal exists): with the public state published only after the sync, a failed write leaves only optimistic emits ahead of the disk. developer applies them to memory and logs one error; critic would reload at the failure. **Open: Q9.**
 
 ### 6.7 The history epoch (#567)
 
@@ -302,8 +303,8 @@ What a kill at each step leaves, and what the next start does. Every row is a te
 | A tab ahead of or behind the store | `resync`, by epoch or by sequence number |
 | A missing or mismatched shard (S2) | An error naming the shard; never an empty conversation |
 | An older Postbox on a newer folder | See “Rollout and compatibility”; the release notes say not to |
-| **An effect outside the process that read unsynced memory** | Covered by the rule in “The writer”: act only after awaiting a commit whose sync covers what was read. Open: Q10 |
-| **An `emit` applied in memory, then a write failure** | The change is lost; the reload at the failure discards it and the epoch resyncs the page (T-23) |
+| **Read after `emit` during a commit** | Code that reads state right after an `emit` made while a commit syncs sees the old state for up to about 6 ms. 1a lists the call sites it audited in its PR body, with a spec for each that reads back |
+| **An `emit` applied in memory, then a write failure** | The change is lost; Retry’s reload discards it and the epoch resyncs the page (T-23) |
 
 ## 9. Performance and budgets
 
@@ -334,15 +335,15 @@ Written first and failing on `main`. The specs of gpt (14 failing on baseline) a
 | T-2 | An unterminated tail is cut; the next append starts on a clean line | gpt |
 | T-3 | Several commits in a pass share one `fsync` and keep their order | developer |
 | T-4 | An 80 KB commit survives short writes | gpt |
-| T-5 | `since()`, the broadcast, the commit’s promise, `/api/state` and the read tools exclude a commit until its sync; memory shows it at once | gpt and developer, **flipped to the new rule** |
+| T-5 | Nothing is applied, broadcast, returned by `since()` or visible in `state`, the read tools or `/api/state` before the sync; emits made during a sync are released in order after it | gpt, developer |
 | T-6 | **Nothing leaves the process before the sync. Before acknowledgment a kill leaves all or none of the commit; after acknowledgment, all** (real process kill, both sides of the sync) | the unacknowledged side exists; **add the acknowledged-then-killed case** |
 | T-7 | Plain event lines and multi-event commits replay together | gpt |
 | T-8 | A newline-terminated unparsable line, a bad line with lines after it, or one in a non-last segment, refuses to start and names the file; nothing is truncated | gpt, developer |
 | T-9 | A gap in `seq` against the applied `seq` starts, logs the range and count lost, and shows it once on the status line; a synthetic segment that begins with already-applied lines starts without a warning | **add** |
-| T-10 | **An uncertain sync: the commit is rejected to its caller, present after the reload, and the caller’s retry with the same `opId` returns `duplicate` after the segment has been synced on a fresh descriptor** | gpt’s spec, **changed to this form** |
+| T-10 | **An uncertain sync: the commit rejects after its complete line lands; Retry reloads and establishes durability on a fresh descriptor; its effects are present once; retrying the same `opId` returns `duplicate` without another append** | gpt’s spec, **with an explicit Retry step** |
 | T-11 | `EIO` on `fsync` rejects the queue, closes writes with the cause, and reloads memory from disk; a fake `io` where the second sync on the old handle succeeds without writing must still end in a sync on a new descriptor | **add** |
 | T-12 | `ENOSPC` and `EROFS` on write: the same, with the cause | **1b** |
-| T-13 | **Retry reloads and reopens: a landed commit is kept; no line twice; memory equals disk; running turns are stopped; records are rebuilt as at startup** | **1b** |
+| T-13 | **Retry quiesces the old writer, reloads into fresh state, reconciles the runtime and reopens: a landed commit is kept; no line twice; state equals disk; running turns are stopped; records are rebuilt as at startup; a late callback from the old writer and an old timer are fenced** | **1b** |
 | T-14 | The page stays readable while closed; the status line shows the cause and Retry (Playwright) | **1b** |
 | T-15 | A snapshot waits for pending commits; a crash before the rename, after it before the directory sync, and before pruning, all recover | gpt; add snapshot-waits-for-commit |
 | T-16 | The epoch changes at each `load()`; a mismatch resyncs; a page adopts an epoch only with a loaded state | existing specs |
@@ -351,7 +352,7 @@ Written first and failing on `main`. The specs of gpt (14 failing on baseline) a
 | T-19 | The folder is 0700 and its files 0600 | **add** |
 | T-20 | An event and a shard written in an older shape lift on read, with nothing run at startup | partly legacy tests; **add** |
 | T-21 (S2) | A crash between two shard writes uses the old manifest; a missing or mismatched shard is an error; a replay with snapshots at random points equals the live state; a rebuild of `snapshot.json` equals the original | S2 |
-| T-22 | Two function-form commits issued back to back: the second’s events depend on the first’s; they may share a pass | **add** |
+| T-22 | Two function-form commits issued back to back: the second’s events depend on the first’s | **add** |
 | T-23 | An `emit` applied in memory, then a write failure: the change is lost, memory is reloaded from disk, and the epoch resyncs the page | **add** |
 | T-24 | A new segment’s directory entry is synced before a commit written there is acknowledged | **add** |
 | T-25 | A multi-event commit: invalid arrays (empty, non-consecutive `seq`, overlapping the snapshot boundary) are rejected | **add** |
@@ -360,6 +361,8 @@ Written first and failing on `main`. The specs of gpt (14 failing on baseline) a
 | T-28 (S2) | Pause between two shard writes, edit, finish, restart: equals an in-memory store that never snapshotted; a crash at every step; a retry at the same S; a failed publish keeps its dirty marks | S2 |
 | T-29 | The snapshot is written in pieces: the block on a 14 MB state falls below the one-call figure | **add** |
 | T-30 | A rejected commit’s records are rebuilt after the Retry reload (A1 spec): `waiting` or `sent` as the disk has them, and a repeat with the same `opId` returns `duplicate` | gpt, A1 |
+| T-31 | A read tool (`read_conversation`, `read_message`) called while a commit is syncing does not return the commit | **add** |
+| T-32 | A scheduled wake is armed, the write fails, and Retry reloads: the wake runs from the recovered state, or not at all | **add** |
 
 gemini’s UAT checks: the at-rest rows of “Crash points” (leave a truncated segment, an un-renamed temp snapshot, unreferenced shards, or a stale lock, then restart) can be run end to end with `postbox.restart({ whileDown })`. The in-flight rows cannot, because the fault launcher wraps agent CLIs, not the store; they are unit specs. critic reads every PR against ST-3 and ST-4.
 
@@ -381,8 +384,8 @@ Nothing needs a migration: events, segments and `snapshot.json` keep their forma
 | **Redis 8, bundled** (chosen 28 October, recalled 31 October) | Never needed for speed. It cost a native build on three platforms, a first-start download, AGPLv3 hosting, a refusal to run on Intel Macs and Windows, a supervised child with its own security rules (SR-1 to SR-8), a write-outage mode, a one-time import, and about 10,000 lines. It bought atomic scripts and a path to a second writer, which has no user yet |
 | **SQLite (`node:sqlite`)** | A relational schema is its natural shape and the one that stopped an earlier Postbox with migrations between versions (the person, 28 October); synchronous writes block the event loop; single-process by nature |
 | **JSON Lines with transaction framing, commit markers, a receipts file with its own rotation** (the 28 October objection) | Two files that must agree, and a transaction engine only Postbox tests. Writing a commit whole removes the framing; deriving receipts removes the second file; Retry as a reload removes the second recovery path. What remains is recovery code only Postbox tests, so the answer is the “Test plan”. The S2 manifest and the snapshot with its log are two sets of files that must agree; immutable names with the manifest as the last step is the answer to that |
-| **Held emits and a re-read of the emit’s line** (draft 4) | A held queue and a stale-read audit of every direct read of memory. Applying in call order and holding only what leaves the process removes both |
-| **Repairing the log in process on Retry** (draft 4) | A second recovery path beside `load()`, run only on a failing disk, so the least exercised code in the store. A reload uses the one that is tested at every start |
+| **Hold the broadcast, not the emits** (the integrator’s second simplification) | Memory applies events in call order and only the broadcast, `since()`, `/api/state` and the commit’s promise wait for the sync, which would remove the held queue and the stale-read audit. gpt found that it replaces the read-after-emit audit with a speculative-state escape audit: running agents’ read tools, turn delivery, scheduled wakes and HTTP actions read `store.state` directly. It is valid only if every outward reader and lifecycle effect crosses a publication barrier or reads an **immutable published projection** (a published `seq` on a mutable newer state is not enough), the page keeps serving old published state while writes are closed, and tests cover the in-flight read tool (T-31) and the scheduled wake after a failed write (T-32). Not adopted for 1a; revisit when A1 and A2 have named their effects |
+| **Repairing the log in process on Retry** (draft 4) | A second recovery path beside `load()`, run only on a failing disk, so the least exercised code in the store. A reload uses the one that is tested at every start. It still needs writer quiescence, a fresh descriptor, a durability barrier and runtime reconciliation |
 | **`WAITAOF` or per-chunk `fsync`** | Specific to Redis, or an `fsync` per streamed chunk. Streamed text stays unsynced |
 
 ## 13. Decisions and open questions
@@ -391,15 +394,15 @@ Nothing needs a migration: events, segments and `snapshot.json` keep their forma
 - **Q1. S2.** Write the snapshot in pieces now, keep a **50 ms** stall as the only trigger, drop 40 MB (the integrator, engineer; critic would have triggered at 40 ms, gemini kept both limits). Before S2, move old turns’ work entries and activity steps out of state (#305), which is a separate decision.
 - **Q2. Line format.** (b) (the integrator, gpt, critic, developer).
 - **Q3. Receipts.** Derived and checkpointed with the snapshot (the integrator agrees).
-- **Q4. Held emits.** Gone: memory applies in call order, and what leaves the process waits for the sync.
+- **Q4. Held emits.** Kept for 1a, with the post-sync public state (gpt’s review, approved by the person). The integrator’s alternative is recorded under “Alternatives considered” (Q11).
 - **Q5. ST-2.** Deferred with a lock file (the integrator). Dropped, not deferred, if Postbox stays one process.
 - **Q6. The lock’s staleness test.** Pid plus start time, taken over by rename.
 - **Q7. The S2 rollback guard.** `snapshot.json` as a folder, pinned by a characterization test committed with 1a.
 - **Q8. A gap in `seq`.** Start, log the range and count lost, show it once (the integrator, developer).
 
 **Open**
-9. **Q9. Emits after a failure, before 1b exists.** developer: keep applying them to memory and log one error. critic: reload at the failure so they are discarded and `/api/state` never serves them. This design’s target is critic’s (“When a write fails (ST-3)”); which does 1a ship?
-10. **Q10. The wake paths.** gpt: running agents read through the tools, and wake paths read `store.state` directly; are they safe if they act on a commit that is not yet synced? The rule in “The writer” says an effect must await a commit whose sync covers what it read. Do the existing wake paths satisfy it, or must A1 and A2 route them through a commit?
+9. **Q9. Emits after a failure, before 1b exists.** developer: keep applying them to memory and log one error. critic: reload at the failure so they are discarded. With the public state published only after the sync, only optimistic emits are ahead of the disk; which does 1a ship?
+11. **Q11. The integrator’s second simplification** (hold the broadcast, not the emits). developer and critic accept it; gpt’s review, approved by the person, accepts it only with an immutable published projection, every outward reader and effect named, and T-31 and T-32. The integrator’s intent is to remove the held queue (about 25 lines) and the stale-read audit. Should the held queue stay for 1a, with the alternative revisited once A1 and A2 have named their effects?
 
 ## 14. References
 
