@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Status** | Approved, revision 11.2: revision 11, plus the person’s 28 October decisions on Redis’s build, license and platforms (“Storage”), plus “Store security” for requirements SR-1 to SR-8 (29 October). Wave 1 is built and in review; nothing has merged. |
+| **Status** | Approved, revision 12: revision 11.2, with the Redis decision of 28 October recalled by the person on 31 October 2026 (“Storage”, §18). Persistence stays on JSON Lines, with one-line commits. Now and Harness have merged; the Store step is replaced by steps 1a, 1b and, on a budget, S2. |
 | **Date** | 28 October 2026 |
 | **Supersedes** | The design in #508’s description (“the approved design”), where this document differs. Its research and evidence still stand, and are cited by change number. |
-| **Amends** | `designs/architecture.md`: “The store” (the store: persistence moves onto a bundled Redis 8 server, as its revisit line names Redis Streams), “The front end” (the front end) and “A conversation is shared memory” (shared memory); `designs/engineering-practices.md` (one managed native binary as the exception to zero runtime dependencies); `designs/intent.md` rows listed in “Rollout” |
+| **Amends** | `designs/architecture.md`: “The store” (the store: JSON Lines with one-line commits, a sharded snapshot when the budget is exceeded, and a data-folder lock), “The front end” (the front end) and “A conversation is shared memory” (shared memory); `designs/intent.md` rows listed in “Rollout” |
 | **Requirements** | The requirements comment on #508, revision 4.1 (comment 6482761957; ids DL, MD, AT, SW, PF, CX, MS). Its section “Acceptance, test first” names the test that decides each requirement. |
 | **Acceptance scenarios** | Critic’s `testing-strategy.md` (approved in the room): `tests/uat/e2e/scenarios/delivery.md` and `bigroom.md`, with the triggers, checks, seed and launcher they need |
 | **Reviews answered** | Integrator: comments 6481111995 and 6481619141. Critic: 6481670784, and critic’s seven findings on revision 3 in the room. Researcher’s findings on revision 3 in the room. Gemini’s nine implementation comments on revision 4 (threads gemini-1 to gemini-9). GPT’s principal-engineer review of revision 5 (threads gpt-10 to gpt-20). Critic’s request to make the UAT scenarios each step’s definition of done. Researcher’s backlog check: the prompt is saved before output on Codex and Antigravity. The room assets requirements (#516), reconciled in “Extension points for room assets” as extension points, not as scope. GPT’s storage review of revision 9 (threads gpt-21 to gpt-28). The person’s storage interview of 28 October, eight decisions, which chose a bundled Redis 8 over SQLite (“Storage”). |
@@ -18,7 +18,7 @@ Postbox has two root problems:
 - **Messages to agents are dropped, given twice or given out of order.** What was delivered, and what waits on the person, are found by scanning items and by a marker that moves before the turn has started.
 
 This design makes four structural changes:
-0. **Persistence moves onto a Redis 8 server that Postbox bundles and runs** (“Storage”): JSON documents are the truth, a stream carries the sequence, and both are written in one atomic transaction, so a turn’s records and marker commit together and nothing is published until they have. Values carry a version and are upcast on read, so no install ever runs a migration. The event log in JSON Lines could not give atomic writes without a transaction engine of our own, and a relational schema is ruled out by the person’s experience with SQLite migrations in an earlier Postbox.
+0. **Persistence stays on JSON Lines, with a commit written as one line** (“Storage”): a turn’s records and marker are one line with an `fsync`, so they commit together or not at all and nothing leaves the process until they have. Receipts are derived from the record events and checkpointed with the snapshot. Values carry a version and are lifted on read, so no install ever runs a migration. The 28 October decision to move onto a bundled Redis 8 was recalled on 31 October: the slow room it was not chosen for is fixed, and the second writer it was chosen for has no user yet (ST-2 is deferred).
 1. **One record collection** replaces four partial mechanisms: `thread.queue`, `se.needs`, `schedules` and `se.context`. A record states what is addressed to whom, and where it is in its lifecycle.
 2. **Delivery is decided by how a turn ends**, not by per-backend events. It is at least once, and every resend is labeled.
 3. **The browser holds a window:** conversation headers and open records for every conversation, and a contiguous range of items for the conversations it shows. Items get server-assigned positions.
@@ -83,7 +83,7 @@ flowchart TD
 
 | Constraint | Source |
 |---|---|
-| No new runtime dependencies, with one explicit exception this design adds to `engineering-practices.md`: a managed native binary (Redis 8, built by Postbox’s CI) that Postbox downloads pinned, verifies and runs as a child process. No npm package is added. | `designs/engineering-practices.md`, “Keep runtime dependencies at zero” (PF-9); decision 1 of the storage interview |
+| No new runtime dependencies. No npm package and no native binary is added. | `designs/engineering-practices.md`, “Keep runtime dependencies at zero” (PF-9) |
 | A key/value or document model, never a relational schema with migrations | The person, 28 October: an earlier Postbox on SQLite hit schema and migration problems between versions that stopped rapid change on existing installs |
 | One process and one person today; more than one is likely within a year, so nothing may assume a single writer | `designs/architecture.md`, “The store” and “Remote hosts”; the person, 28 October |
 | Same reducer on server and browser | `designs/architecture.md`, “The store” |
@@ -95,7 +95,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  RT["Runtime"] -->|"emit, commit"| DB[("Redis 8, bundled: documents, stream, receipts")]
+  RT["Runtime"] -->|"emit, commit"| DB[("JSON Lines log and snapshot: events, shards, receipts")]
   DB --> ST[("Server state: all items, open records")]
   RT --> REC["Records: deliveries and asks"]
   REC --> ENV["Turn envelope"]
@@ -109,7 +109,7 @@ flowchart TD
 
 | Component | Responsibility | Owns |
 |---|---|---|
-| Store (changed, `server/store.mjs`) | The same interface; persistence is a Redis 8 child process Postbox manages (“Storage”). `emit` for optimistic events, `commit` for authoritative transitions, each a `MULTI` or Lua script; publish after the reply | The Redis process, its port and its data folder |
+| Store (changed, `server/store.mjs`) | The same interface, plus `commit(events)`: authoritative transitions written as one line with an `fsync` (“Storage”). `emit` stays the optimistic path for streamed text. One serialized writer; a lock file in the data folder | The log, the snapshot and the data folder lock |
 | Record store (new, in the reducer) | Holds open records; applies record events | `state.records` |
 | Delivery rules (new, `shared/records.mjs`) | Pure functions: who a change reaches, de-duplication, every record transition (“Record lifecycles”), derived views (needs-you order, open asks, composer queue, scheduled wakes) | No state |
 | Lifecycle owner (new, `server/records.mjs`) | The only code that emits `record` and `record.close`. Adapters report outcomes (“Delivering a turn”); they never patch a record. Asks and deliveries have separate validated shapes and transition tables. | — |
@@ -123,7 +123,7 @@ flowchart TD
 
 ## 6. Data model
 
-**The data model is key/value and document, in memory and in the store.** The in-memory state is unchanged: collections that are maps keyed by id (`map()` in `shared/state.mjs`), kept current by the shared reducer on the server and in the browser. In Redis (“Storage”) each item, thread, session, record and app is a JSON document under its own key, and one stream carries every change in order. The server reads documents at startup; the browser still applies events from the stream. A `record` event writes one key, and `record.close` deletes it. This design adds one map and one in-memory index.
+**The data model is key/value and document, in memory and in the store.** The in-memory state is unchanged: collections that are maps keyed by id (`map()` in `shared/state.mjs`), kept current by the shared reducer on the server and in the browser. In the store (“Storage”) every change is an event in the JSON Lines log, and the snapshot is the state at a sequence number. The server reads the snapshot and replays the log at startup; the browser still applies events from the stream. A `record` event adds one entry to `state.records`, and `record.close` removes it. This design adds one map and one in-memory index.
 
 | Map | Key | Value | Readers | Bound |
 |---|---|---|---|---|
@@ -133,7 +133,7 @@ flowchart TD
 | `state.records` | record id | one open record (“Records”) | `shared/records.mjs` | Open records only: waiting and sent deliveries, open asks |
 | Item index (in memory, never stored) | item id | its thread and position | The reducer, per streamed chunk | Same as `state.items`; replaces the linear `find` (#305 factor 4) |
 
-In Redis the same lookups are served by plain structures beside the documents: a sorted set per thread scored by `n` for paging, a set per recipient for open records, and the document key for an id (“Storage”).
+The same lookups are served in memory: each thread’s items are a list kept sorted by `n`, so a page is a binary search and a slice, and the id index is rebuilt on load and kept current by the reducer (“Storage”).
 
 **Lookups**
 
@@ -197,105 +197,47 @@ In Redis the same lookups are served by plain structures beside the documents: a
 
 ### 6.3 What is state, what is in the store, and what reaches the browser
 
-| Data | In `store.state` | In `/api/state` | In Redis |
+| Data | In `store.state` | In `/api/state` | In the store |
 |---|---|---|---|
-| Open records (`waiting`, `sent`, `open`) | Yes | Yes | A document each, plus the recipient set |
-| Closed records | No | No | Deleted; the closing stream entry stays until the stream is trimmed |
-| Receipts (“Receipts”) | No | No | A document per record, written in the same transaction as its events; server-only, bounded |
-| Items | Yes | No: the items API serves pages | A document each, plus the thread’s sorted set |
-| Thread headers, with `nextN` and stats | Yes | Yes | A document each |
-| App headers | Yes | Yes (PF-7) | A document each |
-| The event sequence | — | Resumed from `Last-Event-ID` | The `events` stream, trimmed by retention |
+| Open records (`waiting`, `sent`, `open`) | Yes | Yes | In the snapshot, and as events in the log |
+| Closed records | No | No | Only as the events that opened and closed them, and as receipts |
+| Receipts (“Receipts”) | No | No | Derived by the reducer from the record events; checkpointed with the snapshot; server-only, bounded |
+| Items | Yes | No: the items API serves pages | In the snapshot (a shard per conversation, from step S2), and as events |
+| Thread headers, with `nextN` and stats | Yes | Yes | In the snapshot |
+| App headers | Yes | Yes (PF-7) | In the snapshot |
+| The event sequence | — | Resumed from `Last-Event-ID` | The log; segments are pruned below the snapshot’s `seq` |
 
-Closed records leave state, so `/api/state` stays bounded by what is open, not by a room’s age. The history that explains a delivery lives in the receipts (“Receipts”), written in the same transaction as the event that closes the record.
+Closed records leave state, so `/api/state` stays bounded by what is open, not by a room’s age. The history that explains a delivery lives in the receipts (“Receipts”), derived from the record events, so a close and its receipt can’t disagree.
 
 ### 6.4 Receipts
 
-A server-only document per delivery record, `receipt:<id>`, written by the lifecycle owner in the same transaction as the record events it describes. It is not state, not in `/api/state`, and not applied by the reducer.
-- **One entry when a delivery record opens** and one when it closes or is resent, appended to the document’s `rows`: `{ event: opened | delivered | superseded | expired | withdrawn | answered | resent, at, rev, sentRev?, turnId?, attempt?, reason? }`, beside the record’s `kind`, `to`, `from`, `threadId`, `sourceId` and `openedAt`.
-- **No dual write.** The record event and its receipt commit together or not at all, so a crash can neither close a record without its receipt nor record a receipt for a close that never committed. A repeated operation, found by its id in `ops`, writes nothing twice.
-- **Why both entries:** MS-1’s completeness divides by addressed work, so a record that opened and never closed still counts. A metric built only from closes would hide a dropped record.
-- **Retention is bounded:** a sorted set `receipts:closed`, scored by the closing time, holds every closed record’s id; past `receiptsKeep` entries the oldest closed receipts are deleted whole. An open record’s receipt is never in that set, so it is never pruned, and completeness and lag stay honest.
+A server-only entry per delivery record, derived by the reducer from the record events, not written as a second file. It is not in `/api/state`.
+- **One row when a delivery record opens** and one when it closes or is resent: `{ event: opened | delivered | superseded | expired | withdrawn | answered | resent, at, rev, sentRev?, turnId?, attempt?, reason? }`, beside the record’s `kind`, `to`, `from`, `threadId`, `sourceId` and `openedAt`.
+- **No dual write.** Because the receipt is derived from the same line as the record event, a crash can neither close a record without its receipt nor record a receipt for a close that never committed. A repeated commit is skipped by its `seq`.
+- **Why both rows:** MS-1’s completeness divides by addressed work, so a record that opened and never closed still counts. A metric built only from closes would hide a dropped record.
+- **Retention is bounded:** the receipt projection is checkpointed with the snapshot. With a sharded snapshot (step S2, if it is ever needed), the whole receipt lives in the shard of the month it opened in, and a month is pruned, oldest first, only when it holds no open record and no recently closed one still inside the retention period, so completeness and lag stay honest.
 - **Reading it:** the metrics script only. No HTTP route.
-- **Test:** open and close records, restart, and the script’s counts are unchanged; a transaction that fails between the event and the receipt leaves neither.
+- **Test:** open and close records, restart, and the script’s counts are unchanged; a month holding an open record’s `opened` row is never pruned.
 
 ### 6.5 Postbox notices as items
 
 `tellAgent`’s strings live only in `se.context` today (`server/runtime.mjs:1374-1377`): they aren’t items, so nothing can read one back once it has been folded. Under this design a notice from Postbox is written as a `system` item with `variant: 'notice'` and the recipient’s `sessionId`, in the recipient’s thread. Like today’s hidden system items it draws nothing in the transcript, but it has an id and an `n`, so `read_message` and `read_conversation` reach it. The delivery record’s `sourceId` is that item. Folding (“Records”) therefore loses nothing: the fold record’s `folded.before` is the oldest folded item’s `n`, and `read_conversation { before }` recovers every one.
 
-### 6.6 Storage: a Redis 8 server that Postbox bundles and runs
+### 6.6 Storage: JSON Lines, one line per commit
 
-**Decision (the person, 28 October 2026, after a structured interview; eight parts below).** Persistence moves from the JSON Lines log plus `snapshot.json` onto a Redis 8 process that Postbox downloads, verifies, starts and upgrades itself. Everything above the store is unchanged: the event types, the shared reducer, the in-memory projection, the stream to the browser and `/api/state`. Large files stay in the content-addressed blob folder.
+**Decision (the person, 31 October 2026, recalling the 28 October decision for a bundled Redis 8).** Persistence stays on the JSON Lines log plus a snapshot. The decision, the reasons, the line format, the writer, recovery, failing closed, the epoch, the lock, snapshots, the crash points and the test plan are in **`designs/508/storage-design.md`**, so the text exists once. In short:
 
-**Why.** `architecture.md`, “The store” chose JSONL for one person, one process and reads of “all of it”, and said to revisit when Postbox needs transactions across files or queries across history, naming Redis Streams as a candidate. Revisions 6 to 9 of this design asked the store for exactly that: a turn’s `sent` records and marker written together before an adapter starts; receipts that survive compaction; an all-or-nothing settle; and, for #516, an atomic base-version check. JSONL gives none of these without a transaction engine of our own, and its multi-line append is not even atomic today (“What already exists and is kept”). Two of the person’s constraints decide between the remaining options: the data model must be key/value or document, never a relational schema, because an earlier Postbox on SQLite was stopped by schema and migration problems between versions; and more than one Postbox process or person is likely within a year, so nothing may assume a single writer. Redis fits both; SQLite fits neither well.
+- A commit is written whole and fsynced. A one-event commit is a plain event line with an operation id; a commit of several events is a JSON array. A commit is applied, broadcast and visible to anything (the public state, `since()`, `/api/state`, the read tools, an adapter start) only after its sync; emits made meanwhile are held and released in order. The integrator’s alternative, applying in call order and holding only what leaves the process, is recorded in `storage-design.md` and not adopted until its readers are named.
+- A bad line in the middle of a segment refuses to start. A gap in `seq` starts, logs the range lost and shows it once.
+- A failed write rejects what was queued and closes writes. Retry is a reload, the same recovery a restart runs, after the old writer is quiesced and with a durability barrier on a fresh descriptor and the runtime reconciled.
+- A history epoch tells a tab on a lost timeline to resync. A lock file refuses a second Postbox on the data folder.
+- Receipts are derived by the reducer from the record events and checkpointed with the snapshot.
+- The snapshot is written in pieces now. A sharded snapshot waits for a stall over 50 ms, after old turns’ work entries and activity steps have been moved out of state (#305).
+- ST-2, a second writer, is deferred.
 
-| Option | What it gives | What it costs | Outcome |
-|---|---|---|---|
-| JSON Lines plus transaction framing, commit markers, torn-batch recovery, a receipts file with its own rotation, and a serial writer | No new component | A transaction engine written and tested only by Postbox; two files that must agree | Rejected |
-| SQLite through `node:sqlite` (revision 10’s choice) | Atomic transactions in one file, no server | A relational schema is the natural shape and the one that caused the earlier migration pain; synchronous writes block the event loop; a single-process design by nature; Node 24 minimum | Rejected on the person’s constraints |
-| **Redis 8, bundled and managed by Postbox** | Atomic multi-key writes (`MULTI`, `WATCH`, Lua), a sequenced stream, JSON documents with path updates, search in the store, a path to several processes | A native binary to download, verify, supervise and upgrade; an exception to zero runtime dependencies; durability that is a configuration choice | **Chosen** |
+**Security of the store.** There is no store process, socket or credential, so SR-1 to SR-4 and SR-6 to SR-8 no longer apply. What remains is SR-5: the data folder and the files in it are private (0700 and 0600). A process running as the person that sets out to read the folder is outside the threat model, as before.
 
-**The eight decisions.**
-1. **Postbox bundles and manages Redis.** It runs as a managed child process. The proposed “Store security” amendment selects an authenticated private Unix socket; credentials, persistence files and logs remain private to the application, with their lifecycle chosen there. Postbox starts it before it listens, stops it on exit, restarts it if it dies, and upgrades it with Postbox releases. The person installs nothing and is told when it isn’t running (decision 7).
-2. **The binary is Postbox’s own pinned build, downloaded at first start.** Redis publishes no per-platform binaries, only a source tarball with its SHA-256 on `download.redis.io` ([redis.io/downloads](https://redis.io/downloads/)). So Postbox’s CI builds Redis **8.10.3** from that tarball for three targets, macOS arm64, Linux arm64 and Linux x64, and hosts each build as a release asset beside the matching source. First start downloads the build for its platform, verifies its checksum against a value in Postbox’s release, and keeps it under the data folder. First start needs the network. (Revised 28 October: this replaces “a pinned release per platform”, which assumed vendor builds.)
-3. **Durability is `appendfsync always`**, with `no-appendfsync-on-rewrite no`. Redis writes each change to disk before it acknowledges it (on macOS with `F_FULLFSYNC`), so an acknowledged write survives a crash of Postbox or Redis and a power cut. `emit` still applies and broadcasts optimistically, so an update awaiting Redis’s acknowledgment may be lost; that, and a drive that reports a flush it hasn’t done, are the stated limits of INV-12. Measured on 29 October: 4.5 ms per write at p50, about 9 ms at p95 under a 50-per-second stream, with streamed text delayed 0.1 ms at p95. Chosen over `everysec` (up to a second lost on a power cut) and a `WAITAOF` barrier on commits (each commit waited for the next scheduled fsync, about 0.5 s at p50 and 1 s at p95, stalling streamed text).
-4. **Documents are the truth, and the stream is the sequence, written together.** Every write is one `MULTI` or Lua script that updates the JSON documents it touches and appends one entry to the `events` stream, whose entry id is the event’s `seq`. Startup reads documents: no replay, no snapshot. The browser and the receipts read the stream; it is trimmed by a retention rule (“Observability and calibration”), never by a snapshot.
-5. **Values are upcast on read and never rewritten.** Every document carries a small `v`. The reader lifts an older shape to the current one through pure functions, and writes the current shape only when it next changes that document. No install runs a migration at startup. Downgrading Postbox is unsupported once a newer shape has been written, and the release notes say so. This applies the rule for events in `architecture.md`, “The store”, to documents.
-6. **Redis 8’s built-in JSON and search from the start:** `JSON.GET` and `JSON.SET` with paths for documents and partial updates, and `FT.SEARCH` for search when the agent search issue ships, in place of BM25 inside Postbox. Plain structures serve the design’s own lookups: a sorted set per thread scored by `n`, a set per recipient for open records, `ops` for idempotency.
-7. **When Redis is unreachable, Postbox fails closed for writes and keeps the page readable.** No turn starts and no write is accepted while the child isn’t answering; in-flight turns are stopped and their records go back to `waiting`, labeled; the browser keeps showing the in-memory state read-only; one status line names the cause (port taken, binary missing, corrupt AOF, process died) with a Retry. Postbox never writes anywhere else meanwhile, so there is no reconciliation path.
-8. **One writer now, and every transition atomic in Redis.** Each record transition, settle and conversion is a Lua script or a `MULTI` under `WATCH` on the keys it changes, so correctness never depends on being the only process. A second Postbox process isn’t built or tested yet; when it comes it connects to the Redis the first process owns, and the transitions already hold.
-
-**License and platforms** (the person, 28 October).
-- **License:** Postbox takes Redis 8 under **AGPLv3**, one of the three licenses Redis 8 offers (RSALv2, SSPLv1, AGPLv3; [`LICENSE.txt`](https://raw.githubusercontent.com/redis/redis/unstable/LICENSE.txt)), and offers the matching source with every release that carries a build. Postbox talks to Redis as a separate process over its protocol, so Postbox’s own license is unaffected. The exception in `engineering-practices.md` and the release notes both say so.
-- **Supported:** macOS arm64, Linux arm64 and Linux x64.
-- **Unsupported:** macOS on Intel (Homebrew has no Redis build for it either) and Windows (Redis doesn’t support it). Postbox checks the platform before it downloads anything and refuses to start on either, with a message that names the platform and the supported ones, rather than failing a download.
-
-**How it works.**
-- **Keys:** `item:<id>`, `thread:<id>`, `session:<id>`, `record:<id>`, `app:<id>`, `receipt:<id>` as JSON documents; `thread:<id>:items` a sorted set of item ids by `n`; `recipient:<id>:open` a set of record ids; `receipts:closed` a sorted set by closing time; `ops` a hash from operation id to `seq`; `events` the stream. Reserved for #516: `asset:<id>` and `room:<id>:assets`.
-- **`emit(type, data)`** keeps its optimistic order for high-rate, non-authoritative events, which today are streamed text and activity steps: apply and broadcast at once, then write pipelined, one `MULTI` per tick. A failed write here is logged and surfaced once per session, as today; nothing a lifecycle depends on travels this way.
-- **`commit(events, opId)` publishes after the reply.** It stages the events, runs one script that checks `ops`, updates the documents, writes the receipts and appends to the stream, and only after Redis replies does it apply the events to the state and broadcast them. If the write fails, nothing was applied or seen; the records are still `waiting`. A repeated `commit` finds its `opId` and returns the earlier `seq`.
-- **Startup:** read the documents, rebuild the item index, and resume the browser stream from the client’s `Last-Event-ID` with `XRANGE`; a client behind the trimmed window gets `resync`, as today.
-- **Backups** are a copy of the data folder, which holds the AOF; Postbox makes the dated one at the Store step’s first start (“Migration, compatibility and rollback”).
-- **Tests:** a kill during a `commit` leaves documents and stream consistent; a failed `commit` leaves state and clients unchanged; a repeated `opId` writes once; the child failing to start shows the status and holds writes; the child dying mid-turn returns the turn’s records to `waiting`, labeled; two Postbox processes against one Redis keep every transition consistent (a test only, not a supported mode yet); write round-trip latency on a copy of this room against today’s store, with a budget in “Observability and calibration”.
-
-#### Store security
-
-**Status:** design for requirements revision 4.3 (“Store security”, SR-1 to SR-8), approved 29 October 2026. Store (#525) builds it; SR-1 to SR-7 are in review on `feat/508-store` at `5b2e6392`, and SR-8 was already met. The command list below was taken from Store at `4e9dde59`.
-
-**Boundary.** One person directs agents on one computer. Browser-origin attacks, accidental direct agent access and new paths from remote hosts remain in scope. A determined process running as the person is outside it, including an agent told exactly how to read the data folder or obtain credentials. That is the explicit boundary in `architecture.md`, “Writes need the page’s token”, and `SECURITY.md`. Private file modes and Redis authentication do not isolate agents running as the same OS user. The goals serve `intent.md`, “Who it’s for”, “Get the loop right before the looks” and “You stay in charge of your agents”; they do not add a multiuser isolation system.
-
-```mermaid
-flowchart TD
-  B["Browser: page token"] --> H["Postbox HTTP and MCP"]
-  A["Agents: turn token"] --> H
-  R["Remote hosts: existing broker"] --> H
-  H --> S["Store: authenticated private connection"]
-  S --> D["Redis: documents and stream"]
-```
-
-**Transport and files (SR-1, SR-4, SR-5).** A private Unix socket is a simple choice on the three supported Unix platforms: `port 0`, no TCP/TLS listener, a 0700 directory and an owner-only socket. Refuse an invalid or overlong socket path rather than silently opening TCP. Unix-only is a transport choice, not proof that authenticated loopback is inherently insecure. Another-user connection tests are optional evidence, since another OS user is outside this product’s threat model. The socket is never forwarded to a remote host.
-
-Create private store directories as 0700, data/configuration/log files as 0600 and actual executable files as 0700. Modules and libraries need owner read permission, not blanket execute permission. Apply private defaults to AOF rewrites and handle existing installations explicitly. Refuse substituted links where the owner creates, loads or cleans up private resources. State `protected-mode yes`, `enable-protected-configs no`, `enable-debug-command no` and `enable-module-command no` explicitly; load only the selected verified modules at startup. These are inexpensive defaults, not an OS-user isolation guarantee.
-
-**Credential (SR-2).** Only Store receives the Redis credential. Do not put it in an agent’s prompt, tool result, environment, process arguments, logs, telemetry, room assets or host payloads. Do not expose a route that retrieves it. A random credential may remain in a validated 0600 private file, as the remote daemon’s token already does, or be passed through stdin and retained in memory. The design chooses the simpler lifecycle that supports authenticated reconnect and safe cleanup. Memory-only storage and rotation on every child restart are optional hardening, not requirements imposed by the bounded threat model. Store credentials are application tokens, not backend API keys.
-
-**Commands (SR-3).** Start a named user from `-@all` and add explicit commands, with the default user disabled. Keep replication, migration, runtime configuration, module loading and ACL administration unavailable: they can turn database access into outbound connections or configuration changes. Test direct calls and Lua calls. This follows [Redis’s trusted-client security model](https://redis.io/docs/latest/operate/oss_and_stack/management/security/), [ACL rules](https://redis.io/docs/latest/operate/oss_and_stack/management/security/acl/) and [Lua ACL checks](https://redis.io/docs/latest/develop/programmability/lua-api/).
-
-At `4e9dde59`, the normal reader and writer need `AUTH`, `PING`, `EVAL`, `GET`, `SET`, `HGET`, `HSET`, `DEL`, `RENAME`, `ZADD`, `ZREM`, `ZRANGE`, `XADD`, `XRANGE`, `JSON.SET`, `JSON.GET` and `JSON.MGET`, including the writer’s `stage:*` keys and its inner Lua calls. Do not grant module-wide or category-wide permissions merely because a module is loaded. Search and durability commands are added when their callers ship. Current scripts use dynamically named keys with `EVAL ... 0`; no Redis Cluster compatibility is claimed.
-
-The existing owner cleanup additionally uses `SHUTDOWN`. If that authenticated cleanup is retained, its explicit lifecycle permission must be accounted for; the normal writer’s list above is not the whole supervisor/import allowlist. The importer also uses `FLUSHDB` to resume an interrupted import. Reset/import stays private to startup, with no agent, browser or host entry point. A scoped import account is an option, not a mandatory Redis restart and second credential lifecycle. Allowing this command only because the importer actually needs it is consistent with an explicit command allowlist: the writer already has whole-store `DEL` and `EVAL`, so prohibiting `FLUSHDB` alone does not create data isolation. Administrative fixture commands must not broaden the production account without a real production caller.
-
-**Ownership and leftovers (SR-6).** Stop the managed Redis child on normal shutdown and identify an earlier instance safely at startup. Do not stop another live owner, signal a reused PID or follow a substituted endpoint. Ambiguous ownership fails closed with a useful recovery message. Keep bounded startup/shutdown waits and avoid leaking a new child on failed startup. Immediate orphan termination after SIGKILL, a separate owner helper and a stop-only control endpoint are optional designs requiring separate justification; a private authenticated orphan until safe cleanup is not by itself an in-scope access breach. Future multi-process ownership remains separate from Redis-side transition atomicity.
-
-**Agents and hosts (SR-7).** Ordinary agent actions use the validated HTTP/MCP path. Never distribute the socket path or Redis credential in guides, environments, MCP results or other ordinary agent inputs, and never automatically add store directories to agents’ workspaces. Remote hosts receive neither the socket path, a Redis connection nor its credential. Direct access attempts must obey each backend’s existing selected permission policy. Add focused tests for new permission integrations and document their actual limits. Do not change Auto into Ask or mark an otherwise supported backend unusable because it lacks isolation from processes running as the same user. Raw AOF reads have the same scope limit as today’s data-folder reads; changing that boundary would require a separate product decision.
-
-A scratch probe returned `EPERM` for a Unix-socket connection in this macOS Codex workspace sandbox, while an unsandboxed control reached the same listener. This proves that configuration only, not Linux or every Codex mode. [Official OpenAI documentation](https://learn.chatgpt.com/docs/agent-approvals-security) describes separate Unix-socket policy controls, so network-off must not be advertised as a universal Unix-socket guarantee. Codex Auto uses its own approval reviewer; not every escalation is a person-facing card.
-
-**Build integrity (SR-8).** Keep the platform pin, authenticated download, checksum verification, safe extraction and atomic installation. Do not treat an editable `.sha256` marker as proof that installed files are unchanged. Verifying every executable, module and library against a pinned manifest on every automatic restart is optional integrity hardening; it is not a Store gate without an in-scope substitution case or measured corruption problem. If installed-file verification is chosen, derive expected file hashes from the pinned verified archive or an independently pinned manifest, never from an untrusted sidecar.
-
-**Acceptance.** Test private transport/configuration, authenticated access, the real writer under its command allowlist, refusal of dangerous direct/Lua calls, no credentials in agent/browser/host payloads, private file creation, safe normal shutdown and leftover recovery, and verified installation. Test backend permissions where this change integrates them; document unsupported guarantees without inventing a stronger boundary. Update `architecture.md`, `SECURITY.md` and applicable `AGENTS.md` instructions with the approved implementation. Durability and delivery acceptance remain separate. Credential-only-in-memory, a helper process with a lifeline, a bootstrap account and restart, and per-start installed-file hashing are options, not requirements of SR-1 to SR-8.
-
-**Not changed by this decision.** The agent-delivery rules: who a change reaches, held asks, `sentRev` and attempt fencing, the envelope, and the uncertainty of a backend’s receipt. Redis gives the write a boundary; it doesn’t know whether a model read a prompt.
+**Not changed by this decision.** The agent-delivery rules: who a change reaches, held asks, `sentRev` and attempt fencing, the envelope, and the uncertainty of a backend’s receipt. The store gives a write a boundary; it doesn’t know whether a model read a prompt.
 
 ## 7. Behavior
 
@@ -365,7 +307,7 @@ stateDiagram-v2
 | INV-4 | Every resend carries its label. The count of unlabeled repeats is 0. | Metrics script on a copied room |
 | INV-5 | An item’s `n` never changes, except that a move gives it a new, larger `n`. No id changes. | Reducer test |
 | INV-6 | The session marker moves only when the turn produced output, and in the same settle as its deliveries. | Turn lifecycle test |
-| INV-12 | No adapter is started before Redis has acknowledged the transaction marking its deliveries `sent`, and nothing is applied or broadcast before that reply. Holds against process crashes; a power cut within one second is the stated exception (“Storage”, decision 3). | Crash tests at the dispatch boundary: Redis killed during the write, write refused, disk full |
+| INV-12 | Nothing leaves the process before the commit line marking a delivery `sent` has been fsynced: not the broadcast, `since()`, `/api/state`, the read tools, a reply to a caller, or an adapter start. A commit is applied to the public state only after its sync. Holds against process crashes and a power cut, with the stated limits of “Storage”: a drive that reports a flush it hasn’t done (and, after an `EIO` from `fsync`, lines that read back but may not be on the disk), and updates sent by `emit` that were still waiting. | Crash tests at the dispatch boundary: a kill at every byte of the commit, a write refused, a full disk |
 | INV-13 | A settle acknowledges only the attempt and `sentRev` it names; a newer `rev` stays owed. | Edit-in-flight tests |
 | INV-7 | `/api/state`’s size doesn’t depend on the number of closed records or items, and open `notify` records per recipient never exceed `openNotifies`. | Size check on a copied room with an idle agent |
 | INV-8 | Outside the window module, no browser module reads `state.items`. | Lint check over `app/js` |
@@ -375,7 +317,7 @@ stateDiagram-v2
 
 ### 7.3 Delivering a turn
 
-**Durability at the dispatch boundary.** Today’s `emit` applies and broadcasts first and appends later, and an append failure is only logged (`server/store.mjs:98-126`). That isn’t enough where an external turn starts: a crash after `emit` and before the append would restart with no record that the attempt was made, and the resend would carry no label; and once clients have seen `sent`, there is nothing to roll back. So the lifecycle owner uses `commit` (“Storage”): the `sent` transitions and the turn’s pending marker are written in one atomic script, and applied and broadcast only after Redis has replied. Then the adapter starts. With `appendfsync always` that write is on disk before Redis replies, so it survives a process crash and a power cut (decision 3). If the write fails, nothing was applied or seen; the records are still `waiting`, the turn doesn’t start, and the session shows the error. Settlement is one idempotent `commit`, `settle(turnId, outcome)`: it closes exactly the `sent` records with that `turnId`, writes their receipts and the marker in the same transaction, and a repeat with the same `opId` writes nothing. Startup conversions (“Migration, compatibility and rollback”) are one `commit` each: the new records and the cleared source commit together, and a repeat finds its `opId` and does nothing, so a crash between them can’t make a second delivery.
+**Durability at the dispatch boundary.** Today’s `emit` applies and broadcasts first and appends later, and an append failure is only logged (`server/store.mjs`, `pump`). That isn’t enough where an external turn starts: a crash after `emit` and before the append would restart with no record that the attempt was made, and the resend would carry no label; and once clients have seen `sent`, there is nothing to roll back. So the lifecycle owner uses `commit` (“Storage”): the `sent` transitions and the turn’s pending marker are one line, fsynced before the adapter starts. If the write fails, the lifecycle sees the failure, the records are still `waiting`, the turn doesn’t start, and the session shows the error. Settlement is one `commit`, `settle(turnId, outcome)`: it closes exactly the `sent` records with that `turnId` and writes the marker in the same line; their receipts are derived from those events. A repeated settle is refused by the record’s own transitions (INV-10, INV-13), and a repeated line is skipped by its `seq`. Startup conversions (“Migration, compatibility and rollback”) are one `commit` each: the new records and the cleared source are one line, so a crash between them can’t make a second delivery.
 
 ```mermaid
 sequenceDiagram
@@ -492,9 +434,9 @@ Decided (8.5): any change to an item reaches the agents it concerns, as `notify`
 | `item.move` | adds the new `n`; the stub takes the old one | On the server, as today. In the browser, when the window doesn’t hold the item (`findIndex` gives `-1`, `shared/state.mjs:107`), the reducer breaks without an error, as today, and the window module, which also hears the event, fetches the item by id from the items API and places it by `n` when the window reaches the end. | Changed |
 | `item.patch` | adds `rev` when the change is deliverable | drops a patch older than the item’s `rev` | Changed |
 
-`thread.queue`, `schedules` and `se.context` stop being written once steps A3, A4 and A2 ship. Their events still replay from old logs during the one-time import (“Migration, compatibility and rollback”). In Redis every event is one entry in the `events` stream, whose id is the event’s `seq`; the browser’s stream and `Last-Event-ID` are unchanged.
+`thread.queue`, `schedules` and `se.context` stop being written once steps A3, A4 and A2 ship. Their events still replay from old logs at startup (“Migration, compatibility and rollback”). Every event is a line in the log, and the browser’s stream and `Last-Event-ID` are unchanged.
 
-**Reserved for #516:** `asset` (an asset header: id, name, type, author, scope, versions `[{ v, hash, base, author, at }]`) and `asset.version` (one more version, written by `commit` as a script that checks the base version under `WATCH` in the same transaction). The reducer keeps headers in `state.assets`, a map by id like `state.apps`; content lives in the blob store by hash (`architecture.md`, “The store”, Attachments), never in Redis. Neither event is emitted by this design.
+**Reserved for #516:** `asset` (an asset header: id, name, type, author, scope, versions `[{ v, hash, base, author, at }]`) and `asset.version` (one more version, written by `commit` with the base version checked inside the writer’s serialization). The reducer keeps headers in `state.assets`, a map by id like `state.apps`; content lives in the blob store by hash (`architecture.md`, “The store”, Attachments), never in the log. Neither event is emitted by this design.
 
 **Host protocol.** A host’s kept reply becomes `{ note, text }`: the note in full, and the rest cut at `KEPT_REPLY_CHARS` (step A2).
 
@@ -549,7 +491,7 @@ On `resync`, the browser refetches `/api/state` and each open window.
 
 ## 11. Observability and calibration
 
-**Metrics (MS-1).** A script reads the receipts (“Receipts”) of a room, from its Redis or from a copy of its data folder, and reports over the retained window:
+**Metrics (MS-1).** A script reads the receipts (“Receipts”) of a room, from the data folder or a copy of it, and reports over the retained window:
 - delivery completeness within deadline T, with every opened record in the denominator;
 - labeled and unlabeled repeats (INV-4), from `resent` lines against `attempt`;
 - lag from `waiting` to `delivered`, p50 and p95;
@@ -570,7 +512,7 @@ It needs no state, so it runs the same on a copy, and its counts don’t change 
 | Host timeout for `sent` records after a restart | Not set | Resends with no failed turn behind them | From recorded host reconnects |
 | `maxResends` before a record is blocked | 3 (decided) | Blocked records that a later turn would have delivered | From the receipts of copied rooms |
 | `receiptsKeep`, closed receipts kept | 50,000 | Whether MS-1’s window covers a room’s recent weeks | From rooms’ receipt rates |
-| Write round trip: added latency per streamed chunk and per `commit` at dispatch, on the bundled Redis against today’s store | Not set | Turn-start time and streamed-text lag on a copy of this room | Measured in the Store step before anything else moves |
+| Commit round trip: added latency per streamed chunk and per `commit` at dispatch, with its `fsync`, against today’s store | Not set | Turn-start time and streamed-text lag on a copy of this room | Measured in step 1a before anything else moves. 4.2 to 4.6 ms per `fsync` on the developer’s Mac |
 | Stream retention: entries kept in `events` before trimming | Not set | Browsers that needed `resync` after a reconnect | From rooms’ event rates and typical reconnect gaps |
 
 **Budget (PF-1, decided):** key-to-frame p95 within 10% of a small room’s, and Safari’s idle painting no higher, on copies of real rooms.
@@ -582,10 +524,10 @@ It needs no state, so it runs the same on a copy, and its counts don’t change 
 | A turn fails before any output | Its deliveries return to `waiting`, labeled as resends; the marker doesn’t move | DL-1, DL-3, INV-6 |
 | A turn fails after output | Its deliveries stay `delivered`: the model read the prompt | DL-2 |
 | Postbox stops with a local turn’s deliveries `sent` | At startup they return to `waiting`, labeled; because `sent` was committed before dispatch, the label is never missing | DL-1, INV-1, INV-12 |
-| Redis refuses or fails a write at a dispatch boundary (disk full, process gone) | Nothing was applied or seen; the turn doesn’t start; records stay `waiting`; the session shows the error | DL-1, INV-12 |
-| Redis or Postbox is killed during a `commit` | The script is atomic: either every key and the stream entry were written, or none; a repeated `commit` finds no `opId` and runs once | INV-12, INV-1 |
-| The Redis child fails to start, or dies | Writes fail closed; the page stays readable from memory; in-flight turns stop and their records return to `waiting`, labeled; one status line names the cause with Retry (decision 7) | DL-1 |
-| A power cut within the last second | Up to a second of writes is lost (`everysec`); a resend after it may lack its label. Stated limit (decision 3) | INV-12, stated exception |
+| A write fails at a dispatch boundary (disk full, read-only folder, EIO) | The commit is rejected to its caller; nothing left the process; the turn doesn’t start; Retry reloads from disk, so the records are as the log has them (a commit that landed may be present after the reload); the session shows the error | DL-1, INV-12 |
+| Postbox is killed during a `commit` | The line is whole or torn; a torn tail is cut at the next start, and a whole line replays; a repeated line is skipped by its `seq` | INV-12, INV-1 |
+| The log can’t be written, or won’t load | Queued commits are rejected and writes close; the page stays readable from the published state; in-flight turns stop and their records return to `waiting`, labeled; one status line names the cause with Retry, which quiesces the old writer, reloads, reconciles the runtime and syncs on a fresh descriptor (“Storage”). A bad line in the middle of a segment refuses to start and names the file | DL-1 |
+| A power cut after a commit was acknowledged | Nothing acknowledged is lost: the commit’s line was fsynced before it was reported. Streamed text and activity steps sent by `emit` that were still waiting may be lost (ST-4’s stated limit) | INV-12 |
 | The pinned download fails on first start | Postbox doesn’t start the store, shows the failure and the URL, and retries; nothing is written anywhere else | — |
 | Postbox starts on macOS on Intel or on Windows | Postbox refuses to start before downloading anything, and says the platform isn’t supported and which ones are | — |
 | A message is edited while its turn is in flight | The attempt settles `sentRev`; the newer revision stays owed as an amendment with a diff | DL-2, DL-7, INV-13 |
@@ -605,25 +547,25 @@ It needs no state, so it runs the same on a copy, and its counts don’t change 
 | Events arrive during a page load | Queued, then applied if newer than the page | PF-5 |
 | A block is revised far above the window | The reducer’s `item.move` finds nothing and breaks, as today (`shared/state.mjs:107`); the window module fetches the item by id and places it by `n` | PF-6 |
 | A host runs an older protocol | The handshake fails with the `version` failure and the host’s agents show as unavailable until it is updated; nothing is delivered to them | CX-2, DL-8 |
-| Downgrading Postbox after the Store step | An older Postbox doesn’t read Redis, and a newer document shape can’t be read by older code (decision 5); the dated backup restores the JSONL log and snapshot. See “Migration, compatibility and rollback”. | — |
+| Downgrading Postbox after step A1 | An older Postbox doesn’t read `record` events, so it can’t read a newer log; step S2 adds a fallback for the sharded snapshot. See “Migration, compatibility and rollback”. | — |
 
 ## 13. Migration, compatibility and rollback
 
-- **Storage (Store step):** at first start, Postbox downloads and starts the pinned Redis 8, reads `snapshot.json` and the JSONL segments as today, writes every document and the stream in batches, and renames the old files `*.migrated` beside a dated backup. The import is idempotent: a store that already holds the snapshot’s `seq` is left alone. Startup then reads only Redis. A room copied for tests is a copy of the data folder.
-- **Value shapes:** never migrated. Each document carries `v`, and readers upcast (decision 5).
+- **Storage:** nothing to migrate. Events, segments and `snapshot.json` keep their format. Step S2 reads an unversioned snapshot as version 1 and writes shards at its next snapshot (“Storage”).
+- **Value shapes:** never migrated. Each event and shard carries `v`, and readers lift older shapes (“Storage”, decision 6).
 - **Positions:** numbered when a snapshot loads (“Items: position and revision”). No versioned migration.
 - **`se.needs` → asks (A1):** at startup, each session’s `needs` of an ask kind becomes an open ask record, and `needs` is cleared. Readers move to `shared/records.mjs` in the same step.
 - **`se.context` → deliveries (A2):** at startup, each notice becomes a notice item (“Postbox notices as items”) and a `notify` delivery from `postbox`, urgent ones with `urgent: true`, and `context` is cleared, all in one `commit`. The conversion is idempotent: a notice that already has an item is skipped.
 - **`thread.queue` → deliveries (A3) and `schedules` → deliveries (A4):** the same pattern, one step each.
 - **Hosts:** the read contract raises `PROTOCOL_VERSION` from 2 to 3 (`shared/remote-protocol-constants.mjs:8`). Both ends of the handshake reject a mismatch (`server/remote/ssh-connection.mjs:169`, `server/remote/host/daemon-hello.mjs:30`), so there is no mixed-version mode: a host on 2 fails to connect with the existing `version` failure (“It speaks protocol 2; this Postbox speaks 3”), its agents are unavailable until the host’s Postbox is updated, and nothing is delivered to them meanwhile. That is deliberate: one version at a time, as today (decided 28 October). It conflicts with #464 (“Updating Postbox should not strand agents on remote hosts”, P2): under this decision, every agent on a protocol-2 host is unavailable from the person’s update until that host updates. So the remote read contract’s release notes say which hosts to update and how, and #464 gets a comment recording the decision. A v2-against-v3 handshake test covers the message.
-- **Rollback:** an older Postbox reads neither Redis nor `record` and `session.patch` events, and a newer document shape isn’t readable by older code. The dated backup made at the Store step’s first start is the way back, and the release notes say so. Every step after that adds no new event type or document shape unless it says so.
+- **Rollback:** an older Postbox doesn’t read `record` and `session.patch` events, so after step A1 it can’t read a log written by a newer one; the release notes say so, and A1 carries the `BREAKING CHANGE` note. Step S2’s sharded snapshot needs its own way back (a whole-snapshot fallback or a rebuild tool), because an older Postbox would otherwise start empty. Every other step adds no new event type or shape unless it says so.
 
 ## 14. Rollout
 
 ```mermaid
 flowchart TD
   N["Now: ring fix, session.patch, issue 515, task-first envelope"]
-  S["Store: bundled Redis 8"]
+  S["Store: one-line commit, fail closed"]
   A1["Step A1: ask records"]
   A2["Step A2: deliveries, turn outcome, marker"]
   A3["Step A3: the person's queue"]
@@ -655,7 +597,7 @@ flowchart TD
 | Step | Contents | Depends on | Decides: specs, failing first | Confirms: scenario phase, triggers, checks silent |
 |---|---|---|---|---|
 | Harness | Triggers and checks for A1 and A2 (`held-behind-card`, `held-released`, `mention-past-cap`, `edit-while-waiting`, `fail-before-output`, `resend-labeled`; `ask-dropped`, `delivery-dropped`, `unlabeled-repeat`, `marker-before-output`, `needs-mismatch`); the `big-room` seed; `fault-launcher.mjs` behind `POSTBOX_CLAUDE_BIN`, `POSTBOX_CODEX_BIN`, `POSTBOX_KIRO_BIN` and `POSTBOX_AGY_BIN` | — | Each check has a unit test on a recorded room where it fires and one where it stays silent | `delivery.md` phases 1 and 2 on `main` record `ask-dropped` and `delivery-dropped` |
-| Store | The Redis 8 child: Postbox’s CI build of 8.10.3 for macOS arm64, Linux arm64 and Linux x64, hosted with its source; pinned download with checksum; a refusal to start on an unsupported platform; process supervision, config and data under the data folder; `server/store.mjs` on Redis (“Storage”): documents, the `events` stream, `ops`, plain indexes; `emit` pipelined, `commit` as atomic scripts with publish-after-reply; `everysec`; fail-closed-read; the one-time import | — | First specs: the downloaded build matches its pinned checksum, and the hosted source matches the official tarball’s SHA-256; an unsupported platform is refused before any download, with its message; the whole existing suite passes on Redis unchanged; importing a copy of this room gives a state equal to today’s; a kill during a `commit` leaves documents and stream consistent; a failed `commit` leaves state and clients unchanged; the child failing to start or dying shows the status and holds writes; two processes against one Redis keep every transition consistent; write round trips on a copy of this room are within the “Observability and calibration” budget | None: no scenario phase; it changes no behavior an agent or the person can see |
+| Store (replaced by 1a, 1b and, only if needed, S2) | **1a:** `commit(events)` written whole and fsynced on a kept-open file handle, one serialized writer, a bad middle line refusing to start, the history epoch, the data-folder lock, the snapshot written in pieces. **1b:** fail closed with the status line, and Retry as a reload. **S2, only if a stall still passes 50 ms:** a snapshot sharded by conversation, published by a manifest, with a way back for an older Postbox | — | First specs: a kill at every byte of the last commit leaves all or none of it; an unterminated tail is cut and the next append starts on a clean line; a bad middle line refuses to start; several commits share one `fsync` and keep order; a failed write rejects the queue and closes writes, and Retry reloads; a second Postbox is refused; the epoch changes at each load; a replay of a synthetic log equals the live state; commit round trips on a copy of this room are within the “Observability and calibration” budget | None: no scenario phase; it changes no behavior an agent or the person can see |
 | Now | #463’s ring fix; `session.patch`, with `client.mjs` re-emitting it as a whole-session `session` change; #515’s constant system prompt; the task-first envelope | — | PF-2’s paint-count spec with one agent working; live session events in a copy of this room average under 1 KB; every `session` listener in `app/js` passes unchanged; #504’s and #515’s specs | `thread-focus.md`: `thread-request-first` silent (DL-4, #511) |
 | A1 | Ask records; `card.held` becomes deliveries with `heldBy`, keeping `HELD_WAKES`; the Add card as an ask that holds (AT-7); derived needs-you and open asks | Harness; Store | #439’s and #326’s cases; INV-10; AT-7’s held Add card; needs-you counts with a room’s items not loaded; today’s held-wake tests unchanged | `delivery.md` phase 1: `held-behind-card`, `held-released`; `ask-dropped`, `needs-mismatch` silent |
 | A2 | Deliveries; `se.context` as deliveries; the turn-outcome rule and outcome matrix; the marker; INV-9; INV-11; the transient-failure resend; folding; the host note rule and kept-copy change; `settle` on `commit`; `sentRev` and amendments; the receipts table; notice items; CX-4’s compaction notice | A1; Harness; a recorded failing turn and the turn after it, per backend; `fix/466-wake-retry` merged or carried | #484’s cases including the oversized oldest mention; edit before output, after output, late settle; crash between `emit` and append; 21 notices folded and recovered after snapshot and restart; v2 host against v3; receipts counts across snapshot and restart; the outcome matrix from recorded turns; a recorded `compact_boundary` makes the next envelope say so; unlabeled repeats 0 on a copy of this room | `delivery.md` phases 2, 3, 4 and 7, on all four backends (7 on Claude Code): `mention-past-cap`, `edit-while-waiting`, `fail-before-output`, `resend-labeled`, `urgent-note-delivered`, `compaction`; `delivery-dropped`, `unlabeled-repeat`, `marker-before-output`, `wake-text-clipped`, `context-loss-unannounced`, `thread-leak` silent |
@@ -678,8 +620,8 @@ Every step keeps the full browser suite green and passes the size check (INV-7).
 
 | File | Section or row | Change |
 |---|---|---|
-| `architecture.md` | The store | Persistence moves onto a Redis 8 server that Postbox bundles and runs, as the section’s revisit line named Redis Streams; documents are the truth and the stream the sequence, written together; values upcast on read; `everysec` with its stated limit; fail closed for writes. The event model and reducer stay; snapshots go. `commit` is the atomic, publish-after-reply write for lifecycle transitions; `emit` stays optimistic for streamed text. The browser’s state stops being a full projection: headers and open records everywhere, items per window. |
-| `engineering-practices.md` | “Keep runtime dependencies at zero” | One exception, stated: a managed native binary, Redis 8, that Postbox builds in its CI, downloads pinned, verifies and supervises; taken under AGPLv3, with the matching source offered with each release. No npm package. |
+| `architecture.md` | The store | Persistence stays on JSON Lines. A commit is written whole and fsynced; what leaves the process waits for the sync; receipts are derived and checkpointed with the snapshot; a bad line in the middle of a segment refuses to start; Retry is a reload; a data-folder lock refuses a second Postbox; the snapshot is written in pieces, and sharded by conversation only if a stall still passes 50 ms. The event model and reducer stay. `commit` is the atomic write for lifecycle transitions; `emit` stays optimistic for streamed text. The browser’s state stops being a full projection: headers and open records everywhere, items per window. |
+| `engineering-practices.md` | “Keep runtime dependencies at zero” | No change: the 28 October exception for a Redis binary is withdrawn. |
 | `architecture.md` | The front end | The transcript is a window with an explicit view state. |
 | `architecture.md` | A conversation is shared memory | The marker moves on output; deliveries are records; the revisit line becomes “count and cursor”. |
 | `intent.md` | Attention, “Only one wake waits for your confirm at a time” | Several can wait (A1). |
@@ -699,8 +641,8 @@ Every step keeps the full browser suite green and passes the size check (INV-7).
 | Envelope | DL-2, DL-4, DL-5, CX-3 | Spec + conformance | #504’s prompt-order check and real-agent run; #515’s resumed-session check; INV-9 with #484’s mention |
 | What reaches agents | DL-7, MD-3, MD-6, MD-7, CX-1 | Spec | A topic-thread reply wakes its owner; a root author who isn’t the owner gets one notify; a waker’s second post supersedes its queued wake without a mention; reactions follow `reactionLines`’ audience; the cap folds; nothing from a thread enters another agent’s envelope unless read or sent |
 | Context loss | CX-4 | Conformance | A recorded `compact_boundary` makes the next envelope say context may have been summarized; a fresh Kiro or Antigravity session resets the marker |
-| Durability | INV-12, INV-13 | Spec | Redis killed during the dispatch `commit`; a refused or disk-full `commit` leaves state and clients unchanged; a repeated `commit` with the same `opId` writes once; a conversion killed mid-way leaves nothing; edit before output, after output, and a late settle from an old attempt |
-| Store | INV-12 | Spec | The existing suite on Redis; import of a copied room equals today’s state; the child failing to start or dying fails closed with the page readable; two processes against one Redis keep transitions consistent; receipts commit with their event or not at all; an old-shape document upcasts on read |
+| Durability | INV-12, INV-13 | Spec | A kill at every byte of the dispatch `commit` line; a refused or disk-full `commit` leaves state and clients unchanged; a repeated line is skipped by its `seq`; a conversion killed mid-way leaves nothing; edit before output, after output, and a late settle from an old attempt |
+| Store | INV-12 | Spec | The existing suite on the new `commit`; a bad middle line refuses to start; the write failing fails closed with the page readable; a second Postbox against the same folder is refused; receipts derive from their events, so a close and its receipt can’t disagree; an old-shape event lifts on read |
 | Receipts and metrics | MS-1 | Spec | Counts unchanged across a restart; completeness counts an opened-but-never-closed record; pruning never touches an open record; the script’s counts on a small fixture match a hand count |
 | Calibration | MS-3 | Spec | A tuning value in `shared/limits.mjs` without a dated report fails the check |
 | Protocol | CX-2, DL-8 | Spec | A v2 host against v3 fails with the `version` message; agents show unavailable |
@@ -730,10 +672,10 @@ Specs and conformance fixtures decide; a UAT run confirms. Fixtures come from re
 | A metrics projection in `store.state` | Grows with history. Revision 6 also said it “would ship in `/api/state`”, which was a false constraint: what the server stores and what it sends are independent. The real objection is only size; server-only documents keep the facts bounded by retention. |
 | JSON Lines plus our own transaction framing | See “Storage”: a transaction engine written and tested only by Postbox, to keep a format chosen for being simple. |
 | SQLite through `node:sqlite` (revision 10) | A relational schema is its natural shape and the one that stopped an earlier Postbox with migrations between versions; synchronous writes block the event loop; a single-process design by nature. Rejected on the person’s constraints (“Storage”). |
-| Redis 8 without its JSON and search | Serves every lookup this design has, but agent search would stay BM25 inside Postbox and partial updates would rewrite whole values. The person chose Redis 8’s JSON and search from the start (decision 6). |
+| **Redis 8, bundled** (chosen 28 October, recalled 31 October) | It gave atomic scripts and a path to a second writer. #565 fixed the slow room, one-line commits with an `fsync` give atomic writes and the same 4.5 ms durability, and the second writer has no user yet. It cost a native build on three platforms, a download at first start, AGPLv3 hosting, a refusal to run on Intel Macs and Windows, a supervised child with its own security rules, and about 10,000 lines. Recalled by the person after the integrator’s review of #508 (comment 6539637357). |
 | `appendfsync always`, or `WAITAOF` before dispatch | Power-failure safety for every write, or for dispatch alone, at an fsync per write or a barrier per turn. The person first chose `everysec`, then `always` on 29 October after its cost was measured at about 4.5 ms per write (decision 3). |
-| The person installs Redis | A new install step and a failure the person must handle; Postbox bundling it keeps zero setup (decision 1). |
-| Keep writing to memory when Redis is down and reconcile later | A second write path, and a crash in the gap loses the writes. Fail closed for writes instead (decision 7). |
+| A second writer now (ST-2) | Nothing built or filed needs it. A lock file refuses a second Postbox; choose the second writer’s store when one is designed. |
+| Keep writing to memory when the log can’t be written and reconcile later | A second write path, and a crash in the gap loses the writes. Fail closed for writes instead (“Storage”, decision 7). |
 | Multi-version host protocol | Both handshake ends reject a mismatch today; supporting two versions is a new feature with its own tests. One version at a time stays. |
 | Automatic retry on a timer | Turns at-least-once into a loop against a broken backend; resends happen only on the next turn, and stop at `maxResends`. |
 | Rebuilding state from the stream at startup, as today | Needs snapshots and replay; with documents as the truth, startup reads keys and the stream is only the sequence (decision 4). |
@@ -753,7 +695,7 @@ Specs and conformance fixtures decide; a UAT run confirms. Fixtures come from re
 | A downgrade after records exist, or after a newer document shape is written | Low | Backup before first start (“Migration, compatibility and rollback”); release notes say downgrade is unsupported past the Store step |
 | The first-start download fails or is slow | Medium | Postbox shows the failure and retries; the Store step tests an offline first start |
 | Supervising a native child process, and building it, on three targets | Medium | One supervisor module with tests for failed start, port in use, death mid-turn and clean exit; CI builds and tests the pinned version on each target before release |
-| A power cut loses up to a second of writes (`everysec`) | Low | A stated limit of INV-12, chosen by the person; the resend label covers every other case |
+| A drive reports a flush it has not done, or `fsync` fails with `EIO` | Low | A stated limit of INV-12 and ST-4: no recovery can prove the lines are on the disk; the resend label covers every other case |
 | Write round trips add latency to streamed text or turn start | Low to medium | `emit` is pipelined, one `MULTI` per tick; measured in the Store step against the “Observability and calibration” budget |
 | Remote agents are unavailable until every host is updated to protocol 3 (#464) | Medium | The read contract ships with release notes naming the host update; the `version` failure says what to do; #464 records the decision |
 
@@ -771,8 +713,9 @@ Specs and conformance fixtures decide; a UAT run confirms. Fixtures come from re
 | 28 Oct | Protocol: one version at a time; a v2 host is unavailable until updated (gpt-16; conflicts with #464, recorded there) | Person |
 | 28 Oct | `maxResends` is 3; a blocked message stays an open ask until the person answers | Person |
 | 28 Oct | Storage: a Redis 8 server that Postbox bundles and runs; pinned download at first start; `appendfsync everysec`; documents plus stream in one transaction; values upcast on read; Redis 8’s JSON and search from the start; fail closed for writes with the page readable; every transition atomic so a second process can follow (“Storage”, eight decisions) | Person |
+| 31 Oct | **Recalled:** the Redis decisions of 28 October. Persistence stays on JSON Lines with whole, fsynced commits; Retry is a reload; the snapshot is written in pieces now and sharded only if a stall passes 50 ms; ST-2 is deferred; the `redis-v8.10.3` release is withdrawn; PR #553 closes when the commit step’s PR opens. The detail is in `storage-design.md` | Person, with the integrator’s review of #581 |
 | 28 Oct | The data model is key/value or document, never a relational schema | Person |
-| 28 Oct | Redis 8.10.3, built by Postbox’s CI from the official source tarball and hosted with its source (revises storage decision 2); taken under AGPLv3 | Person |
+| 28 Oct | Redis 8.10.3, built by Postbox’s CI from the official source tarball and hosted with its source (revises storage decision 2); taken under AGPLv3 | Person (recalled 31 Oct) |
 | 28 Oct | Supported: macOS arm64, Linux arm64, Linux x64. Unsupported, refused at start: macOS on Intel and Windows | Person |
 | 28 Oct | More than one process or person is likely within a year | Person |
 
@@ -803,6 +746,6 @@ Specs and conformance fixtures decide; a UAT run confirms. Fixtures come from re
 
 **Two things this design does so #516 stays small:**
 - The envelope has a slot for notes now, so adding them later changes no prompt order and needs no system-prompt change on resumed sessions (#515).
-- `askKind`, the reserved event names and the reserved Redis keys are listed now, so #516 adds values, not shapes.
+- `askKind` and the reserved event names are listed now, so #516 adds values, not shapes.
 
 **Not reconciled here, by choice:** the budget and retention rule (SC-1, decision 10.1) and the listing threshold (RF-2, decision 10.2). Pending folder publications are their own lifecycle (above), not records, so they stay out of the delivery state machine; #516 designs them against the turn-end hook and `commit`.
