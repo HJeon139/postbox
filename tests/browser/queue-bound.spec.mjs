@@ -71,3 +71,30 @@ for (const width of [1280, 375])
         expect(pending, 'the follow-ups are queued, not delivered').toBe(queued);
         expect(await share(page), 'the composer’s share of the window').toBeLessThanOrEqual(BOUND);
       });
+
+// The side panel has a composer of its own (side-panel.mjs), the second surface #422 and #360 missed.
+for (const [width, full] of [
+  [1280, false],
+  [375, false],
+  [1280, true],
+])
+  test(`#427 in the thread panel at ${width} px${full ? ', full screen' : ''}: 10 queued keep its composer within ${BOUND * 100}% of the window`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    const { thread, sessions } = await busyRoom(1);
+    const root = app.store.items(thread.id).find((i) => i.kind === 'user');
+    const { threadId } = app.rt.startTopic(thread.id, root.id);
+    await page.goto(`${app.origin}/#/t/${thread.id}/side/${threadId}`);
+    await synced(page, app);
+    if (full) await page.locator('.sidepanel').getByRole('button', { name: 'Full screen' }).click();
+    for (let i = 0; i < 10; i++) app.rt.sendMessage(threadId, { text: `@${sessions[0].handle} follow-up ${i + 1} in the thread` });
+    await synced(page, app);
+    await settled(page);
+    expect(app.store.state.threads[threadId].queue?.length ?? 0, 'the follow-ups are queued').toBe(10);
+    const panelShare = await page.evaluate(() => {
+      const c = document.querySelector('.sidepanel .composer');
+      return (c?.getBoundingClientRect().height ?? 0) / innerHeight;
+    });
+    expect(panelShare, 'the panel composer’s share of the window').toBeLessThanOrEqual(BOUND);
+  });
