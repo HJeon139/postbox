@@ -1,28 +1,25 @@
 // Queued messages for one agent (#427): a counted mail button in its row, and a bounded dialog with each message’s actions.
 
+import { conversationOf, threadsOfConversation } from '/shared/conversation.mjs';
 import { api, client } from './client.mjs';
 import { h, icon, syncList } from './dom.mjs';
 import { openDialog, openMenu, toast } from './ui.mjs';
 
 const S = () => client.state;
 
-function rootOf(thread) {
-  let current = thread;
-  while (current?.parentId) current = S().threads[current.parentId];
-  return current?.id;
-}
-
 function entriesFor(sessionId) {
   const session = S().sessions[sessionId];
   if (!session) return [];
-  return Object.values(S().threads)
-    .filter((thread) => rootOf(thread) === session.threadId)
+  return threadsOfConversation(S().threads, session.threadId)
+    .map((id) => S().threads[id])
     .flatMap((thread) => (thread.queue ?? []).filter((q) => q.sessionIds.includes(sessionId)).map((q) => ({ thread, q })));
 }
 
 function queuedMessageRow(entry, repaint, at = 1, of = 1) {
   const { thread, q } = entry;
   const target = `/api/threads/${thread.id}/queue/${q.id}`;
+  // Each button’s name starts with what it shows and says which message, so identical messages differ (V5).
+  const which = `message ${at} of ${of}, “${q.text.replace(/\s+/g, ' ').slice(0, 40)}”`;
   const row = h(
     'li.agent-queue-row',
     h('p.small.dim', q.kind === 'wake' ? `From @${q.from} · ${thread.title}` : thread.title),
@@ -31,7 +28,11 @@ function queuedMessageRow(entry, repaint, at = 1, of = 1) {
       'div.row-flex.wrap',
       h(
         'button.btn.sm',
-        { type: 'button', onclick: () => api(`${target}/send`, {}).catch((e) => toast({ title: 'Couldn’t send now', text: e.message })) },
+        {
+          type: 'button',
+          'aria-label': `Send now: ${which}`,
+          onclick: () => api(`${target}/send`, {}).catch((e) => toast({ title: 'Couldn’t send now', text: e.message })),
+        },
         'Send now',
       ),
       q.kind === 'wake'
@@ -40,6 +41,7 @@ function queuedMessageRow(entry, repaint, at = 1, of = 1) {
             'button.btn.sm.ghost',
             {
               type: 'button',
+              'aria-label': `Edit ${which}`,
               onclick: (event) => editQueuedMessage(row, q, target, repaint, event.currentTarget),
             },
             'Edit',
@@ -48,7 +50,7 @@ function queuedMessageRow(entry, repaint, at = 1, of = 1) {
         'button.btn.sm.ghost',
         {
           type: 'button',
-          'aria-label': `Remove queued message ${at} of ${of}, “${q.text.replace(/\s+/g, ' ').slice(0, 40)}”`,
+          'aria-label': `Remove queued ${which}`,
           onclick: () => api(target, undefined, 'DELETE').catch((e) => toast({ title: 'Couldn’t remove', text: e.message })),
         },
         icon('x', 'i-sm'),
@@ -191,7 +193,7 @@ export function paintOfflineQueue(container, messages) {
 
 /** The conversation’s agents with something queued for them, and how many each. */
 function waitingIn(threadId) {
-  const conv = rootOf(S().threads[threadId]);
+  const conv = conversationOf(S().threads, threadId);
   return Object.values(S().sessions)
     .filter((se) => se.threadId === conv && !se.archived && !se.deleting)
     .map((se) => ({ se, n: entriesFor(se.id).length }))

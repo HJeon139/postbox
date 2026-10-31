@@ -72,6 +72,21 @@ for (const width of [1280, 375])
         expect(await share(page), 'the composer’s share of the window').toBeLessThanOrEqual(BOUND);
       });
 
+// A short phone (375 × 568, the iPhone SE size): the bound is a share of the height, so it is tightest here.
+for (const agents of [1, 5])
+  test(`#427 on a 375 × 568 phone: 10 queued for ${agents === 1 ? 'one agent' : `${agents} agents`} keep the composer within ${BOUND * 100}%`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 568 });
+    const { thread, sessions } = await busyRoom(agents);
+    await page.goto(`${app.origin}/#/t/${thread.id}`);
+    await synced(page, app);
+    for (let i = 0; i < 10; i++) app.rt.sendMessage(thread.id, { text: `@${sessions[i % agents].handle} follow-up ${i + 1}` });
+    await synced(page, app);
+    await settled(page);
+    expect(await share(page), 'the composer’s share of a short phone').toBeLessThanOrEqual(BOUND);
+  });
+
 // The side panel has a composer of its own (side-panel.mjs), the second surface #422 and #360 missed.
 for (const [width, full] of [
   [1280, false],

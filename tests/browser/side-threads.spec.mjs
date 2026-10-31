@@ -105,7 +105,7 @@ test('a wake while that session is busy waits in the conversation’s queue: no 
   await mail.click();
   const queued = page.locator('.agent-queue-row', { hasText: 'From @indexer' });
   await expect(queued).toContainText('One question meanwhile.');
-  await expect(queued.getByRole('button', { name: 'Edit', exact: true }), 'a wake can’t be edited').toHaveCount(0);
+  await expect(queued.getByRole('button', { name: /^Edit message/ }), 'a wake can’t be edited').toHaveCount(0);
   await settled(page);
   await expect(row(page, 'researcher').locator('.agent-sub'), 'its row has no entry of its own').toHaveCount(0);
   await expect(row(page, 'researcher').locator('.agent-btn')).toContainText('calling tools');

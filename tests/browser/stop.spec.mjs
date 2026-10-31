@@ -15,6 +15,8 @@
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, focusIs, startPostbox, synced } from './postbox.mjs';
 
+const SEND_NOW = { name: /^Send now/ };
+
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
 /** The job’s process group: signals are recorded, nothing is sent. */
@@ -245,10 +247,8 @@ test('#215 a queued message’s Send now: the reply it interrupted says so, and 
   const { rt, store } = app;
   const { room, se, state, lastTag } = await withJob(page, 'Send now');
   rt.sendMessage(room.id, { text: 'A one-line status, please.' });
-  const queuedButton = page.getByRole('button', { name: new RegExp(`message.*queued for @${se.handle}`) });
-  await expect(queuedButton, 'the queued message').toBeVisible();
-  await queuedButton.click();
-  await page.locator('.agent-queue-row').getByRole('button', { name: 'Send now', exact: true }).click();
+  await page.getByRole('button', { name: new RegExp(`message.*queued for @${se.handle}`) }).click(); // its agent's mail
+  await page.locator('.agent-queue-row').getByRole('button', SEND_NOW).click();
   await expect
     .poll(() => state() === 'idle' && store.state.sessions[se.id].jobs.some((j) => j.kept), { message: 'the next turn, with the job kept' })
     .toBe(true);
@@ -289,7 +289,7 @@ test.describe('at 375 px', () => {
     await synced(page, app);
     await page.locator('#conversation-actions').click();
     await page.getByRole('menuitem', { name: new RegExp(`message.*queued for @${se.handle}`) }).click();
-    await page.locator('.agent-queue-row').getByRole('button', { name: 'Send now', exact: true }).click();
+    await page.locator('.agent-queue-row').getByRole('button', SEND_NOW).click();
     await expect(page.locator('.stopped-tag', { hasText: 'Interrupted by Send now' })).toBeVisible();
     await idle();
     await expect(page.locator('.stopped-tag'), 'both stopped replies’ tags, to measure').toHaveCount(2);

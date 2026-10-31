@@ -2,7 +2,7 @@
 // capped, a waiting line near the composer keeps the queue visible, Remove buttons have distinct names, and the
 // agent’s dialog is modal, labelled, and gives focus back somewhere that exists.
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
+import { allowPageError, failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -89,14 +89,34 @@ test('V2: with one agent waiting, the line opens its dialog directly', async ({ 
   await expect(page.getByRole('dialog', { name: `1 queued for @${sessions[0].handle}` })).toBeVisible();
 });
 
-test('V5: two identical queued messages have Remove buttons with different names', async ({ page }) => {
+test('V5: two identical queued messages have Send now, Edit and Remove buttons with different names', async ({ page }) => {
   const { thread, sessions } = await busyRoom(page);
   for (let i = 0; i < 2; i++) app.rt.sendMessage(thread.id, { text: `@${sessions[0].handle} the same words` });
   await synced(page, app);
   const dialog = await openMail(page, sessions[0]);
-  const names = await dialog.getByRole('button', { name: /^Remove queued message/ }).evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')));
-  expect(names).toHaveLength(2);
-  expect(new Set(names).size, `distinct names: ${names.join(' | ')}`).toBe(2);
+  for (const action of ['Send now', 'Edit', 'Remove']) {
+    const names = await dialog
+      .locator('.agent-queue-row button')
+      .evaluateAll((els, a) => els.map((e) => e.getAttribute('aria-label') ?? e.textContent ?? '').filter((n) => n.startsWith(a)), action);
+    expect(names, `${action} buttons`).toHaveLength(2);
+    expect(new Set(names).size, `distinct ${action} names: ${names.join(' | ')}`).toBe(2);
+    for (const n of names) expect(n.startsWith(action), `the name begins with the visible text “${action}”`).toBe(true);
+  }
+});
+
+test('offline to queue: a message saved offline leaves the composer’s offline rows and joins the queue on reconnect', async ({ page }) => {
+  const { sessions } = await busyRoom(page);
+  allowPageError(page, /ERR_INTERNET_DISCONNECTED/);
+  await page.context().setOffline(true);
+  await page.locator('#composer-input').fill(`@${sessions[0].handle} written while offline`);
+  await page.locator('#composer-input').press('Enter');
+  await expect(page.locator('.composer .queued').filter({ hasText: 'written while offline' })).toBeVisible();
+  await page.context().setOffline(false);
+  // The stream reconnects as EventSource's own retry does; headless Chromium keeps an open stream through setOffline.
+  await page.evaluate(async () => (await import('/app/js/client.mjs')).connect());
+  await synced(page, app);
+  await expect(page.locator('.composer .queued')).toHaveCount(0);
+  await expect(page.locator('.composer').getByRole('button', { name: '1 waiting for 1 agent' })).toBeVisible();
 });
 
 test('V6: the dialog keeps Tab inside, closes on Escape, and gives focus back to the mail button', async ({ page }) => {
