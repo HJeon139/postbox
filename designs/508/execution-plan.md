@@ -105,6 +105,19 @@ The person approved the change-scoped table on 30 October 2026 (block `process-l
 
 Store and the read contract have no scenario phase; their specs and conformance tests decide them alone. PF-1 and PF-2 are decided by Playwright specs only.
 
+## Definition of done for a pull request
+
+Added 31 October 2026, with the person’s approval of the team principles (`room-rules.md`, “Quality”). It maps onto the four parts of the pull request’s body in `designs/developing.md`, so a body is not longer for it:
+- **Background:** requirement and design ids, with any decision that moved; the invariants and the failure table, or “not applicable” and why.
+- **Details:** security (trust boundary, files, permissions, filesystem assumptions, secrets, or “none”); operations (upgrade and downgrade, logs, release note, rollback); the class swept and what was found; docs updated in the same change.
+- **Testing:** each test shown failing first for the stated reason, each check with its negative control; `npm run check` and, for UI changes, both browser runs; each claim with its command.
+- **Declined:** what is not done here and what is unverified.
+- **Reviews:** a peer review and critic’s read on the latest head before the push is asked for; an outside write approved by the person for the version they saw.
+
+**How it is tracked.** critic keeps a short list of defect classes per pull request. When a class appears twice, the team aligns on a principle, and the next pull request is read against it. researcher checks each body against this list and re-reads the decision log for decisions that moved.
+
+**To automate**, in this order, each its own issue: a pull request body lint (the four parts, the length cap, requirement ids, a command and result for each “tested” claim, a claimed hash or file that exists); a job that runs the spec files a pull request adds or changes against the merge-base code and requires a failure per changed file; a lint that files in the data folder are created only through the shared publish and write helpers; and the delivery check of #585. None is built yet.
+
 ## How the room talks
 
 - **Each step gets a conversation of its own** (room rule 8), with the step’s issue and the four `designs/508/` paths as its brief. This room stays the place for the plan, cross-step questions and the person’s decisions.

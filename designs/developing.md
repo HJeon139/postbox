@@ -75,7 +75,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 | Conventional Commits | `tools/lint-commits.mjs` on a pull request in CI; the local hook only after `npm run hooks` |
 | Real agents doing the right thing | The end-to-end UAT, which no CI job runs and which costs real usage |
 
-**These stay review findings, because no checker expresses them:** a `catch` narrow enough to say what it handles; an error that tells a person what happened and what to do; a domain value given a union type instead of a `bool`; a switch that throws on the case it didn’t expect; a promise that’s awaited or handled; a child process with an `error` handler and a kill path; a branch on a structured field rather than on text; a lookup with `Object.hasOwn`; failing closed; a test that asserts a side effect didn’t happen; and a fixture that was recorded. Each is a judgment about a piece of code, not a pattern a linter can match.
+**These stay review findings, because no checker expresses them:** the invariants and the failure table of anything concurrent or durable, and whether the table is complete; the trust boundary of a change; whether a class sweep found every sibling; a negative control that fails for the stated reason; a `catch` narrow enough to say what it handles; an error that tells a person what happened and what to do; a domain value given a union type instead of a `bool`; a switch that throws on the case it didn’t expect; a promise that’s awaited or handled; a child process with an `error` handler and a kill path; a branch on a structured field rather than on text; a lookup with `Object.hasOwn`; failing closed; a test that asserts a side effect didn’t happen; and a fixture that was recorded. Each is a judgment about a piece of code, not a pattern a linter can match.
 
 ### Running the gate
 
@@ -250,7 +250,10 @@ Each habit comes from a defect that cost a fix in Postbox or in an earlier servi
 4. **Walk the whole chain in a new environment.** For a new backend, a new browser or a new listen address, trace the turn, the permissions, the stream and the rendering end to end before saying it works. Headless Chrome passed every sandboxed app while the desktop app’s pane refused them all (architecture.md, “Sandboxed pages that load nothing”).
 5. **A test asserts what its name claims.** A test named for order asserts order. Every contract that lands (a limit, an MCP tool, a setting passed to a turn, a catalog block) lands with the test that pins it, as the test that fails when a limit is missing from the guide does.
 6. **Check a dependency’s behavior before relying on it.** Read the documentation, the SDK’s shipped `sdk.d.ts`, or a real turn, and use the mechanism it gives. `noImplicitAny` is off and the optional SDK may not be installed, so `tsc` won’t tell you a call matches.
-7. **Fix a defect you find, within the scope rule.** A bug in your own change is always yours. A defect you find in files you own, with evidence, is cheapest to fix in the session that found it. One outside them, or one that adds scope, is filed as an issue that carries its evidence, never left unsaid (prompts/README.md, “Scope”). “That was already broken” identifies a defect and leaves it there.
+7. **Publish whole or not at all, and refuse on ambiguity.** Never expose a partial file, record or message: write a draft, then publish it with an atomic step (a rename, a hard link). Never reclaim, delete or overwrite on a guess, an age or an empty file; refuse and say why. The data-folder lock failed review three times in 1a for creating a file and filling it afterwards, and for reclaiming a mutex by age (`designs/508/storage-design.md`, “The data-folder lock”).
+8. **One failure path.** Failures go through one function that closes, rejects and restores state, written once and tested once. Fixing the commit failure left the flush failure open in the same file, because there were two ways to fail and one funnel.
+9. **Every check has a negative control, and fails for the stated reason.** A new assertion is shown failing on the input it should reject; a new spec is shown failing on the code without the change, for the reason the test names (an import error or a missing helper does not count). A baseline test that records today’s behavior is named so, and does not assert a model’s wording. A check that cannot fail, such as “no output” on a one-line stream, proves nothing.
+10. **Fix a defect you find, within the scope rule.** A bug in your own change is always yours. A defect you find in files you own, with evidence, is cheapest to fix in the session that found it. One outside them, or one that adds scope, is filed as an issue that carries its evidence, never left unsaid (prompts/README.md, “Scope”). “That was already broken” identifies a defect and leaves it there.
 
 ## Progress in living documents
 
@@ -337,10 +340,10 @@ engineering-practices.md, “Commits and versions”, holds the Conventional Com
 ### The pull request’s body
 
 Reviewers put off a change that looks large, so the body’s job is context, not an inventory. Decide what this reviewer has to judge, write that, and link the rest. Keep it under about 60 lines, reached by cutting content rather than rewording.
-1. **Background:** why the change is happening. Link the issue and the design section.
-2. **Details:** what changed, top-down: where in the architecture, then the specific parts. A small Mermaid `flowchart` or `sequenceDiagram` when the change crosses modules.
+1. **Background:** why the change is happening. Link the issue and the design section, name the requirement ids, and say if a decision moved while you worked. For anything concurrent, durable or security-relevant, give its invariants and its failure table (what is on disk, what a concurrent reader sees and what the person sees after a kill at each step), or say it does not apply and why.
+2. **Details:** what changed, top-down: where in the architecture, then the specific parts. A small Mermaid `flowchart` or `sequenceDiagram` when the change crosses modules. Add the security (the trust boundary, the files and permissions it touches, secrets, or “none”), the operations (upgrade and downgrade, logs, release note, rollback), and the class swept: where else the same defect could be, and what was found.
 3. **Testing:** how it was verified. Name each command and its result (`npm run check`, `npx playwright test` with and without `POSTBOX_STREAM_LAG=300`, the specs you added), and describe manual steps so a reviewer can replay them, down to the port and the message typed.
-4. **Declined:** what the review raised that you didn’t take on, with the reason, or the issue you filed.
+4. **Declined:** what the review raised that you didn’t take on, with the reason, or the issue you filed; and what is not done here and what is unverified, named as such.
 
 End it with “🤖 Generated with [Claude Code](https://claude.com/claude-code)” when an agent wrote it.
 
