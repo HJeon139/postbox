@@ -4,15 +4,17 @@ Decided on 21 October 2026, after Stage 2. Each section states the decision, wha
 
 ## 1. The store: an event log with snapshots, not a database
 
-**Decided next** (28 October 2026, [#508](https://github.com/HJeon139/postbox/issues/508); built in the Store step, [#525](https://github.com/HJeon139/postbox/issues/525)). This section’s revisit line has been reached: more than one server process or person is likely within a year, the delivery records in #508 need transactions, and search is coming. So persistence moves onto a Redis 8 server that Postbox bundles and runs. Until #525 merges, the event log below is what runs, and this section is rewritten as the current decision when it does.
-- **Data model:** key/value and JSON documents, never a relational schema. Values carry a small version and are lifted to the current shape on read, never rewritten, so no install runs a migration. SQLite was set aside on this ground: an earlier Postbox used it, and its schema migrations between versions slowed every rollout to existing installs.
-- **Writes:** documents and the `events` stream are written together in one atomic step. Every record transition is atomic in Redis, so nothing assumes a single writer. Streamed text keeps a fast path; lifecycle changes use `commit`, which publishes only after Redis has replied.
-- **Durability:** `appendfsync everysec`. A crash of Postbox or Redis loses nothing committed; a power cut can lose up to one second of writes, a limit the release notes state.
-- **When Redis is down:** writes are refused and the page stays readable, with the cause and Retry. Writes reopen only once Postbox has read back everything Redis holds.
-- **The server:** Redis 8.10.3 with its built-in JSON and search, built by Postbox’s CI for macOS arm64, Linux arm64 and Linux x64 and published with its source under AGPLv3 ([redis-v8.10.3](https://github.com/HJeon139/postbox/releases/tag/redis-v8.10.3)). Postbox downloads its platform’s build on first start, checks its SHA-256 and supervises it as a child process. It refuses to start on an Intel Mac or Windows. This is the one exception to zero runtime dependencies; `engineering-practices.md` records it with #525.
-- **Who can reach it:** Redis listens only on a Unix socket in a private folder, with no TCP port. Its default user is off, and Postbox’s own user can’t run commands that reach outside the store or reconfigure it (`REPLICAOF`, `MIGRATE`, `CONFIG SET`, `MODULE`, `ACL` changes), even from Lua. Its credential never reaches an agent, a log or a remote host, and its files are private. This uses the same bar as “Writes need the page’s token”: the casual path fails, but it isn’t a boundary against a process running as the person that sets out to get in. Requirements SR-1 to SR-8 in `designs/508/requirements.md`; design in `designs/508/design.md`, “Store security”.
-- **Stays:** the event types, the shared reducer and the stream that browsers resume from. **Goes:** snapshots and log segments; a browser behind the stream’s retention gets `resync`, as today.
-- **Detail:** `designs/508/design.md`, “Storage: a Redis 8 that Postbox bundles and runs”, and requirements ST-1 to ST-4 and PF-9 in `designs/508/requirements.md`.
+**Decided next** (31 October 2026, [#508](https://github.com/HJeon139/postbox/issues/508)). The Redis decision of 28 October was recalled: #565 and v1.3.0 fixed the slow room, which Redis was never chosen for, and the second writer it was chosen for has no user yet. The event log below stays, with these changes, built in steps 1a and 1b (and S2 when its budget triggers). Until they merge, the log below is what runs.
+- **A commit is one line.** `commit(events)` writes its events as one line of the log and `fsync`s it, so a turn’s records and marker commit together or not at all. Streamed text keeps the fast path (`emit`), unsynced. Measured on the developer’s Mac: 4.2 to 4.6 ms per `fsync`.
+- **One serialized writer,** so a commit follows the emits before it and no later emit overtakes it. No adapter starts before the `fsync` has succeeded.
+- **Recovery:** an incomplete final line is cut; a bad line in the middle of a segment refuses to start and names the file, instead of silently dropping everything after it.
+- **When a write fails** (a full disk, a read-only folder, EIO), writes are refused and the page stays readable, with the cause and Retry. Writes reopen only once the torn tail is cut and the log reads back whole.
+- **Receipts** are derived from the record events and kept in their own shard, so they outlive a snapshot.
+- **Snapshots** are sharded by conversation when a snapshot stall passes 50 ms or the store nears 40 MB (today about 37 ms on a 13.85 MB copy, and 16 MB, growing about 1 MB a day): one file per changed conversation, published by a manifest written last.
+- **One writer.** A lock file in the data folder refuses a second Postbox. Revisit when a second process is designed.
+- **A history epoch** made at each load tells a tab on a lost timeline to resync.
+- **Data model unchanged:** key/value and documents, never a relational schema; older shapes lifted on read, never rewritten.
+- **Detail:** `designs/508/design.md`, “Storage: JSON Lines, one line per commit”, and requirements ST-1 to ST-4 and PF-9 in `designs/508/requirements.md`.
 
 **Decision.** Postbox keeps its data as an append-only event log in JSON Lines, plus periodic snapshots of the state, in its data folder. Every read comes from an in-memory projection of that log. Binary files go to a separate content-addressed blob store. All of this sits behind one small storage interface (`server/store.mjs`).
 
@@ -33,7 +35,7 @@ Decided on 21 October 2026, after Stage 2. Each section states the decision, wha
 |---|---|---|
 | One JSON file, rewritten whole (Stage 2) | Simple | Each write serializes the entire state. That’s fine at tens of kilobytes; after months of use it blocks the event loop on every streaming reply. |
 | **Event log (JSONL) + snapshots** | Matches the event model exactly. Appends are cheap and crash-tolerant. No schema beyond the event types. No dependencies. | **Chosen.** |
-| Redis (Streams + AOF) | Streams are a good log, and AOF is itself an append-only file | Adds a server to install and run, a network hop and a runtime dependency, for one user in one process. It earns its place only with several server processes or users. |
+| Redis (Streams + AOF) | Streams are a good log, and AOF is itself an append-only file | Adds a server to install and run, a network hop and a runtime dependency, for one user in one process. Chosen on 28 October and recalled on 31 October; it earns its place only with several server processes or users. |
 | SQLite (`node:sqlite`, built into Node 22) | Transactions and durability in one file, still schema-light: one events table and one snapshot table holding JSON | Still marked experimental in Node 22, and it prints a warning. It’s the first candidate if we need transactions across files or queries. |
 | A document or relational database (Postgres and so on) | — | Schema and operations work with no payoff for this use case. |
 
@@ -59,7 +61,7 @@ flowchart LR
 
 **Attachments.** Files are stored by the SHA-256 of their contents under `blobs/ab/cdef…`, so identical files are kept once and corruption is detectable. The log holds only metadata: `{ id, name, type, size, sha256 }`. Files are served with `X-Content-Type-Options: nosniff` and a `sandbox` content-security policy. Only PNG, JPEG, GIF and WebP images are shown inline; everything else downloads. Large content never enters the log, so snapshots stay small.
 
-**Revisit when** Postbox runs as more than one server process, serves more than one person, or needs queries across history (for example, search). Then move the same interface onto SQLite or Redis Streams, or Postgres for many users.
+**Revisit when** Postbox runs as more than one server process, serves more than one person, or needs queries across history (for example, search). Then move the same interface onto SQLite, Redis Streams or Postgres, and choose by the need then. Redis Streams was chosen on 28 October 2026 and recalled on 31 October (see “Decided next”).
 
 ## 2. How agent data reaches the store
 
