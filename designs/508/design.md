@@ -95,7 +95,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-  RT["Runtime"] -->|"emit, commit"| DB[("JSON Lines log and snapshot: events, shards, receipts")]
+  RT["Runtime"] -->|"emit, commit"| DB[("JSON Lines log and snapshot: events, snapshot, receipts")]
   DB --> ST[("Server state: all items, open records")]
   RT --> REC["Records: deliveries and asks"]
   REC --> ENV["Turn envelope"]

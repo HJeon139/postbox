@@ -18,7 +18,7 @@ flowchart TD
 |---|---|---|
 | [`requirements.md`](requirements.md) | The functional requirements (DL, MD, AT, SW, PF, CX, MS), each with its sources, including storage (ST) and store security (SR), and in “Acceptance, test first” the layer and test that decide it | Revision 4.5, approved (4.3 in [comment 6482761957](https://github.com/HJeon139/postbox/issues/508#issuecomment-6482761957)) |
 | [`design.md`](design.md) | The design: one record collection, delivery decided by how a turn ends, a windowed browser, and storage on the JSON Lines log with one-line commits | Revision 12, approved |
-| [`storage-design.md`](storage-design.md) | The storage engineering design: the line format, the writer, recovery, failing closed, the epoch, the lock, snapshots, crash points, performance, and a test plan | Draft 5, for the principal-engineer review |
+| [`storage-design.md`](storage-design.md) | The storage engineering design: the line format, the writer, recovery, failing closed, the epoch, the lock, snapshots, crash points, performance, and a test plan | Draft 8, approved by the integrator |
 | [`testing-strategy.md`](testing-strategy.md) | The `delivery.md` and `bigroom.md` UAT scenarios, with their triggers, checks, seed and fault launcher. A run confirms; a spec written first decides. | Approved, with names aligned to the requirements |
 | [`room-rules.md`](room-rules.md) | How agents on Claude Code, Codex and Antigravity coordinate on this work, and the bug behind each rule | Approved |
 | [`execution-plan.md`](execution-plan.md) | Who builds, reviews and confirms each step, the waves steps run in, the gates before a merge, and what must be decided before the first step | Revision 2, approved |

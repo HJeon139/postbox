@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft 7, 31 October 2026. Retry is a reload (the integrator’s first simplification, with gpt’s conditions). The integrator’s second simplification is recorded as an alternative, not adopted, until its readers are named (gpt’s review, approved by the person). Open: Q9 and Q11 |
+| **Status** | Draft 8, 31 October 2026, approved by the integrator on #580. Retry is a reload (with gpt’s conditions) and belongs to 1b; 1a closes the store to commits at the first failure and restarting is the recovery (Q9). The held queue stays for 1a (Q11). Nothing is open |
 | **Editor** | researcher |
 | **Contributors** | developer (writer and load), gpt (recovery contract and storage specs), engineer (measurements, positions), gemini (benchmark, UAT tools), critic (requirements audit and the store’s makeup) |
 | **Replaces** | `design.md`, “Storage: a Redis 8 server that Postbox bundles and runs” (the 28 October decision, recalled on 31 October 2026) |
@@ -213,14 +213,14 @@ stateDiagram-v2
 
 **Retry is a reload, not a repair (the integrator’s simplification, with gpt’s conditions).** There is no second recovery path beside `load()`, and no queue comparison or queue replay.
 
-- **At the failure:** every queued commit is rejected with the cause, and the volatile queue is discarded. Writes close: later commits and emits are refused with the cause (HTTP 503 and a tool error), turns do not start, and the page shows one status line with a Retry. The page keeps serving the published state.
+- **At the failure (1a):** every queued commit, and every later one, is rejected with the cause. A commit that is refused never becomes `sent`, which is the property A1 needs. Emits keep applying to memory with one logged error, as today, because without 1b’s status line the page has no way to show that writes are closed. **Restarting Postbox is the recovery:** `load()` handles every on-disk case (a landed commit, a fragment, a gap). There is no reload in 1a: a reload without 1b’s quiesce, fence and durability barrier is the partial Retry that the conditions below exist to prevent (the integrator).
+- **At the failure (1b):** the same rejection, and writes close: later commits and emits are refused with the cause (HTTP 503 and a tool error), turns do not start, and the page shows one status line with a Retry. The page keeps serving the published state.
 - **Retry, in this order** (gpt: nothing recovered is exposed, and no reconciled work is activated, until the durability barrier has passed):
   1. **Quiesce the old writer.** Stop it, close its descriptor, **fence its late callbacks**, stop and fence running turns, and keep the data-folder claim throughout. A second Store taking the claim, or an old append completing after the reload, is not a valid Retry.
   2. **Load into a private recovery candidate,** a fresh state with a new epoch, and rebuild the `opId` results. `load()` already handles a commit that landed despite the `fsync` error, a fragment and a gap. **Prepare** the runtime reconciliation against the candidate (timers, scheduled wakes, pending turns, records `sent` with no live turn going back to `waiting`, labeled) **without activating** any timer or delivery.
   3. **Establish durability.** A reload reads through the page cache, so a line may be there that a failed `fsync` never flushed, and on Linux a second `fsync` on the same descriptor can report success without writing it. So `fsync` the retained segment **on a fresh descriptor**, and its directory, before anything below. A fresh descriptor avoids relying on the failed descriptor’s error history; it is not by itself proof that the bytes are durable. **If durability cannot be established, stay closed, discard the candidate, and keep the previous published view readable.**
   4. **Install and activate.** Atomically install the recovered public state and the new epoch, resync connected readers through the epoch, then activate the reconciled runtime work and reopen writes. Reconciliation that itself generates durable lifecycle transitions respects their commit barriers.
 - **What is lost:** queued emits (streamed text and activity steps). That is ST-4’s stated limit, and T-23 accepts it. After an `EIO` from `fsync`, no recovery can prove that lines read back are on the disk (ST-4).
-- **Interim in 1a** (before 1b’s refusal exists): with the public state published only after the sync, a failed write leaves only optimistic emits ahead of the disk. developer applies them to memory and logs one error; critic would reload at the failure. **Open: Q9.**
 
 ### 6.7 The history epoch (#567)
 
@@ -228,7 +228,7 @@ A random token is made at each `load()`, including Retry’s. `/api/state` carri
 
 ### 6.8 The data-folder lock
 
-A file `lock` created exclusively (`O_EXCL`) holds the process id and a start time. It is created before `load()` and removed at the final close, by its owner only, on every writable entry point (the command line and a direct server start; today’s claim covers the command line only, gpt). A **stale** lock (its process gone, or a reused pid with a different start time) is taken over by **renaming it to a unique name first**, so only one of two Postboxes that find it stale succeeds, and then creating the new lock exclusively (critic). A live holder refuses the second Postbox with a message naming the pid. A crash leaves the lock for the next start to find stale.
+A file `lock` created exclusively (`O_EXCL`) holds the process id and a start time. Node has no API for another process’s start time, so it is read by spawning `ps -o lstart= -p <pid>` with an argument array; a reused pid then shows a different start time, which T-17 covers. It is created before `load()` and removed at the final close, by its owner only, on every writable entry point (the command line and a direct server start; today’s claim covers the command line only, gpt). A **stale** lock (its process gone, or a reused pid with a different start time) is taken over by **renaming it to a unique name first**, so only one of two Postboxes that find it stale succeeds, and then creating the new lock exclusively (critic). A live holder refuses the second Postbox with a message naming the pid. A crash leaves the lock for the next start to find stale.
 
 ### 6.9 Snapshots and pruning
 
@@ -400,8 +400,8 @@ Nothing needs a migration: events, segments and `snapshot.json` keep their forma
 - **Q8. A gap in `seq`.** Start, log the range and count lost, show it once (the integrator, developer).
 
 **Open**
-9. **Q9. Emits after a failure, before 1b exists.** developer: keep applying them to memory and log one error. critic: reload at the failure so they are discarded. With the public state published only after the sync, only optimistic emits are ahead of the disk; which does 1a ship?
-11. **Q11. A possible later replacement of the held queue** (the integrator’s second simplification: hold the broadcast, not the emits). The 1a decision stands: a commit is applied to the public state only after its sync, and emits made meanwhile are held. The alternative is valid only with publication barriers on every outward reader and lifecycle effect, or an immutable published projection (gpt), and with T-31 and T-32. Revisit it once A1 and A2 have named their effects.
+9. **Q9. Emits after a failure, before 1b exists.** Decided by the integrator: in 1a, close the store to commits at the first failure and do not reload; emits keep applying to memory with one logged error; restarting is the recovery; the reload belongs to 1b, built once, with the conditions in “When a write fails (ST-3)”.
+10. **Q11. A possible later replacement of the held queue** (the integrator’s second simplification: hold the broadcast, not the emits). Decided for 1a: the held queue stays, because the runtime reads `store.state` directly (read tools, turn delivery, scheduled wakes, HTTP actions). 1a’s PR body lists every call site it audited, with T-31 and T-32. The alternative would be valid only with publication barriers on every outward reader and lifecycle effect, or an immutable published projection (gpt). Revisit it once A1 and A2 have named their effects.
 
 ## 14. References
 

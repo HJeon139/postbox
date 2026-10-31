@@ -126,5 +126,5 @@ Store and the read contract have no scenario phase; their specs and conformance 
 | gemini runs with publishing off, which nothing enforces (#400) | gemini doesn’t push or comment on GitHub; developer does. |
 | Three steps in flight overload two reviewers | Lower the cap to two if review lags a step by more than a day. |
 | Kiro isn’t available for DL-8 runs | Report Kiro as unverified until the person decides (item 6). |
-| A one-line commit is a transaction engine only Postbox tests (the 28 October objection to plain JSON Lines) | Evidence: a kill at every byte of the last commit line and a replay of a copy of a real log, both as tests that fail first (step 1a) |
+| A one-line commit is a transaction engine only Postbox tests (the 28 October objection to plain JSON Lines) | Evidence: a kill at every byte of the last commit and a replay of a synthetic log with the real shape, both as tests that fail first (step 1a); a replay of a real store stays a local check that is not committed |
 | A check can’t fire on `main` because it reads records `main` doesn’t have | Checks read only items, sessions, agent streams and page probes, and use records only as extra evidence once they exist (critic’s fix, item 4). |
