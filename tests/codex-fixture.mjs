@@ -4,7 +4,7 @@
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 
-export function fakeAppServer(seen, { hold = false, error = null, then = 'complete', mcpServers = [] } = {}) {
+export function fakeAppServer(seen, { hold = false, error = null, then = 'complete', mcpServers = [], threadError = (_req) => null } = {}) {
   const child = new EventEmitter();
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
@@ -32,6 +32,11 @@ export function fakeAppServer(seen, { hold = false, error = null, then = 'comple
           })}\n`,
         );
       if (['thread/start', 'thread/resume', 'thread/fork'].includes(req.method)) {
+        const failure = threadError(req);
+        if (failure) {
+          child.stdout.write(`${JSON.stringify({ id: req.id, error: failure })}\n`);
+          continue;
+        }
         const id = req.method === 'thread/fork' ? 'thr_branch' : req.method === 'thread/resume' ? req.params.threadId : 'thr_fake';
         child.stdout.write(`${JSON.stringify({ id: req.id, result: { thread: { id } } })}\n`);
       }

@@ -15,7 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { withAskRules } from '../permission-rules.mjs';
 import { commandsOf, createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, memoryRootFor } from './folder.mjs';
-import { formatMessage, turnGuide } from './guide.mjs';
+import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
 import { deniedTools, effortOf, fromContext, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
@@ -305,11 +305,7 @@ export class AgentSdkAdapter {
       if (resume && /No conversation found|session .* not found/i.test(`${thrown.message} ${stderr}`)) {
         ctx.saveState({ sdkSessionId: null });
         ctx.state.sdkSessionId = null;
-        return this.deliver(
-          session,
-          { kind: 'notice', text: `Your earlier conversation in this thread couldn’t be loaded, so this is a fresh start.\n\n${prompt}` },
-          ctx,
-        );
+        return this.deliver(session, { kind: 'notice', text: `${FRESH_START_TEXT}\n\n${prompt}` }, ctx);
       }
       // The result says why, when there was one; the SDK’s own error (“process exited with code 1”) doesn’t, and the SDK
       // adds no stderr to it for a process it didn’t spawn, so the last lines of the CLI’s stderr go with it (#61).
