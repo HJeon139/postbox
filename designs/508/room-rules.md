@@ -27,6 +27,11 @@ Drop a rule once its cause is fixed, in the same change that fixes it.
 8. **Each plan step gets a new conversation,** with the design and that step’s issue as its brief. (#515, in code: a resumed Claude session keeps its first guide. #425: Postbox doesn’t call Codex’s `thread/compact/start` yet, though Codex 0.164.0 has it.)
 9. **A step starts only once the PRs it waits on are merged:** #511 and #496 before “Now”; #451 and the #466 branch before A1 and A2; #513 before A2; #509 before B1; #495 before B3.
 
+## Guards
+
+10. **An agent that doesn’t answer:** read its last turn’s error before mentioning it again. (#396; #335’s stale quota error hadn’t recurred since 25 October.)
+11. **A turn that should have reported but shows no text:** ask the agent to post its result again. (#485, not confirmed in the room.)
+
 ## Terms
 
 12. **Define cryptic terms in the Postbox glossary** (from 30 October 2026). The first time a coined or cryptic term appears in a message, block, issue or PR body, call `define_term` for it. Code identifiers in backticks need an entry only when the idea behind them is new; GitHub text defines a term in a sentence instead.
@@ -41,11 +46,6 @@ These come from what recurred in this room’s reviews: the lock needed three de
 16. **Prove delivery, not sending.** Anything that must reach an agent, backend or page has a check on the receiver’s side, and every adapter handles a session it cannot load. (Seen: #584, #585, #587.)
 17. **Think about the operator.** Upgrade, downgrade, logs, the data on disk, release notes, rollback, permissions and secrets, and the second surface (panel and main view, remote and local). Work in temp folders (`mkdtemp`), never in `~/.postbox` or a shared checkout, and sanitize recorded fixtures (host names, install ids, paths) before staging. (Seen: a benchmark that read `~/.postbox`; fixtures with a host name and an install id; the 1.6.0 notes silent about protocol 2 hosts, #583.)
 18. **Say what is unverified.** An unrun check or an untested backend is named as such. Nobody, reviewers included, calls something safe without trying it. (Seen: a mutex called non-blocking and an older Postbox said to truncate at an array line, neither tried.)
-
-## Guards
-
-10. **An agent that doesn’t answer:** read its last turn’s error before mentioning it again. (#396; #335’s stale quota error hadn’t recurred since 25 October.)
-11. **A turn that should have reported but shows no text:** ask the agent to post its result again. (#485, not confirmed in the room.)
 
 ## Checked, and no rule needed
 

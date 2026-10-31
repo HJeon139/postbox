@@ -110,9 +110,8 @@ Store and the read contract have no scenario phase; their specs and conformance 
 Added 31 October 2026, with the person’s approval of the team principles (`room-rules.md`, “Quality”). It maps onto the four parts of the pull request’s body in `designs/developing.md`, so a body is not longer for it:
 - **Background:** requirement and design ids, with any decision that moved; the invariants and the failure table, or “not applicable” and why.
 - **Details:** security (trust boundary, files, permissions, filesystem assumptions, secrets, or “none”); operations (upgrade and downgrade, logs, release note, rollback); the class swept and what was found; docs updated in the same change.
-- **Testing:** each test shown failing first for the stated reason, each check with its negative control; `npm run check` and, for UI changes, both browser runs; each claim with its command.
+- **Testing:** each test shown failing first for the stated reason, each check with its negative control; `npm run check` and, for UI changes, both browser runs; each claim with its command; and the reviews: a peer review and critic’s read on the latest head before the push is asked for, and an outside write approved by the person for the version they saw.
 - **Declined:** what is not done here and what is unverified.
-- **Reviews:** a peer review and critic’s read on the latest head before the push is asked for; an outside write approved by the person for the version they saw.
 
 **How it is tracked.** critic keeps a short list of defect classes per pull request. When a class appears twice, the team aligns on a principle, and the next pull request is read against it. researcher checks each body against this list and re-reads the decision log for decisions that moved.
 
