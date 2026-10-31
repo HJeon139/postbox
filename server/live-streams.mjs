@@ -52,15 +52,9 @@ export function liveStreams(store) {
   async function stream(req, res, url) {
     const before = replacements;
     const epoch = store.epoch;
-    const since = Number(req.headers['last-event-id'] ?? url.searchParams.get('since') ?? store.state.seq);
-    const named = /** @type {string | null} */ (req.headers['x-postbox-epoch'] ?? url.searchParams.get('epoch'));
+    const { since, lost } = place(req, url, store);
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
     res.write(`retry: 1500\n\n${storeLine(store.status)}`);
-    // Ahead of the store: an emit is broadcast before Redis acknowledges it, and a restart reads back Redis without
-    // what it didn’t take (server/store-write.mjs), so a tab can hold events the store no longer has. The browser
-    // would drop every later event as one it had seen; it refetches the whole state instead (#553’s review, blocker 3).
-    // On another epoch: its seq is a lost timeline’s, however it compares. One naming no epoch is served by its seq.
-    const lost = (named !== null && named !== '' && named !== epoch) || since > store.state.seq;
     let backlog = lost ? null : await store.backlog(since); // from memory, or after a restart from the store’s events stream
     // The replacement’s broadcast reached only existing streams. This page must load the new state too.
     if (before !== replacements || store.epoch !== epoch) backlog = null;
@@ -83,6 +77,19 @@ export function liveStreams(store) {
   }
 
   return { streams, stop: () => clearInterval(keepAlive), stream };
+}
+
+/**
+ * Where a connecting page is in history, and whether that’s a place this store never had, so it must load the state
+ * again: ahead of the store (an emit is broadcast before Redis acknowledges it, and a restart reads back Redis without
+ * what it didn’t take, server/store-write.mjs, so the browser would drop every later event as one it had seen; #553’s
+ * review, blocker 3), or on another epoch, whatever its seq. A page naming no epoch is served by its seq alone.
+ * @param {import('node:http').IncomingMessage} req @param {URL} url @param {import('./store.mjs').Store} store
+ */
+function place(req, url, store) {
+  const since = Number(req.headers['last-event-id'] ?? url.searchParams.get('since') ?? store.state.seq);
+  const named = /** @type {string | null} */ (req.headers['x-postbox-epoch'] ?? url.searchParams.get('epoch'));
+  return { since, lost: (named !== null && named !== '' && named !== store.epoch) || since > store.state.seq };
 }
 
 /** The store’s status as a server-sent event: running, or down with its cause. @param {any} status */

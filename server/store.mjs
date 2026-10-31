@@ -18,9 +18,9 @@ import { catchUp, commit } from './store-commit.mjs';
 import { Positions, refKey, roundEventCosts, touched, writesFor } from './store-docs.mjs';
 import { Hold } from './store-hold.mjs';
 import { clearStore, importLegacy } from './store-import.mjs';
-import { broadcast } from './store-publish.mjs';
-import { attach, onStatus, stopReconciling } from './store-recover.mjs';
-import { readState, redisFor, releaseRedis, streamAfter } from './store-redis.mjs';
+import { backlog, broadcast, since } from './store-publish.mjs';
+import { attach, newEpoch, onStatus, reload, stopReconciling } from './store-recover.mjs';
+import { readState, redisFor, releaseRedis } from './store-redis.mjs';
 import { closeRejected } from './store-reject.mjs';
 import { statusOf } from './store-status.mjs';
 import { pump, recovered } from './store-write.mjs';
@@ -28,13 +28,6 @@ import { pump, recovered } from './store-write.mjs';
 export { clearStore, emptyState };
 
 export const newId = (prefix) => `${prefix}_${randomBytes(6).toString('base64url').replace(/[-_]/g, '').slice(0, 8) || Date.now().toString(36)}`;
-
-/**
- * A history epoch: the token that names one readback of Redis into memory. A page’s events are numbered within an
- * epoch; one that reconnects naming another epoch holds a timeline this store never had, whatever its seq, and must
- * load the state again (server/live-streams.mjs; the integrator’s re-review of #553, blocker 3).
- */
-const newEpoch = () => randomBytes(9).toString('base64url');
 
 export class Store {
   /**
@@ -99,22 +92,12 @@ export class Store {
   }
 
   /**
-   * Replaces the store’s memory with what Redis holds: the state, the items’ positions and the index, with nothing
-   * queued and no backlog, under a new history epoch, written to Redis beside `seq` so a reader there can tell which
-   * readback is current. Pages must load the state again rather than replay events: the caller tells them (reloads).
+   * Replaces the store’s memory with what Redis holds, under a new history epoch (server/store-recover.mjs, reload).
+   * Pages must load the state again rather than replay events: the caller tells them (reloads).
    * @param {any} state @param {Positions} positions
    */
-  async reloaded(state, positions) {
-    this.state = state;
-    this.positions = positions;
-    this.confirmed = state.seq;
-    this.index = new Map();
-    for (const [t, list] of Object.entries(state.items)) for (const it of list) this.index.set(it.id, { t, it });
-    this.lines = [];
-    this.dirty.clear();
-    this.events.length = 0;
-    this.epoch = newEpoch();
-    if (this.client?.connected) await this.client.call('SET', 'epoch', this.epoch);
+  reloaded(state, positions) {
+    return reload(this, state, positions);
   }
 
   /** The child went down or came back: writes close until the store has read Redis back (server/store-recover.mjs). */
@@ -267,19 +250,12 @@ export class Store {
 
   /** Events after `seq` kept in memory, or null when they’re no longer kept and the client must refetch the state. */
   since(seq) {
-    if (seq >= this.state.seq) return [];
-    const first = this.events[0]?.seq ?? this.state.seq + 1;
-    if (seq + 1 < first) return null;
-    return this.events.filter((e) => e.seq > seq).map((e) => JSON.parse(e.line));
+    return since(this, seq);
   }
 
-  /** Events after `seq`, from memory or else from the stream; null when the stream was trimmed past them. */
-  async backlog(seq) {
-    const kept = this.since(seq);
-    if (kept || !this.client?.connected) return kept;
-    const first = this.events[0]?.seq ?? this.state.seq + 1;
-    const older = await streamAfter(this.client, seq, first - 1);
-    return older && [...older, ...this.events.map((e) => JSON.parse(e.line))];
+  /** Events after `seq`, from memory or else from the stream; null when the stream was trimmed past them (store-publish.mjs). */
+  backlog(seq) {
+    return backlog(this, seq);
   }
 
   /** Kept for callers of the log-and-snapshot store: documents are always current, so it only waits for writes. */

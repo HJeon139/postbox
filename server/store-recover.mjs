@@ -16,8 +16,35 @@
 // drop usually comes just before the child’s exit is heard, and a connection that keeps dropping isn’t hammered. Retry
 // starts it now.
 
+import { randomBytes } from 'node:crypto';
 import { repair } from './store-reject.mjs';
 import { changed } from './store-status.mjs';
+
+/**
+ * A history epoch: the token that names one readback of Redis into memory. A page’s events are numbered within an
+ * epoch; one that reconnects naming another epoch holds a timeline this store never had, whatever its seq, and must
+ * load the state again (server/live-streams.mjs; the integrator’s re-review of #553, blocker 3).
+ */
+export const newEpoch = () => randomBytes(9).toString('base64url');
+
+/**
+ * Replaces the store’s memory with what Redis holds: the state, the items’ positions and the index, with nothing
+ * queued and no backlog, under a new history epoch, written to Redis beside `seq` so a reader there can tell which
+ * readback is current. A restart’s load and a repair’s reload (server/store-reject.mjs) both end here.
+ * @param {Store} store @param {any} state @param {import('./store-docs.mjs').Positions} positions
+ */
+export async function reload(store, state, positions) {
+  store.state = state;
+  store.positions = positions;
+  store.confirmed = state.seq;
+  store.index = new Map();
+  for (const [t, list] of Object.entries(state.items)) for (const it of list) store.index.set(it.id, { t, it });
+  store.lines = [];
+  store.dirty.clear();
+  store.events.length = 0;
+  store.epoch = newEpoch();
+  if (store.client?.connected) await store.client.call('SET', 'epoch', store.epoch);
+}
 
 const RETRY_MS = 250; // the first wait before a failed catch-up is tried again
 const RETRY_MAX = 30000; // the longest

@@ -4,7 +4,32 @@
 // browser’s replay, and is what the stream holds; subscribers share one deep-frozen copy parsed from it, so none can
 // change what the others hear.
 
+import { streamAfter } from './store-redis.mjs';
+
 const KEEP_EVENTS = 20000; // events kept in memory for reconnecting browsers
+
+/**
+ * Events after `seq` kept in memory, or null when they’re no longer kept and the client must refetch the state.
+ * @param {import('./store.mjs').Store} store @param {number} seq
+ */
+export function since(store, seq) {
+  if (seq >= store.state.seq) return [];
+  const first = store.events[0]?.seq ?? store.state.seq + 1;
+  if (seq + 1 < first) return null;
+  return store.events.filter((e) => e.seq > seq).map((e) => JSON.parse(e.line));
+}
+
+/**
+ * Events after `seq`, from memory or else from Redis’s events stream; null when the stream was trimmed past them.
+ * @param {import('./store.mjs').Store} store @param {number} seq
+ */
+export async function backlog(store, seq) {
+  const kept = since(store, seq);
+  if (kept || !store.client?.connected) return kept;
+  const first = store.events[0]?.seq ?? store.state.seq + 1;
+  const older = await streamAfter(store.client, seq, first - 1);
+  return older && [...older, ...store.events.map((e) => JSON.parse(e.line))];
+}
 
 /** Freezes a parsed event all the way down. @param {any} v */
 const freeze = (v) => {
