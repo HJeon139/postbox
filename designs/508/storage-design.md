@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft 2, 31 October 2026, after peer review by gpt, critic and gemini (developer and engineer still to answer). Then principal-engineer review by the person and the integrator |
+| **Status** | Draft 3, 31 October 2026, after peer review by gpt, critic, gemini and engineer (developer still to answer). Then principal-engineer review by the person and the integrator |
 | **Editor** | researcher |
 | **Contributors** | developer (writer and load), gpt (recovery contract and storage specs), engineer (measurements, positions), gemini (benchmark, UAT tools), critic (requirements audit) |
 | **Replaces** | `design.md` §6.6 “Storage: a Redis 8 server…” (the 28 October decision, recalled on 31 October 2026) |
@@ -50,7 +50,7 @@ It replaces the 28 October decision to move onto a bundled Redis 8. That decisio
 | P3 | `emit` publishes before it writes, so a page can show a change the disk never gets | INV-12: nothing a lifecycle depends on may be visible before it is durable |
 | P4 | `load()` truncates at the first bad line, wherever it is. A torn line left in the middle (a failed write that later writes passed) drops every later line in that segment; a later segment then replays onto a state that lacks them | ST-4, INV-12: acknowledged history must not be dropped silently |
 | P5 | No `fsync` of the log | ST-4: an acknowledged commit survives a power cut |
-| P6 | The snapshot is one whole-state `JSON.stringify` and write | §9: it blocks the server about 37 ms on a copy of this project’s store, and grows with it |
+| P6 | The snapshot is one whole-state `JSON.stringify` and a single write of the whole text | §9: it blocks the server about 37 ms on a copy of this project’s store, grows with it, and about 17 ms of it is converting the text to bytes in one call |
 | P7 | A second Postbox on the same folder is not refused | The guard for “one writer” (ST-2 deferred) |
 | P8 | A browser on a lost timeline (it saw events the store lost) cannot tell | #567 |
 
@@ -63,7 +63,7 @@ It replaces the 28 October decision to move onto a bundled Redis 8. That decisio
 - G4. A failed write closes writes and the page says why (P2).
 - G5. A tab on a lost timeline is told to resync (P8); a second Postbox is refused (P7).
 - G6. No migration at startup, no new dependency, no new platform restriction (ST-1, PF-9).
-- G7. A path to a sharded snapshot that is crash-safe and reversible, started by a measured budget (P6).
+- G7. The snapshot’s block is cut now by writing it in pieces, and a path to a sharded snapshot that is crash-safe and reversible, started by a measured budget (P6).
 
 **Non-goals**
 - A second writer (ST-2 is deferred until a design needs it).
@@ -167,7 +167,7 @@ Rules this encodes:
 - **Publish after the sync (settled).** `state`, API reads, `since()` and subscribers see a commit only after its lines are fsynced. Private staged state may validate a commit. critic ruled it from INV-12 and DL-2: an adapter started early cannot be taken back by the epoch, and the resend would lose its label. gpt added that API reads and subscribers must wait too.
 - **Several commits in a pass share one `fsync`.**
 - **A snapshot waits for every pending commit** before it runs, so it can never prune an unresolved one.
-- **Held emits keep a copy** of their arguments taken when they are queued, so a caller cannot change what is written afterwards.
+- **A held emit is applied from the JSON line made when it was called** (`JSON.parse(line)`), not from the caller’s object, so memory and the log cannot differ if the caller changes its object meanwhile (engineer, critic).
 - **A complete batch is applied before its first subscriber is notified.**
 
 ### 6.4 `commit`
@@ -232,14 +232,18 @@ A file `lock` created exclusively (`O_EXCL`) holds the process id and a start ti
 
 **Today’s snapshot stays** (one `snapshot.json`) until the budget triggers S2. It runs when 5,000 events have passed, after pending commits, captures an immutable copy of the state at its `seq`, and prunes a segment only when **every event in it is at or below that `seq`** (not merely when the segment starts below it), after the snapshot is renamed into place and its directory synced.
 
+**Now, before S2: write the snapshot in pieces.** About 17 ms of the 37 ms block is converting the whole text to bytes when `writeSnapshot()` hands it to one `writeFile`. Writing the same text in 1 MB pieces measured **1.3 ms** instead of 17.3 ms on the same copy (engineer), so the block falls to about 21 ms, nearly all of it the stringify. A few lines in `writeSnapshot()`, done in 1a or a PR of its own, roughly doubles the headroom. The snapshot is still written to a temp file, synced and renamed.
+
 **S2, the sharded snapshot (not started).** Triggered when a snapshot stall passes the budget (§9, Q1). Shape, from the integrator’s proposal, gpt, developer and engineer:
 
-- **Capture** an immutable state at one sequence number S. Neither later emits nor mutation of its objects may enter it. Write each **changed** conversation to a new immutable file `<conversation>.<S>.json`. A **core** shard holds sessions, personas, apps and records. **Receipts** go in their own shards (§6.10).
+- **Capture** an immutable state at one sequence number S **in one tick**: turn every dirty shard into text before the first `await`, so shards written across awaits cannot hold different sequence numbers (engineer). Neither later emits nor mutation of its objects may enter it. Write each **changed** conversation to a new immutable file `<conversation>.<S>.json`. A **core** shard holds sessions, personas, apps and records. **Receipts** go in their own shards (§6.10).
+- **Names must not collide on a retry.** A crash before the manifest leaves `<conversation>.<S>.json`, and a restart with no new events retries at the same S. Add an attempt id to the name, or write through a temp file and rename it over a file the manifest does not name. Anything pending is keyed by the conversation and the file name together (one file name alone overwrote another conversation’s data in the abandoned hotfix, `c85fd777`).
 - **Sync** each new shard file and its directory entry **before** replacing the manifest.
 - **Publish** `manifest.json` last: write a temp name, sync, rename, sync the directory. It names S and every referenced shard with its size and a checksum. A shard not in the manifest is ignored at load. A missing referenced shard, or one whose contents do not match, is an error naming the shard, never an empty conversation.
-- **Prune** log segments and old shards only after the manifest and its directory are durable.
-- **`thread.nextN`** is persisted in each conversation’s shard and restored on load. Recomputing it as the largest surviving `n` plus one can reuse positions after a deletion; that calculation belongs only to lifting older data that has no counter (engineer, gpt).
-- **Dirty tracking** decides which conversations changed. A missed one leaves a stale shard and a pruned log, so it is tested by replaying a copy of a real log with snapshots at random points.
+- **Prune** log segments and old shards only after the manifest and its directory are durable, and decide it by S: the next segment is named after the live `state.seq` once the snapshot is written, which is harmless because replay skips by `seq`. Remove files the manifest does not name only after a manifest is durable, never one it names; a deleted conversation drops out of the manifest and its shard goes with that sweep.
+- **A failed publish inside the process** keeps its dirty marks and every segment, and the next snapshot writes them again. Dirty marks clear only once the manifest and its directory are durable.
+- **`thread.nextN`** is persisted in each conversation’s shard and restored on load, then advanced by replaying the log after S. Recomputing it as the largest surviving `n` plus one can reuse positions after a deletion; that calculation belongs only to lifting older data that has no counter (engineer, gpt).
+- **Dirty tracking** decides which conversations changed. The sequencer marks a shard dirty by the event’s `threadId`; an event with none marks the core shard. A missed one leaves a stale shard and a pruned log, so it is tested by replaying a copy of a real log with snapshots at random points.
 - **Rollback (one procedure).** An older Postbox reads `snapshot.json` and would start empty from a sharded folder without an error, which is silent data loss (gemini). S2 therefore (1) makes `snapshot.json` a path an older build cannot read as a file, so it **fails** at the read instead of starting empty (for example, the manifest and shards live in a folder named `snapshot.json`; an older `readFile` then throws `EISDIR`), and (2) ships a tool that rebuilds a whole `snapshot.json` from the shards, with a release note. **Open Q7:** the `EISDIR` guard must be pinned by a characterization test on `main` before it is relied on.
 - **Lazy loading** of only the open conversation is out of scope: it makes the items route, catch-up and the read tools wait on the disk (engineer). Load all shards at start; the 14.5 MB copy loads in about 200 ms today.
 
@@ -249,7 +253,7 @@ Receipts (`design.md` §6.4) are **derived by the reducer** from the record even
 
 ### 6.11 Positions (B1)
 
-Step B1 gives every item a position `n`, assigned where `seq` is: in the sequencing function, written into `item.add` and `item.move` events, so replay gives the same order. B1’s numbering of existing items at load is a pass after the snapshot is read and again after replay. It lands after 1a, so one change at a time touches `load()` and the sequencer.
+Step B1 gives every item a position `n`, assigned where `seq` is: in the sequencing function, written into `item.add` and `item.move` events, so replay gives the same order. B1’s numbering of existing items at load is a pass after the snapshot is read and again after replay. It lands after 1a, so one change at a time touches `load()` and the sequencer. The replay rule of `design.md` §6.1 applies: an `item.add` without `n` takes `nextN`; an `item.move` without `n` gives the moved item `nextN`, and its placeholder (`stub`) keeps the old `n`. **Assigned is not published:** with publish after the sync, the sequencer can have assigned a `seq` and an `n` that are not yet visible. B2’s pages, `since()` and the `seq` a page returns use the **published** `state.seq` and `state.items`, never the sequencer’s counter.
 
 ## 7. Crash points
 
@@ -297,11 +301,12 @@ All on this Mac (macOS, APFS) unless noted.
 | `fsync` of a 2 KB line | 4.2 ms p50, 5.2 ms p95 (4.6 ms in another run) | critic, developer |
 | Whole-state snapshot, `JSON.stringify` | 19.7 ms | engineer, corrected benchmark (#578), 13.85 MB copy |
 | Whole-state snapshot, event-loop block | **about 37 ms** | the same; the extra 17 ms is converting the text to bytes as the write starts |
-| One conversation’s shard (largest, 4 MB) | 3 to 7 ms | engineer, critic |
-| Load of the whole 14.5 MB copy | about 200 ms | engineer |
+| One conversation’s shard (largest, about 4 MB of items) | Size measured by engineer; the time to write it as a shard is **not yet measured** (the 3 to 7 ms quoted earlier came from the integrator’s synthetic estimate) | the integrator, engineer |
+| Load of the whole 14.5 MB copy, `main`’s `Store` | 33 to 37 ms, three runs (an earlier 212 ms included the abandoned hotfix’s archive and snapshot write) | engineer |
+| Writing the 14 MB snapshot text in 1 MB pieces instead of one call | block 1.3 ms instead of 17.3 ms | engineer |
 | Store size and growth | 16 MB; 13.4 to 16.6 MB in three days | critic |
 
-Earlier quotes of 20 to 29 ms measured only the stringify. **At 37 ms the headroom to a 50 ms budget is about 13 ms, and at about 1 MB a day a 40 MB limit is about three weeks away.** Not measured: `fsync` on Linux, under load, or on a spinning disk.
+Earlier quotes of 20 to 29 ms measured only the stringify. **The block grows with the store, about 2.7 ms per MB (37 ms at 13.85 MB).** gemini’s 22.66 ms stringify on the real 15.96 MB store suggests about 43 ms today, and at about 1 MB a day **50 ms is reached near 18.7 MB, days away, not weeks; 40 MB is not the binding limit.** This is an estimate from two points and is to be checked with the corrected benchmark on a fresh copy. **Writing the snapshot in pieces (§6.9) cuts the block to about 21 ms, which roughly doubles the headroom.** Not measured: `fsync` on Linux, under load, or on a spinning disk.
 
 **The trigger.** Starting S2 should not depend on someone running a tool by hand (gemini). Two measures: `tools/bench-snapshot-stall.mjs` (#578) runs in CI on a committed, standardized store fixture of about 15 MB, to catch regressions on runners; and `writeSnapshot()` records its real serialization time and the store size in server diagnostics, so the live room reports its own number.
 
@@ -337,6 +342,8 @@ Written first and failing on `main`. The specs of gpt (branch `test/508-jsonl-re
 | T-24 | A new segment’s directory entry is synced before a commit written there is acknowledged (the second `sync` on an old handle that succeeds without writing is also faked through `io`) | **add** |
 | T-25 | A multi-event commit: invalid arrays (empty, non-consecutive `seq`, overlapping the snapshot boundary) are rejected | **add** |
 | T-26 | Open, snapshot, prune, close: the metrics counts are unchanged | **add** |
+| T-28 (S2) | Pause between two shard writes, edit, finish, restart: equals an in-memory store that never snapshotted; a crash at every step; a retry at the same S; a failed publish keeps its dirty marks | S2, engineer’s seam and real-room fixtures (`real-check.mjs`, `stall.mjs`) |
+| T-29 | The snapshot is written in pieces: the block on a 14 MB state falls below the one-call figure | **add** |
 | T-27 | **Characterization on `main`:** the older loader skips an array line, and reuses its sequence numbers | **add** |
 
 gemini’s UAT checks: the at-rest rows of §7 (leave a truncated segment, an un-renamed temp snapshot, unreferenced shards, or a stale lock, then restart) can be run end to end with `postbox.restart({ whileDown })`. The in-flight rows cannot, because the fault launcher wraps agent CLIs, not the store; they are unit specs. critic reads every PR against ST-3 and ST-4.
@@ -363,10 +370,10 @@ Nothing needs a migration: events, segments and `snapshot.json` keep their forma
 
 ## 13. Open questions for review
 
-1. **Q1. The S2 budget.** A 50 ms stall or 40 MB store (gemini: keep, because 40 ms leaves 3 ms of headroom and would start S2 before 1a settles), or earlier, 40 ms (critic: at 37 ms and 1 MB a day there is little time to build it)? The stall is 37 ms today.
+1. **Q1. The S2 budget.** gemini: keep 50 ms and 40 MB. critic: trigger earlier, at 40 ms. engineer: write the snapshot in pieces now (§6.9), which cuts the block to about 21 ms, and keep 50 ms; a 40 ms trigger without that fix would fire almost at once. The stall is about 37 ms today and the 50 ms line is days away without the fix. Recommended: **write in pieces now, keep 50 ms, and drop 40 MB as the binding limit** (the stall reaches 50 ms near 18.7 MB first); measure with the corrected benchmark on a fresh copy.
 2. **Q2. How a multi-event commit is written:** (a), (b) or (c) (§6.2). gpt and critic prefer (b); critic offers (c). developer’s view pending.
 3. **Q3. Receipts.** Resolved in draft 2: derived, checkpointed with the snapshot, whole receipt in its opening month. For confirmation by the integrator, who proposed a shard of their own.
-4. **Q4. Held emits.** Resolved: keep the JSON line taken when the event is made and parse it on release (critic); no deep snapshot of state is needed.
+4. **Q4. Held emits.** Resolved: keep the JSON line taken when the event is made and apply it from `JSON.parse(line)` on release (critic, engineer); no deep snapshot of state is needed.
 5. **Q5. ST-2.** Deferred with a lock file. Dropped, not deferred, if Postbox stays one process.
 6. **Q6. The lock’s staleness test.** Resolved: pid plus start time, taken over by rename (critic). A heartbeat is not needed.
 7. **Q7. The S2 rollback guard.** Is `snapshot.json` as a folder (older `readFile` throws `EISDIR`) acceptable, once a characterization test shows it fails closed on `main`?
