@@ -33,7 +33,7 @@ At most three steps in flight at once, so reviews keep up. Track A is the critic
 
 ```mermaid
 flowchart TD
-  W1["Wave 1: Harness, Store, Now"]
+  W1["Wave 1: Harness, Store, Now, Queue view"]
   W2["Wave 2: A1, B1, read contract"]
   W3["Wave 3: A2, B2"]
   W4["Wave 4: A3, A4, B3"]
@@ -42,10 +42,10 @@ flowchart TD
 
 | Wave | Steps | Why together |
 |---|---|---|
-| 1 | Harness, Store, Now | None depends on another step. Harness and Store gate A1; Now ships #504’s and #515’s fixes early. Now merges first and Store rebases onto it, since both change `server/store.mjs` and the session path. |
+| 1 | Harness, Store, Now, Queue view (#427) | None depends on another step; the queue view (#427) is a view over `main`’s queue list and A3 later keeps its spec. Harness and Store gate A1; Now ships #504’s and #515’s fixes early. Now merges first and Store rebases onto it, since both change `server/store.mjs` and the session path. |
 | 2 | A1, B1, Remote read contract; A2’s recorded turns | A1 needs Harness and Store. B1 needs nothing; the read contract needs #489 for Kiro. gemini records a failing turn and the turn after it on each backend, so A2 can start in wave 3. |
 | 3 | A2, B2 | A2 needs A1 and the recorded turns. B2 needs B1. |
-| 4 | A3, A4, B3 | A3 and A4 need A2. B3 needs B2, A1 and #495. |
+| 4 | Delivery-route spike, then A3, A4, B3 | The spike records its own mid-turn fixtures with #586’s tooling and comes before A3 (#470, MD-8). A3 and A4 need A2. B3 needs B2, A1 and #495. |
 
 ## One step, start to finish
 

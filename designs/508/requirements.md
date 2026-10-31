@@ -46,12 +46,13 @@ flowchart TD
 | Id | Requirement | Check | Sources |
 |---|---|---|---|
 | MD-1 | Three modes: **notify** (no turn of its own), **wake** (a turn, or mid-turn if working), **interrupt** (the person’s Send now). | Notifying an idle agent starts no turn, and its next turn reads it once. | #472 |
-| MD-2 | A message to a working agent reaches it at its next point of reading input, and the turn continues. If the turn ends first, a wake becomes a new turn and a notification waits. | A mid-turn wake is read without restarting the turn, on every backend’s universal path. | #470; #472 |
+| MD-2 | A message to a working agent reaches it at its next point of reading input, and the turn continues. If the turn ends first, a wake becomes a new turn and a notification waits. A delivery names the **route** it takes (`next-tool-result`, `hook`, `native-input` or `new-turn`); the `next-tool-result` route is the floor every backend has, and each route has its own evidence for `sent` to `delivered`. | A mid-turn wake is read without restarting the turn, on every backend’s universal path, and where a backend has nothing faster than the next Postbox tool result, the person is told “waits for its next tool call” and the check-messages tool is the floor. The one-step bound belongs to MD-8, for routes with a hook or native input. | #470; #472 |
 | MD-3 | Notifications are bounded by code: a cap per sender into an idle agent’s catch-up, with the rest folded and readable. | An idle agent’s catch-up shows at most the cap per sender. | #472 item 2; ENG “Bound everything an agent or app sends”, “Don’t rely on the agent to follow a rule the code could enforce” |
 | MD-4 | A message names its recipients, and the transcript shows them, so who was asked what is readable without system lines. | A hand-off to two agents shows as one message naming both. | #481 |
 | MD-5 | Agents address each other only with @-mentions; one message can hand separate requests to several agents. | No agent is offered `wake_agent`; a three-way hand-off wakes each once. | #481 |
 | MD-6 | Who a message reaches: the agents it mentions (only those, #107), and in a topic thread its owner. A reply wakes its waker only if it mentions it. | Replying to one agent while mentioning another wakes only the second. | INT Conversation (composer row) and Attention (reply row); #107; #469 (P1) |
 | MD-7 | Reactions and acknowledgments start no turn. Outcomes and edits notify. | A reaction wakes no one; an outcome post notifies the agents it names. | INT Attention (reactions row); #331; #382; #472 table |
+| MD-8 | **Tell it now.** The person can send a message to a working agent that reaches it while its turn continues, in a mode of its own beside wake and Send now (which interrupts). If the backend has a hook or native input, it reaches the agent within one agent step. The person sees which route carried it and whether it was delivered. If the backend has no route faster than the next Postbox tool result, the message says so rather than claiming promptness. | The issue’s measured case, an agent blocked on a 3-minute background job and an answered choice, reads the message within one agent step on a backend with a hook or native route, and says “waits for its next tool call” on one without. | #470; critic’s review `critic-427-470-coverage` |
 
 ## 3. The person’s attention and control
 
@@ -62,7 +63,7 @@ flowchart TD
 | AT-3 | A request that was settled some other way is retired, and delivers nothing twice. | A card whose target got a turn another way is retired. | #439 proposal 3 |
 | AT-4 | “Needs you” is correct and complete in every conversation, open or not, whatever part of it is loaded: every open ask (a block, a permission, a tool ask, a held wake) and every session that failed or was denied, with when it started. | Counts, rings and “Next needs you” match for a conversation that isn’t open and a room whose items aren’t loaded. | INT principle 2 (“If ‘needs you’ can’t be trusted, nothing else matters”); INT Attention (two tiers of needs you); the seven kinds in `shared/needs.mjs:5`; D508 change 2 (`waitedSince`, `openAsks` undercount); CR findings 2 and 6 |
 | AT-5 | Loop limits stop loops, not hand-offs. A wake that carries new work doesn’t count toward the pair limit; the chain limit stays. **Met by #541 (v0.44.7):** there’s no pair limit, and the chain limit is a backstop of 50 that resets when a chain ends. | A run of hand-offs with new text passes the old limit without a card; repeated acknowledgments still raise one. | INT principle 6 (“wake chains are capped”); #492 |
-| AT-6 | The person’s own waiting messages can be edited, removed or sent now while waiting, stay out of the transcript until delivered, and many fold into one row. | Edit and Remove work on a queued message; it isn’t in the transcript until its agent gets it; ten queued messages take one row. | INT Conversation (“Messages sent mid-reply…”); #424; #427; CR finding 3 |
+| AT-6 | The person’s own waiting messages can be edited, removed or sent now while waiting, stay out of the transcript until delivered, and the queue’s height is bounded however many are waiting. | Edit and Remove work on a queued message; it isn’t in the transcript until its agent gets it; the composer holds no queued rows for busy agents (they are reached from a counted control on each agent and, on a phone, a line in the conversation menu), keeps one line that says something is waiting (for example “3 waiting for 2 agents”), shows at most two rows for messages written while offline, with “and N more” for the rest, and the whole composer stays at or under 25% of the viewport height at 375 and 1280 px, in the main view and in the side panel (also expanded), with ten queued messages to one agent and to five. #427 measured the whole composer, about 19% with one row and 85% with ten, so the test measures the composer. | INT Conversation (“Messages sent mid-reply…”); #424; #427; CR finding 3 |
 | AT-7 | An agent waking a persona not in the conversation asks the person first, for a notification as for a wake. | Notifying an absent persona raises the Add card. | INT principle 6; INT Attention (one-session row); D508 change 9 |
 
 ## 4. Scheduled wakes
@@ -154,7 +155,7 @@ Each needed a decision before the design could satisfy both sides. Where it’s 
 
 | Design part | Requirements it meets |
 |---|---|
-| Records of what’s addressed to whom (D508 changes 2, 7, 9; the developer’s one collection) | DL-1–3, DL-6–7, MD-1–3, AT-1–4, AT-7, SW-1–3, MS-1 |
+| Records of what’s addressed to whom (D508 changes 2, 7, 9; the developer’s one collection) | DL-1–3, DL-6–7, MD-1–3, MD-8, AT-1–4, AT-7, SW-1–3, MS-1 |
 | Remote read contract | CX-2 |
 | Calibration entries in `shared/limits.mjs` | MS-3 |
 | Task-first envelope, constant system prompt | DL-4, DL-5, CX-3 |
@@ -194,17 +195,18 @@ flowchart TD
 | DL-7 | Spec | An edit to a delivered message reaches its author and recipients once, as a notify; a reaction starts no turn | *edit-while-waiting* | *unlabeled-repeat* | Covered |
 | DL-8 | Conformance | Each backend’s recorded failing turn and successful turn give the same record states | *fail-before-output* on each backend | *marker-before-output* | Covered |
 | MD-1 | Spec | A notify to an idle agent starts no turn and is read once at its next turn | none | none | Later (modes) |
-| MD-2 | Spec + conformance | A delivery to a working agent arrives on the next Postbox tool result, and the turn continues | *urgent-note-delivered* | *delivery-dropped* | **Not in rev 6** (built in A2, never cited) |
+| MD-2 | Spec + conformance | A delivery to a working agent arrives on the next Postbox tool result, and the turn continues; the delivery names its route | *urgent-note-delivered* | *delivery-dropped* | **Not in rev 6** (built in A2, never cited) |
 | MD-3 | Spec | Past the cap, notifies fold into one line and one record, with a count | none | none | Covered |
 | MD-4, MD-5 | Spec | A hand-off to two agents is one message naming both; no agent is offered `wake_agent` | none | none | Later (#481) |
 | MD-6 | Spec | A reply in a topic thread wakes its owner; mentioning one agent wakes only that one | none | none | Covered |
 | MD-7 | Spec | A reaction and an outcome post start no turn | none | none | Covered |
+| MD-8 | UAT + spike | #470’s measured case: a Claude Code agent with a 3-minute background job and an answered choice reads the message within one agent step; today it takes 3 min 46 s | *tell-now-background-job* | none | **Planned, A2 (route), spike before A3** |
 | AT-1 | Spec | #439: two held wakes behind one card; Allow delivers both, Don’t allow expires both and tells each sender | *held-behind-card*, *held-released* | *ask-dropped* | Covered |
 | AT-2 | Playwright spec | The held line shows under the card and goes once it’s answered | *held-behind-card* | *ask-dropped* | Covered |
 | AT-3 | Spec | A card whose target got a turn another way is withdrawn; nothing is delivered twice | none | *unlabeled-repeat* | Covered |
 | AT-4 | Playwright spec | Rings, counts and ⌃J match the open asks with a conversation’s items not loaded | none (seed *big-room*) | *needs-mismatch*; `needs-jump-missed` | Covered |
 | AT-5 | Spec | #492: hand-offs pass the old pair limit without a card; a chain past the backstop still raises one | none | none | **Met on `main` by #541:** `wakes-no-pair-limit`, `wakes-pairs` |
-| AT-6 | Playwright spec | A queued message can be edited and removed, isn’t in the transcript until delivered, and ten fold into one row | *person-queue-three* | none | Covered |
+| AT-6 | Playwright spec | A queued message can be edited and removed, isn’t in the transcript until delivered, and the composer holds no queued rows for busy agents, shows a waiting line and at most two offline rows, and stays at or under 25% of the viewport height at 375 and 1280 px, in the main view and the side panel, with ten queued to one agent and to five (fails on `main`: 12 of 16 cases) | *person-queue-three* | none | **Planned, A3** (the failing spec is written now; no spec backs it yet) |
 | AT-7 | Spec | A wake for a persona not in the conversation raises the Add card as an ask, and is held, not dropped | none | *ask-dropped* | **Not in rev 6** |
 | SW-1 | Spec | #458: an agent cancels its own wake by id, including after a host replay (#498’s test) | *wake-scheduled*, *wake-canceled* | none | Covered |
 | SW-2 | Spec | #466: a wake lost to a network drop is retried, labeled “check what ran” | *wake-after-drop* | *unlabeled-repeat* | Covered |
