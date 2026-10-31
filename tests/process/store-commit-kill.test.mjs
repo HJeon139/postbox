@@ -46,14 +46,15 @@ test('a store SIGKILLed while its commit’s fsync is pending leaves a log that 
   const how = await killed(child);
   assert.equal(how.signal, 'SIGKILL', `killed, not exited: ${JSON.stringify(how)}`);
   assert.doesNotMatch(out(), /COMMITTED/, `the commit resolved before its fsync:\n${out()}`);
-  assert.equal(await readFile(join(dataDir, 'store.lock'), 'utf8'), String(child.pid), 'the killed process left its lock');
+  const pidIn = async () => JSON.parse(await readFile(join(dataDir, 'store.lock'), 'utf8')).pid;
+  assert.equal(await pidIn(), child.pid, 'the killed process left its lock');
   const s = await new Store(dataDir).load();
   const threads = Object.keys(s.state.threads).sort();
   assert.ok(
     (s.state.seq === 1 && threads.length === 1) || (s.state.seq === 4 && threads.join() === 't0,t1,t2' && s.state.items.t1?.[0]?.text === 'hi'),
     `the store loaded seq ${s.state.seq} with threads ${threads.join()}: part of a commit`,
   );
-  assert.equal(await readFile(join(dataDir, 'store.lock'), 'utf8'), String(process.pid), 'the stale lock was taken over');
+  assert.equal(await pidIn(), process.pid, 'the stale lock was taken over');
   s.emit('thread', { id: 'after', members: [] });
   await s.flush();
   await s.close();

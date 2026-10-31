@@ -1,24 +1,26 @@
 // Postbox’s store: an append-only event log (JSON Lines) plus periodic snapshots, with all reads served
-// from an in-memory projection. See designs/architecture.md, “The store”, and #508’s design, “Storage”.
+// from an in-memory projection. See designs/architecture.md, “The store”, and #508’s storage design.
 //
 // Every change goes through emit(), one event applied, numbered, appended and told at once, or commit(), several
 // events written as ONE fsynced line and applied only once the disk has them (server/store-commit.mjs). Both number
 // their events through sequence(), the one place a seq is assigned. A browser that reconnects asks for everything
-// after the last number it saw, so nothing is lost or duplicated.
+// after the last number it saw, so nothing is lost or duplicated. A write that fails closes the store and reloads it
+// from the disk (server/store-reload.mjs), on a new epoch that resyncs every page.
 //
 //   <dir>/snapshot.json          the state as of some sequence number (written atomically)
-//   <dir>/events-<from>.jsonl    events after that, one per line, or one commit’s array per line; a new segment
-//                                starts at each snapshot
-//   <dir>/store.lock             the pid of the process whose store holds the folder (server/store-lock.mjs)
+//   <dir>/events-<from>.jsonl    events after that, one per line, or one commit’s events per line (shared/log-lines.mjs);
+//                                a new segment starts at each snapshot
+//   <dir>/store.lock             the process whose store holds the folder (server/store-lock.mjs)
 //
 // Every file access goes through this.io (node:fs/promises unless a test gives one), so a test can fail one operation.
 
 import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
-import { apply, emptyState, ownState } from '../shared/state.mjs';
-import { commit, replay, run, writeSnapshot } from './store-commit.mjs';
+import { apply, emptyState } from '../shared/state.mjs';
+import { commit, run } from './store-commit.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
+import { install, recover, reload } from './store-reload.mjs';
 
 export { emptyState };
 
@@ -38,36 +40,49 @@ export class Store {
     this.snapshotEvery = snapshotEvery;
     this.state = emptyState();
     this.events = []; // the backlog for reconnecting browsers: { seq, line }
-    // The history the seqs count within: a token new at each load(), so a page from before a restart, whose seq may
+    // The history the seqs count within: a token new at each load() and reload(), so a page from before, whose seq may
     // name events this store never kept, is told to resync whatever its seq (server/live-streams.mjs).
-    this.epoch = newId('ep');
+    this.epoch = this.newEpoch();
     this.listeners = new Set();
+    this.reloaders = new Set(); // told after a reload installs a new epoch
     // The writer’s jobs (server/store-commit.mjs), in order: a line to append, a held emit, a commit, a flush or a
-    // snapshot; and its loop, while one runs.
+    // snapshot; its loop, while one runs; and the generation a loop runs as, which a reload bumps to fence it.
     this.queue = [];
     this.running = null;
+    this.generation = 0;
     this.segment = 'events-1.jsonl'; // the current log file; load() picks the real one
-    this.fh = null; // the segment, open for appending
-    this.offset = 0; // where the segment ends, so a failed write can be read back
-    this.uncertain = null; // a write whose outcome the writer has still to read back
+    this.freshSegment = false; // the segment is a file the writer made, whose folder isn’t synced yet
+    /** @type {import('node:fs/promises').FileHandle | null} the segment, open for appending */
+    this.fh = null;
     this.sinceSnapshot = 0;
     this.ops = new Map(); // opId → the seq of its commit’s first event, for the commits since the latest snapshot
     this.ahead = 0; // events numbered but not yet applied: a commit’s, before its fsync
     this.waitingCommits = 0; // commits queued or pending; emits are held behind them
     this.held = 0; // emits held in the queue, still to be numbered
-    this.lock = null; // the lock file’s path while this store holds the folder
+    this.lock = null; // the folder’s lock while this store holds it (server/store-lock.mjs)
+    // Writes are open, or closed with the cause after a write failed (server/store-reload.mjs); reload() runs then,
+    // and this.reloading is its promise while it does.
+    this.writable = true;
+    this.cause = null;
+    this.warned = false; // an emit while closed logged the cause
+    this.reloading = null;
+    this.lost = null; // history the log lost, { from, to, count }, found at load (server/store-replay.mjs)
+  }
+
+  newEpoch() {
+    return newId('ep');
   }
 
   /** Takes the folder (one store per folder, or load() rejects naming the holder), reads it, and leaves the writer at its end. */
   async load() {
-    this.epoch = newId('ep');
-    if (!this.dir) return this;
+    if (!this.dir) {
+      this.epoch = this.newEpoch();
+      return this;
+    }
     await this.io.mkdir(this.dir, { recursive: true });
     this.lock = await lockStore(this.io, this.dir);
     try {
-      await this.readSnapshot();
-      await replay(this);
-      this.segment = (await this.segments()).at(-1)?.name ?? `events-${this.state.seq + 1}.jsonl`;
+      install(this, await recover(this));
     } catch (e) {
       await unlockStore(this.io, this.lock);
       this.lock = null;
@@ -76,22 +91,16 @@ export class Store {
     return this;
   }
 
-  /** Reads the snapshot, or once, Stage 2’s store.json as the first snapshot. */
-  async readSnapshot() {
-    const snapPath = this.at('snapshot.json');
-    try {
-      this.state = ownState({ ...emptyState(), ...JSON.parse(await this.io.readFile(snapPath, 'utf8')) });
-    } catch (e) {
-      if (e.code !== 'ENOENT') throw new Error(`Couldn’t read the snapshot at ${snapPath}: ${e.message}`);
-      const legacy = this.at('store.json');
-      try {
-        this.state = ownState({ ...emptyState(), ...JSON.parse(await this.io.readFile(legacy, 'utf8')) });
-        await writeSnapshot(this);
-        await this.io.rename(legacy, `${legacy}.migrated`);
-      } catch (le) {
-        if (le.code !== 'ENOENT') throw new Error(`Couldn’t read the old store at ${legacy}: ${le.message}`);
-      }
-    }
+  /**
+   * Reads the folder again and publishes what it holds on a new epoch, with writes closed meanwhile (the header of
+   * server/store-reload.mjs says the order). Runs by itself after a write fails; one at a time.
+   */
+  reload() {
+    if (!this.dir) return Promise.resolve();
+    this.reloading ??= reload(this).finally(() => {
+      this.reloading = null;
+    });
+    return this.reloading;
   }
 
   /** A path in the data folder. Only the disk-backed paths call this, after checking there is one. */
@@ -134,21 +143,25 @@ export class Store {
   }
 
   /**
-   * Applies a change and broadcasts it, unless a commit is pending: then it’s held, and numbered, applied and
-   * broadcast in its turn once the commit resolves or fails (the returned event gets its seq then).
+   * Applies a change and broadcasts it, unless a commit is queued or in flight, or the store is reloading: then it’s
+   * held, and numbered, applied and broadcast in its turn once the commit resolves or fails, or the reload is done
+   * (the returned event gets its seq then). While writes are closed it’s applied and broadcast but not written.
    */
   emit(type, data) {
     const ev = { type, data };
-    if (this.waitingCommits || this.uncertain || this.held) {
+    if (this.waitingCommits || this.held || this.reloading) {
       this.held++;
-      this.queue.push({ held: ev });
+      this.queue.push({ held: ev, json: JSON.stringify(ev) }); // as it is now: the caller may change its object later
       this.pump();
       return ev;
     }
     this.sequence(ev);
     const line = this.record(ev);
     this.notify(ev);
-    if (this.dir) {
+    if (!this.writable) {
+      if (!this.warned) console.error(`An event wasn’t written: ${this.cause.message}`);
+      this.warned = true;
+    } else if (this.dir) {
       this.queue.push({ line: `${line}\n` });
       this.sinceSnapshot++;
       this.pump();
@@ -157,25 +170,43 @@ export class Store {
   }
 
   /**
+   * Releases a held emit: numbered now, applied from the JSON made when it was called, and broadcast; the seq goes on
+   * the object emit() returned. Gives the line to write.
+   * @param {{ held: any, json: string }} job
+   */
+  release({ held, json }) {
+    const ev = this.sequence(JSON.parse(json));
+    held.seq = ev.seq;
+    const line = this.record(ev);
+    this.notify(ev);
+    if (this.dir) this.sinceSnapshot++;
+    this.held--;
+    return line;
+  }
+
+  /**
    * Commits several events as one line, all durable or none (server/store-commit.mjs). With an opId, a repeat
-   * resolves `{ seq, duplicate: true }` without writing.
+   * resolves `{ seq, duplicate: true }` without writing. Rejects with the cause while writes are closed.
    * @param {any[] | ((state: any) => any[])} events @param {{ opId?: string }} [options]
    */
   commit(events, options) {
     return commit(this, events, options);
   }
 
-  /** Starts the writer’s loop if it isn’t running. After a failure it waits for the next emit, commit or flush. */
+  /** Starts the writer’s loop if it isn’t running, writes are open and no reload is under way. */
   pump() {
-    if (this.running || !this.queue.length) return;
-    this.running = run(this).finally(() => {
+    if (this.running || this.reloading || !this.writable || !this.queue.length) return;
+    const gen = this.generation;
+    this.running = run(this, gen).finally(() => {
+      if (this.generation !== gen) return; // a reload took the loop over
       this.running = null;
-      if (this.queue.length && !this.uncertain) this.pump();
+      this.pump();
     });
   }
 
-  /** A job for the writer’s loop, resolved when it has run. @param {'flush' | 'snapshot'} kind */
+  /** A job for the writer’s loop, resolved when it has run; rejected with the cause while writes are closed. @param {'flush' | 'snapshot'} kind */
   job(kind) {
+    if (!this.writable) return Promise.reject(this.cause);
     return new Promise((resolve, reject) => {
       this.queue.push({ [kind]: { resolve, reject } });
       this.pump();
@@ -195,7 +226,8 @@ export class Store {
   /** Flushes, lets go of the log, and releases the folder for the next store. */
   async close() {
     try {
-      await this.flush();
+      await this.reloading?.catch(() => {}); // a reload under way ends first, either way
+      if (this.writable) await this.flush();
     } finally {
       await this.fh?.close();
       this.fh = null;
@@ -215,6 +247,12 @@ export class Store {
   subscribe(fn) {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
+  }
+
+  /** Calls fn after each reload: the store runs on a new epoch, and every reader must load the state again. */
+  onReload(fn) {
+    this.reloaders.add(fn);
+    return () => this.reloaders.delete(fn);
   }
 
   async size() {

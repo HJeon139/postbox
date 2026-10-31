@@ -34,6 +34,10 @@ export function liveStreams(store) {
     if (lag > 0) setTimeout(send, lag).unref();
     else send();
   });
+  // A reload (server/store-reload.mjs) puts the store on a new epoch: every open stream is told to load the state again.
+  store.onReload(() => {
+    for (const res of streams) res.write(`event: epoch\ndata: ${JSON.stringify(store.epoch)}\n\nevent: resync\ndata: {}\n\n`);
+  });
   const keepAlive = setInterval(() => {
     for (const res of streams) res.write(': keep-alive\n\n');
   }, 15000);
