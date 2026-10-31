@@ -188,8 +188,9 @@ test('Retry says what wasn’t saved, once, in the status and the log, and tells
       ['running', 'dropped'],
     ],
   );
-  // The page heard the batch’s events as they were emitted, then one resync: it loads the state again.
-  assert.deepEqual(p.frames(), ['item.add', 'project', 'item.patch', 'item.add', 'resync']);
+  // The page heard the store’s epoch first, then the batch’s events as they were emitted, then one resync: it loads
+  // the state again (and gets the new epoch with it).
+  assert.deepEqual(p.frames(), ['epoch', 'item.add', 'project', 'item.patch', 'item.add', 'resync']);
   assert.match(errors.join('\n'), /weren’t saved.*recursion limit/);
 });
 
