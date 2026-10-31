@@ -1,7 +1,8 @@
 // A scroll the transcript hasn’t heard about yet: the browser fires the scroll event in the next frame’s scroll steps,
-// not when the view moves (#341, one of PF-3’s scroll regressions for #508 B1’s view state). In the frame between:
+// not when the view moves (#341; the view’s rules are #508’s design, “Browser”). In the frame between:
 // - a reply that lands right after you scroll up is counted as unseen, so Jump to latest shows;
-// - a scroll down while you’re reading back isn’t taken back when something resizes in that frame.
+// - a scroll down while you’re reading back isn’t taken back when something resizes in that frame. This one passes on
+//   main too: #341 saw it about once in 45 to 90 runs, and it doesn’t reproduce here, so it’s a guard only.
 // Each test has a conversation of its own.
 
 import { expect, test } from '@playwright/test';
@@ -53,7 +54,7 @@ test('#341 a reply that lands in the frame you scroll up in is counted, and Jump
   await page.evaluate(async (threadId) => {
     const { client } = await import('/app/js/client.mjs');
     const { apply } = await import('/shared/state.mjs');
-    const item = { id: 'it_inframe', kind: 'user', text: 'A reply in the same frame as the scroll up.', at: Date.now() };
+    const item = { id: 'it_inframe', kind: 'agent', handle: 'researcher', text: 'A reply in the same frame as the scroll up.', status: 'done', at: Date.now() };
     scrollBy(0, -240);
     apply(client.state, 'item.add', { threadId, item });
     client.emit({ type: 'item.add', data: { threadId, item } });

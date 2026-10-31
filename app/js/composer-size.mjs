@@ -1,5 +1,4 @@
-// The composer’s box grows with its draft, up to 200 px, then scrolls. Moved out of mountComposer in
-// app/js/thread.mjs, which is at its length ceiling.
+// The composer’s box grows with its draft, up to 200 px, then scrolls.
 
 /**
  * Sizes a draft’s box to its lines. Measuring collapses the box for a moment, which shortens the page, and the browser
