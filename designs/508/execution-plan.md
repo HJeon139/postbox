@@ -105,6 +105,28 @@ The person approved the change-scoped table on 30 October 2026 (block `process-l
 
 Store and the read contract have no scenario phase; their specs and conformance tests decide them alone. PF-1 and PF-2 are decided by Playwright specs only.
 
+## Definition of done for a pull request
+
+Added 31 October 2026, with the person’s approval of the team principles (`room-rules.md`, “Quality”). It maps onto the four parts of the pull request’s body in `designs/developing.md`, so a body is not longer for it:
+- **Background:** requirement and design ids, with any decision that moved; the invariants and the failure table, or “not applicable” and why.
+- **Details:** security (trust boundary, files, permissions, filesystem assumptions, secrets, or “none”); operations (upgrade and downgrade, logs, release note, rollback); the class swept and what was found; docs updated in the same change.
+- **Testing:** each test shown failing first for the stated reason, each check with its negative control; `npm run check` and, for UI changes, both browser runs; each claim with its command; and the reviews: a peer review and critic’s read on the latest head before the push is asked for, and an outside write approved by the person for the version they saw.
+- **Declined:** what is not done here and what is unverified.
+
+Before any code, **a design document gets critic’s read and one peer’s** (rule 13). The document is shown as a review block, or by file path with a head SHA, so comments land on a fixed text, and it carries its requirement and design ids, the decision log and what is unverified. For anything concurrent, durable, security-relevant or user-visible it also carries the invariants, a failure table (what is on disk, what a concurrent reader sees and what the person sees at each step), the tests that must fail first, and upgrade and downgrade behavior. critic answers go, go with conditions or not ready, in at most ten findings; a condition that changes the design goes into the text, and critic reads the revision before the code starts. The peer is the owner of neighboring code:
+
+| Area | Author | Peer |
+|---|---|---|
+| Store, lock, commit, 1b | developer | gpt |
+| Records, delivery routes, A1 and A2 | gpt | developer |
+| Views, composer, panel, #305 and #427 | engineer | gemini |
+| Backends, spike, fixtures | gemini | gpt |
+| Requirements and plan | researcher | critic |
+
+**How it is tracked.** critic keeps a short list of defect classes per pull request. When a class appears twice, the team aligns on a principle, and the next pull request is read against it. researcher checks each body against this list and re-reads the decision log for decisions that moved.
+
+**To automate**, in this order, each its own issue: a pull request body lint (the four parts, the length cap, requirement ids, a command and result for each “tested” claim, a claimed hash or file that exists); a job that runs the spec files a pull request adds or changes against the merge-base code and classifies each changed spec (regression, characterization, or test infrastructure) and requires a regression to fail on the baseline for its named assertion, with the exit status kept; a lint that files in the data folder are created only through the shared publish and write helpers; and the delivery check of #585. The PR-body and store-write lints are bounded structural checks, not proof of truth or of a sweep’s completeness; the store-write lint lists its allowed APIs and paths, since an append-only log is not published through a helper. The #585 delivery check is ready and does not wait for the others. None is built yet.
+
 ## How the room talks
 
 - **Each step gets a conversation of its own** (room rule 8), with the step’s issue and the four `designs/508/` paths as its brief. This room stays the place for the plan, cross-step questions and the person’s decisions.
