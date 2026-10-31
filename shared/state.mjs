@@ -1,6 +1,7 @@
 // The state shape and the reducer, shared by the server’s store and the browser. Every change is an
 // event { seq, type, data }; applying the same events in order gives the same state on both sides.
 
+import { applyTurnArchive } from './state-archive.mjs';
 import { applyHost } from './state-hosts.mjs';
 
 /**
@@ -135,7 +136,7 @@ export function apply(s, type, d) {
     case 'notify':
       break; // transient: shown as a toast, nothing to store
     default:
-      if (!applyHost(s, type, d)) throw new Error(`Unknown store event “${type}”.`);
+      if (!applyHost(s, type, d) && !applyTurnArchive(s, type, d)) throw new Error(`Unknown store event “${type}”.`);
   }
 }
 
