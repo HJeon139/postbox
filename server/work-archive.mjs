@@ -37,7 +37,7 @@ export function hotTurns(state, convId) {
   const archived = new Set();
   for (const e of state.work?.[convId] ?? []) {
     if (e.kind === 'turn-archive') archived.add(e.turnId);
-    else if (e.turnId) turn(e.turnId, e.at ?? 0).work.push(e);
+    else if (e.turnId) turn(e.turnId, e.at ?? e.startedAt ?? 0).work.push(e);
   }
   for (const threadId of threadsOf(state, convId))
     for (const item of state.items?.[threadId] ?? [])
@@ -62,7 +62,7 @@ function summaryOf(/** @type {any} */ t, /** @type {string} */ sha256) {
     id: `wa_${t.turnId}`,
     kind: 'turn-archive',
     turnId: t.turnId,
-    at: t.work[0]?.at ?? t.at,
+    at: t.at,
     sha256,
     counts: {
       files: new Set(changes.map((/** @type {any} */ c) => c.fileId)).size,
@@ -73,16 +73,33 @@ function summaryOf(/** @type {any} */ t, /** @type {string} */ sha256) {
       publishes: of('publish').length,
       steps: t.replies.reduce((/** @type {number} */ n, /** @type {any} */ r) => n + (r.item.activity.steps?.length ?? 0), 0),
     },
+    effort: effortOf(t.work.filter((/** @type {any} */ e) => e.kind === 'turn')),
     handles: [...new Set([...t.work, ...t.replies.map((/** @type {any} */ r) => r.item)].map((x) => x.handle).filter(Boolean))],
   };
 }
 
-/** I4: a turn may go once it has ended, nothing in it is still running, and none of its jobs is kept. */
-const finished = (/** @type {any} */ t, /** @type {Set<string>} */ busy) =>
-  !busy.has(t.turnId) && !t.work.some((/** @type {any} */ e) => e.state === 'running');
+/** What the turn entry says the turn cost, so the conversation’s totals (shared/work.mjs `summarize`) keep it. */
+function effortOf(/** @type {any[]} */ turns) {
+  /** @type {Record<string, number>} */
+  const tokens = {};
+  for (const t of turns) for (const [k, v] of Object.entries(t.tokens ?? {})) tokens[k] = (tokens[k] ?? 0) + (Number(v) || 0);
+  const sum = (/** @type {string} */ k) => turns.reduce((n, t) => n + (t[k] ?? 0), 0);
+  return { turns: turns.length, ms: sum('ms'), toolCalls: sum('toolCalls'), costUsd: sum('costUsd'), tokens };
+}
 
 /**
- * Archives a conversation’s older turns, one commit each, until two hot turns are left or the oldest can’t go yet.
+ * The states an entry can still leave (server/ledger.mjs): `running` until it ends, `background` until its task ends
+ * (:434), and `unknown`, which Stop's keep choice turns back into `background` (:453). Any other state is final.
+ */
+const OPEN = new Set(['running', 'background', 'unknown']);
+
+/** I4: a turn may go once it has ended, nothing in it can change any more, and none of its jobs is kept. */
+const finished = (/** @type {any} */ t, /** @type {Set<string>} */ busy) =>
+  !busy.has(t.turnId) && !t.work.some((/** @type {any} */ e) => OPEN.has(e.state) || (e.kind === 'turn' && e.status === 'running'));
+
+/**
+ * Archives a conversation’s older ended turns, oldest first, one commit each, until only the last two and any turn that
+ * can’t go yet are hot. A turn that can’t go is passed over, so one old command left `unknown` blocks nothing after it.
  * `running` holds the turns still running or with a kept job (the runtime’s to say). Stops quietly when the state
  * changed under it (the next turn’s end tries again); a failed put or commit rejects.
  * @param {{ store: any, blobs: { put(buf: Buffer): Promise<{ sha256: string }> }, convId: string, running: Set<string> }} o
@@ -91,9 +108,10 @@ const finished = (/** @type {any} */ t, /** @type {Set<string>} */ busy) =>
 export async function archiveTurns({ store, blobs, convId, running }) {
   let n = 0;
   for (;;) {
-    const turns = hotTurns(store.state, convId);
-    const t = turns[0];
-    if (turns.length <= HOT_TURNS || !finished(t, running)) return n;
+    const t = hotTurns(store.state, convId)
+      .slice(0, -HOT_TURNS)
+      .find((x) => finished(x, running));
+    if (!t) return n;
     const { sha256 } = await blobs.put(Buffer.from(payload(convId, t)));
     const summary = summaryOf(t, sha256);
     const items = t.replies.map((r) => ({ threadId: r.threadId, id: r.item.id }));
