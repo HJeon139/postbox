@@ -75,7 +75,7 @@ test('T-27: the hand-built fixture with a plain line, an array line and a plain 
   const s = await new Store(dir).load();
   assert.equal(s.state.seq, 4);
   assert.deepEqual(Object.keys(s.state.threads).sort(), ['t1', 't2', 't3', 't4']);
-  assert.deepEqual(await s.commit([{ type: 'thread', data: { id: 'again', members: [] } }], { opId: 'settle-1' }), { seq: 2, duplicate: true });
+  assert.deepEqual(await s.commit([{ type: 'thread', data: { id: 'again', members: [] } }], { opId: 'settle-1' }), { seq: 3, duplicate: true }); // the last seq of the group
   assert.deepEqual(await s.commit([{ type: 'thread', data: { id: 'again', members: [] } }], { opId: 'single-1' }), { seq: 4, duplicate: true });
   assert.equal(s.lost, null);
   await s.close();

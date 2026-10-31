@@ -7,7 +7,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
@@ -110,10 +110,7 @@ export async function start({
   const mediaDir = join(dataDir, 'media');
   await mkdir(mediaDir, { recursive: true });
   process.env.POSTBOX_MEDIA = mediaDir;
-  if (fresh)
-    for (const n of await readdir(dataDir).catch(() => []))
-      if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n)) await rm(join(dataDir, n), { force: true });
-  const store = await new Store(dataDir).load();
+  const store = await new Store(dataDir).load({ fresh }); // a fresh start empties the folder under the lock
   const blobs = new Blobs(join(dataDir, 'blobs'));
   const corpus = await new Corpus().loadDir(join(ROOT, 'server', 'corpus', 'books'));
   const adapters = new AdapterRegistry().register(new MockAdapter());
@@ -233,7 +230,7 @@ export async function start({
     // with the cause, before it reaches the runtime; reads, Retry and Stop still answer. The tools have the same gate
     // in server/mcp.mjs.
     if (!store.writable && req.method !== 'GET' && req.method !== 'HEAD' && path !== '/mcp' && path !== '/api/store/retry' && !path.endsWith('/stop'))
-      throw Object.assign(httpError(503, store.cause.message), { code: 'store-closed' });
+      throw Object.assign(httpError(503, store.cause?.message ?? 'Postbox can’t save changes right now.'), { code: 'store-closed' });
     if (path === '/api/store/retry' && req.method === 'POST') {
       if (store.writable) throw httpError(409, 'Nothing to retry: Postbox is saving changes. If a page still shows the status line, reload it.');
       await store.reload().catch((e) => {

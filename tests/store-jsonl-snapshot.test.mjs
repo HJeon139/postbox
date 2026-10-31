@@ -31,12 +31,14 @@ for (const when of ['before', 'after']) {
 test('log segments are retained if snapshot directory sync fails after rename', async (t) => {
   const dir = await folder(t);
   let cuts = 0;
+  let armed = false; // load() syncs the folder once at start (the integrator’s review of 1a); only the snapshot’s sync fails here
   const io = disk({
     open: async (path, ...args) => {
       const handle = await fs.open(path, ...args);
       if (String(path) !== dir) return handle;
       return handleWith(handle, {
         sync: async () => {
+          if (!armed) return handle.sync();
           cuts++;
           throw new Error('snapshot directory sync failed');
         },
@@ -44,6 +46,7 @@ test('log segments are retained if snapshot directory sync fails after rename', 
     },
   });
   const store = await opened(t, dir, { io });
+  armed = true;
   store.emit('thread', { id: 'saved', members: [] });
   await store.flush();
   const before = await fs.readFile(join(dir, 'events-1.jsonl'), 'utf8');

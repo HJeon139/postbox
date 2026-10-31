@@ -73,14 +73,20 @@ test('I8: a reload listener’s commit is durable before anyone hears writes reo
     release = r;
   });
   let reconciled;
+  let listenerRan;
+  const ran = new Promise((r) => {
+    listenerRan = r;
+  });
   const off = s.onReload(() => {
     // Reconciliation that writes: through commit, after the install, as a stand-in for A1’s records going back to waiting.
     faults.sync = () => gate; // its fsync is held
     reconciled = s.reconcile([thread('reconciled')], { opId: 'reconcile' });
+    listenerRan();
     return reconciled;
   });
   const retry = s.reload();
-  await new Promise((r) => setTimeout(r, 30));
+  await ran; // not a fixed wait: the listener runs after the install, however long the barrier takes under load
+  await new Promise((r) => setTimeout(r, 10));
   assert.ok(reconciled, 'the listener ran after the install');
   assert.ok(!heard.includes('open'), `nothing heard writes reopen while the reconciliation sync is held: ${heard.join()}`);
   assert.equal(s.writable, false, 'closed to outside writes while reconciling');
@@ -93,20 +99,32 @@ test('I8: a reload listener’s commit is durable before anyone hears writes reo
   assert.deepEqual(await reconciled, { seq: 3, duplicate: false });
   assert.equal(heard.at(-1), 'open');
   off();
-  // A listener that fails: Retry rejects, the store stays closed, naming it.
+  await s.close();
+  const b = await new Store(dir).load();
+  assert.deepEqual(Object.keys(b.state.threads).sort(), ['reconciled', 't1', 'x'], 'the outside commit never landed');
+  await b.close();
+  await rm(dir, { recursive: true });
+});
+
+test('I8: a reload listener that fails leaves the store closed, naming it; the next Retry without it succeeds', async () => {
+  const dir = await tmp();
+  const faults = {};
+  const s = await new Store(dir, { io: logDisk(faults) }).load();
+  s.emit('thread', { id: 't1', members: [] });
+  await s.flush();
   faults.sync = () => Promise.reject(eio('disk sync refused'));
   await assert.rejects(s.commit([thread('y')], { opId: 'y' }), /EIO/);
   faults.sync = null;
-  const off2 = s.onReload(() => Promise.reject(Object.assign(new Error('records could not be rebuilt'), { code: 'ERECONCILE' })));
+  const off = s.onReload(() => Promise.reject(Object.assign(new Error('records could not be rebuilt'), { code: 'ERECONCILE' })));
   await assert.rejects(s.reload(), /reconciliation after the reload failed.*records could not be rebuilt/);
   assert.equal(s.writable, false);
   assert.equal(s.status.cause.code, 'ERECONCILE');
-  off2();
+  off();
   await s.reload();
   assert.equal(s.writable, true);
   await s.close();
   const b = await new Store(dir).load();
-  assert.deepEqual(Object.keys(b.state.threads).sort(), ['reconciled', 't1', 'x', 'y'], 'the outside commit never landed');
+  assert.deepEqual(Object.keys(b.state.threads).sort(), ['t1', 'y'], 'the landed line is kept; nothing else was written');
   await b.close();
   await rm(dir, { recursive: true });
 });
@@ -156,6 +174,18 @@ test('after a Retry whose barrier failed, a second Retry succeeds once the disk 
   await s.close();
   const b = await new Store(dir).load();
   assert.ok(b.state.threads.after);
+  await b.close();
+  await rm(dir, { recursive: true });
+});
+
+test('Retry on a store that was closed is refused: the folder may be another store’s now', async () => {
+  const dir = await tmp();
+  const s = await new Store(dir).load();
+  s.emit('thread', { id: 't1', members: [] });
+  await s.close();
+  await assert.rejects(s.reload(), /closed/);
+  const b = await new Store(dir).load();
+  assert.ok(b.state.threads.t1);
   await b.close();
   await rm(dir, { recursive: true });
 });

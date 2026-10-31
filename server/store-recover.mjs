@@ -7,7 +7,7 @@
 
 import { join } from 'node:path';
 import { emptyState, ownState } from '../shared/state.mjs';
-import { writeSnapshot } from './store-commit.mjs';
+import { syncDir, writeSnapshot } from './store-commit.mjs';
 import { replay } from './store-replay.mjs';
 
 /**
@@ -58,6 +58,7 @@ async function readSnapshot(c) {
       c.state = ownState({ ...emptyState(), ...JSON.parse(await c.io.readFile(legacy, 'utf8')) });
       await writeSnapshot(c);
       await c.io.rename(legacy, `${legacy}.migrated`);
+      await syncDir(c); // both renames durable before the old file is taken as read
     } catch (le) {
       if (le.code !== 'ENOENT') throw new Error(`Couldn’t read the old store at ${legacy}: ${le.message}`);
     }

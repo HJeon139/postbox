@@ -41,7 +41,7 @@ test('a commit writes its events as one fsynced log line with their opId, beside
   await a.flush();
   syncs = 0;
   const r = await a.commit([thread('t1'), thread('t2'), { type: 'item.add', data: { threadId: 't1', item: { id: 'i1', text: 'hi' } } }], { opId: 'op-1' });
-  assert.deepEqual(r, { seq: 2, duplicate: false }, 'a commit resolves with the seq of its first event');
+  assert.deepEqual(r, { seq: 4, duplicate: false }, 'a commit resolves with the seq of its last event (the design, “commit”)');
   assert.ok(syncs >= 1, 'the line was fsynced before the commit resolved');
   assert.equal(a.state.seq, 4);
   const written = await lines(dir);
@@ -95,7 +95,7 @@ test('nothing of a commit is applied, broadcast or served by since() before its 
   assert.deepEqual(heard, [], 'not broadcast before the fsync');
   assert.deepEqual(s.since(1), [], 'since() doesn’t serve it before the fsync');
   g.go();
-  assert.deepEqual(await p, { seq: 2, duplicate: false });
+  assert.deepEqual(await p, { seq: 3, duplicate: false });
   assert.equal(s.state.seq, 3, 'applied once the fsync is done');
   assert.ok(s.state.threads.t2);
   assert.deepEqual(heard, [2, 3], 'broadcast once the fsync is done, in order');
@@ -168,15 +168,15 @@ test('a repeated opId writes nothing and returns the first commit’s seq, in th
   const dir = await tmp();
   const a = await new Store(dir).load();
   const first = await a.commit([thread('t1'), thread('t2')], { opId: 'once' });
-  assert.deepEqual(first, { seq: 1, duplicate: false });
+  assert.deepEqual(first, { seq: 2, duplicate: false }, 'the last seq of the two');
   const size = (await stat(await segmentOf(dir))).size;
-  assert.deepEqual(await a.commit([thread('t3')], { opId: 'once' }), { seq: 1, duplicate: true });
+  assert.deepEqual(await a.commit([thread('t3')], { opId: 'once' }), { seq: 2, duplicate: true });
   assert.equal(a.state.seq, 2, 'nothing applied');
   assert.equal(a.state.threads.t3, undefined);
   assert.equal((await stat(await segmentOf(dir))).size, size, 'nothing written');
   await a.close();
   const b = await new Store(dir).load();
-  assert.deepEqual(await b.commit([thread('t3')], { opId: 'once' }), { seq: 1, duplicate: true }, 'the opIds in the log are remembered across a reload');
+  assert.deepEqual(await b.commit([thread('t3')], { opId: 'once' }), { seq: 2, duplicate: true }, 'the opIds in the log are remembered across a reload');
   assert.equal(b.state.threads.t3, undefined);
   assert.equal((await stat(await segmentOf(dir))).size, size);
   assert.deepEqual(await b.commit([thread('t3')], { opId: 'twice' }), { seq: 3, duplicate: false }, 'another opId writes');
@@ -224,7 +224,7 @@ test('commits issued in the same tick share one fsync', async () => {
   ]);
   assert.deepEqual(results, [
     { seq: 2, duplicate: false },
-    { seq: 3, duplicate: false },
+    { seq: 4, duplicate: false },
     { seq: 5, duplicate: false },
   ]);
   assert.equal(syncs, 1, 'one fsync for the three commits');

@@ -1,24 +1,16 @@
-// Postbox’s store: an append-only event log (JSON Lines) plus periodic snapshots, with all reads served
-// from an in-memory projection. See designs/architecture.md, “The store”, and #508’s storage design.
-//
-// Every change goes through emit(), one event applied, numbered, appended and told at once, or commit(), several
-// events written as ONE fsynced line and applied only once the disk has them (server/store-commit.mjs). Both number
-// their events through sequence(), the one place a seq is assigned. A browser that reconnects asks for everything
-// after the last number it saw, so nothing is lost or duplicated. A write that fails closes the store to commits
-// (server/store-commit.mjs, fail); restarting Postbox is the recovery, since load() handles whatever the disk holds.
-//
-//   <dir>/snapshot.json          the state as of some sequence number (written atomically)
-//   <dir>/events-<from>.jsonl    events after that, one per line, or one commit’s events per line (shared/log-lines.mjs);
-//                                a new segment starts at each snapshot
-//   <dir>/store.lock             the process whose store holds the folder (server/store-lock.mjs)
-//
+// Postbox’s store: an append-only event log (JSON Lines) plus periodic snapshots, all reads served from memory
+// (designs/architecture.md, “The store”; #508’s storage design). emit() applies, numbers, appends and tells one event
+// at once; commit() writes several as ONE fsynced line and applies them only once the disk has them
+// (server/store-commit.mjs); both number through sequence(). A write that fails closes the store to commits until
+// Retry (server/store-retry.mjs) or a restart. Files: <dir>/snapshot.json, <dir>/events-<from>.jsonl (one event or one
+// commit per line, shared/log-lines.mjs; a new segment at each snapshot), <dir>/store.lock (server/store-lock.mjs).
 // Every file access goes through this.io (node:fs/promises unless a test gives one), so a test can fail one operation.
 
 import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
 import { apply, emptyState } from '../shared/state.mjs';
-import { commit, run } from './store-commit.mjs';
+import { commit, run, syncDir } from './store-commit.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
 import { install, recover } from './store-recover.mjs';
 import { fail, reload } from './store-retry.mjs';
@@ -44,12 +36,9 @@ export class Store {
     this.retryBoundMs = retryBoundMs;
     this.state = emptyState();
     this.events = []; // the backlog for reconnecting browsers: { seq, line }
-    // The history the seqs count within: a token new at each load(), so a page from before, whose seq may
-    // name events this store never kept, is told to resync whatever its seq (server/live-streams.mjs).
-    this.epoch = this.newEpoch();
+    this.epoch = this.newEpoch(); // the history the seqs count within: new at each load() (server/live-streams.mjs)
     this.listeners = new Set();
-    // The writer’s jobs (server/store-commit.mjs), in order: a line to append, a held emit, a commit, a flush or a
-    // snapshot; its loop, while one runs; and the generation a loop runs as (1b’s Retry bumps it to fence a loop).
+    // The writer’s jobs in order (server/store-commit.mjs); its loop while one runs; the generation a loop runs as.
     this.queue = [];
     this.running = null;
     this.generation = 0;
@@ -63,22 +52,21 @@ export class Store {
     this.waitingCommits = 0; // commits queued or pending; emits are held behind them
     this.held = 0; // emits held in the queue, still to be numbered
     this.lock = null; // the folder’s lock while this store holds it (server/store-lock.mjs)
-    // Writes are open, or closed with the cause after a write failed: commits are refused until reload() (Retry) or a
-    // restart (#508’s storage design, “When a write fails”; server/store-retry.mjs).
+    // Open, or closed with the cause after a write failed, until reload() or a restart (server/store-retry.mjs).
     this.writable = true;
+    /** @type {(Error & { code?: string }) | null} why writes are closed */
     this.cause = null;
     this.warned = false; // an emit while closed logged the cause
     this.lost = null; // history the log lost, { from, to, count }, found at load (server/store-replay.mjs)
+    this.closed = false; // close() ran: nothing is applied or written here again
     this.warning = null; // a snapshot that failed, while the log goes on
     this.retrying = null; // reload()’s promise while one runs
-    // Retry has installed the recovered state and runs the reload listeners’ reconciliation: the writer runs and
-    // reconcile() commits, while `writable` stays false, so the router, the tools and turn starts stay closed (I3).
-    this.reconciling = false;
+    this.reconciling = false; // Retry runs the reload listeners: reconcile() writes while `writable` stays false (I3)
     this.writtenThrough = 0; // the last seq whose line was appended
     this.savedThrough = 0; // the last seq whose line was fsynced: the page marks later changes unsaved
     this.nextSnapshotAt = 0; // after a failed snapshot, no attempt before this time
     this.snapshotBackoff = 0;
-    this.statusListeners = new Set(); // told each time writes close or reopen, a Retry starts or ends, or the warning changes
+    this.statusListeners = new Set(); // told at each change of the status
     this.reloaders = new Set(); // told after a reload installs a new epoch
   }
 
@@ -115,8 +103,7 @@ export class Store {
   }
 
   /**
-   * A commit a reload listener makes while Retry reconciles (A2’s records back to waiting): the one path through the
-   * closed store, and only while it is reconciling. Outside callers use commit(), which stays refused until Retry ends.
+   * A reload listener’s commit while Retry reconciles: the one path through the closed store, only while reconciling.
    * @param {any[] | ((state: any) => any[])} events @param {{ opId?: string }} [options]
    */
   reconcile(events, options) {
@@ -128,7 +115,7 @@ export class Store {
   }
 
   /** Takes the folder (one store per folder, or load() rejects naming the holder), reads it, and leaves the writer at its end. */
-  async load() {
+  async load({ fresh = false } = {}) {
     if (!this.dir) {
       this.epoch = this.newEpoch();
       return this;
@@ -136,7 +123,18 @@ export class Store {
     await this.io.mkdir(this.dir, { recursive: true });
     this.lock = await lockStore(this.io, this.dir);
     try {
+      // A fresh start empties the folder only once it holds the lock, so a running Postbox’s files are never deleted
+      // under it (the integrator’s review of 1a).
+      if (fresh)
+        for (const n of await this.io.readdir(this.dir))
+          if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n)) await this.io.rm(this.at(n), { force: true });
       install(this, await recover(this));
+      // The folder’s entries are made durable once per start: a segment rotated by an earlier run that only ever held
+      // emits may never have had its entry synced (the integrator’s review of 1a). A filesystem that can’t sync a
+      // folder is tolerated; any other error refuses the start.
+      await syncDir(this).catch((e) => {
+        if (!['EINVAL', 'ENOTSUP', 'EPERM', 'EISDIR'].includes(e.code)) throw e;
+      });
     } catch (e) {
       await unlockStore(this.io, this.lock);
       this.lock = null;
@@ -167,10 +165,8 @@ export class Store {
     return ev;
   }
 
-  /** Applies a numbered event with the shared reducer, the only place state changes, and keeps it for since(). */
+  /** Applies a numbered event with the shared reducer and keeps it for since() as JSON, as it was emitted. */
   record(ev) {
-    // The reducer keeps an event’s objects in the state, where later events change them in place, so the backlog
-    // keeps each event as JSON: a reconnecting browser gets it as it was emitted, not as the state is now.
     const line = JSON.stringify(ev);
     apply(this.state, ev.type, ev.data);
     this.state.seq = ev.seq;
@@ -186,11 +182,16 @@ export class Store {
 
   /**
    * Applies a change and broadcasts it, unless a commit is queued or in flight: then it’s held, and numbered, applied
-   * and broadcast in its turn once the commit resolves or fails (the returned event gets its seq then). While writes
-   * are closed it’s applied and broadcast but not written.
+   * and broadcast in its turn once the commit settles. While writes are closed it’s applied and broadcast, not written.
    */
   emit(type, data) {
     const ev = { type, data };
+    if (this.closed) {
+      // Applied nowhere: the store has been handed over. Said once, so an exit callback’s stream doesn’t flood the log.
+      if (!this.warned) console.error(`An event after the store closed was dropped: ${this.cause?.message}`);
+      this.warned = true;
+      return ev;
+    }
     if (this.waitingCommits || this.held) {
       this.held++;
       this.queue.push({ held: ev, json: JSON.stringify(ev) }); // as it is now: the caller may change its object later
@@ -201,7 +202,7 @@ export class Store {
     const line = this.record(ev);
     this.notify(ev);
     if (!(this.writable || this.reconciling)) {
-      if (!this.warned) console.error(`An event wasn’t written: ${this.cause.message}`);
+      if (!this.warned) console.error(`An event wasn’t written: ${this.cause?.message}`);
       this.warned = true;
     } else if (this.dir) {
       this.queue.push({ line: `${line}\n`, seq: ev.seq });
@@ -211,11 +212,7 @@ export class Store {
     return ev;
   }
 
-  /**
-   * Releases a held emit: numbered now, applied from the JSON made when it was called, and broadcast; the seq goes on
-   * the object emit() returned. Gives the line to write.
-   * @param {{ held: any, json: string }} job
-   */
+  /** Releases a held emit: numbered now, applied from the JSON made at the call, broadcast; gives the line to write. @param {{ held: any, json: string }} job */
   release({ held, json }) {
     const ev = this.sequence(JSON.parse(json));
     held.seq = ev.seq;
@@ -227,9 +224,8 @@ export class Store {
   }
 
   /**
-   * Commits several events as one line, all durable or none (server/store-commit.mjs). With an opId, a repeat
-   * resolves `{ seq, duplicate: true }` without writing. Rejects with the cause while writes are closed.
-   * @param {any[] | ((state: any) => any[])} events @param {{ opId?: string }} [options]
+   * Commits several events as one line, all durable or none; a repeated opId resolves `{ seq, duplicate: true }` without
+   * writing; rejects with the cause while writes are closed. @param {any[] | ((state: any) => any[])} events @param {{ opId?: string }} [options]
    */
   commit(events, options) {
     return commit(this, events, options);
@@ -265,11 +261,18 @@ export class Store {
     if (this.dir) await this.job('snapshot');
   }
 
-  /** Flushes, lets go of the log, and releases the folder for the next store. */
+  /**
+   * Flushes, lets go of the log, releases the folder for the next store, and closes this store for good: a late emit or
+   * commit (an adapter’s exit callback after shutdown) is refused and never reopens the segment, since another store may
+   * hold the folder by then and two must never interleave lines in one log (the integrator’s review of 1a).
+   */
   async close() {
     try {
       if (this.writable) await this.flush();
     } finally {
+      this.closed = true;
+      this.writable = false;
+      this.cause = Object.assign(new Error('The store is closed: Postbox shut it down, so nothing more is saved here.'), { code: 'ECLOSED' });
       await this.fh?.close();
       this.fh = null;
       await unlockStore(this.io, this.lock);
