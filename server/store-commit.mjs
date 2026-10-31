@@ -134,7 +134,7 @@ async function writeCommits(store, gen) {
   } catch (e) {
     // The numbers these commits took are given back first, so the held emits fail() releases, and every emit after,
     // go on from the applied seq with no gap (critic’s finding on 1a).
-    for (const c of written) store.ahead -= c.events.length;
+    for (const c of written) store.ahead -= c.events.length; // exact while only append() can throw here: applyCommits doesn’t
     if (e.code !== 'ERELOADED') fail(store, e); // the written commits get the same cause as every later one
     for (const c of written) for (const r of [c, ...(c.followers ?? [])]) r.reject(store.writable ? e : store.cause);
   } finally {

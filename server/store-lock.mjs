@@ -114,8 +114,15 @@ async function takeOver(io, path, stale) {
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
       const left = await io.stat(taking).catch(() => null);
-      if (left && Date.now() - left.mtimeMs > TAKEOVER_MS) await io.rm(taking, { recursive: true, force: true });
-      else await new Promise((r) => setTimeout(r, 10));
+      if (left && Date.now() - left.mtimeMs > TAKEOVER_MS) {
+        // Its maker died mid-takeover. Moved aside under a unique name before it goes, so of two starters that find it
+        // stale only one removes it; the other’s rename finds nothing, and it waits for the mutex the first makes next.
+        const gone = `${taking}.${process.pid}.${randomBytes(4).toString('hex')}.stale`;
+        await io.rename(taking, gone).then(
+          () => io.rm(gone, { recursive: true, force: true }),
+          () => {},
+        );
+      } else await new Promise((r) => setTimeout(r, 10));
       continue;
     }
     try {

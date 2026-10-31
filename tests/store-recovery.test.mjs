@@ -293,3 +293,17 @@ test('a flush whose fsync fails is the first failed sync: the store closes to co
   await s.close();
   await rm(dir, { recursive: true });
 });
+
+test('a takeover mutex left by a starter that died is removed by exactly one of two new starters, and one of them wins the lock', async () => {
+  const { LOCK, lockStore } = await import('../server/store-lock.mjs');
+  const dir = await tmp();
+  await writeFile(join(dir, LOCK), JSON.stringify({ pid: 2 ** 22 - 9, started: 1, token: 'stale0000' }));
+  await mkdir(join(dir, `${LOCK}.taking`));
+  const old = new Date(Date.now() - 60_000);
+  await realFs.utimes(join(dir, `${LOCK}.taking`), old, old); // older than the stale rule
+  const probe = { alive: (pid) => pid === process.pid, started: async () => 1 };
+  const results = await Promise.allSettled([lockStore(realFs, dir, probe), lockStore(realFs, dir, probe)]);
+  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1, JSON.stringify(results.map((r) => r.status)));
+  assert.deepEqual((await readdir(dir)).sort(), [LOCK], 'the stale mutex and its aside name are gone');
+  await rm(dir, { recursive: true });
+});
