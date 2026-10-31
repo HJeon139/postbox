@@ -47,7 +47,11 @@ export function fail(store, e) {
   store.tellStatus();
 }
 
-/** Retry, one at a time: a second call while one runs joins it. @param {import('./store.mjs').Store} store */
+/**
+ * Retry, one at a time: a second call while one runs joins it. The status listeners hear the result only once the
+ * whole order has run, reconciliation included, so nothing that waited starts early.
+ * @param {import('./store.mjs').Store} store
+ */
 export function reload(store) {
   if (store.retrying) return store.retrying;
   // Nothing to retry while writes are open: a reload then would install the disk’s view over memory that is ahead of
@@ -91,8 +95,17 @@ async function retry(store) {
   store.writable = true;
   store.cause = null;
   store.warned = false;
-  for (const fn of store.reloaders) fn();
   store.pump();
+  // Reconciliation that writes (A2’s records going back to waiting; the I8 stand-in in the specs) runs now, through
+  // commit, and is awaited: its lines are durable before the status listeners hear writes reopen and run what waited
+  // (gpt’s sixth finding on 1b: a listener’s promise was ignored, so held work could start before its commit landed).
+  // A listener that fails closes the store again, naming it; the next Retry reloads and reconciles afresh.
+  try {
+    await Promise.all([...store.reloaders].map((fn) => fn()));
+  } catch (e) {
+    store.writable = false;
+    throw closedBy(store, Object.assign(new Error(`reconciliation after the reload failed: ${e.message}`), { code: e.code }));
+  }
 }
 
 /** Whether a promise settles within `ms`; the timer is cleared either way, so it never holds the process open. */

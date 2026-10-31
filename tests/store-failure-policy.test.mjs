@@ -57,7 +57,7 @@ test('T-12: ENOSPC and EROFS on a write close the store with that cause, like EI
   }
 });
 
-test('I8: a commit made by a reload listener runs after the install and lands in the new history, once', async () => {
+test('I8: a reload listener’s commit is durable before anyone hears writes reopen; a listener that fails keeps the store closed', async () => {
   const dir = await tmp();
   const faults = {};
   const s = await new Store(dir, { io: logDisk(faults) }).load();
@@ -66,19 +66,45 @@ test('I8: a commit made by a reload listener runs after the install and lands in
   faults.sync = () => Promise.reject(eio('disk sync refused'));
   await assert.rejects(s.commit([thread('x')], { opId: 'x' }), /EIO/);
   faults.sync = null;
-  let reconciled;
-  s.onReload(() => {
-    // Reconciliation that writes: through commit, after the install, as a stand-in for A1’s records going back to waiting.
-    reconciled = s.commit([thread('reconciled')], { opId: 'reconcile' });
+  const heard = [];
+  s.onStatus((st) => heard.push(st.writable ? 'open' : 'closed'));
+  let release;
+  const gate = new Promise((r) => {
+    release = r;
   });
-  await s.reload();
+  let reconciled;
+  const off = s.onReload(() => {
+    // Reconciliation that writes: through commit, after the install, as a stand-in for A1’s records going back to waiting.
+    faults.sync = () => gate; // its fsync is held
+    reconciled = s.commit([thread('reconciled')], { opId: 'reconcile' });
+    return reconciled;
+  });
+  const retry = s.reload();
+  await new Promise((r) => setTimeout(r, 30));
+  assert.ok(reconciled, 'the listener ran after the install');
+  assert.ok(!heard.includes('open'), `nothing heard writes reopen while the reconciliation sync is held: ${heard.join()}`);
+  faults.sync = null;
+  release();
+  await retry;
   // The failed commit’s line landed before its sync failed, so the reload recovered it as seq 2 (I7); the listener’s
   // commit comes after the install, as seq 3.
   assert.deepEqual(await reconciled, { seq: 3, duplicate: false });
-  assert.ok(s.state.threads.reconciled);
+  assert.equal(heard.at(-1), 'open');
+  off();
+  // A listener that fails: Retry rejects, the store stays closed, naming it.
+  faults.sync = () => Promise.reject(eio('disk sync refused'));
+  await assert.rejects(s.commit([thread('y')], { opId: 'y' }), /EIO/);
+  faults.sync = null;
+  const off2 = s.onReload(() => Promise.reject(Object.assign(new Error('records could not be rebuilt'), { code: 'ERECONCILE' })));
+  await assert.rejects(s.reload(), /reconciliation after the reload failed.*records could not be rebuilt/);
+  assert.equal(s.writable, false);
+  assert.equal(s.status.cause.code, 'ERECONCILE');
+  off2();
+  await s.reload();
+  assert.equal(s.writable, true);
   await s.close();
   const b = await new Store(dir).load();
-  assert.deepEqual(Object.keys(b.state.threads).sort(), ['reconciled', 't1', 'x']);
+  assert.deepEqual(Object.keys(b.state.threads).sort(), ['reconciled', 't1', 'x', 'y']);
   await b.close();
   await rm(dir, { recursive: true });
 });
