@@ -281,8 +281,8 @@ What a kill at each step leaves, and what the next start does. Every row is a te
 | After `fsync`, before the broadcast | The whole commit, durable | Replays; the caller was never told, and a retry with the same `opId` returns `duplicate` |
 | After the broadcast, before the caller is told | The same | The same |
 | A new segment: after create, before its directory is synced | A file that may vanish | The commit was not acknowledged; nothing acknowledged is lost |
-| After a write or `fsync` error, before Retry | The lines may be on disk | Replays if present; the caller was told the commit was rejected, and finds it present afterwards |
-| During Retry, after the reload and before the fresh-descriptor sync | The recovered lines, maybe not durable | Replays what is there; writes stayed closed |
+| After a write or `fsync` error, before a restart (1a) or Retry (1b) | The lines may be on disk | Replays if present; the caller was told the commit was rejected, and finds it present afterwards |
+| 1b: during Retry, after the reload and before the fresh-descriptor sync | The recovered lines, maybe not durable | Replays what is there; writes stayed closed |
 | During a snapshot, before the rename | The old snapshot and all segments, plus a leftover temp file | Normal replay; the temp file is removed |
 | After the rename, before the directory sync | The new snapshot, maybe not durable | Either snapshot with all segments replays correctly |
 | After the rename, before segments are pruned | The new snapshot and old segments | Old events have `seq <= state.seq` and are skipped; the segments are pruned |
@@ -294,8 +294,8 @@ What a kill at each step leaves, and what the next start does. Every row is a te
 
 | Failure | Result |
 |---|---|
-| Disk full, read-only folder, EIO on write | Queued commits are rejected, memory is reloaded from disk, writes close with the cause; the page stays readable; Retry reloads (“When a write fails (ST-3)”) |
-| `fsync` error | The same; a commit that landed is present after the reload, and the caller’s retry returns `duplicate`. After `EIO` no recovery can prove the lines are on disk |
+| Disk full, read-only folder, EIO on write | **1a:** the queued commits and every later one are rejected with the cause, so a refused commit never becomes `sent`; emits keep applying to memory with one logged error; restarting Postbox is the recovery. **1b:** writes close with the cause, the page stays readable from the published state, and Retry reloads (“When a write fails (ST-3)”) |
+| `fsync` error | The same, in each step. A commit that landed is present after the restart (1a) or the reload (1b), and the caller’s retry returns `duplicate`. After `EIO` no recovery can prove the lines are on disk |
 | A corrupt line or a malformed group | Postbox refuses to start and names the file and offset |
 | A gap in `seq` (history already lost) | Postbox starts, logs the range and count lost, and shows it once on the status line |
 | A second Postbox on the folder | Refused with a message naming the pid |
@@ -303,7 +303,7 @@ What a kill at each step leaves, and what the next start does. Every row is a te
 | A missing or mismatched shard (S2) | An error naming the shard; never an empty conversation |
 | An older Postbox on a newer folder | See “Rollout and compatibility”; the release notes say not to |
 | **Read after `emit` during a commit** | Code that reads state right after an `emit` made while a commit syncs sees the old state for up to about 6 ms. 1a lists the call sites it audited in its PR body, with a spec for each that reads back |
-| **An `emit` applied in memory, then a write failure** | The change is lost; Retry’s reload discards it and the epoch resyncs the page (T-23) |
+| **An `emit` applied in memory, then a write failure** | **1a:** it stays applied in memory with one logged error, and is lost at the restart, when the epoch resyncs the page. **1b:** Retry’s reload discards it and the epoch resyncs the page (T-23) |
 
 ## 9. Performance and budgets
 
@@ -339,8 +339,8 @@ Written first and failing on `main`. The specs of gpt (14 failing on baseline) a
 | T-7 | Plain event lines and multi-event commits replay together | gpt |
 | T-8 | A newline-terminated unparsable line, a bad line with lines after it, or one in a non-last segment, refuses to start and names the file; nothing is truncated | gpt, developer |
 | T-9 | A gap in `seq` against the applied `seq` starts, logs the range and count lost, and shows it once on the status line; a synthetic segment that begins with already-applied lines starts without a warning | **add** |
-| T-10 | **An uncertain sync: the commit rejects after its complete line lands; Retry reloads and establishes durability on a fresh descriptor; its effects are present once; retrying the same `opId` returns `duplicate` without another append** | gpt’s spec, **with an explicit Retry step** |
-| T-11 | `EIO` on `fsync` rejects the queue, closes writes with the cause, and reloads memory from disk; a fake `io` where the second sync on the old handle succeeds without writing must still end in a sync on a new descriptor | **add** |
+| T-10 | **1a: the first failed write or `fsync` rejects the queued commits and every later one with the cause, including a repeat of the failed operation id, with no reload and no second append; a restart recovers a landed line, and a repeated `opId` within the live process returns `duplicate`. 1b: the commit rejects after its complete line lands; Retry reloads and establishes durability on a fresh descriptor; its effects are present once; retrying the same `opId` returns `duplicate` without another append** | gpt’s `store-jsonl-durable` (1a); the reload files at `fab37752` (1b) |
+| T-11 | **1a:** `EIO` on `fsync` rejects the queue and closes the store to commits with the cause. **1b:** the same also closes writes, reloads memory from disk, and a fake `io` where the second sync on the old handle succeeds without writing must still end in a sync on a new descriptor | **add** (1a); **1b** |
 | T-12 | `ENOSPC` and `EROFS` on write: the same, with the cause | **1b** |
 | T-13 | **Retry quiesces the old writer, loads a private candidate, establishes durability on a fresh descriptor, then installs the state and epoch, activates the reconciled work and reopens; with the recovery sync paused or failed, no recovered state is exposed, no reconciled wake runs, and the previous published view stays readable: a landed commit is kept; no line twice; state equals disk; running turns are stopped; records are rebuilt as at startup; a late callback from the old writer and an old timer are fenced** | **1b** |
 | T-14 | The page stays readable while closed; the status line shows the cause and Retry (Playwright) | **1b** |
@@ -352,7 +352,7 @@ Written first and failing on `main`. The specs of gpt (14 failing on baseline) a
 | T-20 | An event and a shard written in an older shape lift on read, with nothing run at startup | partly legacy tests; **add** |
 | T-21 (S2) | A crash between two shard writes uses the old manifest; a missing or mismatched shard is an error; a replay with snapshots at random points equals the live state; a rebuild of `snapshot.json` equals the original | S2 |
 | T-22 | Two function-form commits issued back to back: the second’s events depend on the first’s | **add** |
-| T-23 | An `emit` applied in memory, then a write failure: the change is lost, memory is reloaded from disk, and the epoch resyncs the page | **add** |
+| T-23 | An `emit` applied in memory, then a write failure. **1a:** it stays applied with one logged error and is lost at the restart; the epoch resyncs the page. **1b:** Retry’s reload discards it | **add** (1a); **1b** |
 | T-24 | A new segment’s directory entry is synced before a commit written there is acknowledged | **add** |
 | T-25 | A multi-event commit: invalid arrays (empty, non-consecutive `seq`, overlapping the snapshot boundary) are rejected | **add** |
 | T-26 | Open, snapshot, prune, close: the metrics counts are unchanged | **add** |
@@ -360,8 +360,8 @@ Written first and failing on `main`. The specs of gpt (14 failing on baseline) a
 | T-28 (S2) | Pause between two shard writes, edit, finish, restart: equals an in-memory store that never snapshotted; a crash at every step; a retry at the same S; a failed publish keeps its dirty marks | S2 |
 | T-29 | The snapshot is written in pieces: the block on a 14 MB state falls below the one-call figure | **add** |
 | T-30 | A rejected commit’s records are rebuilt after the Retry reload (A1 spec): `waiting` or `sent` as the disk has them, and a repeat with the same `opId` returns `duplicate` | gpt, A1 |
-| T-31 | A read tool (`read_conversation`, `read_message`) called while a commit is syncing does not return the commit | **add** |
-| T-32 | A scheduled wake is armed, the write fails, and Retry reloads: the wake runs from the recovered state, or not at all, and not before the recovery sync has succeeded | **add** |
+| T-31 | **1a:** a read tool (`read_conversation`, `read_message`) called while a commit is syncing does not return the commit | **add** |
+| T-32 | **1b:** a scheduled wake is armed, the write fails, and Retry reloads: the wake runs from the recovered state, or not at all, and not before the recovery sync has succeeded | **1b** |
 
 gemini’s UAT checks: the at-rest rows of “Crash points” (leave a truncated segment, an un-renamed temp snapshot, unreferenced shards, or a stale lock, then restart) can be run end to end with `postbox.restart({ whileDown })`. The in-flight rows cannot, because the fault launcher wraps agent CLIs, not the store; they are unit specs. critic reads every PR against ST-3 and ST-4.
 
