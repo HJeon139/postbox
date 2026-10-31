@@ -5,7 +5,7 @@ import { LIMITS, READING } from './limits.mjs';
 import { defaultHostSettings, PATH_BYTES } from './remote-settings.mjs';
 
 /** Bumped on any change a peer of the previous version would refuse or misread. */
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 
 /** How long the daemon lets the host’s signInCheck run before it kills it and answers that the check failed. */
 export const SIGN_IN_CHECK_MS = 30_000;
@@ -92,10 +92,10 @@ export const HARNESSES = Object.freeze(/** @type {const} */ (['claude-code', 'ki
 export const STDIN_KINDS = Object.freeze(/** @type {const} */ (['file', 'none', 'held']));
 
 /**
- * Where each Postbox tool is answered on the host: `host` by the daemon itself (from the snapshot, or the shim’s
- * blocking permission prompt), `queue` returns at once and crosses to Postbox as a `tool`, `ask` crosses as a `tool`
- * and the shim waits for Postbox’s `reply` (an error at once when Postbox isn’t connected). Every tool in
- * shared/mcp-tools.mjs’s TOOL_DEFS is here; tests/remote-protocol.test.mjs checks it.
+ * Where each Postbox tool is answered on the host: `host` by the daemon itself (the shim’s blocking permission prompt),
+ * `queue` returns at once and crosses to Postbox as a `tool`, `ask` crosses as a `tool` and the shim waits for
+ * Postbox’s `reply` (an error at once when Postbox isn’t connected), `read` asks Postbox when attached and falls
+ * back to the snapshot when offline. Every tool in shared/mcp-tools.mjs’s TOOL_DEFS is here; tests/remote-protocol.test.mjs checks it.
  */
 export const TOOL_ROUTES = Object.freeze({
   show_block: 'queue',
@@ -121,8 +121,9 @@ export const TOOL_ROUTES = Object.freeze({
   corpus_search: 'ask',
   // It loads the dataset into Postbox’s corpus and says how it went, so it waits like a search.
   add_dataset: 'ask',
-  read_conversation: 'host',
-  read_message: 'host',
+  // Asks Postbox when attached, answers from the snapshot when not.
+  read_conversation: 'read',
+  read_message: 'read',
   permission_prompt: 'host',
 });
 

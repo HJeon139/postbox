@@ -77,6 +77,8 @@ test('every Postbox tool has a route on the host, and nothing else does', () => 
   assert.equal(TOOL_ROUTES.permission_prompt, 'host');
   assert.equal(TOOL_ROUTES.corpus_search, 'ask');
   assert.equal(TOOL_ROUTES.review_block, 'ask');
+  assert.equal(TOOL_ROUTES.read_conversation, 'read');
+  assert.equal(TOOL_ROUTES.read_message, 'read');
   // A second react takes it back, so only Postbox’s answer says which it was.
   assert.equal(TOOL_ROUTES.react, 'ask');
 });
@@ -113,8 +115,8 @@ test('exit.json has a code or a signal and a time; runner.json has the PID, boot
   assert.match(String(/** @type {any} */ (validateRunnerRecord({ ...runner, startTime: undefined })).error), /needs “startTime”/);
 });
 
-test('PROTOCOL_VERSION is 2: wave 3’s agentFile, permission-canceled, prompt-expired.reason and no-node are what a version 1 peer would refuse or misread', () => {
-  assert.equal(PROTOCOL_VERSION, 2);
+test('PROTOCOL_VERSION is 3: remote reads fall back to Postbox', () => {
+  assert.equal(PROTOCOL_VERSION, 3);
   assert.ok(ERROR_CODES.includes('no-node'));
 });
 

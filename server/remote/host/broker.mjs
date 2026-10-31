@@ -11,7 +11,7 @@
 //   then the shim gets its result at once, so it stops resending, and it crosses to Postbox as `tool` now or after the
 //   next hello. Postbox’s `reply` takes it off the queue; a refusal is logged, since the agent was already answered.
 //   An `ask` call crosses the same way, and Postbox’s reply is the shim’s result; with no Postbox attached it fails at
-//   once and says so. read_conversation and read_message are answered here, from the snapshot Postbox sent.
+//   once and says so. A `read` call (read_conversation and read_message) asks Postbox when attached and falls back to the snapshot when offline.
 // - A permission prompt is written to prompts.jsonl and crosses as `prompt`. Postbox’s `answer` goes to the turn’s
 //   shims as permission-answer, and again whenever a shim resends the prompt (after a reconnect), since the daemon
 //   can’t tell whether a shim that went away read it. The shim’s notice that it expired, or that the harness canceled the call, ends it,

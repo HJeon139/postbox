@@ -188,7 +188,7 @@ export const CASES = {
     tool: {
       ok: { turn: 't1', id: 'tool-1', name: 'show_block', args: { block: {} } },
       bad: [
-        [{ turn: 't1', id: 'tool-1', name: 'read_message', args: {} }, /isn’t a tool Postbox answers/],
+        [{ turn: 't1', id: 'tool-1', name: 'permission_prompt', args: {} }, /isn’t a tool Postbox answers/],
         [{ turn: 't1', id: 'tool-1', name: 'constructor', args: {} }, /isn’t a tool Postbox answers/],
         [{ turn: 't1', id: 'tool-1', name: 'show_block', args: [] }, /tool\.args must be an object/],
       ],

@@ -99,7 +99,11 @@ test('the daemon: a shim on its socket reaches the broker, Stop refuses the turn
     await until(() => got.find((m) => m.type === 'welcome'), 'the welcome');
     assert.equal(got[0].permissionWaitMax, 60_000, 'the setting from Postbox’s hello');
     shimSend('call', { id: 'c1', name: 'read_conversation', args: {} });
-    assert.equal((await until(() => got.find((m) => m.id === 'c1'), 'c1’s result')).text, '[i1] You: hi', 'the snapshot sent before start');
+    const c1Tool = await msgs.next('tool');
+    assert.equal(c1Tool.id, 'c1');
+    assert.equal(c1Tool.name, 'read_conversation');
+    send('reply', { turn: 't1', id: 'c1', ok: true, text: '[i1] You: hi' });
+    assert.equal((await until(() => got.find((m) => m.id === 'c1'), 'c1’s result')).text, '[i1] You: hi');
     shimSend('call', { id: 'c2', name: 'show_block', args: { block: BLOCK } });
     assert.equal((await msgs.next('tool')).id, 'c2');
     send('stop', { turn: 't1' });
@@ -107,7 +111,7 @@ test('the daemon: a shim on its socket reaches the broker, Stop refuses the turn
     shimSend('call', { id: 'c3', name: 'show_block', args: { block: { ...BLOCK, id: 'other' } } });
     assert.equal((await until(() => got.find((m) => m.id === 'c3'), 'c3’s result')).ok, false);
     await sleep(30);
-    assert.equal(msgs.messages.filter((m) => m.type === 'tool').length, 1, 'nothing after Stop reached Postbox');
+    assert.equal(msgs.messages.filter((m) => m.type === 'tool').length, 2, 'nothing after Stop reached Postbox');
     // A held Codex turn’s write passes the broker’s check (a declined request’s answer is refused: the Codex test).
     send('start', { turn: 'cx', harness: 'codex', folder: work, argv: [], env: {}, stdin: 'held', files: [] });
     await msgs.next('started');
