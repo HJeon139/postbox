@@ -8,7 +8,7 @@ import { activityParts, paintActivity, stepsOnly } from './activity-paint.mjs';
 import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
-import { paintOfflineQueue } from './agent-queue.mjs';
+import { paintOfflineQueue, paintWaitingLine } from './agent-queue.mjs';
 import { subagentNow } from './agents.mjs';
 import { allowedCallLine } from './allowed-call.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
@@ -1010,6 +1010,7 @@ export function mountComposer(threadId, { side = false } = {}) {
   const action = h('button.btn', { type: 'button' });
   const att = h('div.attachments', { role: 'group', 'aria-label': 'Attachments' });
   const queue = h('div.outbox');
+  const waiting = h('div.queue-waiting-box');
   // Stop’s ask about background jobs (#129), one row per agent, until you answer it.
   const asks = h('div.outbox');
   /** @type {Map<string, { jobs: number, text: string, turnId?: string }>} asks the server returned before its session event arrives */
@@ -1584,7 +1585,7 @@ export function mountComposer(threadId, { side = false } = {}) {
 
   const el = h(
     'div.composer',
-    h('div.col', status, asks, queue, menuBox, att, h('div.composer-box', plus, commandsButton, ta, action), hint, file, corpusFile),
+    h('div.col', status, asks, waiting, queue, menuBox, att, h('div.composer-box', plus, commandsButton, ta, action), hint, file, corpusFile),
   );
 
   // Drop files: the main composer takes drops anywhere in the window. A side or topic composer takes drops on
@@ -1638,6 +1639,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       : side
         ? 'Join this side thread…'
         : `${members.length > 1 ? 'Reply to' : 'Message'} @${(last ?? members[0])?.handle ?? 'an agent'}`;
+    paintWaitingLine(waiting, threadId);
     paintOfflineQueue(
       queue,
       outbox.filter((x) => x.threadId === threadId),

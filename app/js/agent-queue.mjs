@@ -2,7 +2,7 @@
 
 import { api, client } from './client.mjs';
 import { h, icon, syncList } from './dom.mjs';
-import { openDialog, toast } from './ui.mjs';
+import { openDialog, openMenu, toast } from './ui.mjs';
 
 const S = () => client.state;
 
@@ -20,7 +20,7 @@ function entriesFor(sessionId) {
     .flatMap((thread) => (thread.queue ?? []).filter((q) => q.sessionIds.includes(sessionId)).map((q) => ({ thread, q })));
 }
 
-function queuedMessageRow(entry, repaint) {
+function queuedMessageRow(entry, repaint, at = 1, of = 1) {
   const { thread, q } = entry;
   const target = `/api/threads/${thread.id}/queue/${q.id}`;
   const row = h(
@@ -48,7 +48,7 @@ function queuedMessageRow(entry, repaint) {
         'button.btn.sm.ghost',
         {
           type: 'button',
-          'aria-label': `Remove queued message “${q.text.replace(/\s+/g, ' ').slice(0, 40)}”`,
+          'aria-label': `Remove queued message ${at} of ${of}, “${q.text.replace(/\s+/g, ' ').slice(0, 40)}”`,
           onclick: () => api(target, undefined, 'DELETE').catch((e) => toast({ title: 'Couldn’t remove', text: e.message })),
         },
         icon('x', 'i-sm'),
@@ -93,6 +93,9 @@ export function openQueue(sessionId, anchor = null) {
   body.append(list);
   let dialog;
   const paint = () => {
+    // The agent left (deleted, or its conversation archived): nothing here can be sent to it any more.
+    const now = S().sessions[sessionId];
+    if (!now || now.deleting || now.archived) return dialog?.close();
     const entries = entriesFor(sessionId);
     const ids = new Set(entries.map((entry) => entry.q.id));
     const editing = [...list.children].filter((row) => row.dataset.editing);
@@ -103,17 +106,18 @@ export function openQueue(sessionId, anchor = null) {
     title.textContent = `${entries.length} queued for @${session.handle}`;
     if (!entries.length && !missing.length) {
       dialog?.close();
-      document.getElementById(`agent-row-${sessionId}`)?.focus();
       return;
     }
+    const all = [...entries, ...missing.map((row) => row._entry)];
+    const at = (entry) => all.indexOf(entry) + 1;
     syncList(
       list,
-      [...entries, ...missing.map((row) => row._entry)],
+      all,
       (entry) => entry.q.id,
-      (entry) => queuedMessageRow(entry, paint),
+      (entry) => queuedMessageRow(entry, paint, at(entry), all.length),
       (row, entry) => {
         if (row.dataset.editing) return;
-        const fresh = queuedMessageRow(entry, paint);
+        const fresh = queuedMessageRow(entry, paint, at(entry), all.length);
         row.replaceChildren(...fresh.childNodes);
         row._entry = entry;
       },
@@ -128,10 +132,12 @@ export function openQueue(sessionId, anchor = null) {
     onClose: () => {
       off();
       anchor?.setAttribute('aria-expanded', 'false');
+      // What opened it may be gone (the agent left, the menu closed): focus goes to the composer, never to nothing.
+      if (!anchor?.isConnected) queueMicrotask(() => document.getElementById('composer-input')?.focus());
     },
   });
   const off = client.on((change) => {
-    if (change.type === 'load' || change.type === 'thread') paint();
+    if (change.type === 'load' || change.type === 'thread' || change.type === 'session') paint();
   });
   anchor?.setAttribute('aria-expanded', 'true');
 }
@@ -159,18 +165,65 @@ export function agentQueueButton(session) {
   return button;
 }
 
-/** Offline messages aren’t assigned to an agent yet, so they remain in the composer without duplicating on repaint. */
+/** How many offline messages show as rows before the rest are counted (#427, V1). */
+const OFFLINE_ROWS = 2;
+
+/**
+ * Offline messages aren’t assigned to an agent yet, so they remain in the composer without duplicating on repaint:
+ * at most two rows, then one line counting the rest, so the composer stays bounded.
+ */
 export function paintOfflineQueue(container, messages) {
+  const more = messages.length - OFFLINE_ROWS;
   container.replaceChildren(
-    ...messages.map((message) =>
-      h(
-        'div.queued',
-        { dataset: { key: `offline-${message.threadId}-${message.text}-${message.attachments?.length ?? 0}` } },
-        icon('clock', 'dim'),
-        h('span.q-text', h('span.small.dim', 'Waiting for the connection'), h('br'), message.text),
+    ...messages
+      .slice(0, OFFLINE_ROWS)
+      .map((message) =>
+        h(
+          'div.queued',
+          { dataset: { key: `offline-${message.threadId}-${message.text}-${message.attachments?.length ?? 0}` } },
+          icon('clock', 'dim'),
+          h('span.q-text', h('span.small.dim', 'Waiting for the connection'), h('br'), message.text),
+        ),
       ),
-    ),
+    ...(more > 0 ? [h('div.queued.small.dim', { dataset: { key: 'offline-more' } }, `and ${more} more waiting for the connection`)] : []),
   );
+}
+
+/** The conversation’s agents with something queued for them, and how many each. */
+function waitingIn(threadId) {
+  const conv = rootOf(S().threads[threadId]);
+  return Object.values(S().sessions)
+    .filter((se) => se.threadId === conv && !se.archived && !se.deleting)
+    .map((se) => ({ se, n: entriesFor(se.id).length }))
+    .filter((x) => x.n > 0);
+}
+
+/**
+ * The composer’s one line saying something waits (#427, V2), since the mail buttons may be collapsed or off screen.
+ * With one agent waiting it opens that agent’s queue; with several, a menu of them.
+ */
+export function paintWaitingLine(container, threadId) {
+  const waiting = waitingIn(threadId);
+  const total = waiting.reduce((n, x) => n + x.n, 0);
+  if (!total) return container.replaceChildren();
+  const label = `${total} waiting for ${waiting.length} agent${waiting.length === 1 ? '' : 's'}`;
+  const current = container.firstElementChild;
+  if (current?.textContent === label) return;
+  const button = h(
+    'button.btn.sm.ghost.queue-waiting',
+    {
+      type: 'button',
+      'aria-haspopup': waiting.length === 1 ? 'dialog' : 'menu',
+      onclick: () => {
+        const now = waitingIn(threadId);
+        if (now.length === 1) return openQueue(now[0].se.id, button);
+        openMenu(button, now.map(({ se }) => agentQueueMenuItem(se, button)).filter(Boolean), { label: 'Queued messages' });
+      },
+    },
+    icon('mail', 'i-sm'),
+    label,
+  );
+  container.replaceChildren(button);
 }
 
 /** The phone conversation menu’s route to an agent queue, or null when it has none. */

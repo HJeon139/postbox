@@ -92,7 +92,9 @@ test('Remove and Send now still act on one queued item at a time', async ({ page
     app.rt.agentWake(r.senders[index].id, r.worker.handle, text);
   await synced(page, app);
   await openQueue(page, r);
-  await queued(page, 'Remove only this').getByRole('button', { name: 'Remove queued message “Remove only this”', exact: true }).click();
+  await queued(page, 'Remove only this')
+    .getByRole('button', { name: /^Remove queued message \d of 3, “Remove only this”$/ })
+    .click();
   await expect(mail(page, r)).toHaveAccessibleName(`2 messages queued for @${r.worker.handle}`);
   await queued(page, 'Send only this now').getByRole('button', { name: 'Send now', exact: true }).click();
   await idle(r);
