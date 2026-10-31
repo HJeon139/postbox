@@ -5,12 +5,14 @@
 // one that counts. A second store in the same process is refused too: the pid is alive, and it’s another writer.
 //
 // A lock is STALE when its process is gone, or when the pid is alive but started at another time (the number was
-// reused). It’s taken over under a takeover mutex, a folder made exclusively beside it: the starter holding the mutex
-// reads the lock again, moves it aside only if it is still the stale one it found (not a live lock another starter made
-// meanwhile), and only then creates its own lock exclusively. So of two Postboxes that find the same lock stale, exactly
-// one wins; the other’s next try meets a live lock (gpt’s finding on 1a: a rename made on a stale observation could move
-// the winner’s live lock). A mutex left by a starter that died is taken after TAKEOVER_MS. close() releases a lock only
-// when the file still carries this store’s token: a lock another store took over meanwhile is left alone.
+// reused). It’s taken over under a takeover mutex, a file made exclusively beside it that names its maker: the starter
+// holding the mutex reads the lock again, moves it aside only if it is still the stale one it found (not a live lock
+// another starter made meanwhile), and only then creates its own lock exclusively. So of two Postboxes that find the
+// same lock stale, exactly one wins; the other waits for the mutex while its maker lives, then meets a live lock (gpt’s
+// findings on 1a: a rename made on a stale observation could move the winner’s live lock, and a mutex removed for its
+// age could belong to a paused, living maker). A mutex whose maker is gone is never removed by Postbox: the start
+// refuses and names the file. close() releases a lock only when the file still carries this store’s token: a lock
+// another store took over meanwhile is left alone.
 
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
@@ -86,13 +88,11 @@ export async function lockStore(io, dir, probe = {}) {
       if (!holder) continue;
       if (isAlive(holder.pid) && (await sameStart(holder, startOf)))
         throw new Error(`Another Postbox store (process ${holder.pid}) holds ${dir}. Stop it first, or use another data folder.`);
-      await takeOver(io, path, holder);
+      await takeOver(io, path, holder, isAlive, startOf);
     }
   }
   throw new Error(`Couldn’t claim ${dir}: ${path} keeps coming back.`);
 }
-
-const TAKEOVER_MS = 10_000; // a takeover mutex older than this was left by a starter that died mid-way
 
 /** Whether the holder’s process is the one that wrote the lock: start times unknown on either side are taken as the same. */
 async function sameStart(holder, startOf) {
@@ -101,46 +101,54 @@ async function sameStart(holder, startOf) {
   return now === null || now === holder.started;
 }
 
+const TAKEOVER_WAIT_MS = 5_000; // how long a starter waits for another’s takeover before it gives up
+
 /**
- * Moves a stale lock aside, under the takeover mutex (the header): only while the lock is still the one found stale.
- * Returns once the lock is gone or was found to be another starter’s live one; the caller’s next try tells which.
+ * Moves a stale lock aside, under the takeover mutex (the header): a file beside the lock, made exclusively, naming
+ * its maker like the lock does. Only while the lock is still the one found stale. Returns once the lock is gone or was
+ * found to be another starter’s live one; the caller’s next try tells which. A mutex whose maker is alive is waited
+ * for, as long as it takes up to TAKEOVER_WAIT_MS: a paused maker is still a maker, and age proves nothing (gpt’s
+ * finding on 1a). A mutex whose maker is gone is never removed here: the start refuses, naming the file, since nothing
+ * can tell a dead maker’s leftovers from a live one’s mid-step without an atomic compare, and a wrong guess admits two
+ * writers.
  * @param {typeof import('node:fs/promises')} io @param {string} path @param {{ pid: number, token?: string }} stale
+ * @param {(pid: number) => boolean} isAlive @param {(pid: number) => Promise<number | null>} startOf
  */
-async function takeOver(io, path, stale) {
+async function takeOver(io, path, stale, isAlive, startOf) {
   const taking = `${path}.taking`;
-  for (let tries = 0; tries < 200; tries++) {
+  const me = { pid: process.pid, started: await startOf(process.pid), token: randomBytes(8).toString('hex') };
+  const until = Date.now() + TAKEOVER_WAIT_MS;
+  for (;;) {
     try {
-      await io.mkdir(taking);
+      await io.writeFile(taking, JSON.stringify(me), { flag: 'wx', mode: 0o600 });
+      break;
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
-      const left = await io.stat(taking).catch(() => null);
-      if (left && Date.now() - left.mtimeMs > TAKEOVER_MS) {
-        // Its maker died mid-takeover. Moved aside under a unique name before it goes, so of two starters that find it
-        // stale only one removes it; the other’s rename finds nothing, and it waits for the mutex the first makes next.
-        const gone = `${taking}.${process.pid}.${randomBytes(4).toString('hex')}.stale`;
-        await io.rename(taking, gone).then(
-          () => io.rm(gone, { recursive: true, force: true }),
-          () => {},
+      const maker = await readLock(io, taking);
+      if (!maker) continue; // removed between the write and the read: try again
+      if (!(isAlive(maker.pid) && (await sameStart(maker, startOf))))
+        throw new Error(
+          `A Postbox start (process ${maker.pid}) stopped while taking over the lock on this data folder. If no Postbox is running on it, remove ${taking} and start again.`,
         );
-      } else await new Promise((r) => setTimeout(r, 10));
-      continue;
+      if (Date.now() > until)
+        throw new Error(`Another Postbox start (process ${maker.pid}) is taking over ${path} and hasn’t finished. Wait for it, or stop it first.`);
+      await new Promise((r) => setTimeout(r, 10));
     }
-    try {
-      const now = await readLock(io, path);
-      const same = now && now.pid === stale.pid && (stale.token ? sameToken(stale.token, now.token) : !now.token);
-      if (same) {
-        const aside = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.stale`;
-        await io.rename(path, aside).catch((e) => {
-          if (e.code !== 'ENOENT') throw e;
-        });
-        await io.rm(aside, { force: true });
-      }
-    } finally {
-      await io.rm(taking, { recursive: true, force: true });
-    }
-    return;
   }
-  throw new Error(`Couldn’t take over the stale lock at ${path}: another start keeps ${taking}.`);
+  try {
+    const now = await readLock(io, path);
+    const same = now && now.pid === stale.pid && (stale.token ? sameToken(stale.token, now.token) : !now.token);
+    if (same) {
+      const aside = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.stale`;
+      await io.rename(path, aside).catch((e) => {
+        if (e.code !== 'ENOENT') throw e;
+      });
+      await io.rm(aside, { force: true });
+    }
+  } finally {
+    const maker = await readLock(io, taking);
+    if (maker?.token && sameToken(me.token, maker.token)) await io.rm(taking, { force: true }); // only the mutex this start made
+  }
 }
 
 /**

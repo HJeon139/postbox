@@ -5,7 +5,7 @@
 // splits a surrogate pair.
 import assert from 'node:assert/strict';
 import * as realFs from 'node:fs/promises';
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -185,16 +185,53 @@ test('a flush whose fsync fails is the first failed sync: the store closes to co
   await rm(dir, { recursive: true });
 });
 
-test('a takeover mutex left by a starter that died is removed by exactly one of two new starters, and one of them wins the lock', async () => {
+test('a takeover mutex whose maker is gone is never removed: both starters refuse, naming the file to remove', async () => {
   const { LOCK, lockStore } = await import('../server/store-lock.mjs');
   const dir = await tmp();
   await writeFile(join(dir, LOCK), JSON.stringify({ pid: 2 ** 22 - 9, started: 1, token: 'stale0000' }));
-  await mkdir(join(dir, `${LOCK}.taking`));
-  const old = new Date(Date.now() - 60_000);
-  await realFs.utimes(join(dir, `${LOCK}.taking`), old, old); // older than the stale rule
+  await writeFile(join(dir, `${LOCK}.taking`), JSON.stringify({ pid: 2 ** 22 - 11, started: 1, token: 'deadmaker' }));
   const probe = { alive: (pid) => pid === process.pid, started: async () => 1 };
   const results = await Promise.allSettled([lockStore(realFs, dir, probe), lockStore(realFs, dir, probe)]);
-  assert.equal(results.filter((r) => r.status === 'fulfilled').length, 1, JSON.stringify(results.map((r) => r.status)));
-  assert.deepEqual((await readdir(dir)).sort(), [LOCK], 'the stale mutex and its aside name are gone');
+  assert.deepEqual(
+    results.map((r) => r.status),
+    ['rejected', 'rejected'],
+  );
+  for (const r of results) assert.match(r.reason.message, /stopped while taking over.*remove .*store\.lock\.taking/);
+  assert.deepEqual((await readdir(dir)).sort(), [LOCK, `${LOCK}.taking`], 'nothing was removed for Postbox’s guess');
+  await rm(dir, { recursive: true });
+});
+
+test('a starter paused inside its takeover keeps the mutex however long it takes: the other waits, then meets its live lock (gpt’s repro)', async () => {
+  const { LOCK, lockStore } = await import('../server/store-lock.mjs');
+  const dir = await tmp();
+  await writeFile(join(dir, LOCK), JSON.stringify({ pid: 2 ** 22 - 7, started: 1, token: 'stale0000' }));
+  let resume;
+  const paused = new Promise((r) => {
+    resume = r;
+  });
+  let renames = 0;
+  const io = disk({
+    async rename(from, to) {
+      if (++renames === 1) await paused; // the first starter stops just before moving the stale lock aside
+      return realFs.rename(from, to);
+    },
+    async utimes() {}, // nothing ages anything here
+  });
+  const probe = { alive: (pid) => pid === process.pid, started: async () => 1 };
+  const a = lockStore(io, dir, probe);
+  await new Promise((r) => setTimeout(r, 30)); // A holds the mutex, paused
+  const b = lockStore(io, dir, probe);
+  await new Promise((r) => setTimeout(r, 60)); // B is waiting on A’s mutex, not past it
+  assert.deepEqual((await readdir(dir)).sort(), [LOCK, `${LOCK}.taking`], 'B took nothing while A’s mutex stood');
+  resume();
+  const results = await Promise.allSettled([a, b]);
+  assert.deepEqual(
+    results.map((r) => r.status),
+    ['fulfilled', 'rejected'],
+  );
+  assert.match(results[1].reason.message, /Another Postbox store \(process \d+\) holds/);
+  const holder = JSON.parse(await readFile(join(dir, LOCK), 'utf8'));
+  assert.equal(holder.token, results[0].value.token, 'the lock on disk is A’s');
+  assert.deepEqual((await readdir(dir)).sort(), [LOCK], 'the mutex is gone with its maker’s takeover');
   await rm(dir, { recursive: true });
 });
