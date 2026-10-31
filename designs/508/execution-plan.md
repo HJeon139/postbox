@@ -19,7 +19,7 @@
 
 | # | What | Owner | Blocks |
 |---|---|---|---|
-| 1 | Pin the Redis 8 version, and approve its license for Postbox to download it for the person. This is a decision; Store’s checksum spec only proves the pinned file is the approved one. **Decided 28 October:** Redis 8.10.3, built by Postbox’s CI and hosted with its source, under AGPLv3 (`design.md`, “Storage”) | The person decides; researcher reports the license terms | Store |
+| 1 | Pin the Redis 8 version, and approve its license. **Withdrawn 31 October:** the Redis decisions were recalled; there is no Redis and no license to approve (`design.md`, “Storage”) | — | — |
 | 2 | Decide whether Windows is a target. **Decided 28 October:** no; macOS on Intel isn’t either. Postbox refuses to start on both | The person | Store |
 | 3 | Merge the PRs the steps wait on (room rule 9): #498 and #514 any time; #511 and #496 before “Now”; #513, #451 and the #466 branch before A1 and A2; #509 before B1; #495 before B3 | developer | Each named step |
 | 4 | Fix the docs branch: section references by title, not number; `testing-strategy.md`’s stale “revision 6” line; critic’s corrected checks, which read only what `main` already records; `npm run check` green; the diff shown for review, then a PR | developer | Citing the documents from step issues |
@@ -33,7 +33,7 @@ At most three steps in flight at once, so reviews keep up. Track A is the critic
 
 ```mermaid
 flowchart TD
-  W1["Wave 1: Harness, Store, Now"]
+  W1["Wave 1: Harness, Store, Now, Queue view"]
   W2["Wave 2: A1, B1, read contract"]
   W3["Wave 3: A2, B2"]
   W4["Wave 4: A3, A4, B3"]
@@ -42,10 +42,10 @@ flowchart TD
 
 | Wave | Steps | Why together |
 |---|---|---|
-| 1 | Harness, Store, Now | None depends on another step. Harness and Store gate A1; Now ships #504’s and #515’s fixes early. Now merges first and Store rebases onto it, since both change `server/store.mjs` and the session path. |
+| 1 | Harness, Store, Now, Queue view (#427) | None depends on another step; the queue view (#427) is a view over `main`’s queue list and A3 later keeps its spec. Harness and Store gate A1; Now ships #504’s and #515’s fixes early. Now merges first and Store rebases onto it, since both change `server/store.mjs` and the session path. |
 | 2 | A1, B1, Remote read contract; A2’s recorded turns | A1 needs Harness and Store. B1 needs nothing; the read contract needs #489 for Kiro. gemini records a failing turn and the turn after it on each backend, so A2 can start in wave 3. |
 | 3 | A2, B2 | A2 needs A1 and the recorded turns. B2 needs B1. |
-| 4 | A3, A4, B3 | A3 and A4 need A2. B3 needs B2, A1 and #495. |
+| 4 | Delivery-route spike, then A3, A4, B3 | The spike records its own mid-turn fixtures with #586’s tooling and comes before A3 (#470, MD-8). A3 and A4 need A2. B3 needs B2, A1 and #495. |
 
 ## One step, start to finish
 
@@ -105,6 +105,28 @@ The person approved the change-scoped table on 30 October 2026 (block `process-l
 
 Store and the read contract have no scenario phase; their specs and conformance tests decide them alone. PF-1 and PF-2 are decided by Playwright specs only.
 
+## Definition of done for a pull request
+
+Added 31 October 2026, with the person’s approval of the team principles (`room-rules.md`, “Quality”). It maps onto the four parts of the pull request’s body in `designs/developing.md`, so a body is not longer for it:
+- **Background:** requirement and design ids, with any decision that moved; the invariants and the failure table, or “not applicable” and why.
+- **Details:** security (trust boundary, files, permissions, filesystem assumptions, secrets, or “none”); operations (upgrade and downgrade, logs, release note, rollback); the class swept and what was found; docs updated in the same change.
+- **Testing:** each test shown failing first for the stated reason, each check with its negative control; `npm run check` and, for UI changes, both browser runs; each claim with its command; and the reviews: a peer review and critic’s read on the latest head before the push is asked for, and an outside write approved by the person for the version they saw.
+- **Declined:** what is not done here and what is unverified.
+
+Before any code, **a design document gets critic’s read and one peer’s** (rule 13). The document is shown as a review block, or by file path with a head SHA, so comments land on a fixed text, and it carries its requirement and design ids, the decision log and what is unverified. For anything concurrent, durable, security-relevant or user-visible it also carries the invariants, a failure table (what is on disk, what a concurrent reader sees and what the person sees at each step), the tests that must fail first, and upgrade and downgrade behavior. critic answers go, go with conditions or not ready, in at most ten findings; a condition that changes the design goes into the text, and critic reads the revision before the code starts. The peer is the owner of neighboring code:
+
+| Area | Author | Peer |
+|---|---|---|
+| Store, lock, commit, 1b | developer | gpt |
+| Records, delivery routes, A1 and A2 | gpt | developer |
+| Views, composer, panel, #305 and #427 | engineer | gemini |
+| Backends, spike, fixtures | gemini | gpt |
+| Requirements and plan | researcher | critic |
+
+**How it is tracked.** critic keeps a short list of defect classes per pull request. When a class appears twice, the team aligns on a principle, and the next pull request is read against it. researcher checks each body against this list and re-reads the decision log for decisions that moved.
+
+**To automate**, in this order, each its own issue: a pull request body lint (the four parts, the length cap, requirement ids, a command and result for each “tested” claim, a claimed hash or file that exists); a job that runs the spec files a pull request adds or changes against the merge-base code and classifies each changed spec (regression, characterization, or test infrastructure) and requires a regression to fail on the baseline for its named assertion, with the exit status kept; a lint that files in the data folder are created only through the shared publish and write helpers; and the delivery check of #585. The PR-body and store-write lints are bounded structural checks, not proof of truth or of a sweep’s completeness; the store-write lint lists its allowed APIs and paths, since an append-only log is not published through a helper. The #585 delivery check is ready and does not wait for the others. None is built yet.
+
 ## How the room talks
 
 - **Each step gets a conversation of its own** (room rule 8), with the step’s issue and the four `designs/508/` paths as its brief. This room stays the place for the plan, cross-step questions and the person’s decisions.
@@ -126,5 +148,5 @@ Store and the read contract have no scenario phase; their specs and conformance 
 | gemini runs with publishing off, which nothing enforces (#400) | gemini doesn’t push or comment on GitHub; developer does. |
 | Three steps in flight overload two reviewers | Lower the cap to two if review lags a step by more than a day. |
 | Kiro isn’t available for DL-8 runs | Report Kiro as unverified until the person decides (item 6). |
-| The bundled Redis download fails, or its license isn’t approved | The person approves the license before Store starts (item 1). Store’s first spec checks the pinned download’s checksum, and nothing builds on Store until it passes. |
+| A one-line commit is a transaction engine only Postbox tests (the 28 October objection to plain JSON Lines) | Evidence: a kill at every byte of the last commit and a replay of a synthetic log with the real shape, both as tests that fail first (step 1a); a replay of a real store stays a local check that is not committed |
 | A check can’t fire on `main` because it reads records `main` doesn’t have | Checks read only items, sessions, agent streams and page probes, and use records only as extra evidence once they exist (critic’s fix, item 4). |
