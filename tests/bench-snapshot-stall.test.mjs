@@ -1,4 +1,4 @@
-// Tests for tools/bench-snapshot-stall.mjs (#508, plan-no-redis-1).
+// Tests for tools/bench-snapshot-stall.mjs (#508, designs/508/storage-design.md).
 // Verifies snapshot stall measurements, event-loop delay reporting, and budget trigger checks.
 
 import assert from 'node:assert/strict';
@@ -124,7 +124,7 @@ test('runBenchmark calculates budgets and evaluates PR 2 trigger status', async 
     assert.equal(withinBudget.stallBudgetMs, 50);
     assert.equal(withinBudget.isSizeExceeded, false);
     assert.equal(withinBudget.isStallExceeded, false);
-    assert.equal(withinBudget.triggerPR2, false);
+    assert.equal(withinBudget.triggerS2, false);
 
     // Case 2: Zero / low stall budget forces trigger without reverting to 50
     const zeroBudget = await runBenchmark({
@@ -135,7 +135,7 @@ test('runBenchmark calculates budgets and evaluates PR 2 trigger status', async 
     });
     assert.equal(zeroBudget.stallBudgetMs, 0);
     assert.equal(zeroBudget.isStallExceeded, true);
-    assert.equal(zeroBudget.triggerPR2, true);
+    assert.equal(zeroBudget.triggerS2, true);
 
     // Case 3: Exceeded size budget
     const exceededSize = await runBenchmark({
@@ -145,7 +145,7 @@ test('runBenchmark calculates budgets and evaluates PR 2 trigger status', async 
       sizeBudgetMB: 0.0001,
     });
     assert.equal(exceededSize.isSizeExceeded, true);
-    assert.equal(exceededSize.triggerPR2, true);
+    assert.equal(exceededSize.triggerS2, true);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -161,5 +161,5 @@ test('CLI runs default synthetic path and outputs JSON when requested', async ()
   assert.ok(typeof parsed.sizeMB === 'number');
   assert.equal(parsed.stallBudgetMs, DEFAULT_STALL_BUDGET_MS);
   assert.equal(parsed.sizeBudgetMB, DEFAULT_SIZE_BUDGET_MB);
-  assert.ok(typeof parsed.triggerPR2 === 'boolean');
+  assert.ok(typeof parsed.triggerS2 === 'boolean');
 });

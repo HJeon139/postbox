@@ -1,13 +1,11 @@
-// Tests for UAT log tooling (#508, plan-no-redis-1).
-// Verifies verifyPrompt references to data/events-*.jsonl and snapshot.json,
-// readReceived reading across disk, live state and history, and saveRecords.
+// Tests for UAT log tooling and verifier prompt (#508, designs/508/storage-design.md).
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { saveRecords } from '../tools/uat/history.mjs';
+import { lines } from '../tools/uat/history.mjs';
 import { messagesOf, readReceived } from '../tools/uat/run-files.mjs';
 import { verifyPrompt } from '../tools/uat/verify-prompt.mjs';
 
@@ -40,71 +38,91 @@ test('messagesOf extracts agent messages from a session object', () => {
   assert.deepEqual(msgs[0], { handle: 'researcher', from: 'critic', text: 'Hello researcher', at: 100 });
   assert.deepEqual(msgs[1], { handle: 'researcher', from: 'developer', text: 'Hello from dev', at: 120 });
 
-  // Missing handle or invalid messages return empty array
   assert.deepEqual(messagesOf({ agentMessages: [] }), []);
   assert.deepEqual(messagesOf(null), []);
 });
 
-test('readReceived merges live state, live history, and logged disk data', () => {
+test('readReceived parses disk log segments and unwraps array commit lines (#508, option b)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'pb-read-recv-'));
   try {
-    // 1. Disk store: snapshot.json with session se_disk
     const snap = {
       version: 1,
       seq: 5,
       sessions: {
-        se_disk: {
-          id: 'se_disk',
+        se_1: {
+          id: 'se_1',
           handle: 'researcher',
-          agentMessages: [{ dir: 'from', other: 'critic', text: 'Message from disk', at: 50 }],
+          agentMessages: [{ dir: 'from', other: 'critic', text: 'Initial snapshot message', at: 50 }],
         },
       },
     };
     writeFileSync(join(dir, 'snapshot.json'), JSON.stringify(snap));
 
-    // 2. Live in-memory state with session se_live
-    const liveState = {
-      sessions: {
-        se_live: {
-          id: 'se_live',
-          handle: 'developer',
-          agentMessages: [{ dir: 'from', other: 'researcher', text: 'Message from live state', at: 100 }],
+    // Log segment with a single event line AND a multi-event commit array line
+    const event1 = JSON.stringify({
+      seq: 6,
+      type: 'session.patch',
+      data: {
+        id: 'se_1',
+        patch: {
+          agentMessages: [
+            { dir: 'from', other: 'developer', text: 'Single event line message', at: 60 },
+            { dir: 'from', other: 'critic', text: 'Initial snapshot message', at: 50 },
+          ],
         },
       },
-    };
+    });
 
-    // 3. Live history object with received()
-    const liveHistory = {
-      received: () => [{ handle: 'critic', from: 'developer', text: 'Message from stream', at: 150 }],
-    };
+    const commitArray = JSON.stringify([
+      {
+        seq: 7,
+        op: 'op_a1',
+        type: 'record.open',
+        data: { id: 'rec_1' },
+      },
+      {
+        seq: 8,
+        type: 'session.patch',
+        data: {
+          id: 'se_1',
+          patch: {
+            agentMessages: [
+              { dir: 'from', other: 'engineer', text: 'Array commit message', at: 70 },
+              { dir: 'from', other: 'developer', text: 'Single event line message', at: 60 },
+              { dir: 'from', other: 'critic', text: 'Initial snapshot message', at: 50 },
+            ],
+          },
+        },
+      },
+    ]);
 
-    const all = readReceived(dir, [], { state: liveState, history: liveHistory });
+    writeFileSync(join(dir, 'events-1.jsonl'), `${event1}\n${commitArray}\n`);
 
-    assert.equal(all.length, 3);
-    assert.equal(all[0].text, 'Message from disk');
-    assert.equal(all[1].text, 'Message from live state');
-    assert.equal(all[2].text, 'Message from stream');
+    const received = readReceived(dir);
+    assert.equal(received.length, 3);
+    assert.equal(received[0].text, 'Initial snapshot message');
+    assert.equal(received[1].text, 'Single event line message');
+    assert.equal(received[2].text, 'Array commit message');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test('saveRecords writes events.jsonl and state.json to run folder', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pb-save-records-'));
-  try {
-    const facts = {
-      events: [{ seq: 1, type: 'item.add', data: { id: 'it_1' } }],
-      state: { seq: 1, personas: {} },
-    };
+test('lines() in history.mjs unwraps commit array lines into flat events (#508, option b)', () => {
+  const raw = [
+    JSON.stringify({ seq: 1, type: 'item.add', data: { id: 'it_1' } }),
+    JSON.stringify([
+      { seq: 2, op: 'op_1', type: 'record.open', data: { id: 'rec_1' } },
+      { seq: 3, type: 'turn.marker', data: { turnId: 'turn_1' } },
+    ]),
+    JSON.stringify({ seq: 4, type: 'item.add', data: { id: 'it_2' } }),
+  ].join('\n');
 
-    await saveRecords(dir, facts);
-
-    const eventsContent = readFileSync(join(dir, 'events.jsonl'), 'utf8');
-    const stateContent = readFileSync(join(dir, 'state.json'), 'utf8');
-
-    assert.match(eventsContent, /it_1/);
-    assert.match(stateContent, /"seq":1/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const parsed = lines(raw);
+  assert.equal(parsed.length, 4);
+  assert.equal(parsed[0].seq, 1);
+  assert.equal(parsed[1].seq, 2);
+  assert.equal(parsed[1].op, 'op_1');
+  assert.equal(parsed[2].seq, 3);
+  assert.equal(parsed[3].seq, 4);
 });

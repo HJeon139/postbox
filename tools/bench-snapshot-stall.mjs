@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Benchmark event-loop stall during snapshot serialization and writes (#508, plan-no-redis-1).
+// Benchmark event-loop stall during snapshot serialization and writes (#508, designs/508/storage-design.md).
 // Measures JSON.stringify time, atomic disk write time, and event-loop delay (p50, p95, max)
-// using monitorEventLoopDelay. Serves as the decision trigger for PR 2 (sharded snapshot).
+// using monitorEventLoopDelay. Serves as the decision trigger for S2 (sharded snapshot).
 //
 // Budget:
 //   - Max snapshot stall: 50 ms
@@ -164,6 +164,23 @@ export async function measureSnapshotPass(state, scratchDir, opts = {}) {
   };
 }
 
+async function executePasses(state, iterations) {
+  const scratchDir = join(tmpdir(), `pb-bench-snap-${process.pid}-${Date.now()}`);
+  mkdirSync(scratchDir, { recursive: true });
+  const passes = [];
+  try {
+    await measureSnapshotPass(state, scratchDir);
+    for (let i = 0; i < iterations; i++) {
+      passes.push(await measureSnapshotPass(state, scratchDir));
+    }
+  } finally {
+    try {
+      rmSync(scratchDir, { recursive: true, force: true });
+    } catch {}
+  }
+  return passes;
+}
+
 /**
  * Runs the benchmark across iterations and summarizes results against budgets.
  * @param {{
@@ -180,24 +197,7 @@ export async function runBenchmark(opts = {}) {
   const sizeBudgetMB = opts.sizeBudgetMB ?? DEFAULT_SIZE_BUDGET_MB;
 
   const { state, source, storeBytes } = resolveSnapshotState(opts);
-
-  const scratchDir = join(tmpdir(), `pb-bench-snap-${process.pid}-${Date.now()}`);
-  mkdirSync(scratchDir, { recursive: true });
-
-  const passes = [];
-  try {
-    // Warm-up pass
-    await measureSnapshotPass(state, scratchDir);
-
-    for (let i = 0; i < iterations; i++) {
-      const result = await measureSnapshotPass(state, scratchDir);
-      passes.push(result);
-    }
-  } finally {
-    try {
-      rmSync(scratchDir, { recursive: true, force: true });
-    } catch {}
-  }
+  const passes = await executePasses(state, iterations);
 
   // Use median of iterations
   passes.sort((a, b) => a.stringifyMs - b.stringifyMs);
@@ -209,7 +209,7 @@ export async function runBenchmark(opts = {}) {
   // The stall is the measured CPU blocking time / event loop delay
   const stallMs = Math.max(median.stringifyMs, median.maxDelay, median.timerDelay);
   const isStallExceeded = stallMs >= stallBudgetMs;
-  const triggerPR2 = isSizeExceeded || isStallExceeded;
+  const triggerS2 = isSizeExceeded || isStallExceeded;
 
   return {
     source,
@@ -228,13 +228,14 @@ export async function runBenchmark(opts = {}) {
     stallMs,
     stallBudgetMs,
     isStallExceeded,
-    triggerPR2,
+    triggerS2,
+    triggerPR2: triggerS2,
     passes,
   };
 }
 
 function printReport(result, out = console.log) {
-  out('=== Snapshot Stall Benchmark (#508, plan-no-redis-1) ===');
+  out('=== Snapshot Stall Benchmark (#508, designs/508/storage-design.md) ===');
   out(`Source: ${result.source}`);
   out(`Store Size: ${result.sizeMB.toFixed(2)} MB / ${result.sizeBudgetMB} MB budget (${result.isSizeExceeded ? 'EXCEEDED' : 'within budget'})`);
   out(`JSON.stringify CPU time: ${result.stringifyMs.toFixed(2)} ms`);
@@ -247,11 +248,7 @@ function printReport(result, out = console.log) {
     `Measured stall:           ${result.stallMs.toFixed(2)} ms / ${result.stallBudgetMs} ms budget (${result.isStallExceeded ? 'EXCEEDED' : 'within budget'})`,
   );
   out('---');
-  out(
-    `PR 2 Trigger: ${
-      result.triggerPR2 ? 'YES (budget exceeded; sharded snapshot is required)' : 'NO (within 50 ms stall and 40 MB budget; PR 2 stays on hold)'
-    }`,
-  );
+  out(`S2 Trigger: ${result.triggerS2 ? 'YES (budget exceeded; sharded snapshot is required)' : 'NO (within 50 ms stall and 40 MB budget; S2 stays on hold)'}`);
 }
 
 /**
@@ -289,7 +286,7 @@ export async function benchCli(args = process.argv.slice(2), { out = console.log
     out(`
 Usage: node tools/bench-snapshot-stall.mjs [options] [path-to-snapshot.json]
 
-Measures snapshot serialization and write latency against the PR 2 budget.
+Measures snapshot serialization and write latency against the S2 budget.
 
 Options:
   -s, --snapshot <file>    Path to snapshot.json (defaults to synthetic state if omitted)

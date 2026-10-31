@@ -88,21 +88,18 @@ export function messagesOf(se, handle = se?.handle) {
  * process, and returns it merged with known, what earlier reads found, which the caller keeps; that also covers a
  * snapshot deleting the segments it covers. If one does between two reads, and more than six messages reached one
  * agent meanwhile (the session keeps its latest six, `.slice(0, 6)` in recordAgentMessage), the oldest are lost, and a
- * delivered call reads as refused. When live `state` or `history` is provided, messages are also drawn
- * directly from memory or the followed event stream.
+ * delivered call reads as refused.
  * @param {string} data  the run’s Postbox data folder
  * @param {{ handle: string, from: string, text: string, at: number }[]} [known]
- * @param {{ state?: any, history?: { received: () => { handle: string, from: string, text: string, at: number }[] } }} [live]
  */
-export function readReceived(data, known = [], { state = null, history = null } = {}) {
+export function readReceived(data, known = []) {
+  if (!existsSync(data)) return known;
   const out = new Map(known.map((r) => [keyOf(r), r]));
-  for (const se of Object.values(state?.sessions ?? {})) for (const r of messagesOf(se)) out.set(keyOf(r), r);
-  for (const r of history?.received?.() ?? []) out.set(keyOf(r), r);
-  if (data && existsSync(data)) readLogged(data, out);
+  readLogged(data, out);
   return [...out.values()].sort((a, b) => a.at - b.at);
 }
 
-/** The store’s log in a data folder, read on from where this process got to. @param {string} data @param {Map<string, any>} out */
+/** The store’s log in a data folder, read on from where this process got to. Unwraps commit arrays (#508, option b). @param {string} data @param {Map<string, any>} out */
 function readLogged(data, out) {
   const c = cursors.get(data) ?? { offsets: new Map(), sessions: new Map(), snapshot: null };
   cursors.set(data, c);
@@ -127,9 +124,12 @@ function readLogged(data, out) {
     c.offsets.set(n, next);
     for (const l of text.split('\n')) {
       try {
-        const e = JSON.parse(l);
-        if (e?.type === 'session') take(e.data);
-        else if (e?.type === 'session.patch' && c.sessions.has(e.data?.id)) take(patchSession(c.sessions.get(e.data.id), e.data));
+        const parsed = JSON.parse(l);
+        const events = Array.isArray(parsed) ? parsed : [parsed];
+        for (const e of events) {
+          if (e?.type === 'session') take(e.data);
+          else if (e?.type === 'session.patch' && c.sessions.has(e.data?.id)) take(patchSession(c.sessions.get(e.data.id), e.data));
+        }
       } catch {}
     }
   }
