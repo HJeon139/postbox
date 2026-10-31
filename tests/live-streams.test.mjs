@@ -17,18 +17,25 @@ function connection(headers = {}) {
     write: (s) => written.push(String(s)),
     destroy() {},
   });
-  // Each frame as `event name` or `id:seq event name`, keep-alives and the status line aside.
+  // Each frame as `event name` or `id:seq event name`, keep-alives, the status line and the epoch frame aside.
   const frames = () =>
     written
       .join('')
       .split('\n\n')
-      .filter((f) => f && !f.startsWith(':') && !f.startsWith('retry') && !f.startsWith('event: store'))
+      .filter((f) => f && !f.startsWith(':') && !f.startsWith('retry') && !f.startsWith('event: store') && !f.startsWith('event: epoch'))
       .map((f) => {
         const id = /^id: (\d+)/m.exec(f)?.[1];
         const ev = /^event: (\S+)/m.exec(f)?.[1];
         return id ? `${id}:${ev}` : ev;
       });
-  return { req, res, frames };
+  /** The epochs the stream named. */
+  const epochs = () =>
+    written
+      .join('')
+      .split('\n\n')
+      .filter((f) => f.startsWith('event: epoch'))
+      .map((f) => JSON.parse(f.split('data: ')[1]));
+  return { req, res, frames, epochs };
 }
 
 /** @param {import('node:test').TestContext} t */
@@ -143,3 +150,64 @@ for (const seq of [1, 3])
     store.emit('thread', { id: 'after-reload', members: [] });
     assert.deepEqual(c.frames(), ['resync', `${seq + 1}:thread`], 'the connection still receives subsequent live changes');
   });
+
+// The integrator’s re-review of #553, blocker 3: a Last-Event-ID alone can’t tell a tab on a lost timeline from one
+// that’s merely behind. After a restart, startup emits before any tab reconnects (the “Interrupted by a restart”
+// patches, expiries), so the seq passes the tab’s id and it gets the backlog after its own id, keeping events the
+// store lost. A repair’s reload can drop an event and leave the seq where it was (#567, folded in here). So the store
+// has a history epoch, a token new at every readback of Redis (a restart’s load, a repair’s reload), which /api/state
+// and the stream carry and the page echoes; a mismatch is a resync whatever the seq.
+
+/** A tab’s reconnect: its last seq and the epoch it loaded. @param {number} since @param {string} epoch */
+const tab = (since, epoch) => connection({ 'last-event-id': String(since), 'x-postbox-epoch': epoch });
+
+test('#553 blocker 3: a tab from before a restart is told to resync even once the restarted store’s seq has passed its id', async (t) => {
+  const { store: before, live: old } = setup(t); // the store before the restart, at seq 3
+  const epoch = before.epoch;
+  assert.ok(typeof epoch === 'string' && epoch.length >= 8, `every store has an epoch: ${epoch}`);
+  old.stop();
+  // The restart: Redis had taken only two of the three events, and startup emits two more before any tab reconnects.
+  const { store, live } = setup(t);
+  store.emit('thread', { id: 'interrupted', members: [] });
+  assert.notEqual(store.epoch, epoch, 'a readback makes a new epoch');
+  const c = tab(3, epoch);
+  await live.stream(c.req, c.res, new URL('http://x/api/stream'));
+  assert.deepEqual(
+    c.frames().filter((f) => f !== 'epoch'),
+    ['resync'],
+    'the tab’s seq 3 is a lost timeline’s, not this store’s',
+  );
+});
+
+test('#567: a tab that reconnects at the same seq after a repair’s reload is told to resync; one that already resynced is not', async (t) => {
+  const { store, live } = setup(t);
+  const epoch = store.epoch;
+  // The repair replaced the state from Redis without moving the seq, and told the streams open then.
+  store.reloaded(store.state, store.positions);
+  assert.notEqual(store.epoch, epoch);
+  const stale = tab(3, epoch);
+  await live.stream(stale.req, stale.res, new URL('http://x/api/stream'));
+  assert.deepEqual(
+    stale.frames().filter((f) => f !== 'epoch'),
+    ['resync'],
+  );
+  const fresh = tab(3, store.epoch);
+  await live.stream(fresh.req, fresh.res, new URL('http://x/api/stream'));
+  store.emit('thread', { id: 'after', members: [] });
+  assert.deepEqual(
+    fresh.frames().filter((f) => f !== 'epoch'),
+    ['4:thread'],
+    'already on this epoch: nothing to refetch',
+  );
+});
+
+test('a tab behind on the current epoch gets the gap, no resync; one that names no epoch is served by its seq alone', async (t) => {
+  const { store, live } = setup(t);
+  const c = tab(1, store.epoch);
+  await live.stream(c.req, c.res, new URL('http://x/api/stream'));
+  assert.deepEqual(c.frames(), ['2:thread', '3:thread'], 'the gap, no resync');
+  assert.deepEqual(c.epochs(), [store.epoch], 'the stream names its epoch in its first frame');
+  const d = connection({ 'last-event-id': '2' }); // tools/uat/history.mjs, and a page from before the epoch
+  await live.stream(d.req, d.res, new URL('http://x/api/stream'));
+  assert.deepEqual(d.frames(), ['3:thread']);
+});

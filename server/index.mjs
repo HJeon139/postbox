@@ -284,6 +284,7 @@ export async function start({
     if (path === '/api/state' && req.method === 'GET') {
       return send(res, 200, {
         seq: store.state.seq,
+        epoch: store.epoch, // the readback the seq counts within; the stream request echoes it (server/live-streams.mjs)
         state: store.state,
         store: store.status, // whether it can save, or why not (#508’s design, “Storage”, decision 7)
         config: {

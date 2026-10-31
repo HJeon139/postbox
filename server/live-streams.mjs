@@ -1,6 +1,16 @@
 // The pages’ live updates over server-sent events (server/index.mjs, /api/stream): each event the store applies, with
 // its seq, and the store’s status line, unnumbered, each time writes close or reopen (#508’s requirements, ST-3), so
 // every open page says why it can’t save and when it can again.
+//
+// A page’s place in history is its seq within a history epoch (Store.epoch): the token of the readback of Redis the
+// store runs on, new at a restart’s load and at a repair’s reload. /api/state gives the page both, and the page echoes
+// the epoch when its stream connects (?epoch=, or an X-Postbox-Epoch header for a tool) beside its Last-Event-ID. The
+// seq alone can’t tell a tab merely behind from one on a lost timeline: after a restart, startup emits before any tab
+// is back (the “Interrupted by a restart” patches, expiries), so the seq passes the id of a tab that held optimistic
+// events Redis never took, and the tab would get the backlog after its own id and keep what the store lost; a
+// repair’s reload can drop an event and leave the seq where it was (#567). A stream that names another epoch is told
+// to resync, whatever its seq. Event ids stay the plain seq, so tools reading the stream (tools/uat/history.mjs) are
+// unchanged; the stream names its epoch in its first frame, which they ignore.
 
 /**
  * Sends the store’s events and status to every open stream, and a keep-alive every 15 s; stream() opens one for a
@@ -41,15 +51,19 @@ export function liveStreams(store) {
   /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res @param {URL} url */
   async function stream(req, res, url) {
     const before = replacements;
+    const epoch = store.epoch;
     const since = Number(req.headers['last-event-id'] ?? url.searchParams.get('since') ?? store.state.seq);
+    const named = /** @type {string | null} */ (req.headers['x-postbox-epoch'] ?? url.searchParams.get('epoch'));
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
     res.write(`retry: 1500\n\n${storeLine(store.status)}`);
     // Ahead of the store: an emit is broadcast before Redis acknowledges it, and a restart reads back Redis without
     // what it didn’t take (server/store-write.mjs), so a tab can hold events the store no longer has. The browser
     // would drop every later event as one it had seen; it refetches the whole state instead (#553’s review, blocker 3).
-    let backlog = since > store.state.seq ? null : await store.backlog(since); // from memory, or after a restart from the store’s events stream
+    // On another epoch: its seq is a lost timeline’s, however it compares. One naming no epoch is served by its seq.
+    const lost = (named !== null && named !== '' && named !== epoch) || since > store.state.seq;
+    let backlog = lost ? null : await store.backlog(since); // from memory, or after a restart from the store’s events stream
     // The replacement’s broadcast reached only existing streams. This page must load the new state too.
-    if (before !== replacements) backlog = null;
+    if (before !== replacements || store.epoch !== epoch) backlog = null;
     // The read of the events stream awaited Redis, and an emit meanwhile reached only the streams already open: what
     // the store applied since the backlog ends is in memory, taken here, in the same tick that adds this stream, so
     // the emit reaches it exactly once and after the backlog.
@@ -60,6 +74,7 @@ export function liveStreams(store) {
     // The status may have changed while the backlog was read, and its line reached only the streams open then: it’s
     // sent again here, before the backlog, in this same tick (gpt’s r2 review of #553, blocker 2).
     res.write(storeLine(store.status));
+    res.write(`event: epoch\ndata: ${JSON.stringify(store.epoch ?? null)}\n\n`);
     // Too far behind: the browser refetches the whole state, then resumes from its sequence number.
     if (backlog === null) res.write(`event: resync\ndata: {}\n\n`);
     else for (const ev of backlog) res.write(`id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`);

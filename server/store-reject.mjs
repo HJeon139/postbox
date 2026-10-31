@@ -256,7 +256,7 @@ export async function repaired(store) {
  */
 async function settle(store, { rejected, documents, message }) {
   const { state, positions } = await readState(/** @type {import('./redis-client.mjs').RedisClient} */ (store.client), store.shapes);
-  reload(store, state, positions);
+  await store.reloaded(state, positions); // under a new history epoch, so a tab not attached now resyncs when it is (#567)
   const seqs = rejected.map((x) => x.seq);
   store.dropped = seqs.length
     ? { at: Date.now(), events: seqs.length, from: seqs[0] ?? null, to: seqs.at(-1) ?? null, documents, message, changes: rejected.map(describe) }
@@ -268,20 +268,4 @@ async function settle(store, { rejected, documents, message }) {
       ? `The store’s Redis refused ${seqs.length} change(s) for a reason a retry can’t change, so they weren’t saved: ${store.dropped?.changes.join('; ')}. ${message} Postbox saved the other changes that waited and now shows what Redis holds.`
       : 'The store’s Redis took on Retry what it had refused; Postbox saved what waited and shows what Redis holds.',
   );
-}
-
-/**
- * Replaces the store’s memory with what Redis holds: the state, the items’ positions and the index, with nothing queued
- * and no backlog, since the pages must load the state again rather than replay events.
- * @param {Store} store @param {any} state @param {import('./store-docs.mjs').Positions} positions
- */
-function reload(store, state, positions) {
-  store.state = state;
-  store.positions = positions;
-  store.confirmed = state.seq;
-  store.index = new Map();
-  for (const [t, list] of Object.entries(state.items)) for (const it of list) store.index.set(it.id, { t, it });
-  store.lines = [];
-  store.dirty.clear();
-  store.events.length = 0;
 }

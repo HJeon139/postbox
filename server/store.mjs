@@ -29,6 +29,13 @@ export { clearStore, emptyState };
 
 export const newId = (prefix) => `${prefix}_${randomBytes(6).toString('base64url').replace(/[-_]/g, '').slice(0, 8) || Date.now().toString(36)}`;
 
+/**
+ * A history epoch: the token that names one readback of Redis into memory. A page’s events are numbered within an
+ * epoch; one that reconnects naming another epoch holds a timeline this store never had, whatever its seq, and must
+ * load the state again (server/live-streams.mjs; the integrator’s re-review of #553, blocker 3).
+ */
+const newEpoch = () => randomBytes(9).toString('base64url');
+
 export class Store {
   /**
    * @param {string|null} dir  the data folder; null keeps everything in memory (tests)
@@ -73,6 +80,8 @@ export class Store {
     this.watchers = new Set(); // told when writes close or reopen, and what they last heard (server/store-status.mjs)
     /** @type {Set<() => void>} */ this.reloads = new Set(); // told when the state was read back from Redis whole, so pages load it again (store-reject.mjs)
     this.seen = '';
+    /** @type {string} the history epoch: new at every readback of Redis whole (load, reloaded), and in Redis under `epoch` */
+    this.epoch = newEpoch();
   }
 
   async load() {
@@ -85,11 +94,27 @@ export class Store {
     sup.on('status', (s) => this.onStatus(s));
     await importLegacy(this.dir, client);
     const { state, positions } = await readState(client, this.shapes);
+    await this.reloaded(state, positions);
+    return this;
+  }
+
+  /**
+   * Replaces the store’s memory with what Redis holds: the state, the items’ positions and the index, with nothing
+   * queued and no backlog, under a new history epoch, written to Redis beside `seq` so a reader there can tell which
+   * readback is current. Pages must load the state again rather than replay events: the caller tells them (reloads).
+   * @param {any} state @param {Positions} positions
+   */
+  async reloaded(state, positions) {
     this.state = state;
     this.positions = positions;
     this.confirmed = state.seq;
+    this.index = new Map();
     for (const [t, list] of Object.entries(state.items)) for (const it of list) this.index.set(it.id, { t, it });
-    return this;
+    this.lines = [];
+    this.dirty.clear();
+    this.events.length = 0;
+    this.epoch = newEpoch();
+    if (this.client?.connected) await this.client.call('SET', 'epoch', this.epoch);
   }
 
   /** The child went down or came back: writes close until the store has read Redis back (server/store-recover.mjs). */

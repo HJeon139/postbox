@@ -2,6 +2,9 @@
 // from the server-sent event stream with the same reducer the server uses. On a dropped connection the
 // browser reconnects with the last number it saw; events at or below it are ignored, so nothing is
 // applied twice. If the server no longer has the events, it says "resync" and the state is refetched.
+// The numbers count within a history epoch, which the state names and the stream request echoes: after
+// a restart or a repair the server runs on a new one, and says "resync" to a page from the old one, whose
+// numbers may name events the server never kept (server/live-streams.mjs).
 
 import { needsYouNow, whereNeeds } from '/shared/needs.mjs';
 import { apply, ownState } from '/shared/state.mjs';
@@ -35,6 +38,7 @@ export const client = {
   state: null,
   config: null,
   seq: 0,
+  epoch: '',
   connection: 'connecting',
   attempts: 0,
   // Whether the server can save changes, or why not (ST-3): { state: 'running' } or { state: 'down', cause, message }.
@@ -52,18 +56,19 @@ export const client = {
 export async function load() {
   const r = await fetch('/api/state', { cache: 'no-store' });
   if (!r.ok) throw new Error('Postbox’s server didn’t answer. Check that it’s running, then reload.');
-  const { seq, state, config, store } = await r.json();
+  const { seq, epoch, state, config, store } = await r.json();
   client.state = ownState(state);
   client.config = config;
   client.store = store ?? { state: 'running' };
   client.seq = seq;
+  client.epoch = epoch ?? '';
   client.emit({ type: 'load' });
 }
 
 let es = null;
 export function connect() {
   es?.close();
-  es = new EventSource(`/api/stream?since=${client.seq}`);
+  es = new EventSource(`/api/stream?since=${client.seq}&epoch=${encodeURIComponent(client.epoch)}`);
   es.onopen = () => {
     const was = client.connection;
     client.connection = 'open';
@@ -96,6 +101,10 @@ export function connect() {
   es.addEventListener('store', (e) => {
     client.store = JSON.parse(e.data);
     client.emit({ type: 'store' });
+  });
+  // The epoch the stream runs on, its first frame: what the next reconnect echoes.
+  es.addEventListener('epoch', (e) => {
+    client.epoch = JSON.parse(e.data) ?? '';
   });
   es.addEventListener('resync', async () => {
     await load();
