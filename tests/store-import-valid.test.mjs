@@ -89,25 +89,35 @@ async function withStore(cut) {
   return { dir: empty, evs, s };
 }
 
-test('#553 blocker 2: a document Redis refuses for a reason the import can’t foresee is left out and reported too, not the whole import failed', async () => {
-  const { dir, evs, s } = await withStore(20);
-  // Every write of th_room1’s document carries one RedisJSON refuses, standing in for a refusal the checks don’t see.
+// gpt’s r10 review of #553, blocker 3: a refusal the checks don’t foresee was treated as the known ones, and the document
+// left out, so a valid conversation went missing from a store whose import reported success. The known unsupported
+// values (nesting past REDIS_DEPTH, a lone surrogate) are handled and reported; any other refusal fails the import
+// closed, naming the document and Redis’s reason, on the failed-import path: attempts counted, the way out said, the
+// next start imports again.
+test('an unforeseen refusal cannot turn a valid conversation into a successful import with its header missing', async () => {
+  const { dir, s } = await withStore(20);
   const client = /** @type {any} */ (s.client);
   const call = client.call.bind(client);
   client.call = async (...a) => {
-    if (a[0] === 'EVAL') for (let i = 0; i < a.length; i++) if (a[i] === 'S' && a[i + 1] === 'thread:th_room1') a[i + 2] = JSON.stringify(nested(200));
+    if (a[0] === 'EVAL' && a.some((x, i) => x === 'S' && a[i + 1] === 'thread:th_room1')) throw Object.assign(new Error('unforeseen document refusal'), { code: 'ERR' });
     return call(...a);
   };
-  const [, lines] = await logged(() => importLegacy(dir, client));
+  const [failed, lines] = await logged(() => importLegacy(dir, client).then(() => assert.fail('imported'), (e) => e));
+  assert.equal(failed.code, 'EIMPORT');
+  assert.equal(failed.cause, 'import-failed');
+  assert.equal(failed.attempts, 1);
+  assert.match(failed.message, /thread “th_room1”/, `names the document: ${failed.message}`);
+  assert.match(failed.message, /unforeseen document refusal/, `and Redis’s reason: ${failed.message}`);
+  assert.match(failed.message, /imports them again when it next starts.*--fresh/s, `says the way out: ${failed.message}`);
+  assert.equal(lines.filter((m) => /left out/.test(m)).length, 0, `nothing is reported as left out: ${lines.join(' | ')}`);
+  assert.equal(await client.call('GET', 'seq'), null, 'no seq: the import did not report success');
+  assert.ok(await client.call('GET', 'importing'), 'the import is still marked in progress, so the next start imports again');
   client.call = call;
-  const said = lines.filter((m) => /left out/.test(m));
-  assert.equal(said.length, 1, lines.join(' | '));
-  assert.match(said[0], /thread “th_room1”/);
-  assert.equal(await client.call('GET', 'seq'), String(evs.length));
-  assert.equal(await client.call('GET', 'importing'), null);
+  // The cause gone, the next start imports everything, the conversation’s header with it.
   const again = await open(dir);
-  assert.equal(again.state.threads.th_room1, undefined);
-  assert.ok(again.state.threads.th_room0 && again.state.threads.th_room2, 'the other documents are in');
+  assert.ok(again.state.threads.th_room1, 'the valid conversation is in');
+  assert.ok(again.state.threads.th_room0 && again.state.threads.th_room2);
+  assert.equal(await client.call('GET', 'import-attempts'), null);
 });
 
 test('#553 blocker 2: an import that fails says why, names the backup and the way out, counts its attempts, and the next start imports again', async () => {

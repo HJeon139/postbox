@@ -23,11 +23,13 @@
 // refuses. It’s repaired with U+FFFD, in the snapshot’s documents and the log’s events alike, as the store repairs its
 // own events (server/store-check.mjs). Old Postbox capped an app’s state by size, not depth: a document nested past
 // what RedisJSON holds (REDIS_DEPTH) is left out and reported, naming it and the backup that keeps it, and the rest
-// imports. One Redis refuses for a reason the checks don’t foresee is asked about one by one and left out the same way.
-// An import that still fails (its Redis went away, say) records the attempt in Redis (`import-attempts`), and the start
-// fails with EIMPORT saying why, naming the backup, how many times it has failed, and the way out (start again, or
-// --fresh); the next start imports again from the start, and the count goes once an import finishes. Postbox doesn’t
-// start on an empty state with the line “you can still read everything”, since nothing would be there to read.
+// imports. Those are the refusals the import knows; one Redis gives for a reason the checks don’t foresee is asked
+// about one document at a time, to name the document, and fails the import on it rather than leaving a valid
+// conversation out of a store that reports success (gpt’s r10 review of #553, blocker 3). An import that fails (that
+// refusal, or its Redis went away) records the attempt in Redis (`import-attempts`), and the start fails with EIMPORT
+// saying why, naming the backup, how many times it has failed, and the way out (start again, or --fresh); the next
+// start imports again from the start, and the count goes once an import finishes. Postbox doesn’t start on an empty
+// state with the line “you can still read everything”, since nothing would be there to read.
 
 import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -83,13 +85,11 @@ function unstorable(g) {
 
 /**
  * Writes the documents, up to 2000 writes a batch. A batch Redis refuses for a reason no retry changes is asked about
- * one document at a time (a probe that commits nothing): the documents it takes are written, the others left out and
- * returned with Redis’s reason.
+ * one document at a time (a probe that commits nothing), to name the document refused: the import fails on it, since
+ * what the checks foresee was handled before (unstorable, readOld), and anything else is not to be left out quietly.
  * @param {import('./redis-client.mjs').RedisClient} c @param {Group[]} groups
- * @returns {Promise<{ what: string, why: string }[]>}
  */
 async function writeDocuments(c, groups) {
-  const left = [];
   /** @type {Group[][]} */ const batches = [[]];
   let size = 0;
   for (const g of groups) {
@@ -106,20 +106,17 @@ async function writeDocuments(c, groups) {
       await writeBatch(c, { prev: 0, events: [], writes: batch.flatMap((g) => g.writes) });
     } catch (e) {
       if (TRANSIENT.has(e.code)) throw e;
-      const kept = [];
       for (const g of batch) {
         try {
           await probeWrites(c, g.writes);
-          kept.push(g);
         } catch (why) {
           if (TRANSIENT.has(why.code)) throw why;
-          left.push({ what: g.what, why: `the store’s Redis refused its document: ${why.message}` });
+          throw fail(why.code ?? 'ERR', `the store’s Redis refused the document of the ${g.what}: ${why.message}`, { document: g.what, refusal: why });
         }
       }
-      if (kept.length) await writeBatch(c, { prev: 0, events: [], writes: kept.flatMap((g) => g.writes) });
+      throw e;
     }
   }
-  return left;
 }
 
 /**
@@ -191,7 +188,7 @@ export async function importLegacy(dir, c, { now = new Date() } = {}) {
     return !why;
   });
   try {
-    left.push(...(await writeDocuments(c, groups)));
+    await writeDocuments(c, groups);
     let prev = 0;
     for (let i = 0; i < events.length; i += 1000) prev = (await writeBatch(c, { prev, events: events.slice(i, i + 1000), writes: [] })).seq;
     await c.call(
