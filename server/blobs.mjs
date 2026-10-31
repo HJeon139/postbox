@@ -6,8 +6,10 @@ import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export class Blobs {
-  constructor(dir) {
+  /** @param {string} dir @param {{ open?: typeof open }} [io]  for tests: a seam where a file or folder handle is opened */
+  constructor(dir, { open: openFile = open } = {}) {
     this.dir = dir;
+    this.open = openFile;
   }
 
   pathOf(sha256) {
@@ -29,7 +31,7 @@ export class Blobs {
     const folder = join(this.dir, sha256.slice(0, 2));
     await mkdir(folder, { recursive: true, mode: 0o700 });
     const draft = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.draft`;
-    const fh = await open(draft, 'wx', 0o600);
+    const fh = await this.open(draft, 'wx', 0o600);
     try {
       await fh.writeFile(buffer);
       await fh.sync();
@@ -40,9 +42,16 @@ export class Blobs {
       await unlink(draft).catch(() => {});
       throw e;
     });
-    const dh = await open(folder, 'r');
-    await dh.sync().catch(() => {}); // a platform that can't sync a folder
-    await dh.close();
+    // A platform that can't sync a folder says so with one of these; any other error (EIO) is a failed sync, and the
+    // blob isn't durable, so it rejects.
+    const dh = await this.open(folder, 'r');
+    try {
+      await dh.sync().catch((e) => {
+        if (!['EINVAL', 'ENOTSUP', 'EPERM', 'EISDIR'].includes(e?.code)) throw e;
+      });
+    } finally {
+      await dh.close();
+    }
     return { sha256, size: buffer.length, path };
   }
 
