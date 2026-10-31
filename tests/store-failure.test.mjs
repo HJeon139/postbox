@@ -222,7 +222,8 @@ test('a starter paused inside its takeover keeps the mutex however long it takes
   await new Promise((r) => setTimeout(r, 30)); // A holds the mutex, paused
   const b = lockStore(io, dir, probe);
   await new Promise((r) => setTimeout(r, 60)); // B is waiting on A’s mutex, not past it
-  assert.deepEqual((await readdir(dir)).sort(), [LOCK, `${LOCK}.taking`], 'B took nothing while A’s mutex stood');
+  // B’s own draft of a mutex may be there for an instant between its write and its failed link; the lock and A’s mutex stand.
+  assert.deepEqual((await readdir(dir)).filter((n) => !n.endsWith('.new')).sort(), [LOCK, `${LOCK}.taking`], 'B took nothing while A’s mutex stood');
   resume();
   const results = await Promise.allSettled([a, b]);
   assert.deepEqual(
