@@ -125,19 +125,21 @@ test('the snapshot: kept until start, written 0600 into the folder, updated by s
     // An existing ID is replaced in place; a new thread is added.
     await k.post('snapshot-items', { turn: 't1', thread: 'th', items: [{ id: 'i1', line: 'You: hello', text: 'You: hello' }] });
     await k.post('snapshot-items', { turn: 't1', thread: 'th_side', items: [{ id: 's1', line: 'aside', text: 'aside' }] });
-    // A new broker reads the file: the daemon restarted.
+    // A new broker reads the file: the daemon restarted offline.
     const again = makeBroker(h);
+    again.state.attached = false;
     const s = connectShim(again.b, 't1');
     await s.next('welcome');
-    assert.deepEqual(await s.call('c1', 'read_conversation', {}), { type: 'result', id: 'c1', ok: true, text: '[i1] You: hello\n\n[i2] @dev: yo' });
-    assert.equal((await s.call('c2', 'read_conversation', { thread: 'th_side' })).text, '[s1] aside');
+    const note = '\n\n(Read offline as of this turn’s start; earlier or changed items may be missing.)';
+    assert.deepEqual(await s.call('c1', 'read_conversation', {}), { type: 'result', id: 'c1', ok: true, text: `[i1] You: hello\n\n[i2] @dev: yo${note}` });
+    assert.equal((await s.call('c2', 'read_conversation', { thread: 'th_side' })).text, `[s1] aside${note}`);
     assert.deepEqual(await s.call('c3', 'read_message', { id: 'nope' }), {
       type: 'result',
       id: 'c3',
       ok: false,
       text: 'There’s no item “nope” in this conversation. Your history and read_conversation give the id of each item they cut.',
     });
-    assert.deepEqual(again.sent, [], 'reading tools never cross to Postbox');
+    assert.deepEqual(again.sent, [], 'reading tools never cross to Postbox while offline');
     // No snapshot yet: the call says so, and snapshot-items is refused.
     h.turn('t2');
     const s2 = connectShim(again.b, 't2');

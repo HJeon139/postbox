@@ -16,8 +16,8 @@ import { KEPT_REPLIES, KEPT_REPLY_CHARS, key, STOPPED_TEXT, send, sessionOfTurn,
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 /** @typedef {import('./turns-shared.mjs').Live} Live */
 
-/** A search only reads, and its answer can be long, so a repeat runs it again rather than its reply being kept. */
-const REPEATABLE = new Set(['corpus_search']);
+/** A search or read only reads, and its answer can be long, so a repeat runs it again rather than its reply being kept. */
+const REPEATABLE = new Set(['corpus_search', 'read_conversation', 'read_message']);
 const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
 

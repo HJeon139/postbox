@@ -2,6 +2,28 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.7.0 (2026-10-31)
+
+### Features
+
+- **uat:** snapshot stall benchmark and log-based UAT tooling (#508)
+
+### Fixes
+
+- **uat:** address integrator review on PR #578 (#508)
+- **transcript:** the thread panel notes its composer shrinking, as the conversation does
+- **composer:** a growing draft in the thread panel keeps its newest message above the composer
+- **uat:** measure loop delay accurately and harden stall benchmark (#508)
+- **transcript:** a reply in the frame you scroll up in counts as unseen
+- **transcript:** a shrink beside the transcript no longer reads as scrolling up
+- **composer:** a draft that grows at the end keeps the newest message above the composer
+
+## 1.6.0 (2026-10-31)
+
+### Features
+
+- **remote:** remote read contract and protocol 3 fallback (#530)
+
 ## 1.5.0 (2026-10-31)
 
 ### Features
