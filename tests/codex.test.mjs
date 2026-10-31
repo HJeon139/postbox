@@ -214,7 +214,8 @@ test('a turn starts and saves a Codex thread and supplies Postbox instructions',
     /^Say hello\.\n\n\[Postbox\] What’s current in this room:\n\n/,
     'the request, then what changes during a room (#515)',
   );
-  assert.match(turn.params.settings.developer_instructions, /Postbox/);
+  assert.match(seen.find((x) => x.method === 'thread/start').params.developerInstructions, /Postbox/);
+  assert.equal('settings' in turn.params, false);
   assert.equal(turn.params.sandboxPolicy.type, 'workspaceWrite');
 });
 
@@ -240,7 +241,9 @@ test('a topic thread forks Codex history at the saved completed-turn checkpoint'
   };
   await adapter.deliver({}, { kind: 'user', text: 'Continue the branch.' }, ctx);
   const fork = seen.find((request) => request.method === 'thread/fork');
-  assert.deepEqual(fork.params, { threadId: 'thr_source', lastTurnId: 'turn_source', excludeTurns: true });
+  const { developerInstructions, ...params } = fork.params;
+  assert.deepEqual(params, { threadId: 'thr_source', lastTurnId: 'turn_source', excludeTurns: true });
+  assert.match(developerInstructions, /You are @critic/);
 });
 
 test('a stopped Codex turn ends only once its app-server has exited, so the next turn can’t run beside it (#126)', async () => {
