@@ -18,7 +18,16 @@ const snapshot = (epoch) => ({ epoch, seq: 4, state: { items: { room: [{ text: e
 
 /** The frames the server sends a stream connecting with this URL, when the store runs on `epoch` at seq 4. @param {string} url @param {string} epoch */
 async function framesFor(url, epoch) {
-  const store = /** @type {any} */ ({ epoch, state: { seq: 4 }, status: { state: 'running' }, watchers: new Set(), reloads: new Set(), subscribe() {}, backlog: async () => [], since: () => [] });
+  const store = /** @type {any} */ ({
+    epoch,
+    state: { seq: 4 },
+    status: { state: 'running' },
+    watchers: new Set(),
+    reloads: new Set(),
+    subscribe() {},
+    backlog: async () => [],
+    since: () => [],
+  });
   const live = liveStreams(store);
   const frames = [];
   const req = /** @type {any} */ (Object.assign(new EventEmitter(), { headers: {} }));
@@ -111,7 +120,10 @@ test('a stream frame naming another epoch makes the page load the state again, o
 
 test('while the load after a resync fails, the page connects again naming its old epoch, until a load succeeds', async () => {
   let reads = 0;
-  const { client, load, connect, streams, timers } = await pageWith(async () => ({ ok: reads++ === 0 || reads > 2, json: async () => snapshot(reads === 1 ? 'old' : 'new') }));
+  const { client, load, connect, streams, timers } = await pageWith(async () => ({
+    ok: reads++ === 0 || reads > 2,
+    json: async () => snapshot(reads === 1 ? 'old' : 'new'),
+  }));
   await load();
   connect();
   await streams[0].handlers.resync(); // the load fails (read 2)

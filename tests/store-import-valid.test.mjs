@@ -99,10 +99,16 @@ test('an unforeseen refusal cannot turn a valid conversation into a successful i
   const client = /** @type {any} */ (s.client);
   const call = client.call.bind(client);
   client.call = async (...a) => {
-    if (a[0] === 'EVAL' && a.some((x, i) => x === 'S' && a[i + 1] === 'thread:th_room1')) throw Object.assign(new Error('unforeseen document refusal'), { code: 'ERR' });
+    if (a[0] === 'EVAL' && a.some((x, i) => x === 'S' && a[i + 1] === 'thread:th_room1'))
+      throw Object.assign(new Error('unforeseen document refusal'), { code: 'ERR' });
     return call(...a);
   };
-  const [failed, lines] = await logged(() => importLegacy(dir, client).then(() => assert.fail('imported'), (e) => e));
+  const [failed, lines] = await logged(() =>
+    importLegacy(dir, client).then(
+      () => assert.fail('imported'),
+      (e) => e,
+    ),
+  );
   assert.equal(failed.code, 'EIMPORT');
   assert.equal(failed.cause, 'import-failed');
   assert.equal(failed.attempts, 1);
