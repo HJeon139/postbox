@@ -9,6 +9,7 @@ import { codexApproval } from './codex-approval.mjs';
 import { codexMcpApprovalConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
 import { findCodex } from './codex-models.mjs';
 import { attachmentPaths, CODEX_REMOTE, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
+import { openCodexThread } from './codex-thread.mjs';
 import { codexContextPercent } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { formatMessage, turnGuide } from './guide.mjs';
@@ -204,18 +205,13 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   const model = codexModelOf(ctx.persona);
   const fork = ctx.state.fork ?? ctx.state.forkFrom;
   const sourceThreadId = fork?.threadId ?? ctx.state.codexThreadId;
-  const opened =
-    fork?.turnId && sourceThreadId
-      ? await request('thread/fork', { threadId: sourceThreadId, lastTurnId: fork.turnId, excludeTurns: true, ...openConfig })
-      : sourceThreadId
-        ? await request('thread/resume', { threadId: sourceThreadId, cwd, ...openConfig })
-        : await request('thread/start', { cwd, ...(model ? { model } : {}), ...openConfig });
-  const threadId = sourceThreadId;
-  const id = opened?.thread?.id ?? threadId;
+  const { opened, fresh } = await openCodexThread(ctx, request, { sourceThreadId, fork, cwd, model, openConfig });
+  const id = opened?.thread?.id ?? (fresh ? null : sourceThreadId);
   if (!id) throw new Error('Codex app-server did not return a thread id.');
   ctx.state.codexThreadId = id;
   ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
-  const inputText = formatMessage(turnMessage, attachmentPaths(ctx, ctx.remote?.turn));
+  const note = '[Postbox] Your earlier conversation in this thread couldn’t be loaded, so this is a fresh start.\n\n';
+  const inputText = formatMessage(fresh ? { ...turnMessage, text: note + turnMessage.text } : turnMessage, attachmentPaths(ctx, ctx.remote?.turn));
   const started = await request('turn/start', {
     threadId: id,
     input: [{ type: 'text', text: inputText }],
@@ -316,7 +312,7 @@ export class CodexAdapter {
       if (msg.id != null && pending.has(msg.id)) {
         const item = pending.get(msg.id);
         pending.delete(msg.id);
-        msg.error ? item.reject(new Error(errorText(msg))) : item.resolve(msg.result);
+        msg.error ? item.reject(Object.assign(new Error(errorText(msg)), { code: msg.error.code })) : item.resolve(msg.result);
         return;
       }
       if (msg.id != null && msg.method) {

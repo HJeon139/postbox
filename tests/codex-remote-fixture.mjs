@@ -63,7 +63,7 @@ export function linkTo(d, { delayIn = 0 } = {}) {
  * Codex on the host: answers each line Postbox writes to the held stdin as the app-server does, appending to the
  * turn’s out.jsonl. `turnLines` go out after turn/start’s response (the recorded turn by default).
  */
-export function codexOnHost(d, { turnLines = RECORDED.slice(3), threadId = 'thr_postbox_1', turnId = 'turn_postbox_1' } = {}) {
+export function codexOnHost(d, { turnLines = RECORDED.slice(3), threadId = 'thr_postbox_1', turnId = 'turn_postbox_1', resumeError = null } = {}) {
   const timer = setInterval(() => {
     for (const t of d.turns.values()) {
       if (t.harness !== 'codex') continue;
@@ -71,6 +71,7 @@ export function codexOnHost(d, { turnLines = RECORDED.slice(3), threadId = 'thr_
         const req = JSON.parse(t.writes[t.seen ?? 0]);
         if (req.method === 'initialize') d.append(t.turn, JSON.stringify({ id: req.id, result: { userAgent: 'codex/0' } }));
         else if (req.method === 'mcpServerStatus/list') d.append(t.turn, JSON.stringify({ id: req.id, result: { data: [], nextCursor: null } }));
+        else if (req.method === 'thread/resume' && resumeError) d.append(t.turn, JSON.stringify({ id: req.id, error: resumeError }));
         else if (req.method === 'thread/start' || req.method === 'thread/resume')
           d.append(t.turn, JSON.stringify({ id: req.id, result: { thread: { id: threadId } } }));
         else if (req.method === 'turn/start') {
