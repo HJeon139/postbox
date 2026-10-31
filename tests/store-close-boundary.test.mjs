@@ -99,3 +99,39 @@ test('a Retry whose barrier never resolves: close() rejects within the bound, ke
   assert.ok(a.lock, 'still held: only the process’s exit releases it');
   await rm(dir, { recursive: true });
 });
+
+test('a plain emit then close(): the final flush syncs the log once, savedThrough reaches seq, and the lock is released', async () => {
+  const dir = await tmp();
+  const faults = {};
+  let syncs = 0;
+  faults.sync = async () => {
+    syncs++;
+  };
+  const a = await new Store(dir, { io: logDisk(faults) }).load();
+  a.emit('thread', { id: 't1', members: [] });
+  await a.running; // the writer pass has drained the queue; the line is appended, not yet synced
+  assert.deepEqual({ seq: a.state.seq, savedThrough: a.status.savedThrough, queue: a.queue.length }, { seq: 1, savedThrough: 0, queue: 0 });
+  await a.close();
+  assert.equal(syncs, 1, 'close() synced the log although the queue was empty');
+  assert.equal(a.status.savedThrough, 1);
+  assert.equal(a.lock, null);
+  const b = await new Store(dir).load();
+  assert.ok(b.state.threads.t1);
+  await b.close();
+  await rm(dir, { recursive: true });
+});
+
+test('the final sync fails: close() rejects with the cause and keeps the lock, since the log may not be durable', async () => {
+  const dir = await tmp();
+  const faults = {};
+  const a = await new Store(dir, { io: logDisk(faults) }).load();
+  a.emit('thread', { id: 't1', members: [] });
+  await a.running;
+  faults.sync = () => Promise.reject(eio('disk sync refused'));
+  await assert.rejects(a.close(), /can’t close: its last sync failed \(EIO\): disk sync refused.*Stop the process/);
+  assert.equal(a.closed, true);
+  assert.ok(a.lock, 'the lock is kept');
+  assert.ok((await realFs.readdir(dir)).includes(LOCK));
+  await assert.rejects(new Store(dir).load(), /Another Postbox store/);
+  await rm(dir, { recursive: true });
+});

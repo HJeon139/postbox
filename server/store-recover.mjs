@@ -148,19 +148,31 @@ export async function close(store) {
   // I3c point). The process’s exit releases the lock, and the next start takes over the stale record.
   const inFlight = [store.retrying, store.running].filter(Boolean).map((p) => p.catch(() => {}));
   let quiet = inFlight.length === 0 || (await settledWithin(Promise.all(inFlight), store.retryBoundMs));
-  if (quiet && store.writable && store.queue.length)
-    quiet = await settledWithin(
-      store.flush().catch(() => {}),
-      store.retryBoundMs,
+  // The final flush runs whenever writes are open, queue or no queue: an emit is appended without a sync, so a drained
+  // queue still leaves an acknowledged line unsynced (gpt’s finding), and the flush is the sync. Its failure is the
+  // caller’s to hear, not swallowed.
+  /** @type {(Error & { code?: string, cause?: Error }) | null} */
+  let failed = null;
+  if (quiet && store.writable) {
+    const flushed = store.flush().then(
+      () => null,
+      (e) => e,
     );
+    quiet = await settledWithin(flushed, store.retryBoundMs);
+    if (quiet) failed = await flushed;
+  }
   store.closed = true;
   store.writable = false;
-  if (!quiet) {
+  if (!quiet || failed) {
+    const why = failed
+      ? `its last sync failed (${failed.code ?? 'error'}): ${(failed.cause ?? failed).message}, so the log may not be durable`
+      : `a write or Retry is still in flight after ${store.retryBoundMs} ms and the disk isn’t answering`;
     store.cause = Object.assign(
-      new Error(
-        `The store can’t close: a write or Retry is still in flight after ${store.retryBoundMs} ms and the disk isn’t answering. Stop the process; its lock on the folder goes with it, and the next start takes the folder over.`,
-      ),
-      { code: 'EBUSY' },
+      new Error(`The store can’t close: ${why}. Stop the process; its lock on the folder goes with it, and the next start takes the folder over.`),
+      {
+        code: failed?.code ?? 'EBUSY',
+        cause: failed ?? undefined,
+      },
     );
     console.error(store.cause.message);
     throw store.cause;
