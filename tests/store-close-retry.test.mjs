@@ -234,26 +234,3 @@ test('a Retry started right after close() begins is refused at once, and the nex
   await c.close();
   await rm(dir, { recursive: true });
 });
-
-test('a Retry whose barrier never resolves doesn’t hang close(): within the bound the lock is released and no descriptor stays', async () => {
-  const dir = await tmp();
-  const faults = {};
-  const a = await new Store(dir, { io: logDisk(faults), retryBoundMs: 50 }).load();
-  a.emit('thread', { id: 't1', members: [] });
-  await a.flush();
-  faults.sync = () => Promise.reject(eio('disk sync refused'));
-  await assert.rejects(a.commit([thread('x')], { opId: 'x' }), /EIO/);
-  faults.sync = () => new Promise(() => {}); // the barrier’s fsync never answers
-  a.reload().catch(() => {});
-  await new Promise((r) => setTimeout(r, 20));
-  const t0 = Date.now();
-  await a.close();
-  assert.ok(Date.now() - t0 < 1000, 'close() returned within the bound');
-  assert.equal(a.closed, true);
-  assert.equal(a.fh, null, 'no descriptor stays open');
-  faults.sync = null;
-  const b = await new Store(dir).load(); // the lock was released
-  assert.ok(b.state.threads.t1);
-  await b.close();
-  await rm(dir, { recursive: true });
-});

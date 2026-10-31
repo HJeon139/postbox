@@ -91,8 +91,15 @@ export async function main(argv, start) {
       `This clone’s data/ folder has your conversations, so Postbox keeps using it. Postbox now keeps its data in ${postboxHome()}: to move it there, stop Postbox and run \`npm start -- --move-data\`.`,
     );
   const bye = async () => {
-    await app.close();
-    process.exit(0);
+    // A close that can’t finish (a disk that isn’t answering) says so and keeps its lock: the exit releases it.
+    const code = await app.close().then(
+      () => 0,
+      (e) => {
+        console.error(e.message);
+        return 1;
+      },
+    );
+    process.exit(code);
   };
   process.on('SIGINT', bye);
   process.on('SIGTERM', bye);

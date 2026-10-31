@@ -128,9 +128,12 @@ export async function load(store, { fresh = false } = {}) {
   return store;
 }
 
+const CLOSED = () => Object.assign(new Error('The store is closed: Postbox shut it down, so nothing more is saved here.'), { code: 'ECLOSED' });
+
 /**
  * Flushes, releases the folder and closes this store for good: a late emit or commit (an adapter’s exit callback after
- * shutdown) is refused and never reopens the segment, since another store may hold the folder by then.
+ * shutdown) is refused and never reopens the segment, since another store may hold the folder by then. Rejects, with
+ * the lock KEPT, when a Retry or a write under way hasn’t settled within the bound.
  * @param {import('./store.mjs').Store} store
  */
 export async function close(store) {
@@ -138,26 +141,33 @@ export async function close(store) {
   // (a torn-tail trim, a snapshot’s rename or pruning) runs on this store’s behalf (gpt’s finding: a Retry started in
   // close()’s first await trimmed the next owner’s line).
   store.closing = true;
-  store.cause ??= Object.assign(new Error('The store is closed: Postbox shut it down, so nothing more is saved here.'), { code: 'ECLOSED' });
-  try {
-    // A Retry or a writer pass under way finishes first, within a bound: closing in the middle would release the lock
-    // while a candidate could still install or a snapshot still prune. Past the bound (a disk that never answers) the
-    // folder is released anyway, and whatever resumes finds the store retiring and does nothing.
-    const inFlight = [store.retrying, store.running].filter(Boolean).map((p) => p.catch(() => {}));
-    if (inFlight.length && !(await settledWithin(Promise.all(inFlight), store.retryBoundMs)))
-      console.error(`The store closed with a Retry or a write still in flight after ${store.retryBoundMs} ms; it installs nothing from here.`);
-    else if (store.writable && store.queue.length)
-      await settledWithin(
-        store.flush().catch(() => {}),
-        store.retryBoundMs,
-      );
-  } finally {
-    store.closed = true;
-    store.writable = false;
-    store.cause = Object.assign(new Error('The store is closed: Postbox shut it down, so nothing more is saved here.'), { code: 'ECLOSED' });
-    await store.fh?.close();
-    store.fh = null;
-    await unlockStore(store.io, store.lock);
-    store.lock = null;
+  store.cause ??= CLOSED();
+  // A Retry or a writer pass under way finishes first, then the queue is flushed (flush() is the one path still open
+  // on a closing store), each within a bound. The bound decides only what the caller is told: a flag can’t cancel a
+  // write or a rename already handed to the disk, so past it the lock is KEPT and close() rejects (gpt’s and critic’s
+  // I3c point). The process’s exit releases the lock, and the next start takes over the stale record.
+  const inFlight = [store.retrying, store.running].filter(Boolean).map((p) => p.catch(() => {}));
+  let quiet = inFlight.length === 0 || (await settledWithin(Promise.all(inFlight), store.retryBoundMs));
+  if (quiet && store.writable && store.queue.length)
+    quiet = await settledWithin(
+      store.flush().catch(() => {}),
+      store.retryBoundMs,
+    );
+  store.closed = true;
+  store.writable = false;
+  if (!quiet) {
+    store.cause = Object.assign(
+      new Error(
+        `The store can’t close: a write or Retry is still in flight after ${store.retryBoundMs} ms and the disk isn’t answering. Stop the process; its lock on the folder goes with it, and the next start takes the folder over.`,
+      ),
+      { code: 'EBUSY' },
+    );
+    console.error(store.cause.message);
+    throw store.cause;
   }
+  store.cause = CLOSED();
+  await store.fh?.close();
+  store.fh = null;
+  await unlockStore(store.io, store.lock);
+  store.lock = null;
 }
