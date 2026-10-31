@@ -288,13 +288,15 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     addEventListener('resize', follow);
     sizes.observe(el);
     // What’s around it changing moves the end too: the composer, the panel’s height, the thread’s root above. A shrink
-    // there clamps the view like one in the transcript, so its changes are noted the same way (#360).
-    if (el.parentElement)
-      for (const n of [el.parentElement, ...el.parentElement.children]) {
-        if (n === el) continue;
-        sizes.observe(n);
-        if (n !== el.parentElement) changes.observe(n, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
-      }
+    // there clamps the view like one in the transcript, so its changes are noted the same way (#360). The panel’s
+    // composer isn’t beside the transcript: it’s in the panel’s foot, under the scroll box.
+    const around = el.parentElement ? [...el.parentElement.children].filter((n) => n !== el) : [];
+    const foot = inPanel ? el.closest('.sidepanel')?.querySelector('.sp-foot') : null;
+    if (el.parentElement) sizes.observe(el.parentElement);
+    for (const n of foot ? [...around, foot] : around) {
+      sizes.observe(n);
+      changes.observe(n, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+    }
   };
   /** Once the transcript is on the page: to the newest message, or back where you were before a rebuild. */
   const settle = () => {

@@ -1,7 +1,8 @@
 // A draft that grows the composer at the end of the conversation keeps the newest message above it, and the next
-// reply is followed (#422, one of PF-3’s scroll regressions for #508 B1’s view state). Scrolled up, a growing draft
-// moves nothing you’re reading. Each test has a conversation of its own; every step waits for the page to hold still
-// and then measures once.
+// reply is followed (#422), in the conversation and in the thread panel; a composer that shrinks as the draft is sent
+// leaves the view following (#360). Scrolled up, a growing draft moves nothing you’re reading. The view’s rules are
+// #508’s design, “Browser”. Each test has a conversation of its own; every step waits for the page to hold still and
+// then measures once.
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
@@ -154,4 +155,65 @@ test('#422 in the thread panel: a six-line draft keeps the panel’s newest mess
   await expect.poll(height, { message: 'the panel’s composer to grow with the draft' }).toBeGreaterThan(before + 60);
   await settled(page);
   expect(await panelClearance(), 'the panel’s newest message is still above its composer').toBeGreaterThanOrEqual(0);
+});
+
+/**
+ * In one task, as sending a draft does: empty the composer and size it, so the page shortens and the browser clamps the
+ * view. Then, after the page’s own reactions to that change have run but before the frame’s scroll event, hand it an
+ * agent’s reply. Without the clamp being noted, the reply finds the view above the new end and reads it as a scroll up.
+ * @param {import('@playwright/test').Page} page @param {string} threadId @param {string} input  the textarea’s selector
+ */
+const sendThenReply = (page, threadId, input) =>
+  page.evaluate(
+    async ({ threadId, input }) => {
+      const { client } = await import('/app/js/client.mjs');
+      const { apply } = await import('/shared/state.mjs');
+      const { fitDraft } = await import('/app/js/composer-size.mjs');
+      const ta = /** @type {HTMLTextAreaElement} */ (document.querySelector(input));
+      const item = { id: 'it_afterSend', kind: 'agent', handle: 'researcher', text: 'The reply that comes in after the send.', status: 'done', at: Date.now() };
+      ta.value = '';
+      fitDraft(ta);
+      await Promise.resolve();
+      apply(client.state, 'item.add', { threadId, item });
+      client.emit({ type: 'item.add', data: { threadId, item } });
+    },
+    { threadId, input },
+  );
+
+test('#360: at the end, a composer that shrinks as a draft is sent leaves the view following the next reply', async ({ page }) => {
+  const { t } = room('Shrink, then a reply');
+  await open(page, t, 1280);
+  await sixLines(page);
+  await sendThenReply(page, t.id, '#composer-input');
+  await settled(page);
+  expect(await clearance(page), 'the reply ends above the composer').toBeGreaterThanOrEqual(0);
+  await expect(page.locator('.jump'), 'no Jump to latest: the view still follows').toBeHidden();
+});
+
+test('#360 in the thread panel: a composer that shrinks as a draft is sent leaves the panel following the next reply', async ({ page }) => {
+  const { rt } = app;
+  const { t, se } = room('Shrink in the panel');
+  const root = rt.store.items(t.id).find((i) => i.kind === 'agent');
+  const { threadId } = rt.startTopic(t.id, root.id);
+  for (let i = 1; i <= 30; i++)
+    rt.addItem(threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(i), status: 'done' });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${app.origin}/#/t/${t.id}/side/${threadId}`);
+  await synced(page, app);
+  await expect(page.locator(`.sidepanel .transcript[data-thread="${threadId}"] .item`).first()).toBeVisible();
+  await settled(page);
+  const input = page.locator('.sidepanel textarea');
+  await input.click();
+  for (let i = 1; i <= 6; i++) {
+    await input.pressSequentially(`Line ${i} of the draft`);
+    if (i < 6) await input.press('Shift+Enter');
+  }
+  await settled(page);
+  await sendThenReply(page, threadId, '.sidepanel textarea');
+  await settled(page);
+  const gap = await page.evaluate(() => {
+    const b = /** @type {HTMLElement} */ (document.querySelector('.sidepanel .sp-body'));
+    return Math.round(b.scrollHeight - b.scrollTop - b.clientHeight);
+  });
+  expect(gap, 'the panel is still at its end').toBeLessThanOrEqual(2);
 });
