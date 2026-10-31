@@ -44,7 +44,7 @@ for (const [name, state, method] of [
   });
 }
 
-test('resuming an existing thread refreshes the current persona instructions', async () => {
+test('resuming an existing thread uses the persona version supplied by the runtime', async () => {
   const seen = [];
   const state = {};
   const ctx = context(state);

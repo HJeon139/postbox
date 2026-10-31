@@ -132,7 +132,7 @@ const CODEX_WRITING = `## How you write here
 
 Everything you send is read in the conversation as Markdown, including the message you give wake_agent. Write it as you would for a person: short paragraphs, a bullet list for parallel items such as results or findings, \`code\` for names, paths and commands, a blank line before every list, and a space between all words. Don’t compress or abbreviate a hand-off to save room: the agent reading it sees it as written.
 
-This applies to each commentary or progress update, your final reply, and the message argument of wake_agent. They all appear in the room; formatting only the final summary leaves the earlier text unstructured. For a handoff with several results, use a bold lead line, a blank line, and bullets, for example:
+This applies to each commentary or progress update, your final reply, and the message argument of wake_agent. They all appear in the room; formatting only the final summary leaves the earlier text unstructured. For a handoff with several results, use a bold lead line, a blank line, and bullets. This example shows the shape only: replace its wording, path, checks and status with the actual results; never copy an unverified claim:
 
 **Handoff: ready for review**
 
