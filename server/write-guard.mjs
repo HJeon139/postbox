@@ -94,17 +94,44 @@ const TARGET_FIELDS = [
   ['path', 'path'],
 ];
 
+/** A word of a command without its quotes, cut to fit a card. */
+const unquoted = (w) => w.replace(/^["']|["']$/g, '').slice(0, 120);
+
 /**
- * Where a write lands, for its card: the server (or gh), and the target when the input names one, such as a folder,
- * a database or a repository. An object target (Notion’s parent: { page_id }) gives its first text value.
+ * Where one write in a command lands: a push on its remote (--repo when it names one, else the first word after push
+ * that isn’t a flag), a gh write on the repository its --repo or -R names (#296).
+ * @param {string} part @returns {{ server: string, target: { what: string, name: string } | null }}
+ */
+function commandWhere(part) {
+  const words = part.trim().split(/\s+/);
+  const at = words.indexOf('push');
+  if (words[0] === 'git' && at > 0) {
+    const rest = words.slice(at + 1);
+    const flag = rest.findIndex((w) => w === '--repo' || w.startsWith('--repo='));
+    const remote = flag < 0 ? rest.find((w) => !w.startsWith('-')) : rest[flag].includes('=') ? rest[flag].split('=')[1] : rest[flag + 1];
+    return { server: 'git', target: remote ? { what: 'remote', name: unquoted(remote) } : null };
+  }
+  const repo = /(?:^|\s)(?:--repo|-R)[=\s]+(\S+)/.exec(part)?.[1];
+  return { server: 'gh', target: repo ? { what: 'repository', name: unquoted(repo) } : null };
+}
+
+/**
+ * Where a write lands, for its card: the server (or gh, or git), and the target when the input names one, such as a
+ * folder, a database, a repository or a remote. An object target (Notion’s parent: { page_id }) gives its first text
+ * value. A command that writes to more than one place lists the others in also, as git push && gh pr create does.
  * @param {string} tool @param {any} input
- * @returns {{ server: string, target: { what: string, name: string } | null }}
+ * @returns {{ server: string, target: { what: string, name: string } | null, also?: { server: string, target: { what: string, name: string } | null }[] }}
  */
 export function whereOf(tool, input) {
   const name = String(tool ?? '');
   if (name === 'Bash') {
-    const repo = /(?:^|\s)(?:--repo|-R)[=\s]+(\S+)/.exec(String(input?.command ?? ''))?.[1];
-    return { server: 'gh', target: repo ? { what: 'repository', name: repo.replace(/^["']|["']$/g, '').slice(0, 120) } : null };
+    const places = [];
+    for (const c of writeCalls(name, input)) {
+      const w = commandWhere(String(c.arg));
+      if (!places.some((p) => JSON.stringify(p) === JSON.stringify(w))) places.push(w);
+    }
+    const [first = { server: 'gh', target: null }, ...also] = places;
+    return also.length ? { ...first, also } : first;
   }
   const server = (/^mcp__(.+?)__/.exec(name)?.[1] ?? name).replace(/^claude_ai_/, 'claude.ai ').replace(/_/g, ' ');
   const i = input && typeof input === 'object' ? input : {};

@@ -613,7 +613,7 @@ function writesRow(writes) {
       h('span.small.dim', ` and ${writes.rules.length - 3} more, from ${SOURCE.writes}`),
       h(
         'span.small.dim',
-        `: tools and gh commands that create, change or delete something outside Postbox. Always allow on a card lets that one tool through${writes.unless.length ? ', and so does “Can publish outside Postbox” for the tools it covers' : ''}.`,
+        `: tools and gh commands that create, change or delete something outside Postbox, and git push. Always allow on a card lets that one tool through${writes.unless.length ? ', and so does “Can publish outside Postbox” for the tools it covers' : ''}.`,
       ),
     ),
   );

@@ -7,6 +7,8 @@
 //   saw what runs, so no model is asked;
 // - the person typed a message that asks for it: one Haiku call quotes their words, and Postbox checks the quote is
 //   theirs, on word boundaries, and shares a word with the call. A block’s words are the agent’s, so never quoted.
+// A lone git push is the one git command a request covers, and never as the agent wrote it: Postbox makes the push
+// itself, to the project’s repository, and tells the agent (push-on-request.mjs).
 // Postbox keeps the rest in code: the call must pass request-floor.mjs’s allow-list (never a git command), five calls a
 // turn at most, none after the person stops them on the line each one leaves, none for a subagent, and anything that
 // fails is a card.
@@ -15,9 +17,13 @@ import { randomBytes } from 'node:crypto';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { setupOf } from './adapters/setup.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
+import { pushConsequence, pushedMessage, pushOf, runPush } from './push-on-request.mjs';
 import { actionWords, numberOf, offRequest } from './request-floor.mjs';
+import { newId } from './store.mjs';
 import { SUMMARY_MODEL } from './thread-summary.mjs';
 import { isWriteCall, personAsks, writePasses } from './write-guard.mjs';
+
+const PUSHES = { consequence: pushConsequence, run: runPush };
 
 /** Calls one turn may make on the person’s request before the card comes back. */
 export const REQUESTED_MAX = 5;
@@ -166,9 +172,8 @@ function stillOpen(rt, threadId, turn) {
 }
 
 /** Asks the judge, and records its cost with the turn, as the summary’s is (#295: each call’s own cost, once). */
-async function judged(rt, turn, request, tool, input) {
+async function judged(rt, turn, request, call, words) {
   const judge = judgeOf(rt);
-  const call = callText(tool, input);
   const asked = request.said.join('\n\n');
   if (!judge || call.length > MAX_CALL || asked.length > MAX_REQUEST) return null;
   const tag = randomBytes(6).toString('hex');
@@ -177,13 +182,14 @@ async function judged(rt, turn, request, tool, input) {
   const cost = r?.costUsd;
   const e = typeof cost === 'number' ? rt.ledger.entry(conv, turn.id) : null;
   if (e && typeof cost === 'number') rt.ledger.patch(conv, e.id, { judgeCostUsd: (e.judgeCostUsd ?? 0) + cost });
-  return r ? allowedQuote(r.text, request.said, actionWords(tool, input)) : null;
+  return r ? allowedQuote(r.text, request.said, words) : null;
 }
 
 /**
  * Why the person’s request covers this call, so it runs without a card, or null (see the top of this file).
  * @param {any} rt @param {string} sessionId @param {{ tool: string, input?: any, agentId?: string|null }} req
- * @returns {Promise<{ threadId: string, how: 'confirmed', label: string } | { threadId: string, how: 'asked', quote: string } | null>}
+ * A lone git push is judged by what it would do, and Postbox makes it itself (push-on-request.mjs): push is set then.
+ * @returns {Promise<({ threadId: string, how: 'confirmed', label: string } | { threadId: string, how: 'asked', quote: string }) & { push?: any } | null>}
  */
 export async function requestedCall(rt, sessionId, { tool, input, agentId }) {
   const se = rt.s.sessions[sessionId];
@@ -201,20 +207,27 @@ export async function requestedCall(rt, sessionId, { tool, input, agentId }) {
   // What the floor reads as named: what the person typed, and a confirm’s statement only when it shows this exact
   // command. Another confirm’s words are the agent’s, and widen nothing.
   const named = norm([...request.said, ...(shown ? [shown.statement] : [])].join('\n'));
-  const { folder } = await rt.panelTarget({ sessionId });
-  if (offRequest(tool, input, { named, made: madeBy(rt, turn, request.threadId), folder })) return null;
-  if (shown) return { threadId: request.threadId, how: 'confirmed', label: shown.label };
-  const quote = request.said.length ? await judged(rt, turn, request, tool, input) : null;
+  const { folder, project } = await rt.panelTarget({ sessionId });
+  const asPush = tool === 'Bash' ? pushOf(input?.command) : null;
+  // rt.pushes replaces the push’s reading and running in unit tests, which start no processes.
+  const push = asPush ? await (rt.pushes ?? PUSHES).consequence({ folder, url: project?.pushUrl, push: asPush, named }) : null;
+  if (asPush ? !push : offRequest(tool, input, { named, made: madeBy(rt, turn, request.threadId), folder })) return null;
+  if (shown) return { threadId: request.threadId, how: 'confirmed', label: shown.label, push };
+  const [call, words] = push
+    ? [`Postbox would make this push for the agent: ${push.sentence}.`, `git push ${push.branch} ${push.url}`]
+    : [callText(tool, input), actionWords(tool, input)];
+  const quote = request.said.length ? await judged(rt, turn, request, call, words) : null;
   // The turn may have ended, or the person stopped these calls, while the judge thought.
   if (!quote || rt.turns.get(sessionId) !== turn || !stillOpen(rt, request.threadId, turn)) return null;
-  return { threadId: request.threadId, how: 'asked', quote };
+  return { threadId: request.threadId, how: 'asked', quote, push };
 }
 
 /**
  * A write the person already settled, so it runs without a card: by a rule or the persona’s setup (write-guard.mjs,
  * writePasses), or by their request, with a line that says so. Null for a card.
  * @param {any} rt @param {string} sessionId @param {{ tool: string, summary?: string, input?: any, agentId?: string|null }} req
- * @returns {Promise<{ allow: boolean } | null>}
+ * A push Postbox made itself answers no to the agent’s own, with a message that says it’s done.
+ * @returns {Promise<{ allow: boolean, message?: string } | null>}
  */
 export async function settledCall(rt, sessionId, req) {
   if (isWriteCall(req.tool, req.input) && (await writePasses(rt, sessionId, req).catch(() => false))) return { allow: true };
@@ -226,6 +239,7 @@ export async function settledCall(rt, sessionId, req) {
     // A judge that fails, or a check that breaks, gets the card, as before: it fails closed.
   }
   if (!found) return null;
+  const done = found.push ? await (rt.pushes ?? PUSHES).run(found.push) : null;
   rt.addItem(found.threadId, {
     kind: 'allowedcall',
     sessionId,
@@ -238,9 +252,24 @@ export async function settledCall(rt, sessionId, req) {
     detail: (req.tool === 'Bash' ? String(req.input?.command ?? '') : JSON.stringify(req.input ?? {}, null, 2)).slice(0, MAX_CALL),
     how: found.how,
     ...(found.how === 'confirmed' ? { approved: clip(found.label, 200) } : { quote: clipText(found.quote, 300) }),
-    status: 'allowed',
+    ...(found.push ? { push: { sha: found.push.sha, branch: found.push.branch, url: found.push.url, error: done?.ok ? null : done?.error } } : {}),
+    status: done && !done.ok ? 'failed' : 'allowed',
   });
-  return { allow: true };
+  if (!found.push) return { allow: true };
+  if (!done?.ok) return null;
+  recordPush(rt, sessionId, found.push);
+  // The agent’s own push never runs: Postbox made it, and says so.
+  return { allow: false, message: pushedMessage(found.push) };
+}
+
+/** Postbox’s push goes on the work ledger, as an agent’s own push would (#132). */
+function recordPush(rt, sessionId, p) {
+  const turn = rt.turns.get(sessionId);
+  if (!turn?.work) return;
+  rt.ledger.add(
+    turn.work.convId,
+    rt.ledger.base(turn, { kind: 'push', id: newId('wp'), branch: p.branch, remote: p.url, refs: [`${p.sha.slice(0, 7)} → ${p.branch}`] }),
+  );
 }
 
 /**
