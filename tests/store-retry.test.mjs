@@ -210,3 +210,45 @@ test('a failed snapshot warns and backs off; it does not close the store, and is
   await s.close();
   await rm(dir, { recursive: true });
 });
+
+test('T-12: ENOSPC and EROFS on a write close the store with that cause, like EIO', async () => {
+  for (const code of ['ENOSPC', 'EROFS']) {
+    const dir = await tmp();
+    const faults = {};
+    const s = await new Store(dir, { io: logDisk(faults) }).load();
+    faults.write = async () => {
+      throw Object.assign(new Error(`${code} from the disk`), { code });
+    };
+    await assert.rejects(s.commit([thread('x')], { opId: 'x' }), new RegExp(code));
+    assert.equal(s.writable, false);
+    assert.equal(s.status.cause.code, code);
+    await s.close();
+    await rm(dir, { recursive: true });
+  }
+});
+
+test('I8: a commit made by a reload listener runs after the install and lands in the new history, once', async () => {
+  const dir = await tmp();
+  const faults = {};
+  const s = await new Store(dir, { io: logDisk(faults) }).load();
+  s.emit('thread', { id: 't1', members: [] });
+  await s.flush();
+  faults.sync = () => Promise.reject(eio('disk sync refused'));
+  await assert.rejects(s.commit([thread('x')], { opId: 'x' }), /EIO/);
+  faults.sync = null;
+  let reconciled;
+  s.onReload(() => {
+    // Reconciliation that writes: through commit, after the install, as a stand-in for A1’s records going back to waiting.
+    reconciled = s.commit([thread('reconciled')], { opId: 'reconcile' });
+  });
+  await s.reload();
+  // The failed commit’s line landed before its sync failed, so the reload recovered it as seq 2 (I7); the listener’s
+  // commit comes after the install, as seq 3.
+  assert.deepEqual(await reconciled, { seq: 3, duplicate: false });
+  assert.ok(s.state.threads.reconciled);
+  await s.close();
+  const b = await new Store(dir).load();
+  assert.deepEqual(Object.keys(b.state.threads).sort(), ['reconciled', 't1', 'x']);
+  await b.close();
+  await rm(dir, { recursive: true });
+});

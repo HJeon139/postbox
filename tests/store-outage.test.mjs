@@ -108,3 +108,27 @@ test('ST-3: a turn running when a write fails stops with the store named, nothin
   const b = await call({ path: '/api/state' });
   assert.equal(b.json.store.writable, true);
 });
+
+test('T-32: a scheduled wake armed before the failure runs only after Retry has installed the recovered state', async () => {
+  const { rt, store } = app;
+  const agent = rt.adapters.get('mock');
+  const before = agent.calls.length;
+  const p = rt.createPersona({ handle: 'waker', backend: 'mock' });
+  const t = rt.createThread({ projectId: 'pr_outage', title: 'Wake', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  await store.flush();
+  const sc = rt.schedule(se.id, { inMs: 1000, note: 'later' });
+  assert.ok(sc.id);
+  store.fail(eio());
+  // The timer fires while the store is closed: the wake’s turn waits, it does not start.
+  await new Promise((r) => setTimeout(r, 1300));
+  assert.equal(agent.calls.length, before, 'no turn started from the old timer while closed');
+  assert.equal(rt.turns.has(se.id), false);
+  const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
+  assert.equal((await call({ method: 'POST', path: '/api/store/retry', cookie })).status, 200);
+  await until(() => agent.calls.length === before + 1 && rt.turns.has(se.id), 'the wake’s turn to start after the install');
+  assert.ok(store.writable, 'and only once writes were open again');
+  rt.stop(se.id, { silent: true });
+  await until(() => !rt.turns.has(se.id), 'the turn to stop');
+  await store.flush();
+});
