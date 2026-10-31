@@ -81,7 +81,8 @@ export class Store {
 
   /** What the page and the runtime read about the store’s health (server/live-streams.mjs sends it as a frame). */
   get status() {
-    return { writable: this.writable, cause: this.cause, lost: this.lost, warning: this.warning, retrying: !!this.retrying, savedThrough: this.savedThrough };
+    const cause = this.cause ? { code: this.cause.code ?? null, message: this.cause.message } : null; // plain, for the page
+    return { writable: this.writable, cause, lost: this.lost, warning: this.warning, retrying: !!this.retrying, savedThrough: this.savedThrough };
   }
 
   onStatus(fn) {

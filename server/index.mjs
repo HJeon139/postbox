@@ -229,6 +229,18 @@ export async function start({
         { code: 'token' },
       );
 
+    // While the store can’t be written (#508’s storage design, “When a write fails (ST-3)”), every write is refused here
+    // with the cause, before it reaches the runtime; reads, Retry and Stop still answer. The tools have the same gate
+    // in server/mcp.mjs.
+    if (!store.writable && req.method !== 'GET' && req.method !== 'HEAD' && path !== '/mcp' && path !== '/api/store/retry' && !path.endsWith('/stop'))
+      throw Object.assign(httpError(503, store.cause.message), { code: 'store-closed' });
+    if (path === '/api/store/retry' && req.method === 'POST') {
+      await store.reload().catch((e) => {
+        throw httpError(503, e.message);
+      });
+      return send(res, 200, { store: store.status });
+    }
+
     if (path === '/' || path === '/index.html')
       return file(
         res,
@@ -284,6 +296,7 @@ export async function start({
       return send(res, 200, {
         seq: store.state.seq,
         epoch: store.epoch, // the history the seq counts within; the stream request echoes it (server/live-streams.mjs)
+        store: store.status, // whether changes are being saved, and why not (ST-3): the page’s status line
         state: store.state,
         config: {
           origin,

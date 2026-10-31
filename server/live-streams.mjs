@@ -34,6 +34,16 @@ export function liveStreams(store) {
     if (lag > 0) setTimeout(send, lag).unref();
     else send();
   });
+  // The store’s status, unnumbered, each time writes close or reopen, a Retry starts or ends, or a warning changes
+  // (#508’s storage design, “When a write fails (ST-3)”): the page shows one status line from it.
+  store.onStatus((status) => {
+    const frame = `event: status\ndata: ${JSON.stringify(status)}\n\n`;
+    for (const res of streams) res.write(frame);
+  });
+  // Retry installs a new epoch: every open stream is told to load the state again.
+  store.onReload(() => {
+    for (const res of streams) res.write(`event: epoch\ndata: ${JSON.stringify(store.epoch)}\n\nevent: resync\ndata: {}\n\n`);
+  });
   const keepAlive = setInterval(() => {
     for (const res of streams) res.write(': keep-alive\n\n');
   }, 15000);
