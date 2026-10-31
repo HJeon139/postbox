@@ -92,7 +92,7 @@ async function retry(store) {
     throw closedBy(store, e);
   }
   if (store.closed) {
-    // close() ran meanwhile (it waits for this Retry, so this is a second line of defence): nothing installs or reopens.
+    // close() ran meanwhile (it waits for this Retry, so this is a second guard): nothing installs or reopens.
     await fh.close().catch(() => {});
     throw closedBy(store, Object.assign(new Error('the store was closed while Retry ran'), { code: 'ECLOSED' }));
   }
