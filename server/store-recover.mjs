@@ -29,8 +29,9 @@ export const newEpoch = () => randomBytes(9).toString('base64url');
 
 /**
  * Replaces the store’s memory with what Redis holds: the state, the items’ positions and the index, with nothing
- * queued and no backlog, under a new history epoch, written to Redis beside `seq` so a reader there can tell which
- * readback is current. A restart’s load and a repair’s reload (server/store-reject.mjs) both end here.
+ * queued and no backlog, under a new history epoch. The epoch lives in memory only: it has to differ between two
+ * readbacks, which a fresh random token does, and writing it would make a load write to Redis (ST-1 forbids that).
+ * A restart’s load and a repair’s reload (server/store-reject.mjs) both end here.
  * @param {Store} store @param {any} state @param {import('./store-docs.mjs').Positions} positions
  */
 export async function reload(store, state, positions) {
@@ -43,7 +44,6 @@ export async function reload(store, state, positions) {
   store.dirty.clear();
   store.events.length = 0;
   store.epoch = newEpoch();
-  if (store.client?.connected) await store.client.call('SET', 'epoch', store.epoch);
 }
 
 const RETRY_MS = 250; // the first wait before a failed catch-up is tried again

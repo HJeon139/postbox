@@ -1,5 +1,5 @@
 // The store’s history epoch on its Redis (server/store.mjs, server/store-reject.mjs; the integrator’s re-review of
-// #553, blocker 3): new at every readback (a restart’s load, a repair’s reload), kept in Redis under `epoch` beside
+// #553, blocker 3): new at every readback (a restart’s load, a repair’s reload), in memory only, since a fresh token
 // `seq`, and the token a tab echoes so the stream can tell a lost timeline from a tab merely behind.
 
 import assert from 'node:assert/strict';
@@ -7,7 +7,7 @@ import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import { liveStreams } from '../server/live-streams.mjs';
 import { retry } from '../server/store-recover.mjs';
-import { open, poison, raw, tmp } from './store-fixture.mjs';
+import { open, poison, tmp } from './store-fixture.mjs';
 
 /** What a tab reconnecting with this seq and epoch is sent, as frame names. @param {any} store @param {number} since @param {string} epoch */
 async function reconnect(store, since, epoch) {
@@ -31,28 +31,16 @@ async function reconnect(store, since, epoch) {
     });
 }
 
-/** The epoch Redis holds. @param {any} s */
-async function inRedis(s) {
-  const c = await raw(s);
-  try {
-    return await c.call('GET', 'epoch');
-  } finally {
-    c.close();
-  }
-}
-
-test('a restart reads Redis back under a new epoch, kept in Redis, and a tab from before it resyncs once the seq has caught up', async () => {
+test('a restart reads Redis back under a new epoch, and a tab from before it resyncs once the seq has caught up', async () => {
   const dir = await tmp();
   const a = await open(dir);
   for (let i = 0; i < 3; i++) a.emit('thread', { id: `t${i}`, members: [] });
   await a.flush();
   const before = a.epoch;
-  assert.equal(await inRedis(a), before, 'the epoch is in Redis beside seq');
   // The tab saw seq 5: two optimistic emits Redis never took before the restart.
   await a.close();
   const b = await open(dir);
   assert.notEqual(b.epoch, before);
-  assert.equal(await inRedis(b), b.epoch);
   b.emit('session', { id: 'se1', threadId: 't0', handle: 'x', state: 'idle' }); // startup’s emits, before any tab is back
   b.emit('session.patch', { id: 'se1', patch: { state: 'stopped' } });
   assert.equal(b.state.seq, 5, 'the seq has caught up with the tab’s');
@@ -75,7 +63,6 @@ test('#567: Retry’s repair reloads under a new epoch, so a tab that wasn’t a
   assert.equal(s.writable, true, `the repair didn’t finish: ${s.failed?.message}`);
   assert.equal(s.state.seq, seq, 'the refused event is gone, the seq where it was');
   assert.notEqual(s.epoch, before);
-  assert.equal(await inRedis(s), s.epoch);
   assert.deepEqual(await reconnect(s, seq, before), ['resync']);
   assert.deepEqual(await reconnect(s, seq, s.epoch), []);
 });

@@ -73,7 +73,7 @@ export class Store {
     this.watchers = new Set(); // told when writes close or reopen, and what they last heard (server/store-status.mjs)
     /** @type {Set<() => void>} */ this.reloads = new Set(); // told when the state was read back from Redis whole, so pages load it again (store-reject.mjs)
     this.seen = '';
-    /** @type {string} the history epoch: new at every readback of Redis whole (load, reloaded), and in Redis under `epoch` */
+    /** @type {string} the history epoch: new at every readback of Redis whole (load, reloaded); in memory only */
     this.epoch = newEpoch();
   }
 
