@@ -6,7 +6,7 @@
 | **Author** | engineer |
 | **Reviewers** | critic (design-time read, before the pass is built); developer (senior developer, the store and 1a); the person and the integrator |
 | **Relates to** | #305, #508; `designs/508/storage-design.md` on #580 (“Snapshots and pruning”, “Performance and budgets”, the one-line commit of 1a, #588); `designs/architecture.md` (“The store”, “Attachments”); `designs/intent.md`, principle 7 (deleting a conversation ends it, which bears on “Open questions”) |
-| **Branch** | `fix/305-archive-turns` from `main` v1.7.0; built so far: the reducer (`6093206a`, `74d35f07`) and the blob store’s whole-file publish (`6716d07b`) |
+| **Branch** | `fix/305-archive-turns` from `main` v1.7.0; built so far: the reducer (`6093206a`, `74d35f07`) and the blob store’s whole-file publish (`6716d07b`, `0ec34450`) |
 
 ## Summary
 
@@ -140,7 +140,7 @@ erDiagram
 - **I2. Whole or nothing.** A reader of the blob store sees an archive file whole under its name, or no file. A short file under the name is replaced on the next put.
 - **I3. One home.** At any time, an entry or a step is in the state or in exactly one archive file named by a summary in the state, never neither. (Both is allowed only between I1’s two steps, and only the state copy is visible.)
 - **I4. Only finished turns.** A turn is archived only if it has ended, every entry in it is final (no `state: 'running'`), none of its jobs is kept, and it is not one of its conversation’s last two turns.
-- **I5. Unchanged since capture.** The archive is committed only if the turn’s captured fingerprint (“One pass”) still matches the state after the file is published.
+- **I5. The file holds exactly what the event removes.** Just before the commit, the pass serializes again the entries and activity the event will remove, exactly as it serialized them for the file; if the SHA-256 differs from the file’s, it abandons. No list of fields to forget (critic’s design-time review).
 - **I6. Validated reads.** A read of an archive file takes its SHA-256 from a summary in the state, never from a request, and checks that the file’s `convId` and `turnId` match it.
 - **I7. Private.** Archive files are `0600`, in folders created `0700`.
 
@@ -161,12 +161,12 @@ sequenceDiagram
   R->>P: turn ended in conversation C
   P->>S: read state: C's turns in order
   Note over P: pick the oldest turn that meets I4, or stop
-  P->>P: capture entries, replies (all threads of C), fingerprint
+  P->>P: serialize the turn's entries and replies' activity (all threads of C)
   P->>B: put(archive file JSON)
   Note over B: draft, fsync, rename, folder fsync
   B-->>P: sha256
   P->>S: read state again
-  alt fingerprint changed (I5)
+  alt payload hash differs from the file's (I5)
     P-->>R: give up; try at the next turn's end
   else unchanged
     P->>S: commit turn.archive, opId turn.archive:turnId
@@ -177,7 +177,7 @@ sequenceDiagram
 ```
 
 - **Turn order** is the order of each turn’s first entry or first reply in the state.
-- **The fingerprint** is the turn’s entry ids in order, each entry’s `state` and `exit`, and each captured reply’s step count. A late `work.patch` (a background command finishing) or a new step changes it.
+- **“Unchanged”** is I5’s rule: the hash of the payload the event will remove, compared with the file’s hash just before the commit. A late `work.patch` (a background command finishing), a new step, or any other change to a removed field changes it.
 - **Until 1a merges**, the commit is an `emit` issued after the file is published; I1 still holds because the file is synced first. With 1a, it is `store.commit([...], { opId })`, so a repeat after a crash returns `duplicate`.
 
 ### What the reducer does
@@ -246,7 +246,7 @@ The release note says so, with a `BREAKING CHANGE` footer, and `tools/unarchive-
 | Killed or failed… | On disk | Next start or next pass | The person sees |
 |---|---|---|---|
 | before the archive file’s draft is written | nothing new | the turn is still hot; the next pass archives it | nothing |
-| during the draft | a `*.draft` beside the blob | the draft is ignored; the next put writes a new one | nothing |
+| during the draft | a `*.draft` beside the blob | the draft is ignored and never swept (a known limit); the next put writes a new one | nothing |
 | after rename, before the folder sync, then a power cut | maybe no file | the event wasn’t committed (I1), so the turn is still hot | nothing |
 | after the file, before the event | an orphan archive file | the next pass publishes the same bytes (no change) and commits | nothing |
 | after the event | file and event | replays; a repeat commit returns `duplicate` | the summary |
@@ -256,7 +256,8 @@ The release note says so, with a `BREAKING CHANGE` footer, and `tools/unarchive-
 
 ## Security and the operator
 
-- **Trust boundary.** Archive files hold command lines and output, which can contain secrets the person typed. They are `0600` in `0700` folders (I7); existing blob folders keep their mode (known limit).
+- **Trust boundary.** Archive files hold command lines and output, which can contain secrets the person typed. They are `0600` in `0700` folders (I7). Known limits: blob files and folders that already exist keep their mode, and a `*.draft` left by a crash is never swept.
+- **A file damaged after it was written** with its size unchanged is still caught: `Blobs.get` checks the SHA-256 on every read, so the lookup helper refuses it and the route answers 410.
 - **Deletion (open: see “Open questions”).** Blobs are never deleted today. A deleted conversation’s archive files would outlive it.
 - **Disk.** Archive files hold what the snapshot held, once each; the snapshot shrinks by the same amount.
 
@@ -276,9 +277,9 @@ The release note says so, with a `BREAKING CHANGE` footer, and `tools/unarchive-
 | T-10 | Characterization on `main`: a build that doesn’t know an event refuses to load a log holding one, and writes nothing | written, green on `main` by design |
 | T-11 | A reply in a topic thread is archived with its turn | written, red |
 | T-12 | The archive file is published before the commit that names it, with opId `turn.archive:<turnId>` | written, red |
-| T-13 | A `work.patch` landing during the put stops the archive | to write |
+| T-13 | A change to any removed field during the put (a `work.patch`, a step’s text) stops the archive | to write |
 | T-14 | Characterization on `main`: the Work view skips an unknown `kind`, and the activity line draws nothing for `{ archived, count }` | to write |
-| T-15 | Blob store: a truncated file is replaced; no draft left; `0600` and `0700` | written, passing (`6716d07b`) |
+| T-15 | Blob store: a truncated file is replaced; no draft left; `0600` and `0700`; a folder sync failing with `EIO` rejects, an unsupported one doesn’t | written, passing (`6716d07b`, `0ec34450`) |
 | Browser | The Work view’s summary row and “Show details”; a reply’s steps on demand; at 1280 and 375 px, normally and with `POSTBOX_STREAM_LAG=300` | to write |
 
 ## Rollout
