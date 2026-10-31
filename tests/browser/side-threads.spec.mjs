@@ -100,8 +100,11 @@ test('a wake while that session is busy waits in the conversation’s queue: no 
   expect(r.sideOf(), 'no side thread').toBeUndefined();
   // It waits in the conversation’s queue, as the agent’s message, and the message itself is in the transcript.
   await open(page, `#/t/${r.room.id}`);
-  const queued = page.locator('.queued', { hasText: '@indexer’s message' });
-  await expect(queued).toContainText('@indexer’s message · waits for @researcher to finish');
+  const mail = row(page, 'researcher').getByRole('button', { name: '1 message queued for @researcher' });
+  await expect(mail).toBeVisible();
+  await mail.click();
+  const queued = page.locator('.agent-queue-row', { hasText: 'From @indexer' });
+  await expect(queued).toContainText('One question meanwhile.');
   await expect(queued.getByRole('button', { name: 'Edit', exact: true }), 'a wake can’t be edited').toHaveCount(0);
   await settled(page);
   await expect(row(page, 'researcher').locator('.agent-sub'), 'its row has no entry of its own').toHaveCount(0);

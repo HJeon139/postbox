@@ -8,13 +8,13 @@ import { activityParts, paintActivity, stepsOnly } from './activity-paint.mjs';
 import { activityLabel } from './activity-steps.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from './agent-markdown.mjs';
+import { paintOfflineQueue } from './agent-queue.mjs';
 import { subagentNow } from './agents.mjs';
 import { allowedCallLine } from './allowed-call.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
-import { asWake, queuedRow } from './composer-queue.mjs';
 import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
@@ -1638,16 +1638,9 @@ export function mountComposer(threadId, { side = false } = {}) {
       : side
         ? 'Join this side thread…'
         : `${members.length > 1 ? 'Reply to' : 'Message'} @${(last ?? members[0])?.handle ?? 'an agent'}`;
-    syncList(
+    paintOfflineQueue(
       queue,
-      t.queue ?? [],
-      (q) => q.id,
-      (q) => asWake(queuedRow(q, threadId, paint), q),
-      (node, q) => {
-        if (node.dataset.editing) return; // keep an inline edit open while the agent works
-        const fresh = asWake(queuedRow(q, threadId, paint), q);
-        node.replaceChildren(...fresh.childNodes);
-      },
+      outbox.filter((x) => x.threadId === threadId),
     );
     // An ask about a turn that has since ended goes with it.
     for (const id of [...asked.keys()]) if (!busy(S().sessions[id])) asked.delete(id);
@@ -1657,8 +1650,6 @@ export function mountComposer(threadId, { side = false } = {}) {
       (se) => se.id,
       (se) => stopAskRow(se),
     );
-    for (const m of outbox.filter((x) => x.threadId === threadId))
-      queue.append(h('div.queued', icon('clock', 'dim'), h('span.q-text', h('span.small.dim', 'Waiting for the connection'), h('br'), m.text)));
     const offline = client.connection !== 'open';
     fill(
       status,

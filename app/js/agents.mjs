@@ -14,6 +14,7 @@ import { BACKEND_NAMES, chipEffort, chipModel } from '/shared/agent-facts.mjs';
 import { modeWhen } from '/shared/mode-when.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
 import { everyMinute, hostSection, modelOptions } from './agent-host.mjs';
+import { agentQueueButton } from './agent-queue.mjs';
 import { toolSwitch } from './agent-tools.mjs';
 import { paintTree, subagentToggle } from './agent-tree.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
@@ -103,6 +104,7 @@ function agentRow(se) {
       h('span.ring-slot', ring),
       button,
       subagentToggle(se.id, () => paintRow(n, S().sessions[se.id] ?? se)),
+      agentQueueButton(se),
     ),
     h('div.agent-asks', openAsksEl(se)),
     h('ul.agent-subs', { id: `agent-subs-${se.id}`, 'aria-label': `Where @${se.handle} is at work, and its subagents` }),

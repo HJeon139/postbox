@@ -245,8 +245,10 @@ test('#215 a queued message’s Send now: the reply it interrupted says so, and 
   const { rt, store } = app;
   const { room, se, state, lastTag } = await withJob(page, 'Send now');
   rt.sendMessage(room.id, { text: 'A one-line status, please.' });
-  await expect(page.locator('.queued'), 'the queued message').toBeVisible();
-  await page.locator('.queued').getByRole('button', { name: 'Send now', exact: true }).click();
+  const queuedButton = page.getByRole('button', { name: new RegExp(`message.*queued for @${se.handle}`) });
+  await expect(queuedButton, 'the queued message').toBeVisible();
+  await queuedButton.click();
+  await page.locator('.agent-queue-row').getByRole('button', { name: 'Send now', exact: true }).click();
   await expect
     .poll(() => state() === 'idle' && store.state.sessions[se.id].jobs.some((j) => j.kept), { message: 'the next turn, with the job kept' })
     .toBe(true);
@@ -278,20 +280,21 @@ test.describe('at 375 px', () => {
   test('#129 #215 at 375 px the ask, the job row and each stopped reply’s tag fit without scrolling sideways', async ({ page }) => {
     const { rt } = app;
     const { room, se, idle } = await withJob(page, 'Narrow');
-    // Two stopped replies first, with the longest tags: Keep running’s, and a queued message’s Send now’s.
-    await keepRunning(page, idle);
+    await keepRunning(page, idle); // First stopped reply has Keep running’s longest tag.
     await expect(page.locator('.stopped-tag'), 'Keep running’s tag').toHaveCount(1);
     expect(await overflowing(page, '.bg-jobs li, .stopped-tag'), 'the job row and Keep running’s tag').toEqual([]);
     rt.sendMessage(room.id, { text: 'Run the UAT job again.' });
     await expect(page.locator('.bg-jobs li'), 'the second job’s row').toHaveCount(2);
     rt.sendMessage(room.id, { text: 'A one-line status, please.' });
-    await page.locator('.queued').getByRole('button', { name: 'Send now', exact: true }).click();
+    await synced(page, app);
+    await page.locator('#conversation-actions').click();
+    await page.getByRole('menuitem', { name: new RegExp(`message.*queued for @${se.handle}`) }).click();
+    await page.locator('.agent-queue-row').getByRole('button', { name: 'Send now', exact: true }).click();
     await expect(page.locator('.stopped-tag', { hasText: 'Interrupted by Send now' })).toBeVisible();
     await idle();
     await expect(page.locator('.stopped-tag'), 'both stopped replies’ tags, to measure').toHaveCount(2);
     expect(await overflowing(page, '.bg-jobs li, .stopped-tag'), 'the job rows and the tags').toEqual([]);
-    // Then a third job, and Stop’s ask.
-    rt.sendMessage(room.id, { text: 'Run the UAT job a third time.' });
+    rt.sendMessage(room.id, { text: 'Run the UAT job a third time.' }); // Then a third job, and Stop’s ask.
     await expect(page.locator('.bg-jobs li'), 'the third job’s row').toHaveCount(3);
     await expect.poll(() => rt.turns.has(se.id), { message: 'the third turn' }).toBe(true);
     await stopButton(page).click();

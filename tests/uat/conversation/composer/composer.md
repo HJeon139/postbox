@@ -17,7 +17,7 @@ Where you write to agents; it must say who will answer.
 - Scrolled a little above the end, Tab through the last replies: each button, option and link you reach shows above the composer, with its focus ring, never under it or under the Jump to latest pill. A click on a message there doesn’t move the view (#232).
 - A topic or side thread’s composer is as tall as the conversation’s, and with a thread panel open the two boxes sit at the same height, side by side. The hint under each keeps room for two lines, so a shorter hint doesn’t lower its box (#116).
 - / opens the [command menu](command-menu.md), as does the Commands button beside +; a line that starts with ! runs a [command](../transcript/command-item.md) in the conversation’s folder. The hint line says what Enter will do with either. In a topic or side thread’s composer, / and ! don’t run anything: a line that starts with ! says so in the hint before you send it, and goes to the agent as a message ([#104](https://github.com/HJeon139/postbox/issues/104)).
-- Messages sent while an agent is busy stay individually queued with Send now, Edit for your messages, and Remove ([screenshot](../../screenshots/queued-message.png)). When it finishes, compatible messages for it in this conversation are delivered as one turn, with each sender and time (#374). A later post from a waker replaces the older queued request’s context and still reaches its target once, even without a new mention. Removing one item leaves the others; Send now delivers only the selected item first.
+- Messages sent while an agent is busy move to that agent’s counted mail button in the Agents section (#427). Its dialog keeps Send now, multiline Edit and Remove for each message in a bounded list; an agent-to-agent wake has no Edit. When the agent finishes, compatible messages for it in this conversation are delivered as one turn, with each sender and time (#374). Messages waiting only for the browser to reconnect stay in the composer and never duplicate across repaints. A later post from a waker replaces the older queued request’s context and still reaches its target once, even without a new mention. Removing one item leaves the others; Send now delivers only the selected item first.
 - Messages typed offline are sent when the connection returns.
 - Files attach from + (Upload from computer), by pasting, or by dropping them. A file dropped anywhere in the conversation attaches to its composer; a file dropped on an open topic or side thread panel attaches to the panel’s composer, and only there.
 - A sent image the server shows inline (PNG, JPEG, GIF or WebP) appears as a thumbnail with its name and size ([screenshot](../../screenshots/image-attachment.png)). The thumbnail is a link: click it, or Tab to it and press Enter, and the full image opens in a new tab. Every other file, an SVG included, is a file chip that downloads.
@@ -25,9 +25,9 @@ Where you write to agents; it must say who will answer.
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. In “Corpus planning”, send while @indexer works; use Send now on the queued message.
+2. In “Corpus planning”, send several messages while @indexer works. Open its mail button in the Agents section, edit one message, remove another, and use Send now.
 
-**Pass if:** The queued message is delivered when @indexer finishes, or at once with Send now.
+**Pass if:** The composer stays its normal height; the mail count follows the queue; the bounded dialog edits and acts on one message at a time; and queued messages are delivered when @indexer finishes or at once with Send now.
 3. In “Corpus explorer”, drag a PNG screenshot and an SVG from your desktop onto the transcript, and send.
 
 **Pass if:** Both attach to the composer before you send. The PNG shows as a thumbnail with its name and size, and the image doesn’t jump while it loads; Tab to it and press Enter, and the full image opens in a new tab. The SVG shows as a file chip.
