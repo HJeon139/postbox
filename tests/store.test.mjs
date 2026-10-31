@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { appendFile, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -9,6 +9,9 @@ import { apply, emptyState } from '../shared/state.mjs';
 
 const tmp = () => mkdtemp(join(tmpdir(), 'pb-store-'));
 
+// The old log’s own tests (a torn last line, snapshots and their segments, Stage 2’s store.json) moved to
+// tests/store-import.test.mjs with the one-time import, the only code that still reads that format; snapshots are gone
+// (#508’s design, “Storage”, decision 4). On Redis, a restart reads the documents back.
 test('events are appended to the log and replayed after a restart', async () => {
   const dir = await tmp();
   const a = await new Store(dir).load();
@@ -19,52 +22,6 @@ test('events are appended to the log and replayed after a restart', async () => 
   const b = await new Store(dir).load();
   assert.equal(b.state.seq, 3);
   assert.equal(b.state.items.t1[0].text, 'Hello');
-  await rm(dir, { recursive: true });
-});
-
-test('a torn last line from a crash is dropped, and earlier events survive', async () => {
-  const dir = await tmp();
-  const a = await new Store(dir).load();
-  a.emit('thread', { id: 't1', members: [] });
-  await a.flush();
-  const seg = (await readdir(dir)).find((n) => n.startsWith('events-'));
-  await appendFile(join(dir, seg), '{"seq":2,"type":"thread","data":{"id":"t2"');
-  const b = await new Store(dir).load();
-  assert.equal(b.state.seq, 1);
-  assert.ok(b.state.threads.t1);
-  assert.equal(b.state.threads.t2, undefined);
-  b.emit('thread', { id: 't3', members: [] });
-  await b.flush();
-  const c = await new Store(dir).load();
-  assert.ok(c.state.threads.t3, 'new events append cleanly after the dropped line');
-  await rm(dir, { recursive: true });
-});
-
-test('a snapshot starts a new segment and deletes the ones it covers', async () => {
-  const dir = await tmp();
-  const a = await new Store(dir, { snapshotEvery: 5 }).load();
-  for (let i = 0; i < 12; i++) {
-    a.emit('thread', { id: `t${i}`, members: [] });
-    await a.flush();
-  }
-  const files = await readdir(dir);
-  assert.ok(files.includes('snapshot.json'));
-  assert.equal(files.filter((n) => n.startsWith('events-')).length, 1, 'only the segment after the last snapshot remains');
-  const b = await new Store(dir).load();
-  assert.equal(b.state.seq, 12);
-  assert.equal(Object.keys(b.state.threads).length, 12);
-  await rm(dir, { recursive: true });
-});
-
-test('Stage 2’s store.json is read once as the first snapshot', async () => {
-  const dir = await tmp();
-  await writeFile(join(dir, 'store.json'), JSON.stringify({ version: 1, seq: 7, threads: { old: { id: 'old', members: [] } } }));
-  const s = await new Store(dir).load();
-  assert.equal(s.state.seq, 7);
-  assert.ok(s.state.threads.old);
-  const files = await readdir(dir);
-  assert.ok(files.includes('store.json.migrated'));
-  assert.ok(files.includes('snapshot.json'));
   await rm(dir, { recursive: true });
 });
 

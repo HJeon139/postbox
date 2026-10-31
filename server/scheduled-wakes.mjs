@@ -3,6 +3,7 @@
 import { httpError } from './helpers.mjs';
 import { ON_HOST } from './remote/turns-shared.mjs';
 import { newId } from './store.mjs';
+import { whenWritable } from './store-outage.mjs';
 
 const DAY = 24 * 3600 * 1000;
 const RETRY_MAX_MS = 5 * 60_000;
@@ -26,12 +27,12 @@ export function scheduleWake(rt, sessionId, { inMs, note }) {
   return sc;
 }
 
-/** Arms one current, pending schedule. @param {any} rt @param {any} sc */
+/** Arms one current, pending schedule. One due while the store can’t be written fires once it can. @param {any} rt @param {any} sc */
 export function armWake(rt, sc) {
   const current = rt.s.schedules[sc.id];
   if (!current || current.running) return;
   clearTimeout(rt.timers.get(sc.id));
-  rt.timers.set(sc.id, setTimeout(() => fireScheduledWake(rt, sc.id), Math.max(0, current.at - Date.now())).unref());
+  rt.timers.set(sc.id, setTimeout(() => whenWritable(rt, () => fireScheduledWake(rt, sc.id)), Math.max(0, current.at - Date.now())).unref());
 }
 
 /** Fires one due wake. Exported so deterministic tests don’t wait for real time. @param {any} rt @param {string|any} schedule */

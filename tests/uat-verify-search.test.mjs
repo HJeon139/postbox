@@ -25,7 +25,9 @@ const prompt = verifyPrompt({
 });
 
 test('#483 the verifier is told where a run’s records are, and to search them before it calls a finding not reproduced', () => {
-  assert.match(prompt, /data\/events-\*\.jsonl/);
+  // The records moved from data/events-*.jsonl to the run folder’s events.jsonl and state.json with the store on Redis (#508).
+  assert.match(prompt, /events\.jsonl/);
+  assert.match(prompt, /state\.json/);
   assert.match(prompt, /streams\//);
   assert.match(prompt, /run\.log/);
   assert.match(prompt, /search them with Grep/);

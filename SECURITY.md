@@ -39,6 +39,8 @@ These are the boundaries, from designs/developing.md, “Security”, and design
   - Forwarding your ssh agent is off unless you turn it on for a host. On, it copies no private key, but while Postbox is connected any process running as your user there can use your agent to sign in elsewhere. With “Use a connection of its own” off, the port forwards your shared connection opened stay open.
   - A Kiro CLI turn’s message is in its arguments, which other users on the host can read in the process list unless the host hides it.
   - Each installed file is checked against a SHA-256 manifest that ships in the same archive, so a broken copy is caught, not a tampered one. The archive comes from this computer, over your `ssh`.
+- **The store’s Redis is private** (designs/architecture.md, “The store”, its “Private” point). It has no TCP port: Postbox reaches it on a Unix socket in a `0700` folder, with a password only Postbox holds, as a user allowed only the commands the store sends. The default user is off, and replication, migration, `CONFIG`, `MODULE`, `DEBUG` and `ACL` are refused, from Lua too. Its folders are `0700` and its files `0600`. No agent’s guide, environment or tool result names its socket or a password. A process running as you can still read the data folder, as it always could.
+- **Each backend’s agents are kept off the store by its own permissions,** in the mode you chose (“What keeps each backend’s agents off the store”, below).
 - **Postbox never reads, stores or sends an API key.** Every backend is its harness’s own CLI, which signs in on its own, with your sign-in or a key in your environment. The CLI inherits that environment, as any program you start does. Postbox doesn’t look at it.
 
 **Out of scope:**
@@ -46,6 +48,20 @@ These are the boundaries, from designs/developing.md, “Security”, and design
 - Someone who can already run code as you on your computer, or as your user on a host you added.
 - Postbox reached from another machine. It doesn’t support that, and it refuses such requests.
 - An advisory in an optional dependency that Postbox can’t reach, such as an image decoder in narration’s child process. Report it anyway if you can show a path to it.
+
+### What keeps each backend’s agents off the store
+
+From #508’s requirements, SR-7, and designs/architecture.md, “The store”, its “Agents” point. The store’s socket and password are kept out of what agents read: no guide, environment, tool result or host payload names them, and no store folder is added to an agent’s workspace. That closes the casual path. An agent that goes for the socket anyway meets its backend’s own permissions in its mode, which the store doesn’t change; Postbox sets no OS sandbox of its own. The bar is the page token’s: a process running as you that sets out to get in, such as an agent told the steps, is out of scope.
+
+| Backend | What stands between an agent and the socket | Checked |
+|---|---|---|
+| Codex | Ask me runs commands in Codex’s `readOnly` sandbox; Auto and Accept edits in its `workspaceWrite` sandbox, network off. A command the sandbox stops can ask to run outside it: in Auto, Codex’s reviewer decides; in the other two, you do, on a card. Run everything has no sandbox. | Codex 0.164.0 on macOS: under `codex sandbox` with the `:workspace` and `:read-only` profiles, connecting to the socket failed with `EPERM`; outside the sandbox, the connection opened and got `NOAUTH`. Not probed: a Postbox turn, Linux, and the reviewer’s answer to a request to leave the sandbox. |
+| Claude Code | No OS sandbox. A shell command goes through the mode’s approval: Auto’s classifier, Ask me’s card, Run everything none. | Not probed. |
+| Agent SDK | As Claude Code, with approval through `canUseTool` in every mode but Run everything. | Not probed. |
+| Kiro CLI | No OS sandbox. A headless run can’t ask, so in Ask me and Auto a command outside Kiro’s defaults is refused; Run everything (`--trust-all-tools`) runs it. | Not probed. |
+| Antigravity CLI | No OS sandbox that Postbox sets. With Postbox’s hook, each call is decided there: a card in Ask me, routine calls approved in Auto. Without the hook, agy’s own mode decides, and its Auto has a sandbox of its own. Run everything runs every call. | Not probed, including whether agy’s sandbox refuses the socket. |
+
+A command that does reach the socket gets `NOAUTH`: the password lives only in Postbox’s memory, and Redis’s config holds its hash. What a process running as you can still read is the data folder, including `<data>/redis/owner.json` (`0600`), whose password may only `PING` and `SHUTDOWN` the store. Agents’ environments carry `POSTBOX_MEDIA`, the data folder’s `media/` folder, where an app’s images go: it is one step from `redis/owner.json`, so an agent with no sandbox and a shell could stop the store (not read or change it). That is the same-user exclusion above, where a process running as you is out of scope; the variable stays, since apps need it.
 
 ## How the repository keeps it that way
 

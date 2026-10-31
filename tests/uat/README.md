@@ -25,6 +25,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
   - [Permissions panel](shell/permissions-panel.md)
   - [Command palette](shell/command-palette.md)
   - [Toast](shell/toast.md)
+  - [Store status line](shell/store-status.md)
   - **rail/**
     - [Rail (sidebar)](shell/rail/rail.md)
     - [Rail row](shell/rail/rail-row.md)

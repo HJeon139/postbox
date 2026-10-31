@@ -27,7 +27,6 @@
 // (tools/uat/triggers.mjs). Every finding gets a verdict: the verifier’s after the run, or yours (tools/uat-verdict.mjs).
 
 import { spawnSync } from 'node:child_process';
-import { writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -39,7 +38,7 @@ import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { goToNeedsStep } from './uat/driver-needs.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
-import { followEvents } from './uat/history.mjs';
+import { followEvents, saveRecords } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
 import { HOST_OPTIONS } from './uat/hosts-options.mjs';
 import { createHostRun, startHosts } from './uat/hosts-run.mjs';
@@ -267,7 +266,7 @@ async function main() {
     const refreshFacts = async () => {
       facts.state = (await api('/api/state')).state;
       facts.threads = threadsUnderTest(facts.state);
-      Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received) });
+      Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received, { state: facts.state, history }) });
       facts.kiroStreams = readStreams(paths.kiroStreams);
       facts.agyStreams = readStreams(paths.agyStreams);
       facts.codexStreams = readStreams(paths.codexStreams);
@@ -301,7 +300,7 @@ async function main() {
       lastMidTurn = Date.now();
       facts.state = st ?? (await api('/api/state')).state;
       facts.threads = threadsUnderTest(facts.state);
-      Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received) });
+      Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received, { state: facts.state, history }) });
       facts.events = history.events();
       midTurn.push(...newFindings(MID_TURN));
     };
@@ -527,8 +526,7 @@ async function main() {
     if (goals.check(phase, timeline.length).end !== 'now') goals.finish(phase);
     for (const g of goals.gaps()) findings.set(`coverage-gap:${g.key}`, { ...g, step: timeline.length });
     const coverage = goals.coverage();
-    // The history the checks read, for --recheck: Postbox’s own log can lose its first segments to a snapshot.
-    await writeFile(join(dir, 'events.jsonl'), facts.events.map((e) => JSON.stringify(e)).join('\n') + (facts.events.length ? '\n' : ''));
+    await saveRecords(dir, facts);
     const all = [...findings.values()];
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
     if (facts.telemetry) facts.telemetryOut = { proposals: tm.foldLabels(all, facts.telemetry) };

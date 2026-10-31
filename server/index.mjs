@@ -7,7 +7,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
@@ -24,6 +24,7 @@ import { Corpus } from './corpus.mjs';
 import { listFolder } from './folders.mjs';
 import { dataFolder } from './home.mjs';
 import { listen as listenServer } from './listen.mjs';
+import { liveStreams } from './live-streams.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { rearmPersonaDeletes } from './persona-delete.mjs';
@@ -35,7 +36,8 @@ import { KNOWN_TOOLS, seed, toBoilerplate } from './seed.mjs';
 import { decodePath, mediaPath, servedFile } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { isLoopback } from './shell.mjs';
-import { newId, Store } from './store.mjs';
+import { clearStore, newId, Store } from './store.mjs';
+import { retry } from './store-recover.mjs';
 import { recordingOff, watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
 
@@ -109,10 +111,8 @@ export async function start({
   const mediaDir = join(dataDir, 'media');
   await mkdir(mediaDir, { recursive: true });
   process.env.POSTBOX_MEDIA = mediaDir;
-  if (fresh)
-    for (const n of await readdir(dataDir).catch(() => []))
-      if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n)) await rm(join(dataDir, n), { force: true });
-  const store = await new Store(dataDir).load();
+  if (fresh) await clearStore(dataDir);
+  const store = await new Store(dataDir).load(); // its Redis child starts before Postbox listens, and stops in close()
   const blobs = new Blobs(join(dataDir, 'blobs'));
   const corpus = await new Corpus().loadDir(join(ROOT, 'server', 'corpus', 'books'));
   const adapters = new AdapterRegistry().register(new MockAdapter());
@@ -185,35 +185,25 @@ export async function start({
     if (!isLoopback(req.socket?.remoteAddress)) throw httpError(403, '! commands run only from this computer.');
   };
 
-  const streams = new Set();
+  // The pages’ live updates: the store’s events, and its status line (server/live-streams.mjs).
+  const { streams, stop: stopStreams, stream } = liveStreams(store);
   let offlineUntil = 0;
-  // POSTBOX_STREAM_LAG holds every event back that many milliseconds, as a busy computer can. The browser specs run
-  // with it in CI to show they wait for the page to hear a change, not for a fixed time.
-  const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
-  store.subscribe((ev) => {
-    const line = `id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`;
-    const send = () => {
-      for (const res of streams) res.write(line);
-    };
-    if (lag > 0) setTimeout(send, lag).unref();
-    else send();
-  });
-  const keepAlive = setInterval(() => {
-    for (const res of streams) res.write(': keep-alive\n\n');
-  }, 15000);
 
   /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res */
   const handle = async (req, res) => {
     try {
       await route(req, res);
     } catch (e) {
-      const status = e.status ?? 500;
+      // A write while the store can’t take one is refused with its cause, which the page’s status line shows (ST-3).
+      // A change the store can’t hold (nested past LIMITS.jsonDepth) is the caller’s to fix (shared/storable.mjs).
+      const status = e.code === 'ESTOREDOWN' ? 503 : e.code === 'EUNSTORABLE' ? 422 : (e.status ?? 500);
       if (status === 500) console.error(e);
       if (!res.headersSent)
         send(res, status, {
           error: e.userMessage ?? (status === 500 ? 'Something went wrong on the server. Try again; if it keeps happening, check the server log.' : e.message),
           fieldErrors: e.fieldErrors,
           code: e.code,
+          cause: status === 503 ? store.status.cause : undefined,
           // What to do about a host’s failure (#120): the page shows it under the error.
           next: e.status ? e.next : undefined,
         });
@@ -295,7 +285,9 @@ export async function start({
     if (path === '/api/state' && req.method === 'GET') {
       return send(res, 200, {
         seq: store.state.seq,
+        epoch: store.epoch, // the readback the seq counts within; the stream request echoes it (server/live-streams.mjs)
         state: store.state,
+        store: store.status, // whether it can save, or why not (#508’s design, “Storage”, decision 7)
         config: {
           origin,
           // Postbox’s tools, then those only real backends have (#5).
@@ -351,7 +343,7 @@ export async function start({
         res.writeHead(503, { 'retry-after': '1' });
         return res.end();
       }
-      return stream(req, res, url);
+      return await stream(req, res, url);
     }
 
     const body = req.method === 'POST' || req.method === 'PATCH' || req.method === 'PUT' ? (path === '/api/files' ? null : await json(req)) : null;
@@ -487,6 +479,8 @@ export async function start({
       store.emit('settings', patch);
       return send(res, 200, store.state.settings);
     }
+    // Retry, from the page’s status line when the store is down (ST-3): start its Redis again, or read it back now.
+    if (path === '/api/store/retry' && req.method === 'POST') return send(res, 200, { store: await retry(store) });
     if (demo && path === '/api/demo/offline' && req.method === 'POST') {
       // Drops every live connection and refuses new ones for a while, to show reconnecting.
       offlineUntil = Date.now() + Math.min(60000, Number(body.ms) || 5000);
@@ -499,18 +493,6 @@ export async function start({
       return send(res, 200, { ok: true });
     }
     throw httpError(404, `There’s nothing at ${path}.`);
-  }
-
-  function stream(req, res, url) {
-    const since = Number(req.headers['last-event-id'] ?? url.searchParams.get('since') ?? store.state.seq);
-    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
-    res.write('retry: 1500\n\n');
-    const backlog = store.since(since);
-    // Too far behind: the browser refetches the whole state, then resumes from its sequence number.
-    if (backlog === null) res.write(`event: resync\ndata: {}\n\n`);
-    else for (const ev of backlog) res.write(`id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`);
-    streams.add(res);
-    req.on('close', () => streams.delete(res));
   }
 
   async function upload(req) {
@@ -544,19 +526,27 @@ export async function start({
   }
 
   async function close() {
-    clearInterval(keepAlive);
+    stopStreams();
     for (const r of streams) r.destroy();
     for (const t of rt.timers.values()) clearTimeout(t);
     rt.stopMirrors();
     // `!` commands run in their own process groups, so they’d outlive Postbox: SIGINT, then SIGKILL (#67). So do the
-    // agents’ CLIs, and the background jobs Postbox kept running (#126, #129).
-    await rt.stopShellCommands();
-    await rt.stopTurns();
-    // After the turns, whose Stop goes to their hosts over these links (#120).
-    await stopHosts(hosts, stopWake);
+    // agents’ CLIs, and the background jobs Postbox kept running (#126, #129). After the turns, their hosts, whose Stop
+    // goes over these links (#120). A step that fails while the store is down (ending a kept job writes to it, and the
+    // write is refused with ESTOREDOWN) is logged, and the shutdown goes on to close the store and let go of its Redis.
+    /** @type {[string, () => Promise<unknown>][]} */
+    const steps = [
+      ['shell commands', () => rt.stopShellCommands()],
+      ['turns', () => rt.stopTurns()],
+      ['hosts', () => stopHosts(hosts, stopWake)],
+    ];
+    for (const [what, step] of steps) await step().catch((e) => console.error(`Postbox couldn’t stop its ${what} cleanly as it shut down: ${e.message}`));
     narrator?.stop();
+    await rt.ledger.idle().catch((e) => console.error(`Postbox couldn’t finish its work ledger as it shut down: ${e.message}`));
+    // The store closes while the server still listens: its flush, and during an outage its log of what it couldn’t
+    // save, need a live event loop, which the store’s unref’d Redis child alone doesn’t give (#553’s re-review).
+    await store.close();
     if (server.listening) await new Promise((ok) => server.close(ok));
-    await store.flush();
   }
   if (listen) await listenServer(server, port, host, close, () => rt.drainAll()); // listening: drain what waited across a restart (#228)
   const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));

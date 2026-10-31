@@ -121,7 +121,9 @@ export async function seedBigRoomData(data, threadId, agents) {
   for (const se of Object.values(store.state.sessions ?? {}))
     if (se?.threadId === threadId && !se.archived && !sessions[se.handle]) sessions[se.handle] = { sessionId: se.id, personaId: se.personaId };
   const landmarks = seedBigRoom(store, threadId, { handles: agents }, sessions);
-  await store.flush();
+  // close writes what waits and stops the store's Redis (#508): left running, it would hold the data folder, and the
+  // Postbox started next on it would refuse to start.
+  await store.close();
   return {
     landmarks,
     /** @param {string} origin */

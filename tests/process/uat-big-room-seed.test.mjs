@@ -36,7 +36,7 @@ test('the runner seeds the big room into the conversation the page started, and 
         const store = await new Store(data).load();
         store.emit('thread', { id: 'th_big', kind: 'room', title: 'The release, in a long room', members: ['se_r'] });
         store.emit('session', { id: 'se_r', threadId: 'th_big', handle: 'researcher', personaId: 'pe_r' });
-        await store.flush();
+        await store.close(); // writes, then stops the store's Redis, so the Postbox started next can run it
       },
     });
     const opened = [];

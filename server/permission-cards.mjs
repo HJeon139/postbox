@@ -5,6 +5,7 @@ import { POSTBOX_TIMEOUT_MS } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
 import { editedInput, MAX_EDIT_INPUT, MAX_REASON } from './permission-edit.mjs';
 import { addAllowRule, alwaysAllow, cleanRule, rulesFor, takeBackRule } from './permission-rules.mjs';
+import { whenWritable } from './store-outage.mjs';
 import { draftOf, isWriteCall, whereOf } from './write-guard.mjs';
 import { settledCall } from './write-intent.mjs';
 
@@ -79,7 +80,7 @@ export function askPerson(
   return new Promise((resolve) => {
     // A host prompt’s card expires when its host says so (permissionWaitMax, `prompt-expired`, #120): the host’s
     // Claude Code waits on its shim, not on POSTBOX_TIMEOUT_MS, so CARD_WAIT_MS doesn’t apply to it.
-    const timer = hostPrompt ? null : setTimeout(() => expireWait(rt, it.id), CARD_WAIT_MS);
+    const timer = hostPrompt ? null : setTimeout(() => whenWritable(rt, () => expireWait(rt, it.id)), CARD_WAIT_MS);
     timer?.unref?.();
     rt.permissionWaits.set(it.id, { resolve, threadId: turn.threadId, sessionId, timer });
   });

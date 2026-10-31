@@ -4,6 +4,7 @@
 
 import { followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
+import { storable } from '../shared/storable.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { notYours } from './app-retire.mjs';
 import { httpError } from './helpers.mjs';
@@ -79,6 +80,9 @@ export function appEvent(rt, appId, action, values, { hold = false, now = Date.n
   if (app.retired) throw httpError(409, `${app.title} was retired, so it can’t send messages.`);
   const r = buildEvent({ type: 'app', id: appId, title: app.title }, action, values);
   if (!r.ok) throw httpError(422, r.error);
+  // Its values go into a card’s item or the agent’s session, so the store must be able to hold them (shared/storable.mjs).
+  const why = storable(JSON.stringify(r.event.values));
+  if (why) throw httpError(422, `${app.title}’s event wasn’t sent. ${why.message}`);
   const items = rt.store.items(app.threadId);
   const card = items.find((x) => x.kind === 'appsend' && x.appId === appId && x.status === 'open');
   // Sends you allowed on a card don’t count against the next minute.
@@ -153,6 +157,8 @@ export function appState(rt, appId, state) {
   if (!app) throw httpError(404, 'That app doesn’t exist.');
   const json = JSON.stringify(state ?? null);
   if (json.length > 256 * 1024) throw httpError(413, 'Saved app state is limited to 256 KB.');
+  const why = storable(json);
+  if (why) throw httpError(422, `${app.title}’s state wasn’t saved. ${why.message}`);
   // An app that saves the same state again (on every load, say) changes nothing.
   if (json === JSON.stringify(app.state ?? null)) return;
   rt.store.emit('app', { ...app, state: JSON.parse(json) });

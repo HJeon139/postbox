@@ -5,6 +5,7 @@
 
 import { httpError } from './helpers.mjs';
 import { DELETE_UNDO_MS } from './runtime.mjs';
+import { whenWritable } from './store-outage.mjs';
 
 /**
  * Starts deleting a persona: its sessions now, with their own Undo, and the persona when the window ends.
@@ -21,7 +22,7 @@ export function deletePersona(rt, id) {
   const until = Date.now() + DELETE_UNDO_MS;
   rt.store.emit('persona', { ...p, deleting: until, deletingSessions: took.map((se) => se.id) });
   clearTimeout(rt.timers.get(`delp:${id}`));
-  rt.timers.set(`delp:${id}`, setTimeout(() => purgePersona(rt, id), DELETE_UNDO_MS).unref());
+  rt.timers.set(`delp:${id}`, setTimeout(() => whenWritable(rt, () => purgePersona(rt, id)), DELETE_UNDO_MS).unref());
   return { until, handle: p.handle };
 }
 
@@ -73,5 +74,6 @@ export async function purgePersona(rt, id) {
  */
 export function rearmPersonaDeletes(rt) {
   for (const p of Object.values(rt.s.personas))
-    if (p.deleting) rt.timers.set(`delp:${p.id}`, setTimeout(() => purgePersona(rt, p.id), Math.max(0, p.deleting - Date.now())).unref());
+    if (p.deleting)
+      rt.timers.set(`delp:${p.id}`, setTimeout(() => whenWritable(rt, () => purgePersona(rt, p.id)), Math.max(0, p.deleting - Date.now())).unref());
 }

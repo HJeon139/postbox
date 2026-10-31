@@ -12,7 +12,7 @@ A chat room for directing several AI agents at once. You message them, wake them
 
 ## Run it
 
-Postbox needs Node 22 or later. It runs with no dependencies at all. From a clone:
+Postbox needs Node 22 or later, on macOS on Apple silicon or on Linux (arm64 or x64). It refuses to start on macOS on Intel and on Windows, where there’s no build of the Redis it keeps your conversations in; on Windows, run it in WSL. It has no npm dependencies. From a clone:
 
 ```bash
 npm start
@@ -34,7 +34,9 @@ postbox
 
 A global install brings the optional packages too (the Agent SDK and Kokoro, several hundred MB); add `--omit=optional` to a project install to leave them out. `postbox --help` lists its flags: `--port`, `--data`, `--fresh`, `--demo` and `--move-data`. The package holds only what runs (`bin/`, `app/`, `server/` and `shared/`), and its build line under **Personas** shows the commit it was packed from. Upgrading or uninstalling it leaves your conversations alone, since they’re in `~/.postbox`, not in the package.
 
-Open <http://127.0.0.1:4173/>. Postbox listens only on this machine. Your conversations are kept in `~/.postbox` as an event log, so they survive a restart and an upgrade. Set `POSTBOX_HOME` to keep them somewhere else, or pass `--data <folder>` for one run. Add `--fresh` to start over.
+Open <http://127.0.0.1:4173/>. Postbox listens only on this machine. Your conversations are kept in `~/.postbox`, in a Redis 8 server Postbox downloads, checks and runs for itself, so they survive a restart and an upgrade. Set `POSTBOX_HOME` to keep them somewhere else, or pass `--data <folder>` for one run. Add `--fresh` to start over.
+
+**Upgrading from a version before the Redis store.** Its first start moves the old event log into Redis, keeps a copy of the old files in `backups/store-<date and time>/` in the data folder, and renames them `*.migrated`. From then on, downgrading Postbox isn’t supported: an older version can’t read Redis. To go back anyway, stop Postbox, restore the copy from `backups/` into the data folder, and remove its `redis/` folder; what you did since the upgrade is lost. That works only back to a version that knows the `session.patch` event (#537): the copy holds those events in its log, and an older build can’t replay them.
 
 **A clone that ran an earlier version.** Earlier versions kept everything in the clone’s `data/` folder. A clone whose `data/` has conversations keeps using it, unless `POSTBOX_HOME` is set, and says so when it starts. To move it to `~/.postbox`, stop Postbox and run `npm start -- --move-data`: it moves the folder and leaves a link in its place, so paths your conversations recorded still work. An agent that works in its own workspace folder starts a new Claude Code session on its next turn, since its folder moved; its conversation in Postbox stays. Postbox never moves it without being asked.
 
@@ -399,7 +401,8 @@ Postbox uses [semantic versioning](https://semver.org/), from [Conventional Comm
 
 ## Known limits
 
-- **You can’t go back to a build before the `session.patch` event.** Once this version has written to your data folder, a build from before it (v0.44.x and earlier) won’t start: its reducer doesn’t know the `session.patch` event the log now holds, and it replays the log after the snapshot at every start. To run an older build, give it a copy of your data folder from before the upgrade, or a new folder with `--data`. Don’t start it with `--fresh` on your data folder: that deletes every conversation in it.
+- **You can’t go back to an older build once this one has written to your data folder.** Two things stop a build from before it (v0.44.x and earlier): it can’t read Redis, where the log now lives, and its reducer doesn’t know the `session.patch` event the log now holds, which it replays after the snapshot at every start. To run an older build, give it a copy of your data folder from before the upgrade (the one its first start kept in `backups/`, as **Upgrading from a version before the Redis store** describes), or a new folder with `--data`. Don’t start it with `--fresh` on your data folder: that deletes every conversation in it.
+- **A crash or power cut can lose updates Redis hasn’t acknowledged yet.** The store’s Redis writes each change to disk before it acknowledges it (`appendfsync always`; on macOS with `F_FULLFSYNC`, which asks the drive to empty its cache too), so every write Redis has acknowledged survives a crash of Postbox or Redis and a power cut. Live updates, such as an agent’s streamed text, show on the page before Redis acknowledges them, so one still awaiting acknowledgment may be lost. A drive that reports a flush it hasn’t done can lose acknowledged writes too.
 - **Each open tab holds one connection.** Browsers allow 6 connections per host over HTTP/1.1, so with about six Postbox tabs open, new requests wait. Postbox closes its stream when a tab is put away, but it doesn’t yet share one stream across tabs.
 - **The pre-display check is approximate.** It finds overflow, missing labels and alt text, positive tabindex, low contrast and script errors. It doesn’t yet detect every keyboard trap or verify that saved state restores correctly.
 - **Semantic search is a stub.** It uses a small table of related words until your own index is connected. Lexical search (BM25) is real.

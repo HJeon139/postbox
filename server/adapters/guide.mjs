@@ -182,7 +182,7 @@ The global postbox gives you:
   - "corpus.search" with { query, k?, mode?: "both" | "lexical" | "semantic", books?: [ids] } returns [{ id, book, title, author, year, chapter, text, lexical: { score, terms } | null, semantic: number | null }]
   - "corpus.read" with { id } returns one, without scores
   - "corpus.stats" returns { books: [{ id, title, author, year, passages, chapters }], passages }
-- postbox.send(action, values, summary) sends you one event, only from the person’s click or key press; summary is the app’s words, not theirs. Up to 5 a minute; more wait for the person. An event carries up to ${n('eventBytes')} of JSON (more rejects), so hand over many items by id.
+- postbox.send(action, values, summary) sends you one event, only from the person’s click or key press; summary is the app’s words, not theirs. Up to 5 a minute; more wait for the person. An event carries up to ${n('eventBytes')} of JSON (more rejects), nested up to ${n('jsonDepth')} levels, as is the state an app saves, so hand over many items by id.
 - postbox.saveState(obj) and postbox.restoreState() keep state over reloads and versions
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view
@@ -243,7 +243,8 @@ export function formatMessage(message, pathOf = () => null) {
   if (message.slash || typeof message.attach === 'string') return body;
   const facts = message.facts ? `[Postbox] What’s current in this room:\n\n${message.facts}` : '';
   const lint = typeof message.lint === 'string' && message.lint ? message.lint : '';
-  // A topic or side thread’s turn (#504, #511): the room’s catch-up is already labeled as background by turnContext.
+  // A topic or side thread’s turn: what was said there, then its request as the task (#504, #511); then what changes
+  // during a room (#515); then the lint it owes; then the room’s catch-up, already labeled as background by turnContext.
   if (message.taskContext)
     return [
       message.taskContext,

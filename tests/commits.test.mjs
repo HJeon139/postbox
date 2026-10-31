@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { buildInfo } from '../server/build-info.mjs';
-import { bumpOf, changelogSection, nextVersion, parseCommit } from '../tools/commits.mjs';
+import { bumpOf, changelogSection, nextVersion, parseCommit, withoutReverted } from '../tools/commits.mjs';
 
 test('a conventional header is read, with its type, scope and whether it breaks anything', () => {
   assert.deepEqual(parseCommit('feat(rail): show the build’s version under Personas'), {
@@ -54,6 +54,31 @@ test('the changelog groups breaking changes, features and fixes', () => {
   assert.match(s, /### Features\n\n- \*\*rail:\*\* version under Personas/);
   assert.match(s, /### Fixes\n\n- a bug/);
   assert.doesNotMatch(s, /words/);
+});
+
+test('a commit and the git revert of it, both since the last release, leave the changelog and the version alone', () => {
+  const x = 'a'.repeat(40);
+  const y = 'b'.repeat(40);
+  const z = 'c'.repeat(40);
+  // As git log gives them, newest first.
+  const log = [
+    { sha: z, message: `Revert "docs(store): a power cut can lose a second"\n\nThis reverts commit ${x}.` },
+    { sha: y, message: 'feat(rail): version under Personas' },
+    { sha: x, message: 'docs(store): a power cut can lose a second\n\nBREAKING CHANGE: a power cut can lose a second' },
+  ];
+  const kept = withoutReverted(log);
+  assert.deepEqual(kept, ['feat(rail): version under Personas']);
+  assert.equal(nextVersion('0.3.0', kept), '0.4.0', 'not major: the breaking commit was reverted');
+  assert.doesNotMatch(changelogSection('0.4.0', '2026-10-29', kept), /Breaking|power cut|Revert/);
+  // A revert of a commit an earlier release holds stays: that release’s changelog named it.
+  assert.deepEqual(
+    withoutReverted(log.slice(0, 2)),
+    log.slice(0, 2).map((c) => c.message),
+  );
+  // Reverting the revert brings the commit back: the newest pair goes, and the commit stays.
+  const w = 'd'.repeat(40);
+  const again = [{ sha: w, message: `Revert "Revert "docs(store): a power cut can lose a second""\n\nThis reverts commit ${z}.` }, ...log];
+  assert.deepEqual(withoutReverted(again), [log[1].message, log[2].message]);
 });
 
 test('the build comes from package.json and the commit Postbox runs from', () => {

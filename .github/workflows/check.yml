@@ -37,6 +37,21 @@ jobs:
       # all they need of its Chromium build.
       - name: Install Playwright’s headless Chromium
         run: npx playwright install --with-deps --only-shell chromium
+      # The store’s Redis (tests/AGENTS.md, “The store’s Redis”): the runner has none, and tests never touch the network, so
+      # Postbox’s pinned build comes from its own release through the code first start runs (tools/redis-ci.mjs): kept
+      # only once its SHA-256 matches server/redis-build.mjs, unpacked in Node, and named in POSTBOX_REDIS_HOME. The
+      # verified archive is cached under its pinned SHA-256, so a run downloads it only when the pin changes, and the
+      # cached file is hashed again before it’s unpacked. The build came from ubuntu-24.04, so it runs on this image.
+      - name: Read the Redis pin
+        id: redis
+        run: node tools/redis-ci.mjs pin >> "$GITHUB_OUTPUT"
+      - name: Cache the verified Redis archive
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/postbox-redis/redis/${{ steps.redis.outputs.version }}/${{ steps.redis.outputs.asset }}
+          key: redis-${{ steps.redis.outputs.target }}-${{ steps.redis.outputs.sha256 }}
+      - name: Verify and unpack Redis
+        run: node tools/redis-ci.mjs prepare "$RUNNER_TEMP/postbox-redis"
       - run: npm run check
       # Conventional Commits, from v0.2.0 on: older commits on long-running branches keep their plain messages.
       - name: Commit messages follow Conventional Commits
@@ -117,6 +132,21 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Install Playwright’s Chromium
         run: npx playwright install --with-deps chromium
+      # The store’s Redis (tests/AGENTS.md, “The store’s Redis”): the runner has none, and tests never touch the network, so
+      # Postbox’s pinned build comes from its own release through the code first start runs (tools/redis-ci.mjs): kept
+      # only once its SHA-256 matches server/redis-build.mjs, unpacked in Node, and named in POSTBOX_REDIS_HOME. The
+      # verified archive is cached under its pinned SHA-256, so a run downloads it only when the pin changes, and the
+      # cached file is hashed again before it’s unpacked. The build came from ubuntu-24.04, so it runs on this image.
+      - name: Read the Redis pin
+        id: redis
+        run: node tools/redis-ci.mjs pin >> "$GITHUB_OUTPUT"
+      - name: Cache the verified Redis archive
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/postbox-redis/redis/${{ steps.redis.outputs.version }}/${{ steps.redis.outputs.asset }}
+          key: redis-${{ steps.redis.outputs.target }}-${{ steps.redis.outputs.sha256 }}
+      - name: Verify and unpack Redis
+        run: node tools/redis-ci.mjs prepare "$RUNNER_TEMP/postbox-redis"
       - name: Browser specs
         # Half the demo’s groups, or a third of the other specs.
         run: |
@@ -184,6 +214,18 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Install Playwright’s Chromium
         run: npx playwright install --with-deps chromium
+      # The store’s Redis (tests/AGENTS.md, “The store’s Redis”): the demo starts a Postbox, whose store would otherwise
+      # download its Redis from the network; the same pinned, verified build as the check job, from the same cache.
+      - name: Read the Redis pin
+        id: redis
+        run: node tools/redis-ci.mjs pin >> "$GITHUB_OUTPUT"
+      - name: Cache the verified Redis archive
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/postbox-redis/redis/${{ steps.redis.outputs.version }}/${{ steps.redis.outputs.asset }}
+          key: redis-${{ steps.redis.outputs.target }}-${{ steps.redis.outputs.sha256 }}
+      - name: Verify and unpack Redis
+        run: node tools/redis-ci.mjs prepare "$RUNNER_TEMP/postbox-redis"
       - name: Play the demo and screenshot every scene
         run: node tools/shoot-app.mjs
       # About 40 MB a run, kept 5 days. A run that broke partway uploads what it took.
@@ -246,6 +288,24 @@ jobs:
       - name: Install Playwright’s Chromium
         if: steps.pick.outputs.specs != ''
         run: npx playwright install --with-deps chromium
+      # The store’s Redis (tests/AGENTS.md, “The store’s Redis”): the runner has none, and tests never touch the network, so
+      # Postbox’s pinned build comes from its own release through the code first start runs (tools/redis-ci.mjs): kept
+      # only once its SHA-256 matches server/redis-build.mjs, unpacked in Node, and named in POSTBOX_REDIS_HOME. The
+      # verified archive is cached under its pinned SHA-256, so a run downloads it only when the pin changes, and the
+      # cached file is hashed again before it’s unpacked. The build came from ubuntu-24.04, so it runs on this image.
+      - name: Read the Redis pin
+        id: redis
+        if: steps.pick.outputs.specs != ''
+        run: node tools/redis-ci.mjs pin >> "$GITHUB_OUTPUT"
+      - name: Cache the verified Redis archive
+        uses: actions/cache@v4
+        if: steps.pick.outputs.specs != ''
+        with:
+          path: ${{ runner.temp }}/postbox-redis/redis/${{ steps.redis.outputs.version }}/${{ steps.redis.outputs.asset }}
+          key: redis-${{ steps.redis.outputs.target }}-${{ steps.redis.outputs.sha256 }}
+      - name: Verify and unpack Redis
+        if: steps.pick.outputs.specs != ''
+        run: node tools/redis-ci.mjs prepare "$RUNNER_TEMP/postbox-redis"
       - name: New and changed specs, ten times
         if: steps.pick.outputs.specs != ''
         # Unquoted on purpose, one argument a spec: isSpec takes only plain names.

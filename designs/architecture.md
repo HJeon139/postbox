@@ -2,19 +2,9 @@
 
 Decided on 21 October 2026, after Stage 2. Each section states the decision, what it rests on, and what would make us revisit it. [intent.md](intent.md) records the product decisions; this file records the engineering ones.
 
-## 1. The store: an event log with snapshots, not a database
+## 1. The store: a Redis 8 server Postbox runs, with documents and an event stream
 
-**Decided next** (28 October 2026, [#508](https://github.com/HJeon139/postbox/issues/508); built in the Store step, [#525](https://github.com/HJeon139/postbox/issues/525)). This section’s revisit line has been reached: more than one server process or person is likely within a year, the delivery records in #508 need transactions, and search is coming. So persistence moves onto a Redis 8 server that Postbox bundles and runs. Until #525 merges, the event log below is what runs, and this section is rewritten as the current decision when it does.
-- **Data model:** key/value and JSON documents, never a relational schema. Values carry a small version and are lifted to the current shape on read, never rewritten, so no install runs a migration. SQLite was set aside on this ground: an earlier Postbox used it, and its schema migrations between versions slowed every rollout to existing installs.
-- **Writes:** documents and the `events` stream are written together in one atomic step. Every record transition is atomic in Redis, so nothing assumes a single writer. Streamed text keeps a fast path; lifecycle changes use `commit`, which publishes only after Redis has replied.
-- **Durability:** `appendfsync everysec`. A crash of Postbox or Redis loses nothing committed; a power cut can lose up to one second of writes, a limit the release notes state.
-- **When Redis is down:** writes are refused and the page stays readable, with the cause and Retry. Writes reopen only once Postbox has read back everything Redis holds.
-- **The server:** Redis 8.10.3 with its built-in JSON and search, built by Postbox’s CI for macOS arm64, Linux arm64 and Linux x64 and published with its source under AGPLv3 ([redis-v8.10.3](https://github.com/HJeon139/postbox/releases/tag/redis-v8.10.3)). Postbox downloads its platform’s build on first start, checks its SHA-256 and supervises it as a child process. It refuses to start on an Intel Mac or Windows. This is the one exception to zero runtime dependencies; `engineering-practices.md` records it with #525.
-- **Who can reach it:** Redis listens only on a Unix socket in a private folder, with no TCP port. Its default user is off, and Postbox’s own user can’t run commands that reach outside the store or reconfigure it (`REPLICAOF`, `MIGRATE`, `CONFIG SET`, `MODULE`, `ACL` changes), even from Lua. Its credential never reaches an agent, a log or a remote host, and its files are private. This uses the same bar as “Writes need the page’s token”: the casual path fails, but it isn’t a boundary against a process running as the person that sets out to get in. Requirements SR-1 to SR-8 in `designs/508/requirements.md`; design in `designs/508/design.md`, “Store security”.
-- **Stays:** the event types, the shared reducer and the stream that browsers resume from. **Goes:** snapshots and log segments; a browser behind the stream’s retention gets `resync`, as today.
-- **Detail:** `designs/508/design.md`, “Storage: a Redis 8 that Postbox bundles and runs”, and requirements ST-1 to ST-4 and PF-9 in `designs/508/requirements.md`.
-
-**Decision.** Postbox keeps its data as an append-only event log in JSON Lines, plus periodic snapshots of the state, in its data folder. Every read comes from an in-memory projection of that log. Binary files go to a separate content-addressed blob store. All of this sits behind one small storage interface (`server/store.mjs`).
+**Decision** (revised 28 October 2026, #508’s design, “Storage: a Redis 8 server that Postbox bundles and runs”). Postbox keeps its data in a Redis 8 child process it downloads, verifies, starts and stops itself, under its data folder: each record a JSON document, and every change one entry in an `events` stream, written together. Every read still comes from an in-memory projection, which startup reads from the documents. Binary files go to a separate content-addressed blob store. All of it sits behind one small storage interface (`server/store.mjs`). Until then Postbox kept an append-only JSON Lines log plus snapshots; this section’s revisit line named Redis Streams for the day Postbox needed transactions across files, and #508’s delivery records need exactly that.
 
 **What the design needs from a store**
 
@@ -25,41 +15,57 @@ Decided on 21 October 2026, after Stage 2. Each section states the decision, wha
 | Durable across restarts | “The conversation survives a page reload: keep it in the app’s own store.” |
 | Cheap writes during streaming | A reply streams as many small text events per second. |
 | Binary attachments | Pasted images, uploads and files added to the corpus. |
-| No schema to maintain, no relational queries | One person, one machine, one process. Every read is “all of it” at startup, then live events. |
+| No schema to maintain, no relational queries | Key/value or document, never a relational schema: an earlier Postbox on SQLite was stopped by schema migrations. Every read is “all of it” at startup, then live events. |
+| Transactions across records, and more than one writer later | A turn’s records and marker written together before an adapter starts (#508); a second Postbox process is likely within a year. |
 
 **Options considered**
 
-| Option | Fit | Why not now |
+| Option | Fit | Outcome |
 |---|---|---|
-| One JSON file, rewritten whole (Stage 2) | Simple | Each write serializes the entire state. That’s fine at tens of kilobytes; after months of use it blocks the event loop on every streaming reply. |
-| **Event log (JSONL) + snapshots** | Matches the event model exactly. Appends are cheap and crash-tolerant. No schema beyond the event types. No dependencies. | **Chosen.** |
-| Redis (Streams + AOF) | Streams are a good log, and AOF is itself an append-only file | Adds a server to install and run, a network hop and a runtime dependency, for one user in one process. It earns its place only with several server processes or users. |
-| SQLite (`node:sqlite`, built into Node 22) | Transactions and durability in one file, still schema-light: one events table and one snapshot table holding JSON | Still marked experimental in Node 22, and it prints a warning. It’s the first candidate if we need transactions across files or queries. |
-| A document or relational database (Postgres and so on) | — | Schema and operations work with no payoff for this use case. |
+| One JSON file, rewritten whole (Stage 2) | Simple | Each write serializes the entire state; it blocks the event loop on every streaming reply after months of use. |
+| Event log (JSONL) + snapshots | Matches the event model; appends are cheap | Chosen until 28 October 2026. No transaction across files, and a multi-line append isn’t atomic. |
+| SQLite (`node:sqlite`) | Transactions in one file | Rejected: a relational schema is its natural shape, which stopped an earlier Postbox; synchronous writes; a single writer by nature. |
+| **Redis 8, bundled and run by Postbox** | Atomic multi-key writes (Lua), a sequenced stream, JSON documents, search, a path to several processes | **Chosen.** A native binary to download, verify and supervise: the one exception to zero runtime dependencies (engineering-practices.md). |
 
 **How it works**
 
 ```mermaid
 flowchart LR
-  E["emit(type, data)"] --> R["reducer: shared/state.mjs"]
+  E["emit: optimistic"] --> R["reducer: shared/state.mjs"]
+  C["commit: authoritative"] --> W
   R --> M[("in-memory state")]
-  E --> L["events-&lt;seq&gt;.jsonl (append)"]
-  E --> SSE[server-sent events]
-  M -->|every 5,000 events| SN["snapshot.json (atomic write)"]
-  SN -->|then| ROT["start a new log segment, delete segments the snapshot covers"]
+  E --> SSE["server-sent events"]
+  E -->|"one script per tick"| W["Lua script: check seq and ops, write documents, append to the stream"]
+  W --> DB[("Redis: documents, events stream, ops")]
+  W -->|"after the reply"| R
   subgraph Startup
-    SN2[snapshot.json] --> REPLAY["replay log lines with seq greater than the snapshot's"] --> M2[("state")]
+    DB --> RD["read the documents"] --> M2[("state")]
   end
 ```
 
-- **Writes** are batched and appended in order. A crash can lose at most the last few milliseconds of events. A truncated last line is detected on startup and dropped.
-- **Snapshots** are written to a temporary file and renamed, so a crash mid-write leaves the old snapshot intact. A new log segment starts after each snapshot, and segments the snapshot fully covers are deleted.
-- **Schema.** Events carry plain JSON. If an event’s shape ever changes, the reducer upgrades old events as it reads them (an “upcaster”), so there are no migrations to run.
-- **Stage 2 data** in `store.json` is read once as the first snapshot, then renamed `store.json.migrated`.
+- **Keys.** `<kind>:<id>` documents `{ v, d }` (thread, session, app, item and the rest), each collection’s order in `order:<collection>`, a conversation’s items in `thread:<id>:items` scored by position, `settings`, `seq`, `ops` (operation id to seq) and the `events` stream, whose entry ids are the events’ seqs.
+- **Writes.** One Lua script per batch checks that Redis is at the seq the batch follows and, for a commit, that its operation id hasn’t run, then writes every document and stream entry, or none. `emit` applies and broadcasts at once and writes one batch per tick; `commit` writes first and applies and broadcasts after the reply. A second writer is refused (`ESEQ`), and a commit given as a function of the state runs again after catching up.
+- **Durability.** `appendfsync always`, with `no-appendfsync-on-rewrite no` (`server/redis-supervisor.mjs`; the person’s decision on #525): Redis writes and fsyncs its append-only file before it answers any command that wrote, or read what was written, and exits rather than answer when an fsync fails, which closes writes until it restarts. On macOS that fsync is `fcntl(F_FULLFSYNC)` (Redis’s `src/config.h`), which asks the drive to empty its write cache too; on Linux it is `fdatasync`. So a commit, applied and broadcast only after its reply, is on disk when anyone sees it, as is one a retry finds done or reconciliation reads back; and an emit is on disk once its batch is answered. A crash or power cut can lose only what Redis hadn’t acknowledged: an emit is applied and broadcast at once and written at the next tick, so an update still awaiting acknowledgment may be lost. A drive that reports a flush it hasn’t done can lose acknowledged writes too. The cost, measured once on an Apple-silicon Mac (a measurement, not a bound): an emit’s write p50 4.5 ms, p95 about 9 ms under 50 emits a second; a commit p50 4.6 ms.
+- **Down.** While the child isn’t answering, or the store’s connection to it dropped, writes fail closed and the page stays readable; its status names the cause.
+- **Refused.** A batch Redis refuses for a reason no retry changes (a document RedisJSON won’t hold, a key of the wrong type, a script error) fails closed too, with the batch queued and nothing tried again on its own, since its events were applied and broadcast before Redis saw them (`server/store-reject.mjs`). Retry reads Redis back, replays the queued events on that state one by one, asking Redis before each (a probe that stages the event’s documents and commits nothing) whether it would hold them, and writes the events Redis takes in one batch from the replay, so the documents it commits are what the stream replays to even if Postbox stops right after; then it reads Redis back again and replaces the state with what Redis holds, so memory and the pages, told to resync, show what’s saved; the refused changes are named in the status as `dropped`. Closing the store saves what Redis takes first, so a restart loses only what Redis refused.
+- **Schema.** Documents carry `v` and are lifted to the current shape on read, never migrated; events are upcast as before.
+- **The old log** is imported once at the first start on Redis (`server/store-import.mjs`), beside a dated backup, and renamed `*.migrated`.
+- **Private** (#508’s requirements, 4.3, “Store security”, SR-1 to SR-7). Redis has no TCP listener (`port 0`): Postbox reaches it on a Unix socket in a 0700 folder, `<data>/redis/run/`, or, for a data folder too long for a socket path, a 0700 folder in the temporary folder named by a hash of the data folder (`server/redis-private.mjs`). The default user is off, so a connection that hasn’t logged in gets `NOAUTH`. Postbox’s user starts from `-@all` and gets exactly the commands the store sends, its Lua’s included (`STORE_COMMANDS`); replication, migration, `CONFIG`, `MODULE`, `DEBUG`, `ACL`, `SHUTDOWN` and the cluster are refused to it, directly and from Lua. Its password lives only in Postbox’s memory; the config holds its hash. An owner user may only `PING` and `SHUTDOWN`; its password, in `<data>/redis/owner.json` (0600), is how a later start shuts down a leftover. A start first claims the data folder’s Redis, a file of its own in `<data>/redis/claims/` that it holds until it stops, and goes on only when no other live process has one there, so two Postboxes starting at once can’t both run a Redis on the same files (`server/redis-owner.mjs`, `claimRedis`). The config states `protected-mode yes`, `enable-protected-configs no`, `enable-debug-command no` and `enable-module-command no`. Each start makes every folder under `<data>/redis/` 0700 and every file 0600, or 0700 for the server and modules, and Redis runs under umask 077.
+- **Leftovers** (SR-6, `server/redis-owner.mjs`). Before it starts Redis, the supervisor checks the socket. A Redis this process, or a Postbox that is gone, left running is shut down as its owner, waiting up to 5 s; one another live Postbox owns, or one that doesn’t log in as the owner, is left alone and the start refuses with the cause `owned` and the reason. Postbox never signals a pid it didn’t start.
+- **Agents** (SR-7). No guide, environment, tool result or host payload names the socket or a password, and no store folder is added to an agent’s workspace. That keeps the store out of agents’ ordinary inputs; it isn’t isolation from a process running as you, which can read the data folder (“Writes need the page’s token”). What a direct attempt meets depends on the backend and its mode, unchanged by the store:
 
-**Attachments.** Files are stored by the SHA-256 of their contents under `blobs/ab/cdef…`, so identical files are kept once and corruption is detectable. The log holds only metadata: `{ id, name, type, size, sha256 }`. Files are served with `X-Content-Type-Options: nosniff` and a `sandbox` content-security policy. Only PNG, JPEG, GIF and WebP images are shown inline; everything else downloads. Large content never enters the log, so snapshots stay small.
+| Backend | A direct attempt at the socket |
+|---|---|
+| Codex | Auto (`workspaceWrite`, network off) and Ask (`readOnly`) run commands in Codex’s sandbox. On macOS (codex-cli 0.164.0, its `:workspace` and `:read-only` profiles) it refuses the connection with `EPERM`; not checked on Linux. That isn’t an absolute barrier: a command the sandbox stops can ask to run outside it, and in Auto, Codex’s reviewer decides (in Ask, you do, on a card); one let out reaches the socket and gets `NOAUTH`. Bypass has no sandbox: the connection opens and gets `NOAUTH`. |
+| Claude Code, Agent SDK | No OS sandbox that Postbox sets. A shell command goes through the mode’s approval (Auto’s classifier, Ask’s card, Bypass none); one that runs reaches the socket and gets `NOAUTH`. |
+| Kiro CLI, Antigravity | As Claude Code: the backend’s own tool approval in its mode, no OS sandbox Postbox sets. |
+| Remote hosts | Never given the socket, a connection to it or a password: the store stays on this computer. |
 
-**Revisit when** Postbox runs as more than one server process, serves more than one person, or needs queries across history (for example, search). Then move the same interface onto SQLite or Redis Streams, or Postgres for many users.
+  Without a password a connection can do nothing. With the owner’s, read from the data folder, it can only stop Redis, which Postbox reports and restarts; the data itself is readable in the folder anyway, as before Redis.
+
+**Attachments.** Files are stored by the SHA-256 of their contents under `blobs/ab/cdef…`, so identical files are kept once and corruption is detectable. The store holds only metadata: `{ id, name, type, size, sha256 }`. Files are served with `X-Content-Type-Options: nosniff` and a `sandbox` content-security policy. Only PNG, JPEG, GIF and WebP images are shown inline; everything else downloads. Large content never enters Redis.
+
+**Revisit when** more than one Postbox process writes to one store as a supported mode: `emit`’s optimistic writes then need a per-key check instead of the global seq.
 
 ## 2. How agent data reaches the store
 

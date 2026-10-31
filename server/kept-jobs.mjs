@@ -15,7 +15,7 @@ export function keptJobs(rt) {
 /** Checks on the jobs Postbox kept running, until none is left: one whose process group is gone has ended. */
 export function watchKept(rt) {
   if (rt.keptPoll) return;
-  rt.keptPoll = setInterval(() => rt.pollKept(), KEPT_POLL_MS);
+  rt.keptPoll = setInterval(() => rt.store.writable && rt.pollKept(), KEPT_POLL_MS);
   rt.keptPoll.unref?.();
 }
 export async function pollKept(rt) {
@@ -35,8 +35,13 @@ export async function stopKeptJobs(rt, sessionIds, why) {
   if (!jobs.length) return;
   const procs = await rt.listProcesses().catch(() => []);
   for (const j of jobs) {
-    for (const g of liveGroups(j, procs)) stopPgid(g.pgid, { kill: rt.signalProcess });
-    rt.endJob(j.sessionId, j.id, 'stopped', why);
+    // Ending a job writes to the store; one refused while it's down is logged, and the other jobs are still stopped (#553).
+    try {
+      for (const g of liveGroups(j, procs)) stopPgid(g.pgid, { kill: rt.signalProcess });
+      rt.endJob(j.sessionId, j.id, 'stopped', why);
+    } catch (e) {
+      console.error(`Postbox couldn’t end the background job “${j.label}” as it stopped it: ${e.message}`);
+    }
   }
 }
 

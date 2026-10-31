@@ -3,11 +3,14 @@
 // when Postbox is installed, `npm start` runs it in a clone, and `node server/index.mjs` hands its flags to it.
 
 import { realpathSync } from 'node:fs';
+import { constants as osConstants } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { buildInfo } from '../server/build-info.mjs';
 import { dataFolder, lockData, moveData, postboxHome } from '../server/home.mjs';
+import { checkPlatform } from '../server/redis-platform.mjs';
+import { stopRedis } from '../server/store-redis.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -30,8 +33,9 @@ Options:
  * it on Ctrl-C.
  * @param {string[]} argv  the flags, without node and the script
  * @param {typeof import('../server/index.mjs').start} start  passed in: server/index.mjs runs this while it’s still loading
+ * @param {{ platform: string, arch: string }} [host]  where it runs; tests pass another
  */
-export async function main(argv, start) {
+export async function main(argv, start, host = { platform: process.platform, arch: process.arch }) {
   let values;
   try {
     ({ values } = parseArgs({
@@ -70,6 +74,13 @@ export async function main(argv, start) {
     console.error(`--port takes a port number from 1 to 65535, not “${values.port}”.`);
     process.exit(2);
   }
+  // Postbox’s store is a Redis 8 build it has only for some platforms: refuse the others before anything is written
+  // or downloaded (designs/508/design.md, “Storage: a Redis 8 server that Postbox bundles and runs”).
+  const where = checkPlatform(host);
+  if (!where.ok) {
+    console.error(where.message);
+    process.exit(1);
+  }
   const { dataDir, from } = dataFolder({ data: values.data, root: ROOT });
   let release;
   try {
@@ -85,17 +96,53 @@ export async function main(argv, start) {
   process.on('unhandledRejection', (e) =>
     console.error(`Postbox kept running after an error nothing handled. Please report it, with this:\n${e instanceof Error ? e.stack : String(e)}`),
   );
-  const app = await start({ port, dataDir, fresh: values.fresh, demo: values.demo });
+  const stop = stopOnSignal();
+  let app;
+  try {
+    app = await start({ port, dataDir, fresh: values.fresh, demo: values.demo });
+  } catch (e) {
+    // A start that a signal stopped fails as it stops: the signal’s stop exits. Any other failure stops the store’s
+    // Redis child before the error ends Postbox.
+    if (stop.stopping) await stop.stopping;
+    await stopRedis();
+    throw e;
+  }
+  // A signal during the start: its stop exits.
+  if (stop.stopping) return await stop.stopping;
+  stop.started(app);
   if (from === 'clone')
     console.log(
       `This clone’s data/ folder has your conversations, so Postbox keeps using it. Postbox now keeps its data in ${postboxHome()}: to move it there, stop Postbox and run \`npm start -- --move-data\`.`,
     );
-  const bye = async () => {
-    await app.close();
-    process.exit(0);
+}
+
+/**
+ * Stops Postbox on Ctrl-C or SIGTERM, from before its start begins (SR-6, a clean shutdown). Once Postbox runs, it
+ * closes and exits 0. During the start, the store’s Redis child is stopped, or never spawned, and the data folder’s
+ * claims go, before Postbox exits as the signal would have ended it (128 + its number). A second signal exits at once;
+ * a Redis child still running then gets SIGTERM as Postbox exits (server/redis-supervisor.mjs).
+ * @returns {{ stopping: Promise<never> | null, started: (app: { close: () => Promise<void> }) => void }}
+ */
+function stopOnSignal() {
+  /** @type {{ close: () => Promise<void> } | null} */
+  let app = null;
+  const state = {
+    /** @type {Promise<never> | null} the stop a signal began, which exits */
+    stopping: null,
+    /** @param {{ close: () => Promise<void> }} a */
+    started: (a) => {
+      app = a;
+    },
   };
-  process.on('SIGINT', bye);
-  process.on('SIGTERM', bye);
+  /** @param {NodeJS.Signals} signal */
+  const on = (signal) => {
+    const code = 128 + osConstants.signals[signal];
+    if (state.stopping) process.exit(app ? 0 : code);
+    state.stopping = (app ? app.close().then(() => 0) : stopRedis().then(() => code)).then((c) => process.exit(c));
+  };
+  process.on('SIGINT', on);
+  process.on('SIGTERM', on);
+  return state;
 }
 
 // Run as the command. npm links it from its bin folder, so compare real paths.
