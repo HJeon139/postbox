@@ -19,8 +19,8 @@ test('verifyPrompt tells verifier to check data/events-*.jsonl and data/snapshot
     issues: [],
   });
 
-  assert.match(prompt, /data\/events-\*\.jsonl and data\/snapshot\.json/);
-  assert.match(prompt, /data\/snapshot\.json holds the state as of a snapshot/);
+  assert.match(prompt, /data\/events-\*\.jsonl \(one event a line\)/);
+  assert.match(prompt, /data\/snapshot\.json \(a single JSON object with the state as of that snapshot\)/);
   assert.match(prompt, /search them with Grep/);
 });
 

@@ -86,7 +86,9 @@ export function messagesOf(se, handle = se?.handle) {
  * seeded from the snapshot, which is the state itself; a patch for a session neither held is dropped, as the reducer
  * drops it. A wake Postbox refuses has none. Each read parses only what the log gained since the last one in this
  * process, and returns it merged with known, what earlier reads found, which the caller keeps; that also covers a
- * snapshot deleting the segments it covers. When live `state` or `history` is provided, messages are also drawn
+ * snapshot deleting the segments it covers. If one does between two reads, and more than six messages reached one
+ * agent meanwhile (the session keeps its latest six, `.slice(0, 6)` in recordAgentMessage), the oldest are lost, and a
+ * delivered call reads as refused. When live `state` or `history` is provided, messages are also drawn
  * directly from memory or the followed event stream.
  * @param {string} data  the run’s Postbox data folder
  * @param {{ handle: string, from: string, text: string, at: number }[]} [known]

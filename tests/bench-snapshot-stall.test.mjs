@@ -5,8 +5,19 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { test } from 'node:test';
-import { createSyntheticState, measureSnapshotPass, resolveSnapshotState, runBenchmark } from '../tools/bench-snapshot-stall.mjs';
+import {
+  benchCli,
+  computeStoreBytes,
+  createSyntheticState,
+  DEFAULT_SIZE_BUDGET_MB,
+  DEFAULT_STALL_BUDGET_MS,
+  measureSnapshotPass,
+  parseNum,
+  resolveSnapshotState,
+  runBenchmark,
+} from '../tools/bench-snapshot-stall.mjs';
 
 test('createSyntheticState builds a populated Postbox state', () => {
   const state = createSyntheticState(50);
@@ -14,6 +25,14 @@ test('createSyntheticState builds a populated Postbox state', () => {
   assert.equal(state.seq, 50);
   assert.equal(state.items.th_bench.length, 50);
   assert.ok(state.items.th_bench[0].text.length > 50);
+});
+
+test('resolveSnapshotState uses synthetic state by default when no path is given', () => {
+  const resolved = resolveSnapshotState();
+  assert.match(resolved.source, /synthetic/);
+  assert.ok(resolved.state.items.th_bench.length > 0);
+  assert.ok(resolved.bytes > 0);
+  assert.equal(resolved.storeBytes, resolved.bytes);
 });
 
 test('resolveSnapshotState reads a provided snapshot path', () => {
@@ -30,27 +49,61 @@ test('resolveSnapshotState reads a provided snapshot path', () => {
   }
 });
 
-test('resolveSnapshotState falls back to synthetic state when file does not exist', () => {
-  const resolved = resolveSnapshotState({ snapshot: '/nonexistent/path/snapshot.json' });
-  assert.match(resolved.source, /synthetic/);
-  assert.ok(resolved.state.items.th_bench.length > 0);
-});
-
-test('measureSnapshotPass records stringify duration, write duration, and event-loop delay', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pb-bench-pass-'));
+test('computeStoreBytes and resolveSnapshotState add up snapshot.json and events segments when data is provided', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-bench-data-'));
   try {
-    const state = createSyntheticState(200);
-    const result = await measureSnapshotPass(state, dir);
-    assert.ok(result.bytes > 0);
-    assert.ok(result.stringifyMs >= 0);
-    assert.ok(result.writeMs >= 0);
-    assert.ok(result.totalWriteMs >= result.stringifyMs);
-    assert.ok(result.p50 >= 0);
-    assert.ok(result.p95 >= 0);
-    assert.ok(result.maxDelay >= 0);
+    const snapFile = join(dir, 'snapshot.json');
+    const snapContent = JSON.stringify({ version: 1, seq: 1, items: {} });
+    writeFileSync(snapFile, snapContent);
+
+    const event1 = join(dir, 'events-1.jsonl');
+    writeFileSync(event1, '{"type":"item","data":{"id":"it_1"}}\n');
+
+    const event2 = join(dir, 'events-2.jsonl');
+    writeFileSync(event2, '{"type":"item","data":{"id":"it_2"}}\n');
+
+    const total = computeStoreBytes(dir, 0);
+    assert.ok(total > Buffer.byteLength(snapContent));
+
+    const resolved = resolveSnapshotState({ data: dir });
+    assert.equal(resolved.source, snapFile);
+    assert.equal(resolved.storeBytes, total);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('measureSnapshotPass records stall and detects intentional event loop blocking', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-bench-pass-'));
+  try {
+    const state = createSyntheticState(100);
+
+    // Pass with an intentional 30 ms busy loop
+    const result = await measureSnapshotPass(state, dir, {
+      syncWork: () => {
+        const start = performance.now();
+        while (performance.now() - start < 30) {}
+      },
+    });
+
+    assert.ok(result.bytes > 0);
+    assert.ok(result.stringifyMs >= 25, `stringifyMs ${result.stringifyMs} should be >= 25 ms`);
+    assert.ok(result.maxDelay >= 25, `maxDelay ${result.maxDelay} should be >= 25 ms`);
+    assert.ok(result.timerDelay >= 25, `timerDelay ${result.timerDelay} should be >= 25 ms`);
+    assert.ok(result.writeMs >= 0);
+    assert.ok(result.totalWriteMs >= result.stringifyMs);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('parseNum preserves 0 and finite numbers', () => {
+  assert.equal(parseNum('0', 50), 0);
+  assert.equal(parseNum(0, 50), 0);
+  assert.equal(parseNum('100', 50), 100);
+  assert.equal(parseNum(undefined, 50), 50);
+  assert.equal(parseNum('', 50), 50);
+  assert.equal(parseNum('invalid', 50), 50);
 });
 
 test('runBenchmark calculates budgets and evaluates PR 2 trigger status', async () => {
@@ -73,26 +126,40 @@ test('runBenchmark calculates budgets and evaluates PR 2 trigger status', async 
     assert.equal(withinBudget.isStallExceeded, false);
     assert.equal(withinBudget.triggerPR2, false);
 
-    // Case 2: Exceeded stall budget
-    const exceededStall = await runBenchmark({
+    // Case 2: Zero / low stall budget forces trigger without reverting to 50
+    const zeroBudget = await runBenchmark({
       snapshot: file,
       iterations: 1,
-      stallBudgetMs: 0.0001, // Artificially low budget to force trigger
+      stallBudgetMs: 0,
       sizeBudgetMB: 40,
     });
-    assert.equal(exceededStall.isStallExceeded, true);
-    assert.equal(exceededStall.triggerPR2, true);
+    assert.equal(zeroBudget.stallBudgetMs, 0);
+    assert.equal(zeroBudget.isStallExceeded, true);
+    assert.equal(zeroBudget.triggerPR2, true);
 
     // Case 3: Exceeded size budget
     const exceededSize = await runBenchmark({
       snapshot: file,
       iterations: 1,
       stallBudgetMs: 50,
-      sizeBudgetMB: 0.0001, // Artificially low size budget
+      sizeBudgetMB: 0.0001,
     });
     assert.equal(exceededSize.isSizeExceeded, true);
     assert.equal(exceededSize.triggerPR2, true);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('CLI runs default synthetic path and outputs JSON when requested', async () => {
+  const lines = [];
+  const code = await benchCli(['--json', '--iterations', '1'], { out: (s) => lines.push(s) });
+  assert.equal(code, 0);
+  const parsed = JSON.parse(lines.join('\n'));
+  assert.match(parsed.source, /synthetic/);
+  assert.ok(typeof parsed.stallMs === 'number');
+  assert.ok(typeof parsed.sizeMB === 'number');
+  assert.equal(parsed.stallBudgetMs, DEFAULT_STALL_BUDGET_MS);
+  assert.equal(parsed.sizeBudgetMB, DEFAULT_SIZE_BUDGET_MB);
+  assert.ok(typeof parsed.triggerPR2 === 'boolean');
 });

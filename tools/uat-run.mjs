@@ -267,7 +267,10 @@ async function main() {
     const refreshFacts = async () => {
       facts.state = (await api('/api/state')).state;
       facts.threads = threadsUnderTest(facts.state);
-      Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received) });
+      Object.assign(facts, {
+        streams: readStreams(paths.streams),
+        received: readReceived(paths.data, facts.received, { state: facts.state, history }),
+      });
       facts.kiroStreams = readStreams(paths.kiroStreams);
       facts.agyStreams = readStreams(paths.agyStreams);
       facts.codexStreams = readStreams(paths.codexStreams);
@@ -301,7 +304,10 @@ async function main() {
       lastMidTurn = Date.now();
       facts.state = st ?? (await api('/api/state')).state;
       facts.threads = threadsUnderTest(facts.state);
-      Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received) });
+      Object.assign(facts, {
+        streams: readStreams(paths.streams),
+        received: readReceived(paths.data, facts.received, { state: facts.state, history }),
+      });
       facts.events = history.events();
       midTurn.push(...newFindings(MID_TURN));
     };
