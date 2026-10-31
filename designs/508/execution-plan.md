@@ -19,7 +19,7 @@
 
 | # | What | Owner | Blocks |
 |---|---|---|---|
-| 1 | Pin the Redis 8 version, and approve its license for Postbox to download it for the person. This is a decision; Store’s checksum spec only proves the pinned file is the approved one. **Decided 28 October:** Redis 8.10.3, built by Postbox’s CI and hosted with its source, under AGPLv3 (`design.md`, “Storage”) | The person decides; researcher reports the license terms | Store |
+| 1 | Pin the Redis 8 version, and approve its license. **Withdrawn 31 October:** the Redis decisions were recalled; there is no Redis and no license to approve (`design.md`, “Storage”) | — | — |
 | 2 | Decide whether Windows is a target. **Decided 28 October:** no; macOS on Intel isn’t either. Postbox refuses to start on both | The person | Store |
 | 3 | Merge the PRs the steps wait on (room rule 9): #498 and #514 any time; #511 and #496 before “Now”; #513, #451 and the #466 branch before A1 and A2; #509 before B1; #495 before B3 | developer | Each named step |
 | 4 | Fix the docs branch: section references by title, not number; `testing-strategy.md`’s stale “revision 6” line; critic’s corrected checks, which read only what `main` already records; `npm run check` green; the diff shown for review, then a PR | developer | Citing the documents from step issues |
@@ -148,5 +148,5 @@ Before any code, **a design document gets critic’s read and one peer’s** (ru
 | gemini runs with publishing off, which nothing enforces (#400) | gemini doesn’t push or comment on GitHub; developer does. |
 | Three steps in flight overload two reviewers | Lower the cap to two if review lags a step by more than a day. |
 | Kiro isn’t available for DL-8 runs | Report Kiro as unverified until the person decides (item 6). |
-| The bundled Redis download fails, or its license isn’t approved | The person approves the license before Store starts (item 1). Store’s first spec checks the pinned download’s checksum, and nothing builds on Store until it passes. |
+| A one-line commit is a transaction engine only Postbox tests (the 28 October objection to plain JSON Lines) | Evidence: a kill at every byte of the last commit and a replay of a synthetic log with the real shape, both as tests that fail first (step 1a); a replay of a real store stays a local check that is not committed |
 | A check can’t fire on `main` because it reads records `main` doesn’t have | Checks read only items, sessions, agent streams and page probes, and use records only as extra evidence once they exist (critic’s fix, item 4). |
