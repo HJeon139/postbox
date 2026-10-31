@@ -15,6 +15,7 @@ import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
 import { asWake, queuedRow } from './composer-queue.mjs';
+import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
@@ -286,8 +287,16 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     bound.addEventListener('scroll', onScroll, { passive: true });
     addEventListener('resize', follow);
     sizes.observe(el);
-    // What’s around it changing moves the end too: the composer, the panel’s height, the thread’s root above.
-    if (el.parentElement) for (const n of [el.parentElement, ...el.parentElement.children]) if (n !== el) sizes.observe(n);
+    // What’s around it changing moves the end too: the composer, the panel’s height, the thread’s root above. A shrink
+    // there clamps the view like one in the transcript, so its changes are noted the same way (#360). The panel’s
+    // composer isn’t beside the transcript: it’s in the panel’s foot, under the scroll box.
+    const around = el.parentElement ? [...el.parentElement.children].filter((n) => n !== el) : [];
+    const foot = inPanel ? el.closest('.sidepanel')?.querySelector('.sp-foot') : null;
+    if (el.parentElement) sizes.observe(el.parentElement);
+    for (const n of foot ? [...around, foot] : around) {
+      sizes.observe(n);
+      changes.observe(n, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+    }
   };
   /** Once the transcript is on the page: to the newest message, or back where you were before a rebuild. */
   const settle = () => {
@@ -304,9 +313,11 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     lastTop = s?.scrollTop ?? 0;
   };
   let jump = null;
+  // What arrived counts as unseen when the view isn’t on the newest message, including when follow() finds you
+  // scrolled up in this frame, before its scroll event told the transcript (#341).
   const grew = () => {
     if (stuck) follow();
-    else {
+    if (!stuck) {
       unseen++;
       showJump(box());
     }
@@ -1033,10 +1044,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     },
   });
 
-  const autosize = () => {
-    ta.style.height = 'auto';
-    ta.style.height = `${Math.min(200, ta.scrollHeight)}px`;
-  };
+  const autosize = () => fitDraft(ta);
   const save = () => {
     try {
       localStorage.setItem(key, ta.value);

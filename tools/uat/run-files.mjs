@@ -65,6 +65,19 @@ export function readStreams(folder) {
 /** Where readReceived got to in each run’s store: each segment’s bytes read, each session as the log left it, the snapshot read. */
 const cursors = new Map();
 
+/** A received message’s key, for merging reads. @param {{ handle: string, from: string, text: string, at: number }} r */
+const keyOf = (r) => `${r.handle}|${r.from}|${r.at}|${r.text}`;
+
+/**
+ * The messages Postbox sent one agent from others, as its session holds them: recordAgentMessage
+ * (server/side-threads.mjs) keeps an agent’s latest six on its session as agentMessages. A wake Postbox refuses has none.
+ * @param {any} se  a whole session @param {string} [handle]  the session’s handle, when the session itself lacks it
+ */
+export function messagesOf(se, handle = se?.handle) {
+  if (!handle || !Array.isArray(se?.agentMessages)) return [];
+  return se.agentMessages.filter((m) => m?.dir === 'from' && Number.isFinite(m.at)).map((m) => ({ handle, from: m.other, text: m.text, at: m.at }));
+}
+
 /**
  * Every message Postbox sent one agent from another, read from the run’s store: recordAgentMessage
  * (server/side-threads.mjs) keeps an agent’s latest six on its session, and writes them through updateSession, so each
@@ -81,19 +94,22 @@ const cursors = new Map();
  */
 export function readReceived(data, known = []) {
   if (!existsSync(data)) return known;
+  const out = new Map(known.map((r) => [keyOf(r), r]));
+  readLogged(data, out);
+  return [...out.values()].sort((a, b) => a.at - b.at);
+}
+
+/** The store’s log in a data folder, read on from where this process got to. Unwraps commit arrays (#508, option b). @param {string} data @param {Map<string, any>} out */
+function readLogged(data, out) {
   const c = cursors.get(data) ?? { offsets: new Map(), sessions: new Map(), snapshot: null };
   cursors.set(data, c);
-  const key = (/** @type {any} */ r) => `${r.handle}|${r.from}|${r.at}|${r.text}`;
-  const out = new Map(known.map((r) => [key(r), r]));
   /** Keeps a session as an event left it, and takes the messages it holds. */
   const take = (/** @type {any} */ se) => {
     if (!se?.id) return;
     // A whole session without a handle (a trimmed fixture) keeps the handle the log gave it before.
     const handle = se.handle ?? c.sessions.get(se.id)?.handle;
     c.sessions.set(se.id, handle === undefined ? se : { ...se, handle });
-    for (const m of Array.isArray(se.agentMessages) ? se.agentMessages : [])
-      if (handle && m?.dir === 'from' && Number.isFinite(m.at))
-        out.set(key({ handle, from: m.other, text: m.text, at: m.at }), { handle, from: m.other, text: m.text, at: m.at });
+    for (const r of messagesOf(se, handle)) out.set(keyOf(r), r);
   };
   try {
     const snap = join(data, 'snapshot.json');
@@ -108,13 +124,15 @@ export function readReceived(data, known = []) {
     c.offsets.set(n, next);
     for (const l of text.split('\n')) {
       try {
-        const e = JSON.parse(l);
-        if (e?.type === 'session') take(e.data);
-        else if (e?.type === 'session.patch' && c.sessions.has(e.data?.id)) take(patchSession(c.sessions.get(e.data.id), e.data));
+        const parsed = JSON.parse(l);
+        const events = Array.isArray(parsed) ? parsed : [parsed];
+        for (const e of events) {
+          if (e?.type === 'session') take(e.data);
+          else if (e?.type === 'session.patch' && c.sessions.has(e.data?.id)) take(patchSession(c.sessions.get(e.data.id), e.data));
+        }
       } catch {}
     }
   }
-  return [...out.values()].sort((a, b) => a.at - b.at);
 }
 
 /** A log file’s whole lines after this byte, and where the next read starts; a file shorter than that was rewritten. */
