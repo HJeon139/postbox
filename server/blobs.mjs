@@ -1,8 +1,8 @@
 // Content-addressed file storage for attachments. A file is stored once, under the SHA-256 of its bytes,
 // and the event log keeps only its metadata. See designs/architecture.md, “Attachments”.
 
-import { createHash } from 'node:crypto';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createHash, randomBytes } from 'node:crypto';
+import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
 export class Blobs {
@@ -15,20 +15,34 @@ export class Blobs {
     return join(this.dir, sha256.slice(0, 2), sha256.slice(2));
   }
 
-  /** Stores bytes and returns { sha256, size, path }. Storing the same bytes twice keeps one copy. */
+  /**
+   * Stores bytes and returns { sha256, size, path }. Storing the same bytes twice keeps one copy. A blob is published
+   * whole or not at all: written to a draft beside it, synced, then renamed over its name, and the folder synced, so a
+   * crash or a reader mid-write never finds a short file under the hash (a truncated one left by an older build is
+   * replaced). Blobs can hold command lines and output, so they are the owner's alone: files 0600, folders 0700 (#305).
+   */
   async put(buffer) {
     const sha256 = createHash('sha256').update(buffer).digest('hex');
     const path = this.pathOf(sha256);
-    const exists = await access(path).then(
-      () => true,
-      () => false,
-    );
-    if (!exists) {
-      await mkdir(join(this.dir, sha256.slice(0, 2)), { recursive: true });
-      await writeFile(path, buffer, { flag: 'wx' }).catch((e) => {
-        if (e.code !== 'EEXIST') throw e;
-      });
+    const have = await stat(path).catch(() => null);
+    if (have?.size === buffer.length) return { sha256, size: buffer.length, path };
+    const folder = join(this.dir, sha256.slice(0, 2));
+    await mkdir(folder, { recursive: true, mode: 0o700 });
+    const draft = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.draft`;
+    const fh = await open(draft, 'wx', 0o600);
+    try {
+      await fh.writeFile(buffer);
+      await fh.sync();
+    } finally {
+      await fh.close();
     }
+    await rename(draft, path).catch(async (e) => {
+      await unlink(draft).catch(() => {});
+      throw e;
+    });
+    const dh = await open(folder, 'r');
+    await dh.sync().catch(() => {}); // a platform that can't sync a folder
+    await dh.close();
     return { sha256, size: buffer.length, path };
   }
 
