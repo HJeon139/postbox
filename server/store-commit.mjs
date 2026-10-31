@@ -69,7 +69,10 @@ function applyCommits(store, commits) {
     store.sinceSnapshot += c.events.length;
   }
   for (const ev of heard) store.notify(ev);
-  for (const c of commits) c.resolve({ seq: c.events[0].seq, duplicate: false });
+  for (const c of commits) {
+    c.resolve({ seq: c.events[0].seq, duplicate: false });
+    for (const f of c.followers ?? []) f.resolve({ seq: c.events[0].seq, duplicate: true });
+  }
 }
 
 /** A commit’s events as its log line (the header): the event itself for one, the array for several. */
@@ -112,11 +115,18 @@ async function writeCommits(store, gen) {
   const group = [];
   while (store.queue[0]?.commit && !(typeof store.queue[0].commit.events === 'function' && group.length)) group.push(store.queue.shift().commit);
   const written = [];
+  const pending = new Map(); // opId → the commit of this group that writes it
   for (const c of group) {
+    const first = c.opId !== undefined ? pending.get(c.opId) : undefined;
+    if (first) {
+      (first.followers ??= []).push(c); // a repeat queued behind its original gets the original’s result, either way
+      continue;
+    }
     const events = sequenced(store, c);
     if (!events) continue;
     c.events = events;
     written.push(c);
+    if (c.opId !== undefined) pending.set(c.opId, c);
   }
   try {
     if (written.length && store.dir) await append(store, written.map((c) => lineOf(c.events)).join(''), gen, true);
@@ -126,7 +136,7 @@ async function writeCommits(store, gen) {
     // go on from the applied seq with no gap (critic’s finding on 1a).
     for (const c of written) store.ahead -= c.events.length;
     if (e.code !== 'ERELOADED') fail(store, e); // the written commits get the same cause as every later one
-    for (const c of written) c.reject(store.writable ? e : store.cause);
+    for (const c of written) for (const r of [c, ...(c.followers ?? [])]) r.reject(store.writable ? e : store.cause);
   } finally {
     store.waitingCommits -= group.length;
   }
@@ -189,7 +199,10 @@ export async function run(store, gen) {
     else if (job.line !== undefined || job.held) await writeLines(store, gen);
     else if (job.flush) {
       store.queue.shift();
-      await (store.fh ? store.fh.sync() : Promise.resolve()).then(job.flush.resolve, job.flush.reject);
+      await (store.fh ? store.fh.sync() : Promise.resolve()).then(job.flush.resolve, (e) => {
+        fail(store, e); // a flush that can’t sync the log is the first failed fsync: the store closes to commits (Q9)
+        job.flush.reject(store.cause);
+      });
     } else if (job.snapshot) {
       store.queue.shift();
       await takeSnapshot(store).then(job.snapshot.resolve, job.snapshot.reject);
@@ -229,7 +242,13 @@ export async function writeSnapshot(store) {
   const text = JSON.stringify(store.state);
   const fh = await store.io.open(tmp, 'w');
   try {
-    for (let at = 0; at < text.length; at += PIECE) await writeAll(fh, Buffer.from(text.slice(at, at + PIECE)), `The snapshot ${tmp}`);
+    for (let at = 0; at < text.length; ) {
+      let end = Math.min(at + PIECE, text.length);
+      const code = text.charCodeAt(end - 1);
+      if (end < text.length && code >= 0xd800 && code <= 0xdbff) end++; // a piece never splits a surrogate pair (gpt’s finding)
+      await writeAll(fh, Buffer.from(text.slice(at, end)), `The snapshot ${tmp}`);
+      at = end;
+    }
     await fh.sync();
   } finally {
     await fh.close();

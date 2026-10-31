@@ -5,10 +5,12 @@
 // one that counts. A second store in the same process is refused too: the pid is alive, and it’s another writer.
 //
 // A lock is STALE when its process is gone, or when the pid is alive but started at another time (the number was
-// reused). It’s taken over by renaming it to a name of its own first and only then creating the new lock exclusively,
-// so of two Postboxes that find the same lock stale, exactly one wins: the other’s rename finds nothing, and its next
-// try meets a live lock. close() releases a lock only when the file still carries this store’s token: a lock another
-// store took over meanwhile is left alone.
+// reused). It’s taken over under a takeover mutex, a folder made exclusively beside it: the starter holding the mutex
+// reads the lock again, moves it aside only if it is still the stale one it found (not a live lock another starter made
+// meanwhile), and only then creates its own lock exclusively. So of two Postboxes that find the same lock stale, exactly
+// one wins; the other’s next try meets a live lock (gpt’s finding on 1a: a rename made on a stale observation could move
+// the winner’s live lock). A mutex left by a starter that died is taken after TAKEOVER_MS. close() releases a lock only
+// when the file still carries this store’s token: a lock another store took over meanwhile is left alone.
 
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
@@ -84,11 +86,13 @@ export async function lockStore(io, dir, probe = {}) {
       if (!holder) continue;
       if (isAlive(holder.pid) && (await sameStart(holder, startOf)))
         throw new Error(`Another Postbox store (process ${holder.pid}) holds ${dir}. Stop it first, or use another data folder.`);
-      await takeOver(io, path);
+      await takeOver(io, path, holder);
     }
   }
   throw new Error(`Couldn’t claim ${dir}: ${path} keeps coming back.`);
 }
+
+const TAKEOVER_MS = 10_000; // a takeover mutex older than this was left by a starter that died mid-way
 
 /** Whether the holder’s process is the one that wrote the lock: start times unknown on either side are taken as the same. */
 async function sameStart(holder, startOf) {
@@ -97,16 +101,39 @@ async function sameStart(holder, startOf) {
   return now === null || now === holder.started;
 }
 
-/** Moves a stale lock aside under a name of its own, then removes it; nothing to move means another starter got there first. */
-async function takeOver(io, path) {
-  const aside = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.stale`;
-  try {
-    await io.rename(path, aside);
-  } catch (e) {
-    if (e.code === 'ENOENT') return;
-    throw e;
+/**
+ * Moves a stale lock aside, under the takeover mutex (the header): only while the lock is still the one found stale.
+ * Returns once the lock is gone or was found to be another starter’s live one; the caller’s next try tells which.
+ * @param {typeof import('node:fs/promises')} io @param {string} path @param {{ pid: number, token?: string }} stale
+ */
+async function takeOver(io, path, stale) {
+  const taking = `${path}.taking`;
+  for (let tries = 0; tries < 200; tries++) {
+    try {
+      await io.mkdir(taking);
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      const left = await io.stat(taking).catch(() => null);
+      if (left && Date.now() - left.mtimeMs > TAKEOVER_MS) await io.rm(taking, { recursive: true, force: true });
+      else await new Promise((r) => setTimeout(r, 10));
+      continue;
+    }
+    try {
+      const now = await readLock(io, path);
+      const same = now && now.pid === stale.pid && (stale.token ? sameToken(stale.token, now.token) : !now.token);
+      if (same) {
+        const aside = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.stale`;
+        await io.rename(path, aside).catch((e) => {
+          if (e.code !== 'ENOENT') throw e;
+        });
+        await io.rm(aside, { force: true });
+      }
+    } finally {
+      await io.rm(taking, { recursive: true, force: true });
+    }
+    return;
   }
-  await io.rm(aside, { force: true });
+  throw new Error(`Couldn’t take over the stale lock at ${path}: another start keeps ${taking}.`);
 }
 
 /**

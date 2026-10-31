@@ -200,3 +200,96 @@ test('Q9: the numbers a failed commit took are given back, so the held emit and 
   await s.close();
   await rm(dir, { recursive: true });
 });
+
+const realFs = await import('node:fs/promises');
+
+test('two starters over one stale lock, the second’s rename slow: exactly one holds the folder (gpt’s interleaving)', async () => {
+  const { LOCK, lockStore } = await import('../server/store-lock.mjs');
+  const dir = await tmp();
+  await writeFile(join(dir, LOCK), JSON.stringify({ pid: 2 ** 22 - 7, started: 1, token: 'stale0000' }));
+  let renames = 0;
+  const io = disk({
+    async rename(from, to) {
+      if (++renames === 2) await new Promise((r) => setTimeout(r, 40)); // the second starter moves the lock late
+      return realFs.rename(from, to);
+    },
+  });
+  const probe = { alive: (pid) => pid === process.pid, started: async () => 1 };
+  const results = await Promise.allSettled([lockStore(io, dir, probe), lockStore(io, dir, probe)]);
+  const won = results.filter((r) => r.status === 'fulfilled');
+  assert.equal(won.length, 1, JSON.stringify(results.map((r) => r.status)));
+  const holder = JSON.parse(await readFile(join(dir, LOCK), 'utf8'));
+  assert.equal(holder.token, won[0].value.token, 'the lock on disk is the winner’s');
+  assert.deepEqual((await readdir(dir)).sort(), [LOCK], 'no mutex or stale file is left behind');
+  await rm(dir, { recursive: true });
+});
+
+test('a snapshot piece never splits a surrogate pair: an emoji across the boundary survives the round trip', async () => {
+  const dir = await tmp();
+  const { writeSnapshot } = await import('../server/store-commit.mjs');
+  const text = `${'x'.repeat((1 << 20) - '{"text":"'.length - 1)}🌙 and on`;
+  await writeSnapshot({ io: realFs, at: (n) => join(dir, n), state: { text } });
+  assert.equal(JSON.parse(await readFile(join(dir, 'snapshot.json'), 'utf8')).text, text);
+  await rm(dir, { recursive: true });
+});
+
+test('two commits with one opId queued behind a pending commit: the second gets the first’s seq as a duplicate, written once', async () => {
+  const dir = await tmp();
+  let gate = null;
+  const io = disk({
+    async open(path, flags, mode) {
+      const handle = await realFs.open(path, flags, mode);
+      if (!String(path).includes('events-')) return handle;
+      return handleWith(handle, {
+        sync: async () => {
+          if (gate) await gate;
+          return handle.sync();
+        },
+      });
+    },
+  });
+  const s = await new Store(dir, { io }).load();
+  let open;
+  gate = new Promise((r) => {
+    open = r;
+  });
+  const change = [{ type: 'thread', data: { id: 'once', members: [] } }];
+  const a = s.commit(change, { opId: 'blocker' });
+  await new Promise((r) => setTimeout(r, 10)); // the blocker is in its sync
+  const b = s.commit(change, { opId: 'same' });
+  const c = s.commit(change, { opId: 'same' });
+  gate = null;
+  open();
+  const results = await Promise.all([a, b, c]);
+  assert.deepEqual(results, [
+    { seq: 1, duplicate: false },
+    { seq: 2, duplicate: false },
+    { seq: 2, duplicate: true },
+  ]);
+  assert.equal(s.state.seq, 2, 'the repeat wrote nothing');
+  await s.close();
+  await rm(dir, { recursive: true });
+});
+
+test('a flush whose fsync fails is the first failed sync: the store closes to commits', async () => {
+  const dir = await tmp();
+  let refuse = false;
+  const io = disk({
+    async open(path, flags, mode) {
+      const handle = await realFs.open(path, flags, mode);
+      if (!String(path).includes('events-')) return handle;
+      return handleWith(handle, {
+        sync: () => (refuse ? Promise.reject(Object.assign(new Error('flush refused'), { code: 'EIO' })) : handle.sync()),
+      });
+    },
+  });
+  const s = await new Store(dir, { io }).load();
+  s.emit('thread', { id: 't1', members: [] });
+  refuse = true;
+  await assert.rejects(s.flush(), /EIO/);
+  assert.equal(s.writable, false);
+  refuse = false;
+  await assert.rejects(s.commit([{ type: 'thread', data: { id: 'later', members: [] } }], { opId: 'later' }), /EIO/, 'commits stay refused');
+  await s.close();
+  await rm(dir, { recursive: true });
+});
