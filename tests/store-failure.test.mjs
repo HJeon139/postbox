@@ -235,3 +235,49 @@ test('a starter paused inside its takeover keeps the mutex however long it takes
   assert.deepEqual((await readdir(dir)).sort(), [LOCK], 'the mutex is gone with its maker’s takeover');
   await rm(dir, { recursive: true });
 });
+
+test('a starter paused between creating its lock and filling it can’t be taken for a dead holder: the lock appears whole or not at all (gpt’s repro)', async () => {
+  const { LOCK, lockStore } = await import('../server/store-lock.mjs');
+  const dir = await tmp();
+  let resume;
+  const paused = new Promise((r) => {
+    resume = r;
+  });
+  let writes = 0;
+  const io = disk({
+    async writeFile(path, data, options) {
+      const first = ++writes === 1;
+      await realFs.writeFile(path, first ? '' : data, options); // A’s record: created empty, filled after the pause
+      if (first) {
+        await paused;
+        await realFs.writeFile(path, data, options);
+      }
+    },
+  });
+  const probe = { alive: (pid) => pid === process.pid, started: async () => 1 };
+  const a = lockStore(io, dir, probe);
+  await new Promise((r) => setTimeout(r, 20)); // A has created its draft, empty, and is paused
+  assert.deepEqual(
+    (await readdir(dir)).filter((n) => n === LOCK),
+    [],
+    'nothing is published under the lock’s name yet',
+  );
+  const b = await lockStore(io, dir, probe); // B finds no lock and takes the folder
+  resume();
+  await assert.rejects(a, /Another Postbox store \(process \d+\) holds/, 'A, late, meets B’s live lock');
+  assert.equal(JSON.parse(await readFile(join(dir, LOCK), 'utf8')).token, b.token);
+  assert.deepEqual((await readdir(dir)).sort(), [LOCK], 'A’s draft is gone');
+  await rm(dir, { recursive: true });
+});
+
+test('a lock whose contents are empty or cut short is ambiguous: the start waits, then refuses naming the file, and removes nothing', async () => {
+  const { LOCK, lockStore } = await import('../server/store-lock.mjs');
+  for (const contents of ['', '{"pid":12', 'not a pid']) {
+    const dir = await tmp();
+    await writeFile(join(dir, LOCK), contents);
+    await assert.rejects(lockStore(realFs, dir), /unreadable.*remove the file/);
+    assert.equal(await readFile(join(dir, LOCK), 'utf8'), contents);
+    assert.deepEqual(await readdir(dir), [LOCK]);
+    await rm(dir, { recursive: true });
+  }
+});

@@ -53,20 +53,40 @@ async function started(io, pid) {
 }
 
 /**
- * What a lock file says: this store’s shape, or an older lock holding only the pid; null when the file is gone.
- * @returns {Promise<{ pid: number, started: number | null, token?: string } | null>}
+ * Publishes a record as a file that never exists half-written: the bytes go to a file of their own first, which is then
+ * linked under `path` (atomic, and EEXIST when something is there), so a reader finds the whole record or no file
+ * (gpt’s finding on 1a: a file created first and filled after read as an empty, “dead” holder meanwhile).
+ */
+async function publish(io, path, record) {
+  const draft = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.new`;
+  await io.writeFile(draft, JSON.stringify(record), { mode: 0o600 });
+  try {
+    await io.link(draft, path);
+  } finally {
+    await io.rm(draft, { force: true });
+  }
+}
+
+/**
+ * What a lock file says: this store’s shape, or an older lock holding only a positive pid; null when the file is gone;
+ * `ambiguous` when it holds anything else (empty, cut short, not a pid), which proves nothing about its maker.
+ * @returns {Promise<{ pid: number, started: number | null, token?: string, ambiguous?: false } | { ambiguous: true } | null>}
  */
 async function readLock(io, path) {
   const text = await io.readFile(path, 'utf8').catch(() => null); // gone between two steps: the next try finds out
   if (text === null) return null;
   try {
     const parsed = JSON.parse(text);
-    if (parsed && typeof parsed === 'object') return { pid: Number(parsed.pid), started: parsed.started ?? null, token: parsed.token };
+    if (parsed && typeof parsed === 'object' && Number.isInteger(parsed.pid) && parsed.pid > 0)
+      return { pid: parsed.pid, started: parsed.started ?? null, token: parsed.token };
   } catch {
     // not JSON: a lock written as a bare pid, below
   }
-  return { pid: Number(text), started: null };
+  const pid = Number(text.trim());
+  return Number.isInteger(pid) && pid > 0 && /^\d+$/.test(text.trim()) ? { pid, started: null } : { ambiguous: true };
 }
+
+const AMBIGUOUS_TRIES = 20; // reads of a lock that says nothing readable, 10 ms apart, before the start refuses
 
 /**
  * Takes the folder’s lock for this process, or rejects naming the folder and the pid holding it.
@@ -78,14 +98,24 @@ export async function lockStore(io, dir, probe = {}) {
   const startOf = probe.started ?? ((pid) => started(io, pid));
   const path = join(dir, LOCK);
   const mine = { pid: process.pid, started: await startOf(process.pid), token: randomBytes(8).toString('hex') };
-  for (let tries = 0; tries < 3; tries++) {
+  let unreadable = 0;
+  for (let tries = 0; tries < 3 + AMBIGUOUS_TRIES; tries++) {
     try {
-      await io.writeFile(path, JSON.stringify(mine), { flag: 'wx', mode: 0o600 });
+      await publish(io, path, mine);
       return { path, token: mine.token };
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
       const holder = await readLock(io, path);
       if (!holder) continue;
+      if (holder.ambiguous) {
+        // Unreadable contents prove nothing: not a dead holder. Waited out briefly (a legacy writer mid-step), then refused.
+        if (++unreadable >= AMBIGUOUS_TRIES)
+          throw new Error(
+            `The lock at ${path} is unreadable, so Postbox can’t tell whether another store holds ${dir}. If none is running on it, remove the file and start again.`,
+          );
+        await new Promise((r) => setTimeout(r, 10));
+        continue;
+      }
       if (isAlive(holder.pid) && (await sameStart(holder, startOf)))
         throw new Error(`Another Postbox store (process ${holder.pid}) holds ${dir}. Stop it first, or use another data folder.`);
       await takeOver(io, path, holder, isAlive, startOf);
@@ -120,12 +150,14 @@ async function takeOver(io, path, stale, isAlive, startOf) {
   const until = Date.now() + TAKEOVER_WAIT_MS;
   for (;;) {
     try {
-      await io.writeFile(taking, JSON.stringify(me), { flag: 'wx', mode: 0o600 });
+      await publish(io, taking, me);
       break;
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
       const maker = await readLock(io, taking);
       if (!maker) continue; // removed between the write and the read: try again
+      if (maker.ambiguous)
+        throw new Error(`The takeover file ${taking} is unreadable. If no Postbox is running on this data folder, remove it and start again.`);
       if (!(isAlive(maker.pid) && (await sameStart(maker, startOf))))
         throw new Error(
           `A Postbox start (process ${maker.pid}) stopped while taking over the lock on this data folder. If no Postbox is running on it, remove ${taking} and start again.`,
@@ -137,7 +169,7 @@ async function takeOver(io, path, stale, isAlive, startOf) {
   }
   try {
     const now = await readLock(io, path);
-    const same = now && now.pid === stale.pid && (stale.token ? sameToken(stale.token, now.token) : !now.token);
+    const same = now && !now.ambiguous && now.pid === stale.pid && (stale.token ? sameToken(stale.token, now.token) : !now.token);
     if (same) {
       const aside = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.stale`;
       await io.rename(path, aside).catch((e) => {
@@ -147,7 +179,7 @@ async function takeOver(io, path, stale, isAlive, startOf) {
     }
   } finally {
     const maker = await readLock(io, taking);
-    if (maker?.token && sameToken(me.token, maker.token)) await io.rm(taking, { force: true }); // only the mutex this start made
+    if (maker && !maker.ambiguous && maker.token && sameToken(me.token, maker.token)) await io.rm(taking, { force: true }); // only this start’s
   }
 }
 
@@ -158,5 +190,5 @@ async function takeOver(io, path, stale, isAlive, startOf) {
 export async function unlockStore(io, lock) {
   if (!lock) return;
   const holder = await readLock(io, lock.path);
-  if (holder?.token && sameToken(lock.token, holder.token)) await io.rm(lock.path, { force: true });
+  if (holder && !holder.ambiguous && holder.token && sameToken(lock.token, holder.token)) await io.rm(lock.path, { force: true });
 }
