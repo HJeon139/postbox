@@ -5,16 +5,16 @@ Decided on 21 October 2026, after Stage 2. Each section states the decision, wha
 ## 1. The store: an event log with snapshots, not a database
 
 **Decided next** (31 October 2026, [#508](https://github.com/HJeon139/postbox/issues/508)). The Redis decision of 28 October was recalled: #565 and v1.3.0 fixed the slow room, which Redis was never chosen for, and the second writer it was chosen for has no user yet. The event log below stays, with these changes, built in steps 1a and 1b (and S2 when its budget triggers). Until they merge, the log below is what runs.
-- **A commit is one line.** `commit(events)` writes its events as one line of the log and `fsync`s it, so a turn’s records and marker commit together or not at all. Streamed text keeps the fast path (`emit`), unsynced. Measured on the developer’s Mac: 4.2 to 4.6 ms per `fsync`.
-- **One serialized writer,** so a commit follows the emits before it and no later emit overtakes it. No adapter starts before the `fsync` has succeeded.
-- **Recovery:** an incomplete final line is cut; a bad line in the middle of a segment refuses to start and names the file, instead of silently dropping everything after it.
-- **When a write fails** (a full disk, a read-only folder, EIO), writes are refused and the page stays readable, with the cause and Retry. Writes reopen only once the torn tail is cut and the log reads back whole.
-- **Receipts** are derived from the record events and kept in their own shard, so they outlive a snapshot.
-- **Snapshots** are sharded by conversation when a snapshot stall passes 50 ms or the store nears 40 MB (today about 37 ms on a 13.85 MB copy, and 16 MB, growing about 1 MB a day): one file per changed conversation, published by a manifest written last.
+- **A commit is written whole and fsynced.** `commit(events)` writes its events together (one event as a plain event line, several as a JSON array) and `fsync`s it, so a turn’s records and marker commit together or not at all. Streamed text keeps the fast path (`emit`), unsynced. Measured on the developer’s Mac: 4.2 to 4.6 ms per `fsync`.
+- **What leaves the process waits for the sync:** the broadcast, `since()`, `/api/state`, the read tools, a reply, an adapter start. Memory applies events in call order, so there is no held queue.
+- **Recovery:** an unterminated tail is cut; a bad line in the middle of a segment refuses to start and names the file, instead of silently dropping everything after it. A gap in the sequence starts, logs the range lost and shows it once.
+- **When a write fails** (a full disk, a read-only folder, EIO), queued commits are rejected, memory is reloaded from disk, and writes close with the cause and Retry, which is a reload, the same recovery a restart runs.
+- **Receipts** are derived from the record events and checkpointed with the snapshot, so they outlive it.
+- **Snapshots** are written in pieces now (the block falls from about 37 ms to about 21 ms on a 13.85 MB copy). Old turns’ work entries and activity steps are about 73% of the file and move out of state before anything is sharded (#305). A snapshot sharded by conversation waits for a stall that still passes 50 ms.
 - **One writer.** A lock file in the data folder refuses a second Postbox. Revisit when a second process is designed.
 - **A history epoch** made at each load tells a tab on a lost timeline to resync.
 - **Data model unchanged:** key/value and documents, never a relational schema; older shapes lifted on read, never rewritten.
-- **Detail:** `designs/508/design.md`, “Storage: JSON Lines, one line per commit”, and requirements ST-1 to ST-4 and PF-9 in `designs/508/requirements.md`.
+- **Detail:** `designs/508/storage-design.md`, and requirements ST-1 to ST-4 and PF-9 in `designs/508/requirements.md`.
 
 **Decision.** Postbox keeps its data as an append-only event log in JSON Lines, plus periodic snapshots of the state, in its data folder. Every read comes from an in-memory projection of that log. Binary files go to a separate content-addressed blob store. All of this sits behind one small storage interface (`server/store.mjs`).
 
