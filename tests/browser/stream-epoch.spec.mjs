@@ -4,7 +4,7 @@
 // its seq, and loads the state again, rather than keeping what the store no longer holds.
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { allowPageError, failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -64,4 +64,41 @@ test('#567: a page back at the same seq after the store read Redis back is told 
   // And it hears what comes next on the new epoch.
   app.rt.addItem(t.id, { kind: 'user', text: 'A message after the reload' });
   await expect(page.getByText('A message after the reload')).toBeVisible();
+});
+
+// gpt’s r10 review of #553, blocker 2: the page took the epoch from the stream’s first frame at once. When the load the
+// resync asked for then failed, the page held the new epoch with the old state, and its next reconnect, at the same seq,
+// was accepted as synchronized: the old history stayed on the page for good. The page’s epoch is only ever the one that
+// came with a state it loaded; until a load succeeds it names its old epoch, and the server resyncs it again.
+test('a page whose load after a resync failed keeps naming its old epoch, so its next reconnect is resynced, not accepted', async ({ page }) => {
+  const t = conversation('loader', 'Failed load');
+  app.rt.addItem(t.id, { kind: 'user', text: 'A message the store keeps' });
+  app.rt.addItem(t.id, { kind: 'user', text: 'A message Redis refused' });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await expect(page.getByText('A message Redis refused')).toBeVisible();
+  const before = app.store.epoch;
+  await page.evaluate(() => dispatchEvent(new Event('pagehide')));
+  await app.store.flush();
+  const state = structuredClone(app.store.state);
+  state.items[t.id] = state.items[t.id].filter((it) => it.text !== 'A message Redis refused');
+  await app.store.reloaded(state, app.store.positions);
+  expect(app.store.epoch).not.toBe(before);
+  // The page comes back naming the old epoch: the stream’s first frame names the new one and says resync, but the load
+  // of the state fails this once (the server was busy, say).
+  let failed = 0;
+  allowPageError(page, /503/);
+  await page.route('**/api/state', (route) => (failed++ ? route.continue() : route.fulfill({ status: 503, body: 'busy' })));
+  const back = page.waitForRequest((r) => r.url().includes('/api/stream'));
+  await page.evaluate(() => dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+  expect(epochOf((await back).url())).toBe(before);
+  await expect.poll(() => failed, { message: 'the load to be tried and fail' }).toBe(1);
+  // Away and back again: the page still shows the old history, so it must still name the old epoch.
+  await page.evaluate(() => dispatchEvent(new Event('pagehide')));
+  const again = page.waitForRequest((r) => r.url().includes('/api/stream'));
+  await page.evaluate(() => dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+  expect(epochOf((await again).url()), 'a page still showing the old history names the epoch that history came with').toBe(before);
+  await expect(page.getByText('A message Redis refused')).toBeHidden();
+  await expect(page.getByText('A message the store keeps')).toBeVisible();
+  await expect.poll(() => clientOf(page).then((c) => c.epoch), { message: 'the page to take the new epoch with the state it loaded' }).toBe(app.store.epoch);
 });

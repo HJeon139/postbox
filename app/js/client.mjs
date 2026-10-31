@@ -4,7 +4,8 @@
 // applied twice. If the server no longer has the events, it says "resync" and the state is refetched.
 // The numbers count within a history epoch, which the state names and the stream request echoes: after
 // a restart or a repair the server runs on a new one, and says "resync" to a page from the old one, whose
-// numbers may name events the server never kept (server/live-streams.mjs).
+// numbers may name events the server never kept (server/live-streams.mjs). The page's epoch is the one its
+// loaded state came with, never one heard on the stream alone (gpt's r10 review of #553, blocker 2).
 
 import { needsYouNow, whereNeeds } from '/shared/needs.mjs';
 import { apply, ownState } from '/shared/state.mjs';
@@ -102,14 +103,32 @@ export function connect() {
     client.store = JSON.parse(e.data);
     client.emit({ type: 'store' });
   });
-  // The epoch the stream runs on, its first frame: what the next reconnect echoes.
+  // The epoch the stream runs on, its first frame. The page’s epoch is only ever the one that came with a state it
+  // loaded: a frame naming another means the state the page shows is from a history the server no longer runs on, so it
+  // loads the state again, as a resync does. Taking the epoch from the frame would, if that load then failed, send the
+  // new epoch with the old state on the next reconnect, which the server would accept at an equal seq.
   es.addEventListener('epoch', (e) => {
-    client.epoch = JSON.parse(e.data) ?? '';
+    if ((JSON.parse(e.data) ?? '') !== client.epoch) resync();
   });
-  es.addEventListener('resync', async () => {
-    await load();
-    connect();
-  });
+  es.addEventListener('resync', resync);
+}
+
+// Loads the state again and reconnects on the epoch it came with; one at a time, so the epoch frame and the resync
+// frame the server sends together load once. While the load fails, the page keeps its state and its epoch, and
+// connects again shortly: naming the old epoch, it’s told to resync again, until a load succeeds.
+let resyncing = null;
+function resync() {
+  resyncing ??= load()
+    .then(connect, () => {
+      client.attempts++;
+      client.connection = 'reconnecting';
+      client.emit({ type: 'connection' });
+      setTimeout(connect, Math.min(8000, 1000 * client.attempts));
+    })
+    .finally(() => {
+      resyncing = null;
+    });
+  return resyncing;
 }
 
 // Browsers allow 6 connections per host over HTTP/1.1, and each open tab’s stream holds one. Close the
