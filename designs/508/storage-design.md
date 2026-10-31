@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft 8, 31 October 2026, approved by the integrator on #580. Retry is a reload (with gpt’s conditions) and belongs to 1b; 1a closes the store to commits at the first failure and restarting is the recovery (Q9). The held queue stays for 1a (Q11). Nothing is open |
+| **Status** | Draft 9, after the lock was rewritten from the review of 1a; draft 8, 31 October 2026, approved by the integrator on #580. Retry is a reload (with gpt’s conditions) and belongs to 1b; 1a closes the store to commits at the first failure and restarting is the recovery (Q9). The held queue stays for 1a (Q11). Nothing is open |
 | **Editor** | researcher |
 | **Contributors** | developer (writer and load), gpt (recovery contract and storage specs), engineer (measurements, positions), gemini (benchmark, UAT tools), critic (requirements audit and the store’s makeup) |
 | **Replaces** | `design.md`, “Storage: a Redis 8 server that Postbox bundles and runs” (the 28 October decision, recalled on 31 October 2026) |
@@ -228,7 +228,16 @@ A random token is made at each `load()`, including Retry’s. `/api/state` carri
 
 ### 6.8 The data-folder lock
 
-A file `lock` created exclusively (`O_EXCL`) holds the process id and a start time. Node has no API for another process’s start time, so it is read by spawning `ps -o lstart= -p <pid>` with an argument array; a reused pid then shows a different start time, which T-17 covers. It is created before `load()` and removed at the final close, by its owner only, on every writable entry point (the command line and a direct server start; today’s claim covers the command line only, gpt). A **stale** lock (its process gone, or a reused pid with a different start time) is taken over by **renaming it to a unique name first**, so only one of two Postboxes that find it stale succeeds, and then creating the new lock exclusively (critic). A live holder refuses the second Postbox with a message naming the pid. A crash leaves the lock for the next start to find stale.
+**Invariants** (written before the code, after the first version of this section failed review four times):
+- **L1. A reader sees a whole owner record or no file,** never a half-written one. A lock or takeover record is written to a private draft file and **published with a hard link** under its name. The link is atomic and fails with `EEXIST`, so two contenders cannot both publish. (The first version created the file exclusively and filled it afterwards; a second start read the empty file as a dead holder and both started.)
+- **L2. Ambiguous means refuse.** An empty, cut-short or non-pid lock is not proof of a dead process. A start waits briefly (about 200 ms) and then refuses, naming the file, and removes nothing. A legacy lock holding a bare positive pid still reads.
+- **L3. A stale lock is taken over only under a takeover mutex that names its maker.** The mutex is published the same way (L1). If its maker is alive, the other start waits (up to 5 s) and then refuses. If its maker is gone, or its contents are unreadable, the start refuses and names the file; Postbox never reclaims anything by age or by a guess, because a wrong guess admits two writers. Recovery from a dead maker is deleting the named file by hand.
+- **L4. Only the owner removes.** Release and cleanup remove the lock or the mutex only when it carries this start’s token.
+- **L5. Held from before `load()` until the final close,** on every writable entry point (the command line and a direct server start; the earlier claim covered the command line only, gpt).
+
+A file `lock` holds the process id, a start time and a token. Node has no API for another process’s start time, so it is read by spawning `ps -o lstart= -p <pid>` with an argument array; a reused pid then shows a different start time, which T-17 covers. A live holder refuses the second Postbox with a message naming the pid. A crash leaves the lock for the next start to find stale.
+
+**Known limits** (named, not hidden): publication needs hard links, so on a filesystem without them (FAT, exFAT, some network mounts) the start fails with the raw error, and a clearer message belongs to 1b; a crash between the draft write and its removal leaves a harmless `*.new` file, swept at the next start in 1b; a dead maker’s mutex is a manual delete.
 
 ### 6.9 Snapshots and pruning
 
@@ -288,7 +297,9 @@ What a kill at each step leaves, and what the next start does. Every row is a te
 | After the rename, before segments are pruned | The new snapshot and old segments | Old events have `seq <= state.seq` and are skipped; the segments are pruned |
 | During S2, before the manifest rename | The old manifest and shards | The old set is used; new shards are unreferenced and ignored |
 | After the manifest, during pruning of old shards | The new manifest and some old shards | The new set is used; leftovers are removed |
-| With the lock held | A `lock` file for a dead pid | Taken over by rename (“The data-folder lock”) |
+| With the lock held | A `lock` file for a dead pid | Taken over under the takeover mutex (“The data-folder lock”) |
+| While a lock is being created | A draft file, not yet linked under the lock name | Another start sees no lock or a whole one; the draft is removed at cleanup, never read as a holder |
+| While a takeover is in progress | A mutex naming its maker | If the maker is alive, wait then refuse; if gone, refuse and name the file; never reclaimed by age |
 
 ## 8. Failure modes
 
