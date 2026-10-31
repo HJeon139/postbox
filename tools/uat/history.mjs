@@ -73,21 +73,22 @@ export function followEvents(origin) {
   return { events: () => kept, hostStates: () => hostStates, close: () => abort.abort() };
 }
 
-/** Parses JSON Lines, skipping a line that doesn’t parse (the last one, if the file was being written). */
-const lines = (text) =>
+/** Parses JSON Lines, skipping a line that doesn’t parse (the last one, if the file was being written). Unwraps commit arrays (#508, option b). */
+export const lines = (text) =>
   text
     .split('\n')
     .filter(Boolean)
     .flatMap((l) => {
       try {
-        return [JSON.parse(l)];
+        const e = JSON.parse(l);
+        return Array.isArray(e) ? e : [e];
       } catch {
         return [];
       }
     });
 
 /** What is left of Postbox’s own log in a run’s data folder, cut as keepEvent cuts it. @param {string} dir */
-function logged(dir) {
+export function logged(dir) {
   const data = join(dir, 'data');
   if (!existsSync(data)) return [];
   // The log starts at the store’s last snapshot, which holds each session whole as it was there: a session.patch after

@@ -198,7 +198,9 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   send({ method: 'initialized', params: {} });
   const permissions = codexPermissions(ctx.persona, cwd);
   const mcpConfig = await codexMcpApprovalConfig(request, ctx.persona?.permissionMode);
-  const openConfig = mcpConfig ? { config: mcpConfig } : {};
+  // The guide belongs on thread start/resume/fork; turn/start has no top-level settings field.
+  const { guide, message: turnMessage } = turnGuide(message, { ...ctx, session, brief: session?.brief, toolRules: null });
+  const openConfig = { developerInstructions: guide, ...(mcpConfig ? { config: mcpConfig } : {}) };
   const model = codexModelOf(ctx.persona);
   const fork = ctx.state.fork ?? ctx.state.forkFrom;
   const sourceThreadId = fork?.threadId ?? ctx.state.codexThreadId;
@@ -213,13 +215,10 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   if (!id) throw new Error('Codex app-server did not return a thread id.');
   ctx.state.codexThreadId = id;
   ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
-  // Codex has no per-agent Tools (CODEX_CAPABILITIES.tools), so there’s nothing turned off to tell it.
-  const { guide, message: turnMessage } = turnGuide(message, { ...ctx, session, brief: session?.brief, toolRules: null });
   const inputText = formatMessage(turnMessage, attachmentPaths(ctx, ctx.remote?.turn));
   const started = await request('turn/start', {
     threadId: id,
     input: [{ type: 'text', text: inputText }],
-    settings: { developer_instructions: guide },
     ...(model ? { model } : {}),
     effort: codexEffortOf(ctx.persona),
     cwd,

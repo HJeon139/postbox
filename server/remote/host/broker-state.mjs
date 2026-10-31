@@ -19,7 +19,7 @@ export const count = (n) => n.toLocaleString('en-US');
 export const key = (turn, id) => `${turn} ${id}`;
 
 /**
- * @typedef {{ turn: string, id: string, name: string, route: 'queue' | 'ask', args: Record<string, any> | null, replied: boolean,
+ * @typedef {{ turn: string, id: string, name: string, route: 'queue' | 'ask' | 'read', args: Record<string, any> | null, replied: boolean,
  *   result?: { ok: boolean, text: string }, saved?: Promise<string>, replying?: Promise<string>, bytes?: number }} Tool
  *   saved: settles once the call is written down, with '' or why it couldn’t be (a prompt’s likewise); replying: a
  *   reply being written down, likewise (a prompt’s answering); bytes: its tool message’s encoded size, while it waits
