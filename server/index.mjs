@@ -235,6 +235,7 @@ export async function start({
     if (!store.writable && req.method !== 'GET' && req.method !== 'HEAD' && path !== '/mcp' && path !== '/api/store/retry' && !path.endsWith('/stop'))
       throw Object.assign(httpError(503, store.cause.message), { code: 'store-closed' });
     if (path === '/api/store/retry' && req.method === 'POST') {
+      if (store.writable) throw httpError(409, 'Nothing to retry: Postbox is saving changes. If a page still shows the status line, reload it.');
       await store.reload().catch((e) => {
         throw httpError(503, e.message);
       });

@@ -2,7 +2,8 @@
 // a tool that would write is refused with the cause at the MCP entry, the one gate for tools; a tool that reads answers.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { handleMcp } from '../server/mcp.mjs';
+import { handleMcp, READ_TOOLS } from '../server/mcp.mjs';
+import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { settle, setup, sleep } from './side-threads-fixture.mjs';
 
 const eio = () => Object.assign(new Error('disk sync refused'), { code: 'EIO' });
@@ -35,4 +36,33 @@ test('while the store is closed, a writing tool is refused with the cause and a 
   assert.equal(again.result.isError, false);
   release();
   await settle(rt);
+});
+
+test('every tool is classified for the gate: the read set, or the writers; a new tool must be placed', () => {
+  const WRITERS = new Set([
+    'add_dataset',
+    'ask_for_tool',
+    'bring_to_conversation',
+    'cancel_wake',
+    'define_term',
+    'permission_prompt',
+    'propose_agent',
+    'react',
+    'retire_app',
+    'review_block',
+    'schedule_wake',
+    'show_app',
+    'show_block',
+    'update_app',
+    'update_block',
+    'wake_agent',
+  ]);
+  for (const name of READ_TOOLS)
+    assert.ok(
+      TOOL_DEFS.some((t) => t.name === name),
+      `${name} is a tool`,
+    );
+  const unplaced = TOOL_DEFS.map((t) => t.name).filter((n) => !READ_TOOLS.has(n) && !WRITERS.has(n));
+  assert.deepEqual(unplaced, [], 'place each new tool in READ_TOOLS (server/mcp.mjs) if it never writes, else in WRITERS here');
+  for (const name of WRITERS) assert.ok(!READ_TOOLS.has(name), `${name} is not both`);
 });

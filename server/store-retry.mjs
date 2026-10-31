@@ -50,7 +50,9 @@ export function fail(store, e) {
 /** Retry, one at a time: a second call while one runs joins it. @param {import('./store.mjs').Store} store */
 export function reload(store) {
   if (store.retrying) return store.retrying;
-  if (!store.dir) return Promise.resolve();
+  // Nothing to retry while writes are open: a reload then would install the disk’s view over memory that is ahead of
+  // it, and lose the events in flight (critic’s finding on 1b). A stale tab’s Retry, or a second click, is a no-op.
+  if (store.writable || !store.dir) return Promise.resolve();
   store.retrying = retry(store).finally(() => {
     store.retrying = null;
     store.tellStatus();

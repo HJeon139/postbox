@@ -27,7 +27,7 @@ import { recordedTools } from './scheduled-wakes.mjs';
 import { withUrgent } from './subagent-end.mjs';
 
 /** The tools that read and never write: they answer while the store is closed. */
-const READ_TOOLS = new Set(['read_conversation', 'read_message', 'corpus_search']);
+export const READ_TOOLS = new Set(['read_conversation', 'read_message', 'corpus_search']);
 
 /**
  * While the store can’t be written (#508’s storage design, “When a write fails (ST-3)”), a tool that would write is

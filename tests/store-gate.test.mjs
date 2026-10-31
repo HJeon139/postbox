@@ -96,3 +96,16 @@ test('POST /api/store/retry reopens the store on a new epoch; the stream hears s
   assert.equal(write.status, 200, `writes go on after Retry: ${write.text}`);
   s.close();
 });
+
+test('the gate is one check before the routes: any write path is refused while closed, and Retry on an open store is 409', async () => {
+  const open = await fakeRequest(app.handle, { host: host(), method: 'POST', path: '/api/store/retry', headers: headers(), body: {} });
+  assert.equal(open.status, 409, open.text);
+  assert.match(open.json.error, /Nothing to retry/);
+  app.store.fail(eio());
+  const unknown = await fakeRequest(app.handle, { host: host(), method: 'POST', path: '/api/no-such-route', headers: headers(), body: {} });
+  assert.equal(unknown.status, 503, 'refused before any route matched');
+  const read = await fakeRequest(app.handle, { host: host(), path: '/api/no-such-route' });
+  assert.notEqual(read.status, 503, 'a read reaches the routes');
+  const r = await fakeRequest(app.handle, { host: host(), method: 'POST', path: '/api/store/retry', headers: headers(), body: {} });
+  assert.equal(r.status, 200, r.text);
+});

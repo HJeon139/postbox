@@ -252,3 +252,52 @@ test('I8: a commit made by a reload listener runs after the install and lands in
   await b.close();
   await rm(dir, { recursive: true });
 });
+
+test('Retry on a store that never failed is a no-op: memory stays ahead of the disk’s view, no second handle (critic’s finding)', async () => {
+  const dir = await tmp();
+  let opens = 0;
+  const io = disk({
+    async open(path, flags, mode) {
+      if (String(path).includes('events-')) opens++;
+      return realFs.open(path, flags, mode);
+    },
+  });
+  const s = await new Store(dir, { io }).load();
+  for (let i = 0; i < 50; i++) s.emit('thread', { id: `t${i}`, members: [] });
+  const epoch = s.epoch;
+  const retried = s.reload(); // writes are open: nothing to retry
+  for (let i = 50; i < 60; i++) s.emit('thread', { id: `t${i}`, members: [] });
+  await retried;
+  await s.flush();
+  assert.equal(s.epoch, epoch, 'no new history');
+  assert.equal(Object.keys(s.state.threads).length, 60, 'memory kept every emit');
+  assert.equal(s.state.seq, 60);
+  assert.equal(opens, 1, 'one handle on the segment');
+  await s.close();
+  const b = await new Store(dir).load();
+  assert.equal(b.state.seq, 60, 'the disk has them all');
+  await b.close();
+  await rm(dir, { recursive: true });
+});
+
+test('after a Retry whose barrier failed, a second Retry succeeds once the disk answers', async () => {
+  const dir = await tmp();
+  const faults = {};
+  const s = await new Store(dir, { io: logDisk(faults) }).load();
+  s.emit('thread', { id: 't1', members: [] });
+  await s.flush();
+  faults.sync = () => Promise.reject(eio('disk sync refused'));
+  await assert.rejects(s.commit([thread('x')], { opId: 'x' }), /EIO/);
+  await assert.rejects(s.reload(), /Retry couldn’t reopen/); // the barrier’s sync fails too
+  assert.equal(s.writable, false);
+  assert.ok(s.state.threads.t1, 'the old view is still readable');
+  faults.sync = null;
+  await s.reload();
+  assert.equal(s.writable, true);
+  await s.commit([thread('after')], { opId: 'after' });
+  await s.close();
+  const b = await new Store(dir).load();
+  assert.ok(b.state.threads.after);
+  await b.close();
+  await rm(dir, { recursive: true });
+});
