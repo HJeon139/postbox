@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft 6, 31 October 2026. Retry is a reload (the integrator’s first simplification, with gpt’s conditions). The integrator’s second simplification is recorded as an alternative, not adopted, until its readers are named (gpt’s review, approved by the person). Open: Q9 and Q11 |
+| **Status** | Draft 7, 31 October 2026. Retry is a reload (the integrator’s first simplification, with gpt’s conditions). The integrator’s second simplification is recorded as an alternative, not adopted, until its readers are named (gpt’s review, approved by the person). Open: Q9 and Q11 |
 | **Editor** | researcher |
 | **Contributors** | developer (writer and load), gpt (recovery contract and storage specs), engineer (measurements, positions), gemini (benchmark, UAT tools), critic (requirements audit and the store’s makeup) |
 | **Replaces** | `design.md`, “Storage: a Redis 8 server that Postbox bundles and runs” (the 28 October decision, recalled on 31 October 2026) |
@@ -196,7 +196,7 @@ flowchart TD
 - **An unterminated final fragment** of the last segment (no newline, whether or not it is valid JSON) is cut before any append. The writer writes the newline last, so a value without it was not acknowledged.
 - **A newline-terminated line that does not parse** refuses to start, even when it is the last line: it could be damaged acknowledged history (gpt). So does an unparsable line in any segment that is not the last, and any bad line with lines after it. The message names the file and byte offset. This replaces today’s silent truncation (P4).
 - **A group must be well formed:** a nonempty array of consecutive integer `seq`s. An incomplete array at the tail is cut; elsewhere it refuses to start.
-- **The first unapplied `seq`** must be `state.seq + 1`. A group that overlaps the snapshot boundary is rejected, not partly applied.
+- **The first unapplied `seq`** is expected to be `state.seq + 1`. A larger one invokes the gap handling below; a malformed group, or one that overlaps the snapshot boundary, is refused rather than partly applied.
 - **A gap in `seq` is counted against the applied `seq`,** not against the previous line (a real segment begins with events the snapshot already holds, see “Context: the store today”). **Decided (the integrator, developer): start anyway, log the range and the count lost, and show it once on 1b’s status line.** A gap means acknowledged history was lost, refusing to start does not recover it, and today’s silent append failures (P2) can have left a gap in a user’s existing store, so refusing would brick it. No override flag. Refusal stays for what refusing can protect: a damaged line, or a malformed group.
 - A commit whose events’ `seq` are already applied is skipped as a whole, as single events are today.
 
@@ -214,12 +214,11 @@ stateDiagram-v2
 **Retry is a reload, not a repair (the integrator’s simplification, with gpt’s conditions).** There is no second recovery path beside `load()`, and no queue comparison or queue replay.
 
 - **At the failure:** every queued commit is rejected with the cause, and the volatile queue is discarded. Writes close: later commits and emits are refused with the cause (HTTP 503 and a tool error), turns do not start, and the page shows one status line with a Retry. The page keeps serving the published state.
-- **Retry, in this order:**
-  1. **Quiesce the old writer.** Stop it, close its descriptor, **fence its late callbacks**, and keep the data-folder claim throughout. A second Store taking the claim, or an old append completing after the reload, is not a valid Retry.
-  2. **Stop running turns,** then reload the folder into **fresh state** with a **new epoch**, replacing state and epoch together, and rebuild the `opId` results. `load()` already handles a commit that landed despite the `fsync` error, a fragment and a gap.
-  3. **Reconcile the runtime** with the recovered state: timers, scheduled wakes, pending turns and callbacks, and records `sent` with no live turn going back to `waiting`, labeled. The same function runs at startup; reloading the Store alone does not clear those objects.
-  4. **Establish durability.** A reload reads through the page cache, so a line may be there that a failed `fsync` never flushed, and on Linux a second `fsync` on the same descriptor can report success without writing it. So `fsync` the retained segment **on a fresh descriptor**, and its directory, **before** lifecycle execution reopens and before a recovered commit is returned as `duplicate`. A fresh descriptor avoids relying on the failed descriptor’s error history; it is not by itself proof that the bytes are durable. If durability cannot be established, **stay closed**.
-  5. **Resync connected readers** through the epoch.
+- **Retry, in this order** (gpt: nothing recovered is exposed, and no reconciled work is activated, until the durability barrier has passed):
+  1. **Quiesce the old writer.** Stop it, close its descriptor, **fence its late callbacks**, stop and fence running turns, and keep the data-folder claim throughout. A second Store taking the claim, or an old append completing after the reload, is not a valid Retry.
+  2. **Load into a private recovery candidate,** a fresh state with a new epoch, and rebuild the `opId` results. `load()` already handles a commit that landed despite the `fsync` error, a fragment and a gap. **Prepare** the runtime reconciliation against the candidate (timers, scheduled wakes, pending turns, records `sent` with no live turn going back to `waiting`, labeled) **without activating** any timer or delivery.
+  3. **Establish durability.** A reload reads through the page cache, so a line may be there that a failed `fsync` never flushed, and on Linux a second `fsync` on the same descriptor can report success without writing it. So `fsync` the retained segment **on a fresh descriptor**, and its directory, before anything below. A fresh descriptor avoids relying on the failed descriptor’s error history; it is not by itself proof that the bytes are durable. **If durability cannot be established, stay closed, discard the candidate, and keep the previous published view readable.**
+  4. **Install and activate.** Atomically install the recovered public state and the new epoch, resync connected readers through the epoch, then activate the reconciled runtime work and reopen writes. Reconciliation that itself generates durable lifecycle transitions respects their commit barriers.
 - **What is lost:** queued emits (streamed text and activity steps). That is ST-4’s stated limit, and T-23 accepts it. After an `EIO` from `fsync`, no recovery can prove that lines read back are on the disk (ST-4).
 - **Interim in 1a** (before 1b’s refusal exists): with the public state published only after the sync, a failed write leaves only optimistic emits ahead of the disk. developer applies them to memory and logs one error; critic would reload at the failure. **Open: Q9.**
 
@@ -343,7 +342,7 @@ Written first and failing on `main`. The specs of gpt (14 failing on baseline) a
 | T-10 | **An uncertain sync: the commit rejects after its complete line lands; Retry reloads and establishes durability on a fresh descriptor; its effects are present once; retrying the same `opId` returns `duplicate` without another append** | gpt’s spec, **with an explicit Retry step** |
 | T-11 | `EIO` on `fsync` rejects the queue, closes writes with the cause, and reloads memory from disk; a fake `io` where the second sync on the old handle succeeds without writing must still end in a sync on a new descriptor | **add** |
 | T-12 | `ENOSPC` and `EROFS` on write: the same, with the cause | **1b** |
-| T-13 | **Retry quiesces the old writer, reloads into fresh state, reconciles the runtime and reopens: a landed commit is kept; no line twice; state equals disk; running turns are stopped; records are rebuilt as at startup; a late callback from the old writer and an old timer are fenced** | **1b** |
+| T-13 | **Retry quiesces the old writer, loads a private candidate, establishes durability on a fresh descriptor, then installs the state and epoch, activates the reconciled work and reopens; with the recovery sync paused or failed, no recovered state is exposed, no reconciled wake runs, and the previous published view stays readable: a landed commit is kept; no line twice; state equals disk; running turns are stopped; records are rebuilt as at startup; a late callback from the old writer and an old timer are fenced** | **1b** |
 | T-14 | The page stays readable while closed; the status line shows the cause and Retry (Playwright) | **1b** |
 | T-15 | A snapshot waits for pending commits; a crash before the rename, after it before the directory sync, and before pruning, all recover | gpt; add snapshot-waits-for-commit |
 | T-16 | The epoch changes at each `load()`; a mismatch resyncs; a page adopts an epoch only with a loaded state | existing specs |
@@ -362,7 +361,7 @@ Written first and failing on `main`. The specs of gpt (14 failing on baseline) a
 | T-29 | The snapshot is written in pieces: the block on a 14 MB state falls below the one-call figure | **add** |
 | T-30 | A rejected commit’s records are rebuilt after the Retry reload (A1 spec): `waiting` or `sent` as the disk has them, and a repeat with the same `opId` returns `duplicate` | gpt, A1 |
 | T-31 | A read tool (`read_conversation`, `read_message`) called while a commit is syncing does not return the commit | **add** |
-| T-32 | A scheduled wake is armed, the write fails, and Retry reloads: the wake runs from the recovered state, or not at all | **add** |
+| T-32 | A scheduled wake is armed, the write fails, and Retry reloads: the wake runs from the recovered state, or not at all, and not before the recovery sync has succeeded | **add** |
 
 gemini’s UAT checks: the at-rest rows of “Crash points” (leave a truncated segment, an un-renamed temp snapshot, unreferenced shards, or a stale lock, then restart) can be run end to end with `postbox.restart({ whileDown })`. The in-flight rows cannot, because the fault launcher wraps agent CLIs, not the store; they are unit specs. critic reads every PR against ST-3 and ST-4.
 
@@ -402,7 +401,7 @@ Nothing needs a migration: events, segments and `snapshot.json` keep their forma
 
 **Open**
 9. **Q9. Emits after a failure, before 1b exists.** developer: keep applying them to memory and log one error. critic: reload at the failure so they are discarded. With the public state published only after the sync, only optimistic emits are ahead of the disk; which does 1a ship?
-11. **Q11. The integrator’s second simplification** (hold the broadcast, not the emits). developer and critic accept it; gpt’s review, approved by the person, accepts it only with an immutable published projection, every outward reader and effect named, and T-31 and T-32. The integrator’s intent is to remove the held queue (about 25 lines) and the stale-read audit. Should the held queue stay for 1a, with the alternative revisited once A1 and A2 have named their effects?
+11. **Q11. A possible later replacement of the held queue** (the integrator’s second simplification: hold the broadcast, not the emits). The 1a decision stands: a commit is applied to the public state only after its sync, and emits made meanwhile are held. The alternative is valid only with publication barriers on every outward reader and lifecycle effect, or an immutable published projection (gpt), and with T-31 and T-32. Revisit it once A1 and A2 have named their effects.
 
 ## 14. References
 
