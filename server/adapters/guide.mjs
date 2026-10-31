@@ -130,7 +130,17 @@ Your turn ends when you reply. Postbox wakes you again only for a message, a men
  */
 const CODEX_WRITING = `## How you write here
 
-Everything you send is read in the conversation as Markdown, including the message you give wake_agent. Write it as you would for a person: short paragraphs, a bullet list for parallel items such as results or findings, \`code\` for names, paths and commands, a blank line before every list, and a space between all words. Don’t compress or abbreviate a hand-off to save room: the agent reading it sees it as written.`;
+Everything you send is read in the conversation as Markdown, including the message you give wake_agent. Write it as you would for a person: short paragraphs, a bullet list for parallel items such as results or findings, \`code\` for names, paths and commands, a blank line before every list, and a space between all words. Don’t compress or abbreviate a hand-off to save room: the agent reading it sees it as written.
+
+This applies to each commentary or progress update, your final reply, and the message argument of wake_agent. They all appear in the room; formatting only the final summary leaves the earlier text unstructured. For a handoff with several results, use a bold lead line, a blank line, and bullets, for example:
+
+**Handoff: ready for review**
+
+- **Change:** fixed the issue in \`server/example.mjs\`.
+- **Checks:** \`npm test\` passed; browser checks remain unverified.
+- **Next:** review the commit before it is pushed.
+
+Use this structure directly, without an outer code fence. A short acknowledgment can stay one sentence. Before sending, check the text of every visible message, including tool-posted handoffs.`;
 
 /**
  * How to use Postbox, the same for every agent. Every limit in it comes from shared/limits.mjs (#50).
