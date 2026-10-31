@@ -1,5 +1,5 @@
 {"id":1,"result":{"userAgent":"postbox/0.164.0 (Mac OS 26.6.2; arm64) Apple_Terminal/470.2 (postbox; 0.2.0)","codexHome":"/home/user/.codex","platformFamily":"unix","platformOs":"macos"}}
-{"method":"remoteControl/status/changed","params":{"status":"disabled","serverName":"host.localdomain","installationId":"43bdc201-612f-4657-af6b-668caa37d35d","environmentId":null},"emittedAtMs":1793410248696}
+{"method":"remoteControl/status/changed","params":{"status":"disabled","serverName":"placeholder.localdomain","installationId":"00000000-0000-0000-0000-000000000000","environmentId":null},"emittedAtMs":1793410248696}
 {"method":"deprecationNotice","params":{"summary":"Full-history hydration is deprecated for paginated threads; use `excludeTurns: true`, then page with `thread/turns/list` and `thread/items/list`.","details":null},"emittedAtMs":1793410248698}
 {"method":"mcpServer/startupStatus/updated","params":{"threadId":"01a18f94-af2c-7653-9e5d-4367a1881a9e","name":"out-of-context","status":"starting","error":null,"failureReason":null},"emittedAtMs":1793410248743}
 {"method":"mcpServer/startupStatus/updated","params":{"threadId":"01a18f94-af2c-7653-9e5d-4367a1881a9e","name":"node_repl","status":"starting","error":null,"failureReason":null},"emittedAtMs":1793410248743}

@@ -1,3 +1,3 @@
 {"id":1,"result":{"userAgent":"postbox/0.164.0 (Mac OS 26.6.2; arm64) Apple_Terminal/470.2 (postbox; 0.2.0)","codexHome":"/home/user/.codex","platformFamily":"unix","platformOs":"macos"}}
-{"method":"remoteControl/status/changed","params":{"status":"disabled","serverName":"Mac.localdomain","installationId":"43bdc201-612f-4657-af6b-668caa37d35d","environmentId":null},"emittedAtMs":1793409619137}
+{"method":"remoteControl/status/changed","params":{"status":"disabled","serverName":"placeholder.localdomain","installationId":"00000000-0000-0000-0000-000000000000","environmentId":null},"emittedAtMs":1793409619137}
 {"error":{"code":-32600,"message":"no rollout found for thread id 01a18f8b-1402-74a1-a151-15688f158b06"},"id":2}
