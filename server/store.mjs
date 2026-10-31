@@ -268,6 +268,9 @@ export class Store {
    */
   async close() {
     try {
+      // A Retry under way finishes first, one way or the other: closing in the middle of it would release the lock while
+      // its candidate could still install, reopen and run listeners after another store took the folder (gpt’s finding).
+      await this.retrying?.catch(() => {});
       if (this.writable) await this.flush();
     } finally {
       this.closed = true;

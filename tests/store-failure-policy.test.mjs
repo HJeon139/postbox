@@ -189,3 +189,44 @@ test('Retry on a store that was closed is refused: the folder may be another sto
   await b.close();
   await rm(dir, { recursive: true });
 });
+
+test('close() during a Retry held at its barrier waits for it, so the lock is released only once nothing can install or reopen', async () => {
+  const dir = await tmp();
+  const faults = {};
+  const a = await new Store(dir, { io: logDisk(faults) }).load();
+  a.emit('thread', { id: 't1', members: [] });
+  await a.flush();
+  faults.sync = () => Promise.reject(eio('disk sync refused'));
+  await assert.rejects(a.commit([thread('x')], { opId: 'x' }), /EIO/);
+  let release;
+  const gate = new Promise((r) => {
+    release = r;
+  });
+  faults.sync = () => gate; // Retry’s fresh-descriptor barrier is held
+  const retry = a.reload();
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(a.status.retrying, true);
+  let closed = false;
+  const closing = a.close().then(() => {
+    closed = true;
+  });
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(closed, false, 'close() waits for the Retry under way');
+  await assert.rejects(new Store(dir).load(), /Another Postbox store/, 'the lock is still A’s meanwhile');
+  faults.sync = null;
+  release();
+  await retry.catch(() => {});
+  await closing;
+  assert.equal(a.closed, true);
+  assert.equal(a.writable, false);
+  assert.equal(a.fh, null, 'no descriptor survives the close');
+  await assert.rejects(a.reload(), /closed/, 'and no later Retry reopens it');
+  const b = await new Store(dir).load(); // the folder is B’s now
+  await b.commit([thread('b1')], { opId: 'b1' });
+  assert.equal(a.emit('thread', { id: 'late', members: [] }).seq, undefined, 'A’s late emit is applied nowhere');
+  await b.close();
+  const c = await new Store(dir).load();
+  assert.deepEqual(Object.keys(c.state.threads).sort(), ['b1', 't1', 'x'], 'B’s line and the landed one, nothing from A after the close');
+  await c.close();
+  await rm(dir, { recursive: true });
+});

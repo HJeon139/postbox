@@ -91,6 +91,11 @@ async function retry(store) {
     await fh.close().catch(() => {});
     throw closedBy(store, e);
   }
+  if (store.closed) {
+    // close() ran meanwhile (it waits for this Retry, so this is a second line of defence): nothing installs or reopens.
+    await fh.close().catch(() => {});
+    throw closedBy(store, Object.assign(new Error('the store was closed while Retry ran'), { code: 'ECLOSED' }));
+  }
   install(store, c); // d.
   store.fh = fh;
   // Reconciliation (A2’s records going back to waiting; the I8 stand-in in the specs) runs now, through
@@ -106,6 +111,7 @@ async function retry(store) {
   } finally {
     store.reconciling = false;
   }
+  if (store.closed) throw closedBy(store, Object.assign(new Error('the store was closed while Retry reconciled'), { code: 'ECLOSED' }));
   store.writable = true;
   store.cause = null;
   store.warned = false;
