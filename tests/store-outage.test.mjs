@@ -157,3 +157,67 @@ test('a scheduled wake’s turn stopped by the outage is settled like any stop, 
   agent.calls.length = 0;
   await store.flush();
 });
+
+test('while Retry reconciles, the router, the tools’ gate and a turn start stay closed; they open once the reconciling commit has landed', async () => {
+  const { rt, store } = app;
+  const agent = rt.adapters.get('mock');
+  const before = agent.calls.length;
+  const p = rt.createPersona({ handle: 'waiter', backend: 'mock' });
+  const t = rt.createThread({ projectId: 'pr_outage', title: 'Reconcile', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  await store.flush();
+  const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
+  store.fail(eio());
+  // The reload listener reconciles through the one internal path, and its fsync is held: the store’s own io hands out
+  // handles whose sync waits on a gate, for the segment only, from here on.
+  let release;
+  const gate = new Promise((r) => {
+    release = r;
+  });
+  let holding = false;
+  const realOpen = store.io.open;
+  store.io = {
+    ...store.io,
+    open: async (path, flags, mode) => {
+      const fh = await realOpen.call(store.io, path, flags, mode);
+      if (!String(path).includes('events-')) return fh;
+      return new Proxy(fh, {
+        get(target, key) {
+          if (key === 'sync')
+            return async () => {
+              if (holding) await gate;
+              return target.sync();
+            };
+          const v = Reflect.get(target, key, target);
+          return typeof v === 'function' ? v.bind(target) : v;
+        },
+      });
+    },
+  };
+  let reconciled;
+  const off = store.onReload(() => {
+    holding = true; // after the barrier: only the reconciling commit’s sync waits
+    reconciled = store.reconcile([{ type: 'thread', data: { id: 'reconciled', members: [] } }], { opId: 'reconcile' });
+    return reconciled;
+  });
+  const retried = call({ method: 'POST', path: '/api/store/retry', cookie });
+  await until(() => !!reconciled, 'the listener to run after the install');
+  // Closed throughout: the router, the tools and a turn start.
+  const refused = await call({ method: 'POST', path: `/api/threads/${t.id}/messages`, cookie, body: { text: 'Hello?' } });
+  assert.equal(refused.status, 503, 'a router write is refused while reconciling');
+  assert.equal(store.writable, false, 'the tools’ gate reads the same flag');
+  rt.deliver(se.id, { kind: 'agent', from: '@someone', text: 'Are you there?' });
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(agent.calls.length, before, 'no turn started while reconciling');
+  holding = false;
+  release();
+  assert.equal((await retried).status, 200);
+  assert.ok(store.writable);
+  assert.ok(store.state.threads.reconciled, 'the reconciling commit landed before anything opened');
+  await until(() => agent.calls.length === before + 1, 'the waiting turn to start once writes opened');
+  assert.equal((await call({ method: 'POST', path: `/api/threads/${t.id}/messages`, cookie, body: { text: 'Hello again' } })).status, 201);
+  off();
+  rt.stop(se.id, { silent: true });
+  await until(() => !rt.turns.has(se.id), 'the turn to stop');
+  await store.flush();
+});
