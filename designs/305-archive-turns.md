@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft 4, 1 November 2026. Draft 3 (the first full design) folded in critic’s first two reviews; draft 4 folds in critic’s review of draft 3 (go, five conditions) and developer’s (go, five changes and the held-emit audit) |
+| **Status** | Draft 5, 1 November 2026. Draft 4 folded in critic’s and developer’s reviews of draft 3; draft 5 replaces the design’s own goals with the existing requirements and high-level design it meets (the person’s review), and commits one event at a time (critic) |
 | **Author** | engineer |
 | **Reviewers** | critic (design-time read, before the pass is built); developer (senior developer, the store and 1a); the person and the integrator |
 | **Relates to** | #305, #508; `designs/508/storage-design.md` on #580 (“Snapshots and pruning”, “Performance and budgets”, the one-line commit of 1a, #588); `designs/architecture.md` (“The store”, “Attachments”); `designs/intent.md`, principle 7 (deleting a conversation ends it, which bears on “Open questions”) |
@@ -19,14 +19,25 @@ This design keeps each conversation’s **last two turns** of both in memory and
 
 On a 13.85 MB copy of this project’s store, the snapshot falls to about **4.0 MB** and its `JSON.stringify` from **20.1 ms to about 6 ms** (“Context: what the state holds today”). The storage design’s budget is the whole event-loop block, which is about **37 ms** today (the stringify plus converting the text to bytes); scaled by the same ratio it falls to about **11 ms**, so the whole-state snapshot stays far under the 50 ms budget, and the sharded snapshot (S2) is not needed.
 
-## Goals and non-goals
+## Requirements and design this rests on
 
-**Goals**
-- G1. Memory, `/api/state` and the snapshot hold only the last two turns’ work entries and activity steps of each conversation.
-- G2. Nothing the person could open before is lost: every archived entry and step stays readable, with the same detail, through the same views and routes.
-- G3. The log rebuilds the state: replay gives the same work lists and replies. The archived **details** live in `blobs/`, which becomes part of the durable data set (“Security and the operator”).
-- G4. A failure at any step leaves either the turn fully in memory, or the turn fully in its archive file with a durable event naming it; never a durable event that names a missing file.
-- G5. An older build fails visibly or shows less; it never corrupts the folder or crashes the page.
+This design adds no requirement of its own. It meets requirements already approved, and works inside the high-level design #508 already has. Requirement ids are from `designs/508/requirements.md` (rev 4.5, on #580); storage design sections are from `designs/508/storage-design.md` (draft 9, on #580).
+
+| Source | What it asks | How this design meets it |
+|---|---|---|
+| **#305**, factors 1, 2, 3, 5 and 7 | `/api/state` sends every work entry; the snapshot stringifies the whole state; activity updates resend a turn’s whole `steps`; a reply keeps every step; the work ledger grows per conversation | Old turns’ entries and steps leave the state, so all five shrink together (“Context: what the state holds today”) |
+| **#305**, factor 18 | Blobs live beside the store, not in it | Archive files are blobs; `blobs/` becomes part of the durable data set (“Security and the operator”) |
+| **PF-1** | A large room is as responsive as a small one | The snapshot’s event-loop block falls from about 37 ms to about 11 ms, and `/api/state` from 13.85 MB to about 4 MB, on the real-room copy |
+| **ST-1** | An older value’s shape is lifted on read; no migration run | An archived reply’s `{ archived, count }` and a turn summary entry are new shapes readers accept beside the old; old data is archived by ordinary events, not migrated (“Existing data”) |
+| **ST-4** | A commit is fsynced before it counts | `turn.archive` is a commit (storage design, “`commit`”), and the archive file is fsynced before it (I1) |
+| **SR-5** | The data folder’s files are private | Archive files are `0600` in `0700` folders (I7) |
+| **PF-9** | No new runtime dependency | None added |
+| **CX-2** | An agent reads any earlier item, in order, without loss | Unchanged: the read tools read items, not work or activity (access pattern A8) |
+| Storage design, “Snapshots and pruning” and “Performance and budgets” | S2 starts only if a stall still passes 50 ms after old turns leave memory | This is that change; S2 stays unneeded on the measured copy |
+| Storage design, “The writer” and “`commit`” | One-line commits, the function form, held emits, opIds kept only since the latest snapshot | The pass commits in the function form (I8), one event per commit, with opId `turn.archive:<turnId>`; the reducer’s idempotence covers a repeat after a snapshot |
+| Storage design, “Rollout and compatibility” | An older build meeting a multi-event (array) line skips it silently | No array commits: each `turn.archive` is a plain one-event line, so an older build fails visibly at it (“Compatibility and downgrade”) |
+| `architecture.md`, “The store” and “Attachments” | The log and snapshot hold the state; files live in content-addressed blobs | Summaries in the state, details in blobs |
+| `intent.md`, principle 7 | Deleting a conversation ends it | The open question on deleting archive files with their conversation |
 
 **Non-goals**
 - The transcript’s items themselves (the B1 to B3 window, #531 to #533).
@@ -248,8 +259,8 @@ On a missing or damaged file, the route answers 410 with “This turn’s detail
 
 On the first start of a build with this change, after the server is listening, a pass walks the conversations one at a time and archives each down to two turns, oldest first.
 
-- **It doesn’t hold the stream for long.** Each turn’s archive file is written and synced first, outside any commit, so that work holds nothing. Several turns are then committed together in one multi-event commit, whose fsync is the only time live emits are held, and the pass yields between commits so held emits drain.
-- **Estimate:** the real-room copy has about 930 turns, and about 930 less two per conversation to archive. Each archive file costs a file and a folder fsync (about 4 to 5 ms each, critic’s and developer’s measurements of `fsync` on this Mac), so roughly 8 to 10 s in all, almost all of it outside a commit. At, say, 20 turns per commit, about 45 commits each hold emits for one fsync.
+- **It doesn’t hold the stream for long.** Each turn’s archive file is written and synced first, outside any commit, so that work holds nothing. The turns’ `turn.archive` commits are then queued in chunks: each is a plain one-event commit, and commits queued together share one fsync (storage design, “The writer”), so a chunk holds live emits for about one fsync. The pass yields between chunks so held emits drain. There are no multi-event array commits: an older build skips an array line silently (storage design, T-27), which would turn a visible downgrade failure into a silent one.
+- **Estimate:** the real-room copy has about 930 turns, and about 930 less two per conversation to archive. Each archive file costs a file and a folder fsync (about 4 to 5 ms each, critic’s and developer’s measurements of `fsync` on this Mac), so roughly 8 to 10 s in all, almost all of it outside a commit. At, say, 20 commits per chunk, about 45 chunks each hold emits for one fsync.
 - **The batch size is set from T-9’s measurement** on the real-room copy, which records the total time and the longest hold.
 - **A crash** leaves a consistent prefix of whole turns (the reducer is per turn), and the next start continues.
 
@@ -326,7 +337,7 @@ The release note says so, with a `BREAKING CHANGE` footer, and `tools/unarchive-
 | Option | Why not |
 |---|---|
 | S2, the sharded snapshot | Splits the same bytes across files; memory and `/api/state` keep carrying them |
-| Drop old activity and command lines | Loses what the person can open today (G2) |
+| Drop old activity and command lines | Loses what the person can open today |
 | Keep N entries, not N turns | Splits a turn across memory and archive; the Work view groups by turn |
 | A file per turn under its own folder | Its own naming, publishing and verification, which the blob store now gives |
 | Archive by time (the last day) | Two turns is simple and measured; a day of a busy room holds many turns |
@@ -341,4 +352,4 @@ The publish order rests on these; their wording hasn’t been re-checked in this
 ## Open questions
 
 1. **Deleting a conversation:** delete its archive files with it (nothing else names them), or state the limit, shared with file copies, that blobs are kept? `intent.md` principle 7 says deleting a conversation ends it, which argues for deleting. For the person or the integrator.
-2. **The one-time pass’s batch size:** set from T-9’s measurement of total time and longest hold.
+2. **The one-time pass’s chunk size:** set from T-9’s measurement of total time and longest hold.
