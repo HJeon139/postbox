@@ -38,6 +38,9 @@ export class Store {
     this.snapshotEvery = snapshotEvery;
     this.state = emptyState();
     this.events = []; // the backlog for reconnecting browsers: { seq, line }
+    // The history the seqs count within: a token new at each load(), so a page from before a restart, whose seq may
+    // name events this store never kept, is told to resync whatever its seq (server/live-streams.mjs).
+    this.epoch = newId('ep');
     this.listeners = new Set();
     // The writer’s jobs (server/store-commit.mjs), in order: a line to append, a held emit, a commit, a flush or a
     // snapshot; and its loop, while one runs.
@@ -57,6 +60,7 @@ export class Store {
 
   /** Takes the folder (one store per folder, or load() rejects naming the holder), reads it, and leaves the writer at its end. */
   async load() {
+    this.epoch = newId('ep');
     if (!this.dir) return this;
     await this.io.mkdir(this.dir, { recursive: true });
     this.lock = await lockStore(this.io, this.dir);

@@ -283,6 +283,7 @@ export async function start({
     if (path === '/api/state' && req.method === 'GET') {
       return send(res, 200, {
         seq: store.state.seq,
+        epoch: store.epoch, // the history the seq counts within; the stream request echoes it (server/live-streams.mjs)
         state: store.state,
         config: {
           origin,
