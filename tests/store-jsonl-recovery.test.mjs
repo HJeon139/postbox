@@ -42,8 +42,9 @@ test('a new durable commit never joins the recovered torn tail', async (t) => {
   const lines = (await readFile(join(dir, 'events-1.jsonl'), 'utf8')).trimEnd().split('\n').map(JSON.parse);
   assert.equal(lines.length, 2);
   assert.equal(lines[0].data.id, 'old');
-  assert.ok(Array.isArray(lines[1]));
-  assert.equal(lines[1][0].data.id, 'new');
+  assert.equal(Array.isArray(lines[1]), false);
+  assert.equal(lines[1].op, 'after-torn-tail');
+  assert.equal(lines[1].data.id, 'new');
   assert.equal(store.state.seq, 2);
 });
 

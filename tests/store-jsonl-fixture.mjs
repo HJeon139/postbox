@@ -5,6 +5,10 @@ import { Store } from '../server/store.mjs';
 
 export const event = (seq, id) => ({ seq, type: 'thread', data: { id, members: [] } });
 export const line = (value) => `${JSON.stringify(value)}\n`;
+export const eventsIn = (text) => {
+  const value = JSON.parse(text);
+  return Array.isArray(value) ? value : [value];
+};
 const stores = new Map();
 
 export async function folder(t) {
@@ -62,4 +66,20 @@ export function deferred() {
     resolve = done;
   });
   return { promise, resolve };
+}
+
+export function waiting(promise, what) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`Timed out waiting for ${what}.`)), 3000);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }

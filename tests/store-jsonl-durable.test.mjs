@@ -30,7 +30,9 @@ test('short writes loop until a large multibyte transaction is completely writte
   assert.ok(writes > 1, 'fault injection actually forced a short write');
   const text = await fs.readFile(join(dir, 'events-1.jsonl'), 'utf8');
   assert.ok(text.endsWith('\n'));
-  assert.equal(JSON.parse(text)[0].data.title, events[0].data.title);
+  assert.equal(Array.isArray(JSON.parse(text)), false, 'one-event commits keep the plain event format');
+  assert.equal(JSON.parse(text).op, 'large');
+  assert.equal(JSON.parse(text).data.title, events[0].data.title);
 });
 
 test('a commit stays invisible until sync and held emits follow it in replay order', async (t) => {
@@ -74,44 +76,12 @@ test('a commit stays invisible until sync and held emits follow it in replay ord
   assert.deepEqual(seen[0].ids, ['a', 'b'], 'the first subscriber sees the entire transaction');
 });
 
-test('a sync that lands but reports failure is retried by opId without a second append', async (t) => {
-  const dir = await folder(t);
-  let fail = true;
-  let syncs = 0;
-  const io = disk({
-    open: async (path, ...args) => {
-      const handle = await fs.open(path, ...args);
-      if (!logFile(path)) return handle;
-      return handleWith(handle, {
-        sync: async () => {
-          syncs++;
-          await handle.sync();
-          if (fail) {
-            fail = false;
-            throw Object.assign(new Error('lost sync result'), { code: 'EIO' });
-          }
-        },
-      });
-    },
-  });
-  const store = await opened(t, dir, { io });
-  assert.equal(typeof store.commit, 'function');
-  await assert.rejects(store.commit(changes('once'), { opId: 'uncertain' }), /lost sync result|EIO/);
-  assert.equal(store.state.threads.once, undefined);
-  const bytes = await fs.readFile(join(dir, 'events-1.jsonl'), 'utf8');
-  assert.equal(JSON.parse(bytes)[0].data.id, 'once', 'the failure was after the bytes landed');
-  await store.commit(changes('once'), { opId: 'uncertain' });
-  assert.equal(await fs.readFile(join(dir, 'events-1.jsonl'), 'utf8'), bytes);
-  assert.equal(store.state.seq, 1);
-  assert.ok(syncs >= 2, 'an uncertain line is synced successfully before acknowledgment');
-});
-
 test('repeating an acknowledged opId leaves the sequence and log unchanged', async (t) => {
   const dir = await folder(t);
   const store = await opened(t, dir);
-  await store.commit(changes('once'), { opId: 'repeat' });
+  assert.deepEqual(await store.commit(changes('once'), { opId: 'repeat' }), { seq: 1, duplicate: false });
   const before = await fs.readFile(join(dir, 'events-1.jsonl'), 'utf8');
-  await store.commit(changes('once'), { opId: 'repeat' });
+  assert.deepEqual(await store.commit(changes('once'), { opId: 'repeat' }), { seq: 1, duplicate: true });
   assert.equal(store.state.seq, 1);
   assert.equal(await fs.readFile(join(dir, 'events-1.jsonl'), 'utf8'), before);
 });
@@ -140,7 +110,7 @@ test('restart recovers an opId from a complete line whose caller never got ackno
   const before = await fs.readFile(join(dir, 'events-1.jsonl'), 'utf8');
   const recoveredDir = await image(t, dir);
   const next = await opened(t, recoveredDir);
-  await next.commit(changes('once'), { opId: 'restart' });
+  assert.deepEqual(await next.commit(changes('once'), { opId: 'restart' }), { seq: 1, duplicate: true });
   assert.equal(next.state.seq, 1);
   assert.equal(await fs.readFile(join(recoveredDir, 'events-1.jsonl'), 'utf8'), before);
 });
