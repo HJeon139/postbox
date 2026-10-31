@@ -76,13 +76,15 @@ test('I8: a reload listener’s commit is durable before anyone hears writes reo
   const off = s.onReload(() => {
     // Reconciliation that writes: through commit, after the install, as a stand-in for A1’s records going back to waiting.
     faults.sync = () => gate; // its fsync is held
-    reconciled = s.commit([thread('reconciled')], { opId: 'reconcile' });
+    reconciled = s.reconcile([thread('reconciled')], { opId: 'reconcile' });
     return reconciled;
   });
   const retry = s.reload();
   await new Promise((r) => setTimeout(r, 30));
   assert.ok(reconciled, 'the listener ran after the install');
   assert.ok(!heard.includes('open'), `nothing heard writes reopen while the reconciliation sync is held: ${heard.join()}`);
+  assert.equal(s.writable, false, 'closed to outside writes while reconciling');
+  await assert.rejects(s.commit([thread('outside')], { opId: 'outside' }), /EIO|Retry/, 'an outside commit is refused meanwhile');
   faults.sync = null;
   release();
   await retry;
@@ -104,7 +106,7 @@ test('I8: a reload listener’s commit is durable before anyone hears writes reo
   assert.equal(s.writable, true);
   await s.close();
   const b = await new Store(dir).load();
-  assert.deepEqual(Object.keys(b.state.threads).sort(), ['reconciled', 't1', 'x', 'y']);
+  assert.deepEqual(Object.keys(b.state.threads).sort(), ['reconciled', 't1', 'x', 'y'], 'the outside commit never landed');
   await b.close();
   await rm(dir, { recursive: true });
 });

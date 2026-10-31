@@ -71,6 +71,9 @@ export class Store {
     this.lost = null; // history the log lost, { from, to, count }, found at load (server/store-replay.mjs)
     this.warning = null; // a snapshot that failed, while the log goes on
     this.retrying = null; // reload()’s promise while one runs
+    // Retry has installed the recovered state and runs the reload listeners’ reconciliation: the writer runs and
+    // reconcile() commits, while `writable` stays false, so the router, the tools and turn starts stay closed (I3).
+    this.reconciling = false;
     this.writtenThrough = 0; // the last seq whose line was appended
     this.savedThrough = 0; // the last seq whose line was fsynced: the page marks later changes unsaved
     this.nextSnapshotAt = 0; // after a failed snapshot, no attempt before this time
@@ -109,6 +112,15 @@ export class Store {
   /** Retry: reloads the folder on a new epoch and reopens writes, or rejects and stays closed (server/store-retry.mjs). */
   reload() {
     return reload(this);
+  }
+
+  /**
+   * A commit a reload listener makes while Retry reconciles (A2’s records back to waiting): the one path through the
+   * closed store, and only while it is reconciling. Outside callers use commit(), which stays refused until Retry ends.
+   * @param {any[] | ((state: any) => any[])} events @param {{ opId?: string }} [options]
+   */
+  reconcile(events, options) {
+    return commit(this, events, { ...options, internal: true });
   }
 
   newEpoch() {
@@ -188,7 +200,7 @@ export class Store {
     this.sequence(ev);
     const line = this.record(ev);
     this.notify(ev);
-    if (!this.writable) {
+    if (!(this.writable || this.reconciling)) {
       if (!this.warned) console.error(`An event wasn’t written: ${this.cause.message}`);
       this.warned = true;
     } else if (this.dir) {
@@ -225,7 +237,7 @@ export class Store {
 
   /** Starts the writer’s loop if it isn’t running, writes are open and no reload is under way. */
   pump() {
-    if (this.running || !this.writable || !this.queue.length) return;
+    if (this.running || !(this.writable || this.reconciling) || !this.queue.length) return;
     const gen = this.generation;
     this.running = run(this, gen).finally(() => {
       if (this.generation !== gen) return; // a reload took the loop over
@@ -236,7 +248,7 @@ export class Store {
 
   /** A job for the writer’s loop, resolved when it has run; rejected with the cause while writes are closed. @param {'flush' | 'snapshot'} kind */
   job(kind) {
-    if (!this.writable) return Promise.reject(this.cause);
+    if (!(this.writable || this.reconciling)) return Promise.reject(this.cause);
     return new Promise((resolve, reject) => {
       this.queue.push({ [kind]: { resolve, reject } });
       this.pump();

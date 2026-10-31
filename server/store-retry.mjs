@@ -92,20 +92,23 @@ async function retry(store) {
   }
   install(store, c); // d.
   store.fh = fh;
+  // Reconciliation (A2’s records going back to waiting; the I8 stand-in in the specs) runs now, through
+  // store.reconcile(), and is awaited: its lines are durable before writes open and the status listeners run what
+  // waited (gpt’s sixth finding on 1b). Meanwhile `writable` stays false, so the router, the tools and turn starts
+  // are still refused: only the listeners’ internal path writes. A listener that fails leaves the store closed, naming
+  // it; the next Retry reloads and reconciles afresh.
+  store.reconciling = true;
+  try {
+    await Promise.all([...store.reloaders].map((fn) => fn()));
+  } catch (e) {
+    throw closedBy(store, Object.assign(new Error(`reconciliation after the reload failed: ${e.message}`), { code: e.code }));
+  } finally {
+    store.reconciling = false;
+  }
   store.writable = true;
   store.cause = null;
   store.warned = false;
   store.pump();
-  // Reconciliation that writes (A2’s records going back to waiting; the I8 stand-in in the specs) runs now, through
-  // commit, and is awaited: its lines are durable before the status listeners hear writes reopen and run what waited
-  // (gpt’s sixth finding on 1b: a listener’s promise was ignored, so held work could start before its commit landed).
-  // A listener that fails closes the store again, naming it; the next Retry reloads and reconciles afresh.
-  try {
-    await Promise.all([...store.reloaders].map((fn) => fn()));
-  } catch (e) {
-    store.writable = false;
-    throw closedBy(store, Object.assign(new Error(`reconciliation after the reload failed: ${e.message}`), { code: e.code }));
-  }
 }
 
 /** Whether a promise settles within `ms`; the timer is cleared either way, so it never holds the process open. */

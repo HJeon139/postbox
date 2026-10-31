@@ -181,7 +181,7 @@ function fail(store, e) {
  * @param {import('./store.mjs').Store} store @param {number} gen  the generation this loop runs as
  */
 export async function run(store, gen) {
-  while (store.queue.length && store.generation === gen && store.writable) {
+  while (store.queue.length && store.generation === gen && (store.writable || store.reconciling)) {
     const job = store.queue[0];
     if (job.commit) await writeCommits(store, gen);
     else if (job.line !== undefined || job.held) await writeLines(store, gen);
@@ -210,11 +210,13 @@ export async function run(store, gen) {
  * Commits events as one durable line (see the header). `events` is an array of `{type, data}`, or a function of the
  * state that gives one, evaluated when the commit is sequenced. Resolves `{ seq, duplicate }` once the line is fsynced;
  * rejects with the cause while the store is closed.
- * @param {import('./store.mjs').Store} store @param {any[] | ((state: any) => any[])} events @param {{ opId?: string }} [opts]
+ * @param {import('./store.mjs').Store} store @param {any[] | ((state: any) => any[])} events @param {{ opId?: string, internal?: boolean }} [opts]
  * @returns {Promise<{ seq: number, duplicate: boolean }>}
  */
-export function commit(store, events, { opId } = {}) {
-  if (!store.writable) return Promise.reject(store.cause);
+export function commit(store, events, { opId, internal = false } = {}) {
+  // Closed to every caller but the reconciliation Retry runs itself (store.reconcile), which carries `internal`; the
+  // outside entry points (the router, the tools, a turn start) never set it, and are gated on `writable` before here.
+  if (!store.writable && !(internal && store.reconciling)) return Promise.reject(store.cause);
   return new Promise((resolve, reject) => {
     store.queue.push({ commit: { events, opId, resolve, reject } });
     store.waitingCommits++;
