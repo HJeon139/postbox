@@ -11,6 +11,13 @@
 // finishes, since Postbox imports before it reads the store. Without the mark, a crash after the first batch of events
 // left Redis part way along the log, which the next start refused (review finding 3 on #525).
 //
+// The renames come after that commit, one file at a time, so a crash between two of them leaves `imported` set and
+// some files in place: `imported` records each file the import covered (name and SHA-256), and a start that finds files
+// still in place which all match it finishes the renames and goes on, with nothing to flush or import again; a file
+// matching none is another store’s, refused by name (gpt’s r10 review of #553, blocker 1). Renaming before the commit
+// would leave `importing` set with the files half renamed, and a reimport would have to find them again from the
+// backup; the record of what was covered is the simpler state to recover from.
+//
 // What Redis would refuse is found first, so the import can’t fail on it (the integrator’s re-review of #553, blocker
 // 2). Old Postbox cut text with slice(0, n - 1), which can end a title inside an emoji: a lone surrogate, which RedisJSON
 // refuses. It’s repaired with U+FFFD, in the snapshot’s documents and the log’s events alike, as the store repairs its
@@ -22,17 +29,13 @@
 // --fresh); the next start imports again from the start, and the count goes once an import finishes. Postbox doesn’t
 // start on an empty state with the line “you can still read everything”, since nothing would be there to read.
 
-import { createHash } from 'node:crypto';
-import { chmod, copyFile, mkdir, readdir, readFile, rename, rm } from 'node:fs/promises';
+import { readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { apply, emptyState, ownState } from '../shared/state.mjs';
-import { depthOf, REDIS_DEPTH, storable, wellFormed } from '../shared/storable.mjs';
-import { COLLECTIONS, KIND, roundStateCosts, writesFor } from './store-docs.mjs';
+import { depthOf, REDIS_DEPTH } from '../shared/storable.mjs';
+import { COLLECTIONS, KIND, writesFor } from './store-docs.mjs';
+import { backUp, markMigrated, oldFiles, readOld } from './store-import-files.mjs';
 import { probeWrites, writeBatch } from './store-redis.mjs';
 import { TRANSIENT } from './store-reject.mjs';
-
-/** storable() with its depth check off: the log’s events go into a stream, which takes any text; only their documents nest. */
-const ANY_DEPTH = { jsonDepth: Number.POSITIVE_INFINITY };
 
 /** Removes a data folder’s store, for a fresh start: the Redis data and any old log, snapshot or store.json. */
 export async function clearStore(dataDir) {
@@ -44,69 +47,6 @@ export async function clearStore(dataDir) {
 
 /** @param {string} code @param {string} message @param {object} [more] */
 const fail = (code, message, more = {}) => Object.assign(new Error(message), { code }, more);
-
-/** The old store’s files in a data folder, the log’s segments in order. @param {string} dir */
-async function oldFiles(dir) {
-  const names = await readdir(dir);
-  const segments = names.filter((n) => /^events-\d+\.jsonl$/.test(n)).sort((a, b) => Number(a.slice(7, -6)) - Number(b.slice(7, -6)));
-  const base = names.includes('snapshot.json') ? ['snapshot.json'] : names.includes('store.json') ? ['store.json'] : [];
-  return [...base, ...segments];
-}
-
-/**
- * The state the old store loaded, and the log’s events after its snapshot, with text cut inside a character repaired
- * (U+FFFD) in both; `repaired` counts the events it repaired, and whether the snapshot needed it; `hash` is the files’
- * SHA-256, which tells these files from another store’s at the next start.
- * @param {string} dir @param {string[]} files
- */
-export async function readOld(dir, files) {
-  const hash = createHash('sha256');
-  let state = emptyState();
-  if (files[0] === 'snapshot.json' || files[0] === 'store.json') {
-    const text = await readFile(join(dir, files[0]), 'utf8');
-    hash.update(text);
-    state = ownState({ ...emptyState(), ...JSON.parse(text) });
-  }
-  // The snapshot’s documents, before the log’s events add to them: those are repaired as they’re read.
-  const snapshotCut = !!storable(JSON.stringify(state), ANY_DEPTH);
-  if (snapshotCut) wellFormed(state);
-  const events = [];
-  let eventsCut = 0;
-  const segments = files.filter((f) => f.startsWith('events-'));
-  for (const name of segments) {
-    const text = await readFile(join(dir, name), 'utf8');
-    hash.update(text);
-    const lines = text.split('\n');
-    for (const [i, line] of lines.entries()) {
-      if (!line.trim()) continue;
-      let ev;
-      try {
-        ev = JSON.parse(line);
-      } catch {
-        // A torn last line: the old server stopped mid-write. One with lines after it, or in a segment before the last,
-        // is damage the person should hear of, as the old store said; the rest of that segment is skipped, as it was.
-        const rest = lines.slice(i + 1).filter((l) => l.trim()).length;
-        if (rest || name !== segments.at(-1))
-          console.error(`Line ${i + 1} of ${join(dir, name)} isn’t JSON, so the import skipped it and the ${rest} line(s) after it in that file.`);
-        break;
-      }
-      if (ev.seq <= state.seq) continue;
-      // JSON.stringify wrote a lone surrogate as its \udXXX escape, which the line still holds; the repaired event is
-      // what the state, the stream and a browser replaying it get, so all three hold the same text.
-      let kept = line;
-      if (storable(line, ANY_DEPTH)) {
-        eventsCut++;
-        kept = JSON.stringify(wellFormed(ev));
-      }
-      apply(state, ev.type, ev.data);
-      state.seq = ev.seq;
-      events.push({ seq: ev.seq, line: kept });
-    }
-  }
-  // The documents hold costs rounded as the store rounds them when it takes an event in; the old log keeps its events
-  // as they were.
-  return { state: roundStateCosts(state), events, repaired: { snapshot: snapshotCut, events: eventsCut }, hash: hash.digest('hex') };
-}
 
 /** @typedef {{ what: string, writes: (string|number)[][] }} Group  one document’s writes, named for a report */
 
@@ -186,6 +126,11 @@ async function writeDocuments(c, groups) {
  * What an import of the old files in a data folder would take in, once it should: the old files read (readOld), or null
  * when this Redis already imported these very files. A Redis holding other events, or imported from other files, is
  * refused rather than mixed.
+ *
+ * The import commits `imported` before it renames the files one by one (importLegacy), so a crash between two renames
+ * leaves some in place. `imported` names each file it covered with its hash: files still in place that all match are
+ * that import’s, and the start finishes their renames (gpt’s r10 review of #553, blocker 1); a file matching none is
+ * another store’s, refused by name. An `imported` from before the files were recorded compares the hash of them all.
  * @param {string} dir @param {import('./redis-client.mjs').RedisClient} c @param {string[]} files @param {string | null} marked
  */
 async function toImport(dir, c, files, marked) {
@@ -193,35 +138,24 @@ async function toImport(dir, c, files, marked) {
   if (marked) return old;
   const have = Number((await c.call('GET', 'seq')) ?? 0);
   const imported = JSON.parse((await c.call('GET', 'imported')) ?? 'null');
-  if (imported?.hash === old.hash) return null;
-  if (imported)
+  if (imported) {
+    const strangers = imported.files ? old.files.filter((f) => !imported.files.some((r) => r.name === f.name && r.hash === f.hash)) : [];
+    if (strangers.length === 0 && (imported.files || imported.hash === old.hash)) {
+      await markMigrated(dir, files);
+      return null;
+    }
+    const which = strangers.length ? ` ${strangers.map((f) => f.name).join(', ')}` : '';
     throw fail(
       'EIMPORT',
-      `The old files in ${dir} aren’t the ones this store was imported from (its import, kept in ${imported.backup}, read a log to event ${imported.seq}; these go to ${old.state.seq}). Postbox won’t mix them: move them aside, or start with --fresh to import them into an empty store.`,
+      `The old files in ${dir} aren’t the ones this store was imported from (its import, kept in ${imported.backup}, read a log to event ${imported.seq}; these go to ${old.state.seq}; not from it:${which || ' every file'}). Postbox won’t mix them: move them aside, or start with --fresh to import them into an empty store.`,
     );
+  }
   if (have > 0)
     throw fail(
       'EIMPORT',
       `The store’s Redis holds events up to ${have}, but the old log in ${dir} goes to ${old.state.seq}. Postbox won’t mix them; move one aside.`,
     );
   return old;
-}
-
-/**
- * Copies the old files into the backup folder, the one an import cut short began or a new dated one. The backup is a
- * whole copy of every conversation: only the person may open it (0700), whatever the data folder’s mode.
- * @param {string} dir @param {string[]} files @param {string | null} marked @param {Date} now
- */
-async function backUp(dir, files, marked, now) {
-  const backup = marked ?? join(dir, 'backups', `store-${now.toISOString().slice(0, 19).replace(/:/g, '-')}`);
-  await mkdir(join(dir, 'backups'), { recursive: true, mode: 0o700 });
-  await mkdir(backup, { recursive: true, mode: 0o700 });
-  await chmod(backup, 0o700);
-  for (const f of files) {
-    await copyFile(join(dir, f), join(backup, f));
-    await chmod(join(backup, f), 0o600);
-  }
-  return backup;
 }
 
 /**
@@ -239,6 +173,7 @@ export async function importLegacy(dir, c, { now = new Date() } = {}) {
   const old = await toImport(dir, c, files, marked);
   if (!old) return false;
   const { state, events, repaired, hash } = old;
+  const covered = old.files; // each file this import covers, so a start after a crash between the renames below can finish them
   const backup = await backUp(dir, files, marked, now);
   // Earlier attempts at this import, counted before the flush takes the record, and recorded again with this one.
   const attempt = (marked && JSON.parse((await c.call('GET', 'import-attempts')) ?? 'null')?.attempts) + 1 || 1;
@@ -264,14 +199,14 @@ export async function importLegacy(dir, c, { now = new Date() } = {}) {
       "redis.call('SET', 'seq', ARGV[1]); redis.call('SET', 'imported', ARGV[2]); redis.call('DEL', 'importing', 'import-attempts')",
       0,
       state.seq,
-      JSON.stringify({ hash, seq: state.seq, backup, at: now.toISOString() }),
+      JSON.stringify({ hash, files: covered, seq: state.seq, backup, at: now.toISOString() }),
     );
   } catch (e) {
     const message = `Postbox couldn’t import the old store in ${dir} into its Redis (attempt ${attempt}): ${e.message} Nothing of yours is lost: the old files are still in place, and a copy is in ${backup}. Postbox imports them again when it next starts; to start with an empty store instead, start it with --fresh (the copy in ${backup} stays).`;
     await c.call('SET', 'import-attempts', JSON.stringify({ attempts: attempt, at: now.toISOString(), message: e.message })).catch(() => {});
     throw fail('EIMPORT', message, { cause: 'import-failed', attempts: attempt, backup });
   }
-  for (const f of files) await rename(join(dir, f), join(dir, `${f}.migrated`));
+  await markMigrated(dir, files);
   for (const { what, why } of left) console.error(`The import left out the ${what} of ${dir}: ${why}. The copy in ${backup} keeps it.`);
   return true;
 }

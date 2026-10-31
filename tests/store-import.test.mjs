@@ -187,3 +187,54 @@ test('#553: “already imported” compares the files, not their seq alone: anot
   const b = await open(dir);
   assert.equal(b.state.seq, evs.length + 1);
 });
+
+// gpt’s r10 review of #553, blocker 1: `imported` was committed before the old files were renamed one by one, so a
+// crash between the snapshot’s rename and a segment’s left the segment alone in the folder, which the next start hashed
+// by itself and refused as another store’s. The import records each file it covered (name and hash) in `imported`: a
+// start that finds some of them still in place, all matching, finishes the renames and goes on with the store.
+test('a restart completes an import interrupted between legacy file renames', async () => {
+  const { dir, evs } = await oldFolder(20);
+  const first = await open(dir);
+  const expected = costsRounded(todaysState(evs));
+  assert.deepEqual(first.state, expected);
+  await first.close();
+  // Redis’s imported marker was committed; the snapshot’s rename completed, the segment’s did not.
+  await rename(join(dir, 'events-21.jsonl.migrated'), join(dir, 'events-21.jsonl'));
+  const again = await open(dir);
+  assert.deepEqual(again.state, expected);
+  const names = await readdir(dir);
+  assert.ok(names.includes('events-21.jsonl.migrated') && !names.includes('events-21.jsonl'), `the rename is finished: ${names.join(',')}`);
+  assert.equal((await readdir(join(dir, 'backups'))).length, 1, 'no second backup, nothing imported again');
+});
+
+test('a restart completes an import interrupted before any legacy file was renamed', async () => {
+  const { dir, evs } = await oldFolder(20);
+  const first = await open(dir);
+  const expected = costsRounded(todaysState(evs));
+  assert.deepEqual(first.state, expected);
+  await first.close();
+  for (const n of await readdir(dir)) if (n.endsWith('.migrated')) await rename(join(dir, n), join(dir, n.replace(/\.migrated$/, '')));
+  const again = await open(dir);
+  assert.deepEqual(again.state, expected);
+  const names = await readdir(dir);
+  assert.ok(names.includes('snapshot.json.migrated') && names.includes('events-21.jsonl.migrated'), names.join(','));
+  assert.ok(!names.includes('snapshot.json') && !names.includes('events-21.jsonl'), names.join(','));
+});
+
+test('a file left from the import beside another store’s file is refused as a different store, naming the stranger', async () => {
+  const { dir } = await oldFolder(20);
+  const first = await open(dir);
+  await first.close();
+  await rename(join(dir, 'events-21.jsonl.migrated'), join(dir, 'events-21.jsonl'));
+  await writeFile(
+    join(dir, 'snapshot.json'),
+    JSON.stringify({ ...todaysState(roomEvents().slice(0, 5)), threads: { strange: { id: 'strange', members: [] } } }),
+  );
+  await assert.rejects(new Store(dir).load(), (e) => {
+    assert.equal(e.code, 'EIMPORT');
+    assert.match(e.message, /aren’t the ones this store was imported from/);
+    assert.match(e.message, /snapshot\.json/, `names the file that isn’t from the import: ${e.message}`);
+    return true;
+  });
+  assert.ok((await readdir(dir)).includes('events-21.jsonl'), 'nothing renamed while a stranger is beside it');
+});
