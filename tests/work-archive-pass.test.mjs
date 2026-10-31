@@ -117,3 +117,57 @@ test('with five ended turns the pass archives three, oldest first, and stops at 
     ['t1', 't2', 't3'],
   );
 });
+
+for (const state of ['running', 'background', 'unknown'])
+  test(`I4: a command left ${state} keeps its turn hot, and later ended turns are archived past it (critic, ledger.mjs:434-511)`, async () => {
+    const s = room(['t1', 't2', 't3', 't4']);
+    s.emit('work.patch', { convId: C, id: 'w_t1_2', patch: { state } });
+    await archiveTurns({ store: s, blobs: memoryBlobs(), convId: C, running: new Set() });
+    const archived = s.state.work[C].filter((e) => e.kind === 'turn-archive').map((e) => e.turnId);
+    assert.deepEqual(archived, ['t2'], 't1 stays hot; t2 goes; t3 and t4 are the last two');
+  });
+
+test('I4: a turn whose turn entry still says running stays hot', async () => {
+  const s = room();
+  s.emit('work.add', { convId: C, entry: { id: 't1', kind: 'turn', turnId: 't1', status: 'running', at: 0, handle: 'researcher' } });
+  await archiveTurns({ store: s, blobs: memoryBlobs(), convId: C, running: new Set() });
+  assert.ok(!s.state.work[C].some((e) => e.kind === 'turn-archive'));
+});
+
+test('a restore after archiving works on the file entry, which has no turn and stays hot (critic’s restore point, ledger.mjs:562-590, :689)', async () => {
+  const s = room();
+  s.emit('work.add', { convId: C, entry: { id: 'wf_a', kind: 'file', path: '/p/a.txt', turns: ['t1'], restored: null, at: 1 } });
+  s.emit('work.add', { convId: C, entry: { id: 'wd_a', kind: 'change', fileId: 'wf_a', turnId: 't1', added: 3, deleted: 1, at: 1 } });
+  await archiveTurns({ store: s, blobs: memoryBlobs(), convId: C, running: new Set() });
+  const list = s.state.work[C];
+  assert.ok(
+    list.some((e) => e.id === 'wf_a'),
+    'the file entry is hot',
+  );
+  assert.ok(!list.some((e) => e.id === 'wd_a'), 't1’s change went to the archive');
+  assert.deepEqual(list.find((e) => e.kind === 'turn-archive').counts.lines, { added: 3, removed: 1 });
+  s.emit('work.patch', { convId: C, id: 'wf_a', patch: { restored: { at: 99 } } });
+  assert.deepEqual(list.find((e) => e.id === 'wf_a').restored, { at: 99 }, 'the restore lands on the hot file entry');
+});
+
+test('the summary keeps the turn’s effort, so the conversation’s totals don’t shrink when a turn is archived', async () => {
+  const s = room();
+  s.emit('work.add', {
+    convId: C,
+    entry: {
+      id: 't1',
+      kind: 'turn',
+      turnId: 't1',
+      status: 'done',
+      at: 0,
+      handle: 'researcher',
+      ms: 5000,
+      toolCalls: 7,
+      costUsd: 0.25,
+      tokens: { input: 10, output: 5 },
+    },
+  });
+  await archiveTurns({ store: s, blobs: memoryBlobs(), convId: C, running: new Set() });
+  const sum = s.state.work[C].find((e) => e.kind === 'turn-archive');
+  assert.deepEqual(sum.effort, { turns: 1, ms: 5000, toolCalls: 7, costUsd: 0.25, tokens: { input: 10, output: 5 } });
+});
