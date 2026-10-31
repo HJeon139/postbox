@@ -1481,9 +1481,23 @@ export class Runtime {
   async stopTurns({ graceMs = 4000 } = {}) {
     this.closing = true;
     // A turn on a remote host doesn’t need Postbox: it goes on there, and is attached again after the restart (#120).
-    for (const [id, turn] of [...this.turns]) if (!turn.remote) this.stop(id, { silent: true, by: 'shutdown' });
-    this.remote.close();
-    await this.stopKeptJobs(Object.keys(this.s.sessions), 'Postbox stopped it as it shut down.');
+    // A stop that fails (its writes are refused while the store is down) is logged, and the others still happen: one
+    // turn's refused patch mustn't leave the other turns' CLIs, the hosts' link or the kept jobs running (#553).
+    const failed = (what, e) => console.error(`Postbox couldn’t stop ${what} cleanly as it shut down: ${e.message}`);
+    for (const [id, turn] of [...this.turns]) {
+      if (turn.remote) continue;
+      try {
+        this.stop(id, { silent: true, by: 'shutdown' });
+      } catch (e) {
+        failed(`the turn of session ${id}`, e);
+      }
+    }
+    try {
+      this.remote.close();
+    } catch (e) {
+      failed('the hosts’ link', e);
+    }
+    await this.stopKeptJobs(Object.keys(this.s.sessions), 'Postbox stopped it as it shut down.').catch((e) => failed('the background jobs it kept running', e));
     /** @type {NodeJS.Timeout|undefined} */
     let timer;
     const late = new Promise((r) => {

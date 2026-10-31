@@ -547,9 +547,11 @@ export async function start({
     ];
     for (const [what, step] of steps) await step().catch((e) => console.error(`Postbox couldn’t stop its ${what} cleanly as it shut down: ${e.message}`));
     narrator?.stop();
-    if (server.listening) await new Promise((ok) => server.close(ok));
     await rt.ledger.idle().catch((e) => console.error(`Postbox couldn’t finish its work ledger as it shut down: ${e.message}`));
+    // The store closes while the server still listens: its flush, and during an outage its log of what it couldn’t
+    // save, need a live event loop, which the store’s unref’d Redis child alone doesn’t give (#553’s re-review).
     await store.close();
+    if (server.listening) await new Promise((ok) => server.close(ok));
   }
   if (listen) await listenServer(server, port, host, close, () => rt.drainAll()); // listening: drain what waited across a restart (#228)
   const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));
