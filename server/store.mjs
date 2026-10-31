@@ -18,7 +18,7 @@ import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
 import { apply, emptyState } from '../shared/state.mjs';
-import { commit, run } from './store-commit.mjs';
+import { commit, run, syncDir } from './store-commit.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
 import { install, recover } from './store-recover.mjs';
 
@@ -62,9 +62,11 @@ export class Store {
     // Writes are open, or closed with the cause after a write failed: commits are refused until Postbox restarts
     // (#508’s storage design, “When a write fails”; Retry as a reload is 1b’s).
     this.writable = true;
+    /** @type {(Error & { code?: string }) | null} why writes are closed */
     this.cause = null;
     this.warned = false; // an emit while closed logged the cause
     this.lost = null; // history the log lost, { from, to, count }, found at load (server/store-replay.mjs)
+    this.closed = false; // close() ran: nothing is applied or written here again
   }
 
   newEpoch() {
@@ -72,7 +74,7 @@ export class Store {
   }
 
   /** Takes the folder (one store per folder, or load() rejects naming the holder), reads it, and leaves the writer at its end. */
-  async load() {
+  async load({ fresh = false } = {}) {
     if (!this.dir) {
       this.epoch = this.newEpoch();
       return this;
@@ -80,7 +82,18 @@ export class Store {
     await this.io.mkdir(this.dir, { recursive: true });
     this.lock = await lockStore(this.io, this.dir);
     try {
+      // A fresh start empties the folder only once it holds the lock, so a running Postbox’s files are never deleted
+      // under it (the integrator’s review of 1a).
+      if (fresh)
+        for (const n of await this.io.readdir(this.dir))
+          if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n)) await this.io.rm(this.at(n), { force: true });
       install(this, await recover(this));
+      // The folder’s entries are made durable once per start: a segment rotated by an earlier run that only ever held
+      // emits may never have had its entry synced (the integrator’s review of 1a). A filesystem that can’t sync a
+      // folder is tolerated; any other error refuses the start.
+      await syncDir(this).catch((e) => {
+        if (!['EINVAL', 'ENOTSUP', 'EPERM', 'EISDIR'].includes(e.code)) throw e;
+      });
     } catch (e) {
       await unlockStore(this.io, this.lock);
       this.lock = null;
@@ -135,6 +148,12 @@ export class Store {
    */
   emit(type, data) {
     const ev = { type, data };
+    if (this.closed) {
+      // Applied nowhere: the store has been handed over. Said once, so an exit callback’s stream doesn’t flood the log.
+      if (!this.warned) console.error(`An event after the store closed was dropped: ${this.cause?.message}`);
+      this.warned = true;
+      return ev;
+    }
     if (this.waitingCommits || this.held) {
       this.held++;
       this.queue.push({ held: ev, json: JSON.stringify(ev) }); // as it is now: the caller may change its object later
@@ -145,7 +164,7 @@ export class Store {
     const line = this.record(ev);
     this.notify(ev);
     if (!this.writable) {
-      if (!this.warned) console.error(`An event wasn’t written: ${this.cause.message}`);
+      if (!this.warned) console.error(`An event wasn’t written: ${this.cause?.message}`);
       this.warned = true;
     } else if (this.dir) {
       this.queue.push({ line: `${line}\n` });
@@ -209,11 +228,18 @@ export class Store {
     if (this.dir) await this.job('snapshot');
   }
 
-  /** Flushes, lets go of the log, and releases the folder for the next store. */
+  /**
+   * Flushes, lets go of the log, releases the folder for the next store, and closes this store for good: a late emit or
+   * commit (an adapter’s exit callback after shutdown) is refused and never reopens the segment, since another store may
+   * hold the folder by then and two must never interleave lines in one log (the integrator’s review of 1a).
+   */
   async close() {
     try {
       if (this.writable) await this.flush();
     } finally {
+      this.closed = true;
+      this.writable = false;
+      this.cause = Object.assign(new Error('The store is closed: Postbox shut it down, so nothing more is saved here.'), { code: 'ECLOSED' });
       await this.fh?.close();
       this.fh = null;
       await unlockStore(this.io, this.lock);

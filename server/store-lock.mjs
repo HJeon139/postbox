@@ -117,7 +117,9 @@ export async function lockStore(io, dir, probe = {}) {
         continue;
       }
       if (isAlive(holder.pid) && (await sameStart(holder, startOf)))
-        throw new Error(`Another Postbox store (process ${holder.pid}) holds ${dir}. Stop it first, or use another data folder.`);
+        throw new Error(
+          `Another Postbox store (process ${holder.pid}) holds ${dir}. Stop it first, or use another data folder. If no Postbox is running on it, remove ${path} and start again.`,
+        );
       await takeOver(io, path, holder, isAlive, startOf);
     }
   }

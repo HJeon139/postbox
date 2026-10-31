@@ -17,6 +17,7 @@
 
 /** The segment the log is being appended to, opened once. @param {import('./store.mjs').Store} store */
 async function handle(store) {
+  if (store.closed) throw store.cause; // never reopened after close(): another store may hold the folder now
   store.fh ??= await store.io.open(store.at(store.segment), 'a');
   return store.fh;
 }
@@ -65,13 +66,13 @@ function applyCommits(store, commits) {
       store.record(ev);
       heard.push(ev);
     }
-    if (c.opId !== undefined) store.ops.set(c.opId, c.events[0].seq);
+    if (c.opId !== undefined) store.ops.set(c.opId, c.events.at(-1).seq); // the last seq, as the design says
     store.sinceSnapshot += c.events.length;
   }
   for (const ev of heard) store.notify(ev);
   for (const c of commits) {
-    c.resolve({ seq: c.events[0].seq, duplicate: false });
-    for (const f of c.followers ?? []) f.resolve({ seq: c.events[0].seq, duplicate: true });
+    c.resolve({ seq: c.events.at(-1).seq, duplicate: false });
+    for (const f of c.followers ?? []) f.resolve({ seq: c.events.at(-1).seq, duplicate: true });
   }
 }
 
@@ -272,12 +273,13 @@ export async function syncDir(store) {
  * the covered segments is at or below the snapshot’s seq.
  */
 async function takeSnapshot(store) {
+  const at = store.state.seq; // the snapshot’s seq: the new segment is named from it, not from a seq advanced meanwhile
   await writeSnapshot(store);
   await syncDir(store);
   await store.fh?.close();
   store.fh = null;
   const covered = await store.segments();
-  store.segment = `events-${store.state.seq + 1}.jsonl`;
+  store.segment = `events-${at + 1}.jsonl`;
   store.freshSegment = true;
   store.sinceSnapshot = 0;
   store.ops.clear(); // opIds are remembered for the commits newer than the latest snapshot

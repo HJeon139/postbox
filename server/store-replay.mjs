@@ -32,7 +32,7 @@ async function replaySegment(store, seg, last) {
     const line = lines[n];
     if (line.trim()) {
       if (n === lines.length - 1) {
-        if (!last) throw refusal(seg, n, 'has no newline, so its write never finished, and a later segment follows it');
+        if (!last) throw refusal(seg, n, offset, 'has no newline, so its write never finished, and a later segment follows it');
         await store.io.truncate(path, offset);
         console.warn(`Dropped an incomplete event at the end of ${seg.name} (the server stopped mid-write).`);
         break;
@@ -41,20 +41,20 @@ async function replaySegment(store, seg, last) {
       try {
         events = eventsOf(line);
       } catch (e) {
-        throw refusal(seg, n, `isn’t valid JSON (${e.message})`);
+        throw refusal(seg, n, offset, `isn’t valid JSON (${e.message})`);
       }
       const bad = malformed(events);
-      if (bad) throw refusal(seg, n, bad);
-      applyGroup(store, events, seg, n);
+      if (bad) throw refusal(seg, n, offset, bad);
+      applyGroup(store, events, seg, n, offset);
     }
     offset += Buffer.byteLength(line) + 1;
   }
 }
 
-/** The error load() rejects with for a damaged line, naming the file and the line. */
-function refusal(seg, n, why) {
+/** The error load() rejects with for a damaged line, naming the file, the line and its byte offset. */
+function refusal(seg, n, offset, why) {
   return new Error(
-    `Couldn’t load the event log: line ${n + 1} of ${seg.name} ${why}. Postbox won’t drop it or what follows; repair the line or move the file aside.`,
+    `Couldn’t load the event log: line ${n + 1} of ${seg.name} (byte ${offset}) ${why}. Postbox won’t drop it or what follows; repair the line or move the file aside.`,
   );
 }
 
@@ -70,19 +70,19 @@ function malformed(events) {
 }
 
 /** Applies a well-formed group above the state’s seq: skipped whole when the snapshot has it, refused when it straddles the snapshot. */
-function applyGroup(store, events, seg, n) {
+function applyGroup(store, events, seg, n, offset) {
   const first = events[0].seq;
   const end = events[events.length - 1].seq;
   if (end <= store.state.seq) return;
   if (first <= store.state.seq)
-    throw refusal(seg, n, `holds seqs ${first} to ${end}, across the snapshot’s ${store.state.seq}: a commit can’t be applied in part`);
+    throw refusal(seg, n, offset, `holds seqs ${first} to ${end}, across the snapshot’s ${store.state.seq}: a commit can’t be applied in part`);
   if (first > store.state.seq + 1) noteGap(store, store.state.seq + 1, first - 1, seg, n);
   for (const ev of events) {
     apply(store.state, ev.type, ev.data);
     store.state.seq = ev.seq;
     store.sinceSnapshot++;
   }
-  if (events[0].op !== undefined) store.ops.set(events[0].op, first);
+  if (events[0].op !== undefined) store.ops.set(events[0].op, end); // the last seq, as a commit resolves
 }
 
 /** Records lost history (seqs `from` to `to`, acknowledged once and gone) on the store, and warns. */
