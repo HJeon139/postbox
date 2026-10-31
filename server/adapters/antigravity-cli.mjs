@@ -59,7 +59,7 @@ import { toolOf } from './agy-tools.mjs';
 import { describeTool } from './claude-stream.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
-import { formatMessage, turnGuide } from './guide.mjs';
+import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 import { agyResult } from './work-calls.mjs';
@@ -669,7 +669,7 @@ export class AntigravityCliAdapter {
         if (done.missingSession && !ctx.signal.aborted) {
           ctx.saveState({ agySessionId: null });
           ctx.state.agySessionId = null;
-          const note = '[Postbox] Your earlier conversation in this thread couldn’t be loaded, so this is a fresh start.\n\n';
+          const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
           done = await this.run({ ctx, cwd, addDirs, prompt: note + prompt, sessionId: null, hookConfirmed });
         }
         // agy ends a turn at a refused call, before the agent says anything (the Gemini room UAT’s tester rated that

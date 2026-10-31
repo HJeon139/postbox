@@ -36,7 +36,7 @@ import { claudeArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
-import { formatMessage, turnGuide } from './guide.mjs';
+import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
 import { hostMemoryRoot } from './remote-turn.mjs';
 import { effortOf, fromContext, recorderFor } from './setup.mjs';
@@ -179,7 +179,7 @@ export class ClaudeCodeAdapter {
     // A session Claude Code no longer has (its history was cleared) starts over, once.
     if (first.missingSession) {
       ctx.saveState({ claudeSessionId: null });
-      const note = '[Postbox] Your earlier conversation in this thread couldn’t be loaded, so this is a fresh start.\n\n';
+      const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
       turn = await hostTurn();
       await this.run({ ctx, cwd, addDirs, prompt: note + promptOn(turn), guide, resume: false, sessionId: null, turn });
     }

@@ -8,6 +8,8 @@ export async function openCodexThread(ctx, request, { sourceThreadId, fork, cwd,
   try {
     return { opened: await request('thread/resume', { threadId: sourceThreadId, cwd, ...openConfig }), fresh: false };
   } catch (error) {
+    // -32600 is a generic invalid request, with no missing-rollout discriminator. Match the recorded text and exact
+    // thread id deliberately: a broader regex would discard saved history on unrelated resume errors (#587).
     if (ctx.signal.aborted || error.code !== -32600 || error.message !== `no rollout found for thread id ${sourceThreadId}`) throw error;
     const cleared = { codexThreadId: null, fork: null, forkFrom: null };
     Object.assign(ctx.state, cleared);

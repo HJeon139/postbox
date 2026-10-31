@@ -9,6 +9,10 @@ import { formatLint } from '../checks.mjs';
 import { formatQueuedMessages } from './queued-messages.mjs';
 import { DEFAULT_EFFORT, DEFAULT_MODEL, TOOL_RULES, TOOL_WORDS, toolsOff } from './setup.mjs';
 
+/** CX-4: every backend uses the same notice when its earlier conversation cannot be resumed. */
+// lint-allow thread: preserve the existing backend-session recovery notice verbatim when sharing it.
+export const FRESH_START_TEXT = 'Your earlier conversation in this thread couldn’t be loaded, so this is a fresh start.';
+
 /**
  * The system prompt Postbox appends for an agent: only what is fixed for a persona version, who it is, its instructions
  * and how to use Postbox (#515). Claude Code records the system prompt on a conversation’s first request and keeps it

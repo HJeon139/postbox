@@ -12,7 +12,7 @@ import { attachmentPaths, CODEX_REMOTE, createCodexHost, interruptReached, pickU
 import { openCodexThread } from './codex-thread.mjs';
 import { codexContextPercent } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
-import { formatMessage, turnGuide } from './guide.mjs';
+import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
 import { AUTO_MODEL, effortOf, POSTBOX_SERVER, recorderFor } from './setup.mjs';
 import { codexWork } from './work-calls.mjs';
@@ -210,7 +210,7 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   if (!id) throw new Error('Codex app-server did not return a thread id.');
   ctx.state.codexThreadId = id;
   ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
-  const note = '[Postbox] Your earlier conversation in this thread couldn’t be loaded, so this is a fresh start.\n\n';
+  const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
   const inputText = formatMessage(fresh ? { ...turnMessage, text: note + turnMessage.text } : turnMessage, attachmentPaths(ctx, ctx.remote?.turn));
   const started = await request('turn/start', {
     threadId: id,
