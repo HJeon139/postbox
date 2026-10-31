@@ -2770,6 +2770,7 @@ export class Runtime {
     const until = Date.now() + DELETE_UNDO_MS;
     this.updateSession(sessionId, { deleting: until });
     dropWakes(this, se, 'removed');
+    queue.releaseQueued(this, sessionId);
     clearTimeout(this.timers.get(`del:${sessionId}`));
     this.timers.set(
       `del:${sessionId}`,

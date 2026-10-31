@@ -20,6 +20,7 @@ test.beforeAll(async () => {
         releases.set(session.id, () => resolve(null));
         ctx.signal.addEventListener('abort', resolve, { once: true });
       });
+      if (!ctx.signal.aborted) ctx.text('Done with the long job.');
     },
   });
 });
@@ -124,6 +125,7 @@ test('V6: the dialog keeps Tab inside, closes on Escape, and gives focus back to
   app.rt.sendMessage(thread.id, { text: `@${sessions[0].handle} trap me` });
   await synced(page, app);
   const dialog = await openMail(page, sessions[0]);
+  await expect(dialog.getByRole('button', { name: /^Send now: message 1 of 1/ }), 'focus starts on the first row’s first action').toBeFocused();
   for (let i = 0; i < 8; i++) {
     await page.keyboard.press('Tab');
     expect(await dialog.evaluate((d) => d.contains(document.activeElement)), `Tab ${i + 1} stays in the dialog`).toBe(true);
@@ -146,6 +148,19 @@ test('V6: when the agent leaves with its dialog open, the dialog closes and focu
   app.rt.deleteSession(sessions[0].id);
   await synced(page, app);
   await settled(page);
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('#composer-input')).toBeFocused();
+  // Its queued message isn’t lost: the queue posts it to the conversation, waking no one (server/message-queue.mjs).
+  await expect(page.locator('#main .item').filter({ hasText: 'about to go' })).toBeVisible();
+});
+
+test('when every message is delivered with the dialog open, it closes and focus goes to the composer, not a hidden button', async ({ page }) => {
+  const { thread, sessions } = await busyRoom(page);
+  app.rt.sendMessage(thread.id, { text: `@${sessions[0].handle} delivered while you look` });
+  await synced(page, app);
+  const dialog = await openMail(page, sessions[0]);
+  releases.get(sessions[0].id)();
+  await synced(page, app);
   await expect(dialog).toBeHidden();
   await expect(page.locator('#composer-input')).toBeFocused();
 });

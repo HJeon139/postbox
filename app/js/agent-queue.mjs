@@ -134,8 +134,9 @@ export function openQueue(sessionId, anchor = null) {
     onClose: () => {
       off();
       anchor?.setAttribute('aria-expanded', 'false');
-      // What opened it may be gone (the agent left, the menu closed): focus goes to the composer, never to nothing.
-      if (!anchor?.isConnected) queueMicrotask(() => document.getElementById('composer-input')?.focus());
+      // What opened it may be gone or hidden (the agent left, its last message went, the menu closed): focus goes to
+      // the composer, never to nothing.
+      if (!anchor?.isConnected || anchor.closest('[hidden]')) queueMicrotask(() => document.getElementById('composer-input')?.focus());
     },
   });
   const off = client.on((change) => {

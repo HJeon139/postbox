@@ -54,6 +54,24 @@ export function sendQueuedNow(rt, threadId, queueId) {
   );
 }
 
+/**
+ * A session is leaving (deleted): the person’s messages queued only for it are posted to their thread now, waking no
+ * one, so none waits invisibly for an agent that won’t come back (#427). One addressed to others too just drops it.
+ * Agents’ wakes are dropWakes’ (side-threads.mjs), which tells their senders.
+ */
+export function releaseQueued(rt, sessionId) {
+  for (const t of Object.values(rt.s.threads)) {
+    const mine = (t.queue ?? []).filter((q) => q.kind !== 'wake' && q.sessionIds.includes(sessionId));
+    if (!mine.length) continue;
+    const alone = mine.filter((q) => q.sessionIds.length === 1);
+    const queue = rt.s.threads[t.id].queue
+      .filter((q) => !alone.includes(q))
+      .map((q) => (mine.includes(q) ? { ...q, sessionIds: q.sessionIds.filter((id) => id !== sessionId) } : q));
+    rt.putThread({ ...rt.s.threads[t.id], queue });
+    for (const q of alone) postUserMessage(rt, t.id, q);
+  }
+}
+
 export function drainAll(rt) {
   for (const t of Object.values(rt.s.threads)) if (t.queue?.length && !t.deleting) rt.drainQueue(t.id);
 }
