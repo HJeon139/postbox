@@ -91,3 +91,54 @@ test('a folder sync a platform doesn’t support (EINVAL) doesn’t fail the put
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test('a put that fails while writing its draft removes the draft, so repeated failures leave none (ENOSPC)', async () => {
+  const dir = await tmp();
+  try {
+    /** @type {any} */
+    const full = async (/** @type {string} */ path, /** @type {any} */ flags, /** @type {any} */ mode) => {
+      const fh = await open(path, flags, mode);
+      if (flags !== 'wx') return fh;
+      return Object.assign(Object.create(fh), {
+        writeFile: async () => {
+          throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' });
+        },
+        close: () => fh.close(),
+      });
+    };
+    const blobs = new Blobs(dir, { open: full });
+    for (let i = 0; i < 3; i++) await assert.rejects(blobs.put(Buffer.from('an archive file')), /ENOSPC/);
+    const left = (await readdir(dir, { recursive: true })).filter((f) => String(f).endsWith('.draft'));
+    assert.deepEqual(left, [], 'no draft files');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a put of bytes already on disk still syncs the folder, so a blob named by an event is durable (the fast path)', async () => {
+  const dir = await tmp();
+  try {
+    const bytes = Buffer.from('an archive file');
+    // First put: the rename lands, the folder sync fails with EIO, so the put rejects.
+    let failSync = true;
+    /** @type {any} */
+    const flaky = async (/** @type {string} */ path, /** @type {any} */ flags, /** @type {any} */ mode) => {
+      const fh = await open(path, flags, mode);
+      if (flags !== 'r') return fh;
+      return Object.assign(Object.create(fh), {
+        sync: async () => {
+          if (failSync) throw Object.assign(new Error('EIO: i/o error, fsync'), { code: 'EIO' });
+        },
+        close: () => fh.close(),
+      });
+    };
+    const blobs = new Blobs(dir, { open: flaky });
+    await assert.rejects(blobs.put(bytes), /EIO/);
+    // Second put: the file is there, but nobody has synced its folder. The folder sync fails again: the put must too.
+    await assert.rejects(blobs.put(bytes), /EIO/, 'the fast path may not return a blob whose folder was never synced');
+    failSync = false;
+    await blobs.put(bytes);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
