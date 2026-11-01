@@ -1,4 +1,4 @@
-// Follows named `import { applyX } from './file.mjs'` helpers; namespace imports and aliases need an explicit review.
+// Follows one level of named `import { applyX } from './file.mjs'` helpers; namespace imports and aliases need an explicit review.
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
