@@ -34,7 +34,7 @@ This design adds no requirement of its own. It meets requirements already approv
 | **PF-9** | No new runtime dependency | None added |
 | **CX-2** | An agent reads any earlier item, in order, without loss | Unchanged: the read tools read items, not work or activity (access pattern A8) |
 | Storage design, “Snapshots and pruning” and “Performance and budgets” | S2 starts only if a stall still passes 50 ms after old turns leave memory | This is that change; S2 stays unneeded on the measured copy |
-| Storage design, “The writer” and “`commit`” | One-line commits, the function form, held emits, opIds kept only since the latest snapshot | The pass commits in the function form (I8), one event per commit, with opId `turn.archive:<turnId>`; the reducer’s idempotence covers a repeat after a snapshot |
+| Storage design, “The writer” and “`commit`” | One-line commits, the function form, held emits, opIds kept only since the latest snapshot | The pass commits in the function form (I8), one event per commit, with opId `turn.archive:<convId>:<turnId>`; the reducer’s idempotence covers a repeat after a snapshot |
 | Storage design, “Rollout and compatibility” | An older build meeting a multi-event (array) line skips it silently | No array commits: each `turn.archive` is a plain one-event line, so an older build fails visibly at it (“Compatibility and downgrade”) |
 | `architecture.md`, “The store” and “Attachments” | The log and snapshot hold the state; files live in content-addressed blobs | Summaries in the state, details in blobs |
 | `intent.md`, principle 7 | Deleting a conversation ends it | The open question on deleting archive files with their conversation |
@@ -144,7 +144,7 @@ erDiagram
 | Data | Store | Written by | Durability |
 |---|---|---|---|
 | Hot entries and activity | the state, the log, the snapshot | the ledger and the runtime, as today | as today (after 1a, a commit is fsynced) |
-| Turn summary, archived activity | the state, the log, the snapshot | the `turn.archive` event | a commit (after 1a), opId `turn.archive:<turnId>` |
+| Turn summary, archived activity | the state, the log, the snapshot | the `turn.archive` event | a commit (after 1a), opId `turn.archive:<convId>:<turnId>` |
 | Archive file | `<data>/blobs/<aa>/<rest>` | `Blobs.put` | draft, fsync, rename, folder fsync (`6716d07b`); `0600` |
 
 ## Invariants
@@ -181,7 +181,7 @@ sequenceDiagram
   P->>B: put(archive file JSON)
   Note over B: draft, fsync, rename, folder fsync
   B-->>P: sha256
-  P->>S: commit(state => ...), opId turn.archive:turnId
+  P->>S: commit(state => ...), opId turn.archive:convId:turnId
   Note over S: when sequenced, the function re-serializes the payload from that state (I8)
   alt hash differs from the file's (I5)
     S-->>P: [] returned, nothing written
@@ -316,7 +316,7 @@ The release note says so, with a `BREAKING CHANGE` footer, and `tools/unarchive-
 | T-9 | The one-time pass on the real-room copy: two turns left per conversation; every entry and step reachable; the snapshot shrinks as measured; how long it takes | to write |
 | T-10 | Characterization on `main`: a build that doesn’t know an event refuses to load a log holding one, and writes nothing | written, green on `main` by design |
 | T-11 | A reply in a topic thread is archived with its turn | written, red then green (`284d63b4`) |
-| T-12 | The archive file is published before the commit that names it, with opId `turn.archive:<turnId>`; a repeat after a snapshot is harmless because the reducer is idempotent | written, red then green (`284d63b4`) |
+| T-12 | The archive file is published before the commit that names it, with opId `turn.archive:<convId>:<turnId>`; a repeat after a snapshot is harmless because the reducer is idempotent | written, red then green (`284d63b4`) |
 | T-13 | A change to any removed field during the put (a `work.patch`, a step’s text) stops the archive | written; fails with the hash check removed (`/tmp/dev2/305-i5-red.txt`) |
 | T-13b | A `work.patch` queued behind the archive commit: the commit function sees it and writes nothing | to write |
 | T-14 | Characterization on `main`: the Work view skips an unknown `kind`, and the activity line draws nothing for `{ archived, count }`; with this change, the Work view’s totals (`shared/work.mjs`) add a summary’s `counts` once and never against hot entries | to write |

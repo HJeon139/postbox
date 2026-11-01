@@ -549,7 +549,12 @@ export async function start({
     if (server.listening) await new Promise((ok) => server.close(ok));
     await store.close(); // flushes, and releases the data folder’s lock for the next Postbox
   }
-  if (listen) await listenServer(server, port, host, close, () => rt.drainAll()); // listening: drain what waited across a restart (#228)
+  // Listening: drain what waited across a restart (#228), then archive every conversation's older turns (#305).
+  if (listen)
+    await listenServer(server, port, host, close, () => {
+      rt.drainAll();
+      rt.archiveAll().catch((e) => console.warn(`The archive pass after start stopped: ${e instanceof Error ? e.message : e}`));
+    });
   const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));
   if (!quiet)
     console.log(

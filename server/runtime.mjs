@@ -110,6 +110,7 @@ import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { retireStale } from './wake-cards.mjs';
+import { archiveTurns } from './work-archive.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
@@ -259,6 +260,8 @@ export class Runtime {
     this.timers = new Map(); // scheduleId or deletion → timeout
     /** @type {Map<string, [any, any][]>} what deliver held for a session in its Undo window (#597), in arrival order */
     this.heldForUndo = new Map();
+    /** @type {Map<string, Promise<number>>} one archive pass at a time per conversation (#305, design-305-wiring-1) */
+    this.archiveChains = new Map();
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
     this.lastTurn = new Map(); // sessionId → the id of its last turn that ended
     this.spawnShell = spawnShell ?? undefined;
@@ -997,7 +1000,52 @@ export class Runtime {
       const line = turn.work ? turnLine(this.ledger.entries(turn.work.convId), turn.id) : null;
       const last = this.store.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
       if (line && last) this.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
+      // Its conversation’s older turns go to archive files now that this one’s work is final (#305). Not awaited: the
+      // turn has ended, and nothing of it waits for the pass (W1).
+      this.archiveConversation(turn.work?.convId ?? this.lineage(turn.threadId).at(-1));
     });
+  }
+
+  /**
+   * Runs the archive pass for a conversation after any run already queued for it (W4), so the turn-end pass and the
+   * one-time pass after start never overlap. Resolves with how many turns it archived; never rejects (W2).
+   * @param {string} convId
+   */
+  archiveConversation(convId) {
+    const run = (this.archiveChains.get(convId) ?? Promise.resolve(0)).then(() => this.archiveOnce(convId));
+    this.archiveChains.set(convId, run);
+    run.then(() => {
+      if (this.archiveChains.get(convId) === run) this.archiveChains.delete(convId);
+    });
+    return run;
+  }
+  /** Settles when no archive run is queued for the conversation. */
+  archiveIdle(convId) {
+    return this.archiveChains.get(convId) ?? Promise.resolve(0);
+  }
+  /** After start: every conversation’s older turns, one conversation at a time, yielding between them. */
+  async archiveAll() {
+    for (const t of Object.values(this.s.threads))
+      if (!t.parentId && !t.deleting) {
+        await this.archiveConversation(t.id);
+        await new Promise((r) => setImmediate(r));
+      }
+  }
+  async archiveOnce(convId) {
+    // W3: a store closed to writes gets no file and no commit; the next turn’s end tries again.
+    if (!this.store.writable || !this.s.threads[convId]) return 0;
+    // Busy: turns still running, and turns with a job kept running after a Stop (I4).
+    const running = new Set([...this.turns.values()].map((t) => t.id));
+    for (const se of Object.values(this.s.sessions)) for (const j of se.jobs ?? []) if (j.kept && j.turnId) running.add(j.turnId);
+    try {
+      return await archiveTurns({ store: this.store, blobs: this.ledger.blobs, convId, running });
+    } catch (e) {
+      // W2: one line, no retry loop; the next turn’s end tries again.
+      console.warn(
+        `Old turns in ${this.s.threads[convId]?.title ?? convId} weren’t archived: ${e instanceof Error ? e.message : e}. The next turn’s end tries again.`,
+      );
+      return 0;
+    }
   }
 
   endTurn(turn, err) {
