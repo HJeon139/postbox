@@ -7,71 +7,14 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Duplex, PassThrough } from 'node:stream';
+import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
-import { createDaemon } from '../server/remote/host/daemon.mjs';
 import { encode, hostPaths, MESSAGE_FILE, message, PROTOCOL_VERSION, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { readMessages } from './fake-daemon.mjs';
-import { BLOCK, BOOT, sleep, TOKEN, until, VERSION } from './remote-broker-fixtures.mjs';
+import { inProcessDaemon, socketShim } from './remote-broker-daemon-setup.mjs';
+import { BLOCK, sleep, TOKEN, until, VERSION } from './remote-broker-fixtures.mjs';
 
 // ── Through the daemon ──
-
-/** The daemon in-process, with fake runners: a held stdin’s writes are kept in `writes`. @param {string} home */
-function inProcessDaemon(home) {
-  const alive = new Set();
-  const writes = [];
-  let pid = 4000;
-  const daemon = createDaemon({
-    home,
-    version: VERSION,
-    // logind’s facts, which the daemon asks at each hello (the lingering warning): none, as on a host without systemd.
-    logind: () => ({ killUserProcesses: null, linger: null }),
-    async launchRunner(o) {
-      writeFileSync(o.paths.turn(o.turn, TURN_FILES.runner), JSON.stringify({ turn: o.turn, version: VERSION, pid: ++pid, bootId: BOOT, startTime: 1 }), {
-        mode: 0o600,
-      });
-      alive.add(o.turn);
-      return { pid, scoped: false, lingerOff: false };
-    },
-    askRunner: async (_path, turn) => alive.has(turn),
-    proc: { sameProcess: async () => true, toolGroups: () => [], liveGroups: () => [] },
-    async writeRunner(o) {
-      writes.push(o.line);
-      return 10;
-    },
-    findPrograms: async () => ({
-      node: { path: '/usr/bin/node', version: 'v22.12.0' },
-      harnesses: [
-        { name: 'claude-code', path: '/usr/bin/claude', version: '2.1.300', looked: [] },
-        { name: 'codex', path: '/usr/bin/codex', version: '0.50.0', looked: [] },
-      ],
-      problems: [],
-    }),
-    kill: () => {},
-    log: () => {},
-    pollMs: 10,
-    stopGraceMs: 60_000,
-  });
-  return { daemon, writes };
-}
-
-/** A shim, over a socket-shaped pair, as accept() sees one: what it got, and a function that sends. @param {any} daemon */
-function socketShim(daemon) {
-  const toDaemon = new PassThrough();
-  const fromDaemon = new PassThrough();
-  daemon.accept(/** @type {any} */ (Duplex.from({ readable: toDaemon, writable: fromDaemon })));
-  const got = [];
-  let buf = '';
-  fromDaemon.on('data', (d) => {
-    buf += d;
-    for (let nl = buf.indexOf('\n'); nl !== -1; nl = buf.indexOf('\n')) {
-      got.push(JSON.parse(buf.slice(0, nl)));
-      buf = buf.slice(nl + 1);
-    }
-  });
-  const shimSend = (type, body) => toDaemon.write(encode(message('shim-to-daemon', type, body)));
-  return { got, shimSend };
-}
 
 test('the daemon: a shim on its socket reaches the broker, Stop refuses the turn’s calls, and a held-stdin write still goes', async () => {
   const home = mkdtempSync(join(tmpdir(), 'pbbd-'));

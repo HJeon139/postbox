@@ -57,9 +57,9 @@ flowchart TD
 | L5 | Takeover hello: the old driver's reads settle offline before the new driver's resend (T04) | `close()` has no reason, so the cases can't differ |
 | L6 | A `busy` hello leaves the driver and its reads alone | passes; a guard |
 | L7 | Two closes of one driver call `driverLost` once | `driverLost` doesn't exist |
-| L8 | `ask` and `queue` calls are untouched by `driverLost` (T12) | passes; a guard |
+| L8 | `ask` and `queue` calls are untouched by `driverLost` (T12) | not written yet: needs valid `ask` arguments |
 
-L1, L4, L5 and L7 are the failing ones. `close(reason)` is also type-checked by `npm run check` (the JSDoc types).
+L1–L7 are in `tests/remote-link-loss.test.mjs`; on `main` L1, L4, L5 and L7 fail (each times out waiting for the offline answer) and L2, L3 and L6 pass (output: `/tmp/dev2/582/link-red.txt`). `close(reason)` is also type-checked by `npm run check` (the JSDoc types).
 
 ## What this part needs from the others
 
