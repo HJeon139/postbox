@@ -45,7 +45,8 @@ flowchart TD
 3. **Double close.** The `c.closed` guard returns first, so `driverLost` runs once per connection.
 4. **A driver closes before `ready`.** `d.driver = c` and `c.ready = true` are one synchronous step, so `wasDriver` implies `ready`.
 5. **Reads arriving between `d.driver = c` and the welcome.** `attached()` is already true, so they are sent to `c`. Not changed by this part.
-6. **`ask` and `queue` calls on link loss.** Unchanged: `driverLost` touches reads only. An `ask` waits for the reconnect and is re-sent by `onHello`.
+6. **`ask` and `queue` calls on link loss.** Unchanged: `driverLost` touches reads only. An `ask` waits for the reconnect and is re-sent by `onHello`. **At a takeover this means the new Postbox is sent the old session's unsettled `ask` and `queue` calls**, as on `main` today (`broker-postbox.mjs:55`). Reads are the only calls with an offline answer, so they are the only ones this part settles. Whether an old session's `ask` should reach another workstation is a separate question, not decided here and not changed by #582.
+7. **A timer on a read that `driverLost` settles.** `settleOffline` (Part 3) clears `t.timer`; this part does not touch it. Part 3's §5 clears it in `onReply` only after `t.replied = true`, so a failed live write leaves the deadline armed. This part relies on that and has a spec in Part 1's matrix, not here.
 
 ## Specs, each written to fail first on `main`
 
@@ -59,8 +60,9 @@ flowchart TD
 | L6 | A `busy` hello leaves the driver and its reads alone | passes; a guard |
 | L7 | Two closes of one driver call `driverLost` once | `driverLost` doesn't exist |
 | L8 | `ask` and `queue` calls are untouched by `driverLost` (T12) | not written yet: needs valid `ask` arguments |
+| L9 (gpt's T21) | A close that lands while a read is in `readLocal`: the shim gets one result | owned by Part 3; linked here so the numbering doesn't diverge |
 
-L1–L7 are in `tests/remote-link-loss.test.mjs`; on `main` L1, L4, L5 and L7 fail (each times out waiting for the offline answer) and L2, L3 and L6 pass (output: `/tmp/dev2/582/link-red.txt`). `close(reason)` is also type-checked by `npm run check` (the JSDoc types).
+L1–L7 are in `tests/remote-link-loss.test.mjs`. The negative checks wait on a positive signal, not a sleep: the live reply (L2, L6), the broker's hello counter (L4, L5), or a second read answered after the first (L7). On `main` L1, L4, L5 and L7 fail (each times out waiting for the offline answer) and L2, L3 and L6 pass (output: `/tmp/dev2/582/link-red-2.txt`). `close(reason)` is also type-checked by `npm run check` (the JSDoc types).
 
 ## What this part needs from the others
 

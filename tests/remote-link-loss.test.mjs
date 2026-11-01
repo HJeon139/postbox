@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import { encode, hostPaths, MESSAGE_FILE, message, PROTOCOL_VERSION, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { readMessages } from './fake-daemon.mjs';
 import { inProcessDaemon, socketShim } from './remote-broker-daemon-setup.mjs';
-import { sleep, TOKEN, until, VERSION } from './remote-broker-fixtures.mjs';
+import { TOKEN, until, VERSION } from './remote-broker-fixtures.mjs';
 
 const ME = 'a'.repeat(32);
 const OTHER = 'b'.repeat(32);
@@ -28,6 +28,14 @@ async function room() {
   mkdirSync(work);
   const { daemon } = inProcessDaemon(home);
   await daemon.start();
+  // Counts the broker's hello resends as they finish, so a check that nothing was sent waits for that, not a sleep.
+  let helloes = 0;
+  const hello = daemon.broker.hello;
+  daemon.broker.hello = async (...a) => {
+    await hello?.(...a);
+    helloes++;
+  };
+  const afterHello = (n) => until(() => helloes >= n, `hello ${n}’s resends`);
   /** A Postbox connection that has said hello, with `instance` and maybe `takeover`. */
   const postbox = async (extra = {}) => {
     const input = new PassThrough();
@@ -60,7 +68,7 @@ async function room() {
     daemon.close();
     rmSync(home, { recursive: true, force: true });
   };
-  return { first, postbox, s1, shim, parkRead, results, done };
+  return { first, postbox, s1, shim, parkRead, results, afterHello, done };
 }
 
 test('L1: the driver’s socket ends: a parked read is answered from the snapshot at once, with no further call from the shim (T01)', async () => {
@@ -83,8 +91,9 @@ test('L2: a shim’s socket ends: the driver’s parked reads are left alone', a
     const other = r.shim();
     await until(() => other.got.find((m) => m.type === 'welcome'), 'the second shim');
     other.toDaemon.end();
-    await sleep(60);
-    assert.equal(r.results().length, 0);
+    // The live reply is the signal: an offline claim would have taken the call and dropped it.
+    r.first.send('reply', { turn: 't1', id: 'c1', ok: true, text: 'live' });
+    assert.equal((await until(() => r.results()[0], 'the live answer')).text, 'live');
   } finally {
     r.done();
   }
@@ -115,7 +124,7 @@ test('L4: the old socket ends before the same Postbox’s hello (S2b): one offli
     await until(() => r.results()[0], 'the offline answer');
     const again = await r.postbox({ instance: ME });
     await again.msgs.next('welcome');
-    await sleep(60);
+    await r.afterHello(2);
     assert.equal(
       again.msgs.messages.some((m) => m.type === 'tool'),
       false,
@@ -135,7 +144,7 @@ test('L5: another Postbox takes over: the old driver’s read is answered offlin
     await taker.msgs.next('welcome');
     const res = await until(() => r.results()[0], 'the offline answer');
     assert.match(res.text, new RegExp(OFFLINE));
-    await sleep(60);
+    await r.afterHello(2);
     assert.equal(
       taker.msgs.messages.some((m) => m.type === 'tool'),
       false,
@@ -152,8 +161,6 @@ test('L6: a hello that is refused as busy leaves the driver and its read alone',
     await r.parkRead();
     const busy = await r.postbox({ instance: OTHER });
     assert.equal((await busy.msgs.next('error')).code, 'busy');
-    await sleep(60);
-    assert.equal(r.results().length, 0);
     r.first.send('reply', { turn: 't1', id: 'c1', ok: true, text: 'live' });
     assert.equal((await until(() => r.results()[0], 'the live answer')).text, 'live');
   } finally {
@@ -168,7 +175,9 @@ test('L7: the driver’s socket closing twice (end, then an error) settles the r
     r.first.input.end();
     r.first.input.emit('error', new Error('reset'));
     await until(() => r.results()[0], 'the offline answer');
-    await sleep(60);
+    // A second read, answered offline after the first, is the barrier: a duplicate of c1 would be ahead of it.
+    r.s1.shimSend('call', { id: 'c2', name: 'read_conversation', args: {} });
+    await until(() => r.results('c2')[0], 'the barrier read');
     assert.equal(r.results().length, 1);
   } finally {
     r.done();
