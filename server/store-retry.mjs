@@ -16,8 +16,8 @@
 // A failed snapshot is the other outcome of the one failure policy (I5): it closes nothing, sets a warning, and a
 // stored next-attempt time keeps it from being retried on every event.
 
-import { syncDir } from './store-commit.mjs';
 import { install, recover } from './store-recover.mjs';
+import { syncDir } from './store-snapshot.mjs';
 
 const SNAPSHOT_BACKOFF_MS = 30_000; // after a failed snapshot, the first wait before another attempt
 const SNAPSHOT_BACKOFF_MAX_MS = 10 * 60_000; // the wait doubles up to this

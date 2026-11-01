@@ -46,7 +46,7 @@ export class Store {
     /** @type {import('node:fs/promises').FileHandle | null} the segment, open for appending */
     this.fh = null;
     this.sinceSnapshot = 0;
-    this.ops = new Map(); // opId → the seq of its commit’s first event, for the commits since the latest snapshot
+    this.ops = new Map(); // opId → the seq of its commit’s last event, for the commits since the latest snapshot
     this.ahead = 0; // events numbered but not yet applied: a commit’s, before its fsync
     this.waitingCommits = 0; // commits queued or pending; emits are held behind them
     this.held = 0; // emits held in the queue, still to be numbered
@@ -171,6 +171,7 @@ export class Store {
    * Applies a change and broadcasts it, unless a commit is queued or in flight: then it’s held, and numbered, applied
    * and broadcast in its turn once the commit settles. While writes are closed it’s applied and broadcast, not written.
    */
+
   emit(type, data) {
     const ev = { type, data };
     if (this.retiring) {
@@ -231,7 +232,8 @@ export class Store {
 
   /** A job for the writer’s loop, resolved when it has run; rejected with the cause while writes are closed. @param {'flush' | 'snapshot'} kind */
   job(kind) {
-    if (!(this.writable || this.reconciling)) return Promise.reject(this.cause);
+    // Refused once closed, and a snapshot once closing: its rename and pruning would outlive the lock (1a’s fix, #588).
+    if (!(this.writable || this.reconciling) || this.closed || (kind === 'snapshot' && this.closing)) return Promise.reject(this.cause);
     return new Promise((resolve, reject) => {
       this.queue.push({ [kind]: { resolve, reject } });
       this.pump();

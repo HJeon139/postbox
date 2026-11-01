@@ -7,10 +7,10 @@
 
 import { join } from 'node:path';
 import { emptyState, ownState } from '../shared/state.mjs';
-import { syncDir, writeSnapshot } from './store-commit.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
 import { replay } from './store-replay.mjs';
 import { settledWithin } from './store-retry.mjs';
+import { syncDir, writeSnapshot } from './store-snapshot.mjs';
 
 /**
  * @typedef {{
@@ -117,9 +117,7 @@ export async function load(store, { fresh = false } = {}) {
     // The folder’s entries are made durable once per start: a segment rotated by an earlier run that only ever held
     // emits may never have had its entry synced (the integrator’s review of 1a). A filesystem that can’t sync a
     // folder is tolerated; any other error refuses the start.
-    await syncDir(store).catch((e) => {
-      if (!['EINVAL', 'ENOTSUP', 'EPERM', 'EISDIR'].includes(e.code)) throw e;
-    });
+    await syncDir(store); // its own tolerance for a filesystem that can’t sync a folder (one set, everywhere)
   } catch (e) {
     await unlockStore(store.io, store.lock);
     store.lock = null;
@@ -194,8 +192,13 @@ export async function close(store) {
     throw store.cause;
   }
   store.cause = CLOSED();
-  await store.fh?.close();
-  store.fh = null;
-  await unlockStore(store.io, store.lock);
-  store.lock = null;
+  try {
+    await store.fh?.close();
+  } catch (e) {
+    console.error(`The event log’s descriptor didn’t close cleanly: ${e.message}`); // the lock is released either way (1a’s fix)
+  } finally {
+    store.fh = null;
+    await unlockStore(store.io, store.lock);
+    store.lock = null;
+  }
 }
