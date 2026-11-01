@@ -2,6 +2,24 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.8.2 (2026-11-01)
+
+### Fixes
+
+- **queue:** report discarded holds on every purge
+- **queue:** preserve held messages through send and purge
+- **queue:** the purge logs what it dropped for a deleted agent; Retry in the window is held (#427)
+- **queue:** hold what reaches an agent in its Undo window instead of dropping it (#427)
+- **composer:** syncList keeps focus when a row leaves; Remove hands focus to the next row (#427)
+- **queue:** Undo drains from the conversation, and no path delivers to an agent being deleted (#427)
+- **queue:** Undo of a delete drains what the queue held back (#427)
+- **composer:** no repaint takes focus; Cancel, Save and Escape keep it on the row (#427)
+- **queue:** release a deleted agent's messages at the purge, so Undo finds them queued (#427)
+- **queue:** a leaving agent's queued messages post to the thread; focus survives (#427)
+- **composer:** queue buttons name their message; one helper lists a conversation's threads (#427)
+- **composer:** a waiting line, capped offline rows, and a dialog that never loses focus (#427)
+- **composer:** queued messages for busy agents move to agent mail (#427)
+
 ## 1.8.1 (2026-11-01)
 
 ### Fixes

@@ -103,7 +103,7 @@ import {
 import { newId } from './store.mjs';
 import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
-import { eraseThreads } from './thread-erase.mjs';
+import { discardHeld, eraseThreads } from './thread-erase.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
@@ -256,6 +256,8 @@ export class Runtime {
     this.keptPoll = null; // checks on the background jobs Postbox kept running (#129)
     this.viewing = new Map(); // threadId → last time a browser said it was open
     this.timers = new Map(); // scheduleId or deletion → timeout
+    /** @type {Map<string, [any, any][]>} what deliver held for a session in its Undo window (#597), in arrival order */
+    this.heldForUndo = new Map();
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
     this.lastTurn = new Map(); // sessionId → the id of its last turn that ended
     this.spawnShell = spawnShell ?? undefined;
@@ -602,6 +604,13 @@ export class Runtime {
   deliver(sessionId, message, { summarizeTo = null, threadId = null } = {}) {
     const se = this.session(sessionId);
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
+    // An agent being deleted starts no turn in its Undo window: every path that delivers comes through here, so one
+    // check covers them all (#597 review). What arrives is held, not dropped: Undo delivers it in order, the purge
+    // drops it with the session (critic). The person’s queued messages wait in the queue instead (R1).
+    if (se.deleting) {
+      this.heldForUndo.set(sessionId, [...(this.heldForUndo.get(sessionId) ?? []), [message, { summarizeTo, threadId }]]);
+      return;
+    }
     message = prepareScheduledRetry(this, message, se.threadId);
     // As it was asked, for Retry (askedOf).
     const asked = { message, summarizeTo, threadId };
@@ -2881,6 +2890,8 @@ export class Runtime {
     this.timers.delete(`delt:${threadId}`);
     const t = this.thread(threadId);
     this.putThread({ ...t, deleting: null });
+    // Its stopped turns skipped the drain (a silent stop): what its queues held goes now, as after a session’s Undo.
+    for (const x of this.archiveScope(threadId)) this.drainQueue(x.id);
   }
 
   purgeThread(threadId) {
@@ -2920,13 +2931,26 @@ export class Runtime {
     clearTimeout(this.timers.get(`del:${sessionId}`));
     this.timers.delete(`del:${sessionId}`);
     this.updateSession(sessionId, { deleting: null });
+    // What the drain held back while it was being deleted goes now (#427, R1): Undo releases a hold, so it drains.
+    // From its conversation: a retired fork’s session lives in a topic, where archiveScope refuses (#597 review).
+    const conv = this.lineage(se.threadId).at(-1);
+    if (this.s.threads[conv]) for (const x of this.archiveScope(conv)) this.drainQueue(x.id);
+    // …and what reached it while it was being deleted (deliver held it), in the order it came.
+    const held = this.heldForUndo.get(sessionId) ?? [];
+    this.heldForUndo.delete(sessionId);
+    for (const [message, options] of held) this.deliver(sessionId, message, options);
   }
 
   purgeSession(sessionId) {
     this.timers.delete(`del:${sessionId}`);
     if (!this.store.writable) return whenWritable(this, () => this.purgeSession(sessionId), { owner: `del:${sessionId}` }); // as purgeThread
     const se = this.s.sessions[sessionId];
+    discardHeld(this, sessionId, se?.deleting ? 'was deleted' : 'had a stale purge');
     if (!se?.deleting) return;
+    // A turn it still has would run on for a session that’s gone: stop it first (#597 review).
+    if (this.turns.has(sessionId)) this.stop(sessionId, { silent: true });
+    // The person’s messages queued for it leave the queue now, not at delete, so Undo found them untouched (#427).
+    queue.releaseQueued(this, sessionId);
     // Background jobs Postbox kept running for it would run on with no record (#129).
     this.stopKeptJobs([sessionId], 'Its session was deleted.');
     const t = this.s.threads[se.threadId];
