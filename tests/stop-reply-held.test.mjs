@@ -1,5 +1,5 @@
 // Stop and a turn’s end with the reply segment held behind a commit (gpt’s peer read of the Stop fix), and the one
-// other reader at a turn’s end still wrong while held, kept as a todo (the PR body names its issue).
+// other reader at a turn’s end still wrong while held, kept as a todo for issue #601.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -105,9 +105,9 @@ async function endWhileHeld(step) {
 }
 
 // Known defect, kept as a todo so it can’t be forgotten: the empty-reply check reads the visible items, so a turn whose
-// only reply is a block held behind a commit ends as a failed empty reply. It needs a store-level answer (issue below).
+// only reply is a block held behind a commit ends as a failed empty reply. It needs a store-level answer: issue #601.
 test('held reader 1, endedWithoutReply: a turn whose only reply is a block shown while a commit is held does not end as an empty reply', {
-  todo: 'a store view of held emits: see the PR body',
+  todo: 'issue #601: a store view of held emits',
 }, async () => {
   const env = await endWhileHeld(async (c) =>
     c.tools.show_block({ block: { id: 'pick', type: 'choice', version: 1, fallback: 'Pick one', prompt: 'Which?', options: [{ id: 'a', label: 'A' }] } }),
