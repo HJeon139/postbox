@@ -31,7 +31,7 @@ flowchart TD
 
 - **`close(reason?: 'replaced' | 'taken-over')`.** `undefined` means the socket ended. It is a typed argument: the socket-close paths don't know they are being replaced, and a field set beforehand could leak to the next close.
 - **`wasDriver` is read before `d.driver` is cleared**, in the same synchronous step.
-- **`driverLost` runs after the connection is fully closed**, so `attached()` is already false when `settleOffline` starts.
+- **`driverLost` runs after the connection is fully closed**, so `attached()` is already false when `settleOffline` starts. **It is called synchronously inside `Conn.close()`, in the same tick, never deferred.** A deferred call could run after the new driver's hello has resent the read. L5 checks the call's stack for `close`.
 - **The call is `d.brk.driverLost?.()`.** `brk` may be a test's broker (`daemon-constants.mjs:99`), and the daemon already calls `d.brk.hello?.(` the same way (`daemon-hello.mjs:62`).
 - **`driverLost(b): void`** (broker, `broker-state.mjs`/`broker.mjs`) calls `settleOffline(b, t)` for every `t` with `t.route === 'read'` and `!settled(t)`, in one synchronous loop. It does not await. It touches no field of `t`: Part 3 owns `replied`, `replying`, `result`.
 - **`reason === 'replaced'` is S3a.** The hello's `old.close('replaced')` is followed in the same tick by `d.driver = c`, and `onHello` re-sends the unsettled calls to `c`. The reads were never lost; they were on the old socket's wire.

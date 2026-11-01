@@ -35,6 +35,14 @@ async function room() {
     await hello?.(...a);
     helloes++;
   };
+  // Where each driverLost call came from. It must be inside Conn.close(), in the same tick: a deferred call could run
+  // after the new driver's hello has resent the read.
+  const lostFrom = [];
+  const lost = daemon.broker.driverLost;
+  daemon.broker.driverLost = (...a) => {
+    lostFrom.push(new Error('driverLost').stack ?? '');
+    return lost?.(...a);
+  };
   const afterHello = (n) => until(() => helloes >= n, `hello ${n}’s resends`);
   /** A Postbox connection that has said hello, with `instance` and maybe `takeover`. */
   const postbox = async (extra = {}) => {
@@ -68,7 +76,7 @@ async function room() {
     daemon.close();
     rmSync(home, { recursive: true, force: true });
   };
-  return { first, postbox, s1, shim, parkRead, results, afterHello, done };
+  return { first, postbox, s1, shim, parkRead, results, afterHello, lostFrom, done };
 }
 
 test('L1: the driver’s socket ends: a parked read is answered from the snapshot at once, with no further call from the shim (T01)', async () => {
@@ -150,6 +158,8 @@ test('L5: another Postbox takes over: the old driver’s read is answered offlin
       false,
     );
     assert.equal(r.results().length, 1);
+    assert.equal(r.lostFrom.length, 1, 'driverLost ran once');
+    assert.match(r.lostFrom[0], /\bclose\b/, 'and inside Conn.close(), not on a later tick');
   } finally {
     r.done();
   }
