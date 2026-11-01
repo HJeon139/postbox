@@ -1,4 +1,5 @@
-// A scheduled wake across an outage has one owner after Retry (S1; the integrator’s re-review of #598 at 1888d7f3).
+// A scheduled wake across an outage has one owner after Retry (S1; the integrator’s re-review of #598 at 1888d7f3), and a
+// deleted agent’s queued message is released once (#597, which landed first, so its outage case lands here).
 // A wake that fired while its agent was busy waits in turn.pending; the outage’s stop moves it into exiting.held, and
 // the reload re-arms the same schedule from the recovered state. Unless the reload drops the held copy, the wake is
 // delivered twice: two paid turns where a restart delivers it once. The same real Postbox setup on its own port.
@@ -103,5 +104,41 @@ test('a second outage during the drain after Retry leaves no session mid-turn wi
   const state = rt.s.sessions[se.id].state;
   assert.ok(!['think', 'gen', 'tool', 'stopping'].includes(state), `not left mid-turn with no turn: ${state}`);
   assert.ok(!rt.turns.has(se.id));
+  await rt.store.flush();
+});
+
+test('a deleted agent’s queued message, with the Undo window ending while the store is closed, is posted exactly once after Retry (#597’s release, across an outage)', async () => {
+  let release = () => {};
+  rt.adapters.register({
+    name: 'release-busy',
+    async deliver(_se, _message, ctx) {
+      await new Promise((r) => {
+        release = () => r(undefined);
+        ctx.signal.addEventListener('abort', () => r(undefined), { once: true });
+      });
+    },
+  });
+  const p = rt.createPersona({ handle: 'relbusy', backend: 'release-busy' });
+  const other = rt.createPersona({ handle: 'relother' }); // the conversation outlives the deleted agent
+  const t = rt.createThread({ projectId: 'p1', title: 'Release', personaIds: [p.id, other.id] });
+  const se = rt.sessionsIn(t.id).find((x) => x.personaId === p.id);
+  await rt.store.flush();
+  rt.sendMessage(t.id, { text: '@relbusy a long job' });
+  await until(() => rt.turns.has(se.id), 'the busy turn');
+  assert.ok(rt.sendMessage(t.id, { text: '@relbusy later, please' }).queued, 'queued behind the busy turn');
+  rt.deleteSession(se.id);
+  release();
+  await until(() => !rt.turns.has(se.id) && !rt.exiting.has(se.id), 'the turn to end');
+  rt.updateSession(se.id, { deleting: Date.now() - 1 }); // the Undo window is over: what a re-arm reads
+  await rt.store.flush();
+  rt.store.fail(eio());
+  rt.purgeSession(se.id); // the window ends while closed: the purge, and its release, wait
+  const posted = () => rt.store.items(t.id).filter((i) => i.kind === 'user' && i.text === '@relbusy later, please').length;
+  assert.equal(posted(), 0, 'nothing posted while closed');
+  await rt.store.reload(); // the owned deferral is dropped; the re-armed del: purges
+  await until(() => !rt.s.sessions[se.id], 'the purge after Retry');
+  await sleep(100);
+  assert.equal(posted(), 1, 'posted once, not twice and not lost');
+  assert.deepEqual(rt.s.threads[t.id].queue ?? [], []);
   await rt.store.flush();
 });
