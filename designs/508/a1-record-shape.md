@@ -1,6 +1,6 @@
 # A1 record shape and reducer
 
-**Status:** draft 4, 1 November 2026. Design before code; critic and developer review requested. Branch `docs/508-a1-record-shape` starts at `main` `25ad0ffb` (v1.8.0, including #588). No production file changed.
+**Status:** draft 4 reviewed by critic and developer, 1 November 2026. Implementation is on `feat/508-a1-record-foundation`, based on `main` `25ad0ffb` (v1.8.0, including #588). A1a is a dormant foundation; no production lifecycle producer is enabled. The migration and store-dependent rows remain separate work.
 
 **Grounds:** [requirements](requirements.md) DL-1–3, DL-6–8, AT-1–4 and AT-7; [design](design.md), “Records”, “Record lifecycles”, “Receipts” and INV-1–3, INV-10, INV-12–13; [storage](storage-design.md), “The writer”, “Recovery” and “The data-folder lock”; routes draft 6 at `b96462e0` in `/tmp/gpt508-delivery-routes/designs/508/delivery-routes.md` (person and developer approved; critic's same-head read still to be recorded). This file proposes the concrete reducer boundary; route capability evidence remains separate.
 
@@ -34,7 +34,7 @@ flowchart TD
 
 ## Concrete shapes
 
-New A1a commands validate plain JSON data and rejects unknown fields for its schema version; it does not silently repair an invalid recipient or lifecycle state. No transport token or native handle is stored in a record. Prototype-sensitive keys use the existing null-prototype maps and own-key checks.
+New A1a commands validate plain JSON data and reject unknown fields for its schema version; it does not silently repair an invalid recipient or lifecycle state. No transport token or native handle is stored in a record. Prototype-sensitive keys use the existing null-prototype maps and own-key checks.
 
 Common header:
 
@@ -59,7 +59,7 @@ Common header:
 **Delivery:** `kind: delivery`, `to: { persona: personaId, session?: sessionId }`, `from: person | postbox | sessionId`, `mode: wake | notify | interrupt`, and `state: held | waiting | sent | blocked`. `parts` holds bounded canonical source text/time/attachment references; a source without a posted item initially uses its record id as `sourceId`, then re-keys atomically when the item is posted. Keep the record id unchanged. A1a follows existing composer/tool text limits; folding sender notices is a later lifecycle command, not truncation in the reducer.
 
 - Held requires `heldBy` naming an open ask in the same conversation, plus reason `held`. An unbound recipient cannot become sent. A later Add answer can bind the existing held delivery; joining through another valid path binds it rather than creating another copy.
-- Waiting has no live attempt. Optional `notBefore`, reason `busy | scheduled | resend | amendment | undo-window`, and explicit requested mode affect eligibility, not ownership. A stale timer cannot make it sent.
+- Waiting has no live attempt identity. Its optional `attempt` retains only the monotonic counter; the next reservation increments it, while `sentRev`, `turnId`, `dispatchId`, route target and renderer are absent. Optional `notBefore`, reason `busy | scheduled | resend | amendment | undo-window`, and explicit requested mode affect eligibility, not ownership. A stale timer cannot make it sent.
 - Sent requires an immutable attempt: `attempt`, `sentRev`, `turnId`, `dispatchId`, canonical `route`, and route-specific `target`. Native target refinements (`backendRunId`, `inputMode`) follow the routes design and confer no capability by their presence. `route` is null without a live reservation; keep the requested delivery mode separate.
 - Blocked retains its content and recipient and names its open retry ask. No automatic resend timer. Answering that ask can release once more or explicitly withdraw it; A2 owns the outcome policy.
 
@@ -69,7 +69,7 @@ A `sent` record's latest `parts` may change at a new source rev, but its dispatc
 
 Keep the existing planned event names `record` and `record.close`, but make the operation explicit rather than accepting unrestricted upserts:
 
-- `record`: `{ operation, previousVersion, record }`, where operation is `open | revise | bind | release | reserve | requeue | block`. Opening expects absence and version 1. Every later transition expects exactly the old version and writes old version + 1. The complete new record is validated against the old shape and operation.
+- `record`: `{ operation, previousVersion, record, attemptIdentity?, final?, at? }`, where operation is `open | revise | bind | release | reserve | requeue | block`. Opening expects absence and version 1. Every later transition expects exactly the old version and writes old version + 1. The complete new record is validated against the old shape and operation. A requeue fences the old attempt; when it acknowledges an older sentRev while leaving an amendment waiting, it also carries `final: delivered` and `at`, so the pure receipt projection records that old-revision acknowledgment.
 - `record.close`: `{ id, previousVersion, final, at, reason, attemptIdentity? }`. Final is `delivered | answered | expired | withdrawn | superseded`; the operation checks the allowed origin state and requires a nonempty reason for expiry, withdrawal or supersession. `folded` is a named supersession reason, retaining the source cursor under the existing fold design.
 
 Inside the function-form commit, whole-batch validation runs against the latest published state before returning any record event to the writer. Invalid shape, duplicate open recipient/source, cross-conversation hold/bind, omitted pin, illegal terminal transition and unknown schema fail closed with an explicit error. They do not get normalized into success. A stale version or stale attempt is a no-op with an internal stale outcome; it emits no new state or receipt row. Command callers distinguish that from a successful transition and re-read; the server uses the same deterministic event application for live publication and recovery. The browser receives only public events, not private record events.
@@ -204,3 +204,15 @@ A1a adds semantic reducer/selector specs; the report will distinguish a baseline
 **Draft 3 review changes:** critic signs off the shape subject to explicit client cursor handling, the egress scan above, the corrected snapshot divergence risk and the mixed-group spec. All four are now in the A1a plan. Developer's neighboring-code read remains required before implementation.
 
 **Draft 4 peer changes:** developer approves the shape with projection at frame construction on both SSE paths while Store history stays raw; deliberate shared private apply cases; remote snapshot and host-status consumers added to the egress scan. Direct code inspection finds the telemetry whitelist and explicit remote snapshot fields already exclude records; regression specs preserve both clean boundaries. Both design reads are in with these additions folded in; A1a implementation may begin.
+
+## A1a implementation checkpoint
+
+The foundation adds null-prototype `records` and `dispatches` collections. `record-shapes.mjs` validates new commands; `record-batch.mjs` validates prospective groups without mutating the published view; `record-events.mjs` interprets accepted schema-1 events for both live application and replay. The existing shared event switch delegates private cases to that interpreter. Generic remove refuses record deletion.
+
+A dispatch manifest stores ordered `entries` with each record id, sent revision, attempt and canonical parts, plus recipient, turn, route/target, renderer, sender/time and a fixed remaining count (zero for these reducer fixtures). Several entries may share one dispatch only with the same consumer binding. `dispatchManifest` returns a detached copy and refuses an unavailable renderer. No production renderer or transport is enabled.
+
+`server/record-commands.mjs` owns the false producer gate. The wrapper captures outcome inside its function-form commit and returns it only after await; fixtures submit reducer batches directly to exercise Store semantics, not through a test override of the production gate. No existing ask, queue, adapter or MCP producer imports that wrapper yet. Header selectors and pure receipt projection are available but not wired into live needs or receipt storage.
+
+Tests distinguish the initial missing-module failure from behavioral evidence. The privacy regression fails on the old raw stream; the cursor browser regression fails on the original client. Version, conversation and UTF-8 ceiling mutations are each shown to make their corresponding reducer counterexample fail. A seeded 120-operation sequence recovers equal maps/headers from the log and a snapshot. The log/snapshot tests also retain a separately pinned old revision after the latest source is edited.
+
+Still excluded: active producers and conversion, receipt checkpoint/storage integration, A1b global record capacity and chunked-snapshot integration, downgrade deployment guard, check_messages/1b closed-store gate, A2 reload reconciliation and backend integrations. This PR does not claim that A1, A2 or #470 is complete.

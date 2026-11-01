@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import { publicEvent, publicState } from '../server/public-state.mjs';
 import { onStoreEvent, snapshotOf } from '../server/remote/turns-snapshot.mjs';
 import { keepEvent } from '../server/room-events.mjs';
-import { emptyState } from '../shared/state.mjs';
+import { apply, emptyState } from '../shared/state.mjs';
+import { change, delivery } from './records-fixture.mjs';
 
 const privateRecord = { id: 'rec_private', to: { persona: 'someone_else' }, parts: [{ text: 'private words' }] };
 
@@ -16,6 +17,7 @@ test('the HTTP projection omits all private collections without changing snapsho
     receipts: [{ id: 'rec_private' }],
     receiptCheckpoint: { seq: 3 },
   };
+  apply(state, 'record', change('open', delivery('seeded', { parts: [{ text: 'seeded private words' }] })).data);
   const visible = publicState(state);
   assert.doesNotMatch(JSON.stringify(visible), /private|records|dispatches|pins|receipts|receiptCheckpoint/);
   assert.equal(state.records.rec_private, privateRecord);
