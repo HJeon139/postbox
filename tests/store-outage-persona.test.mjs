@@ -119,3 +119,36 @@ test('a persona purge held in one adapter’s forget across a Retry stops its ol
   off();
   await rt.store.flush();
 });
+
+test('a persona purge deferred during an outage, with an async forget, runs once after Retry and never twice at once (the integrator’s double-purge)', async () => {
+  const persona = await room('pasync');
+  let inflight = 0;
+  let maxInflight = 0;
+  let forgets = 0;
+  rt.adapters.register({
+    name: 'memory-async',
+    forget: async () => {
+      forgets++;
+      inflight++;
+      maxInflight = Math.max(maxInflight, inflight);
+      await sleep(30); // a real adapter’s rm takes a while
+      inflight--;
+    },
+    async deliver() {},
+  });
+  let removes = 0;
+  const off = rt.store.subscribe((ev) => {
+    if (ev.type === 'remove' && ev.data?.kind === 'persona' && ev.data.id === persona.p.id) removes++;
+  });
+  deletePersona(rt, persona.p.id);
+  rt.store.emit('persona', { ...rt.s.personas[persona.p.id], deleting: Date.now() - 1 });
+  await rt.store.flush();
+  rt.store.fail(eio());
+  await purgePersona(rt, persona.p.id); // the window ends while closed: the purge defers
+  await rt.store.reload(); // the reload also re-arms delp: at 0 ms
+  await until(() => !rt.s.personas[persona.p.id], 'the purge after Retry');
+  await sleep(100);
+  assert.deepEqual({ forgets, removes, maxInflight }, { forgets: 1, removes: 1, maxInflight: 1 }, 'one purge, not two at once');
+  off();
+  await rt.store.flush();
+});

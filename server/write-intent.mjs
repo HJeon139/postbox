@@ -177,7 +177,10 @@ async function judged(rt, turn, request, call, words) {
   const asked = request.said.join('\n\n');
   if (!judge || call.length > MAX_CALL || asked.length > MAX_REQUEST) return null;
   const tag = randomBytes(6).toString('hex');
+  const epoch = rt.store.epoch;
   const r = await judge(`${PROMPT(tag)}\n\n<request-${tag}>\n${asked}\n</request-${tag}>\n\n<call-${tag}>\n${call}\n</call-${tag}>`);
+  // Its cost goes on the ledger only for the same open store and turn: nothing written into memory only (S2).
+  if (!rt.store.writable || rt.store.epoch !== epoch || rt.turns.get(turn.sessionId) !== turn) return r ? allowedQuote(r.text, request.said, words) : null;
   const conv = rt.ledger.convOf(request.threadId);
   const cost = r?.costUsd;
   const e = typeof cost === 'number' ? rt.ledger.entry(conv, turn.id) : null;
@@ -230,6 +233,10 @@ export async function requestedCall(rt, sessionId, { tool, input, agentId }) {
  * @returns {Promise<{ allow: boolean, message?: string } | null>}
  */
 export async function settledCall(rt, sessionId, req) {
+  // What this call acts for, fixed now: each await below may outlive the turn, the open store or the history (S2).
+  const turn = rt.turns.get(sessionId);
+  const epoch = rt.store.epoch;
+  const current = () => rt.store.writable && rt.store.epoch === epoch && !!turn && rt.turns.get(sessionId) === turn;
   if (isWriteCall(req.tool, req.input) && (await writePasses(rt, sessionId, req).catch(() => false))) return { allow: true };
   /** @type {Awaited<ReturnType<typeof requestedCall>>} */
   let found = null;
@@ -239,7 +246,18 @@ export async function settledCall(rt, sessionId, req) {
     // A judge that fails, or a check that breaks, gets the card, as before: it fails closed.
   }
   if (!found) return null;
+  // No push for a turn the store’s closing stopped, or for another history.
+  if (found.push && !current()) return null;
   const done = found.push ? await (rt.pushes ?? PUSHES).run(found.push) : null;
+  if (!current()) {
+    // The push already happened and can’t be undone; nothing is written into a closed store or another turn, and the
+    // agent’s own push still mustn’t run. The log names what landed (the integrator’s re-review of #598).
+    if (found.push)
+      console.error(
+        `Postbox made a push the store couldn’t record: ${found.push.sha?.slice(0, 7)} on ${found.push.branch} of ${found.push.url} (${done?.ok ? 'pushed' : `failed: ${done?.error}`}).`,
+      );
+    return found.push ? { allow: false, message: 'Postbox couldn’t record this push because it can’t save changes right now. Don’t push it yourself.' } : null;
+  }
   rt.addItem(found.threadId, {
     kind: 'allowedcall',
     sessionId,

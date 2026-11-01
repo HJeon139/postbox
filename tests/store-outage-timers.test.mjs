@@ -244,3 +244,39 @@ test('a callback held across an outage and Retry applies nothing to the old hist
   delete rt.summarize;
   await rt.store.flush();
 });
+
+test('a scheduled wake that fires while the store is closed is delivered exactly once after Retry, even when its turn outlasts the reload (the integrator’s double-wake)', async () => {
+  const calls = [];
+  rt.adapters.register({
+    name: 'slow-wake',
+    async deliver(_se, message, ctx) {
+      calls.push(message);
+      await new Promise((r) => {
+        const t = setTimeout(r, 600); // the turn outlasts the reload
+        ctx.signal.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(t);
+            r(undefined);
+          },
+          { once: true },
+        );
+      });
+    },
+  });
+  const p = rt.createPersona({ handle: 'waketwice', backend: 'slow-wake' });
+  const t = rt.createThread({ projectId: 'p1', title: 'Wake twice', personaIds: [p.id] });
+  const [se] = rt.sessionsIn(t.id);
+  await rt.store.flush();
+  const sc = rt.schedule(se.id, { inMs: 30, note: 'once' });
+  await rt.store.flush();
+  rt.store.fail(eio());
+  await sleep(1300); // a wake waits at least 1 s: the timer fires while closed
+  assert.equal(calls.length, 0, 'nothing delivered while closed');
+  await rt.store.reload();
+  await until(() => calls.length >= 1, 'the wake after Retry');
+  await until(() => !rt.turns.has(se.id) && !rt.exiting.has(se.id), 'its turn and anything held behind it to end');
+  await sleep(100);
+  assert.equal(calls.filter((m) => m.scheduledWakeId === sc.id).length, 1, `one delivery for one wake, not ${calls.length}`);
+  await rt.store.flush();
+});

@@ -3,6 +3,7 @@
 
 import { runsCommand, stopPgid } from './adapters/process-group.mjs';
 import { httpError } from './helpers.mjs';
+import { whenWritable } from './store-outage.mjs';
 
 /** How often Postbox checks whether a background job it kept running has ended (#129). */
 const KEPT_POLL_MS = 5000;
@@ -58,7 +59,8 @@ export async function stopJob(rt, sessionId, jobId) {
     const procs = await rt.listProcesses().catch(() => []);
     const stopped = new Set(liveGroups(job, procs).map((g) => g.pgid));
     for (const pgid of stopped) stopPgid(pgid, { kill: rt.signalProcess });
-    rt.endJob(sessionId, jobId, 'stopped', null, { by: 'you' });
+    // The kill stands; how it ended is written once writes are open, so Retry doesn’t leave it to pollKept as done.
+    whenWritable(rt, () => rt.endJob(sessionId, jobId, 'stopped', null, { by: 'you' }));
     // Another kept job Postbox couldn’t tell apart from it shares those groups, still its own (#164): it stopped with them (#167).
     const why = `Postbox couldn’t tell its processes from those of the background job “${job.label}”, so stopping that job stopped this one too.`;
     // Only when every group still its own was signaled: one left running keeps the job listed, so it can be stopped.

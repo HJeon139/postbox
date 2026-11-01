@@ -48,7 +48,7 @@ export function undoDeletePersona(rt, id) {
 export async function purgePersona(rt, id) {
   rt.timers.delete(`delp:${id}`);
   // Nothing durable can happen while writes are closed: the purge waits for them to reopen (store-outage.mjs, gated()).
-  if (!rt.store.writable) return whenWritable(rt, () => purgePersona(rt, id));
+  if (!rt.store.writable) return whenWritable(rt, () => purgePersona(rt, id), { owner: `delp:${id}` });
   const epoch = rt.store.epoch;
   const p = rt.s.personas[id];
   if (!p?.deleting) return;
@@ -69,7 +69,10 @@ export async function purgePersona(rt, id) {
     // The store may have closed, or Retry installed another history, during that removal: no further destructive
     // step runs against it; the purge runs again against the current state once writes are open (each step is safe
     // to repeat).
-    if (!rt.store.writable || rt.store.epoch !== epoch) return whenWritable(rt, () => purgePersona(rt, id));
+    // A new epoch: Retry reinstalled the state and re-armed delp:, its one owner now (S1), so this run ends here. Closed
+    // on the same epoch: it defers, owned by delp:, so a later reload drops it in favor of the re-arm.
+    if (rt.store.epoch !== epoch) return;
+    if (!rt.store.writable) return whenWritable(rt, () => purgePersona(rt, id), { owner: `delp:${id}` });
   }
   rt.store.emit('remove', { kind: 'persona', id });
 }

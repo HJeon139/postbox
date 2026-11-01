@@ -10,8 +10,10 @@
 // - keeps a backend’s session id, the latest per session, and saves it once writes reopen, before any turn that
 //   waited, so the next turn resumes that session.
 // Reopening is Retry (server/store-retry.mjs): the store installs the recovered state and tells its status listeners,
-// and only then does what waited run, so no reconciled work starts before the durability barrier has passed (I3). A
-// restart while the store is closed starts again from what the disk holds, as any restart does.
+// and only then does what waited run, so no reconciled work starts before the durability barrier has passed (I3);
+// on Linux that barrier proves only that no new writeback error occurred (storage-design 6.6). What waited is the work
+// the reload doesn’t recreate: an entry owned by a timer is dropped at the reload, whose re-arm is its one owner (S1).
+// A restart while the store is closed starts again from what the disk holds, as any restart does.
 
 import { rearmPersonaDeletes } from './persona-delete.mjs';
 import { rearmWakes } from './scheduled-wakes.mjs';
@@ -43,6 +45,7 @@ export function watchStore(rt) {
   // Every timer in rt.timers is re-armed, the deletions too (the integrator’s finding on 1b: a purge whose Undo window
   // ended during the outage had fired, done nothing durable, and left the thread “deleting” with no timer).
   rt.store.onReload(() => {
+    dropOwned(rt); // before the re-arm: the timers below are now the only owners of what they recreate
     for (const timer of rt.timers.values()) clearTimeout(timer);
     rt.timers.clear();
     rearmWakes(rt);
@@ -56,26 +59,35 @@ export function watchStore(rt) {
  * waits for them to reopen (whenWritable) instead of running or being lost. A timer re-armed at Retry fires during
  * reconciliation, when writes are still closed (critic’s and gpt’s condition on the sweep): deferring, not dropping,
  * is what makes an overdue purge run once writes reopen. A poller, by contrast, skips its tick and catches up at the
- * next one. Returns whether fn ran now.
- * @param {Runtime} rt @param {() => unknown} fn
+ * next one. Returns whether fn ran now. owner: as whenWritable’s, for a timer the reload re-arms.
+ * @param {Runtime} rt @param {() => unknown} fn @param {{ owner?: string }} [o]
  */
-export function gated(rt, fn) {
+export function gated(rt, fn, { owner } = {}) {
   if (rt.store.writable) {
     fn();
     return true;
   }
-  whenWritable(rt, fn);
+  whenWritable(rt, fn, { owner });
   return false;
 }
 
 /**
  * Runs fn now if the store takes writes, else once it does. first: before what already waits, for a write any later
- * turn depends on, such as a backend’s session id. @param {Runtime} rt @param {() => void} fn
+ * turn depends on, such as a backend’s session id. owner: the timer that would recreate this work from the recovered
+ * state (a wake’s schedule id, a purge’s `del:`/`delt:`/`delp:` key); the reload drops owned entries before it re-arms,
+ * so each unit of work has one owner after Retry (S1, the integrator’s re-review of #598: a wake fired while closed was
+ * delivered twice). @param {Runtime} rt @param {() => void} fn @param {{ first?: boolean, owner?: string }} [o]
  */
-export function whenWritable(rt, fn, { first = false } = {}) {
+export function whenWritable(rt, fn, { first = false, owner } = {}) {
   if (rt.store.writable) return fn();
-  if (first) rt.storeWait.unshift(fn);
-  else rt.storeWait.push(fn);
+  const entry = owner ? Object.assign(() => fn(), { owner }) : fn;
+  if (first) rt.storeWait.unshift(entry);
+  else rt.storeWait.push(entry);
+}
+
+/** Drops the held work a reload recreates from the recovered state: every entry with an owner (S1). @param {Runtime} rt */
+function dropOwned(rt) {
+  for (let i = rt.storeWait.length - 1; i >= 0; i--) if (/** @type {any} */ (rt.storeWait[i]).owner) rt.storeWait.splice(i, 1);
 }
 
 /**

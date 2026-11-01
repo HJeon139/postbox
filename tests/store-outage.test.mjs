@@ -119,6 +119,9 @@ test('T-32: a scheduled wake armed before the failure runs only after Retry has 
   await store.flush();
   const sc = rt.schedule(se.id, { inMs: 1000, note: 'later' });
   assert.ok(sc.id);
+  // Armed before the failure means on disk before it: an unsynced schedule is not in the recovered state, and only the
+  // stale held start used to deliver it (the integrator’s re-review of #598).
+  await store.flush();
   store.fail(eio());
   // The timer fires while the store is closed: the wake’s turn waits, it does not start.
   await new Promise((r) => setTimeout(r, 1300));
@@ -129,7 +132,9 @@ test('T-32: a scheduled wake armed before the failure runs only after Retry has 
   await until(() => agent.calls.length === before + 1 && rt.turns.has(se.id), 'the wake’s turn to start after the install');
   assert.ok(store.writable, 'and only once writes were open again');
   rt.stop(se.id, { silent: true });
-  await until(() => !rt.turns.has(se.id), 'the turn to stop');
+  await until(() => !rt.turns.has(se.id) && !rt.exiting.has(se.id), 'the turn to stop and anything held behind it to end');
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(agent.calls.length, before + 1, 'one delivery for one wake: nothing followed it');
   await store.flush();
 });
 
