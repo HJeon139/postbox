@@ -46,7 +46,7 @@ export function undoDeletePersona(rt, id) {
  * @param {any} rt @param {string} id
  */
 export function purgePersona(rt, id) {
-  const chains = (rt.personaPurges ??= new Map());
+  const chains = rt.personaPurges;
   const run = (chains.get(id) ?? Promise.resolve())
     .catch(() => {})
     .then(() => purgeOnce(rt, id))
