@@ -60,6 +60,7 @@ flowchart TD
 | L6 | A `busy` hello leaves the driver and its reads alone | passes; a guard |
 | L7 | Two closes of one driver call `driverLost` once | `driverLost` doesn't exist |
 | L8 | `ask` and `queue` calls are untouched by `driverLost` (T12) | not written yet: needs valid `ask` arguments |
+| L5b (with the code) | Right after `old.close('taken-over')` returns, the old read is already claimed: the hello waits one microtask, then the shim's read is answered or in flight. Closes the gap the stack check in L5 leaves (critic) | not written: needs the fix |
 | L9 (gpt's T21) | A close that lands while a read is in `readLocal`: the shim gets one result | owned by Part 3; linked here so the numbering doesn't diverge |
 
 L1–L7 are in `tests/remote-link-loss.test.mjs`. The negative checks wait on a positive signal, not a sleep: the live reply (L2, L6), the broker's hello counter (L4, L5), or a second read answered after the first (L7). On `main` L1, L4, L5 and L7 fail (each times out waiting for the offline answer) and L2, L3 and L6 pass (output: `/tmp/dev2/582/link-red-2.txt`). `close(reason)` is also type-checked by `npm run check` (the JSDoc types).
