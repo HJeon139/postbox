@@ -18,7 +18,8 @@ test('daemon: an ack survives a restart; once the turn has ended and is acked wh
     await c.msgs.next('started');
     writeFileSync(s.p.turn('t1', TURN_FILES.out), '{"n":1}\n{"n":2}\n');
     c.send('ack', { turn: 't1', upTo: 8 });
-    await new Promise((r) => setTimeout(r, 30));
+    // Until the ack is on disk, not a fixed 30 ms: under load the daemon hadn’t written it yet (gpt’s gate run).
+    for (let i = 0; i < 200 && (await s.daemon.cleanup.readAck('t1')) !== 8; i++) await new Promise((r) => setTimeout(r, 10));
     s.daemon.close();
     // A new daemon over the same home: the ack is on disk.
     const t = daemonSetup({ home: s.home });
