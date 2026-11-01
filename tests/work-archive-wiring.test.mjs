@@ -32,6 +32,9 @@ test('T-W2: a rejected commit is logged once, the chain settles, and the next tu
   let fail = true;
   store.commit = (...a) => (fail ? Promise.reject(Object.assign(new Error('disk said no'), { code: 'EIO' })) : commit(...a));
   const lines = [];
+  const unhandled = [];
+  const onUnhandled = (e) => unhandled.push(e);
+  process.on('unhandledRejection', onUnhandled);
   const warn = console.warn;
   console.warn = (...a) => lines.push(a.join(' '));
   try {
@@ -51,8 +54,11 @@ test('T-W2: a rejected commit is logged once, the chain settles, and the next tu
     await settle(rt);
     await rt.archiveIdle(t.id);
     assert.equal(summaries(store, t.id).length, 2, 'the next turn end archives both older turns');
+    await sleep(5);
+    assert.deepEqual(unhandled, [], 'no unhandled rejection');
   } finally {
     console.warn = warn;
+    process.off('unhandledRejection', onUnhandled);
   }
 });
 
@@ -109,4 +115,51 @@ test('T-9 (unit): after start, archiveAll archives every conversation’s older 
       summaries(store, c.id).map((e) => e.turnId),
       ['t1'],
     );
+});
+
+/** Two turns, then a third whose pass holds at its put until released. */
+async function heldPut() {
+  const ctx = setup();
+  const { rt, t } = ctx;
+  for (const n of [1, 2]) {
+    rt.sendMessage(t.id, { text: `@alpha turn ${n}` });
+    await settle(rt);
+  }
+  const put = rt.ledger.blobs.put.bind(rt.ledger.blobs);
+  /** @type {() => void} */
+  let release = () => {};
+  const gate = new Promise((r) => {
+    release = () => r(null);
+  });
+  let puts = 0;
+  rt.ledger.blobs.put = async (b) => {
+    puts++;
+    await gate;
+    return put(b);
+  };
+  rt.sendMessage(t.id, { text: '@alpha turn 3' });
+  await settle(rt);
+  return { ...ctx, release, puts: () => puts };
+}
+
+test('W5: shutdown ends the archive chains before the store closes: no put after close, no line logged (critic’s probe)', async () => {
+  const { rt, store, release, puts } = await heldPut();
+  assert.equal(puts(), 1, 'a pass is holding at its put');
+  const lines = [];
+  const warn = console.warn;
+  console.warn = (...a) => lines.push(a.join(' '));
+  try {
+    await rt.stopTurns();
+    const stopping = rt.stopArchiving();
+    release();
+    await stopping;
+    const before = puts();
+    await store.close();
+    rt.archiveConversation(Object.keys(store.state.threads)[0]);
+    await sleep(10);
+    assert.equal(puts(), before, 'nothing is put after the store closed');
+    assert.deepEqual(lines, [], 'shutdown is not a failure to report');
+  } finally {
+    console.warn = warn;
+  }
 });

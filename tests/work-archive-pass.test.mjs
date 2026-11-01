@@ -198,3 +198,40 @@ test('the opId names the conversation too, so two conversations with the same tu
   await archiveTurns({ store, blobs: memoryBlobs(), convId: C, running: new Set() });
   assert.deepEqual(seen, [`turn.archive:${C}:t1`]);
 });
+
+test('W3: the pass asks canWrite before each file, so a run that sees the store close puts nothing more', async () => {
+  const s = room(['t1', 't2', 't3', 't4', 't5']);
+  let puts = 0;
+  const blobs = memoryBlobs();
+  const counted = Object.assign(Object.create(blobs), {
+    put: (/** @type {Buffer} */ b) => {
+      puts++;
+      return blobs.put(b);
+    },
+  });
+  let commits = 0;
+  const store = Object.assign(Object.create(s), {
+    commit: async (/** @type {any} */ fn, /** @type {any} */ o) => {
+      commits++;
+      return s.commit(fn, o);
+    },
+  });
+  const n = await archiveTurns({ store, blobs: counted, convId: C, running: new Set(), canWrite: () => commits === 0 });
+  assert.equal(n, 1);
+  assert.equal(puts, 1, 'no file after canWrite turned false');
+});
+
+test('I4 per turn: running is read for each turn, so one that starts mid-run is passed over', async () => {
+  const s = room(['t1', 't2', 't3', 't4', 't5']);
+  let busy = new Set();
+  const store = Object.assign(Object.create(s), {
+    commit: async (/** @type {any} */ fn, /** @type {any} */ o) => {
+      const r = await s.commit(fn, o);
+      busy = new Set(['t2']); // a turn of t2's starts while t1 is committed
+      return r;
+    },
+  });
+  await archiveTurns({ store, blobs: memoryBlobs(), convId: C, running: () => busy });
+  const archived = s.state.work[C].filter((e) => e.kind === 'turn-archive').map((e) => e.turnId);
+  assert.deepEqual(archived, ['t1', 't3']);
+});

@@ -102,15 +102,19 @@ const finished = (/** @type {any} */ t, /** @type {Set<string>} */ busy) =>
  * can’t go yet are hot. A turn that can’t go is passed over, so one old command left `unknown` blocks nothing after it.
  * `running` holds the turns still running or with a kept job (the runtime’s to say). Stops quietly when the state
  * changed under it (the next turn’s end tries again); a failed put or commit rejects.
- * @param {{ store: any, blobs: { put(buf: Buffer): Promise<{ sha256: string }> }, convId: string, running: Set<string> }} o
+ * @param {{ store: any, blobs: { put(buf: Buffer): Promise<{ sha256: string }> }, convId: string, running: Set<string> | (() => Set<string>), canWrite?: () => boolean }} o
  * @returns {Promise<number>} how many turns it archived
  */
-export async function archiveTurns({ store, blobs, convId, running }) {
+export async function archiveTurns({ store, blobs, convId, running, canWrite = () => true }) {
+  // Who is busy is read for each turn, not once per run: a run spans fsyncs (critic, #305 wiring).
+  const busy = () => (typeof running === 'function' ? running() : running);
   let n = 0;
   for (;;) {
+    // W3: before each file, not only at the start, so a store closing mid-run gets no file after it (critic).
+    if (!canWrite()) return n;
     const t = hotTurns(store.state, convId)
       .slice(0, -HOT_TURNS)
-      .find((x) => finished(x, running));
+      .find((x) => finished(x, busy()));
     if (!t) return n;
     const { sha256 } = await blobs.put(Buffer.from(payload(convId, t)));
     const summary = summaryOf(t, sha256);
@@ -119,7 +123,7 @@ export async function archiveTurns({ store, blobs, convId, running }) {
     const done = await store.commit(
       (/** @type {any} */ state) => {
         const now = hotTurns(state, convId).find((x) => x.turnId === t.turnId);
-        if (!now || !finished(now, running) || sha(payload(convId, now)) !== sha256) {
+        if (!now || !finished(now, busy()) || sha(payload(convId, now)) !== sha256) {
           changed = true;
           return [];
         }
