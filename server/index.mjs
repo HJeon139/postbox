@@ -543,20 +543,20 @@ export async function start({
     // agents’ CLIs, and the background jobs Postbox kept running (#126, #129).
     await rt.stopShellCommands();
     await rt.stopTurns();
-    // The archive chains end before the Store: a stopped turn's end may have queued a pass, and its file must not land
-    // after the lock is released (#305, W5).
-    await rt.stopArchiving();
+    // The archive passes end before the Store: a stopped turn’s end may have queued one, and its file must not land
+    // after the lock is released (#305).
+    await rt.turnArchive.stop();
     // After the turns, whose Stop goes to their hosts over these links (#120).
     await stopHosts(hosts, stopWake);
     narrator?.stop();
     if (server.listening) await new Promise((ok) => server.close(ok));
     await store.close(); // flushes, and releases the data folder’s lock for the next Postbox
   }
-  // Listening: drain what waited across a restart (#228), then archive every conversation's older turns (#305).
+  // Listening: drain what waited across a restart (#228), then archive every conversation’s older turns (#305).
   if (listen)
     await listenServer(server, port, host, close, () => {
       rt.drainAll();
-      rt.archiveAll().catch((e) => console.warn(`The archive pass after start stopped: ${e instanceof Error ? e.message : e}`));
+      rt.turnArchive.all().catch((e) => console.warn(`The archive pass after start stopped: ${e instanceof Error ? e.message : e}`));
     });
   const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));
   if (!quiet)

@@ -17,7 +17,7 @@ export function applyTurnArchive(s, type, d) {
     s.work[d.convId] = kept;
   }
   // Each reply named by its thread: a topic or side thread keeps its replies under its own id, while work is the
-  // conversation's. `count`, not `steps`: an older page reads `activity.steps` as a list.
+  // conversation’s. `count`, not `steps`: an older page reads `activity.steps` as a list.
   for (const { threadId, id } of d.items ?? []) {
     const it = s.items?.[threadId]?.find((/** @type {any} */ x) => x.id === id);
     if (it?.activity && !it.activity.archived) it.activity = { archived: d.sha256, count: it.activity.steps?.length ?? 0 };

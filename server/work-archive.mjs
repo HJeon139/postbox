@@ -106,11 +106,11 @@ const finished = (/** @type {any} */ t, /** @type {Set<string>} */ busy) =>
  * @returns {Promise<number>} how many turns it archived
  */
 export async function archiveTurns({ store, blobs, convId, running, canWrite = () => true }) {
-  // Who is busy is read for each turn, not once per run: a run spans fsyncs (critic, #305 wiring).
+  // Who is busy is read for each turn, not once per run: a run spans fsyncs.
   const busy = () => (typeof running === 'function' ? running() : running);
   let n = 0;
   for (;;) {
-    // W3: before each file, not only at the start, so a store closing mid-run gets no file after it (critic).
+    // Before each file, not only at the start, so a store closing mid-run gets no file after it.
     if (!canWrite()) return n;
     const t = hotTurns(store.state, convId)
       .slice(0, -HOT_TURNS)
@@ -129,7 +129,7 @@ export async function archiveTurns({ store, blobs, convId, running, canWrite = (
         }
         return [{ type: 'turn.archive', data: { convId, turnId: t.turnId, sha256, summary, items } }];
       },
-      // The conversation in the opId too: a turn id is unique only by convention (found by the start-up pass’s spec).
+      // The conversation in the opId too: a turn id is unique only by convention, so two conversations can share one.
       { opId: `turn.archive:${convId}:${t.turnId}` },
     );
     // A duplicate wrote nothing; if the turn is still hot, committing it again would loop. Stop, as for a change.

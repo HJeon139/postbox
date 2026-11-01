@@ -10,7 +10,7 @@ import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/d
 import { READING } from '../shared/limits.mjs';
 import { commentAt } from '../shared/review-comments.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
-import { carriedList, turnLine } from '../shared/work.mjs';
+import { carriedList } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
@@ -34,7 +34,7 @@ import {
   updateApp,
 } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
-import * as archiveRuntime from './archive-runtime.mjs';
+import { ArchivePasses } from './archive-runtime.mjs';
 import { act, answerDelivered, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
 import { catchUp, pointerIfSeen } from './catch-up.mjs';
@@ -108,6 +108,7 @@ import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { discardHeld, eraseThreads } from './thread-erase.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
+import { endWork } from './turn-end-work.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { retireStale } from './wake-cards.mjs';
@@ -120,8 +121,6 @@ export { PERMISSION_MODES, readCapped };
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
-/** How long shutdown waits for a running archive pass before going on without it (#305, W5). */
-export const ARCHIVE_STOP_MS = 3000;
 export const DELETE_UNDO_MS = 10000;
 const STEP_STATES = new Set(['running', 'done', 'failed', 'denied', 'stopped']);
 /** What a step is when it isn’t a tool call (#73): a thought, a subagent’s narration, or a subagent’s own step. */
@@ -217,7 +216,7 @@ function blockContent(it) {
 export class Runtime {
   /**
    * @param {{ store: import('./store.mjs').Store, adapters: import('./adapters/adapter.mjs').AdapterRegistry,
-   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string, build?: { version?: string } },
+   *           corpus: import('./corpus.mjs').Corpus, config: { origin: string, imageOrigins: string[], archiveTurns?: boolean, claudeProjectsRoot?: string, versions?: any, lintSettleMs?: number, home?: string, build?: { version?: string } },
    *           blobs?: import('./blobs.mjs').Blobs, narrator?: import('./narration/narrator.mjs').Narrator|null,
    *           spawnShell?: typeof import('node:child_process').spawn, signalProcess?: import('./adapters/process-group.mjs').KillFn,
    *           listProcesses?: () => Promise<import('./adapters/process-group.mjs').Proc[]>, ledger?: Ledger,
@@ -262,11 +261,7 @@ export class Runtime {
     this.timers = new Map(); // scheduleId or deletion → timeout
     /** @type {Map<string, [any, any][]>} what deliver held for a session in its Undo window (#597), in arrival order */
     this.heldForUndo = new Map();
-    /** @type {Map<string, Promise<number>>} one archive pass at a time per conversation (#305, design-305-wiring-1) */
-    this.archiveChains = new Map();
-    // Shutting down: no new archive run (W5). Never reset: a runtime that stopped archiving is closing for good, so a test
-    // that reuses one after stopArchiving gets no passes.
-    this.archiveClosing = false;
+    this.turnArchive = new ArchivePasses(this, { enabled: config?.archiveTurns === true }); // off until the readers land (#305)
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
     this.lastTurn = new Map(); // sessionId → the id of its last turn that ended
     this.spawnShell = spawnShell ?? undefined;
@@ -1001,39 +996,7 @@ export class Runtime {
 
   /** The turn’s work is recorded (#132), then its last reply, or its last block, gets the list that leads to it (#195). */
   endWork(turn, status) {
-    return this.ledger
-      .endTurn(turn, { status })
-      .then(() => {
-        const line = turn.work ? turnLine(this.ledger.entries(turn.work.convId), turn.id) : null;
-        const last = this.store.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
-        if (line && last) this.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
-        // Its conversation’s older turns go to archive files now that this one’s work is final (#305). Not awaited: the
-        // turn has ended, and nothing of it waits for the pass (W1).
-        this.archiveConversation(turn.work?.convId ?? this.lineage(turn.threadId).at(-1));
-      })
-      .catch((e) => {
-        // Its callers don't await it: a ledger that fails here must not become an unhandled rejection (critic's sweep).
-        console.warn(`@${turn.work?.se?.handle ?? 'an agent'}’s turn work wasn’t recorded: ${e instanceof Error ? e.message : e}`);
-      });
-  }
-
-  archiveConversation(convId) {
-    return archiveRuntime.archiveConversation(this, convId);
-  }
-  archiveIdle(convId) {
-    return archiveRuntime.archiveIdle(this, convId);
-  }
-  archiveAll() {
-    return archiveRuntime.archiveAll(this);
-  }
-  stopArchiving(boundMs = ARCHIVE_STOP_MS) {
-    return archiveRuntime.stopArchiving(this, boundMs);
-  }
-  archiveRunning() {
-    return archiveRuntime.archiveRunning(this);
-  }
-  archiveOnce(convId) {
-    return archiveRuntime.archiveOnce(this, convId);
+    return endWork(this, turn, status);
   }
 
   endTurn(turn, err) {

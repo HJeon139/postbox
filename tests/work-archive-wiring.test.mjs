@@ -4,7 +4,14 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { settle, setup, sleep } from './side-threads-fixture.mjs';
+import { setup as plainSetup, settle, sleep } from './side-threads-fixture.mjs';
+
+/** A runtime with the archive passes on: they are off by default (server/archive-runtime.mjs). */
+function setup() {
+  const ctx = plainSetup();
+  ctx.rt.turnArchive.enabled = true;
+  return ctx;
+}
 
 /** Three turns for @alpha in the conversation, one after another. */
 async function threeTurns() {
@@ -13,7 +20,7 @@ async function threeTurns() {
     ctx.rt.sendMessage(ctx.t.id, { text: `@alpha turn ${n}` });
     await settle(ctx.rt);
   }
-  await ctx.rt.archiveIdle?.(ctx.t.id);
+  await ctx.rt.turnArchive.idle(ctx.t.id);
   return ctx;
 }
 const summaries = (store, convId) => (store.state.work[convId] ?? []).filter((e) => e.kind === 'turn-archive');
@@ -42,7 +49,7 @@ test('T-W2: a rejected commit is logged once, the chain settles, and the next tu
       rt.sendMessage(t.id, { text: `@alpha turn ${n}` });
       await settle(rt);
     }
-    await rt.archiveIdle(t.id);
+    await rt.turnArchive.idle(t.id);
     assert.equal(lines.filter((l) => /archive/i.test(l)).length, 1, 'one line for the failed run');
     assert.match(
       lines.find((l) => /archive/i.test(l)),
@@ -52,7 +59,7 @@ test('T-W2: a rejected commit is logged once, the chain settles, and the next tu
     fail = false;
     rt.sendMessage(t.id, { text: '@alpha turn 4' });
     await settle(rt);
-    await rt.archiveIdle(t.id);
+    await rt.turnArchive.idle(t.id);
     assert.equal(summaries(store, t.id).length, 2, 'the next turn end archives both older turns');
     await sleep(5);
     assert.deepEqual(unhandled, [], 'no unhandled rejection');
@@ -82,7 +89,7 @@ test('T-W3: with the store closed to writes, the pass puts nothing and logs noth
   try {
     rt.sendMessage(t.id, { text: '@alpha turn 3' });
     await settle(rt);
-    await rt.archiveIdle(t.id);
+    await rt.turnArchive.idle(t.id);
   } finally {
     console.warn = warn;
     store.writable = true;
@@ -95,8 +102,8 @@ test('T-W4: back-to-back runs for one conversation archive each turn once', asyn
   const { rt, store, t } = await threeTurns();
   rt.sendMessage(t.id, { text: '@alpha turn 4' });
   await settle(rt);
-  await Promise.all([rt.archiveConversation(t.id), rt.archiveConversation(t.id), rt.archiveConversation(t.id)]);
-  await rt.archiveIdle(t.id);
+  await Promise.all([rt.turnArchive.conversation(t.id), rt.turnArchive.conversation(t.id), rt.turnArchive.conversation(t.id)]);
+  await rt.turnArchive.idle(t.id);
   const ids = summaries(store, t.id).map((e) => e.turnId);
   assert.equal(ids.length, 2);
   assert.equal(new Set(ids).size, 2, 'no turn archived twice');
@@ -109,7 +116,7 @@ test('T-9 (unit): after start, archiveAll archives every conversation’s older 
   for (const c of convs)
     for (const [k, turnId] of ['t1', 't2', 't3'].entries())
       store.emit('work.add', { convId: c.id, entry: { id: `w_${c.id}_${turnId}`, turnId, kind: 'command', command: 'ls', state: 'done', at: k + 1 } });
-  await rt.archiveAll();
+  await rt.turnArchive.all();
   for (const c of convs)
     assert.deepEqual(
       summaries(store, c.id).map((e) => e.turnId),
@@ -150,12 +157,12 @@ test('W5: shutdown ends the archive chains before the store closes: no put after
   console.warn = (...a) => lines.push(a.join(' '));
   try {
     await rt.stopTurns();
-    const stopping = rt.stopArchiving();
+    const stopping = rt.turnArchive.stop();
     release();
     await stopping;
     const before = puts();
     await store.close();
-    rt.archiveConversation(Object.keys(store.state.threads)[0]);
+    rt.turnArchive.conversation(Object.keys(store.state.threads)[0]);
     await sleep(10);
     assert.equal(puts(), before, 'nothing is put after the store closed');
     assert.deepEqual(lines, [], 'shutdown is not a failure to report');
@@ -172,11 +179,43 @@ test('W5 bounded: a put that hangs doesn’t stop shutdown; stopArchiving gives 
   console.warn = (...a) => lines.push(a.join(' '));
   try {
     const started = Date.now();
-    await rt.stopArchiving(50);
+    await rt.turnArchive.stop(50);
     assert.ok(Date.now() - started < 1000, 'shutdown went on');
     assert.equal(lines.length, 1);
     assert.match(lines[0], /archive/i);
   } finally {
     console.warn = warn;
   }
+});
+
+test('off by default: with no config flag, ending a third turn archives nothing and puts no file', async () => {
+  const { rt, store, t } = plainSetup();
+  assert.equal(rt.turnArchive.enabled, false);
+  let puts = 0;
+  const put = rt.ledger.blobs.put.bind(rt.ledger.blobs);
+  rt.ledger.blobs.put = (b) => {
+    puts++;
+    return put(b);
+  };
+  for (const n of [1, 2, 3]) {
+    rt.sendMessage(t.id, { text: `@alpha turn ${n}` });
+    await settle(rt);
+  }
+  await rt.turnArchive.all();
+  assert.equal(summaries(store, t.id).length, 0);
+  assert.equal(puts, 0);
+  assert.equal(store.state.work[t.id].filter((e) => e.kind === 'turn').length, 3, 'every turn stays live');
+});
+
+test('a conversation being deleted is skipped by the turn-end pass as well as the start-up one', async () => {
+  const { rt, store, t } = setup();
+  for (const n of [1, 2]) {
+    rt.sendMessage(t.id, { text: `@alpha turn ${n}` });
+    await settle(rt);
+  }
+  rt.deleteThread(t.id);
+  store.emit('work.add', { convId: t.id, entry: { id: 'w_extra', turnId: 't_extra', kind: 'command', state: 'done', at: Date.now() } });
+  assert.equal(await rt.turnArchive.conversation(t.id), 0);
+  assert.equal(summaries(store, t.id).length, 0);
+  rt.undoDeleteThread(t.id);
 });
