@@ -30,6 +30,10 @@ test('a thread whose parent is gone is its own conversation; a missing thread ha
   assert.deepEqual(threadsOfConversation(threads, 'nope'), []);
 });
 
-test('a parentId loop ends instead of hanging', () => {
-  assert.ok(['loopA', 'loopB'].includes(conversationOf(threads, 'loopA')));
+test('a parentId loop, or a chain deeper than eight, has no root: null, never a wrong ancestor', () => {
+  assert.equal(conversationOf(threads, 'loopA'), null);
+  const deep = { r: { id: 'r' } };
+  for (let i = 1; i <= 10; i++) deep[`d${i}`] = { id: `d${i}`, parentId: i === 1 ? 'r' : `d${i - 1}` };
+  assert.equal(conversationOf(deep, 'd8'), 'r', 'eight levels is within reach');
+  assert.equal(conversationOf(deep, 'd9'), null, 'the integrator’s case: not d1');
 });

@@ -8,11 +8,15 @@ const MAX_HOPS = 8;
 /**
  * The conversation a thread belongs to: itself, or the thread its parentId chain ends at.
  * @param {Record<string, { id: string, parentId?: string | null }>} threads @param {string} threadId
- * @returns {string | null} null when the thread isn’t there
+ * @returns {string | null} null when the thread isn’t there, or its chain is too deep or loops
  */
 export function conversationOf(threads, threadId) {
   let t = threads?.[threadId];
-  for (let hops = 0; t?.parentId && threads[t.parentId] && hops < MAX_HOPS; hops++) t = threads[t.parentId];
+  for (let hops = 0; t?.parentId && threads[t.parentId]; hops++) {
+    // Deeper than any thread Postbox makes, or a loop: no root is known, rather than a wrong one.
+    if (hops === MAX_HOPS) return null;
+    t = threads[t.parentId];
+  }
   return t?.id ?? null;
 }
 
