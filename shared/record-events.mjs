@@ -41,6 +41,7 @@ export function applyRecordEvent(state, type, data) {
 function unpin(dispatches, record) {
   const manifest = own(dispatches, record.dispatchId);
   if (!manifest) return;
-  manifest.entries = manifest.entries.filter((entry) => entry.recordId !== record.id);
-  if (!manifest.entries.length) delete dispatches[record.dispatchId];
+  const settled = (manifest.settledIds ??= []);
+  if (!settled.includes(record.id)) settled.push(record.id);
+  if (manifest.entries.every((entry) => settled.includes(entry.recordId))) delete dispatches[record.dispatchId];
 }

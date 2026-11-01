@@ -226,3 +226,9 @@ Critic and developer requested one privacy classification and a producer placeme
 A1a's reader checks remain simple scans; `pinLimits` walks every unresolved dispatch per group. A1b must measure that cost under active producers and replace it with a derived index if necessary, without moving authority out of the records.
 
 When rebasing onto #598, wrap the guarded normal-event frame construction with publicFrame; preserve its epoch/status control frames and phase/epoch checks. Public projection remains a serialization boundary, not a change to Store history or the control-frame protocol.
+
+### Manifest lifetime correction
+
+A multi-source dispatch is one immutable consumer manifest. Its entries cannot shrink when just one record settles, and later commits cannot append another source to an already published dispatch. Settlement progress is private `settledIds` bookkeeping, excluded from the manifest read projection; all canonical entries remain pinned and count toward byte ceilings until every entry resolves. A2 must add its consumer-retirement/evidence policy before production dispatch is enabled. The lifecycle owner must generate fresh dispatch ids rather than accepting a caller-selected retired id.
+
+The failing-first class probes at 5a5b2596 show both defects: partial close changes the projected manifest and a later reserve can append to it. The corrected fixtures assert stable replay through partial settlement and snapshot/restart, and refusal to append after publication. This tightens the existing immutable-content invariant; it adds no transport or runtime producer.

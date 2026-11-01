@@ -109,7 +109,8 @@ function pinLimits(state) {
     for (const entry of manifest.entries) {
       const r = get(state, entry.recordId);
       requireRecord(
-        r?.state === 'sent' && r.dispatchId === manifest.id && same(r, manifest, ['to', 'turnId', 'route', 'target', 'renderVersion']),
+        manifest.settledIds?.includes(entry.recordId) ||
+          (r?.state === 'sent' && r.dispatchId === manifest.id && same(r, manifest, ['to', 'turnId', 'route', 'target', 'renderVersion'])),
         'a dispatch has conflicting owners.',
       );
       const bytes = recordBytes(entry.parts);
@@ -128,6 +129,7 @@ export function buildRecordBatch(state, events) {
     dispatches: Object.assign(Object.create(null), structuredClone(state.dispatches ?? {})),
   };
   const accepted = [];
+  const publishedDispatches = new Set(Object.keys(state.dispatches ?? {}));
   for (const event of events) {
     if (!['record', 'record.close'].includes(event.type)) {
       requireRecord(!(event.type === 'remove' && ['record', 'records'].includes(event.data?.kind)), 'records require an explicit close.');
@@ -144,6 +146,8 @@ export function buildRecordBatch(state, events) {
       'the lifecycle event has unknown fields.',
     );
     if (checkEvent(candidate, event) === 'stale') return { outcome: 'stale', events: [] };
+    if (event.type === 'record' && event.data.operation === 'reserve')
+      requireRecord(!publishedDispatches.has(event.data.record.dispatchId), 'a published manifest cannot gain entries.');
     applyRecordEvent(candidate, event.type, event.data);
     accepted.push(structuredClone(event));
   }

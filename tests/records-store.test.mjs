@@ -133,3 +133,26 @@ test('a snapshot preserves an edited source and its separate immutable dispatch 
   assert.deepEqual(dispatchManifest(b.state, sent.dispatchId), pinned);
   assert.equal(pinned.entries[0].parts[0].text, 'Original message');
 });
+
+test('partially settled manifests recover the original replay bytes through a snapshot', async (t) => {
+  const { delivery, reserved } = await import('./records-fixture.mjs');
+  const { attemptIdentity } = await import('../shared/record-events.mjs');
+  const { dispatchManifest } = await import('../shared/record-selectors.mjs');
+  const dir = await folder(t),
+    a = delivery('first'),
+    b = delivery('second');
+  const sa = reserved(a),
+    sb = reserved(b, { dispatchId: sa.dispatchId });
+  const store = await new Store(dir).load();
+  await fixtureCommand(store, [change('open', a), change('open', b), change('reserve', sa), change('reserve', sb)]);
+  const before = dispatchManifest(store.state, sa.dispatchId);
+  await fixtureCommand(store, [close(sa, 'delivered', { attemptIdentity: attemptIdentity(sa) })]);
+  await store.snapshot();
+  await store.close();
+  const recovered = await new Store(dir).load();
+  t.after(() => recovered.close());
+  assert.deepEqual(dispatchManifest(recovered.state, sa.dispatchId), before);
+  await fixtureCommand(recovered, [change('open', ask('unrelated'))]);
+  await fixtureCommand(recovered, [close(sb, 'delivered', { attemptIdentity: attemptIdentity(sb) })]);
+  assert.equal(dispatchManifest(recovered.state, sa.dispatchId), null);
+});

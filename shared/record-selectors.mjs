@@ -67,5 +67,7 @@ export function dispatchManifest(state, dispatchId) {
   const manifest = state.dispatches[dispatchId];
   if (manifest.renderVersion !== 1)
     throw Object.assign(new Error('The dispatch renderer is unavailable; reconcile this dispatch before replay.'), { code: 'ERECORD' });
-  return structuredClone(manifest);
+  const copy = structuredClone(manifest);
+  delete copy.settledIds; // internal progress never changes the replay manifest
+  return copy;
 }

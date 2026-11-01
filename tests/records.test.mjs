@@ -137,11 +137,11 @@ test('one manifest can pin several sources in order without transferring its con
     s.dispatches[sa.dispatchId].entries.map((r) => r.recordId),
     [a.id, b.id],
   );
+  const before = dispatchManifest(s, sa.dispatchId);
   run(s, [close(sa, 'delivered', { attemptIdentity: attemptIdentity(sa) })]);
-  assert.deepEqual(
-    s.dispatches[sa.dispatchId].entries.map((r) => r.recordId),
-    [b.id],
-  );
+  assert.deepEqual(dispatchManifest(s, sa.dispatchId), before, 'a partial settlement cannot change replay bytes');
+  run(s, [close(sb, 'delivered', { attemptIdentity: attemptIdentity(sb) })]);
+  assert.equal(dispatchManifest(s, sa.dispatchId), null);
 });
 
 test('failure status and distinct asks are ordered without reading transcript items', () => {
@@ -218,4 +218,17 @@ test('an empty batch reports noop and a record id needs its server prefix', () =
   const s = emptyState();
   assert.deepEqual(buildRecordBatch(s, []), { outcome: 'noop', events: [] });
   assert.throws(() => run(s, [change('open', ask('bad', { id: 'caller_chosen_id' }))]), { code: 'ERECORD' });
+});
+
+test('a published manifest cannot gain another source in a later commit', () => {
+  const s = emptyState(),
+    a = delivery('published_a'),
+    b = delivery('published_b');
+  run(s, [change('open', a), change('open', b)]);
+  const sa = reserved(a);
+  run(s, [change('reserve', sa)]);
+  const before = dispatchManifest(s, sa.dispatchId);
+  assert.throws(() => run(s, [change('reserve', reserved(b, { dispatchId: sa.dispatchId }))]), { code: 'ERECORD' });
+  assert.deepEqual(dispatchManifest(s, sa.dispatchId), before);
+  assert.equal(s.records[b.id].state, 'waiting');
 });
