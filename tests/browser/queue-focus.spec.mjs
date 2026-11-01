@@ -129,3 +129,28 @@ test('Escape in the editor leaves the editor and keeps the draft; a second Escap
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
 });
+
+test('F1: when another row leaves the queue, focus stays on the row that had it (syncList moved it)', async ({ page }) => {
+  const r = await room(page);
+  await mailButton(page, r.se).click();
+  const dialog = page.getByRole('dialog', { name: new RegExp(`queued for @${r.se.handle}`) });
+  const second = dialog.getByRole('button', { name: /^Edit message 2 of 2/ });
+  await second.focus();
+  await second.evaluate((el) => {
+    el.dataset.focusProbe = 'held';
+  });
+  const first = app.store.state.threads[r.thread.id].queue.find((q) => q.text.endsWith('first follow-up'));
+  app.rt.cancelQueued(r.thread.id, first.id);
+  await synced(page, app);
+  await settled(page);
+  expect(await page.evaluate(() => document.activeElement?.getAttribute('data-focus-probe'))).toBe('held');
+});
+
+test('F1: Remove on message 1 of 2 keeps focus in the dialog, on the same action of the row that takes its place', async ({ page }) => {
+  const r = await room(page);
+  await mailButton(page, r.se).click();
+  const dialog = page.getByRole('dialog', { name: new RegExp(`queued for @${r.se.handle}`) });
+  await dialog.getByRole('button', { name: /^Remove queued message 1 of 2/ }).click();
+  await synced(page, app);
+  await expect(dialog.getByRole('button', { name: /^Remove queued message 1 of 1/ })).toBeFocused();
+});

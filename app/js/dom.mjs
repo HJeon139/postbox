@@ -75,9 +75,20 @@ export function ago(ms) {
 }
 export const plural = (n, one, many = one + 's') => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
 
-/** Keyed list reconciliation: reuses nodes by key so rings keep animating and focus stays put. */
+/**
+ * Keyed list reconciliation: reuses nodes by key so rings keep animating and focus stays put. Nodes that leave go
+ * first, so the ones that stay aren’t moved past them; and moving a node drops focus inside it, so it’s given back
+ * (#597 review: a row leaving above the focused one).
+ */
 export function syncList(container, items, key, create, update) {
   const existing = new Map([...container.children].filter((c) => c.dataset.key).map((c) => [c.dataset.key, c]));
+  const keep = new Set(items.map((item) => String(key(item))));
+  for (const [k, n] of existing)
+    if (!keep.has(k)) {
+      n.remove();
+      existing.delete(k);
+    }
+  const had = container.contains(document.activeElement) ? document.activeElement : null;
   let prev = null;
   for (const item of items) {
     const k = String(key(item));
@@ -93,5 +104,5 @@ export function syncList(container, items, key, create, update) {
     if (node !== next) container.insertBefore(node, next);
     prev = node;
   }
-  for (const n of existing.values()) n.remove();
+  if (had instanceof HTMLElement && had.isConnected && document.activeElement !== had) had.focus({ preventScroll: true });
 }

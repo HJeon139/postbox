@@ -1,6 +1,6 @@
 // Queued messages for one agent (#427): a counted mail button in its row, and a bounded dialog with each message’s actions.
 
-import { conversationOf, threadsOfConversation } from '/shared/conversation.mjs';
+import { conversationRoot, threadsOfConversation } from '/shared/conversation.mjs';
 import { api, client } from './client.mjs';
 import { h, icon, syncList } from './dom.mjs';
 import { openDialog, openMenu, toast } from './ui.mjs';
@@ -103,6 +103,30 @@ function editQueuedMessage(row, target) {
   input.focus();
 }
 
+/** Rows being edited whose message left the queue: they stay, with a note to copy the draft (V4). */
+function markMissing(list, entries) {
+  const ids = new Set(entries.map((entry) => entry.q.id));
+  const missing = [...list.children].filter((row) => row.dataset.editing && !ids.has(row.dataset.key));
+  for (const row of missing)
+    if (!row.querySelector('.agent-queue-missing'))
+      row.append(h('p.err.agent-queue-missing', 'This message left the queue while you were editing. Copy your draft before closing it.'));
+  return missing;
+}
+
+/** Which row and action hold focus in the list, before a repaint. */
+function focusedSlot(list) {
+  const row = [...list.children].find((x) => x.contains(document.activeElement));
+  const action = document.activeElement?.closest?.('[data-action]')?.getAttribute('data-action');
+  return row ? { row, action, at: [...list.children].indexOf(row) } : null;
+}
+
+/** A focused row that left (its Remove, or the server) hands focus to the same action in the row now in its place. */
+function refocusSlot(list, slot) {
+  if (!slot || slot.row.isConnected || !list.children.length) return;
+  const row = list.children[Math.min(slot.at, list.children.length - 1)];
+  /** @type {HTMLElement | null} */ (row.querySelector(`[data-action="${slot.action}"]`) ?? row.querySelector('button'))?.focus();
+}
+
 /** The dialog’s note while its agent is being deleted; whether it is. */
 function paintLeaving(note, se) {
   const leaving = Boolean(se.deleting);
@@ -128,12 +152,7 @@ export function openQueue(sessionId, anchor = null) {
     if (!now || now.archived) return dialog?.close();
     const leaving = paintLeaving(leavingNote, now);
     const entries = entriesFor(sessionId);
-    const ids = new Set(entries.map((entry) => entry.q.id));
-    const editing = [...list.children].filter((row) => row.dataset.editing);
-    const missing = editing.filter((row) => !ids.has(row.dataset.key));
-    for (const row of missing)
-      if (!row.querySelector('.agent-queue-missing'))
-        row.append(h('p.err.agent-queue-missing', 'This message left the queue while you were editing. Copy your draft before closing it.'));
+    const missing = markMissing(list, entries);
     const heading = `${entries.length} queued for @${session.handle}`;
     if (title.textContent !== heading) title.textContent = heading;
     if (!entries.length && !missing.length) {
@@ -141,6 +160,7 @@ export function openQueue(sessionId, anchor = null) {
       return;
     }
     const all = [...entries, ...missing.map((row) => row._entry)];
+    const slot = focusedSlot(list);
     syncList(
       list,
       all,
@@ -149,6 +169,7 @@ export function openQueue(sessionId, anchor = null) {
       () => {},
     );
     for (const [i, row] of [...list.children].entries()) fillRow(row, all[i] ?? row._entry, i + 1, all.length, leaving);
+    refocusSlot(list, slot);
   };
   paint();
   dialog = openDialog({
@@ -222,7 +243,7 @@ export function paintOfflineQueue(container, messages) {
 
 /** The conversation’s agents with something queued for them, and how many each. */
 function waitingIn(threadId) {
-  const conv = conversationOf(S().threads, threadId);
+  const conv = conversationRoot(S().threads, threadId);
   return (
     Object.values(S().sessions)
       // One being deleted still counts: its messages wait for Undo or the purge, and stay visible meanwhile (R1).
