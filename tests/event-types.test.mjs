@@ -3,7 +3,7 @@
 // so a reducer type missing from the client's list is a silent stall, not an error.
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const read = (/** @type {string} */ p) => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
@@ -24,7 +24,17 @@ function clientTypes() {
   return new Set([...list.matchAll(/'([a-z.]+)'/g)].map((m) => m[1]));
 }
 
-test('the page listens for every event type the shared reducer applies', () => {
-  const missing = [...reducerTypes()].filter((t) => !clientTypes().has(t));
+/**
+ * The events the page can receive. Once A1a's classification exists (`shared/record-private.mjs`), that is its public
+ * list, since private events reach the page only as a `cursor`; until then, every type the reducer applies.
+ */
+async function pageTypes() {
+  if (!existsSync(new URL('../shared/record-private.mjs', import.meta.url))) return reducerTypes();
+  const { PUBLIC_EVENT_TYPES } = await import('../shared/record-private.mjs');
+  return new Set([...PUBLIC_EVENT_TYPES, 'cursor']);
+}
+
+test('the page listens for every event type it can receive', async () => {
+  const missing = [...(await pageTypes())].filter((t) => !clientTypes().has(t));
   assert.deepEqual(missing, [], 'add these to EVENT_TYPES in app/js/client.mjs');
 });

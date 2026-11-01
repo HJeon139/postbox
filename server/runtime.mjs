@@ -120,6 +120,8 @@ export { PERMISSION_MODES, readCapped };
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
+/** How long shutdown waits for a running archive pass before going on without it (#305, W5). */
+export const ARCHIVE_STOP_MS = 3000;
 export const DELETE_UNDO_MS = 10000;
 const STEP_STATES = new Set(['running', 'done', 'failed', 'denied', 'stopped']);
 /** What a step is when it isn’t a tool call (#73): a thought, a subagent’s narration, or a subagent’s own step. */
@@ -262,7 +264,9 @@ export class Runtime {
     this.heldForUndo = new Map();
     /** @type {Map<string, Promise<number>>} one archive pass at a time per conversation (#305, design-305-wiring-1) */
     this.archiveChains = new Map();
-    this.archiveClosing = false; // shutting down: no new archive run (W5)
+    // Shutting down: no new archive run (W5). Never reset: a runtime that stopped archiving is closing for good, so a test
+    // that reuses one after stopArchiving gets no passes.
+    this.archiveClosing = false;
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
     this.lastTurn = new Map(); // sessionId → the id of its last turn that ended
     this.spawnShell = spawnShell ?? undefined;
@@ -1035,7 +1039,8 @@ export class Runtime {
   /** After start: every conversation’s older turns, one conversation at a time, yielding between them. */
   async archiveAll() {
     for (const t of Object.values(this.s.threads))
-      if (!t.parentId && !t.deleting) {
+      if (this.archiveClosing) return;
+      else if (!t.parentId && !t.deleting) {
         await this.archiveConversation(t.id);
         await new Promise((r) => setImmediate(r));
       }
@@ -1044,9 +1049,19 @@ export class Runtime {
    * W5: the runtime owns the archive chains, and they end before the Store does. No new run starts, and this resolves
    * when the queued ones have settled; index.mjs calls it after stopTurns and before store.close().
    */
-  async stopArchiving() {
+  async stopArchiving(boundMs = ARCHIVE_STOP_MS) {
     this.archiveClosing = true;
-    await Promise.all([...this.archiveChains.values()]);
+    // Bounded, as every other shutdown step is: a disk that doesn't answer must not keep the Store open (critic). A
+    // put that lands later leaves at most an orphan archive file, which draft 6 accepts (a re-put is idempotent).
+    let timer;
+    const late = new Promise((r) => {
+      timer = setTimeout(() => r('late'), boundMs);
+      timer.unref?.();
+    });
+    const result = await Promise.race([Promise.all([...this.archiveChains.values()]), late]);
+    clearTimeout(timer);
+    if (result === 'late')
+      console.warn(`An archive pass was still running after ${boundMs} ms; shutting down without it. It leaves at most an unused archive file.`);
   }
   /** Busy for the pass (I4): turns still running, and turns with a job kept running after a Stop. Read per turn. */
   archiveRunning() {
