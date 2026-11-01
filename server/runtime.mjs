@@ -66,6 +66,7 @@ import {
   permissionsView,
   setPermissionMode,
 } from './permissions-panel.mjs';
+import { checkEffort, checkSetup } from './persona-checks.mjs';
 import { readCapped } from './read-capped.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
@@ -3250,26 +3251,6 @@ const asHttp = (e) => {
 };
 const snapshotOf = (p) =>
   pick(p, ['description', 'instructions', 'model', 'effort', 'permissionMode', 'usesHostSetup', 'canPublish', 'mcpOff', 'folder', 'tools', 'version']);
-const MAX_MCP_OFF = 100;
-/**
- * A persona’s setup choices (#57) are true or false, and the MCP servers it turned off (#59) a list of names;
- * anything else is refused. Absent means the default.
- * @param {{ usesHostSetup?: unknown, canPublish?: unknown, allowRequested?: unknown, mcpOff?: unknown }} setup
- */
-function checkSetup({ usesHostSetup, canPublish, allowRequested, mcpOff }) {
-  if (usesHostSetup !== undefined && typeof usesHostSetup !== 'boolean') throw httpError(422, '“Uses your Claude Code setup” is true or false.');
-  if (canPublish !== undefined && typeof canPublish !== 'boolean') throw httpError(422, '“Can publish outside Postbox” is true or false.');
-  if (allowRequested !== undefined && typeof allowRequested !== 'boolean') throw httpError(422, '“Calls you asked for run without a card” is true or false.');
-  if (
-    mcpOff !== undefined &&
-    (!Array.isArray(mcpOff) || mcpOff.length > MAX_MCP_OFF || mcpOff.some((n) => typeof n !== 'string' || !n.trim() || n.length > 200))
-  )
-    throw httpError(422, `The MCP servers turned off are a list of up to ${MAX_MCP_OFF} server names.`);
-}
-/** A persona’s effort is one of the levels Claude Code and the SDK take (#60). */
-function checkEffort(effort) {
-  if (!EFFORT_LEVELS.includes(effort)) throw httpError(422, `Effort is one of ${EFFORT_LEVELS.join(', ')}.`);
-}
 // Commands in the composer (#67), bounded: an agent’s list for the / menu, a `!command`’s output (its last
 // characters), how often that output reaches the browser, and how much of it the agents read.
 const MAX_COMMANDS = 200;
