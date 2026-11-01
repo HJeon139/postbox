@@ -42,7 +42,8 @@ export async function stopKeptJobs(rt, sessionIds, why) {
   for (const j of jobs) {
     for (const g of liveGroups(j, procs)) stopPgid(g.pgid, { kill: rt.signalProcess });
     // The kill stands. The record is written only to the store this began on, and otherwise skipped, not held: the
-    // session is being purged or Postbox is stopping, so no later reader needs it (critic’s read of #598).
+    // session is being purged or Postbox is stopping. A skipped record leaves the job listed as kept in what the disk
+    // holds, and the next poll after Retry or a restart ends it as done, its groups gone (critic’s and gpt’s reads).
     if (rt.store.writable && rt.store.epoch === epoch) rt.endJob(j.sessionId, j.id, 'stopped', why);
   }
 }

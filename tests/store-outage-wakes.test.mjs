@@ -107,6 +107,41 @@ test('a second outage during the drain after Retry leaves no session mid-turn wi
   await rt.store.flush();
 });
 
+test('a second outage inside the drain, while the stop’s own record writes, leaves no session mid-turn after the next Retry (gpt’s probe)', async () => {
+  const calls = [];
+  rt.adapters.register({
+    name: 'drain-record',
+    async deliver(_se, message, ctx) {
+      calls.push(message);
+      if (calls.length === 1) await new Promise((r) => ctx.signal.addEventListener('abort', () => r(undefined), { once: true }));
+    },
+  });
+  const p = rt.createPersona({ handle: 'drainrecord', backend: 'drain-record' });
+  const t = rt.createThread({ projectId: 'p1', title: 'Drain record', personaIds: [p.id] });
+  const [se] = rt.sessionsIn(t.id);
+  await rt.store.flush();
+  rt.sendMessage(t.id, { text: '@drainrecord work' });
+  await until(() => calls.length === 1 && rt.turns.has(se.id), 'the busy turn');
+  await rt.store.flush(); // the session is mid-turn on disk
+  rt.store.fail(eio());
+  await until(() => !rt.turns.has(se.id), 'the outage to stop the turn');
+  const recordStopped = rt.recordStopped;
+  rt.recordStopped = function (...a) {
+    rt.recordStopped = recordStopped; // once
+    rt.store.fail(eio()); // the second outage: this stop’s writes go into memory only, and its exit still waits
+    return recordStopped.apply(this, a);
+  };
+  await rt.store.reload(); // Retry 1 drains the stop’s record into a closed store
+  assert.equal(rt.store.writable, false);
+  await rt.store.reload(); // Retry 2: the record is gone from what waits; the exit still waits
+  await until(() => !rt.exiting.has(se.id), 'the exit to run');
+  await sleep(50);
+  const { state, currentStep } = rt.s.sessions[se.id];
+  assert.deepEqual({ state, currentStep }, { state: 'idle', currentStep: 'Stopped: Postbox couldn’t save changes' });
+  assert.ok(!rt.store.items(t.id).some((i) => i.sessionId === se.id && i.status === 'streaming'), 'no reply left streaming');
+  await rt.store.flush();
+});
+
 test('a deleted agent’s queued message, with the Undo window ending while the store is closed, is posted exactly once after Retry (#597’s release, across an outage)', async () => {
   let release = () => {};
   rt.adapters.register({
