@@ -75,3 +75,8 @@ export function withArchived(live, list, { handle = null, turnId = null } = {}) 
     archived: counts,
   };
 }
+
+/** The turn ids of the archived turns in scope, whose kept entries the live totals still count. @param {any[]} list @param {{ handle?: string | null, turnId?: string | null }} opts */
+export function archivedTurnIds(list, { handle = null, turnId = null } = {}) {
+  return list.filter((e) => e.kind === 'turn-archive' && (!turnId || e.turnId === turnId) && (!handle || e.effort?.byHandle?.[handle])).map((e) => e.turnId);
+}

@@ -89,3 +89,37 @@ test('T-14: a hot turn is never counted twice, and a store with nothing archived
   await archiveTurns({ store: s, blobs: memoryBlobs(), convId: C, running: new Set() });
   assert.equal(summarize(s.state.work[C]).effort.turns, 2, 'two turns, none archived');
 });
+
+test('T-14: the commits, pushes and branches of an archived turn are still counted once, from the live list (design-305-live-kinds-1)', () => {
+  // A summary stands for turn t1, whose turn entry is gone; its kept entries stay live (branch, commit, push).
+  const list = [
+    {
+      id: 'wa_t1',
+      kind: 'turn-archive',
+      turnId: 't1',
+      handles: ['alpha'],
+      counts: { files: 0, lines: { added: 0, removed: 0 }, commands: 1, failed: 0, reads: 0, publishes: 0, steps: 0 },
+      effort: {
+        turns: 1,
+        ms: 1,
+        toolCalls: 1,
+        costUsd: 0.5,
+        tokens: 5,
+        priced: true,
+        byHandle: { alpha: { turns: 1, ms: 1, toolCalls: 1, costUsd: 0.5, tokens: 5, priced: true } },
+      },
+    },
+    { id: 'wc1', kind: 'commit', turnId: 't1', sha: 'abc', handle: 'alpha' },
+    { id: 'wp1', kind: 'push', turnId: 't1', handle: 'alpha' },
+    { id: 'wb1', kind: 'branch', turnId: 't1', name: 'feat/x', handle: 'alpha' },
+    { id: 't2', kind: 'turn', turnId: 't2', handle: 'beta', ms: 1, toolCalls: 1, costUsd: 0.5 },
+    { id: 'wc2', kind: 'commit', turnId: 't2', sha: 'def', handle: 'beta' },
+  ];
+  const s = summarize(list);
+  assert.equal(s.commits.length, 2, 'the archived turn’s commit and the live turn’s');
+  assert.equal(s.pushes.length, 1);
+  assert.equal(s.branches.length, 1);
+  assert.equal(s.effort.turns, 2, 'one archived and one live turn, none counted twice');
+  assert.equal(summarize(list, { turnId: 't1' }).commits.length, 1, 'one archived turn’s own scope reads its kept entries');
+  assert.equal(summarize(list, { handle: 'alpha' }).commits.length, 1, 'and so does one agent’s');
+});
