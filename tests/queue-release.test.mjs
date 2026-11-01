@@ -248,7 +248,7 @@ test('the purge posts in queue order: M1 for @alpha and @beta, then M2 for @alph
   assert.deepEqual(order, ['M1', 'M2']);
 });
 
-test('no path starts a turn for an agent being deleted: deliver itself refuses (the class, rule 14)', async () => {
+test('no path starts a turn for an agent being deleted: deliver holds what comes (the class, rule 14)', async () => {
   const { rt, adapter, alpha } = setup();
   rt.updateSession(alpha.id, { deleting: Date.now() + 10_000 });
   rt.deliver(alpha.id, { kind: 'event', event: { type: 'probe' } });
@@ -256,4 +256,32 @@ test('no path starts a turn for an agent being deleted: deliver itself refuses (
   await settle(rt);
   assert.equal(adapter.calls.length, 0);
   assert.equal(rt.turns.has(alpha.id), false);
+});
+
+test('what reaches an agent in its Undo window is held: Undo delivers it in order, and nothing starts before (critic)', async () => {
+  const { rt, adapter, alpha } = setup();
+  rt.deleteSession(alpha.id);
+  rt.deliver(alpha.id, { kind: 'event', event: { type: 'block-answer', values: { pick: 'a' } } });
+  rt.deliver(alpha.id, { kind: 'wake', note: 'scheduled' });
+  await settle(rt);
+  assert.equal(adapter.calls.length, 0, 'no turn in the window');
+  rt.undoDelete(alpha.id);
+  await settle(rt);
+  const seen = adapter.calls.filter((x) => x.sessionId === alpha.id).map((x) => JSON.stringify(x.message));
+  assert.ok(
+    seen.some((m) => /block-answer/.test(m)),
+    'the person’s answer reaches it after Undo',
+  );
+  assert.ok(seen.join('\n').includes('scheduled'), 'the scheduled wake reaches it after Undo');
+});
+
+test('at the purge, what was held for Undo is dropped with the session; no turn starts', async () => {
+  const { rt, adapter, alpha } = setup();
+  rt.deleteSession(alpha.id);
+  rt.deliver(alpha.id, { kind: 'event', event: { type: 'block-answer' } });
+  clearTimeout(rt.timers.get(`del:${alpha.id}`));
+  rt.purgeSession(alpha.id);
+  await settle(rt);
+  assert.equal(adapter.calls.length, 0);
+  assert.equal(rt.heldForUndo?.has(alpha.id) ?? false, false, 'nothing left held for a session that’s gone');
 });

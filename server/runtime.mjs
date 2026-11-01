@@ -247,6 +247,8 @@ export class Runtime {
     this.keptPoll = null; // checks on the background jobs Postbox kept running (#129)
     this.viewing = new Map(); // threadId → last time a browser said it was open
     this.timers = new Map(); // scheduleId or deletion → timeout
+    /** @type {Map<string, [any, any][]>} what deliver held for a session in its Undo window (#597), in arrival order */
+    this.heldForUndo = new Map();
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
     this.lastTurn = new Map(); // sessionId → the id of its last turn that ended
     this.spawnShell = spawnShell ?? undefined;
@@ -582,8 +584,12 @@ export class Runtime {
     const se = this.session(sessionId);
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
     // An agent being deleted starts no turn in its Undo window: every path that delivers comes through here, so one
-    // check covers them all (#597 review). The person’s queued messages wait in the queue instead (R1).
-    if (se.deleting) return;
+    // check covers them all (#597 review). What arrives is held, not dropped: Undo delivers it in order, the purge
+    // drops it with the session (critic). The person’s queued messages wait in the queue instead (R1).
+    if (se.deleting) {
+      this.heldForUndo.set(sessionId, [...(this.heldForUndo.get(sessionId) ?? []), [message, { summarizeTo, threadId }]]);
+      return;
+    }
     message = prepareScheduledRetry(this, message, se.threadId);
     // As it was asked, for Retry (askedOf).
     const asked = { message, summarizeTo, threadId };
@@ -2849,12 +2855,18 @@ export class Runtime {
     // From its conversation: a retired fork’s session lives in a topic, where archiveScope refuses (#597 review).
     const conv = this.lineage(se.threadId).at(-1);
     if (this.s.threads[conv]) for (const x of this.archiveScope(conv)) this.drainQueue(x.id);
+    // …and what reached it while it was being deleted (deliver held it), in the order it came.
+    const held = this.heldForUndo.get(sessionId) ?? [];
+    this.heldForUndo.delete(sessionId);
+    for (const [message, options] of held) this.deliver(sessionId, message, options);
   }
 
   purgeSession(sessionId) {
     this.timers.delete(`del:${sessionId}`);
     const se = this.s.sessions[sessionId];
     if (!se?.deleting) return;
+    // What deliver held for its Undo goes with it.
+    this.heldForUndo.delete(sessionId);
     // A turn it still has would run on for a session that’s gone: stop it first (#597 review).
     if (this.turns.has(sessionId)) this.stop(sessionId, { silent: true });
     // The person’s messages queued for it leave the queue now, not at delete, so Undo found them untouched (#427).
