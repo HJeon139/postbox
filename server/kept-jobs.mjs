@@ -19,6 +19,7 @@ export function watchKept(rt) {
   rt.keptPoll.unref?.();
 }
 export async function pollKept(rt) {
+  if (!rt.store.writable) return; // a job’s end is recorded at the next tick after Retry, not into memory only
   if (!rt.keptJobs().length) return;
   const procs = await rt.listProcesses().catch(() => null);
   if (!procs) return;

@@ -126,3 +126,15 @@ test('a stream that connects while the store is closed gets the status as its fi
   const r = await fakeRequest(app.handle, { host: host(), method: 'POST', path: '/api/store/retry', headers: headers(), body: {} });
   assert.equal(r.status, 200, r.text);
 });
+
+test('the gate exempts the stop routes themselves, not any path ending in /stop: telemetry’s stop is a write and is refused', async () => {
+  app.store.fail(eio());
+  const telemetry = await fakeRequest(app.handle, { host: host(), method: 'POST', path: '/api/threads/t1/telemetry/stop', headers: headers(), body: {} });
+  assert.equal(telemetry.status, 503, 'a recording’s stop writes to the store: refused while closed');
+  for (const path of ['/api/sessions/none/stop', '/api/sessions/none/jobs/j/stop', '/api/threads/t1/shell/none/stop']) {
+    const r = await fakeRequest(app.handle, { host: host(), method: 'POST', path, headers: headers(), body: {} });
+    assert.notEqual(r.status, 503, `${path} reaches its route while closed`);
+  }
+  const r = await fakeRequest(app.handle, { host: host(), method: 'POST', path: '/api/store/retry', headers: headers(), body: {} });
+  assert.equal(r.status, 200, r.text);
+});

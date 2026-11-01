@@ -151,3 +151,24 @@ test('install keeps store.state’s identity, a held sub-object goes stale, and 
   await s.close();
   await rm(dir, { recursive: true });
 });
+
+test('a reload listener that never settles makes Retry reject within the bound and clears `retrying`, so the next Retry can run', async () => {
+  const dir = await tmp();
+  const faults = {};
+  const s = await new Store(dir, { io: logDisk(faults), retryBoundMs: 50 }).load();
+  s.emit('thread', { id: 't1', members: [] });
+  await s.flush();
+  faults.sync = () => Promise.reject(eio('disk sync refused'));
+  await assert.rejects(s.commit([thread('x')], { opId: 'x' }), /EIO/);
+  faults.sync = null;
+  let hang = true;
+  s.onReload(() => (hang ? new Promise(() => {}) : Promise.resolve()));
+  await assert.rejects(s.reload(), /reconciliation after the reload failed: a reload listener didn’t finish within 50 ms/);
+  assert.equal(s.retrying, null, 'nothing to join: the next Retry runs afresh');
+  assert.equal(s.writable, false, 'still closed');
+  hang = false;
+  await s.reload();
+  assert.equal(s.writable, true);
+  await s.close();
+  await rm(dir, { recursive: true });
+});

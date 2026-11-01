@@ -107,7 +107,12 @@ async function retry(store) {
   // it; the next Retry reloads and reconciles afresh.
   store.reconciling = true;
   try {
-    await Promise.all([...store.reloaders].map((fn) => fn()));
+    // Bounded: a listener that never settles would otherwise leave `retrying` set, every later Retry joining it until
+    // a restart (the integrator’s nit on 1b).
+    const all = Promise.all([...store.reloaders].map((fn) => fn()));
+    if (!(await settledWithin(all, store.retryBoundMs)))
+      throw Object.assign(new Error(`a reload listener didn’t finish within ${store.retryBoundMs} ms`), { code: 'ETIMEDOUT' });
+    await all;
   } catch (e) {
     throw closedBy(store, Object.assign(new Error(`reconciliation after the reload failed: ${e.message}`), { code: e.code }));
   } finally {

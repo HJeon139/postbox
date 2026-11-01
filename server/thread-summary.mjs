@@ -160,6 +160,7 @@ export function settleThread(rt, threadId) {
   clearTimeout(map.get(threadId));
   const timer = setTimeout(() => {
     map.delete(threadId);
+    if (!rt.store.writable) return; // no paid call whose summary couldn’t be saved; the next turn’s end settles again
     summarizeThread(rt, threadId, summarize).catch(() => {});
   }, rt.config.summaryDelayMs ?? SUMMARY_DELAY_MS);
   timer.unref?.();

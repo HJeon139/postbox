@@ -2284,14 +2284,18 @@ export class Runtime {
       onExit: ({ code = null, signal = null, error }) => {
         flush({ final: true });
         this.shellRuns.delete(it.id);
-        if (!this.store.item(threadId, it.id)) return;
-        this.patchItem(threadId, it.id, {
-          status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
-          exitCode: typeof code === 'number' ? code : null,
-          signal: signal ?? null,
-          ms: Date.now() - startedAt,
-          ...(cut ? { paused: false } : {}),
-          ...(run.closing ? { error: 'Postbox stopped it as it shut down.' } : error ? { error: clipText(String(error.message ?? error), 300) } : {}),
+        // How it ended is written once writes are open: the output chunks are memory-only while closed (I1), but a
+        // status left “running” in the recovered state would never end.
+        whenWritable(this, () => {
+          if (!this.store.item(threadId, it.id)) return;
+          this.patchItem(threadId, it.id, {
+            status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
+            exitCode: typeof code === 'number' ? code : null,
+            signal: signal ?? null,
+            ms: Date.now() - startedAt,
+            ...(cut ? { paused: false } : {}),
+            ...(run.closing ? { error: 'Postbox stopped it as it shut down.' } : error ? { error: clipText(String(error.message ?? error), 300) } : {}),
+          });
         });
       },
     });
@@ -2497,6 +2501,9 @@ export class Runtime {
       this.mirrors.delete(sessionId);
       return;
     }
+    // While the store is closed the tail isn’t advanced: what was typed waits in the file and is read after Retry,
+    // instead of into memory only, where the reload would discard it (the integrator’s finding on 1b).
+    if (!this.store.writable) return;
     let entries;
     try {
       entries = m.tail.poll();
@@ -2844,6 +2851,7 @@ export class Runtime {
 
   purgeThread(threadId) {
     this.timers.delete(`delt:${threadId}`);
+    if (!this.store.writable) return; // nothing durable can happen: Retry re-arms this from the recovered state (store-outage.mjs)
     const t = this.s.threads[threadId];
     if (!t?.deleting) return;
     // Everything under it, a side thread of a topic thread too, and their sessions with them (#320).
@@ -2880,6 +2888,7 @@ export class Runtime {
 
   purgeSession(sessionId) {
     this.timers.delete(`del:${sessionId}`);
+    if (!this.store.writable) return; // as purgeThread
     const se = this.s.sessions[sessionId];
     if (!se?.deleting) return;
     // Background jobs Postbox kept running for it would run on with no record (#129).

@@ -40,6 +40,9 @@ import { newId, Store } from './store.mjs';
 import { recordingOff, watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
 
+/** The routes that stop an agent’s turn, a background job or a `!` command: allowed while the store is closed, as Stop must be. */
+const STOP_ROUTE = /^\/api\/(sessions\/[^/]+\/(stop|jobs\/[^/]+\/stop)|threads\/[^/]+\/shell\/[^/]+\/stop)$/;
+
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 const TYPES = {
@@ -229,7 +232,7 @@ export async function start({
     // While the store can’t be written (#508’s storage design, “When a write fails (ST-3)”), every write is refused here
     // with the cause, before it reaches the runtime; reads, Retry and Stop still answer. The tools have the same gate
     // in server/mcp.mjs.
-    if (!store.writable && req.method !== 'GET' && req.method !== 'HEAD' && path !== '/mcp' && path !== '/api/store/retry' && !path.endsWith('/stop'))
+    if (!store.writable && req.method !== 'GET' && req.method !== 'HEAD' && path !== '/mcp' && path !== '/api/store/retry' && !STOP_ROUTE.test(path))
       throw Object.assign(httpError(503, store.cause?.message ?? 'Postbox can’t save changes right now.'), { code: 'store-closed' });
     if (path === '/api/store/retry' && req.method === 'POST') {
       if (store.writable) throw httpError(409, 'Nothing to retry: Postbox is saving changes. If a page still shows the status line, reload it.');

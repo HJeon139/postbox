@@ -46,6 +46,7 @@ export function undoDeletePersona(rt, id) {
  */
 export async function purgePersona(rt, id) {
   rt.timers.delete(`delp:${id}`);
+  if (!rt.store.writable) return; // nothing durable can happen: Retry re-arms this from the recovered state (store-outage.mjs)
   const p = rt.s.personas[id];
   if (!p?.deleting) return;
   // Not when it’s already purging: a restart can cut a purge short, and each step below is safe to repeat.

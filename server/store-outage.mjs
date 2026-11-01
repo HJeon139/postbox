@@ -13,6 +13,7 @@
 // and only then does what waited run, so no reconciled work starts before the durability barrier has passed (I3). A
 // restart while the store is closed starts again from what the disk holds, as any restart does.
 
+import { rearmPersonaDeletes } from './persona-delete.mjs';
 import { rearmWakes } from './scheduled-wakes.mjs';
 
 /** @typedef {import('./runtime.mjs').Runtime} Runtime */
@@ -39,15 +40,27 @@ export function watchStore(rt) {
   // finding: an old timer fired a wake the recovered state didn’t hold); they are re-armed from what the disk held,
   // as a restart does, with a wake caught running marked interrupted (rearmWakes). This runs before reopened(): the
   // store tells its reload listeners before its status listeners hear writes reopen (server/store-retry.mjs).
+  // Every timer in rt.timers is re-armed, the deletions too (the integrator’s finding on 1b: a purge whose Undo window
+  // ended during the outage had fired, done nothing durable, and left the thread “deleting” with no timer).
   rt.store.onReload(() => {
-    for (const [id, timer] of rt.timers) {
-      if (!id.startsWith('del')) {
-        clearTimeout(timer);
-        rt.timers.delete(id);
-      }
-    }
+    for (const timer of rt.timers.values()) clearTimeout(timer);
+    rt.timers.clear();
     rearmWakes(rt);
+    rt.rearmDeletions();
+    rearmPersonaDeletes(rt);
   });
+}
+
+/**
+ * The one rule for a runtime timer or poller whose callback writes to the store or kills a process: it does nothing
+ * while writes are closed. A timer in rt.timers is re-armed from the recovered state at Retry (above), so what it
+ * would have done happens then; a poller consumes nothing and catches up at its next tick. Returns whether fn ran.
+ * @param {Runtime} rt @param {() => unknown} fn
+ */
+export function gated(rt, fn) {
+  if (!rt.store.writable) return false;
+  fn();
+  return true;
 }
 
 /**
