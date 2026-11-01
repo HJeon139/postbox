@@ -163,3 +163,20 @@ test('W5: shutdown ends the archive chains before the store closes: no put after
     console.warn = warn;
   }
 });
+
+test('W5 bounded: a put that hangs doesn’t stop shutdown; stopArchiving gives up at its bound with one line', async () => {
+  const { rt, puts } = await heldPut();
+  assert.equal(puts(), 1);
+  const lines = [];
+  const warn = console.warn;
+  console.warn = (...a) => lines.push(a.join(' '));
+  try {
+    const started = Date.now();
+    await rt.stopArchiving(50);
+    assert.ok(Date.now() - started < 1000, 'shutdown went on');
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /archive/i);
+  } finally {
+    console.warn = warn;
+  }
+});
