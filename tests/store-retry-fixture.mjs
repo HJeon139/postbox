@@ -29,3 +29,29 @@ export function logDisk(faults) {
     },
   });
 }
+
+/**
+ * A hold for a fault: the operation awaits `promise` until release(); `reached` resolves when it got there. A spec waits
+ * for `reached` before it acts, instead of a fixed time: under load a Retry may not have arrived yet, and close()’s
+ * boundary would make it give way earlier, by design (the barrier spec flaked 1 in 108 for that reason).
+ */
+export function hold() {
+  let release = () => {};
+  let arrived = () => {};
+  const promise = new Promise((r) => {
+    release = () => r(undefined);
+  });
+  const reached = new Promise((r) => {
+    arrived = () => r(undefined);
+  });
+  return {
+    promise,
+    release,
+    reached,
+    /** The fault: marks the arrival, then waits. */
+    wait: () => {
+      arrived();
+      return promise;
+    },
+  };
+}

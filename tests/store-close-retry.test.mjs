@@ -7,7 +7,7 @@ import { rm } from 'node:fs/promises';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { disk } from './store-jsonl-fixture.mjs';
-import { eio, logDisk, thread, tmp } from './store-retry-fixture.mjs';
+import { eio, hold, logDisk, thread, tmp } from './store-retry-fixture.mjs';
 
 test('close() during a Retry held at its barrier waits for it, so the lock is released only once nothing can install or reopen', async () => {
   const dir = await tmp();
@@ -17,24 +17,29 @@ test('close() during a Retry held at its barrier waits for it, so the lock is re
   await a.flush();
   faults.sync = () => Promise.reject(eio('disk sync refused'));
   await assert.rejects(a.commit([thread('x')], { opId: 'x' }), /EIO/);
-  let release;
-  const gate = new Promise((r) => {
-    release = r;
-  });
-  faults.sync = () => gate; // Retry’s fresh-descriptor barrier is held
-  const retry = a.reload();
-  await new Promise((r) => setTimeout(r, 20));
-  assert.equal(a.status.retrying, true);
+  const barrier = hold();
+  faults.sync = barrier.wait; // Retry’s fresh-descriptor barrier is held
+  let outcome = 'running';
+  const retry = a.reload().then(
+    () => {
+      outcome = 'resolved';
+    },
+    (e) => {
+      outcome = `rejected (${e.code}): ${e.message}`;
+    },
+  );
+  await barrier.reached; // not a fixed wait: under load the Retry would not be there yet, and would give way at an earlier check
+  assert.equal(a.status.retrying, true, `the Retry is under way, not ${outcome}`);
   let closed = false;
   const closing = a.close().then(() => {
     closed = true;
   });
   await new Promise((r) => setTimeout(r, 30));
-  assert.equal(closed, false, 'close() waits for the Retry under way');
+  assert.equal(closed, false, `close() waits for the Retry under way; the Retry is ${outcome}`);
   await assert.rejects(new Store(dir).load(), /Another Postbox store/, 'the lock is still A’s meanwhile');
   faults.sync = null;
-  release();
-  await retry.catch(() => {});
+  barrier.release();
+  await retry;
   await closing;
   assert.equal(a.closed, true);
   assert.equal(a.writable, false);
@@ -73,7 +78,7 @@ test('close() during a Retry held at its candidate load waits, and the Retry end
   const io = {
     ...logDisk(faults),
     readFile: async (...args) => {
-      if (holdRead && String(args[0]).includes('events-')) await holdRead;
+      if (holdRead && String(args[0]).includes('events-')) await holdRead.wait();
       return realFs.readFile(...args);
     },
   };
@@ -85,19 +90,16 @@ test('close() during a Retry held at its candidate load waits, and the Retry end
   faults.sync = null;
   const heard = [];
   listen(a, heard);
-  let release;
-  holdRead = new Promise((r) => {
-    release = r;
-  });
+  holdRead = hold();
   const retry = a.reload();
-  await new Promise((r) => setTimeout(r, 20));
+  await holdRead.reached;
   let closed = false;
   const closing = a.close().then(() => {
     closed = true;
   });
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(closed, false, 'close() waits');
-  release();
+  holdRead.release();
   await retry.catch(() => {});
   await closing;
   await endsClosed(a, heard);
@@ -153,29 +155,27 @@ test('close() during a Retry held in reconciliation waits, and the Retry ends wi
 
 test('close() during a snapshot in flight: the snapshot is abandoned, nothing pruned or renamed, and the next store loads the log whole', async () => {
   const dir = await tmp();
-  let hold = null;
+  let holdOpen = null;
   const io = disk({
     async open(path, flags, mode) {
-      if (hold && String(path).endsWith('.tmp')) await hold;
+      if (holdOpen && String(path).endsWith('.tmp')) await holdOpen.wait();
       return realFs.open(path, flags, mode);
     },
   });
   const a = await new Store(dir, { io }).load();
   for (let i = 0; i < 3; i++) a.emit('thread', { id: `t${i}`, members: [] });
   await a.flush();
-  let release;
-  hold = new Promise((r) => {
-    release = r;
-  });
+  const held = hold();
+  holdOpen = held;
   const snap = a.snapshot();
-  await new Promise((r) => setTimeout(r, 20));
+  await held.reached;
   let closed = false;
   const closing = a.close().then(() => {
     closed = true;
   });
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(closed, false, 'close() waits for the snapshot pass to end');
-  release();
+  held.release();
   await assert.rejects(snap, /closed while it was written/, 'the snapshot resumed into a closing store and abandoned itself');
   await closing;
   const names = (await realFs.readdir(dir)).sort();

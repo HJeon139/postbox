@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { LOCK } from '../server/store-lock.mjs';
 import { disk } from './store-jsonl-fixture.mjs';
-import { eio, logDisk, thread, tmp } from './store-retry-fixture.mjs';
+import { eio, hold, logDisk, thread, tmp } from './store-retry-fixture.mjs';
 
 test('a failed store with no descriptor: close() then reload() at once; the Retry reads nothing, and the next owner’s half-written line is never trimmed', async () => {
   const dir = await tmp();
@@ -76,13 +76,10 @@ test('a Retry whose barrier never resolves: close() rejects within the bound, ke
   await a.flush();
   faults.sync = () => Promise.reject(eio('disk sync refused'));
   await assert.rejects(a.commit([thread('x')], { opId: 'x' }), /EIO/);
-  let answer;
-  faults.sync = () =>
-    new Promise((r) => {
-      answer = r; // the barrier’s fsync doesn’t answer until the spec says so
-    });
+  const barrier = hold(); // the barrier’s fsync doesn’t answer until the spec says so
+  faults.sync = barrier.wait;
   const retried = a.reload().catch((e) => e.code);
-  await new Promise((r) => setTimeout(r, 20));
+  await barrier.reached;
   const t0 = Date.now();
   await assert.rejects(a.close(), /can’t close.*isn’t answering.*Stop the process/);
   assert.ok(Date.now() - t0 < 1000, 'close() answered within the bound');
@@ -93,7 +90,7 @@ test('a Retry whose barrier never resolves: close() rejects within the bound, ke
   await assert.rejects(new Store(dir).load(), /Another Postbox store \(process \d+\) holds/);
   await assert.rejects(a.commit([thread('late')], { opId: 'late' }), /can’t close/, 'a late commit hears why');
   // The disk answers at last: the Retry finds the store retiring and installs nothing.
-  answer();
+  barrier.release();
   assert.equal(await retried, 'ECLOSED');
   assert.equal(a.writable, false);
   assert.ok(a.lock, 'still held: only the process’s exit releases it');
