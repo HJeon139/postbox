@@ -28,6 +28,7 @@ function clientTypes() {
  * The events the page can receive. Once A1a's classification exists (`shared/record-private.mjs`), that is its public
  * list, since private events reach the page only as a `cursor`; until then, every type the reducer applies.
  */
+// TODO: Remove the compatibility branch when A1a lands and use its public event list.
 async function pageTypes() {
   if (!existsSync(new URL('../shared/record-private.mjs', import.meta.url))) return reducerTypes();
   const { PUBLIC_EVENT_TYPES } = await import('../shared/record-private.mjs');
