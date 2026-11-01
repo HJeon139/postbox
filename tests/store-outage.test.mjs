@@ -138,7 +138,7 @@ test('T-32: a scheduled wake armed before the failure runs only after Retry has 
   await store.flush();
 });
 
-test('a scheduled wake’s turn stopped by the outage is settled like any stop, and no timer of the old state survives Retry', async () => {
+test('a scheduled wake’s turn stopped by the outage has one owner after Retry: the re-arm runs it again as interrupted, once (the integrator’s re-review)', async () => {
   const { rt, store } = app;
   const agent = rt.adapters.get('mock');
   const p = rt.createPersona({ handle: 'sleeper', backend: 'mock' });
@@ -149,16 +149,22 @@ test('a scheduled wake’s turn stopped by the outage is settled like any stop, 
   await until(() => rt.turns.has(se.id), 'the wake’s turn to start');
   assert.equal(rt.s.schedules[sc.id]?.running, true);
   await store.flush();
+  const before = agent.calls.length;
   store.fail(eio());
   await until(() => !rt.turns.has(se.id), 'the turn to stop');
   const cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
   assert.equal((await call({ method: 'POST', path: '/api/store/retry', cookie })).status, 200);
-  await until(() => store.writable && !rt.s.schedules[sc.id]?.running, 'the schedule to leave running after Retry');
-  assert.equal(rt.timers.has(sc.id), false, 'no timer left for it');
-  const item = store.items(t.id).find((it) => it.scheduleId === sc.id);
-  assert.notEqual(item?.status, 'running', `the schedule item is settled: ${item?.status}`);
-  const stopped = store.items(t.id).find((it) => it.kind === 'agent' && it.sessionId === se.id);
-  assert.equal(stopped?.stopReason, 'store');
+  // The stop’s record doesn’t settle the wake as well (two owners would cancel it): the re-arm finds it running on
+  // disk, marks it interrupted and runs it again, as a restart does and as the agent was told.
+  await until(() => agent.calls.length === before + 1 && rt.turns.has(se.id), 'the wake to run again after Retry');
+  assert.equal(agent.calls.at(-1).message.scheduledWakeId, sc.id, 'the same wake, re-armed (an interrupted note is added only when its tools had started)');
+  const stopped = store.items(t.id).find((it) => it.kind === 'agent' && it.sessionId === se.id && it.stopReason === 'store');
+  assert.ok(stopped, 'the first reply says the store stopped it');
+  rt.stop(se.id, { silent: true }); // your Stop ends it for good
+  await until(() => !rt.turns.has(se.id) && !rt.exiting.has(se.id), 'the second turn to end');
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(agent.calls.length, before + 1, 'it ran again once, not twice');
+  assert.equal(rt.timers.has(sc.id), false, 'no timer left after your Stop');
   agent.calls.length = 0;
   await store.flush();
 });

@@ -51,7 +51,23 @@ export function watchStore(rt) {
     rearmWakes(rt);
     rt.rearmDeletions();
     rearmPersonaDeletes(rt);
+    settleOrphanTurns(rt);
   });
+}
+
+/**
+ * A session the recovered state shows mid-turn, with no turn running and no stop still to record, is reset as a
+ * restart resets it (server/index.mjs). It happens when a second outage hit while what waited was being drained: the
+ * stop’s own records were written into memory only and lost (the integrator’s re-review of #598, outage-in-drain).
+ * A session whose stop is still held keeps it: its record runs once writes reopen. @param {Runtime} rt
+ */
+function settleOrphanTurns(rt) {
+  for (const se of Object.values(rt.s.sessions)) {
+    if (!['think', 'gen', 'tool', 'stopping'].includes(se.state) || rt.turns.has(se.id) || rt.exiting.has(se.id)) continue;
+    rt.updateSession(se.id, { state: 'idle', subagents: [], currentStep: 'Interrupted: Postbox couldn’t save changes', stopAsk: null });
+    for (const it of rt.store.items(se.threadId))
+      if (it.sessionId === se.id && it.status === 'streaming') rt.patchItem(se.threadId, it.id, { status: 'stopped', stopReason: 'store' });
+  }
 }
 
 /**
@@ -85,9 +101,16 @@ export function whenWritable(rt, fn, { first = false, owner } = {}) {
   else rt.storeWait.push(entry);
 }
 
-/** Drops the held work a reload recreates from the recovered state: every entry with an owner (S1). @param {Runtime} rt */
+/**
+ * Drops the held work a reload recreates from the recovered state (S1): every storeWait entry with an owner, and every
+ * held message that names a schedule. A wake that fired while its agent was busy waits in the turn’s pending list, and
+ * the outage’s stop moves that list into the exit’s held one; the re-arm owns the same schedule, so keeping the held
+ * copy would deliver the wake twice (the integrator’s re-review of #598). @param {Runtime} rt
+ */
 function dropOwned(rt) {
   for (let i = rt.storeWait.length - 1; i >= 0; i--) if (/** @type {any} */ (rt.storeWait[i]).owner) rt.storeWait.splice(i, 1);
+  for (const ex of rt.exiting.values()) ex.held = ex.held.filter((h) => !h.message?.scheduledWakeId);
+  for (const turn of rt.turns.values()) turn.pending = turn.pending.filter((h) => !h.message?.scheduledWakeId);
 }
 
 /**

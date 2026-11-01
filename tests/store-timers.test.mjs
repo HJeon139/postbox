@@ -2,10 +2,15 @@
 // 14): a callback that writes to the store or kills a process does nothing while writes are closed, and a timer in
 // rt.timers is re-armed from the recovered state at Retry (server/store-outage.mjs). What this checks, and what it
 // doesn’t:
-// - it counts, per file, every mention of setTimeout, setInterval, setImmediate, queueMicrotask and an injected
-//   setTimer, with comments removed, against PLACED, whose rows give each file’s behavior while closed; a new call, or
-//   an alias bound to one of them, fails it;
-// - it fails a file that imports node:timers or node:timers/promises, whose timers it couldn’t count;
+// - it counts, per file, every mention of setTimeout, setInterval, setImmediate, queueMicrotask, process.nextTick,
+//   AbortSignal.timeout and an injected setTimer, with comments removed, against PLACED, whose rows give each file’s
+//   behavior while closed; a new call, or an alias bound to one of them, fails it;
+// - it fails a file that names the timers module in any import or require (`timers`, `node:timers`, either’s
+//   `/promises`), whose timers it couldn’t count;
+// - it reads every .mjs, .js and .cjs file under server/ except server/remote/host/, the host daemon: a new file there
+//   is not counted, and is reviewed as the daemon’s;
+// - it doesn’t see a timer reached by a computed name (globalThis['set' + 'Timeout']), one inside a dependency, or a
+//   child process’s own `timeout` option, which kills the child and writes nothing (the integrator’s re-review of #598);
 // - it checks that each file whose row says gated still carries the rule somewhere in its source, one regex per file,
 //   so a removed gate beside another in the same file passes here: the behavior specs (store-outage-*) catch that;
 // - a call through an alias is counted once, where the alias is bound, not at each call; an injected timer is counted
@@ -41,6 +46,7 @@ const PLACED = {
   'remote/install.mjs': 5, // a wait and an injected timeout: no store
   'remote/link.mjs': 7, // passes an injected setTimer through to a host link: no store
   'remote/process-receive.mjs': 1, // an ack: no store
+  'remote/process.mjs': 1, // a nextTick that starts or reads a host turn’s process after spawn returns: messages to a host, no store
   'remote/ssh-connection.mjs': 6, // a reconnect timer, and the kill, welcome and exit timers of an ssh child: no store
   'remote/ssh-reconnect.mjs': 4, // reconnect timers: no store
   'remote/turns-resume.mjs': 1, // a microtask resumes turns waiting on a host: a start, held by heldTurn while closed
@@ -69,10 +75,10 @@ const STORE_OWN = new Set([
   'store-retry.mjs',
   'store-snapshot.mjs',
 ]);
-/** A timer or a deferred callback: the five ways server code schedules work, an injected setTimer included. */
-const SITE = /\b(setTimeout|setInterval|setImmediate|queueMicrotask|setTimer)\b/g; // every mention, so an alias is counted where it is bound
+/** A timer or a deferred callback: the ways server code schedules work, an injected setTimer included. */
+const SITE = /\b(setTimeout|setInterval|setImmediate|queueMicrotask|nextTick|setTimer)\b|\bAbortSignal\.timeout\b/g; // every mention, so an alias is counted where it is bound
 /** Timers imported under another name, or as promises, would not match SITE: such an import fails the guard instead. */
-const TIMERS_IMPORT = /from\s+['"]node:timers(\/promises)?['"]/;
+const TIMERS_IMPORT = /['"](node:)?timers(\/promises)?['"]/;
 /** @type {string[]} files that import node:timers */
 const imports = [];
 
@@ -85,7 +91,7 @@ async function sites(dir, rel = '') {
       if (path !== 'remote/host') Object.assign(out, await sites(dir, path));
       continue;
     }
-    if (!e.name.endsWith('.mjs') || STORE_OWN.has(path)) continue;
+    if (!/\.(mjs|js|cjs)$/.test(e.name) || STORE_OWN.has(path)) continue;
     const code = (await readFile(join(dir, path), 'utf8')).replace(/^\s*(\/\/|\*).*$/gm, ''); // comments and JSDoc out
     const n = (code.match(SITE) ?? []).length;
     if (n) out[path] = n;

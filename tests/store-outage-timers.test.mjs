@@ -135,6 +135,24 @@ test('a kept job that ends while the store is closed is recorded ended after Ret
   await rt.store.flush();
 });
 
+test('a kept job’s Stop while the store is closed records it ended after Retry, and the job sharing its groups too, not into memory only (the integrator’s nit)', async () => {
+  const { se } = await room('keptstop');
+  const groups = [{ pgid: 99997, command: null }];
+  rt.updateSession(se.id, {
+    jobs: ['j3', 'j4'].map((id) => ({ id, sessionId: se.id, label: id, command: 'sleep 9', kept: true, pgid: 99997, groups, startedAt: Date.now() })),
+  });
+  const list = rt.listProcesses;
+  rt.listProcesses = async () => [{ pid: 99996, ppid: 1, pgid: 99997, command: 'sleep 9' }]; // a member, its leader gone: the group is still the jobs’
+  rt.signalProcess = () => {};
+  await rt.store.flush();
+  rt.store.fail(eio());
+  await rt.stopJob(se.id, 'j3'); // Stop is allowed while closed; its records wait
+  await rt.store.reload();
+  rt.listProcesses = list;
+  assert.deepEqual(rt.s.sessions[se.id].jobs ?? [], [], 'both jobs recorded ended once writes reopened, not lost with memory');
+  await rt.store.flush();
+});
+
 test('a thread settled while the store is closed makes no summarizer call; one settled after Retry does', async () => {
   const { t, se } = await room('topic');
   const root = rt.addItem(t.id, { kind: 'user', text: 'Root' });

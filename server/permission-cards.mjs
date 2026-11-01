@@ -70,8 +70,7 @@ export function askPerson(
     status: 'open',
   });
   // The text so far is finished; the reply continues below the card.
-  if (turn.segment) rt.patchItem(turn.threadId, turn.segment, { status: 'done' });
-  turn.segment = null;
+  rt.closeSegment(turn);
   rt.updateSession(sessionId, {
     state: 'needs',
     needs: { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}`, ...rt.awayFrom(se, turn.threadId) },
@@ -255,8 +254,7 @@ export function recordDenial(rt, turn, d) {
     status: 'open',
   });
   // The text so far is finished; the reply continues below the card.
-  if (turn.segment) rt.patchItem(turn.threadId, turn.segment, { status: 'done' });
-  turn.segment = null;
+  rt.closeSegment(turn);
 }
 
 export async function resolveDenial(rt, threadId, itemId, action) {

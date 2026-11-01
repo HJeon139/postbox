@@ -370,6 +370,18 @@ export class Runtime {
     this.store.emit('item.patch', { threadId, id, patch });
   }
   /**
+   * Ends the turn’s current segment as done, as a card does when it opens: the reply goes on below the card. The turn
+   * keeps the id of its one segment still streaming (openSegment), because an item held behind a commit isn’t in
+   * store.items() yet, so the turn’s end and Stop find it by id, not by a scan (gpt’s peer read of the Stop fix). A tool
+   * call or a compaction clears the segment without ending it, so it stays the open one.
+   * @param {any} turn
+   */
+  closeSegment(turn) {
+    if (turn.segment) this.patchItem(turn.threadId, turn.segment, { status: 'done' });
+    if (turn.openSegment === turn.segment) turn.openSegment = null;
+    turn.segment = null;
+  }
+  /**
    * Brings an item to the newest point in its thread (#49, #92), for an update the person has to see: an app’s new
    * version, or a block that asks again. The agent explains the change in its newest message, so the item belongs
    * beside it. The item keeps its id, so there’s only ever one live copy, and a one-line stub takes its old place and
@@ -741,7 +753,7 @@ export class Runtime {
         // The text before a tool call or a block is finished; only the newest segment shows the caret.
         if (turn.lastSegment) rt.patchItem(turn.threadId, turn.lastSegment, { status: 'done' });
         turn.segment = it.id;
-        turn.lastSegment = it.id;
+        turn.lastSegment = turn.openSegment = it.id; // openSegment: the one still streaming, by its id (closeSegment)
         if (!turn.first) turn.first = it.id;
         if (turn.said) turn.said += '\n\n';
         rt.putThread({ ...rt.s.threads[turn.threadId], lastSpeaker: turn.sessionId });
@@ -995,8 +1007,12 @@ export class Runtime {
     const items = this.store.items(turn.threadId);
     // A turn that ends with no reply is never posted as an empty message (#485, empty-reply.mjs): it fails, saying so.
     if (!err && endedWithoutReply(turn, items)) err = emptyReply(this, se, turn);
+    // The open segment by its id, even while held behind a commit; then any other still streaming in the visible state.
+    if (turn.openSegment) this.patchItem(turn.threadId, turn.openSegment, { status: err ? 'failed' : 'done' });
     for (const it of items)
-      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming') this.patchItem(turn.threadId, it.id, { status: err ? 'failed' : 'done' });
+      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming' && it.id !== turn.openSegment)
+        this.patchItem(turn.threadId, it.id, { status: err ? 'failed' : 'done' });
+    turn.openSegment = null;
     if (turn.checkpoint && !err)
       for (const it of items)
         if (it.turnId === turn.id && (it.kind === 'agent' || it.kind === 'block')) this.patchItem(turn.threadId, it.id, { checkpoint: turn.checkpoint });
@@ -1239,16 +1255,32 @@ export class Runtime {
    */
   recordStopped(turn, ended, { by, why }) {
     const { sessionId } = turn;
-    if (by !== 'shutdown') settleScheduledWake(this, turn, { name: 'AbortError' });
+    // Your Stop ends a scheduled wake’s turn for good, so a restart doesn’t run it again; a shutdown leaves it due
+    // (#466). A store outage leaves it too: the reload re-arms it as interrupted, its one owner (S1), so settling it
+    // here as well would cancel what the agent was told will start again (the integrator’s re-review of #598).
+    if (by !== 'shutdown' && by !== 'store') settleScheduledWake(this, turn, { name: 'AbortError' });
     settleStoppedSteps(this, turn);
     this.endWork(turn, 'stopped');
     // A tool call waiting for your permission is answered no, so the agent’s process can stop too.
     for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', why);
-    for (const it of this.store.items(turn.threadId)) {
-      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming') this.patchItem(turn.threadId, it.id, ended);
+    // The open segment by its id, even while it is held behind a commit (its patch follows it in order); then any
+    // other segment of this turn still streaming in the visible state (#602).
+    let marked = false;
+    if (turn.openSegment) {
+      this.patchItem(turn.threadId, turn.openSegment, ended);
+      marked = true;
     }
+    for (const it of this.store.items(turn.threadId)) {
+      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming' && it.id !== turn.openSegment) {
+        this.patchItem(turn.threadId, it.id, ended);
+        marked = true;
+      }
+    }
+    turn.openSegment = null;
+    // The reply always says it was stopped: with no segment still streaming, the stopped reply goes below the last
+    // thing the turn showed (#602), on every path that records a stop, the store’s included.
     const se = this.s.sessions[sessionId];
-    if (se && !turn.segment && !turn.first)
+    if (se && !marked)
       this.addItem(turn.threadId, {
         kind: 'agent',
         sessionId,

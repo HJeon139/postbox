@@ -64,9 +64,10 @@ export async function stopJob(rt, sessionId, jobId) {
     // Another kept job Postbox couldn’t tell apart from it shares those groups, still its own (#164): it stopped with them (#167).
     const why = `Postbox couldn’t tell its processes from those of the background job “${job.label}”, so stopping that job stopped this one too.`;
     // Only when every group still its own was signaled: one left running keeps the job listed, so it can be stopped.
+    // Its record waits for open writes too, as the job’s own does.
     for (const o of keptJobs(rt)) {
       const own = liveGroups(o, procs);
-      if (own.length && own.every((g) => stopped.has(g.pgid))) rt.endJob(o.sessionId, o.id, 'stopped', why, { by: 'you' });
+      if (own.length && own.every((g) => stopped.has(g.pgid))) whenWritable(rt, () => rt.endJob(o.sessionId, o.id, 'stopped', why, { by: 'you' }));
     }
     return { ok: true };
   }

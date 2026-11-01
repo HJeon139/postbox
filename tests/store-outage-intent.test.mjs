@@ -75,3 +75,41 @@ test('the store closes during the judge call: Postbox makes no push', async () =
   release();
   await sleep(20);
 });
+
+test('a Stop during Postbox’s push, with the store open: the push still gets its line, under the stopped turn', async () => {
+  const s = await setup({ judged: () => allow('push it to origin') });
+  let stopped = () => {};
+  const seen = heldPushes(s, async () => stopped());
+  const { sessionId, release } = await turnAsking(s, 'Push it to origin.');
+  const turnId = s.rt.turns.get(sessionId).id;
+  stopped = () => s.rt.stop(sessionId);
+  const answer = await settledCall(s.rt, sessionId, bash('git push -u origin feat/now'));
+  assert.equal(seen.made, 1);
+  assert.ok(!s.rt.turns.has(sessionId), 'the Stop ended the turn during the push');
+  assert.equal(answer?.allow, false, 'the agent’s own push does not run');
+  assert.deepEqual(
+    lines(s).map((l) => [l.turnId, l.status, l.push?.sha?.slice(0, 7)]),
+    [[turnId, 'allowed', 'aaaaaaa']],
+    'the push that landed is recorded, under the turn that asked for it',
+  );
+  release();
+  await sleep(20);
+});
+
+test('the store closes during Postbox’s push, and the push fails: the agent is told it failed, not that it landed unrecorded', async (t) => {
+  const s = await setup({ judged: () => allow('push it to origin') });
+  t.mock.method(console, 'error', () => {});
+  heldPushes(s, async () => s.store.fail(eio()));
+  const run = s.rt.pushes.run;
+  s.rt.pushes.run = async (p) => {
+    await run(p);
+    return { ok: false, error: 'rejected: non-fast-forward' };
+  };
+  const { sessionId, release } = await turnAsking(s, 'Push it to origin.');
+  const answer = await settledCall(s.rt, sessionId, bash('git push -u origin feat/now'));
+  assert.equal(answer?.allow, false);
+  assert.match(answer?.message ?? '', /failed/i, `says the push failed: ${answer?.message}`);
+  assert.match(answer?.message ?? '', /non-fast-forward/, 'with git’s reason');
+  release();
+  await sleep(20);
+});

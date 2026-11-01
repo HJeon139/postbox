@@ -179,8 +179,9 @@ async function judged(rt, turn, request, call, words) {
   const tag = randomBytes(6).toString('hex');
   const epoch = rt.store.epoch;
   const r = await judge(`${PROMPT(tag)}\n\n<request-${tag}>\n${asked}\n</request-${tag}>\n\n<call-${tag}>\n${call}\n</call-${tag}>`);
-  // Its cost goes on the ledger only for the same open store and turn: nothing written into memory only (S2).
-  if (!rt.store.writable || rt.store.epoch !== epoch || rt.turns.get(turn.sessionId) !== turn) return r ? allowedQuote(r.text, request.said, words) : null;
+  // Its cost goes on the ledger whenever the same history is open, even for a turn stopped meanwhile, whose call it was;
+  // nothing is written into memory only (S2).
+  if (!rt.store.writable || rt.store.epoch !== epoch) return r ? allowedQuote(r.text, request.said, words) : null;
   const conv = rt.ledger.convOf(request.threadId);
   const cost = r?.costUsd;
   const e = typeof cost === 'number' ? rt.ledger.entry(conv, turn.id) : null;
@@ -236,7 +237,11 @@ export async function settledCall(rt, sessionId, req) {
   // What this call acts for, fixed now: each await below may outlive the turn, the open store or the history (S2).
   const turn = rt.turns.get(sessionId);
   const epoch = rt.store.epoch;
-  const current = () => rt.store.writable && rt.store.epoch === epoch && !!turn && rt.turns.get(sessionId) === turn;
+  // The store open on this history, and the turn still this one: a push needs both before it runs; once it has run,
+  // the store being open is enough to record it, under the turn that asked (a Stop during the push ends the turn, and
+  // the push already landed: the integrator’s re-review of #598).
+  const open = () => rt.store.writable && rt.store.epoch === epoch;
+  const current = () => open() && !!turn && rt.turns.get(sessionId) === turn;
   if (isWriteCall(req.tool, req.input) && (await writePasses(rt, sessionId, req).catch(() => false))) return { allow: true };
   /** @type {Awaited<ReturnType<typeof requestedCall>>} */
   let found = null;
@@ -245,24 +250,30 @@ export async function settledCall(rt, sessionId, req) {
   } catch {
     // A judge that fails, or a check that breaks, gets the card, as before: it fails closed.
   }
-  if (!found) return null;
-  // No push for a turn the store’s closing stopped, or for another history.
+  if (!found || !turn) return null;
+  // No push for a turn that ended, or one the store’s closing stopped, or for another history.
   if (found.push && !current()) return null;
   const done = found.push ? await (rt.pushes ?? PUSHES).run(found.push) : null;
-  if (!current()) {
-    // The push already happened and can’t be undone; nothing is written into a closed store or another turn, and the
-    // agent’s own push still mustn’t run. The log names what landed (the integrator’s re-review of #598).
-    if (found.push)
-      console.error(
-        `Postbox made a push the store couldn’t record: ${found.push.sha?.slice(0, 7)} on ${found.push.branch} of ${found.push.url} (${done?.ok ? 'pushed' : `failed: ${done?.error}`}).`,
-      );
-    return found.push ? { allow: false, message: 'Postbox couldn’t record this push because it can’t save changes right now. Don’t push it yourself.' } : null;
+  const se = rt.s.sessions[sessionId];
+  if (!found.push && !current()) return null;
+  if (found.push && (!open() || !se)) {
+    // The push already ran and can’t be undone; nothing is written into a closed store, another history or a deleted
+    // session, and the agent’s own push still mustn’t run. The log names what happened.
+    const what = done?.ok ? 'pushed' : `failed: ${done?.error}`;
+    console.error(`Postbox made a push it couldn’t record: ${found.push.sha?.slice(0, 7)} on ${found.push.branch} of ${found.push.url} (${what}).`);
+    const why = se ? 'it can’t save changes right now' : 'this session was deleted';
+    return {
+      allow: false,
+      message: done?.ok
+        ? `Postbox made this push, but couldn’t record it because ${why}. Don’t push it again.`
+        : `Postbox’s push failed: ${done?.error}. It couldn’t record that because ${why}.`,
+    };
   }
   rt.addItem(found.threadId, {
     kind: 'allowedcall',
     sessionId,
-    handle: rt.s.sessions[sessionId].handle,
-    turnId: rt.turns.get(sessionId).id,
+    handle: se.handle,
+    turnId: turn.id,
     // As named, never as Markdown: clip would take the underscores out of mcp__tally__create_ticket.
     tool: clipText(String(req.tool), 120),
     summary: clip(String(req.summary ?? req.tool), 200),
@@ -275,15 +286,14 @@ export async function settledCall(rt, sessionId, req) {
   });
   if (!found.push) return { allow: true };
   if (!done?.ok) return null;
-  recordPush(rt, sessionId, found.push);
+  recordPush(rt, turn, found.push);
   // The agent’s own push never runs: Postbox made it, and says so.
   return { allow: false, message: pushedMessage(found.push) };
 }
 
 /** Postbox’s push goes on the work ledger, as an agent’s own push would (#132). */
-function recordPush(rt, sessionId, p) {
-  const turn = rt.turns.get(sessionId);
-  if (!turn?.work) return;
+function recordPush(rt, turn, p) {
+  if (!turn.work) return;
   rt.ledger.add(
     turn.work.convId,
     rt.ledger.base(turn, { kind: 'push', id: newId('wp'), branch: p.branch, remote: p.url, refs: [`${p.sha.slice(0, 7)} → ${p.branch}`] }),
