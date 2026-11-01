@@ -29,11 +29,23 @@ test('every state key has one privacy classification and private collections rea
   );
 });
 
+function reducerEvents(state, readHelper) {
+  const imports = [...state.matchAll(/import \{[^}]*\bapply[A-Z]\w*[^}]*\} from '\.\/([^']+\.mjs)'/g)].map((m) => m[1]);
+  const helpers = imports.map(readHelper).join('\n');
+  const accepted = [...state.matchAll(/case '([^']+)'/g), ...helpers.matchAll(/\btype\s*[!=]==\s*'([^']+)'/g)].map((m) => m[1]);
+  accepted.push('session.patch'); // normalized to session before the switch
+  return accepted;
+}
+
+test('the classifier detects delegated reducers that use a negative type comparison', () => {
+  const state = "import { applyTurnArchive } from './state-archive.mjs';";
+  const accepted = reducerEvents(state, () => "if (type !== 'turn.archive') return false;");
+  assert.ok(accepted.includes('turn.archive'));
+});
+
 test('every literal reducer event has one public or private classification', () => {
   const state = readFileSync(join(root, 'shared/state.mjs'), 'utf8');
-  const hosts = readFileSync(join(root, 'shared/state-hosts.mjs'), 'utf8');
-  const accepted = [...state.matchAll(/case '([^']+)'/g), ...hosts.matchAll(/type === '([^']+)'/g)].map((m) => m[1]);
-  accepted.push('session.patch'); // normalized to session before the switch
+  const accepted = reducerEvents(state, (name) => readFileSync(join(root, 'shared', name), 'utf8'));
   assert.deepEqual(sorted([...PUBLIC_EVENT_TYPES, ...PRIVATE_EVENT_TYPES]), sorted(accepted));
   assert.equal(
     PUBLIC_EVENT_TYPES.some((type) => PRIVATE_EVENT_TYPES.includes(type)),
