@@ -1,7 +1,7 @@
 // The lock under races (#508’s storage design, “The data-folder lock”; the 1b invariants, I9): two starters over one stale
-// lock, a paused starter inside its takeover, a dead maker’s mutex, a lock published whole or not at all, unreadable
-// contents treated as ambiguous, a draft swept at the next start, and a closed store that never writes again while the
-// next store holds the folder.
+// lock, a paused starter inside its takeover, a dead maker’s mutex, a lock published whole or not at all, and unreadable
+// contents treated as ambiguous. A closed store that never writes again is in store-failure.test.mjs; a store’s close
+// meeting its own late work is in store-close.test.mjs.
 import assert from 'node:assert/strict';
 import * as realFs from 'node:fs/promises';
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -67,7 +67,8 @@ test('a starter paused inside its takeover keeps the mutex however long it takes
   });
   const probe = { alive: (pid) => pid === process.pid, started: async () => 1 };
   const a = lockStore(io, dir, probe);
-  await new Promise((r) => setTimeout(r, 30)); // A holds the mutex, paused
+  // A holds the mutex, paused inside its takeover: wait for the mutex file itself, not a fixed time (the integrator’s nit).
+  while (!(await readdir(dir)).includes(`${LOCK}.taking`)) await new Promise((r) => setTimeout(r, 5));
   const b = lockStore(io, dir, probe);
   await new Promise((r) => setTimeout(r, 60)); // B is waiting on A’s mutex, not past it
   // What matters, not the folder listing: B keeps retrying publish() while it waits, and each try leaves a draft for an

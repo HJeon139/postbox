@@ -54,7 +54,7 @@ export class Store {
     /** @type {import('node:fs/promises').FileHandle | null} the segment, open for appending */
     this.fh = null;
     this.sinceSnapshot = 0;
-    this.ops = new Map(); // opId → the seq of its commit’s first event, for the commits since the latest snapshot
+    this.ops = new Map(); // opId → the seq of its commit’s last event, for the commits since the latest snapshot
     this.ahead = 0; // events numbered but not yet applied: a commit’s, before its fsync
     this.waitingCommits = 0; // commits queued or pending; emits are held behind them
     this.held = 0; // emits held in the queue, still to be numbered
@@ -67,6 +67,7 @@ export class Store {
     this.warned = false; // an emit while closed logged the cause
     this.lost = null; // history the log lost, { from, to, count }, found at load (server/store-replay.mjs)
     this.closed = false; // close() ran: nothing is applied or written here again
+    this.closing = false; // close() has begun: no commit or emit is taken, no snapshot renames or prunes
   }
 
   newEpoch() {
@@ -91,9 +92,7 @@ export class Store {
       // The folder’s entries are made durable once per start: a segment rotated by an earlier run that only ever held
       // emits may never have had its entry synced (the integrator’s review of 1a). A filesystem that can’t sync a
       // folder is tolerated; any other error refuses the start.
-      await syncDir(this).catch((e) => {
-        if (!['EINVAL', 'ENOTSUP', 'EPERM', 'EISDIR'].includes(e.code)) throw e;
-      });
+      await syncDir(this);
     } catch (e) {
       await unlockStore(this.io, this.lock);
       this.lock = null;
@@ -146,9 +145,14 @@ export class Store {
    * and broadcast in its turn once the commit resolves or fails (the returned event gets its seq then). While writes
    * are closed it’s applied and broadcast but not written.
    */
+  /** close() has begun or finished: the store is retiring, and nothing may start or destroy anything on its behalf. */
+  get retiring() {
+    return this.closing || this.closed;
+  }
+
   emit(type, data) {
     const ev = { type, data };
-    if (this.closed) {
+    if (this.retiring) {
       // Applied nowhere: the store has been handed over. Said once, so an exit callback’s stream doesn’t flood the log.
       if (!this.warned) console.error(`An event after the store closed was dropped: ${this.cause?.message}`);
       this.warned = true;
@@ -211,7 +215,7 @@ export class Store {
 
   /** A job for the writer’s loop, resolved when it has run; rejected with the cause while writes are closed. @param {'flush' | 'snapshot'} kind */
   job(kind) {
-    if (!this.writable) return Promise.reject(this.cause);
+    if (!this.writable || this.closed || (kind === 'snapshot' && this.closing)) return Promise.reject(this.cause);
     return new Promise((resolve, reject) => {
       this.queue.push({ [kind]: { resolve, reject } });
       this.pump();
@@ -234,16 +238,28 @@ export class Store {
    * hold the folder by then and two must never interleave lines in one log (the integrator’s review of 1a).
    */
   async close() {
+    // The boundary, before any await: from here no commit or emit is taken and no snapshot renames or prunes, so no
+    // work started during the close outlives the lock (the integrator’s review of 1a: a snapshot the writer began
+    // after close()’s flush landed after the release and deleted the next store’s segment).
+    this.closing = true;
+    const closed = Object.assign(new Error('The store is closed: Postbox shut it down, so nothing more is saved here.'), { code: 'ECLOSED' });
+    this.cause ??= closed;
     try {
-      if (this.writable) await this.flush();
+      if (this.writable) await this.flush(); // the last sync of what was acknowledged
     } finally {
+      await this.running?.catch(() => {}); // the writer’s pass under way ends (a snapshot it began abandons itself)
       this.closed = true;
       this.writable = false;
-      this.cause = Object.assign(new Error('The store is closed: Postbox shut it down, so nothing more is saved here.'), { code: 'ECLOSED' });
-      await this.fh?.close();
-      this.fh = null;
-      await unlockStore(this.io, this.lock);
-      this.lock = null;
+      this.cause = closed;
+      try {
+        await this.fh?.close();
+      } catch (e) {
+        console.error(`The event log’s descriptor didn’t close cleanly: ${e.message}`); // the lock is released either way
+      } finally {
+        this.fh = null;
+        await unlockStore(this.io, this.lock);
+        this.lock = null;
+      }
     }
   }
 

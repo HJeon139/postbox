@@ -83,3 +83,23 @@ export function waiting(promise, what) {
     );
   });
 }
+
+/** A disk whose event-log handles answer to `faults`: { sync?, write? } are called before the real operation. */
+export function logDisk(faults) {
+  return disk({
+    async open(path, flags, mode) {
+      const handle = await fs.open(path, flags, mode);
+      if (!String(path).includes('events-')) return handle;
+      return handleWith(handle, {
+        sync: async () => {
+          if (faults.sync) await faults.sync();
+          return handle.sync();
+        },
+        write: async (...args) => {
+          if (faults.write) return faults.write(handle, ...args);
+          return handle.write(...args);
+        },
+      });
+    },
+  });
+}

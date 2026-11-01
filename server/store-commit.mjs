@@ -208,7 +208,8 @@ export async function run(store, gen) {
       store.queue.shift();
       await takeSnapshot(store).then(job.snapshot.resolve, job.snapshot.reject);
     }
-    if (store.dir && store.writable && store.generation === gen && store.sinceSnapshot >= store.snapshotEvery)
+    // No snapshot begins once close() has: its rename and pruning would outlive the lock (the integrator’s review of 1a).
+    if (store.dir && store.writable && !store.retiring && store.generation === gen && store.sinceSnapshot >= store.snapshotEvery)
       await takeSnapshot(store).catch((e) => console.error(`Couldn’t write a snapshot: ${e.message}`));
   }
 }
@@ -221,7 +222,8 @@ export async function run(store, gen) {
  * @returns {Promise<{ seq: number, duplicate: boolean }>}
  */
 export function commit(store, events, { opId } = {}) {
-  if (!store.writable) return Promise.reject(store.cause);
+  // Refused while closing too: close()’s flush writes what was queued before it, nothing that arrives after.
+  if (!store.writable || store.retiring) return Promise.reject(store.cause);
   return new Promise((resolve, reject) => {
     store.queue.push({ commit: { events, opId, resolve, reject } });
     store.waitingCommits++;
@@ -235,7 +237,7 @@ const PIECE = 1 << 20; // the snapshot’s text goes to the disk in pieces this 
  * Writes the state to snapshot.json atomically: a temporary file, written in 1 MB pieces (one write of the whole text
  * converts it to bytes in one go, which blocked the loop for about half the snapshot’s time, #508’s storage design,
  * “Snapshots and pruning”), fsynced, then renamed over the snapshot. The caller syncs the folder.
- * @param {{ io: typeof import('node:fs/promises'), at: (name: string) => string, state: any }} store
+ * @param {{ io: typeof import('node:fs/promises'), at: (name: string) => string, state: any, retiring?: boolean }} store
  */
 export async function writeSnapshot(store) {
   const path = store.at('snapshot.json');
@@ -254,6 +256,10 @@ export async function writeSnapshot(store) {
   } finally {
     await fh.close();
   }
+  if (store.retiring) {
+    await store.io.rm(tmp, { force: true }); // the store is closing: the folder may be another’s before this landed
+    throw Object.assign(new Error('The snapshot was abandoned: the store closed while it was written.'), { code: 'ECLOSED' });
+  }
   await store.io.rename(tmp, path);
 }
 
@@ -262,10 +268,15 @@ export async function syncDir(store) {
   const dh = await store.io.open(/** @type {string} */ (store.dir), 'r');
   try {
     await dh.sync();
+  } catch (e) {
+    // One tolerance everywhere (the integrator’s review of 1a): a filesystem that can’t sync a folder says so with one
+    // of these, at load and at every rename alike; any other error is the disk failing.
+    if (!TOLERATED_DIR_SYNC.has(e.code)) throw e;
   } finally {
     await dh.close();
   }
 }
+const TOLERATED_DIR_SYNC = new Set(['EINVAL', 'ENOTSUP', 'EPERM', 'EISDIR']);
 
 /**
  * Writes a snapshot, starts a new log segment, and deletes the segments the snapshot covers, once the folder is synced:
@@ -276,6 +287,7 @@ async function takeSnapshot(store) {
   const at = store.state.seq; // the snapshot’s seq: the new segment is named from it, not from a seq advanced meanwhile
   await writeSnapshot(store);
   await syncDir(store);
+  if (store.retiring) return; // closing: the rotation and the pruning are left to the next store’s load
   await store.fh?.close();
   store.fh = null;
   const covered = await store.segments();
@@ -283,5 +295,5 @@ async function takeSnapshot(store) {
   store.freshSegment = true;
   store.sinceSnapshot = 0;
   store.ops.clear(); // opIds are remembered for the commits newer than the latest snapshot
-  for (const seg of covered) if (seg.name !== store.segment) await store.io.rm(store.at(seg.name), { force: true });
+  for (const seg of covered) if (seg.name !== store.segment && !store.retiring) await store.io.rm(store.at(seg.name), { force: true });
 }
