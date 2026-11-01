@@ -34,6 +34,7 @@ import {
   updateApp,
 } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
+import * as archiveRuntime from './archive-runtime.mjs';
 import { act, answerDelivered, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
 import { catchUp, pointerIfSeen } from './catch-up.mjs';
@@ -110,7 +111,6 @@ import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { retireStale } from './wake-cards.mjs';
-import { archiveTurns } from './work-archive.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
@@ -1017,73 +1017,23 @@ export class Runtime {
       });
   }
 
-  /**
-   * Runs the archive pass for a conversation after any run already queued for it (W4), so the turn-end pass and the
-   * one-time pass after start never overlap. Resolves with how many turns it archived; never rejects (W2).
-   * @param {string} convId
-   */
   archiveConversation(convId) {
-    // W5: shutting down, no new run starts; stopArchiving waits for the ones already queued.
-    if (this.archiveClosing) return Promise.resolve(0);
-    const run = (this.archiveChains.get(convId) ?? Promise.resolve(0)).then(() => this.archiveOnce(convId));
-    this.archiveChains.set(convId, run);
-    run.then(() => {
-      if (this.archiveChains.get(convId) === run) this.archiveChains.delete(convId);
-    });
-    return run;
+    return archiveRuntime.archiveConversation(this, convId);
   }
-  /** Settles when no archive run is queued for the conversation. */
   archiveIdle(convId) {
-    return this.archiveChains.get(convId) ?? Promise.resolve(0);
+    return archiveRuntime.archiveIdle(this, convId);
   }
-  /** After start: every conversation’s older turns, one conversation at a time, yielding between them. */
-  async archiveAll() {
-    for (const t of Object.values(this.s.threads))
-      if (this.archiveClosing) return;
-      else if (!t.parentId && !t.deleting) {
-        await this.archiveConversation(t.id);
-        await new Promise((r) => setImmediate(r));
-      }
+  archiveAll() {
+    return archiveRuntime.archiveAll(this);
   }
-  /**
-   * W5: the runtime owns the archive chains, and they end before the Store does. No new run starts, and this resolves
-   * when the queued ones have settled; index.mjs calls it after stopTurns and before store.close().
-   */
-  async stopArchiving(boundMs = ARCHIVE_STOP_MS) {
-    this.archiveClosing = true;
-    // Bounded, as every other shutdown step is: a disk that doesn't answer must not keep the Store open (critic). A
-    // put that lands later leaves at most an orphan archive file, which draft 6 accepts (a re-put is idempotent).
-    let timer;
-    const late = new Promise((r) => {
-      timer = setTimeout(() => r('late'), boundMs);
-      timer.unref?.();
-    });
-    const result = await Promise.race([Promise.all([...this.archiveChains.values()]), late]);
-    clearTimeout(timer);
-    if (result === 'late')
-      console.warn(`An archive pass was still running after ${boundMs} ms; shutting down without it. It leaves at most an unused archive file.`);
+  stopArchiving(boundMs = ARCHIVE_STOP_MS) {
+    return archiveRuntime.stopArchiving(this, boundMs);
   }
-  /** Busy for the pass (I4): turns still running, and turns with a job kept running after a Stop. Read per turn. */
   archiveRunning() {
-    const running = new Set([...this.turns.values()].map((t) => t.id));
-    for (const se of Object.values(this.s.sessions)) for (const j of se.jobs ?? []) if (j.kept && j.turnId) running.add(j.turnId);
-    return running;
+    return archiveRuntime.archiveRunning(this);
   }
-  async archiveOnce(convId) {
-    // W3: writable, not shutting down, and the conversation still there, checked before every file the run puts.
-    const canWrite = () => this.store.writable && !this.archiveClosing && Boolean(this.s.threads[convId]);
-    if (!canWrite()) return 0;
-    try {
-      return await archiveTurns({ store: this.store, blobs: this.ledger.blobs, convId, running: () => this.archiveRunning(), canWrite });
-    } catch (e) {
-      // Shutting down, or the store closed under the run: not a failure to report (as 1b’s snapshot rule).
-      if (this.archiveClosing || /** @type {any} */ (e)?.code === 'ECLOSED' || !this.store.writable) return 0;
-      // W2: one line, no retry loop; the next turn’s end tries again.
-      console.warn(
-        `Old turns in ${this.s.threads[convId]?.title ?? convId} weren’t archived: ${e instanceof Error ? e.message : e}. The next turn’s end tries again.`,
-      );
-      return 0;
-    }
+  archiveOnce(convId) {
+    return archiveRuntime.archiveOnce(this, convId);
   }
 
   endTurn(turn, err) {
