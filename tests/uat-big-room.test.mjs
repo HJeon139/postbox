@@ -87,12 +87,13 @@ test('seeding a run’s data folder while Postbox is down writes the room for th
   try {
     const before = await new Store(data).load();
     startRoom(before);
-    await before.flush();
+    await before.close();
     const seeded = await seedBigRoomData(data, 'th_big', ['researcher', 'critic']);
     const after = await new Store(data).load();
     assert.equal(after.items('th_big').length, 1000);
     assert.equal(after.item('th_big', seeded.landmarks.review).sessionId, 'se_r');
     assert.match(seeded.note('http://127.0.0.1:4310'), new RegExp(`http://127\\.0\\.0\\.1:4310/#/t/th_big\\?at=${seeded.landmarks.decision}`));
+    await after.close();
   } finally {
     rmSync(data, { recursive: true, force: true });
   }

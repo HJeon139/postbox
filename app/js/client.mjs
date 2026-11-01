@@ -2,6 +2,10 @@
 // from the server-sent event stream with the same reducer the server uses. On a dropped connection the
 // browser reconnects with the last number it saw; events at or below it are ignored, so nothing is
 // applied twice. If the server no longer has the events, it says "resync" and the state is refetched.
+// The numbers count within a history epoch, which the state names and the stream request echoes: after
+// a restart the server runs on a new one, and says "resync" to a page from the old one, whose numbers may
+// name events the server never kept (server/live-streams.mjs). The page's epoch is the one its loaded
+// state came with, never one heard on the stream alone.
 
 import { needsYouNow, whereNeeds } from '/shared/needs.mjs';
 import { apply, ownState } from '/shared/state.mjs';
@@ -35,6 +39,7 @@ export const client = {
   state: null,
   config: null,
   seq: 0,
+  epoch: '',
   connection: 'connecting',
   attempts: 0,
   listeners: new Set(),
@@ -50,17 +55,18 @@ export const client = {
 export async function load() {
   const r = await fetch('/api/state', { cache: 'no-store' });
   if (!r.ok) throw new Error('Postbox’s server didn’t answer. Check that it’s running, then reload.');
-  const { seq, state, config } = await r.json();
+  const { seq, epoch, state, config } = await r.json();
   client.state = ownState(state);
   client.config = config;
   client.seq = seq;
+  client.epoch = epoch ?? '';
   client.emit({ type: 'load' });
 }
 
 let es = null;
 export function connect() {
   es?.close();
-  es = new EventSource(`/api/stream?since=${client.seq}`);
+  es = new EventSource(`/api/stream?since=${client.seq}&epoch=${encodeURIComponent(client.epoch)}`);
   es.onopen = () => {
     const was = client.connection;
     client.connection = 'open';
@@ -89,10 +95,33 @@ export function connect() {
       } else client.emit({ type: t, data });
     });
   }
-  es.addEventListener('resync', async () => {
-    await load();
-    connect();
+  // The epoch the stream runs on, its first frame. The page’s epoch is only ever the one that came with a state it
+  // loaded: a frame naming another means the state the page shows is from a history the server no longer runs on, so it
+  // loads the state again, as a resync does. Taking the epoch from the frame would, if that load then failed, send the
+  // new epoch with the old state on the next reconnect, which the server would accept at an equal seq.
+  es.addEventListener('epoch', (e) => {
+    if ((JSON.parse(e.data) ?? '') !== client.epoch) resync();
   });
+  es.addEventListener('resync', resync);
+}
+
+// Loads the state again and reconnects on the epoch it came with; one at a time, so the epoch frame and the resync
+// frame the server sends together load once. While the load fails, the page keeps its state and its epoch, and
+// connects again shortly: naming the old epoch, it’s told to resync again, until a load succeeds.
+let resyncing = null;
+function resync() {
+  es?.close(); // the old stream stops applying another history’s events onto this state while the load runs
+  resyncing ??= load()
+    .then(connect, () => {
+      client.attempts++;
+      client.connection = 'reconnecting';
+      client.emit({ type: 'connection' });
+      setTimeout(connect, Math.min(8000, 1000 * client.attempts));
+    })
+    .finally(() => {
+      resyncing = null;
+    });
+  return resyncing;
 }
 
 // Browsers allow 6 connections per host over HTTP/1.1, and each open tab’s stream holds one. Close the

@@ -11,6 +11,7 @@ The root `AGENTS.md` applies here too.
 - `assert.throws` and `assert.rejects` name what they expect. Assert the side effect that must not happen, not only the error.
 - Use `node:test` and `node:assert/strict` only. Fakes are small and driven by recorded fixtures, never hand-written stream lines.
 - Share setup, but keep each action and its assertions inline in the test.
+- A `Store` opened on a folder holds its lock until `close()`: close it before another store, or a Postbox, opens that folder.
 - Check that the suite’s test count went up by the tests you added.
 
 A test that must run a real process (npm, git, an installed postbox) goes in `tests/process/*.test.mjs` instead, which `npm run test:process` runs without the guard, and `npm run check` runs too. It writes only to temp folders it makes and removes, and to nothing else it doesn’t put back (`npm pack` writes and removes `server/build-commit.txt` in the clone). It reads none of your own config: the install test gives npm an empty config file of its own. It runs on a port of its own, with a timeout on every process it starts, and stays a few seconds long.

@@ -121,7 +121,7 @@ export async function seedBigRoomData(data, threadId, agents) {
   for (const se of Object.values(store.state.sessions ?? {}))
     if (se?.threadId === threadId && !se.archived && !sessions[se.handle]) sessions[se.handle] = { sessionId: se.id, personaId: se.personaId };
   const landmarks = seedBigRoom(store, threadId, { handles: agents }, sessions);
-  await store.flush();
+  await store.close(); // and release the folder for the Postbox that starts next
   return {
     landmarks,
     /** @param {string} origin */

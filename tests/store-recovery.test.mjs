@@ -1,0 +1,122 @@
+// Recovery on load and the snapshot’s write (#508’s storage design, “Recovery on load”, “Snapshots and pruning”;
+// tests T-9, T-25, T-27, T-29 and the Q7 guard): a malformed commit line refuses to start naming the file and line; a
+// gap in the sequence starts, warns and is recorded; the hand-built fixture with an array line loads whole on the new
+// loader; a snapshot.json that is a folder fails the load and changes nothing; the snapshot is written in pieces.
+import assert from 'node:assert/strict';
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { Store } from '../server/store.mjs';
+import { disk, handleWith } from './store-jsonl-fixture.mjs';
+
+const tmp = () => mkdtemp(join(tmpdir(), 'pb-recovery-'));
+const ev = (seq, id, extra = {}) => ({ seq, type: 'thread', data: { id, members: [] }, ...extra });
+const lines = (...values) => `${values.map((v) => JSON.stringify(v)).join('\n')}\n`;
+
+/** Loads a folder holding one segment with `text`, expecting the refusal `why` names line `n` of the file. */
+async function refuses(text, n, why) {
+  const dir = await tmp();
+  await writeFile(join(dir, 'events-1.jsonl'), text);
+  await assert.rejects(new Store(dir).load(), (e) => {
+    assert.match(e.message, new RegExp(`line ${n} of events-1\\.jsonl`), e.message);
+    assert.match(e.message, why, e.message);
+    return true;
+  });
+  assert.deepEqual((await readdir(dir)).sort(), ['events-1.jsonl'], 'the refusal changes nothing on disk');
+  await rm(dir, { recursive: true });
+}
+
+test('T-25: an empty commit, a non-event, or non-consecutive seqs in one line refuse to start, naming the line', async () => {
+  await refuses(lines(ev(1, 't1'), []), 2, /empty commit/);
+  await refuses(lines(ev(1, 't1'), [ev(2, 't2'), { seq: 'three', type: 'thread', data: {} }]), 2, /integer seq/);
+  await refuses(lines(ev(1, 't1'), [ev(2, 't2'), ev(4, 't4')]), 2, /consecutive.*2 then 4/);
+});
+
+test('T-25: a commit straddling the snapshot’s seq is refused, never applied in part', async () => {
+  const dir = await tmp();
+  const a = await new Store(dir).load();
+  a.emit('thread', { id: 't1', members: [] });
+  a.emit('thread', { id: 't2', members: [] });
+  await a.snapshot(); // snapshot.json at seq 2; the next segment starts at the first write after it
+  await a.close();
+  await writeFile(join(dir, 'events-3.jsonl'), lines([ev(2, 't2'), ev(3, 't3')]));
+  await assert.rejects(new Store(dir).load(), /seqs 2 to 3, across the snapshot’s 2/);
+  await rm(dir, { recursive: true });
+});
+
+test('T-9: a gap in seq against the applied seq starts, warns, and is recorded as lost', async () => {
+  const dir = await tmp();
+  await writeFile(join(dir, 'events-1.jsonl'), lines(ev(1, 't1'), ev(5, 't5'), [ev(9, 't9'), ev(10, 't10')]));
+  const warnings = [];
+  const warn = console.warn;
+  console.warn = (m) => warnings.push(String(m));
+  let s;
+  try {
+    s = await new Store(dir).load();
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(s.state.seq, 10);
+  assert.deepEqual(Object.keys(s.state.threads).sort(), ['t1', 't10', 't5', 't9']);
+  assert.deepEqual(s.lost, { from: 2, to: 8, count: 6 }, 'both gaps, 2–4 and 6–8, in one record');
+  assert.equal(warnings.filter((w) => /lost events/.test(w)).length, 2, warnings.join('\n'));
+  assert.match(warnings[0], /lost events 2 to 4 \(3\) before line 2 of events-1\.jsonl/);
+  s.emit('thread', { id: 'after', members: [] });
+  await s.flush();
+  assert.equal(s.state.seq, 11, 'the store goes on numbering after the gap');
+  await s.close();
+  await rm(dir, { recursive: true });
+});
+
+test('T-27: the hand-built fixture with a plain line, an array line and a plain line with op loads whole', async () => {
+  const dir = await tmp();
+  await cp(new URL('./fixtures/store/array-line/', import.meta.url), dir, { recursive: true });
+  const s = await new Store(dir).load();
+  assert.equal(s.state.seq, 4);
+  assert.deepEqual(Object.keys(s.state.threads).sort(), ['t1', 't2', 't3', 't4']);
+  assert.deepEqual(await s.commit([{ type: 'thread', data: { id: 'again', members: [] } }], { opId: 'settle-1' }), { seq: 3, duplicate: true }); // the last seq of the group
+  assert.deepEqual(await s.commit([{ type: 'thread', data: { id: 'again', members: [] } }], { opId: 'single-1' }), { seq: 4, duplicate: true });
+  assert.equal(s.lost, null);
+  await s.close();
+  await rm(dir, { recursive: true });
+});
+
+test('Q7: a snapshot.json that is a folder fails the load naming EISDIR, and nothing on disk changes', async () => {
+  const dir = await tmp();
+  await mkdir(join(dir, 'snapshot.json'));
+  await writeFile(join(dir, 'snapshot.json', 'manifest.json'), '{"seq":1}');
+  await writeFile(join(dir, 'events-2.jsonl'), lines(ev(2, 't2')));
+  const before = (await readdir(dir)).sort();
+  await assert.rejects(new Store(dir).load(), /snapshot\.json.*EISDIR/);
+  assert.deepEqual((await readdir(dir)).sort(), before);
+  assert.equal(await readFile(join(dir, 'events-2.jsonl'), 'utf8'), lines(ev(2, 't2')));
+  await rm(dir, { recursive: true });
+});
+
+test('T-29: the snapshot’s text goes to the disk in pieces, not one write', async () => {
+  const dir = await tmp();
+  let writes = 0;
+  const io = disk({
+    async open(path, flags, mode) {
+      const handle = await (await import('node:fs/promises')).open(path, flags, mode);
+      if (!String(path).includes('snapshot.json')) return handle;
+      return handleWith(handle, {
+        write: (...args) => {
+          writes++;
+          return handle.write(...args);
+        },
+      });
+    },
+  });
+  const s = await new Store(dir, { io }).load();
+  s.emit('thread', { id: 't1', members: [] });
+  s.emit('item.add', { threadId: 't1', item: { id: 'i1', text: 'x'.repeat(2_500_000) } });
+  await s.snapshot();
+  assert.ok(writes >= 3, `a 2.5 MB snapshot was written in ${writes} write call(s)`);
+  await s.close();
+  const b = await new Store(dir).load();
+  assert.equal(b.state.items.t1[0].text.length, 2_500_000, 'the pieces make the whole text');
+  await b.close();
+  await rm(dir, { recursive: true });
+});

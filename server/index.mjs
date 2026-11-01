@@ -7,7 +7,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
@@ -24,6 +24,7 @@ import { Corpus } from './corpus.mjs';
 import { listFolder } from './folders.mjs';
 import { dataFolder } from './home.mjs';
 import { listen as listenServer } from './listen.mjs';
+import { liveStreams } from './live-streams.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { rearmPersonaDeletes } from './persona-delete.mjs';
@@ -109,10 +110,7 @@ export async function start({
   const mediaDir = join(dataDir, 'media');
   await mkdir(mediaDir, { recursive: true });
   process.env.POSTBOX_MEDIA = mediaDir;
-  if (fresh)
-    for (const n of await readdir(dataDir).catch(() => []))
-      if (/^(store\.json|snapshot\.json|events-\d+\.jsonl)/.test(n)) await rm(join(dataDir, n), { force: true });
-  const store = await new Store(dataDir).load();
+  const store = await new Store(dataDir).load({ fresh }); // a fresh start empties the folder under the lock
   const blobs = new Blobs(join(dataDir, 'blobs'));
   const corpus = await new Corpus().loadDir(join(ROOT, 'server', 'corpus', 'books'));
   const adapters = new AdapterRegistry().register(new MockAdapter());
@@ -185,22 +183,9 @@ export async function start({
     if (!isLoopback(req.socket?.remoteAddress)) throw httpError(403, '! commands run only from this computer.');
   };
 
-  const streams = new Set();
+  // The pages’ live updates: the store’s events over server-sent events (server/live-streams.mjs).
+  const { streams, stop: stopStreams, stream } = liveStreams(store);
   let offlineUntil = 0;
-  // POSTBOX_STREAM_LAG holds every event back that many milliseconds, as a busy computer can. The browser specs run
-  // with it in CI to show they wait for the page to hear a change, not for a fixed time.
-  const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
-  store.subscribe((ev) => {
-    const line = `id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`;
-    const send = () => {
-      for (const res of streams) res.write(line);
-    };
-    if (lag > 0) setTimeout(send, lag).unref();
-    else send();
-  });
-  const keepAlive = setInterval(() => {
-    for (const res of streams) res.write(': keep-alive\n\n');
-  }, 15000);
 
   /** @param {import('node:http').IncomingMessage} req @param {import('node:http').ServerResponse} res */
   const handle = async (req, res) => {
@@ -295,6 +280,7 @@ export async function start({
     if (path === '/api/state' && req.method === 'GET') {
       return send(res, 200, {
         seq: store.state.seq,
+        epoch: store.epoch, // the history the seq counts within; the stream request echoes it (server/live-streams.mjs)
         state: store.state,
         config: {
           origin,
@@ -501,18 +487,6 @@ export async function start({
     throw httpError(404, `There’s nothing at ${path}.`);
   }
 
-  function stream(req, res, url) {
-    const since = Number(req.headers['last-event-id'] ?? url.searchParams.get('since') ?? store.state.seq);
-    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
-    res.write('retry: 1500\n\n');
-    const backlog = store.since(since);
-    // Too far behind: the browser refetches the whole state, then resumes from its sequence number.
-    if (backlog === null) res.write(`event: resync\ndata: {}\n\n`);
-    else for (const ev of backlog) res.write(`id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`);
-    streams.add(res);
-    req.on('close', () => streams.delete(res));
-  }
-
   async function upload(req) {
     const name =
       decodePath(String(req.headers['x-filename'] ?? 'file'))
@@ -544,7 +518,7 @@ export async function start({
   }
 
   async function close() {
-    clearInterval(keepAlive);
+    stopStreams();
     for (const r of streams) r.destroy();
     for (const t of rt.timers.values()) clearTimeout(t);
     rt.stopMirrors();
@@ -556,7 +530,7 @@ export async function start({
     await stopHosts(hosts, stopWake);
     narrator?.stop();
     if (server.listening) await new Promise((ok) => server.close(ok));
-    await store.flush();
+    await store.close(); // flushes, and releases the data folder’s lock for the next Postbox
   }
   if (listen) await listenServer(server, port, host, close, () => rt.drainAll()); // listening: drain what waited across a restart (#228)
   const remoteOnly = adapters.names().filter((n) => !adapters.runsHere(n));

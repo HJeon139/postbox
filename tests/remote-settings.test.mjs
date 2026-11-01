@@ -273,14 +273,14 @@ test('hosts and project host folders survive a store reload', async () => {
     rt.setProjectHostFolder('p1', h.id, '/home/user/app');
     const gone = rt.addHost({ name: 'gone' });
     await rt.removeHost(gone.id);
-    await store.flush();
+    await store.close();
 
     const again = await new Store(dir).load();
     assert.deepEqual({ ...again.state.hosts }, { [h.id]: h });
     assert.deepEqual(again.state.projects.p1.hostFolders, { [h.id]: '/home/user/app' });
 
     // And from a snapshot, as after a restart that wrote one.
-    await again.snapshot();
+    await again.snapshot().then(() => again.close()); // closed, so the next store can take the folder
     const fromSnapshot = await new Store(dir).load();
     assert.deepEqual({ ...fromSnapshot.state.hosts }, { [h.id]: h });
   } finally {

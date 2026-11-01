@@ -443,7 +443,7 @@ test('#38: an app’s waiting sends survive a restart, and Allow still sends the
   const first = withApp(await new Store(dir).load());
   for (let i = 0; i <= LIMIT; i++) first.rt.appEvent('spam', 'ok', { summary: `#${i}` }, { now: 10 + i });
   await settle(first.rt);
-  await first.store.flush();
+  await first.store.close();
   const store = await new Store(dir).load();
   const adapter = new ScriptedAdapter();
   const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
