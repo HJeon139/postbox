@@ -103,3 +103,20 @@ test('R2: a release posts the text without a turn’s side effects: the conversa
   a.release();
   await settle(rt);
 });
+
+test('R1: a message for an agent being deleted and an idle one waits for both in the Undo window (gemini)', async () => {
+  const { store, rt, adapter, t, alpha, beta, a } = await queuedForBusyAlpha();
+  assert.ok(rt.sendMessage(t.id, { text: '@alpha @beta both of you' }).queued);
+  rt.deleteSession(alpha.id);
+  a.release();
+  await settle(rt);
+  rt.drainQueue(t.id);
+  await settle(rt);
+  assert.equal(
+    adapter.calls.some((x) => x.sessionId === beta.id && /both of you/.test(JSON.stringify(x.message))),
+    false,
+    '@beta waits: Undo must find it addressed to both',
+  );
+  rt.undoDelete(alpha.id);
+  assert.deepEqual(store.state.threads[t.id].queue.find((q) => /both of you/.test(q.text))?.sessionIds, [alpha.id, beta.id]);
+});
