@@ -54,19 +54,21 @@ const openMail = async (page, se) => {
   return dialog;
 };
 
-test('V1: ten messages saved offline show two rows and a count of the rest', async ({ page }) => {
-  await page.goto(app.origin);
-  const shown = await page.evaluate(async () => {
-    const { paintOfflineQueue } = await import('/app/js/agent-queue.mjs');
-    const box = document.createElement('div');
-    paintOfflineQueue(
-      box,
-      Array.from({ length: 10 }, (_, i) => ({ threadId: 't1', text: `Saved offline ${i + 1}`, attachments: [] })),
-    );
-    return { rows: box.querySelectorAll('.queued').length, text: box.textContent };
-  });
-  expect(shown.rows, 'rows, the count line included').toBeLessThanOrEqual(3);
-  expect(shown.text).toContain('and 8 more waiting for the connection');
+test('V1: ten messages written offline show in the composer as exactly two rows and “and 8 more”', async ({ page }) => {
+  const { sessions } = await busyRoom(page);
+  allowPageError(page, /ERR_INTERNET_DISCONNECTED/, { times: 10 });
+  await page.context().setOffline(true);
+  const input = page.locator('#composer-input');
+  for (let i = 1; i <= 10; i++) {
+    await input.fill(`@${sessions[0].handle} written offline ${i}`);
+    await input.press('Enter');
+    await expect(input).toHaveValue('');
+  }
+  const rows = page.locator('.composer .queued');
+  await expect(rows.filter({ hasText: 'written offline' })).toHaveCount(2);
+  await expect(rows.filter({ hasText: 'and 8 more waiting for the connection' })).toHaveCount(1);
+  await expect(rows).toHaveCount(3);
+  await page.context().setOffline(false);
 });
 
 test('V2: a waiting line near the composer counts the queue and opens it', async ({ page }) => {
@@ -140,18 +142,25 @@ test('V6: the dialog keeps Tab inside, closes on Escape, and gives focus back to
   ).toBeFocused();
 });
 
-test('V6: when the agent leaves with its dialog open, the dialog closes and focus goes to the composer', async ({ page }) => {
-  const { thread, sessions } = await busyRoom(page);
+test('R1, V6: while its agent is being deleted the dialog says so; at the purge it closes and focus goes to the composer', async ({ page }) => {
+  const { thread, sessions } = await busyRoom(page, 2);
   app.rt.sendMessage(thread.id, { text: `@${sessions[0].handle} about to go` });
   await synced(page, app);
   const dialog = await openMail(page, sessions[0]);
   app.rt.deleteSession(sessions[0].id);
   await synced(page, app);
   await settled(page);
+  await expect(dialog.getByRole('status'), 'announced: Undo keeps them').toContainText('Undo keeps these queued');
+  await expect(dialog.getByText('about to go'), 'still queued in the Undo window').toBeVisible();
+  await expect(page.locator('#main .item').filter({ hasText: 'about to go' })).toHaveCount(0);
+  clearTimeout(app.rt.timers.get(`del:${sessions[0].id}`));
+  app.rt.purgeSession(sessions[0].id);
+  await synced(page, app);
+  await settled(page);
   await expect(dialog).toBeHidden();
   await expect(page.locator('#composer-input')).toBeFocused();
-  // Its queued message isn’t lost: the queue posts it to the conversation, waking no one (server/message-queue.mjs).
-  await expect(page.locator('#main .item').filter({ hasText: 'about to go' })).toBeVisible();
+  // Not lost: at the purge the queue posts it to the conversation, waking no one (server/message-queue.mjs).
+  await expect(page.locator('#main .item').filter({ hasText: 'about to go' })).toHaveCount(1);
 });
 
 test('when every message is delivered with the dialog open, it closes and focus goes to the composer, not a hidden button', async ({ page }) => {

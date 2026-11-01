@@ -55,9 +55,10 @@ export function sendQueuedNow(rt, threadId, queueId) {
 }
 
 /**
- * A session is leaving (deleted): the person’s messages queued only for it are posted to their thread now, waking no
- * one, so none waits invisibly for an agent that won’t come back (#427). One addressed to others too just drops it.
- * Agents’ wakes are dropWakes’ (side-threads.mjs), which tells their senders.
+ * A deleted session is purged, its Undo window over (design-597-release-1, R1): the person’s messages queued only for
+ * it are posted to their thread, waking no one, so none waits invisibly for an agent that won’t come back (#427). One
+ * addressed to others too just drops it, and the queue drains, so an idle co-recipient gets it now. Agents’ wakes
+ * went at delete, with dropWakes (side-threads.mjs), which tells their senders.
  */
 export function releaseQueued(rt, sessionId) {
   for (const t of Object.values(rt.s.threads)) {
@@ -68,7 +69,9 @@ export function releaseQueued(rt, sessionId) {
       .filter((q) => !alone.includes(q))
       .map((q) => (mine.includes(q) ? { ...q, sessionIds: q.sessionIds.filter((id) => id !== sessionId) } : q));
     rt.putThread({ ...rt.s.threads[t.id], queue });
-    for (const q of alone) postUserMessage(rt, t.id, q);
+    // R2: the person’s text as it was, without a turn’s side effects: no hops reset, no context, no wake.
+    for (const q of alone) rt.addItem(t.id, { kind: 'user', text: q.text, attachments: q.attachments });
+    if (queue.length) rt.drainQueue(t.id);
   }
 }
 

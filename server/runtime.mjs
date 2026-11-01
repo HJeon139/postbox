@@ -2770,7 +2770,6 @@ export class Runtime {
     const until = Date.now() + DELETE_UNDO_MS;
     this.updateSession(sessionId, { deleting: until });
     dropWakes(this, se, 'removed');
-    queue.releaseQueued(this, sessionId);
     clearTimeout(this.timers.get(`del:${sessionId}`));
     this.timers.set(
       `del:${sessionId}`,
@@ -2847,6 +2846,8 @@ export class Runtime {
     this.timers.delete(`del:${sessionId}`);
     const se = this.s.sessions[sessionId];
     if (!se?.deleting) return;
+    // The person’s messages queued for it leave the queue now, not at delete, so Undo found them untouched (#427).
+    queue.releaseQueued(this, sessionId);
     // Background jobs Postbox kept running for it would run on with no record (#129).
     this.stopKeptJobs([sessionId], 'Its session was deleted.');
     const t = this.s.threads[se.threadId];
