@@ -2804,6 +2804,8 @@ export class Runtime {
     this.timers.delete(`delt:${threadId}`);
     const t = this.thread(threadId);
     this.putThread({ ...t, deleting: null });
+    // Its stopped turns skipped the drain (a silent stop): what its queues held goes now, as after a session’s Undo.
+    for (const x of this.archiveScope(threadId)) this.drainQueue(x.id);
   }
 
   purgeThread(threadId) {
@@ -2840,6 +2842,8 @@ export class Runtime {
     clearTimeout(this.timers.get(`del:${sessionId}`));
     this.timers.delete(`del:${sessionId}`);
     this.updateSession(sessionId, { deleting: null });
+    // What the drain held back while it was being deleted goes now (#427, R1): Undo releases a hold, so it drains.
+    for (const x of this.archiveScope(se.threadId)) this.drainQueue(x.id);
   }
 
   purgeSession(sessionId) {

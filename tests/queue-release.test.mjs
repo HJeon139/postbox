@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { releaseQueued } from '../server/message-queue.mjs';
+import { deletePersona, undoDeletePersona } from '../server/persona-delete.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { held, ScriptedAdapter, settle, setup, sleep } from './side-threads-fixture.mjs';
 
@@ -117,6 +118,52 @@ test('R1: a message for an agent being deleted and an idle one waits for both in
     false,
     '@beta waits: Undo must find it addressed to both',
   );
+  assert.deepEqual(store.state.threads[t.id].queue.find((q) => /both of you/.test(q.text))?.sessionIds, [alpha.id, beta.id], 'held for both');
   rt.undoDelete(alpha.id);
-  assert.deepEqual(store.state.threads[t.id].queue.find((q) => /both of you/.test(q.text))?.sessionIds, [alpha.id, beta.id]);
+  await settle(rt);
+  for (const se of [alpha, beta])
+    assert.ok(
+      adapter.calls.some((x) => x.sessionId === se.id && /both of you/.test(JSON.stringify(x.message))),
+      `after Undo, @${se.handle} got it`,
+    );
+});
+
+/** Whether the adapter got “later, please” in a turn for that session. */
+const gotLater = (adapter, sessionId) => adapter.calls.some((x) => x.sessionId === sessionId && /later, please/.test(JSON.stringify(x.message)));
+
+test('after Undo, the message the drain held back goes to the agent now (critic’s probe)', async () => {
+  const { store, rt, adapter, t, alpha, a } = await queuedForBusyAlpha();
+  rt.deleteSession(alpha.id);
+  a.release();
+  await settle(rt);
+  rt.undoDelete(alpha.id);
+  await settle(rt);
+  assert.ok(gotLater(adapter, alpha.id), '@alpha got it');
+  assert.deepEqual(store.state.threads[t.id].queue, []);
+});
+
+test('after Undo of its persona’s delete, the held message goes to the agent now (the sweep)', async () => {
+  const { rt, adapter, t, a: persona, alpha } = setup();
+  const work = held();
+  adapter.next.push(work.step);
+  rt.sendMessage(t.id, { text: '@alpha a long job' });
+  await sleep(5);
+  assert.ok(rt.sendMessage(t.id, { text: '@alpha later, please' }).queued);
+  deletePersona(rt, persona.id);
+  work.release();
+  await settle(rt);
+  undoDeletePersona(rt, persona.id);
+  await settle(rt);
+  assert.ok(gotLater(adapter, alpha.id));
+});
+
+test('after Undo of a conversation’s delete, what its queue held goes now (the sweep)', async () => {
+  const { store, rt, adapter, t, alpha, a } = await queuedForBusyAlpha();
+  rt.deleteThread(t.id);
+  a.release();
+  await settle(rt);
+  rt.undoDeleteThread(t.id);
+  await settle(rt);
+  assert.ok(gotLater(adapter, alpha.id));
+  assert.deepEqual(store.state.threads[t.id].queue, []);
 });
