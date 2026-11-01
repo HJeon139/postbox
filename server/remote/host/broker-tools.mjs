@@ -74,10 +74,10 @@ const mib = (/** @type {number} */ n) => `${(n / 1024 / 1024).toFixed(1)} MiB`;
  * host keeps (queueLimits, REMOTE_LIMITS), or its record of calls, which a restart reads whole, is full.
  * @param {Broker} b @param {string} turn @param {string} name @param {number} bytes
  */
-async function queueFull(b, turn, name, bytes) {
+async function queueFull(b, turn, name, bytes, isDetachedRead = false) {
   const waiting = [...b.tools.values()].filter((t) => t.turn === turn && !t.replied);
   const held = waiting.reduce((n, t) => n + (t.bytes ?? 0), 0);
-  if (waiting.length >= b.queueLimits.calls || held + bytes > b.queueLimits.bytes)
+  if (!isDetachedRead && (waiting.length >= b.queueLimits.calls || held + bytes > b.queueLimits.bytes))
     return `This turn already has ${waiting.length} calls (${mib(held)}) waiting for Postbox, as many as this host keeps, so ${name} wasn’t sent. Once Postbox is connected and has taken them, call it again.`;
   const size = await fsp.stat(b.p.turn(turn, TURN_FILES.tools)).then(
     (st) => st.size,
@@ -114,12 +114,53 @@ function admit(b, turn, fn) {
 const take = (b, k, t) =>
   admit(b, t.turn, async () => {
     if (b.tools.has(k)) return 'again';
-    const full = await queueFull(b, t.turn, t.name, t.bytes ?? 0);
+    const full = await queueFull(b, t.turn, t.name, t.bytes ?? 0, !b.attached() && t.route === 'read');
     if (!full) b.tools.set(k, t);
     return full;
   });
 
 const OFFLINE_NOTE = '\n\n(Read offline as of this turn’s start; earlier or changed items may be missing.)';
+
+/** Whether a call is taken: answered, or being answered by settleOffline or a live reply (settle.md §2). @param {any} t */
+export const settled = (t) => t.replied || !!t.replying;
+
+/** The answer cut to replyChars, the offline notice kept at its end (settle.md §4). @param {string} s */
+const offlineText = (s) => (s.length <= REMOTE_LIMITS.replyChars ? s : s.slice(0, REMOTE_LIMITS.replyChars - OFFLINE_NOTE.length) + OFFLINE_NOTE);
+
+/**
+ * Answers an open read from the snapshot, once: the first caller claims it, the rest return (settle.md §4). Never
+ * throws: a failure becomes a log line or a result.
+ * @param {Broker} b @param {any} t
+ */
+export async function settleOffline(b, t) {
+  if (settled(t)) return;
+  /** @type {(v?: any) => void} */
+  let finish = () => {};
+  t.replying = new Promise((resolve) => (finish = resolve));
+  try {
+    if (t.timer) {
+      b.timers.clearTimeout(t.timer);
+      t.timer = undefined;
+    }
+    if (t.saved && (await t.saved)) return; // the call record failed: queueTool removed the call and answered the shim
+    let r;
+    try {
+      r = await readLocal(b, t.turn, t.name, t.args, true);
+    } catch (e) {
+      r = { ok: false, text: `Postbox couldn’t read the snapshot: ${/** @type {any} */ (e)?.message || e}` };
+    }
+    const text = offlineText(r.text);
+    t.result = { ok: r.ok, text };
+    t.replied = true;
+    t.args = null;
+    const why = await written(b, t.turn, 'tools', { op: 'reply', id: t.id, ok: r.ok, text });
+    if (why) b.log(`Turn ${t.turn}’s ${t.name} (${t.id}) offline record failed: ${why}`);
+    toShims(b, t.turn, 'result', { id: t.id, ok: r.ok, text });
+  } finally {
+    t.replying = undefined;
+    finish();
+  }
+}
 
 /**
  * Reads from the turn’s snapshot locally.
@@ -154,7 +195,7 @@ async function queueTool(b, k, t, result) {
     return result(false, admitted);
   }
   // Written down before the shim hears it, so on restart it replays.
-  t.saved = record(b, t.turn, 'tools', { op: 'call', id: t.id, name: t.name, route: t.route, args: t.args }).then(
+  t.saved = record(b, t.turn, 'tools', { op: 'call', id: t.id, name: t.name, route: t.route, args: t.args, at: t.arrived }).then(
     () => '',
     (e) => unrecorded(t.name, e),
   );
@@ -163,6 +204,8 @@ async function queueTool(b, k, t, result) {
     if (b.tools.get(k) === t) b.tools.delete(k);
     return result(false, saved);
   }
+  if (settled(t)) return; // settled while the call record was written
+  if (t.route === 'read' && !b.attached()) return settleOffline(b, t);
   if (t.route === 'queue') result(true, QUEUED_TEXT);
   b.toPostbox('tool', toolBody(t));
 }
@@ -188,19 +231,9 @@ export async function call(b, c, turn, m) {
     if (saved) return result(false, saved);
     const ans = answerKnown(known);
     if (ans) return result(ans.ok, ans.text);
-    // An unsettled in-flight read resent while disconnected: answer from the snapshot and mark it settled.
-    if (route === 'read' && !b.attached()) {
-      const r = await readLocal(b, turn, m.name, m.args, true);
-      known.replied = true;
-      known.result = r;
-      record(b, turn, 'tools', { op: 'reply', id: known.id, ok: r.ok, text: r.text });
-      return result(r.ok, r.text);
-    }
+    // An open read resent while disconnected: answered from the snapshot through settleOffline, which answers every shim.
+    if (route === 'read' && !b.attached() && !settled(known)) return void settleOffline(b, known);
     return;
-  }
-  if (route === 'read' && !b.attached()) {
-    const r = await readLocal(b, turn, m.name, m.args, true);
-    return result(r.ok, r.text);
   }
   if (route === 'ask' && !b.attached() && m.name !== 'add_dataset')
     return result(false, `Postbox isn’t connected to this host right now, so ${m.name} can’t run. Try again once Postbox is open and connected.`);
@@ -221,22 +254,27 @@ export async function call(b, c, turn, m) {
  */
 export async function onReply(b, m, reply) {
   const k = key(m.turn, m.id);
-  while (b.tools.get(k)?.replying) await b.tools.get(k)?.replying;
   const t = b.tools.get(k);
-  if (!t || t.replied) {
+  // A taken call gets no second answer: dropped at once, not awaited (settle.md §5).
+  if (!t || settled(t)) {
     reply.fail('no-tool', `There’s no tool call ${m.id} waiting in turn ${m.turn}.`);
     return;
   }
   // Written down before it’s taken or the shim hears it: an asked call’s answer is kept, with its text, for a
   // shim that sends the call again after the daemon restarts. One that can’t be written leaves the call waiting.
-  t.replying = written(b, m.turn, 'tools', { op: 'reply', id: t.id, ok: m.ok, ...(t.route === 'ask' || t.route === 'read' ? { text: m.text } : {}) });
-  const why = await t.replying;
+  /** @type {(v?: any) => void} */
+  let finish = () => {};
+  t.replying = new Promise((resolve) => (finish = resolve));
+  const why = await written(b, m.turn, 'tools', { op: 'reply', id: t.id, ok: m.ok, ...(t.route === 'ask' || t.route === 'read' ? { text: m.text } : {}) });
   t.replying = undefined;
+  finish();
   if (why) {
     reply.fail(
       'internal',
       `Postbox’s daemon on this host couldn’t write down the reply to call ${t.id} in turn ${m.turn}, so it wasn’t taken: ${why}. Reply again.`,
     );
+    // The link may have dropped during the write: settleOffline saw settled(t) and returned, so settle now (settle.md §5).
+    if (!b.attached()) settleOffline(b, t);
     return;
   }
   t.replied = true;

@@ -5,7 +5,7 @@ import { endPrompt, onAnswer, orphaned, promptBody } from './broker-prompts.mjs'
 import { ended, exists, note } from './broker-records.mjs';
 import { saveSnapshot, snapshotItems } from './broker-snapshot.mjs';
 import { CANCELED } from './broker-state.mjs';
-import { onReply, toolBody } from './broker-tools.mjs';
+import { onReply, settled, toolBody } from './broker-tools.mjs';
 
 /** @typedef {import('./broker-state.mjs').Broker} Broker */
 
@@ -52,7 +52,7 @@ export async function onHello(b, send) {
       .filter((q) => !q.answer && (over.has(q.turn) || orphaned(b, q)))
       .map((q) => endPrompt(b, q.turn, q.id, b.now(), over.has(q.turn) ? CANCELED : 'expired', true)),
   );
-  for (const t of b.tools.values()) if (!t.replied) send('tool', toolBody(t));
+  for (const t of b.tools.values()) if (!settled(t)) send('tool', toolBody(t));
   for (const q of b.prompts.values()) if (!q.answer) send('prompt', promptBody(q));
   for (const [k, x] of [...b.expiries]) {
     send('prompt-expired', { id: x.id, turn: x.turn, at: x.at, reason: x.reason });

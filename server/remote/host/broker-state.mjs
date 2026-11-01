@@ -20,7 +20,7 @@ export const key = (turn, id) => `${turn} ${id}`;
 
 /**
  * @typedef {{ turn: string, id: string, name: string, route: 'queue' | 'ask' | 'read', args: Record<string, any> | null, replied: boolean,
- *   result?: { ok: boolean, text: string }, saved?: Promise<string>, replying?: Promise<string>, bytes?: number }} Tool
+ *   result?: { ok: boolean, text: string }, saved?: Promise<string>, replying?: Promise<string>, bytes?: number, arrived?: number }} Tool
  *   saved: settles once the call is written down, with '' or why it couldn’t be (a prompt’s likewise); replying: a
  *   reply being written down, likewise (a prompt’s answering); bytes: its tool message’s encoded size, while it waits
  * @typedef {{ turn: string, id: string, request: Record<string, any>, answer: Record<string, any> | null, over: boolean,
@@ -115,5 +115,11 @@ export function brokerState({
 
 /** @param {Broker} b @param {string} turn @param {string} type @param {Record<string, unknown>} body */
 export function toShims(b, turn, type, body) {
-  for (const s of b.shims.get(turn) ?? []) s.send(type, body);
+  for (const s of b.shims.get(turn) ?? []) {
+    try {
+      s.send(type, body);
+    } catch (e) {
+      b.log(`A shim of turn ${turn} couldn’t take ${type}: ${/** @type {any} */ (e)?.message || e}`);
+    }
+  }
 }
