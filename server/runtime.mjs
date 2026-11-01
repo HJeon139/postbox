@@ -2865,8 +2865,15 @@ export class Runtime {
     this.timers.delete(`del:${sessionId}`);
     const se = this.s.sessions[sessionId];
     if (!se?.deleting) return;
-    // What deliver held for its Undo goes with it.
+    // What deliver held for its Undo goes with it, logged by kind and count, never by text (design-597-deleting-1).
+    const held = this.heldForUndo.get(sessionId) ?? [];
     this.heldForUndo.delete(sessionId);
+    if (held.length) {
+      const kinds = new Map();
+      for (const [m] of held) kinds.set(m.kind, (kinds.get(m.kind) ?? 0) + 1);
+      const list = [...kinds].map(([k, n]) => (n > 1 ? `${k} ×${n}` : k)).join(', ');
+      console.warn(`@${se.handle} was deleted with ${held.length} held deliver${held.length === 1 ? 'y' : 'ies'} (${list}) undelivered.`);
+    }
     // A turn it still has would run on for a session that’s gone: stop it first (#597 review).
     if (this.turns.has(sessionId)) this.stop(sessionId, { silent: true });
     // The person’s messages queued for it leave the queue now, not at delete, so Undo found them untouched (#427).
