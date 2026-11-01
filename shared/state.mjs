@@ -121,17 +121,9 @@ export function apply(s, type, d) {
       if (e) Object.assign(e, d.patch);
       break;
     }
-    case 'remove': {
-      if (d.kind === 'thread') {
-        delete s.threads[d.id];
-        delete s.items[d.id];
-        delete s.glossary[d.id];
-        if (s.work) delete s.work[d.id];
-      }
-      const kept = { session: 'sessions', app: 'apps', persona: 'personas' }[d.kind];
-      if (kept) delete s[kept][d.id];
+    case 'remove':
+      removeEntity(s, d);
       break;
-    }
     case 'notify':
       break; // transient: shown as a toast, nothing to store
     default:
@@ -171,4 +163,16 @@ function applyItemPatch(item, data) {
     else steps[index] = { ...steps[index], ...data.activityStep };
   }
   if (data.patch) Object.assign(item, data.patch);
+}
+
+/** Removing an existing public entity; records have their own lifecycle. */
+function removeEntity(s, d) {
+  if (d.kind === 'thread') {
+    delete s.threads[d.id];
+    delete s.items[d.id];
+    delete s.glossary[d.id];
+    if (s.work) delete s.work[d.id];
+  }
+  const kept = { session: 'sessions', app: 'apps', persona: 'personas' }[d.kind];
+  if (kept) delete s[kept][d.id];
 }
