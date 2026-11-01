@@ -60,7 +60,8 @@ export async function snapshotNow(store) {
     await takeSnapshot(store);
     snapshotSucceeded(store);
   } catch (e) {
-    snapshotFailed(store, e);
+    // An abandonment at close() is not a failed disk: no warning that promises a retry a closed store never makes (critic’s nit on 1b).
+    if (e.code !== 'ECLOSED') snapshotFailed(store, e);
     throw e;
   }
 }

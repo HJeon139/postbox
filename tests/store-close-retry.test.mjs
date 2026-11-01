@@ -177,6 +177,8 @@ test('close() during a snapshot in flight: the snapshot is abandoned, nothing pr
   assert.equal(closed, false, 'close() waits for the snapshot pass to end');
   held.release();
   await assert.rejects(snap, /closed while it was written/, 'the snapshot resumed into a closing store and abandoned itself');
+  assert.equal(a.warning, null, 'no warning promising a retry a closed store never makes (critic’s nit)');
+  assert.equal(a.nextSnapshotAt, 0, 'no backoff recorded');
   await closing;
   const names = (await realFs.readdir(dir)).sort();
   assert.ok(!names.includes('snapshot.json') && !names.some((n) => n.endsWith('.tmp')), `nothing renamed or left behind: ${names.join()}`);
