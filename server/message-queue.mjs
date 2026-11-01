@@ -50,7 +50,8 @@ export function sendQueuedNow(rt, threadId, queueId) {
   return rt.postAndDeliver(
     threadId,
     q,
-    q.sessionIds.map((id) => ({ se: rt.s.sessions[id] })).filter((x) => x.se && !x.se.archived),
+    // Not to an agent being deleted: its turn would outlive the purge (#597 review).
+    q.sessionIds.map((id) => ({ se: rt.s.sessions[id] })).filter((x) => x.se && !x.se.archived && !x.se.deleting),
   );
 }
 
@@ -62,16 +63,22 @@ export function sendQueuedNow(rt, threadId, queueId) {
  */
 export function releaseQueued(rt, sessionId) {
   for (const t of Object.values(rt.s.threads)) {
-    const mine = (t.queue ?? []).filter((q) => q.kind !== 'wake' && q.sessionIds.includes(sessionId));
-    if (!mine.length) continue;
-    const alone = mine.filter((q) => q.sessionIds.length === 1);
-    const queue = rt.s.threads[t.id].queue
-      .filter((q) => !alone.includes(q))
-      .map((q) => (mine.includes(q) ? { ...q, sessionIds: q.sessionIds.filter((id) => id !== sessionId) } : q));
-    rt.putThread({ ...rt.s.threads[t.id], queue });
-    // R2: the person’s text as it was, without a turn’s side effects: no hops reset, no context, no wake.
-    for (const q of alone) rt.addItem(t.id, { kind: 'user', text: q.text, attachments: q.attachments });
-    if (queue.length) rt.drainQueue(t.id);
+    const mine = (t.queue ?? []).filter((q) => q.kind !== 'wake' && q.sessionIds.includes(sessionId)).map((q) => q.id);
+    // In queue order, so the transcript reads them as they were sent; each one posted before it leaves the queue, so
+    // a failed write between the two leaves it queued, not lost (#598’s outage case).
+    for (const id of mine) {
+      const q = rt.s.threads[t.id].queue?.find((x) => x.id === id);
+      if (!q) continue;
+      const rest = (/** @type {any} */ x) => rt.putThread({ ...rt.s.threads[t.id], queue: rt.s.threads[t.id].queue.map(x).filter(Boolean) });
+      if (q.sessionIds.length === 1) {
+        // R2: the person’s text as it was, without a turn’s side effects: no hops reset, no context, no wake.
+        rt.addItem(t.id, { kind: 'user', text: q.text, attachments: q.attachments });
+        rest((x) => (x.id === id ? null : x));
+      } else {
+        rest((x) => (x.id === id ? { ...x, sessionIds: x.sessionIds.filter((s) => s !== sessionId) } : x));
+        rt.drainQueue(t.id);
+      }
+    }
   }
 }
 

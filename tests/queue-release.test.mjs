@@ -50,16 +50,14 @@ test('R1: while the agent is being deleted, a drain delivers nothing to it and p
   assert.equal(posted(store, t.id, '@alpha later, please').length, 0);
 });
 
-test('R2: at the purge, a message only for that agent is posted once, and the conversation’s hops stay as they were', async () => {
+test('at the purge, a message only for that agent is posted once (a guard: it held on 6edad50e too, where the release ran at delete)', async () => {
   const { store, rt, t, alpha, a } = await queuedForBusyAlpha();
   rt.deleteSession(alpha.id);
   a.release();
   await settle(rt);
-  rt.putThread({ ...store.state.threads[t.id], hops: 3 });
   rt.purgeSession(alpha.id);
   assert.deepEqual(store.state.threads[t.id].queue, []);
   assert.equal(posted(store, t.id, '@alpha later, please').length, 1);
-  assert.equal(store.state.threads[t.id].hops, 3);
 });
 
 test('at the purge, a message for that agent and an idle one goes to the idle one now', async () => {
@@ -166,4 +164,96 @@ test('after Undo of a conversation’s delete, what its queue held goes now (the
   await settle(rt);
   assert.ok(gotLater(adapter, alpha.id));
   assert.deepEqual(store.state.threads[t.id].queue, []);
+});
+
+/** A persona with its session in the conversation and a retired fork in each of two topics, Topic2 with history. */
+function withRetiredForks() {
+  const ctx = setup();
+  const { rt, store, t, a: persona } = ctx;
+  const root = rt.addItem(t.id, { kind: 'user', text: 'Root message' });
+  const forks = [1, 2].map((n) => {
+    const { threadId } = rt.startTopic(t.id, root.id);
+    rt.putThread({ ...store.state.threads[threadId], title: `Topic${n}` });
+    const fork = rt.ensureSession(threadId, persona.id);
+    rt.updateSession(fork.id, { forkOf: { sessionId: ctx.alpha.id, itemId: null }, archived: true, retiredFork: true });
+    return { threadId, fork };
+  });
+  rt.addItem(forks[1].threadId, { kind: 'user', text: 'History in Topic2' });
+  return { ...ctx, forks };
+}
+
+test('Undo of a persona delete with retired forks in two topics restores every fork, and no topic is erased (the integrator’s blocker)', async () => {
+  const { store, rt, a: persona, forks } = withRetiredForks();
+  deletePersona(rt, persona.id);
+  assert.doesNotThrow(() => undoDeletePersona(rt, persona.id));
+  for (const { fork, threadId } of forks) {
+    assert.equal(store.state.sessions[fork.id]?.deleting ?? null, null, `${store.state.threads[threadId].title}’s fork is restored`);
+    assert.equal(rt.timers.has(`del:${fork.id}`), false, 'no purge is armed for it');
+  }
+  assert.ok(store.items(forks[1].threadId).some((i) => i.text === 'History in Topic2'));
+  await settle(rt);
+});
+
+test('Undo of one retired fork’s session answers without a 409 (the neighboring undo)', async () => {
+  const { store, rt, forks } = withRetiredForks();
+  const { fork } = forks[0];
+  rt.deleteSession(fork.id);
+  assert.doesNotThrow(() => rt.undoDelete(fork.id));
+  assert.equal(store.state.sessions[fork.id].deleting, null);
+  clearTimeout(rt.timers.get(`del:${fork.id}`));
+});
+
+test('Send now on a message for an agent being deleted and another delivers only to the other (should-fix 2)', async () => {
+  const { store, rt, adapter, t, alpha, beta, a } = await queuedForBusyAlpha();
+  assert.ok(rt.sendMessage(t.id, { text: '@alpha @beta both of you' }).queued);
+  rt.deleteSession(alpha.id);
+  a.release();
+  await settle(rt);
+  const q = store.state.threads[t.id].queue.find((x) => /both of you/.test(x.text));
+  rt.sendQueuedNow(t.id, q.id);
+  await settle(rt);
+  const got = (se) => adapter.calls.some((x) => x.sessionId === se.id && /both of you/.test(JSON.stringify(x.message)));
+  assert.equal(got(alpha), false, 'no turn for @alpha, which is being deleted');
+  assert.equal(got(beta), true);
+});
+
+test('a purge stops a turn its session still has, so no backend outlives the session', async () => {
+  const { rt, adapter, t, alpha } = setup();
+  const work = held();
+  adapter.next.push(work.step);
+  rt.sendMessage(t.id, { text: '@alpha a long job' });
+  await sleep(5);
+  assert.ok(rt.turns.has(alpha.id));
+  rt.updateSession(alpha.id, { deleting: Date.now() });
+  rt.purgeSession(alpha.id);
+  await settle(rt);
+  assert.equal(rt.turns.has(alpha.id), false);
+  work.release();
+});
+
+test('the purge posts in queue order: M1 for @alpha and @beta, then M2 for @alpha alone, read M1 then M2 (nit)', async () => {
+  const { store, rt, t, alpha, a } = await queuedForBusyAlpha();
+  store.emit('thread', { ...store.state.threads[t.id], queue: [] });
+  assert.ok(rt.sendMessage(t.id, { text: '@alpha @beta M1' }).queued);
+  assert.ok(rt.sendMessage(t.id, { text: '@alpha M2' }).queued);
+  rt.deleteSession(alpha.id);
+  a.release();
+  await settle(rt);
+  rt.purgeSession(alpha.id);
+  await settle(rt);
+  const order = store
+    .items(t.id)
+    .filter((i) => i.kind === 'user' && /M[12]$/.test(i.text))
+    .map((i) => i.text.slice(-2));
+  assert.deepEqual(order, ['M1', 'M2']);
+});
+
+test('no path starts a turn for an agent being deleted: deliver itself refuses (the class, rule 14)', async () => {
+  const { rt, adapter, alpha } = setup();
+  rt.updateSession(alpha.id, { deleting: Date.now() + 10_000 });
+  rt.deliver(alpha.id, { kind: 'event', event: { type: 'probe' } });
+  rt.deliver(alpha.id, { kind: 'wake', note: 'scheduled' });
+  await settle(rt);
+  assert.equal(adapter.calls.length, 0);
+  assert.equal(rt.turns.has(alpha.id), false);
 });

@@ -581,6 +581,9 @@ export class Runtime {
   deliver(sessionId, message, { summarizeTo = null, threadId = null } = {}) {
     const se = this.session(sessionId);
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
+    // An agent being deleted starts no turn in its Undo window: every path that delivers comes through here, so one
+    // check covers them all (#597 review). The person’s queued messages wait in the queue instead (R1).
+    if (se.deleting) return;
     message = prepareScheduledRetry(this, message, se.threadId);
     // As it was asked, for Retry (askedOf).
     const asked = { message, summarizeTo, threadId };
@@ -2843,13 +2846,17 @@ export class Runtime {
     this.timers.delete(`del:${sessionId}`);
     this.updateSession(sessionId, { deleting: null });
     // What the drain held back while it was being deleted goes now (#427, R1): Undo releases a hold, so it drains.
-    for (const x of this.archiveScope(se.threadId)) this.drainQueue(x.id);
+    // From its conversation: a retired fork’s session lives in a topic, where archiveScope refuses (#597 review).
+    const conv = this.lineage(se.threadId).at(-1);
+    if (this.s.threads[conv]) for (const x of this.archiveScope(conv)) this.drainQueue(x.id);
   }
 
   purgeSession(sessionId) {
     this.timers.delete(`del:${sessionId}`);
     const se = this.s.sessions[sessionId];
     if (!se?.deleting) return;
+    // A turn it still has would run on for a session that’s gone: stop it first (#597 review).
+    if (this.turns.has(sessionId)) this.stop(sessionId, { silent: true });
     // The person’s messages queued for it leave the queue now, not at delete, so Undo found them untouched (#427).
     queue.releaseQueued(this, sessionId);
     // Background jobs Postbox kept running for it would run on with no record (#129).
