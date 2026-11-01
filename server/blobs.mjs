@@ -21,29 +21,42 @@ export class Blobs {
    * Stores bytes and returns { sha256, size, path }. Storing the same bytes twice keeps one copy. A blob is published
    * whole or not at all: written to a draft beside it, synced, then renamed over its name, and the folder synced, so a
    * crash or a reader mid-write never finds a short file under the hash (a truncated one left by an older build is
-   * replaced). Blobs can hold command lines and output, so they are the owner's alone: files 0600, folders 0700 (#305).
+   * replaced). Blobs can hold command lines and output, so they are the owner’s alone: files 0600, folders 0700 (#305).
    */
   async put(buffer) {
     const sha256 = createHash('sha256').update(buffer).digest('hex');
     const path = this.pathOf(sha256);
-    const have = await stat(path).catch(() => null);
-    if (have?.size === buffer.length) return { sha256, size: buffer.length, path };
     const folder = join(this.dir, sha256.slice(0, 2));
+    const have = await stat(path).catch(() => null);
+    // The file is already whole, but an earlier put of it may have failed at the folder sync after the rename, so its
+    // name may not be durable yet: sync the folder before saying it is here.
+    if (have?.size === buffer.length) {
+      await this.syncFolder(folder);
+      return { sha256, size: buffer.length, path };
+    }
     await mkdir(folder, { recursive: true, mode: 0o700 });
     const draft = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.draft`;
-    const fh = await this.open(draft, 'wx', 0o600);
     try {
-      await fh.writeFile(buffer);
-      await fh.sync();
-    } finally {
-      await fh.close();
-    }
-    await rename(draft, path).catch(async (e) => {
+      const fh = await this.open(draft, 'wx', 0o600);
+      try {
+        await fh.writeFile(buffer);
+        await fh.sync();
+      } finally {
+        await fh.close();
+      }
+      await rename(draft, path);
+    } catch (e) {
+      // Any failure before the rename leaves no draft: a full disk retries on every turn’s end, and each try would
+      // otherwise leave one more.
       await unlink(draft).catch(() => {});
       throw e;
-    });
-    // A platform that can't sync a folder says so with one of these; any other error (EIO) is a failed sync, and the
-    // blob isn't durable, so it rejects.
+    }
+    await this.syncFolder(folder);
+    return { sha256, size: buffer.length, path };
+  }
+
+  /** Syncs a folder so a rename in it is durable. A platform that can’t says so with one of these codes; any other is a failed sync. @param {string} folder */
+  async syncFolder(folder) {
     const dh = await this.open(folder, 'r');
     try {
       await dh.sync().catch((e) => {
@@ -52,7 +65,6 @@ export class Blobs {
     } finally {
       await dh.close();
     }
-    return { sha256, size: buffer.length, path };
   }
 
   /** Reads bytes back and checks they still match their hash. */
