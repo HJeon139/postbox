@@ -135,3 +135,35 @@ test('the final sync fails: close() rejects with the cause and keeps the lock, s
   await assert.rejects(new Store(dir).load(), /Another Postbox store/);
   await rm(dir, { recursive: true });
 });
+
+test('close() begun before a reconciliation times out waits for the listener the Retry then detaches: it rejects with the lock kept while the listener runs, and a later close releases', async () => {
+  const dir = await tmp();
+  const faults = {};
+  const a = await new Store(dir, { io: logDisk(faults), retryBoundMs: 50 }).load();
+  a.emit('thread', { id: 't1', members: [] });
+  await a.flush();
+  faults.sync = () => Promise.reject(eio('disk sync refused'));
+  await assert.rejects(a.commit([thread('x')], { opId: 'x' }), /EIO/);
+  faults.sync = null;
+  let release = () => {};
+  const held = new Promise((r) => {
+    release = () => r(undefined);
+  });
+  a.onReload(() => held);
+  const retried = a.reload().catch((e) => e.code);
+  for (let i = 0; i < 200 && !a.reconciling; i++) await new Promise((r) => setTimeout(r, 5));
+  assert.equal(a.lateReconcile, null, 'close() begins before the timeout: nothing is detached yet');
+  await assert.rejects(a.close(), /can’t close.*isn’t answering/);
+  assert.equal(await retried, 'ETIMEDOUT');
+  assert.ok(a.lateReconcile, 'the Retry detached its listener meanwhile');
+  assert.ok(a.lock, 'the lock is kept while the listener still runs');
+  await assert.rejects(new Store(dir).load(), /Another Postbox store/);
+  release();
+  await a.lateReconcile;
+  await a.close(); // a cleanup close once the listener has settled
+  assert.equal(a.lock, null, 'released');
+  const b = await new Store(dir).load();
+  assert.ok(b.state.threads.t1);
+  await b.close();
+  await rm(dir, { recursive: true });
+});

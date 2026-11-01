@@ -128,6 +128,23 @@ export async function load(store, { fresh = false } = {}) {
   return store;
 }
 
+/**
+ * Waits for what is under way: a Retry, a writer pass, a reconciliation an earlier Retry detached. Re-read after each
+ * wait, since a Retry that times out meanwhile hands its still-running listener to lateReconcile after the first
+ * reading (gpt’s finding on 1b); ends when a reading shows nothing new. Whether all of it settled within the bound.
+ * @param {import('./store.mjs').Store} store
+ */
+async function drained(store) {
+  let seen = new Set();
+  for (;;) {
+    const now = [store.retrying, store.running, store.lateReconcile].filter(Boolean);
+    const fresh = now.filter((p) => !seen.has(p));
+    if (!fresh.length) return true;
+    seen = new Set([...seen, ...fresh]);
+    if (!(await settledWithin(Promise.all(fresh.map((p) => p.catch(() => {}))), store.retryBoundMs))) return false;
+  }
+}
+
 const CLOSED = () => Object.assign(new Error('The store is closed: Postbox shut it down, so nothing more is saved here.'), { code: 'ECLOSED' });
 
 /**
@@ -146,8 +163,7 @@ export async function close(store) {
   // on a closing store), each within a bound. The bound decides only what the caller is told: a flag can’t cancel a
   // write or a rename already handed to the disk, so past it the lock is KEPT and close() rejects (gpt’s and critic’s
   // I3c point). The process’s exit releases the lock, and the next start takes over the stale record.
-  const inFlight = [store.retrying, store.running, store.lateReconcile].filter(Boolean).map((p) => p.catch(() => {}));
-  let quiet = inFlight.length === 0 || (await settledWithin(Promise.all(inFlight), store.retryBoundMs));
+  let quiet = await drained(store);
   // The final flush runs whenever writes are open, queue or no queue: an emit is appended without a sync, so a drained
   // queue still leaves an acknowledged line unsynced (gpt’s finding), and the flush is the sync. Its failure is the
   // caller’s to hear, not swallowed.

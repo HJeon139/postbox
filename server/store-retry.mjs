@@ -56,7 +56,11 @@ export function reload(store) {
   if (store.retrying) return store.retrying;
   // Nothing to retry while writes are open: a reload then would install the disk’s view over memory that is ahead of
   // it, and lose the events in flight (critic’s finding on 1b). A stale tab’s Retry, or a second click, is a no-op.
-  if (store.retiring) return Promise.reject(store.cause); // closing or closed: another store may hold the folder soon
+  // Closing or closed: another store may hold the folder soon. Said as such, whatever cause closed writes before.
+  if (store.retiring)
+    return Promise.reject(
+      Object.assign(new Error('The store is closed: Postbox shut it down, so nothing more is saved here.'), { code: 'ECLOSED', cause: store.cause }),
+    );
   if (store.writable || !store.dir) return Promise.resolve();
   store.retrying = retry(store).finally(() => {
     store.retrying = null;
