@@ -46,6 +46,7 @@ import { clip, gitState, pushed, recordCommit, rootOf, runGit, tracked } from '.
 import { memoryBlobs, nodeIo } from './ledger-io.mjs';
 import { hostEdit, hostFolder, hostOf, onHost } from './ledger-remote.mjs';
 import { newId } from './store.mjs';
+import { liveOrArchived } from './work-archive-read.mjs';
 
 export { nodeIo };
 
@@ -648,10 +649,9 @@ export class Ledger {
     const f = this.entry(convId, fileId);
     if (f?.kind === 'edit') throw onHost(f);
     if (f?.kind !== 'file') throw fail(404, 'That file isn’t in this conversation’s work.');
-    const c = changeId ? this.entry(convId, changeId) : null;
+    const c = changeId ? await liveOrArchived(this, convId, changeId) : null;
     if (changeId && (c?.kind !== 'change' || c.fileId !== fileId)) throw fail(404, 'That change isn’t in this conversation’s work.');
-    const a = c ? c.before : f.before;
-    const b = c ? c.after : f.after;
+    const { before: a, after: b } = c ?? f;
     const sizes = { before: { exists: Boolean(a?.exists), size: a?.size ?? null }, after: { exists: Boolean(b?.exists), size: b?.size ?? null } };
     if (!known(a) || !known(b)) return { ...sizes, tooLarge: true };
     if (a.binary || b.binary) return { ...sizes, binary: true };
@@ -661,7 +661,7 @@ export class Ledger {
 
   /** A command’s output, as text. */
   async output(convId, entryId) {
-    const e = this.entry(convId, entryId);
+    const e = await liveOrArchived(this, convId, entryId);
     if (e?.kind !== 'command') throw fail(404, 'That command isn’t in this conversation’s work.');
     if (!e.output?.sha256) return '';
     return (await this.blobs.get(e.output.sha256)).toString('utf8');

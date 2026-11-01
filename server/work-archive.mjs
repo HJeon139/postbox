@@ -64,6 +64,8 @@ function summaryOf(/** @type {any} */ t, /** @type {string} */ sha256) {
     turnId: t.turnId,
     at: t.at,
     sha256,
+    // The ids of the entries it replaced, so a diff or an output is found by id with one file read.
+    entryIds: t.work.map((/** @type {any} */ e) => e.id),
     counts: {
       files: new Set(changes.map((/** @type {any} */ c) => c.fileId)).size,
       lines: { added: changes.reduce((n, c) => n + (c.added ?? 0), 0), removed: changes.reduce((n, c) => n + (c.deleted ?? 0), 0) },

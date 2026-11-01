@@ -337,6 +337,11 @@ export async function start({
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/git$/)) && req.method === 'GET') return send(res, 200, await rt.workGit(m[1]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/files\/([^/]+)\/diff$/)) && req.method === 'GET')
       return send(res, 200, await rt.workDiff(m[1], m[2], url.searchParams.get('change')));
+    // What the archive pass moved out of the state (#305): an old turn's entries, and an old reply's steps.
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/turns\/([^/]+)$/)) && req.method === 'GET')
+      return send(res, 200, await rt.workTurn(m[1], decodePath(m[2])));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/activity$/)) && req.method === 'GET')
+      return send(res, 200, await rt.itemActivity(m[1], decodePath(m[2])));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/commands\/([^/]+)\/output$/)) && req.method === 'GET')
       return raw(res, 200, await rt.workOutput(m[1], m[2]), { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff' });
     // A data file an app’s version carries (#54), for the app’s postbox.file(name). Text, never run as a page.

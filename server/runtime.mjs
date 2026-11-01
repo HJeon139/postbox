@@ -112,6 +112,7 @@ import { endWork } from './turn-end-work.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { retireStale } from './wake-cards.mjs';
+import { archivedActivity, archivedTurn } from './work-archive-read.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
@@ -2404,6 +2405,14 @@ export class Runtime {
   /** @param {string} threadId @param {string} fileId @param {string|null} [changeId] */
   workDiff(threadId, fileId, changeId = null) {
     return this.ledger.fileDiff(this.workConversation(threadId), fileId, changeId).catch(asHttp);
+  }
+  /** An archived turn's entries and its replies' activity (#305). */
+  workTurn(threadId, turnId) {
+    return archivedTurn(this.s, this.ledger.blobs, this.workConversation(threadId), turnId);
+  }
+  /** An archived reply's steps (#305). */
+  itemActivity(threadId, itemId) {
+    return archivedActivity(this.s, this.ledger.blobs, threadId, itemId);
   }
   workOutput(threadId, entryId) {
     return this.ledger.output(this.workConversation(threadId), entryId).catch(asHttp);
