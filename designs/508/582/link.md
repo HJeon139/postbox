@@ -25,16 +25,17 @@ flowchart TD
     B -- no --> C["wasDriver = d.driver === c"]
     C --> D["clear d.driver, stop follows, end socket"]
     D --> E{"wasDriver and reason !== 'replaced'?"}
-    E -- yes --> F["d.brk.driverLost()"]
+    E -- yes --> F["d.brk.driverLost?.()"]
     E -- no --> G["nothing: replaced keeps reads waiting"]
 ```
 
 - **`close(reason?: 'replaced' | 'taken-over')`.** `undefined` means the socket ended. It is a typed argument: the socket-close paths don't know they are being replaced, and a field set beforehand could leak to the next close.
 - **`wasDriver` is read before `d.driver` is cleared**, in the same synchronous step.
 - **`driverLost` runs after the connection is fully closed**, so `attached()` is already false when `settleOffline` starts.
+- **The call is `d.brk.driverLost?.()`.** `brk` may be a test's broker (`daemon-constants.mjs:99`), and the daemon already calls `d.brk.hello?.(` the same way (`daemon-hello.mjs:62`).
 - **`driverLost(b): void`** (broker, `broker-state.mjs`/`broker.mjs`) calls `settleOffline(b, t)` for every `t` with `t.route === 'read'` and `!settled(t)`, in one synchronous loop. It does not await. It touches no field of `t`: Part 3 owns `replied`, `replying`, `result`.
 - **`reason === 'replaced'` is S3a.** The hello's `old.close('replaced')` is followed in the same tick by `d.driver = c`, and `onHello` re-sends the unsettled calls to `c`. The reads were never lost; they were on the old socket's wire.
-- **`reason === 'taken-over'`.** The old driver is gone and the next one is a different Postbox. `old.close('taken-over')` calls `driverLost`, so the reads settle offline before the new driver's `onHello` runs. That is the S3b rule developer set; this part implements it.
+- **`reason === 'taken-over'`.** The old driver is gone and the next one is a different Postbox. `old.close('taken-over')` calls `driverLost`, so the reads settle offline before the new driver's `onHello` runs. That is the S3b rule developer set (decision 5; confirmed in the room). **Why “before the new driver attaches” holds without more machinery:** in `daemon-hello.mjs:49-52`, `old.close('taken-over')`, `c.instance = …` and `d.driver = c` run with no `await` between them, and `settleOffline` claims `t.replying` synchronously at its entry. So every unsettled read is claimed before the new driver exists, and when its `onHello` resends, Part 3's `settled(t)` skips them. The new Postbox is another workstation, so it never answers the old session's calls.
 - **Order decides, S3a versus S2b.** If the hello arrives before the old socket's close, `d.driver` is still the old connection and the replacement branch runs (S3a). If the close arrives first, `d.driver` is already null, `driverLost` has run, the reads are settled offline (S2b), and the later hello finds nothing to resend. Both are correct. Neither order may settle a read twice or send it to the new driver after the claim: Part 3's `settled(t)` guard in the resend loop covers that.
 
 ## Edge cases
@@ -66,6 +67,6 @@ L1–L7 are in `tests/remote-link-loss.test.mjs`; on `main` L1, L4, L5 and L7 fa
 - **Part 3:** `settleOffline(b, t)` is safe to call for a call that is already claimed, and `settled(t)` is `t.replied || !!t.replying`. `driverLost` calls `settled` first, and the resend loop at hello uses it too.
 - **Part 1:** none. `driverLost` and the deadline timer both call `settleOffline`; whichever claims first wins, and the other returns.
 
-## Open for developer
+## Decided
 
-1. Takeover settles reads offline before the new driver attaches (as above), rather than leaving them for the new Postbox to answer live. I recommend settling, because the new Postbox is a different workstation with a different view of the conversation.
+- Takeover settles offline (developer, decision 5). Each part's file lands in the same PR as its code, with a short index at `designs/508/582/README.md` holding the shared interfaces.
