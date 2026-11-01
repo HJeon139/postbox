@@ -100,3 +100,22 @@ test('the purge logs what it dropped, by kind and count, with no message text (d
   assert.match(lines[0], /@alpha was deleted with 3 held deliveries \(event ×2, wake\) undelivered/);
   assert.doesNotMatch(lines[0], /private words|scheduled/);
 });
+
+test('purging a conversation clears holds for its removed sessions', () => {
+  const { rt, t, alpha } = setup();
+  rt.deleteSession(alpha.id);
+  rt.deliver(alpha.id, { kind: 'wake', note: 'held' });
+  rt.deleteThread(t.id);
+  rt.purgeThread(t.id);
+  assert.equal(rt.heldForUndo.has(alpha.id), false);
+  rt.purgeSession(alpha.id);
+  assert.equal(rt.heldForUndo.has(alpha.id), false);
+});
+
+test('purge clears a stale hold even if the session is already gone', () => {
+  const { rt, alpha } = setup();
+  rt.heldForUndo.set(alpha.id, [[{ kind: 'wake' }, {}]]);
+  rt.store.emit('remove', { kind: 'session', id: alpha.id });
+  rt.purgeSession(alpha.id);
+  assert.equal(rt.heldForUndo.has(alpha.id), false);
+});

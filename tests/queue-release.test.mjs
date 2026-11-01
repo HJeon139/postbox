@@ -170,8 +170,8 @@ test('after Undo of a conversation’s delete, what its queue held goes now (the
 function withRetiredForks() {
   const ctx = setup();
   const { rt, store, t, a: persona } = ctx;
-  const root = rt.addItem(t.id, { kind: 'user', text: 'Root message' });
   const forks = [1, 2].map((n) => {
+    const root = rt.addItem(t.id, { kind: 'user', text: `Root message ${n}` });
     const { threadId } = rt.startTopic(t.id, root.id);
     rt.putThread({ ...store.state.threads[threadId], title: `Topic${n}` });
     const fork = rt.ensureSession(threadId, persona.id);
@@ -184,6 +184,7 @@ function withRetiredForks() {
 
 test('Undo of a persona delete with retired forks in two topics restores every fork, and no topic is erased (the integrator’s blocker)', async () => {
   const { store, rt, a: persona, forks } = withRetiredForks();
+  assert.notEqual(forks[0].threadId, forks[1].threadId, 'the forks belong to distinct topics');
   deletePersona(rt, persona.id);
   assert.doesNotThrow(() => undoDeletePersona(rt, persona.id));
   for (const { fork, threadId } of forks) {
@@ -215,6 +216,13 @@ test('Send now on a message for an agent being deleted and another delivers only
   const got = (se) => adapter.calls.some((x) => x.sessionId === se.id && /both of you/.test(JSON.stringify(x.message)));
   assert.equal(got(alpha), false, 'no turn for @alpha, which is being deleted');
   assert.equal(got(beta), true);
+  assert.ok(
+    (rt.heldForUndo.get(alpha.id) ?? []).some(([message]) => /both of you/.test(message.text)),
+    'the copy is held for Undo',
+  );
+  rt.undoDelete(alpha.id);
+  await settle(rt);
+  assert.equal(got(alpha), true, 'Undo delivers the held copy');
 });
 
 test('the purge posts in queue order: M1 for @alpha and @beta, then M2 for @alpha alone, read M1 then M2 (nit)', async () => {

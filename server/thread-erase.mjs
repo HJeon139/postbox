@@ -15,6 +15,7 @@ export function eraseThreads(rt, ids, why, stopped = []) {
   );
   for (const id of ids) {
     for (const sid of rt.s.threads[id]?.members ?? []) {
+      rt.heldForUndo.delete(sid);
       rt.stopMirrorFor(sid);
       if (rt.s.sessions[sid]) rt.store.emit('remove', { kind: 'session', id: sid });
     }

@@ -50,8 +50,7 @@ export function sendQueuedNow(rt, threadId, queueId) {
   return rt.postAndDeliver(
     threadId,
     q,
-    // Not to an agent being deleted: its turn would outlive the purge (#597 review).
-    q.sessionIds.map((id) => ({ se: rt.s.sessions[id] })).filter((x) => x.se && !x.se.archived && !x.se.deleting),
+    q.sessionIds.map((id) => ({ se: rt.s.sessions[id] })).filter((x) => x.se && !x.se.archived),
   );
 }
 

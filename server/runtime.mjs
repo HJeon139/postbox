@@ -2864,10 +2864,10 @@ export class Runtime {
   purgeSession(sessionId) {
     this.timers.delete(`del:${sessionId}`);
     const se = this.s.sessions[sessionId];
-    if (!se?.deleting) return;
-    // What deliver held for its Undo goes with it, logged by kind and count, never by text (design-597-deleting-1).
     const held = this.heldForUndo.get(sessionId) ?? [];
     this.heldForUndo.delete(sessionId);
+    if (!se?.deleting) return;
+    // What deliver held for its Undo goes with it, logged by kind and count, never by text (design-597-deleting-1).
     if (held.length) {
       const kinds = new Map();
       for (const [m] of held) kinds.set(m.kind, (kinds.get(m.kind) ?? 0) + 1);
