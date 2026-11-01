@@ -106,7 +106,15 @@ test('purging a conversation clears holds for its removed sessions', () => {
   rt.deleteSession(alpha.id);
   rt.deliver(alpha.id, { kind: 'wake', note: 'held' });
   rt.deleteThread(t.id);
-  rt.purgeThread(t.id);
+  const lines = [];
+  const warn = console.warn;
+  console.warn = (...a) => lines.push(a.join(' '));
+  try {
+    rt.purgeThread(t.id);
+  } finally {
+    console.warn = warn;
+  }
+  assert.match(lines.join(' '), /1 held delivery \(wake\) undelivered/);
   assert.equal(rt.heldForUndo.has(alpha.id), false);
   rt.purgeSession(alpha.id);
   assert.equal(rt.heldForUndo.has(alpha.id), false);
@@ -118,4 +126,23 @@ test('purge clears a stale hold even if the session is already gone', () => {
   rt.store.emit('remove', { kind: 'session', id: alpha.id });
   rt.purgeSession(alpha.id);
   assert.equal(rt.heldForUndo.has(alpha.id), false);
+});
+
+test('a stale purge logs discarded holds by kind and count without message text', () => {
+  const { rt, alpha } = setup();
+  rt.heldForUndo.set(alpha.id, [
+    [{ kind: 'wake', note: 'private words' }, {}],
+    [{ kind: 'wake' }, {}],
+  ]);
+  const lines = [];
+  const warn = console.warn;
+  console.warn = (...a) => lines.push(a.join(' '));
+  try {
+    rt.purgeSession(alpha.id);
+  } finally {
+    console.warn = warn;
+  }
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /2 held deliveries \(wake ×2\) undelivered/);
+  assert.doesNotMatch(lines[0], /private words/);
 });
