@@ -64,6 +64,7 @@ export class Store {
     this.reconciling = false; // Retry runs the reload listeners: reconcile() writes while `writable` stays false (I3)
     /** @type {Promise<void> | null} a reconciliation Retry gave up waiting for, still running */
     this.lateReconcile = null;
+    this.reconcilePhase = 0; // counts the reconciliations; a reconcile() bound to an earlier one is refused
     this.writtenThrough = 0; // the last seq whose line was appended
     this.savedThrough = 0; // the last seq whose line was fsynced: the page marks later changes unsaved
     this.nextSnapshotAt = 0; // after a failed snapshot, no attempt before this time
@@ -110,9 +111,13 @@ export class Store {
 
   /**
    * A reload listener’s commit while Retry reconciles: the one path through the closed store, only while reconciling.
-   * @param {any[] | ((state: any) => any[])} events @param {{ opId?: string }} [options]
+   * A listener is called with a reconcile bound to its phase (server/store-retry.mjs); one from an earlier phase is
+   * refused, so a listener that outlived its Retry can’t write into a later one (critic’s rule on 1b).
+   * @param {any[] | ((state: any) => any[])} events @param {{ opId?: string, phase?: number }} [options]
    */
   reconcile(events, options) {
+    if (options?.phase !== undefined && options.phase !== this.reconcilePhase)
+      return Promise.reject(Object.assign(new Error('The reconciliation this write belongs to is over: a later Retry reconciled afresh.'), { code: 'EPHASE' }));
     return commit(this, events, { ...options, internal: true });
   }
 

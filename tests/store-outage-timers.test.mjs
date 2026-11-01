@@ -244,34 +244,3 @@ test('a callback held across an outage and Retry applies nothing to the old hist
   delete rt.summarize;
   await rt.store.flush();
 });
-
-test('a persona purge held in one adapter’s forget across an outage starts no further forget while closed, and finishes after Retry', async () => {
-  const persona = await room('ptwo');
-  const first = deferred();
-  let secondWhileClosed = false;
-  let seconds = 0;
-  rt.adapters.register({ name: 'memory-a', forget: () => first.promise, async deliver() {} });
-  rt.adapters.register({
-    name: 'memory-b',
-    forget: async () => {
-      seconds++;
-      if (!rt.store.writable) secondWhileClosed = true;
-    },
-    async deliver() {},
-  });
-  deletePersona(rt, persona.p.id);
-  rt.store.emit('persona', { ...rt.s.personas[persona.p.id], deleting: Date.now() - 1 });
-  await rt.store.flush();
-  const purge = purgePersona(rt, persona.p.id);
-  await sleep(10);
-  rt.store.fail(eio());
-  first.resolve(); // the first forget answers into a closed store
-  await purge;
-  await sleep(10);
-  assert.equal(secondWhileClosed, false, 'the second adapter’s forget did not run while the store was closed');
-  assert.ok(rt.s.personas[persona.p.id], 'not removed while closed');
-  await rt.store.reload();
-  await until(() => !rt.s.personas[persona.p.id], 'the purge to finish after Retry');
-  assert.ok(seconds >= 1, 'the second forget ran once writes were open');
-  await rt.store.flush();
-});

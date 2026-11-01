@@ -224,3 +224,41 @@ test('a reload listener that rejects at once doesn’t hide a sibling still runn
   await s.close();
   await rm(dir, { recursive: true });
 });
+
+test('a reconcile a listener kept from an earlier phase is refused in a later one, even while that later one is reconciling', async () => {
+  const dir = await tmp();
+  const faults = {};
+  const s = await new Store(dir, { io: logDisk(faults) }).load();
+  s.emit('thread', { id: 't1', members: [] });
+  await s.flush();
+  const fail = async () => {
+    faults.sync = () => Promise.reject(eio('disk sync refused'));
+    await assert.rejects(s.commit([thread(`x${Date.now()}`)], { opId: `x${Date.now()}` }), /EIO/);
+    faults.sync = null;
+  };
+  let kept = null;
+  let release = () => {};
+  let phase = 0;
+  s.onReload(async (reconcile) => {
+    phase++;
+    if (phase === 1) {
+      kept = reconcile; // the first phase’s reconcile, kept past its Retry
+      return;
+    }
+    await new Promise((r) => {
+      release = () => r(undefined);
+    }); // the second phase is held, reconciling
+  });
+  await fail();
+  await s.reload();
+  await fail();
+  const second = s.reload();
+  for (let i = 0; i < 200 && !s.reconciling; i++) await new Promise((r) => setTimeout(r, 10)); // the second phase is reached
+  assert.equal(s.reconciling, true, 'the second Retry is reconciling, held');
+  await assert.rejects(kept([thread('stale')]), /The reconciliation this write belongs to is over/);
+  release();
+  await second;
+  assert.equal(s.state.threads.stale, undefined);
+  await s.close();
+  await rm(dir, { recursive: true });
+});

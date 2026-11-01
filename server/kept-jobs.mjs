@@ -36,10 +36,12 @@ export async function pollKept(rt) {
 export async function stopKeptJobs(rt, sessionIds, why) {
   const jobs = rt.keptJobs().filter((j) => sessionIds.includes(j.sessionId));
   if (!jobs.length) return;
+  const epoch = rt.store.epoch;
   const procs = await rt.listProcesses().catch(() => []);
   for (const j of jobs) {
     for (const g of liveGroups(j, procs)) stopPgid(g.pgid, { kill: rt.signalProcess });
-    rt.endJob(j.sessionId, j.id, 'stopped', why);
+    // The kill stands (the session is being purged, or Postbox stops); the record waits for a store that can take it.
+    if (rt.store.writable && rt.store.epoch === epoch) rt.endJob(j.sessionId, j.id, 'stopped', why);
   }
 }
 

@@ -133,7 +133,10 @@ async function quiesced(store) {
  */
 async function reconciled(store) {
   store.reconciling = true;
-  const runs = [...store.reloaders].map((fn) => Promise.resolve().then(fn));
+  // Each listener gets a reconcile bound to this phase; one it keeps and calls after a later Retry is refused.
+  const phase = ++store.reconcilePhase;
+  const reconcile = (events, options) => store.reconcile(events, { ...options, phase });
+  const runs = [...store.reloaders].map((fn) => Promise.resolve().then(() => fn(reconcile)));
   // Every listener’s lifetime, independent of the fail-fast result: one that rejects at once must not hide a sibling
   // still running (gpt’s finding), so on any exit before all have settled the rest stay tracked.
   let allSettled = false;
