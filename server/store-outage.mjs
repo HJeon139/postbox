@@ -59,7 +59,9 @@ export function watchStore(rt) {
  * A session the recovered state shows mid-turn, with no turn running and no stop still to record, is reset as a
  * restart resets it (server/index.mjs). It happens when a second outage hit while what waited was being drained: the
  * stop’s own records were written into memory only and lost (the integrator’s re-review of #598, outage-in-drain).
- * A session whose stop is still held keeps it: its record runs once writes reopen. @param {Runtime} rt
+ * A session whose stop is still held keeps it: its record runs once writes reopen. rt.exiting is enough to tell: the
+ * outage’s stop sets it at once, and only turnExited clears it, which while closed defers behind the held recordStop
+ * (critic’s read), so a change that clears it earlier must check storeWait here too. @param {Runtime} rt
  */
 function settleOrphanTurns(rt) {
   for (const se of Object.values(rt.s.sessions)) {
@@ -102,15 +104,38 @@ export function whenWritable(rt, fn, { first = false, owner } = {}) {
 }
 
 /**
+ * Whether the reload’s re-arm owns a held wake message, decided by the recovered state (S1). The re-arm recreates every
+ * schedule the recovered state holds, pending or running (rearmWakes), so it owns an automatic wake whose schedule is
+ * there, and one whose schedule is gone or finished must not deliver at all. A manual Retry took its schedule from the
+ * timer (prepareScheduledRetry): the re-arm owns it while that schedule is there, and when it is gone the held message
+ * is the only owner, and the person’s own action, so it stays (gpt’s and critic’s reads of #598 at e0a1a4a3).
+ * @param {Runtime} rt @param {any} message
+ */
+function rearmOwns(rt, message) {
+  const id = message?.scheduledWakeId;
+  return typeof id === 'string' && (message.retry !== true || !!rt.s.schedules[id]);
+}
+
+/**
  * Drops the held work a reload recreates from the recovered state (S1): every storeWait entry with an owner, and every
- * held message that names a schedule. A wake that fired while its agent was busy waits in the turn’s pending list, and
- * the outage’s stop moves that list into the exit’s held one; the re-arm owns the same schedule, so keeping the held
- * copy would deliver the wake twice (the integrator’s re-review of #598). @param {Runtime} rt
+ * held wake message the re-arm owns (rearmOwns), wherever it waits: a held start (heldTurn), a turn’s pending list, a
+ * stopped turn’s exit (the outage’s stop moves the pending list there), and a deleting agent’s Undo hold (#597). Each
+ * would otherwise deliver the wake a second time beside the re-arm (the integrator’s re-review of #598, and gpt’s read).
+ * Every other held message stays: no timer recreates it. @param {Runtime} rt
  */
 function dropOwned(rt) {
-  for (let i = rt.storeWait.length - 1; i >= 0; i--) if (/** @type {any} */ (rt.storeWait[i]).owner) rt.storeWait.splice(i, 1);
-  for (const ex of rt.exiting.values()) ex.held = ex.held.filter((h) => !h.message?.scheduledWakeId);
-  for (const turn of rt.turns.values()) turn.pending = turn.pending.filter((h) => !h.message?.scheduledWakeId);
+  const owned = (h) => rearmOwns(rt, h.message);
+  for (let i = rt.storeWait.length - 1; i >= 0; i--) {
+    const entry = /** @type {any} */ (rt.storeWait[i]);
+    if (entry.owner || owned(entry)) rt.storeWait.splice(i, 1);
+  }
+  for (const ex of rt.exiting.values()) ex.held = ex.held.filter((h) => !owned(h));
+  for (const turn of rt.turns.values()) turn.pending = turn.pending.filter((h) => !owned(h));
+  for (const [sessionId, held] of rt.heldForUndo) {
+    const kept = held.filter(([message]) => !rearmOwns(rt, message));
+    if (kept.length) rt.heldForUndo.set(sessionId, kept);
+    else rt.heldForUndo.delete(sessionId);
+  }
 }
 
 /**
@@ -155,12 +180,13 @@ function reopened(rt) {
 
 /**
  * A turn that can’t start because the store can’t be written: it waits, and starts once writes reopen. Returns whether
- * it waits. @param {Runtime} rt @param {string} sessionId @param {() => void} start
+ * it waits. message: what the turn would deliver, so the reload can drop a wake the re-arm owns (dropOwned).
+ * @param {Runtime} rt @param {string} sessionId @param {() => void} start @param {any} [message]
  */
-export function heldTurn(rt, sessionId, start) {
+export function heldTurn(rt, sessionId, start, message) {
   if (rt.store.writable) return false;
   console.error(`@${rt.s.sessions[sessionId]?.handle ?? sessionId}’s turn waits: Postbox can’t save changes right now.`);
-  rt.storeWait.push(start);
+  rt.storeWait.push(message?.scheduledWakeId ? Object.assign(() => start(), { message }) : start);
   return true;
 }
 

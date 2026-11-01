@@ -616,7 +616,7 @@ export class Runtime {
     // As it was asked, for Retry (askedOf).
     const asked = { message, summarizeTo, threadId };
     // The store can’t be written: the turn starts once it can (ST-3).
-    if (heldTurn(this, sessionId, () => this.deliver(sessionId, asked.message, { summarizeTo, threadId }))) return;
+    if (heldTurn(this, sessionId, () => this.deliver(sessionId, asked.message, { summarizeTo, threadId }), message)) return;
     if (this.turns.has(sessionId)) {
       // Agent-to-agent messages and events wait for the current turn to end.
       const t = this.turns.get(sessionId);

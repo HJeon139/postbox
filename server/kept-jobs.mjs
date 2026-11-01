@@ -41,7 +41,8 @@ export async function stopKeptJobs(rt, sessionIds, why) {
   const procs = await rt.listProcesses().catch(() => []);
   for (const j of jobs) {
     for (const g of liveGroups(j, procs)) stopPgid(g.pgid, { kill: rt.signalProcess });
-    // The kill stands (the session is being purged, or Postbox stops); the record waits for a store that can take it.
+    // The kill stands. The record is written only to the store this began on, and otherwise skipped, not held: the
+    // session is being purged or Postbox is stopping, so no later reader needs it (critic’s read of #598).
     if (rt.store.writable && rt.store.epoch === epoch) rt.endJob(j.sessionId, j.id, 'stopped', why);
   }
 }
