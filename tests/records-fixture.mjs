@@ -1,10 +1,12 @@
+const recordId = (id) => (id.startsWith('rec_') ? id : `rec_${id}`);
+
 export const ask = (id = 'ask_1', extra = {}) => ({
   schema: 1,
-  id,
+  id: recordId(id),
   kind: 'ask',
   conversationId: 'conv',
   threadId: 'conv',
-  sourceId: `source_${id}`,
+  sourceId: `source_${recordId(id)}`,
   version: 1,
   rev: 1,
   at: 10,
@@ -17,11 +19,11 @@ export const ask = (id = 'ask_1', extra = {}) => ({
 });
 export const delivery = (id = 'delivery_1', extra = {}) => ({
   schema: 1,
-  id,
+  id: recordId(id),
   kind: 'delivery',
   conversationId: 'conv',
   threadId: 'conv',
-  sourceId: `source_${id}`,
+  sourceId: `source_${recordId(id)}`,
   version: 1,
   rev: 1,
   at: 10,

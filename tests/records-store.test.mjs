@@ -68,7 +68,7 @@ test('a command queued before close resolves and replays, while one submitted af
   await closing;
   const b = await new Store(dir).load();
   t.after(() => b.close());
-  assert.deepEqual(Object.keys(b.state.records), ['ask_1']);
+  assert.deepEqual(Object.keys(b.state.records), [ask().id]);
 });
 
 test('seeded valid live operations recover the same records and headers from log and snapshot', async (t) => {

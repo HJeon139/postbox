@@ -148,5 +148,5 @@ export function buildRecordBatch(state, events) {
     accepted.push(structuredClone(event));
   }
   integrity(candidate);
-  return { outcome: 'applied', events: accepted };
+  return { outcome: accepted.length ? 'applied' : 'noop', events: accepted };
 }

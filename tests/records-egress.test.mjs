@@ -16,7 +16,7 @@ test('a private record accepted by the Store writes neither a telemetry event no
     const ev = change('open', delivery('private_record', { conversationId: f.t.id, threadId: f.t.id, parts: [{ text: 'recipient-only private payload' }] }));
     const { events } = buildRecordBatch(f.store.state, [ev]);
     for (const e of events) f.store.emit(e.type, e.data);
-    assert.ok(f.store.state.records.private_record);
+    assert.ok(f.store.state.records.rec_private_record);
     assert.equal(taps, 0);
     assert.deepEqual(
       filesUnder(f.data).map((path) => [path, readFileSync(join(f.data, path), 'utf8')]),

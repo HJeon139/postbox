@@ -129,6 +129,7 @@ function sentShape(r) {
 export function validateRecord(r) {
   plain(r);
   requireRecord(r && r.schema === 1 && ['ask', 'delivery'].includes(r.kind), 'the record schema or kind is unknown.');
+  requireRecord(typeof r.id === 'string' && /^rec_[A-Za-z0-9_-]+$/.test(r.id), 'record ids must use the server record prefix.');
   const allowed = [...common, ...(r.kind === 'ask' ? askFields : deliveryFields)];
   requireRecord(
     Object.keys(r).every((k) => allowed.includes(k)),

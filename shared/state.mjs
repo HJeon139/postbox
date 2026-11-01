@@ -2,6 +2,7 @@
 // event { seq, type, data }; applying the same events in order gives the same state on both sides.
 
 import { applyRecordEvent } from './record-events.mjs';
+import { PRIVATE_COLLECTIONS } from './record-private.mjs';
 import { applyHost } from './state-hosts.mjs';
 
 /**
@@ -16,8 +17,7 @@ export function emptyState() {
   return {
     version: 1,
     seq: 0,
-    records: map(),
-    dispatches: map(),
+    ...Object.fromEntries(PRIVATE_COLLECTIONS.map((key) => [key, map()])),
     settings: { theme: 'system' },
     projects: map(),
     personas: map(),

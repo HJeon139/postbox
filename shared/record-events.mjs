@@ -25,7 +25,6 @@ export function applyRecordEvent(state, type, data) {
         route: next.route,
         target: structuredClone(next.target),
         renderVersion: next.renderVersion,
-        remaining: 0,
         entries: [],
       });
       manifest.entries.push({ recordId: id, sentRev: next.sentRev, attempt: next.attempt, parts: structuredClone(next.parts), from: next.from, at: next.at });

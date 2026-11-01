@@ -32,11 +32,11 @@ test('two asks remain distinct without transcript items, and closing one leaves 
 test('duplicate source and cross-conversation holds reject without applying a partial group', () => {
   const s = emptyState();
   run(s, [change('open', ask())]);
-  assert.throws(() => run(s, [change('open', ask('duplicate', { sourceId: 'source_ask_1' }))]), { code: 'ERECORD' });
-  assert.throws(() => run(s, [change('open', delivery('held', { state: 'held', heldBy: 'ask_1', reason: 'held', conversationId: 'elsewhere' }))]), {
+  assert.throws(() => run(s, [change('open', ask('duplicate', { sourceId: ask().sourceId }))]), { code: 'ERECORD' });
+  assert.throws(() => run(s, [change('open', delivery('held', { state: 'held', heldBy: ask().id, reason: 'held', conversationId: 'elsewhere' }))]), {
     code: 'ERECORD',
   });
-  assert.deepEqual(Object.keys(s.records), ['ask_1']);
+  assert.deepEqual(Object.keys(s.records), [ask().id]);
 });
 
 test('an ask close must release every held delivery in its atomic batch', () => {
@@ -110,7 +110,7 @@ test('unknown schemas and fields, unsafe identities and generic removes fail exp
   }
   run(s, [change('open', ask())]);
   assert.throws(() => apply(s, 'remove', { kind: 'record', id: 'ask_1' }), /explicit close/);
-  assert.ok(s.records.ask_1);
+  assert.ok(s.records.rec_ask_1);
 });
 
 test('four unresolved dispatches per recipient turn are allowed and the fifth stays waiting', () => {
@@ -122,7 +122,7 @@ test('four unresolved dispatches per recipient turn are allowed and the fifth st
     else assert.throws(() => run(s, [change('reserve', reserved(d))]), { code: 'ERECORD' });
   }
   assert.equal(Object.keys(s.dispatches).length, 4);
-  assert.equal(s.records.d4.state, 'waiting');
+  assert.equal(s.records.rec_d4.state, 'waiting');
 });
 
 test('one manifest can pin several sources in order without transferring its consumer', () => {
@@ -135,12 +135,12 @@ test('one manifest can pin several sources in order without transferring its con
   run(s, [change('reserve', sa), change('reserve', sb)]);
   assert.deepEqual(
     s.dispatches[sa.dispatchId].entries.map((r) => r.recordId),
-    ['a', 'b'],
+    [a.id, b.id],
   );
   run(s, [close(sa, 'delivered', { attemptIdentity: attemptIdentity(sa) })]);
   assert.deepEqual(
     s.dispatches[sa.dispatchId].entries.map((r) => r.recordId),
-    ['b'],
+    [b.id],
   );
 });
 
@@ -177,7 +177,7 @@ test('a manifest cannot be shared with a different consumer target', () => {
   const first = reserved(a);
   run(s, [change('reserve', first)]);
   assert.throws(() => run(s, [change('reserve', reserved(b, { dispatchId: first.dispatchId, target: { callId: 'other_call' } }))]), { code: 'ERECORD' });
-  assert.equal(s.records.b.state, 'waiting');
+  assert.equal(s.records.rec_b.state, 'waiting');
   assert.equal(s.dispatches[first.dispatchId].entries.length, 1);
 });
 
@@ -212,4 +212,10 @@ test('canonical parts refuse sparse arrays and route targets refuse unrelated or
     assert.throws(() => run(s, [change('reserve', reserved(d, { target }))]), { code: 'ERECORD' });
   }
   assert.equal(s.records[d.id].state, 'waiting');
+});
+
+test('an empty batch reports noop and a record id needs its server prefix', () => {
+  const s = emptyState();
+  assert.deepEqual(buildRecordBatch(s, []), { outcome: 'noop', events: [] });
+  assert.throws(() => run(s, [change('open', ask('bad', { id: 'caller_chosen_id' }))]), { code: 'ERECORD' });
 });
