@@ -96,6 +96,9 @@ export const CHAIN_HINT = 6;
 /** Wakes held on one waiting wake card, delivered or not as the person answers it (#439); past this, they’re refused. */
 export const HELD_WAKES = 20;
 
+/** Remote read timeout (Issue #582): maximum execution deadline for remote reads in milliseconds. */
+export const REMOTE_READ_TIMEOUT_MS = 100000;
+
 /** @typedef {keyof typeof LIMITS} LimitName */
 
 /**

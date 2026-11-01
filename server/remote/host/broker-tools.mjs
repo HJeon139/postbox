@@ -3,6 +3,7 @@
 // broker.mjs’s header says what’s written down when.
 
 import { validateBlock } from '../../../shared/catalog.mjs';
+import { REMOTE_READ_TIMEOUT_MS } from '../../../shared/limits.mjs';
 import { encodedBytes, REMOTE_LIMITS, TOOL_ROUTES, TURN_FILES } from '../../../shared/remote-protocol.mjs';
 import { inlineAppFiles } from './broker-files.mjs';
 import { readConversation, readMessage } from './broker-reading.mjs';
@@ -173,6 +174,30 @@ async function readLocal(b, turn, name, args, offline = false) {
   return { ok: r.ok, text: r.ok && offline ? `${r.text}${OFFLINE_NOTE}` : r.text };
 }
 
+/**
+ * Arms the 100s deadline timer for an admitted read invocation.
+ * Clamps remaining time against b.now() - t.arrived.
+ * @param {Broker} b @param {Tool} t
+ */
+export function armReadTimer(b, t) {
+  if (b.closed || settled(t) || t.route !== 'read' || !b.attached() || t.timer) return;
+
+  const now = b.now();
+  const arrived = t.arrived ?? now;
+  const elapsed = Math.max(0, now - arrived);
+  const remaining = Math.min(REMOTE_READ_TIMEOUT_MS, Math.max(0, REMOTE_READ_TIMEOUT_MS - elapsed));
+
+  if (remaining === 0) {
+    settleOffline(b, t).catch(b.log);
+    return;
+  }
+
+  t.timer = b.timers.setTimeout(() => {
+    t.timer = undefined;
+    settleOffline(b, t).catch(b.log);
+  }, remaining);
+}
+
 /** An already answered or queued call sent again after a reconnect. @param {Tool} known */
 function answerKnown(known) {
   if (known.route === 'queue') return { ok: true, text: QUEUED_TEXT };
@@ -207,11 +232,13 @@ async function queueTool(b, k, t, result) {
   if (settled(t)) return; // settled while the call record was written
   if (t.route === 'read' && !b.attached()) return settleOffline(b, t);
   if (t.route === 'queue') result(true, QUEUED_TEXT);
+  if (t.route === 'read') armReadTimer(b, t);
   b.toPostbox('tool', toolBody(t));
 }
 
 /** A shim’s tool call. @param {Broker} b @param {ShimConn} c @param {string} turn @param {any} m */
 export async function call(b, c, turn, m) {
+  const arrived = b.now();
   const result = (ok, text) => c.send('result', { id: m.id, ok, text: text.slice(0, REMOTE_LIMITS.replyChars) });
   const no = await refusal(b, turn);
   if (no) {
@@ -244,7 +271,7 @@ export async function call(b, c, turn, m) {
   }
   const bytes = toolBytes(turn, m.name, r.args);
   /** @type {Tool} */
-  const t = { turn, id: m.id, name: m.name, route: /** @type {'queue' | 'ask' | 'read'} */ (route), args: r.args, replied: false, bytes };
+  const t = { turn, id: m.id, name: m.name, route: /** @type {'queue' | 'ask' | 'read'} */ (route), args: r.args, replied: false, bytes, arrived };
   if ((await queueTool(b, k, t, result)) === 'again') return call(b, c, turn, m);
 }
 
@@ -274,11 +301,17 @@ export async function onReply(b, m, reply) {
       `Postbox’s daemon on this host couldn’t write down the reply to call ${t.id} in turn ${m.turn}, so it wasn’t taken: ${why}. Reply again.`,
     );
     // The link may have dropped during the write: settleOffline saw settled(t) and returned, so settle now (settle.md §5).
-    if (!b.attached() && t.route === 'read') settleOffline(b, t);
+    if (!b.attached()) {
+      if (t.route === 'read') settleOffline(b, t);
+    } else armReadTimer(b, t);
     return;
   }
   t.replied = true;
   t.args = null;
+  if (t.timer) {
+    b.timers.clearTimeout(t.timer);
+    t.timer = undefined;
+  }
   if (t.route === 'ask' || t.route === 'read') {
     t.result = { ok: m.ok, text: m.text };
     toShims(b, m.turn, 'result', { id: t.id, ok: m.ok, text: m.text });

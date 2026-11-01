@@ -106,6 +106,12 @@ export function createBroker(o) {
     isStopping: (turn) => b.stopping.has(turn),
     close() {
       b.closed = true;
+      for (const t of b.tools.values()) {
+        if (t.timer) {
+          b.timers.clearTimeout(t.timer);
+          t.timer = undefined;
+        }
+      }
       for (const w of b.watches.values()) if (w.timer) b.timers.clearTimeout(w.timer);
       b.watches.clear();
       for (const t of b.orphanTimers) b.timers.clearTimeout(t);

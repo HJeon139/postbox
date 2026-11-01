@@ -21,7 +21,7 @@ export const key = (turn, id) => `${turn} ${id}`;
 
 /**
  * @typedef {{ turn: string, id: string, name: string, route: 'queue' | 'ask' | 'read', args: Record<string, any> | null, replied: boolean,
- *   result?: { ok: boolean, text: string }, saved?: Promise<string>, replying?: Promise<string>, bytes?: number, arrived?: number }} Tool
+ *   result?: { ok: boolean, text: string }, saved?: Promise<string>, replying?: Promise<string>, bytes?: number, arrived?: number, timer?: any }} Tool
  *   saved: settles once the call is written down, with '' or why it couldn’t be (a prompt’s likewise); replying: a
  *   reply being written down, likewise (a prompt’s answering); bytes: its tool message’s encoded size, while it waits
  * @typedef {{ turn: string, id: string, request: Record<string, any>, answer: Record<string, any> | null, over: boolean,
