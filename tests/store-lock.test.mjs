@@ -58,11 +58,13 @@ test('a lock left by a process that is gone is stale and replaced; one held by a
 
 test('a lock whose pid is alive but started at another time belongs to a process that is gone, and is taken over', async () => {
   const dir = await tmp();
-  const a = await lockStore(fs, dir);
+  // Start times are injected: the unit suite can’t run `ps`, and off Linux that is where they come from.
+  const probe = { started: async () => 1_000 };
+  const a = await lockStore(fs, dir, probe);
   const mine = await holder(dir);
   await unlockStore(fs, a);
-  await writeFile(join(dir, LOCK), JSON.stringify({ ...mine, started: (mine.started ?? 0) - 60_000, token: 'ofanother' }));
-  const b = await lockStore(fs, dir);
+  await writeFile(join(dir, LOCK), JSON.stringify({ ...mine, started: 1_000 - 60_000, token: 'ofanother' }));
+  const b = await lockStore(fs, dir, probe);
   assert.equal((await holder(dir)).token, b.token, 'the pid was reused: the lock is stale, and taken over');
   await unlockStore(fs, b);
   await rm(dir, { recursive: true });

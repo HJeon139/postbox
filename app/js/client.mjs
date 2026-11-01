@@ -40,6 +40,9 @@ export const client = {
   config: null,
   seq: 0,
   epoch: '',
+  // Whether the server can save changes, and why not (ST-3): { writable, cause: { code, message } | null, lost, warning,
+  // retrying, savedThrough }, from /api/state and then the stream’s `status` frames (app/js/store-line.mjs).
+  store: null,
   connection: 'connecting',
   attempts: 0,
   listeners: new Set(),
@@ -55,11 +58,12 @@ export const client = {
 export async function load() {
   const r = await fetch('/api/state', { cache: 'no-store' });
   if (!r.ok) throw new Error('Postbox’s server didn’t answer. Check that it’s running, then reload.');
-  const { seq, epoch, state, config } = await r.json();
+  const { seq, epoch, state, config, store } = await r.json();
   client.state = ownState(state);
   client.config = config;
   client.seq = seq;
   client.epoch = epoch ?? '';
+  client.store = store ?? null;
   client.emit({ type: 'load' });
 }
 
@@ -103,6 +107,11 @@ export function connect() {
     if ((JSON.parse(e.data) ?? '') !== client.epoch) resync();
   });
   es.addEventListener('resync', resync);
+  // The store’s status, unnumbered: each time it can’t save, or can again (app/js/store-line.mjs).
+  es.addEventListener('status', (e) => {
+    client.store = JSON.parse(e.data);
+    client.emit({ type: 'store' });
+  });
 }
 
 // Loads the state again and reconnects on the epoch it came with; one at a time, so the epoch frame and the resync

@@ -48,15 +48,18 @@ export function jobRows(it, steps) {
 }
 
 /**
- * A stopped reply’s tag: what stopped it, from what the server recorded (stopReason). Send now isn’t your Stop, and Keep
- * running left its jobs running. A reply stored before the reason was recorded reads as it always did.
+ * A stopped reply’s tag: what stopped it, from what the server recorded (stopReason). Send now isn’t your Stop, Keep
+ * running left its jobs running, and a store that couldn’t save stopped every turn (ST-3). A reply stored before the
+ * reason was recorded reads as it always did.
  */
 export function stoppedTag(it) {
   const at = timeOf(it.stoppedAt ?? it.at);
   const text =
     it.stopReason === 'send-now'
       ? `Interrupted by Send now at ${at}`
-      : `Stopped by you at ${at}${it.stopReason === 'kept-jobs' ? ' · its background work kept running' : ''}`;
+      : it.stopReason === 'store'
+        ? `Stopped at ${at}: Postbox couldn’t save changes`
+        : `Stopped by you at ${at}${it.stopReason === 'kept-jobs' ? ' · its background work kept running' : ''}`;
   return h('span.stopped-tag', text);
 }
 

@@ -37,6 +37,7 @@ const pageCookie = async () => {
 // Every write route, by its method and the path test in server/index.mjs, with paths that reach it. A route added
 // to server/index.mjs without a case here fails the test below, so none can skip the token check.
 const WRITE_ROUTES = {
+  'POST /api/store/retry': ['/api/store/retry'],
   'POST /api/threads': ['/api/threads'],
   'DELETE ^\\/api\\/threads\\/([^/]+)$': ['/api/threads/th_none'],
   'PATCH ^\\/api\\/threads\\/([^/]+)$': ['/api/threads/th_none'],

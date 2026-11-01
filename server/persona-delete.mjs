@@ -5,6 +5,7 @@
 
 import { httpError } from './helpers.mjs';
 import { DELETE_UNDO_MS } from './runtime.mjs';
+import { whenWritable } from './store-outage.mjs';
 
 /**
  * Starts deleting a persona: its sessions now, with their own Undo, and the persona when the window ends.
@@ -38,14 +39,36 @@ export function undoDeletePersona(rt, id) {
 }
 
 /**
- * The end of the window: it’s marked purging first, so an Undo while a backend forgets it says it’s too late rather
- * than bringing back a persona with its sessions gone. Then every session it has goes, not only those its delete took
- * (one deleted on its own before, or restored meanwhile), so none is left with no persona; each backend forgets it;
- * and the persona is removed. A purge a restart cut short starts again from the top (rearmPersonaDeletes).
+ * Purges a persona whose Undo window ended, one run at a time per persona: a run in its forget when Retry completes
+ * and the purge the reload re-arms are chained, never concurrent (critic’s and gpt’s read of S2: the epoch check
+ * after a forget can’t stop a second forget from starting beside the first). The later run then finds the persona as
+ * the earlier left it; every step is safe to repeat.
  * @param {any} rt @param {string} id
  */
-export async function purgePersona(rt, id) {
+export function purgePersona(rt, id) {
+  const chains = rt.personaPurges;
+  const run = (chains.get(id) ?? Promise.resolve())
+    .catch(() => {})
+    .then(() => purgeOnce(rt, id))
+    .finally(() => {
+      if (chains.get(id) === run) chains.delete(id);
+    });
+  chains.set(id, run);
+  return run;
+}
+
+/**
+ * One purge run. The end of the window: it’s marked purging first, so an Undo while a backend forgets it says it’s too
+ * late rather than bringing back a persona with its sessions gone. Then every session it has goes, not only those its
+ * delete took (one deleted on its own before, or restored meanwhile), so none is left with no persona; each backend
+ * forgets it; and the persona is removed. A purge a restart cut short starts again from the top (rearmPersonaDeletes).
+ * @param {any} rt @param {string} id
+ */
+async function purgeOnce(rt, id) {
   rt.timers.delete(`delp:${id}`);
+  // Nothing durable can happen while writes are closed: the purge waits for them to reopen (store-outage.mjs, gated()).
+  if (!rt.store.writable) return whenWritable(rt, () => purgePersona(rt, id), { owner: `delp:${id}` });
+  const epoch = rt.store.epoch;
   const p = rt.s.personas[id];
   if (!p?.deleting) return;
   // Not when it’s already purging: a restart can cut a purge short, and each step below is safe to repeat.
@@ -62,6 +85,13 @@ export async function purgePersona(rt, id) {
     if (typeof adapter.forget !== 'function') continue;
     // A memory that can’t be removed stays on disk, and the server log says where; the persona goes either way.
     await adapter.forget(p).catch((e) => console.error(`Postbox couldn’t remove @${p.handle}’s memory (${name}): ${e.message}`));
+    // The store may have closed, or Retry installed another history, during that removal: no further destructive
+    // step runs against it; the purge runs again against the current state once writes are open (each step is safe
+    // to repeat).
+    // A new epoch: Retry reinstalled the state and re-armed delp:, its one owner now (S1), so this run ends here. Closed
+    // on the same epoch: it defers, owned by delp:, so a later reload drops it in favor of the re-arm.
+    if (rt.store.epoch !== epoch) return;
+    if (!rt.store.writable) return whenWritable(rt, () => purgePersona(rt, id), { owner: `delp:${id}` });
   }
   rt.store.emit('remove', { kind: 'persona', id });
 }

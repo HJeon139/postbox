@@ -66,6 +66,7 @@ import {
   permissionsView,
   setPermissionMode,
 } from './permissions-panel.mjs';
+import { checkEffort, checkSetup } from './persona-checks.mjs';
 import { readCapped } from './read-capped.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
@@ -101,6 +102,7 @@ import {
   wakeAgent,
 } from './side-threads.mjs';
 import { newId } from './store.mjs';
+import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { discardHeld, eraseThreads } from './thread-erase.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
@@ -225,6 +227,14 @@ export class Runtime {
    */
   constructor({ store, adapters, corpus, config, blobs, narrator, spawnShell, signalProcess, listProcesses: list, ledger, hosts }) {
     this.store = store;
+    // While the store can’t be written, no turn runs or starts, and what would write waits (ST-3, server/store-outage.mjs).
+    /** @type {(() => void)[]} */
+    this.storeWait = [];
+    /** @type {Map<string, Promise<void>>} a persona’s purge runs, chained one at a time (persona-delete.mjs) */
+    this.personaPurges = new Map();
+    /** @type {Map<string, Record<string, any>>} a backend’s state saved meanwhile, per session, merged (saveBackendState) */
+    this.backendWait = new Map();
+    watchStore(this);
     this.adapters = adapters;
     this.corpus = corpus;
     this.config = config;
@@ -605,6 +615,8 @@ export class Runtime {
     message = prepareScheduledRetry(this, message, se.threadId);
     // As it was asked, for Retry (askedOf).
     const asked = { message, summarizeTo, threadId };
+    // The store can’t be written: the turn starts once it can (ST-3).
+    if (heldTurn(this, sessionId, () => this.deliver(sessionId, asked.message, { summarizeTo, threadId }), message)) return;
     if (this.turns.has(sessionId)) {
       // Agent-to-agent messages and events wait for the current turn to end.
       const t = this.turns.get(sessionId);
@@ -726,7 +738,9 @@ export class Runtime {
       () => this.endTurn(turn, null),
       (err) => this.endTurn(turn, err),
     );
-    turn.exited.then(() => this.turnExited(turn)).then(() => endChain(this, turn.threadId));
+    // The chain’s count resets once the chain ends (#541). While the store can’t be written, that write waits behind the
+    // exit’s own (turnExited), which also waits, so it runs after the session has left exiting and sees the chain ended.
+    turn.exited.then(() => this.turnExited(turn)).then(() => whenWritable(this, () => endChain(this, turn.threadId)));
   }
 
   turnContext(se0, turn) {
@@ -769,10 +783,7 @@ export class Runtime {
       room: rt.roomOf(turn.threadId, se0),
       /** What the adapter saved for this session last time, such as its own session id. */
       state: { ...(se0.backendState ?? {}) },
-      saveState(patch) {
-        const s = se();
-        if (s) rt.updateSession(s.id, { backendState: { ...(s.backendState ?? {}), ...patch } });
-      },
+      saveState: (patch) => saveBackendState(rt, turn.sessionId, patch),
       /** Where an attachment can be read on disk, or null. */
       pathOf: (a) => rt.attachmentPath(turn.threadId, a),
       /**
@@ -1212,41 +1223,7 @@ export class Runtime {
     turn.abort.abort(Object.assign(new Error('Stopped by you.'), { name: 'AbortError', keepJobs: keep.map((j) => ({ id: j.id, command: j.command })) }));
     turn.closed = true;
     this.turns.delete(sessionId);
-    // Your Stop ends a scheduled wake’s turn for good, so a restart doesn’t run it again; a shutdown leaves it due (#466).
-    if (by !== 'shutdown') settleScheduledWake(this, turn, { name: 'AbortError' });
-    settleStoppedSteps(this, turn);
-    this.endWork(turn, 'stopped');
-    // A tool call waiting for your permission is answered no, so the agent’s process can stop too.
-    for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', 'You stopped the agent.');
-    // The open segment by its id, even while it is held behind a commit (its patch follows it in order); then any
-    // other segment of this turn still streaming in the visible state.
-    let marked = false;
-    if (turn.openSegment) {
-      this.patchItem(turn.threadId, turn.openSegment, ended);
-      marked = true;
-    }
-    for (const it of this.store.items(turn.threadId)) {
-      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming' && it.id !== turn.openSegment) {
-        this.patchItem(turn.threadId, it.id, ended);
-        marked = true;
-      }
-    }
-    turn.openSegment = null;
-    // The reply always says it was stopped. With no segment still streaming (the turn said nothing yet, or a permission
-    // or refusal card closed its segment as done before you pressed Stop), the stopped reply goes below the last thing
-    // the turn showed, as the reply would have continued there (remote-pipeline’s Stop spec failed on this ordering).
-    if (!marked) {
-      this.addItem(turn.threadId, {
-        kind: 'agent',
-        sessionId,
-        personaId: this.s.sessions[sessionId].personaId,
-        handle: this.s.sessions[sessionId].handle,
-        turnId: turn.id,
-        text: '',
-        ...replyMarks(turn),
-        ...ended,
-      });
-    }
+    this.recordStopped(turn, ended, { by, why: 'You stopped the agent.' });
     this.updateSession(sessionId, { state: 'stopping', subagents: [], currentStep: 'Stopping', finishedAt: Date.now(), stopAsk: null });
     // Progress steps running as you keep its jobs running may follow one of them: they run on with it (#129).
     if (keep.length) this.updateSession(sessionId, { heldSteps: { threadId: turn.threadId, keys: this.runningProgress(turn.threadId, sessionId) } });
@@ -1279,7 +1256,56 @@ export class Runtime {
    * reported the end of went with it, and a stopped session takes what waited for it: the messages sent meanwhile,
    * then the queue.
    */
+  /**
+   * What every stop of a turn records, whoever stopped it: your Stop, a shutdown, or the store closing (server/store-outage.mjs).
+   * One path, so no way of ending a turn skips a step (gpt’s finding on 1b: a scheduled turn the outage stopped stayed
+   * running). A shutdown leaves a scheduled wake due for the restart (#466); every other stop ends it.
+   * @param {any} turn @param {{ status: string, stoppedAt: number, stopReason: string | null }} ended
+   * @param {{ by: string, why: string }} o  who, and what a waiting permission is told
+   */
+  recordStopped(turn, ended, { by, why }) {
+    const { sessionId } = turn;
+    // Your Stop ends a scheduled wake’s turn for good, so a restart doesn’t run it again; a shutdown leaves it due
+    // (#466). A store outage leaves it too: the reload re-arms it as interrupted, its one owner (S1), so settling it
+    // here as well would cancel what the agent was told will start again (the integrator’s re-review of #598).
+    if (by !== 'shutdown' && by !== 'store') settleScheduledWake(this, turn, { name: 'AbortError' });
+    settleStoppedSteps(this, turn);
+    this.endWork(turn, 'stopped');
+    // A tool call waiting for your permission is answered no, so the agent’s process can stop too.
+    for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', why);
+    // The open segment by its id, even while it is held behind a commit (its patch follows it in order); then any
+    // other segment of this turn still streaming in the visible state (#602).
+    let marked = false;
+    if (turn.openSegment) {
+      this.patchItem(turn.threadId, turn.openSegment, ended);
+      marked = true;
+    }
+    for (const it of this.store.items(turn.threadId)) {
+      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming' && it.id !== turn.openSegment) {
+        this.patchItem(turn.threadId, it.id, ended);
+        marked = true;
+      }
+    }
+    turn.openSegment = null;
+    // The reply always says it was stopped: with no segment still streaming, the stopped reply goes below the last
+    // thing the turn showed (#602), on every path that records a stop, the store’s included.
+    const se = this.s.sessions[sessionId];
+    if (se && !marked)
+      this.addItem(turn.threadId, {
+        kind: 'agent',
+        sessionId,
+        personaId: se.personaId,
+        handle: se.handle,
+        turnId: turn.id,
+        text: '',
+        ...replyMarks(turn),
+        ...ended,
+      });
+  }
+
   turnExited(turn) {
+    // What the exit writes waits for writes to reopen (ST-3), behind the stop’s own records (server/store-outage.mjs).
+    if (!this.store.writable) return whenWritable(this, () => this.turnExited(turn));
     this.settleJobs(turn);
     const ex = this.exiting.get(turn.sessionId);
     if (ex?.turn !== turn) return;
@@ -1288,7 +1314,8 @@ export class Runtime {
     if (!se) return;
     // Something else may have set the state meanwhile (archive, an answered card); “Stopping” goes either way.
     // A remote turn Postbox stopped because it hung says so instead (#120).
-    const stoppedBy = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id ? se.remoteTurn.message : 'Stopped by you';
+    const hung = se.remoteTurn?.state === 'hung' && se.remoteTurn.rtTurn === turn.id;
+    const stoppedBy = turn.stopReason === 'store' ? STORE_STOPPED : hung ? se.remoteTurn.message : 'Stopped by you';
     if (se.state === 'stopping' || se.currentStep === 'Stopping')
       this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
     else if (se.sideTurn) this.updateSession(se.id, { sideTurn: null });
@@ -1510,9 +1537,23 @@ export class Runtime {
   async stopTurns({ graceMs = 4000 } = {}) {
     this.closing = true;
     // A turn on a remote host doesn’t need Postbox: it goes on there, and is attached again after the restart (#120).
-    for (const [id, turn] of [...this.turns]) if (!turn.remote) this.stop(id, { silent: true, by: 'shutdown' });
-    this.remote.close();
-    await this.stopKeptJobs(Object.keys(this.s.sessions), 'Postbox stopped it as it shut down.');
+    // A stop that fails is logged, and the others still happen: one turn’s failure mustn’t leave the other turns’ CLIs,
+    // the hosts’ link or the kept jobs running.
+    const failed = (what, e) => console.error(`Postbox couldn’t stop ${what} cleanly as it shut down: ${e.message}`);
+    for (const [id, turn] of [...this.turns]) {
+      if (turn.remote) continue;
+      try {
+        this.stop(id, { silent: true, by: 'shutdown' });
+      } catch (e) {
+        failed(`the turn of session ${id}`, e);
+      }
+    }
+    try {
+      this.remote.close();
+    } catch (e) {
+      failed('the hosts’ link', e);
+    }
+    await this.stopKeptJobs(Object.keys(this.s.sessions), 'Postbox stopped it as it shut down.').catch((e) => failed('the background jobs it kept running', e));
     /** @type {NodeJS.Timeout|undefined} */
     let timer;
     const late = new Promise((r) => {
@@ -2287,14 +2328,18 @@ export class Runtime {
       onExit: ({ code = null, signal = null, error }) => {
         flush({ final: true });
         this.shellRuns.delete(it.id);
-        if (!this.store.item(threadId, it.id)) return;
-        this.patchItem(threadId, it.id, {
-          status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
-          exitCode: typeof code === 'number' ? code : null,
-          signal: signal ?? null,
-          ms: Date.now() - startedAt,
-          ...(cut ? { paused: false } : {}),
-          ...(run.closing ? { error: 'Postbox stopped it as it shut down.' } : error ? { error: clipText(String(error.message ?? error), 300) } : {}),
+        // How it ended is written once writes are open: the output chunks are memory-only while closed (I1), but a
+        // status left “running” in the recovered state would never end.
+        whenWritable(this, () => {
+          if (!this.store.item(threadId, it.id)) return;
+          this.patchItem(threadId, it.id, {
+            status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
+            exitCode: typeof code === 'number' ? code : null,
+            signal: signal ?? null,
+            ms: Date.now() - startedAt,
+            ...(cut ? { paused: false } : {}),
+            ...(run.closing ? { error: 'Postbox stopped it as it shut down.' } : error ? { error: clipText(String(error.message ?? error), 300) } : {}),
+          });
         });
       },
     });
@@ -2500,6 +2545,9 @@ export class Runtime {
       this.mirrors.delete(sessionId);
       return;
     }
+    // While the store is closed the tail isn’t advanced: what was typed waits in the file and is read after Retry,
+    // instead of into memory only, where the reload would discard it (the integrator’s finding on 1b).
+    if (!this.store.writable) return;
     let entries;
     try {
       entries = m.tail.poll();
@@ -2849,6 +2897,9 @@ export class Runtime {
 
   purgeThread(threadId) {
     this.timers.delete(`delt:${threadId}`);
+    // Nothing durable can happen while writes are closed: the purge waits for them to reopen (and Retry re-arms it
+    // from the recovered state too; a second run finds nothing deleting). See gated() in store-outage.mjs.
+    if (!this.store.writable) return whenWritable(this, () => this.purgeThread(threadId), { owner: `delt:${threadId}` });
     const t = this.s.threads[threadId];
     if (!t?.deleting) return;
     // Everything under it, a side thread of a topic thread too, and their sessions with them (#320).
@@ -2893,6 +2944,7 @@ export class Runtime {
 
   purgeSession(sessionId) {
     this.timers.delete(`del:${sessionId}`);
+    if (!this.store.writable) return whenWritable(this, () => this.purgeSession(sessionId), { owner: `del:${sessionId}` }); // as purgeThread
     const se = this.s.sessions[sessionId];
     discardHeld(this, sessionId, se?.deleting ? 'was deleted' : 'had a stale purge');
     if (!se?.deleting) return;
@@ -3199,26 +3251,6 @@ const asHttp = (e) => {
 };
 const snapshotOf = (p) =>
   pick(p, ['description', 'instructions', 'model', 'effort', 'permissionMode', 'usesHostSetup', 'canPublish', 'mcpOff', 'folder', 'tools', 'version']);
-const MAX_MCP_OFF = 100;
-/**
- * A persona’s setup choices (#57) are true or false, and the MCP servers it turned off (#59) a list of names;
- * anything else is refused. Absent means the default.
- * @param {{ usesHostSetup?: unknown, canPublish?: unknown, allowRequested?: unknown, mcpOff?: unknown }} setup
- */
-function checkSetup({ usesHostSetup, canPublish, allowRequested, mcpOff }) {
-  if (usesHostSetup !== undefined && typeof usesHostSetup !== 'boolean') throw httpError(422, '“Uses your Claude Code setup” is true or false.');
-  if (canPublish !== undefined && typeof canPublish !== 'boolean') throw httpError(422, '“Can publish outside Postbox” is true or false.');
-  if (allowRequested !== undefined && typeof allowRequested !== 'boolean') throw httpError(422, '“Calls you asked for run without a card” is true or false.');
-  if (
-    mcpOff !== undefined &&
-    (!Array.isArray(mcpOff) || mcpOff.length > MAX_MCP_OFF || mcpOff.some((n) => typeof n !== 'string' || !n.trim() || n.length > 200))
-  )
-    throw httpError(422, `The MCP servers turned off are a list of up to ${MAX_MCP_OFF} server names.`);
-}
-/** A persona’s effort is one of the levels Claude Code and the SDK take (#60). */
-function checkEffort(effort) {
-  if (!EFFORT_LEVELS.includes(effort)) throw httpError(422, `Effort is one of ${EFFORT_LEVELS.join(', ')}.`);
-}
 // Commands in the composer (#67), bounded: an agent’s list for the / menu, a `!command`’s output (its last
 // characters), how often that output reaches the browser, and how much of it the agents read.
 const MAX_COMMANDS = 200;

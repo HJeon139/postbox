@@ -15,6 +15,8 @@
 // reads whatever landed (server/store-recover.mjs, the one recovery path). Retry as a reload is 1b’s; the generation
 // check is its seam: a loop whose generation is no longer the store’s finishes its step and publishes nothing.
 
+import { snapshotNow, syncDir } from './store-snapshot.mjs';
+
 /** The segment the log is being appended to, opened once. @param {import('./store.mjs').Store} store */
 async function handle(store) {
   if (store.closed) throw store.cause; // never reopened after close(): another store may hold the folder now
@@ -42,15 +44,18 @@ export async function writeAll(fh, buf, name) {
  * Appends text at the end of the segment, fsyncing it (and, the first time a commit lands in a fresh segment, the folder)
  * when `sync` says. Throws `fenced()` after any step a reload overtook, so a late completion publishes nothing.
  * @param {import('./store.mjs').Store} store @param {string} text @param {number} gen @param {boolean} sync
+ * @param {number} through  the last seq the text carries, for savedThrough
  */
-async function append(store, text, gen, sync) {
+async function append(store, text, gen, sync, through) {
   const fh = await handle(store);
   if (store.generation !== gen) throw fenced();
   await writeAll(fh, Buffer.from(text), `The event log ${store.segment}`);
   if (store.generation !== gen) throw fenced();
+  if (through > store.writtenThrough) store.writtenThrough = through;
   if (!sync) return;
   await fh.sync();
   if (store.generation !== gen) throw fenced();
+  store.savedThrough = store.writtenThrough;
   if (store.freshSegment) {
     await syncDir(store);
     if (store.generation !== gen) throw fenced();
@@ -130,7 +135,7 @@ async function writeCommits(store, gen) {
     if (c.opId !== undefined) pending.set(c.opId, c);
   }
   try {
-    if (written.length && store.dir) await append(store, written.map((c) => lineOf(c.events)).join(''), gen, true);
+    if (written.length && store.dir) await append(store, written.map((c) => lineOf(c.events)).join(''), gen, true, written.at(-1).events.at(-1).seq);
     applyCommits(store, written);
   } catch (e) {
     // The numbers these commits took are given back first, so the held emits fail() releases, and every emit after,
@@ -146,46 +151,29 @@ async function writeCommits(store, gen) {
 /** Writes the lines at the head of the queue, releasing held emits (numbered and applied now) in their order. */
 async function writeLines(store, gen) {
   const lines = [];
+  let through = 0;
   while (store.queue[0]?.line !== undefined || store.queue[0]?.held) {
     const job = store.queue.shift();
     if (job.held) {
       const line = store.release(job);
+      through = job.held.seq;
       if (store.dir) lines.push(`${line}\n`);
-    } else lines.push(job.line);
+    } else {
+      lines.push(job.line);
+      through = job.seq;
+    }
   }
   if (!lines.length) return;
   try {
-    await append(store, lines.join(''), gen, false);
+    await append(store, lines.join(''), gen, false, through);
   } catch (e) {
     if (e.code !== 'ERELOADED') fail(store, e);
   }
 }
 
-/**
- * Closes the store to commits on a write that failed (#508’s storage design, “When a write fails”, Q9): every queued
- * commit, flush and snapshot is rejected with the cause, held emits are released onto memory (applied and broadcast,
- * not written), and the loop ends. Nothing is written again; restarting Postbox is the recovery.
- * @param {import('./store.mjs').Store} store @param {Error & { code?: string }} e
- */
+/** A write that failed closes the store (server/store-retry.mjs). */
 function fail(store, e) {
-  const cause = Object.assign(
-    new Error(`Postbox can’t write its event log (${e.code ?? 'error'}): ${e.message}. Reads go on; commits are refused until Postbox restarts.`),
-    {
-      code: e.code,
-      cause: e,
-    },
-  );
-  console.error(cause.message);
-  store.writable = false;
-  store.cause = cause;
-  const queue = store.queue;
-  store.queue = [];
-  for (const job of queue) {
-    if (job.held)
-      store.release(job); // applied and broadcast on the memory the page reads, not written, like every emit from now on
-    else if (job.commit) store.waitingCommits--;
-    (job.commit ?? job.flush ?? job.snapshot)?.reject(cause);
-  }
+  store.fail(e);
 }
 
 /**
@@ -194,23 +182,36 @@ function fail(store, e) {
  * @param {import('./store.mjs').Store} store @param {number} gen  the generation this loop runs as
  */
 export async function run(store, gen) {
-  while (store.queue.length && store.generation === gen && store.writable) {
+  while (store.queue.length && store.generation === gen && (store.writable || store.reconciling)) {
     const job = store.queue[0];
     if (job.commit) await writeCommits(store, gen);
     else if (job.line !== undefined || job.held) await writeLines(store, gen);
     else if (job.flush) {
       store.queue.shift();
-      await (store.fh ? store.fh.sync() : Promise.resolve()).then(job.flush.resolve, (e) => {
-        fail(store, e); // a flush that can’t sync the log is the first failed fsync: the store closes to commits (Q9)
-        job.flush.reject(store.cause);
-      });
+      await (store.fh ? store.fh.sync() : Promise.resolve()).then(
+        () => {
+          store.savedThrough = store.writtenThrough;
+          job.flush.resolve();
+        },
+        (e) => {
+          fail(store, e); // a flush that can’t sync the log is the first failed fsync: the store closes to commits (Q9)
+          job.flush.reject(store.cause);
+        },
+      );
     } else if (job.snapshot) {
       store.queue.shift();
-      await takeSnapshot(store).then(job.snapshot.resolve, job.snapshot.reject);
+      await snapshotNow(store).then(job.snapshot.resolve, job.snapshot.reject);
     }
     // No snapshot begins once close() has: its rename and pruning would outlive the lock (the integrator’s review of 1a).
-    if (store.dir && store.writable && !store.retiring && store.generation === gen && store.sinceSnapshot >= store.snapshotEvery)
-      await takeSnapshot(store).catch((e) => console.error(`Couldn’t write a snapshot: ${e.message}`));
+    if (
+      store.dir &&
+      store.writable &&
+      !store.retiring &&
+      store.generation === gen &&
+      store.sinceSnapshot >= store.snapshotEvery &&
+      Date.now() >= store.nextSnapshotAt
+    )
+      await snapshotNow(store).catch(() => {}); // recorded as a warning with a next-attempt time, never a close
   }
 }
 
@@ -218,82 +219,16 @@ export async function run(store, gen) {
  * Commits events as one durable line (see the header). `events` is an array of `{type, data}`, or a function of the
  * state that gives one, evaluated when the commit is sequenced. Resolves `{ seq, duplicate }` once the line is fsynced;
  * rejects with the cause while the store is closed.
- * @param {import('./store.mjs').Store} store @param {any[] | ((state: any) => any[])} events @param {{ opId?: string }} [opts]
+ * @param {import('./store.mjs').Store} store @param {any[] | ((state: any) => any[])} events @param {{ opId?: string, internal?: boolean }} [opts]
  * @returns {Promise<{ seq: number, duplicate: boolean }>}
  */
-export function commit(store, events, { opId } = {}) {
-  // Refused while closing too: close()’s flush writes what was queued before it, nothing that arrives after.
-  if (!store.writable || store.retiring) return Promise.reject(store.cause);
+export function commit(store, events, { opId, internal = false } = {}) {
+  // Closed to every caller but the reconciliation Retry runs itself (store.reconcile), which carries `internal`; the
+  // outside entry points (the router, the tools, a turn start) never set it, and are gated on `writable` before here.
+  if (store.retiring || (!store.writable && !(internal && store.reconciling))) return Promise.reject(store.cause);
   return new Promise((resolve, reject) => {
     store.queue.push({ commit: { events, opId, resolve, reject } });
     store.waitingCommits++;
     store.pump();
   });
-}
-
-const PIECE = 1 << 20; // the snapshot’s text goes to the disk in pieces this long
-
-/**
- * Writes the state to snapshot.json atomically: a temporary file, written in 1 MB pieces (one write of the whole text
- * converts it to bytes in one go, which blocked the loop for about half the snapshot’s time, #508’s storage design,
- * “Snapshots and pruning”), fsynced, then renamed over the snapshot. The caller syncs the folder.
- * @param {{ io: typeof import('node:fs/promises'), at: (name: string) => string, state: any, retiring?: boolean }} store
- */
-export async function writeSnapshot(store) {
-  const path = store.at('snapshot.json');
-  const tmp = `${path}.${process.pid}.tmp`;
-  const text = JSON.stringify(store.state);
-  const fh = await store.io.open(tmp, 'w');
-  try {
-    for (let at = 0; at < text.length; ) {
-      let end = Math.min(at + PIECE, text.length);
-      const code = text.charCodeAt(end - 1);
-      if (end < text.length && code >= 0xd800 && code <= 0xdbff) end++; // a piece never splits a surrogate pair (gpt’s finding)
-      await writeAll(fh, Buffer.from(text.slice(at, end)), `The snapshot ${tmp}`);
-      at = end;
-    }
-    await fh.sync();
-  } finally {
-    await fh.close();
-  }
-  if (store.retiring) {
-    await store.io.rm(tmp, { force: true }); // the store is closing: the folder may be another’s before this landed
-    throw Object.assign(new Error('The snapshot was abandoned: the store closed while it was written.'), { code: 'ECLOSED' });
-  }
-  await store.io.rename(tmp, path);
-}
-
-/** Makes a rename, or a new segment’s directory entry, durable. @param {{ io: typeof import('node:fs/promises'), dir: string | null }} store */
-export async function syncDir(store) {
-  const dh = await store.io.open(/** @type {string} */ (store.dir), 'r');
-  try {
-    await dh.sync();
-  } catch (e) {
-    // One tolerance everywhere (the integrator’s review of 1a): a filesystem that can’t sync a folder says so with one
-    // of these, at load and at every rename alike; any other error is the disk failing.
-    if (!TOLERATED_DIR_SYNC.has(e.code)) throw e;
-  } finally {
-    await dh.close();
-  }
-}
-const TOLERATED_DIR_SYNC = new Set(['EINVAL', 'ENOTSUP', 'EPERM', 'EISDIR']);
-
-/**
- * Writes a snapshot, starts a new log segment, and deletes the segments the snapshot covers, once the folder is synced:
- * if that fails, nothing is deleted. Runs in the writer’s loop, so never while a commit is pending, and every event in
- * the covered segments is at or below the snapshot’s seq.
- */
-async function takeSnapshot(store) {
-  const at = store.state.seq; // the snapshot’s seq: the new segment is named from it, not from a seq advanced meanwhile
-  await writeSnapshot(store);
-  await syncDir(store);
-  if (store.retiring) return; // closing: the rotation and the pruning are left to the next store’s load
-  await store.fh?.close();
-  store.fh = null;
-  const covered = await store.segments();
-  store.segment = `events-${at + 1}.jsonl`;
-  store.freshSegment = true;
-  store.sinceSnapshot = 0;
-  store.ops.clear(); // opIds are remembered for the commits newer than the latest snapshot
-  for (const seg of covered) if (seg.name !== store.segment && !store.retiring) await store.io.rm(store.at(seg.name), { force: true });
 }

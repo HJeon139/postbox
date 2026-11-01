@@ -3,6 +3,7 @@
 
 import { runsCommand, stopPgid } from './adapters/process-group.mjs';
 import { httpError } from './helpers.mjs';
+import { whenWritable } from './store-outage.mjs';
 
 /** How often Postbox checks whether a background job it kept running has ended (#129). */
 const KEPT_POLL_MS = 5000;
@@ -19,9 +20,12 @@ export function watchKept(rt) {
   rt.keptPoll.unref?.();
 }
 export async function pollKept(rt) {
+  if (!rt.store.writable) return; // a job’s end is recorded at the next tick after Retry, not into memory only
   if (!rt.keptJobs().length) return;
+  const epoch = rt.store.epoch;
   const procs = await rt.listProcesses().catch(() => null);
-  if (!procs) return;
+  // Closed, or another history installed, while the processes were listed: this tick applies nothing; the next one looks again.
+  if (!procs || !rt.store.writable || rt.store.epoch !== epoch) return;
   for (const j of rt.keptJobs()) if (!liveGroups(j, procs).length) rt.endJob(j.sessionId, j.id, 'done');
   if (!rt.keptJobs().length && rt.keptPoll) {
     clearInterval(rt.keptPoll);
@@ -33,10 +37,14 @@ export async function pollKept(rt) {
 export async function stopKeptJobs(rt, sessionIds, why) {
   const jobs = rt.keptJobs().filter((j) => sessionIds.includes(j.sessionId));
   if (!jobs.length) return;
+  const epoch = rt.store.epoch;
   const procs = await rt.listProcesses().catch(() => []);
   for (const j of jobs) {
     for (const g of liveGroups(j, procs)) stopPgid(g.pgid, { kill: rt.signalProcess });
-    rt.endJob(j.sessionId, j.id, 'stopped', why);
+    // The kill stands. The record is written only to the store this began on, and otherwise skipped, not held: the
+    // session is being purged or Postbox is stopping. A skipped record leaves the job listed as kept in what the disk
+    // holds, and the next poll after Retry or a restart ends it as done, its groups gone (critic’s and gpt’s reads).
+    if (rt.store.writable && rt.store.epoch === epoch) rt.endJob(j.sessionId, j.id, 'stopped', why);
   }
 }
 
@@ -53,13 +61,15 @@ export async function stopJob(rt, sessionId, jobId) {
     const procs = await rt.listProcesses().catch(() => []);
     const stopped = new Set(liveGroups(job, procs).map((g) => g.pgid));
     for (const pgid of stopped) stopPgid(pgid, { kill: rt.signalProcess });
-    rt.endJob(sessionId, jobId, 'stopped', null, { by: 'you' });
+    // The kill stands; how it ended is written once writes are open, so Retry doesn’t leave it to pollKept as done.
+    whenWritable(rt, () => rt.endJob(sessionId, jobId, 'stopped', null, { by: 'you' }));
     // Another kept job Postbox couldn’t tell apart from it shares those groups, still its own (#164): it stopped with them (#167).
     const why = `Postbox couldn’t tell its processes from those of the background job “${job.label}”, so stopping that job stopped this one too.`;
     // Only when every group still its own was signaled: one left running keeps the job listed, so it can be stopped.
+    // Its record waits for open writes too, as the job’s own does.
     for (const o of keptJobs(rt)) {
       const own = liveGroups(o, procs);
-      if (own.length && own.every((g) => stopped.has(g.pgid))) rt.endJob(o.sessionId, o.id, 'stopped', why, { by: 'you' });
+      if (own.length && own.every((g) => stopped.has(g.pgid))) whenWritable(rt, () => rt.endJob(o.sessionId, o.id, 'stopped', why, { by: 'you' }));
     }
     return { ok: true };
   }

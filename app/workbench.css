@@ -663,6 +663,13 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 /* ───────── Composer ───────── */
 
 .composer { position: sticky; bottom: 0; z-index: 15; background: var(--bg); padding: 8px 24px 6px; border-top: 1px solid var(--line); }
+/* The store’s status line (app/js/store-line.mjs): at the window’s bottom while Postbox can’t save, with the composer
+   above it, so nothing it covers is lost. */
+.store-line { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; min-height: 44px; display: flex; align-items: center; gap: 12px;
+  padding: 6px 24px; background: var(--panel); border-top: 1px solid var(--alert); color: var(--text); }
+.store-line .store-text { margin: 0; flex: 1; font-size: 13px; line-height: 1.4; }
+html.store-down .composer { bottom: 44px; }
+html.store-down .sidepanel { padding-bottom: 44px; }
 .composer .col { display: flex; flex-direction: column; gap: 4px; }
 /* Queue, outbox and attachments take no room until they hold something. */
 .composer .col > :empty { display: none; }

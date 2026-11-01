@@ -3,6 +3,7 @@
 import { httpError } from './helpers.mjs';
 import { ON_HOST } from './remote/turns-shared.mjs';
 import { newId } from './store.mjs';
+import { whenWritable } from './store-outage.mjs';
 
 const DAY = 24 * 3600 * 1000;
 const RETRY_MAX_MS = 5 * 60_000;
@@ -40,6 +41,9 @@ export function fireScheduledWake(rt, schedule) {
   const sc = rt.s.schedules[id];
   rt.timers.delete(id);
   if (!sc || sc.running) return;
+  // While writes are closed the whole fire waits, owned by its schedule: nothing goes into memory only, no start is
+  // held, and if Retry reinstalls the state the re-arm is its one owner (S1).
+  if (!rt.store.writable) return whenWritable(rt, () => fireScheduledWake(rt, id), { owner: id });
   const running = { ...sc, running: true };
   rt.store.emit('schedule', running);
   if (sc.itemId) rt.patchItem(sc.threadId, sc.itemId, { status: 'running' });

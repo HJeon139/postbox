@@ -28,11 +28,23 @@ export function liveStreams(store) {
   const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
   store.subscribe((ev) => {
     const line = `id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`;
+    const epoch = store.epoch; // the history the event belongs to: a send held back past a Retry says nothing (gpt’s finding)
     const send = () => {
+      if (store.epoch !== epoch) return;
       for (const res of streams) res.write(line);
     };
     if (lag > 0) setTimeout(send, lag).unref();
     else send();
+  });
+  // The store’s status, unnumbered, each time writes close or reopen, a Retry starts or ends, or a warning changes
+  // (#508’s storage design, “When a write fails (ST-3)”): the page shows one status line from it.
+  store.onStatus((status) => {
+    const frame = `event: status\ndata: ${JSON.stringify(status)}\n\n`;
+    for (const res of streams) res.write(frame);
+  });
+  // Retry installs a new epoch: every open stream is told to load the state again.
+  store.onReload(() => {
+    for (const res of streams) res.write(`event: epoch\ndata: ${JSON.stringify(store.epoch)}\n\nevent: resync\ndata: {}\n\n`);
   });
   const keepAlive = setInterval(() => {
     for (const res of streams) res.write(': keep-alive\n\n');
@@ -42,7 +54,9 @@ export function liveStreams(store) {
   function stream(req, res, url) {
     const { since, lost } = place(req, url, store);
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
-    res.write(`retry: 1500\n\nevent: epoch\ndata: ${JSON.stringify(store.epoch)}\n\n`);
+    // The epoch, then the store’s status, so a page that connects or reconnects while writes are closed sees it even
+    // though it missed the frame that closed them (critic’s finding on 1b).
+    res.write(`retry: 1500\n\nevent: epoch\ndata: ${JSON.stringify(store.epoch)}\n\nevent: status\ndata: ${JSON.stringify(store.status)}\n\n`);
     const backlog = lost ? null : store.since(since);
     // Too far behind, or on a lost timeline: the browser refetches the whole state, then resumes from its seq.
     if (backlog === null) res.write(`event: resync\ndata: {}\n\n`);

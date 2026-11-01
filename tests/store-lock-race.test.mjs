@@ -133,3 +133,16 @@ test('a lock whose contents are empty or cut short is ambiguous: the start waits
     await rm(dir, { recursive: true });
   }
 });
+
+test('a draft left beside the lock by a start that died is swept at the next start; a fresh one is left alone', async () => {
+  const { LOCK, lockStore, unlockStore } = await import('../server/store-lock.mjs');
+  const dir = await tmp();
+  await writeFile(join(dir, `${LOCK}.1.deadbeef.new`), '{"pid":1}');
+  const old = new Date(Date.now() - 60_000);
+  await realFs.utimes(join(dir, `${LOCK}.1.deadbeef.new`), old, old);
+  await writeFile(join(dir, `${LOCK}.2.cafef00d.new`), '{"pid":2}'); // fresh: a starter mid-publish
+  const lock = await lockStore(realFs, dir);
+  assert.deepEqual((await readdir(dir)).sort(), [LOCK, `${LOCK}.2.cafef00d.new`]);
+  await unlockStore(realFs, lock);
+  await rm(dir, { recursive: true });
+});

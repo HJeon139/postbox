@@ -14,6 +14,7 @@
 // refuses and names the file. close() releases a lock only when the file still carries this store’s token: a lock
 // another store took over meanwhile is left alone.
 
+import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { sameToken } from './helpers.mjs';
@@ -34,22 +35,49 @@ function alive(pid) {
   }
 }
 
-const OWN_START = Math.round(Date.now() - process.uptime() * 1000);
-
 /**
  * When a process started, in a unit that only has to agree between the writer of a lock and its reader: on Linux the
  * start field of /proc/<pid>/stat (clock ticks since boot, fixed for the process’s life); elsewhere, known only for this
  * process (the clock, to the millisecond), and null for another, which then counts as live while its pid is.
  * @param {typeof import('node:fs/promises')} io @param {number} pid @returns {Promise<number | null>}
  */
-async function started(io, pid) {
+export async function started(io, pid) {
   if (process.platform === 'linux') {
     const stat = await io.readFile(`/proc/${pid}/stat`, 'utf8').catch(() => null);
     const after = stat ? stat.lastIndexOf(')') : -1; // the command name, in parentheses, may hold spaces
     const fields = !stat || after < 0 ? [] : stat.slice(after + 2).split(' ');
     return fields.length > 20 ? Number(fields[19]) : null;
   }
-  return pid === process.pid ? OWN_START : null;
+  // One source for the writer and every reader (gpt’s finding on 1b: an owner’s time from uptime and a reader’s from
+  // `ps` differed by a second, and a live holder read as stale). This process’s own time is read once and kept.
+  if (pid === process.pid) return (ownStart ??= psStart(pid));
+  return psStart(pid);
+}
+
+/** @type {Promise<number | null> | null} this process’s start time by the same reader as everyone else’s */
+let ownStart = null;
+
+const PS_TIMEOUT_MS = 1500;
+
+/**
+ * Off Linux, a process’s start time from `ps -o lstart=`, run with an argument array (developing.md, “Security”) and
+ * `LC_ALL=C`, so the writer of a lock and every later reader see the same text, to the second. A failure, a timeout or
+ * text that isn’t a date gives null: unknown, which counts the holder as live (fail safe), never as gone (the 1b
+ * invariants, I9; critic’s finding on #580).
+ * @param {number} pid @returns {Promise<number | null>}
+ */
+export function psStart(pid) {
+  return new Promise((resolve) => {
+    try {
+      execFile('ps', ['-o', 'lstart=', '-p', String(pid)], { env: { ...process.env, LC_ALL: 'C' }, timeout: PS_TIMEOUT_MS }, (err, out) => {
+        if (err) return resolve(null);
+        const ms = Date.parse(String(out).trim());
+        resolve(Number.isFinite(ms) ? Math.round(ms / 1000) * 1000 : null); // `ps` prints seconds
+      });
+    } catch {
+      resolve(null); // no way to run `ps` here (the unit tests forbid spawning): unknown, so a holder reads as live
+    }
+  });
 }
 
 /**
@@ -102,6 +130,7 @@ export async function lockStore(io, dir, probe = {}) {
   for (let tries = 0; tries < 3 + AMBIGUOUS_TRIES; tries++) {
     try {
       await publish(io, path, mine);
+      await sweepDrafts(io, dir); // drafts a crashed start left beside the lock (the 1b invariants, I9)
       return { path, token: mine.token };
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
@@ -131,6 +160,17 @@ async function sameStart(holder, startOf) {
   if (holder.started === null) return true;
   const now = await startOf(holder.pid);
   return now === null || now === holder.started;
+}
+
+const DRAFT_STALE_MS = 10_000; // a `*.new` draft older than this was left by a start that died between its write and its link
+
+/** Removes stale drafts of a lock or takeover record; a fresh one may belong to a starter mid-publish and is left. */
+async function sweepDrafts(io, dir) {
+  for (const name of await io.readdir(dir).catch(() => [])) {
+    if (!name.startsWith(LOCK) || !name.endsWith('.new')) continue;
+    const st = await io.stat(join(dir, name)).catch(() => null);
+    if (st && Date.now() - st.mtimeMs > DRAFT_STALE_MS) await io.rm(join(dir, name), { force: true });
+  }
 }
 
 const TAKEOVER_WAIT_MS = 5_000; // how long a starter waits for another’s takeover before it gives up
