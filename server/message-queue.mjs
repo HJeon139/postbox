@@ -54,6 +54,33 @@ export function sendQueuedNow(rt, threadId, queueId) {
   );
 }
 
+/**
+ * A deleted session is purged, its Undo window over (design-597-release-1, R1): the person’s messages queued only for
+ * it are posted to their thread, waking no one, so none waits invisibly for an agent that won’t come back (#427). One
+ * addressed to others too just drops it, and the queue drains, so an idle co-recipient gets it now. Agents’ wakes
+ * went at delete, with dropWakes (side-threads.mjs), which tells their senders.
+ */
+export function releaseQueued(rt, sessionId) {
+  for (const t of Object.values(rt.s.threads)) {
+    const mine = (t.queue ?? []).filter((q) => q.kind !== 'wake' && q.sessionIds.includes(sessionId)).map((q) => q.id);
+    // In queue order, so the transcript reads them as they were sent; each one posted before it leaves the queue, so
+    // a failed write between the two leaves it queued, not lost (#598’s outage case).
+    for (const id of mine) {
+      const q = rt.s.threads[t.id].queue?.find((x) => x.id === id);
+      if (!q) continue;
+      const rest = (/** @type {any} */ x) => rt.putThread({ ...rt.s.threads[t.id], queue: rt.s.threads[t.id].queue.map(x).filter(Boolean) });
+      if (q.sessionIds.length === 1) {
+        // R2: the person’s text as it was, without a turn’s side effects: no hops reset, no context, no wake.
+        rt.addItem(t.id, { kind: 'user', text: q.text, attachments: q.attachments });
+        rest((x) => (x.id === id ? null : x));
+      } else {
+        rest((x) => (x.id === id ? { ...x, sessionIds: x.sessionIds.filter((s) => s !== sessionId) } : x));
+        rt.drainQueue(t.id);
+      }
+    }
+  }
+}
+
 export function drainAll(rt) {
   for (const t of Object.values(rt.s.threads)) if (t.queue?.length && !t.deleting) rt.drainQueue(t.id);
 }

@@ -1,9 +1,10 @@
 // The shell: the top bar, the rail (conversations and rooms with rings, and the open conversation’s agents), the phone
 // ring strip, the places menu, and a project with no conversation yet. There’s no overview (#320): Postbox opens one.
 
-import { factsText, installNote } from '/shared/agent-facts.mjs';
+import { installNote } from '/shared/agent-facts.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
-import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
+import { isMock, mockMarker } from './agent-facts.mjs';
+import { agentMenuLines } from './agent-menu-lines.mjs';
 import { agentsSection } from './agents.mjs';
 import { api, busy, client, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { fill, h, icon, syncList } from './dom.mjs';
@@ -211,6 +212,12 @@ export function mountRail(threadId, { projectId: pid = null, view = 'thread' } =
   // Kept between repaints: it follows its own agents.
   const agents = threadId ? agentsSection(threadId) : null;
   const paint = () => {
+    // fill() re-appends the kept Agents section, which drops focus inside it; give it back to the same node (F1).
+    const had = el.contains(document.activeElement) ? document.activeElement : null;
+    paintRail();
+    if (had instanceof HTMLElement && had.isConnected && document.activeElement !== had) had.focus({ preventScroll: true });
+  };
+  const paintRail = () => {
     const t = threadId ? S().threads[threadId] : null;
     const projectId = t?.projectId ?? pid ?? Object.keys(S().projects)[0];
     const threads = threadsOf(projectId).filter((x) => !x.archived);
@@ -445,7 +452,11 @@ function conversationMenu(anchor, shown) {
       },
       ...telemetryItems(t),
       'hr',
-      ...agentLines(t),
+      ...agentMenuLines(
+        sessionsOf(t.id).filter((x) => !x.archived),
+        (personaId) => openSettings('personas', personaId),
+        anchor,
+      ),
       {
         label: `Delete ${room ? 'room' : 'conversation'}…`,
         icon: 'trash',
@@ -456,27 +467,6 @@ function conversationMenu(anchor, shown) {
     ],
     { label: `Actions for ${t.title}` },
   );
-}
-
-/**
- * Each agent in the conversation, with its backend, model, effort and state as text, with full model ids: what
- * its row in the sidebar says, for when the sidebar is hidden or the window is narrow (#60, #105). Choosing one
- * opens its persona.
- */
-function agentLines(t) {
-  const ses = sessionsOf(t.id).filter((x) => !x.archived);
-  if (!ses.length) return [];
-  return [
-    { heading: ses.length > 1 ? 'Agents' : 'Agent' },
-    ...ses.map((se) => ({
-      label: [`@${se.handle}`, mockMarker(se)],
-      icon: 'agent',
-      desc: `${factsText(factsOf(se))} · ${stateWord(se.state).toLowerCase()}`,
-      kbd: 'Edit',
-      run: () => openSettings('personas', se.personaId),
-    })),
-    'hr',
-  ];
 }
 
 export function afterDelete(se, until) {

@@ -290,9 +290,9 @@ export function openDialog({ title, sub, body, foot, size = '', role = 'dialog',
     dialog,
   );
   const onKey = (e) => {
-    // Only the dialog on top takes keys: one can open over another (the folder picker over the permissions panel).
+    // Only the dialog on top takes keys (the folder picker opens over the permissions panel); a data-own-escape field keeps Escape.
     if ([...document.querySelectorAll('body > .backdrop')].at(-1) !== backdrop) return;
-    if (e.key === 'Escape') {
+    if (e.key === 'Escape' && !(e.target instanceof Element && e.target.closest('[data-own-escape]'))) {
       e.stopPropagation();
       close();
     }
