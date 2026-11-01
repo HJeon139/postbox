@@ -543,6 +543,9 @@ export async function start({
     // agents’ CLIs, and the background jobs Postbox kept running (#126, #129).
     await rt.stopShellCommands();
     await rt.stopTurns();
+    // The archive chains end before the Store: a stopped turn's end may have queued a pass, and its file must not land
+    // after the lock is released (#305, W5).
+    await rt.stopArchiving();
     // After the turns, whose Stop goes to their hosts over these links (#120).
     await stopHosts(hosts, stopWake);
     narrator?.stop();

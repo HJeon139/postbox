@@ -262,6 +262,7 @@ export class Runtime {
     this.heldForUndo = new Map();
     /** @type {Map<string, Promise<number>>} one archive pass at a time per conversation (#305, design-305-wiring-1) */
     this.archiveChains = new Map();
+    this.archiveClosing = false; // shutting down: no new archive run (W5)
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
     this.lastTurn = new Map(); // sessionId → the id of its last turn that ended
     this.spawnShell = spawnShell ?? undefined;
@@ -996,14 +997,20 @@ export class Runtime {
 
   /** The turn’s work is recorded (#132), then its last reply, or its last block, gets the list that leads to it (#195). */
   endWork(turn, status) {
-    return this.ledger.endTurn(turn, { status }).then(() => {
-      const line = turn.work ? turnLine(this.ledger.entries(turn.work.convId), turn.id) : null;
-      const last = this.store.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
-      if (line && last) this.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
-      // Its conversation’s older turns go to archive files now that this one’s work is final (#305). Not awaited: the
-      // turn has ended, and nothing of it waits for the pass (W1).
-      this.archiveConversation(turn.work?.convId ?? this.lineage(turn.threadId).at(-1));
-    });
+    return this.ledger
+      .endTurn(turn, { status })
+      .then(() => {
+        const line = turn.work ? turnLine(this.ledger.entries(turn.work.convId), turn.id) : null;
+        const last = this.store.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
+        if (line && last) this.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
+        // Its conversation’s older turns go to archive files now that this one’s work is final (#305). Not awaited: the
+        // turn has ended, and nothing of it waits for the pass (W1).
+        this.archiveConversation(turn.work?.convId ?? this.lineage(turn.threadId).at(-1));
+      })
+      .catch((e) => {
+        // Its callers don't await it: a ledger that fails here must not become an unhandled rejection (critic's sweep).
+        console.warn(`@${turn.work?.se?.handle ?? 'an agent'}’s turn work wasn’t recorded: ${e instanceof Error ? e.message : e}`);
+      });
   }
 
   /**
@@ -1012,6 +1019,8 @@ export class Runtime {
    * @param {string} convId
    */
   archiveConversation(convId) {
+    // W5: shutting down, no new run starts; stopArchiving waits for the ones already queued.
+    if (this.archiveClosing) return Promise.resolve(0);
     const run = (this.archiveChains.get(convId) ?? Promise.resolve(0)).then(() => this.archiveOnce(convId));
     this.archiveChains.set(convId, run);
     run.then(() => {
@@ -1031,15 +1040,29 @@ export class Runtime {
         await new Promise((r) => setImmediate(r));
       }
   }
-  async archiveOnce(convId) {
-    // W3: a store closed to writes gets no file and no commit; the next turn’s end tries again.
-    if (!this.store.writable || !this.s.threads[convId]) return 0;
-    // Busy: turns still running, and turns with a job kept running after a Stop (I4).
+  /**
+   * W5: the runtime owns the archive chains, and they end before the Store does. No new run starts, and this resolves
+   * when the queued ones have settled; index.mjs calls it after stopTurns and before store.close().
+   */
+  async stopArchiving() {
+    this.archiveClosing = true;
+    await Promise.all([...this.archiveChains.values()]);
+  }
+  /** Busy for the pass (I4): turns still running, and turns with a job kept running after a Stop. Read per turn. */
+  archiveRunning() {
     const running = new Set([...this.turns.values()].map((t) => t.id));
     for (const se of Object.values(this.s.sessions)) for (const j of se.jobs ?? []) if (j.kept && j.turnId) running.add(j.turnId);
+    return running;
+  }
+  async archiveOnce(convId) {
+    // W3: writable, not shutting down, and the conversation still there, checked before every file the run puts.
+    const canWrite = () => this.store.writable && !this.archiveClosing && Boolean(this.s.threads[convId]);
+    if (!canWrite()) return 0;
     try {
-      return await archiveTurns({ store: this.store, blobs: this.ledger.blobs, convId, running });
+      return await archiveTurns({ store: this.store, blobs: this.ledger.blobs, convId, running: () => this.archiveRunning(), canWrite });
     } catch (e) {
+      // Shutting down, or the store closed under the run: not a failure to report (as 1b’s snapshot rule).
+      if (this.archiveClosing || /** @type {any} */ (e)?.code === 'ECLOSED' || !this.store.writable) return 0;
       // W2: one line, no retry loop; the next turn’s end tries again.
       console.warn(
         `Old turns in ${this.s.threads[convId]?.title ?? convId} weren’t archived: ${e instanceof Error ? e.message : e}. The next turn’s end tries again.`,

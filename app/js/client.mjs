@@ -31,6 +31,7 @@ const EVENT_TYPES = [
   'item.text',
   'work.add',
   'work.patch',
+  'turn.archive',
   'remove',
   'notify',
 ];
