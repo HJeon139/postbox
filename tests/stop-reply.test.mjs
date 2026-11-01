@@ -5,6 +5,7 @@
 // if Stop marked no segment of the turn, it adds the stopped reply below whatever closed the last one.
 
 import assert from 'node:assert/strict';
+import * as fs from 'node:fs/promises';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,6 +13,7 @@ import { after, test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { disk, handleWith } from './store-jsonl-fixture.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const folders = [];
@@ -33,10 +35,9 @@ class Scripted {
   }
 }
 
-async function setup(step) {
+async function setup(step, store = new Store(null)) {
   const folder = await mkdtemp(join(tmpdir(), 'pb-stop-reply-'));
   folders.push(folder);
-  const store = new Store(null);
   const adapter = new Scripted(folder);
   adapter.next = step;
   const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
@@ -152,4 +153,106 @@ test('the other callers of stop(): a shutdown while a permission card waits leav
     items.some((i) => i.status === 'stopped'),
     JSON.stringify(items.map((i) => [i.status, i.text])),
   );
+});
+
+/** A Store on disk whose log sync can be held, so an emit made meanwhile is held behind the commit, unseen by items(). */
+async function heldStore() {
+  const dir = await mkdtemp(join(tmpdir(), 'pb-stop-held-'));
+  folders.push(dir);
+  let hold = false;
+  let release = () => {};
+  let reached = () => {};
+  const atSync = new Promise((r) => {
+    reached = () => r(undefined);
+  });
+  const io = disk({
+    open: async (path, ...args) => {
+      const fh = await fs.open(path, ...args);
+      if (!/events-\d+\.jsonl$/.test(String(path))) return fh;
+      return handleWith(fh, {
+        sync: async () => {
+          if (hold) {
+            hold = false;
+            reached();
+            await new Promise((r) => {
+              release = () => r(undefined);
+            });
+          }
+          return fh.sync();
+        },
+      });
+    },
+  });
+  const store = await new Store(dir, { io }).load();
+  return { store, hold: () => (hold = true), atSync, release: () => release() };
+}
+
+/** gpt’s peer read: the reply segment is emitted while a commit is held, so store.items() can’t see it when Stop scans. */
+test('Stop while the reply segment is held behind a commit marks that segment stopped: nothing is left streaming', async () => {
+  const h = await heldStore();
+  let go = () => {};
+  const proceed = new Promise((r) => {
+    go = () => r(undefined);
+  });
+  const env = await setup(async (c) => {
+    await proceed;
+    c.text('Held reply');
+  }, h.store);
+  env.rt.sendMessage(env.t.id, { text: 'go' });
+  await until(() => env.rt.turns.size === 1, 'the turn to start');
+  await h.store.flush();
+  h.hold();
+  const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
+  await h.atSync; // the commit is in flight: emits from now on are held behind it
+  go();
+  await until(() => !!env.rt.turns.get(env.se.id)?.segment, 'the held reply segment');
+  assert.equal(env.rt.stop(env.se.id), true);
+  h.release();
+  await commit;
+  await h.store.flush();
+  const items = replies(h.store, env.t, env.se);
+  assert.deepEqual(
+    items.map((i) => [i.status, i.text]),
+    [['stopped', 'Held reply']],
+    'the held segment is the stopped reply',
+  );
+  await h.store.close();
+});
+
+test('a turn that ends while its reply segment is held behind a commit marks it done: nothing is left streaming', async () => {
+  const h = await heldStore();
+  let go = () => {};
+  const proceed = new Promise((r) => {
+    go = () => r(undefined);
+  });
+  let finish = () => {};
+  const done = new Promise((r) => {
+    finish = () => r(undefined);
+  });
+  const env = await setup(async (c) => {
+    await proceed;
+    c.text('Held reply');
+    await done;
+  }, h.store);
+  // This step ends on its own: deliver’s wait for Stop is skipped once the turn is finished.
+  env.rt.sendMessage(env.t.id, { text: 'go' });
+  await until(() => env.rt.turns.size === 1, 'the turn to start');
+  await h.store.flush();
+  h.hold();
+  const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
+  await h.atSync;
+  go();
+  await until(() => !!env.rt.turns.get(env.se.id)?.segment, 'the held reply segment');
+  finish();
+  env.rt.turns.get(env.se.id).abort.abort(); // ends deliver’s wait without Stop’s own marking
+  await until(() => !env.rt.turns.size, 'the turn to end');
+  h.release();
+  await commit;
+  await h.store.flush();
+  const items = replies(h.store, env.t, env.se);
+  assert.ok(
+    items.every((i) => i.status !== 'streaming'),
+    JSON.stringify(items.map((i) => [i.status, i.text])),
+  );
+  await h.store.close();
 });
