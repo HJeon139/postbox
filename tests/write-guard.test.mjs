@@ -195,7 +195,8 @@ test('a write outside Postbox waits on a card that shows its draft; Always allow
   const answers = [];
   next.push(async (c) => answers.push(await c.askPermission(create)));
   rt.sendMessage(t.id, { text: 'Define the use case document in the team folder.' });
-  await sleep(30);
+  // Until the card is there, not a fixed 30 ms: under load it hadn’t been posted yet (gpt’s gate run).
+  for (let i = 0; i < 200 && !store.items(t.id).some((i) => i.kind === 'permission'); i++) await sleep(10);
   const card = store.items(t.id).find((i) => i.kind === 'permission');
   assert.equal(card.outside, true);
   assert.deepEqual(card.draft, { field: 'content', text: create.input.content });
@@ -229,7 +230,10 @@ test('a write the persona may publish runs without a card; one with only its ser
   await writeFile(join(server.folder, '.claude', 'settings.local.json'), JSON.stringify({ permissions: { allow: ['mcp__docs'] } }));
   server.next.push(async (c) => c.askPermission(create));
   server.rt.sendMessage(server.t.id, { text: 'Create it.' });
-  await sleep(30);
+  // The same fixed wait as above, the same fix: until the call is waiting on its card. Only then does counting the
+  // cards say there is one: a duplicate posted a moment later would show by then (critic’s read).
+  for (let i = 0; i < 200 && !(server.store.items(server.t.id).some((i) => i.kind === 'permission') && server.rt.permissionWaits.size === 1); i++)
+    await sleep(10);
   assert.equal(server.store.items(server.t.id).filter((i) => i.kind === 'permission' && i.outside).length, 1);
 });
 
