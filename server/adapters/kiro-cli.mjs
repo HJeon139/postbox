@@ -47,7 +47,7 @@ import { createInterface } from 'node:readline';
 import { checkRemoteContext } from './adapter.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
-import { formatMessage, turnGuide } from './guide.mjs';
+import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_REMOTE, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { kiroError, kiroExitError } from './kiro-errors.mjs';
@@ -466,7 +466,7 @@ export class KiroCliAdapter {
     // Isolated, which keep sessions in different homes) starts over, once.
     if (first.missingSession) {
       ctx.saveState({ kiroSessionId: null });
-      const note = '[Postbox] Your earlier conversation in this thread couldn’t be loaded, so this is a fresh start.\n\n';
+      const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
       // On a host, a second host turn, which the runtime persists before nextTurn returns.
       const turn = ctx.remote ? await ctx.remote.nextTurn() : undefined;
       await this.run({ ctx, cwd, folders, prompt: note + promptOn(turn), guide, sessionId: null, turn });

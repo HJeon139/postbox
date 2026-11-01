@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.7.2 (2026-10-31)
+
+### Fixes
+
+- **adapters:** share the fresh-start notice and explain Codex error matching
+- **codex:** recover when a saved thread has no rollout
+
+## 1.7.1 (2026-10-31)
+
+### Fixes
+
+- **codex:** deliver Postbox instructions through the thread protocol
+
 ## 1.7.0 (2026-10-31)
 
 ### Features

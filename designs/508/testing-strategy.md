@@ -51,6 +51,13 @@ Ask @researcher for the three riskiest items in the release. Its first turn afte
 
 Give @developer a long job: list every public function in the project and what each returns. While it works, send it a correction (“skip the private modules”), with Enter, not Send now. Say when its work shows it read the correction.
 
+## Phase 4b: Tell it now (spike, then A2)
+
+- triggers: tell-now-background-job
+- steps: 6
+
+#470’s measured case. Give @developer a job that waits on a 3-minute background command. Meanwhile answer a choice you gave it, or send a message with “Tell it now”. Say when the agent first showed it had read the message, and which route the conversation says carried it. Today the answer took 3 min 46 s; the target is within one agent step on a backend with a native route, and a plain “waits for its next tool call” on one without. This phase runs only after the delivery-route spike says which backends have a route.
+
 ## Phase 5: Your own queue (A3)
 
 - triggers: person-queue-three
@@ -181,6 +188,7 @@ Each one carries the requirement ids it serves, beside today’s `issue` field, 
 | `fail-before-output` | DL-3 | a turn failed with no output and its deliveries went back to waiting |
 | `resend-labeled` | DL-2, DL-3 | a resend reached the agent with its label |
 | `urgent-note-delivered` | MD-2 | a delivery reached a working agent on a Postbox tool result, and the turn went on |
+| `tell-now-background-job` | MD-2, MD-8 | a message reached an agent blocked on a background command within one agent step, or was labeled as waiting for its next tool call |
 | `person-queue-three` | AT-6, DL-6 | three of the person’s messages waited for one agent at once |
 | `wake-scheduled`, `wake-canceled`, `wake-after-drop` | SW-1, SW-2 | as named |
 | `compaction` | CX-4 | a backend compacted a session’s context (`compact_boundary` on Claude Code) |
