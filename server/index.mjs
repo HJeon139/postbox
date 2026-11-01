@@ -29,6 +29,7 @@ import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { rearmPersonaDeletes } from './persona-delete.mjs';
 import { createProject, setPushUrl } from './projects.mjs';
+import { publicState } from './public-state.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
@@ -298,7 +299,7 @@ export async function start({
         seq: store.state.seq,
         epoch: store.epoch, // the history the seq counts within; the stream request echoes it (server/live-streams.mjs)
         store: store.status, // whether changes are being saved, and why not (ST-3): the page’s status line
-        state: store.state,
+        state: publicState(store.state),
         config: {
           origin,
           // Postbox’s tools, then those only real backends have (#5).
