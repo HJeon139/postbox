@@ -1193,10 +1193,17 @@ export class Runtime {
     this.endWork(turn, 'stopped');
     // A tool call waiting for your permission is answered no, so the agent’s process can stop too.
     for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', 'You stopped the agent.');
+    let marked = false;
     for (const it of this.store.items(turn.threadId)) {
-      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming') this.patchItem(turn.threadId, it.id, ended);
+      if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming') {
+        this.patchItem(turn.threadId, it.id, ended);
+        marked = true;
+      }
     }
-    if (!turn.segment && !turn.first) {
+    // The reply always says it was stopped. With no segment still streaming (the turn said nothing yet, or a permission
+    // or refusal card closed its segment as done before you pressed Stop), the stopped reply goes below the last thing
+    // the turn showed, as the reply would have continued there (remote-pipeline’s Stop spec failed on this ordering).
+    if (!marked) {
       this.addItem(turn.threadId, {
         kind: 'agent',
         sessionId,
