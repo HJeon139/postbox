@@ -39,13 +39,32 @@ export function undoDeletePersona(rt, id) {
 }
 
 /**
- * The end of the window: it’s marked purging first, so an Undo while a backend forgets it says it’s too late rather
- * than bringing back a persona with its sessions gone. Then every session it has goes, not only those its delete took
- * (one deleted on its own before, or restored meanwhile), so none is left with no persona; each backend forgets it;
- * and the persona is removed. A purge a restart cut short starts again from the top (rearmPersonaDeletes).
+ * Purges a persona whose Undo window ended, one run at a time per persona: a run in its forget when Retry completes
+ * and the purge the reload re-arms are chained, never concurrent (critic’s and gpt’s read of S2: the epoch check
+ * after a forget can’t stop a second forget from starting beside the first). The later run then finds the persona as
+ * the earlier left it; every step is safe to repeat.
  * @param {any} rt @param {string} id
  */
-export async function purgePersona(rt, id) {
+export function purgePersona(rt, id) {
+  const chains = (rt.personaPurges ??= new Map());
+  const run = (chains.get(id) ?? Promise.resolve())
+    .catch(() => {})
+    .then(() => purgeOnce(rt, id))
+    .finally(() => {
+      if (chains.get(id) === run) chains.delete(id);
+    });
+  chains.set(id, run);
+  return run;
+}
+
+/**
+ * One purge run. The end of the window: it’s marked purging first, so an Undo while a backend forgets it says it’s too
+ * late rather than bringing back a persona with its sessions gone. Then every session it has goes, not only those its
+ * delete took (one deleted on its own before, or restored meanwhile), so none is left with no persona; each backend
+ * forgets it; and the persona is removed. A purge a restart cut short starts again from the top (rearmPersonaDeletes).
+ * @param {any} rt @param {string} id
+ */
+async function purgeOnce(rt, id) {
   rt.timers.delete(`delp:${id}`);
   // Nothing durable can happen while writes are closed: the purge waits for them to reopen (store-outage.mjs, gated()).
   if (!rt.store.writable) return whenWritable(rt, () => purgePersona(rt, id), { owner: `delp:${id}` });

@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { deletePersona, purgePersona } from '../server/persona-delete.mjs';
+import { whenWritable } from '../server/store-outage.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
@@ -151,4 +152,57 @@ test('a persona purge deferred during an outage, with an async forget, runs once
   assert.deepEqual({ forgets, removes, maxInflight }, { forgets: 1, removes: 1, maxInflight: 1 }, 'one purge, not two at once');
   off();
   await rt.store.flush();
+});
+
+test('a persona purge inside its forget when Retry completes, and the re-armed purge, never run at once (critic’s and gpt’s read of S2)', async () => {
+  const persona = await room('pflight');
+  let inflight = 0;
+  let maxInflight = 0;
+  let calls = 0;
+  let release = () => {};
+  rt.adapters.register({
+    name: 'memory-held',
+    forget: async () => {
+      calls++;
+      inflight++;
+      maxInflight = Math.max(maxInflight, inflight);
+      if (calls === 1)
+        await new Promise((r) => {
+          release = () => r(undefined);
+        }); // the first forget is still running when Retry completes
+      inflight--;
+    },
+    async deliver() {},
+  });
+  let removes = 0;
+  const off = rt.store.subscribe((ev) => {
+    if (ev.type === 'remove' && ev.data?.kind === 'persona' && ev.data.id === persona.p.id) removes++;
+  });
+  deletePersona(rt, persona.p.id);
+  rt.store.emit('persona', { ...rt.s.personas[persona.p.id], deleting: Date.now() - 1 });
+  await rt.store.flush();
+  const first = purgePersona(rt, persona.p.id); // writes are open: it starts, and waits in its forget
+  await until(() => calls === 1, 'the first forget to start');
+  rt.store.fail(eio());
+  await rt.store.reload(); // re-arms delp: at 0 ms while the first forget is still pending
+  await sleep(50);
+  assert.equal(maxInflight, 1, 'the re-armed purge waits for the one in flight');
+  release();
+  await first;
+  await until(() => !rt.s.personas[persona.p.id], 'the purge to finish');
+  await sleep(50);
+  assert.deepEqual({ maxInflight, removes }, { maxInflight: 1, removes: 1 });
+  off();
+  await rt.store.flush();
+});
+
+test('the reload drops owned held work before reopening runs what waited: an owned entry never runs, an unowned one runs once', async () => {
+  rt.store.fail(eio());
+  let owned = 0;
+  let unowned = 0;
+  whenWritable(rt, () => owned++, { owner: 'probe:owned' });
+  whenWritable(rt, () => unowned++);
+  await rt.store.reload(); // the reload listeners, then reopening, back to back in one Retry
+  assert.equal(rt.store.writable, true);
+  assert.deepEqual({ owned, unowned }, { owned: 0, unowned: 1 }, 'S1: the re-arm owns timer work; the rest runs once');
 });
