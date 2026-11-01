@@ -8,6 +8,12 @@ import { createHash } from 'node:crypto';
 /** How many of a conversation’s newest turns stay hot. */
 export const HOT_TURNS = 2;
 
+/**
+ * The entries the pass leaves in the state (design-305-live-kinds-1): the ledger asks the state whether a branch or a
+ * commit is recorded (ledger-commands.mjs `known`, `leftBranch`), and they are 0.34% of a real room’s work.
+ */
+export const KEPT_KINDS = new Set(['branch', 'commit', 'push']);
+
 const sha = (/** @type {string} */ text) => createHash('sha256').update(text).digest('hex');
 
 /** The conversation’s threads: itself and the topic and side threads off it (one level, as runtime.mjs:1798). */
@@ -21,7 +27,8 @@ function threadsOf(state, convId) {
 }
 
 /**
- * The conversation’s hot turns, oldest first by each turn’s first entry or reply, with what archiving one would move.
+ * The conversation’s hot turns, oldest first by each turn’s first entry or reply, with what archiving one would move
+ * (not its branch, commit and push entries, which stay).
  * @param {any} state @param {string} convId
  * @returns {{ turnId: string, at: number, work: any[], replies: { threadId: string, item: any }[] }[]}
  */
@@ -37,7 +44,10 @@ export function hotTurns(state, convId) {
   const archived = new Set();
   for (const e of state.work?.[convId] ?? []) {
     if (e.kind === 'turn-archive') archived.add(e.turnId);
-    else if (e.turnId) turn(e.turnId, e.at ?? e.startedAt ?? 0).work.push(e);
+    else if (e.turnId) {
+      const t = turn(e.turnId, e.at ?? e.startedAt ?? 0);
+      if (!KEPT_KINDS.has(e.kind)) t.work.push(e);
+    }
   }
   for (const threadId of threadsOf(state, convId))
     for (const item of state.items?.[threadId] ?? [])
@@ -107,9 +117,12 @@ const OPEN = new Set(['running', 'background', 'unknown']);
 const finished = (/** @type {any} */ t, /** @type {Set<string>} */ busy) =>
   !busy.has(t.turnId) && !t.work.some((/** @type {any} */ e) => OPEN.has(e.state) || (e.kind === 'turn' && e.status === 'running'));
 
+/** A turn with nothing to move (only its kept entries, no reply activity) has no file and no summary: the pass skips it. */
+const movable = (/** @type {any} */ t) => t.work.length > 0 || t.replies.length > 0;
+
 /**
  * Archives a conversation’s older ended turns, oldest first, one commit each, until only the last two and any turn that
- * can’t go yet are hot. A turn that can’t go is passed over, so one old command left `unknown` blocks nothing after it.
+ * can’t go yet are hot. A turn that can’t go, or has only kept entries, is passed over, so one old command left `unknown` blocks nothing after it.
  * `running` holds the turns still running or with a kept job (the runtime’s to say). Stops quietly when the state
  * changed under it (the next turn’s end tries again); a failed put or commit rejects.
  * @param {{ store: any, blobs: { put(buf: Buffer): Promise<{ sha256: string }> }, convId: string, running: Set<string> | (() => Set<string>), canWrite?: () => boolean }} o
@@ -124,7 +137,7 @@ export async function archiveTurns({ store, blobs, convId, running, canWrite = (
     if (!canWrite()) return n;
     const t = hotTurns(store.state, convId)
       .slice(0, -HOT_TURNS)
-      .find((x) => finished(x, busy()));
+      .find((x) => movable(x) && finished(x, busy()));
     if (!t) return n;
     const { sha256 } = await blobs.put(Buffer.from(payload(convId, t)));
     const summary = summaryOf(t, sha256);

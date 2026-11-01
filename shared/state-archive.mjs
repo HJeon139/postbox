@@ -11,8 +11,10 @@ export function applyTurnArchive(s, type, d) {
   if (type !== 'turn.archive') return false;
   const list = s.work?.[d.convId];
   if (list && !list.some((/** @type {any} */ e) => e.kind === 'turn-archive' && e.turnId === d.turnId)) {
-    const at = list.findIndex((/** @type {any} */ e) => e.turnId === d.turnId);
-    const kept = list.filter((/** @type {any} */ e) => e.turnId !== d.turnId);
+    // Only the entries the summary lists leave: the turn’s branch, commit and push entries stay (design-305-live-kinds-1).
+    const moved = new Set(d.summary.entryIds ?? []);
+    const at = list.findIndex((/** @type {any} */ e) => moved.has(e.id));
+    const kept = list.filter((/** @type {any} */ e) => !moved.has(e.id));
     kept.splice(at < 0 ? kept.length : at, 0, d.summary);
     s.work[d.convId] = kept;
   }

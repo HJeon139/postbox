@@ -36,7 +36,16 @@ function threeTurns() {
   }));
   return s;
 }
-const summary = { kind: 'turn-archive', id: 'wa_t1', turnId: 't1', at: 1, sha256: 'a'.repeat(64), counts: { commands: 3, steps: 1 }, sessions: ['researcher'] };
+const summary = {
+  kind: 'turn-archive',
+  id: 'wa_t1',
+  turnId: 't1',
+  at: 1,
+  sha256: 'a'.repeat(64),
+  entryIds: ['w_t1_1', 'w_t1_2', 'w_t1_3'],
+  counts: { commands: 3, steps: 1 },
+  sessions: ['researcher'],
+};
 
 test('T-10: a build that doesn’t know an event refuses to load a log holding it, and writes nothing', async () => {
   // Pinned on main before #305 relies on it for a downgrade: an older Postbox meeting turn.archive stops at start rather
