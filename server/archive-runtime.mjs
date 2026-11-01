@@ -41,8 +41,9 @@ export async function stopArchiving(rt, boundMs) {
   // put that lands later leaves at most an orphan archive file, which draft 6 accepts (a re-put is idempotent).
   let timer;
   const late = new Promise((r) => {
+    // Not unref'd: if nothing else keeps the loop alive while a pass hangs, an unref'd timer would let the process end
+    // before store.close() runs (CI canceled the spec this way). It's cleared as soon as the passes settle.
     timer = setTimeout(() => r('late'), boundMs);
-    timer.unref?.();
   });
   const result = await Promise.race([Promise.all([...rt.archiveChains.values()]), late]);
   clearTimeout(timer);
