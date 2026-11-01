@@ -133,17 +133,20 @@ async function quiesced(store) {
  */
 async function reconciled(store) {
   store.reconciling = true;
+  const runs = [...store.reloaders].map((fn) => Promise.resolve().then(fn));
+  // Every listener’s lifetime, independent of the fail-fast result: one that rejects at once must not hide a sibling
+  // still running (gpt’s finding), so on any exit before all have settled the rest stay tracked.
+  let allSettled = false;
+  const lifetimes = Promise.allSettled(runs).then(() => {
+    allSettled = true;
+  });
   try {
-    const all = Promise.all([...store.reloaders].map((fn) => fn()));
-    if (!(await settledWithin(all, store.retryBoundMs))) {
-      store.lateReconcile = all.then(
-        () => {},
-        () => {},
-      );
+    const all = Promise.all(runs);
+    if (!(await settledWithin(all, store.retryBoundMs)))
       throw Object.assign(new Error(`a reload listener didn’t finish within ${store.retryBoundMs} ms`), { code: 'ETIMEDOUT' });
-    }
     await all;
   } catch (e) {
+    if (!allSettled) store.lateReconcile = lifetimes;
     throw closedBy(store, Object.assign(new Error(`reconciliation after the reload failed: ${e.message}`), { code: e.code }));
   } finally {
     store.reconciling = false;

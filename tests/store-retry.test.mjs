@@ -188,3 +188,39 @@ test('a reload listener that never settles makes Retry reject within the bound a
   await s.close();
   await rm(dir, { recursive: true });
 });
+
+test('a reload listener that rejects at once doesn’t hide a sibling still running: the next Retry is refused until it settles, and its late commit is refused', async () => {
+  const dir = await tmp();
+  const faults = {};
+  const s = await new Store(dir, { io: logDisk(faults), retryBoundMs: 50 }).load();
+  s.emit('thread', { id: 't1', members: [] });
+  await s.flush();
+  faults.sync = () => Promise.reject(eio('disk sync refused'));
+  await assert.rejects(s.commit([thread('x')], { opId: 'x' }), /EIO/);
+  faults.sync = null;
+  let release = () => {};
+  const held = new Promise((r) => {
+    release = () => r(undefined);
+  });
+  let runs = 0;
+  let late = null;
+  s.onReload(() => (runs === 0 ? Promise.reject(Object.assign(new Error('listener A failed'), { code: 'EFAIL' })) : Promise.resolve()));
+  s.onReload(async () => {
+    if (runs++ > 0) return;
+    await held; // sibling B, still running when A’s rejection ends the first reconciliation
+    late = s.reconcile([thread('late')]).then(
+      () => 'landed',
+      (e) => e.code,
+    );
+    await late;
+  });
+  await assert.rejects(s.reload(), /reconciliation after the reload failed: listener A failed/);
+  await assert.rejects(s.reload(), /an earlier reconciliation is still running/);
+  release();
+  await s.reload();
+  assert.equal(s.writable, true);
+  assert.equal(s.state.threads.late, undefined, 'B’s late commit never landed');
+  assert.notEqual(await late, 'landed');
+  await s.close();
+  await rm(dir, { recursive: true });
+});

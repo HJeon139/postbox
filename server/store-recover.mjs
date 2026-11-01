@@ -146,7 +146,7 @@ export async function close(store) {
   // on a closing store), each within a bound. The bound decides only what the caller is told: a flag can’t cancel a
   // write or a rename already handed to the disk, so past it the lock is KEPT and close() rejects (gpt’s and critic’s
   // I3c point). The process’s exit releases the lock, and the next start takes over the stale record.
-  const inFlight = [store.retrying, store.running].filter(Boolean).map((p) => p.catch(() => {}));
+  const inFlight = [store.retrying, store.running, store.lateReconcile].filter(Boolean).map((p) => p.catch(() => {}));
   let quiet = inFlight.length === 0 || (await settledWithin(Promise.all(inFlight), store.retryBoundMs));
   // The final flush runs whenever writes are open, queue or no queue: an emit is appended without a sync, so a drained
   // queue still leaves an acknowledged line unsynced (gpt’s finding), and the flush is the sync. Its failure is the

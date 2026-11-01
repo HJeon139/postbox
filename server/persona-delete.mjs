@@ -66,10 +66,11 @@ export async function purgePersona(rt, id) {
     if (typeof adapter.forget !== 'function') continue;
     // A memory that can’t be removed stays on disk, and the server log says where; the persona goes either way.
     await adapter.forget(p).catch((e) => console.error(`Postbox couldn’t remove @${p.handle}’s memory (${name}): ${e.message}`));
+    // The store may have closed, or Retry installed another history, during that removal: no further destructive
+    // step runs against it; the purge runs again against the current state once writes are open (each step is safe
+    // to repeat).
+    if (!rt.store.writable || rt.store.epoch !== epoch) return whenWritable(rt, () => purgePersona(rt, id));
   }
-  // The store may have closed, or Retry installed another history, while the memories were removed: the rest runs
-  // against the current state once writes are open (each step above is safe to repeat).
-  if (!rt.store.writable || rt.store.epoch !== epoch) return whenWritable(rt, () => purgePersona(rt, id));
   rt.store.emit('remove', { kind: 'persona', id });
 }
 
