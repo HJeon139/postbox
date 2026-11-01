@@ -212,6 +212,12 @@ export function mountRail(threadId, { projectId: pid = null, view = 'thread' } =
   // Kept between repaints: it follows its own agents.
   const agents = threadId ? agentsSection(threadId) : null;
   const paint = () => {
+    // fill() re-appends the kept Agents section, which drops focus inside it; give it back to the same node (F1).
+    const had = el.contains(document.activeElement) ? document.activeElement : null;
+    paintRail();
+    if (had instanceof HTMLElement && had.isConnected && document.activeElement !== had) had.focus({ preventScroll: true });
+  };
+  const paintRail = () => {
     const t = threadId ? S().threads[threadId] : null;
     const projectId = t?.projectId ?? pid ?? Object.keys(S().projects)[0];
     const threads = threadsOf(projectId).filter((x) => !x.archived);
