@@ -3,6 +3,7 @@
 // diff, what a command line did to version control and to services outside Postbox, and the totals.
 
 import { formatDuration } from './text.mjs';
+import { withArchived } from './work-archived.mjs';
 
 /** Files larger than this are listed with their sizes, but not copied, diffed or restored. */
 export const MAX_FILE_BYTES = 4 * 1024 * 1024;
@@ -147,7 +148,14 @@ export function lasting(f) {
  * @param {any[]} entries
  * @param {{ git?: any, handle?: string|null, turnId?: string|null }} [opts]
  */
-export function summarize(entries, { git = null, handle = null, turnId = null } = {}) {
+export function summarize(entries, opts = {}) {
+  // Turns archived to files (#305) are counted from their summaries, so the totals don't shrink (T-14).
+  return withArchived(liveTotals(entries, opts), entries ?? [], opts);
+}
+
+/** The totals of the entries that are in the state. */
+/** @param {any[] | undefined} entries @param {{ git?: any, handle?: string | null, turnId?: string | null }} opts */
+function liveTotals(entries, { git = null, handle = null, turnId = null } = {}) {
   const list = entries ?? [];
   const turns = list.filter((e) => e.kind === 'turn' && (!handle || e.handle === handle) && (!turnId || e.id === turnId));
   const turnIds = new Set(turns.map((t) => t.id));

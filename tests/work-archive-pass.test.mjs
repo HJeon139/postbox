@@ -169,7 +169,15 @@ test('the summary keeps the turn’s effort, so the conversation’s totals don�
   });
   await archiveTurns({ store: s, blobs: memoryBlobs(), convId: C, running: new Set() });
   const sum = s.state.work[C].find((e) => e.kind === 'turn-archive');
-  assert.deepEqual(sum.effort, { turns: 1, ms: 5000, toolCalls: 7, costUsd: 0.25, tokens: { input: 10, output: 5 } });
+  assert.deepEqual(sum.effort, {
+    turns: 1,
+    ms: 5000,
+    toolCalls: 7,
+    costUsd: 0.25,
+    tokens: 15,
+    priced: true,
+    byHandle: { researcher: { turns: 1, ms: 5000, toolCalls: 7, costUsd: 0.25, tokens: 15, priced: true } },
+  });
 });
 
 test('a commit answered `duplicate` that left the turn hot stops the pass, not loops it (found wiring the start-up pass)', async () => {

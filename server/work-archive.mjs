@@ -80,11 +80,19 @@ function summaryOf(/** @type {any} */ t, /** @type {string} */ sha256) {
 
 /** What the turn entry says the turn cost, so the conversation’s totals (shared/work.mjs `summarize`) keep it. */
 function effortOf(/** @type {any[]} */ turns) {
-  /** @type {Record<string, number>} */
-  const tokens = {};
-  for (const t of turns) for (const [k, v] of Object.entries(t.tokens ?? {})) tokens[k] = (tokens[k] ?? 0) + (Number(v) || 0);
-  const sum = (/** @type {string} */ k) => turns.reduce((n, t) => n + (t[k] ?? 0), 0);
-  return { turns: turns.length, ms: sum('ms'), toolCalls: sum('toolCalls'), costUsd: sum('costUsd'), tokens };
+  const tokens = (/** @type {any} */ t) => (t ? (t.input ?? 0) + (t.output ?? 0) + (t.cacheRead ?? 0) + (t.cacheWrite ?? 0) : 0);
+  const sum = (/** @type {any[]} */ ts) => ({
+    turns: ts.length,
+    ms: ts.reduce((n, t) => n + (t.ms ?? 0), 0),
+    toolCalls: ts.reduce((n, t) => n + (t.toolCalls ?? 0), 0),
+    costUsd: ts.reduce((n, t) => n + (t.costUsd ?? 0), 0),
+    tokens: ts.reduce((n, t) => n + tokens(t.tokens), 0),
+    priced: ts.some((t) => typeof t.costUsd === 'number'),
+  });
+  /** @type {Record<string, any>} */
+  const byHandle = {};
+  for (const h of new Set(turns.map((t) => t.handle).filter(Boolean))) byHandle[h] = sum(turns.filter((t) => t.handle === h));
+  return { ...sum(turns), byHandle };
 }
 
 /**
