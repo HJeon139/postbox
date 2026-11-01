@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.8.1 (2026-11-01)
+
+### Fixes
+
+- **runtime:** Stop and a turn's end mark the open segment by id, even held behind a commit
+- **runtime:** Stop always leaves the reply saying it was stopped
+
 ## 1.8.0 (2026-11-01)
 
 ### Features
