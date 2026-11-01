@@ -2,6 +2,26 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.8.0 (2026-11-01)
+
+### Features
+
+- **store:** Retry is a reload into a private candidate, installed after a fresh-descriptor sync
+- **store:** a history epoch the page echoes, so a restart resyncs it
+- **store:** one store per data folder, held by a lock file
+- **store:** write a commit as one fsynced line and recover it
+
+### Fixes
+
+- **store:** close() sets its boundary first and waits for the writer; no snapshot outlives the lock
+- **store:** close for good, commits resolve their last seq, the folder syncs at start
+- **store:** a lock or takeover file is published whole, and unreadable contents prove nothing
+- **store:** the takeover mutex names its maker and is never reclaimed for its age
+- **store:** a stale takeover mutex is moved aside before it goes, so one of two starters removes it
+- **store:** lock takeover, snapshot pieces, queued opId repeats and flush failures hold up
+- **store:** a failed commit gives back the numbers it took, so later emits follow the applied seq
+- **store:** a failed write closes the store to commits until a restart; the reload moves to 1b
+
 ## 1.7.2 (2026-10-31)
 
 ### Fixes
