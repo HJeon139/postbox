@@ -2851,7 +2851,9 @@ export class Runtime {
 
   purgeThread(threadId) {
     this.timers.delete(`delt:${threadId}`);
-    if (!this.store.writable) return; // nothing durable can happen: Retry re-arms this from the recovered state (store-outage.mjs)
+    // Nothing durable can happen while writes are closed: the purge waits for them to reopen (and Retry re-arms it
+    // from the recovered state too; a second run finds nothing deleting). See gated() in store-outage.mjs.
+    if (!this.store.writable) return whenWritable(this, () => this.purgeThread(threadId));
     const t = this.s.threads[threadId];
     if (!t?.deleting) return;
     // Everything under it, a side thread of a topic thread too, and their sessions with them (#320).
@@ -2888,7 +2890,7 @@ export class Runtime {
 
   purgeSession(sessionId) {
     this.timers.delete(`del:${sessionId}`);
-    if (!this.store.writable) return; // as purgeThread
+    if (!this.store.writable) return whenWritable(this, () => this.purgeSession(sessionId)); // as purgeThread
     const se = this.s.sessions[sessionId];
     if (!se?.deleting) return;
     // Background jobs Postbox kept running for it would run on with no record (#129).

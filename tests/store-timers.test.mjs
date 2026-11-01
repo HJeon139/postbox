@@ -58,6 +58,15 @@ async function sites(dir, rel = '') {
   return out;
 }
 
+/** Files whose row says the callback is gated: each must carry the rule in its source, so it can’t be dropped silently. */
+const GATED = ['kept-jobs.mjs', 'permission-cards.mjs', 'persona-delete.mjs', 'runtime.mjs', 'thread-summary.mjs'];
+const RULE = /\bstore\.writable\b|\bwhenWritable\(|\bgated\(/;
+
+test('every file whose timers table row says “gated” checks the store, defers through whenWritable or runs through gated()', async () => {
+  const dir = new URL('../server', import.meta.url).pathname;
+  for (const f of GATED) assert.match(await readFile(join(dir, f), 'utf8'), RULE, `${f} dropped the rule its timers table row promises`);
+});
+
 test('every setTimeout and setInterval in server/ is placed in the timers table, with its behavior while the store is closed', async () => {
   const found = await sites(new URL('../server', import.meta.url).pathname);
   assert.deepEqual(

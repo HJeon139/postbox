@@ -52,15 +52,20 @@ export function watchStore(rt) {
 }
 
 /**
- * The one rule for a runtime timer or poller whose callback writes to the store or kills a process: it does nothing
- * while writes are closed. A timer in rt.timers is re-armed from the recovered state at Retry (above), so what it
- * would have done happens then; a poller consumes nothing and catches up at its next tick. Returns whether fn ran.
+ * The one rule for a runtime timer whose callback writes to the store or kills a process: while writes are closed it
+ * waits for them to reopen (whenWritable) instead of running or being lost. A timer re-armed at Retry fires during
+ * reconciliation, when writes are still closed (critic’s and gpt’s condition on the sweep): deferring, not dropping,
+ * is what makes an overdue purge run once writes reopen. A poller, by contrast, skips its tick and catches up at the
+ * next one. Returns whether fn ran now.
  * @param {Runtime} rt @param {() => unknown} fn
  */
 export function gated(rt, fn) {
-  if (!rt.store.writable) return false;
-  fn();
-  return true;
+  if (rt.store.writable) {
+    fn();
+    return true;
+  }
+  whenWritable(rt, fn);
+  return false;
 }
 
 /**

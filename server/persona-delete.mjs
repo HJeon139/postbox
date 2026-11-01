@@ -5,6 +5,7 @@
 
 import { httpError } from './helpers.mjs';
 import { DELETE_UNDO_MS } from './runtime.mjs';
+import { whenWritable } from './store-outage.mjs';
 
 /**
  * Starts deleting a persona: its sessions now, with their own Undo, and the persona when the window ends.
@@ -46,7 +47,9 @@ export function undoDeletePersona(rt, id) {
  */
 export async function purgePersona(rt, id) {
   rt.timers.delete(`delp:${id}`);
-  if (!rt.store.writable) return; // nothing durable can happen: Retry re-arms this from the recovered state (store-outage.mjs)
+  // Nothing durable can happen while writes are closed: the purge waits for them to reopen (store-outage.mjs, gated()).
+  if (!rt.store.writable) return whenWritable(rt, () => purgePersona(rt, id));
+  const epoch = rt.store.epoch;
   const p = rt.s.personas[id];
   if (!p?.deleting) return;
   // Not when it’s already purging: a restart can cut a purge short, and each step below is safe to repeat.
@@ -64,6 +67,9 @@ export async function purgePersona(rt, id) {
     // A memory that can’t be removed stays on disk, and the server log says where; the persona goes either way.
     await adapter.forget(p).catch((e) => console.error(`Postbox couldn’t remove @${p.handle}’s memory (${name}): ${e.message}`));
   }
+  // The store may have closed, or Retry installed another history, while the memories were removed: the rest runs
+  // against the current state once writes are open (each step above is safe to repeat).
+  if (!rt.store.writable || rt.store.epoch !== epoch) return whenWritable(rt, () => purgePersona(rt, id));
   rt.store.emit('remove', { kind: 'persona', id });
 }
 

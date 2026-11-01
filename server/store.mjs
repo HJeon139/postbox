@@ -62,6 +62,8 @@ export class Store {
     this.warning = null; // a snapshot that failed, while the log goes on
     this.retrying = null; // reload()’s promise while one runs
     this.reconciling = false; // Retry runs the reload listeners: reconcile() writes while `writable` stays false (I3)
+    /** @type {Promise<void> | null} a reconciliation Retry gave up waiting for, still running */
+    this.lateReconcile = null;
     this.writtenThrough = 0; // the last seq whose line was appended
     this.savedThrough = 0; // the last seq whose line was fsynced: the page marks later changes unsaved
     this.nextSnapshotAt = 0; // after a failed snapshot, no attempt before this time

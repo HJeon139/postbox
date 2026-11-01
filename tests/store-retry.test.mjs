@@ -152,7 +152,7 @@ test('install keeps store.state’s identity, a held sub-object goes stale, and 
   await rm(dir, { recursive: true });
 });
 
-test('a reload listener that never settles makes Retry reject within the bound and clears `retrying`, so the next Retry can run', async () => {
+test('a reload listener that never settles makes Retry reject within the bound and clears `retrying`; while it still runs a second Retry is refused, so reconciliations never overlap; once it settles the next Retry runs', async () => {
   const dir = await tmp();
   const faults = {};
   const s = await new Store(dir, { io: logDisk(faults), retryBoundMs: 50 }).load();
@@ -161,14 +161,30 @@ test('a reload listener that never settles makes Retry reject within the bound a
   faults.sync = () => Promise.reject(eio('disk sync refused'));
   await assert.rejects(s.commit([thread('x')], { opId: 'x' }), /EIO/);
   faults.sync = null;
-  let hang = true;
-  s.onReload(() => (hang ? new Promise(() => {}) : Promise.resolve()));
+  let release = () => {};
+  const held = new Promise((r) => {
+    release = () => r(undefined);
+  });
+  let late = null;
+  let runs = 0;
+  s.onReload(async () => {
+    if (runs++ > 0) return; // the later Retry’s run settles at once
+    await held; // the first run hangs past the bound, then tries its commit
+    late = s.reconcile([thread('late')]).then(
+      () => 'landed',
+      (e) => e.code,
+    );
+    await late;
+  });
   await assert.rejects(s.reload(), /reconciliation after the reload failed: a reload listener didn’t finish within 50 ms/);
   assert.equal(s.retrying, null, 'nothing to join: the next Retry runs afresh');
   assert.equal(s.writable, false, 'still closed');
-  hang = false;
+  await assert.rejects(s.reload(), /an earlier reconciliation is still running/);
+  release();
   await s.reload();
   assert.equal(s.writable, true);
+  assert.equal(s.state.threads.late, undefined, 'the late listener’s commit was refused: nothing of the old reconciliation lands');
+  assert.ok(['ECLOSED', 'EIO', 'ETIMEDOUT', 'EBUSY'].includes(await late), `refused with the cause, not landed: ${await late}`);
   await s.close();
   await rm(dir, { recursive: true });
 });

@@ -21,8 +21,10 @@ export function watchKept(rt) {
 export async function pollKept(rt) {
   if (!rt.store.writable) return; // a job’s end is recorded at the next tick after Retry, not into memory only
   if (!rt.keptJobs().length) return;
+  const epoch = rt.store.epoch;
   const procs = await rt.listProcesses().catch(() => null);
-  if (!procs) return;
+  // Closed, or another history installed, while the processes were listed: this tick applies nothing; the next one looks again.
+  if (!procs || !rt.store.writable || rt.store.epoch !== epoch) return;
   for (const j of rt.keptJobs()) if (!liveGroups(j, procs).length) rt.endJob(j.sessionId, j.id, 'done');
   if (!rt.keptJobs().length && rt.keptPoll) {
     clearInterval(rt.keptPoll);

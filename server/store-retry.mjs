@@ -68,9 +68,7 @@ export function reload(store) {
 
 /** The header’s order. @param {import('./store.mjs').Store} store */
 async function retry(store) {
-  if (store.running && !(await settledWithin(store.running, store.retryBoundMs))) {
-    throw closedBy(store, Object.assign(new Error('a write is still in flight and the disk isn’t answering; restart Postbox'), { code: store.cause?.code }));
-  }
+  await quiesced(store);
   if (store.retiring) throw gone(store); // close() may begin between any two awaits here: each step checks before it acts
   store.generation++; // a.
   const old = store.fh;
@@ -100,29 +98,56 @@ async function retry(store) {
   }
   install(store, c); // d.
   store.fh = fh;
-  // Reconciliation (A2’s records going back to waiting; the I8 stand-in in the specs) runs now, through
-  // store.reconcile(), and is awaited: its lines are durable before writes open and the status listeners run what
-  // waited (gpt’s sixth finding on 1b). Meanwhile `writable` stays false, so the router, the tools and turn starts
-  // are still refused: only the listeners’ internal path writes. A listener that fails leaves the store closed, naming
-  // it; the next Retry reloads and reconciles afresh.
+  await reconciled(store);
+  if (store.retiring) throw gone(store);
+  store.writable = true;
+  store.cause = null;
+  store.warned = false;
+  store.pump();
+}
+
+/**
+ * Step a’s wait: a write still in flight on the old descriptor, and a reconciliation an earlier Retry gave up waiting
+ * for (its listener may yet commit, and two reconciliations must not overlap: gpt’s condition on the sweep), each get
+ * the bound; past it Retry refuses, and a restart ends them one way or the other.
+ * @param {import('./store.mjs').Store} store
+ */
+async function quiesced(store) {
+  if (store.running && !(await settledWithin(store.running, store.retryBoundMs)))
+    throw closedBy(store, Object.assign(new Error('a write is still in flight and the disk isn’t answering; restart Postbox'), { code: store.cause?.code }));
+  if (!store.lateReconcile) return;
+  if (!(await settledWithin(store.lateReconcile, store.retryBoundMs)))
+    throw closedBy(store, Object.assign(new Error('an earlier reconciliation is still running; restart Postbox if it never ends'), { code: 'EBUSY' }));
+  store.lateReconcile = null;
+}
+
+/**
+ * Reconciliation (A2’s records going back to waiting; the I8 stand-in in the specs) runs after the install, through
+ * store.reconcile(), and is awaited: its lines are durable before writes open and the status listeners run what
+ * waited (gpt’s sixth finding on 1b). Meanwhile `writable` stays false, so the router, the tools and turn starts are
+ * still refused: only the listeners’ internal path writes. A listener that fails leaves the store closed, naming it;
+ * the next Retry reloads and reconciles afresh. Bounded: a listener that never settles would otherwise leave
+ * `retrying` set, every later Retry joining it until a restart (the integrator’s nit on 1b); the late one stays
+ * tracked in `lateReconcile`, which quiesced() waits for before the next Retry.
+ * @param {import('./store.mjs').Store} store
+ */
+async function reconciled(store) {
   store.reconciling = true;
   try {
-    // Bounded: a listener that never settles would otherwise leave `retrying` set, every later Retry joining it until
-    // a restart (the integrator’s nit on 1b).
     const all = Promise.all([...store.reloaders].map((fn) => fn()));
-    if (!(await settledWithin(all, store.retryBoundMs)))
+    if (!(await settledWithin(all, store.retryBoundMs))) {
+      store.lateReconcile = all.then(
+        () => {},
+        () => {},
+      );
       throw Object.assign(new Error(`a reload listener didn’t finish within ${store.retryBoundMs} ms`), { code: 'ETIMEDOUT' });
+    }
     await all;
   } catch (e) {
     throw closedBy(store, Object.assign(new Error(`reconciliation after the reload failed: ${e.message}`), { code: e.code }));
   } finally {
     store.reconciling = false;
   }
-  if (store.retiring) throw gone(store);
-  store.writable = true;
-  store.cause = null;
-  store.warned = false;
-  store.pump();
 }
 
 /** Whether a promise settles within `ms`; the timer is cleared either way, so it never holds the process open. */

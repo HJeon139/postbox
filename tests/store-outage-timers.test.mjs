@@ -15,6 +15,13 @@ import { settleThread } from '../server/thread-summary.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
+const deferred = () => {
+  let resolve = () => {};
+  const promise = new Promise((r) => {
+    resolve = () => r(undefined);
+  });
+  return { promise, resolve };
+};
 
 const PORT = 4443;
 const eio = () => Object.assign(new Error('disk sync refused'), { code: 'EIO' });
@@ -147,6 +154,93 @@ test('a thread settled while the store is closed makes no summarizer call; one s
   await rt.store.reload();
   settleThread(rt, topicId);
   await until(() => calls === 1, 'the summarizer after Retry');
+  delete rt.summarize;
+  await rt.store.flush();
+});
+
+test('an overdue purge re-armed at Retry waits for writes to reopen while reconciliation is still held, then runs exactly once (critic’s and gpt’s condition)', async () => {
+  const thread = await room('tdel2');
+  const session = await room('sdel2');
+  const persona = await room('pdel2');
+  rt.deleteThread(thread.t.id);
+  rt.deleteSession(session.se.id);
+  deletePersona(rt, persona.p.id);
+  const over = Date.now() - 1;
+  rt.putThread({ ...rt.s.threads[thread.t.id], deleting: over });
+  rt.updateSession(session.se.id, { deleting: over });
+  rt.store.emit('persona', { ...rt.s.personas[persona.p.id], deleting: over });
+  await rt.store.flush();
+  let removes = 0;
+  const off = rt.store.subscribe((ev) => {
+    if (ev.type === 'remove' && ev.data?.kind === 'persona' && ev.data.id === persona.p.id) removes++;
+  });
+  const reconciling = deferred();
+  let holds = 0;
+  rt.store.onReload(() => (holds++ === 0 ? reconciling.promise : Promise.resolve())); // the first Retry’s reconciliation is held
+  rt.store.fail(eio());
+  rt.purgeThread(thread.t.id);
+  rt.purgeSession(session.se.id);
+  await purgePersona(rt, persona.p.id);
+  const retry = rt.store.reload();
+  await sleep(60); // the re-armed, overdue timers have fired by now, into a store that is still reconciling
+  assert.equal(rt.store.writable, false, 'still reconciling');
+  assert.ok(rt.s.threads[thread.t.id] && rt.s.sessions[session.se.id] && rt.s.personas[persona.p.id], 'nothing purged while writes are closed');
+  reconciling.resolve();
+  await retry;
+  await until(() => !rt.s.threads[thread.t.id] && !rt.s.sessions[session.se.id] && !rt.s.personas[persona.p.id], 'the three purges after writes reopened');
+  await sleep(30);
+  assert.equal(removes, 1, 'the persona was removed exactly once');
+  off();
+  await rt.store.flush();
+});
+
+test('a callback held across an outage and Retry applies nothing to the old history: the kept-job poll, the summarizer, the persona purge', async () => {
+  const { t, se } = await room('held');
+  const persona = await room('pheld');
+  // The kept-job poll, held in its process listing.
+  rt.updateSession(se.id, {
+    jobs: [{ id: 'j2', sessionId: se.id, label: 'bg', command: 'sleep 9', kept: true, pgid: 99998, groups: [{ pgid: 99998, command: null }] }],
+  });
+  const listing = deferred();
+  rt.listProcesses = async () => {
+    await listing.promise;
+    return [];
+  };
+  // The summarizer, held in its call.
+  const root = rt.addItem(t.id, { kind: 'user', text: 'Root 2' });
+  const { threadId: topicId } = rt.startTopic(t.id, root.id);
+  rt.addItem(topicId, { kind: 'agent', text: 'Said', sessionId: se.id });
+  const call = deferred();
+  rt.summarize = async () => {
+    await call.promise;
+    return { text: 'Late summary', costUsd: 0 };
+  };
+  rt.config.summaryDelayMs = 1;
+  // The persona purge, held in an adapter’s forget.
+  const forget = deferred();
+  rt.adapters.register({ name: 'memory', forget: () => forget.promise, async deliver() {} });
+  deletePersona(rt, persona.p.id);
+  rt.store.emit('persona', { ...rt.s.personas[persona.p.id], deleting: Date.now() - 1 });
+  await rt.store.flush();
+  const poll = rt.pollKept();
+  settleThread(rt, topicId);
+  const purge = purgePersona(rt, persona.p.id);
+  await sleep(20); // each is now past its entry check, awaiting
+  const epoch = rt.store.epoch;
+  rt.store.fail(eio());
+  await rt.store.reload();
+  assert.notEqual(rt.store.epoch, epoch, 'another history');
+  listing.resolve();
+  call.resolve();
+  forget.resolve();
+  await poll;
+  await purge;
+  await sleep(30);
+  assert.equal(rt.s.sessions[se.id].jobs?.[0]?.kept, true, 'the held poll ended nothing against the new history');
+  assert.equal(rt.store.items(t.id).find((i) => i.id === root.id)?.threadSummary, undefined, 'the held summary was not written');
+  await until(() => !rt.s.personas[persona.p.id], 'the persona purge, re-run against the current state');
+  await rt.pollKept();
+  assert.notEqual(rt.s.sessions[se.id].jobs?.[0]?.kept, true, 'the next tick ends the job');
   delete rt.summarize;
   await rt.store.flush();
 });
