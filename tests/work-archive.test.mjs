@@ -83,3 +83,10 @@ test('turn.archive is idempotent: a turn already archived changes nothing', () =
   apply(s, 'turn.archive', data);
   assert.equal(JSON.stringify(s), once);
 });
+
+test('an activity step patch for a reply whose activity is archived is ignored, not thrown: a throw in the reducer would make the log unloadable', () => {
+  const s = threeTurns();
+  apply(s, 'turn.archive', { convId: C, turnId: 't1', sha256: summary.sha256, summary, items: [{ threadId: C, id: 'r_t1' }] });
+  assert.doesNotThrow(() => apply(s, 'item.patch', { threadId: C, id: 'r_t1', activityStep: { id: 's2', label: 'Late' } }));
+  assert.deepEqual(s.items[C][0].activity, { archived: summary.sha256, count: 1 });
+});

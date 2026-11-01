@@ -165,7 +165,9 @@ export function patchSession(se, d) {
 
 /** Apply an ordinary item patch, or one activity step without repeating its accumulated list (#452). */
 function applyItemPatch(item, data) {
-  if (data.activityStep) {
+  // An archived reply keeps a count, not steps (#305); a late step for it is dropped, as a throw here would make the log
+  // unloadable.
+  if (data.activityStep && !item.activity?.archived) {
     const steps = (item.activity ??= { steps: [] }).steps;
     const index = steps.findIndex((step) => step.id === data.activityStep.id);
     if (index < 0) steps.push(data.activityStep);
