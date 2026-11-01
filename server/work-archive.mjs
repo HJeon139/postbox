@@ -116,7 +116,7 @@ export async function archiveTurns({ store, blobs, convId, running }) {
     const summary = summaryOf(t, sha256);
     const items = t.replies.map((r) => ({ threadId: r.threadId, id: r.item.id }));
     let changed = false;
-    await store.commit(
+    const done = await store.commit(
       (/** @type {any} */ state) => {
         const now = hotTurns(state, convId).find((x) => x.turnId === t.turnId);
         if (!now || !finished(now, running) || sha(payload(convId, now)) !== sha256) {
@@ -125,9 +125,11 @@ export async function archiveTurns({ store, blobs, convId, running }) {
         }
         return [{ type: 'turn.archive', data: { convId, turnId: t.turnId, sha256, summary, items } }];
       },
-      { opId: `turn.archive:${t.turnId}` },
+      // The conversation in the opId too: a turn id is unique only by convention (found by the start-up pass’s spec).
+      { opId: `turn.archive:${convId}:${t.turnId}` },
     );
-    if (changed) return n;
+    // A duplicate wrote nothing; if the turn is still hot, committing it again would loop. Stop, as for a change.
+    if (changed || done?.duplicate) return n;
     n++;
   }
 }

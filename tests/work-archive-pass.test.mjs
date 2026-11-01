@@ -80,7 +80,7 @@ test('the archive file is published before the event that names it, which is a c
   await archiveTurns({ store, blobs, convId: C, running: new Set() });
   assert.equal(commits.length, 1);
   assert.equal(commits[0].events[0].type, 'turn.archive');
-  assert.equal(commits[0].opId, 'turn.archive:t1');
+  assert.equal(commits[0].opId, `turn.archive:${C}:t1`);
   assert.equal(commits[0].fileThere, true, 'the file was there when the event was committed');
 });
 
@@ -170,4 +170,31 @@ test('the summary keeps the turn’s effort, so the conversation’s totals don�
   await archiveTurns({ store: s, blobs: memoryBlobs(), convId: C, running: new Set() });
   const sum = s.state.work[C].find((e) => e.kind === 'turn-archive');
   assert.deepEqual(sum.effort, { turns: 1, ms: 5000, toolCalls: 7, costUsd: 0.25, tokens: { input: 10, output: 5 } });
+});
+
+test('a commit answered `duplicate` that left the turn hot stops the pass, not loops it (found wiring the start-up pass)', async () => {
+  const s = room();
+  let calls = 0;
+  const store = Object.assign(Object.create(s), {
+    commit: async () => {
+      if (++calls > 5) throw new Error('the pass kept committing the same turn');
+      return { seq: s.state.seq, duplicate: true };
+    },
+  });
+  assert.equal(await archiveTurns({ store, blobs: memoryBlobs(), convId: C, running: new Set() }), 0);
+  assert.equal(calls, 1);
+});
+
+test('the opId names the conversation too, so two conversations with the same turn id don’t collide', async () => {
+  const s = room();
+  const seen = [];
+  const store = Object.assign(Object.create(s), {
+    commit: async (/** @type {any} */ fn, /** @type {any} */ o) => {
+      seen.push(o.opId);
+      for (const ev of fn(s.state)) s.emit(ev.type, ev.data);
+      return { seq: s.state.seq, duplicate: false };
+    },
+  });
+  await archiveTurns({ store, blobs: memoryBlobs(), convId: C, running: new Set() });
+  assert.deepEqual(seen, [`turn.archive:${C}:t1`]);
 });
