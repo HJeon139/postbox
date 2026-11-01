@@ -138,3 +138,18 @@ test('neighbors: Stop with a segment still streaming marks that one, once; Stop 
     'a turn that said nothing gets one stopped reply',
   );
 });
+
+test('the other callers of stop(): a shutdown while a permission card waits leaves the reply saying it was stopped', async () => {
+  const env = await setup(async (c) => {
+    c.text('Running the tests.');
+    await c.askPermission({ tool: 'Bash', summary: 'run the tests', input: { command: 'npm test' } });
+  });
+  env.rt.sendMessage(env.t.id, { text: 'go' });
+  await until(() => cardOpen('permission')(env), 'the permission card');
+  await env.rt.stopTurns({ graceMs: 200 }); // what Postbox’s own shutdown calls, with by: 'shutdown'
+  const items = replies(env.store, env.t, env.se);
+  assert.ok(
+    items.some((i) => i.status === 'stopped'),
+    JSON.stringify(items.map((i) => [i.status, i.text])),
+  );
+});
