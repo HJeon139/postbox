@@ -219,3 +219,37 @@ test('a conversation being deleted is skipped by the turn-end pass as well as th
   assert.equal(summaries(store, t.id).length, 0);
   rt.undoDeleteThread(t.id);
 });
+
+test('off: the start-up pass doesn’t walk the threads or yield for nothing', async () => {
+  const { rt } = plainSetup();
+  let reads = 0;
+  const threads = rt.s.threads;
+  Object.defineProperty(rt.s, 'threads', {
+    get() {
+      reads++;
+      return threads;
+    },
+    configurable: true,
+  });
+  await rt.turnArchive.all();
+  assert.equal(reads, 0, 'it returned before reading a thread');
+});
+
+test('nothing in production turns the archive pass on: no source sets archiveTurns, until the readers land', async () => {
+  const { readdir, readFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const root = new URL('..', import.meta.url).pathname;
+  const hits = [];
+  for (const dir of ['server', 'bin', 'tools', 'app/js', 'shared']) {
+    for (const f of await readdir(join(root, dir), { recursive: true }).catch(() => [])) {
+      if (!String(f).endsWith('.mjs')) continue;
+      const text = await readFile(join(root, dir, String(f)), 'utf8').catch(() => '');
+      if (/\barchiveTurns\s*:\s*true\b|\barchiveTurns\s*=\s*true\b/.test(text)) hits.push(`${dir}/${f}`);
+    }
+  }
+  assert.deepEqual(
+    hits,
+    [],
+    'archiveTurns is switched on in production code. Before it is: the totals (T-14), the detail routes and the BREAKING CHANGE note, the ledger de-duplication, telemetry and room checks, the page repaint, and deleting archive files (T-18).',
+  );
+});

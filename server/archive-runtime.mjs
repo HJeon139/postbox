@@ -43,6 +43,8 @@ export class ArchivePasses {
 
   /** After start: every conversation’s older turns, one conversation at a time, yielding between them. */
   async all() {
+    // Off: nothing to walk, and no yield per thread for nothing at every start.
+    if (!this.enabled) return;
     for (const t of Object.values(this.rt.s.threads)) {
       if (this.closing) return;
       if (t.parentId || t.deleting) continue;
