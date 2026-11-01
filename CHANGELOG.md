@@ -2,6 +2,40 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.9.0 (2026-11-01)
+
+### Features
+
+- **store:** ps start times off Linux, stale drafts swept, the lock’s refusal names the file
+- **app:** the store’s status line, with Retry and the count of unsaved changes
+- **runtime:** turns stop and wait while the store is closed, and what waited runs after Retry
+- **mcp:** a tool that would write is refused with the cause while the store is closed
+- **server:** the store’s status on the stream and state; a Retry route; writes refused while closed
+- **store:** Retry reloads on a new epoch; a status for the page; a failed snapshot warns
+
+### Fixes
+
+- **store:** an orphaned session is found by its held stop record, not its exit
+- **store:** a held wake's owner after Retry is decided by the recovered state
+- **store:** one purge run at a time per persona; the reload drops owned work before reopening
+- **store:** held work names its owner and the reload drops it; awaits re-check before acting
+- **store:** a snapshot abandoned at close() records no warning that promises a retry
+- **store:** close() re-reads what is under way until nothing new; a refused Retry says closing
+- **store:** a reconcile is bound to its phase; stopKeptJobs fences its record after the await
+- **store:** track every reload listener's lifetime; fence the persona purge after each forget
+- **runtime:** gated timers defer, callbacks fence after awaits, a late reconciliation is tracked
+- **runtime:** timers and pollers do nothing while the store is closed; Retry re-arms every timer
+- **store:** close() always syncs the log, and a failed final sync keeps the lock and rejects
+- **store:** close() past its bound keeps the lock and rejects; no-handle Retry latch spec
+- **store:** close() draws its boundary before any await, drains with a bound, guards each step
+- **store:** Retry checks for a close after each step, and close() waits for the writer’s pass too
+- **store:** American spelling in a Retry comment
+- **store:** close() waits for a Retry under way, and a Retry finds the store closed installs nothing
+- **store:** Retry stays closed to outside writes while it reconciles, through an internal path
+- **store:** Retry awaits the reload listeners’ commits before writes are announced open
+- **store:** one start-time source, an epoch on each stream send, one stop path, the status first
+- **store:** Retry on a store that never failed is a no-op, and the route answers 409
+
 ## 1.8.2 (2026-11-01)
 
 ### Fixes
