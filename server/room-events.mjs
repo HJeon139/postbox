@@ -2,7 +2,7 @@
 // sessions’ states and background jobs. The UAT’s history (tools/uat/history.mjs) and a recorded room’s collector
 // (server/telemetry.mjs) both keep events cut this way, so the checks read the same thing from either.
 
-import { patchSession } from '../shared/state.mjs';
+import { EVENTS, patchSession } from '../shared/state.mjs';
 
 /**
  * The event, cut to what the checks read, or null for one they don’t (streamed text, apps, glossary…). A session.patch
@@ -10,12 +10,15 @@ import { patchSession } from '../shared/state.mjs';
  * did: sessions holds each session as the events so far left it, by id. A patch for a session that isn’t there (a
  * stream that started after the session existed) is dropped, as the reducer drops it, rather than kept as a session
  * built from the patch alone, which blockHistory would misread: seed sessions from the state or a snapshot first.
- * @param {number} seq @param {string} type @param {any} data @param {Map<string, any>} [sessions]
+ * A type the page may not see is never kept: the reports this feeds are shown to the page (designs/architecture.md,
+ * “What reaches the browser”).
+ * @param {number} seq @param {string} type @param {any} data @param {Map<string, any>} [sessions] @param {typeof EVENTS} [events]
  */
-export function keepEvent(seq, type, data, sessions = new Map()) {
+export function keepEvent(seq, type, data, sessions = new Map(), events = EVENTS) {
+  if (!(Object.hasOwn(events, type) && events[type].public)) return null;
   if (type === 'session.patch' && data?.id) {
     const was = sessions.get(data.id);
-    return was ? keepEvent(seq, 'session', patchSession(was, data), sessions) : null;
+    return was ? keepEvent(seq, 'session', patchSession(was, data), sessions, events) : null;
   }
   // An item brought to the newest point (item.move) carries its update as a patch: a block’s new revision (#213).
   if (type === 'item.add' || type === 'item.patch' || type === 'item.move') return { seq, type, data };

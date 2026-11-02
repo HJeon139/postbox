@@ -83,6 +83,12 @@ export const PRIVATE_STATE_KEYS = Object.freeze(/** @type {string[]} */ ([]));
 export const STREAM = Object.freeze({ cursor: 'cursor', status: 'status', epoch: 'epoch', resync: 'resync' });
 export const RESERVED = Object.freeze(Object.values(STREAM));
 
+/** Calls f with the item an event names, if it's there. */
+const withItem = (s, d, f) => {
+  const it = s.items[d.threadId]?.find((i) => i.id === d.id);
+  if (it) f(it);
+};
+
 const put = (/** @type {string} */ key) => (/** @type {any} */ s, /** @type {any} */ d) => {
   s[key][d.id] = d;
 };
@@ -104,11 +110,22 @@ export const EVENTS = Object.freeze({
   // Only a session’s changed fields, with the ones it unsets by name, since JSON drops an undefined (designs/508, “Store
   // events”). A patch makes a new object, as a whole session did, so a reference to the old one still reads as it was;
   // a patch for a session that’s gone changes nothing.
-  'session.patch': { apply: (s, d) => s.sessions[d.id] && (s.sessions[d.id] = patchSession(s.sessions[d.id], d)), public: true },
+  'session.patch': {
+    apply: (s, d) => {
+      if (s.sessions[d.id]) s.sessions[d.id] = patchSession(s.sessions[d.id], d);
+    },
+    public: true,
+  },
   app: { apply: put('apps'), public: true },
   file: { apply: put('files'), public: true },
   dataset: { apply: (s, d) => ((s.datasets ??= map())[d.id] = d), public: true },
-  schedule: { apply: (s, d) => (d.removed ? delete s.schedules[d.id] : (s.schedules[d.id] = d)), public: true },
+  schedule: {
+    apply: (s, d) => {
+      if (d.removed) delete s.schedules[d.id];
+      else s.schedules[d.id] = d;
+    },
+    public: true,
+  },
   glossary: { apply: (s, d) => ((s.glossary[d.threadId] ??= map())[d.entry.key] = d.entry), public: true },
   'item.add': { apply: (s, d) => (s.items[d.threadId] ??= []).push(d.item), public: true },
   'item.patch': { apply: (s, d) => withItem(s, d, (it) => applyItemPatch(it, d)), public: true },
@@ -135,11 +152,6 @@ export function apply(s, type, d) {
   if (!entry) throw new Error(`Unknown store event “${type}”.`);
   entry.apply(s, d);
 }
-
-const withItem = (s, d, f) => {
-  const it = s.items[d.threadId]?.find((i) => i.id === d.id);
-  if (it) f(it);
-};
 
 // An item brought to the newest point (#49, #92): a stub takes its old place, and the item itself, with its id, goes
 // last, so whatever names it (an answer, a needs-you, an app) still finds the one live copy.

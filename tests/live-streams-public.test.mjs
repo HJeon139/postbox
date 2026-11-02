@@ -59,3 +59,27 @@ test('the stream’s first frames name the epoch and the store’s status by the
     streams.stop();
   }
 });
+
+test('a known type the table makes private becomes a cursor on both paths, so the table, not the type, decides', () => {
+  const table = { ...EVENTS, 'item.patch': { ...EVENTS['item.patch'], public: false } };
+  const events = [{ seq: 1, type: 'item.patch', data: { threadId: 't', id: 'i', patch: { text: 'now private' } } }];
+  let listener = (_ev) => {};
+  const store = { epoch: 'ep', status: {}, state: { seq: 1 }, subscribe: (f) => (listener = f), since: () => events, onStatus() {}, onReload() {} };
+  const streams = liveStreams(/** @type {any} */ (store), table);
+  try {
+    const backlog = [];
+    streams.stream(
+      /** @type {any} */ ({ headers: {}, on() {} }),
+      /** @type {any} */ ({ writeHead() {}, write: (s) => backlog.push(s) }),
+      new URL('http://localhost/api/stream?since=0'),
+    );
+    assert.equal(backlog.at(-1), 'id: 1\nevent: cursor\ndata: {}\n\n');
+    const live = [];
+    streams.streams.clear();
+    streams.streams.add(/** @type {any} */ ({ write: (s) => live.push(s) }));
+    listener(events[0]);
+    assert.deepEqual(live, ['id: 1\nevent: cursor\ndata: {}\n\n']);
+  } finally {
+    streams.stop();
+  }
+});
