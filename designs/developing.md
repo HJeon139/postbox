@@ -56,6 +56,8 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 
 ## What the gate enforces, and what it can’t
 
+**How a pull request is reviewed** is in [review-guide.md](review-guide.md): the steps, the checks that caught real defects, and the review comment’s format. Read it before asking for review, as well as when reviewing.
+
 `package.json`’s `check` script is the list of what a green gate covers, and it’s narrower than the tools’ names suggest. engineering-practices.md, “The gate”, gives the order; this table gives the reach.
 
 | Rule | Checked by |
