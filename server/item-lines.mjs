@@ -92,6 +92,24 @@ function answerText(b, a) {
 }
 
 /**
+ * A message’s attachments, for the agent reading it (#671). A local agent gets the path it can open, as the turn the
+ * message was sent to gives it (guide.mjs’s formatBody); one on a remote host gets their names, since only that turn
+ * copies them there (remote/attachments.mjs). With no reader, the names alone.
+ * @param {any} rt @param {any[] | undefined} list @param {any} reader  the session reading it, or null
+ */
+function attachedText(rt, list, reader) {
+  if (!list?.length) return '';
+  const remote = Boolean(reader && rt.remote?.hostOf(rt.personaFor(reader)));
+  const names = list.map((a) => {
+    const name = a.name ?? a.path;
+    const where = reader && !remote ? rt.attachmentPath(reader.threadId, a) : null;
+    return where ? `${name} at ${where}` : name;
+  });
+  const note = remote ? ' Your host can’t open attachments from earlier messages yet: ask the person to paste what you need.' : '';
+  return ` [attached: ${names.join(', ')}]${note}`;
+}
+
+/**
  * The message a topic thread started from, for an agent’s first turn there (#81, #228); null for anything else.
  */
 export function topicRootLine(rt, se, t) {
@@ -103,7 +121,7 @@ export function topicRootLine(rt, se, t) {
   const from = 'This thread started from';
   switch (root.kind) {
     case 'user':
-      return `${from} your message: ${text(root.text)}${root.attachments?.length ? ` [attached: ${root.attachments.map((a) => a.name ?? a.path).join(', ')}]` : ''}`;
+      return `${from} your message: ${text(root.text)}${attachedText(rt, root.attachments, se)}`;
     case 'agent':
       return `${from} @${root.handle}’s message: ${text(root.text)}`;
     case 'block': {
@@ -122,14 +140,15 @@ export function topicRootLine(rt, se, t) {
 
 /**
  * One conversation item as a line an agent can read, from the point of view of `se`; null to leave it out. Its
- * text is cut at n characters, saying so (#109).
- * @param {any} i @param {any} [se] @param {number} [n]
+ * text is cut at n characters, saying so (#109). `reader`, the session its attachments are given to, is `se` unless the
+ * read tools pass their caller, with no `se` (#671).
+ * @param {any} rt @param {any} i @param {any} [se] @param {number} [n] @param {any} [reader]
  */
-export function describeItem(rt, i, se = null, n = READING.item) {
+export function describeItem(rt, i, se = null, n = READING.item, reader = se) {
   const text = (s) => clipItem(s, n, i.id);
   switch (i.kind) {
     case 'user':
-      return `You: ${text(i.text)}${i.attachments?.length ? ` [attached: ${i.attachments.map((a) => a.name ?? a.path).join(', ')}]` : ''}`;
+      return `You: ${text(i.text)}${attachedText(rt, i.attachments, reader)}`;
     case 'agent':
       // A reply that wrote its text and then failed still reaches the others, marked: it had been dropped, so a
       // report written before the turn failed reached no one (#485).

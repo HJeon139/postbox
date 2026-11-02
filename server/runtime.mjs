@@ -1655,9 +1655,12 @@ export class Runtime {
     return topicRootLine(this, se, t);
   }
 
-  /** One conversation item as a line an agent can read, from the point of view of `se` (item-lines.mjs). @param {any} i @param {any} [se] @param {number} [n] */
-  describeItem(i, se = null, n = READING.item) {
-    return describeItem(this, i, se, n);
+  /**
+   * One conversation item as a line an agent can read, from the point of view of `se` (item-lines.mjs).
+   * @param {any} i @param {any} [se] @param {number} [n] @param {any} [reader]  the session its attachments are for
+   */
+  describeItem(i, se = null, n = READING.item, reader = se) {
+    return describeItem(this, i, se, n, reader);
   }
 
   /**
@@ -1684,7 +1687,7 @@ export class Runtime {
    * @param {any} i @param {any} se @param {number} [n]
    */
   readLine(i, se, n = READING.item) {
-    return i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipItem(i.text, n, i.id)}` : this.describeItem(i, null, n);
+    return i.sessionId === se.id && i.kind === 'agent' ? `You (@${se.handle}): ${clipItem(i.text, n, i.id)}` : this.describeItem(i, null, n, se);
   }
 
   readMessage(se, args = {}) {
