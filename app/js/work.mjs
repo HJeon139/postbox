@@ -122,6 +122,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
                   'aria-pressed': String(handle === x),
                   onclick: () => {
                     handle = x;
+                    win.reset(); // another agent’s lists, from their newest (#618)
                     paint();
                   },
                 },

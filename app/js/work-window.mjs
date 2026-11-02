@@ -8,7 +8,8 @@ import { h, plural } from './dom.mjs';
 export const STEP = 50;
 
 /**
- * The windows of one view, which keep what you showed across its repaints.
+ * The windows of one view, which keep what you showed across its repaints. reset() forgets them, for when the
+ * view’s lists change for another reason than the ledger’s, such as one agent’s work in place of all of it.
  * @param {() => void} paint  the view’s repaint @param {string|null} at  the item the view opened at
  */
 export function windows(paint, at) {
@@ -25,7 +26,7 @@ export function windows(paint, at) {
    *   shows more of, singular (“earlier command”)
    * @returns {{ items: T[], above: HTMLElement | null, below: HTMLElement | null }}
    */
-  return (key, list, { idOf, elId, newest, before, after }) => {
+  const win = (key, list, { idOf, elId, newest, before, after }) => {
     const len = list.length;
     let w = shown.get(key);
     if (!w) {
@@ -37,8 +38,9 @@ export function windows(paint, at) {
     }
     if (newest === 'end' && w.hi >= w.len) w.hi = len; // it was at the newest, so it takes in what arrived
     w.len = len;
-    const lo = Math.min(w.lo, len);
-    const hi = Math.max(lo, Math.min(w.hi, len));
+    // A list that got shorter still draws a full window, from no further in than its last STEP.
+    const lo = Math.max(0, Math.min(w.lo, len - STEP));
+    const hi = Math.min(len, Math.max(w.hi, lo + STEP));
     const button = (side, n, noun, first, grow) =>
       h(
         'button.btn.sm.ghost.work-more',
@@ -63,4 +65,5 @@ export function windows(paint, at) {
       below: down ? button('below', down, after, list[hi], (x) => Object.assign(x, { hi: hi + down })) : null,
     };
   };
+  return Object.assign(win, { reset: () => shown.clear() });
 }
