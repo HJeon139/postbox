@@ -153,15 +153,17 @@ test('the opener answers first there: your message in a topic beta opened, with 
   assert.equal(f.adapter.calls.at(-1).sessionId, f.beta.id, 'beta, the opener, answered');
 });
 
-test('a repeated open that names a different agent is not a repeat: it posts and wakes that agent (I6)', async () => {
+test('a repeated open that names a different agent is not a repeat: it posts (I6, by handle, not by count)', async () => {
   const f = await conversation();
+  f.rt.ensureSession(f.t.id, f.c.id); // gamma joins the conversation, so it can be woken
   const one = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, message: 'Please check', mentions: ['beta'] }));
   await settle(f.rt);
   const two = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, message: 'Please check', mentions: ['gamma'] }));
+  await settle(f.rt);
   assert.equal(two?.threadId, one?.threadId);
   assert.equal(
     f.store.items(one.threadId).filter((i) => i.kind === 'agent' && i.sessionId === f.alpha.id && i.text === 'Please check').length,
     2,
-    'the second names gamma, so it posts',
+    'the second names gamma, one mention as the first had, so it posts',
   );
 });

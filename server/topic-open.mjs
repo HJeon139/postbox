@@ -72,7 +72,7 @@ export function openTopic(rt, sessionId, { itemId, message, mentions }) {
   // The opener answers there first (I4), only when this call made the topic.
   if (created) rt.putThread({ ...rt.store.pending.thread(threadId), woke: se.handle });
   const handles = [...new Set((mentions ?? []).map((h) => String(h).replace(/^@/, '')).filter(Boolean))];
-  const woke = text && !repeated(rt, se, threadId, text, handles.length, created) ? post(rt, se, threadId, text, handles) : [];
+  const woke = text && !repeated(rt, se, threadId, text, handles, created) ? post(rt, se, threadId, text, handles) : [];
   const where = `${created ? 'Opened a topic thread' : 'That message already has a topic thread'}, ${threadId}, beside it in the page. read_conversation { thread: "${threadId}" } reads it.`;
   return { ok: true, threadId, created, message: [where, ...woke].join(' ') };
 }
@@ -91,27 +91,36 @@ function conversationOf(rt, se, itemId) {
   return topic?.id ?? conv;
 }
 
+/** The handles an open named, in one order, as its message keeps them. @param {string[]} handles */
+const named = (handles) => [...handles].sort().join(' ');
+
 /**
- * Whether this open's message is already there (I6): the topic existed, and the opener's newest message in it is the
- * same text with the same number of wakes, as a call run again after its kept reply was lost would leave it.
+ * Whether this open's message is already there (I6): the topic existed, and the opener's newest message in it is an
+ * open's with the same text and the same handles, as a call run again after its kept reply was lost would leave it.
  */
-function repeated(rt, se, threadId, text, mentions, created) {
+function repeated(rt, se, threadId, text, handles, created) {
   if (created) return false;
   const mine = rt.store.pending.items(threadId).findLast((/** @type {any} */ x) => x.kind === 'agent' && x.sessionId === se.id);
-  return Boolean(mine && mine.text === text && (mine.wakes?.length ?? 0) === mentions);
+  return Boolean(mine && mine.text === text && mine.opened === named(handles));
 }
 
-/** Posts the first message in the topic: through agentWake for each agent it names, or as the agent's own. */
+/**
+ * Posts the first message in the topic: through agentWake for each agent it names, or as the agent's own. It keeps the
+ * handles it named (`opened`), which I6 compares; A1b's records carry the same as the message's addressees.
+ */
 function post(rt, se, threadId, text, handles) {
+  const opened = named(handles);
   if (!handles.length) {
-    rt.addItem(threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
+    rt.addItem(threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', opened });
     return [];
   }
   /** @type {string | null} */
   let itemId = null;
-  return handles.map((h) => {
+  const said = handles.map((h) => {
     const r = rt.agentWake(se.id, h, text, { replyIn: threadId, itemId });
     itemId = r.itemId ?? itemId;
     return r.message;
   });
+  if (itemId) rt.patchItem(threadId, itemId, { opened });
+  return said;
 }

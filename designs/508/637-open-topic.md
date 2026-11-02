@@ -12,7 +12,7 @@
 3. **One write gate for every tool, local and on a host.** `storeClosedTo` moves out of `server/mcp.mjs` into a small module both `mcp.mjs` and `applyTool` in `server/remote/turns-tools.mjs` call. Today a host's tool call reaches `toolsFor` with no gate, so a host's write tool during ST-3 changes memory that the next load doesn't have. That's every write tool on a host, not just this one, so the fix is the class.
 4. **`store.pending` covers threads.** `threads` joins `ENTITIES` in `server/store-held.mjs` (`thread` puts one whole, `remove` of kind `thread` deletes it), with `store.pending.thread(id)`, placed in the held-read guard.
 
-No new event type, state key or field. `startTopic`, `putThread`, `addItem`, `agentWake` and `deliverWake` are the path the page and `wake_agent` use today, which is the path A1b and A2 turn into records and deliveries.
+No new event type or state key, and one field on an item: the open's first message keeps the handles it named as `opened`, which I6 compares and A1b's record carries as the message's addressees. `startTopic`, `putThread`, `addItem`, `agentWake` and `deliverWake` are the path the page and `wake_agent` use today, which is the path A1b and A2 turn into records and deliveries.
 
 ## Invariants
 
@@ -23,7 +23,7 @@ No new event type, state key or field. `startTopic`, `putThread`, `addItem`, `ag
 | I3 | **The item is in the agent's own conversation.** The tool looks the item up in `lineage(se.threadId).at(-1)`, the conversation, and then in that conversation's topic threads, never in a thread id the agent names. | the tool: an item of one of the conversation's topic threads gets I2's 409, whose text says to reply in that thread; an id from anywhere else is 404, as for a missing item |
 | I4 | **The opener answers there first.** When an agent opens the topic, the thread's `woke` is the opener, so a message the person writes there with no mention goes to it. | the tool sets `woke` only when `startTopic` returns `created: true` |
 | I5 | **One write gate.** A call while the store is closed changes nothing, locally or on a host. | `storeClosedTo`, which refuses every tool not in `READ_TOOLS` during ST-3, now called by both `server/mcp.mjs` and `applyTool`; `open_topic` isn't a read |
-| I6 | **One first message per open.** A call repeated after its kept reply was lost doesn't post its message twice. | the tool posts nothing when `startTopic` returns `created: false` and the opener's newest message there is its own open's: the same opener, the same text and the same mentions. A message from the person, or an open from the page, never suppresses it. It compares the opener's newest message only, and the number of its wakes rather than their handles: a retry after the opener has posted again in the topic posts the first message a second time, which a retry that follows a lost reply quickly won't meet |
+| I6 | **One first message per open.** A call repeated after its kept reply was lost doesn't post its message twice. | the tool posts nothing when `startTopic` returns `created: false` and the opener's newest message there is its own open's: the same opener, the same text and the same mentions. A message from the person, or an open from the page, never suppresses it. It compares the opener's newest message only, by its text and the handles it named (`opened`): a retry after the opener has posted again in the topic posts the first message a second time, which a retry that follows a lost reply quickly won't meet |
 
 ## Failure table
 
