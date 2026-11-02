@@ -18,7 +18,7 @@ export function recordAppCheck(appId, version, width, problems) {
   const c = checks.get(`${appId}:${version}`);
   if (!c || c.done) return;
   c.results.set(width, problems);
-  if (c.results.size === WIDTHS.length) finishCheck(appId, version);
+  if (c.results.size === WIDTHS.length) void finishCheck(appId, version);
 }
 
 function startAppCheck(appId, version) {
@@ -47,7 +47,7 @@ function launchFrames(appId, version, check) {
     for (const width of WIDTHS)
       if (!check.results.has(width))
         check.results.set(width, [{ code: 'no-answer', message: `The app didn’t finish loading within 10 seconds at ${width} px.` }]);
-    finishCheck(appId, version);
+    void finishCheck(appId, version);
   }, 10_000);
 }
 

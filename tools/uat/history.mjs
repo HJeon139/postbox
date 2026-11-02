@@ -49,7 +49,7 @@ export function followEvents(origin) {
       if (e) kept.push(e);
     } catch {}
   };
-  (async () => {
+  void (async () => {
     // Reconnect from the last event seen if the stream drops, as the page does.
     while (!abort.signal.aborted) {
       try {

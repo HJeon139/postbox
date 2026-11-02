@@ -298,7 +298,7 @@ export class RemoteProcess extends EventEmitter {
         }),
     );
     this.emit('exit', this.exitCode, this.signalCode);
-    Promise.all(ends).then(() => this.emit('close', this.exitCode, this.signalCode));
+    void Promise.all(ends).then(() => this.emit('close', this.exitCode, this.signalCode));
   }
 
   makeStdin() {

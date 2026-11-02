@@ -53,7 +53,7 @@ export function goToNeeds(se) {
   const where = whereNeeds(S(), se);
   last = { sessionId: se.id, where };
   if (here().at !== where) navigate(hrefOf(where));
-  focusItem(se.needs.itemId);
+  void focusItem(se.needs.itemId);
 }
 
 /**

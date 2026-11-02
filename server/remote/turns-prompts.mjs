@@ -66,7 +66,7 @@ function waitOn(rts, live, card, m) {
     needs: { kind: 'permission', itemId: card.it.id, text: `@${se.handle} asks to ${card.it.summary}`, ...rt.awayFrom(se, card.threadId) },
   });
   setWaiting(rts, live, true);
-  p.then((answer) => {
+  void p.then((answer) => {
     setWaiting(rts, live, false);
     answered(rts, live.hostId, m, /** @type {any} */ (answer), card.it.input ?? m.request?.input ?? {});
   });

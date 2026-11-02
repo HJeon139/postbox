@@ -135,7 +135,7 @@ export function permissionBlock(it, ctx) {
     why.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        submit();
+        void submit();
       }
       if (e.key === 'Escape') {
         e.preventDefault();
