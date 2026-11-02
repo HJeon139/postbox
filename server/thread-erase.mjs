@@ -34,5 +34,8 @@ export function eraseThreads(rt, ids, why, stopped = []) {
     }
     for (const app of Object.values(rt.store.pending.apps())) if (app.threadId === id) rt.store.emit('remove', { kind: 'app', id: app.id });
   }
+  // A conversation’s root takes its room’s assets with it (#516 S3, the person’s choice of 2 November 2026); a topic or
+  // side thread alone is never a room, so it takes none.
+  for (const id of ids) if (!rt.s.threads[id]?.parentId) rt.store.emit('asset.erase', { room: id, at: Date.now() });
   for (const id of [...ids].reverse()) rt.store.emit('remove', { kind: 'thread', id });
 }

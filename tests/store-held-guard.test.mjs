@@ -117,6 +117,7 @@ const LEDGER = {
 
 /** Production commits, with the lists each touches. */
 const COMMITS = {
+  'asset-orphans.mjs': ['sweepAssets'], // the released hashes a load deleted: assetReleases only (#516 S3)
   'assets.mjs': ['writeAsset'], // an asset version: assets and assetReleases only, none of items, work or apps (#516 S3)
 };
 

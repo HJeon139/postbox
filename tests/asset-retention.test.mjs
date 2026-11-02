@@ -40,6 +40,7 @@ test('never pruned: the head, a text version, a small binary, a delete, a pinned
   ])
     assert.ok(!prunable([first, ...tail]).includes(1), what);
   assert.deepEqual(prunable([v(1, { size: big })]), [], 'a lone head');
+  assert.deepEqual(prunable([v(1, { size: big }), v(2, { size: big })], { binaryVersionsKept: 0 }), [1], 'the head, even when no newer version is kept');
 });
 
 test('a room’s bytes count each distinct file once, without pruned versions, with a commit’s prunes and addition', () => {
@@ -66,6 +67,9 @@ test('the commit that makes a version prunable prunes it and releases its hash; 
   const first = store.state.assets[a.id].versions[0];
   assert.equal(first.pruned, 77, 'pruned in that commit, at its time');
   assert.equal(store.state.assetReleases[first.sha256], 77, 'its hash released');
+  const back = await write({ kind: 'restore', id: a.id, base: next, version: 1 });
+  assert.deepEqual([back.ok, back.code], [false, 'pruned'], 'a pruned version can’t be restored');
+  assert.match(back.message, /pruned under the room’s retention rule/);
   const t = await write({ name: 'notes.md', bytes: Buffer.from('v1'), type: 'text/markdown' });
   for (let i = 2; i <= next + 2; i++) await write({ id: t.id, base: i - 1, bytes: Buffer.from(`v${i}`), type: 'text/markdown' });
   assert.ok(!store.state.assets[t.id].versions.some((x) => x.pruned), 'text keeps every version');
