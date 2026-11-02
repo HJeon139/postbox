@@ -135,4 +135,5 @@ test('#507: a thread’s catch-up keeps an ask that mentions the agent, whole, t
   const text = threadCatchUp(f.rt, f.store.state.sessions[f.alpha.id], threadId) ?? '';
   assert.ok(text.includes(ask), 'the ask is kept, whole');
   assert.match(text, /left out/, 'and the catch-up says what it left out');
+  assert.ok(text.includes(`read_conversation { thread: "${threadId}", skip:`), 'and its hint reads this thread, not the room');
 });
