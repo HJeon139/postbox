@@ -10,7 +10,8 @@
 // fail outright: destructuring `pending`, `items`, `work` or `apps` out of the store or the state, reaching them by a
 // string key, binding the store, its pending reads or the ledger to a local, and calling items(), item(), findItem()
 // or work() on anything but the store or its pending reads (the integrator's second review of #611: `const st =
-// rt.store; st.items(t)` passed). It reads every .mjs, .js and .cjs file under server/ except the store's own and server/remote/host/,
+// rt.store; st.items(t)` passed), or through call, apply or bind. Optional chaining is read as a plain member. The guard
+// reads source text, not the program, so a form it doesn't match passes: review still reads what it can't. It reads every .mjs, .js and .cjs file under server/ except the store's own and server/remote/host/,
 // the host daemon, which has no store. Sessions, schedules and the rest have no pending read (§ Not in this change).
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -50,7 +51,12 @@ const DIRECT = {
   'permission-cards.mjs': ['expireStalePermissions'], // at startup
   'room-checks-agy.mjs': ['deniedSteps'], // facts from a recorded run, offline
   'room-checks-backends.mjs': ['BACKEND_CHECKS'], // the same
-  'room-checks.mjs': ['itemsOf', 'CHECKS', 'CHECKS', 'CHECKS', 'CHECKS', 'CHECKS'], // the same
+  'room-checks-asks.mjs': ['droppedAsks', 'needsMismatches'], // the same
+  'room-checks-telemetry.mjs': ['fiveWordRuns', 'secretsOf', 'CHECKS'], // the same
+  'room-checks-threads.mjs': ['missingThreadTasks'], // the same
+  'room-checks.mjs': ['itemsOf', 'ledgerEntries', 'CHECKS', 'CHECKS', 'CHECKS', 'CHECKS', 'CHECKS'], // the same
+  'room-delivery.mjs': ['itemsOf'], // the same
+  'room-unverified.mjs': ['uncheckedThreads'], // the same
   'runtime.mjs': ['describeItem', 'describeItem', 'expireStaleCommands'], // a read tool’s app line; expireStaleCommands at startup
   'telemetry-record.mjs': ['blockRow', 'workOf'], // a run’s record, after it
   'telemetry-report.mjs': ['liveFacts', 'liveFacts'], // the same
@@ -121,6 +127,8 @@ function enclosing(lines, i) {
   }
   return '(top)';
 }
+/** Optional chaining read as a plain member, so `rt.store?.items(` is placed as `rt.store.items(` is. @param {string} t */
+const normalized = (t) => t.replace(/\?\.(?=[A-Za-z_$])/g, '.');
 /** Each server file's source, with the lines the formatter split joined. @returns {[string, string][]} */
 function sources(dir = new URL('../server', import.meta.url).pathname, rel = '', out = /** @type {[string, string][]} */ ([])) {
   for (const e of readdirSync(join(dir, rel), { withFileTypes: true })) {
@@ -130,7 +138,7 @@ function sources(dir = new URL('../server', import.meta.url).pathname, rel = '',
       continue;
     }
     if (!/\.(mjs|js|cjs)$/.test(e.name) || ['store.mjs', 'store-held.mjs'].includes(path)) continue;
-    const text = readFileSync(join(dir, path), 'utf8')
+    const text = normalized(readFileSync(join(dir, path), 'utf8'))
       .replace(/\s*\n\s*(?=\.[A-Za-z_(])/g, '')
       .replace(/\(\s*\n\s*/g, '(')
       .replace(/\s*\n\s*(?=\()/g, '');
@@ -186,11 +194,12 @@ test('no server file reaches the store’s reads through a form the guard can’
 export function unfollowed(extra = []) {
   const BOUND = /\b(?:const|let|var)\s+[\w$]+\s*=\s*[\w$.]*\b(?:store(?:\.pending)?|ledger)\s*[;,)]/;
   const CALL = /([\w$\])]+)\s*\.\s*(?:items|item|findItem|work)\s*\(/g;
-  return [...sources(), ...extra.map((text, i) => [`extra-${i}.mjs`, text])].flatMap(([path, text]) =>
+  const INDIRECT = /\.\s*(?:items|item|findItem|work)\s*\.\s*(?:call|apply|bind)\b/;
+  return [...sources(), ...extra.map((text, i) => [`extra-${i}.mjs`, normalized(text)])].flatMap(([path, text]) =>
     text
       .split('\n')
       .filter((l) => !/^\s*(\/\/|\*)/.test(l))
-      .filter((l) => BOUND.test(l) || [...l.matchAll(CALL)].some((m) => !/^(store|pending)$/.test(m[1])))
+      .filter((l) => BOUND.test(l) || INDIRECT.test(l) || [...l.matchAll(CALL)].some((m) => !/^(store|pending)$/.test(m[1])))
       .map((l) => `${path}: ${l.trim()}`),
   );
 }
@@ -206,9 +215,16 @@ test('no server file binds the store or the ledger to a local, or calls a list r
     'export function zz6(rt, t) { const st = rt.store; return st.items(t).find((x) => x); }',
     'export function zz7(rt, t) { const p = rt.store.pending; return p.items(t); }',
     'export function zz8(rt, c) { const l = rt.ledger; return l.entries(c); }',
+    // critic's read of the rule: the read called through call, apply or bind.
+    'export function zz10(rt, t) { return rt.store.items.call(rt.store, t); }',
+    'export function zz11(rt, t) { return rt.store.pending.items.apply(rt.store.pending, [t]); }',
+    'export function zz12(rt, t) { const read = rt.store.item.bind(rt.store); return read(t, "x"); }',
   ];
   assert.deepEqual(
     unfollowed(probes).map((l) => l.split(':')[0]),
-    ['extra-0.mjs', 'extra-1.mjs', 'extra-2.mjs'],
+    ['extra-0.mjs', 'extra-1.mjs', 'extra-2.mjs', 'extra-3.mjs', 'extra-4.mjs', 'extra-5.mjs'],
   );
+  // Optional chaining is a store call like any other, so the tables above place it: read as a plain member, it matches.
+  assert.match(normalized('return rt.store?.items(t);'), /\bstore\.(items|item|findItem)\(/);
+  assert.match(normalized('return rt.store?.pending?.items(t);'), /\bstore\.pending\b/);
 });
