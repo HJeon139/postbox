@@ -308,7 +308,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
     const eff = fileEffort(entries, f.id);
     // A file’s diff changes with what’s there now (a later turn, a restore); one change’s never does.
     const key = turnId ? `diff:${f.changeId}` : `diff:${f.id}:${f.after?.sha256 ?? 'none'}`;
-    load(key, `/api/threads/${threadId}/work/files/${f.id}/diff${turnId ? `?change=${encodeURIComponent(f.changeId)}` : ''}`);
+    void load(key, `/api/threads/${threadId}/work/files/${f.id}/diff${turnId ? `?change=${encodeURIComponent(f.changeId)}` : ''}`);
     const file = entries.find((e) => e.kind === 'file' && e.id === f.id) ?? f;
     const canRestore = !turnId && !file.restored && (!file.before?.exists || file.before?.sha256) && fileState(file, git) !== 'unchanged';
     return [

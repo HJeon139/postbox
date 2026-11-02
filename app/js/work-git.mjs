@@ -36,7 +36,7 @@ export function watchGit(threadId) {
       }
     }
   });
-  load();
+  void load();
   return Object.assign(g, {
     /** @param {() => void} fn  @returns {() => void} */
     listen(fn) {

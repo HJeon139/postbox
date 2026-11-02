@@ -5,7 +5,7 @@
 // emit or a held release; a commit's original was written before it was applied. The reducer's contract, that a
 // handler which throws changes nothing, is held by tests/state-reject-contract.test.mjs.
 
-import { apply } from '../shared/state.mjs';
+import { apply, RESERVED } from '../shared/state.mjs';
 
 /** @typedef {{ count: number, first: { seq: number, type: string, error: string }[] }} Rejected */
 
@@ -16,11 +16,10 @@ const KEEP = 20;
 
 /**
  * The names no producer may emit: the stand-in, and the event stream's own frames. A frame name emitted as an event
- * would reach the reducer, throw and be held as rejected; refusing it first keeps it out of the log. The four frame
- * names are a naming concern, not a rejection one: they move to #630's `RESERVED` in shared/state.mjs at the seam,
- * and only `rejected` stays here.
+ * would reach the reducer, throw and be held as rejected; refusing it first keeps it out of the log. The frame names
+ * are shared/state.mjs's `RESERVED` (#630); only `rejected` is this module's.
  */
-const RESERVED_TYPES = new Set([REJECTED, 'cursor', 'status', 'epoch', 'resync']);
+const RESERVED_TYPES = new Set([REJECTED, ...RESERVED]);
 
 /** Refuses a producer's event of a reserved type, before anything is numbered. @param {string} type */
 export function refuseReserved(type) {

@@ -3,8 +3,8 @@
 // shared/remote-protocol.mjs’s shim-to-daemon and daemon-to-shim lines, and a fake clock.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { appendFile } from 'node:fs/promises';
+import { promises as fsp, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createBroker } from '../server/remote/host/broker.mjs';
@@ -76,10 +76,35 @@ export function makeHome() {
     writeFileSync(join(dir, TURN_FILES.shimToken), turnToken(turn), { mode: 0o600 });
     return dir;
   };
-  // An offline answer now reaches the shim before the reply record is written (settle.md), so a spec that ends on the answer
-  // can remove the home while that last append lands in it. Retrying the removal is what Node offers for ENOTEMPTY.
-  return { home, p, work, turn, done: () => rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 }) };
+  /** Brokers made over this home (makeBroker), and the appends they have in flight. */
+  const brokers = [];
+  const appending = new Set();
+  /** @param {Promise<any>} write */
+  const track = (write) => {
+    appending.add(write);
+    write.then(
+      () => appending.delete(write),
+      () => appending.delete(write),
+    );
+    return write;
+  };
+  /**
+   * Closes this home’s brokers, waits for the appends they still have in flight, then removes the home. A broker
+   * writes some records without waiting on them (an expiry sent, a reply after an offline answer), so a spec can end
+   * while one lands in a turn folder: removing the folder under it fails with ENOTEMPTY. A held append, as the
+   * settle specs make, waits at most HELD_MS.
+   */
+  const done = async () => {
+    for (const b of brokers) b.close();
+    const end = Date.now() + HELD_MS;
+    while (appending.size && Date.now() < end) await Promise.race([Promise.allSettled([...appending]), sleep(end - Date.now())]);
+    await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
+  };
+  return { home, p, work, turn, done, brokers, track, appending: () => [...appending] };
 }
+
+/** How long a home’s removal waits for an append a spec holds and never lets go (makeHome’s done). */
+const HELD_MS = 1000;
 
 /**
  * A broker over a home, with Postbox as a list. `attached` says whether Postbox is there.
@@ -91,6 +116,8 @@ export function makeBroker(h, over = {}) {
   const logs = [];
   const writes = [];
   const state = { attached: true };
+  // The broker’s appends go through the home, so its removal can wait for them (makeHome’s done).
+  const io = over.io ?? { appendFile: fsp.appendFile, readFile: fsp.readFile, stat: fsp.stat };
   const b = createBroker({
     paths: h.p,
     toPostbox: (type, body) => {
@@ -106,11 +133,13 @@ export function makeBroker(h, over = {}) {
     // As the runner does: the line goes into in.jsonl, then the pipe; it resolves with in.jsonl’s size.
     writeStdin: async (turn, line) => {
       writes.push({ turn, line });
-      await appendFile(h.p.turn(turn, TURN_FILES.in), `${line}\n`);
+      await h.track(appendFile(h.p.turn(turn, TURN_FILES.in), `${line}\n`));
       return statSync(h.p.turn(turn, TURN_FILES.in)).size;
     },
     ...over,
+    io: { ...io, appendFile: (...a) => h.track(io.appendFile(...a)) },
   });
+  h.brokers.push(b);
   /** Postbox says hello: what the broker sends after the welcome. */
   const hello = async () => {
     const got = [];

@@ -48,7 +48,7 @@ test('T02: 100s deadline expiration triggers offline fallback via fake clock', a
     assert.equal(t?.timer, undefined);
     k.b.close();
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -71,7 +71,7 @@ test('T10: restart replay after failed reply write resends if <100s', async () =
     );
     k.b.close();
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -103,7 +103,7 @@ test('T10: restart replay settles offline immediately without sending if >=100s'
     assert.match(resultMsg.text, /\(Read offline as of this turn’s start; earlier or changed items may be missing\.\)$/);
     k.b.close();
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -136,7 +136,7 @@ test('T11: replayed unsettled read arms timer anchored on at', async () => {
     assert.match(r.text, /\(Read offline as of this turn’s start; earlier or changed items may be missing\.\)$/);
     k.b.close();
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -167,7 +167,7 @@ test('T11 negative control: corrupted at safely defaults to b.now()', async () =
     assert.equal(r.ok, true);
     k.b.close();
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -193,7 +193,7 @@ test('T11 clock clamp: wall-clock backward jump clamps remaining time <= 100s', 
     assert.match(r.text, /Item 1 snapshot/);
     k.b.close();
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -224,7 +224,7 @@ test('T13: negative control: live reply at 50ms clears timer and delivers withou
     assert.equal(results.length, 1, 'exactly one result frame reached the shim');
     k.b.close();
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -278,6 +278,6 @@ test('T14: zero leaked timers across live reply, expiry, and teardown', async ()
     k.b.close();
     assert.equal(activeTimers.size, 0, 'surviving timers cleared on broker close');
   } finally {
-    h.done();
+    await h.done();
   }
 });

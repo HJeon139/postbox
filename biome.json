@@ -61,6 +61,10 @@
       },
       "suspicious": {
         "noAssignInExpressions": "off"
+      },
+      "nursery": {
+        "noFloatingPromises": "error",
+        "noMisusedPromises": "error"
       }
     }
   },
@@ -97,8 +101,8 @@
       "includes": ["app/js/main.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 244 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 78 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 230 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 77 } } }
         }
       }
     },
@@ -154,7 +158,7 @@
       "includes": ["app/js/thread.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1823 } } },
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 1812 } } },
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 736 } } }
         }
       }

@@ -369,7 +369,7 @@ export class CodexAdapter {
       if (!threadId || !turnId) return finish();
       const id = requestId++;
       send({ id, method: 'turn/interrupt', params: { threadId, turnId } });
-      if (child.remote) interruptReached(child, id).then(() => finish());
+      if (child.remote) void interruptReached(child, id).then(() => finish());
       else finish();
     };
     if (ctx.signal.aborted) onAbort();

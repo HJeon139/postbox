@@ -199,7 +199,7 @@ The same lookups are served in memory: each thread’s items are a list kept sor
 
 | Data | In `store.state` | In `/api/state` | In the store |
 |---|---|---|---|
-| Open records (`waiting`, `sent`, `open`) | Yes | Yes | In the snapshot, and as events in the log |
+| Open records (`waiting`, `sent`, `open`) | Yes | No: private (architecture.md, “What reaches the browser”). The page gets a cursor for their events, and from A1b small reviewed headers | In the snapshot, and as events in the log |
 | Closed records | No | No | Only as the events that opened and closed them, and as receipts |
 | Receipts (“Receipts”) | No | No | Derived by the reducer from the record events; checkpointed with the snapshot; server-only, bounded |
 | Items | Yes | No: the items API serves pages | In the snapshot (a shard per conversation, from step S2), and as events |
@@ -207,7 +207,7 @@ The same lookups are served in memory: each thread’s items are a list kept sor
 | App headers | Yes | Yes (PF-7) | In the snapshot |
 | The event sequence | — | Resumed from `Last-Event-ID` | The log; segments are pruned below the snapshot’s `seq` |
 
-Closed records leave state, so `/api/state` stays bounded by what is open, not by a room’s age. The history that explains a delivery lives in the receipts (“Receipts”), derived from the record events, so a close and its receipt can’t disagree.
+Closed records leave state, so `store.state` stays bounded by what is open, not by a room’s age. The history that explains a delivery lives in the receipts (“Receipts”), derived from the record events, so a close and its receipt can’t disagree.
 
 ### 6.4 Receipts
 

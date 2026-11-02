@@ -35,6 +35,6 @@ test('driverLost on a closed broker answers nothing and writes nothing', async (
     assert.equal(s.got.filter((m) => m.type === 'result').length, 0, 'no result reached the shim');
     assert.equal(journal(h, turn).length, before, 'and nothing was written to the journal');
   } finally {
-    h.done();
+    await h.done();
   }
 });

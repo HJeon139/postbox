@@ -155,7 +155,7 @@ const gate = () =>
   });
 
 const mcp = server ? connect(server) : null;
-if (mcp) {
+if (mcp !== null) {
   trace('shim', { pid: mcp.child.pid });
   const init = await mcp.request('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'claude-code', version: VERSION } });
   mcp.notify('notifications/initialized');
