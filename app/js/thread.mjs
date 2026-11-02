@@ -34,6 +34,7 @@ import { systemLine } from './system-line.mjs';
 import { failedOnHost, hostChanged, hostEnd, hostTurnsList, ranHere, remoteSig } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
+import { mountView } from './view-state.mjs';
 import { workList } from './work-list.mjs';
 
 export { focusComposer } from './hop-card.mjs';
@@ -60,13 +61,6 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const pending = new Set();
   let raf = 0;
   const was = kept.get(`${inPanel}:${threadId}`);
-  let unseen = was?.unseen ?? 0;
-  // Stuck: the view is on the newest message, and stays there through anything that changes the transcript’s
-  // size (streaming, patches, apps growing, the panel, the window) until you scroll up yourself (#88). Otherwise
-  // it stays on what you were reading: the anchor, a message and how far down the view it starts.
-  let stuck = !was;
-  let anchor = was?.anchor ?? null;
-  let dead = false;
   // At the end of the transcript, one row per agent that’s thinking or calling tools: what it’s on right now,
   // and a glimpse of its thinking. It goes while the agent writes, since the reply itself shows then. It sits in
   // the message column, like the messages (#83).
@@ -133,189 +127,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     paintWorking();
   };
   all();
-
-  const box = () => (inPanel ? el.parentElement : document.scrollingElement);
-  const viewTop = (s) => (inPanel ? s.getBoundingClientRect().top : 0);
-  const gapOf = (s) => s.scrollHeight - s.scrollTop - s.clientHeight;
-  // At the bottom, give or take a pixel of rounding.
-  const atEnd = (s) => gapOf(s) <= 2;
-  // The pill floats just above the composer. It shows only while the end is further below than that, so what it
-  // floats over is never the working rows or the end of the last message (#91).
-  const PILL_ROOM = 48;
-  let shown = -1;
-  const showJump = (s) => {
-    const n = s && gapOf(s) > PILL_ROOM ? unseen : 0;
-    if (n !== shown) jump?.((shown = n));
-  };
-  // The anchor is the message across the middle of the view, where you read, not the first one in view: that one
-  // usually starts above the view, and when a narrower column (the panel, a smaller window) rewraps it, everything
-  // under it moves. A wide font rewraps it where macOS’s doesn’t (#88, seen on Linux in #162).
-  // It runs on every scroll event, so it halves its way to the middle rather than reading every reply above it: in a
-  // room of 1,000 replies, a dozen rects instead of a thousand (#572).
-  const keyed = (n) => n instanceof HTMLElement && !!n.dataset.key;
-  const findAnchor = () => {
-    const s = box();
-    if (!s) return null;
-    const top = viewTop(s);
-    const mid = top + s.clientHeight / 2;
-    const kids = el.children;
-    let lo = 0;
-    let hi = kids.length;
-    while (lo < hi) {
-      const m = (lo + hi) >> 1;
-      if (kids[m].getBoundingClientRect().bottom > mid) hi = m;
-      else lo = m + 1;
-    }
-    // Back to the reply before the first one across the middle (one that takes no room doesn't count), then on as before.
-    let from = 0;
-    for (let i = lo - 1; i >= 0; i--) {
-      const n = kids[i];
-      if (!keyed(n)) continue;
-      const r = n.getBoundingClientRect();
-      if (!r.height) continue;
-      from = i;
-      if (r.bottom <= mid) break;
-    }
-    let last = null;
-    for (let i = from; i < kids.length; i++) {
-      const n = kids[i];
-      if (!keyed(n)) continue;
-      const r = n.getBoundingClientRect();
-      if (r.bottom <= top) continue;
-      last = { key: n.dataset.key, at: r.top - top };
-      if (r.bottom > mid) return last;
-    }
-    return last;
-  };
-  const holdAnchor = () => {
-    const s = box();
-    const n = anchor && nodes.get(anchor.key);
-    if (!s || !n?.isConnected) return;
-    const d = n.getBoundingClientRect().top - viewTop(s) - anchor.at;
-    if (Math.abs(d) < 1) return;
-    s.scrollTop += d;
-    lastTop = s.scrollTop;
-  };
-  const seen = () => {
-    unseen = 0;
-    showJump(null);
-  };
-  const scrollToEnd = (smooth = false) => {
-    stuck = true;
-    const s = box();
-    if (s && smooth && !inPanel && !matchMedia('(prefers-reduced-motion: reduce)').matches)
-      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
-    else if (s) s.scrollTop = s.scrollHeight;
-    seen();
-  };
-  // While stuck, what comes after the newest message shrinking (a working row going, a card getting shorter once
-  // answered, the composer) would shorten the page and pull everything down, under your pointer, just as a card
-  // that needs you arrives. Instead the transcript keeps its height, until the next message or a new width.
-  let held = { end: 0, last: 0, width: 0 };
-  const lastItem = () => {
-    for (let n = el.lastElementChild; n; n = n.previousElementSibling) if (n instanceof HTMLElement && n.dataset.key) return n;
-    return null;
-  };
-  const measure = (s) => ({
-    end: s.scrollHeight,
-    last: (lastItem()?.getBoundingClientRect().top ?? 0) - viewTop(s) + s.scrollTop,
-    width: el.clientWidth,
-  });
-  const release = () => {
-    if (el.style.minHeight) el.style.minHeight = '';
-  };
-  // After anything changes size: back to the bottom while stuck, else keep what you were reading in place.
-  const follow = () => {
-    const s = box();
-    if (!s || dead) return;
-    // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back.
-    if (stuck && s.scrollTop < lastTop - 1 && !atEnd(s)) {
-      stuck = false;
-      anchor = findAnchor();
-    }
-    if (stuck) {
-      const now = measure(s);
-      if (now.width !== held.width) release();
-      else if (now.end < held.end && Math.abs(now.last - held.last) < 1 && held.end > s.clientHeight)
-        el.style.minHeight = `${el.getBoundingClientRect().height + held.end - now.end}px`;
-      if (!atEnd(s)) s.scrollTop = s.scrollHeight;
-      held = measure(s);
-    } else holdAnchor();
-    showJump(s);
-  };
-  // Only your own scrolling unsticks the view: content growing never scrolls, and the browser doesn’t anchor
-  // (overflow-anchor is off), so the view moving up means you moved it, by wheel, keys or a drag, even over an app.
-  let lastTop = 0;
-  const onScroll = () => {
-    const s = box();
-    if (!s) return;
-    // The event for a scroll the transcript made itself, holding what you read in place, comes in a later frame, maybe
-    // after what’s above has moved again: hold it in place again before taking the anchor there, or you lose your place (#297).
-    const moved = s.scrollTop !== lastTop;
-    if (atEnd(s)) {
-      if (!stuck) held = measure(s);
-      stuck = true;
-    } else if (s.scrollTop < lastTop) stuck = false;
-    // However you got near the end, there’s nothing unread below any more (#91).
-    if (gapOf(s) <= PILL_ROOM) seen();
-    lastTop = s.scrollTop;
-    if (stuck) return;
-    if (!moved) holdAnchor();
-    anchor = findAnchor();
-  };
-  const sizes = new ResizeObserver(follow);
-  // A change that makes the transcript shorter while stuck (a held height released, an app’s check giving way to its
-  // frame) pulls the view up to the page’s new end. That isn’t you, but its scroll event can come after the page grew
-  // back, and read as you scrolling up (#297). So note where the view is, if it’s at the new end: a wheel turn moves it
-  // before its scroll event too, and only that one leaves it above the end.
-  const changes = new MutationObserver(() => {
-    const s = box();
-    if (stuck && s && !dead && atEnd(s)) lastTop = Math.min(lastTop, s.scrollTop);
-  });
-  changes.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
-  let bound = null;
-  const bind = () => {
-    const s = box();
-    if (bound || !s || !el.isConnected) return;
-    bound = inPanel ? s : window;
-    bound.addEventListener('scroll', onScroll, { passive: true });
-    addEventListener('resize', follow);
-    sizes.observe(el);
-    // What’s around it changing moves the end too: the composer, the panel’s height, the thread’s root above. A shrink
-    // there clamps the view like one in the transcript, so its changes are noted the same way (#360). The panel’s
-    // composer isn’t beside the transcript: it’s in the panel’s foot, under the scroll box.
-    const around = el.parentElement ? [...el.parentElement.children].filter((n) => n !== el) : [];
-    const foot = inPanel ? el.closest('.sidepanel')?.querySelector('.sp-foot') : null;
-    if (el.parentElement) sizes.observe(el.parentElement);
-    for (const n of foot ? [...around, foot] : around) {
-      sizes.observe(n);
-      changes.observe(n, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
-    }
-  };
-  /** Once the transcript is on the page: to the newest message, or back where you were before a rebuild. */
-  const settle = () => {
-    // A rebuild can replace this transcript before the frame it was to settle in.
-    if (dead) return;
-    bind();
-    const s = box();
-    if (stuck) scrollToEnd();
-    else holdAnchor();
-    if (s) {
-      showJump(s);
-      held = measure(s);
-    }
-    lastTop = s?.scrollTop ?? 0;
-  };
-  let jump = null;
-  // What arrived counts as unseen when the view isn’t on the newest message, including when follow() finds you
-  // scrolled up in this frame, before its scroll event told the transcript (#341).
-  const grew = () => {
-    if (stuck) follow();
-    if (!stuck) {
-      unseen++;
-      showJump(box());
-    }
-  };
+  const view = mountView({ el, inPanel, nodes, was });
 
   const off = client.on((ch) => {
     if (ch.type === 'load') {
@@ -326,13 +138,13 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     if (ch.type === 'item.add' && d.threadId === threadId) {
       if (nodes.size === 0) el.replaceChildren();
       // A new message takes the place of any height held below the last one.
-      release();
+      view.release();
       const list = itemsOf(threadId);
       const n = render(d.item, list[list.length - 2]);
       nodes.set(d.item.id, n);
       el.append(n);
       paintWorking();
-      grew();
+      view.grew();
     } else if (ch.type === 'item.move' && d.threadId === threadId) {
       // An update brought an app or a block to the newest point (#49, #92). Its stub takes its old place, the same
       // height a line takes, and what you were reading stays put: if that was the item, the stub holds its place.
@@ -341,15 +153,15 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       const stub = render(d.stub, list[at - 1]);
       nodes.get(d.id)?.replaceWith(stub);
       nodes.set(d.stub.id, stub);
-      if (anchor?.key === d.id) anchor = { key: d.stub.id, at: Math.max(0, anchor.at) };
+      view.moved(d.id, d.stub.id);
       // The message after it now follows the stub, so whether it names its speaker can change.
       if (list[at + 1] && list[at + 1].id !== d.id) rerender(list[at + 1].id);
-      release();
+      view.release();
       const n = render(list[list.length - 1], list[list.length - 2]);
       nodes.set(d.id, n);
       el.append(n);
       paintWorking();
-      grew();
+      view.grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
       // A step changes only the reply’s activity list (#573); anything else draws the reply again.
       const it = stepsOnly(d) ? itemsOf(threadId).find((x) => x.id === d.id) : null;
@@ -408,23 +220,18 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
 
   return {
     el,
-    settle,
-    scrollToEnd,
-    setJump(fn) {
-      jump = fn;
-    },
+    settle: view.settle,
+    scrollToEnd: view.scrollToEnd,
+    setJump: view.setJump,
     destroy() {
       off();
-      dead = true;
-      if (!stuck && el.isConnected) {
+      const where = view.keep();
+      view.destroy();
+      if (where) {
         const key = `${inPanel}:${threadId}`;
-        kept.set(key, { anchor: findAnchor() ?? anchor, unseen });
+        kept.set(key, where);
         queueMicrotask(() => kept.delete(key));
       }
-      sizes.disconnect();
-      changes.disconnect();
-      bound?.removeEventListener('scroll', onScroll);
-      removeEventListener('resize', follow);
     },
   };
 }
