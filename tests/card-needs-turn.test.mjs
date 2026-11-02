@@ -125,3 +125,18 @@ test('a turn that does not move on keeps the block it found, through a permissio
   await settle(r.rt);
   assert.equal(r.needs()?.itemId, b.id, 'and still at the turn’s end');
 });
+
+test('an app check’s note after the turn ended is scoped to the session’s lastTurnId, the second reader (critic)', async () => {
+  const r = room();
+  r.adapter.next.push(async (c, _m, se) => {
+    r.rt.toolsFor(se.id).show_app({ id: 'lab', title: 'Lab', code: '<p>Lab</p>' });
+    c.text('Here it is.');
+  });
+  r.rt.sendMessage(r.t.id, { text: '@alpha make an app' });
+  await settle(r.rt);
+  const scoped = [];
+  r.rt.lint = (sessionId, turnId) => scoped.push({ sessionId, turnId });
+  r.rt.appCheck('lab', { version: 1, problems: [{ code: 'marks-too-small', message: 'Tiny marks.' }] });
+  assert.deepEqual(scoped, [{ sessionId: r.alpha.id, turnId: r.store.state.sessions[r.alpha.id].lastTurnId }]);
+  assert.ok(scoped[0].turnId);
+});
