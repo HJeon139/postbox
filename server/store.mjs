@@ -11,6 +11,7 @@ import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
 import { apply, emptyState } from '../shared/state.mjs';
 import { commit, run } from './store-commit.mjs';
+import { pendingReads } from './store-held.mjs';
 import { close, load } from './store-recover.mjs';
 import { fail, reload } from './store-retry.mjs';
 
@@ -50,6 +51,11 @@ export class Store {
     this.ahead = 0; // events numbered but not yet applied: a commit’s, before its fsync
     this.waitingCommits = 0; // commits queued or pending; emits are held behind them
     this.held = 0; // emits held in the queue, still to be numbered
+    this.heldLog = []; // those jobs, in order, for the reads that include them (server/store-held.mjs)
+    this.version = 0; // counts the changes record() applies; a held view is rebuilt when it moves
+    this.views = new Map(); // `${list}:${key}` → its pending view
+    /** the lists as memory will hold them once what is held is released (#601): for the placed in-process readers only */
+    this.pending = pendingReads(this);
     this.lock = null; // the folder’s lock while this store holds it (server/store-lock.mjs)
     // Open, or closed with the cause after a write failed, until reload() or a restart (server/store-retry.mjs).
     this.writable = true;
@@ -156,6 +162,7 @@ export class Store {
   record(ev) {
     const line = JSON.stringify(ev);
     apply(this.state, ev.type, ev.data);
+    this.version++;
     this.state.seq = ev.seq;
     this.ahead--;
     this.events.push({ seq: ev.seq, line });
@@ -182,7 +189,9 @@ export class Store {
     }
     if (this.waitingCommits || this.held) {
       this.held++;
-      this.queue.push({ held: ev, json: JSON.stringify(ev) }); // as it is now: the caller may change its object later
+      const job = { held: ev, json: JSON.stringify(ev) }; // as it is now: the caller may change its object later
+      this.queue.push(job);
+      this.heldLog.push(job);
       this.pump();
       return ev;
     }
@@ -204,10 +213,14 @@ export class Store {
   release({ held, json }) {
     const ev = this.sequence(JSON.parse(json));
     held.seq = ev.seq;
+    // Out of heldLog before it's recorded: a listener's pending read rebuilds from the state that now holds it, and
+    // mustn't find it held as well (the integrator's review of #611).
+    this.heldLog.shift();
     const line = this.record(ev);
     this.notify(ev);
     if (this.dir) this.sinceSnapshot++;
     this.held--;
+    if (!this.held) this.views.clear();
     return line;
   }
 
@@ -275,7 +288,7 @@ export class Store {
     return total;
   }
 
-  // Read helpers
+  // Read helpers: the published state. What is held behind a commit is in store.pending (#601).
   items(threadId) {
     return this.state.items[threadId] ?? [];
   }
