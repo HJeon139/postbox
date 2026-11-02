@@ -86,7 +86,7 @@ test('an ask call whose live journal write fails while the link is down is not a
 // tested on the helper. The end-to-end record and wire equality is covered by the detached-read spec above.
 test('an offline answer over replyChars is cut to replyChars and keeps the offline notice', async () => {
   // Imported here, not at the top, so the other specs still run where the helper is missing.
-  const { offlineText } = await import('../server/remote/host/broker-tools.mjs');
+  const { offlineText } = await import('../server/remote/host/broker-offline.mjs');
   const big = 'x'.repeat(REMOTE_LIMITS.replyChars + 5000);
   const cut = offlineText(big + OFFLINE_NOTE);
   assert.ok(cut.length <= REMOTE_LIMITS.replyChars, 'within replyChars');

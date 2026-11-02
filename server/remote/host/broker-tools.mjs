@@ -3,12 +3,10 @@
 // broker.mjs’s header says what’s written down when.
 
 import { validateBlock } from '../../../shared/catalog.mjs';
-import { REMOTE_READ_TIMEOUT_MS } from '../../../shared/limits.mjs';
 import { encodedBytes, REMOTE_LIMITS, TOOL_ROUTES, TURN_FILES } from '../../../shared/remote-protocol.mjs';
 import { inlineAppFiles } from './broker-files.mjs';
-import { readConversation, readMessage } from './broker-reading.mjs';
+import { armReadTimer, claim, detached, readLocal, settled, settleOffline } from './broker-offline.mjs';
 import { record, refusal, startOf, unrecorded, written } from './broker-records.mjs';
-import { snapshotOf } from './broker-snapshot.mjs';
 import { key, QUEUED_TEXT, toShims } from './broker-state.mjs';
 
 /**
@@ -121,96 +119,6 @@ const take = (b, k, t) =>
     return full;
   });
 
-/** Whether a call is a read that can only be answered from the snapshot, because no Postbox is attached. @param {Broker} b @param {any} t */
-const detached = (b, t) => t.route === 'read' && !b.attached();
-
-const OFFLINE_NOTE = '\n\n(Read offline as of this turn’s start; earlier or changed items may be missing.)';
-
-/** Whether a call is taken: answered, or being answered by settleOffline or a live reply (settle.md §2). @param {any} t */
-export const settled = (t) => t.replied || !!t.replying;
-
-/** The answer cut to replyChars, the offline notice kept at its end (settle.md §4). @param {string} s */
-export const offlineText = (s) => (s.length <= REMOTE_LIMITS.replyChars ? s : s.slice(0, REMOTE_LIMITS.replyChars - OFFLINE_NOTE.length) + OFFLINE_NOTE);
-
-/**
- * Answers an open read from the snapshot, once: the first caller claims it, the rest return. The shim is told before
- * any journal write; the reply record follows a call record when there is one. Never throws: a failure becomes a log
- * line or a result.
- * @param {Broker} b @param {any} t
- */
-export async function settleOffline(b, t) {
-  // Only a read has a snapshot answer; an ask or queue call waits for Postbox (settle.md §1).
-  if (t.route !== 'read' || settled(t)) return;
-  /** @type {(v?: any) => void} */
-  let finish = () => {};
-  t.replying = new Promise((resolve) => (finish = resolve));
-  // Marks the claim as the offline one: the hello must not send this call on, whereas a live reply's write in flight
-  // (also `replying`) can still fail and leave the call to be sent again. Never cleared, and it needs no reset: a
-  // claimed read is answered, or its call record failed and queueTool dropped it from b.tools.
-  t.offline = true;
-  try {
-    if (t.timer) {
-      b.timers.clearTimeout(t.timer);
-      t.timer = undefined;
-    }
-    let r;
-    try {
-      r = await readLocal(b, t.turn, t.name, t.args, true);
-    } catch (e) {
-      r = { ok: false, text: `Postbox couldn’t read the snapshot: ${/** @type {any} */ (e)?.message || e}` };
-    }
-    const text = offlineText(r.text);
-    t.result = { ok: r.ok, text };
-    t.replied = true;
-    t.args = null;
-    // The shim hears the answer before any journal write, so a slow or failing disk cannot hold it up.
-    toShims(b, t.turn, 'result', { id: t.id, ok: r.ok, text });
-    // A reply record follows a call record, when there is one: a read that was never sent to Postbox wrote none.
-    if (t.saved && !(await t.saved)) {
-      const why = await written(b, t.turn, 'tools', { op: 'reply', id: t.id, ok: r.ok, text });
-      if (why) b.log(`Turn ${t.turn}’s ${t.name} (${t.id}) offline record failed: ${why}`);
-    }
-  } finally {
-    t.replying = undefined;
-    finish();
-  }
-}
-
-/**
- * Reads from the turn’s snapshot locally.
- * @param {Broker} b @param {string} turn @param {string} name @param {Record<string, any>} args @param {boolean} [offline]
- */
-async function readLocal(b, turn, name, args, offline = false) {
-  const snap = await snapshotOf(b, turn);
-  if (!snap) return { ok: false, text: `Postbox hasn’t sent this host the conversation yet, so ${name} can’t read it. Try again in a moment.` };
-  const r = name === 'read_message' ? readMessage(snap, args) : readConversation(snap, args);
-  return { ok: r.ok, text: r.ok && offline ? `${r.text}${OFFLINE_NOTE}` : r.text };
-}
-
-/**
- * Arms the 100s deadline timer for an admitted read invocation.
- * Clamps remaining time against b.now() - t.arrived.
- * @param {Broker} b @param {Tool} t
- */
-export function armReadTimer(b, t) {
-  if (b.closed || settled(t) || t.route !== 'read' || !b.attached() || t.timer) return;
-
-  const now = b.now();
-  const arrived = t.arrived ?? now;
-  const elapsed = Math.max(0, now - arrived);
-  const remaining = Math.min(REMOTE_READ_TIMEOUT_MS, Math.max(0, REMOTE_READ_TIMEOUT_MS - elapsed));
-
-  if (remaining === 0) {
-    settleOffline(b, t).catch(b.log);
-    return;
-  }
-
-  t.timer = b.timers.setTimeout(() => {
-    t.timer = undefined;
-    settleOffline(b, t).catch(b.log);
-  }, remaining);
-}
-
 /** An already answered or queued call sent again after a reconnect. @param {Tool} known */
 function answerKnown(known) {
   if (known.route === 'queue') return { ok: true, text: QUEUED_TEXT };
@@ -306,12 +214,9 @@ export async function onReply(b, m, reply) {
   }
   // Written down before it’s taken or the shim hears it: an asked call’s answer is kept, with its text, for a
   // shim that sends the call again after the daemon restarts. One that can’t be written leaves the call waiting.
-  /** @type {(v?: any) => void} */
-  let finish = () => {};
-  t.replying = new Promise((resolve) => (finish = resolve));
+  const release = claim(t);
   const why = await written(b, m.turn, 'tools', { op: 'reply', id: t.id, ok: m.ok, ...(t.route === 'ask' || t.route === 'read' ? { text: m.text } : {}) });
-  t.replying = undefined;
-  finish();
+  release();
   if (why) {
     reply.fail(
       'internal',
