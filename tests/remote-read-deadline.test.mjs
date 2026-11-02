@@ -29,7 +29,7 @@ test('T02: 100s deadline expiration triggers offline fallback via fake clock', a
     await s.next('welcome');
 
     const callPromise = s.call('c_t02', 'read_message', { id: 'item_1' });
-    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'c_t02'), 'tool sent', 250);
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'c_t02'), 'tool sent');
 
     await clock.tick(99_900);
     assert.equal(
@@ -184,7 +184,7 @@ test('T11 clock clamp: wall-clock backward jump clamps remaining time <= 100s', 
     const s = connectShim(k.b, 't_t11_jump');
     await s.next('welcome');
     const callJump = s.call('c_jump', 'read_message', { id: 'item_1' });
-    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'c_jump'), 'tool sent', 250);
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'c_jump'), 'tool sent');
 
     clockTime = 1_950_000;
     await clock.tick(100_000);
@@ -209,7 +209,7 @@ test('T13: negative control: live reply at 50ms clears timer and delivers withou
     await s.next('welcome');
 
     const callPromise = s.call('c_live50', 'read_message', { id: 'item_1' });
-    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'c_live50'), 'tool sent', 250);
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'c_live50'), 'tool sent');
 
     await clock.tick(50);
     await k.post('reply', { turn: 't_t13', id: 'c_live50', ok: true, text: 'Live transcript reply' });
@@ -257,7 +257,7 @@ test('T14: zero leaked timers across live reply, expiry, and teardown', async ()
 
     // 1. Live reply clears its timer
     const p1 = s.call('c_leak1', 'read_message', { id: 'item_1' });
-    await until(() => k.sent.some((m) => m.id === 'c_leak1'), 'sent c_leak1', 250);
+    await until(() => k.sent.some((m) => m.id === 'c_leak1'), 'sent c_leak1');
     assert.equal(activeTimers.size, 1);
     await k.post('reply', { turn: 't_t14', id: 'c_leak1', ok: true, text: 'Live 1' });
     await p1;
@@ -265,7 +265,7 @@ test('T14: zero leaked timers across live reply, expiry, and teardown', async ()
 
     // 2. Timer expiry clears its timer
     const p2 = s.call('c_leak2', 'read_message', { id: 'item_1' });
-    await until(() => k.sent.some((m) => m.id === 'c_leak2'), 'sent c_leak2', 250);
+    await until(() => k.sent.some((m) => m.id === 'c_leak2'), 'sent c_leak2');
     assert.equal(activeTimers.size, 1);
     await clock.tick(100_000);
     await p2;
@@ -273,7 +273,7 @@ test('T14: zero leaked timers across live reply, expiry, and teardown', async ()
 
     // 3. Broker close clears any remaining timers
     s.send('call', { id: 'c_leak3', name: 'read_message', args: { id: 'item_1' } });
-    await until(() => k.sent.some((m) => m.id === 'c_leak3'), 'sent c_leak3', 250);
+    await until(() => k.sent.some((m) => m.id === 'c_leak3'), 'sent c_leak3');
     assert.equal(activeTimers.size, 1);
     k.b.close();
     assert.equal(activeTimers.size, 0, 'surviving timers cleared on broker close');
