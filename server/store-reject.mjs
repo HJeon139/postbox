@@ -14,10 +14,17 @@ export const REJECTED = 'rejected';
 /** How many rejections are kept by seq; the rest are counted, as `lost` keeps a range and a count. */
 const KEEP = 20;
 
-/** Refuses a producer's event of the reserved type, before anything is numbered. @param {string} type */
+/**
+ * The names no producer may emit: the stand-in, and the event stream's own frames. A frame name emitted as an event
+ * would reach the reducer, throw and be held as rejected; refusing it first keeps it out of the log. PR 1's `RESERVED`
+ * in shared/state.mjs (design-a1-pr1) names the four stream frames, and replaces them here when it lands.
+ */
+const RESERVED_TYPES = new Set([REJECTED, 'cursor', 'status', 'epoch', 'resync']);
+
+/** Refuses a producer's event of a reserved type, before anything is numbered. @param {string} type */
 export function refuseReserved(type) {
-  if (type === REJECTED)
-    throw Object.assign(new Error(`“${REJECTED}” is a reserved event type: the store writes it for an event the reducer rejected.`), { code: 'ERESERVED' });
+  if (RESERVED_TYPES.has(type))
+    throw Object.assign(new Error(`“${type}” is a reserved name: no event may take it (server/store-reject.mjs).`), { code: 'ERESERVED' });
 }
 
 /** What the page, the stream and since() get for a rejected seq: its place, and nothing of the event. @param {number} seq */

@@ -133,11 +133,13 @@ test('the page: a rejection tells every stream to resync, its stand-in carries n
   }
 });
 
-test('no producer may emit `rejected`: an emit or a commit of it is refused before anything is numbered', async () => {
+test('no producer may emit `rejected` or a stream frame’s name: an emit or a commit of one is refused before anything is numbered', async () => {
   const store = await new Store(await folder()).load();
   store.emit('settings', { theme: 'dark' });
-  assert.throws(() => store.emit('rejected', {}), /reserved/);
-  await assert.rejects(store.commit([{ type: 'rejected', data: {} }]), /reserved/);
+  for (const type of ['rejected', 'cursor', 'status', 'epoch', 'resync']) {
+    assert.throws(() => store.emit(type, {}), /reserved/, type);
+    await assert.rejects(store.commit([{ type, data: {} }]), /reserved/, type);
+  }
   assert.equal(store.ahead, 0);
   assert.equal(store.emit('settings', { theme: 'light' }).seq, 2);
   await store.close();
