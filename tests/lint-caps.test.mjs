@@ -1,148 +1,144 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { addedIgnores, capChanges, ceilings, configChanges, noBase } from '../tools/lint-caps.mjs';
+import { addedLines, ceilings, configChanges, configDiff, noBase, suppressions } from '../tools/lint-caps.mjs';
 
-const cap = (n) => ({ level: 'error', options: { maxLines: n } });
-/** A biome.json with the repo's defaults, and the given overrides and includes. */
-const biome = (overrides = [], includes = ['server/**', '!server/corpus/books']) => ({
-  files: { includes },
+const cap = (n, extra = {}) => ({ level: 'error', options: { maxLines: n, ...extra } });
+/** A biome.json with the repo's defaults, and the given overrides. */
+const biome = (overrides = [], extra = {}) => ({
+  files: { includes: ['server/**', '!server/corpus/books'] },
   linter: { rules: { style: { noExcessiveLinesPerFile: cap(300) }, complexity: { noExcessiveLinesPerFunction: cap(50) } } },
   overrides,
+  ...extra,
 });
-const fileCap = (path, n) => ({ includes: [path], linter: { rules: { style: { noExcessiveLinesPerFile: n } } } });
-const fnCap = (path, n) => ({ includes: [path], linter: { rules: { complexity: { noExcessiveLinesPerFunction: n } } } });
-const existing = new Set(['server/runtime.mjs', 'server/small.mjs']);
-const check = (base, head) => capChanges(ceilings(base), ceilings(head), (p) => existing.has(p));
+const fileCap = (path, rule) => ({ includes: [path], linter: { rules: { style: { noExcessiveLinesPerFile: rule } } } });
+/** One override with both length rules, as biome.json has them. */
+const both = (path, file, fn) => ({
+  includes: [path],
+  linter: { rules: { style: { noExcessiveLinesPerFile: file }, complexity: { noExcessiveLinesPerFunction: fn } } },
+});
+const RT = 'server/runtime.mjs';
+const MAIN = fileCap('app/js/main.mjs', cap(244));
+const base = biome([both(RT, cap(3028), cap(200)), MAIN]);
+const withRt = (rule, fn = cap(200)) => biome([both(RT, rule, fn), MAIN]);
 
-test('lint-caps: a raised file or function ceiling fails, and a lowered or removed one passes', () => {
-  const base = biome([fileCap('server/runtime.mjs', cap(3028)), fnCap('server/runtime.mjs', cap(200))]);
-  assert.deepEqual(check(base, biome([fileCap('server/runtime.mjs', cap(3029)), fnCap('server/runtime.mjs', cap(200))])).problems, [
-    'server/runtime.mjs: its file ceiling went up from 3028 to 3029.',
+test('lint-caps: only a lower maxLines passes; a higher one, another level or another option fails', () => {
+  assert.deepEqual(configDiff(base, withRt(cap(2900))), []);
+  assert.match(configDiff(base, withRt(cap(3029)))[0], /\["server\/runtime.mjs"\]: its file length rule went from .*3028.* to .*3029/);
+  for (const loose of [{ level: 'info', options: { maxLines: 3028 } }, 'off', cap(3000, { skipBlankLines: true })])
+    assert.equal(configDiff(base, withRt(loose)).length, 1, JSON.stringify(loose));
+  assert.match(configDiff(base, withRt(cap(3028), cap(201)))[0], /function length rule went from/);
+});
+
+test('lint-caps: removing an override passes unless it held a limit under the default', () => {
+  assert.deepEqual(configDiff(base, biome([MAIN])), []);
+  assert.deepEqual(configDiff(base, biome([both(RT, cap(3028), cap(200))])), [
+    '["app/js/main.mjs"]: its file length rule was removed, which raises it to the default 300.',
   ]);
-  assert.match(
-    check(base, biome([fileCap('server/runtime.mjs', cap(3028)), fnCap('server/runtime.mjs', cap(201))])).problems[0],
-    /function ceiling went up from 200 to 201/,
-  );
-  assert.deepEqual(check(base, biome([fileCap('server/runtime.mjs', cap(2900))])), { problems: [], notes: [] });
 });
 
-test('lint-caps: a ceiling for a file that already existed fails; a new module’s is a note', () => {
-  const head = biome([fileCap('server/small.mjs', cap(320)), fileCap('server/runtime-jobs.mjs', cap(410))]);
-  const r = check(biome(), head);
-  assert.deepEqual(r.problems, ['server/small.mjs: it gets a file ceiling of 320, over the default 300, and it isn’t a new module.']);
-  assert.deepEqual(r.notes, ['server/runtime-jobs.mjs: a new module with a file ceiling of 410. Allowed only for code moved out of a file at its ceiling.']);
-});
-
-test('lint-caps: an override at or under the default is not a ceiling, and a glob never counts as a new module', () => {
-  assert.deepEqual(check(biome(), biome([fileCap('server/small.mjs', cap(300))])).problems, []);
-  assert.match(check(biome(), biome([fileCap('server/new/**', cap(400))])).problems[0], /server\/new\/\*\*: it gets a file ceiling of 400/);
-});
-
-test('lint-caps: turning a length rule or the linter off counts as raising the ceiling without limit', () => {
-  const base = biome([fileCap('server/runtime.mjs', cap(3028))]);
-  assert.match(check(base, biome([fileCap('server/runtime.mjs', 'off')])).problems[0], /went up from 3028 to Infinity/);
-  assert.match(check(base, biome([fileCap('server/runtime.mjs', { level: 'off' })])).problems[0], /went up from 3028 to Infinity/);
-  const disabled = biome([{ includes: ['server/small.mjs'], linter: { enabled: false } }]);
-  assert.equal(check(biome(), disabled).problems.length, 2, 'both the file and the function rule');
-  assert.match(check(biome(), { ...biome(), linter: { ...biome().linter, enabled: false } }).problems[0], /default file ceiling went up/);
-});
-
-test('lint-caps: a raised default, or a path taken out of what Biome checks, fails', () => {
-  const raised = biome();
-  raised.linter.rules.style.noExcessiveLinesPerFile = cap(400);
-  assert.deepEqual(check(biome(), raised).problems, ['The default file ceiling went up from 300 to 400.']);
-  assert.deepEqual(check(biome(), biome([], ['server/**', '!server/corpus/books', '!server/runtime.mjs'])).problems, [
-    'Biome no longer checks “server/runtime.mjs”.',
+test('lint-caps: a new override may not carry a ceiling over the default, even for moved code (the person, 2 November 2026)', () => {
+  const moved = biome([both('server/runtime/index.mjs', cap(3028), cap(200)), MAIN]);
+  assert.deepEqual(configDiff(base, moved), [
+    '["server/runtime/index.mjs"]: its file length rule was added over the default 300, or at a level that doesn’t fail.',
+    '["server/runtime/index.mjs"]: its function length rule was added over the default 50, or at a level that doesn’t fail.',
   ]);
-  assert.deepEqual(check(biome(), biome([], ['!server/corpus/books'])).problems, ['Biome no longer checks “server/**”.']);
-  assert.deepEqual(check(biome(), biome([], ['server/**'])).problems, [], 'checking more is fine');
+  assert.equal(configDiff(base, biome([...base.overrides, fileCap('server/runtime/turns.mjs', cap(2000))])).length, 1);
+  assert.equal(configDiff(base, biome([...base.overrides, fileCap('server/runtime/turns.mjs', 'off')])).length, 1);
+  assert.deepEqual(configDiff(base, biome([...base.overrides, fileCap('server/new.mjs', cap(250))])), [], 'under the default is fine');
+  const other = { includes: ['server/new.mjs'], linter: { rules: { suspicious: { noExplicitAny: 'off' } } } };
+  assert.deepEqual(configDiff(base, biome([...base.overrides, other])), [], 'a rule that isn’t about length is fine');
+  const disabled = { includes: ['server/new.mjs'], linter: { enabled: false } };
+  assert.deepEqual(configDiff(base, biome([...base.overrides, disabled])), ['["server/new.mjs"]: linter.enabled changed.']);
 });
 
-test('lint-caps: the repo’s own biome.json against itself changes nothing', () => {
-  const own = JSON.parse(readFileSync(new URL('../biome.json', import.meta.url), 'utf8'));
-  const c = ceilings(own);
-  assert.equal(c.defaults.file, 300);
-  assert.equal(c.defaults.fn, 50);
-  assert.ok(c.paths.get('server/runtime.mjs')?.file > 300, 'the largest file has a ceiling');
-  assert.deepEqual(
-    capChanges(c, c, () => true),
-    { problems: [], notes: [] },
-  );
+test('lint-caps: the integrator’s four bypasses fail', () => {
+  const brace = biome([...base.overrides, fileCap('server/{runtime,zz}.mjs', cap(9999))]);
+  assert.match(configDiff(base, brace)[0], /server\/\{runtime,zz\}\.mjs"\]: its file length rule was added over the default/);
+  const noTop = biome(base.overrides);
+  delete noTop.linter.rules.style.noExcessiveLinesPerFile;
+  assert.deepEqual(configDiff(base, noTop), ['biome.json: its file length rule was removed, which leaves no limit.']);
+  assert.deepEqual(suppressions(['server/zz.mjs:// biome-ignore-all lint/style: generated']), ['server/zz.mjs:// biome-ignore-all lint/style: generated']);
+  const linterIncludes = biome(base.overrides);
+  linterIncludes.linter.includes = ['**', '!server/zz-big.mjs'];
+  assert.deepEqual(configDiff(base, linterIncludes), ['biome.json: linter.includes gained “!server/zz-big.mjs”.']);
+});
+
+test('lint-caps: an unknown or unsafe key fails, and a key that can’t touch length passes', () => {
+  assert.deepEqual(configDiff(base, biome(base.overrides, { plugins: ['./x.grit'] })), ['biome.json: “plugins” changed.']);
+  assert.deepEqual(configDiff(base, biome(base.overrides, { extends: ['./loose.json'] })), ['biome.json: “extends” changed.']);
+  assert.deepEqual(configDiff(base, biome(base.overrides, { formatter: { lineWidth: 100 } })), []);
+  const maxSize = biome(base.overrides);
+  maxSize.files.maxSize = 1000;
+  assert.deepEqual(configDiff(base, maxSize), ['files.maxSize changed.']);
+});
+
+test('lint-caps: an includes list may only gain positive entries or lose `!` ones, in order', () => {
+  const inc = (list) => ({ ...biome(base.overrides), files: { includes: list } });
+  assert.deepEqual(configDiff(base, inc(['server/**', 'tools/**', '!server/corpus/books'])), []);
+  assert.deepEqual(configDiff(base, inc(['server/**'])), []);
+  assert.deepEqual(configDiff(base, inc(['!server/corpus/books'])), ['files.includes no longer has “server/**”.']);
+  assert.deepEqual(configDiff(base, inc(['server/**', '!server/corpus/books', '!server/runtime.mjs'])), ['files.includes gained “!server/runtime.mjs”.']);
+  assert.deepEqual(configDiff(base, inc(['!server/corpus/books', 'server/**'])), ['files.includes was reordered.']);
+});
+
+test('lint-caps: reordered or duplicated overrides fail', () => {
+  const [a, b] = base.overrides;
+  assert.deepEqual(configDiff(base, biome([b, a])), ['The overrides were reordered.']);
+  assert.ok(configDiff(base, biome([a, b, a])).includes('Two overrides have the same includes.'));
+});
+
+test('lint-caps: a suppression is found by its shape, whatever rule set it covers', () => {
+  const hits = [
+    'a.mjs:// biome-ignore lint: x',
+    'a.mjs:// biome-ignore lint/style: x',
+    'a.mjs:/* biome-ignore-start lint/complexity: x */',
+    'a.mjs:// biome-ignore-end lint/complexity',
+    'a.mjs:// biome-ignore lint/style/noExcessiveLinesPerFile: x',
+    'a.mjs:// biome-ignore lint/suspicious/noDebugger lint/style: x',
+  ];
+  const misses = ['a.mjs:// biome-ignore lint/style/useConst: x', 'a.mjs:// biome-ignore format: x', 'a.mjs:// biome-ignore lint/suspicious/noDebugger: x'];
+  assert.deepEqual(suppressions([...hits, ...misses]), hits);
+});
+
+test('lint-caps: added lines are matched one for one', () => {
+  const a = 'server/a.mjs:// biome-ignore lint/style: old';
+  const b = 'server/b.mjs:// biome-ignore lint/style: new';
+  assert.deepEqual(addedLines([a], [b]), [b]);
+  assert.deepEqual(addedLines([a, a], [a]), []);
+  assert.deepEqual(addedLines([a], [a, a]), [a]);
 });
 
 test('lint-caps: a Biome config other than the root biome.json, added or changed, fails', () => {
-  const base = new Map([
+  const b = new Map([
     ['biome.json', 'a1'],
     ['app/kit/biome.json', 'b1'],
   ]);
-  assert.deepEqual(configChanges(base, new Map([...base, ['server/biome.json', 'c1']])), ['A Biome config was added or changed: server/biome.json.']);
+  assert.deepEqual(configChanges(b, new Map([...b, ['server/biome.json', 'c1']])), ['A Biome config was added or changed: server/biome.json.']);
+  assert.deepEqual(configChanges(b, new Map([...b, ['biome.jsonc', 'd1']])), ['A Biome config was added or changed: biome.jsonc.']);
   assert.deepEqual(
     configChanges(
-      base,
-      new Map([
-        ['biome.json', 'a1'],
-        ['app/kit/biome.json', 'b2'],
-      ]),
-    ),
-    ['A Biome config was added or changed: app/kit/biome.json.'],
-  );
-  assert.deepEqual(configChanges(base, new Map([...base, ['biome.jsonc', 'd1']])), ['A Biome config was added or changed: biome.jsonc.']);
-  assert.deepEqual(
-    configChanges(
-      base,
+      b,
       new Map([
         ['biome.json', 'a2'],
         ['app/kit/biome.json', 'b1'],
       ]),
     ),
     [],
-    'the root one is read rule by rule',
+    'the root one is read key by key',
   );
-  assert.deepEqual(configChanges(base, new Map([['biome.json', 'a1']])), [], 'removing one is fine');
-});
-
-test('lint-caps: a changed extends fails, since it can bring in other rules', () => {
-  assert.deepEqual(check(biome(), { ...biome(), extends: ['./loose.json'] }).problems, ['biome.json’s extends changed.']);
-});
-
-test('lint-caps: a biome-ignore added where another was removed still counts as added', () => {
-  const base = ['server/a.mjs:// biome-ignore lint/style/noExcessiveLinesPerFile: old'];
-  const head = ['server/b.mjs:// biome-ignore lint/style/noExcessiveLinesPerFile: new'];
-  assert.deepEqual(addedIgnores(base, head), head);
-  assert.deepEqual(addedIgnores([...base, ...base], base), []);
-  assert.deepEqual(addedIgnores(base, [...base, ...base]), base, 'a second copy of the same line is new');
 });
 
 test('lint-caps: with no base to compare with, it fails in CI and skips elsewhere', () => {
-  assert.deepEqual(noBase('origin/main', { CI: 'true' }), { code: 1, message: 'lint-caps: failed, there is no origin/main to compare with.' });
-  assert.deepEqual(noBase('origin/main', {}), { code: 0, message: 'lint-caps: skipped, there is no origin/main to compare with.' });
+  assert.equal(noBase('origin/main', { CI: 'true' }).code, 1);
+  assert.equal(noBase('origin/main', {}).code, 0);
 });
 
-test('lint-caps: a level that doesn’t fail the gate counts as turning the rule off', () => {
-  const base = biome([fileCap('server/runtime.mjs', cap(3028))]);
-  for (const level of ['info', 'none'])
-    assert.match(
-      check(base, biome([fileCap('server/runtime.mjs', { level, options: { maxLines: 3028 } })])).problems[0],
-      /went up from 3028 to Infinity/,
-      level,
-    );
-  assert.match(check(base, biome([fileCap('server/runtime.mjs', 'info')])).problems[0], /to Infinity/);
-  for (const level of ['error', 'warn', 'on'])
-    assert.deepEqual(check(base, biome([fileCap('server/runtime.mjs', { level, options: { maxLines: 3028 } })])).problems, [], level);
-});
-
-test('lint-caps: a path spelled with ./ is the same path', () => {
-  const base = biome([fileCap('server/runtime.mjs', cap(3028))]);
-  assert.deepEqual(check(base, biome([fileCap('./server/runtime.mjs', cap(9999))])).problems, [
-    'server/runtime.mjs: its file ceiling went up from 3028 to 9999.',
-  ]);
-});
-
-test('lint-caps: a new module with a length rule off or at a non-failing level fails, not a note', () => {
-  for (const rule of ['off', { level: 'info', options: { maxLines: 400 } }]) {
-    const r = check(biome(), biome([fileCap('server/runtime-jobs.mjs', rule)]));
-    assert.deepEqual(r.problems, ['server/runtime-jobs.mjs: a new module with its file length rule off, which no moved code can need.']);
-    assert.deepEqual(r.notes, []);
-  }
+test('lint-caps: the repo’s own biome.json against itself has no difference', () => {
+  const own = JSON.parse(readFileSync(new URL('../biome.json', import.meta.url), 'utf8'));
+  const c = ceilings(own);
+  assert.equal(c.defaults.file, 300);
+  assert.equal(c.defaults.function, 50);
+  assert.ok(c.paths.get(RT)?.file > 300, 'the largest file has a ceiling');
+  assert.deepEqual(configDiff(own, own), []);
 });
