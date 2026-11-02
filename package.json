@@ -27,7 +27,7 @@
     "lint": "biome check --error-on-warnings .",
     "format": "biome check --write .",
     "typecheck": "tsc -p jsconfig.json",
-    "lint:project": "node tools/lint-tokens.mjs && node tools/lint-dom.mjs && node tools/lint-copy.mjs && node tools/lint-security.mjs",
+    "lint:project": "node tools/lint-tokens.mjs && node tools/lint-dom.mjs && node tools/lint-copy.mjs && node tools/lint-security.mjs && node tools/lint-caps.mjs",
     "check:contrast": "node tools/contrast.mjs",
     "test:process": "node tools/heavy-lock.mjs test:process -- node --test --test-timeout=120000 tests/process/*.test.mjs",
     "check": "node tools/check.mjs",
