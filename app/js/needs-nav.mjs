@@ -77,7 +77,7 @@ document.addEventListener(
   'click',
   (e) => {
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    const ring = /** @type {Element} */ (e.target).closest?.('pb-ring[data-session]');
+    const ring = /** @type {Element} */ (e.target).closest?.('pb-ring[data-session]:not([state="rest"])');
     const se = ring ? S().sessions[/** @type {HTMLElement} */ (ring).dataset.session ?? ''] : null;
     if (!needsYouNow(se)) return;
     e.preventDefault();

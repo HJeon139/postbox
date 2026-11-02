@@ -9,6 +9,9 @@
 //
 // An agent on a host (#120) also says where it runs in its label: where="on host.example.com, connected, last heard
 // from 2 min ago" (app/js/remote.mjs), in words, since the ring’s color says only what the agent is doing.
+//
+// A ring at rest, state="rest", says only whose it is: the ring beside an agent’s earlier reply, whose state and
+// context show beside its latest one (#622). It draws its track alone, in the idle color.
 
 import { ringWhere } from './remote.mjs';
 
@@ -18,22 +21,6 @@ const STATE_VAR = { idle: '--st-idle', think: '--st-think', gen: '--st-gen', too
 const RING_SIZES = { xs: [4.5, 1.75, 3, 2], sm: [6, 2, 3.5, 2], lg: [10, 3, 5, 3] };
 const NS = 'http://www.w3.org/2000/svg';
 export const stateWord = (s) => STATE_WORD[s] ?? 'Idle';
-
-/**
- * Status words beside agent names: a <span class="who-state" data-session> gets “· thinking” and so on. In the
- * transcript (data-item set) it shows only on the agent’s latest message, and only while it’s busy or needs
- * you; elsewhere it always shows.
- */
-export function paintStateWords(root, sessions, latestItemOf) {
-  for (const el of root.querySelectorAll('.who-state[data-session]')) {
-    const se = sessions[el.dataset.session];
-    if (!se) continue;
-    const live = se.state !== 'idle';
-    const show = el.dataset.item ? live && latestItemOf(se) === el.dataset.item : true;
-    const text = show ? `· ${stateWord(se.state).toLowerCase()}` : '';
-    if (el.textContent !== text) el.textContent = text;
-  }
-}
 
 /**
  * One ring of a <pb-ring>: what holds still, drawn in the ring’s own SVG, and what moves, if anything, drawn in an SVG
@@ -52,6 +39,7 @@ function ringSvg(c, r, sw, state, ctx) {
   const arc = (len, width = sw) =>
     `<g transform="rotate(-90 ${c} ${c})"><circle class="arc" cx="${c}" cy="${c}" r="${r}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-dasharray="${len} ${C - len}"/></g>`;
   const track = `<circle class="track" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${sw}"/>`;
+  if (state === 'rest') return { still: track, moving: null };
   // Generating: the arc turns once, then rests.
   if (state === 'gen' && L > 0) return { still: track, moving: { kind: 'turn', style: '', inner: arc(L) } };
   // Thinking: a short swell of the arc’s thickness travels along it, fading in and out.
@@ -113,7 +101,7 @@ class PbRing extends HTMLElement {
     this.render();
   }
   attributeChangedCallback(_, a, b) {
-    if (this.isConnected && a !== b) this.render();
+    if (this.isConnected && a !== b && !this.holding) this.render();
   }
   render() {
     const state = this.getAttribute('state') || 'idle';
@@ -140,7 +128,7 @@ class PbRing extends HTMLElement {
       : '';
     const where = this.getAttribute('where') || '';
     const ctxText = ctx != null ? `${ctx}% of context used` : 'context unknown';
-    const label = `${name}: ${stateWord(state)}, ${ctxText}${where ? `; ${where}` : ''}${subText}`;
+    const label = state === 'rest' ? name : `${name}: ${stateWord(state)}, ${ctxText}${where ? `; ${where}` : ''}${subText}`;
     svg.setAttribute('aria-label', label);
     const title = document.createElementNS(NS, 'title');
     title.textContent = label;
@@ -167,17 +155,36 @@ class PbRing extends HTMLElement {
 }
 if (!customElements.get('pb-ring')) customElements.define('pb-ring', PbRing);
 
-/** A ring element for a session, or updates an existing one in place (keeps its animation running). */
+/**
+ * A ring element for a session, or updates an existing one in place (keeps its animation running). It draws once for
+ * all the attributes that changed, not once for each: a session change moves state and context together (#622).
+ */
 export function ringFor(se, size = 'sm', el = null) {
   el ??= document.createElement('pb-ring');
+  let changed = false;
   const set = (k, v) => {
-    if (el.getAttribute(k) !== v) el.setAttribute(k, v); // lint-allow dom: k is one of the literal names below.
+    if (el.getAttribute(k) === v) return;
+    el.setAttribute(k, v); // lint-allow dom: k is one of the literal names below.
+    changed = true;
   };
+  el.holding = true;
   set('name', `@${se.handle}`);
   set('state', se.deleting ? 'idle' : (se.state ?? 'idle'));
   set('ctx', se.ctx != null ? String(se.ctx) : 'unknown');
   set('subs', subsAttr(se.subagents));
   set('size', size);
   set('where', ringWhere(se));
+  el.holding = false;
+  if (changed && el.isConnected) el.render();
+  return el;
+}
+
+/** Rests a ring (#622): it says only whose it is. ringFor() wakes it. */
+export function restRing(el) {
+  el.holding = true;
+  el.setAttribute('state', 'rest');
+  for (const a of ['ctx', 'subs', 'where']) el.removeAttribute(a);
+  el.holding = false;
+  if (el.isConnected) el.render();
   return el;
 }
