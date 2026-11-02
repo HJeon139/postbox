@@ -82,7 +82,7 @@ async function room() {
   const results = (id = 'c1') => s1.got.filter((m) => m.type === 'result' && m.id === id);
   const done = () => {
     daemon.close();
-    rmSync(home, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 }); // the last reply record may still be landing (see makeHome)
   };
   return { first, postbox, s1, shim, parkRead, results, afterHello, lostFrom, done };
 }
