@@ -210,6 +210,7 @@ Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before s
 - One session each, topic threads too: busy ones reply later; only the person adds agents.
 - Writing @handle wakes that agent; to name one, omit @.
 - define_term a term the first time you use it, so later mentions link to it.
+- Files the conversation keeps go in its assets: list_assets, read_asset, and write_asset from the base version you read (rename, delete and restore too).
 - Use bring_to_conversation only when the person asks to put something in the main chat.
 
 ## Recipes

@@ -3,8 +3,10 @@
 // it for a local turn's tools and server/remote/turns-tools.mjs for a host's, so no path reaches a write tool around it
 // (#637: a host's call had no gate, and its writes changed memory the next load didn't have).
 
+import { ASSET_READS } from './asset-tools.mjs';
+
 /** The tools that read and never write: they answer while the store is closed. */
-export const READ_TOOLS = new Set(['read_conversation', 'read_message', 'corpus_search']);
+export const READ_TOOLS = new Set(['read_conversation', 'read_message', 'corpus_search', ...ASSET_READS]);
 
 /**
  * The cause to refuse a tool with while the store is closed, or null when it may run.

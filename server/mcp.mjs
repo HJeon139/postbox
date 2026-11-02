@@ -2,7 +2,8 @@
 // One endpoint serves every backend. A Claude Code session or an Agent SDK agent connects to
 //   POST <origin>/mcp?session=<postbox session id>&turn=<the turn’s token>
 // and gets show_block, update_block, review_block, show_app, update_app, retire_app, define_term, react, propose_agent, schedule_wake,
-// wake_agent, bring_to_conversation (in side and topic threads), ask_for_tool, corpus_search and add_dataset.
+// wake_agent, bring_to_conversation (in side and topic threads), ask_for_tool, corpus_search, add_dataset, and the
+// asset tools (server/asset-tools.mjs).
 // Every tool returns at once; when you answer a block, your answer reaches the agent later as a new message
 // carrying { blockId, action, values }. The tools’ definitions are in shared/mcp-tools.mjs, which the shim on a
 // remote host serves too (#120); their handlers are here.
@@ -16,7 +17,7 @@
 // and agents posted large apps to /mcp from scripts, outside the tool calls you see. A large app goes by codePath.
 
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
-
+import { assetTools } from './asset-tools.mjs';
 import { offersBring } from './bring.mjs';
 import { noteAnswer } from './empty-reply.mjs';
 import { sameToken } from './helpers.mjs';
@@ -81,9 +82,10 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
       const name = msg.params?.name;
       const args = msg.params?.arguments ?? {};
       if (closedTo(rt, name)) return reply({ content: [{ type: 'text', text: closedTo(rt, name) }], isError: true }); // tool-gate.mjs
-      // react is the reactions’ own (server/reactions.mjs), beside the runtime’s tools, and recorded as they are (#466).
+      // react and the asset tools are their own modules’, beside the runtime’s tools, and recorded as they are (#466).
       const turn = rt.turns.get(sessionId) ?? null;
-      const tools = { ...rt.toolsFor(sessionId, turn), ...recordedTools(rt, turn, { react: (a) => reactTool(rt, rt.session(sessionId), a) }) };
+      const own = { react: (a) => reactTool(rt, rt.session(sessionId), a), ...assetTools(rt, sessionId, turn) };
+      const tools = { ...rt.toolsFor(sessionId, turn), ...recordedTools(rt, turn, own) };
       if (name === 'permission_prompt') return reply(asksByPrompt(rt, sessionId) ? await permission(rt, sessionId, args, closeOrSignal) : NOT_YOUR_PROMPT);
       if (!(name in tools) || !TOOL_DEFS.some((t) => t.name === name)) return fail(-32602, `There’s no tool called “${name}”.`);
       try {

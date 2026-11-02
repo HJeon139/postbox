@@ -1,5 +1,6 @@
 // Scheduled wake lifecycle: persistence, timers, cancellation, restart re-arming and network recovery (#458, #466).
 
+import { ASSET_READS } from './asset-tools.mjs';
 import { httpError } from './helpers.mjs';
 import { ON_HOST } from './remote/turns-shared.mjs';
 import { newId } from './store.mjs';
@@ -99,7 +100,7 @@ export function recordScheduledTool(rt, turn, call, ledger = true) {
 }
 
 /** Postbox’s tools that only read, which can’t have changed anything a recovery must check. */
-const READS = new Set(['read_conversation', 'read_message', 'corpus_search']);
+const READS = new Set(['read_conversation', 'read_message', 'corpus_search', ...ASSET_READS]);
 
 /**
  * A turn’s Postbox tools (toolsFor), each recorded as it starts for a scheduled wake’s recovery (#466). Every backend calls

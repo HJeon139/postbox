@@ -75,6 +75,8 @@ export const ASSETS = Object.freeze({
   roomAssets: 1000,
   /** Versions of one asset. Draft. */
   assetVersions: 1000,
+  /** Assets one list_assets page shows (#516 S3b). */
+  listPage: 100,
   /** A name, in UTF-8 bytes. */
   nameBytes: 255,
   /** A write’s op, which agents choose, in characters of letters, digits, - and _. */

@@ -126,6 +126,14 @@ export const TOOL_ROUTES = Object.freeze({
   // Asks Postbox when attached, answers from the snapshot when not.
   read_conversation: 'read',
   read_message: 'read',
+  // A conversation’s assets (#516 S3b) live only in Postbox, and the snapshot carries none of them; a write’s answer
+  // names the version it made or why it was refused, so each waits.
+  list_assets: 'ask',
+  read_asset: 'ask',
+  write_asset: 'ask',
+  rename_asset: 'ask',
+  delete_asset: 'ask',
+  restore_asset: 'ask',
   permission_prompt: 'host',
 });
 

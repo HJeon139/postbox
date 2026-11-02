@@ -6,6 +6,7 @@
 
 import { LIMITS } from '../../shared/limits.mjs';
 import { REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
+import { assetTools } from '../asset-tools.mjs';
 import { noteAnswer } from '../empty-reply.mjs';
 import { reactTool } from '../reactions.mjs';
 import { recordedTools } from '../scheduled-wakes.mjs';
@@ -66,9 +67,13 @@ export async function onTool(rts, hostId, m) {
 
 /** @param {RemoteTurns} rts @param {Live} live @param {{ name: string, args: Record<string, any> }} m @returns {Promise<{ ok: boolean, text: string, closed?: boolean }>} */
 async function applyTool(rts, live, m) {
-  // react is the reactions’ own (server/reactions.mjs), beside the runtime’s tools and recorded as they are, as server/mcp.mjs adds it.
-  const react = { react: (/** @type {any} */ a) => reactTool(rts.rt, rts.rt.session(live.sessionId), a) };
-  const tools = { ...rts.rt.toolsFor(live.sessionId, live.rt), ...recordedTools(rts.rt, live.rt, react) };
+  // react and the asset tools are their own modules’, beside the runtime’s tools and recorded as they are, as server/mcp.mjs
+  // adds them; the asset tools take text only here, since a path names a file on the host.
+  const own = {
+    react: (/** @type {any} */ a) => reactTool(rts.rt, rts.rt.session(live.sessionId), a),
+    ...assetTools(rts.rt, live.sessionId, live.rt, { onHost: true }),
+  };
+  const tools = { ...rts.rt.toolsFor(live.sessionId, live.rt), ...recordedTools(rts.rt, live.rt, own) };
   if (m.name === 'add_dataset')
     return {
       ok: false,
