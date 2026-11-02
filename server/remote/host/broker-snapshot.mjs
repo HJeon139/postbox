@@ -2,7 +2,6 @@
 // snapshot.json in the turn folder, or in memory until `start` makes the folder, for the reading tools
 // (broker-reading.mjs). broker.mjs’s header says how its threads and items are ordered.
 
-import { promises as fsp } from 'node:fs';
 import { REMOTE_LIMITS, TURN_FILES } from '../../../shared/remote-protocol.mjs';
 import { exists, writeAtomic } from './broker-records.mjs';
 
@@ -21,7 +20,7 @@ export async function snapshotOf(b, turn) {
   if (had) return had;
   let snap;
   try {
-    snap = JSON.parse(await fsp.readFile(b.p.turn(turn, TURN_FILES.snapshot), 'utf8'));
+    snap = JSON.parse(await b.io.readFile(b.p.turn(turn, TURN_FILES.snapshot), 'utf8'));
   } catch {
     return null;
   }

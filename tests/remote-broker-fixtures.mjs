@@ -76,7 +76,9 @@ export function makeHome() {
     writeFileSync(join(dir, TURN_FILES.shimToken), turnToken(turn), { mode: 0o600 });
     return dir;
   };
-  return { home, p, work, turn, done: () => rmSync(home, { recursive: true, force: true }) };
+  // An offline answer now reaches the shim before the reply record is written (settle.md), so a spec that ends on the answer
+  // can remove the home while that last append lands in it. Retrying the removal is what Node offers for ENOTEMPTY.
+  return { home, p, work, turn, done: () => rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 }) };
 }
 
 /**
