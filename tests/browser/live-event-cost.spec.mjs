@@ -199,6 +199,41 @@ test('#622: the ring beside an earlier reply says only whose it is, after a redr
   await earlierSaysOnlyWhose('after a reload');
 });
 
+test('#622: the ring and the words that follow an agent sit on one line, in a turn of two parts and after a block moves', async ({ page }) => {
+  const p = app.rt.createPersona({ handle: 'oneline' });
+  const t = app.rt.createThread({ projectId: 'pr_live', title: 'One line', personaIds: [p.id] });
+  const se = app.rt.sessionsIn(t.id)[0];
+  const reply = (turnId, text) =>
+    app.rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, turnId, text, status: 'done' });
+  app.rt.toolsFor(se.id).show_block({ block: confirm(1) });
+  app.rt.addItem(t.id, { kind: 'user', text: 'Carry on.', status: 'done' });
+  const first = reply('tu_o1', 'The first part of a turn.');
+  reply('tu_o1', 'Its second part, under the same line.');
+  app.rt.updateSession(se.id, { state: 'needs', ctx: 30 });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  // Each speaker line of the agent: its message, whether its ring follows, and its words.
+  const lines = () =>
+    page.locator(`.transcript[data-thread="${t.id}"] .who:has(pb-ring[data-session="${se.id}"])`).evaluateAll((ws) =>
+      ws.map((w) => ({
+        item: /** @type {HTMLElement} */ (w.closest('[data-key]')).dataset.key,
+        ring: w.querySelector('pb-ring')?.getAttribute('state'),
+        words: w.querySelector('.who-state')?.textContent,
+      })),
+    );
+  const following = async () => (await lines()).filter((l) => l.ring !== 'rest' || l.words);
+  await expect.poll(following, { message: 'in a turn of two parts, its first part’s line' }).toEqual([{ item: first.id, ring: 'needs', words: '· needs you' }]);
+  const block = app.store.items(t.id).find((x) => x.kind === 'block');
+  // After your message, so the block names its speaker where it lands.
+  app.rt.addItem(t.id, { kind: 'user', text: 'And the block?', status: 'done' });
+  app.rt.bringForward(t.id, block.id, { what: 'block', title: 'Ship step 1' });
+  await expect
+    .poll(following, { message: 'once the block moves, its line, before any session change' })
+    .toEqual([{ item: block.id, ring: 'needs', words: '· needs you' }]);
+  app.rt.updateSession(se.id, { state: 'tool' });
+  await expect.poll(following, { message: 'and after one' }).toEqual([{ item: block.id, ring: 'tool', words: '· calling tools' }]);
+});
+
 test('#622: a session event in a 1,000-item room rebuilds the rings that show it, not one per reply', async ({ page }) => {
   test.setTimeout(180_000);
   const { t, sa } = await seeded(page);

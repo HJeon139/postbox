@@ -23,7 +23,7 @@ import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.m
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
-import { paintReplyRings } from './reply-rings.mjs';
+import { replyLine } from './reply-rings.mjs';
 import { stoppedTag } from './reply-stop.mjs';
 import { replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
@@ -114,7 +114,6 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     const n = render(list[i], list[i - 1]);
     const focusedId = replaceTranscriptItem(old, n);
     nodes.set(id, n);
-    paintReplyRings(el, S().sessions[list[i].sessionId]);
     if (focusedId) document.getElementById(focusedId)?.focus();
   };
   const all = () => {
@@ -130,7 +129,6 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       nodes.set(it.id, n);
       el.append(n);
     });
-    for (const id of new Set(list.map((x) => x.sessionId))) paintReplyRings(el, S().sessions[id]);
     hostTurns.paint();
     paintWorking();
   };
@@ -333,8 +331,6 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       const n = render(d.item, list[list.length - 2]);
       nodes.set(d.item.id, n);
       el.append(n);
-      // The agent’s reply before this one rests its ring, now that this one has the live one.
-      paintReplyRings(el, S().sessions[d.item.sessionId]);
       paintWorking();
       grew();
     } else if (ch.type === 'item.move' && d.threadId === threadId) {
@@ -352,7 +348,6 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       const n = render(list[list.length - 1], list[list.length - 2]);
       nodes.set(d.id, n);
       el.append(n);
-      paintReplyRings(el, S().sessions[list[list.length - 1].sessionId]);
       paintWorking();
       grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
@@ -370,7 +365,6 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     } else if (ch.type === 'glossary' && d.threadId === threadId) {
       for (const it of itemsOf(threadId)) if (it.kind === 'agent' && usesTerm(it, d.entry, nodes.get(it.id))) updateText(it.id, true);
     } else if (ch.type === 'session') {
-      paintReplyRings(el, d);
       // An agent at work here may not be one of this thread’s own (#110): its turn is in it.
       paintWorking();
       for (const it of itemsOf(threadId))
@@ -447,17 +441,15 @@ function fillWorkRow(row, se) {
   );
 }
 
-const who = (it, { you = false } = {}) => {
+const who = (it, { you = false, threadId = '' } = {}) => {
   const se = S().sessions[it.sessionId];
   const ts = h('span.ts', { title: `${dayOf(it.at)} ${timeOf(it.at)}` }, `${timeOf(it.at)}`);
   // A turn typed into Claude Code in a terminal, mirrored here, says so.
   const via = it.via === 'terminal' ? h('span.via', 'from terminal') : null;
   if (you) return h('div.who', ts, h('b', 'You'), via);
-  const ring = se ? ringFor(se, 'xs') : h('pb-ring', { name: `@${it.handle}`, state: 'idle', ctx: '0', size: 'xs' });
-  if (se) ring.dataset.session = se.id;
-  const state = se ? h('span.who-state', { dataset: { session: se.id, item: it.id }, 'aria-live': 'off' }) : null;
+  const { ring, word } = se ? replyLine(it, se, threadId) : { ring: h('pb-ring', { name: `@${it.handle}`, state: 'idle', ctx: '0', size: 'xs' }), word: null };
   const woke = it.woke ? h('span.woke', wokeText(it.woke)) : null;
-  return h('div.who', ring, h('b', `@${it.handle}`), mockMarker(se), state, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, woke, ts);
+  return h('div.who', ring, h('b', `@${it.handle}`), mockMarker(se), word, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, woke, ts);
 };
 
 // Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a message in a
@@ -545,7 +537,7 @@ function renderItem(it, prev, ctx) {
       if (it.status === 'replaced') return h('div.col.replaced', { hidden: true });
       const node = h(
         'div.col.turn',
-        showWho ? who(it) : null,
+        showWho ? who(it, ctx) : null,
         ...activityParts(it),
         it.text || it.status === 'streaming' ? h('div.md') : null,
         // What the turn changed, ran and published, under its last reply (#132, #195), leading to Work.
@@ -606,7 +598,7 @@ function renderItem(it, prev, ctx) {
       if (it.valid && it.block.type === 'app') {
         // Named like any other block (#88). Only the agent that wrote an app can update it, so this is also who
         // made each version.
-        return h('div.wide', showWho ? h('div.col', who(it)) : null, renderAppItem(it, ctx), it.work ? workChip(it, ctx) : null);
+        return h('div.wide', showWho ? h('div.col', who(it, ctx)) : null, renderAppItem(it, ctx), it.work ? workChip(it, ctx) : null);
       }
       // revision: the one the person answered (#123); a card’s or table’s action doesn’t say.
       const act = async (action, values, revision) => {
@@ -614,7 +606,7 @@ function renderItem(it, prev, ctx) {
         focusComposer();
         return r;
       };
-      const node = h('div.col.turn', showWho ? who(it) : null, renderBlock(it, { act, threadId: ctx.threadId }), it.work ? workChip(it, ctx) : null);
+      const node = h('div.col.turn', showWho ? who(it, ctx) : null, renderBlock(it, { act, threadId: ctx.threadId }), it.work ? workChip(it, ctx) : null);
       if (it.valid && it.block.type === 'review' && it.block.format === 'app') node.dataset.appVersion = String(S().apps[it.block.appId]?.current ?? '');
       return node;
     }
@@ -823,7 +815,7 @@ function proposalBlock(it, ctx, showWho) {
       .catch((e) => toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }));
   return h(
     'div.col.turn',
-    showWho ? who(it) : null,
+    showWho ? who(it, ctx) : null,
     h(
       'div.block',
       { role: 'group', class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
