@@ -121,11 +121,5 @@ export function brokerState({
 
 /** @param {Broker} b @param {string} turn @param {string} type @param {Record<string, unknown>} body */
 export function toShims(b, turn, type, body) {
-  for (const s of b.shims.get(turn) ?? []) {
-    try {
-      s.send(type, body);
-    } catch (e) {
-      b.log(`A shim of turn ${turn} couldn’t take ${type}: ${/** @type {any} */ (e)?.message || e}`);
-    }
-  }
+  for (const s of b.shims.get(turn) ?? []) s.send(type, body);
 }
