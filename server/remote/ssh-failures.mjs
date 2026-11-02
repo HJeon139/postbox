@@ -63,7 +63,6 @@ const UNREACHABLE = new RegExp(
   'm',
 );
 const OFFENDING = /^Offending \S+ key in (.+):(\d+)$/m;
-const LAUNCHER_MISSING = /\.postbox-remote\/[^/\s]+\/server\/remote\/host\/host: (?:No such file or directory|not found)$/m;
 
 /** The destination’s host, without a user, for commands like ssh-keygen -R. @param {string} d */
 const hostOnly = (d) => d.replace(/^.*@/, '');
@@ -147,9 +146,9 @@ export function classifyExit({ destination, code, signal, stderr }) {
     if (UNREACHABLE.test(text)) return failure('unreachable', destination, { ...detail, said: lastMatch(text) });
     return failure('failed', destination, detail);
   }
-  // The login shell couldn’t find or run the fixed host launcher. Its recorded error distinguishes an absent version
-  // from a launcher that exists but the shell can’t execute.
-  if (code === 127 || code === 126) return failure(LAUNCHER_MISSING.test(text) ? 'not-installed' : 'could-not-start', destination, detail);
+  // The login shell reserves 127 for a command it couldn’t find and 126 for one it found but couldn’t run.
+  if (code === 127) return failure('not-installed', destination, detail);
+  if (code === 126) return failure('could-not-start', destination, detail);
   if (code === 0) return failure('ended', destination, detail);
   return failure('failed', destination, detail);
 }

@@ -56,7 +56,7 @@ test('a missing launcher and an installed launcher that cannot start are distinc
     const f = FIXTURES.find((x) => x.name === name);
     return classifyExit({ destination: HOST, code: f.code, signal: null, stderr: f.stderr });
   };
-  const missing = by('not-installed');
+  const missing = by('not-installed-zsh');
   assert.equal(missing.kind, 'not-installed');
   assert.match(missing.message, /isn’t installed/);
   assert.match(missing.next, /Install Postbox/);
@@ -68,8 +68,10 @@ test('a missing launcher and an installed launcher that cannot start are distinc
 });
 
 test('only what Postbox can’t fix by waiting stops the retries', () => {
-  for (const kind of ['sign-in', 'host-key', 'not-installed', 'could-not-start', 'version', 'bad-token', 'busy', 'no-node'])
+  for (const kind of ['sign-in', 'host-key', 'not-installed', 'could-not-start', 'version', 'bad-token', 'busy', 'no-node']) {
+    assert.ok(Object.hasOwn(FAILURE_KINDS, kind), kind);
     assert.equal(retries(kind), false, kind);
+  }
   for (const kind of ['unreachable', 'ended', 'failed']) assert.equal(retries(kind), true, kind);
 });
 
