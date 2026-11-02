@@ -101,3 +101,29 @@ test('close also waits for an answer still being read from the snapshot, before 
     await h.done();
   }
 });
+
+test('close also waits for a call record that no claim covers, still being written', async () => {
+  const h = makeHome();
+  try {
+    const turn = 't_c5';
+    h.turn(turn);
+    const hold = holdingIo((c) => c.kind === 'appendFile' && c.line.includes('"op":"call"'));
+    const k = makeBroker(h, { io: hold.io });
+    await k.post('snapshot', { turn, ...snap });
+    await k.b.starting(turn);
+    const s = connectShim(k.b, turn);
+    await s.next('welcome');
+    s.send('call', { id: 'c1', name: 'read_message', args: { id: 'i0' } });
+    await reached(hold); // the call record is being written; the call holds no claim
+    const closing = k.b.close();
+    assert.equal(await state(closing), 'pending', 'close waits for the append');
+    hold.release();
+    await closing;
+    assert.ok(
+      journal(h, turn).some((r) => r.op === 'call'),
+      'and the call record has landed when it does',
+    );
+  } finally {
+    await h.done();
+  }
+});
