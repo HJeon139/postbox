@@ -455,7 +455,7 @@ Decided (8.5): any change to an item reaches the agents it concerns, as `notify`
 
 | Tool | Change |
 |---|---|
-| `read_conversation`, `read_message` on hosts | Answered from the snapshot when it can; otherwise the host asks Postbox. “Unavailable” stays distinct from “not found”. |
+| `read_conversation`, `read_message` on hosts | The host asks Postbox while it is attached. If Postbox does not answer in 100 s, or the link drops, the host answers from its snapshot with a note that newer items may be missing (#582). “Unavailable” stays distinct from “not found”. |
 | `react` | No change |
 | `wake_agent` | No change in this design (removed later by #481) |
 

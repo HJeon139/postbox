@@ -1,11 +1,12 @@
 // Postbox’s messages to the daemon’s broker (#120): the snapshot, answers and replies, and what the broker sends
 // again after each Postbox hello.
 
+import { REMOTE_READ_TIMEOUT_MS } from '../../../shared/limits.mjs';
 import { endPrompt, onAnswer, orphaned, promptBody } from './broker-prompts.mjs';
 import { ended, exists, note } from './broker-records.mjs';
 import { saveSnapshot, snapshotItems } from './broker-snapshot.mjs';
 import { CANCELED } from './broker-state.mjs';
-import { onReply, toolBody } from './broker-tools.mjs';
+import { armReadTimer, onReply, settled, settleOffline, toolBody } from './broker-tools.mjs';
 
 /** @typedef {import('./broker-state.mjs').Broker} Broker */
 
@@ -52,11 +53,33 @@ export async function onHello(b, send) {
       .filter((q) => !q.answer && (over.has(q.turn) || orphaned(b, q)))
       .map((q) => endPrompt(b, q.turn, q.id, b.now(), over.has(q.turn) ? CANCELED : 'expired', true)),
   );
-  for (const t of b.tools.values()) if (!t.replied) send('tool', toolBody(t));
+  for (const t of b.tools.values()) {
+    // Sent on unless answered, or being answered offline. A live reply still being written is neither: if that write fails,
+    // nothing else would send the call (the integrator's review of #616).
+    if (!t.replied && !t.offline) {
+      if (t.route === 'read') {
+        const elapsed = Math.max(0, b.now() - (t.arrived ?? b.now()));
+        if (elapsed >= REMOTE_READ_TIMEOUT_MS) {
+          settleOffline(b, t).catch(b.log);
+          continue;
+        }
+      }
+      send('tool', toolBody(t));
+      if (t.route === 'read') armReadTimer(b, t);
+    }
+  }
   for (const q of b.prompts.values()) if (!q.answer) send('prompt', promptBody(q));
   for (const [k, x] of [...b.expiries]) {
     send('prompt-expired', { id: x.id, turn: x.turn, at: x.at, reason: x.reason });
     b.expiries.delete(k);
     note(b, x.turn, 'prompts', { op: 'expiry-sent', id: x.id });
   }
+}
+
+/** Postbox's connection is gone and no replacement has said hello: every unsettled read is answered from the snapshot now (#582, link.md). @param {Broker} b */
+export function driverLost(b) {
+  // The daemon closes the broker before its connections, so the last close of a driver can arrive here after it: the
+  // folders may be gone, and nothing is waiting for the answer.
+  if (b.closed) return;
+  for (const t of b.tools.values()) if (t.route === 'read' && !settled(t)) settleOffline(b, t).catch(b.log);
 }
