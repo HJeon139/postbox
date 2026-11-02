@@ -32,7 +32,7 @@ export function eraseThreads(rt, ids, why, stopped = []) {
       rt.stopMirrorFor(sid);
       if (rt.s.sessions[sid]) rt.store.emit('remove', { kind: 'session', id: sid });
     }
-    for (const app of Object.values(rt.s.apps)) if (app.threadId === id) rt.store.emit('remove', { kind: 'app', id: app.id });
+    for (const app of Object.values(rt.store.pending.apps())) if (app.threadId === id) rt.store.emit('remove', { kind: 'app', id: app.id });
   }
   for (const id of [...ids].reverse()) rt.store.emit('remove', { kind: 'thread', id });
 }

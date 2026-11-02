@@ -53,7 +53,7 @@ export function agentWake(
   // A mention is already the waker’s message there, so the wake’s number in the chain (#114, telemetry) goes on the
   // turn’s first item: it marks the turn, not necessarily the paragraph with the mention. One message can wake several
   // agents, so each wake’s number is kept (wakes); hop stays the first. wake_agent’s message is posted as the waker’s.
-  const said = itemId ? rt.store.item(at, itemId) : null;
+  const said = itemId ? rt.store.pending.items(at).find((x) => x.id === itemId) : null;
   if (said) rt.patchItem(at, said.id, { hop: said.hop ?? hop, wakes: [...(said.wakes ?? (said.hop ? [said.hop] : [])), hop] });
   const it =
     said ??
@@ -114,7 +114,7 @@ export function endChain(rt, threadId) {
   if (rt.sessionsIn(conv).some((se) => rt.turns.has(se.id) || rt.exiting.has(se.id))) return;
   const threads = Object.values(rt.s.threads).filter((t) => rt.lineage(t.id).at(-1) === conv);
   if (threads.some((t) => (t.queue ?? []).some((q) => q.kind === 'wake'))) return;
-  if (rt.store.items(conv).some((x) => x.kind === 'hop' && x.status === 'open')) return;
+  if (rt.store.pending.items(conv).some((x) => x.kind === 'hop' && x.status === 'open')) return;
   rt.putThread({ ...rt.s.threads[conv], hops: 0 });
 }
 
@@ -194,7 +194,7 @@ export function archiveForks(rt) {
   for (const t of Object.values(rt.s.threads)) {
     if (t.queue?.some((q) => q.sessionIds.some((id) => gone.has(id))))
       rt.putThread({ ...t, queue: t.queue.map((q) => ({ ...q, sessionIds: q.sessionIds.filter((id) => !gone.has(id)) })).filter((q) => q.sessionIds.length) });
-    for (const it of rt.store.items(t.id))
+    for (const it of rt.store.pending.items(t.id))
       if (it.kind === 'hop' && it.status === 'open' && gone.has(it.fromSessionId)) rt.patchItem(t.id, it.id, { status: 'declined' });
   }
   rt.store.emit('settings', { forksArchived: true });
@@ -209,10 +209,10 @@ export function archiveForks(rt) {
 export function bumpSideLink(rt, sideThreadId) {
   const side = rt.s.threads[sideThreadId];
   if (side?.kind !== 'side') return;
-  const link = rt.store.items(side.parentId).find((x) => x.kind === 'sidelink' && x.sideThreadId === side.id);
+  const link = rt.store.pending.items(side.parentId).find((x) => x.kind === 'sidelink' && x.sideThreadId === side.id);
   if (!link) return;
   // A turn that failed or was stopped before it said anything left an empty placeholder: not a message.
-  const said = rt.store.items(side.id).filter((x) => x.kind === 'user' || (x.kind === 'agent' && (x.text || x.status === 'streaming')));
+  const said = rt.store.pending.items(side.id).filter((x) => x.kind === 'user' || (x.kind === 'agent' && (x.text || x.status === 'streaming')));
   rt.patchItem(side.parentId, link.id, { count: new Set(said.map((x) => x.turnId ?? x.id)).size, lastAt: said.at(-1)?.at ?? link.at });
 }
 

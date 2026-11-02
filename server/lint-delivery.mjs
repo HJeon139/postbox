@@ -16,7 +16,7 @@ export function sendLint(rt, turnId) {
   const until = now() + (rt.config.lintWaitMaxMs ?? LINT_WAIT_MAX_MS);
   const send = () => {
     entry.timer = null;
-    const pending = Object.values(rt.s.apps).filter((app) => app.sessionId === entry.sessionId && app.check.status === 'pending' && !app.retired);
+    const pending = Object.values(rt.store.pending.apps()).filter((app) => app.sessionId === entry.sessionId && app.check.status === 'pending' && !app.retired);
     // An app this agent showed is still being checked in the browser: its warnings join this lint turn.
     if (wait > 0 && pending.length && now() < until) {
       entry.timer = setTimer(send, wait);

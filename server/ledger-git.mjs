@@ -142,7 +142,7 @@ export async function pushed(ledger, root, sha) {
  * repos: [{ root, branch, upstream }] }. state is uncommitted, committed, pushed, unchanged, ignored or none (not in git).
  */
 export async function gitState(ledger, convId) {
-  const entries = ledger.entries(convId);
+  const entries = ledger.s.work?.[convId] ?? []; // the Work view's answer: published only (#601)
   const files = entries.filter((e) => e.kind === 'file');
   const commits = entries.filter((e) => e.kind === 'commit');
   /** @type {Record<string, any>} */

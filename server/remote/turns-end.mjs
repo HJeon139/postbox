@@ -104,7 +104,7 @@ export function stopped(rts, turn, { by, why } = {}) {
  */
 function stoppedHung(rts, turn, live, se, why) {
   const rt = rts.rt;
-  const own = rt.store.items(turn.threadId).filter((/** @type {any} */ it) => it.turnId === turn.id && it.kind === 'agent');
+  const own = rt.store.pending.items(turn.threadId).filter((/** @type {any} */ it) => it.turnId === turn.id && it.kind === 'agent');
   const stoppedHere = own.filter((/** @type {any} */ it) => it.status === 'stopped');
   for (const it of stoppedHere.length ? stoppedHere : own.slice(-1)) rt.patchItem(turn.threadId, it.id, { note: why });
   updateRemote(rts, se.id, { state: 'hung', at: rts.now(), message: why, resume: null });

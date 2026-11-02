@@ -26,7 +26,7 @@ export async function permission(rt, sessionId, args, closeOrSignal = null) {
   const useId = tool_use_id ? String(tool_use_id) : null;
   const onAbort = () => {
     for (const [id, w] of rt.permissionWaits ?? [])
-      if (w.sessionId === sessionId && useId && rt.store.item(w.threadId, id)?.toolUseId === useId)
+      if (w.sessionId === sessionId && useId && rt.store.pending.items(w.threadId).find((x) => x.id === id)?.toolUseId === useId)
         rt.settlePermission(id, 'expired', 'The permission request closed before anyone answered.');
   };
   signal?.addEventListener?.('abort', onAbort, { once: true });
