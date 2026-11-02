@@ -99,7 +99,7 @@ const PENDING = {
 const LEDGER = {
   'ledger-commands.mjs': ['turnEnded', 'commandSeen', 'compare', 'newCommits', 'newCommits', 'leftBranch'], // commands and commits the turn is recording
   'ledger-remote.mjs': ['hostEdit'], // a host edit the turn is recording
-  'ledger-answers.mjs': ['restore', 'restore'], // restore, which writes
+  'ledger-answers.mjs': ['restore'], // restore reads back the entry it just patched
   'ledger.mjs': ['entry', 'commandEnded', 'commandEnded', 'taskEnded', 'jobUpdate', 'endTurn', 'endTurn', 'endTurn', 'recordChange'], // entries the ledger patches as the turn goes
   'runtime.mjs': ['endWork'], // endWork’s line for the turn
   'thread-summary.mjs': ['summarizeThread'], // the summary’s cost, patched on its entry

@@ -47,7 +47,7 @@ export async function output(ledger, convId, entryId) {
  */
 /** @param {import('./ledger.mjs').Ledger} ledger @param {string} convId @param {string} fileId */
 export async function restore(ledger, convId, fileId) {
-  const f = ledger.entry(convId, fileId);
+  const f = published(ledger, convId, fileId); // the person aims it at the file as the Work view shows it
   if (f?.kind === 'edit') throw onHost(f);
   if (f?.kind !== 'file') throw fail(404, 'That file isn’t in this conversation’s work.');
   if (!known(f.before)) throw fail(409, `Postbox didn’t keep a copy of ${f.rel} from before: it was ${f.before?.big ? 'larger than 4 MB' : 'unreadable'}.`);
