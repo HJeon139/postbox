@@ -5,7 +5,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { basename, resolve, sep } from 'node:path';
-import { ASKING, validateBlock } from '../shared/catalog.mjs';
+import { ASKING } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
 import { commentAt } from '../shared/review-comments.mjs';
@@ -16,7 +16,7 @@ import { listProcesses } from './adapters/process-group.mjs';
 import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
-import { appCheckText, appReceipt } from './app-check-status.mjs';
+import { appCheckText } from './app-check-status.mjs';
 import { retireApp } from './app-retire.mjs';
 import {
   APP_HOLD_MAX,
@@ -34,7 +34,8 @@ import {
   updateApp,
 } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
-import { act, answerDelivered, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
+import { showBlock } from './block-show.mjs';
+import { act, answerDelivered, closedText, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
 import { catchUp, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
@@ -3066,68 +3067,8 @@ export class Runtime {
     const threadId = () => turn?.threadId ?? se().threadId;
     return recordedTools(rt, turn, {
       /** @param {{ block: any }} args @param {{ files?: AppFile[] }} [given]  data files Postbox read for show_app (#54) */
-      show_block({ block }, given = {}) {
-        // An outcome reports what came of an answer (#94). On a new block it would show under whatever the person
-        // answers, even Cancel, so it’s refused here and only taken by update_block once the block is answered.
-        if (block && typeof block === 'object' && Object.hasOwn(block, 'outcome'))
-          return { ok: false, message: OUTCOME_LATER(String(block.id ?? 'this block'), 'The block wasn’t shown.') };
-        const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
-        // App ids are global. Yours already: it’s a new version. Another agent’s: yours gets a fresh id, and
-        // theirs (its versions and saved state) is left alone.
-        /** @type {string | null} */
-        let renamed = null;
-        if (v.ok && v.block.type === 'app' && rt.s.apps[v.block.id]) {
-          const { id, code, permissions, title } = /** @type {any} */ (v.block);
-          if (rt.s.apps[id].sessionId === sessionId) return this.update_app({ id, code, permissions, title }, given);
-          renamed = newId(String(id).slice(0, 40));
-          v.block = { ...v.block, id: renamed };
-        }
-        // Any other id names one block of this session in this conversation, answered or not, so an answer to it,
-        // and an update or outcome by it, always means that block (#125). Showing it again is refused, not turned
-        // into an update: an update can reopen a block the person answered.
-        if (v.ok && v.block.type !== 'app') {
-          const id = v.block.id;
-          const shown = rt.store.items(threadId()).find((x) => x.kind === 'block' && x.valid && x.sessionId === sessionId && x.block.id === id);
-          // An app’s id can’t take a block’s update, so that case only asks for a new id.
-          if (shown?.block.type === 'app')
-            return { ok: false, message: `${id} is the id of your app “${shown.block.title ?? id}”. Pick a new id for this block.` };
-          if (shown) return { ok: false, message: `Block ${id} is already shown. Use update_block to change it, or pick a new id.` };
-        }
-        endSegment();
-        const it = rt.addItem(
-          threadId(),
-          v.ok
-            ? {
-                kind: 'block',
-                sessionId,
-                handle: se().handle,
-                turnId: turn?.id ?? null,
-                valid: true,
-                block: v.block,
-                answered: false,
-                ...wokeOf(turn),
-              }
-            : {
-                kind: 'block',
-                sessionId,
-                handle: se().handle,
-                turnId: turn?.id ?? null,
-                valid: false,
-                raw: block,
-                errors: v.errors,
-                reason: v.reason,
-                fallback: v.fallback,
-              },
-        );
-        if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id, threadId(), given.files ?? []);
-        return v.ok
-          ? v.block.type === 'app'
-            ? appReceipt(
-                rt.s.apps[v.block.id],
-                renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown app ${v.block.id}.`,
-              )
-            : { ok: true, message: `Shown block ${v.block.id}.` }
-          : { ok: false, message: `The block was invalid, so the person sees its fallback text. Problems: ${v.errors.join(' ')}` };
+      show_block(args, given = {}) {
+        return showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools: this }, args, given);
       },
       update_block(args) {
         return updateBlock(rt, sessionId, args, { turn, se, threadId, endSegment });
