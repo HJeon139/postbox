@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.9.2 (2026-11-02)
+
+### Fixes
+
+- **work:** files' window buttons say later and earlier, as the other lists do
+- **work:** a window around the item Work opened at moves with it
+- **work:** choosing one agent's work draws its lists, not a stretch past their end
+- **work:** full-screen Work draws its long lists 50 at a time
+- **work:** a turn's list finds a patched entry by id, not by a scan of the ledger
+- **work:** one turn's summary reads that turn's entries, not the whole ledger
+
 ## 1.9.1 (2026-11-02)
 
 ### Fixes
