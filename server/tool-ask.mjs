@@ -26,7 +26,7 @@ export function askForTool(rt, sessionId, { tool, why } = {}, endSegment = () =>
   if (!LABELS.has(id)) return { ok: false, message: `There’s no tool “${id}” to turn on. The ids are ${[...LABELS.keys()].join(', ')}.` };
   if ((persona?.tools ?? []).includes(id))
     return { ok: false, message: `${id} is already on for you. Its tools are in your list from your next turn after it was turned on.` };
-  const open = rt.store.items(threadId).find((x) => x.kind === 'toolask' && x.sessionId === sessionId && x.tool === id && x.status === 'open');
+  const open = rt.store.pending.items(threadId).find((x) => x.kind === 'toolask' && x.sessionId === sessionId && x.tool === id && x.status === 'open');
   if (open) return { ok: true, message: `You already asked for ${id}, and the card is waiting for the person. End your turn.` };
   endSegment();
   rt.addItem(threadId, {
@@ -70,8 +70,8 @@ export function resolveToolAsk(rt, threadId, itemId, action) {
  */
 export function settleToolAsks(rt, persona) {
   const has = new Set(persona.tools ?? []);
-  for (const [threadId, items] of Object.entries(rt.s.items))
-    for (const it of items)
+  for (const threadId of Object.keys(rt.s.items))
+    for (const it of rt.store.pending.items(threadId))
       if (it.kind === 'toolask' && it.personaId === persona.id && it.status === 'open' && has.has(it.tool)) answered(rt, threadId, it, 'on');
 }
 

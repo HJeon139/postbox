@@ -5,7 +5,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { basename, resolve, sep } from 'node:path';
-import { ASKING, validateBlock } from '../shared/catalog.mjs';
+import { ASKING } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
 import { commentAt } from '../shared/review-comments.mjs';
@@ -16,7 +16,7 @@ import { listProcesses } from './adapters/process-group.mjs';
 import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
-import { appCheckText, appReceipt } from './app-check-status.mjs';
+import { appCheckText } from './app-check-status.mjs';
 import { retireApp } from './app-retire.mjs';
 import {
   APP_HOLD_MAX,
@@ -31,10 +31,12 @@ import {
   needAppSend,
   registerApp,
   resolveAppSend,
+  showApp,
   updateApp,
 } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
-import { act, answerDelivered, closedText, OUTCOME_LATER, unreadAnswer, updateBlock } from './blocks.mjs';
+import { showBlock } from './block-show.mjs';
+import { act, answerDelivered, closedText, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
 import { catchUp, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
@@ -362,7 +364,7 @@ export class Runtime {
     // A reply in a topic thread counts on the message it branched from, as “3 replies”.
     const t = this.s.threads[threadId];
     if (t?.kind === 'topic' && (it.kind === 'user' || it.kind === 'agent')) {
-      const replies = this.store.items(threadId).filter((x) => x.kind === 'user' || x.kind === 'agent').length;
+      const replies = this.store.pending.items(threadId).filter((x) => x.kind === 'user' || x.kind === 'agent').length;
       this.patchItem(t.parentId, t.rootItemId, { replies, lastReplyAt: it.at });
     }
     // …and a message in a side thread on its line in the conversation, whoever wrote it (#130).
@@ -395,7 +397,7 @@ export class Runtime {
    * @returns {boolean} whether it moved
    */
   bringForward(threadId, id, stub, patch = {}) {
-    const items = this.store.items(threadId);
+    const items = this.store.pending.items(threadId);
     const i = items.findIndex((x) => x.id === id);
     if (i < 0) return false;
     if (i === items.length - 1) {
@@ -998,7 +1000,7 @@ export class Runtime {
         .endTurn(turn, { status })
         .then(() => {
           const line = turn.work ? turnLine(this.ledger.entries(turn.work.convId), turn.id) : null;
-          const last = this.store.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
+          const last = this.store.pending.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
           if (line && last) this.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
         })
         // Its callers don’t await it: a ledger that fails here must not become an unhandled rejection.
@@ -1020,7 +1022,7 @@ export class Runtime {
     this.mirrors.get(turn.sessionId)?.tail.skipToEnd();
     const se = this.s.sessions[turn.sessionId];
     if (!se) return;
-    const items = this.store.items(turn.threadId);
+    const items = this.store.pending.items(turn.threadId);
     // A turn that ends with no reply is never posted as an empty message (#485, empty-reply.mjs): it fails, saying so.
     if (!err && endedWithoutReply(turn, items)) err = emptyReply(this, se, turn);
     // The open segment by its id, even while held behind a commit; then any other still streaming in the visible state.
@@ -1090,7 +1092,7 @@ export class Runtime {
     }
     // An app-check turn that ended without a new version: show the app with a note instead of waiting forever.
     if (turn.kind === 'app-check') {
-      for (const app of Object.values(this.s.apps))
+      for (const app of Object.values(this.store.pending.apps()))
         if (app.sessionId === se.id && app.check.status === 'fixing') this.store.emit('app', { ...app, check: { ...app.check, status: 'note' } });
     }
     // Only this turn’s asking blocks make the agent need you. Older ones you left open stay open, and the
@@ -1286,7 +1288,7 @@ export class Runtime {
       this.patchItem(turn.threadId, turn.openSegment, ended);
       marked = true;
     }
-    for (const it of this.store.items(turn.threadId)) {
+    for (const it of this.store.pending.items(turn.threadId)) {
       if (it.turnId === turn.id && it.kind === 'agent' && it.status === 'streaming' && it.id !== turn.openSegment) {
         this.patchItem(turn.threadId, it.id, ended);
         marked = true;
@@ -1474,7 +1476,7 @@ export class Runtime {
 
   /** The keys (`item:step`) of a session’s progress steps running in a thread. */
   runningProgress(threadId, sessionId) {
-    return this.store
+    return this.store.pending
       .items(threadId)
       .filter((it) => it.kind === 'block' && it.valid && it.sessionId === sessionId && it.block.type === 'progress')
       .flatMap((it) => it.block.steps.filter((s) => s.state === 'running').map((s) => `${it.id}:${s.id}`));
@@ -1484,7 +1486,7 @@ export class Runtime {
   setJobStep(job, patch) {
     const live = this.turns.get(job.sessionId);
     const turn = live?.id === job.turnId ? live : null;
-    const steps = turn ? turn.steps : this.store.item(job.threadId, job.itemId)?.activity?.steps;
+    const steps = turn ? turn.steps : this.store.pending.items(job.threadId).find((x) => x.id === job.itemId)?.activity?.steps;
     if (!Array.isArray(steps)) return;
     const next = steps.map((st) => (st.id === job.toolUseId ? { ...st, ...patch } : st));
     if (turn) turn.steps = next;
@@ -1500,7 +1502,7 @@ export class Runtime {
     // kept counts though it’s been stopped since, from its row.
     if (turn.stopReason !== 'kept-jobs' || turn.keptAny || this.s.sessions[turn.sessionId]?.jobs?.some((j) => j.turnId === turn.id && j.kept)) return;
     turn.stopReason = 'stop';
-    for (const it of this.store.items(turn.threadId))
+    for (const it of this.store.pending.items(turn.threadId))
       if (it.turnId === turn.id && it.stopReason === 'kept-jobs') this.patchItem(turn.threadId, it.id, { stopReason: 'stop' });
   }
 
@@ -1904,8 +1906,8 @@ export class Runtime {
   /** The server’s checks over a finished turn. */
   checkTurn(turn, se) {
     const lineage = this.lineage(turn.threadId);
-    const items = lineage.flatMap((id) => this.store.items(id));
-    const apps = Object.values(this.s.apps).filter((a) => lineage.includes(a.threadId));
+    const items = lineage.flatMap((id) => this.store.pending.items(id));
+    const apps = Object.values(this.store.pending.apps()).filter((a) => lineage.includes(a.threadId));
     const problems = termProblems(turn.said, this.glossaryFor(turn.threadId), introducedTerms(items, apps), personSaid(items));
     // Diagrams too wide or too busy to read at the conversation’s width.
     const diagrams = lintDiagrams(turn.said);
@@ -1916,7 +1918,7 @@ export class Runtime {
       );
     problems.push(...diagramProblems(diagrams), ...rawHtmlProblems(turn.said));
     // A reply that should have been a block (#63): what this turn showed, and what the person last asked for.
-    const own = this.store.items(turn.threadId);
+    const own = this.store.pending.items(turn.threadId);
     const shown = own.filter((it) => it.kind === 'block' && it.valid && it.turnId === turn.id).map((it) => it.block.type);
     problems.push(...blockProblems(turn.said, shown, own.findLast((it) => it.kind === 'user')?.text ?? ''));
     return problems;
@@ -1947,7 +1949,7 @@ export class Runtime {
     const problems = [];
     const runsOn = turn.keepJobs?.size || (se.jobs ?? []).some((j) => j.kept);
     const held = new Set(runsOn ? (se.heldSteps?.keys ?? []) : []);
-    for (const it of this.store.items(turn.threadId)) {
+    for (const it of this.store.pending.items(turn.threadId)) {
       if (it.kind !== 'block' || !it.valid || it.sessionId !== se.id || it.block.type !== 'progress') continue;
       const stalls = (s) => s.state === 'running' && !held.has(`${it.id}:${s.id}`);
       const running = it.block.steps.filter(stalls);
@@ -2298,7 +2300,7 @@ export class Runtime {
     const flush = ({ final = false } = {}) => {
       if (timer) clearTimeout(timer);
       timer = null;
-      if (!this.store.item(threadId, it.id)) return;
+      if (!this.store.pending.items(threadId).some((x) => x.id === it.id)) return;
       if (!cut && out.length <= MAX_COMMAND_OUTPUT) {
         // Only the new text, as the reply of an agent streams.
         if (out.length > sent) this.store.emit('item.text', { threadId, id: it.id, text: out.slice(sent) });
@@ -2337,7 +2339,7 @@ export class Runtime {
         // How it ended is written once writes are open: the output chunks are memory-only while closed (I1), but a
         // status left “running” in the recovered state would never end.
         whenWritable(this, () => {
-          if (!this.store.item(threadId, it.id)) return;
+          if (!this.store.pending.items(threadId).some((x) => x.id === it.id)) return;
           this.patchItem(threadId, it.id, {
             status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
             exitCode: typeof code === 'number' ? code : null,
@@ -2575,7 +2577,7 @@ export class Runtime {
       if (e.type === 'assistant') {
         for (const b of contentBlocks(e.message?.content)) {
           if (b.type === 'text' && b.text?.trim()) {
-            const it = m.agentItem && this.store.item(se.threadId, m.agentItem);
+            const it = m.agentItem && this.store.pending.items(se.threadId).find((x) => x.id === m.agentItem);
             if (it) this.patchItem(se.threadId, it.id, { text: it.text ? `${it.text}\n\n${b.text}` : b.text });
             else m.agentItem = this.mirrorAgentItem(se, b.text);
             this.updateSession(sessionId, { state: 'gen', currentStep: 'Writing in a terminal' });
@@ -2969,7 +2971,7 @@ export class Runtime {
     } else if (t) {
       // In a room: it leaves, and its past messages stay, marked deleted.
       this.putThread({ ...t, members: others, lastSpeaker: t.lastSpeaker === sessionId ? (others[0] ?? null) : t.lastSpeaker });
-      for (const it of this.store.items(t.id)) if (it.sessionId === sessionId) this.patchItem(t.id, it.id, { deletedAgent: true });
+      for (const it of this.store.pending.items(t.id)) if (it.sessionId === sessionId) this.patchItem(t.id, it.id, { deletedAgent: true });
       this.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle });
     }
     if (this.s.sessions[sessionId]) this.store.emit('remove', { kind: 'session', id: sessionId });
@@ -3066,95 +3068,15 @@ export class Runtime {
     const threadId = () => turn?.threadId ?? se().threadId;
     return recordedTools(rt, turn, {
       /** @param {{ block: any }} args @param {{ files?: AppFile[] }} [given]  data files Postbox read for show_app (#54) */
-      show_block({ block }, given = {}) {
-        // An outcome reports what came of an answer (#94). On a new block it would show under whatever the person
-        // answers, even Cancel, so it’s refused here and only taken by update_block once the block is answered.
-        if (block && typeof block === 'object' && Object.hasOwn(block, 'outcome'))
-          return { ok: false, message: OUTCOME_LATER(String(block.id ?? 'this block'), 'The block wasn’t shown.') };
-        const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
-        // App ids are global. Yours already: it’s a new version. Another agent’s: yours gets a fresh id, and
-        // theirs (its versions and saved state) is left alone.
-        /** @type {string | null} */
-        let renamed = null;
-        if (v.ok && v.block.type === 'app' && rt.s.apps[v.block.id]) {
-          const { id, code, permissions, title } = /** @type {any} */ (v.block);
-          if (rt.s.apps[id].sessionId === sessionId) return this.update_app({ id, code, permissions, title }, given);
-          renamed = newId(String(id).slice(0, 40));
-          v.block = { ...v.block, id: renamed };
-        }
-        // Any other id names one block of this session in this conversation, answered or not, so an answer to it,
-        // and an update or outcome by it, always means that block (#125). Showing it again is refused, not turned
-        // into an update: an update can reopen a block the person answered.
-        if (v.ok && v.block.type !== 'app') {
-          const id = v.block.id;
-          const shown = rt.store.items(threadId()).find((x) => x.kind === 'block' && x.valid && x.sessionId === sessionId && x.block.id === id);
-          // An app’s id can’t take a block’s update, so that case only asks for a new id.
-          if (shown?.block.type === 'app')
-            return { ok: false, message: `${id} is the id of your app “${shown.block.title ?? id}”. Pick a new id for this block.` };
-          if (shown) return { ok: false, message: `Block ${id} is already shown. Use update_block to change it, or pick a new id.` };
-        }
-        endSegment();
-        const it = rt.addItem(
-          threadId(),
-          v.ok
-            ? {
-                kind: 'block',
-                sessionId,
-                handle: se().handle,
-                turnId: turn?.id ?? null,
-                valid: true,
-                block: v.block,
-                answered: false,
-                ...wokeOf(turn),
-              }
-            : {
-                kind: 'block',
-                sessionId,
-                handle: se().handle,
-                turnId: turn?.id ?? null,
-                valid: false,
-                raw: block,
-                errors: v.errors,
-                reason: v.reason,
-                fallback: v.fallback,
-              },
-        );
-        if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id, threadId(), given.files ?? []);
-        return v.ok
-          ? v.block.type === 'app'
-            ? appReceipt(
-                rt.s.apps[v.block.id],
-                renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown app ${v.block.id}.`,
-              )
-            : { ok: true, message: `Shown block ${v.block.id}.` }
-          : { ok: false, message: `The block was invalid, so the person sees its fallback text. Problems: ${v.errors.join(' ')}` };
+      show_block(args, given = {}) {
+        return showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools: this }, args, given);
       },
       update_block(args) {
         return updateBlock(rt, sessionId, args, { turn, se, threadId, endSegment });
       },
       review_block: (args) => reviewBlock(rt, sessionId, args),
-      /**
-       * @param {{ id?: string, title?: string, code: string, permissions?: string[], fallback?: string }} args
-       * @param {{ files?: AppFile[] }} [given]  data files Postbox read from the agent’s folders (#54); never from the call
-       */
-      show_app({ id, title, code, permissions = [], fallback }, given = {}) {
-        const blockId = id ?? newId('app');
-        const existing = rt.s.apps[blockId];
-        if (existing?.sessionId === sessionId) return this.update_app({ id: blockId, code, permissions, title }, given);
-        return this.show_block(
-          {
-            block: {
-              id: blockId,
-              type: 'app',
-              version: 1,
-              title: title ?? 'App',
-              fallback: fallback ?? `${title ?? 'An app'}: open Postbox to use it.`,
-              code,
-              permissions,
-            },
-          },
-          given,
-        );
+      show_app(args, given = {}) {
+        return showApp(rt, sessionId, this, args, given);
       },
       update_app(args, given) {
         return updateApp(rt, sessionId, turn, threadId, endSegment, args, given);
