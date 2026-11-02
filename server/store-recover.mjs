@@ -88,6 +88,8 @@ export function install(store, c) {
   store.freshSegment = c.freshSegment;
   store.ahead = 0;
   store.held = 0;
+  store.heldLog = []; // with held and the queue, so no pending read sees a job of the old history
+  store.views.clear();
   store.waitingCommits = 0;
   store.queue = [];
   store.events = [];

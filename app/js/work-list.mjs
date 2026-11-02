@@ -3,6 +3,7 @@
 // each row opens Work full screen at its item, and Escape comes back here. After five rows, “N more” expands in place.
 
 import { signed, turnLine } from '/shared/work.mjs';
+import { ledgerIndex } from '/shared/work-index.mjs';
 import { retiredApp, turnRows } from '/shared/work-list.mjs';
 import { client } from './client.mjs';
 import { fill, h, icon } from './dom.mjs';
@@ -134,7 +135,8 @@ export function workList(it, conv, folders) {
     if (shownOnce && !list.isConnected) return off();
     const mine = (ch.type === 'work.add' || ch.type === 'work.patch') && ch.data.convId === conv;
     if (!mine && ch.type !== 'app') return;
-    if (mine && (ch.data.entry ?? client.state.work?.[conv]?.find((e) => e.id === ch.data.id))?.turnId !== turnId) return;
+    // A patch names its entry by id, found in the ledger’s index rather than by a scan in every list (#618).
+    if (mine && (ch.data.entry ?? ledgerIndex(client.state.work?.[conv] ?? []).byId.get(ch.data.id))?.turnId !== turnId) return;
     cancelAnimationFrame(frame);
     frame = requestAnimationFrame(() => list.isConnected && keepFocus(list, paint));
   });

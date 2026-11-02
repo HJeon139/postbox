@@ -59,7 +59,7 @@ flowchart LR
 | — | Backlog | — | #11, #13, #14, #15, #16, #21, #37, #41, #44, #76, #99, #100, #103, #107, #111, #113, #115, #131, #134, #168, #177, #192, #215 | — | — |
 
 **Wave 5’s overlaps:**
-- **`server/runtime.mjs` and `biome.json`:** sessions 1, 2 and 4 each move their concern out of `runtime.mjs` first (“Length limits”, below), and session 3 does if it needs more than a call or two. The moved functions don’t overlap. Sessions add `biome.json` entries only for their own new modules, in path order, and never edit an existing file’s override, so their hunks don’t touch. After each merge, the integrator alone lowers `runtime.mjs`’s and `ledger.mjs`’s ceilings to their measured sizes, in a commit of its own.
+- **`server/runtime.mjs` and `biome.json`:** sessions 1, 2 and 4 each move their concern out of `runtime.mjs` first (“Length limits”, below), and session 3 does if it needs more than a call or two. The moved functions don’t overlap. Sessions add no `biome.json` entries, since a new module comes in under the default, and never edit an existing file’s override. After each merge, the integrator alone lowers `runtime.mjs`’s and `ledger.mjs`’s ceilings to their measured sizes, in a commit of its own.
 - **`app/js/thread.mjs`:** side threads (side-thread rendering) and the work list (`workChip` and its list).
 - **`app/js/shell.mjs`:** side threads (`mountThreads`) and the pane (the rail’s collapse).
 - **`app/js/ui.mjs`:** blocks and text (`announceStreaming`) and the pane (routing).
@@ -130,7 +130,7 @@ The root `AGENTS.md` carries these rules, short, for any agent working in the re
   ```
 
   `diff -w` ignores the change of indent from inside the class to the top level. Biome may rewrap a line after the dedent, so check any line it rewrapped by eye.
-- **Ceilings move with the code.** Give your new module an override in `biome.json` at the size of the code it carries, when that’s past the default. Add only your own module’s entry, in path order. Don’t edit the override of the file you moved from: the integrator lowers it after each merge.
+- **A moved concern comes in under the default.** A new module gets no override in `biome.json`: split moved code past the default in the same pull request, after the move commit. Don’t edit the override of the file you moved from: the integrator lowers it after each merge.
 - **New code fits the defaults** in `biome.json`. Never raise a ceiling for it.
 - **Tests too.** A new test for a test file at its ceiling goes in `tests/<module>-<concern>.test.mjs`, which must end in `.test.mjs`, or `npm test` never runs it.
 

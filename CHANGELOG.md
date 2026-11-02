@@ -2,6 +2,38 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.10.1 (2026-11-02)
+
+### Fixes
+
+- **lint:** lint-caps allows a new length rule only a level and a maxLines
+- **lint:** lint-caps fails closed, and a new module gets no ceiling over the default
+- **lint:** lint-caps fails a new module whose length rule is off
+- **lint:** lint-caps counts a non-failing level as no limit, and reads ./ paths as one
+- **lint:** lint-caps fails a nested Biome config, and a missing base in CI
+
+## 1.10.0 (2026-11-02)
+
+### Features
+
+- **store:** store.pending reads a list with what is held behind a commit (#601)
+
+### Fixes
+
+- **ledger:** restore reads the file as the Work view shows it
+- **store:** every read that decides a write reads pending, apps included (#601)
+
+## 1.9.2 (2026-11-02)
+
+### Fixes
+
+- **work:** files' window buttons say later and earlier, as the other lists do
+- **work:** a window around the item Work opened at moves with it
+- **work:** choosing one agent's work draws its lists, not a stretch past their end
+- **work:** full-screen Work draws its long lists 50 at a time
+- **work:** a turn's list finds a patched entry by id, not by a scan of the ledger
+- **work:** one turn's summary reads that turn's entries, not the whole ledger
+
 ## 1.9.1 (2026-11-02)
 
 ### Fixes

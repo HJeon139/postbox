@@ -34,8 +34,9 @@ POSTBOX_STREAM_LAG=300 npx playwright test   # with the server’s events 300 ms
 
 ## Code size
 
-- Biome fails a file or function past its default length. A file already past it has a ceiling in `biome.json` that only comes down (designs/architecture.md, “Module and function size”).
-- When a change would grow a file at its ceiling, move a concern into a module of its own first, as its own commit, with nothing else in it. Never raise a ceiling. Give a new module past the default an override at its size, and don’t edit the override of a file you moved code from: the integrator lowers it after each merge (designs/prompts/README.md, “Rules for every session”).
+- Biome fails a file or function past its default length. A file already past it has a ceiling in `biome.json` that only comes down, and `tools/lint-caps.mjs` fails a change that raises one (designs/architecture.md, “Module and function size”).
+- When a change would grow a file at its ceiling, move a concern into a module of its own first, as its own commit, with nothing else in it. Never raise a ceiling. A new module gets no override over the default: split moved code under it in the same pull request, after the move commit. Don’t edit the override of a file you moved code from: the integrator lowers it after each merge (designs/prompts/README.md, “Rules for every session”).
+- The limits are for the reader, not a line count to hit. Simplify first, then split by concern: each file owns one thing you can name, and one decision reads in one place. Never compress code (joined lines, dense one-liners, dropped names or comments) or cut one decision across files to fit a limit. Review fails both, even when Biome passes them (designs/architecture.md, “Module and function size”, its “What a split is for”).
 - A circular import means a missing module: the shared value goes in a third module (designs/developing.md, “Modules”).
 - Don’t reformat code you didn’t change. Never edit `app/kit/vendor/`.
 

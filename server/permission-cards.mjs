@@ -233,7 +233,7 @@ export function recordDenial(rt, turn, d) {
   if (!se) return;
   const key = String(d.toolUseId ?? '');
   // Once per call, and never for a call the person answered on a permission card.
-  if (key && rt.store.items(turn.threadId).some((it) => (it.kind === 'denial' || it.kind === 'permission') && it.toolUseId === key)) return;
+  if (key && rt.store.pending.items(turn.threadId).some((it) => (it.kind === 'denial' || it.kind === 'permission') && it.toolUseId === key)) return;
   // On a host, Always would save its rule on this computer (hostAlways): Allow once and Leave stay.
   const rules = { ...rulesFor(String(d.tool ?? ''), d.input ?? {}), ...(turn.remote ? { always: null } : {}) };
   const detail = d.tool === 'Bash' ? String(d.input?.command ?? '') : JSON.stringify(d.input ?? {}, null, 2);

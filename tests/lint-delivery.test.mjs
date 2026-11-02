@@ -26,6 +26,8 @@ test('#336 a lint turn names an app version that no open page checked', () => {
     deliver(sessionId, message, options) {
       calls.push({ sessionId, message, options });
     },
+    // sendLint reads the apps through the store's pending read (#601); nothing is held here, so it is the state's.
+    store: { pending: { apps: () => rt.s.apps } },
   };
 
   sendLint(rt, 'turn-1');

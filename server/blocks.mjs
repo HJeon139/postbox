@@ -196,7 +196,7 @@ function recordOutcome(rt, sessionId, block, { se, threadId }) {
  * @param {any} rt @param {string} sessionId @param {string} id @param {string} threadId  where the turn speaks @param {any} se
  */
 function shownBy(rt, sessionId, id, threadId, se) {
-  const mine = (t) => [...rt.store.items(t)].reverse().find((x) => x.kind === 'block' && x.valid && x.block.id === id && x.sessionId === sessionId);
+  const mine = (t) => [...rt.store.pending.items(t)].reverse().find((x) => x.kind === 'block' && x.valid && x.block.id === id && x.sessionId === sessionId);
   const where = mine(threadId) ? threadId : se.threadId;
   return { where, existing: mine(where) };
 }

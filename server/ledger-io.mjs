@@ -79,3 +79,10 @@ export function memoryBlobs() {
     },
   };
 }
+
+/** Whether two snapshots of a file are the same: both absent, or the same content. */
+export const sameSnap = (a, b) => Boolean(a?.exists) === Boolean(b?.exists) && (!a?.exists || (a.sha256 && a.sha256 === b?.sha256));
+/** Whether a snapshot is known: absent, or its content kept. */
+export const known = (s) => !s?.exists || Boolean(s.sha256);
+/** An error with the HTTP status the page gets. */
+export const fail = (status, message) => Object.assign(new Error(message), { status });

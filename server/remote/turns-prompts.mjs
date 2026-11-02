@@ -197,7 +197,9 @@ function cardOf(rts, turn, id) {
   const se = sessionOfTurn(rts, turn);
   if (!se) return null;
   for (const threadId of rts.rt.conversationThreads(se.threadId)) {
-    const it = rts.rt.store.items(threadId).find((/** @type {any} */ i) => i.kind === 'permission' && i.remote?.turn === turn && i.remote?.prompt === id);
+    const it = rts.rt.store.pending
+      .items(threadId)
+      .find((/** @type {any} */ i) => i.kind === 'permission' && i.remote?.turn === turn && i.remote?.prompt === id);
     if (it) return { threadId, it };
   }
   return null;
@@ -208,7 +210,7 @@ export function openCards(rts, turn) {
   const se = sessionOfTurn(rts, turn);
   if (!se) return [];
   return rts.rt.conversationThreads(se.threadId).flatMap((/** @type {string} */ threadId) =>
-    rts.rt.store
+    rts.rt.store.pending
       .items(threadId)
       .filter((/** @type {any} */ i) => i.kind === 'permission' && i.status === 'open' && i.remote?.turn === turn)
       .map((/** @type {any} */ it) => ({ threadId, it })),

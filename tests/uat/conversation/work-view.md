@@ -32,6 +32,7 @@ The person directs agents that edit code, run commands, commit, push and file is
 - **Reads:** each file an agent read and each page it fetched or searched for, by agent, with when (#195).
 - **A turn’s list** (in the transcript, #195): under the turn’s last reply, or its last block when it ends with one, once the turn ends. Its line of counts opens the pane at that turn (below). Then a row per file (name, +a −d, New or Deleted), app or block (title and version), commit (hash and message), push, write outside Postbox and command (its description, or the command without the project folder’s `cd`, and how it ended if not well), then one row for what it read (“Read 2 files”). After five rows, **N more** expands in place. Each row opens Work full screen at that item, and Escape comes back to the row. At 375 px a long path is cut in its folder and keeps its file name. A turn that read only has just the Reads row; a turn that did nothing has no list.
 - **A turn’s line** (in the transcript): opens the pane at that turn, beside the thread if one is open, with the turn opened to its files and commands and focus on it. **Open this turn** shows that turn alone, full screen: its changes, commands, commits and spend, with **Show the whole conversation**.
+- **Long lists** (#618): full screen, files, commands, reads and the turns that left nothing lasting each draw 50 at a time: the newest, or the 50 around the item Work opened at. A button on each side draws 50 more (“Show 50 earlier commands · 3,975 not shown”) and puts focus on the first one it drew. Commands that start while the newest are shown join them.
 - It updates live as a turn works. Everything opens and closes by keyboard; the diff, the output and the table scroll on their own, and take focus to scroll. It fits a 375 px window without scrolling sideways.
 
 ## Steps to reproduce
@@ -60,6 +61,7 @@ The person directs agents that edit code, run commands, commit, push and file is
 - The second turn is listed under **Left nothing lasting**, and **Open this turn** on it shows only the benchmark command.
 - With the real agent: the counts match git’s, the commit is listed with its branch and **Pushed**, and the branch is listed as made.
 - With the real agent, a `sed -i` across three files and `git add -A && git commit -q -m …` in one command list the commit, with its three files (#156). The files under the command are #240’s.
+- In a conversation with more than 50 commands, a turn’s row for an early command opens full screen with that command drawn and focused, and **Show 50 earlier commands** and **Show 50 later commands** each draw 50 more.
 - With the Codex and Antigravity agents: each reply has its line (“1 file +1 −0 · 1 command · …”), and Work lists both files with lines that match `git diff --stat`, both commands as the agents wrote them with their exits, and both agents’ turns.
 
 ## Related

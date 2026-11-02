@@ -12,14 +12,15 @@
 // it named, on that host, with no lines, no diff and no Restore, under one line per host that says so.
 
 import { fileEffort, fileState, flagged, formatBytes, formatCost, formatTokens, signed, summarize, turnLine } from '/shared/work.mjs';
-import { commandLabel } from '/shared/work-list.mjs';
 import { api, client } from './client.mjs';
 import { fill, h, icon, plural, timeOf } from './dom.mjs';
 import { closeWork, keepFocus, openDialog, openWork, toast } from './ui.mjs';
+import { COMMAND_WORDS, commandsSection, GLYPH } from './work-commands.mjs';
 import { diffView } from './work-diff.mjs';
 import { watchGit } from './work-git.mjs';
-import { backgroundNote, editItem, editRow, editRows, hostNotes } from './work-hosts.mjs';
+import { editItem, editRow, editRows, hostNotes } from './work-hosts.mjs';
 import { dur, effortSection, externalSection, publishSection, readsSection, section, signedEl, vcsSection, who, workLink } from './work-sections.mjs';
+import { windows } from './work-window.mjs';
 
 const S = () => client.state;
 const STATE_WORDS = {
@@ -29,16 +30,6 @@ const STATE_WORDS = {
   outside: 'Not in git',
   unchanged: 'Put back',
 };
-const COMMAND_WORDS = {
-  running: 'Running',
-  done: 'Exit 0',
-  failed: 'Failed',
-  denied: 'Refused',
-  stopped: 'Stopped',
-  background: 'Running in the background',
-  unknown: 'Didn’t report how it ended',
-};
-const GLYPH = { running: 'running', done: 'done', failed: 'failed', denied: 'failed', stopped: 'failed', background: 'running', unknown: 'unknown' };
 
 /** The line of counts for files and lines (“3 files · +40 −12”). */
 const counts = (t) => [plural(t.files, 'file'), signedEl(t.added, t.deleted)];
@@ -54,6 +45,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
   let handle = null;
   const opened = new Set(at ? [at] : []); // ids of the items you opened, kept across repaints
   const loaded = new Map(); // what a diff or an output request returned, by item
+  const win = windows(() => paint(), at); // the long lists’ windows (#618)
   const asked = new Set();
   const gitNow = gitWatch ?? watchGit(threadId);
   /** @type {any} */
@@ -90,9 +82,9 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
         vcsSection(s, git),
         publishSection(s, threadId, S().apps),
         externalSection(s),
-        commandsSection(s),
-        effortSection(s, entries, threadId),
-        readsSection(s),
+        commandsSection(s, { threadId, item, load, loaded, win }),
+        effortSection(s, entries, threadId, win),
+        readsSection(s, win),
       );
     });
 
@@ -130,6 +122,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
                   'aria-pressed': String(handle === x),
                   onclick: () => {
                     handle = x;
+                    win.reset(); // another agent’s lists, from their newest (#618)
                     paint();
                   },
                 },
@@ -242,22 +235,25 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
   }
 
   function filesSection(s, entries) {
-    const files = [...s.files].sort((a, b) => Number(flagged(b, git)) - Number(flagged(a, git)) || (b.lastAt ?? 0) - (a.lastAt ?? 0));
+    const sorted = [...s.files].sort((a, b) => Number(flagged(b, git)) - Number(flagged(a, git)) || (b.lastAt ?? 0) - (a.lastAt ?? 0));
+    const keyOf = (f) => (turnId ? f.changeId : f.id);
+    const opts = { idOf: keyOf, elId: (f) => `wsum-${keyOf(f)}`, newest: /** @type {const} */ ('start'), before: 'later file', after: 'earlier file' };
+    const { items: files, above, below } = win('files', sorted, opts);
     const byAgent = s.byAgent.filter((a) => a.files);
     const edits = editRows(s.edits);
     return section(
       'work-files',
       'Files',
-      files.length + edits.length,
+      sorted.length + edits.length,
       hostNotes(s.turns),
+      above,
       files.length
         ? h(
             'div.work-items',
             files.map((f) => {
               const state = fileState(f, git);
-              const key = turnId ? f.changeId : f.id;
               return item(
-                key,
+                keyOf(f),
                 flagged(f, git) ? 'flagged' : '',
                 [
                   h('span.status-tag', { class: `ws-${state}` }, STATE_WORDS[state]),
@@ -275,6 +271,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
         : edits.length
           ? null
           : h('p.empty-note', 'No files changed yet. A file shows here when an agent’s edit or write changes it.'),
+      below,
       edits.length
         ? h(
             'div.work-items',
@@ -390,73 +387,6 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
         h('button.btn.danger', { type: 'button', onclick: (e) => go(e.currentTarget) }, f.before?.exists ? 'Restore' : 'Remove'),
       ],
     });
-  }
-
-  function commandsSection(s) {
-    return section(
-      'work-commands',
-      'Commands',
-      s.commands.length,
-      s.commands.length
-        ? h(
-            'div.work-items',
-            s.commands.map((c) =>
-              item(
-                c.id,
-                `cmd-${c.state}`,
-                [
-                  h(`span.g.g-${GLYPH[c.state] ?? 'done'}`, { role: 'img', 'aria-label': COMMAND_WORDS[c.state] ?? c.state }),
-                  c.description ? h('span.work-cmd-line', c.description) : h('code.work-cmd-line', `$ ${commandLabel(c, folders(c))}`),
-                  h(
-                    'span.small.work-exit',
-                    { class: c.state === 'failed' || c.state === 'denied' ? 'bad' : '' },
-                    c.state === 'failed' && c.exit != null ? `Exit ${c.exit}` : (COMMAND_WORDS[c.state] ?? c.state),
-                    c.ms ? ` · ${dur(c.ms)}` : '',
-                  ),
-                  c.background ? h('span.work-tag', 'Background') : null,
-                  h('span.small.dim.work-who', who(c)),
-                ],
-                () => commandBody(c),
-              ),
-            ),
-          )
-        : h('p.empty-note', 'No commands yet.'),
-    );
-  }
-
-  /** Folders a command’s leading `cd` may name: the project’s and its agent’s, as the turn’s list leaves out. */
-  const folders = (c) => [S().projects?.[S().threads[threadId]?.projectId]?.folder, S().personas?.[S().sessions?.[c.sessionId]?.personaId]?.folder];
-  function commandBody(c) {
-    const key = `out:${c.id}`;
-    if (c.state !== 'running' && c.output?.sha256) load(`${key}:${c.output.sha256}`, `/api/threads/${threadId}/work/commands/${c.id}/output`, 'text');
-    const out = c.output?.sha256 ? loaded.get(`${key}:${c.output.sha256}`) : '';
-    return [
-      h('pre.md-code.work-cmd-full', h('code', c.command)),
-      h('p.small.dim', `Started ${timeOf(c.startedAt)}${c.who ? ` by the subagent ${c.who}` : ''}.`),
-      c.keptRunning
-        ? h(
-            'p.small.dim',
-            c.leftRunning
-              ? 'You kept it running when you stopped its agent.'
-              : c.state === 'stopped'
-                ? `You kept it running when you stopped its agent, then ${c.stoppedBy === 'you' ? 'you' : 'Postbox'} stopped it.`
-                : 'You kept it running when you stopped its agent. It has ended; Postbox saw its process go, not its exit.',
-          )
-        : c.leftRunning
-          ? h('p.small.dim', 'It was still running in the background when the turn ended, so Postbox didn’t see it end.')
-          : null,
-      c.endedInBackground ? h('p.small.dim', backgroundNote(c)) : null,
-      c.output?.cut ? h('p.small.dim', 'Earlier output was cut: this is the last 4 MB.') : null,
-      c.state === 'running'
-        ? h('p.small.dim', 'Its output shows here when it ends.')
-        : !c.output?.sha256
-          ? h('p.small.dim', 'No output.')
-          : out === undefined
-            ? h('p.small.dim', 'Loading the output…')
-            : typeof out === 'object'
-              ? h('p.small.dim', `The output didn’t load: ${out.error}`)
-              : h('pre.md-code.cmd-out', { tabindex: '0', 'aria-label': `Output of ${c.command.split('\n')[0]}` }, h('code', out)),
-    ];
   }
 
   // ── Live ──────────────────────────────────────────────────────────────────────────────
