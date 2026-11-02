@@ -41,11 +41,13 @@ function needOf(rt, se, it, threadId, turnId, keep) {
 }
 
 /**
- * Which need comes first when several cards wait, as the turn's end has always chosen: a permission the running turn is
- * blocked on, then the last turn's asking block, its refusals, its tool request, and last the cards that wait until
- * answered (app sends, wake requests). Within a kind, the newest card.
+ * Which need comes first when several wait, as the turn's end has always chosen: a permission the running turn is
+ * blocked on, then a failed turn (its Retry, which only its own release clears: no card replaces it, as on main), then
+ * the last turn's asking block, its refusals, its tool request, and last the cards that wait until answered (app sends,
+ * wake requests). Within a kind, the newest. Every kind a need can have is listed: tests/card-needs-kinds.test.mjs
+ * checks each one set anywhere in server/.
  */
-const RANK = { permission: 0, block: 1, denial: 2, toolask: 3, appsend: 4, hop: 4 };
+export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, denial: 3, toolask: 4, appsend: 5, hop: 5 });
 
 /**
  * Which turn's asking blocks, refusals and tool requests count, answered here only (design-633-turn-1). During a
@@ -88,13 +90,14 @@ export function nextNeed(rt, se, { released = null, turnId = turnOf(rt, se, rele
  * A new card offers itself as the agent's need: it takes it when none is set, or when it ranks ahead of the current
  * need or the same (the newest within a rank comes first, as in nextNeed). Otherwise it waits, and a release reaches
  * it. Every setter goes through here, so which card shows doesn't depend on whether it was set or released. A failed
- * turn still sets its need directly: it ends the turn, as the turn's end does.
+ * turn still sets its need directly: it ends the turn, as the turn's end does. A current need of a kind RANK doesn't
+ * list is kept, never replaced by default.
  * @param {any} rt @param {any} se @param {any} need @param {string} state  the session's state if it takes the need
  * @returns {boolean} whether it took the need
  */
 export function offerNeed(rt, se, need, state) {
   const cur = se.needs;
-  if (cur && cur.itemId !== need.itemId && RANK[need.kind] > (RANK[cur.kind] ?? Number.POSITIVE_INFINITY)) return false;
+  if (cur && cur.itemId !== need.itemId && !(RANK[need.kind] <= RANK[cur.kind])) return false;
   rt.updateSession(se.id, { needs: need, state });
   return true;
 }

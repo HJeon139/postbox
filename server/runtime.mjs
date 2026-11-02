@@ -993,6 +993,8 @@ export class Runtime {
       this.updateSession(se.id, {
         state: 'failed',
         needs: { kind: 'failed', itemId: target, text: message, ...this.awayFrom(se, turn.threadId) },
+        // A failed turn is the last turn too (card-needs.mjs turnOf): a block you moved past stays quiet.
+        lastTurnId: turn.id,
         sideTurn: null,
         subagents: [],
         currentStep: 'Failed',
