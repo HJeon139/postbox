@@ -36,7 +36,7 @@ import { restoreArchives } from './archive-lifecycle.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
-import { nextNeed, releaseNeed } from './card-needs.mjs';
+import { nextNeed, noticeNeed, releaseNeed } from './card-needs.mjs';
 import { catchUp, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
@@ -1041,6 +1041,7 @@ export class Runtime {
       unread: topic ? se.unread : viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
       stopAsk: null,
     });
+    noticeNeed(this, se, needs);
     if (needs && (needs.kind === 'block' || needs.kind === 'denial' || needs.kind === 'toolask'))
       this.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
     else if (mentionsYou && !viewing) this.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);

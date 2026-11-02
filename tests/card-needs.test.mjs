@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { settle, setup } from './side-threads-fixture.mjs';
+import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 /** A conversation with @alpha, whose last ended turn is `turn_last`, and helpers that add its cards. */
 function room() {
@@ -184,4 +184,43 @@ test('several open refusals of the last turn are counted in the need’s text, a
     r.rt.addItem(r.t.id, { kind: 'denial', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', summary: s, status: 'open' });
   const { nextNeed } = await import('../server/card-needs.mjs');
   assert.equal(nextNeed(r.rt, r.rt.s.sessions[r.alpha.id])?.text, '2 steps were refused: two');
+});
+
+test('within a kind the newest card comes first: two app cards wait, and the newer is the need', async () => {
+  const r = room();
+  r.appCard();
+  await sleep(3); // a later `at`, so the order is by time and not by a tie
+  const newer = r.appCard();
+  const h = r.hop();
+  r.setNeed('hop', h.id);
+  r.rt.resolveHop(r.t.id, h.id, false);
+  assert.equal(r.needs()?.itemId, newer.id);
+});
+
+test('a permission card whose wait has ended does not count', async () => {
+  const r = room();
+  const app = r.appCard();
+  const p = r.permission();
+  r.rt.permissionWaits.delete(p.id); // the turn that asked has ended
+  const { nextNeed } = await import('../server/card-needs.mjs');
+  assert.equal(nextNeed(r.rt, r.rt.s.sessions[r.alpha.id])?.itemId, app.id);
+});
+
+test('an app card that waited behind a wake request is notified when the turn’s end makes it the need', async () => {
+  const r = room();
+  const notes = [];
+  r.rt.notify = (_level, _se, title) => notes.push(title);
+  const work = held();
+  r.adapter.next.push(work.step);
+  r.rt.sendMessage(r.t.id, { text: '@alpha a long job' });
+  await sleep(5);
+  const h = r.hop();
+  r.setNeed('hop', h.id);
+  const card = r.appCard();
+  r.rt.needAppSend({ sessionId: r.alpha.id, title: 'App', threadId: r.t.id }, card.id, 1);
+  assert.equal(notes.length, 0, 'not notified while the wake request is the need');
+  work.release();
+  await settle(r.rt);
+  assert.equal(r.needs()?.itemId, card.id, 'the newer app card is the need at the turn’s end');
+  assert.equal(notes.filter((n) => /wants to send/.test(n)).length, 1, 'and it is notified once');
 });

@@ -78,6 +78,15 @@ export function releaseNeed(rt, se, itemId, busy = se?.state) {
   if (!se || se.needs?.itemId !== itemId) return;
   const need = nextNeed(rt, se);
   rt.updateSession(se.id, { needs: need, state: rt.turns.has(se.id) ? busy : need ? 'needs' : 'idle' });
+  noticeNeed(rt, se, need);
+}
+
+/**
+ * Whoever sets an agent's need calls this after: an app card that becomes the need without ever having been notified
+ * (it waited behind another need) is notified now. The release and the turn's end both set needs.
+ * @param {any} rt @param {any} se @param {any} need
+ */
+export function noticeNeed(rt, se, need) {
   if (need?.kind === 'appsend') notifyOnce(rt, se, need);
 }
 
