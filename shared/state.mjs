@@ -38,6 +38,12 @@ export function emptyState() {
   };
 }
 
+/** A glossary entry. Its key is read first, so missing data throws before anything changes (#609). */
+const putGlossary = (s, d) => {
+  const { key } = d.entry;
+  (s.glossary[d.threadId] ??= map())[key] = d.entry;
+};
+
 const putBoilerplate = (s, d) => {
   delete s.boilerplates[d.id];
   s.boilerplates[d.id] = d;
@@ -126,7 +132,7 @@ export const EVENTS = Object.freeze({
     },
     public: true,
   },
-  glossary: { apply: (s, d) => ((s.glossary[d.threadId] ??= map())[d.entry.key] = d.entry), public: true },
+  glossary: { apply: putGlossary, public: true },
   'item.add': { apply: (s, d) => (s.items[d.threadId] ??= []).push(d.item), public: true },
   'item.patch': { apply: (s, d) => withItem(s, d, (it) => applyItemPatch(it, d)), public: true },
   'item.move': { apply: moveItem, public: true },

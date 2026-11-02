@@ -15,6 +15,7 @@
 
 import { EVENTS, STREAM } from '../shared/state.mjs';
 import { publicFrame } from './public-state.mjs';
+import { REJECTED } from './store-reject.mjs';
 
 /**
  * Sends the store’s events to every open stream, and a keep-alive every 15 s; stream() opens one for a request to
@@ -36,9 +37,12 @@ export function liveStreams(store, events = EVENTS) {
   store.subscribe((ev) => {
     const line = publicFrame(ev, events);
     const epoch = store.epoch; // the history the event belongs to: a send held back past a Retry says nothing (gpt’s finding)
+    // An event the store held as rejected (#609): its place, then a resync, since a handler that broke its contract
+    // may have changed the state the page can't see.
+    const frames = ev.type === REJECTED ? `${line}event: ${STREAM.resync}\ndata: {}\n\n` : line;
     const send = () => {
       if (store.epoch !== epoch) return;
-      for (const res of streams) res.write(line);
+      for (const res of streams) res.write(frames);
     };
     if (lag > 0) setTimeout(send, lag).unref();
     else send();
