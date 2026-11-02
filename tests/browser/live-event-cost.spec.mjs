@@ -36,11 +36,13 @@ const confirm = (i) => ({
   confirmLabel: 'Ship it',
 });
 
+let rooms = 0;
 /** A room of 1,000 items with two agents, open in the page and held at its end, with its sessions and thread. */
 async function seeded(page) {
   const { rt, store } = app;
-  const a = rt.createPersona({ handle: 'maker' });
-  const b = rt.createPersona({ handle: 'checker' });
+  const n = ++rooms;
+  const a = rt.createPersona({ handle: `maker${n}` });
+  const b = rt.createPersona({ handle: `checker${n}` });
   const t = rt.createThread({ projectId: 'pr_live', title: 'Long room', personaIds: [a.id, b.id] });
   const [sa, sb] = rt.sessionsIn(t.id);
   for (let i = 0; i < ITEMS; i++) {
@@ -73,11 +75,20 @@ async function seeded(page) {
 
 /**
  * Runs in the page before Postbox does: counts ring SVGs built (rings: each SVG, the moving overlays too; stills: the
- * SVG of a ring beside a message itself) and activity lists taken out, in window.__work.
+ * SVG of a ring beside a message itself), activity lists taken out, and status words (.who-state) looked up, in
+ * window.__work.
  */
 function countWork() {
-  const w = { rings: 0, stills: 0, activity: 0 };
+  const w = { rings: 0, stills: 0, activity: 0, words: 0 };
   Object.defineProperty(window, '__work', { value: w });
+  for (const proto of [Document.prototype, Element.prototype]) {
+    const find = proto.querySelectorAll;
+    proto.querySelectorAll = function (/** @type {string} */ selector) {
+      const found = find.call(this, selector);
+      if (selector.includes('who-state')) w.words += found.length;
+      return found;
+    };
+  }
   new MutationObserver((records) => {
     for (const r of records) {
       if (r.target instanceof Element && r.target.matches('pb-ring'))
@@ -110,13 +121,19 @@ async function perEvent(page, n, send) {
     await frames(page);
     const b = await metrics(cdp);
     const now = await page.evaluate(() => ({ .../** @type {any} */ (window).__work }));
-    each.push({ rings: now.rings - was.rings, activity: now.activity - was.activity, layoutMs: (b.LayoutDuration - a.LayoutDuration) * 1000 });
+    each.push({
+      rings: now.rings - was.rings,
+      activity: now.activity - was.activity,
+      words: now.words - was.words,
+      layoutMs: (b.LayoutDuration - a.LayoutDuration) * 1000,
+    });
   }
   await cdp.detach();
   const median = (/** @type {number[]} */ xs) => [...xs].sort((x, y) => x - y)[Math.floor(xs.length / 2)];
   return {
     rings: Math.max(...each.map((e) => e.rings)),
     activity: Math.max(...each.map((e) => e.activity)),
+    words: Math.max(...each.map((e) => e.words)),
     layoutMs: Math.round(median(each.map((e) => e.layoutMs)) * 10) / 10,
   };
 }
@@ -147,7 +164,7 @@ test('#622: a session event in a 1,000-item room rebuilds the rings that show it
   test.info().annotations.push({ type: 'measured', description: `per session event: ${JSON.stringify(session)}` });
   expect.soft(session.rings, `ring SVGs built per session event, in the whole page, not one per reply (${JSON.stringify(session)})`).toBeLessThanOrEqual(20);
   expect.soft(session.activity, 'activity lists taken out per session event').toBe(0);
-  // The ring beside @maker’s latest reply follows it; the 249 beside its earlier replies rest, as the words beside
+  // The ring beside the maker’s latest reply follows it; the 249 beside its earlier replies rest, as the words beside
   // its name show only on the latest.
   app.rt.updateSession(sa.id, { state: 'think', ctx: 33 });
   const rings = page.locator(`.transcript[data-thread="${t.id}"] .who pb-ring[data-session="${sa.id}"]`);
@@ -155,4 +172,22 @@ test('#622: a session event in a 1,000-item room rebuilds the rings that show it
   await expect.soft(rings.last()).toHaveAttribute('ctx', '33');
   await expect.soft(rings.nth(0)).toHaveAttribute('state', 'idle');
   expect.soft(await rings.evaluateAll((rs) => rs.filter((r) => r.getAttribute('state') !== 'idle').length), 'rings showing the live state').toBe(1);
+});
+
+test('#622: a session event in a 1,000-item room looks up the status words that can change, not every one', async ({ page }) => {
+  test.setTimeout(180_000);
+  const { t, sa, sb } = await seeded(page);
+  const session = await perEvent(page, 6, (i) => app.rt.updateSession(sa.id, { state: i % 2 ? 'tool' : 'think', ctx: 20 + i }));
+  test.info().annotations.push({ type: 'measured', description: `per session event: ${JSON.stringify(session)}` });
+  expect.soft(session.words, 'status words looked up per session event').toBeLessThanOrEqual(10);
+  // The words still follow: on the maker’s latest reply only, and gone once it rests; the checker’s beside its own.
+  const words = (se) => page.locator(`.transcript[data-thread="${t.id}"] .who-state[data-session="${se.id}"]`);
+  app.rt.updateSession(sa.id, { state: 'think' });
+  app.rt.updateSession(sb.id, { state: 'tool' });
+  await expect.soft(words(sa).last()).toHaveText('· thinking');
+  await expect.soft(words(sb).last()).toHaveText('· calling tools');
+  expect.soft(await words(sa).evaluateAll((ws) => ws.filter((w) => w.textContent).length), 'words showing for the maker').toBe(1);
+  app.rt.updateSession(sa.id, { state: 'idle' });
+  await expect.soft(words(sa).last()).toHaveText('');
+  await expect.soft(words(sb).last()).toHaveText('· calling tools');
 });
