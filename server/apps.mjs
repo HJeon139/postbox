@@ -198,6 +198,12 @@ export function registerApp(rt, sessionId, block, itemId, threadId = rt.s.sessio
   });
 }
 
+/** The app an item shows, when it's the app's own item, not a stub left where it was. @param {any} rt @param {any} it */
+export function appOf(rt, it) {
+  const app = it?.kind === 'block' && it.valid && it.block?.type === 'app' ? rt.s.apps[it.block.id] : null;
+  return app?.itemId === it.id ? app : null;
+}
+
 /**
  * show_app: an app is a block of type app (showBlock, server/block-show.mjs), and an id the session already holds is a
  * new version (updateApp). @param {import('./runtime.mjs').Runtime} rt @param {string} sessionId

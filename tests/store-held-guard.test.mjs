@@ -44,13 +44,12 @@ const PUBLISHED = {
 
 /** Direct reads of state.items, state.work or state.apps: published reads. */
 const DIRECT = {
-  'apps.mjs': ['appCheck', 'appEvent', 'appState', 'appQuery', 'appFile'], // HTTP answers to the page about an app
+  'apps.mjs': ['appCheck', 'appEvent', 'appState', 'appQuery', 'appFile', 'appOf'], // HTTP answers to the page about an app, and appOf for read_message and the host snapshot (#516's S1): a read tool and what it sends
   'index.mjs': ['start', 'route'], // /api/state and startup
   'ledger-git.mjs': ['gitState'], // the Work view’s git state: an answer to the page
   'ledger-answers.mjs': ['published'], // the Work view’s diff and output, answers to the page
   'ledger.mjs': ['expireStale'], // at startup
   'permission-cards.mjs': ['expireStalePermissions'], // at startup
-  'read-message.mjs': ['appOf'], // read_message's app code, and the host snapshot's app item (#516's S1): a read tool and what it sends
   'room-checks-agy.mjs': ['deniedSteps'], // facts from a recorded run, offline
   'room-checks-backends.mjs': ['BACKEND_CHECKS'], // the same
   'room-checks-asks.mjs': ['droppedAsks', 'needsMismatches'], // the same

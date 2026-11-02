@@ -49,7 +49,7 @@ test('#516 S1: an agent reads a 100,000-character app in three parts by followin
   const at2 = readsOn(one);
   assert.equal(at2.version, 1, 'the "reads on" line names the version');
   assert.equal(at2.from, READING.part);
-  assert.match(one, /Characters 1–40,000 of 100,000/, 'N counts the code alone');
+  assert.match(one, /\(Characters 1–40,000 of 100,000 of v1’s code\./, 'N counts the code alone, and names the version');
   // A new version between parts: the pinned reads go on reading v1.
   assert.notEqual(tools.update_app({ id: 'lab', code: BIG('b') }).ok, false);
   const two = read(at2);
@@ -134,4 +134,10 @@ test('#516 S1: the same holds for a long message’s parts', () => {
   assert.ok(!loneHigh(body(one.message)), 'part 1 doesn’t end with half a character');
   assert.ok(!loneLow(body(two.message)));
   assert.equal(body(one.message) + body(two.message), full);
+});
+
+test('#516 S1: a from that’s negative or not a number reads from the start', () => {
+  const code = BIG('f');
+  const { read } = withApp(code);
+  for (const from of [-5, 'abc', Number.NaN]) assert.equal(codeOf(read({ id: 'lab', from })), code.slice(0, READING.part), String(from));
 });
