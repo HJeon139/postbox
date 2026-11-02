@@ -194,7 +194,8 @@ async function startDaemon(d) {
 /** @param {Daemon} d */
 function closeDaemon(d) {
   d.closed = true;
-  d.brk.close?.();
+  // The writes the broker still has in flight; a caller that removes the folders after waits for them.
+  const flushed = d.brk.close?.();
   if (d.idleTimer) d.timers.clearTimeout(d.idleTimer);
   if (d.sweepTimer) d.timers.clearTimeout(d.sweepTimer);
   for (const t of d.killTimers.values()) d.timers.clearTimeout(t);
@@ -206,4 +207,5 @@ function closeDaemon(d) {
     } catch {}
   }
   for (const c of [...d.conns]) c.close();
+  return flushed;
 }

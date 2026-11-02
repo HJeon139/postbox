@@ -106,8 +106,15 @@ export function createBroker(o) {
     checkWrite: (turn, line) => checkWrite(b, turn, line),
     /** Whether a turn is stopping. @param {string} turn */
     isStopping: (turn) => b.stopping.has(turn),
+    /**
+     * Stops the broker's timers and watches. Resolves, and never rejects, once the writes in flight have settled: the
+     * appends to the journals, and the answers being written (a claim is held until its record is). An offline answer
+     * reaches the shim before its reply record is written, so a caller that removes the folders waits for this first.
+     * @returns {Promise<void>}
+     */
     close() {
       b.closed = true;
+      const writing = [...b.appends.values(), ...[...b.tools.values()].map((t) => t.replying)];
       for (const t of b.tools.values()) {
         if (t.timer) {
           b.timers.clearTimeout(t.timer);
@@ -118,6 +125,7 @@ export function createBroker(o) {
       b.watches.clear();
       for (const t of b.orphanTimers) b.timers.clearTimeout(t);
       b.orphanTimers.clear();
+      return Promise.allSettled(writing).then(() => {});
     },
     /** For tests: what waits. */
     get pending() {
