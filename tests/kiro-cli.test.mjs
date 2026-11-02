@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import {
   createKiroMapper,
@@ -19,38 +17,7 @@ import {
   postboxModel,
 } from '../server/adapters/kiro-cli.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
-
-// Streams recorded from real Kiro CLI turns (kiro-cli 2.33.1, engine v3, claude-opus-5.5), with local paths,
-// steering file names and the slash command list removed.
-const fixture = (name) =>
-  readFileSync(new URL(`fixtures/kiro-cli/${name}.jsonl`, import.meta.url), 'utf8')
-    .trim()
-    .split('\n')
-    .map((l) => JSON.parse(l));
-
-function fakeCtx(over = {}) {
-  const calls = { text: '', activity: [], status: [], reported: [], saved: {} };
-  const abort = new AbortController();
-  return {
-    calls,
-    abort,
-    signal: abort.signal,
-    mcpUrl: 'http://127.0.0.1:4280/mcp?session=se_1',
-    persona: { handle: 'kiro', model: 'claude-opus-5-5', permissionMode: 'ask', usesHostSetup: false, tools: [], description: '', instructions: '' },
-    project: null,
-    handles: ['kiro', 'critic'],
-    state: {},
-    saveState: (p) => Object.assign(calls.saved, p),
-    pathOf: () => null,
-    text: (d) => {
-      calls.text += d;
-    },
-    activity: (a) => calls.activity.push(a),
-    status: (s) => calls.status.push(s),
-    reported: (r) => calls.reported.push(r),
-    ...over,
-  };
-}
+import { fakeCtx, fakeSpawn, fixture } from './kiro-cli-fakes.mjs';
 
 const replay = (name, opts) => {
   const ctx = fakeCtx();
@@ -281,25 +248,6 @@ test('exit codes the stream didn’t explain', () => {
   assert.match(exitError(3), /MCP server didn’t start/);
   assert.match(exitError(1, '[INFO] noise\nerror: ACP load_session failed\n'), /code 1: error: ACP load_session failed/);
 });
-
-/** A fake kiro-cli: it records its arguments and environment, and plays a recorded stream, once per spawn. */
-function fakeSpawn(streams, seen) {
-  return (_bin, args, opts) => {
-    const agent = args[args.indexOf('--agent') + 1];
-    const home = opts.env.KIRO_HOME;
-    seen.push({ args, cwd: opts.cwd, env: opts.env, agentFile: home && JSON.parse(readFileSync(join(home, 'agents', `${agent}.json`), 'utf8')) });
-    const child = new EventEmitter();
-    Object.assign(child, { stdout: new PassThrough(), stderr: new PassThrough(), kill: () => {} });
-    const { lines, code } = streams.shift();
-    setImmediate(() => {
-      for (const e of lines) child.stdout.write(`${JSON.stringify(e)}\n`);
-      child.stdout.end();
-      child.stderr.end();
-      setImmediate(() => child.emit('close', code));
-    });
-    return child;
-  };
-}
 
 test('an Isolated turn: its own Kiro home, the agent file written for the turn and removed after, the session saved', async () => {
   const root = mkdtempSync(join(tmpdir(), 'pb-kiro-'));
