@@ -20,22 +20,6 @@ const NS = 'http://www.w3.org/2000/svg';
 export const stateWord = (s) => STATE_WORD[s] ?? 'Idle';
 
 /**
- * Status words beside agent names: a <span class="who-state" data-session> gets “· thinking” and so on. In the
- * transcript (data-item set) it shows only on the agent’s latest message, and only while it’s busy or needs
- * you; elsewhere it always shows.
- */
-export function paintStateWords(root, sessions, latestItemOf) {
-  for (const el of root.querySelectorAll('.who-state[data-session]')) {
-    const se = sessions[el.dataset.session];
-    if (!se) continue;
-    const live = se.state !== 'idle';
-    const show = el.dataset.item ? live && latestItemOf(se) === el.dataset.item : true;
-    const text = show ? `· ${stateWord(se.state).toLowerCase()}` : '';
-    if (el.textContent !== text) el.textContent = text;
-  }
-}
-
-/**
  * One ring of a <pb-ring>: what holds still, drawn in the ring’s own SVG, and what moves, if anything, drawn in an SVG
  * of its own laid over it (#463). Only that overlay animates, by transform and opacity, one animation a ring: Safari
  * repainted a ring’s SVG every frame while any shape inside it animated, and a thinking ring had about 12 (one swell
@@ -113,7 +97,7 @@ class PbRing extends HTMLElement {
     this.render();
   }
   attributeChangedCallback(_, a, b) {
-    if (this.isConnected && a !== b) this.render();
+    if (this.isConnected && a !== b && !this.holding) this.render();
   }
   render() {
     const state = this.getAttribute('state') || 'idle';
@@ -167,17 +151,26 @@ class PbRing extends HTMLElement {
 }
 if (!customElements.get('pb-ring')) customElements.define('pb-ring', PbRing);
 
-/** A ring element for a session, or updates an existing one in place (keeps its animation running). */
+/**
+ * A ring element for a session, or updates an existing one in place (keeps its animation running). It draws once for
+ * all the attributes that changed, not once for each: a session change moves state and context together (#622).
+ */
 export function ringFor(se, size = 'sm', el = null) {
   el ??= document.createElement('pb-ring');
+  let changed = false;
   const set = (k, v) => {
-    if (el.getAttribute(k) !== v) el.setAttribute(k, v); // lint-allow dom: k is one of the literal names below.
+    if (el.getAttribute(k) === v) return;
+    el.setAttribute(k, v); // lint-allow dom: k is one of the literal names below.
+    changed = true;
   };
+  el.holding = true;
   set('name', `@${se.handle}`);
   set('state', se.deleting ? 'idle' : (se.state ?? 'idle'));
   set('ctx', se.ctx != null ? String(se.ctx) : 'unknown');
   set('subs', subsAttr(se.subagents));
   set('size', size);
   set('where', ringWhere(se));
+  el.holding = false;
+  if (changed && el.isConnected) el.render();
   return el;
 }
