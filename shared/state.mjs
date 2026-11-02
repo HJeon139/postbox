@@ -1,7 +1,7 @@
 // The state shape and the reducer, shared by the server’s store and the browser. Every change is an
 // event { seq, type, data }; applying the same events in order gives the same state on both sides.
 
-import { applyHost } from './state-hosts.mjs';
+import { putHost, putHostStatus } from './state-hosts.mjs';
 
 /**
  * Records by id with nothing but their own keys (#352). An id comes from a request, a tool call or an agent, and in a
@@ -53,100 +53,115 @@ export function ownState(s) {
   return s;
 }
 
-// The reducer. Events carry whole objects for upserts, and small patches for items and sessions (session.patch).
-export function apply(s, type, d) {
-  switch (type === 'session.patch' ? 'session' : type) {
-    case 'settings':
-      Object.assign(s.settings, d);
-      break;
-    case 'project':
-      s.projects[d.id] = d;
-      break;
-    case 'persona':
-      s.personas[d.id] = d;
-      break;
-    case 'boilerplate':
-      putBoilerplate(s, d);
-      break;
-    case 'thread':
-      s.threads[d.id] = d;
-      break;
-    case 'session':
-      putSession(s, type, d);
-      break;
-    case 'app':
-      s.apps[d.id] = d;
-      break;
-    case 'file':
-      s.files[d.id] = d;
-      break;
-    case 'dataset':
-      (s.datasets ??= map())[d.id] = d;
-      break;
-    case 'schedule':
-      if (d.removed) delete s.schedules[d.id];
-      else s.schedules[d.id] = d;
-      break;
-    case 'glossary':
-      (s.glossary[d.threadId] ??= map())[d.entry.key] = d.entry;
-      break;
-    case 'item.add':
-      (s.items[d.threadId] ??= []).push(d.item);
-      break;
-    case 'item.patch': {
-      const it = s.items[d.threadId]?.find((i) => i.id === d.id);
-      if (it) applyItemPatch(it, d);
-      break;
-    }
-    // An item brought to the newest point (#49, #92): a stub takes its old place, and the item itself, with its id,
-    // goes last, so whatever names it (an answer, a needs-you, an app) still finds the one live copy.
-    case 'item.move': {
-      const list = s.items[d.threadId];
-      const i = list?.findIndex((x) => x.id === d.id) ?? -1;
-      if (i < 0) break;
-      const [it] = list.splice(i, 1, d.stub);
-      list.push(Object.assign(it, d.patch));
-      break;
-    }
-    case 'item.text': {
-      const it = s.items[d.threadId]?.find((i) => i.id === d.id);
-      if (it) it.text = (it.text ?? '') + d.text;
-      break;
-    }
-    case 'work.add':
-      ((s.work ??= map())[d.convId] ??= []).push(d.entry);
-      break;
-    case 'work.patch': {
-      const e = s.work?.[d.convId]?.find((x) => x.id === d.id);
-      if (e) Object.assign(e, d.patch);
-      break;
-    }
-    case 'remove': {
-      if (d.kind === 'thread') {
-        delete s.threads[d.id];
-        delete s.items[d.id];
-        delete s.glossary[d.id];
-        if (s.work) delete s.work[d.id];
-      }
-      const kept = { session: 'sessions', app: 'apps', persona: 'personas' }[d.kind];
-      if (kept) delete s[kept][d.id];
-      break;
-    }
-    case 'notify':
-      break; // transient: shown as a toast, nothing to store
-    default:
-      if (!applyHost(s, type, d)) throw new Error(`Unknown store event “${type}”.`);
-  }
-}
+/**
+ * Which keys of the state reach the page (designs/architecture.md, “What reaches the browser”). Every key of
+ * emptyState() is in exactly one list (tests/public-state.test.mjs): a new collection reaches the page only by being
+ * listed as public, and can’t vanish from it unseen.
+ */
+export const PUBLIC_STATE_KEYS = Object.freeze([
+  'version',
+  'seq',
+  'settings',
+  'projects',
+  'personas',
+  'boilerplates',
+  'threads',
+  'sessions',
+  'items',
+  'glossary',
+  'apps',
+  'files',
+  'datasets',
+  'schedules',
+  'hosts',
+  'hostStatus',
+  'work',
+]);
+export const PRIVATE_STATE_KEYS = Object.freeze(/** @type {string[]} */ ([]));
+
+/** The names the event stream gives its own frames (server/live-streams.mjs). None is ever an event type. */
+export const STREAM = Object.freeze({ cursor: 'cursor', status: 'status', epoch: 'epoch', resync: 'resync' });
+export const RESERVED = Object.freeze(Object.values(STREAM));
+
+const put = (/** @type {string} */ key) => (/** @type {any} */ s, /** @type {any} */ d) => {
+  s[key][d.id] = d;
+};
 
 /**
- * A whole session, or a session.patch: only a session’s changed fields (designs/508, “Store events”), with the ones it
- * unsets by name, since JSON drops an undefined. A patch makes a new object, as a whole session did, so a reference to
- * the old one still reads as it was; a patch for a session that’s gone changes nothing.
+ * Every event type: how the reducer applies it, and whether the page may see it. The reducer, the server’s projection
+ * (server/public-state.mjs) and the page’s stream listeners (app/js/client.mjs) all read this one table, so a type the
+ * reducer applies has said whether it reaches the browser. Events carry whole objects for upserts, and small patches
+ * for items and sessions (session.patch).
+ * @type {Readonly<Record<string, { apply: (s: any, d: any) => void, public: boolean }>>}
  */
-function putSession(s, type, d) {
-  if (type === 'session') s.sessions[d.id] = d;
-  else if (s.sessions[d.id]) s.sessions[d.id] = patchSession(s.sessions[d.id], d);
+export const EVENTS = Object.freeze({
+  settings: { apply: (s, d) => Object.assign(s.settings, d), public: true },
+  project: { apply: put('projects'), public: true },
+  persona: { apply: put('personas'), public: true },
+  boilerplate: { apply: putBoilerplate, public: true },
+  thread: { apply: put('threads'), public: true },
+  session: { apply: put('sessions'), public: true },
+  // Only a session’s changed fields, with the ones it unsets by name, since JSON drops an undefined (designs/508, “Store
+  // events”). A patch makes a new object, as a whole session did, so a reference to the old one still reads as it was;
+  // a patch for a session that’s gone changes nothing.
+  'session.patch': { apply: (s, d) => s.sessions[d.id] && (s.sessions[d.id] = patchSession(s.sessions[d.id], d)), public: true },
+  app: { apply: put('apps'), public: true },
+  file: { apply: put('files'), public: true },
+  dataset: { apply: (s, d) => ((s.datasets ??= map())[d.id] = d), public: true },
+  schedule: { apply: (s, d) => (d.removed ? delete s.schedules[d.id] : (s.schedules[d.id] = d)), public: true },
+  glossary: { apply: (s, d) => ((s.glossary[d.threadId] ??= map())[d.entry.key] = d.entry), public: true },
+  'item.add': { apply: (s, d) => (s.items[d.threadId] ??= []).push(d.item), public: true },
+  'item.patch': { apply: (s, d) => withItem(s, d, (it) => applyItemPatch(it, d)), public: true },
+  'item.move': { apply: moveItem, public: true },
+  'item.text': { apply: (s, d) => withItem(s, d, (it) => (it.text = (it.text ?? '') + d.text)), public: true },
+  'work.add': { apply: (s, d) => ((s.work ??= map())[d.convId] ??= []).push(d.entry), public: true },
+  'work.patch': { apply: patchWork, public: true },
+  remove: { apply: removeEntity, public: true },
+  // Transient: shown as a toast, nothing to store.
+  notify: { apply: () => {}, public: true },
+  host: { apply: putHost, public: true },
+  'host.status': { apply: putHostStatus, public: true },
+});
+
+/** The event types the page hears: every public entry of EVENTS. */
+export const PUBLIC_EVENT_TYPES = Object.freeze(Object.keys(EVENTS).filter((t) => EVENTS[t].public));
+
+/** The reducer: applies one event through its entry in EVENTS. A type with no entry is a programming error. */
+export function apply(s, type, d) {
+  const entry = Object.hasOwn(EVENTS, type) ? EVENTS[type] : undefined;
+  if (!entry) throw new Error(`Unknown store event “${type}”.`);
+  entry.apply(s, d);
+}
+
+const withItem = (s, d, f) => {
+  const it = s.items[d.threadId]?.find((i) => i.id === d.id);
+  if (it) f(it);
+};
+
+// An item brought to the newest point (#49, #92): a stub takes its old place, and the item itself, with its id, goes
+// last, so whatever names it (an answer, a needs-you, an app) still finds the one live copy.
+function moveItem(s, d) {
+  const list = s.items[d.threadId];
+  const i = list?.findIndex((x) => x.id === d.id) ?? -1;
+  if (i < 0) return;
+  const [it] = list.splice(i, 1, d.stub);
+  list.push(Object.assign(it, d.patch));
+}
+
+function patchWork(s, d) {
+  const e = s.work?.[d.convId]?.find((x) => x.id === d.id);
+  if (e) Object.assign(e, d.patch);
+}
+
+function removeEntity(s, d) {
+  if (d.kind === 'thread') {
+    delete s.threads[d.id];
+    delete s.items[d.id];
+    delete s.glossary[d.id];
+    if (s.work) delete s.work[d.id];
+  }
+  const kept = { session: 'sessions', app: 'apps', persona: 'personas' }[d.kind];
+  if (kept) delete s[kept][d.id];
 }
 
 /**

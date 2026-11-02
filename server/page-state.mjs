@@ -2,6 +2,7 @@
 // the store’s status, and the configuration the page reads once.
 
 import { DEFAULT_EFFORT, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
+import { publicState } from './public-state.mjs';
 import { DEFAULT_MODEL, PERMISSION_MODES } from './runtime.mjs';
 import { KNOWN_TOOLS } from './seed.mjs';
 import { recordingOff } from './telemetry.mjs';
@@ -15,7 +16,7 @@ export function pageState({ store, rt, adapters, origin, demo, real, config, cor
     seq: store.state.seq,
     epoch: store.epoch, // the history the seq counts within; the stream request echoes it (server/live-streams.mjs)
     store: store.status, // whether changes are being saved, and why not (ST-3): the page’s status line
-    state: store.state,
+    state: publicState(store.state), // only its public keys (server/public-state.mjs)
     config: {
       origin,
       // Postbox’s tools, then those only real backends have (#5).

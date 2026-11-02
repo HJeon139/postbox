@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import vm from 'node:vm';
+import { PUBLIC_EVENT_TYPES, STREAM } from '../shared/state.mjs';
 
 /** A snapshot /api/state would give, on an epoch, its one item naming the epoch. @param {string} epoch */
 const snapshot = (epoch) => ({ epoch, seq: 4, state: { items: { room: [{ text: epoch }] } }, config: {} });
@@ -47,6 +48,9 @@ async function pageWith(answer) {
       events[name] = fn;
     },
     ownState: (s) => s,
+    // client.mjs's imports from shared/state.mjs that the test uses as they are.
+    PUBLIC_EVENT_TYPES,
+    STREAM,
     apply() {},
     needsYouNow() {},
     whereNeeds() {},

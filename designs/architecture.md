@@ -758,3 +758,25 @@ Tests that need `/proc` or logind skip on macOS and say why; CI runs them on Lin
 - People want to keep a remote turn’s background jobs on Stop, or stop one job. Then route `keepJobs` and `stopJobUnder` to the daemon.
 - A host has no Node 22, and people want Postbox to bring one. That needs a decided source and checksum check first.
 - People need Postbox itself on the host, served to the browser over a tunnel. That changes the assumptions in “Writes need the page’s token”, and is out of scope here.
+
+## 19. What reaches the browser
+
+**Decision** (2 November 2026, from the integrator’s review of #608). What the page may see is decided once, in `shared/state.mjs`: each event type’s entry in `EVENTS` says whether it is `public`, and each state key is in `PUBLIC_STATE_KEYS` or `PRIVATE_STATE_KEYS`. `server/public-state.mjs` applies that on every path that sends state or events to the page: today `/api/state` (`server/page-state.mjs`), the live frames and the backlog frames (`server/live-streams.mjs`). An event the page may not see goes out as a `cursor` that keeps only its seq, so the page stays in step.
+
+```mermaid
+flowchart TD
+  T[EVENTS and the state-key lists] --> R[the reducer]
+  T --> P[server/public-state.mjs]
+  T --> C[the page’s stream listeners]
+  P --> S[every path to the page]
+```
+
+**What it rests on**
+- **A list kept beside the reducer drifts.** #608 kept the public types in a list of their own, checked by a regular expression over the reducer’s source. The integrator added a type three ways (a `switch` in an imported helper, a lookup list in a helper, a helper two levels deep), and each passed. With one table, the reducer can’t apply a type that hasn’t said whether it is public, and the page’s listeners come from the same table (`app/js/client.mjs`).
+- **It fails closed.** A type with no entry, or one that isn’t public, reaches the page only as a cursor, and a state key not listed as public isn’t sent. A spec fails when a key of `emptyState()` is in neither list, or in both.
+- **The store keeps the raw history.** The log, snapshots, telemetry and the remote hosts’ subscribers read the store directly. Only the page’s paths are projected.
+- **The stream’s own frame names are reserved.** `STREAM` in `shared/state.mjs` holds `cursor`, `status`, `epoch` and `resync`, and none of them may be an event type.
+
+**When to revisit**
+- A remote host gets a snapshot built from the store’s state. No key is private yet. When A1b adds one, its design says whether a host gets `publicState` or a projection of its own.
+- A new path to the page, such as B2’s paged items fetch or A1b’s headers, goes through `server/public-state.mjs`.
