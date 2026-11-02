@@ -56,6 +56,11 @@ test('the guide starts from what a reply contains, not from what the person aske
   assert.doesNotMatch(g, /To ask for a/);
 });
 
+test('#673 agents are no longer told to choose a choice block’s display', () => {
+  assert.doesNotMatch(guideText(), /display\?:/);
+  assert.doesNotMatch(readFileSync(new URL('../README.md', import.meta.url), 'utf8'), /display\?:/);
+});
+
 test('the guide tells agents to report results, and to update an answered block only to ask again (#94)', () => {
   const g = guideText();
   assert.match(g, /Report what you did in your reply, or with update_block on the answered block with outcome set/);

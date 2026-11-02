@@ -67,6 +67,11 @@ test('rejects a newer version than the app reads', () => {
   assert.equal(r.reason, 'newer-version');
 });
 
+test('a stored choice with a retired display preference still validates', () => {
+  for (const display of ['chips', 'buttons']) ok(base('choice', { options: [{ id: 'a', label: 'A' }], display }));
+  bad(base('choice', { options: [{ id: 'a', label: 'A' }], display: 'cards' }), /display must be one of/);
+});
+
 test('rejects a misspelled field instead of ignoring it', () => {
   bad(base('choice', { options: [{ id: 'a', label: 'A' }], multipel: true }), /unknown field “multipel”/);
 });
