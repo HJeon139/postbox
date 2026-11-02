@@ -51,8 +51,25 @@ test('the failure classes’ words for the UI', () => {
   assert.match(classifyExit({ destination: 'user@host.example.com', code: 255, signal: null, stderr: f.stderr }).next, /`ssh-keygen -R host\.example\.com`/);
 });
 
+test('a missing launcher and an installed launcher that cannot start are distinct and actionable', () => {
+  const by = (name) => {
+    const f = FIXTURES.find((x) => x.name === name);
+    return classifyExit({ destination: HOST, code: f.code, signal: null, stderr: f.stderr });
+  };
+  const missing = by('not-installed');
+  assert.equal(missing.kind, 'not-installed');
+  assert.match(missing.message, /isn’t installed/);
+  assert.match(missing.next, /Install Postbox/);
+
+  const blocked = by('launcher-could-not-start');
+  assert.equal(blocked.kind, 'could-not-start');
+  assert.match(blocked.message, /is installed.*couldn’t start/);
+  assert.match(blocked.next, /executable/);
+});
+
 test('only what Postbox can’t fix by waiting stops the retries', () => {
-  for (const kind of ['sign-in', 'host-key', 'not-installed', 'version', 'bad-token', 'busy', 'no-node']) assert.equal(retries(kind), false, kind);
+  for (const kind of ['sign-in', 'host-key', 'not-installed', 'could-not-start', 'version', 'bad-token', 'busy', 'no-node'])
+    assert.equal(retries(kind), false, kind);
   for (const kind of ['unreachable', 'ended', 'failed']) assert.equal(retries(kind), true, kind);
 });
 

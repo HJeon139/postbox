@@ -108,6 +108,13 @@
       "stderr": "bash: line 1: /home/user/.postbox-remote/0.10.0/server/remote/host/host: No such file or directory\n"
     },
     {
+      "name": "launcher-could-not-start",
+      "kind": "could-not-start",
+      "source": "recorded: dash 0.5.12 on Linux running the fixed command with -c against an existing launcher without execute permission; temporary path replaced",
+      "code": 126,
+      "stderr": "postbox-probe: 1: /home/user/.postbox-remote/0.10.0/server/remote/host/host: Permission denied\n"
+    },
+    {
       "name": "other",
       "kind": "failed",
       "source": "documented: readconf.c, “%s: line %d: Bad configuration option: %s” and “%s: terminating, %d bad configuration options”, from a ~/.ssh/config ssh can’t read",
