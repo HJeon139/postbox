@@ -113,6 +113,39 @@ test('a commit with two rejected events: the rest apply, and its error names the
   await again.close();
 });
 
+test('a snapshot forgets a rejected op, so a retry runs again, and a retry that succeeds is a duplicate after that', async () => {
+  const store = await new Store(await folder()).load();
+  await assert.rejects(store.commit([{ type: 'nonsense', data: {} }], { opId: 'op3' }), rejected);
+  await store.snapshot(); // forgets opIds, as it forgets store.ops
+  const ok = await store.commit([{ type: 'thread', data: { id: 'ok', members: [] } }], { opId: 'op3' });
+  assert.equal(ok.duplicate, false, 'after the snapshot the retry runs again');
+  assert.deepEqual(await store.commit([{ type: 'thread', data: { id: 'ok', members: [] } }], { opId: 'op3' }), { seq: ok.seq, duplicate: true });
+  await store.close();
+});
+
+test('what leaves the store for a rejected event names it, but carries none of the reducer’s message', async () => {
+  const store = new Store(null);
+  const logged = [];
+  const error = console.error;
+  console.error = (...a) => logged.push(a.join(' '));
+  try {
+    store.emit('item.add', { threadId: 't', item: { id: 'i', kind: 'agent', activity: {} } });
+    const e = (() => {
+      try {
+        store.emit('item.patch', { threadId: 't', id: 'i', activityStep: { id: 'secret-step' } });
+      } catch (x) {
+        return x;
+      }
+    })();
+    assert.ok(rejected(e));
+    assert.doesNotMatch(e.message, /findIndex|secret/, 'the caller’s message, which a tool returns to the agent, names only the seq and type');
+    assert.ok(e.cause instanceof TypeError, 'the reducer’s error stays on the cause');
+    assert.doesNotMatch(logged.join('\n'), /findIndex|secret/, 'and the log line carries none of it');
+  } finally {
+    console.error = error;
+  }
+});
+
 test('a log line the reducer rejects on replay: load completes and holds it as rejected', async () => {
   const dir = await folder();
   const lines = [
