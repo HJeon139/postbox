@@ -47,8 +47,10 @@ async function loadTurn(b, turn) {
     else if (r.op === 'call' && !b.tools.has(k) && (r.route === 'queue' || r.route === 'ask' || r.route === 'read') && Object.hasOwn(TOOL_ROUTES, r.name)) {
       const body = { turn, id: r.id, name: r.name, args: r.args ?? {} };
       // A record that wouldn’t make a valid tool message is left out, never sent.
-      if (validateMessage('daemon-to-postbox', { type: 'tool', ...body }).ok)
-        b.tools.set(k, { turn, id: r.id, name: r.name, route: r.route, args: r.args, replied: false, bytes: toolBytes(turn, r.name, r.args ?? {}) });
+      if (validateMessage('daemon-to-postbox', { type: 'tool', ...body }).ok) {
+        const arrived = Number.isSafeInteger(r.at) && r.at >= 0 ? r.at : b.now();
+        b.tools.set(k, { turn, id: r.id, name: r.name, route: r.route, args: r.args, replied: false, bytes: toolBytes(turn, r.name, r.args ?? {}), arrived });
+      }
     } else if (r.op === 'reply') {
       const t = b.tools.get(k);
       if (t) {

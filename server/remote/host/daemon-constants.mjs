@@ -55,7 +55,7 @@ export const READ_CHUNK = 64 * 1024;
  * @typedef {{ setTimeout: (fn: () => void, ms: number) => any, clearTimeout: (t: any) => void }} Timers
  * @typedef {{ write: (s: string) => boolean, end: () => void, once?: (e: 'drain', fn: () => void) => any }} Output
  * @typedef {{ id: number, output: Output, ready: boolean, closed: boolean, follows: Map<string, Follower>,
- *   queue: Promise<void>, close: () => void, instance?: string | null }} Conn
+ *   queue: Promise<void>, close: (reason?: 'replaced' | 'taken-over') => void, instance?: string | null }} Conn
  *   instance: the Postbox its hello named, once it’s the driver (daemon-hello.mjs)
  * @typedef {{ stop: () => void, poke: () => void }} Follower
  * @typedef {{ turn: string, harness: string, state: 'running' | 'ended' | 'interrupted', size: number,
@@ -64,7 +64,7 @@ export const READ_CHUNK = 64 * 1024;
  *   message?: (msg: any, reply: { send: (type: string, body: Record<string, unknown>) => void, fail: (code: string, text: string) => void }) => boolean | Promise<boolean>,
  *   load?: (turns: TurnFound[]) => Promise<void>, starting?: (turn: string) => Promise<void>, started?: (turn: string) => unknown,
  *   stopping?: (turn: string) => Promise<void>, checkWrite?: (turn: string, line: string) => { refused: string } | { done: (ok: boolean) => void },
- *   shim?: ShimSeam, close?: () => void }} Broker
+ *   shim?: ShimSeam, driverLost?: () => void, close?: () => void }} Broker
  *   broker.mjs’s seam: hello is called after each welcome (to resend what waits for Postbox); message gets snapshot,
  *   snapshot-items, answer and reply (remove is the daemon’s own: cleanup.mjs), and returns false for one it doesn’t
  *   take; load replays the turn folders at start; starting and started bracket a turn’s runner launch; stopping comes

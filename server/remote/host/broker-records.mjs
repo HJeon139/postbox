@@ -22,7 +22,7 @@ export function record(b, turn, which, rec) {
   const line = `${JSON.stringify({ ...rec, at: rec.at ?? b.now() })}\n`;
   const next = (b.appends.get(path) ?? Promise.resolve())
     .catch(() => {})
-    .then(() => fsp.appendFile(path, line, { mode: FILE_MODE }))
+    .then(() => b.io.appendFile(path, line, { mode: FILE_MODE }))
     .catch((e) => {
       b.log(`Couldn’t record ${rec.op} in ${path}: ${e.message}`);
       throw e;

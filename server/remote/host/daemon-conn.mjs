@@ -28,18 +28,23 @@ function openConn(d, output, end = () => output.end()) {
     closed: false,
     follows: new Map(),
     queue: Promise.resolve(),
-    close() {
+    close(reason) {
       if (c.closed) return;
       c.closed = true;
       for (const f of c.follows.values()) f.stop();
       c.follows.clear();
-      if (d.driver === c) d.driver = null;
+      // Read before the driver is cleared (#582, designs/508/582/link.md).
+      const wasDriver = d.driver === c;
+      if (wasDriver) d.driver = null;
       d.conns.delete(c);
       d.lastActive = d.now();
       try {
         end();
       } catch {}
       checkIdle(d);
+      // In this tick, never later: on a takeover the new driver's hello resends what is still unsettled, and a deferred
+      // call could run after it. A same-instance replacement keeps its reads: the new driver is sent them again.
+      if (wasDriver && reason !== 'replaced') d.brk.driverLost?.();
     },
   };
   d.conns.add(c);
