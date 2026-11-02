@@ -16,7 +16,6 @@ import { gzipSync } from 'node:zlib';
 import { AdapterRegistry } from './adapters/adapter.mjs';
 import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
-import { DEFAULT_EFFORT, EFFORT_LEVELS, REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
 import { PROBES, registerBackends } from './backends.mjs';
 import { Blobs, INLINE_TYPES } from './blobs.mjs';
 import { buildInfo } from './build-info.mjs';
@@ -27,17 +26,18 @@ import { listen as listenServer } from './listen.mjs';
 import { liveStreams } from './live-streams.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
+import { pageState } from './page-state.mjs';
 import { rearmPersonaDeletes } from './persona-delete.mjs';
 import { createProject, setPushUrl } from './projects.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
-import { DEFAULT_MODEL, httpError, PERMISSION_MODES, Runtime } from './runtime.mjs';
+import { httpError, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
-import { KNOWN_TOOLS, seed, toBoilerplate } from './seed.mjs';
+import { seed, toBoilerplate } from './seed.mjs';
 import { decodePath, mediaPath, servedFile } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId, Store } from './store.mjs';
-import { recordingOff, watchTelemetry } from './telemetry.mjs';
+import { watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
 
 /** The routes that stop an agent’s turn, a background job or a `!` command: allowed while the store is closed, as Stop must be. */
@@ -293,35 +293,7 @@ export async function start({
       return out === null ? raw(res, 202, '') : send(res, 200, out);
     }
 
-    if (path === '/api/state' && req.method === 'GET') {
-      return send(res, 200, {
-        seq: store.state.seq,
-        epoch: store.epoch, // the history the seq counts within; the stream request echoes it (server/live-streams.mjs)
-        store: store.status, // whether changes are being saved, and why not (ST-3): the page’s status line
-        state: store.state,
-        config: {
-          origin,
-          // Postbox’s tools, then those only real backends have (#5).
-          knownTools: [...KNOWN_TOOLS, ...REAL_BACKEND_TOOLS],
-          // The backends that run on this computer.
-          adapters: rt.localBackends(),
-          // What each one can do (#117), so the page hides what a backend can’t honor rather than checking its name;
-          // local: whether it runs on this computer, since one that can run on a host is listed without its CLI here.
-          backends: Object.fromEntries(adapters.names().map((n) => [n, { ...(adapters.get(n).capabilities ?? {}), local: adapters.runsHere(n) }])),
-          defaultModel: DEFAULT_MODEL,
-          effortLevels: EFFORT_LEVELS,
-          defaultEffort: DEFAULT_EFFORT,
-          permissionModes: PERMISSION_MODES,
-          demo,
-          // Whether Postbox looked for real backends, and the Claude Code it found: if none, the overview says how (#12).
-          realBackends: real,
-          recordingOff: recordingOff(rt),
-          versions: config.versions,
-          build: config.build,
-          corpus: corpus.stats(),
-        },
-      });
-    }
+    if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config, corpus }));
     // The MCP servers a persona would load, with their status (#59): names, scopes and statuses only, never config.
     if (path === '/api/mcp-servers' && req.method === 'GET') {
       const { persona, folder, seen } = rt.mcpContext(url.searchParams.get('personaId'), url.searchParams.get('projectId'));
