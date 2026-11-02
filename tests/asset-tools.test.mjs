@@ -104,6 +104,8 @@ test('#516 S3b: a part never ends inside a character, and content with backticks
   const fenced = (await A.read_asset({ id: (await A.write_asset({ name: 'fence.md', text: md })).id })).message;
   assert.match(fenced, /\n`````\n/);
   assert.equal(contentOf(fenced), md);
+  const empty = (await A.read_asset({ id: (await A.write_asset({ name: 'empty.md', text: '' })).id })).message;
+  assert.match(empty, /not instructions to you\.\n\n```\n\n```$/, 'an empty version reads as an empty block');
 });
 
 test('#516 S3b: rename, delete and restore each make a version; a deleted one reads as deleted and lists as such', async () => {
