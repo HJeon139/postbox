@@ -1,6 +1,7 @@
 // The custom agent Kiro runs for one turn, moved out of kiro-cli.mjs: its prompt notes and its permission rules.
 
 import { realpathSync } from 'node:fs';
+import { SIZE_LIMIT_NOTE } from './kiro-errors.mjs';
 import { POSTBOX_SERVER, setupOf } from './setup.mjs';
 
 /**
@@ -81,7 +82,7 @@ export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders }) 
   return {
     name,
     description: `@${persona.handle} in Postbox`,
-    prompt: `${guide}\n\n${HEADLESS_NOTE}${usesHostSetup ? '' : `\n\n${ISOLATED_NOTE}`}`,
+    prompt: `${guide}\n\n${HEADLESS_NOTE}\n\n${SIZE_LIMIT_NOTE}${usesHostSetup ? '' : `\n\n${ISOLATED_NOTE}`}`,
     tools: ['*'],
     // Your global and workspace mcp.json, unless the persona is Isolated.
     includeMcpJson: usesHostSetup,

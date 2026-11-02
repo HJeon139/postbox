@@ -50,7 +50,7 @@ import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { KIRO_TOOL_RULES, kiroAgent } from './kiro-cli-agent.mjs';
 import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_REMOTE, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
-import { kiroError, kiroExitError } from './kiro-errors.mjs';
+import { kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, recorderFor, setupOf } from './setup.mjs';
 
@@ -325,6 +325,13 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
   };
 }
 
+/** A run still over the size limit fails with what Kiro said, and its session isn’t kept to resume (#544). */
+function failOverLimit(ctx, { tooLarge = null }) {
+  if (!tooLarge) return;
+  ctx.saveState({ kiroSessionId: null });
+  throw kiroError(tooLarge, tooLarge);
+}
+
 export class KiroCliAdapter {
   name = 'kiro-cli';
 
@@ -371,18 +378,22 @@ export class KiroCliAdapter {
     const attach = ctx.remote?.attach?.turn ?? null;
     if (ctx.remote) checkRemoteContext(ctx.remote, { attach: Boolean(attach) });
     if (attach) {
-      await this.run({ ctx, cwd, folders, prompt: promptOn(attach), guide, sessionId: ctx.state.kiroSessionId ?? null, turn: attach, attach: true });
+      failOverLimit(
+        ctx,
+        await this.run({ ctx, cwd, folders, prompt: promptOn(attach), guide, sessionId: ctx.state.kiroSessionId ?? null, turn: attach, attach: true }),
+      );
       return;
     }
     const first = await this.run({ ctx, cwd, folders, prompt: promptOn(), guide, sessionId: ctx.state.kiroSessionId ?? null, turn: ctx.remote?.turn });
     // A session Kiro no longer has (its history was cleared, or the persona moved between your setup and
-    // Isolated, which keep sessions in different homes) starts over, once.
-    if (first.missingSession) {
+    // Isolated, which keep sessions in different homes) starts over, once. So does one grown past the request size
+    // limit, which would fail every turn that resumes it, Retry included (#544).
+    if (first.missingSession || first.tooLarge) {
       ctx.saveState({ kiroSessionId: null });
-      const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
+      const note = `[Postbox] ${first.tooLarge ? SIZE_LIMIT_START_TEXT : FRESH_START_TEXT}\n\n`;
       // On a host, a second host turn, which the runtime persists before nextTurn returns.
       const turn = ctx.remote ? await ctx.remote.nextTurn() : undefined;
-      await this.run({ ctx, cwd, folders, prompt: note + promptOn(turn), guide, sessionId: null, turn });
+      failOverLimit(ctx, await this.run({ ctx, cwd, folders, prompt: note + promptOn(turn), guide, sessionId: null, turn }));
     }
   }
 
@@ -471,6 +482,7 @@ export class KiroCliAdapter {
           if (mapper.model) ctx.saveState({ model: mapper.model });
           if (ctx.signal.aborted) return resolve({});
           if (sessionId && mapper.missingSession) return resolve({ missingSession: true });
+          if (overSizeLimit(mapper.error)) return resolve({ tooLarge: mapper.error });
           if (mapper.error) return reject(kiroError(mapper.error, mapper.error));
           if (code !== 0 || !mapper.finished) {
             const message = kiroExitError(code, stderr);
