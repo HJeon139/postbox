@@ -40,8 +40,8 @@ test('lint-caps: removing an override passes unless it held a limit under the de
 test('lint-caps: a new override may not carry a ceiling over the default, even for moved code (the person, 2 November 2026)', () => {
   const moved = biome([both('server/runtime/index.mjs', cap(3028), cap(200)), MAIN]);
   assert.deepEqual(configDiff(base, moved), [
-    '["server/runtime/index.mjs"]: its file length rule was added over the default 300, or at a level that doesn’t fail.',
-    '["server/runtime/index.mjs"]: its function length rule was added over the default 50, or at a level that doesn’t fail.',
+    '["server/runtime/index.mjs"]: its file length rule was added; a new one may hold only a failing level and a maxLines at or under the default 300.',
+    '["server/runtime/index.mjs"]: its function length rule was added; a new one may hold only a failing level and a maxLines at or under the default 50.',
   ]);
   assert.equal(configDiff(base, biome([...base.overrides, fileCap('server/runtime/turns.mjs', cap(2000))])).length, 1);
   assert.equal(configDiff(base, biome([...base.overrides, fileCap('server/runtime/turns.mjs', 'off')])).length, 1);
@@ -54,7 +54,7 @@ test('lint-caps: a new override may not carry a ceiling over the default, even f
 
 test('lint-caps: the integrator’s four bypasses fail', () => {
   const brace = biome([...base.overrides, fileCap('server/{runtime,zz}.mjs', cap(9999))]);
-  assert.match(configDiff(base, brace)[0], /server\/\{runtime,zz\}\.mjs"\]: its file length rule was added over the default/);
+  assert.match(configDiff(base, brace)[0], /server\/\{runtime,zz\}\.mjs"\]: its file length rule was added; a new one may hold only/);
   const noTop = biome(base.overrides);
   delete noTop.linter.rules.style.noExcessiveLinesPerFile;
   assert.deepEqual(configDiff(base, noTop), ['biome.json: its file length rule was removed, which leaves no limit.']);
@@ -141,4 +141,22 @@ test('lint-caps: the repo’s own biome.json against itself has no difference', 
   assert.equal(c.defaults.function, 50);
   assert.ok(c.paths.get(RT)?.file > 300, 'the largest file has a ceiling');
   assert.deepEqual(configDiff(own, own), []);
+});
+
+test('lint-caps: a new override’s length rule may hold only a level and a maxLines', () => {
+  for (const extra of [{ skipBlankLines: true }, { someNewOption: 1 }]) {
+    const loose = biome([...base.overrides, fileCap('server/new.mjs', cap(300, extra))]);
+    assert.deepEqual(
+      configDiff(base, loose),
+      ['["server/new.mjs"]: its file length rule was added; a new one may hold only a failing level and a maxLines at or under the default 300.'],
+      JSON.stringify(extra),
+    );
+  }
+  const fnLoose = biome([
+    ...base.overrides,
+    { includes: ['**/*.mjs'], linter: { rules: { complexity: { noExcessiveLinesPerFunction: cap(50, { skipBlankLines: true }) } } } },
+  ]);
+  assert.equal(configDiff(base, fnLoose).length, 1);
+  const extraKey = biome([...base.overrides, fileCap('server/new.mjs', { level: 'error', options: { maxLines: 300 }, fix: 'none' })]);
+  assert.equal(configDiff(base, extraKey).length, 1, 'a key beside level and options');
 });

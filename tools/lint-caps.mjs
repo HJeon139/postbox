@@ -86,7 +86,10 @@ function lengthChange(where, b, h, def, top) {
   }
   const max = options(h).maxLines;
   const strict = FAILS.has(level(h)) && Number.isFinite(max);
-  if (b === undefined) return strict && max <= def ? [] : [`${where} was added over the default ${def}, or at a level that doesn’t fail.`];
+  // A new rule holds only a level and a maxLines: any other option, such as skipBlankLines, counts fewer lines.
+  const bare = typeof h === 'object' && same(Object.keys(h).sort(), ['level', 'options']) && same(Object.keys(options(h)), ['maxLines']);
+  if (b === undefined)
+    return strict && bare && max <= def ? [] : [`${where} was added; a new one may hold only a failing level and a maxLines at or under the default ${def}.`];
   const sameRest = same({ ...options(b), maxLines: 0 }, { ...options(h), maxLines: 0 });
   if (strict && level(h) === level(b) && sameRest && max < (options(b).maxLines ?? def)) return [];
   return [`${where} went from ${JSON.stringify(b)} to ${JSON.stringify(h)}; only a lower maxLines passes.`];
