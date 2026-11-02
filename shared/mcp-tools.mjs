@@ -144,6 +144,19 @@ export const TOOL_DEFS = [
     inputSchema: { type: 'object', properties: { handle: { type: 'string' }, message: { type: 'string' } }, required: ['handle', 'message'] },
   },
   {
+    name: 'open_topic',
+    description: `Open a topic thread from a message in your conversation, by its item id, or find the one it has, and optionally post a first message there, up to ${count(SENDING.message)} characters. Each agent in mentions is woken there, as wake_agent wakes it, and answers in the thread; one message serves them all. The thread opens beside the message in the page. A message in a topic thread can't start another one: reply in that thread. The reply gives the thread's id, which read_conversation { thread } reads.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string', description: 'The id (it_…) of the message the thread is about, in your conversation.' },
+        message: { type: 'string', description: 'A first message to post in the thread, in Markdown.' },
+        mentions: { type: 'array', items: { type: 'string' }, description: 'The handles of agents to wake there with that message.' },
+      },
+      required: ['itemId'],
+    },
+  },
+  {
     name: 'bring_to_conversation',
     description: `Post text in the main conversation from the topic thread you’re in, up to ${count(SENDING.message)} characters. Use it only when the person asks for something to go to the main chat, in a message to you there: nothing goes there on its own. It shows as shared by you from the topic thread, and wakes no one; the conversation’s agents read it at their next turn.`,
     inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'What to post, in Markdown.' } }, required: ['text'] },

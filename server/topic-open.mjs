@@ -1,7 +1,7 @@
 // Topic threads (#228, #637): a topic opens from one message of a conversation, from the page or from an agent's
 // open_topic. Moved from server/runtime.mjs, whose Runtime keeps a method that delegates to it.
 
-import { clip, httpError } from './helpers.mjs';
+import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
 
 /**
@@ -47,4 +47,71 @@ export function startTopic(rt, threadId, itemId) {
     members[0];
   if (src) rt.putThread({ ...topic, woke: src.handle });
   return { threadId: topic.id, created: true };
+}
+
+/**
+ * open_topic (#637): an agent opens the topic thread of a message in its own conversation, or finds the one it has,
+ * through startTopic, the page's own path. Its first message, if any, posts there as wake_agent's does, waking each
+ * agent it names; one message serves every mention. Nothing is stored that the page's open doesn't store, so A1b and A2
+ * convert it with everything else (designs/508/637-open-topic.md).
+ * @param {import('./runtime.mjs').Runtime} rt @param {string} sessionId
+ * @param {{ itemId?: string, message?: string, mentions?: string[] }} args
+ */
+export function openTopic(rt, sessionId, { itemId, message, mentions }) {
+  const se = rt.session(sessionId);
+  const text = String(message ?? '');
+  const tooLong = text && tooLongToSend('A topic thread’s first message', text);
+  if (tooLong) return tooLong;
+  let opened;
+  try {
+    opened = startTopic(rt, conversationOf(rt, se, String(itemId ?? '')), String(itemId ?? ''));
+  } catch (e) {
+    return { ok: false, message: /** @type {any} */ (e).message };
+  }
+  const { threadId, created } = opened;
+  // The opener answers there first (I4), only when this call made the topic.
+  if (created) rt.putThread({ ...rt.store.pending.thread(threadId), woke: se.handle });
+  const handles = [...new Set((mentions ?? []).map((h) => String(h).replace(/^@/, '')).filter(Boolean))];
+  const woke = text && !repeated(rt, se, threadId, text, handles.length, created) ? post(rt, se, threadId, text, handles) : [];
+  const where = `${created ? 'Opened a topic thread' : 'That message already has a topic thread'}, ${threadId}, beside it in the page. read_conversation { thread: "${threadId}" } reads it.`;
+  return { ok: true, threadId, created, message: [where, ...woke].join(' ') };
+}
+
+/**
+ * The thread a message is in, for the agent's own conversation only (I3): the conversation itself, or one of its topic
+ * threads, whose item startTopic then refuses with its 409. An id from anywhere else is the conversation's, so
+ * startTopic answers 404 for it. @param {any} rt @param {any} se @param {string} itemId
+ */
+function conversationOf(rt, se, itemId) {
+  const conv = rt.lineage(se.threadId).at(-1);
+  if (rt.store.pending.items(conv).some((/** @type {any} */ x) => x.id === itemId)) return conv;
+  const topic = Object.values(rt.s.threads).find(
+    (/** @type {any} */ t) => t.kind === 'topic' && t.parentId === conv && rt.store.pending.items(t.id).some((/** @type {any} */ x) => x.id === itemId),
+  );
+  return topic?.id ?? conv;
+}
+
+/**
+ * Whether this open's message is already there (I6): the topic existed, and the opener's newest message in it is the
+ * same text with the same number of wakes, as a call run again after its kept reply was lost would leave it.
+ */
+function repeated(rt, se, threadId, text, mentions, created) {
+  if (created) return false;
+  const mine = rt.store.pending.items(threadId).findLast((/** @type {any} */ x) => x.kind === 'agent' && x.sessionId === se.id);
+  return Boolean(mine && mine.text === text && (mine.wakes?.length ?? 0) === mentions);
+}
+
+/** Posts the first message in the topic: through agentWake for each agent it names, or as the agent's own. */
+function post(rt, se, threadId, text, handles) {
+  if (!handles.length) {
+    rt.addItem(threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
+    return [];
+  }
+  /** @type {string | null} */
+  let itemId = null;
+  return handles.map((h) => {
+    const r = rt.agentWake(se.id, h, text, { replyIn: threadId, itemId });
+    itemId = r.itemId ?? itemId;
+    return r.message;
+  });
 }

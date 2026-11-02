@@ -66,8 +66,11 @@ test('open_topic refuses an item in a topic thread and an item of another conver
 
 test('a mention in the first message wakes that agent in the thread, and two mentions share one message', async () => {
   const f = await conversation();
-  f.adapter.next.push(async (c) => c.text('Both fixes look right.'));
-  const r = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, message: '@beta please check the two fixes', mentions: ['beta'] }));
+  // gamma isn't in the conversation, so its wake asks the person to add it: the message still posts once.
+  const r = await alphaTurn(f, (tools) => {
+    f.adapter.next.push(async (c) => c.text('Both fixes look right.')); // beta's turn, which the open wakes
+    return tools.open_topic({ itemId: f.reply.id, message: 'Please check the two fixes', mentions: ['beta', 'gamma'] });
+  });
   assert.equal(r?.ok, true, JSON.stringify(r));
   await settle(f.rt);
   const items = f.store.items(r.threadId);
@@ -86,6 +89,15 @@ test('a repeated call with the same message, after the topic exists, posts nothi
   const again = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, message: 'Notes on the totals' }));
   assert.equal(again?.threadId, first?.threadId);
   assert.equal(f.store.items(first.threadId).filter((i) => i.text === 'Notes on the totals').length, 1);
+});
+
+test('an open from the page and the same text from you don’t suppress the agent’s first message there (I6)', async () => {
+  const f = await conversation();
+  const { threadId } = f.rt.startTopic(f.t.id, f.mine.id); // opened from the page
+  f.rt.addItem(threadId, { kind: 'user', text: 'Notes on the totals' });
+  const r = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.mine.id, message: 'Notes on the totals' }));
+  assert.equal(r?.created, false);
+  assert.equal(f.store.items(threadId).filter((i) => i.kind === 'agent' && i.sessionId === f.alpha.id && i.text === 'Notes on the totals').length, 1, 'posted');
 });
 
 test('two opens of one item while a commit is held give one topic, through the pending read (I1)', async () => {

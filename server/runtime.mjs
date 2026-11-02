@@ -109,7 +109,7 @@ import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { discardHeld, eraseThreads } from './thread-erase.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
-import { startTopic } from './topic-open.mjs';
+import { openTopic, startTopic } from './topic-open.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { retireStale } from './wake-cards.mjs';
@@ -3107,6 +3107,7 @@ export class Runtime {
       },
       cancel_wake: (args) => cancelWake(rt, sessionId, args),
       wake_agent: (args) => wakeAgent(rt, sessionId, args),
+      open_topic: (args) => openTopic(rt, sessionId, args),
       bring_to_conversation: (args = {}) => bringToConversation(rt, sessionId, turn, args),
       read_conversation(args = {}) {
         try {

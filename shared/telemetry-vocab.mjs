@@ -55,6 +55,7 @@ export const POSTBOX_TOOLS = [
   'schedule_wake',
   'cancel_wake',
   'wake_agent',
+  'open_topic',
   'bring_to_conversation',
   'read_conversation',
   'read_message',
