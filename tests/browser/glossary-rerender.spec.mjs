@@ -221,3 +221,55 @@ test('#564: a term defined in the conversation redraws a topic thread’s reply 
   await synced(page, app);
   await expect(box.locator('.term[data-term="widget"]'), 'the inherited term, marked in the topic thread’s reply').toHaveCount(1);
 });
+
+test('#564: a diagram drawn into a box not yet in the page keeps its listener through a sweep, draws once the box is put in, and goes when removed', async ({
+  page,
+}) => {
+  const { rt } = app;
+  const p = rt.createPersona({ handle: 'detached' });
+  const t = rt.createThread({ projectId: 'pr_gloss', title: 'Detached', personaIds: [p.id] });
+  await page.addInitScript(countMessageListeners);
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  // As thread.mjs paints a reply and enhances it in a microtask: the box may not be in the page yet when another
+  // diagram is drawn, which sweeps the listeners whose frames have gone.
+  await page.evaluate(async () => {
+    const { enhanceMarkdown } = await import('/app/js/md-enhance.mjs');
+    const box = document.createElement('div');
+    box.className = 'md detached-box';
+    box.innerHTML = '<figure class="md-mermaid"><pre><code>graph TD\n  A --> B</code></pre></figure>';
+    enhanceMarkdown(box);
+    enhanceMarkdown(document.createElement('div'));
+    window.postMessage({ poke: 1 }, '*');
+    await new Promise((r) => requestAnimationFrame(r));
+    document.querySelector(`.transcript`)?.append(box);
+  });
+  await expect(page.locator('.detached-box figure.diagram iframe'), 'the diagram, drawn and sized').toHaveAttribute('data-sized', '1');
+  // Once it has been in the page, it goes like any other: removed, its listener goes at the next message.
+  const before = await page.evaluate(() => /** @type {any} */ (window).__listeners());
+  await page.evaluate(() => {
+    document.querySelector('.detached-box')?.remove();
+    window.postMessage({ poke: 1 }, '*');
+  });
+  await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__listeners()), { message: 'its listener is gone with it' }).toBe(before - 1);
+});
+
+test('#564: leaving a conversation drops its diagrams’ listeners at the next message, with no diagram drawn since', async ({ page }) => {
+  const { rt } = app;
+  const p = rt.createPersona({ handle: 'leaves' });
+  const t = rt.createThread({ projectId: 'pr_gloss', title: 'Leaving', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: DIAGRAM(2), status: 'done' });
+  // Made before the page loads, so it's in the page's state, however late the events come.
+  const empty = rt.createThread({ projectId: 'pr_gloss', title: 'Empty', personaIds: [p.id] });
+  await page.addInitScript(countMessageListeners);
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await expect(page.locator(`.transcript[data-thread="${t.id}"] figure.diagram iframe`)).toHaveAttribute('data-sized', '1');
+  const before = await page.evaluate(() => /** @type {any} */ (window).__listeners());
+  // To an empty conversation: nothing there draws Markdown, so no diagram is drawn to sweep.
+  await page.goto(`${app.origin}/#/t/${empty.id}`);
+  await expect(page.locator(`.transcript[data-thread="${t.id}"]`), 'the conversation is closed').toHaveCount(0);
+  await page.evaluate(() => window.postMessage({ poke: 1 }, '*'));
+  await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__listeners()), { message: 'the diagram’s listener is gone' }).toBe(before - 1);
+});
