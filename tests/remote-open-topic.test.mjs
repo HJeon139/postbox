@@ -8,20 +8,50 @@ import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 
 const topics = (store) => Object.values(store.state.threads).filter((t) => t.kind === 'topic');
 
-test('a host’s write tool while the store is closed is refused with the cause, and writes nothing (I5)', async () => {
-  const r = rig();
-  const turn = await running(r);
+/** Closes the rig's store as an EIO does (ST-3), until the returned function reopens it. */
+function closeStore(r) {
   r.store.writable = false;
   r.store.cause = Object.assign(new Error('Postbox can’t write its event log (EIO): disk sync refused.'), { code: 'EIO' });
-  r.d.tool(turn, 'define_term', { term: 'W', definition: 'D' });
+  return () => {
+    r.store.writable = true;
+    r.store.cause = null;
+  };
+}
+const keptReplies = (r) => Object.values(r.store.state.sessions).flatMap((s) => s.remoteTurn?.replies ?? []);
+
+test('a host’s asked write tool while the store is closed is refused with the cause, and writes and keeps nothing (I5)', async () => {
+  const r = rig();
+  const turn = await running(r);
+  const mine = r.store.items(r.t.id).find((i) => i.kind === 'user');
+  const reopen = closeStore(r);
+  r.d.tool(turn, 'open_topic', { itemId: mine.id });
   await until(() => r.d.replies.length === 1, 'the reply');
   assert.equal(r.d.replies[0].ok, false);
   assert.match(r.d.replies[0].text, /can’t write its event log/);
+  assert.deepEqual(topics(r.store), [], 'the refused call opened nothing');
+  assert.deepEqual(keptReplies(r), [], 'nor kept its refusal, a write the closed store would hold only in memory');
+  reopen();
+  r.d.end(turn);
+  await settled(r);
+});
+
+test('a host’s queued write tool while the store is closed gets no reply, so the daemon’s repeat after it reopens runs it (I5)', async () => {
+  const r = rig();
+  const turn = await running(r);
+  const mine = r.store.items(r.t.id).find((i) => i.kind === 'user');
+  const reopen = closeStore(r);
+  const id = r.d.tool(turn, 'define_term', { term: 'W', definition: 'D' });
+  // An asked call after it, refused with a reply: by then the queued one has been through the gate.
+  const asked = r.d.tool(turn, 'open_topic', { itemId: mine.id });
+  await until(() => r.link.sent.some((m) => m.type === 'reply' && m.id === asked), 'the asked call’s reply');
+  assert.equal(r.link.sent.filter((m) => m.type === 'reply' && m.id === id).length, 0, 'no reply, which the daemon would only log');
   assert.deepEqual(r.store.state.glossary[r.t.id] ?? {}, {}, 'the refused call defined nothing');
-  const kept = Object.values(r.store.state.sessions).flatMap((s) => s.remoteTurn?.replies ?? []);
-  assert.deepEqual(kept, [], 'nor kept its refusal, a write the closed store would hold only in memory');
-  r.store.writable = true;
-  r.store.cause = null;
+  assert.deepEqual(keptReplies(r), [], 'and kept nothing');
+  reopen();
+  r.link.hear({ type: 'tool', turn, id, name: 'define_term', args: { term: 'W', definition: 'D' } }); // the hello’s resend
+  await until(() => r.link.sent.some((m) => m.type === 'reply' && m.id === id), 'the repeat’s reply');
+  assert.equal(r.link.sent.find((m) => m.type === 'reply' && m.id === id).ok, true);
+  assert.equal(Object.keys(r.store.state.glossary[r.t.id] ?? {}).length, 1, 'the repeat defined it');
   r.d.end(turn);
   await settled(r);
 });
