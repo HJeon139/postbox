@@ -1,7 +1,7 @@
 // The settle path for reads that can't reach Postbox (designs/508/582/settle.md, #582 part 3): a read answered once
 // from the snapshot, the call journaled before its answer, and an ask call never answered from the snapshot.
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { REMOTE_LIMITS, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { connectShim, makeBroker, makeHome, until } from './remote-broker-fixtures.mjs';
@@ -138,16 +138,53 @@ test('a detached read on a turn whose record is full is refused with the record-
   }
 });
 
-// T07 and T08 (settle.md §5), as a sweep: for each delay d between the offline trigger and the live reply, every shim of
-// the turn gets exactly one result for the call, and the loser of the race is refused or silent. The claim is
-// synchronous, so no delay lets a second answer through; a claim moved after an await lets one through at some d.
-const raceOnce = async (d, liveFirst) => {
+// ── The race windows, held with the broker's io seam (settle.md §5). A held file call stands for the window: the
+// read of the snapshot for T07, the journal append of the live reply for T08. Nothing sleeps.
+import { promises as fsp } from 'node:fs';
+
+/** A file layer whose first matching call is held until released; `entered` resolves when it is reached. */
+const holdingIo = (match) => {
+  let release = () => {};
+  let arrive = () => {};
+  const gate = new Promise((r) => (release = r));
+  const entered = new Promise((r) => (arrive = r));
+  let held = false;
+  const hold = async (call) => {
+    if (!held && match(call)) {
+      held = true;
+      arrive();
+      await gate;
+    }
+  };
+  return {
+    io: {
+      readFile: async (path, enc) => {
+        await hold({ kind: 'readFile', path });
+        return fsp.readFile(path, enc);
+      },
+      appendFile: async (path, line, opt) => {
+        await hold({ kind: 'appendFile', path, line });
+        return fsp.appendFile(path, line, opt);
+      },
+      stat: (path) => fsp.stat(path),
+    },
+    entered,
+    release,
+  };
+};
+
+test('a live reply that arrives while an offline settle reads the snapshot is refused, and the shim gets one answer (T07)', async () => {
   const h = makeHome();
   try {
-    const k = makeBroker(h);
-    const turn = `t_race_${d}_${liveFirst ? 'l' : 'o'}`;
+    const turn = 't_t07';
     h.turn(turn);
-    await k.post('snapshot', { turn, ...snapOf(2) });
+    // The snapshot is on disk and nothing is cached: the offline read has to go to the file.
+    writeFileSync(
+      h.p.turn(turn, TURN_FILES.snapshot),
+      JSON.stringify({ home: 'th', threads: [{ id: 'th', items: [{ id: 'i0', line: 'line 0', text: 'x 0' }] }] }),
+    );
+    const hold = holdingIo((c) => c.kind === 'readFile' && c.path.endsWith(TURN_FILES.snapshot));
+    const k = makeBroker(h, { io: hold.io });
     await k.b.starting(turn);
     const s = connectShim(k.b, turn);
     await s.next('welcome');
@@ -157,49 +194,85 @@ const raceOnce = async (d, liveFirst) => {
     k.state.attached = false;
     const s2 = connectShim(k.b, turn);
     await s2.next('welcome');
-    const tick = async (n) => {
-      for (let i = 0; i < n; i++) await new Promise((r) => setImmediate(r));
-    };
-    let live;
-    let errors = [];
-    const resend = () => s2.send('call', { id: 'call_r', name: 'read_message', args: { id: 'i0' } });
-    if (liveFirst) {
-      live = k.post('reply', { turn, id: 'call_r', ok: true, text: 'LIVE' });
-      await tick(d);
-      resend();
-    } else {
-      resend();
-      await tick(d);
-      live = k.post('reply', { turn, id: 'call_r', ok: true, text: 'LIVE' });
-    }
-    ({ errors } = await live);
-    await tick(60);
-    // One answer per shim: every result it gets for the call has the same text. A resend answered from the kept
-    // result can add a second copy to the resending connection (the broadcast reaches it too); shim-link drops the
-    // copy for a settled call (shim-link.mjs:82-83), so the agent sees one answer. That copy is a wire-level finding.
-    const results = (sh) => sh.got.filter((m) => m.type === 'result' && m.id === 'call_r');
-    for (const sh of [s, s2]) {
-      assert.ok(results(sh).length >= 1, `d=${d}: the shim gets the answer`);
-      assert.equal(new Set(results(sh).map((m) => m.text)).size, 1, `d=${d}: the shim gets one answer, not two different ones`);
-    }
-    const answer = s.got.find((m) => m.type === 'result' && m.id === 'call_r');
-    const liveAccepted = errors.length === 0;
-    if (liveAccepted) assert.equal(answer.text, 'LIVE', `d=${d}: a live reply accepted is the answer`);
-    else {
-      assert.ok(
-        errors.some((e) => e.code === 'no-tool'),
-        `d=${d}: a refused live reply is no-tool`,
-      );
-      assert.match(answer.text, /x 0/, `d=${d}: the offline settle is the answer`);
-    }
+    s2.send('call', { id: 'call_r', name: 'read_message', args: { id: 'i0' } }); // the offline settle starts, and reads
+    await hold.entered; // the snapshot read is in flight: the call is claimed
+    const { errors } = await k.post('reply', { turn, id: 'call_r', ok: true, text: 'LIVE' });
+    assert.ok(
+      errors.some((e) => e.code === 'no-tool'),
+      'the live reply is refused with no-tool while the call is claimed',
+    );
+    hold.release();
+    const res = await first;
+    assert.match(res.text, /x 0/, 'the shim gets the snapshot answer');
+    const texts = s.got.filter((m) => m.type === 'result' && m.id === 'call_r').map((m) => m.text);
+    assert.equal(new Set(texts).size, 1, 'the shim gets one answer, not two different ones');
   } finally {
     h.done();
   }
-};
+});
 
-test('no delay between an offline settle and a live reply lets a second answer through (T07, T08 sweep)', async () => {
-  for (let d = 0; d <= 12; d++) {
-    await raceOnce(d, false);
-    await raceOnce(d, true);
+test('an offline settle that starts during a live reply’s journal write returns, and the shim gets the live answer (T08)', async () => {
+  const h = makeHome();
+  try {
+    const turn = 't_t08';
+    h.turn(turn);
+    writeFileSync(
+      h.p.turn(turn, TURN_FILES.snapshot),
+      JSON.stringify({ home: 'th', threads: [{ id: 'th', items: [{ id: 'i0', line: 'line 0', text: 'x 0' }] }] }),
+    );
+    const hold = holdingIo((c) => c.kind === 'appendFile' && c.line.includes('"op":"reply"'));
+    const k = makeBroker(h, { io: hold.io });
+    await k.b.starting(turn);
+    const s = connectShim(k.b, turn);
+    await s.next('welcome');
+    const first = s.call('call_r', 'read_message', { id: 'i0' });
+    first.catch(() => {});
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'call_r'), 'the read sent to Postbox');
+    const live = k.post('reply', { turn, id: 'call_r', ok: true, text: 'LIVE' }); // claims, then its journal write is held
+    await hold.entered;
+    k.state.attached = false;
+    const s2 = connectShim(k.b, turn);
+    await s2.next('welcome');
+    s2.send('call', { id: 'call_r', name: 'read_message', args: { id: 'i0' } }); // the offline settle sees the claim and returns
+    await new Promise((r) => setImmediate(r));
+    hold.release();
+    await live;
+    const res = await first;
+    assert.equal(res.text, 'LIVE', 'the live answer is the one the shim gets');
+    const texts = s.got.filter((m) => m.type === 'result' && m.id === 'call_r').map((m) => m.text);
+    assert.equal(new Set(texts).size, 1, 'the shim gets one answer, not two different ones');
+  } finally {
+    h.done();
+  }
+});
+
+test('a journal write that fails for the offline reply still answers the shim, and the record is not in the journal (T09)', async () => {
+  const h = makeHome();
+  try {
+    const turn = 't_t09';
+    h.turn(turn);
+    writeFileSync(
+      h.p.turn(turn, TURN_FILES.snapshot),
+      JSON.stringify({ home: 'th', threads: [{ id: 'th', items: [{ id: 'i0', line: 'line 0', text: 'x 0' }] }] }),
+    );
+    const io = {
+      readFile: (p, e) => fsp.readFile(p, e),
+      stat: (p) => fsp.stat(p),
+      appendFile: (p, line, o) => (line.includes('"op":"reply"') ? Promise.reject(new Error('disk full')) : fsp.appendFile(p, line, o)),
+    };
+    const k = makeBroker(h, { io });
+    await k.b.starting(turn);
+    const s = connectShim(k.b, turn);
+    await s.next('welcome');
+    k.state.attached = false;
+    const res = await s.call('call_r', 'read_message', { id: 'i0' });
+    assert.match(res.text, /x 0/, 'the shim still gets the offline answer');
+    assert.ok(
+      k.logs.some((l) => /disk full/.test(l)),
+      'the failed write is logged',
+    );
+    assert.ok(!journal(h, turn).some((r) => r.op === 'reply'), 'no reply record reached the journal');
+  } finally {
+    h.done();
   }
 });

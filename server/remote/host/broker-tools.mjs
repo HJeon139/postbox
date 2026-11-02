@@ -2,7 +2,6 @@
 // down and sent to Postbox once it’s checked and its files are read as the laptop would; and Postbox’s reply to it.
 // broker.mjs’s header says what’s written down when.
 
-import { promises as fsp } from 'node:fs';
 import { validateBlock } from '../../../shared/catalog.mjs';
 import { encodedBytes, REMOTE_LIMITS, TOOL_ROUTES, TURN_FILES } from '../../../shared/remote-protocol.mjs';
 import { inlineAppFiles } from './broker-files.mjs';
@@ -79,7 +78,7 @@ async function queueFull(b, turn, name, bytes, isDetachedRead = false) {
   const held = waiting.reduce((n, t) => n + (t.bytes ?? 0), 0);
   if (!isDetachedRead && (waiting.length >= b.queueLimits.calls || held + bytes > b.queueLimits.bytes))
     return `This turn already has ${waiting.length} calls (${mib(held)}) waiting for Postbox, as many as this host keeps, so ${name} wasn’t sent. Once Postbox is connected and has taken them, call it again.`;
-  const size = await fsp.stat(b.p.turn(turn, TURN_FILES.tools)).then(
+  const size = await b.io.stat(b.p.turn(turn, TURN_FILES.tools)).then(
     (st) => st.size,
     () => 0,
   );

@@ -1,6 +1,7 @@
 // The broker’s state (#120): one daemon’s calls, prompts, expiries, shims, snapshots and Codex watches, with what the
 // daemon passed in. createBroker (broker.mjs) makes it, and the broker-*.mjs modules take it first, as `b`.
 
+import { promises as fsp } from 'node:fs';
 import { HOST_DEFAULTS, REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
 
 /** The protocol’s words for a call the harness gave up on: prompt-expired’s reason, and the shim’s message. */
@@ -38,7 +39,7 @@ export const key = (turn, id) => `${turn} ${id}`;
  *   that went; declined, by the daemon; tried, those Postbox wrote (or tried to) through this daemon
  * @typedef {{ setTimeout: (fn: () => void, ms: number) => any, clearTimeout: (t: any) => void }} Timers
  * @typedef {import('./broker-reading.mjs').Snapshot} Snapshot
- * @typedef {{ paths: ReturnType<typeof import('../../../shared/remote-protocol.mjs').hostPaths>, now?: () => number, timers?: Timers,
+ * @typedef {{ paths: ReturnType<typeof import('../../../shared/remote-protocol.mjs').hostPaths>, now?: () => number, io?: { appendFile: Function, readFile: Function, stat: Function }, timers?: Timers,
  *   log?: (line: string) => void, settings?: () => Record<string, any>,
  *   toPostbox: (type: string, body: Record<string, unknown>) => boolean, attached: () => boolean,
  *   interrupted?: (turn: string) => boolean, writeStdin?: (turn: string, line: string) => Promise<unknown>, codexPollMs?: number,
@@ -56,6 +57,8 @@ export const key = (turn, id) => `${turn} ${id}`;
 export function brokerState({
   paths: p,
   now = Date.now,
+  // The files the broker reads and appends to. A test gives its own to hold a read or a write (the Store's io option, store.mjs).
+  io = { appendFile: fsp.appendFile, readFile: fsp.readFile, stat: fsp.stat },
   timers = { setTimeout: (fn, ms) => setTimeout(fn, ms).unref(), clearTimeout: (t) => clearTimeout(t) },
   log = () => {},
   settings = () => HOST_DEFAULTS,
@@ -72,6 +75,7 @@ export function brokerState({
     queueLimits,
     p,
     now,
+    io,
     timers,
     log,
     settings,
