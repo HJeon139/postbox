@@ -117,3 +117,23 @@ test('after a restart, a read that lost its link with no reply record replays op
     h.done();
   }
 });
+
+test('a resend of a read already answered offline is served at once, though its call append is still held', async () => {
+  const h = makeHome();
+  try {
+    const { hold, k, s } = await room(h, 't_s6', (c) => c.kind === 'appendFile' && c.line.includes('"op":"call"'));
+    s.send('call', { id: 'c1', name: 'read_message', args: { id: 'i0' } });
+    await reached(hold); // the call record is being written, and holds known.saved
+    k.state.attached = false;
+    k.b.driverLost();
+    assert.match((await heard(s, 'c1'))?.text ?? '', /x 0/, 'answered offline while the call append is held');
+    // A second shim connection missed that broadcast and sends the same call again.
+    const s2 = connectShim(k.b, 't_s6');
+    await s2.next('welcome');
+    s2.send('call', { id: 'c1', name: 'read_message', args: { id: 'i0' } });
+    assert.match((await heard(s2, 'c1'))?.text ?? '', /x 0/, 'the resend is answered from memory, not after the held append');
+    hold.release();
+  } finally {
+    h.done();
+  }
+});
