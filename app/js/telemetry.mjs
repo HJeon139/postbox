@@ -135,13 +135,13 @@ export function mountTelemetryView(convId) {
       })
       .catch(fail('Couldn’t open Telemetry'));
   const ask = { history: false };
-  load();
+  void load();
   // A message in the room changes nothing here: only a change to the recording repaints.
   let rec = JSON.stringify(S().threads[convId]?.recording ?? null);
   const off = client.on((ch) => {
     if (ch.type !== 'thread' || ch.data.id !== convId || JSON.stringify(ch.data.recording ?? null) === rec) return;
     rec = JSON.stringify(ch.data.recording ?? null);
-    load();
+    void load();
   });
   const setFull = (on) => {
     el.classList.toggle('tv-full', !!on);

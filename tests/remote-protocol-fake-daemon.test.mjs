@@ -13,6 +13,7 @@ import { start } from './remote-protocol-cases.mjs';
 /** Postbox’s side of a connection to the fake. @param {{ stdin: any, stdout: any }} conn */
 const client = ({ stdin, stdout }) => {
   const r = readMessages(stdout);
+  // biome-ignore lint/nursery/noMisusedPromises: r is a plain object, not a promise; the rule misreads readMessages’s return
   return { ...r, send: (type, body = {}) => stdin.write(encode(message('postbox-to-daemon', type, body))) };
 };
 const FIXTURE = readFileSync(new URL('./fixtures/claude-code/permission-allow.jsonl', import.meta.url), 'utf8');

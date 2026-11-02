@@ -104,7 +104,7 @@ export function connect() {
   // loads the state again, as a resync does. Taking the epoch from the frame would, if that load then failed, send the
   // new epoch with the old state on the next reconnect, which the server would accept at an equal seq.
   es.addEventListener('epoch', (e) => {
-    if ((JSON.parse(e.data) ?? '') !== client.epoch) resync();
+    if ((JSON.parse(e.data) ?? '') !== client.epoch) void resync();
   });
   es.addEventListener('resync', resync);
   // The store’s status, unnumbered: each time it can’t save, or can again (app/js/store-line.mjs).

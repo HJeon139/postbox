@@ -946,7 +946,7 @@ export async function sendMessage(threadId, text, attachments = [], { sendNow = 
 export function flushOutbox() {
   const items = outbox.splice(0);
   saveOutbox();
-  for (const m of items) sendMessage(m.threadId, m.text, m.attachments);
+  for (const m of items) void sendMessage(m.threadId, m.text, m.attachments);
   if (items.length) client.emit({ type: 'outbox' });
 }
 
@@ -1012,7 +1012,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     multiple: true,
     hidden: true,
     onchange: () => {
-      addFiles([...file.files]);
+      void addFiles([...file.files]);
       file.value = '';
     },
   });
@@ -1175,7 +1175,7 @@ export function mountComposer(threadId, { side = false } = {}) {
   function compact(se = target()) {
     if (!se) return;
     if (isMock(se)) return toast({ title: 'Nothing to compact', text: `@${se.handle} is a mock agent.` });
-    runAgentCommand(se, '/compact');
+    void runAgentCommand(se, '/compact');
   }
   function stopAll(only = null) {
     // In a conversation, Stop reaches its side threads too (#121), but not a turn in a topic thread: it has its own (#228).
@@ -1556,7 +1556,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     }
     if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
-      submit();
+      void submit();
     }
   });
   ta.addEventListener('paste', async (e) => {
@@ -1564,10 +1564,10 @@ export function mountComposer(threadId, { side = false } = {}) {
     const text = e.clipboardData?.getData('text/plain') ?? '';
     if (files.length) {
       e.preventDefault();
-      addFiles(files.map((f, i) => (f.name ? f : new File([f], `Pasted image ${i + 1}.png`, { type: f.type }))));
+      void addFiles(files.map((f, i) => (f.name ? f : new File([f], `Pasted image ${i + 1}.png`, { type: f.type }))));
     } else if (text.length > 2000) {
       e.preventDefault();
-      addFiles([new File([text], 'Pasted text.txt', { type: 'text/plain' })]);
+      void addFiles([new File([text], 'Pasted text.txt', { type: 'text/plain' })]);
       say('Long pasted text was attached as a file.');
     }
   });
@@ -1583,7 +1583,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     if (!e.dataTransfer?.files?.length) return;
     e.preventDefault();
     if (side) e.stopPropagation();
-    addFiles([...e.dataTransfer.files]);
+    void addFiles([...e.dataTransfer.files]);
   };
   const onDragOver = (e) => {
     if (!e.dataTransfer?.types?.includes('Files')) return;

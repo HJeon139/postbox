@@ -97,7 +97,7 @@ async function startTurn(d, c, m) {
   // runner, and messages on a channel are handled in order, so one sent before this answer waits for it.
   const up = await runnerUp(d, m.turn);
   if (up !== true) return failStart('start-failed', `Turn ${m.turn}’s runner didn’t start: ${up}`);
-  send(c, 'started', { turn: m.turn });
+  void send(c, 'started', { turn: m.turn });
   d.brk.started?.(m.turn);
 }
 

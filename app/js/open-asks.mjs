@@ -40,7 +40,7 @@ export function openAsksEl(se, before = undefined) {
     dataset: { openAsks: se.id },
     onclick: () => {
       before?.();
-      focusItem(el.dataset.item ?? '');
+      void focusItem(el.dataset.item ?? '');
     },
   });
   paintOpenAsks(el);

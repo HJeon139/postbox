@@ -742,7 +742,7 @@ export class Runtime {
     );
     // The chain’s count resets once the chain ends (#541). While the store can’t be written, that write waits behind the
     // exit’s own (turnExited), which also waits, so it runs after the session has left exiting and sees the chain ended.
-    turn.exited.then(() => this.turnExited(turn)).then(() => whenWritable(this, () => endChain(this, turn.threadId)));
+    void turn.exited.then(() => this.turnExited(turn)).then(() => whenWritable(this, () => endChain(this, turn.threadId)));
   }
 
   turnContext(se0, turn) {
