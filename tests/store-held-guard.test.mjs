@@ -7,8 +7,10 @@
 // it is placed (the integrator's review of #611: a guard of pending sites alone let a new published reader through).
 // Production commits are placed too: a commit in front of held emits that touches these lists makes a pending read
 // inexact (§5). Lines the formatter split (`rt.store\n  .items(`) are joined before matching. Forms it can't follow
-// fail outright: destructuring `pending`, `items`, `work` or `apps` out of the store or the state, and reaching them by
-// a string key. It reads every .mjs, .js and .cjs file under server/ except the store's own and server/remote/host/,
+// fail outright: destructuring `pending`, `items`, `work` or `apps` out of the store or the state, reaching them by a
+// string key, binding the store, its pending reads or the ledger to a local, and calling items(), item(), findItem()
+// or work() on anything but the store or its pending reads (the integrator's second review of #611: `const st =
+// rt.store; st.items(t)` passed). It reads every .mjs, .js and .cjs file under server/ except the store's own and server/remote/host/,
 // the host daemon, which has no store. Sessions, schedules and the rest have no pending read (§ Not in this change).
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -178,4 +180,35 @@ test('no server file reaches the store’s reads through a form the guard can’
       .map((l) => `${path}: ${l.trim()}`),
   );
   assert.deepEqual(found, [], 'read through store.pending.items(), store.items() or state.<list> by name, so the guard can place it');
+});
+
+/** Lines of server code that reach a list read through a local the guard can't follow. @param {string[]} [extra] */
+export function unfollowed(extra = []) {
+  const BOUND = /\b(?:const|let|var)\s+[\w$]+\s*=\s*[\w$.]*\b(?:store(?:\.pending)?|ledger)\s*[;,)]/;
+  const CALL = /([\w$\])]+)\s*\.\s*(?:items|item|findItem|work)\s*\(/g;
+  return [...sources(), ...extra.map((text, i) => [`extra-${i}.mjs`, text])].flatMap(([path, text]) =>
+    text
+      .split('\n')
+      .filter((l) => !/^\s*(\/\/|\*)/.test(l))
+      .filter((l) => BOUND.test(l) || [...l.matchAll(CALL)].some((m) => !/^(store|pending)$/.test(m[1])))
+      .map((l) => `${path}: ${l.trim()}`),
+  );
+}
+
+test('no server file binds the store or the ledger to a local, or calls a list read on anything but the store', () => {
+  assert.deepEqual(
+    unfollowed(),
+    [],
+    'call store.items(), store.pending.items() or ledger.entries() where the store or ledger is named, so the guard can place it',
+  );
+  // The integrator's probe, and the same through the pending reads and the ledger: each is found.
+  const probes = [
+    'export function zz6(rt, t) { const st = rt.store; return st.items(t).find((x) => x); }',
+    'export function zz7(rt, t) { const p = rt.store.pending; return p.items(t); }',
+    'export function zz8(rt, c) { const l = rt.ledger; return l.entries(c); }',
+  ];
+  assert.deepEqual(
+    unfollowed(probes).map((l) => l.split(':')[0]),
+    ['extra-0.mjs', 'extra-1.mjs', 'extra-2.mjs'],
+  );
 });
