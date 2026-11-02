@@ -18,6 +18,8 @@ test('a host’s write tool while the store is closed is refused with the cause,
   assert.equal(r.d.replies[0].ok, false);
   assert.match(r.d.replies[0].text, /can’t write its event log/);
   assert.deepEqual(r.store.state.glossary[r.t.id] ?? {}, {}, 'the refused call defined nothing');
+  const kept = Object.values(r.store.state.sessions).flatMap((s) => s.remoteTurn?.replies ?? []);
+  assert.deepEqual(kept, [], 'nor kept its refusal, a write the closed store would hold only in memory');
   r.store.writable = true;
   r.store.cause = null;
   r.d.end(turn);

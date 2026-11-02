@@ -20,12 +20,16 @@ async function conversation(f = setup()) {
 }
 /** One turn of alpha's, from a message in the conversation, that runs `step` with its tools; resolves with the step's result. */
 async function alphaTurn(f, step) {
+  return turnOf(f, 'alpha', step);
+}
+/** One turn of the agent with that handle, as alphaTurn's. */
+async function turnOf(f, handle, step) {
   let out;
   f.adapter.next.push(async (c) => {
     out = step(c.tools);
     c.text('Done.');
   });
-  f.rt.sendMessage(f.t.id, { text: '@alpha go' });
+  f.rt.sendMessage(f.t.id, { text: `@${handle} go` });
   await settle(f.rt);
   return out;
 }
@@ -136,4 +140,28 @@ test('#507: a thread’s catch-up keeps an ask that mentions the agent, whole, t
   assert.ok(text.includes(ask), 'the ask is kept, whole');
   assert.match(text, /left out/, 'and the catch-up says what it left out');
   assert.ok(text.includes(`read_conversation { thread: "${threadId}", skip:`), 'and its hint reads this thread, not the room');
+});
+
+test('the opener answers first there: your message in a topic beta opened, with no mention, goes to beta (I4)', async () => {
+  const f = await conversation();
+  // Your message was answered by alpha, so a topic opened from the page would go to alpha first.
+  const r = await turnOf(f, 'beta', (tools) => tools.open_topic({ itemId: f.mine.id }));
+  assert.equal(r?.created, true);
+  f.adapter.next.push(async (c) => c.text('Beta here.'));
+  f.rt.sendMessage(r.threadId, { text: 'What did you find?' });
+  await settle(f.rt);
+  assert.equal(f.adapter.calls.at(-1).sessionId, f.beta.id, 'beta, the opener, answered');
+});
+
+test('a repeated open that names a different agent is not a repeat: it posts and wakes that agent (I6)', async () => {
+  const f = await conversation();
+  const one = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, message: 'Please check', mentions: ['beta'] }));
+  await settle(f.rt);
+  const two = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, message: 'Please check', mentions: ['gamma'] }));
+  assert.equal(two?.threadId, one?.threadId);
+  assert.equal(
+    f.store.items(one.threadId).filter((i) => i.kind === 'agent' && i.sessionId === f.alpha.id && i.text === 'Please check').length,
+    2,
+    'the second names gamma, so it posts',
+  );
 });
