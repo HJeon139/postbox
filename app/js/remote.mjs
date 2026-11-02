@@ -120,10 +120,11 @@ export function resumeHint(se) {
     : 'It was interrupted again after Postbox resumed it, so it waits for you.';
 }
 
-// Rings say where their agent runs, which changes with the host’s status, not only with the session.
+// Rings say where their agent runs, which changes with the host’s status, not only with the session. A resting ring
+// beside an earlier reply says only whose it is (#622), so a long conversation’s hundreds of them aren’t drawn again.
 client.on((ch) => {
   if (ch.type !== 'host.status' && ch.type !== 'host') return;
-  for (const el of document.querySelectorAll('pb-ring[data-session]')) {
+  for (const el of document.querySelectorAll('pb-ring[data-session]:not([state="rest"])')) {
     const se = S().sessions[/** @type {HTMLElement} */ (el).dataset.session ?? ''];
     if (se) el.setAttribute('where', ringWhere(se));
   }

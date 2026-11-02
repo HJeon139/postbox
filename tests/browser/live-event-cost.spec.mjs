@@ -251,6 +251,16 @@ test('#622: a session event in a 1,000-item room rebuilds the rings that show it
   await expect.soft(rings.nth(0)).toHaveAttribute('state', 'rest');
   await expect.soft(rings.nth(0).locator('svg[role=img]')).toHaveAttribute('aria-label', `@${sa.handle}`);
   expect.soft(await rings.evaluateAll((rs) => rs.filter((r) => r.getAttribute('state') !== 'rest').length), 'rings showing the live state').toBe(1);
+  // A ring says where its agent runs, so a change in the host’s status draws the rings that say it, not every reply’s.
+  app.store.emit('host', { id: 'ho_live', name: 'box.example.com' });
+  app.store.emit('persona', { ...app.store.state.personas[sa.personaId], remote: { hostId: 'ho_live' } });
+  await synced(page, app);
+  await frames(page);
+  const STATUS = ['connected', 'reconnecting'];
+  const host = await perEvent(page, 6, (i) => app.store.emit('host.status', { id: 'ho_live', status: { state: STATUS[i % 2] } }));
+  test.info().annotations.push({ type: 'measured', description: `per host event: ${JSON.stringify(host)}` });
+  await expect.soft(rings.last().locator('svg[role=img]')).toHaveAttribute('aria-label', /on box\.example\.com, reconnecting/);
+  expect.soft(host.rings, `ring SVGs built per host event, in the whole page, not one per reply (${JSON.stringify(host)})`).toBeLessThanOrEqual(20);
 });
 
 test('#622: a session event in a 1,000-item room looks up the status words that can change, not every one', async ({ page }) => {
