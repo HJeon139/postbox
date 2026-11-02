@@ -11,6 +11,7 @@ import { needsYouNow, whereNeeds } from '/shared/needs.mjs';
 import { apply, ownState } from '/shared/state.mjs';
 
 const EVENT_TYPES = [
+  'cursor',
   'settings',
   'project',
   'persona',
@@ -88,6 +89,10 @@ export function connect() {
     es.addEventListener(t, (e) => {
       const seq = Number(e.lastEventId);
       if (seq && seq <= client.seq) return;
+      if (t === 'cursor') {
+        client.seq = seq || client.seq;
+        return;
+      }
       const data = JSON.parse(e.data);
       apply(client.state, t, data);
       client.seq = seq || client.seq;

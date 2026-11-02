@@ -1,6 +1,8 @@
 // The state shape and the reducer, shared by the server’s store and the browser. Every change is an
 // event { seq, type, data }; applying the same events in order gives the same state on both sides.
 
+import { applyRecordEvent } from './record-events.mjs';
+import { PRIVATE_COLLECTIONS } from './record-private.mjs';
 import { applyHost } from './state-hosts.mjs';
 
 /**
@@ -15,6 +17,7 @@ export function emptyState() {
   return {
     version: 1,
     seq: 0,
+    ...Object.fromEntries(PRIVATE_COLLECTIONS.map((key) => [key, map()])),
     settings: { theme: 'system' },
     projects: map(),
     personas: map(),
@@ -56,6 +59,10 @@ export function ownState(s) {
 // The reducer. Events carry whole objects for upserts, and small patches for items and sessions (session.patch).
 export function apply(s, type, d) {
   switch (type === 'session.patch' ? 'session' : type) {
+    case 'record':
+    case 'record.close':
+      applyRecordEvent(s, type, d);
+      break;
     case 'settings':
       Object.assign(s.settings, d);
       break;
@@ -121,17 +128,9 @@ export function apply(s, type, d) {
       if (e) Object.assign(e, d.patch);
       break;
     }
-    case 'remove': {
-      if (d.kind === 'thread') {
-        delete s.threads[d.id];
-        delete s.items[d.id];
-        delete s.glossary[d.id];
-        if (s.work) delete s.work[d.id];
-      }
-      const kept = { session: 'sessions', app: 'apps', persona: 'personas' }[d.kind];
-      if (kept) delete s[kept][d.id];
+    case 'remove':
+      removeEntity(s, d);
       break;
-    }
     case 'notify':
       break; // transient: shown as a toast, nothing to store
     default:
@@ -171,4 +170,17 @@ function applyItemPatch(item, data) {
     else steps[index] = { ...steps[index], ...data.activityStep };
   }
   if (data.patch) Object.assign(item, data.patch);
+}
+
+/** Removing an existing public entity; records have their own lifecycle. */
+function removeEntity(s, d) {
+  if (d.kind === 'record' || d.kind === 'records') throw new Error('A record requires an explicit close.');
+  if (d.kind === 'thread') {
+    delete s.threads[d.id];
+    delete s.items[d.id];
+    delete s.glossary[d.id];
+    if (s.work) delete s.work[d.id];
+  }
+  const kept = { session: 'sessions', app: 'apps', persona: 'personas' }[d.kind];
+  if (kept) delete s[kept][d.id];
 }

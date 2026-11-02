@@ -10,6 +10,8 @@
 // stay the plain seq, so tools reading the stream (tools/uat/history.mjs) are unchanged; the stream names its epoch in
 // its first frame, which they ignore.
 
+import { publicFrame } from './public-state.mjs';
+
 /**
  * Sends the store’s events to every open stream, and a keep-alive every 15 s; stream() opens one for a request to
  * /api/stream.
@@ -27,7 +29,7 @@ export function liveStreams(store) {
   // with it in CI to show they wait for the page to hear a change, not for a fixed time.
   const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
   store.subscribe((ev) => {
-    const line = `id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`;
+    const line = publicFrame(ev);
     const epoch = store.epoch; // the history the event belongs to: a send held back past a Retry says nothing (gpt’s finding)
     const send = () => {
       if (store.epoch !== epoch) return;
@@ -60,7 +62,7 @@ export function liveStreams(store) {
     const backlog = lost ? null : store.since(since);
     // Too far behind, or on a lost timeline: the browser refetches the whole state, then resumes from its seq.
     if (backlog === null) res.write(`event: resync\ndata: {}\n\n`);
-    else for (const ev of backlog) res.write(`id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`);
+    else for (const ev of backlog) res.write(publicFrame(ev));
     streams.add(res);
     req.on('close', () => streams.delete(res));
   }

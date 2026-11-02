@@ -1,0 +1,59 @@
+const recordId = (id) => (id.startsWith('rec_') ? id : `rec_${id}`);
+
+export const ask = (id = 'ask_1', extra = {}) => ({
+  schema: 1,
+  id: recordId(id),
+  kind: 'ask',
+  conversationId: 'conv',
+  threadId: 'conv',
+  sourceId: `source_${recordId(id)}`,
+  version: 1,
+  rev: 1,
+  at: 10,
+  to: 'person',
+  from: 'session_1',
+  state: 'open',
+  askKind: 'block',
+  title: id,
+  ...extra,
+});
+export const delivery = (id = 'delivery_1', extra = {}) => ({
+  schema: 1,
+  id: recordId(id),
+  kind: 'delivery',
+  conversationId: 'conv',
+  threadId: 'conv',
+  sourceId: `source_${recordId(id)}`,
+  version: 1,
+  rev: 1,
+  at: 10,
+  to: { persona: 'persona_1', session: 'session_1' },
+  from: 'person',
+  state: 'waiting',
+  mode: 'wake',
+  reason: 'busy',
+  route: null,
+  parts: [{ text: 'Original message', at: 10 }],
+  ...extra,
+});
+export const change = (operation, record, previousVersion = record.version - 1, extra = {}) => ({
+  type: 'record',
+  data: { operation, previousVersion, record, ...extra },
+});
+export const close = (record, final = 'answered', extra = {}) => ({
+  type: 'record.close',
+  data: { id: record.id, previousVersion: record.version, final, at: 20, ...extra },
+});
+export const reserved = (record, extra = {}) => ({
+  ...record,
+  version: record.version + 1,
+  state: 'sent',
+  sentRev: record.rev,
+  attempt: 1,
+  turnId: 'turn_1',
+  dispatchId: `dispatch_${record.id}`,
+  route: 'next-tool-result',
+  target: { callId: 'call_1' },
+  renderVersion: 1,
+  ...extra,
+});
