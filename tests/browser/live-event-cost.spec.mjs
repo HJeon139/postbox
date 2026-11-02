@@ -9,6 +9,11 @@
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
 
+// No DOM snapshots in the trace: Playwright snapshots the whole page around each action, each poll of synced() too,
+// and on CI’s runners snapshotting the 1,000-item room took longer than the waits (85 s at a tenth of the CPU, against
+// 0.7 s without). The trace keeps its actions and screenshots.
+test.use({ trace: { mode: 'retain-on-failure', snapshots: false } });
+
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
 
