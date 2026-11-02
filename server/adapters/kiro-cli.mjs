@@ -51,7 +51,7 @@ import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_REMOTE, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { kiroError, kiroExitError } from './kiro-errors.mjs';
-import { listProcesses, stopTurn } from './process-group.mjs';
+import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf } from './setup.mjs';
 
 export { findKiro, kiroModel, kiroModels, kiroVersion, modelIds, postboxModel } from './kiro-cli-models.mjs';
@@ -515,13 +515,7 @@ export class KiroCliAdapter {
           c.once('close', r);
           c.once('error', r);
         });
-        /** @type {Promise<{ gone: Promise<void> }>|null} */
-        let stopping = null;
-        const onAbort = () => {
-          stopping = stopTurn(c, { exited, kill: this.kill, list: this.list });
-        };
-        if (ctx.signal.aborted) onAbort();
-        else ctx.signal.addEventListener('abort', onAbort, { once: true });
+        const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list }));
         child.on('error', (e) =>
           reject(
             kiroError(
@@ -560,7 +554,7 @@ export class KiroCliAdapter {
         const done = (code) => {
           if (finished) return;
           finished = true;
-          ctx.signal.removeEventListener('abort', onAbort);
+          stop.off();
           if (mapper.model) ctx.saveState({ model: mapper.model });
           if (ctx.signal.aborted) return resolve({});
           if (sessionId && mapper.missingSession) return resolve({ missingSession: true });
@@ -572,10 +566,7 @@ export class KiroCliAdapter {
           resolve({});
         };
         // A stopped turn ends once the CLI’s whole group has exited, as for the Claude backends (#126).
-        const settle = (code) => {
-          if (ctx.signal.aborted && stopping) stopping.then((r) => r.gone).then(() => done(code));
-          else done(code);
-        };
+        const settle = (code) => stop.settle(() => done(code));
         child.on('close', settle);
         child.on('exit', (code) => {
           if (ctx.signal.aborted) settle(code);

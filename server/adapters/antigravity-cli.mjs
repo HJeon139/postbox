@@ -60,7 +60,7 @@ import { describeTool } from './claude-stream.mjs';
 import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
-import { listProcesses, stopTurn } from './process-group.mjs';
+import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 import { agyResult } from './work-calls.mjs';
 
@@ -721,13 +721,7 @@ export class AntigravityCliAdapter {
         c.once('error', r);
       });
       // SIGINT to the group, then SIGKILL after the grace period (process-group.mjs), as for the other CLIs.
-      /** @type {Promise<{ gone: Promise<void> }>|null} */
-      let stopping = null;
-      const stop = () => {
-        stopping ??= stopTurn(c, { exited, kill: this.kill, list: this.list });
-      };
-      if (ctx.signal.aborted) stop();
-      else ctx.signal.addEventListener('abort', stop, { once: true });
+      const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list }));
       child.on('error', (e) =>
         reject(
           new Error(
@@ -756,7 +750,7 @@ export class AntigravityCliAdapter {
           console.error(`Postbox couldn’t read an Antigravity CLI event: ${err.message}`);
         }
         // agy started a new conversation in place of the one asked for: stop it, and start over with a note.
-        if (mapper.missingSession) return stop();
+        if (mapper.missingSession) return stop.now();
         // Saved as soon as it’s known, so a turn you stop still resumes next time.
         if (mapper.sessionId && mapper.sessionId !== ctx.state.agySessionId) {
           ctx.state.agySessionId = mapper.sessionId;
@@ -764,7 +758,7 @@ export class AntigravityCliAdapter {
         }
       });
       const finish = (code) => {
-        ctx.signal.removeEventListener('abort', stop);
+        stop.off();
         if (mapper.missingSession) return resolve({ missingSession: true });
         if (mapper.model) ctx.saveState({ model: mapper.model });
         if (ctx.signal.aborted) return resolve({});
@@ -773,10 +767,7 @@ export class AntigravityCliAdapter {
         resolve({ endedOnRefusal: mapper.endedOnRefusal, wrote: mapper.wrote });
       };
       // A stopped turn ends once agy's whole group has exited, so the next turn can’t resume beside it (#126).
-      child.on('close', (code) => {
-        if (stopping) stopping.then((r) => r.gone).then(() => finish(code));
-        else finish(code);
-      });
+      child.on('close', (code) => stop.settle(() => finish(code)));
     });
   }
 }
