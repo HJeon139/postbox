@@ -20,6 +20,8 @@ test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
 
 const ITEMS = 1000;
+// How long the page may take to hear an event while it draws the room: on CI’s runners the default 5 s ran out.
+const ROOM_WAIT = 30_000;
 const DIAGRAM = '\n\n```mermaid\ngraph TD\n  A --> B\n```\n';
 const STEPS = [
   { kind: 'tool', label: 'read src/store.mjs', state: 'done', ms: 40 },
@@ -68,7 +70,7 @@ async function seeded(page) {
   await page.addInitScript(countWork);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await expect(page.locator(`.transcript[data-thread="${t.id}"] > [data-key]`)).toHaveCount(ITEMS, { timeout: 30_000 });
-  await synced(page, app);
+  await synced(page, app, { timeout: ROOM_WAIT });
   await settled(page);
   return { t, sa, sb };
 }
@@ -117,7 +119,7 @@ async function perEvent(page, n, send) {
     const was = await page.evaluate(() => ({ .../** @type {any} */ (window).__work }));
     const a = await metrics(cdp);
     send(i);
-    await synced(page, app);
+    await synced(page, app, { timeout: ROOM_WAIT });
     await frames(page);
     const b = await metrics(cdp);
     const now = await page.evaluate(() => ({ .../** @type {any} */ (window).__work }));
