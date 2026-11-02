@@ -11,7 +11,8 @@
 // string key, binding the store, its pending reads or the ledger to a local, and calling items(), item(), findItem()
 // or work() on anything but the store or its pending reads (the integrator's second review of #611: `const st =
 // rt.store; st.items(t)` passed), or through call, apply or bind. Optional chaining is read as a plain member. The guard
-// reads source text, not the program, so a form it doesn't match passes: review still reads what it can't. It reads every .mjs, .js and .cjs file under server/ except the store's own and server/remote/host/,
+// reads source text, not the program, so a form it doesn't match passes, and review reads for it: an optional call
+// (`rt.store?.items?.(t)`), an optional bracket (`rt.store?.["items"](t)`) and `Reflect.apply(rt.store.items, …)` are three. It reads every .mjs, .js and .cjs file under server/ except the store's own and server/remote/host/,
 // the host daemon, which has no store. Sessions, schedules and the rest have no pending read (§ Not in this change).
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
