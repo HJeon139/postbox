@@ -125,7 +125,7 @@ const OFFLINE_NOTE = '\n\n(Read offline as of this turn’s start; earlier or ch
 export const settled = (t) => t.replied || !!t.replying;
 
 /** The answer cut to replyChars, the offline notice kept at its end (settle.md §4). @param {string} s */
-const offlineText = (s) => (s.length <= REMOTE_LIMITS.replyChars ? s : s.slice(0, REMOTE_LIMITS.replyChars - OFFLINE_NOTE.length) + OFFLINE_NOTE);
+export const offlineText = (s) => (s.length <= REMOTE_LIMITS.replyChars ? s : s.slice(0, REMOTE_LIMITS.replyChars - OFFLINE_NOTE.length) + OFFLINE_NOTE);
 
 /**
  * Answers an open read from the snapshot, once: the first caller claims it, the rest return (settle.md §4). Never

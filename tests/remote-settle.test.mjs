@@ -1,16 +1,24 @@
 // The settle path for reads that can't reach Postbox (designs/508/582/settle.md, #582 part 3): a read answered once
 // from the snapshot, the call journaled before its answer, and an ask call never answered from the snapshot.
 import assert from 'node:assert/strict';
-import { chmodSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { TURN_FILES } from '../shared/remote-protocol.mjs';
+import { offlineText } from '../server/remote/host/broker-tools.mjs';
+import { REMOTE_LIMITS } from '../shared/remote-protocol.mjs';
 import { connectShim, makeBroker, makeHome, until } from './remote-broker-fixtures.mjs';
 
-const journal = (h, turn) =>
-  readFileSync(h.p.turn(turn, TURN_FILES.tools), 'utf8')
+const OFFLINE_NOTE = '\n\n(Read offline as of this turn’s start; earlier or changed items may be missing.)';
+
+/** The turn's journal records; none when the file is not there yet, so the assertion reads as behavior. */
+const journal = (h, turn) => {
+  const file = h.p.turn(turn, TURN_FILES.tools);
+  if (!existsSync(file)) return [];
+  return readFileSync(file, 'utf8')
     .split('\n')
     .filter(Boolean)
     .map((l) => JSON.parse(l));
+};
 
 /** A snapshot with one thread of n items. */
 const snapOf = (n, text = 'x') => ({
@@ -56,35 +64,36 @@ test('an ask call whose live journal write fails while the link is down is not a
     const s = connectShim(k.b, turn);
     await s.next('welcome');
     const pending = s.call('call_ask', 'wake_agent', { handle: 'x', text: 'y' });
+    pending.catch(() => {}); // the shim gives up after the test ends; that is not the behavior under test
     await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'call_ask'), 'the ask sent to Postbox');
     // The live reply's journal write fails (the file goes read-only) while the link drops.
     chmodSync(h.p.turn(turn, TURN_FILES.tools), 0o400);
     k.state.attached = false;
     await k.post('reply', { turn, id: 'call_ask', ok: true, text: 'done' });
-    const won = await Promise.race([pending.then(() => 'answered'), new Promise((r) => setTimeout(() => r('open'), 100))]);
-    assert.equal(won, 'open', 'an ask stays open for Postbox; nothing answers it from the snapshot');
+    chmodSync(h.p.turn(turn, TURN_FILES.tools), 0o600); // writable again, so the barrier read can be journaled
+    // Barrier: a second, detached read is answered now. Its answer proves the broker has run past the ask's settle attempt.
+    const read = await s.call('call_read2', 'read_message', { id: 'i0' });
+    assert.match(read.text, /x 0/, 'the read is answered from the snapshot');
+    let answered = false;
+    pending.then(
+      () => (answered = true),
+      () => {},
+    );
+    await new Promise((r) => setImmediate(r));
+    assert.equal(answered, false, 'the ask stays open for Postbox; nothing answers it from the snapshot');
   } finally {
     h.done();
   }
 });
 
-test('an offline read longer than replyChars keeps the offline notice, and the record and the wire match', async () => {
-  const h = makeHome();
-  try {
-    const k = makeBroker(h);
-    const turn = 't_long';
-    h.turn(turn);
-    await k.post('snapshot', { turn, ...snapOf(1, 'z'.repeat(20000)) });
-    await k.b.starting(turn);
-    const s = connectShim(k.b, turn);
-    await s.next('welcome');
-    k.state.attached = false;
-    const res = await s.call('call_long', 'read_conversation', {});
-    assert.ok(res.text.length <= 1_000_000, 'the answer is within replyChars');
-    assert.match(res.text, /earlier or changed items may be missing/, 'the notice is kept');
-    const rec = journal(h, turn).find((r) => r.op === 'reply');
-    assert.equal(rec.text, res.text, 'the journal and the wire carry the same text');
-  } finally {
-    h.done();
-  }
+// Unit: the cap on an offline answer (settle.md §4). No reader in this tree can produce an answer over replyChars end
+// to end (a snapshot line is capped at 2,300 characters and read_conversation returns at most 200 items), so the cap is
+// tested on the helper. The end-to-end record and wire equality is covered by the detached-read spec above.
+test('an offline answer over replyChars is cut to replyChars and keeps the offline notice', () => {
+  const big = 'x'.repeat(REMOTE_LIMITS.replyChars + 5000);
+  const cut = offlineText(big + OFFLINE_NOTE);
+  assert.ok(cut.length <= REMOTE_LIMITS.replyChars, 'within replyChars');
+  assert.ok(cut.length > REMOTE_LIMITS.replyChars - 100, 'close to the cap');
+  assert.ok(cut.endsWith(OFFLINE_NOTE), 'the offline notice is kept at the end');
+  assert.equal(offlineText('short' + OFFLINE_NOTE), 'short' + OFFLINE_NOTE, 'a short answer is unchanged');
 });
