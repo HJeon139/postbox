@@ -5,6 +5,7 @@
 // conversation, from its next turn (Runtime.personaFor reads Tools from the persona, not the session’s snapshot).
 
 import { REAL_BACKEND_TOOLS } from './adapters/setup.mjs';
+import { releaseNeed } from './card-needs.mjs';
 import { httpError } from './helpers.mjs';
 import { KNOWN_TOOLS } from './seed.mjs';
 
@@ -84,7 +85,7 @@ function answered(rt, threadId, it, action) {
   });
   const se = rt.s.sessions[it.sessionId];
   if (!se) return { ok: true };
-  if (se.needs?.itemId === it.id) rt.updateSession(se.id, { needs: null, state: rt.turns.has(se.id) ? se.state : 'idle' });
+  releaseNeed(rt, se, it.id);
   // Not in a conversation you’re deleting: the persona changed elsewhere, and a turn there would outlive it.
   if (!se.archived && !se.deleting && !rt.s.threads[threadId]?.deleting && !rt.s.threads[se.threadId]?.deleting)
     rt.deliver(se.id, {

@@ -2,6 +2,8 @@
 // what replaced it, with its version menu (app/js/apps.mjs). It stays where it is, since nothing new needs the person,
 // and it runs no sandbox until they open a version. A new version (update_app) brings it back.
 
+import { releaseNeed } from './card-needs.mjs';
+
 /**
  * Why there’s no app of the session’s with that id. With no forks (#228), a topic thread’s agent is the conversation’s
  * own session, so there’s no longer an app it showed under another session (#216).
@@ -48,5 +50,5 @@ function release(rt, app) {
   if (!card) return;
   rt.patchItem(app.threadId, card.id, { status: 'declined', retired: true, answeredAt: Date.now() });
   const se = rt.s.sessions[card.sessionId];
-  if (se?.needs?.itemId === card.id) rt.updateSession(se.id, { needs: null, state: rt.turns.has(se.id) ? se.state : 'idle' });
+  releaseNeed(rt, se, card.id);
 }

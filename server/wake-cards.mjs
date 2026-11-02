@@ -4,6 +4,7 @@
 // raises them. Functions take the Runtime first (architecture.md, “What a move may change”).
 
 import { HELD_WAKES } from '../shared/limits.mjs';
+import { releaseNeed } from './card-needs.mjs';
 import { clip, httpError } from './helpers.mjs';
 
 /** The card for a wake past the limit (#108), which waits for the person’s Allow. */
@@ -107,7 +108,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
       : `Didn’t allow @${it.from} to wake @${it.to}`;
   rt.addItem(threadId, { kind: 'voice', text: voice });
   const from = rt.s.sessions[it.fromSessionId];
-  if (from) rt.updateSession(from.id, { needs: null, state: rt.turns.has(from.id) ? from.state : 'idle' });
+  releaseNeed(rt, from, itemId);
   rt.putThread({ ...rt.s.threads[threadId], hops: 0 });
   // Added: it joins with a note on why, as an agent the person adds does, and the wake goes on (#228).
   const p = it.join && allow ? rt.personaByHandle(it.to) : null;
@@ -173,7 +174,7 @@ export function retireStale(rt, threadId, target, why, { byPerson = false } = {}
   if (!card || card.join || card.to !== target.handle) return;
   rt.patchItem(conv, card.id, { status: 'retired', retiredWhy: why, retiredAt: Date.now() });
   const from = rt.s.sessions[card.fromSessionId];
-  if (from) rt.updateSession(from.id, { needs: null, state: rt.turns.has(from.id) ? from.state : 'idle' });
+  releaseNeed(rt, from, card.id);
   // A request stored before #108 kept only the preview.
   const own = {
     fromSessionId: card.fromSessionId,

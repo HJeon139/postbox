@@ -36,6 +36,7 @@ import { restoreArchives } from './archive-lifecycle.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
+import { nextNeed, releaseNeed } from './card-needs.mjs';
 import { catchUp, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
@@ -1024,27 +1025,8 @@ export class Runtime {
     const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
     const viewing = this.isViewing(turn.threadId);
     const topic = turn.threadId !== se.threadId && this.s.threads[turn.threadId]?.kind === 'topic' ? this.s.threads[turn.threadId] : null;
-    const refused = items.filter((it) => it.kind === 'denial' && it.turnId === turn.id && it.status === 'open');
-    const askedTool = items.filter((it) => it.kind === 'toolask' && it.turnId === turn.id && it.status === 'open').at(-1);
-    const needs = open.length
-      ? {
-          kind: 'block',
-          itemId: open.at(-1).id,
-          text: open.at(-1).block.title ?? clip(open.at(-1).block.prompt ?? open.at(-1).block.fallback, 120),
-          ...(open.at(-1) === waiting ? { threadId: se.needs?.threadId } : this.awayFrom(se, turn.threadId)),
-        }
-      : refused.length
-        ? {
-            kind: 'denial',
-            itemId: refused.at(-1).id,
-            text: `${refused.length === 1 ? 'A step was' : `${refused.length} steps were`} refused: ${refused.at(-1).summary}`,
-            ...this.awayFrom(se, turn.threadId),
-          }
-        : askedTool
-          ? { kind: 'toolask', itemId: askedTool.id, text: `@${se.handle} asks you to turn on “${askedTool.label}”`, ...this.awayFrom(se, turn.threadId) }
-          : se.needs?.kind === 'hop' || se.needs?.kind === 'appsend'
-            ? se.needs
-            : null;
+    // The newest card that still waits (card-needs.mjs): this turn's asks, and the cards that wait until answered.
+    const needs = nextNeed(this, se, { turnId: turn.id, keep: waiting?.id ?? null });
     const mentionsYou = /(^|\W)@you\b/i.test(turn.said);
     this.updateSession(se.id, {
       state: needs ? 'needs' : 'idle',
@@ -1522,7 +1504,7 @@ export class Runtime {
     // What it was asked (turn-marks.mjs): refused, with nothing sent, when it was kept and can’t be read back exactly.
     return askedAgain(this, threadId, it, (asked) => {
       this.patchItem(threadId, itemId, { status: 'retried' });
-      this.updateSession(it.sessionId, { needs: null, state: 'idle' });
+      releaseNeed(this, this.s.sessions[it.sessionId], itemId);
       this.deliver(it.sessionId, { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [] }, { summarizeTo: asked.summarizeTo, threadId });
     });
   }

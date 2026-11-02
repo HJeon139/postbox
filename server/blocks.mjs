@@ -6,6 +6,7 @@ import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mj
 import { buildEvent } from '../shared/events.mjs';
 import { LIMITS } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
+import { releaseNeed } from './card-needs.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { REACT, toggleReaction } from './reactions.mjs';
 import { keepReviewThreads } from './review-comments.mjs';
@@ -58,7 +59,7 @@ export function act(rt, threadId, itemId, action, values, revision) {
     });
   rt.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
   const se = rt.s.sessions[it.sessionId];
-  if (se?.needs?.itemId === itemId) rt.updateSession(se.id, { needs: null, state: rt.turns.has(se.id) ? se.state : 'idle' });
+  releaseNeed(rt, se, itemId);
   if (se) rt.deliver(se.id, { kind: 'event', event: r.event, blockItemId: itemId }, { threadId });
   return { ok: true, voice: r.voice };
 }
@@ -230,7 +231,7 @@ function withdraw(rt, sessionId, block, { se, threadId }) {
   if (existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing);
   const s = se();
   rt.patchItem(where, existing.id, { answered: true, closed: { by: 'agent', handle: s.handle, reason, at: Date.now() } });
-  if (s.needs?.itemId === existing.id) rt.updateSession(s.id, { needs: null, state: rt.turns.has(s.id) ? s.state : 'idle' });
+  releaseNeed(rt, s, existing.id);
   return { ok: true, message: `Withdrew block ${id}. The person sees it closed, with your reason, and it no longer waits on them.` };
 }
 

@@ -6,6 +6,7 @@ import { followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { notYours } from './app-retire.mjs';
+import { releaseNeed } from './card-needs.mjs';
 import { httpError } from './helpers.mjs';
 import { newId } from './store.mjs';
 
@@ -114,9 +115,15 @@ export function appEvent(rt, appId, action, values, { hold = false, now = Date.n
  */
 export function needAppSend(rt, app, itemId, waiting) {
   const se = rt.s.sessions[app.sessionId];
-  if (!se || (se.needs && se.needs.itemId !== itemId)) return;
+  if (!se) return;
+  // Behind another need: not notified yet, so it is when it becomes the need (card-needs.mjs).
+  if (se.needs && se.needs.itemId !== itemId) {
+    if (waiting === 1) rt.patchItem(app.threadId, itemId, { notifiedAt: null });
+    return;
+  }
   const text = `${app.title} wants to send ${waiting === 1 ? '1 message' : `${waiting} messages`} for you`;
   rt.updateSession(se.id, { needs: { kind: 'appsend', itemId, text }, state: rt.turns.has(se.id) ? se.state : 'needs' });
+  if (waiting === 1) rt.patchItem(app.threadId, itemId, { notifiedAt: Date.now() });
   if (waiting === 1) rt.notify('blocking', se, text, `Apps send up to ${APP_SEND_LIMIT} a minute in your voice. Allow these, or don’t.`);
 }
 
@@ -128,7 +135,7 @@ export function resolveAppSend(rt, threadId, itemId, action, { now = Date.now() 
   const allow = action === 'allow';
   rt.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined', answeredAt: now });
   const owner = rt.s.sessions[it.sessionId];
-  if (owner?.needs?.itemId === itemId) rt.updateSession(owner.id, { needs: null, state: rt.turns.has(owner.id) ? owner.state : 'idle' });
+  releaseNeed(rt, owner, itemId);
   if (!allow) {
     const n = it.events.length;
     rt.addItem(threadId, { kind: 'voice', text: `Didn’t allow ${it.title} to send ${n === 1 ? '1 message' : `${n} messages`}` });

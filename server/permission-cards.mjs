@@ -2,6 +2,7 @@
 // Runtime keeps a one-line method for each, so its callers and tests don’t change.
 
 import { POSTBOX_TIMEOUT_MS } from './adapters/setup.mjs';
+import { releaseNeed } from './card-needs.mjs';
 import { httpError } from './helpers.mjs';
 import { editedInput, MAX_EDIT_INPUT, MAX_REASON } from './permission-edit.mjs';
 import { addAllowRule, alwaysAllow, cleanRule, rulesFor, takeBackRule } from './permission-rules.mjs';
@@ -135,7 +136,7 @@ export function settlePermission(rt, itemId, status, message, answer = {}, patch
   rt.permissionWaits.delete(itemId);
   rt.patchItem(w.threadId, itemId, { status, answeredAt: Date.now(), ...patch });
   const se = rt.s.sessions[w.sessionId];
-  if (se?.needs?.itemId === itemId) rt.updateSession(se.id, { needs: null, state: rt.turns.has(se.id) ? 'tool' : 'idle' });
+  releaseNeed(rt, se, itemId, 'tool');
   w.resolve(status.startsWith('allowed') ? { allow: true, ...answer } : { allow: false, message: message ?? 'The request expired when the turn ended.' });
   return true;
 }
@@ -292,13 +293,7 @@ export async function resolveDenial(rt, threadId, itemId, action) {
   rt.patchItem(threadId, itemId, { status, answeredAt: Date.now() });
   const words = { once: 'Allowed once', always: `Always allowed ${it.rules.alwaysWords}`, leave: 'Left refused' }[action];
   rt.addItem(threadId, { kind: 'voice', text: `${words}: @${it.handle} to ${it.summary}` });
-  if (se?.needs?.itemId === itemId) {
-    const next = rt.store.items(threadId).find((x) => x.kind === 'denial' && x.sessionId === se.id && x.status === 'open');
-    rt.updateSession(se.id, {
-      needs: next ? { kind: 'denial', itemId: next.id, text: `A step was refused: ${next.summary}` } : null,
-      state: rt.turns.has(se.id) ? se.state : next ? 'needs' : 'idle',
-    });
-  }
+  releaseNeed(rt, se, itemId);
   if (note && se && !se.archived) rt.deliver(se.id, { kind: 'notice', text: note }, { threadId });
   return { ok: true };
 }

@@ -6,6 +6,7 @@
 import { NOT_YOUR_PROMPT } from '../../shared/mcp-tools.mjs';
 import { message as protocolMessage, REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
 import { describePermission } from '../adapters/claude-stream.mjs';
+import { releaseNeed } from '../card-needs.mjs';
 import { asksByPrompt } from '../permission-prompt.mjs';
 import { linkOf } from './turns-need.mjs';
 import { ENDED_TEXT, key, ON_HOST, send, sessionOfTurn, updateRemote } from './turns-shared.mjs';
@@ -188,7 +189,7 @@ export function endCard(rts, card, status, message, at, extra = {}) {
   else {
     rt.patchItem(card.threadId, card.it.id, { status, answeredAt: rts.now(), endedAt: at, ...extra });
     const se = rt.s.sessions[card.it.sessionId];
-    if (se?.needs?.itemId === card.it.id) rt.updateSession(se.id, { needs: null, state: rt.turns.has(se.id) ? 'tool' : 'idle' });
+    releaseNeed(rt, se, card.it.id, 'tool');
   }
 }
 
