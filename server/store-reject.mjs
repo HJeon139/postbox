@@ -1,0 +1,63 @@
+// An event the shared reducer rejects (#609, #610; designs/508/609-reducer-throw.md). The store numbers it, writes it
+// and holds it as rejected, so numbering never skips, a throw neither closes the store nor crashes the writer, and
+// every load gives the same result. What the page and since() get is a stand-in that carries nothing, since the
+// reducer's message can quote what it was given. What the log gets is the stand-in with the original inside it, for an
+// emit or a held release; a commit's original was written before it was applied. The reducer's contract, that a
+// handler which throws changes nothing, is held by tests/state-reject-contract.test.mjs.
+
+import { apply } from '../shared/state.mjs';
+
+/** @typedef {{ count: number, first: { seq: number, type: string, error: string }[] }} Rejected */
+
+/** The stand-in's type: no producer may emit it. */
+export const REJECTED = 'rejected';
+/** How many rejections are kept by seq; the rest are counted, as `lost` keeps a range and a count. */
+const KEEP = 20;
+
+/** Refuses a producer's event of the reserved type, before anything is numbered. @param {string} type */
+export function refuseReserved(type) {
+  if (type === REJECTED)
+    throw Object.assign(new Error(`“${REJECTED}” is a reserved event type: the store writes it for an event the reducer rejected.`), { code: 'ERESERVED' });
+}
+
+/** What the page, the stream and since() get for a rejected seq: its place, and nothing of the event. @param {number} seq */
+export const standIn = (seq) => ({ seq, type: REJECTED, data: {} });
+
+/** The line the log keeps for a rejected emit or held release: the stand-in, with the original and why. */
+export const loggedStandIn = (ev, error) => ({ seq: ev.seq, type: REJECTED, data: { event: { type: ev.type, data: ev.data }, error: messageOf(error) } });
+
+const messageOf = (error) => String(error?.message ?? error);
+
+/**
+ * Keeps a rejection on `holder` (the store, or a load's candidate): a count, and the first few by seq.
+ * @param {{ rejected: { count: number, first: { seq: number, type: string, error: string }[] } | null }} holder
+ * @param {number} seq @param {string} type @param {unknown} error
+ */
+export function noteRejected(holder, seq, type, error) {
+  holder.rejected ??= { count: 0, first: [] };
+  holder.rejected.count++;
+  if (holder.rejected.first.length < KEEP) holder.rejected.first.push({ seq, type, error: messageOf(error) });
+}
+
+/**
+ * Applies a numbered live event to the store's state (Store.record), or holds it as rejected: kept and counted on the
+ * store, and logged once. Gives back the line the log keeps for it (the JSON made before applying, as it was emitted),
+ * what listeners hear, and the reducer's error, if any. @param {any} store @param {any} ev
+ * @returns {{ line: string, heard: any, error: unknown }}
+ */
+export function applyOrHold(store, ev) {
+  const line = JSON.stringify(ev);
+  try {
+    apply(store.state, ev.type, ev.data);
+    return { line, heard: ev, error: null };
+  } catch (error) {
+    noteRejected(store, ev.seq, ev.type, error);
+    store.lastRejected = ev.seq;
+    console.error(`The store couldn’t apply event ${ev.seq} (${ev.type}), and keeps it as rejected: ${messageOf(error)}`);
+    return { line: JSON.stringify(loggedStandIn(ev, error)), heard: standIn(ev.seq), error };
+  }
+}
+
+/** The error the caller of an emit or a commit gets: the event is in the log, held as rejected. */
+export const rejectedError = (seq, type, cause) =>
+  Object.assign(new Error(`The store couldn’t apply event ${seq} (${type}), so it’s kept as rejected: ${messageOf(cause)}`), { code: 'EREJECTED', seq, cause });

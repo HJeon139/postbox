@@ -15,6 +15,7 @@
 // reads whatever landed (server/store-recover.mjs, the one recovery path). Retry as a reload is 1b’s; the generation
 // check is its seam: a loop whose generation is no longer the store’s finishes its step and publishes nothing.
 
+import { refuseReserved, rejectedError } from './store-reject.mjs';
 import { snapshotNow, syncDir } from './store-snapshot.mjs';
 
 /** The segment the log is being appended to, opened once. @param {import('./store.mjs').Store} store */
@@ -63,19 +64,28 @@ async function append(store, text, gen, sync, through) {
   }
 }
 
-/** Applies committed batches in order, all of them before any listener hears, then tells the listeners and resolves. */
+/**
+ * Applies committed batches in order, all of them before any listener hears, then tells the listeners and resolves. An
+ * event the reducer rejects is held as rejected around the others (server/store-reject.mjs), and its commit rejects.
+ */
 function applyCommits(store, commits) {
   const heard = [];
   for (const c of commits) {
     for (const ev of c.events) {
-      store.record(ev);
-      heard.push(ev);
+      const r = store.record(ev);
+      heard.push(r.heard);
+      if (r.error && !c.rejected) c.rejected = rejectedError(ev.seq, ev.type, r.error);
     }
     if (c.opId !== undefined) store.ops.set(c.opId, c.events.at(-1).seq); // the last seq, as the design says
     store.sinceSnapshot += c.events.length;
   }
   for (const ev of heard) store.notify(ev);
   for (const c of commits) {
+    if (c.rejected) {
+      c.reject(c.rejected);
+      for (const f of c.followers ?? []) f.reject(c.rejected);
+      continue;
+    }
     c.resolve({ seq: c.events.at(-1).seq, duplicate: false });
     for (const f of c.followers ?? []) f.resolve({ seq: c.events.at(-1).seq, duplicate: true });
   }
@@ -98,6 +108,7 @@ function sequenced(store, c) {
   try {
     given = typeof c.events === 'function' ? c.events(store.state) : c.events;
     if (!Array.isArray(given)) throw new TypeError('A commit takes an array of events, or a function of the state that returns one.');
+    for (const e of given) refuseReserved(e?.type);
   } catch (e) {
     c.reject(e); // the caller’s events are no good: its commit fails, and nothing was numbered
     return null;

@@ -29,9 +29,12 @@ export function liveStreams(store) {
   store.subscribe((ev) => {
     const line = `id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`;
     const epoch = store.epoch; // the history the event belongs to: a send held back past a Retry says nothing (gpt’s finding)
+    // An event the store held as rejected (#609): its place, then a resync, since a handler that broke its contract
+    // may have changed the state the page can't see.
+    const frames = ev.type === 'rejected' ? `${line}event: resync\ndata: {}\n\n` : line;
     const send = () => {
       if (store.epoch !== epoch) return;
-      for (const res of streams) res.write(line);
+      for (const res of streams) res.write(frames);
     };
     if (lag > 0) setTimeout(send, lag).unref();
     else send();

@@ -60,6 +60,7 @@ export function ownState(s) {
 }
 
 // The reducer. Events carry whole objects for upserts, and small patches for items and sessions (session.patch).
+// `rejected` is an event the store couldn't apply, held in its place (server/store-reject.mjs): it changes nothing.
 export function apply(s, type, d) {
   switch (type === 'session.patch' ? 'session' : type) {
     case 'settings':
@@ -141,7 +142,7 @@ export function apply(s, type, d) {
     case 'notify':
       break; // transient: shown as a toast, nothing to store
     default:
-      if (!applyHost(s, type, d)) throw new Error(`Unknown store event “${type}”.`);
+      if (type !== 'rejected' && !applyHost(s, type, d)) throw new Error(`Unknown store event “${type}”.`);
   }
 }
 

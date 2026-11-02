@@ -16,6 +16,7 @@ import { syncDir, writeSnapshot } from './store-snapshot.mjs';
  * @typedef {{
  *   io: typeof import('node:fs/promises'), dir: string, at: (name: string) => string, segments: () => Promise<{ name: string }[]>,
  *   state: any, ops: Map<string, number>, sinceSnapshot: number, lost: { from: number, to: number, count: number } | null,
+ *   rejected: { count: number, first: { seq: number, type: string, error: string }[] } | null,
  *   segment: string, freshSegment: boolean, retiring: boolean,
  * }} Candidate  what the folder holds, read without touching the store
  */
@@ -37,6 +38,7 @@ export async function recover(store) {
     ops: new Map(),
     sinceSnapshot: 0,
     lost: null,
+    rejected: null,
     segment: '',
     freshSegment: false,
     get retiring() {
@@ -84,6 +86,12 @@ export function install(store, c) {
   store.ops = c.ops;
   store.sinceSnapshot = c.sinceSnapshot;
   store.lost = c.lost;
+  store.rejected = c.rejected;
+  store.lastRejected = 0; // since() starts over with this load
+  if (c.rejected)
+    console.warn(
+      `The event log holds ${c.rejected.count} event${c.rejected.count === 1 ? '' : 's'} Postbox couldn’t apply, kept as rejected (first at ${c.rejected.first[0].seq}).`,
+    );
   store.segment = c.segment;
   store.freshSegment = c.freshSegment;
   store.ahead = 0;
