@@ -208,3 +208,17 @@ test('open_topic refuses mentions with no message, before it opens anything', as
   assert.match(r.message, /message/);
   assert.equal(topics(f.store).length, 0, 'nothing opened');
 });
+
+test('open_topic refuses mentions that aren’t a list of handles, before it opens anything (#650)', async () => {
+  const f = await conversation();
+  const r = await alphaTurn(f, (tools) => {
+    try {
+      return tools.open_topic({ itemId: f.reply.id, message: 'Please check', mentions: 'beta' });
+    } catch (e) {
+      return { thrown: String(e) };
+    }
+  });
+  assert.equal(r?.ok, false, JSON.stringify(r));
+  assert.match(r.message, /list of handles/);
+  assert.equal(topics(f.store).length, 0, 'nothing opened');
+});
