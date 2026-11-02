@@ -54,7 +54,9 @@ export async function onHello(b, send) {
       .map((q) => endPrompt(b, q.turn, q.id, b.now(), over.has(q.turn) ? CANCELED : 'expired', true)),
   );
   for (const t of b.tools.values()) {
-    if (!settled(t)) {
+    // Sent on unless answered, or being answered offline. A live reply still being written is neither: if that write fails,
+    // nothing else would send the call (the integrator's review of #616).
+    if (!t.replied && !t.offline) {
       if (t.route === 'read') {
         const elapsed = Math.max(0, b.now() - (t.arrived ?? b.now()));
         if (elapsed >= REMOTE_READ_TIMEOUT_MS) {

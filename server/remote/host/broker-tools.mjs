@@ -138,6 +138,9 @@ export async function settleOffline(b, t) {
   /** @type {(v?: any) => void} */
   let finish = () => {};
   t.replying = new Promise((resolve) => (finish = resolve));
+  // Marks the claim as the offline one: the hello must not send this call on, whereas a live reply's write in flight
+  // (also `replying`) can still fail and leave the call to be sent again (settle.md §5).
+  t.offline = true;
   try {
     if (t.timer) {
       b.timers.clearTimeout(t.timer);
