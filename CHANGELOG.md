@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.10.0 (2026-11-02)
+
+### Features
+
+- **store:** store.pending reads a list with what is held behind a commit (#601)
+
+### Fixes
+
+- **ledger:** restore reads the file as the Work view shows it
+- **store:** every read that decides a write reads pending, apps included (#601)
+
 ## 1.9.2 (2026-11-02)
 
 ### Fixes
