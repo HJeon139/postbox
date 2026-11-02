@@ -3,6 +3,7 @@
 
 import { formatDuration } from '/shared/text.mjs';
 import { formatCost, formatTokens, signed } from '/shared/work.mjs';
+import { ledgerIndex } from '/shared/work-index.mjs';
 import { retiredApp } from '/shared/work-list.mjs';
 import { client } from './client.mjs';
 import { h, icon, plural, timeOf } from './dom.mjs';
@@ -135,7 +136,7 @@ export function externalSection(s) {
   );
 }
 
-export function effortSection(s, entries, threadId) {
+export function effortSection(s, entries, threadId, win) {
   const anyPrice = s.effort.priced;
   const row = (a, total = false) =>
     h(
@@ -150,7 +151,6 @@ export function effortSection(s, entries, threadId) {
       h('td.num', `+${(a.written ?? 0).toLocaleString('en-US')}`),
       h('td.num', signedEl(a.added, a.deleted)),
     );
-  const idle = s.idle.list;
   return section(
     'work-effort',
     'Effort',
@@ -184,28 +184,41 @@ export function effortSection(s, entries, threadId) {
         )
       : h('p.empty-note', 'No turns yet.'),
     anyPrice || !s.turns.length ? null : h('p.small.dim', 'Spend shows for Claude Code and Agent SDK turns.'),
-    idle.length
-      ? [
-          h('h3.label', 'Left nothing lasting'),
-          h(
-            'ul.work-list',
-            idle.map((t) => {
-              const cmds = s.commands.filter((c) => c.turnId === t.id);
-              const failed = cmds.filter((c) => c.state === 'failed').length;
-              const files = entries.filter((e) => e.kind === 'change' && e.turnId === t.id).length;
-              return h(
-                'li',
-                workLink(threadId, { full: true, turn: t.id }, `@${t.handle} at ${timeOf(t.startedAt)}`),
-                h(
-                  'span.small.dim',
-                  ` · ${[dur(t.ms), anyPrice ? formatCost(t.costUsd ?? 0) : null, cmds.length ? `${plural(cmds.length, 'command')}${failed ? `, ${failed} failed` : ''}` : null, files ? `${plural(files, 'file')} put back` : null].filter(Boolean).join(' · ')}`,
-                ),
-              );
-            }),
-          ),
-        ]
-      : null,
+    idleList(s, entries, threadId, win),
   );
+}
+
+/** The turns that left nothing lasting, each with what it took and tried. */
+function idleList(s, entries, threadId, win) {
+  const anyPrice = s.effort.priced;
+  const { byTurn } = ledgerIndex(entries);
+  const ids = { idOf: (t) => t.id, elId: (t) => `widle-${t.id}` };
+  const { items: idle, above, below } = win('idle', s.idle.list, { ...ids, newest: 'end', before: 'earlier turn', after: 'later turn' });
+  if (!idle.length) return null;
+  return [
+    h('h3.label', 'Left nothing lasting'),
+    above,
+    h(
+      'ul.work-list',
+      idle.map((t) => {
+        // The turn’s own entries, from the ledger’s index rather than a scan of it for each turn (#618).
+        const mine = byTurn.get(t.id) ?? [];
+        const cmds = mine.filter((c) => c.kind === 'command');
+        const failed = cmds.filter((c) => c.state === 'failed').length;
+        const files = mine.filter((e) => e.kind === 'change').length;
+        return h(
+          'li',
+          { id: `widle-${t.id}`, tabindex: '-1' },
+          workLink(threadId, { full: true, turn: t.id }, `@${t.handle} at ${timeOf(t.startedAt)}`),
+          h(
+            'span.small.dim',
+            ` · ${[dur(t.ms), anyPrice ? formatCost(t.costUsd ?? 0) : null, cmds.length ? `${plural(cmds.length, 'command')}${failed ? `, ${failed} failed` : ''}` : null, files ? `${plural(files, 'file')} put back` : null].filter(Boolean).join(' · ')}`,
+          ),
+        );
+      }),
+    ),
+    below,
+  ];
 }
 
 /** Leaves full-screen Work for the conversation, at an item there, with focus on it. */
@@ -250,16 +263,19 @@ export function publishSection(s, conv, apps = {}) {
 
 const READ_WORDS = { Read: 'Read', Grep: 'Searched files for', Glob: 'Listed files matching', WebFetch: 'Fetched', WebSearch: 'Searched the web for' };
 /** Each file the agents read and each page they fetched or searched for (#195), by agent, with when. */
-export function readsSection(s) {
+export function readsSection(s, win) {
+  const ids = { idOf: (r) => r.id, elId: (r) => r.id };
+  const { items, above, below } = win('reads', s.reads, { ...ids, newest: 'end', before: 'earlier read', after: 'later read' });
   // The list’s Reads row opens Work at this section, so it takes focus, and keeps it across repaints.
   const el = section(
     'work-reads',
     'Reads',
     s.reads.length,
+    above,
     s.reads.length
       ? h(
           'ul.work-list',
-          s.reads.map((r) =>
+          items.map((r) =>
             h(
               'li',
               { id: r.id, tabindex: '-1' },
@@ -271,6 +287,7 @@ export function readsSection(s) {
           ),
         )
       : h('p.empty-note', 'Nothing read yet. Each file an agent reads and each page it fetches or searches for shows here.'),
+    below,
   );
   el.tabIndex = -1;
   return el;

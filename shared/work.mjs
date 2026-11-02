@@ -3,6 +3,7 @@
 // diff, what a command line did to version control and to services outside Postbox, and the totals.
 
 import { formatDuration } from './text.mjs';
+import { ledgerIndex } from './work-index.mjs';
 
 /** Files larger than this are listed with their sizes, but not copied, diffed or restored. */
 export const MAX_FILE_BYTES = 4 * 1024 * 1024;
@@ -148,13 +149,13 @@ export function lasting(f) {
  * @param {{ git?: any, handle?: string|null, turnId?: string|null }} [opts]
  */
 export function summarize(entries, { git = null, handle = null, turnId = null } = {}) {
-  const list = entries ?? [];
-  const turns = list.filter((e) => e.kind === 'turn' && (!handle || e.handle === handle) && (!turnId || e.id === turnId));
+  const { byTurn, files: fileById } = ledgerIndex(entries ?? []);
+  const scope = turnId ? (byTurn.get(turnId) ?? []) : (entries ?? []); // one turn’s summary reads its own entries (#618)
+  const turns = scope.filter((e) => e.kind === 'turn' && (!handle || e.handle === handle) && (!turnId || e.id === turnId));
   const turnIds = new Set(turns.map((t) => t.id));
   const inScope = (e) => turnIds.has(e.turnId);
-  const changes = list.filter((e) => e.kind === 'change' && inScope(e));
+  const changes = scope.filter((e) => e.kind === 'change' && inScope(e));
   const changedFiles = new Set(changes.map((c) => c.fileId));
-  const fileById = new Map(list.filter((e) => e.kind === 'file').map((f) => [f.id, f]));
   // In one turn, a file shows what that turn did; otherwise, what all the agents’ turns left.
   const files = turnId
     ? changes.map((c) => ({ ...fileById.get(c.fileId), ...c, id: c.fileId, changeId: c.id }))
@@ -167,7 +168,7 @@ export function summarize(entries, { git = null, handle = null, turnId = null } 
     // One turn’s total is what it did, even to a file put back since.
     if (turnId || st !== 'unchanged') add(total, f);
   }
-  const of = (kind) => list.filter((e) => e.kind === kind && inScope(e));
+  const of = (kind) => scope.filter((e) => e.kind === kind && inScope(e));
   const [commands, external, commits, pushes, branches, publishes, reads] = ['command', 'external', 'commit', 'push', 'branch', 'publish', 'read'].map(of);
   // Files an agent on a remote host edited (#120): named by the stream, never read, so they have no lines or state.
   const edits = of('edit');
