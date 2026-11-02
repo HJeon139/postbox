@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.12.1 (2026-11-02)
+
+### Fixes
+
+- **store:** every reader of a held or replayed event agrees on a rejected one (#632 review)
+- **store:** replay names a commit's first rejected event, as the live path does
+- **store:** a retry of a rejected commit is rejected again, not a duplicate success
+- **store:** no producer may emit a stream frame's name either
+- **store:** an event the reducer rejects is numbered, written and held as rejected (#609, #610)
+- **state:** a reducer handler that throws changes nothing first (#609)
+
 ## 1.12.0 (2026-11-02)
 
 ### Features
