@@ -305,7 +305,7 @@ export async function onReply(b, m, reply) {
     );
     // The link may have dropped during the write: settleOffline saw settled(t) and returned, so settle now (settle.md §5).
     if (!b.attached()) {
-      if (t.route === 'read') settleOffline(b, t);
+      if (t.route === 'read') settleOffline(b, t).catch(b.log);
     } else armReadTimer(b, t);
     return;
   }

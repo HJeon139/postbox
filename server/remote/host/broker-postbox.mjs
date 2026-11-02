@@ -78,5 +78,8 @@ export async function onHello(b, send) {
 
 /** Postbox's connection is gone and no replacement has said hello: every unsettled read is answered from the snapshot now (#582, link.md). @param {Broker} b */
 export function driverLost(b) {
+  // The daemon closes the broker before its connections, so the last close of a driver can arrive here after it: the
+  // folders may be gone, and nothing is waiting for the answer.
+  if (b.closed) return;
   for (const t of b.tools.values()) if (t.route === 'read' && !settled(t)) settleOffline(b, t).catch(b.log);
 }

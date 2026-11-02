@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 // ── The race windows, held with the broker's io seam (settle.md §5). A held file call stands for the window: the
 // read of the snapshot for T07, the journal append of the live reply for T08. Nothing sleeps.
-import { existsSync, promises as fsp, readFileSync, writeFileSync } from 'node:fs';
+import { promises as fsp, writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { TURN_FILES } from '../shared/remote-protocol.mjs';
 import { connectShim, makeBroker, makeHome, turnToken, until } from './remote-broker-fixtures.mjs';
