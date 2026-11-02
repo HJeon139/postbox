@@ -34,39 +34,10 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
   // Any other id names one block of this session in this conversation, answered or not, so an answer to it,
   // and an update or outcome by it, always means that block (#125). Showing it again is refused, not turned
   // into an update: an update can reopen a block the person answered.
-  if (v.ok && v.block.type !== 'app') {
-    const id = v.block.id;
-    const shown = rt.store.items(threadId()).find((x) => x.kind === 'block' && x.valid && x.sessionId === sessionId && x.block.id === id);
-    // An app’s id can’t take a block’s update, so that case only asks for a new id.
-    if (shown?.block.type === 'app') return { ok: false, message: `${id} is the id of your app “${shown.block.title ?? id}”. Pick a new id for this block.` };
-    if (shown) return { ok: false, message: `Block ${id} is already shown. Use update_block to change it, or pick a new id.` };
-  }
+  const again = v.ok && v.block.type !== 'app' ? shownAgain(rt, sessionId, threadId(), v.block.id) : null;
+  if (again) return again;
   endSegment();
-  const it = rt.addItem(
-    threadId(),
-    v.ok
-      ? {
-          kind: 'block',
-          sessionId,
-          handle: se().handle,
-          turnId: turn?.id ?? null,
-          valid: true,
-          block: v.block,
-          answered: false,
-          ...wokeOf(turn),
-        }
-      : {
-          kind: 'block',
-          sessionId,
-          handle: se().handle,
-          turnId: turn?.id ?? null,
-          valid: false,
-          raw: block,
-          errors: v.errors,
-          reason: v.reason,
-          fallback: v.fallback,
-        },
-  );
+  const it = rt.addItem(threadId(), blockItem(sessionId, se, turn, block, v));
   if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id, threadId(), given.files ?? []);
   return v.ok
     ? v.block.type === 'app'
@@ -76,4 +47,21 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
         )
       : { ok: true, message: `Shown block ${v.block.id}.` }
     : { ok: false, message: `The block was invalid, so the person sees its fallback text. Problems: ${v.errors.join(' ')}` };
+}
+
+/** The refusal when this session already showed a block with this id in the thread, or null. */
+function shownAgain(rt, sessionId, threadId, id) {
+  const shown = rt.store.items(threadId).find((x) => x.kind === 'block' && x.valid && x.sessionId === sessionId && x.block.id === id);
+  // An app’s id can’t take a block’s update, so that case only asks for a new id.
+  if (shown?.block.type === 'app') return { ok: false, message: `${id} is the id of your app “${shown.block.title ?? id}”. Pick a new id for this block.` };
+  if (shown) return { ok: false, message: `Block ${id} is already shown. Use update_block to change it, or pick a new id.` };
+  return null;
+}
+
+/** The item show_block adds: the valid block, or what was sent with why it was refused, which shows its fallback. */
+function blockItem(sessionId, se, turn, block, v) {
+  const by = { kind: 'block', sessionId, handle: se().handle, turnId: turn?.id ?? null };
+  return v.ok
+    ? { ...by, valid: true, block: v.block, answered: false, ...wokeOf(turn) }
+    : { ...by, valid: false, raw: block, errors: v.errors, reason: v.reason, fallback: v.fallback };
 }
