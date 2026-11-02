@@ -191,10 +191,15 @@ async function startDaemon(d) {
   return turns;
 }
 
-/** @param {Daemon} d */
+/**
+ * Stops the daemon's timers, checks and connections, and returns the broker's close: it resolves once the broker's
+ * writes started before it have settled, and the broker starts none after it. The daemon's own writes are not in it: a
+ * start's launch (daemon-start.mjs), a kill timer already running (daemon-stop.mjs), a sweep or ack (cleanup*.mjs) and
+ * a held stdin line (daemon-write.mjs). Covering them is #426's follow-up.
+ * @param {Daemon} d
+ */
 function closeDaemon(d) {
   d.closed = true;
-  // The writes the broker still has in flight; a caller that removes the folders after waits for them.
   const flushed = d.brk.close?.();
   if (d.idleTimer) d.timers.clearTimeout(d.idleTimer);
   if (d.sweepTimer) d.timers.clearTimeout(d.sweepTimer);

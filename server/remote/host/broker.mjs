@@ -64,6 +64,7 @@
 // Codex’s approvals (broker-codex.mjs).
 
 import { checkWrite, watchCodex } from './broker-codex.mjs';
+import { inFlight } from './broker-offline.mjs';
 import { driverLost, onHello, onMessage } from './broker-postbox.mjs';
 import { stopTurn } from './broker-prompts.mjs';
 import { load } from './broker-replay.mjs';
@@ -75,6 +76,23 @@ export { CODEX_DECLINE, codexDeclineLine, codexPromptId } from './broker-codex.m
 export { inlineAppFiles } from './broker-files.mjs';
 export { readConversation, readMessage } from './broker-reading.mjs';
 export { CODEX_POLL_MS, STOPPED_TEXT } from './broker-state.mjs';
+
+/** The broker's close (createBroker's `close`). @param {import('./broker-state.mjs').Broker} b */
+function closeBroker(b) {
+  b.closed = true;
+  const writing = inFlight(b);
+  for (const t of b.tools.values()) {
+    if (t.timer) {
+      b.timers.clearTimeout(t.timer);
+      t.timer = undefined;
+    }
+  }
+  for (const w of b.watches.values()) if (w.timer) b.timers.clearTimeout(w.timer);
+  b.watches.clear();
+  for (const t of b.orphanTimers) b.timers.clearTimeout(t);
+  b.orphanTimers.clear();
+  return Promise.allSettled(writing).then(() => {});
+}
 
 /**
  * The broker for one daemon. Everything it needs from the daemon is passed in, so tests drive it without one.
@@ -107,26 +125,13 @@ export function createBroker(o) {
     /** Whether a turn is stopping. @param {string} turn */
     isStopping: (turn) => b.stopping.has(turn),
     /**
-     * Stops the broker's timers and watches. Resolves, and never rejects, once the writes in flight have settled: the
-     * appends to the journals, and the answers being written (a claim is held until its record is). An offline answer
-     * reaches the shim before its reply record is written, so a caller that removes the folders waits for this first.
+     * Stops the broker's timers and watches. Resolves, and never rejects, once the writes started before it have settled:
+     * the journal appends and snapshot writes (broker-records.mjs chain), and the answers being written (a claim is held
+     * until its record is). From the close on, the broker starts no write: a call or prompt that needs one is refused.
+     * So a caller that removes the turn folders waits for this first. The daemon's own writes are closeDaemon's.
      * @returns {Promise<void>}
      */
-    close() {
-      b.closed = true;
-      const writing = [...b.appends.values(), ...[...b.tools.values()].map((t) => t.replying)];
-      for (const t of b.tools.values()) {
-        if (t.timer) {
-          b.timers.clearTimeout(t.timer);
-          t.timer = undefined;
-        }
-      }
-      for (const w of b.watches.values()) if (w.timer) b.timers.clearTimeout(w.timer);
-      b.watches.clear();
-      for (const t of b.orphanTimers) b.timers.clearTimeout(t);
-      b.orphanTimers.clear();
-      return Promise.allSettled(writing).then(() => {});
-    },
+    close: () => closeBroker(b),
     /** For tests: what waits. */
     get pending() {
       return {
