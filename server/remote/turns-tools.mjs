@@ -10,6 +10,7 @@ import { noteAnswer } from '../empty-reply.mjs';
 import { reactTool } from '../reactions.mjs';
 import { recordedTools } from '../scheduled-wakes.mjs';
 import { withUrgent } from '../subagent-end.mjs';
+import { closedTo } from '../tool-gate.mjs';
 import { linkOf } from './turns-need.mjs';
 import { KEPT_REPLIES, KEPT_REPLY_CHARS, key, STOPPED_TEXT, send, sessionOfTurn, TOOL_QUEUED, updateRemote } from './turns-shared.mjs';
 
@@ -68,6 +69,9 @@ async function applyTool(rts, live, m) {
       text: 'add_dataset loads a file on Postbox’s computer, which an agent on a remote host can’t name, so it isn’t available there yet.',
     };
   if (!Object.hasOwn(tools, m.name)) return { ok: false, text: `There’s no tool called “${m.name}”.` };
+  // The one write gate, as for a local turn's call (server/tool-gate.mjs): while the store is closed, a write is refused.
+  const closed = closedTo(rts.rt, m.name);
+  if (closed) return { ok: false, text: closed };
   try {
     // show_app’s and update_app’s files were read on the host (the broker), and come as base64.
     const app = m.name === 'show_app' || m.name === 'update_app' ? await appFiles(rts, m.args) : { args: m.args };
