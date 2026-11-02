@@ -24,9 +24,13 @@ export class AssetRefusal extends Error {
   }
 }
 
-const refuse = (/** @type {string} */ code, /** @type {string} */ message) => {
+/**
+ * Refuses a write inside the commit: planWrite throws, so the store rejects that commit alone and writes nothing.
+ * @param {string} code @param {string} message @returns {never}
+ */
+function refuse(code, message) {
   throw new AssetRefusal(code, message);
-};
+}
 
 /**
  * What’s wrong with a name, or null: a relative path in the room, NFC, at most ASSETS.nameBytes bytes, `/` the only
@@ -59,10 +63,13 @@ const sameName = (a, b) => a.normalize('NFC').toLowerCase() === b.normalize('NFC
 /** The version an asset shows now. @param {any} asset */
 const headOf = (asset) => asset.versions.find((x) => x.v === asset.head) ?? null;
 
+/** The most parents roomOf follows, as Runtime’s lineage does: a thread’s parent is one level, a fork’s a few more. */
+const MAX_DEPTH = 8;
+
 /** The room a thread’s assets belong to: its conversation’s root, so side and topic threads share it. */
 export function roomOf(threads, threadId) {
   let id = threadId;
-  for (let i = 0; i < 8 && threads[id]?.parentId && threads[threads[id].parentId]; i++) id = threads[id].parentId;
+  for (let i = 0; i < MAX_DEPTH && threads[id]?.parentId && threads[threads[id].parentId]; i++) id = threads[id].parentId;
   return id;
 }
 
