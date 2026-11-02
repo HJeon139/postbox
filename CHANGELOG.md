@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.9.1 (2026-11-02)
+
+### Fixes
+
+- **runtime:** endWork logs through console.error, as the rest of the server does
+- **runtime:** a ledger that fails to end a turn is warned about, not left as an unhandled rejection
+- **blobs:** a failed put removes its draft, and a put of existing bytes syncs the folder (#305)
+- **blobs:** a failed folder sync rejects the put; only an unsupported one is ignored
+- **blobs:** a blob is published whole through a synced draft, and kept private
+
 ## 1.9.0 (2026-11-01)
 
 ### Features

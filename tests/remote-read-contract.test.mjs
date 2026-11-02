@@ -215,13 +215,17 @@ test('late reply: read sent to Postbox, link drops, shim resends offline, and re
     assert.match(offlineRes.text, /Item 1 snapshot/);
     assert.match(offlineRes.text, /\(Read offline as of this turn’s start; earlier or changed items may be missing\.\)$/);
 
-    // 4. Link reconnects and Postbox replies to the original tool call.
+    // 4. Link reconnects and Postbox replies to the original tool call, which the offline answer already took.
     k.state.attached = true;
-    await k.post('reply', { turn: 't_late', id: 'call_late', ok: true, text: 'Item 1 live from Postbox' });
+    const late = await k.post('reply', { turn: 't_late', id: 'call_late', ok: true, text: 'Item 1 live from Postbox' });
+    assert.equal(late.errors[0]?.code, 'no-tool', 'the late reply is refused');
 
-    // 5. Shim must NOT receive a duplicate result for call_late.
-    const second = await s.next('result', 100).catch(() => null);
-    assert.equal(second, null, 'shim did not receive a duplicate result from Postbox reply');
+    // 5. Barrier: a second read, answered offline on the same shim. The shim socket is one ordered stream, so a
+    // duplicate result for call_late would reach the shim before this answer.
+    k.state.attached = false;
+    s.send('call', { id: 'call_next', name: 'read_message', args: { id: 'item_1' } });
+    const next = await s.next('result');
+    assert.equal(next.id, 'call_next', 'the first result after the late reply is the barrier read, not a duplicate of call_late');
   } finally {
     h.done();
   }
