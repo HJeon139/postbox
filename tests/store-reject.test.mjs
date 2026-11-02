@@ -118,16 +118,19 @@ test('a data error, a step patch on an activity with no steps, is rejected the s
 test('the page: a rejection tells every stream to resync, its stand-in carries nothing, and a backlog from before it resyncs', async () => {
   const store = new Store(null);
   const live = liveStreams(store);
-  const written = [];
-  live.streams.add(/** @type {any} */ ({ write: (s) => written.push(String(s)) }));
-  store.emit('settings', { theme: 'dark' });
-  assert.throws(() => store.emit('nonsense', { secret: 'x' }), rejected);
-  const frames = written.join('');
-  assert.match(frames, /event: resync\n/);
-  assert.doesNotMatch(frames, /secret/, 'nothing of the rejected event reaches the page');
-  assert.equal(store.since(1), null, 'a page from before the rejected seq loads the state again');
-  assert.deepEqual(store.since(2), [], 'one from after it resumes');
-  live.stop();
+  try {
+    const written = [];
+    live.streams.add(/** @type {any} */ ({ write: (s) => written.push(String(s)) }));
+    store.emit('settings', { theme: 'dark' });
+    assert.throws(() => store.emit('nonsense', { secret: 'x' }), rejected);
+    const frames = written.join('');
+    assert.match(frames, /event: resync\n/);
+    assert.doesNotMatch(frames, /secret/, 'nothing of the rejected event reaches the page');
+    assert.equal(store.since(1), null, 'a page from before the rejected seq loads the state again');
+    assert.deepEqual(store.since(2), [], 'one from after it resumes');
+  } finally {
+    live.stop(); // its keep-alive timer would hold the run open after a failure
+  }
 });
 
 test('no producer may emit `rejected`: an emit or a commit of it is refused before anything is numbered', async () => {
