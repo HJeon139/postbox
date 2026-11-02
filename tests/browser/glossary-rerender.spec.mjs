@@ -150,3 +150,147 @@ test('#564: text selected in a reply that doesn’t use the new term stays selec
   await expect(page.locator('.transcript .md:has(.term[data-term="widget"])')).toHaveCount(2);
   expect(await selected(), 'the selection survives').toBe(before);
 });
+
+// ── What #565 left (#564) ───────────────────────────────────────────────────────────────
+
+/**
+ * Runs in the page before Postbox does: window.__listeners() is how many `message` listeners the window holds now,
+ * counting each listener once, as addEventListener does.
+ */
+function countMessageListeners() {
+  const live = new Set();
+  const add = window.addEventListener;
+  const remove = window.removeEventListener;
+  window.addEventListener = function (type, fn, opts) {
+    if (this === window && type === 'message') live.add(fn);
+    return add.call(this, type, fn, opts);
+  };
+  window.removeEventListener = function (type, fn, opts) {
+    if (this === window && type === 'message') live.delete(fn);
+    return remove.call(this, type, fn, opts);
+  };
+  Object.defineProperty(window, '__listeners', { value: () => live.size });
+}
+
+test('#564: a reply drawn again drops its old diagram’s message listener, and one that loses its diagram drops it too', async ({ page }) => {
+  const { rt } = app;
+  const p = rt.createPersona({ handle: 'redraws' });
+  const t = rt.createThread({ projectId: 'pr_gloss', title: 'Listener', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  const id = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: DIAGRAM(1), status: 'done' }).id;
+  await page.addInitScript(countMessageListeners);
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const frame = page.locator(`.transcript [data-key="${id}"] figure.diagram iframe`);
+  await expect(frame, 'the diagram, drawn and sized').toHaveAttribute('data-sized', '1');
+  const before = await page.evaluate(() => /** @type {any} */ (window).__listeners());
+
+  // An edit draws the reply again (item.patch): its diagram is a new frame, with a listener of its own.
+  rt.patchItem(t.id, id, { text: `${DIAGRAM(1)}\nEdited.` });
+  await synced(page, app);
+  await expect(page.locator(`.transcript [data-key="${id}"] .md`)).toContainText('Edited.');
+  await expect(frame, 'the new diagram, drawn and sized').toHaveAttribute('data-sized', '1');
+  expect.soft(await page.evaluate(() => /** @type {any} */ (window).__listeners()), 'one listener for the one diagram, as before').toBe(before);
+
+  // Drawn again without a diagram: no frame is left to listen for.
+  rt.patchItem(t.id, id, { text: 'No diagram now.' });
+  await synced(page, app);
+  await expect(page.locator(`.transcript [data-key="${id}"] .md`)).toHaveText('No diagram now.');
+  await expect(frame).toHaveCount(0);
+  await frames(page);
+  expect.soft(await page.evaluate(() => /** @type {any} */ (window).__listeners()), 'the diagram’s listener is gone with it').toBe(before - 1);
+});
+
+test('#564: a term defined in the conversation redraws a topic thread’s reply that uses it', async ({ page }) => {
+  const { rt, store } = app;
+  const p = rt.createPersona({ handle: 'inherits' });
+  const t = rt.createThread({ projectId: 'pr_gloss', title: 'Topic glossary', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  const at = { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, status: 'done' };
+  const root = rt.addItem(t.id, { ...at, text: 'Shall we count them?' });
+  const topic = store.state.threads[rt.startTopic(t.id, root.id).threadId];
+  const reply = rt.addItem(topic.id, { ...at, text: 'Each widget is counted once.' });
+  await page.goto(`${app.origin}/#/t/${t.id}/side/${topic.id}`);
+  await synced(page, app);
+  const box = page.locator(`.transcript[data-thread="${topic.id}"] [data-key="${reply.id}"] .md`);
+  await expect(box).toContainText('Each widget is counted once.');
+  await expect(box.locator('.term')).toHaveCount(0);
+
+  // define_term from the conversation's own session: the glossary event is the conversation's, which the topic inherits.
+  rt.toolsFor(se.id).define_term({ term: 'widget', definition: 'One unit of the thing counted.' });
+  await synced(page, app);
+  await expect(box.locator('.term[data-term="widget"]'), 'the inherited term, marked in the topic thread’s reply').toHaveCount(1);
+});
+
+test('#564: a diagram drawn into a box not yet in the page keeps its listener through a sweep, draws once the box is put in, and goes when removed', async ({
+  page,
+}) => {
+  const { rt } = app;
+  const p = rt.createPersona({ handle: 'detached' });
+  const t = rt.createThread({ projectId: 'pr_gloss', title: 'Detached', personaIds: [p.id] });
+  await page.addInitScript(countMessageListeners);
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  // As thread.mjs paints a reply and enhances it in a microtask: the box may not be in the page yet when another
+  // diagram is drawn, which sweeps the listeners whose frames have gone.
+  await page.evaluate(async () => {
+    const { enhanceMarkdown } = await import('/app/js/md-enhance.mjs');
+    const box = document.createElement('div');
+    box.className = 'md detached-box';
+    box.innerHTML = '<figure class="md-mermaid"><pre><code>graph TD\n  A --> B</code></pre></figure>';
+    enhanceMarkdown(box);
+    enhanceMarkdown(document.createElement('div'));
+    window.postMessage({ __pbd: 1, type: 'poke' }, '*');
+    await new Promise((r) => requestAnimationFrame(r));
+    document.querySelector(`.transcript`)?.append(box);
+  });
+  await expect(page.locator('.detached-box figure.diagram iframe'), 'the diagram, drawn and sized').toHaveAttribute('data-sized', '1');
+  // Once it has been in the page, it goes like any other: removed, its listener goes at the next message.
+  const before = await page.evaluate(() => /** @type {any} */ (window).__listeners());
+  await page.evaluate(() => {
+    document.querySelector('.detached-box')?.remove();
+    window.postMessage({ __pbd: 1, type: 'poke' }, '*');
+  });
+  await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__listeners()), { message: 'its listener is gone with it' }).toBe(before - 1);
+});
+
+test('#564: leaving a conversation drops its diagrams’ listeners at the next message, with no diagram drawn since', async ({ page }) => {
+  const { rt } = app;
+  const p = rt.createPersona({ handle: 'leaves' });
+  const t = rt.createThread({ projectId: 'pr_gloss', title: 'Leaving', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: DIAGRAM(2), status: 'done' });
+  // Made before the page loads, so it's in the page's state, however late the events come.
+  const empty = rt.createThread({ projectId: 'pr_gloss', title: 'Empty', personaIds: [p.id] });
+  await page.addInitScript(countMessageListeners);
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await expect(page.locator(`.transcript[data-thread="${t.id}"] figure.diagram iframe`)).toHaveAttribute('data-sized', '1');
+  const before = await page.evaluate(() => /** @type {any} */ (window).__listeners());
+  // To an empty conversation: nothing there draws Markdown, so no diagram is drawn to sweep.
+  await page.goto(`${app.origin}/#/t/${empty.id}`);
+  await expect(page.locator(`.transcript[data-thread="${t.id}"]`), 'the conversation is closed').toHaveCount(0);
+  // An app's message isn't a diagram's: it sweeps nothing.
+  await page.evaluate(() => window.postMessage({ __pb: 1, type: 'poke' }, '*'));
+  await frames(page);
+  expect.soft(await page.evaluate(() => /** @type {any} */ (window).__listeners()), 'an app’s message sweeps nothing').toBe(before);
+  await page.evaluate(() => window.postMessage({ __pbd: 1, type: 'poke' }, '*'));
+  await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__listeners()), { message: 'the diagram’s listener is gone' }).toBe(before - 1);
+});
+
+test('#564: each diagram hears only its own frame: two in one reply each take their own height', async ({ page }) => {
+  const { rt } = app;
+  const p = rt.createPersona({ handle: 'two' });
+  const t = rt.createThread({ projectId: 'pr_gloss', title: 'Two diagrams', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  const tall = Array.from({ length: 6 }, (_, i) => `  N${i} --> N${i + 1}`).join('\n');
+  const text = `Short:\n\n\`\`\`mermaid\ngraph TD\n  A --> B\n\`\`\`\n\nTall:\n\n\`\`\`mermaid\ngraph TD\n${tall}\n\`\`\`\n`;
+  const id = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' }).id;
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const frames2 = page.locator(`.transcript [data-key="${id}"] figure.diagram iframe`);
+  await expect(frames2).toHaveCount(2);
+  for (const i of [0, 1]) await expect(frames2.nth(i), `diagram ${i + 1}, sized`).toHaveAttribute('data-sized', '1');
+  const [short, long] = await frames2.evaluateAll((els) => els.map((el) => parseFloat(/** @type {HTMLElement} */ (el).style.height)));
+  expect(long, `the tall diagram (${long} px) is taller than the short one (${short} px)`).toBeGreaterThan(short + 50);
+});
