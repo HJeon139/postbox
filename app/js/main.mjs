@@ -10,8 +10,9 @@ import './keys.mjs';
 import { goHome, lastIn, latestIn, remember } from './last-place.mjs';
 import { mountPane } from './pane.mjs';
 import { canonical } from './pane-route.mjs';
-import { paintStateWords, ringFor } from './ring.mjs';
+import { ringFor } from './ring.mjs';
 import { liveMembers, mountEmptyProject, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
+import { paintWords } from './state-words.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';
 import { initHoverCards, navigate, refind, route, say, setAttention, toast } from './ui.mjs';
 
@@ -148,18 +149,6 @@ function applyTheme() {
 media.addEventListener('change', applyTheme);
 
 // ── Live updates that change the shell ──────────────────────────────────────────────────
-
-// Status words beside agent names follow their sessions, like the rings do.
-const latestItemOf = (se) => {
-  const list = client.state.items[se.threadId] ?? [];
-  for (let i = list.length - 1; i >= 0; i--) if (list[i].sessionId === se.id && (list[i].kind === 'agent' || list[i].kind === 'block')) return list[i].id;
-  return null;
-};
-let wordsFrame = 0;
-const paintWords = () => {
-  cancelAnimationFrame(wordsFrame);
-  wordsFrame = requestAnimationFrame(() => paintStateWords(document, client.state.sessions, latestItemOf));
-};
 
 client.on((ch) => {
   if (['session', 'item.add', 'load'].includes(ch.type)) paintWords();
