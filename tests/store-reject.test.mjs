@@ -67,6 +67,7 @@ test('a held emit the reducer rejects at its release: no crash, the held lines a
   assert.equal(next.seq, store.state.seq);
   assert.equal(next.seq, 5, 'the commit, a, the rejected one, b, then this');
   const again = await reload(store);
+  // The rejected line's shape is spec 1's: a held release writes it through the same applyOrHold.
   assert.ok(again.state.threads.a && again.state.threads.b, 'both good held emits are on disk');
   assert.equal(again.rejected?.count, 1);
   assert.equal(again.lost, null);

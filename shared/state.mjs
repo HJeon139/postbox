@@ -61,6 +61,8 @@ export function ownState(s) {
 
 // The reducer. Events carry whole objects for upserts, and small patches for items and sessions (session.patch).
 // `rejected` is an event the store couldn't apply, held in its place (server/store-reject.mjs): it changes nothing.
+// Nothing applies one today (replay holds it before apply, and the page has no listener), so this is defensive; under
+// PR 1's event table it becomes an entry with a no-op handler and `public: false`.
 export function apply(s, type, d) {
   switch (type === 'session.patch' ? 'session' : type) {
     case 'settings':
