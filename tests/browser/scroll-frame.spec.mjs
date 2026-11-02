@@ -92,3 +92,23 @@ test('#341 a scroll down while reading back isn’t taken back by a resize in th
   const end = await page.evaluate(() => scrollY);
   expect(end, 'the view stays where the scroll put it, plus what grew above').toBeGreaterThanOrEqual(before + 120 + grew - 1);
 });
+
+// #357's review found it (fixed in a0b13bf5): while following, a change to the transcript notes where the view is, so a
+// clamp at the page's new end isn't read as a scroll up (#297). Noting it anywhere else would take a scroll up made in the
+// same frame, before its scroll event, for a clamp, and pull the view back to the end.
+test('#357 a scroll up, then a change in the same frame, isn’t taken for a clamp and pulled back to the end', async ({ page }) => {
+  const { t } = room('Scroll up, then a change');
+  await open(page, t);
+  const end = await page.evaluate(() => scrollY);
+  // In one task, before the scroll event: scroll up 240 px, then restyle the newest reply, which the transcript's
+  // MutationObserver notes (a microtask) and its ResizeObserver then follows.
+  await page.evaluate(() => {
+    scrollBy(0, -240);
+    const items = document.querySelectorAll('#main .item');
+    const last = items[items.length - 1];
+    if (last instanceof HTMLElement) last.style.paddingBottom = '40px';
+  });
+  await settled(page);
+  const at = await page.evaluate(() => scrollY);
+  expect(at, 'the view stays where you scrolled it, not back at the end').toBeLessThan(end - 200);
+});
