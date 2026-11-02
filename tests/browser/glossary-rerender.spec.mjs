@@ -240,7 +240,7 @@ test('#564: a diagram drawn into a box not yet in the page keeps its listener th
     box.innerHTML = '<figure class="md-mermaid"><pre><code>graph TD\n  A --> B</code></pre></figure>';
     enhanceMarkdown(box);
     enhanceMarkdown(document.createElement('div'));
-    window.postMessage({ poke: 1 }, '*');
+    window.postMessage({ __pbd: 1, type: 'poke' }, '*');
     await new Promise((r) => requestAnimationFrame(r));
     document.querySelector(`.transcript`)?.append(box);
   });
@@ -249,7 +249,7 @@ test('#564: a diagram drawn into a box not yet in the page keeps its listener th
   const before = await page.evaluate(() => /** @type {any} */ (window).__listeners());
   await page.evaluate(() => {
     document.querySelector('.detached-box')?.remove();
-    window.postMessage({ poke: 1 }, '*');
+    window.postMessage({ __pbd: 1, type: 'poke' }, '*');
   });
   await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__listeners()), { message: 'its listener is gone with it' }).toBe(before - 1);
 });
@@ -270,6 +270,27 @@ test('#564: leaving a conversation drops its diagrams’ listeners at the next m
   // To an empty conversation: nothing there draws Markdown, so no diagram is drawn to sweep.
   await page.goto(`${app.origin}/#/t/${empty.id}`);
   await expect(page.locator(`.transcript[data-thread="${t.id}"]`), 'the conversation is closed').toHaveCount(0);
-  await page.evaluate(() => window.postMessage({ poke: 1 }, '*'));
+  // An app's message isn't a diagram's: it sweeps nothing.
+  await page.evaluate(() => window.postMessage({ __pb: 1, type: 'poke' }, '*'));
+  await frames(page);
+  expect.soft(await page.evaluate(() => /** @type {any} */ (window).__listeners()), 'an app’s message sweeps nothing').toBe(before);
+  await page.evaluate(() => window.postMessage({ __pbd: 1, type: 'poke' }, '*'));
   await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__listeners()), { message: 'the diagram’s listener is gone' }).toBe(before - 1);
+});
+
+test('#564: each diagram hears only its own frame: two in one reply each take their own height', async ({ page }) => {
+  const { rt } = app;
+  const p = rt.createPersona({ handle: 'two' });
+  const t = rt.createThread({ projectId: 'pr_gloss', title: 'Two diagrams', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  const tall = Array.from({ length: 6 }, (_, i) => `  N${i} --> N${i + 1}`).join('\n');
+  const text = `Short:\n\n\`\`\`mermaid\ngraph TD\n  A --> B\n\`\`\`\n\nTall:\n\n\`\`\`mermaid\ngraph TD\n${tall}\n\`\`\`\n`;
+  const id = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' }).id;
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const frames2 = page.locator(`.transcript [data-key="${id}"] figure.diagram iframe`);
+  await expect(frames2).toHaveCount(2);
+  for (const i of [0, 1]) await expect(frames2.nth(i), `diagram ${i + 1}, sized`).toHaveAttribute('data-sized', '1');
+  const [short, long] = await frames2.evaluateAll((els) => els.map((el) => parseFloat(/** @type {HTMLElement} */ (el).style.height)));
+  expect(long, `the tall diagram (${long} px) is taller than the short one (${short} px)`).toBeGreaterThan(short + 50);
 });

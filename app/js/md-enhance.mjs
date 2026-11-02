@@ -51,37 +51,70 @@ function drawDiagram(fig) {
   listen(iframe, box, src);
 }
 
-/** Answers a diagram frame's messages: the library when it's ready, its errors and its size. */
+/** The diagram messages already swept for: each listener hears the same event, and one sweep does for all of them. */
+const swept = new WeakSet();
+
+/**
+ * Answers a diagram frame's messages. Only the diagram protocol's (`__pbd`) count: they sweep the listeners whose
+ * frames have gone, once per message, and the frame's own then goes to its handler by type.
+ */
 function listen(iframe, box, src) {
+  const d = { iframe, box, src };
   const onMsg = (e) => {
-    dropGoneDiagrams();
-    if (e.source !== iframe.contentWindow || e.data?.__pbd !== 1 || e.origin !== 'null') return;
-    if (e.data.type === 'ready')
-      libSource('mermaid').then(({ js }) => iframe.contentWindow?.postMessage({ __pbd: 1, type: 'render', src, label: 'Diagram', lib: js }, '*'));
-    const itemEl = box.closest('[data-key]');
-    const threadId = box.closest('[data-thread]')?.dataset.thread;
-    // A diagram that couldn’t be drawn goes to the server, once, so the agent hears Mermaid’s message and can
-    // fix it. The person still sees the frame’s “couldn’t be drawn” text and Show source.
-    if (e.data.type === 'error' && e.data.render && itemEl && threadId) {
-      if (!iframe.dataset.failed) {
-        iframe.dataset.failed = '1';
-        const error = { message: String(e.data.message ?? ''), line: e.data.line ?? null };
-        api(`/api/threads/${threadId}/items/${itemEl.dataset.key}/diagram`, { src, error }).catch(() => {});
-      }
-    } else if (e.data.type === 'error') console.error(`Diagram: ${e.data.message}`);
-    if (e.data.type === 'size') {
-      iframe.style.height = `${Math.min(e.data.height, 900)}px`;
-      iframe.dataset.sized = '1';
-      // Too small to read: tell the server, once per diagram, so the agent can redraw it.
-      if (typeof e.data.textPx === 'number') iframe.dataset.textPx = String(e.data.textPx);
-      if (e.data.textPx < MIN_TEXT_PX && itemEl && threadId && !iframe.dataset.reported) {
-        iframe.dataset.reported = '1';
-        api(`/api/threads/${threadId}/items/${itemEl.dataset.key}/diagram`, { src, textPx: e.data.textPx, width: e.data.width }).catch(() => {});
-      }
+    if (e.data?.__pbd !== 1) return;
+    if (!swept.has(e)) {
+      swept.add(e);
+      dropGoneDiagrams();
     }
+    if (e.source !== iframe.contentWindow || e.origin !== 'null') return;
+    if (e.data.type === 'ready') onReady(d);
+    else if (e.data.type === 'error') onError(d, e.data);
+    else if (e.data.type === 'size') onSize(d, e.data);
   };
   diagrams.set(iframe, { onMsg, seen: iframe.isConnected });
   addEventListener('message', onMsg);
+}
+
+/** The frame has loaded: it gets Mermaid and the source to draw. */
+function onReady({ iframe, src }) {
+  libSource('mermaid').then(({ js }) => iframe.contentWindow?.postMessage({ __pbd: 1, type: 'render', src, label: 'Diagram', lib: js }, '*'));
+}
+
+/**
+ * Mermaid couldn't draw it: the server hears, once, so the agent gets Mermaid's message and can fix the diagram. The
+ * person sees the frame's own “couldn't be drawn” text and Show source either way.
+ */
+function onError({ iframe, box, src }, data) {
+  // Reported already: only a reply's diagram is, so there's nothing more to say.
+  if (data.render && iframe.dataset.failed) return;
+  if (data.render && report(box, { src, error: { message: String(data.message ?? ''), line: data.line ?? null } })) {
+    iframe.dataset.failed = '1';
+    return;
+  }
+  console.error(`Diagram: ${data.message}`);
+}
+
+/** The frame measured its drawing: it takes that height, and a diagram too small to read is reported, once. */
+function onSize({ iframe, box, src }, data) {
+  iframe.style.height = `${Math.min(data.height, 900)}px`;
+  iframe.dataset.sized = '1';
+  if (typeof data.textPx === 'number') iframe.dataset.textPx = String(data.textPx);
+  if (data.textPx < MIN_TEXT_PX && !iframe.dataset.reported && report(box, { src, textPx: data.textPx, width: data.width })) iframe.dataset.reported = '1';
+}
+
+/**
+ * Tells the server about a diagram in a reply, for the agent that drew it. False when the diagram isn't in a reply (a
+ * review's draft, the side panel), which has no agent to tell.
+ * @param {Element} box @param {object} body
+ */
+function report(box, body) {
+  const key = box.closest('[data-key]')?.getAttribute('data-key');
+  const threadId = box.closest('[data-thread]')?.getAttribute('data-thread');
+  if (!key || !threadId) return false;
+  // Best effort: the person already sees the frame's own message, and the agent hears of a drawing problem only to
+  // fix it, so a report that doesn't reach the server is dropped rather than shown.
+  api(`/api/threads/${threadId}/items/${key}/diagram`, body).catch(() => {});
+  return true;
 }
 
 /** Draws each formula in root not drawn yet with KaTeX, loaded the first time. @param {Element} root */
@@ -106,6 +139,7 @@ function drawMath(root) {
           }
         }
       })
+      // KaTeX didn't load: each formula stays as its source, which still reads.
       .catch(() => {});
 }
 
