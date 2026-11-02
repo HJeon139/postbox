@@ -362,7 +362,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
           for (const id of pending) updateText(id);
           pending.clear();
         });
-    } else if (ch.type === 'glossary' && d.threadId === threadId) {
+    } else if (ch.type === 'glossary' && (d.threadId === threadId || d.threadId === S().threads[threadId]?.parentId)) {
       for (const it of itemsOf(threadId)) if (it.kind === 'agent' && usesTerm(it, d.entry, nodes.get(it.id))) updateText(it.id, true);
     } else if (ch.type === 'session') {
       // An agent at work here may not be one of this thread’s own (#110): its turn is in it.

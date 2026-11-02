@@ -150,3 +150,74 @@ test('#564: text selected in a reply that doesn’t use the new term stays selec
   await expect(page.locator('.transcript .md:has(.term[data-term="widget"])')).toHaveCount(2);
   expect(await selected(), 'the selection survives').toBe(before);
 });
+
+// ── What #565 left (#564) ───────────────────────────────────────────────────────────────
+
+/**
+ * Runs in the page before Postbox does: window.__listeners() is how many `message` listeners the window holds now,
+ * counting each listener once, as addEventListener does.
+ */
+function countMessageListeners() {
+  const live = new Set();
+  const add = window.addEventListener;
+  const remove = window.removeEventListener;
+  window.addEventListener = function (type, fn, opts) {
+    if (this === window && type === 'message') live.add(fn);
+    return add.call(this, type, fn, opts);
+  };
+  window.removeEventListener = function (type, fn, opts) {
+    if (this === window && type === 'message') live.delete(fn);
+    return remove.call(this, type, fn, opts);
+  };
+  Object.defineProperty(window, '__listeners', { value: () => live.size });
+}
+
+test('#564: a reply drawn again drops its old diagram’s message listener, and one that loses its diagram drops it too', async ({ page }) => {
+  const { rt } = app;
+  const p = rt.createPersona({ handle: 'redraws' });
+  const t = rt.createThread({ projectId: 'pr_gloss', title: 'Listener', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  const id = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: DIAGRAM(1), status: 'done' }).id;
+  await page.addInitScript(countMessageListeners);
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const frame = page.locator(`.transcript [data-key="${id}"] figure.diagram iframe`);
+  await expect(frame, 'the diagram, drawn and sized').toHaveAttribute('data-sized', '1');
+  const before = await page.evaluate(() => /** @type {any} */ (window).__listeners());
+
+  // An edit draws the reply again (item.patch): its diagram is a new frame, with a listener of its own.
+  rt.patchItem(t.id, id, { text: `${DIAGRAM(1)}\nEdited.` });
+  await synced(page, app);
+  await expect(page.locator(`.transcript [data-key="${id}"] .md`)).toContainText('Edited.');
+  await expect(frame, 'the new diagram, drawn and sized').toHaveAttribute('data-sized', '1');
+  expect.soft(await page.evaluate(() => /** @type {any} */ (window).__listeners()), 'one listener for the one diagram, as before').toBe(before);
+
+  // Drawn again without a diagram: no frame is left to listen for.
+  rt.patchItem(t.id, id, { text: 'No diagram now.' });
+  await synced(page, app);
+  await expect(page.locator(`.transcript [data-key="${id}"] .md`)).toHaveText('No diagram now.');
+  await expect(frame).toHaveCount(0);
+  await frames(page);
+  expect.soft(await page.evaluate(() => /** @type {any} */ (window).__listeners()), 'the diagram’s listener is gone with it').toBe(before - 1);
+});
+
+test('#564: a term defined in the conversation redraws a topic thread’s reply that uses it', async ({ page }) => {
+  const { rt, store } = app;
+  const p = rt.createPersona({ handle: 'inherits' });
+  const t = rt.createThread({ projectId: 'pr_gloss', title: 'Topic glossary', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  const at = { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, status: 'done' };
+  const root = rt.addItem(t.id, { ...at, text: 'Shall we count them?' });
+  const topic = store.state.threads[rt.startTopic(t.id, root.id).threadId];
+  const reply = rt.addItem(topic.id, { ...at, text: 'Each widget is counted once.' });
+  await page.goto(`${app.origin}/#/t/${t.id}/side/${topic.id}`);
+  await synced(page, app);
+  const box = page.locator(`.transcript[data-thread="${topic.id}"] [data-key="${reply.id}"] .md`);
+  await expect(box).toContainText('Each widget is counted once.');
+  await expect(box.locator('.term')).toHaveCount(0);
+
+  // define_term from the conversation's own session: the glossary event is the conversation's, which the topic inherits.
+  rt.toolsFor(se.id).define_term({ term: 'widget', definition: 'One unit of the thing counted.' });
+  await synced(page, app);
+  await expect(box.locator('.term[data-term="widget"]'), 'the inherited term, marked in the topic thread’s reply').toHaveCount(1);
+});

@@ -6,7 +6,22 @@ import { api } from './client.mjs';
 import { h } from './dom.mjs';
 import { libSource, theme } from './sandbox-libs.mjs';
 
+// Each drawn diagram's `message` listener, by its frame (#564). One whose frame has been in the page and has left it,
+// with its reply drawn again or gone, is removed the next time a diagram is drawn or any message arrives. A frame
+// drawn into a box that isn't in the page yet keeps its listener until it has been.
+/** @type {Map<HTMLIFrameElement, { onMsg: (e: MessageEvent) => void, seen: boolean }>} */
+const diagrams = new Map();
+function dropGoneDiagrams() {
+  for (const [iframe, d] of diagrams)
+    if (iframe.isConnected) d.seen = true;
+    else if (d.seen) {
+      removeEventListener('message', d.onMsg);
+      diagrams.delete(iframe);
+    }
+}
+
 export function enhanceMarkdown(root) {
+  dropGoneDiagrams();
   for (const fig of root.querySelectorAll('figure.md-mermaid:not(.done)')) drawDiagram(fig);
   drawMath(root);
 }
@@ -39,6 +54,7 @@ function drawDiagram(fig) {
 /** Answers a diagram frame's messages: the library when it's ready, its errors and its size. */
 function listen(iframe, box, src) {
   const onMsg = (e) => {
+    dropGoneDiagrams();
     if (e.source !== iframe.contentWindow || e.data?.__pbd !== 1 || e.origin !== 'null') return;
     if (e.data.type === 'ready')
       libSource('mermaid').then(({ js }) => iframe.contentWindow?.postMessage({ __pbd: 1, type: 'render', src, label: 'Diagram', lib: js }, '*'));
@@ -63,8 +79,8 @@ function listen(iframe, box, src) {
         api(`/api/threads/${threadId}/items/${itemEl.dataset.key}/diagram`, { src, textPx: e.data.textPx, width: e.data.width }).catch(() => {});
       }
     }
-    if (!iframe.isConnected) removeEventListener('message', onMsg);
   };
+  diagrams.set(iframe, { onMsg, seen: iframe.isConnected });
   addEventListener('message', onMsg);
 }
 
