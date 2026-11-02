@@ -142,3 +142,47 @@ test('a put of bytes already on disk still syncs the folder, so a blob named by 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+/** A seam whose draft handle fails at `step` (`sync` or `close`) after really writing. */
+const failingAt = (/** @type {'sync' | 'close'} */ step) => async (/** @type {string} */ path, /** @type {any} */ flags, /** @type {any} */ mode) => {
+  const fh = await open(path, flags, mode);
+  if (flags !== 'wx') return fh;
+  return Object.assign(Object.create(fh), {
+    writeFile: (/** @type {any} */ b) => fh.writeFile(b),
+    sync: async () => {
+      if (step === 'sync') throw Object.assign(new Error('EIO: draft sync failed'), { code: 'EIO' });
+      return fh.sync();
+    },
+    close: async () => {
+      await fh.close();
+      if (step === 'close') throw Object.assign(new Error('EIO: draft close failed'), { code: 'EIO' });
+    },
+  });
+};
+
+for (const step of /** @type {const} */ (['sync', 'close']))
+  test(`a put whose draft fails at its ${step} removes the draft`, async () => {
+    const dir = await tmp();
+    try {
+      const blobs = new Blobs(dir, { open: failingAt(step) });
+      await assert.rejects(blobs.put(Buffer.from('an archive file')), /EIO/);
+      const left = (await readdir(dir, { recursive: true })).filter((f) => String(f).endsWith('.draft'));
+      assert.deepEqual(left, [], 'no draft files');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+test('a put whose rename fails (a folder under the blob’s name) removes the draft', async () => {
+  const dir = await tmp();
+  try {
+    const bytes = Buffer.from('an archive file');
+    const hash = sha(bytes);
+    await mkdir(join(dir, hash.slice(0, 2), hash.slice(2)), { recursive: true });
+    await assert.rejects(new Blobs(dir).put(bytes));
+    const left = (await readdir(dir, { recursive: true })).filter((f) => String(f).endsWith('.draft'));
+    assert.deepEqual(left, [], 'no draft files');
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
