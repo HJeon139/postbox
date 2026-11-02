@@ -168,8 +168,9 @@ const RENDER = {
               if (o.id === '__other') {
                 d.otherOn = !d.otherOn;
                 if (!b.multiple && d.otherOn) d.selected = [];
-              } else if (b.multiple) d.selected = on ? d.selected.filter((x) => x !== o.id) : [...d.selected, o.id];
-              else {
+              } else if (b.multiple) {
+                d.selected = on ? d.selected.filter((x) => x !== o.id) : [...d.selected, o.id];
+              } else {
                 d.selected = [o.id];
                 d.otherOn = false;
               }

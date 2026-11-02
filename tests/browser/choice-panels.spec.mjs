@@ -85,8 +85,12 @@ for (const width of [375, 1280])
     await page.keyboard.press('1');
     await expect(first, 'number keys still select their option').toHaveAttribute('aria-checked', 'true');
     await expect(second, 'a selection re-render keeps focus where it was').toBeFocused();
-    await long.getByRole('radio', { name: 'Another approach' }).click();
+    const other = long.getByRole('radio', { name: 'Another approach' });
+    await other.click();
     await expect(long.getByRole('textbox', { name: 'Another approach' }), 'Other still opens its field').toBeVisible();
+    await first.click();
+    await expect(other, 'a regular option turns Other off').toHaveAttribute('aria-checked', 'false');
+    await expect(long.getByRole('textbox', { name: 'Another approach' }), 'a regular option closes Other’s field').toHaveCount(0);
 
     const short = choice('short').locator('.chips');
     await expect(short, 'short labels stay pills').not.toHaveClass(/panels/);
