@@ -31,6 +31,7 @@ import {
   needAppSend,
   registerApp,
   resolveAppSend,
+  showApp,
   updateApp,
 } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
@@ -3074,28 +3075,8 @@ export class Runtime {
         return updateBlock(rt, sessionId, args, { turn, se, threadId, endSegment });
       },
       review_block: (args) => reviewBlock(rt, sessionId, args),
-      /**
-       * @param {{ id?: string, title?: string, code: string, permissions?: string[], fallback?: string }} args
-       * @param {{ files?: AppFile[] }} [given]  data files Postbox read from the agent’s folders (#54); never from the call
-       */
-      show_app({ id, title, code, permissions = [], fallback }, given = {}) {
-        const blockId = id ?? newId('app');
-        const existing = rt.s.apps[blockId];
-        if (existing?.sessionId === sessionId) return this.update_app({ id: blockId, code, permissions, title }, given);
-        return this.show_block(
-          {
-            block: {
-              id: blockId,
-              type: 'app',
-              version: 1,
-              title: title ?? 'App',
-              fallback: fallback ?? `${title ?? 'An app'}: open Postbox to use it.`,
-              code,
-              permissions,
-            },
-          },
-          given,
-        );
+      show_app(args, given = {}) {
+        return showApp(rt, sessionId, this, args, given);
       },
       update_app(args, given) {
         return updateApp(rt, sessionId, turn, threadId, endSegment, args, given);
