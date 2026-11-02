@@ -29,7 +29,7 @@ No new event type or state key, and one field on an item: the open's first messa
 
 | Case | What happens | The person sees |
 |---|---|---|
-| The store is closed | refused by the gate, local or on a host; nothing written | the agent's reply says why |
+| The store is closed | refused by the gate, local or on a host; nothing written or kept. A host's queued call gets no reply, so the daemon sends it again at the next hello | an asked call's reply says why; a queued one runs at the repeat, if the store has reopened |
 | The opener posts the same open twice on purpose | the second is dropped by I6, the cost of a retry that doesn't double-post | one copy; the agent can rephrase |
 | Two agents open the same item | JavaScript runs each call whole, so the second finds the first's `topicId` (I1), through `store.pending` even while a commit is held. Its message, if any, goes into the first topic | one thread, with both messages |
 | The item was deleted, or is in a topic or side thread | 404 or 409 before any write | the agent's reply says so |

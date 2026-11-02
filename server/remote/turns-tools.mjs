@@ -43,9 +43,11 @@ export async function onTool(rts, hostId, m) {
   } finally {
     rts.applying.delete(k);
   }
-  // Refused by the write gate: nothing ran, so nothing is kept or told, which would be a write the closed store holds
-  // only in memory; the daemon's repeat after the store reopens runs it.
-  if (r.closed) return void send(link, 'reply', { turn: m.turn, id: m.id, ok: false, text: r.text });
+  // Refused by the write gate: nothing ran, and nothing is kept or told, which would be a write the closed store holds
+  // only in memory. An asked call's agent waits for this reply, so it hears the refusal and can call again. A queued
+  // call's agent already heard “queued”, and the daemon only logs a refusal, so it gets no reply: unanswered, it is sent
+  // again at the next hello, and runs if the store has reopened.
+  if (r.closed) return TOOL_QUEUED.has(m.name) ? undefined : void send(link, 'reply', { turn: m.turn, id: m.id, ok: false, text: r.text });
   // An urgent note for the agent comes first, as on the laptop (server/mcp.mjs, #229), in an answer it waits for: a
   // queued call’s reply never reaches it (the shim answered at once), so its note waits for the next.
   const text = (TOOL_QUEUED.has(m.name) ? r.text : withUrgent(rts.rt, live.sessionId, r.text)).slice(0, REMOTE_LIMITS.replyChars);
