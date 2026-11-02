@@ -64,7 +64,7 @@
 // Codex’s approvals (broker-codex.mjs).
 
 import { checkWrite, watchCodex } from './broker-codex.mjs';
-import { onHello, onMessage } from './broker-postbox.mjs';
+import { driverLost, onHello, onMessage } from './broker-postbox.mjs';
 import { stopTurn } from './broker-prompts.mjs';
 import { load } from './broker-replay.mjs';
 import { shimConnection } from './broker-shim.mjs';
@@ -89,6 +89,8 @@ export function createBroker(o) {
     message: (m, reply) => onMessage(b, m, reply),
     /** @param {(type: string, body: Record<string, unknown>) => void} send */
     hello: (send) => onHello(b, send),
+    /** The driving Postbox went away (not replaced by the same one): its unsettled reads are answered from the snapshot at once. */
+    driverLost: () => driverLost(b),
     /** Replays every turn folder’s records, and starts watching the held Codex turns still running. @param {{ turn: string, state: string }[]} turns */
     load: (turns) => load(b, turns),
     /** Before a turn’s runner starts: its snapshot, sent before `start`, goes into the new folder. @param {string} turn */

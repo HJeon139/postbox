@@ -46,7 +46,7 @@ export async function hello(d, c, m) {
       d.log(`Connection ${c.id} took over from ${old.id}.`);
       fail(old, 'taken-over', 'Another Postbox took over this host.');
     }
-    old.close();
+    old.close(same ? 'replaced' : 'taken-over');
   }
   c.instance = typeof m.instance === 'string' ? m.instance : null;
   d.driver = c;

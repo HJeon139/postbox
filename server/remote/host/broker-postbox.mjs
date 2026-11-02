@@ -73,3 +73,8 @@ export async function onHello(b, send) {
     note(b, x.turn, 'prompts', { op: 'expiry-sent', id: x.id });
   }
 }
+
+/** Postbox's connection is gone and no replacement has said hello: every unsettled read is answered from the snapshot now (#582, link.md). @param {Broker} b */
+export function driverLost(b) {
+  for (const t of b.tools.values()) if (t.route === 'read' && !settled(t)) settleOffline(b, t).catch(b.log);
+}

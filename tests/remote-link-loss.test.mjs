@@ -12,11 +12,34 @@ import { test } from 'node:test';
 import { encode, hostPaths, MESSAGE_FILE, message, PROTOCOL_VERSION, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { readMessages } from './fake-daemon.mjs';
 import { inProcessDaemon, socketShim } from './remote-broker-daemon-setup.mjs';
-import { TOKEN, until, VERSION } from './remote-broker-fixtures.mjs';
+import { BLOCK, TOKEN, until, VERSION } from './remote-broker-fixtures.mjs';
 
 const ME = 'a'.repeat(32);
 const OTHER = 'b'.repeat(32);
 const OFFLINE = 'Read offline as of this turn';
+
+/**
+ * Counts the broker's hello resends as they finish, so a check that nothing was sent waits for that, not a sleep, and
+ * records where each driverLost call came from: it must be inside Conn.close(), in the same tick, because a deferred
+ * call could run after the new driver's hello has resent the read.
+ * @param {any} daemon
+ */
+function watchBroker(daemon) {
+  let helloes = 0;
+  const hello = daemon.broker.hello;
+  daemon.broker.hello = async (/** @type {any[]} */ ...a) => {
+    await hello?.(...a);
+    helloes++;
+  };
+  /** @type {string[]} */
+  const lostFrom = [];
+  const lost = daemon.broker.driverLost;
+  daemon.broker.driverLost = (/** @type {any[]} */ ...a) => {
+    lostFrom.push(new Error('driverLost').stack ?? '');
+    return lost?.(...a);
+  };
+  return { afterHello: (/** @type {number} */ n) => until(() => helloes >= n, `hello ${n}’s resends`), lostFrom };
+}
 
 /** A daemon with turn t1 started and a snapshot sent, and Postbox connections to it. */
 async function room() {
@@ -28,22 +51,7 @@ async function room() {
   mkdirSync(work);
   const { daemon } = inProcessDaemon(home);
   await daemon.start();
-  // Counts the broker's hello resends as they finish, so a check that nothing was sent waits for that, not a sleep.
-  let helloes = 0;
-  const hello = daemon.broker.hello;
-  daemon.broker.hello = async (...a) => {
-    await hello?.(...a);
-    helloes++;
-  };
-  // Where each driverLost call came from. It must be inside Conn.close(), in the same tick: a deferred call could run
-  // after the new driver's hello has resent the read.
-  const lostFrom = [];
-  const lost = daemon.broker.driverLost;
-  daemon.broker.driverLost = (...a) => {
-    lostFrom.push(new Error('driverLost').stack ?? '');
-    return lost?.(...a);
-  };
-  const afterHello = (n) => until(() => helloes >= n, `hello ${n}’s resends`);
+  const { afterHello, lostFrom } = watchBroker(daemon);
   /** A Postbox connection that has said hello, with `instance` and maybe `takeover`. */
   const postbox = async (extra = {}) => {
     const input = new PassThrough();
@@ -189,6 +197,25 @@ test('L7: the driver’s socket closing twice (end, then an error) settles the r
     r.s1.shimSend('call', { id: 'c2', name: 'read_conversation', args: {} });
     await until(() => r.results('c2')[0], 'the barrier read');
     assert.equal(r.results().length, 1);
+  } finally {
+    r.done();
+  }
+});
+
+test('L8: a queued call is untouched when the driver goes: answered once as queued, and sent again to the next driver (driverLost settles reads only)', async () => {
+  const r = await room();
+  try {
+    r.s1.shimSend('call', { id: 'q1', name: 'show_block', args: { block: BLOCK } });
+    assert.equal((await r.first.msgs.next('tool')).id, 'q1');
+    await until(() => r.results('q1')[0], 'the queued answer');
+    await r.parkRead();
+    r.first.input.end();
+    await until(() => r.results()[0], 'the read answered offline');
+    const again = await r.postbox({ instance: ME });
+    await again.msgs.next('welcome');
+    assert.equal((await again.msgs.next('tool')).id, 'q1', 'the queued call is sent again, as before this change');
+    assert.equal(r.results('q1').length, 1, 'and was never answered a second time');
+    assert.doesNotMatch(r.results('q1')[0].text, new RegExp(OFFLINE));
   } finally {
     r.done();
   }
