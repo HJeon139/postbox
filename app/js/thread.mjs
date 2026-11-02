@@ -29,6 +29,7 @@ import { replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
+import { namesSpeaker } from './speaker-line.mjs';
 import { systemLine } from './system-line.mjs';
 import { failedOnHost, hostChanged, hostEnd, hostTurnsList, ranHere, remoteSig } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
@@ -38,14 +39,6 @@ import { workList } from './work-list.mjs';
 export { focusComposer } from './hop-card.mjs';
 
 const S = () => client.state;
-// A reply replaced by its replay (#120: a turn on a host attached again after a restart) shows nothing, so the replay
-// after it names its speaker.
-const speaker = (it) =>
-  it.kind === 'user' ? 'you' : (it.kind === 'agent' && it.status !== 'replaced') || it.kind === 'block' || it.kind === 'proposal' ? `s:${it.sessionId}` : null;
-// One turn’s items share a sender line; a later turn of the same agent gets its own, and so does a wake it sent from
-// another turn (its fromTurnId) (#135). An item from before turns were kept, or no turn made, goes with the one before.
-const turnOf = (it) => it.turnId ?? it.fromTurnId;
-const sameTurn = (a, b) => !turnOf(a) || !turnOf(b) || turnOf(a) === turnOf(b);
 // What woke the turn (#135): “woken by @critic”, “after @researcher replied in a side thread”, or its scheduled wake.
 const wokeText = ({ by, reply, in: at, scheduled }) =>
   scheduled
@@ -534,7 +527,7 @@ function messageActions(node, it, ctx) {
 }
 
 function renderItem(it, prev, ctx) {
-  const showWho = !(prev && speaker(prev) && speaker(prev) === speaker(it) && prev.kind !== 'voice' && sameTurn(prev, it));
+  const showWho = namesSpeaker(it, prev);
   switch (it.kind) {
     case 'user': {
       return h(
