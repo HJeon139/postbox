@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.12.3 (2026-11-02)
+
+### Fixes
+
+- **remote:** classify launcher exits by status
+- **kiro:** a session over the request size limit starts over with the usual catch-up
+- **remote:** distinguish launcher startup failures
+
 ## 1.12.2 (2026-11-02)
 
 ### Fixes
