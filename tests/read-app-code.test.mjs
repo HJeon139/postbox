@@ -95,3 +95,43 @@ test('#516 S1: from past 0 with no version reads the current version, and names 
   assert.equal(readsOn(part).version, 2);
   assert.equal(codeOf(part), BIG('e').slice(READING.part, 2 * READING.part));
 });
+
+test('#516 S1: code with a run of backticks gets a longer fence, so the code reads whole', () => {
+  const code = '<script>\nconst md = "````js\\nx\\n````";\n</script>\n<p>```</p>';
+  const { read } = withApp(code);
+  const msg = read({ id: 'lab' });
+  assert.match(msg, /\n`````html\n/, 'a fence one longer than the code’s longest run');
+  assert.equal(codeOf(msg), code);
+});
+
+/** A character outside the Basic Multilingual Plane: two UTF-16 code units. */
+const EMOJI = '\u{1F600}';
+const loneHigh = (s) => /[\uD800-\uDBFF]$/.test(s);
+const loneLow = (s) => /^[\uDC00-\uDFFF]/.test(s);
+
+test('#516 S1: a part of an app’s code never ends inside a character: one split across the boundary goes whole into the next part', () => {
+  const code = `${'a'.repeat(READING.part - 1)}${EMOJI}${'b'.repeat(100)}`;
+  const { read } = withApp(code);
+  const one = read({ id: 'lab' });
+  const two = read(readsOn(one));
+  assert.ok(!loneHigh(codeOf(one)), 'part 1 doesn’t end with half a character');
+  assert.ok(!loneLow(codeOf(two)), 'part 2 doesn’t start with half a character');
+  assert.equal(codeOf(one) + codeOf(two), code);
+});
+
+test('#516 S1: the same holds for a long message’s parts', () => {
+  const { rt, alpha, beta, t } = setup();
+  const item = rt.addItem(t.id, { kind: 'agent', sessionId: alpha.id, personaId: alpha.personaId, handle: alpha.handle, text: 'x', status: 'done' });
+  // Puts the emoji's first half at the last character of part 1, after the line's own prefix.
+  const prefix = rt.readLine(item, beta, Number.POSITIVE_INFINITY).length - 1;
+  const text = `${'a'.repeat(READING.part - 1 - prefix)}${EMOJI}${'b'.repeat(100)}`;
+  rt.patchItem(t.id, item.id, { text });
+  const full = rt.readLine(rt.store.item(t.id, item.id), beta, Number.POSITIVE_INFINITY);
+  const body = (/** @type {string} */ m) => m.replace(/\n\n\(Characters [^)]*\)$/, '');
+  const one = rt.readMessage(beta, { id: item.id });
+  const next = Number(one.message.match(/from: (\d+) \} reads on/)?.[1]);
+  const two = rt.readMessage(beta, { id: item.id, from: next });
+  assert.ok(!loneHigh(body(one.message)), 'part 1 doesn’t end with half a character');
+  assert.ok(!loneLow(body(two.message)));
+  assert.equal(body(one.message) + body(two.message), full);
+});
