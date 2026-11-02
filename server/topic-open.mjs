@@ -105,15 +105,13 @@ function repeated(rt, se, threadId, text, handles, created) {
 }
 
 /**
- * Posts the first message in the topic: through agentWake for each agent it names, or as the agent's own. It keeps the
- * handles it named (`opened`), which I6 compares; A1b's records carry the same as the message's addressees.
+ * Posts the first message in the topic: through agentWake for each agent it names, or as the agent's own when it names
+ * none or every wake was refused (a self-mention, a mistyped handle), so the ask is never lost; the reply then carries
+ * each refusal. It keeps the handles it named (`opened`), which I6 compares; A1b's records carry the same as the
+ * message's addressees.
  */
 function post(rt, se, threadId, text, handles) {
   const opened = named(handles);
-  if (!handles.length) {
-    rt.addItem(threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', opened });
-    return [];
-  }
   /** @type {string | null} */
   let itemId = null;
   const said = handles.map((h) => {
@@ -122,5 +120,6 @@ function post(rt, se, threadId, text, handles) {
     return r.message;
   });
   if (itemId) rt.patchItem(threadId, itemId, { opened });
+  else rt.addItem(threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', opened });
   return said;
 }

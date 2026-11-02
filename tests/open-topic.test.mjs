@@ -126,7 +126,7 @@ test('open_topic is a tool agents are offered, and the store’s write gate refu
     TOOL_DEFS.some((t) => t.name === 'open_topic'),
     'offered to agents, locally and through a host’s shim',
   );
-  assert.equal(READ_TOOLS.has('open_topic'), false, 'not a read, so storeClosedTo refuses it during ST-3');
+  assert.equal(READ_TOOLS.has('open_topic'), false, 'not a read, so closedTo refuses it during ST-3');
 });
 
 test('#507: a thread’s catch-up keeps an ask that mentions the agent, whole, though 24 newer items pass its cap, and says what it left out', async () => {
