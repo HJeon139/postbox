@@ -138,3 +138,11 @@ test('lint-caps: a path spelled with ./ is the same path', () => {
     'server/runtime.mjs: its file ceiling went up from 3028 to 9999.',
   ]);
 });
+
+test('lint-caps: a new module with a length rule off or at a non-failing level fails, not a note', () => {
+  for (const rule of ['off', { level: 'info', options: { maxLines: 400 } }]) {
+    const r = check(biome(), biome([fileCap('server/runtime-jobs.mjs', rule)]));
+    assert.deepEqual(r.problems, ['server/runtime-jobs.mjs: a new module with its file length rule off, which no moved code can need.']);
+    assert.deepEqual(r.notes, []);
+  }
+});

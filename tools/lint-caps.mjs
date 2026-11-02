@@ -77,6 +77,8 @@ export function capChanges(base, head, existed) {
       if (was !== undefined) problems.push(`${path}: its ${name[k]} ceiling went up from ${was} to ${now}.`);
       else if (path.includes('*') || existed(path))
         problems.push(`${path}: it gets a ${name[k]} ceiling of ${now}, over the default ${base.defaults[k]}, and it isn’t a new module.`);
+      // Moved code may bring the ceiling it had, never an unlimited one: a rule turned off isn't a ceiling.
+      else if (now === Number.POSITIVE_INFINITY) problems.push(`${path}: a new module with its ${name[k]} length rule off, which no moved code can need.`);
       else notes.push(`${path}: a new module with a ${name[k]} ceiling of ${now}. Allowed only for code moved out of a file at its ceiling.`);
     }
   }
