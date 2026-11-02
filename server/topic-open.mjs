@@ -62,6 +62,11 @@ export function openTopic(rt, sessionId, { itemId, message, mentions }) {
   const text = String(message ?? '');
   const tooLong = text && tooLongToSend('A topic thread’s first message', text);
   if (tooLong) return tooLong;
+  if (mentions !== undefined && !(Array.isArray(mentions) && mentions.every((h) => typeof h === 'string')))
+    return { ok: false, message: 'mentions is a list of handles, such as ["critic"].' };
+  const handles = [...new Set((mentions ?? []).map((h) => h.replace(/^@/, '')).filter(Boolean))];
+  // Checked before anything opens: a mention is woken by the message, so with none there's nothing to wake them with.
+  if (handles.length && !text) return { ok: false, message: 'mentions need a message: they’re woken by it, in the topic thread.' };
   let opened;
   try {
     opened = startTopic(rt, conversationOf(rt, se, String(itemId ?? '')), String(itemId ?? ''));
@@ -71,7 +76,6 @@ export function openTopic(rt, sessionId, { itemId, message, mentions }) {
   const { threadId, created } = opened;
   // The opener answers there first (I4), only when this call made the topic.
   if (created) rt.putThread({ ...rt.store.pending.thread(threadId), woke: se.handle });
-  const handles = [...new Set((mentions ?? []).map((h) => String(h).replace(/^@/, '')).filter(Boolean))];
   const woke = text && !repeated(rt, se, threadId, text, handles, created) ? post(rt, se, threadId, text, handles) : [];
   const where = `${created ? 'Opened a topic thread' : 'That message already has a topic thread'}, ${threadId}, beside it in the page. read_conversation { thread: "${threadId}" } reads it.`;
   return { ok: true, threadId, created, message: [where, ...woke].join(' ') };
@@ -105,21 +109,15 @@ function repeated(rt, se, threadId, text, handles, created) {
 }
 
 /**
- * Posts the first message in the topic: through agentWake for each agent it names, or as the agent's own when it names
- * none or every wake was refused (a self-mention, a mistyped handle), so the ask is never lost; the reply then carries
- * each refusal. It keeps the handles it named (`opened`), which I6 compares; A1b's records carry the same as the
- * message's addressees.
+ * Posts the first message in the topic as the agent's own, then wakes each agent it names from it, as a turn's later
+ * mentions reuse its message (agentWake's `itemId`). Posting first means the ask is never lost when every wake is
+ * refused (a self-mention, a mistyped handle), and a card keeps the message's id, so Allow wakes from it rather than
+ * posting it again; the reply carries each wake's result. It keeps the handles it named (`opened`), which I6 compares;
+ * A1b's records carry the same as the message's addressees.
  */
 function post(rt, se, threadId, text, handles) {
+  const fromTurnId = rt.turns.get(se.id)?.id;
   const opened = named(handles);
-  /** @type {string | null} */
-  let itemId = null;
-  const said = handles.map((h) => {
-    const r = rt.agentWake(se.id, h, text, { replyIn: threadId, itemId });
-    itemId = r.itemId ?? itemId;
-    return r.message;
-  });
-  if (itemId) rt.patchItem(threadId, itemId, { opened });
-  else rt.addItem(threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', opened });
-  return said;
+  const it = rt.addItem(threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', opened, fromTurnId });
+  return handles.map((h) => rt.agentWake(se.id, h, text, { replyIn: threadId, itemId: it.id, fromTurnId }).message);
 }
