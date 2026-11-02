@@ -57,7 +57,9 @@ export const key = (turn, id) => `${turn} ${id}`;
 export function brokerState({
   paths: p,
   now = Date.now,
-  // The files the broker reads and appends to. A test gives its own to hold a read or a write (the Store's io option, store.mjs).
+  // The file calls behind the journal append (record), the snapshot read (snapshotOf) and the journal size check
+  // (queueFull) go through this; the other file calls in the broker (exists, ended, the replay readers) do not. A test
+  // gives its own to hold a read or a write, as the Store's io option does (store.mjs).
   io = { appendFile: fsp.appendFile, readFile: fsp.readFile, stat: fsp.stat },
   timers = { setTimeout: (fn, ms) => setTimeout(fn, ms).unref(), clearTimeout: (t) => clearTimeout(t) },
   log = () => {},
