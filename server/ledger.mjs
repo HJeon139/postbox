@@ -29,29 +29,23 @@ import {
   COMMAND_TOOLS,
   commandFacts,
   diffCount,
-  diffRows,
   EDIT_TOOLS,
   exitCodeOf,
   externalTool,
-  hunks,
   isBinary,
-  MAX_DIFF_ROWS,
   MAX_OUTPUT_BYTES,
   READ_TOOLS,
   urlsIn,
 } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
+import { fileDiff, output, restore } from './ledger-answers.mjs';
 import { commandSeen, commandStarted, folderWatch, turnEnded } from './ledger-commands.mjs';
 import { clip, gitState, pushed, recordCommit, rootOf, runGit, tracked } from './ledger-git.mjs';
-import { memoryBlobs, nodeIo } from './ledger-io.mjs';
-import { hostEdit, hostFolder, hostOf, onHost } from './ledger-remote.mjs';
+import { known, memoryBlobs, nodeIo, sameSnap } from './ledger-io.mjs';
+import { hostEdit, hostFolder, hostOf } from './ledger-remote.mjs';
 import { newId } from './store.mjs';
 
 export { nodeIo };
-
-const sameSnap = (a, b) => Boolean(a?.exists) === Boolean(b?.exists) && (!a?.exists || (a.sha256 && a.sha256 === b?.sha256));
-const known = (s) => !s?.exists || Boolean(s.sha256);
-const fail = (status, message) => Object.assign(new Error(message), { status });
 
 export class Ledger {
   /**
@@ -639,56 +633,17 @@ export class Ledger {
 
   // ── Reading and restoring ─────────────────────────────────────────────────────────────
 
-  /**
-   * A file’s diff: what all the agents’ turns left (against before their first change), or one change’s. Rows are
-   * hunks from shared/work.mjs, at most MAX_DIFF_ROWS.
-   */
   /** @param {string} convId @param {string} fileId @param {string|null} [changeId] */
-  async fileDiff(convId, fileId, changeId = null) {
-    const f = this.entry(convId, fileId);
-    if (f?.kind === 'edit') throw onHost(f);
-    if (f?.kind !== 'file') throw fail(404, 'That file isn’t in this conversation’s work.');
-    const c = changeId ? this.entry(convId, changeId) : null;
-    if (changeId && (c?.kind !== 'change' || c.fileId !== fileId)) throw fail(404, 'That change isn’t in this conversation’s work.');
-    const a = c ? c.before : f.before;
-    const b = c ? c.after : f.after;
-    const sizes = { before: { exists: Boolean(a?.exists), size: a?.size ?? null }, after: { exists: Boolean(b?.exists), size: b?.size ?? null } };
-    if (!known(a) || !known(b)) return { ...sizes, tooLarge: true };
-    if (a.binary || b.binary) return { ...sizes, binary: true };
-    const rows = hunks(diffRows(await this.textOf(a), await this.textOf(b)));
-    return { ...sizes, rows: rows.slice(0, MAX_DIFF_ROWS), cut: rows.length > MAX_DIFF_ROWS };
+  fileDiff(convId, fileId, changeId = null) {
+    return fileDiff(this, convId, fileId, changeId);
   }
-
-  /** A command’s output, as text. */
-  async output(convId, entryId) {
-    const e = this.entry(convId, entryId);
-    if (e?.kind !== 'command') throw fail(404, 'That command isn’t in this conversation’s work.');
-    if (!e.output?.sha256) return '';
-    return (await this.blobs.get(e.output.sha256)).toString('utf8');
+  /** @param {string} convId @param {string} entryId */
+  output(convId, entryId) {
+    return output(this, convId, entryId);
   }
-
-  /**
-   * Puts a file back the way it was before the agents first changed it, or removes it if they created it. It refuses
-   * when the file changed since their last change, so nobody’s newer work is overwritten.
-   */
-  async restore(convId, fileId) {
-    const f = this.entry(convId, fileId);
-    if (f?.kind === 'edit') throw onHost(f);
-    if (f?.kind !== 'file') throw fail(404, 'That file isn’t in this conversation’s work.');
-    if (!known(f.before)) throw fail(409, `Postbox didn’t keep a copy of ${f.rel} from before: it was ${f.before?.big ? 'larger than 4 MB' : 'unreadable'}.`);
-    if (sameSnap(f.before, f.after)) throw fail(409, `${f.rel} is already as it was before.`);
-    const now = await this.capture(await this.io.read(f.path));
-    if (!sameSnap(now, f.after))
-      throw fail(
-        409,
-        `${f.rel} changed after the agents’ last change to it, so Postbox won’t overwrite it. Its diff still shows what they did, if you want to undo it yourself.`,
-      );
-    if (f.before.exists) await this.io.writeAtomic(f.path, await this.blobs.get(f.before.sha256));
-    else await this.io.remove(f.path);
-    const at = this.now();
-    this.patch(convId, f.id, { after: f.before, added: 0, deleted: 0, restored: { at } });
-    this.add(convId, { kind: 'restore', id: newId('wr'), fileId: f.id, path: f.path, at, removed: !f.before.exists });
-    return this.entry(convId, f.id);
+  /** @param {string} convId @param {string} fileId */
+  restore(convId, fileId) {
+    return restore(this, convId, fileId);
   }
 
   /** After a restart: turns and commands that were running can’t finish, so they say so. */
