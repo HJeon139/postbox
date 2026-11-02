@@ -184,3 +184,27 @@ test('a first message whose every mention is refused still posts, as the opener�
     assert.equal(posted[0].opened, mentions[0], 'keeping the handles it named, for I6');
   }
 });
+
+test('a first message whose only mention waits on a card posts once, and allowing the card doesn’t post it again', async () => {
+  const f = await conversation();
+  // gamma isn't in the conversation, so its wake asks the person to add it (askToAdd), with no wake to post the message.
+  const text = 'Gamma, please check the totals';
+  const r = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, message: text, mentions: ['gamma'] }));
+  assert.equal(r?.ok, true, JSON.stringify(r));
+  const mine = () => f.store.items(r.threadId).filter((i) => i.kind === 'agent' && i.sessionId === f.alpha.id && i.text === text);
+  assert.equal(mine().length, 1, 'posted once, as the opener’s own');
+  const card = f.store.items(f.t.id).find((i) => i.kind === 'hop' && i.status === 'open');
+  assert.ok(card, 'the card asking to add gamma');
+  f.adapter.next.push(async (c) => c.text('Gamma here.'));
+  f.rt.resolveHop(f.t.id, card.id, true);
+  await settle(f.rt);
+  assert.equal(mine().length, 1, 'Allow wakes gamma from the message already there, not a second copy');
+});
+
+test('open_topic refuses mentions with no message, before it opens anything', async () => {
+  const f = await conversation();
+  const r = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, mentions: ['beta'] }));
+  assert.equal(r?.ok, false, JSON.stringify(r));
+  assert.match(r.message, /message/);
+  assert.equal(topics(f.store).length, 0, 'nothing opened');
+});
