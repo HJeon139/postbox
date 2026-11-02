@@ -1510,7 +1510,9 @@ export class Runtime {
     // What it was asked (turn-marks.mjs): refused, with nothing sent, when it was kept and can’t be read back exactly.
     return askedAgain(this, threadId, it, (asked) => {
       this.patchItem(threadId, itemId, { status: 'retried' });
-      releaseNeed(this, this.s.sessions[it.sessionId], itemId);
+      // Only the cards that wait until answered can take the need: the failed turn's own asks would flash until the
+      // retried turn starts, and that turn's end decides them (critic's review of #633).
+      releaseNeed(this, this.s.sessions[it.sessionId], itemId, undefined, { turnId: null });
       this.deliver(it.sessionId, { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [] }, { summarizeTo: asked.summarizeTo, threadId });
     });
   }

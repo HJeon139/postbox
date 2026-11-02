@@ -42,10 +42,10 @@ function needOf(rt, se, it, threadId, turnId, keep) {
 
 /**
  * Which need comes first when several wait, as the turn's end has always chosen: a permission the running turn is
- * blocked on, then a failed turn (its Retry, which only its own release clears: no card replaces it, as on main), then
- * the last turn's asking block, its refusals, its tool request, and last the cards that wait until answered (app sends,
- * wake requests). Within a kind, the newest. Every kind a need can have is listed: tests/card-needs-kinds.test.mjs
- * checks each one set anywhere in server/.
+ * blocked on, then a failed turn (its Retry: only its own release clears it, and no card but a permission, which a
+ * running turn is blocked on, replaces it, as on main), then the last turn's asking block, its refusals, its tool
+ * request, and last the cards that wait until answered (app sends, wake requests). Within a kind, the newest. Every kind
+ * a need can have is listed; tests/card-needs-kinds.test.mjs checks the kinds its scan of server/ finds.
  */
 export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, denial: 3, toolask: 4, appsend: 5, hop: 5 });
 
@@ -108,11 +108,13 @@ export function offerNeed(rt, se, need, state) {
  * @param {any} rt @param {any} se @param {string} itemId
  * @param {string} [busy]  the state while a turn runs: a permission's release passes 'tool', since the tool call it
  *   held goes on; others keep the session's state
+ * @param {{ turnId?: string | null }} [o]  which turn's cards count, when it isn't turnOf's answer: Retry passes null,
+ *   since the retried turn starts at once and its end decides them
  */
-export function releaseNeed(rt, se, itemId, busy = se?.state) {
+export function releaseNeed(rt, se, itemId, busy = se?.state, { turnId } = {}) {
   if (!se || se.needs?.itemId !== itemId) return;
   const released = rt.store.pending.items(se.needs.threadId ?? se.threadId).find((/** @type {any} */ x) => x.id === itemId);
-  const need = nextNeed(rt, se, { released });
+  const need = nextNeed(rt, se, turnId === undefined ? { released } : { released, turnId });
   rt.updateSession(se.id, { needs: need, state: rt.turns.has(se.id) ? busy : need ? 'needs' : 'idle' });
   noticeNeed(rt, se, need);
 }

@@ -128,6 +128,9 @@ test('#120 L5: after a restart a turn the welcome doesn’t list is Interrupted,
   await until(() => r.store.items(r.t.id).some((i) => i.kind === 'agent' && i.status === 'failed'), 'Interrupted');
   const failed = r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'failed');
   assert.match(failed.error, /^Interrupted on host\.example\.com: the host has no record of it\.$/);
+  // The interrupted turn is the last turn (card-needs.mjs turnOf), so a block it moved past stays quiet (#366).
+  assert.ok(failed.turnId, 'the interrupted reply names its turn');
+  assert.equal(r.se().lastTurnId, failed.turnId);
   await until(() => starts(d).length === 1, 'the resume');
   assert.equal(starts(d)[0].env.CLAUDE_CODE_RESUME_INTERRUPTED_TURN, '1');
   assert.match(messageOf(starts(d)[0]), /was interrupted before it finished/);

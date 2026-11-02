@@ -1,6 +1,7 @@
 // Every kind an agent's need can have is ranked (#366; the integrator's re-review of #633: a table that ranks a kind it
-// doesn't list fell to a default, so a failed turn's need lost to any card). This finds each kind set in server/: a
-// direct `needs: { kind }`, an offerNeed, and each need card-needs.mjs's needOf makes.
+// doesn't list fell to a default, so a failed turn's need lost to any card). A regex scan of server/ for the three
+// shapes a need is set in today: a literal `needs: { kind }`, an offerNeed with a literal kind, and the needs
+// card-needs.mjs's needOf returns. A need built another way (a kind in a variable) isn't seen, and needs a line here.
 
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
@@ -10,7 +11,7 @@ import { RANK } from '../server/card-needs.mjs';
 
 const files = (dir) => readdirSync(dir).flatMap((f) => (statSync(join(dir, f)).isDirectory() ? files(join(dir, f)) : f.endsWith('.mjs') ? [join(dir, f)] : []));
 
-test('every need kind set anywhere in server/ is in RANK', () => {
+test('every need kind the scan of server/ finds is in RANK', () => {
   const kinds = new Set();
   for (const f of files('server')) {
     const text = readFileSync(f, 'utf8');
