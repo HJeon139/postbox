@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.13.0 (2026-11-02)
+
+### Features
+
+- **read-message:** read_message on an app gives its code, in parts, pinned to a version
+
+### Fixes
+
+- **read-message:** a part never ends inside a character; test the longer fence
+- **runtime:** agents a message wasn't sent to get its attachments' paths
+- **thread:** a diagram's listener goes with its frame; topic threads redraw for inherited terms
+
 ## 1.12.3 (2026-11-02)
 
 ### Fixes
