@@ -57,11 +57,19 @@ test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
 
 const lists = (page) => page.locator(`.transcript[data-thread="${conv}"] .work-list-turn`);
+/** How long the page may take to load the seeded conversation and draw it: with the events late, on a busy runner. */
+const LOAD = 30_000;
+/** Opens the conversation at that pane address, and waits for it to draw what shows it’s loaded, then to hear the server. */
+async function open(page, r, loaded) {
+  await page.goto(`${app.origin}/#/t/${conv}${r}`);
+  await expect(page.locator(loaded).first()).toBeVisible({ timeout: LOAD });
+  await synced(page, app);
+}
 
 test('#618: a change to one command looks it up once, not once per turn list', async ({ page }) => {
-  await page.goto(`${app.origin}/#/t/${conv}`);
-  await synced(page, app);
-  await expect(lists(page)).toHaveCount(TURNS);
+  test.setTimeout(90_000);
+  await open(page, '', `.transcript[data-thread="${conv}"] .work-list-turn`);
+  await expect(lists(page)).toHaveCount(TURNS, { timeout: LOAD });
   await settled(page);
   // Counts the lookups by id in the conversation’s ledger from here on.
   await page.evaluate(async (c) => {
@@ -84,9 +92,9 @@ test('#618: a change to one command looks it up once, not once per turn list', a
 });
 
 test('#618: full-screen Work draws 50 of its 1,800 commands, around the one it opened at, and more on asking', async ({ page }) => {
+  test.setTimeout(90_000);
   const at = 'wc_150_3';
-  await page.goto(`${app.origin}/#/t/${conv}?work&full=work&at=${at}`);
-  await synced(page, app);
+  await open(page, `?work&full=work&at=${at}`, '#work-commands');
   const commands = page.locator('#work-commands details.work-item');
   // The item it opened at is drawn, among the 50 around it, and has focus.
   await expect(page.locator(`[id="wsum-${at}"]`)).toBeFocused();
@@ -100,8 +108,7 @@ test('#618: full-screen Work draws 50 of its 1,800 commands, around the one it o
   await expect(page.locator('[id="wsum-wc_154_4"]')).toBeFocused();
 
   // Opened at nothing, it draws the newest 50, last as before, and a command that starts now joins them.
-  await page.goto(`${app.origin}/#/t/${conv}?work&full=work`);
-  await synced(page, app);
+  await open(page, '?work&full=work', '#work-commands');
   await expect(commands).toHaveCount(50);
   await expect(commands.last()).toContainText(`npm test -- part ${COMMANDS - 1}`);
   app.store.emit('work.add', {

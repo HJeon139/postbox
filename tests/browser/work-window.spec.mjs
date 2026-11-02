@@ -58,12 +58,19 @@ test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
 
 const commands = (page) => page.locator('#work-commands details.work-item');
+/** How long the page may take to load a seeded conversation and draw it: with the events late, on a busy runner. */
+const LOAD = 30_000;
+/** Opens a conversation at that pane address, and waits for it to draw what shows it’s loaded, then to hear the server. */
+async function open(page, conv, r, loaded) {
+  await page.goto(`${app.origin}/#/t/${conv}${r}`);
+  await expect(page.locator(loaded)).toBeVisible({ timeout: LOAD });
+  await synced(page, app);
+}
 const more = (page) => page.locator('#work-commands .work-more');
 
 test('#618: choosing one agent draws its commands, not a stretch past their end', async ({ page }) => {
   // Opened at a late command of @alpha’s, so the window starts past where @beta’s list ends.
-  await page.goto(`${app.origin}/#/t/${room}?work&full=work&at=wc_alpha_8_0`);
-  await synced(page, app);
+  await open(page, room, '?work&full=work&at=wc_alpha_8_0', '#work-commands');
   await expect(page.locator('[id="wsum-wc_alpha_8_0"]')).toBeFocused();
   await expect(commands(page)).toHaveCount(50);
 
@@ -84,8 +91,7 @@ test('#618: choosing one agent draws its commands, not a stretch past their end'
 });
 
 test('#618: the file Work opened at stays drawn when git’s answer moves flagged files above it', async ({ page }) => {
-  await page.goto(`${app.origin}/#/t/${files}?work&full=work&at=wf_29`);
-  await synced(page, app);
+  await open(page, files, '?work&full=work&at=wf_29', '#work-files');
   // Git has answered: the files that existed are flagged, and sorted first.
   await expect(page.locator('.work-flag-note')).toContainText('60 changes to review');
   await expect(page.locator('#work-files details.work-item')).toHaveCount(50);
