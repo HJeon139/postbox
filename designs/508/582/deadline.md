@@ -5,6 +5,7 @@ An agent on a remote host calls `read_conversation` or `read_message`. If Postbo
 ## Decisions
 
 - **`REMOTE_READ_TIMEOUT_MS = 100_000`** in `shared/limits.mjs`. A 100 s deadline leaves a 20 s safety margin under Kiro's 120 s client timeout. This 20 s margin is an assumed engineering estimate that has not been measured or benchmarked in production; it is intended as headroom for JSON-RPC framing, wire delivery, and in-memory formatting. A cold read of `snapshot.json` (for example, on a cache miss after daemon restart if the host disk is slow or hung) is not covered by this margin and remains bound by disk I/O.
+- **No journal write awaited before the answer.** An offline answer reaches the shim before any journal write. A fresh detached read writes no call or reply record and is exempt from queue limits; an attached read settled offline writes its reply record best-effort after answering, only if a call record exists.
 - **Arrival timestamped at `call()` entry.** In `broker-tools.mjs`, `call()` captures `arrived = b.now()` on line 1, before any admission wait (`refusal()`, `prepare()`, or `queueTool()`). Pre-admission queue time counts toward the 100 s deadline.
 - **Recorded in `tools.jsonl`.** The `call` record stores `at: t.arrived`. On daemon restart, `loadTurn()` in `broker-replay.mjs` restores `arrived` from `r.at` if it is a non-negative safe integer; otherwise it defaults safely to `b.now()`.
 - **Pre-send expiry on hello.** After a restart or reconnection, `onHello()` in `broker-postbox.mjs` checks each unsettled read. If elapsed time (`b.now() - t.arrived`) is at least 100 s, it is settled offline immediately and never resent over the wire. If elapsed time is under 100 s, it is sent to Postbox and its timer is armed for the remaining duration.
@@ -25,7 +26,7 @@ flowchart TD
     C -- "100 s elapsed" --> F["timer fires: settleOffline() answers from snapshot"]
 ```
 
-- **Strict upper bound:** Every admitted read is settled within at most 100 s of its arrival on the host clock.
+- **Strict upper bound:** Every admitted read is settled within at most 100 s of its arrival on the host clock: no journal write is awaited before the answer.
 - **No timer leak:** Every armed timer is cleared on live reply, on offline settlement, or during broker shutdown. Default timers are `unref()`'d.
 - **Safe replay:** Replaying an unsettled read across a daemon restart anchors its remaining deadline to the recorded `at` timestamp, preventing timer resets on host restart.
 
