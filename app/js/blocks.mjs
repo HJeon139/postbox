@@ -7,6 +7,7 @@ import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { onPageOrigin } from '/shared/urls.mjs';
 import { asDrawn, closing } from './block-close.mjs';
+import { fitChoiceOptions } from './choice-layout.mjs';
 import { client } from './client.mjs';
 import { codeBox, copyControls, showFilename } from './code-block.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
@@ -141,10 +142,6 @@ const RENDER = {
     const chosen = done ? new Set(item.answer.values.selected) : new Set(d.selected);
     const [hd, titleId] = head(b, [], b.multiple ? 'Choice · several' : 'Choice');
     const node = h('div', { class: done ? 'answered' : '', 'aria-labelledby': titleId });
-    const set = (fn) => {
-      fn();
-      rerender();
-    };
     // A pick re-renders the block; focus goes back to the same option so the keyboard keeps its place.
     const rerender = () => {
       const n = node.contains(document.activeElement) ? document.activeElement.dataset.n : null;
@@ -152,7 +149,7 @@ const RENDER = {
       node.replaceWith(next);
       if (n) next.querySelector(`.chip[data-n="${n}"]`)?.focus();
     };
-    const chips = h('div.chips', { role: b.multiple ? 'group' : 'radiogroup', 'aria-labelledby': titleId });
+    const chips = fitChoiceOptions(h('div.chips', { role: b.multiple ? 'group' : 'radiogroup', 'aria-labelledby': titleId }));
     const opts = [...b.options, ...(b.other ? [{ id: '__other', label: b.other.label }] : [])];
     opts.forEach((o, i) => {
       const on = o.id === '__other' ? (done ? !!item.answer.values.other : d.otherOn) : chosen.has(o.id);
@@ -167,19 +164,17 @@ const RENDER = {
             'aria-checked': b.multiple ? null : String(on),
             'aria-pressed': b.multiple ? String(on) : null,
             dataset: { n: String(i + 1) },
-            onclick: () =>
-              set(() => {
-                if (o.id === '__other') {
-                  d.otherOn = !d.otherOn;
-                  if (!b.multiple && d.otherOn) d.selected = [];
-                  return;
-                }
-                if (b.multiple) d.selected = on ? d.selected.filter((x) => x !== o.id) : [...d.selected, o.id];
-                else {
-                  d.selected = [o.id];
-                  d.otherOn = false;
-                }
-              }),
+            onclick: () => {
+              if (o.id === '__other') {
+                d.otherOn = !d.otherOn;
+                if (!b.multiple && d.otherOn) d.selected = [];
+              } else if (b.multiple) d.selected = on ? d.selected.filter((x) => x !== o.id) : [...d.selected, o.id];
+              else {
+                d.selected = [o.id];
+                d.otherOn = false;
+              }
+              rerender();
+            },
           },
           on ? icon('check') : null,
           o.label,
