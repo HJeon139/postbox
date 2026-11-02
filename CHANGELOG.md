@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.12.2 (2026-11-02)
+
+### Fixes
+
+- **remote:** a closed broker takes no reply or answer from Postbox (#426)
+- **remote:** a closed broker starts no write, and close waits for the rest (#426)
+- **remote:** broker.close waits for writes in flight, and the settle specs wait for it (#426)
+
 ## 1.12.1 (2026-11-02)
 
 ### Fixes
