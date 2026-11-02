@@ -675,8 +675,10 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .composer .col > :empty { display: none; }
 .composer-box { display: flex; align-items: flex-end; gap: 8px; padding: 5px 6px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel); }
 .composer-box:focus-within { border-color: var(--accent); }
-/* The box sizes to its draft without script where the browser can (#641): see composer-size.mjs. */
+/* The box sizes to its draft without script where the browser can (#641): see composer-size.mjs. An empty box stays
+   one line, as before, rather than growing to fit a placeholder that wraps (a 24-letter handle in a phone’s width). */
 .composer-box textarea { flex: 1; min-width: 0; field-sizing: content; border: 0; background: transparent; resize: none; min-height: 30px; max-height: 200px; padding: 5px 4px; line-height: 1.4; outline: none; }
+.composer-box textarea:placeholder-shown { field-sizing: fixed; }
 .composer-box textarea::placeholder { color: var(--dim); }
 /* Two lines, with no gap between them, whatever it says: every composer’s box then sits as high as the next (#116). */
 .composer .hint { font-size: 11.5px; line-height: 1.3; min-height: 2.6em; color: var(--dim); display: flex; gap: 0 14px; flex-wrap: wrap; }

@@ -20,14 +20,14 @@ failOnPageErrors(test);
 const TEXT = 'The observation is the only outside evidence in the loop, so it keeps the plan grounded. ';
 
 /** A conversation of 200 agent replies, open in the page at its end, with the composer focused. */
-async function seeded(page, name) {
+async function seeded(page, name, width = 1280) {
   const { rt } = app;
   const p = rt.createPersona({ handle: name });
   const t = rt.createThread({ projectId: 'pr_typing', title: `Typing ${name}`, personaIds: [p.id] });
   const se = rt.sessionsIn(t.id)[0];
   for (let i = 0; i < 200; i++)
     rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: TEXT.repeat(4), status: 'done' });
-  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.setViewportSize({ width, height: 800 });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   await expect(page.locator(`.transcript[data-thread="${t.id}"] .item`)).toHaveCount(200);
@@ -74,4 +74,16 @@ test('#641: the composer grows with a long draft, up to its limit, and shrinks w
   await input.press('ControlOrMeta+a');
   await input.press('Backspace');
   await expect.poll(height, { message: 'an empty draft is one line again' }).toBe(one);
+});
+
+test('#641: an empty composer stays one line when its placeholder wraps', async ({ page }) => {
+  // A 24-letter handle, the longest a name can be, makes the placeholder wrap in a phone’s width. The empty box keeps one
+  // line, as it did when script sized it, rather than growing to fit the placeholder.
+  const input = await seeded(page, 'librarian-of-long-names1', 375);
+  await expect(input).toHaveAttribute('placeholder', 'Message @librarian-of-long-names1');
+  const height = () => input.evaluate((el) => Math.round(el.getBoundingClientRect().height));
+  const empty = await height();
+  await input.pressSequentially('a');
+  await settled(page);
+  expect(empty, 'the empty box is as tall as one typed line').toBe(await height());
 });
