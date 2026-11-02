@@ -38,6 +38,12 @@ export function emptyState() {
   };
 }
 
+/** A glossary entry. Its key is read first, so missing data throws before anything changes (#609). */
+const putGlossary = (s, d) => {
+  const { key } = d.entry;
+  (s.glossary[d.threadId] ??= map())[key] = d.entry;
+};
+
 const putBoilerplate = (s, d) => {
   delete s.boilerplates[d.id];
   s.boilerplates[d.id] = d;
@@ -88,7 +94,7 @@ export function apply(s, type, d) {
       else s.schedules[d.id] = d;
       break;
     case 'glossary':
-      (s.glossary[d.threadId] ??= map())[d.entry.key] = d.entry;
+      putGlossary(s, d);
       break;
     case 'item.add':
       (s.items[d.threadId] ??= []).push(d.item);
