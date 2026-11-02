@@ -113,7 +113,7 @@ class PbRing extends HTMLElement {
     this.render();
   }
   attributeChangedCallback(_, a, b) {
-    if (this.isConnected && a !== b) this.render();
+    if (this.isConnected && a !== b && !this.holding) this.render();
   }
   render() {
     const state = this.getAttribute('state') || 'idle';
@@ -167,17 +167,26 @@ class PbRing extends HTMLElement {
 }
 if (!customElements.get('pb-ring')) customElements.define('pb-ring', PbRing);
 
-/** A ring element for a session, or updates an existing one in place (keeps its animation running). */
+/**
+ * A ring element for a session, or updates an existing one in place (keeps its animation running). It draws once for
+ * all the attributes that changed, not once for each: a session change moves state and context together (#622).
+ */
 export function ringFor(se, size = 'sm', el = null) {
   el ??= document.createElement('pb-ring');
+  let changed = false;
   const set = (k, v) => {
-    if (el.getAttribute(k) !== v) el.setAttribute(k, v); // lint-allow dom: k is one of the literal names below.
+    if (el.getAttribute(k) === v) return;
+    el.setAttribute(k, v); // lint-allow dom: k is one of the literal names below.
+    changed = true;
   };
+  el.holding = true;
   set('name', `@${se.handle}`);
   set('state', se.deleting ? 'idle' : (se.state ?? 'idle'));
   set('ctx', se.ctx != null ? String(se.ctx) : 'unknown');
   set('subs', subsAttr(se.subagents));
   set('size', size);
   set('where', ringWhere(se));
+  el.holding = false;
+  if (changed && el.isConnected) el.render();
   return el;
 }
