@@ -2,6 +2,21 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.11.0 (2026-11-02)
+
+### Features
+
+- **508:** #582 part 1 remote read deadline and replay implementation
+- **remote:** #582 part 3, an io seam for the broker's file calls, and the race specs T07 to T09
+- **remote:** #582 part 3, one settle path for reads that can't reach Postbox
+
+### Fixes
+
+- **remote:** an offline answer reaches the shim before any journal write (#582)
+- **remote:** driverLost does nothing on a closed broker, and a failed settle is logged (#582)
+- **remote:** a reconnect during a reply's journal write still sends the call (#582)
+- **remote:** a read is answered from the snapshot at once when its driving Postbox goes away (#582)
+
 ## 1.10.1 (2026-11-02)
 
 ### Fixes
