@@ -3,8 +3,7 @@
 import assert from 'node:assert/strict';
 import { chmodSync, existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { TURN_FILES } from '../shared/remote-protocol.mjs';
-import { REMOTE_LIMITS } from '../shared/remote-protocol.mjs';
+import { REMOTE_LIMITS, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { connectShim, makeBroker, makeHome, until } from './remote-broker-fixtures.mjs';
 
 const OFFLINE_NOTE = '\n\n(Read offline as of this turn’s start; earlier or changed items may be missing.)';
