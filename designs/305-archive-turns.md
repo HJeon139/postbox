@@ -3,8 +3,7 @@
 | | |
 |---|---|
 | **Status** | Draft 7, 1 November 2026. Design only: the integrator’s review of #603 asked for the code to be held until it can be switched on with its readers, and for the design to stay as a draft. Draft 7 adds the cheaper alternatives with measurements (“Alternatives”), keeps each agent’s latest turns hot instead of the conversation’s last two (“Which turns stay hot”), and corrects the figures. Not yet approved |
-| **Author** | engineer |
-| **Reviewers** | critic (design-time read, before the pass is built); developer (senior developer, the store and 1a); the person and the integrator |
+| **Reviewers** | a design-time read before the pass is built; the store's owner; the person and the integrator |
 | **Relates to** | #305, #508; `designs/508/storage-design.md` on #580 (“Snapshots and pruning”, “Performance and budgets”, the one-line commit of 1a, #588); `designs/architecture.md` (“The store”, “Attachments”); `designs/intent.md`, principle 7 (deleting a conversation ends it, which decides “Deletion”) |
 | **Code** | Not in this PR. The blob store fix is its own PR (`fix/305-blob-durability`); the `endWork` catch is its own fix (`fix/endwork-ledger-catch`). The reducer, pass and readers stay on unmerged branches (`fix/305-archive-turns`, `fix/305-totals`, `fix/305-readers`) until they ship together, switched on (“Rollout”) |
 
@@ -21,7 +20,7 @@ On a 13.85 MB copy of this project’s store, the snapshot falls to about **4.3 
 
 ## Requirements and design this rests on
 
-This design adds no requirement of its own. It meets requirements already approved, and works inside the high-level design #508 already has. Requirement ids are from `designs/508/requirements.md` (rev 4.5, on #580); storage design sections are from `designs/508/storage-design.md` (draft 9, on #580).
+This design adds no requirement of its own. It meets requirements already approved, and works inside the high-level design #508 already has. Requirement ids are from `designs/508/requirements.md` (on #580); storage design sections are from `designs/508/storage-design.md` (on #580), named by title.
 
 | Source | What it asks | How this design meets it |
 |---|---|---|
@@ -41,12 +40,12 @@ This design adds no requirement of its own. It meets requirements already approv
 
 **Non-goals**
 - The transcript’s items themselves (the B1 to B3 window, #531 to #533).
-- Command outputs, which are already capped and fetched on demand (`ledger.output`, `server/runtime.mjs:2326`).
+- Command outputs, which are already capped and fetched on demand (`ledger.output`, in `server/runtime.mjs`).
 - A second writer (ST-2, deferred).
 
 ## Context: what the state holds today
 
-Measured on the 13.85 MB copy used for the storage design’s budgets, with `tools/measure-archive-policies.mjs` (checked in; run it on a `snapshot.json`). critic and gemini measured the live store separately and got the same shares.
+Measured on the 13.85 MB copy used for the storage design’s budgets, with `tools/measure-archive-policies.mjs` (checked in; run it on a `snapshot.json`).
 
 | Part | MB | Share | Read after its turn by |
 |---|---|---|---|
@@ -69,7 +68,7 @@ Measured on the 13.85 MB copy used for the storage design’s budgets, with `too
 | **each agent’s last 2 turns** | **4.34 MB** | **6.2 ms** |
 | each agent’s last 5 turns | 4.44 MB | 6.2 ms |
 
-**Why per agent, not per conversation (the integrator’s review of #603, §2).** A conversation-wide count of two is less than one round when two to four agents work at once. If @dev starts a long turn while @a and @b start and finish short ones, the pass archives @dev’s turn the moment it ends, and its reply’s steps become `{ archived, count }`: the turn the person most wants to open. The size barely depends on the number (4.06 MB for 2 turns, 4.17 MB for 10), so the policy is chosen for what the person reads, not for bytes. Keeping **each agent’s last two turns** costs 0.28 MB more than a conversation-wide two (7%), and with four agents it keeps at most eight turns. A turn that is still running is always hot, as I4 says. The count per agent is a constant, `HOT_TURNS_PER_AGENT`, so it can change without changing the design.
+**Why per agent, not per conversation (the integrator’s review of #603, on the hot-turn policy).** A conversation-wide count of two is less than one round when two to four agents work at once. If agent A starts a long turn while agents B and C start and finish short ones, the pass archives agent A’s turn the moment it ends, and its reply’s steps become `{ archived, count }`: the turn the person most wants to open. The size barely depends on the number (4.06 MB for 2 turns, 4.17 MB for 10), so the policy is chosen for what the person reads, not for bytes. Keeping **each agent’s last two turns** costs 0.28 MB more than a conversation-wide two (7%), and with four agents it keeps at most eight turns. A turn that is still running is always hot, as I4 says. The count per agent is a constant, `HOT_TURNS_PER_AGENT`, so it can change without changing the design.
 
 
 ## Data model
@@ -97,7 +96,7 @@ erDiagram
 
 ### Records
 
-**Work entry** (existing, unchanged; `shared/work.mjs`, `server/ledger.mjs:169`):
+**Work entry** (existing, unchanged; `shared/work.mjs`, `server/ledger.mjs`, `Ledger.base`):
 
 | Field | Type | Notes |
 |---|---|---|
@@ -126,7 +125,7 @@ erDiagram
 | Field | Type | Notes |
 |---|---|---|
 | `archived` | string | the archive file’s SHA-256 |
-| `count` | number | how many steps it had. Not `steps`: an older page reads `activity.steps` as a list (`app/js/activity-paint.mjs:14-15`) |
+| `count` | number | how many steps it had. Not `steps`: an older page reads `activity.steps` as a list (`activityParts` in `app/js/activity-paint.mjs`) |
 
 **Archive file** (new; one blob per archived turn, JSON):
 
@@ -159,8 +158,8 @@ erDiagram
 - **I1. Order.** A durable `turn.archive` never names an archive file that isn’t durable: the file is published (synced and renamed into place) before the event is committed.
 - **I2. Whole or nothing.** A reader of the blob store sees an archive file whole under its name, or no file. A short file under the name is replaced on the next put.
 - **I3. One home.** At any time, an entry or a step is in the state or in exactly one archive file named by a summary in the state, never neither. (Both is allowed only between I1’s two steps, and only the state copy is visible.)
-- **I4. Only finished turns.** A turn is archived only if it has ended (its `turn` entry’s `status` isn’t `running`, and the runtime doesn’t list it as live), none of its jobs is kept, every entry in it is in a final state, and it is not one of the last two turns of the agent that ran it. The open states are the ones the ledger can still move an entry out of: `running` until it ends; `background` until its task ends (`server/ledger.mjs:434`); and `unknown`, which Stop’s keep choice turns back into `background` (`:453`), and which the turn end (`:506-511`) and a restart (`:699`) set. Every other state (`done`, `failed`, `stopped`, `denied`) is final. A turn that fails I4 is passed over, not waited on: an old command left `unknown` keeps its own turn hot and blocks nothing after it. On the real-room copy, the turns with an entry left open hold 0.24 MB of the 6.02 MB of work, of 930 turns (`tools/measure-archive-policies.mjs`).
-- **I5. The file holds exactly what the event removes.** Just before the commit, the pass serializes again the entries and activity the event will remove, exactly as it serialized them for the file; if the SHA-256 differs from the file’s, it abandons. No list of fields to forget (critic’s design-time review).
+- **I4. Only finished turns.** A turn is archived only if it has ended (its `turn` entry’s `status` isn’t `running`, and the runtime doesn’t list it as live), none of its jobs is kept, every entry in it is in a final state, and it is not one of the last two turns of the agent that ran it. The open states are the ones the ledger can still move an entry out of: `running` until it ends; `background` until its task ends (in `server/ledger.mjs`, the job update); and `unknown`, which Stop’s keep choice turns back into `background` (the Stop keep choice), and which the turn end and a restart set. Every other state (`done`, `failed`, `stopped`, `denied`) is final. A turn that fails I4 is passed over, not waited on: an old command left `unknown` keeps its own turn hot and blocks nothing after it. On the real-room copy, the turns with an entry left open hold 0.24 MB of the 6.02 MB of work, of 930 turns (`tools/measure-archive-policies.mjs`).
+- **I5. The file holds exactly what the event removes.** Just before the commit, the pass serializes again the entries and activity the event will remove, exactly as it serialized them for the file; if the SHA-256 differs from the file’s, it abandons. There is no list of fields to forget, which a design-time read asked for.
 - **I6. Validated reads.** A read of an archive file takes its SHA-256 from a summary in the state, never from a request, and checks that the file’s `convId` and `turnId` match it.
 - **I7. Private.** Archive files are `0600`, in folders created `0700`.
 - **I8. Checked where it is sequenced.** I5 is evaluated inside the commit’s function form, against the state the store hands it when the commit is sequenced, so nothing applied between the file’s write and the commit can be removed unseen. If it fails, the function returns `[]` and nothing is written.
@@ -169,9 +168,9 @@ erDiagram
 
 ### When the pass runs
 
-After a turn’s ledger work ends (`ledger.endTurn`, `server/runtime.mjs:964`), the runtime runs the archive pass for that turn’s conversation. Passes for one conversation run one at a time, through one promise chain per conversation that the turn-end pass and the one-time pass both join, so the two never archive the same conversation at once (critic); passes for different conversations may overlap. After start, a one-time pass walks every conversation (“Existing data”).
+After a turn’s ledger work ends (`ledger.endTurn`, called from `Runtime.endWork`), the runtime runs the archive pass for that turn’s conversation. Passes for one conversation run one at a time, through one promise chain per conversation that the turn-end pass and the one-time pass both join, so the two never archive the same conversation at once; passes for different conversations may overlap. After start, a one-time pass walks every conversation (“Existing data”).
 
-**Built against 1a only.** The pass commits through `store.commit`, so it ships after #588 merges. There is no `emit` path: it would be a second code path whose event isn’t fsynced (developer’s review).
+**Built against 1a only.** The pass commits through `store.commit`, so it ships after #588 merges. There is no `emit` path: it would be a second code path whose event isn’t fsynced.
 
 ### One pass
 
@@ -183,13 +182,13 @@ sequenceDiagram
   participant S as Store
   R->>P: turn ended in conversation C
   P->>S: read state: C's turns in order
-  Note over P: pick the oldest turn that is older than its agent’s last two and meets I4, or stop
+  Note over P: oldest turn older than its agent’s last two that meets I4, or stop
   P->>P: serialize the turn's entries and replies' activity (all threads of C)
   P->>B: put(archive file JSON)
   Note over B: draft, fsync, rename, folder fsync
   B-->>P: sha256
   P->>S: commit(state => ...), opId turn.archive:convId:turnId
-  Note over S: when sequenced, the function re-serializes the payload from that state (I8)
+  Note over S: when sequenced, re-serialize the payload from that state (I8)
   alt hash differs from the file's (I5)
     S-->>P: [] returned, nothing written
     P-->>R: give up; try at the next turn's end
@@ -203,9 +202,9 @@ sequenceDiagram
 - **Turn order** is the order of each turn’s first entry or first reply in the state.
 - **“Unchanged”** is I5’s rule: the hash of the payload the event will remove, compared with the file’s hash just before the commit. A late `work.patch` (a background command finishing), a new step, or any other change to a removed field changes it.
 - **A repeat after a crash** returns `duplicate` while 1a still holds the `opId`, which it keeps only for commits newer than the latest snapshot. After a snapshot, a repeat writes again; the reducer’s idempotence is the real guard (T-12).
-- **A patch held behind the archive commit** (critic’s condition; developer’s first option). While the archive commit waits for its fsync, 1a holds every emit and applies it afterwards, so a `work.patch` emitted in that window lands after `turn.archive` has removed its entry. The design rules this out at the source and keeps a backstop. *At the source:* the ledger’s `work.patch` sites patch only entries in an open state (`ledger.mjs:294`, `:296`, `:360-367`, `:434`, `:453`, `:506-511`, `:699`), and I4 never archives a turn holding one. The one patch of an entry outside an open state is restore’s, and it patches a `file` entry, which has no `turnId` and is never archived (below). *Backstop:* the reducer’s `work.patch` drops a patch for an entry it doesn’t hold (`shared/state.mjs:120-123`, unchanged), so a patch that slips through is lost, not resurrected as a half entry. T-19 pins both.
-- **Restore after archiving** (critic). `ledger.restore` (`:675-692`) patches the `file` entry with `restored: { at }` and adds a `restore` entry. Both are conversation-level: a `file` entry has no `turnId` (`:569-590`; it lists its turns in `turns`), and neither does a `restore` entry, so the pass never moves them. Only the turn’s `change` entries go to the archive. The archive file is never written again, and restore needs nothing from it. T-19 restores a file whose only change was archived.
-- **Effort stays in the totals.** Each turn’s `turn` entry carries its time, tool calls, cost and tokens, which `summarize` (`shared/work.mjs:150`) adds into the conversation’s effort. The summary keeps them as `effort { turns, ms, toolCalls, costUsd, tokens }`, so the totals don’t shrink when a turn is archived (T-14).
+- **A patch held behind the archive commit** (a condition of the design-time read). While the archive commit waits for its fsync, 1a holds every emit and applies it afterwards, so a `work.patch` emitted in that window lands after `turn.archive` has removed its entry. The design rules this out at the source and keeps a backstop. *At the source:* the ledger’s `work.patch` sites patch only entries in an open state (in `server/ledger.mjs`: the command and job updates, the turn end and the restart sweep), and I4 never archives a turn holding one. The one patch of an entry outside an open state is restore’s, and it patches a `file` entry, which has no `turnId` and is never archived (below). *Backstop:* the reducer’s `work.patch` drops a patch for an entry it doesn’t hold (the `work.patch` case in `shared/state.mjs`, unchanged), so a patch that slips through is lost, not resurrected as a half entry. T-19 pins both.
+- **Restore after archiving.** `ledger.restore` patches the `file` entry with `restored: { at }` and adds a `restore` entry. Both are conversation-level: a `file` entry has no `turnId` (`recordChange` in `server/ledger.mjs`; it lists its turns in `turns`), and neither does a `restore` entry, so the pass never moves them. Only the turn’s `change` entries go to the archive. The archive file is never written again, and restore needs nothing from it. T-19 restores a file whose only change was archived.
+- **Effort stays in the totals.** Each turn’s `turn` entry carries its time, tool calls, cost and tokens, which `summarize` (`shared/work.mjs`) adds into the conversation’s effort. The summary keeps them as `effort { turns, ms, toolCalls, costUsd, tokens }`, so the totals don’t shrink when a turn is archived (T-14).
 - **A closed store** (after 1b, a write failed) rejects the commit. The pass gives up with no retry loop; the published file is a harmless orphan, and the next turn’s end tries again.
 
 ### Held emits: the audit 1a hands to the first caller of `commit`
@@ -214,8 +213,8 @@ While a commit’s fsync is pending, 1a holds every `emit` and applies it afterw
 
 | Site | Emits | Reads back right after? | Spec |
 |---|---|---|---|
-| `server/ledger.mjs:90` (`work.add`) and its `work.patch` sites, a background command finishing | `work.add`, `work.patch` | to be read in the PR: list each read of `state.work` that follows an emit in the same call | T-16: an emit from each site during a held commit, then the site’s read-back |
-| `server/runtime.mjs` turn end (`endTurn`, `:971`, `patchItem` of the turn’s replies) | `item.patch` | the same | T-16 |
+| `Ledger.add` in `server/ledger.mjs` (`work.add`) and its `work.patch` sites, a background command finishing | `work.add`, `work.patch` | to be read in the PR: list each read of `state.work` that follows an emit in the same call | T-16: an emit from each site during a held commit, then the site’s read-back |
+| `server/runtime.mjs` turn end (`endTurn`, `patchItem` of the turn’s replies) | `item.patch` | the same | T-16 |
 
 The PR body lists every site with its line, and either a spec or why it doesn’t read back.
 
@@ -231,13 +230,13 @@ On `turn.archive` (`shared/state-archive.mjs`), idempotently:
 
 | # | Pattern | Who | Key | Source | Cost | How often |
 |---|---|---|---|---|---|---|
-| A1 | List a conversation’s work | the Work view (`app/js/work.mjs:82`, `:813`), from `/api/state` | `convId` | state | as today, smaller | every open of the Work view |
+| A1 | List a conversation’s work | the Work view (`mountWork` and `workDetail` in `app/js/work.mjs`), from `/api/state` | `convId` | state | as today, smaller | every open of the Work view |
 | A2 | Open an old turn’s detail | the Work view | `convId`, `turnId` | archive file via `GET /api/threads/:id/work/turns/:turnId` | one blob read and parse: the largest turn’s work on the real-room copy is 243 KB, the median 0.6 KB (`tools/measure-archive-policies.mjs`) | when the person clicks |
 | A3 | Show an old reply’s steps | the activity line (`app/js/activity-paint.mjs`) | `threadId`, `itemId` | archive file via `GET /api/threads/:id/items/:itemId/activity` | one blob read | when the person opens it |
-| A4 | Diff, file, output, restore of an entry | `runtime.mjs:2319-2333`, `ledger.fileDiff`, `ledger.output`, `ledger.restore` | `convId`, `entryId` | state, else the archive file whose summary’s turn holds it | state lookup, else one blob read | when the person clicks |
-| A5 | Telemetry over a window | `server/telemetry-record.mjs:227` | `convId`, `since` | state, plus archive files of summaries whose `at` falls in the window | one blob read per archived turn in the window, read one at a time; the worst case is every archived turn, about 9.8 MB on the real-room copy (13.85 less 4.0) | per report |
-| A6 | Recent URLs for permission judging | `server/write-intent.mjs:94` | `convId` | state (current turn) | as today | per tool call |
-| A7 | UAT checks on a run | `server/room-checks.mjs:852`, `server/block-use.mjs:157` | thread | state, plus archive files through the same lookup | per check | per UAT run |
+| A4 | Diff, file, output, restore of an entry | the work routes in `server/runtime.mjs`, `ledger.fileDiff`, `ledger.output`, `ledger.restore` | `convId`, `entryId` | state, else the archive file whose summary’s turn holds it | state lookup, else one blob read | when the person clicks |
+| A5 | Telemetry over a window | `server/telemetry-record.mjs` | `convId`, `since` | state, plus archive files of summaries whose `at` falls in the window | one blob read per archived turn in the window, read one at a time; the worst case is every archived turn, about 9.8 MB on the real-room copy (13.85 less 4.0) | per report |
+| A6 | Recent URLs for permission judging | `server/write-intent.mjs` | `convId` | state (current turn) | as today | per tool call |
+| A7 | UAT checks on a run | `server/room-checks.mjs`, `server/block-use.mjs` | thread | state, plus archive files through the same lookup | per check | per UAT run |
 | A8 | Catch-up, `read_conversation`, `read_message` | the agents | thread | items only | unchanged | per turn |
 
 A2 to A5 and A7 go through one helper, `archived(state, convId, { turnId | entryId | itemId })`, which enforces I6: the SHA-256 comes from the summary in the state; anything that doesn’t resolve is a 404 with a sentence, never a path built from the request.
@@ -330,7 +329,7 @@ The release note says so, with a `BREAKING CHANGE` footer, and `tools/unarchive-
 | T-15 | Blob store: a truncated file is replaced; no draft left; `0600` and `0700`; a folder sync failing with `EIO` rejects, an unsupported one doesn’t | written, passing: they are the blob store PR’s specs (`tests/blobs-durable.test.mjs`) |
 | T-16 | Each held-emit site in “Held emits” emits during a held commit and reads back what it expects | to write |
 | T-17 | A reply-only turn: archived with its replies’ activity; its summary goes in time order by `at`, not at the end of the list; it counts toward its agent’s last two | to write |
-| T-21 | Per-agent policy: @dev’s long turn stays hot while @a and @b each finish three short ones; only @a’s and @b’s older turns are archived | to write |
+| T-21 | Per-agent policy: agent A’s long turn stays hot while agents B and C each finish three short ones; only B’s and C’s older turns are archived | to write |
 | T-22 | `config.archiveTurns === true` turns the passes on, and nothing else does; the tests set `enabled` directly today, so this goes through `createRuntime`’s config | to write |
 | T-23 | Every reducer event type is either in the page’s public list or deliberately private (`tests/event-types.test.mjs`), so an unlisted `turn.archive` fails a test and does not reach the page as a bare cursor (the integrator’s §4, after #608) | to write |
 | T-18 | Deletion: a deleted conversation’s archive files are removed, except one another summary still names | to write |
@@ -364,7 +363,7 @@ Measured with `tools/measure-archive-policies.mjs` on the real-room copy (13.85 
 | **A. Skeleton entries: keep every entry, move the heavy text (a command’s line, a step’s detail) behind the blob route, as `output` already is** | **8.47 MB (39% smaller)** | No reducer, no pass, no archive files, and `summarize`, the ledger’s de-duplication, the room checks and telemetry keep working unchanged. **It does not reach what was estimated (5 to 6 MB):** what is left is the 5.5 MB of transcript items (which nothing here touches), 2.0 MB of command entries without their line (an id, a state, an exit, `output`, ~430 bytes each, 4,573 of them) and 2.0 MB of step labels. About 4 MB more than the chosen design, and it keeps growing with every command, because entries are never removed. **Worth doing first if the readers in step 3 prove too costly:** it needs only a blob route for a command line and a step detail |
 | B. Skeleton, then archive each agent’s old turns | 4.12 MB | 0.22 MB under the chosen design, by dropping command lines in the hot turns too. Not worth a second mechanism for 5% |
 | C. A public projection of the state (as #608’s `publicState`) | unchanged in memory and on disk | Shrinks what `/api/state` sends, not the snapshot or the process; it is #508’s B2, which is about to change what the page loads. Complementary, not a substitute |
-| D. Build a reply’s step tree only when it is opened (`app/js/activity-paint.mjs:13-29`) | unchanged | About 10 lines, no data change. It removes the DOM cost of steps, which is the part the page pays on every load; it does nothing for memory, `/api/state` or the snapshot. **Do this regardless**; it is outside #305’s state change |
+| D. Build a reply’s step tree only when it is opened (`activityParts` in `app/js/activity-paint.mjs`) | unchanged | About 10 lines, no data change. It removes the DOM cost of steps, which is the part the page pays on every load; it does nothing for memory, `/api/state` or the snapshot. **Do this regardless**; it is outside #305’s state change |
 | E. A larger hot count (5 or 10 per conversation) | 4.11 to 4.17 MB | Changes the size by 1 to 3%. The count is not the lever; who it counts is (“Which turns stay hot”) |
 | S2, the sharded snapshot | n/a | Splits the same bytes across files; memory and `/api/state` keep carrying them |
 | Drop old activity and command lines | n/a | Loses what the person can open today |
