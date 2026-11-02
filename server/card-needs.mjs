@@ -41,18 +41,31 @@ function needOf(rt, se, it, threadId, turnId, keep) {
 }
 
 /**
- * The newest card of the agent that still waits for the person, as a `needs` value, or null. It reads pending: its
- * result decides a write, so a card held behind a commit counts (#601).
+ * Which need comes first when several cards wait, as the turn's end has always chosen: a permission the running turn is
+ * blocked on, then the last turn's asking block, its refusals, its tool request, and last the cards that wait until
+ * answered (app sends, wake requests). Within a kind, the newest card.
+ */
+const RANK = { permission: 0, block: 1, denial: 2, toolask: 3, appsend: 4, hop: 4 };
+
+/**
+ * The card of the agent that comes first among those that still wait for the person, as a `needs` value, or null. It
+ * reads pending: its result decides a write, so a card held behind a commit counts (#601).
  * @param {any} rt @param {any} se @param {{ turnId?: string | null, keep?: string | null }} [o]
  */
 export function nextNeed(rt, se, { turnId = rt.lastTurn.get(se.id) ?? null, keep = null } = {}) {
   /** @type {{ at: number, need: any } | null} */
   let best = null;
+  let refused = 0;
   for (const threadId of threadsOf(rt, se))
     for (const it of rt.store.pending.items(threadId)) {
       const need = needOf(rt, se, it, threadId, turnId, keep);
-      if (need && (!best || (it.at ?? 0) >= best.at)) best = { at: it.at ?? 0, need };
+      if (!need) continue;
+      if (need.kind === 'denial') refused++;
+      const ahead = !best || RANK[need.kind] < RANK[best.need.kind] || (RANK[need.kind] === RANK[best.need.kind] && (it.at ?? 0) >= best.at);
+      if (ahead) best = { at: it.at ?? 0, need };
     }
+  // Several refusals are counted, as the turn's end always said.
+  if (best?.need.kind === 'denial' && refused > 1) best.need.text = best.need.text.replace(/^A step was refused/, `${refused} steps were refused`);
   return best?.need ?? null;
 }
 
