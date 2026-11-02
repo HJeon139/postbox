@@ -2,7 +2,7 @@
 // data folder; F1 is in tests/assets.test.mjs. A reopen goes through openDataFolder, as Postbox’s start does, so the
 // asset folder’s pass at load (server/asset-orphans.mjs) runs where it runs in production.
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -195,21 +195,32 @@ test('F11: erasing a conversation erases its assets and releases their files, wh
   assert.deepEqual(Object.keys(store.state.assetReleases), []);
 });
 
-test('F12: an older Postbox dropped the assets’ metadata: their files are kept, counted, and never deleted', async (t) => {
+test('F12: an older Postbox loses the asset versions logged since its last snapshot; their files are kept, counted, never deleted', async (t) => {
   const f = await folder(t);
-  const store = await f.reopen();
-  await writeAsset(store, f.blobs, req({ name: 'a.md', bytes: text('one') }));
+  let store = await f.reopen();
+  const a = await writeAsset(store, f.blobs, req({ name: 'a.md', bytes: text('one') }));
+  await store.snapshot(); // version 1 is in the snapshot
+  const b = await writeAsset(store, f.blobs, req({ id: a.id, base: 1, bytes: text('two') }));
   await store.close();
   f.open.length = 0;
-  // An older Postbox has no asset events: its reducer rejects them, and its next snapshot drops them (design, F12).
-  // Here, a store on another folder that never had them, with this folder’s asset files.
-  const older = await mkdtemp(join(tmpdir(), 'pb-assetf12-'));
-  t.after(() => rm(older, { recursive: true, force: true }));
-  const blank = await new Store(older).load();
+  // What an older Postbox leaves: its reducer has no asset events, so apply() throws on each one logged since the
+  // snapshot (shared/state.mjs’s apply), it keeps them as rejected, and its next snapshot drops the segments that held
+  // them (server/store-snapshot.mjs). The snapshot’s keys it doesn’t know, assets among them, it keeps as they were.
+  // Here the log loses those lines, as that snapshot would.
+  for (const seg of readdirSync(f.dir).filter((n) => /^events-/.test(n))) {
+    const lines = readFileSync(join(f.dir, seg), 'utf8').split('\n').filter(Boolean);
+    const kept = lines.filter((l) => ![JSON.parse(l)].flat().some((e) => String(e.type).startsWith('asset')));
+    writeFileSync(join(f.dir, seg), kept.map((l) => `${l}\n`).join(''));
+  }
+  store = await f.reopen();
+  assert.deepEqual(
+    store.state.assets[a.id].versions.map((x) => x.v),
+    [1],
+    'version 1, from the snapshot, is kept; version 2 is lost',
+  );
+  assert.deepEqual(f.files().sort(), [a.version.sha256, b.version.sha256].sort(), 'both files stay: nothing released version 2’s');
   const warned = [];
-  const swept = await sweepAssets(blank, f.blobs, { warn: (l) => warned.push(l) });
-  await blank.close();
-  assert.deepEqual([swept.deleted, swept.unclaimed.count], [[], 1]);
-  assert.equal(f.files().length, 1, 'the bytes stay');
-  assert.match(warned.join('\n'), /1 file .* no asset names.*They’re kept/);
+  const swept = await sweepAssets(store, f.blobs, { warn: (l) => warned.push(l) });
+  assert.deepEqual([swept.deleted, swept.unclaimed.count, swept.unclaimed.bytes], [[], 1, 3]);
+  assert.match(warned.join('\n'), /1 file \(3 bytes\) .* no asset names.*They’re kept/);
 });
