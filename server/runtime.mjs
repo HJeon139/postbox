@@ -109,6 +109,7 @@ import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { discardHeld, eraseThreads } from './thread-erase.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
+import { startTopic } from './topic-open.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { retireStale } from './wake-cards.mjs';
@@ -1670,41 +1671,7 @@ export class Runtime {
   // the conversation unless you send it.
 
   startTopic(threadId, itemId) {
-    const parent = this.thread(threadId);
-    if (parent.kind === 'topic' || parent.kind === 'side') throw httpError(409, 'A topic thread can’t start another one. Reply in this one instead.');
-    const items = this.store.items(threadId);
-    const idx = items.findIndex((x) => x.id === itemId);
-    const root = items[idx];
-    if (!root || !['user', 'agent', 'block', 'shared'].includes(root.kind)) throw httpError(404, 'That message can’t start a thread.');
-    if (root.topicId && this.s.threads[root.topicId]) return { threadId: root.topicId };
-    const topic = this.putThread({
-      id: newId('th'),
-      projectId: parent.projectId,
-      // Named after the message’s first line, which is its heading when it has one.
-      title: clip((root.text ?? '').split('\n').find((l) => l.trim()) || root.block?.title || root.block?.fallback || 'Thread', 60),
-      kind: 'topic',
-      parentId: threadId,
-      rootItemId: itemId,
-      // Who answers in it before anyone has spoken there (sendMessage): set below.
-      woke: null,
-      members: [],
-      lastSpeaker: null,
-      hops: 0,
-      queue: [],
-      createdAt: Date.now(),
-      archived: false,
-    });
-    this.patchItem(threadId, itemId, { topicId: topic.id, replies: 0 });
-    // Who comes along: the agent that wrote the message, or for yours, the agent that answered it.
-    const answer = items.slice(idx + 1).find((x) => x.sessionId && (x.kind === 'agent' || x.kind === 'block'));
-    const members = this.sessionsIn(threadId).filter((x) => !x.archived);
-    const src =
-      (root.sessionId && this.s.sessions[root.sessionId]) ||
-      (answer && this.s.sessions[answer.sessionId]) ||
-      members.find((x) => x.id === parent.lastSpeaker) ||
-      members[0];
-    if (src) this.putThread({ ...this.s.threads[topic.id], woke: src.handle });
-    return { threadId: topic.id };
+    return startTopic(this, threadId, itemId);
   }
 
   shareToConversation(topicId, itemId) {
