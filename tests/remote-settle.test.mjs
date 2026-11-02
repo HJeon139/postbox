@@ -98,3 +98,43 @@ test('an offline answer over replyChars is cut to replyChars and keeps the offli
   assert.ok(cut.endsWith(OFFLINE_NOTE), 'the offline notice is kept at the end');
   assert.equal(offlineText('short' + OFFLINE_NOTE), 'short' + OFFLINE_NOTE, 'a short answer is unchanged');
 });
+
+test('a detached read on a turn at its waiting-call limit is admitted and answered from the snapshot (T19)', async () => {
+  const h = makeHome();
+  try {
+    const k = makeBroker(h, { queueLimits: { calls: 1, bytes: 1_000_000_000, recordBytes: 1_000_000_000 } });
+    const turn = 't_t19';
+    h.turn(turn);
+    await k.post('snapshot', { turn, ...snapOf(2) });
+    await k.b.starting(turn);
+    const s = connectShim(k.b, turn);
+    await s.next('welcome');
+    const ask = s.call('call_ask', 'wake_agent', { handle: 'x', text: 'y' });
+    ask.catch(() => {});
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'call_ask'), 'the ask sent and waiting');
+    k.state.attached = false;
+    const res = await s.call('call_r', 'read_message', { id: 'i1' });
+    assert.match(res.text, /x 1/, 'the read is answered from the snapshot even at the waiting limit');
+  } finally {
+    h.done();
+  }
+});
+
+test('a detached read on a turn whose record is full is refused with the record-full message (T20)', async () => {
+  const h = makeHome();
+  try {
+    const k = makeBroker(h, { queueLimits: { calls: 256, bytes: 64 * 1024 * 1024, recordBytes: 1 } });
+    const turn = 't_t20';
+    h.turn(turn);
+    await k.post('snapshot', { turn, ...snapOf(2) });
+    await k.b.starting(turn);
+    const s = connectShim(k.b, turn);
+    await s.next('welcome');
+    k.state.attached = false;
+    const res = await s.call('call_r', 'read_message', { id: 'i0' });
+    assert.match(res.text, /record of its calls/, 'refused with the record-full message');
+    assert.equal(journal(h, turn).length, 0, 'nothing is journaled for a refused read');
+  } finally {
+    h.done();
+  }
+});
