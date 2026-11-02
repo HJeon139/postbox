@@ -61,6 +61,30 @@ export const SENDING = Object.freeze({
   message: 50_000,
 });
 
+/**
+ * What a conversation’s asset store holds (#516 S3, designs/architecture.md, “Assets”). A write past one is refused,
+ * naming it. The values marked as drafts are set by the calibration run (#508’s MS-3); the room budget is the person’s
+ * draft of 2 November 2026, and the rest have no measured source yet. The asset tools name these when they refuse.
+ */
+export const ASSETS = Object.freeze({
+  /** One version’s bytes. Draft: the largest file an agent sends today, an app data file (LIMITS.appFileBytes). */
+  assetBytes: 20 * 1024 * 1024,
+  /** Every kept version of a room’s assets, each distinct file counted once. Draft: the person’s 1 GiB. */
+  roomBytes: 1024 * 1024 * 1024,
+  /** Assets in one room, deleted ones included. Draft. */
+  roomAssets: 1000,
+  /** Versions of one asset. Draft. */
+  assetVersions: 1000,
+  /** A name, in UTF-8 bytes. */
+  nameBytes: 255,
+  /** A write’s op, which agents choose, in characters of letters, digits, - and _. */
+  opChars: 64,
+  /** A binary version over this is pruned once binaryVersionsKept newer versions exist. Draft. */
+  largeBinaryBytes: 1024 * 1024,
+  /** Newer versions a large binary version waits for before it’s pruned. Draft. */
+  binaryVersionsKept: 3,
+});
+
 /** The most characters in the whole-sentence glimpse shown while an agent works (#478). */
 export const GLIMPSE_CHARS = 160;
 /** The most streamed text inspected to find that glimpse, bounding work on each update (#478). */
