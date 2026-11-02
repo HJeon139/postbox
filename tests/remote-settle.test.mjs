@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { REMOTE_LIMITS, TURN_FILES } from '../shared/remote-protocol.mjs';
-import { connectShim, makeBroker, makeHome, until } from './remote-broker-fixtures.mjs';
+import { connectShim, makeBroker, makeHome, turnToken, until } from './remote-broker-fixtures.mjs';
 
 const OFFLINE_NOTE = '\n\n(Read offline as of this turn’s start; earlier or changed items may be missing.)';
 
@@ -275,6 +275,129 @@ test('a journal write that fails for the offline reply still answers the shim, a
       'the failed write is logged',
     );
     assert.ok(!journal(h, turn).some((r) => r.op === 'reply'), 'no reply record reached the journal');
+  } finally {
+    h.done();
+  }
+});
+
+// ── T17, T21, T22, T25: the remaining settle-path specs, with the io seam where a window must be held.
+
+test('a link lost while the call record is being written sends no tool frame and answers the read offline (T17)', async () => {
+  const h = makeHome();
+  try {
+    const turn = 't_t17';
+    h.turn(turn);
+    writeFileSync(
+      h.p.turn(turn, TURN_FILES.snapshot),
+      JSON.stringify({ home: 'th', threads: [{ id: 'th', items: [{ id: 'i0', line: 'line 0', text: 'x 0' }] }] }),
+    );
+    const hold = holdingIo((c) => c.kind === 'appendFile' && c.line.includes('"op":"call"'));
+    const k = makeBroker(h, { io: hold.io });
+    await k.b.starting(turn);
+    const s = connectShim(k.b, turn);
+    await s.next('welcome');
+    const pending = s.call('call_r', 'read_message', { id: 'i0' });
+    await reached(hold); // the call record is being written
+    k.state.attached = false; // the link drops during the write
+    hold.release();
+    const res = await pending;
+    assert.match(res.text, /x 0/, 'the read is answered offline');
+    assert.equal(k.sent.filter((m) => m.type === 'tool' && m.id === 'call_r').length, 0, 'no tool frame is sent');
+  } finally {
+    h.done();
+  }
+});
+
+test('a takeover hello that arrives while an offline settle holds the call does not resend the call (T21)', async () => {
+  const h = makeHome();
+  try {
+    const turn = 't_t21';
+    h.turn(turn);
+    writeFileSync(
+      h.p.turn(turn, TURN_FILES.snapshot),
+      JSON.stringify({ home: 'th', threads: [{ id: 'th', items: [{ id: 'i0', line: 'line 0', text: 'x 0' }] }] }),
+    );
+    const hold = holdingIo((c) => c.kind === 'readFile' && c.path.endsWith(TURN_FILES.snapshot));
+    const k = makeBroker(h, { io: hold.io });
+    await k.b.starting(turn);
+    const s = connectShim(k.b, turn);
+    await s.next('welcome');
+    const first = s.call('call_r', 'read_message', { id: 'i0' });
+    first.catch(() => {});
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'call_r'), 'the read sent to Postbox');
+    k.state.attached = false;
+    const s2 = connectShim(k.b, turn);
+    await s2.next('welcome');
+    s2.send('call', { id: 'call_r', name: 'read_message', args: { id: 'i0' } });
+    await reached(hold); // the offline settle holds the call, in its snapshot read
+    const before = k.sent.filter((m) => m.type === 'tool' && m.id === 'call_r').length;
+    k.state.attached = true;
+    await k.hello(); // a takeover hello resends what is still open
+    const after = k.sent.filter((m) => m.type === 'tool' && m.id === 'call_r').length;
+    assert.equal(after, before, 'the held call is not resent to the new driver');
+    hold.release();
+    const res = await first;
+    assert.match(res.text, /x 0/, 'the shim gets the one offline answer');
+  } finally {
+    h.done();
+  }
+});
+
+test('a live reply that arrives after the offline answer is refused with no-tool (T22)', async () => {
+  const h = makeHome();
+  try {
+    const turn = 't_t22';
+    h.turn(turn);
+    writeFileSync(
+      h.p.turn(turn, TURN_FILES.snapshot),
+      JSON.stringify({ home: 'th', threads: [{ id: 'th', items: [{ id: 'i0', line: 'line 0', text: 'x 0' }] }] }),
+    );
+    const k = makeBroker(h);
+    await k.b.starting(turn);
+    const s = connectShim(k.b, turn);
+    await s.next('welcome');
+    k.state.attached = false;
+    const res = await s.call('call_r', 'read_message', { id: 'i0' }); // answered offline, call settled
+    assert.match(res.text, /x 0/);
+    const { errors } = await k.post('reply', { turn, id: 'call_r', ok: true, text: 'LATE' });
+    assert.ok(
+      errors.some((e) => e.code === 'no-tool'),
+      'a late live reply is refused with no-tool',
+    );
+    const texts = s.got.filter((m) => m.type === 'result' && m.id === 'call_r').map((m) => m.text);
+    assert.equal(new Set(texts).size, 1, 'the shim gets one answer');
+  } finally {
+    h.done();
+  }
+});
+
+test('a shim whose send throws does not stop the answer reaching the other shims (T25)', async () => {
+  const h = makeHome();
+  try {
+    const turn = 't_t25';
+    h.turn(turn);
+    writeFileSync(
+      h.p.turn(turn, TURN_FILES.snapshot),
+      JSON.stringify({ home: 'th', threads: [{ id: 'th', items: [{ id: 'i0', line: 'line 0', text: 'x 0' }] }] }),
+    );
+    const k = makeBroker(h);
+    await k.b.starting(turn);
+    // A shim whose connection breaks after its welcome: each write after that throws.
+    let broken = false;
+    k.b.shim({
+      first: JSON.stringify({ type: 'hello', token: turnToken(turn), turn }),
+      write: () => {
+        if (broken) throw new Error('connection gone');
+        broken = true;
+        return true;
+      },
+      end: () => {},
+    });
+    const s = connectShim(k.b, turn);
+    await s.next('welcome');
+    k.state.attached = false;
+    const res = await s.call('call_r', 'read_message', { id: 'i0' });
+    assert.match(res.text, /x 0/, 'the good shim still gets the answer');
   } finally {
     h.done();
   }
