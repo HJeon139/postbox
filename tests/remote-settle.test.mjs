@@ -332,9 +332,9 @@ test('a takeover hello that arrives while an offline settle holds the call does 
     await reached(hold); // the offline settle holds the call, in its snapshot read
     const before = k.sent.filter((m) => m.type === 'tool' && m.id === 'call_r').length;
     k.state.attached = true;
-    await k.hello(); // a takeover hello resends what is still open
-    const after = k.sent.filter((m) => m.type === 'tool' && m.id === 'call_r').length;
-    assert.equal(after, before, 'the held call is not resent to the new driver');
+    const resent = await k.hello(); // a takeover hello resends what is still open; its frames come back here
+    assert.equal(resent.filter((m) => m.type === 'tool' && m.id === 'call_r').length, 0, 'the held call is not resent to the new driver');
+    assert.equal(before, 1, 'the call was sent once, before the takeover');
     hold.release();
     const res = await first;
     assert.match(res.text, /x 0/, 'the shim gets the one offline answer');
