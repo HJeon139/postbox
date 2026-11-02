@@ -149,6 +149,6 @@ test('the snapshot: kept until start, written 0600 into the folder, updated by s
     assert.match(none.text, /^Postbox hasn’t sent this host the conversation yet/);
     assert.equal((await again.post('snapshot-items', { turn: 't2', thread: 'th', items: [] })).errors[0].code, 'no-turn');
   } finally {
-    h.done();
+    await h.done();
   }
 });

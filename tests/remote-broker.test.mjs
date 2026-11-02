@@ -49,7 +49,7 @@ test('a shim’s hello: the token, then the turn; unknown, ended and stopping tu
     await again.b.load([{ turn: 't1', state: 'running' }]);
     assert.equal((await connectShim(again.b, 't1').next('error')).code, 'turn-ended');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -100,7 +100,7 @@ test('a queued call is recorded, answered at once, sent to Postbox, and dropped 
     assert.equal((await k.post('reply', { turn: 't1', id: 'zz', ok: true, text: 'x' })).errors[0].code, 'no-tool');
     assert.equal(s.got.filter((m) => m.type === 'result').length, 1, 'nothing more reached the shim');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -138,7 +138,7 @@ test('a queued call while Postbox is away waits, and crosses at its hello; it ou
       ['c1'],
     );
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -172,7 +172,7 @@ test('calls waiting for Postbox stop at the host’s limits: so many, so many by
     await s3.next('welcome');
     assert.match((await s3.call('c5', 'define_term', { term: 't8', definition: 'A term.' })).text, /record of its calls on this host has reached/);
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -192,7 +192,7 @@ test('two shims of a turn sending at once can’t pass the limit on calls waitin
     assert.deepEqual(got.map((r) => r.ok).sort(), [false, true], 'exactly one queued');
     assert.equal(lines(h.p.turn('t1', TURN_FILES.tools)).filter((x) => x.op === 'call').length, 1, 'and only it recorded');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -213,7 +213,7 @@ test('update_block is checked with the catalog first; an invalid show_block stil
       ['c2'],
     );
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -247,7 +247,7 @@ test('an asked call: refused at once with no Postbox, else Postbox’s reply is 
     assert.match(ds.text, /^Loading a dataset isn’t supported yet for an agent on a remote host/);
     assert.equal(k.sent.length, 1);
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -270,6 +270,6 @@ test('an asked call’s answer outlives a daemon restart: the shim resending it 
     assert.deepEqual(await s2.call('c1', 'corpus_search', { query: 'y' }), { type: 'result', id: 'c1', ok: false, text: 'No book is called “x”.' });
     assert.deepEqual([again.sent, await again.hello()], [[], []], 'an answered call isn’t sent to Postbox again');
   } finally {
-    h.done();
+    await h.done();
   }
 });

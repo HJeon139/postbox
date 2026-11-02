@@ -42,6 +42,6 @@ for (const [what, name, args] of CALLS)
         'and the reconnect sent the call again, since the reply that was in flight never landed',
       );
     } finally {
-      h.done();
+      await h.done();
     }
   });

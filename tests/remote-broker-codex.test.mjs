@@ -108,7 +108,7 @@ test('Codex: a request nobody answers is declined on the held stdin at permissio
     assert.equal(k.writes.length, 2);
     await codexRestarted(h, clock, k, out, wait);
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -156,7 +156,7 @@ test('Codex: a daemon that dies before its decline reaches the held stdin leaves
     assert.equal(again.writes.length, 1, 'declined once');
     again.b.close();
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -209,7 +209,7 @@ test('Codex: a decline the runner doesn’t take leaves the request waiting, wit
     assert.deepEqual(again.writes, []);
     again.b.close();
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -247,6 +247,6 @@ test('Codex: in.jsonl says what Codex got: after a restart a decline there still
     assert.deepEqual(await again.hello(), [], 'and not after the next restart');
     again.b.close();
   } finally {
-    h.done();
+    await h.done();
   }
 });

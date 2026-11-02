@@ -44,7 +44,7 @@ test('a call or prompt the broker can’t write down isn’t acknowledged: the s
       [['tool', 'c1']],
     );
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -94,7 +94,7 @@ test('an answer the broker can’t write down doesn’t reach the shim: Postbox 
       ['answer'],
     );
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -133,7 +133,7 @@ test('an answer is on disk before the shim hears it, and an expiry before Postbo
     assert.equal(sent[2].type, 'prompt-expired');
     assert.deepEqual(sent[2].onDisk, ['prompt', 'prompt', 'answer', 'expired'], 'written down before Postbox heard');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -198,6 +198,6 @@ test('a reply the broker can’t write down doesn’t reach the shim: Postbox he
     assert.deepEqual(k.b.pending.tools, []);
     assert.equal((await k.post('reply', { turn: 't1', id: 'c1', ok: true, text: 'again' })).errors[0].code, 'no-tool', 'a reply goes once');
   } finally {
-    h.done();
+    await h.done();
   }
 });

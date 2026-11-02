@@ -43,7 +43,7 @@ test('a live reply that arrives while an offline settle reads the snapshot is re
     const texts = s.got.filter((m) => m.type === 'result' && m.id === 'call_r').map((m) => m.text);
     assert.equal(new Set(texts).size, 1, 'the shim gets one answer, not two different ones');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -78,7 +78,7 @@ test('an offline settle that starts during a live reply’s journal write return
     const texts = s.got.filter((m) => m.type === 'result' && m.id === 'call_r').map((m) => m.text);
     assert.equal(new Set(texts).size, 1, 'the shim gets one answer, not two different ones');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -113,7 +113,7 @@ test('a journal write that fails for the offline reply still answers the shim, a
     );
     assert.ok(!journal(h, turn).some((r) => r.op === 'reply'), 'no reply record reached the journal');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -141,7 +141,7 @@ test('a link lost while the call record is being written sends no tool frame and
     assert.match(res.text, /x 0/, 'the read is answered offline');
     assert.equal(k.sent.filter((m) => m.type === 'tool' && m.id === 'call_r').length, 0, 'no tool frame is sent');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -176,7 +176,7 @@ test('a takeover hello that arrives while an offline settle holds the call does 
     const res = await first;
     assert.match(res.text, /x 0/, 'the shim gets the one offline answer');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -204,7 +204,7 @@ test('a live reply that arrives after the offline answer is refused with no-tool
     const texts = s.got.filter((m) => m.type === 'result' && m.id === 'call_r').map((m) => m.text);
     assert.equal(new Set(texts).size, 1, 'the shim gets one answer');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -236,6 +236,6 @@ test('a shim whose send throws does not stop the answer reaching the other shims
     const res = await s.call('call_r', 'read_message', { id: 'i0' });
     assert.match(res.text, /x 0/, 'the good shim still gets the answer');
   } finally {
-    h.done();
+    await h.done();
   }
 });

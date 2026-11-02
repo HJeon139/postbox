@@ -35,7 +35,7 @@ test('a fresh detached read is answered while every journal append is held, and 
     hold.release();
     assert.deepEqual(journal(h, 't_s1'), [], 'and no record was written');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -58,7 +58,7 @@ test('an attached read that loses its link is answered before its reply record i
       'a reply record follows its call record',
     );
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -76,7 +76,7 @@ test('a link lost while the call record is written: the offline answer comes at 
     await until(() => k.logs.some((l) => /Couldn’t record call/.test(l)), 'the failed call record to be handled');
     assert.equal(s.got.filter((m) => m.type === 'result' && m.id === 'c1').length, 1, 'exactly one result for the call');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -95,7 +95,7 @@ test('after a restart, a resend of a fresh detached read is answered from the sn
     s2.send('call', { id: 'c1', name: 'read_message', args: { id: 'i0' } });
     assert.match((await heard(s2, 'c1'))?.text ?? '', /x 0/, 'the snapshot is read again');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -114,7 +114,7 @@ test('after a restart, a read that lost its link with no reply record replays op
     const resent = await again.hello();
     assert.equal(resent.filter((m) => m.type === 'tool' && m.id === 'c1').length, 1, 'the replayed call is open, and sent again');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -134,6 +134,6 @@ test('a resend of a read already answered offline is served at once, though its 
     assert.match((await heard(s2, 'c1'))?.text ?? '', /x 0/, 'the resend is answered from memory, not after the held append');
     hold.release();
   } finally {
-    h.done();
+    await h.done();
   }
 });

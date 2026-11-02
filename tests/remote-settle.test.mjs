@@ -43,7 +43,7 @@ test('a fresh read while detached is answered once, and writes no record (settle
     const again = await s.call('call_1', 'read_message', { id: 'i1' });
     assert.equal(again.text, res.text, 'a resend finds the answer kept in memory');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -77,7 +77,7 @@ test('an ask call whose live journal write fails while the link is down is not a
     await new Promise((r) => setImmediate(r));
     assert.equal(answered, false, 'the ask stays open for Postbox; nothing answers it from the snapshot');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -112,7 +112,7 @@ test('a detached read on a turn at its waiting-call limit is admitted and answer
     const res = await s.call('call_r', 'read_message', { id: 'i1' });
     assert.match(res.text, /x 1/, 'the read is answered from the snapshot even at the waiting limit');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -131,6 +131,6 @@ test('a detached read on a turn whose record is full is answered from the snapsh
     assert.match(res.text, /x 0/, 'answered, because an answer in hand is not refused for a journal limit');
     assert.equal(journal(h, turn).length, 0, 'and it writes nothing');
   } finally {
-    h.done();
+    await h.done();
   }
 });

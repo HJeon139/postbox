@@ -65,7 +65,7 @@ test('show_app’s codePath and files are read from the turn’s folder, never o
     const direct = await inlineAppFiles(h.work, { code: 'x' });
     assert.deepEqual(direct, { ok: true, args: { code: 'x' } }, 'without codePath and files, the call is unchanged');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -121,6 +121,6 @@ test('a file swapped for a link after it was checked isn’t read: the file open
       { ok: true, args: { code: '<p>hi</p>' } },
     );
   } finally {
-    h.done();
+    await h.done();
   }
 });
