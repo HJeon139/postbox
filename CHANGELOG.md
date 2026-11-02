@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.11.2 (2026-11-02)
+
+### Fixes
+
+- **server:** a failed stop of a deleted session's kept jobs is logged
+- **adapters:** a stop that fails still ends the turn
+
 ## 1.11.1 (2026-11-02)
 
 ### Fixes
