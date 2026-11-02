@@ -220,8 +220,8 @@ test('T13: negative control: live reply at 50ms clears timer and delivers withou
     assert.doesNotMatch(res.text, /Read offline/);
 
     await clock.tick(100_000);
-    const extra = await s.next('result', 100).catch(() => null);
-    assert.equal(extra, null, 'no duplicate or offline result after live reply');
+    const results = s.got.filter((m) => m.type === 'result' && m.id === 'c_live50');
+    assert.equal(results.length, 1, 'exactly one result frame reached the shim');
     k.b.close();
   } finally {
     h.done();
