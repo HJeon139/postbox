@@ -224,3 +224,17 @@ test('an app card that waited behind a wake request is notified when the turn’
   assert.equal(r.needs()?.itemId, card.id, 'the newer app card is the need at the turn’s end');
   assert.equal(notes.filter((n) => /wants to send/.test(n)).length, 1, 'and it is notified once');
 });
+
+test('app cards and wake requests rank the same, so the newest of them comes first', async () => {
+  const r = room();
+  r.appCard();
+  await sleep(3);
+  r.hop();
+  await sleep(3);
+  const newest = r.appCard();
+  const b = r.block();
+  r.setNeed('block', b.id);
+  r.rt.act(r.t.id, b.id, 'choose', { selected: ['a'] });
+  assert.equal(r.needs()?.itemId, newest.id, 'the newest app card, not the wake request before it');
+  await settle(r.rt);
+});
