@@ -1,4 +1,4 @@
-// Readers the first sweep missed (the integrator's review of #611 at b22dd351), each failing on that head: a reader
+// Readers the first sweep missed (the integrator's first review of #611), each failing without #601's fix: a reader
 // that follows a pending read in the same operation, an app the turn just showed, a side thread's line counted right
 // after its own add, and a store listener's pending read during a release. The same scripted agent and held store as
 // tests/store-held-readers.test.mjs.
