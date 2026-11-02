@@ -761,7 +761,7 @@ Tests that need `/proc` or logind skip on macOS and say why; CI runs them on Lin
 
 ## 19. What reaches the browser
 
-**Decision** (2 November 2026, from the integrator’s review of #608). What the page may see is decided once, in `shared/state.mjs`: each event type’s entry in `EVENTS` says whether it is `public`, and each state key is in `PUBLIC_STATE_KEYS` or `PRIVATE_STATE_KEYS`. `server/public-state.mjs` applies that on every path that sends state or events to the page: today `/api/state` (`server/page-state.mjs`), the live frames and the backlog frames (`server/live-streams.mjs`). An event the page may not see goes out as a `cursor` that keeps only its seq, so the page stays in step.
+**Decision** (1 November 2026, from the integrator’s review of #608). What the page may see is decided once, in `shared/state.mjs`: each event type’s entry in `EVENTS` says whether it is `public`, and each state key is in `PUBLIC_STATE_KEYS` or `PRIVATE_STATE_KEYS`. `server/public-state.mjs` applies that on every path that sends state or events to the page: today `/api/state` (`server/page-state.mjs`), the live frames and the backlog frames (`server/live-streams.mjs`). An event the page may not see goes out as a `cursor` that keeps only its seq, so the page stays in step.
 
 ```mermaid
 flowchart TD

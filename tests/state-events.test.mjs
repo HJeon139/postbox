@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { apply, EVENTS, emptyState, map, patchSession } from '../shared/state.mjs';
 
-// The reducer as it was before the event table (main at 88af074f), copied once so the table can be shown to apply every
-// type exactly as the switch did. It's frozen here on purpose: change the table, not this.
+// The reducer as it was before the event table (main at 88af074f), so the table can be shown to apply every type
+// exactly as the switch did. It's a transcription, not the original text: split in three to fit the length limit, and
+// checked case by case against the deleted switch. It's frozen here on purpose: change the table, not this.
 function switchApply(s, type, d) {
   if (type.startsWith('item.')) return switchItems(s, type, d);
   if (LATER.has(type)) return switchLater(s, type, d);

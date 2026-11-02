@@ -79,3 +79,8 @@ test('a public event goes to the page as it is; any other becomes a cursor with 
 test('the reducer refuses a type with no entry, including the names of Object’s own members', () => {
   for (const type of ['no.such.type', 'toString', '__proto__', 'cursor']) assert.throws(() => apply(emptyState(), type, {}), /Unknown store event/, type);
 });
+
+test('the table and its entries are frozen, so a type can’t change its flag at run time', () => {
+  assert.equal(Object.isFrozen(EVENTS), true);
+  for (const [type, entry] of Object.entries(EVENTS)) assert.equal(Object.isFrozen(entry), true, type);
+});

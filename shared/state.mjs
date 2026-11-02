@@ -123,6 +123,9 @@ export const EVENTS = Object.freeze({
   'host.status': { apply: putHostStatus, public: true },
 });
 
+// Each entry too, so no code can make a type private or public at run time.
+for (const entry of Object.values(EVENTS)) Object.freeze(entry);
+
 /** The event types the page hears: every public entry of EVENTS. */
 export const PUBLIC_EVENT_TYPES = Object.freeze(Object.keys(EVENTS).filter((t) => EVENTS[t].public));
 
