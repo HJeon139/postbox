@@ -12,7 +12,7 @@ import { mountPane } from './pane.mjs';
 import { canonical } from './pane-route.mjs';
 import { ringFor } from './ring.mjs';
 import { liveMembers, mountEmptyProject, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
-import { paintWords } from './state-words.mjs';
+import { paintWords, wordsChanged } from './state-words.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';
 import { initHoverCards, navigate, refind, route, say, setAttention, toast } from './ui.mjs';
 
@@ -151,7 +151,7 @@ media.addEventListener('change', applyTheme);
 // ── Live updates that change the shell ──────────────────────────────────────────────────
 
 client.on((ch) => {
-  if (['session', 'item.add', 'load'].includes(ch.type)) paintWords();
+  wordsChanged(ch);
   if (ch.type === 'settings' || ch.type === 'load') applyTheme();
   if (ch.type === 'notify') notify(ch.data);
   if (['thread', 'remove', 'project'].includes(ch.type) || (ch.type === 'session' && topbarChanged(ch.data))) refreshTop();
