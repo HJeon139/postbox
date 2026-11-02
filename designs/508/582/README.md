@@ -22,7 +22,6 @@ Part 3 first, then Parts 1 and 2 (either order). They were built in that order o
 
 ## Known limits, stated once
 
-- A resending connection can receive the same answer text twice (`settle.md` §11); a shim keeps the first.
+- A resending connection can receive the same answer text twice (`settle.md`, "Known wire duplicates (accepted)"); a shim keeps the first.
 - A reply record written after admission, for a read that was attached and then answered offline, can pass the journal's size budget slightly, because the budget is checked at admission only. It either lands or logs a failure, and changes nothing the shim saw.
 - After a takeover, the old session's unsettled `ask` and `queue` calls are still sent to the new Postbox. That is existing behavior, filed as #612, and this change does not touch it.
-- The same vacuous check exists on `main`, in `tests/remote-read-contract.test.mjs`; this change leaves that file as it is.
