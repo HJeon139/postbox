@@ -23,6 +23,7 @@ import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.m
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
+import { paintReplyRings } from './reply-rings.mjs';
 import { stoppedTag } from './reply-stop.mjs';
 import { replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
@@ -120,6 +121,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     const n = render(list[i], list[i - 1]);
     const focusedId = replaceTranscriptItem(old, n);
     nodes.set(id, n);
+    paintReplyRings(el, S().sessions[list[i].sessionId]);
     if (focusedId) document.getElementById(focusedId)?.focus();
   };
   const all = () => {
@@ -135,6 +137,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       nodes.set(it.id, n);
       el.append(n);
     });
+    for (const id of new Set(list.map((x) => x.sessionId))) paintReplyRings(el, S().sessions[id]);
     hostTurns.paint();
     paintWorking();
   };
@@ -337,6 +340,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       const n = render(d.item, list[list.length - 2]);
       nodes.set(d.item.id, n);
       el.append(n);
+      // The agent’s reply before this one rests its ring, now that this one has the live one.
+      paintReplyRings(el, S().sessions[d.item.sessionId]);
       paintWorking();
       grew();
     } else if (ch.type === 'item.move' && d.threadId === threadId) {
@@ -354,6 +359,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       const n = render(list[list.length - 1], list[list.length - 2]);
       nodes.set(d.id, n);
       el.append(n);
+      paintReplyRings(el, S().sessions[list[list.length - 1].sessionId]);
       paintWorking();
       grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
@@ -371,9 +377,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     } else if (ch.type === 'glossary' && d.threadId === threadId) {
       for (const it of itemsOf(threadId)) if (it.kind === 'agent' && usesTerm(it, d.entry, nodes.get(it.id))) updateText(it.id, true);
     } else if (ch.type === 'session') {
-      el.querySelectorAll(`pb-ring[data-session="${CSS.escape(d.id)}"]`).forEach((r) => {
-        ringFor(d, r.getAttribute('size'), r);
-      });
+      paintReplyRings(el, d);
       // An agent at work here may not be one of this thread’s own (#110): its turn is in it.
       paintWorking();
       for (const it of itemsOf(threadId))
