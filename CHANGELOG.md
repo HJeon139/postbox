@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.10.1 (2026-11-02)
+
+### Fixes
+
+- **lint:** lint-caps allows a new length rule only a level and a maxLines
+- **lint:** lint-caps fails closed, and a new module gets no ceiling over the default
+- **lint:** lint-caps fails a new module whose length rule is off
+- **lint:** lint-caps counts a non-failing level as no limit, and reads ./ paths as one
+- **lint:** lint-caps fails a nested Biome config, and a missing base in CI
+
 ## 1.10.0 (2026-11-02)
 
 ### Features
