@@ -458,6 +458,7 @@ Decided (8.5): any change to an item reaches the agents it concerns, as `notify`
 | `read_conversation`, `read_message` on hosts | The host asks Postbox while it is attached. If Postbox does not answer in 100 s, or the link drops, the host answers from its snapshot with a note that newer items may be missing (#582). “Unavailable” stays distinct from “not found”. |
 | `react` | No change |
 | `wake_agent` | No change in this design (removed later by #481) |
+| `open_topic` | New (#637, MD-9): an agent opens a topic thread from any message of its conversation through `startTopic`, the page's own path, and its first message posts through `agentWake`, as `wake_agent`'s does. It stores nothing the page's open doesn't, so A1b makes its message a record like any other and A2 makes its wake a delivery like `wake_agent`'s (`designs/508/637-open-topic.md`) |
 
 ## 10. Browser
 
