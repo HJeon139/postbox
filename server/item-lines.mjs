@@ -49,9 +49,7 @@ function blockContent(it) {
       break;
     case 'form':
       if (b.prompt) out.push(b.prompt);
-      out.push(
-        `Fields:\n${lines(b.fields.map((f) => `${f.label} (${f.kind}${f.required ? ', required' : ''})${f.options ? `: ${f.options.map((o) => o.label).join(' · ')}` : ''}`))}`,
-      );
+      out.push(`Fields:\n${lines(b.fields.map(fieldLine))}`);
       break;
     case 'confirm':
       out.push(b.statement);
@@ -71,12 +69,45 @@ function blockContent(it) {
 /** A bulleted list, one line per entry. */
 const lines = (list) => list.map((x) => `- ${x}`).join('\n');
 
+/** A form field as blockContent lists it: its label, kind, whether it’s required, and a select’s options. */
+function fieldLine(f) {
+  const required = f.required ? ', required' : '';
+  const options = f.options ? `: ${f.options.map((o) => o.label).join(' · ')}` : '';
+  return `${f.label} (${f.kind}${required})${options}`;
+}
+
+/** What a topic thread’s opener calls the block it started from. @param {string | undefined} type */
+function blockNoun(type) {
+  if (type === 'app') return 'app';
+  if (type) return `${type} block`;
+  return 'block';
+}
+
+/** A block’s title as its line names it, in quotes, or nothing. @param {unknown} title */
+const titled = (title) => (title ? ` “${clipText(String(title), 200)}”` : '');
+
+/** What a failed or retried reply says it was (#485), or nothing for one that answered. */
+function failedNote(i) {
+  if (i.status !== 'failed' && i.status !== 'retried') return '';
+  const what = i.status === 'retried' ? 'failed and was retried' : 'failed';
+  return ` (this reply ${what}: ${clipText(i.error || 'unknown', 200)})`;
+}
+
+/** Who shared an item from another thread: an agent in a turn the person started, an agent, or the person. */
+function sharedBy(i) {
+  if (i.agent) return `, by @${i.handle} in a turn the person started`;
+  if (i.handle) return `, by @${i.handle}`;
+  return ', by the person';
+}
+
 /** The person’s answer to a block, as blockContent gives it. */
 function answerText(b, a) {
   const v = a.values ?? {};
   if (b.type === 'review') {
     const comments = Array.isArray(v.comments) ? v.comments : [];
-    return `The person’s review: ${String(a.voice ?? '').replace(/^Submitted review: /, '')}${comments.length ? `\n${lines(comments.map((c) => `${commentAt(c)}: ${c.text}`))}` : ''}`;
+    const verdict = String(a.voice ?? '').replace(/^Submitted review: /, '');
+    const notes = comments.length ? `\n${lines(comments.map((c) => `${commentAt(c)}: ${c.text}`))}` : '';
+    return `The person’s review: ${verdict}${notes}`;
   } else if (b.type === 'form') {
     const shown = (f) => {
       const x = v[f.id];
@@ -84,7 +115,8 @@ function answerText(b, a) {
       if (f.kind === 'select') return f.options?.find((o) => o.id === x)?.label ?? x;
       return String(x);
     };
-    return `The person answered:\n${lines(b.fields.filter((f) => v[f.id] !== undefined && v[f.id] !== '').map((f) => `${f.label}: ${shown(f)}`)) || '- (nothing filled in)'}`;
+    const filled = b.fields.filter((f) => v[f.id] !== undefined && v[f.id] !== '');
+    return `The person answered:\n${lines(filled.map((f) => `${f.label}: ${shown(f)}`)) || '- (nothing filled in)'}`;
   } else if (b.type === 'choice') {
     const picked = (v.selected ?? []).map((id) => b.options.find((o) => o.id === id)?.label ?? id);
     return `The person answered: ${[...picked, ...(v.other ? [`“${v.other}”`] : [])].join(' · ')}`;
@@ -127,9 +159,8 @@ export function topicRootLine(rt, se, t) {
     case 'block': {
       // The title names it; what it holds is the text an agent can quote (a draft, or a table’s rows) (#153).
       const b = root.block ?? {};
-      const what = b.type === 'app' ? 'app' : b.type ? `${b.type} block` : 'block';
       const body = (root.valid && blockContent(root)) || String(b.fallback ?? root.fallback ?? '');
-      return `${from} @${root.handle}’s ${what}${b.title ? ` “${clipText(String(b.title), 200)}”` : ''}: ${text(body)}`;
+      return `${from} @${root.handle}’s ${blockNoun(b.type)}${titled(b.title)}: ${text(body)}`;
     }
     default: {
       const line = describeItem(rt, root, se, READING.item, se);
@@ -154,9 +185,7 @@ export function describeItem(rt, i, se, n, reader) {
       // report written before the turn failed reached no one (#485).
       // One retried since says so too: the retry’s reply follows it.
       if (!i.text) return null;
-      return i.status === 'failed' || i.status === 'retried'
-        ? `@${i.handle} (this reply ${i.status === 'retried' ? 'failed and was retried' : 'failed'}: ${clipText(i.error || 'unknown', 200)}): ${text(i.text)}`
-        : `@${i.handle}: ${text(i.text)}`;
+      return `@${i.handle}${failedNote(i)}: ${text(i.text)}`;
     case 'block': {
       if (!i.valid) return null;
       // What it holds comes with it, so another agent can review it (#153).
@@ -166,27 +195,31 @@ export function describeItem(rt, i, se, n, reader) {
           : blockContent(i);
       const what = i.block.type === 'app' ? 'an app' : `a ${i.block.type} block`;
       const title = i.block.title ?? (i.block.type === 'app' ? i.block.fallback : null);
-      return text(
-        `@${i.handle} showed ${what}${title ? ` “${clipText(String(title), 200)}”` : ''}${body ? `${body.includes('\n') ? ':\n' : ': '}${body}` : ''}`,
-      );
+      const holds = body ? `${body.includes('\n') ? ':\n' : ': '}${body}` : '';
+      return text(`@${i.handle} showed ${what}${titled(title)}${holds}`);
     }
     case 'voice': {
       // The agent hears about its own blocks as events already.
       const block = i.blockItemId && rt.store.item(se?.threadId, i.blockItemId);
       if (block && block.sessionId === se?.id) return null;
       // An app’s summary is its own wording, never the person’s (#51).
-      return `You: ${text(i.text)}${i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : ''}`;
+      const quote = i.quote ? `\nThe app’s own summary, not the person’s words: “${text(i.quote)}”` : '';
+      return `You: ${text(i.text)}${quote}`;
     }
-    case 'shared':
-      return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${i.agent ? `, by @${i.handle} in a turn the person started` : i.handle ? `, by @${i.handle}` : ', by the person'}: ${i.question ? `You asked: “${text(i.question)}” ` : ''}${text(i.text)}`;
+    case 'shared': {
+      const asked = i.question ? `You asked: “${text(i.question)}” ` : '';
+      return `${i.summary ? 'Summary' : 'Shared'} from the thread “${i.fromTitle}”${sharedBy(i)}: ${asked}${text(i.text)}`;
+    }
     case 'system':
       if (i.variant === 'wake') return `${i.from === 'you' ? 'You' : `@${i.from}`} woke @${i.to}`;
       if (i.variant === 'joined') return `@${i.to} joined`;
       if (i.variant === 'left') return `@${i.to} left`;
       if (i.variant === 'dataset') return `@${i.handle} loaded the dataset “${i.dataset}” (${i.records} records); search it by naming it in books`;
       return null;
-    case 'sidelink':
-      return `@${i.from} and @${i.to} talked in a side thread (${i.count ?? 0} messages${i.threadSummary ? `; in short, as a model summarized it: “${i.threadSummary}”` : ''}; read_conversation with thread: "${i.sideThreadId}" reads it)`;
+    case 'sidelink': {
+      const gist = i.threadSummary ? `; in short, as a model summarized it: “${i.threadSummary}”` : '';
+      return `@${i.from} and @${i.to} talked in a side thread (${i.count ?? 0} messages${gist}; read_conversation with thread: "${i.sideThreadId}" reads it)`;
+    }
     case 'command':
       // A `!command` the person ran (#67), with its output, as Claude Code’s bash mode passes it on.
       return commandLine(i);
@@ -199,15 +232,18 @@ export function describeItem(rt, i, se, n, reader) {
 
 /** A `!command` the person ran (#67), with its output, as describeItem gives it. */
 function commandLine(i) {
-  const how =
-    i.status === 'running'
-      ? 'it’s still running'
-      : i.status === 'stopped'
-        ? 'they stopped it'
-        : i.error
-          ? `it couldn’t start: ${i.error}`
-          : `it exited with ${i.exitCode ?? i.signal}`;
   const out = String(i.text ?? '');
   const tail = out.length > COMMAND_CONTEXT ? `…${out.slice(-COMMAND_CONTEXT)}` : out;
-  return `You ran \`${clipText(String(i.command), 500)}\` in ${i.cwd} (${how}).${tail.trim() ? ` Output${i.cut || tail !== out ? ', the end of it' : ''}:\n\`\`\`\n${tail}\n\`\`\`` : ' No output.'}`;
+  const ran = `You ran \`${clipText(String(i.command), 500)}\` in ${i.cwd} (${commandEnd(i)}).`;
+  if (!tail.trim()) return `${ran} No output.`;
+  const which = i.cut || tail !== out ? ', the end of it' : '';
+  return `${ran} Output${which}:\n\`\`\`\n${tail}\n\`\`\``;
+}
+
+/** How a `!command` stands: still running, stopped, never started, or exited with its code or signal. */
+function commandEnd(i) {
+  if (i.status === 'running') return 'it’s still running';
+  if (i.status === 'stopped') return 'they stopped it';
+  if (i.error) return `it couldn’t start: ${i.error}`;
+  return `it exited with ${i.exitCode ?? i.signal}`;
 }
