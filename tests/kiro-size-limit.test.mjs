@@ -75,6 +75,22 @@ test('#544: a turn Kiro recovered from on its own (recorded) runs once, and keep
   assert.equal(ctx.calls.text, 'OK');
 });
 
+test('#544: the oversized session is cleared before the fresh start, so a fresh run that fails another way doesn’t keep it', async () => {
+  const seen = [];
+  // The fresh run’s CLI dies before its first line: no output, exit 1.
+  const adapter = adapterWith(
+    [
+      { lines: tooLarge('sess_big'), code: 1 },
+      { lines: [], code: 1 },
+    ],
+    seen,
+  );
+  const ctx = fakeCtx({ state: { kiroSessionId: 'sess_big' } });
+  await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'hi' }, ctx), /Kiro exited with code 1/);
+  assert.equal(seen.length, 2);
+  assert.equal(ctx.calls.saved.kiroSessionId, null);
+});
+
 test('#544: a fresh session over the limit too fails with what Kiro said, and isn’t kept to resume', async () => {
   const seen = [];
   const adapter = adapterWith(
