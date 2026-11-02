@@ -133,7 +133,8 @@ const offlineText = (s) => (s.length <= REMOTE_LIMITS.replyChars ? s : s.slice(0
  * @param {Broker} b @param {any} t
  */
 export async function settleOffline(b, t) {
-  if (settled(t)) return;
+  // Only a read has a snapshot answer; an ask or queue call waits for Postbox (settle.md §1).
+  if (t.route !== 'read' || settled(t)) return;
   /** @type {(v?: any) => void} */
   let finish = () => {};
   t.replying = new Promise((resolve) => (finish = resolve));
@@ -274,7 +275,7 @@ export async function onReply(b, m, reply) {
       `Postbox’s daemon on this host couldn’t write down the reply to call ${t.id} in turn ${m.turn}, so it wasn’t taken: ${why}. Reply again.`,
     );
     // The link may have dropped during the write: settleOffline saw settled(t) and returned, so settle now (settle.md §5).
-    if (!b.attached()) settleOffline(b, t);
+    if (!b.attached() && t.route === 'read') settleOffline(b, t);
     return;
   }
   t.replied = true;
