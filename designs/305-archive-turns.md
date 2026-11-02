@@ -57,7 +57,7 @@ Measured on the 13.85 MB copy used for the storage design’s budgets, with `too
 
 ### Which turns stay hot
 
-`tools/measure-archive-policies.mjs`, run on that copy (2 conversations, 6,480 work entries; the three kept kinds, `branch`, `commit` and `push`, stay in the state in every row):
+`tools/measure-archive-policies.mjs`, run once on that copy (2 conversations, 6,480 work entries; the three kept kinds, `branch`, `commit` and `push`, stay in the state in every row). These are single-run figures. A second run, on a 29.54 MB live store of 2,149 turns, gave the same shape: the chosen policy 68% smaller, the skeleton 37% smaller, and a larger hot count 0.3% to 1.2% larger:
 
 | Policy | Snapshot | `JSON.stringify` |
 |---|---|---|
