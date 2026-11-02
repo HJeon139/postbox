@@ -23,18 +23,22 @@ export const GLYPH = { running: 'running', done: 'done', failed: 'failed', denie
 /**
  * Every command in s, the view’s summary, as items that open on their output.
  * @param {any} s
- * @param {{ threadId: string, item: Function, load: Function, loaded: Map<string, any> }} view  the view’s conversation,
- *   its item(), and its requests and what they returned
+ * @param {{ threadId: string, item: Function, load: Function, loaded: Map<string, any>, win: Function }} view  the view’s
+ *   conversation, its item(), its requests and what they returned, and its windows (app/js/work-window.mjs)
  */
-export function commandsSection(s, { threadId, item, load, loaded }) {
+export function commandsSection(s, { threadId, item, load, loaded, win }) {
+  // In the order they ran, so the newest are at the end (#618).
+  const ids = { idOf: (c) => c.id, elId: (c) => `wsum-${c.id}` };
+  const { items, above, below } = win('commands', s.commands, { ...ids, newest: 'end', before: 'earlier command', after: 'later command' });
   return section(
     'work-commands',
     'Commands',
     s.commands.length,
+    above,
     s.commands.length
       ? h(
           'div.work-items',
-          s.commands.map((c) =>
+          items.map((c) =>
             item(
               c.id,
               `cmd-${c.state}`,
@@ -55,6 +59,7 @@ export function commandsSection(s, { threadId, item, load, loaded }) {
           ),
         )
       : h('p.empty-note', 'No commands yet.'),
+    below,
   );
 }
 

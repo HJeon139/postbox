@@ -1,6 +1,6 @@
 // Work’s cost follows what it shows, not the whole ledger (#618). On a seeded conversation of 300 turns, each with a
 // reply carrying its turn’s list, a file change, six commands and a read, a change to one entry looks it up once,
-// not once per turn list.
+// not once per turn list, and full-screen Work draws the newest of its 1,800 commands and the one it opened at.
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
@@ -81,4 +81,35 @@ test('#618: a change to one command looks it up once, not once per turn list', a
   await expect(page.locator(`[id="wl-${last}-wc_${TURNS - 1}_0"]`)).toContainText('exit 2');
   // The store’s own update finds it once; the turn lists don’t look again.
   expect(await page.evaluate(() => /** @type {any} */ (window).__finds)).toBeLessThanOrEqual(1);
+});
+
+test('#618: full-screen Work draws 50 of its 1,800 commands, around the one it opened at, and more on asking', async ({ page }) => {
+  const at = 'wc_150_3';
+  await page.goto(`${app.origin}/#/t/${conv}?work&full=work&at=${at}`);
+  await synced(page, app);
+  const commands = page.locator('#work-commands details.work-item');
+  // The item it opened at is drawn, among the 50 around it, and has focus.
+  await expect(page.locator(`[id="wsum-${at}"]`)).toBeFocused();
+  await expect(commands).toHaveCount(50);
+  // The rest are a button away on each side; focus goes to the first command each drew.
+  await page.getByRole('button', { name: /^Show 50 earlier commands · 878 not shown$/ }).click();
+  await expect(commands).toHaveCount(100);
+  await expect(page.locator('[id="wsum-wc_138_0"]')).toBeFocused();
+  await page.getByRole('button', { name: /^Show 50 later commands · 872 not shown$/ }).click();
+  await expect(commands).toHaveCount(150);
+  await expect(page.locator('[id="wsum-wc_154_4"]')).toBeFocused();
+
+  // Opened at nothing, it draws the newest 50, last as before, and a command that starts now joins them.
+  await page.goto(`${app.origin}/#/t/${conv}?work&full=work`);
+  await synced(page, app);
+  await expect(commands).toHaveCount(50);
+  await expect(commands.last()).toContainText(`npm test -- part ${COMMANDS - 1}`);
+  app.store.emit('work.add', {
+    convId: conv,
+    entry: { kind: 'command', id: 'wc_late', turnId: `tu_${TURNS - 1}`, handle: 'builder', command: 'npm run build', startedAt: 2, state: 'running' },
+  });
+  await synced(page, app);
+  await expect(commands).toHaveCount(51);
+  await expect(commands.last()).toContainText('npm run build');
+  await expect(page.locator('#work-below-commands')).toHaveCount(0);
 });

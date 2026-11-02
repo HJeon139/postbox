@@ -20,6 +20,7 @@ import { diffView } from './work-diff.mjs';
 import { watchGit } from './work-git.mjs';
 import { editItem, editRow, editRows, hostNotes } from './work-hosts.mjs';
 import { dur, effortSection, externalSection, publishSection, readsSection, section, signedEl, vcsSection, who, workLink } from './work-sections.mjs';
+import { windows } from './work-window.mjs';
 
 const S = () => client.state;
 const STATE_WORDS = {
@@ -44,6 +45,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
   let handle = null;
   const opened = new Set(at ? [at] : []); // ids of the items you opened, kept across repaints
   const loaded = new Map(); // what a diff or an output request returned, by item
+  const win = windows(() => paint(), at); // the long lists’ windows (#618)
   const asked = new Set();
   const gitNow = gitWatch ?? watchGit(threadId);
   /** @type {any} */
@@ -80,9 +82,9 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
         vcsSection(s, git),
         publishSection(s, threadId, S().apps),
         externalSection(s),
-        commandsSection(s, { threadId, item, load, loaded }),
-        effortSection(s, entries, threadId),
-        readsSection(s),
+        commandsSection(s, { threadId, item, load, loaded, win }),
+        effortSection(s, entries, threadId, win),
+        readsSection(s, win),
       );
     });
 
@@ -232,22 +234,25 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
   }
 
   function filesSection(s, entries) {
-    const files = [...s.files].sort((a, b) => Number(flagged(b, git)) - Number(flagged(a, git)) || (b.lastAt ?? 0) - (a.lastAt ?? 0));
+    const sorted = [...s.files].sort((a, b) => Number(flagged(b, git)) - Number(flagged(a, git)) || (b.lastAt ?? 0) - (a.lastAt ?? 0));
+    const keyOf = (f) => (turnId ? f.changeId : f.id);
+    const opts = { idOf: keyOf, elId: (f) => `wsum-${keyOf(f)}`, newest: /** @type {const} */ ('start'), before: 'more file', after: 'more file' };
+    const { items: files, above, below } = win('files', sorted, opts);
     const byAgent = s.byAgent.filter((a) => a.files);
     const edits = editRows(s.edits);
     return section(
       'work-files',
       'Files',
-      files.length + edits.length,
+      sorted.length + edits.length,
       hostNotes(s.turns),
+      above,
       files.length
         ? h(
             'div.work-items',
             files.map((f) => {
               const state = fileState(f, git);
-              const key = turnId ? f.changeId : f.id;
               return item(
-                key,
+                keyOf(f),
                 flagged(f, git) ? 'flagged' : '',
                 [
                   h('span.status-tag', { class: `ws-${state}` }, STATE_WORDS[state]),
@@ -265,6 +270,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
         : edits.length
           ? null
           : h('p.empty-note', 'No files changed yet. A file shows here when an agent’s edit or write changes it.'),
+      below,
       edits.length
         ? h(
             'div.work-items',
