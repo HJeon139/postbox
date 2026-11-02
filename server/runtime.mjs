@@ -1002,7 +1002,7 @@ export class Runtime {
           if (line && last) this.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
         })
         // Its callers don’t await it: a ledger that fails here must not become an unhandled rejection.
-        .catch((e) => console.warn(`@${turn.work?.se?.handle ?? 'an agent'}’s turn work wasn’t recorded: ${e instanceof Error ? e.message : e}`))
+        .catch((e) => console.error(`@${turn.work?.se?.handle ?? 'an agent'}’s turn work wasn’t recorded: ${e instanceof Error ? e.message : e}`))
     );
   }
 

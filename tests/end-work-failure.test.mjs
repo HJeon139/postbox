@@ -9,12 +9,12 @@ test('a ledger that rejects while a turn ends is warned about, and endWork still
   const { rt, t, alpha } = setup();
   rt.ledger.endTurn = () => Promise.reject(new Error('disk full'));
   const warned = [];
-  const warn = console.warn;
-  console.warn = (...a) => warned.push(a.join(' '));
+  const error = console.error;
+  console.error = (...a) => warned.push(a.join(' '));
   try {
     await rt.endWork({ id: 'turn_1', threadId: t.id, sessionId: alpha.id, work: { convId: t.id, se: { handle: 'alpha' } } }, 'done');
   } finally {
-    console.warn = warn;
+    console.error = error;
   }
   assert.equal(warned.length, 1);
   assert.match(warned[0], /@alpha.*wasn’t recorded.*disk full/);
