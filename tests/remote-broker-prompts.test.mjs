@@ -46,7 +46,7 @@ test('a prompt crosses to Postbox, its answer reaches the shim, and again when t
     assert.deepEqual(await s2.next('permission-answer'), { type: 'permission-answer', id: 'p1', result: allow });
     assert.deepEqual(again.sent, [], 'a resent prompt isn’t a new one');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -75,7 +75,7 @@ test('a stored answer goes back only to the request it answered: the same id ask
     other.send('permission', { id: 'p1', request: structuredClone(REQUEST) });
     assert.deepEqual(await other.next('permission-answer'), { type: 'permission-answer', id: 'p1', result: allow });
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -118,7 +118,7 @@ test('a prompt the shim expired or the harness canceled ends: Postbox hears prom
     );
     assert.equal(after[0].reason, 'canceled');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -137,7 +137,7 @@ test('Stop ends a turn’s waiting prompts, and an answer for them is refused', 
     s.send('permission', { id: 'p2', request: REQUEST });
     assert.equal((await s.next('error', (m) => m.code === 'turn-ended')).message, STOPPED_TEXT);
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -230,6 +230,6 @@ test('an expiry the broker can’t write down still ends the prompt, unanswerabl
     k.b.close();
     await afterUnrecordedEnd(h, clock, opts, file, wait);
   } finally {
-    h.done();
+    await h.done();
   }
 });

@@ -86,7 +86,7 @@ test('resending an already-answered read while detached returns kept live answer
     assert.equal(resentRes.text, 'Live Postbox answer');
     assert.doesNotMatch(resentRes.text, /Read offline/);
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -117,7 +117,7 @@ test('connected read_message asks Postbox rather than reading locally', async ()
     assert.equal(res.ok, true);
     assert.equal(res.text, 'Approved: review approved with 0 comments.');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -142,7 +142,7 @@ test('connected read_conversation queries Postbox and reaches items earlier than
     assert.equal(res.ok, true);
     assert.match(res.text, /First message/);
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -166,7 +166,7 @@ test('disconnected read_message falls back to snapshot.json with offline notice'
     assert.match(res.text, /\(Read offline as of this turn’s start; earlier or changed items may be missing\.\)$/);
     assert.equal(k.sent.length, 0, 'no calls sent to Postbox while offline');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -187,7 +187,7 @@ test('disconnected read_conversation falls back to snapshot.json with offline no
     assert.match(res.text, /\[item_1\] Item one/);
     assert.match(res.text, /\(Read offline as of this turn’s start; earlier or changed items may be missing\.\)$/);
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -227,7 +227,7 @@ test('late reply: read sent to Postbox, link drops, shim resends offline, and re
     const next = await s.next('result');
     assert.equal(next.id, 'call_next', 'the first result after the late reply is the barrier read, not a duplicate of call_late');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -258,7 +258,7 @@ test('pending read when link drops without resend answers when link reconnects',
     assert.equal(res.ok, true);
     assert.equal(res.text, 'Live answer from Postbox');
   } finally {
-    h.done();
+    await h.done();
   }
 });
 

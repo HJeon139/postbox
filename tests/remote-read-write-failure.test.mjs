@@ -70,7 +70,7 @@ test('T24: a live write that fails after the deadline has passed answers the rea
     assert.equal(results(s, 'c_t24a'), 1, 'exactly one answer to the shim');
     k.b.close();
   } finally {
-    h.done();
+    await h.done();
   }
 });
 
@@ -107,6 +107,6 @@ test('T24: a live write that fails with the deadline still ahead waits for the d
     assert.equal(results(s, 'c_t24b'), 1, 'exactly one answer to the shim');
     k.b.close();
   } finally {
-    h.done();
+    await h.done();
   }
 });
