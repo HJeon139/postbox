@@ -74,10 +74,10 @@ const mib = (/** @type {number} */ n) => `${(n / 1024 / 1024).toFixed(1)} MiB`;
  * host keeps (queueLimits, REMOTE_LIMITS), or its record of calls, which a restart reads whole, is full.
  * @param {Broker} b @param {string} turn @param {string} name @param {number} bytes
  */
-async function queueFull(b, turn, name, bytes, isDetachedRead = false) {
+async function queueFull(b, turn, name, bytes) {
   const waiting = [...b.tools.values()].filter((t) => t.turn === turn && !t.replied);
   const held = waiting.reduce((n, t) => n + (t.bytes ?? 0), 0);
-  if (!isDetachedRead && (waiting.length >= b.queueLimits.calls || held + bytes > b.queueLimits.bytes))
+  if (waiting.length >= b.queueLimits.calls || held + bytes > b.queueLimits.bytes)
     return `This turn already has ${waiting.length} calls (${mib(held)}) waiting for Postbox, as many as this host keeps, so ${name} wasn’t sent. Once Postbox is connected and has taken them, call it again.`;
   const size = await b.io.stat(b.p.turn(turn, TURN_FILES.tools)).then(
     (st) => st.size,
@@ -114,10 +114,15 @@ function admit(b, turn, fn) {
 const take = (b, k, t) =>
   admit(b, t.turn, async () => {
     if (b.tools.has(k)) return 'again';
-    const full = await queueFull(b, t.turn, t.name, t.bytes ?? 0, !b.attached() && t.route === 'read');
+    // A read with no Postbox to ask is answered from the snapshot at once, so no limit applies to it: nothing is queued
+    // for Postbox, and nothing is written to the journal (settle.md).
+    const full = detached(b, t) ? '' : await queueFull(b, t.turn, t.name, t.bytes ?? 0);
     if (!full) b.tools.set(k, t);
     return full;
   });
+
+/** Whether a call is a read that can only be answered from the snapshot, because no Postbox is attached. @param {Broker} b @param {any} t */
+const detached = (b, t) => t.route === 'read' && !b.attached();
 
 const OFFLINE_NOTE = '\n\n(Read offline as of this turn’s start; earlier or changed items may be missing.)';
 
@@ -128,8 +133,9 @@ export const settled = (t) => t.replied || !!t.replying;
 export const offlineText = (s) => (s.length <= REMOTE_LIMITS.replyChars ? s : s.slice(0, REMOTE_LIMITS.replyChars - OFFLINE_NOTE.length) + OFFLINE_NOTE);
 
 /**
- * Answers an open read from the snapshot, once: the first caller claims it, the rest return (settle.md §4). Never
- * throws: a failure becomes a log line or a result.
+ * Answers an open read from the snapshot, once: the first caller claims it, the rest return. The shim is told before
+ * any journal write; the reply record follows a call record when there is one. Never throws: a failure becomes a log
+ * line or a result.
  * @param {Broker} b @param {any} t
  */
 export async function settleOffline(b, t) {
@@ -139,14 +145,14 @@ export async function settleOffline(b, t) {
   let finish = () => {};
   t.replying = new Promise((resolve) => (finish = resolve));
   // Marks the claim as the offline one: the hello must not send this call on, whereas a live reply's write in flight
-  // (also `replying`) can still fail and leave the call to be sent again (settle.md §5).
+  // (also `replying`) can still fail and leave the call to be sent again. Never cleared, and it needs no reset: a
+  // claimed read is answered, or its call record failed and queueTool dropped it from b.tools.
   t.offline = true;
   try {
     if (t.timer) {
       b.timers.clearTimeout(t.timer);
       t.timer = undefined;
     }
-    if (t.saved && (await t.saved)) return; // the call record failed: queueTool removed the call and answered the shim
     let r;
     try {
       r = await readLocal(b, t.turn, t.name, t.args, true);
@@ -157,9 +163,13 @@ export async function settleOffline(b, t) {
     t.result = { ok: r.ok, text };
     t.replied = true;
     t.args = null;
-    const why = await written(b, t.turn, 'tools', { op: 'reply', id: t.id, ok: r.ok, text });
-    if (why) b.log(`Turn ${t.turn}’s ${t.name} (${t.id}) offline record failed: ${why}`);
+    // The shim hears the answer before any journal write, so a slow or failing disk cannot hold it up.
     toShims(b, t.turn, 'result', { id: t.id, ok: r.ok, text });
+    // A reply record follows a call record, when there is one: a read that was never sent to Postbox wrote none.
+    if (t.saved && !(await t.saved)) {
+      const why = await written(b, t.turn, 'tools', { op: 'reply', id: t.id, ok: r.ok, text });
+      if (why) b.log(`Turn ${t.turn}’s ${t.name} (${t.id}) offline record failed: ${why}`);
+    }
   } finally {
     t.replying = undefined;
     finish();
@@ -222,6 +232,8 @@ async function queueTool(b, k, t, result) {
     b.log(`Turn ${t.turn}’s ${t.name} (${t.id}) was refused: ${admitted}`);
     return result(false, admitted);
   }
+  // A read with no Postbox to ask is answered at once and not journaled: a resend reads the snapshot again.
+  if (detached(b, t)) return settleOffline(b, t);
   // Written down before the shim hears it, so on restart it replays.
   t.saved = record(b, t.turn, 'tools', { op: 'call', id: t.id, name: t.name, route: t.route, args: t.args, at: t.arrived }).then(
     () => '',
@@ -230,10 +242,11 @@ async function queueTool(b, k, t, result) {
   const saved = await t.saved;
   if (saved) {
     if (b.tools.get(k) === t) b.tools.delete(k);
-    return result(false, saved);
+    // A read answered offline meanwhile has been answered: one result per call.
+    return settled(t) ? undefined : result(false, saved);
   }
   if (settled(t)) return; // settled while the call record was written
-  if (t.route === 'read' && !b.attached()) return settleOffline(b, t);
+  if (detached(b, t)) return settleOffline(b, t);
   if (t.route === 'queue') result(true, QUEUED_TEXT);
   if (t.route === 'read') armReadTimer(b, t);
   b.toPostbox('tool', toolBody(t));
@@ -257,6 +270,7 @@ export async function call(b, c, turn, m) {
   // Sent again after a reconnect: return the kept answer, or wait if it hasn’t settled.
   const known = b.tools.get(k);
   if (known) {
+    if (known.route === 'read' && known.result) return result(known.result.ok, known.result.text); // no wait on a disk
     const saved = await known.saved;
     if (saved) return result(false, saved);
     const ans = answerKnown(known);

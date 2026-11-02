@@ -24,7 +24,7 @@ const snapOf = (n, text = 'x') => ({
   threads: [{ id: 'th', items: Array.from({ length: n }, (_, i) => ({ id: `i${i}`, line: `line ${i}`, text: `${text} ${i}` })) }],
 });
 
-test('a fresh read while detached is journaled as a call, then a reply, and answered once', async () => {
+test('a fresh read while detached is answered once, and writes no record (settle.md: a read is idempotent)', async () => {
   const h = makeHome();
   try {
     const k = makeBroker(h);
@@ -38,13 +38,10 @@ test('a fresh read while detached is journaled as a call, then a reply, and answ
     const res = await s.call('call_1', 'read_message', { id: 'i1' });
     assert.equal(res.ok, true);
     assert.match(res.text, /x 1/);
-    const rec = journal(h, turn);
-    assert.deepEqual(
-      rec.map((r) => r.op),
-      ['call', 'reply'],
-      'the call is journaled before its answer',
-    );
+    assert.deepEqual(journal(h, turn), [], 'a read that never went to Postbox leaves no call or reply record');
     assert.equal(k.sent.filter((m) => m.type === 'tool').length, 0, 'no tool frame is sent to Postbox while detached');
+    const again = await s.call('call_1', 'read_message', { id: 'i1' });
+    assert.equal(again.text, res.text, 'a resend finds the answer kept in memory');
   } finally {
     h.done();
   }
@@ -119,7 +116,7 @@ test('a detached read on a turn at its waiting-call limit is admitted and answer
   }
 });
 
-test('a detached read on a turn whose record is full is refused with the record-full message (T20)', async () => {
+test('a detached read on a turn whose record is full is answered from the snapshot, not refused (T20)', async () => {
   const h = makeHome();
   try {
     const k = makeBroker(h, { queueLimits: { calls: 256, bytes: 64 * 1024 * 1024, recordBytes: 1 } });
@@ -131,8 +128,8 @@ test('a detached read on a turn whose record is full is refused with the record-
     await s.next('welcome');
     k.state.attached = false;
     const res = await s.call('call_r', 'read_message', { id: 'i0' });
-    assert.match(res.text, /record of its calls/, 'refused with the record-full message');
-    assert.equal(journal(h, turn).length, 0, 'nothing is journaled for a refused read');
+    assert.match(res.text, /x 0/, 'answered, because an answer in hand is not refused for a journal limit');
+    assert.equal(journal(h, turn).length, 0, 'and it writes nothing');
   } finally {
     h.done();
   }

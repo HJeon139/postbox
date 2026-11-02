@@ -100,9 +100,13 @@ test('a journal write that fails for the offline reply still answers the shim, a
     await k.b.starting(turn);
     const s = connectShim(k.b, turn);
     await s.next('welcome');
-    k.state.attached = false;
-    const res = await s.call('call_r', 'read_message', { id: 'i0' });
+    const pending = s.call('call_r', 'read_message', { id: 'i0' });
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'call_r'), 'the read sent to Postbox');
+    k.state.attached = false; // the link drops: a read with a call record is answered offline, and its reply record fails
+    k.b.driverLost();
+    const res = await pending;
     assert.match(res.text, /x 0/, 'the shim still gets the offline answer');
+    await until(() => k.logs.some((l) => /disk full/.test(l)), 'the failed write to be logged');
     assert.ok(
       k.logs.some((l) => /disk full/.test(l)),
       'the failed write is logged',
