@@ -142,6 +142,9 @@ test('a detached read on a turn whose record is full is refused with the record-
 // read of the snapshot for T07, the journal append of the live reply for T08. Nothing sleeps.
 import { promises as fsp } from 'node:fs';
 
+/** The held call reached, or a failure naming it, after 2 s: a red run fails here instead of waiting forever. */
+const reached = (hold) => Promise.race([hold.entered, new Promise((_, rej) => setTimeout(() => rej(new Error('the held file call was never reached')), 2000))]);
+
 /** A file layer whose first matching call is held until released; `entered` resolves when it is reached. */
 const holdingIo = (match) => {
   let release = () => {};
@@ -195,7 +198,7 @@ test('a live reply that arrives while an offline settle reads the snapshot is re
     const s2 = connectShim(k.b, turn);
     await s2.next('welcome');
     s2.send('call', { id: 'call_r', name: 'read_message', args: { id: 'i0' } }); // the offline settle starts, and reads
-    await hold.entered; // the snapshot read is in flight: the call is claimed
+    await reached(hold); // the snapshot read is in flight: the call is claimed
     const { errors } = await k.post('reply', { turn, id: 'call_r', ok: true, text: 'LIVE' });
     assert.ok(
       errors.some((e) => e.code === 'no-tool'),
@@ -229,7 +232,7 @@ test('an offline settle that starts during a live reply’s journal write return
     first.catch(() => {});
     await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'call_r'), 'the read sent to Postbox');
     const live = k.post('reply', { turn, id: 'call_r', ok: true, text: 'LIVE' }); // claims, then its journal write is held
-    await hold.entered;
+    await reached(hold);
     k.state.attached = false;
     const s2 = connectShim(k.b, turn);
     await s2.next('welcome');
