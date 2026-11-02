@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.13.1 (2026-11-02)
+
+### Fixes
+
+- **blocks:** choose panels for wrapping options
+
 ## 1.13.0 (2026-11-02)
 
 ### Features
