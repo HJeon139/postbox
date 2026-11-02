@@ -90,4 +90,7 @@ test('#618: the file Work opened at stays drawn when git’s answer moves flagge
   await expect(page.locator('.work-flag-note')).toContainText('60 changes to review');
   await expect(page.locator('#work-files details.work-item')).toHaveCount(50);
   await expect(page.locator('[id="wsum-wf_29"]')).toBeFocused();
+  // Newest first, so what’s above changed later and what’s below earlier.
+  await expect(page.getByRole('button', { name: 'Show 50 later files · 64 not shown' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Show 6 earlier files · 6 not shown' })).toBeVisible();
 });

@@ -237,7 +237,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
   function filesSection(s, entries) {
     const sorted = [...s.files].sort((a, b) => Number(flagged(b, git)) - Number(flagged(a, git)) || (b.lastAt ?? 0) - (a.lastAt ?? 0));
     const keyOf = (f) => (turnId ? f.changeId : f.id);
-    const opts = { idOf: keyOf, elId: (f) => `wsum-${keyOf(f)}`, newest: /** @type {const} */ ('start'), before: 'more file', after: 'more file' };
+    const opts = { idOf: keyOf, elId: (f) => `wsum-${keyOf(f)}`, newest: /** @type {const} */ ('start'), before: 'later file', after: 'earlier file' };
     const { items: files, above, below } = win('files', sorted, opts);
     const byAgent = s.byAgent.filter((a) => a.files);
     const edits = editRows(s.edits);

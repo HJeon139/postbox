@@ -32,8 +32,8 @@ export function windows(paint, at) {
     let w = shown.get(key);
     if (!w) {
       const i = at ? list.findIndex((x) => idOf(x) === at) : -1;
-      const centre = i >= 0 ? i : newest === 'end' ? len - 1 : 0;
-      const lo = Math.max(0, Math.min(centre - STEP / 2, len - STEP));
+      const center = i >= 0 ? i : newest === 'end' ? len - 1 : 0;
+      const lo = Math.max(0, Math.min(center - STEP / 2, len - STEP));
       w = { lo, hi: lo + STEP, len, i };
       shown.set(key, w);
     }
