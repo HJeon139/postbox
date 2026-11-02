@@ -993,11 +993,17 @@ export class Runtime {
 
   /** The turn’s work is recorded (#132), then its last reply, or its last block, gets the list that leads to it (#195). */
   endWork(turn, status) {
-    return this.ledger.endTurn(turn, { status }).then(() => {
-      const line = turn.work ? turnLine(this.ledger.entries(turn.work.convId), turn.id) : null;
-      const last = this.store.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
-      if (line && last) this.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
-    });
+    return (
+      this.ledger
+        .endTurn(turn, { status })
+        .then(() => {
+          const line = turn.work ? turnLine(this.ledger.entries(turn.work.convId), turn.id) : null;
+          const last = this.store.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
+          if (line && last) this.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
+        })
+        // Its callers don’t await it: a ledger that fails here must not become an unhandled rejection.
+        .catch((e) => console.warn(`@${turn.work?.se?.handle ?? 'an agent'}’s turn work wasn’t recorded: ${e instanceof Error ? e.message : e}`))
+    );
   }
 
   endTurn(turn, err) {
