@@ -167,3 +167,20 @@ test('a repeated open that names a different agent is not a repeat: it posts (I6
     'the second names gamma, one mention as the first had, so it posts',
   );
 });
+
+test('a first message whose every mention is refused still posts, as the opener’s own, and the reply says why each was refused', async () => {
+  const f = await conversation();
+  // The integrator's probe: a self-mention, and a mistyped handle. Neither wake posts, so the message must post anyway.
+  for (const [mentions, refusal] of [
+    [['alpha'], /@alpha is you/],
+    [['ghost0'], /no agent called @ghost0/],
+  ]) {
+    const text = `Notes for ${mentions[0]}`;
+    const r = await alphaTurn(f, (tools) => tools.open_topic({ itemId: f.reply.id, message: text, mentions }));
+    assert.equal(r?.ok, true, JSON.stringify(r));
+    assert.match(r.message, refusal, 'the reply names the refusal');
+    const posted = f.store.items(r.threadId).filter((i) => i.kind === 'agent' && i.sessionId === f.alpha.id && i.text === text);
+    assert.equal(posted.length, 1, `the message posted once, for ${mentions[0]}`);
+    assert.equal(posted[0].opened, mentions[0], 'keeping the handles it named, for I6');
+  }
+});
