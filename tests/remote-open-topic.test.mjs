@@ -8,7 +8,10 @@ import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 
 const topics = (store) => Object.values(store.state.threads).filter((t) => t.kind === 'topic');
 
-/** Closes the rig's store as an EIO does (ST-3), until the returned function reopens it. */
+/**
+ * Closes the rig's store without telling its status listeners, so the turn keeps running: the state the gate itself
+ * guards, which no path reaches today (the spec above), until the returned function reopens it.
+ */
 function closeStore(r) {
   r.store.writable = false;
   r.store.cause = Object.assign(new Error('Postbox can’t write its event log (EIO): disk sync refused.'), { code: 'EIO' });
@@ -18,6 +21,25 @@ function closeStore(r) {
   };
 }
 const keptReplies = (r) => Object.values(r.store.state.sessions).flatMap((s) => s.remoteTurn?.replies ?? []);
+
+test('when the store fails, a host’s turn is stopped at once, so its later calls are refused as stopped and write nothing (I5)', async () => {
+  const r = rig();
+  const turn = await running(r);
+  const mine = r.store.items(r.t.id).find((i) => i.kind === 'user');
+  r.store.fail(Object.assign(new Error('disk sync refused'), { code: 'EIO' })); // as a failed write does: status listeners hear it
+  assert.equal(r.rt.turns.has(r.se().id), false, 'the outage stopped the turn (server/store-outage.mjs)');
+  assert.ok(
+    r.d.received.some((m) => m.type === 'stop' && m.turn === turn),
+    'and told the host',
+  );
+  const queued = r.d.tool(turn, 'define_term', { term: 'W', definition: 'D' });
+  const asked = r.d.tool(turn, 'open_topic', { itemId: mine.id });
+  await until(() => [queued, asked].every((id) => r.link.sent.some((m) => m.type === 'reply' && m.id === id)), 'both replies');
+  for (const id of [queued, asked]) assert.match(r.link.sent.find((m) => m.type === 'reply' && m.id === id).text, /stopped or has ended/);
+  assert.deepEqual(r.store.state.glossary[r.t.id] ?? {}, {}, 'nothing defined');
+  assert.deepEqual(topics(r.store), [], 'nothing opened');
+  assert.deepEqual(keptReplies(r), [], 'nothing kept');
+});
 
 test('a host’s asked write tool while the store is closed is refused with the cause, and writes and keeps nothing (I5)', async () => {
   const r = rig();
@@ -35,7 +57,7 @@ test('a host’s asked write tool while the store is closed is refused with the 
   await settled(r);
 });
 
-test('a host’s queued write tool while the store is closed gets no reply, so the daemon’s repeat after it reopens runs it (I5)', async () => {
+test('a host’s queued write tool while the store is closed gets no reply, so a resend after it reopens runs it (I5)', async () => {
   const r = rig();
   const turn = await running(r);
   const mine = r.store.items(r.t.id).find((i) => i.kind === 'user');
@@ -48,7 +70,7 @@ test('a host’s queued write tool while the store is closed gets no reply, so t
   assert.deepEqual(r.store.state.glossary[r.t.id] ?? {}, {}, 'the refused call defined nothing');
   assert.deepEqual(keptReplies(r), [], 'and kept nothing');
   reopen();
-  r.link.hear({ type: 'tool', turn, id, name: 'define_term', args: { term: 'W', definition: 'D' } }); // the hello’s resend
+  r.link.hear({ type: 'tool', turn, id, name: 'define_term', args: { term: 'W', definition: 'D' } }); // a resend, as after a hello
   await until(() => r.link.sent.some((m) => m.type === 'reply' && m.id === id), 'the repeat’s reply');
   assert.equal(r.link.sent.find((m) => m.type === 'reply' && m.id === id).ok, true);
   assert.equal(Object.keys(r.store.state.glossary[r.t.id] ?? {}).length, 1, 'the repeat defined it');
