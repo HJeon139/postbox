@@ -20,11 +20,15 @@ const RULES = /** @type {const} */ ([
   ['fn', 'complexity', 'noExcessiveLinesPerFunction'],
 ]);
 const IGNORE = 'biome-ignore.*noExcessiveLines';
+const FAILS = new Set(['error', 'warn', 'on']);
+/** A path as Biome matches it: `./server/x.mjs` is `server/x.mjs`. */
+const norm = (/** @type {string} */ p) => p.replace(/^(\.\/)+/, '');
 
 /** A rule's ceiling: Infinity when it is off, the default when it has no maxLines, undefined when it isn't set. */
 function ruleCap(v, def) {
   if (v === undefined) return undefined;
-  if (v === 'off' || v?.level === 'off') return Number.POSITIVE_INFINITY;
+  // The gate runs `biome check --error-on-warnings`: only these levels fail it, so any other (info, off) is no limit.
+  if (!FAILS.has(typeof v === 'string' ? v : v?.level)) return Number.POSITIVE_INFINITY;
   return typeof v === 'object' && Number.isFinite(v.options?.maxLines) ? v.options.maxLines : def;
 }
 
@@ -47,7 +51,7 @@ export function ceilings(biome) {
       const cap = o.linter?.enabled === false ? Number.POSITIVE_INFINITY : ruleCap(o.linter?.rules?.[group]?.[rule], defaults[k]);
       if (cap !== undefined) caps[k] = cap;
     }
-    if (Object.keys(caps).length) for (const p of o.includes ?? []) paths.set(p, { ...paths.get(p), ...caps });
+    if (Object.keys(caps).length) for (const p of (o.includes ?? []).map(norm)) paths.set(p, { ...paths.get(p), ...caps });
   }
   return { defaults, paths, includes: biome.files?.includes ?? [], extends: JSON.stringify(biome.extends ?? []) };
 }

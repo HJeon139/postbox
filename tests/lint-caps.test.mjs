@@ -118,3 +118,23 @@ test('lint-caps: with no base to compare with, it fails in CI and skips elsewher
   assert.deepEqual(noBase('origin/main', { CI: 'true' }), { code: 1, message: 'lint-caps: failed, there is no origin/main to compare with.' });
   assert.deepEqual(noBase('origin/main', {}), { code: 0, message: 'lint-caps: skipped, there is no origin/main to compare with.' });
 });
+
+test('lint-caps: a level that doesn’t fail the gate counts as turning the rule off', () => {
+  const base = biome([fileCap('server/runtime.mjs', cap(3028))]);
+  for (const level of ['info', 'none'])
+    assert.match(
+      check(base, biome([fileCap('server/runtime.mjs', { level, options: { maxLines: 3028 } })])).problems[0],
+      /went up from 3028 to Infinity/,
+      level,
+    );
+  assert.match(check(base, biome([fileCap('server/runtime.mjs', 'info')])).problems[0], /to Infinity/);
+  for (const level of ['error', 'warn', 'on'])
+    assert.deepEqual(check(base, biome([fileCap('server/runtime.mjs', { level, options: { maxLines: 3028 } })])).problems, [], level);
+});
+
+test('lint-caps: a path spelled with ./ is the same path', () => {
+  const base = biome([fileCap('server/runtime.mjs', cap(3028))]);
+  assert.deepEqual(check(base, biome([fileCap('./server/runtime.mjs', cap(9999))])).problems, [
+    'server/runtime.mjs: its file ceiling went up from 3028 to 9999.',
+  ]);
+});
