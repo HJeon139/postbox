@@ -70,7 +70,6 @@ export function resolveToolAsk(rt, threadId, itemId, action) {
  */
 export function settleToolAsks(rt, persona) {
   const has = new Set(persona.tools ?? []);
-  // A sweep that settles every match, so an ask held behind a commit is settled too (#601).
   for (const threadId of Object.keys(rt.s.items))
     for (const it of rt.store.pending.items(threadId))
       if (it.kind === 'toolask' && it.personaId === persona.id && it.status === 'open' && has.has(it.tool)) answered(rt, threadId, it, 'on');

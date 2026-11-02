@@ -232,7 +232,7 @@ export function showApp(rt, sessionId, tools, { id, title, code, permissions = [
  * @param {{ files?: AppFile[] }} [given]  as for show_app; a version without them keeps the last one’s
  */
 export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code, permissions, title, summary = '' }, given = {}) {
-  const app = rt.store.pending.app(id); // the turn may have shown it a moment ago, behind a held commit (#601)
+  const app = rt.store.pending.app(id);
   if (!app || app.sessionId !== sessionId) return notYours(rt, sessionId, id);
   const v = validateBlock({ id, type: 'app', version: 1, fallback: 'x', code, permissions: permissions ?? app.versions[app.current - 1].permissions });
   if (!v.ok) return { ok: false, message: `The update was invalid: ${v.errors.join(' ')}` };

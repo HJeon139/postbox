@@ -397,7 +397,6 @@ export class Runtime {
    * @returns {boolean} whether it moved
    */
   bringForward(threadId, id, stub, patch = {}) {
-    // What it moves may have been shown or updated a moment ago, behind a held commit (#601).
     const items = this.store.pending.items(threadId);
     const i = items.findIndex((x) => x.id === id);
     if (i < 0) return false;
@@ -1477,7 +1476,6 @@ export class Runtime {
 
   /** The keys (`item:step`) of a session’s progress steps running in a thread. */
   runningProgress(threadId, sessionId) {
-    // A sweep that decides what is kept running: a progress block held behind a commit counts too (#601).
     return this.store.pending
       .items(threadId)
       .filter((it) => it.kind === 'block' && it.valid && it.sessionId === sessionId && it.block.type === 'progress')

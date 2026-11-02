@@ -75,7 +75,7 @@ export class Ledger {
     return t?.parentId && this.s.threads[t.parentId] ? t.parentId : threadId;
   }
   entries(convId) {
-    return this.store.pending.work(convId); // as the ledger writes them: it reads back its own entries to patch them (#601)
+    return this.store.pending.work(convId);
   }
   entry(convId, id) {
     return this.entries(convId).find((e) => e.id === id) ?? null;

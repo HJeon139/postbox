@@ -17,7 +17,7 @@ export function notYours(_rt, _sessionId, id) {
  * @param {any} rt  the Runtime @param {string} sessionId @param {{ id?: unknown, reason?: unknown, replacedBy?: unknown }} args
  */
 export function retireApp(rt, sessionId, { id, reason, replacedBy } = {}) {
-  const app = rt.store.pending.app(String(id)); // the turn may have shown it a moment ago, behind a held commit (#601)
+  const app = rt.store.pending.app(String(id));
   if (!app || app.sessionId !== sessionId) return notYours(rt, sessionId, String(id));
   const why = String(reason ?? '')
     .replace(/\s+/g, ' ')

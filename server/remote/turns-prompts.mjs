@@ -209,7 +209,6 @@ function cardOf(rts, turn, id) {
 export function openCards(rts, turn) {
   const se = sessionOfTurn(rts, turn);
   if (!se) return [];
-  // A sweep its callers settle or expire: a card held behind a commit is one of them (#601).
   return rts.rt.conversationThreads(se.threadId).flatMap((/** @type {string} */ threadId) =>
     rts.rt.store.pending
       .items(threadId)

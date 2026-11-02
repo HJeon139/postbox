@@ -53,7 +53,6 @@ export function agentWake(
   // A mention is already the waker’s message there, so the wake’s number in the chain (#114, telemetry) goes on the
   // turn’s first item: it marks the turn, not necessarily the paragraph with the mention. One message can wake several
   // agents, so each wake’s number is kept (wakes); hop stays the first. wake_agent’s message is posted as the waker’s.
-  // The reply with the mention may be held behind a commit: missed, it would be posted again as a new message (#601).
   const said = itemId ? rt.store.pending.items(at).find((x) => x.id === itemId) : null;
   if (said) rt.patchItem(at, said.id, { hop: said.hop ?? hop, wakes: [...(said.wakes ?? (said.hop ? [said.hop] : [])), hop] });
   const it =
@@ -210,7 +209,6 @@ export function archiveForks(rt) {
 export function bumpSideLink(rt, sideThreadId) {
   const side = rt.s.threads[sideThreadId];
   if (side?.kind !== 'side') return;
-  // Its line and its messages may be held behind a commit: addItem calls this right after its own add (#601).
   const link = rt.store.pending.items(side.parentId).find((x) => x.kind === 'sidelink' && x.sideThreadId === side.id);
   if (!link) return;
   // A turn that failed or was stopped before it said anything left an empty placeholder: not a message.
