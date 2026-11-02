@@ -59,7 +59,7 @@ flowchart TD
 | L5 | Takeover hello: the old driver's reads settle offline before the new driver's resend (T04) | `close()` has no reason, so the cases can't differ |
 | L6 | A `busy` hello leaves the driver and its reads alone | passes; a guard |
 | L7 | Two closes of one driver call `driverLost` once | `driverLost` doesn't exist |
-| L8 | A `queue` call is untouched when the driver goes: answered once as queued, sent again to the next driver (T12). An `ask` call is not covered: it needs valid `ask` arguments | written; passes with the fix |
+| L8 | A `queue` call is untouched when the driver goes: answered once as queued, sent again to the next driver (T12). An `ask` call has no spec of its own (it needs valid `ask` arguments); it is protected by the route guard in `settleOffline` (`t.route !== 'read'` returns at once), which Part 3's specs cover | written; passes with the fix |
 | L5b | Right after `old.close('taken-over')` returns, the old read is already claimed | **not written, and not writable from outside the broker:** the claim is `t.replying` inside the broker, and no seam shows it. Two proxies are in L5: the stack check (a deferred `driverLost` fails it; mutant M1 below) and the hello counter (the taker is sent nothing) |
 | L9 (gpt's T21) | A close that lands while a read is in `readLocal`: the shim gets one result | owned by Part 3; linked here so the numbering doesn't diverge |
 
