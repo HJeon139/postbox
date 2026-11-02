@@ -28,6 +28,8 @@ const LISTS = /** @type {const} */ ({
  */
 const ENTITIES = /** @type {const} */ ({
   apps: { event: 'app', removed: 'app' },
+  // A topic the turn or the page may have just opened (#637): startTopic reads it to make one topic per message.
+  threads: { event: 'thread', removed: 'thread' },
 });
 /** @typedef {keyof typeof LISTS} PendingList */
 /** @typedef {keyof typeof ENTITIES} PendingCollection */
@@ -36,11 +38,13 @@ const ENTITIES = /** @type {const} */ ({
  * @typedef {{ [K in PendingList]: (key: string) => readonly Entry[] } & {
  *   app: (id: string) => Entry | undefined,
  *   apps: () => Readonly<Record<string, Entry>>,
+ *   thread: (id: string) => Entry | undefined,
  * }} PendingReads
  */
 
 /**
- * The pending reads of a store: one per list in LISTS, and, for apps, one entity by id and the whole collection.
+ * The pending reads of a store: one per list in LISTS; for apps, one entity by id and the whole collection; and for
+ * threads, one by id.
  * @param {import('./store.mjs').Store} store @returns {PendingReads}
  */
 export function pendingReads(store) {
@@ -48,6 +52,7 @@ export function pendingReads(store) {
   for (const list of /** @type {PendingList[]} */ (Object.keys(LISTS))) reads[list] = (/** @type {string} */ key) => pendingList(store, list, key);
   reads.apps = () => pendingCollection(store, 'apps');
   reads.app = (/** @type {string} */ id) => pendingCollection(store, 'apps')[id];
+  reads.thread = (/** @type {string} */ id) => pendingCollection(store, 'threads')[id];
   return /** @type {PendingReads} */ (reads);
 }
 

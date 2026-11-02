@@ -5,17 +5,20 @@ import { clip, httpError } from './helpers.mjs';
 import { newId } from './store.mjs';
 
 /**
- * Opens the topic thread of one message, or returns the one it has.
+ * Opens the topic thread of one message, or returns the one it has: `created` says which. It reads the message and its
+ * topic through store.pending, since its result decides a write: a second open while the first is held behind a commit
+ * finds that topic, so a message has one topic (#601, #637).
  * @param {import('./runtime.mjs').Runtime} rt @param {string} threadId @param {string} itemId
+ * @returns {{ threadId: string, created: boolean }}
  */
 export function startTopic(rt, threadId, itemId) {
   const parent = rt.thread(threadId);
   if (parent.kind === 'topic' || parent.kind === 'side') throw httpError(409, 'A topic thread can’t start another one. Reply in this one instead.');
-  const items = rt.store.items(threadId);
+  const items = rt.store.pending.items(threadId);
   const idx = items.findIndex((x) => x.id === itemId);
   const root = items[idx];
   if (!root || !['user', 'agent', 'block', 'shared'].includes(root.kind)) throw httpError(404, 'That message can’t start a thread.');
-  if (root.topicId && rt.s.threads[root.topicId]) return { threadId: root.topicId };
+  if (root.topicId && rt.store.pending.thread(root.topicId)) return { threadId: root.topicId, created: false };
   const topic = rt.putThread({
     id: newId('th'),
     projectId: parent.projectId,
@@ -42,6 +45,6 @@ export function startTopic(rt, threadId, itemId) {
     (answer && rt.s.sessions[answer.sessionId]) ||
     members.find((x) => x.id === parent.lastSpeaker) ||
     members[0];
-  if (src) rt.putThread({ ...rt.s.threads[topic.id], woke: src.handle });
-  return { threadId: topic.id };
+  if (src) rt.putThread({ ...topic, woke: src.handle });
+  return { threadId: topic.id, created: true };
 }

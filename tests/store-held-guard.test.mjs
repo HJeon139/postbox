@@ -30,7 +30,7 @@ const PUBLISHED = {
   'read-message.mjs': ['readMessage', 'readMessage'], // a read tool (T-31)
   'remote/turns-snapshot.mjs': ['readable'], // the snapshot sent to a host: it leaves the process
   'review-comments.mjs': ['find'], // review_block on a block shown in the room
-  'runtime.mjs': ['retry', 'resolveProposal', 'startTopic', 'topicRootLine', 'describeItem', 'readConversation', 'diagramCheck', 'stopShellCommand'], // a person’s action on an item they see, or a read tool and a prompt
+  'runtime.mjs': ['retry', 'resolveProposal', 'topicRootLine', 'describeItem', 'readConversation', 'diagramCheck', 'stopShellCommand'], // a person’s action on an item they see, or a read tool and a prompt
   'scheduled-wakes.mjs': ['prepareScheduledRetry'], // the person’s Retry of a wake line they see
   'share-back.mjs': ['shareToConversation', 'shareToConversation'], // the person’s Share of an item they see
   'store-outage.mjs': ['settleOrphanTurns'], // at a reload, when nothing is held
@@ -100,6 +100,7 @@ const PENDING = {
   'side-threads.mjs': ['agentWake', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'], // the reply with the mention, a side line right after its add, and sweeps of hop cards
   'thread-erase.mjs': ['eraseThreads'], // a thread’s apps, removed in a sweep
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
+  'topic-open.mjs': ['startTopic', 'startTopic'], // one topic per message: the root and its topic, maybe held behind a commit (#637)
   'wake-cards.mjs': ['openCard'], // another wake’s held hop card, so a second isn’t made
   'write-intent.mjs': ['stillOpen'], // the turn’s own lines, and the person’s held Stop on one
 };
