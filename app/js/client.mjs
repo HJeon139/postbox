@@ -8,32 +8,11 @@
 // state came with, never one heard on the stream alone.
 
 import { needsYouNow, whereNeeds } from '/shared/needs.mjs';
-import { apply, ownState } from '/shared/state.mjs';
+import { apply, ownState, PUBLIC_EVENT_TYPES, STREAM } from '/shared/state.mjs';
 
-const EVENT_TYPES = [
-  'settings',
-  'project',
-  'persona',
-  'boilerplate',
-  'thread',
-  'session',
-  'session.patch',
-  'app',
-  'file',
-  'dataset',
-  'schedule',
-  'host',
-  'host.status',
-  'glossary',
-  'item.add',
-  'item.patch',
-  'item.move',
-  'item.text',
-  'work.add',
-  'work.patch',
-  'remove',
-  'notify',
-];
+// The event types the page hears: every public type in shared/state.mjs's table, and the cursor the server sends in
+// place of any other (server/public-state.mjs).
+const EVENT_TYPES = [STREAM.cursor, ...PUBLIC_EVENT_TYPES];
 
 export const client = {
   state: null,
@@ -88,6 +67,11 @@ export function connect() {
     es.addEventListener(t, (e) => {
       const seq = Number(e.lastEventId);
       if (seq && seq <= client.seq) return;
+      // A cursor stands for an event the page doesn't see: it moves the page's place on, and nothing else.
+      if (t === STREAM.cursor) {
+        client.seq = seq || client.seq;
+        return;
+      }
       const data = JSON.parse(e.data);
       apply(client.state, t, data);
       client.seq = seq || client.seq;
@@ -103,12 +87,12 @@ export function connect() {
   // loaded: a frame naming another means the state the page shows is from a history the server no longer runs on, so it
   // loads the state again, as a resync does. Taking the epoch from the frame would, if that load then failed, send the
   // new epoch with the old state on the next reconnect, which the server would accept at an equal seq.
-  es.addEventListener('epoch', (e) => {
+  es.addEventListener(STREAM.epoch, (e) => {
     if ((JSON.parse(e.data) ?? '') !== client.epoch) void resync();
   });
-  es.addEventListener('resync', resync);
+  es.addEventListener(STREAM.resync, resync);
   // The store’s status, unnumbered: each time it can’t save, or can again (app/js/store-line.mjs).
-  es.addEventListener('status', (e) => {
+  es.addEventListener(STREAM.status, (e) => {
     client.store = JSON.parse(e.data);
     client.emit({ type: 'store' });
   });

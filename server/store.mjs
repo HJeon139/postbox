@@ -9,10 +9,11 @@
 import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
-import { apply, emptyState } from '../shared/state.mjs';
+import { emptyState } from '../shared/state.mjs';
 import { commit, run } from './store-commit.mjs';
 import { pendingReads } from './store-held.mjs';
 import { close, load } from './store-recover.mjs';
+import { applyOrHold, refuseReserved, rejectedError } from './store-reject.mjs';
 import { fail, reload } from './store-retry.mjs';
 
 export { emptyState };
@@ -63,6 +64,9 @@ export class Store {
     this.cause = null;
     this.warned = false; // an emit while closed logged the cause
     this.lost = null; // history the log lost, { from, to, count }, found at load (server/store-replay.mjs)
+    this.rejected = /** @type {import('./store-reject.mjs').Rejected | null} */ (null); // events the reducer rejected
+    this.lastRejected = 0; // the last rejected seq this run, so since() from before it resyncs
+    this.opsRejected = /** @type {Map<string, ReturnType<typeof import('./store-reject.mjs').opRecord>>} */ (new Map()); // opIds of rejected commits
     this.closed = false; // close() ran: nothing is applied or written here again
     this.closing = false; // close() has begun: no Retry starts, no commit or emit is taken, no destructive step runs
     this.warning = null; // a snapshot that failed, while the log goes on
@@ -158,16 +162,18 @@ export class Store {
     return ev;
   }
 
-  /** Applies a numbered event with the shared reducer and keeps it for since() as JSON, as it was emitted. */
+  /**
+   * Applies a numbered event with the shared reducer and keeps it for since() as JSON, as it was emitted, or holds it as
+   * rejected (server/store-reject.mjs). @returns {{ line: string, heard: any, error: unknown }} heard: what listeners get
+   */
   record(ev) {
-    const line = JSON.stringify(ev);
-    apply(this.state, ev.type, ev.data);
+    const { line, kept, heard, error } = applyOrHold(this, ev);
     this.version++;
     this.state.seq = ev.seq;
     this.ahead--;
-    this.events.push({ seq: ev.seq, line });
+    if (kept) this.events.push({ seq: ev.seq, line: kept });
     if (this.events.length > KEEP_EVENTS) this.events.splice(0, this.events.length - KEEP_EVENTS);
-    return line;
+    return { line, heard, error };
   }
 
   notify(ev) {
@@ -180,6 +186,7 @@ export class Store {
    */
 
   emit(type, data) {
+    refuseReserved(type);
     const ev = { type, data };
     if (this.retiring) {
       // Applied nowhere: the store is being handed over. Said once, so an exit callback’s stream doesn’t flood the log.
@@ -196,8 +203,8 @@ export class Store {
       return ev;
     }
     this.sequence(ev);
-    const line = this.record(ev);
-    this.notify(ev);
+    const { line, heard, error } = this.record(ev);
+    this.notify(heard);
     if (!(this.writable || this.reconciling)) {
       if (!this.warned) console.error(`An event wasn’t written: ${this.cause?.message}`);
       this.warned = true;
@@ -206,6 +213,7 @@ export class Store {
       this.sinceSnapshot++;
       this.pump();
     }
+    if (error) throw rejectedError(ev.seq, type, error);
     return ev;
   }
 
@@ -216,8 +224,8 @@ export class Store {
     // Out of heldLog before it's recorded: a listener's pending read rebuilds from the state that now holds it, and
     // mustn't find it held as well (the integrator's review of #611).
     this.heldLog.shift();
-    const line = this.record(ev);
-    this.notify(ev);
+    const { line, heard } = this.record(ev); // a rejected one is logged and kept as rejected; the writer goes on
+    this.notify(heard);
     if (this.dir) this.sinceSnapshot++;
     this.held--;
     if (!this.held) this.views.clear();
@@ -271,6 +279,8 @@ export class Store {
   /** Events after `seq`, or null when they’re no longer kept and the client must refetch the state. */
   since(seq) {
     if (seq >= this.state.seq) return [];
+    // A page from before a rejected event loads the state again: a handler that broke its contract may have changed it.
+    if (this.lastRejected > seq) return null;
     const first = this.events[0]?.seq ?? this.state.seq + 1;
     if (seq + 1 < first) return null;
     return this.events.filter((e) => e.seq > seq).map((e) => JSON.parse(e.line));
