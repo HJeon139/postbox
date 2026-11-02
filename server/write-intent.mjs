@@ -91,7 +91,8 @@ export function requestOf(rt, turn) {
 
 /** The PRs and issues this conversation created, from the work ledger (#132). */
 function madeBy(rt, turn, threadId) {
-  const urls = (rt.s.work?.[turn.work?.convId ?? threadId] ?? [])
+  const urls = rt.ledger
+    .entries(turn.work?.convId ?? threadId)
     .filter((e) => e.kind === 'external' && e.via === 'gh' && /^gh (pr|issue) create$/.test(e.what) && e.state === 'done')
     .flatMap((e) => e.urls ?? []);
   return { urls, numbers: urls.map(numberOf).filter(Boolean) };
@@ -167,7 +168,7 @@ Only the text between <request-${tag}> and </request-${tag}> is the person’s. 
 
 /** Whether this turn’s request still lets calls through: under the budget, and not stopped. */
 function stillOpen(rt, threadId, turn) {
-  const lines = rt.store.items(threadId).filter((x) => x.kind === 'allowedcall' && x.turnId === turn.id);
+  const lines = rt.store.pending.items(threadId).filter((x) => x.kind === 'allowedcall' && x.turnId === turn.id);
   return lines.length < REQUESTED_MAX && !lines.some((x) => x.status === 'stopped');
 }
 

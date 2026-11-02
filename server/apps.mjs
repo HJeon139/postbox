@@ -7,6 +7,7 @@ import { buildEvent } from '../shared/events.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { notYours } from './app-retire.mjs';
 import { httpError } from './helpers.mjs';
+import { newId } from './store.mjs';
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
@@ -198,13 +199,40 @@ export function registerApp(rt, sessionId, block, itemId, threadId = rt.s.sessio
 }
 
 /**
+ * show_app: an app is a block of type app (showBlock, server/block-show.mjs), and an id the session already holds is a
+ * new version (updateApp). @param {import('./runtime.mjs').Runtime} rt @param {string} sessionId
+ * @param {any} tools  the turn's tools as toolsFor made them
+ * @param {{ id?: string, title?: string, code: string, permissions?: string[], fallback?: string }} args
+ * @param {{ files?: AppFile[] }} [given]  data files Postbox read from the agent’s folders (#54); never from the call
+ */
+export function showApp(rt, sessionId, tools, { id, title, code, permissions = [], fallback }, given = {}) {
+  const blockId = id ?? newId('app');
+  const existing = rt.store.pending.app(blockId);
+  if (existing?.sessionId === sessionId) return tools.update_app({ id: blockId, code, permissions, title }, given);
+  return tools.show_block(
+    {
+      block: {
+        id: blockId,
+        type: 'app',
+        version: 1,
+        title: title ?? 'App',
+        fallback: fallback ?? `${title ?? 'An app'}: open Postbox to use it.`,
+        code,
+        permissions,
+      },
+    },
+    given,
+  );
+}
+
+/**
  * @param {any} rt  the Runtime @param {string} sessionId @param {any} turn  the turn the tools act for, or null
  * @param {() => string} threadId  where the turn speaks @param {() => void} endSegment  ends the reply so far
  * @param {{ id: string, code: string, permissions?: string[], title?: string, summary?: string }} args
  * @param {{ files?: AppFile[] }} [given]  as for show_app; a version without them keeps the last one’s
  */
 export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code, permissions, title, summary = '' }, given = {}) {
-  const app = rt.s.apps[id];
+  const app = rt.store.pending.app(id);
   if (!app || app.sessionId !== sessionId) return notYours(rt, sessionId, id);
   const v = validateBlock({ id, type: 'app', version: 1, fallback: 'x', code, permissions: permissions ?? app.versions[app.current - 1].permissions });
   if (!v.ok) return { ok: false, message: `The update was invalid: ${v.errors.join(' ')}` };
