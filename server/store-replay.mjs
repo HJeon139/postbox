@@ -82,7 +82,8 @@ function applyGroup(store, events, seg, n, offset) {
   /** @type {{ seq: number, type: string, error: string } | null} */
   let no = null;
   for (const ev of events) {
-    no = applyOrHold(store, ev) ?? no;
+    const held = applyOrHold(store, ev); // every event is applied, or held, in order
+    no ??= held; // the first rejected one names the commit, as applyCommits keeps it
     store.state.seq = ev.seq;
     store.sinceSnapshot++;
   }

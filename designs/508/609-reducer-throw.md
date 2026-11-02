@@ -42,6 +42,7 @@ When `apply` throws inside `record()`, the store keeps the event as rejected:
 - **A commit** rejects with the same error. It doesn't close the store, because the write succeeded. In a commit of several events, the others are applied in order around the rejected one, which by the contract changes nothing. So the commit is applied in part, and its error names the rejected seq.
   - **This amends the commit contract.** `design.md` §6.6 says a commit is applied whole after its sync. It gains: “unless the reducer rejects one of its events, which is then held as rejected (#609), while the rest apply”. Its bullet “a bad line in the middle of a segment refuses to start” gains “a line the reducer rejects doesn't: it's held as rejected”.
   - **Why not reject the commit whole on the server too:** that means undoing the events already applied. Without a copy of the state taken before them, which is the cost the other policy refuses, nothing can undo them. And a builder that validates is already where a commit is refused whole, before anything is numbered.
+- **A retry of a rejected commit, by its `opId`,** is rejected again with the same `EREJECTED`, naming the commit's first rejected event, live and after a load. A snapshot forgets the op as it forgets `store.ops`, so a retry after one runs the commit again, and it is rejected afresh.
 - **A held emit** is rejected at its release the same way. The writer's loop carries on, and the held count comes down.
 
 ## The other policy, and why not

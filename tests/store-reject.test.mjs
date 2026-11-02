@@ -98,6 +98,21 @@ test('a retry of a rejected commit, by its opId, gets the same rejection, live a
   await again.close();
 });
 
+test('a commit with two rejected events: the rest apply, and its error names the first, live and after a reload', async () => {
+  const store = await new Store(await folder()).load();
+  const events = [
+    { type: 'thread', data: { id: 'one', members: [] } },
+    { type: 'nonsense', data: {} },
+    { type: 'nonsense', data: { again: true } },
+    { type: 'thread', data: { id: 'four', members: [] } },
+  ];
+  await assert.rejects(store.commit(events, { opId: 'op2' }), (e) => rejected(e) && e.seq === 2);
+  const again = await reload(store);
+  assert.ok(again.state.threads.one && again.state.threads.four, 'the events around the rejected ones applied on replay');
+  await assert.rejects(again.commit(events, { opId: 'op2' }), (e) => rejected(e) && e.seq === 2, 'a retry after a reload names the first too');
+  await again.close();
+});
+
 test('a log line the reducer rejects on replay: load completes and holds it as rejected', async () => {
   const dir = await folder();
   const lines = [
