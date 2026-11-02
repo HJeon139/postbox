@@ -1,11 +1,13 @@
 // Checks that no change raises a length ceiling in biome.json (designs/architecture.md, “Module and function size: a
 // ceiling that only comes down”). It compares biome.json with its copy at the merge base with main, and fails when a
 // file or function ceiling goes up, when a file that already existed gets a ceiling, when a length rule or the linter
-// is turned off, when a file is taken out of what Biome checks, or when a biome-ignore for a length rule is added. A
+// is turned off, when a file is taken out of what Biome checks, when a Biome config other than the root one is added
+// or changed, or when a biome-ignore for a length rule is added. With no base, it fails in CI and skips elsewhere. A
 // new module's ceiling is allowed, since code moved out of a file at its ceiling may take one, and is listed for the
 // reviewer. `npm run lint:project` runs it.
 //
-//   node tools/lint-caps.mjs            against origin/main, or origin/$BASE_REF when that is set
+//   node tools/lint-caps.mjs            against origin/main, or origin/$BASE_REF when that is set (CI's check job sets
+//                                       neither, so a pull request into another branch is compared with main)
 //   node tools/lint-caps.mjs REF        against REF
 
 import { execFileSync } from 'node:child_process';
@@ -47,7 +49,7 @@ export function ceilings(biome) {
     }
     if (Object.keys(caps).length) for (const p of o.includes ?? []) paths.set(p, { ...paths.get(p), ...caps });
   }
-  return { defaults, paths, includes: biome.files?.includes ?? [] };
+  return { defaults, paths, includes: biome.files?.includes ?? [], extends: JSON.stringify(biome.extends ?? []) };
 }
 
 /**
@@ -74,22 +76,82 @@ export function capChanges(base, head, existed) {
       else notes.push(`${path}: a new module with a ${name[k]} ceiling of ${now}. Allowed only for code moved out of a file at its ceiling.`);
     }
   }
+  if (head.extends !== base.extends) problems.push('biome.json’s extends changed.');
   for (const p of base.includes) if (!p.startsWith('!') && !head.includes.includes(p)) problems.push(`Biome no longer checks “${p}”.`);
   for (const p of head.includes) if (p.startsWith('!') && !base.includes.includes(p)) problems.push(`Biome no longer checks “${p.slice(1)}”.`);
   return { problems, notes };
 }
 
+/**
+ * Biome configs other than the root biome.json that were added or changed: a nested one can turn a rule off for its
+ * folder, and Biome then checks nothing there. The root one is compared rule by rule (capChanges).
+ * @param {Map<string, string>} base @param {Map<string, string>} head  path → blob id
+ */
+export function configChanges(base, head) {
+  return [...head]
+    .filter(([p, id]) => p !== 'biome.json' && /(^|\/)biome\.jsonc?$/.test(p) && base.get(p) !== id)
+    .map(([p]) => `A Biome config was added or changed: ${p}.`);
+}
+
+/**
+ * The biome-ignore lines for a length rule that are new, as `path:text`: matched one for one against the base, so
+ * removing one and adding another still counts as one added.
+ * @param {string[]} base @param {string[]} head
+ */
+export function addedIgnores(base, head) {
+  const left = new Map();
+  for (const l of base) left.set(l, (left.get(l) ?? 0) + 1);
+  return head.filter((l) => {
+    const n = left.get(l) ?? 0;
+    if (n) left.set(l, n - 1);
+    return !n;
+  });
+}
+
 const git = (/** @type {string[]} */ args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 
-/** How many biome-ignore comments for a length rule there are, at a commit or (with none) in the working tree. */
-function ignores(rev) {
+/**
+ * What a run with no base to compare with does: in CI it fails, since that is a broken checkout and must not pass as a
+ * clean guard; elsewhere it skips.
+ * @param {string} ref @param {Record<string, string | undefined>} env
+ */
+export function noBase(ref, env) {
+  return env.CI
+    ? { code: 1, message: `lint-caps: failed, there is no ${ref} to compare with.` }
+    : { code: 0, message: `lint-caps: skipped, there is no ${ref} to compare with.` };
+}
+
+const SKIP = [':!tools/lint-caps.mjs', ':!tests/lint-caps.test.mjs'];
+
+/** The biome-ignore lines for a length rule, as `path:text`, at a commit or (with none) in the working tree. */
+function ignoreLines(rev) {
   try {
-    return git(['grep', '-h', '-E', IGNORE, ...(rev ? [rev] : []), '--', ':!tools/lint-caps.mjs'])
+    const out = git(['grep', ...(rev ? [] : ['--untracked']), '-E', IGNORE, ...(rev ? [rev] : []), '--', ...SKIP]);
+    return out
       .split('\n')
-      .filter(Boolean).length;
-  } catch {
-    return 0; // git grep exits 1 when nothing matches
+      .filter(Boolean)
+      .map((l) => (rev ? l.slice(rev.length + 1) : l));
+  } catch (e) {
+    // git grep exits 1 when nothing matches; any other failure must not read as "no comments".
+    if (/** @type {any} */ (e).status === 1) return [];
+    throw e;
   }
+}
+
+/** Every Biome config's blob id, at a commit or (with none) in the working tree, untracked ones included. */
+function configs(rev) {
+  const isConfig = (/** @type {string} */ p) => /(^|\/)biome\.jsonc?$/.test(p);
+  if (rev) {
+    const rows = git(['ls-tree', '-r', rev]).split('\n').filter(Boolean);
+    return new Map(
+      rows
+        .map((r) => r.split('\t'))
+        .filter(([, p]) => isConfig(p))
+        .map(([meta, p]) => [p, meta.split(' ')[2]]),
+    );
+  }
+  const paths = git(['ls-files', '--cached', '--others', '--exclude-standard']).split('\n').filter(isConfig);
+  return new Map(paths.map((p) => [p, git(['hash-object', p]).trim()]));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -98,15 +160,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   try {
     at = git(['merge-base', ref, 'HEAD']).trim();
   } catch {
-    console.log(`lint-caps: skipped, there is no ${ref} to compare with.`);
-    process.exit(0);
+    const r = noBase(ref, process.env);
+    console.log(r.message);
+    process.exit(r.code);
   }
   const files = new Set(git(['ls-tree', '-r', '--name-only', at]).split('\n'));
   const base = ceilings(JSON.parse(git(['show', `${at}:biome.json`])));
   const head = ceilings(JSON.parse(readFileSync(`${ROOT}biome.json`, 'utf8')));
   const { problems, notes } = capChanges(base, head, (p) => files.has(p));
-  const added = ignores('') - ignores(at);
-  if (added > 0) problems.push(`${added} biome-ignore comment${added === 1 ? '' : 's'} for a length rule added.`);
+  problems.push(...configChanges(configs(at), configs('')));
+  for (const l of addedIgnores(ignoreLines(at), ignoreLines(''))) problems.push(`A biome-ignore for a length rule was added: ${l}`);
   for (const n of notes) console.log(`note: ${n}`);
   for (const p of problems) console.log(`✖ ${p}`);
   if (problems.length) {

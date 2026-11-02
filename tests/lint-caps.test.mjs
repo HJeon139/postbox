@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { capChanges, ceilings } from '../tools/lint-caps.mjs';
+import { addedIgnores, capChanges, ceilings, configChanges, noBase } from '../tools/lint-caps.mjs';
 
 const cap = (n) => ({ level: 'error', options: { maxLines: n } });
 /** A biome.json with the repo's defaults, and the given overrides and includes. */
@@ -69,4 +69,52 @@ test('lint-caps: the repo’s own biome.json against itself changes nothing', ()
     capChanges(c, c, () => true),
     { problems: [], notes: [] },
   );
+});
+
+test('lint-caps: a Biome config other than the root biome.json, added or changed, fails', () => {
+  const base = new Map([
+    ['biome.json', 'a1'],
+    ['app/kit/biome.json', 'b1'],
+  ]);
+  assert.deepEqual(configChanges(base, new Map([...base, ['server/biome.json', 'c1']])), ['A Biome config was added or changed: server/biome.json.']);
+  assert.deepEqual(
+    configChanges(
+      base,
+      new Map([
+        ['biome.json', 'a1'],
+        ['app/kit/biome.json', 'b2'],
+      ]),
+    ),
+    ['A Biome config was added or changed: app/kit/biome.json.'],
+  );
+  assert.deepEqual(configChanges(base, new Map([...base, ['biome.jsonc', 'd1']])), ['A Biome config was added or changed: biome.jsonc.']);
+  assert.deepEqual(
+    configChanges(
+      base,
+      new Map([
+        ['biome.json', 'a2'],
+        ['app/kit/biome.json', 'b1'],
+      ]),
+    ),
+    [],
+    'the root one is read rule by rule',
+  );
+  assert.deepEqual(configChanges(base, new Map([['biome.json', 'a1']])), [], 'removing one is fine');
+});
+
+test('lint-caps: a changed extends fails, since it can bring in other rules', () => {
+  assert.deepEqual(check(biome(), { ...biome(), extends: ['./loose.json'] }).problems, ['biome.json’s extends changed.']);
+});
+
+test('lint-caps: a biome-ignore added where another was removed still counts as added', () => {
+  const base = ['server/a.mjs:// biome-ignore lint/style/noExcessiveLinesPerFile: old'];
+  const head = ['server/b.mjs:// biome-ignore lint/style/noExcessiveLinesPerFile: new'];
+  assert.deepEqual(addedIgnores(base, head), head);
+  assert.deepEqual(addedIgnores([...base, ...base], base), []);
+  assert.deepEqual(addedIgnores(base, [...base, ...base]), base, 'a second copy of the same line is new');
+});
+
+test('lint-caps: with no base to compare with, it fails in CI and skips elsewhere', () => {
+  assert.deepEqual(noBase('origin/main', { CI: 'true' }), { code: 1, message: 'lint-caps: failed, there is no origin/main to compare with.' });
+  assert.deepEqual(noBase('origin/main', {}), { code: 0, message: 'lint-caps: skipped, there is no origin/main to compare with.' });
 });
