@@ -36,7 +36,7 @@ import { restoreArchives } from './archive-lifecycle.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
-import { nextNeed, noticeNeed, releaseNeed } from './card-needs.mjs';
+import { nextNeed, noticeNeed, releaseNeed, TURN_TIED } from './card-needs.mjs';
 import { catchUp, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
@@ -642,7 +642,11 @@ export class Runtime {
       // Where the turn is, when it’s in a side thread (#121): the conversation shows the agent at work there.
       sideTurn: where === se.threadId ? null : { threadId: where, by: message.kind === 'agent' ? turn.from : message.kind === 'user' ? 'you' : null },
       state: 'think',
-      needs: turn.movesOn && se.needs?.kind !== 'appsend' ? null : se.needs,
+      // Moving on clears a need tied to a turn; the cards that wait until answered stay (card-needs.mjs RANK).
+      needs: turn.movesOn && TURN_TIED.has(se.needs?.kind) ? null : se.needs,
+      // This turn is the last turn from its start (card-needs.mjs turnOf), so a restart that cuts it off, or a card
+      // released after it leaves the running turns, doesn't count a block from the turn before.
+      lastTurnId: turn.id,
       currentStep: 'Thinking',
       finishedAt: null,
     });
@@ -1511,7 +1515,7 @@ export class Runtime {
     return askedAgain(this, threadId, it, (asked) => {
       this.patchItem(threadId, itemId, { status: 'retried' });
       // Only the cards that wait until answered can take the need: the failed turn's own asks would flash until the
-      // retried turn starts, and that turn's end decides them (critic's review of #633).
+      // retried turn starts, and that turn's end decides them.
       releaseNeed(this, this.s.sessions[it.sessionId], itemId, undefined, { turnId: null });
       this.deliver(it.sessionId, { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [] }, { summarizeTo: asked.summarizeTo, threadId });
     });

@@ -1,4 +1,4 @@
-// A turn's own id is the last turn's from its start (#366; critic's fresh-subagent review of #633 at 004f3e3d): a turn a
+// A turn's own id is the last turn's from its start (#366; the review of #633 at 004f3e3d): a turn a
 // restart cuts off never ends, and a permission that expires at the turn's end is released before the end records it, so
 // a block you moved past came back on both paths. After a restart, the interrupted turn's own asks count.
 

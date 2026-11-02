@@ -49,8 +49,11 @@ function needOf(rt, se, it, threadId, turnId, keep) {
  */
 export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, denial: 3, toolask: 4, appsend: 5, hop: 5 });
 
+/** The needs tied to a turn: the person moving on clears them (runtime.mjs, the turn's start). The rest wait until answered. */
+export const TURN_TIED = new Set(['failed', 'block', 'denial', 'toolask']);
+
 /**
- * Which turn's asking blocks, refusals and tool requests count, answered here only (design-633-turn-1). During a
+ * Which turn's asking blocks, refusals and tool requests count, answered here only. During a
  * running turn none do, except the block a turn that doesn't move on kept (`turn.kept`, nextNeed's `keep`): its end
  * decides them, and main's mid-turn release left no need. Otherwise the last ended turn,
  * which the session keeps in the store so a restart keeps it, or, for a session from before it did, the turn of the
@@ -97,7 +100,7 @@ export function nextNeed(rt, se, { released = null, turnId = turnOf(rt, se, rele
  */
 export function offerNeed(rt, se, need, state) {
   const cur = se.needs;
-  if (cur && cur.itemId !== need.itemId && !(RANK[need.kind] <= RANK[cur.kind])) return false;
+  if (cur && !(RANK[need.kind] <= RANK[cur.kind])) return false;
   rt.updateSession(se.id, { needs: need, state });
   return true;
 }
@@ -105,13 +108,15 @@ export function offerNeed(rt, se, need, state) {
 /**
  * A card was answered or retired. If the agent's need is that card, it falls back to the next card that waits, and
  * an app card that becomes the need without ever being notified is notified now. Any other need is left alone.
- * @param {any} rt @param {any} se @param {string} itemId
+ * @param {any} rt @param {any} caller  the session, as the caller read it @param {string} itemId
  * @param {string} [busy]  the state while a turn runs: a permission's release passes 'tool', since the tool call it
  *   held goes on; others keep the session's state
  * @param {{ turnId?: string | null }} [o]  which turn's cards count, when it isn't turnOf's answer: Retry passes null,
  *   since the retried turn starts at once and its end decides them
  */
-export function releaseNeed(rt, se, itemId, busy = se?.state, { turnId } = {}) {
+export function releaseNeed(rt, caller, itemId, busy = caller?.state, { turnId } = {}) {
+  // The session as it is now: a caller may hold a copy from before an await, and each patch makes a new one.
+  const se = caller && rt.s.sessions[caller.id];
   if (!se || se.needs?.itemId !== itemId) return;
   const released = rt.store.pending.items(se.needs.threadId ?? se.threadId).find((/** @type {any} */ x) => x.id === itemId);
   const need = nextNeed(rt, se, turnId === undefined ? { released } : { released, turnId });

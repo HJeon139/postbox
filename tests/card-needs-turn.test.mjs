@@ -1,4 +1,4 @@
-// Which turn's cards count (#366; the integrator's review of #633, points 1, 2 and 4; design-633-turn-1): answered once,
+// Which turn's cards count (#366; the integrator's review of #633, points 1, 2 and 4): answered once,
 // in card-needs.mjs, from the session's `lastTurnId` in the store, so a restart keeps it; during a running turn no
 // turn-tied card counts, as on main; a card in a side or topic thread is the agent's too.
 
@@ -109,7 +109,7 @@ test('a turn’s end records its id on the session, in the store', async () => {
   assert.equal(r.store.state.sessions[r.alpha.id].lastTurnId, turnId);
 });
 
-test('a turn that does not move on keeps the block it found, through a permission released mid-turn and at its end (gpt)', async () => {
+test('a turn that does not move on keeps the block it found, through a permission released mid-turn and at its end', async () => {
   const r = room();
   const b = r.block(); // open, from turn_last
   r.setNeed('block', b.id);
@@ -126,7 +126,7 @@ test('a turn that does not move on keeps the block it found, through a permissio
   assert.equal(r.needs()?.itemId, b.id, 'and still at the turn’s end');
 });
 
-test('an app check’s note after the turn ended is scoped to the session’s lastTurnId, the second reader (critic)', async () => {
+test('an app check’s note after the turn ended is scoped to the session’s lastTurnId, the second reader', async () => {
   const r = room();
   r.adapter.next.push(async (c, _m, se) => {
     r.rt.toolsFor(se.id).show_app({ id: 'lab', title: 'Lab', code: '<p>Lab</p>' });

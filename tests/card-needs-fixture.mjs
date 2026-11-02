@@ -7,7 +7,7 @@ import { setup } from './side-threads-fixture.mjs';
 export function room() {
   const ctx = setup();
   const { rt, t, alpha } = ctx;
-  // The last ended turn is on the session, in the store, so it survives a restart (design-633-turn-1).
+  // The last ended turn is on the session, in the store, so it survives a restart.
   rt.updateSession(alpha.id, { lastTurnId: 'turn_last' });
   const needs = () => rt.s.sessions[alpha.id].needs;
   const setNeed = (kind, itemId) => rt.updateSession(alpha.id, { needs: { kind, itemId, text: kind }, state: 'needs' });

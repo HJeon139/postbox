@@ -202,3 +202,15 @@ test('app cards and wake requests rank the same, so the newest of them comes fir
   assert.equal(r.needs()?.itemId, newest.id, 'the newest app card, not the wake request before it');
   await settle(r.rt);
 });
+
+test('a later event of an older app card doesn’t take the need back from a newer wake request', async () => {
+  const r = room();
+  const app = { sessionId: r.alpha.id, title: 'App', threadId: r.t.id };
+  const card = r.appCard();
+  r.rt.needAppSend(app, card.id, 1);
+  await sleep(2);
+  const h = r.hop();
+  r.setNeed('hop', h.id);
+  r.rt.needAppSend(app, card.id, 2); // the card's second event: the card isn't new
+  assert.equal(r.needs()?.itemId, h.id, 'the newer wake request keeps the need');
+});

@@ -54,7 +54,7 @@ test('Retry clears the failure without the block you moved past flashing as the 
   assert.ok(!kinds.includes('block'), `the needs Retry set: ${JSON.stringify(kinds)}`);
 });
 
-test('Retry doesn’t flash a block the failed turn showed before it threw (critic’s subagent)', async () => {
+test('Retry doesn’t flash a block the failed turn showed before it threw', async () => {
   const r = room();
   r.adapter.next.push(async (_c, _m, se) => {
     r.rt.addItem(r.t.id, {
