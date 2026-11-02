@@ -37,6 +37,10 @@ test('open_topic from a host’s turn opens the topic, and its repeat after a he
   assert.match(r.d.replies[0].text, new RegExp(topic.id), 'the reply names it');
   r.link.hear({ type: 'tool', turn, id, name: 'open_topic', args });
   await until(() => r.link.sent.filter((m) => m.type === 'reply' && m.id === id).length === 2, 'the repeat’s reply');
+  const [first, again] = r.link.sent.filter((m) => m.type === 'reply' && m.id === id);
+  // The same text, “Opened a topic thread…”: the kept reply answered (#439), not a second run that I6 caught, which
+  // would say the message already has one.
+  assert.equal(again.text, first.text, 'the kept reply, not a second run');
   assert.equal(topics(r.store).length, 1);
   assert.equal(r.store.items(topic.id).filter((i) => i.text === args.message).length, 1, 'the message posted once');
   r.d.end(turn);
