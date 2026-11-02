@@ -80,8 +80,8 @@ async function room() {
     assert.equal((await first.msgs.next('tool')).id, id);
   };
   const results = (id = 'c1') => s1.got.filter((m) => m.type === 'result' && m.id === id);
-  const done = () => {
-    daemon.close();
+  const done = async () => {
+    await daemon.close();
     rmSync(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 }); // the last reply record may still be landing (see makeHome)
   };
   return { first, postbox, s1, shim, parkRead, results, afterHello, lostFrom, done };
@@ -96,7 +96,7 @@ test('L1: the driver’s socket ends: a parked read is answered from the snapsho
     assert.match(res.text, new RegExp(OFFLINE));
     assert.match(res.text, /You: hi/);
   } finally {
-    r.done();
+    await r.done();
   }
 });
 
@@ -111,7 +111,7 @@ test('L2: a shim’s socket ends: the driver’s parked reads are left alone', a
     r.first.send('reply', { turn: 't1', id: 'c1', ok: true, text: 'live' });
     assert.equal((await until(() => r.results()[0], 'the live answer')).text, 'live');
   } finally {
-    r.done();
+    await r.done();
   }
 });
 
@@ -128,7 +128,7 @@ test('L3: the same Postbox says hello before its old socket ends: the read stays
     assert.equal(res.text, '[i1] You: hi');
     assert.equal(r.results().length, 1);
   } finally {
-    r.done();
+    await r.done();
   }
 });
 
@@ -148,7 +148,7 @@ test('L4: the old socket ends before the same Postbox’s hello (S2b): one offli
     );
     assert.equal(r.results().length, 1);
   } finally {
-    r.done();
+    await r.done();
   }
 });
 
@@ -169,7 +169,7 @@ test('L5: another Postbox takes over: the old driver’s read is answered offlin
     assert.equal(r.lostFrom.length, 1, 'driverLost ran once');
     assert.match(r.lostFrom[0], /at Object\.close \(.*daemon-conn\.mjs/, 'and inside Conn.close() in daemon-conn.mjs, not on a later tick');
   } finally {
-    r.done();
+    await r.done();
   }
 });
 
@@ -182,7 +182,7 @@ test('L6: a hello that is refused as busy leaves the driver and its read alone',
     r.first.send('reply', { turn: 't1', id: 'c1', ok: true, text: 'live' });
     assert.equal((await until(() => r.results()[0], 'the live answer')).text, 'live');
   } finally {
-    r.done();
+    await r.done();
   }
 });
 
@@ -198,7 +198,7 @@ test('L7: the driver’s socket closing twice (end, then an error) settles the r
     await until(() => r.results('c2')[0], 'the barrier read');
     assert.equal(r.results().length, 1);
   } finally {
-    r.done();
+    await r.done();
   }
 });
 
@@ -217,6 +217,6 @@ test('L8: a queued call is untouched when the driver goes: answered once as queu
     assert.equal(r.results('q1').length, 1, 'and was never answered a second time');
     assert.doesNotMatch(r.results('q1')[0].text, new RegExp(OFFLINE));
   } finally {
-    r.done();
+    await r.done();
   }
 });

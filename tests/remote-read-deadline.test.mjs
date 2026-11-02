@@ -46,7 +46,7 @@ test('T02: 100s deadline expiration triggers offline fallback via fake clock', a
 
     const t = k.b.pending.tools.find((x) => x.id === 'c_t02');
     assert.equal(t?.timer, undefined);
-    k.b.close();
+    await k.b.close();
   } finally {
     await h.done();
   }
@@ -69,7 +69,7 @@ test('T10: restart replay after failed reply write resends if <100s', async () =
       helloSent.some((m) => m.type === 'tool' && m.id === 'c_t10'),
       'hello resends tool when age < 100s',
     );
-    k.b.close();
+    await k.b.close();
   } finally {
     await h.done();
   }
@@ -101,7 +101,7 @@ test('T10: restart replay settles offline immediately without sending if >=100s'
     assert.equal(resultMsg.ok, true);
     assert.match(resultMsg.text, /Item 1 snapshot/);
     assert.match(resultMsg.text, /\(Read offline as of this turn’s start; earlier or changed items may be missing\.\)$/);
-    k.b.close();
+    await k.b.close();
   } finally {
     await h.done();
   }
@@ -134,7 +134,7 @@ test('T11: replayed unsettled read arms timer anchored on at', async () => {
     assert.equal(r.ok, true);
     assert.match(r.text, /Item 1 snapshot/);
     assert.match(r.text, /\(Read offline as of this turn’s start; earlier or changed items may be missing\.\)$/);
-    k.b.close();
+    await k.b.close();
   } finally {
     await h.done();
   }
@@ -165,7 +165,7 @@ test('T11 negative control: corrupted at safely defaults to b.now()', async () =
     await clock.tick(1000);
     const r = await s.next('result', (m) => m.id === 'c_corrupt');
     assert.equal(r.ok, true);
-    k.b.close();
+    await k.b.close();
   } finally {
     await h.done();
   }
@@ -191,7 +191,7 @@ test('T11 clock clamp: wall-clock backward jump clamps remaining time <= 100s', 
     const r = await callJump;
     assert.equal(r.ok, true);
     assert.match(r.text, /Item 1 snapshot/);
-    k.b.close();
+    await k.b.close();
   } finally {
     await h.done();
   }
@@ -222,7 +222,7 @@ test('T13: negative control: live reply at 50ms clears timer and delivers withou
     await clock.tick(100_000);
     const results = s.got.filter((m) => m.type === 'result' && m.id === 'c_live50');
     assert.equal(results.length, 1, 'exactly one result frame reached the shim');
-    k.b.close();
+    await k.b.close();
   } finally {
     await h.done();
   }
@@ -275,7 +275,7 @@ test('T14: zero leaked timers across live reply, expiry, and teardown', async ()
     s.send('call', { id: 'c_leak3', name: 'read_message', args: { id: 'item_1' } });
     await until(() => k.sent.some((m) => m.id === 'c_leak3'), 'sent c_leak3');
     assert.equal(activeTimers.size, 1);
-    k.b.close();
+    await k.b.close();
     assert.equal(activeTimers.size, 0, 'surviving timers cleared on broker close');
   } finally {
     await h.done();
