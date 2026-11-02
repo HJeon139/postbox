@@ -167,7 +167,7 @@ test('L5: another Postbox takes over: the old driver’s read is answered offlin
     );
     assert.equal(r.results().length, 1);
     assert.equal(r.lostFrom.length, 1, 'driverLost ran once');
-    assert.match(r.lostFrom[0], /\bclose\b/, 'and inside Conn.close(), not on a later tick');
+    assert.match(r.lostFrom[0], /at Object\.close \(.*daemon-conn\.mjs/, 'and inside Conn.close() in daemon-conn.mjs, not on a later tick');
   } finally {
     r.done();
   }
