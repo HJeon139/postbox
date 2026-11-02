@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.11.1 (2026-11-02)
+
+### Fixes
+
+- **remote:** a host's change draws the rings that say where it runs, not every reply's
+- **thread:** one rule finds an agent's latest reply, for its ring and its words
+- **ring:** the ring beside an earlier reply says only whose it is
+- **app:** a session change paints only the status words it can change
+- **thread:** only an agent's latest reply's ring follows its session
+- **ring:** a ring draws once for all the attributes a change sets
+
 ## 1.11.0 (2026-11-02)
 
 ### Features
