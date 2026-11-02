@@ -25,9 +25,9 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
   // theirs (its versions and saved state) is left alone.
   /** @type {string | null} */
   let renamed = null;
-  if (v.ok && v.block.type === 'app' && rt.s.apps[v.block.id]) {
+  if (v.ok && v.block.type === 'app' && rt.store.pending.app(v.block.id)) {
     const { id, code, permissions, title } = /** @type {any} */ (v.block);
-    if (rt.s.apps[id].sessionId === sessionId) return tools.update_app({ id, code, permissions, title }, given);
+    if (rt.store.pending.app(id).sessionId === sessionId) return tools.update_app({ id, code, permissions, title }, given);
     renamed = newId(String(id).slice(0, 40));
     v.block = { ...v.block, id: renamed };
   }
@@ -42,7 +42,7 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
   return v.ok
     ? v.block.type === 'app'
       ? appReceipt(
-          rt.s.apps[v.block.id],
+          rt.store.pending.app(v.block.id),
           renamed ? `That app id was taken, so it’s shown as ${renamed}. Use that id to update it.` : `Shown app ${v.block.id}.`,
         )
       : { ok: true, message: `Shown block ${v.block.id}.` }
@@ -51,7 +51,7 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
 
 /** The refusal when this session already showed a block with this id in the thread, or null. */
 function shownAgain(rt, sessionId, threadId, id) {
-  const shown = rt.store.items(threadId).find((x) => x.kind === 'block' && x.valid && x.sessionId === sessionId && x.block.id === id);
+  const shown = rt.store.pending.items(threadId).find((x) => x.kind === 'block' && x.valid && x.sessionId === sessionId && x.block.id === id);
   // An app’s id can’t take a block’s update, so that case only asks for a new id.
   if (shown?.block.type === 'app') return { ok: false, message: `${id} is the id of your app “${shown.block.title ?? id}”. Pick a new id for this block.` };
   if (shown) return { ok: false, message: `Block ${id} is already shown. Use update_block to change it, or pick a new id.` };

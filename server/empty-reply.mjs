@@ -28,7 +28,7 @@ export function noteAnswer(turn, name, r) {
 /**
  * Whether a turn that owes a reply ended with none: no text, no call that acted (noteAnswer), and nothing else of its
  * own in the thread (a block, an app, a card, a message it sent another agent, which carries fromTurnId).
- * @param {any} turn @param {any[]} items  the thread’s
+ * @param {any} turn @param {readonly any[]} items  the thread’s
  */
 export function endedWithoutReply(turn, items) {
   if (!ASKED.has(turn.kind) || turn.slash || turn.said.trim() || turn.answered) return false;

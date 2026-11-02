@@ -17,7 +17,7 @@ export function notYours(_rt, _sessionId, id) {
  * @param {any} rt  the Runtime @param {string} sessionId @param {{ id?: unknown, reason?: unknown, replacedBy?: unknown }} args
  */
 export function retireApp(rt, sessionId, { id, reason, replacedBy } = {}) {
-  const app = rt.s.apps[String(id)];
+  const app = rt.store.pending.app(String(id)); // the turn may have shown it a moment ago, behind a held commit (#601)
   if (!app || app.sessionId !== sessionId) return notYours(rt, sessionId, String(id));
   const why = String(reason ?? '')
     .replace(/\s+/g, ' ')
@@ -28,8 +28,8 @@ export function retireApp(rt, sessionId, { id, reason, replacedBy } = {}) {
   let to = null;
   if (replacedBy != null && replacedBy !== '') {
     const rid = String(replacedBy);
-    const other = rid === app.id ? null : rt.s.apps[rid];
-    const shown = rt.store.items(app.threadId).filter((x) => x.kind === 'block' && x.valid && x.block.id === rid && (other || x.block.type !== 'app'));
+    const other = rid === app.id ? null : rt.store.pending.app(rid);
+    const shown = rt.store.pending.items(app.threadId).filter((x) => x.kind === 'block' && x.valid && x.block.id === rid && (other || x.block.type !== 'app'));
     const item = shown.find((x) => x.sessionId === sessionId) ?? shown[0];
     if (!item) return { ok: false, message: `There’s no other app or block ${rid} in this conversation. Name one shown here, or leave out replacedBy.` };
     to = { id: rid, title: String(other?.title ?? item.block.title ?? item.block.prompt ?? rid).slice(0, 200), itemId: item.id };
@@ -44,7 +44,7 @@ export function retireApp(rt, sessionId, { id, reason, replacedBy } = {}) {
  * its agent no longer needs the person for them. Later sends are refused (appEvent in server/apps.mjs).
  */
 function release(rt, app) {
-  const card = rt.store.items(app.threadId).find((x) => x.kind === 'appsend' && x.appId === app.id && x.status === 'open');
+  const card = rt.store.pending.items(app.threadId).find((x) => x.kind === 'appsend' && x.appId === app.id && x.status === 'open');
   if (!card) return;
   rt.patchItem(app.threadId, card.id, { status: 'declined', retired: true, answeredAt: Date.now() });
   const se = rt.s.sessions[card.sessionId];

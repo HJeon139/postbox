@@ -75,7 +75,7 @@ export class Ledger {
     return t?.parentId && this.s.threads[t.parentId] ? t.parentId : threadId;
   }
   entries(convId) {
-    return this.s.work?.[convId] ?? [];
+    return this.store.pending.work(convId); // as the ledger writes them: it reads back its own entries to patch them (#601)
   }
   entry(convId, id) {
     return this.entries(convId).find((e) => e.id === id) ?? null;
@@ -257,10 +257,10 @@ export class Ledger {
     const w = turn.work;
     const threads = [...new Set([turn.threadId, w.convId])];
     for (const threadId of threads)
-      for (const it of this.store.items(threadId)) {
+      for (const it of this.store.pending.items(threadId)) {
         if (it.kind !== 'block' || it.turnId !== turn.id || !it.valid) continue;
         const b = it.block;
-        const app = b.type === 'app' ? this.s.apps?.[b.id] : null;
+        const app = b.type === 'app' ? this.store.pending.app(b.id) : null;
         const title = app?.title ?? b.title ?? b.statement ?? b.prompt ?? b.fallback ?? b.id;
         this.add(
           w.convId,

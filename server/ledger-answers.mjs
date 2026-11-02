@@ -7,15 +7,22 @@ import { onHost } from './ledger-remote.mjs';
 import { newId } from './store.mjs';
 
 /**
+ * One entry of a conversation's work as the page has it: what was published, never an entry still held behind a commit
+ * (#601, designs/508/601-held-view.md §4). Every answer here reads through it; recording, in ledger.mjs, reads pending.
+ * @param {import('./ledger.mjs').Ledger} ledger @param {string} convId @param {string} id
+ */
+const published = (ledger, convId, id) => ledger.s.work?.[convId]?.find((e) => e.id === id);
+
+/**
  * A file’s diff: what all the agents’ turns left (against before their first change), or one change’s. Rows are
  * hunks from shared/work.mjs, at most MAX_DIFF_ROWS.
  * @param {import('./ledger.mjs').Ledger} ledger @param {string} convId @param {string} fileId @param {string|null} [changeId]
  */
 export async function fileDiff(ledger, convId, fileId, changeId = null) {
-  const f = ledger.entry(convId, fileId);
+  const f = published(ledger, convId, fileId);
   if (f?.kind === 'edit') throw onHost(f);
   if (f?.kind !== 'file') throw fail(404, 'That file isn’t in this conversation’s work.');
-  const c = changeId ? ledger.entry(convId, changeId) : null;
+  const c = changeId ? published(ledger, convId, changeId) : null;
   if (changeId && (c?.kind !== 'change' || c.fileId !== fileId)) throw fail(404, 'That change isn’t in this conversation’s work.');
   const a = c ? c.before : f.before;
   const b = c ? c.after : f.after;
@@ -28,7 +35,7 @@ export async function fileDiff(ledger, convId, fileId, changeId = null) {
 
 /** A command’s output, as text. @param {import('./ledger.mjs').Ledger} ledger @param {string} convId @param {string} entryId */
 export async function output(ledger, convId, entryId) {
-  const e = ledger.entry(convId, entryId);
+  const e = published(ledger, convId, entryId);
   if (e?.kind !== 'command') throw fail(404, 'That command isn’t in this conversation’s work.');
   if (!e.output?.sha256) return '';
   return (await ledger.blobs.get(e.output.sha256)).toString('utf8');

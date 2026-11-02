@@ -57,7 +57,7 @@ export function askToAdd(rt, from, parent, p, wake) {
 }
 
 /** One request at a time: the card waiting for the person, if there is one. */
-const openCard = (rt, parent) => rt.store.items(parent.id).find((x) => x.kind === 'hop' && x.status === 'open') ?? null;
+const openCard = (rt, parent) => rt.store.pending.items(parent.id).find((x) => x.kind === 'hop' && x.status === 'open') ?? null;
 /** A card as an agent is told of it: who it’s between, and since when. */
 const cardName = (c) =>
   `@${c.from}’s request to ${c.join ? 'add' : 'wake'} @${c.to}${Number.isFinite(c.at) ? ` (since ${new Date(c.at).toISOString().slice(11, 16)} UTC)` : ''}`;
