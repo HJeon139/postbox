@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { test } from 'node:test';
 import { TURN_FILES } from '../shared/remote-protocol.mjs';
-import { connectShim, makeBroker, makeHome, REQUEST, sleep } from './remote-broker-fixtures.mjs';
+import { connectShim, lines, makeBroker, makeHome, REQUEST, sleep, until } from './remote-broker-fixtures.mjs';
 import { holdingIo, journal, reached } from './remote-settle-io.mjs';
 
 const snap = { home: 'th', threads: [{ id: 'th', items: [{ id: 'i0', line: 'line 0', text: 'x 0' }] }] };
@@ -96,6 +96,56 @@ test('a start admitted before the close writes no snapshot after it', async () =
     await writing.catch(() => {});
     await sleep(50);
     assert.ok(!existsSync(h.p.turn(turn, TURN_FILES.snapshot)), 'no snapshot after the close');
+  } finally {
+    await h.done();
+  }
+});
+
+test('a reply Postbox sends after the close writes no record, and leaves the call for the next daemon', async () => {
+  const h = makeHome();
+  try {
+    const turn = 't_a6';
+    h.turn(turn);
+    const k = makeBroker(h);
+    await k.post('snapshot', { turn, ...snap });
+    await k.b.starting(turn);
+    const s = connectShim(k.b, turn);
+    await s.next('welcome');
+    s.send('call', { id: 'c1', name: 'read_message', args: { id: 'i0' } });
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'c1'), 'the read sent to Postbox');
+    await k.b.close();
+    const got = await k.post('reply', { turn, id: 'c1', ok: true, text: 'from Postbox' });
+    await sleep(50);
+    assert.deepEqual(
+      journal(h, turn).map((r) => r.op),
+      ['call'],
+      'no reply record after the close',
+    );
+    assert.equal(got.errors[0]?.code, 'internal', 'Postbox is told it was not taken, so it replies again');
+  } finally {
+    await h.done();
+  }
+});
+
+test('an answer Postbox sends after the close writes no record', async () => {
+  const h = makeHome();
+  try {
+    const turn = 't_a7';
+    h.turn(turn);
+    const k = makeBroker(h);
+    const s = connectShim(k.b, turn);
+    await s.next('welcome');
+    s.send('permission', { id: 'p1', request: REQUEST });
+    await until(() => k.sent.some((m) => m.type === 'prompt'), 'the prompt sent to Postbox');
+    await k.b.close();
+    const got = await k.post('answer', { turn, prompt: 'p1', result: { behavior: 'allow', updatedInput: {} } });
+    await sleep(50);
+    assert.deepEqual(
+      lines(h.p.turn(turn, TURN_FILES.prompts)).map((r) => r.op),
+      ['prompt'],
+      'no answer record after the close',
+    );
+    assert.equal(got.errors[0]?.code, 'internal');
   } finally {
     await h.done();
   }
