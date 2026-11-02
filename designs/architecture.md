@@ -461,6 +461,12 @@ flowchart LR
 - **The function ceiling is per file.** Biome sets options per file, not per function, so a file’s longest function sets the ceiling for all of its functions, and a shorter one could grow up to it. Review catches that, and splitting the file ends it.
 - **A wrapper is a module scope, not a function.** A script that isn’t a module, such as `app/kit/kit.js`, wraps all of its code in one IIFE, so Biome counted the whole file as one 619-line function. Its override sets `skipIifes`, so its function ceiling was its longest real function’s (`legibility`, 69 lines). `legibility` then moved, with the pre-display check, to `app/kit/check.js`, whose override sets `skipIifes` too, as does `app/kit/check-layout.js`’s at the default 50. The integrator lowers `kit.js`’s ceilings to what’s left.
 
+**What a split is for** (decided by the person, 2 November 2026). The limits exist so a reader can follow the code. Fewer lines isn’t the goal: a file holds one concern you can name in a few words, with its state and its rules, so one decision reads in one place.
+- **Simplify first.** Remove a case, a flag or a duplicate before moving code. Code that got simpler often fits under its ceiling without a split.
+- **Split by concern.** A new module owns one thing (“answering a read offline”, “the page’s answers from the ledger”), and its header says what. A helper split out of a long function decides one thing, and its name says what, as `shownAgain` and `blockItem` in `server/block-show.mjs` do.
+- **Never compress.** Joined lines, dense one-liners, shorter names, and comments dropped to save lines make code harder to read. They fail review even when Biome passes them.
+- **Never scatter.** Cutting one decision across files or helpers that only make sense together, so a reader has to jump between them to follow it, fails review too. Cutting a function at an arbitrary line to get under 50 is the same mistake.
+
 **How a ceiling moves**
 - **Down:** a change that shrinks an offender lowers its ceilings to the new sizes in the same change, and removes the override once the file is under the default. No check enforces this yet, so the reviewer does.
 - **Never up in the change that tripped it** (developing.md, “Lint and type-check exceptions”). A file that needs to grow is split first. A split that needs a design, as `server/runtime.mjs` does (which module owns which of its state), is decided in this document before its code moves.
