@@ -65,6 +65,17 @@ export function applyOrHold(store, ev) {
   }
 }
 
+/**
+ * The opIds of commits held as rejected, beside `store.ops` and cleared with it at a snapshot, so a retry of one gets
+ * the same rejection, not a duplicate success. @param {any} holder @returns {Map<string, { seq: number, type: string, error: string }>}
+ */
+export const rejectedOps = (holder) => (holder.opsRejected ??= new Map());
+
 /** The error the caller of an emit or a commit gets: the event is in the log, held as rejected. */
 export const rejectedError = (seq, type, cause) =>
-  Object.assign(new Error(`The store couldn’t apply event ${seq} (${type}), so it’s kept as rejected: ${messageOf(cause)}`), { code: 'EREJECTED', seq, cause });
+  Object.assign(new Error(`The store couldn’t apply event ${seq} (${type}), so it’s kept as rejected: ${messageOf(cause)}`), {
+    code: 'EREJECTED',
+    seq,
+    type,
+    cause,
+  });

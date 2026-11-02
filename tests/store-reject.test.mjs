@@ -86,6 +86,17 @@ test('a commit whose event the reducer rejects: the store stays writable, the co
   await again.close();
 });
 
+test('a retry of a rejected commit, by its opId, gets the same rejection, live and after a reload, not a duplicate success', async () => {
+  const store = await new Store(await folder()).load();
+  await assert.rejects(store.commit([{ type: 'nonsense', data: {} }], { opId: 'op1' }), rejected);
+  await assert.rejects(store.commit([{ type: 'nonsense', data: {} }], { opId: 'op1' }), rejected, 'live');
+  assert.equal(store.state.seq, 1, 'the retry writes nothing');
+  const again = await reload(store);
+  await assert.rejects(again.commit([{ type: 'nonsense', data: {} }], { opId: 'op1' }), rejected, 'after a reload');
+  assert.equal(again.state.seq, 1);
+  await again.close();
+});
+
 test('a log line the reducer rejects on replay: load completes and holds it as rejected', async () => {
   const dir = await folder();
   const lines = [

@@ -8,6 +8,7 @@
 import { join } from 'node:path';
 import { emptyState, ownState } from '../shared/state.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
+import { rejectedOps } from './store-reject.mjs';
 import { replay } from './store-replay.mjs';
 import { settledWithin } from './store-retry.mjs';
 import { syncDir, writeSnapshot } from './store-snapshot.mjs';
@@ -84,6 +85,9 @@ export function install(store, c) {
   for (const key of Object.keys(store.state)) delete store.state[key];
   Object.assign(store.state, c.state);
   store.ops = c.ops;
+  const rejectedNow = rejectedOps(store); // a retry of a commit the load held as rejected is rejected again
+  rejectedNow.clear();
+  for (const [op, no] of rejectedOps(c)) rejectedNow.set(op, no);
   store.sinceSnapshot = c.sinceSnapshot;
   store.lost = c.lost;
   store.rejected = c.rejected;
