@@ -164,12 +164,14 @@ test('a held event the reducer rejects: the pending read skips it, as the releas
   // The integrator's probe on #632: the pending read threw here while the release held the event as rejected.
   assert.deepEqual(ids(store.pending.items('t1')), ['a', 'j'], 'the read answers, without the rejected patch');
   assert.deepEqual(ids(store.pending.items('t2')), ['c'], 'another thread’s read answers too');
+  store.emit('app', null); // an app event the release will hold as rejected: the apps read skips it too
+  assert.doesNotThrow(() => store.pending.apps(), 'the apps read answers');
   const pending = JSON.parse(JSON.stringify(store.pending.items('t1')));
   h.release();
   await commit;
   await store.flush();
   assert.deepEqual(JSON.parse(JSON.stringify(store.items('t1'))), pending, 'what was pending is what was published');
-  assert.equal(store.rejected?.count, 1);
+  assert.equal(store.rejected?.count, 2);
   await store.close();
 });
 

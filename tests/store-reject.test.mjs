@@ -117,6 +117,7 @@ test('a snapshot forgets a rejected op, so a retry runs again, and a retry that 
   const store = await new Store(await folder()).load();
   await assert.rejects(store.commit([{ type: 'nonsense', data: {} }], { opId: 'op3' }), rejected);
   await store.snapshot(); // forgets opIds, as it forgets store.ops
+  assert.equal(store.opsRejected.size, 0, 'the snapshot forgot the rejected op');
   const ok = await store.commit([{ type: 'thread', data: { id: 'ok', members: [] } }], { opId: 'op3' });
   assert.equal(ok.duplicate, false, 'after the snapshot the retry runs again');
   assert.deepEqual(await store.commit([{ type: 'thread', data: { id: 'ok', members: [] } }], { opId: 'op3' }), { seq: ok.seq, duplicate: true });

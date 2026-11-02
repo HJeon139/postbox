@@ -15,7 +15,7 @@
 // reads whatever landed (server/store-recover.mjs, the one recovery path). Retry as a reload is 1b’s; the generation
 // check is its seam: a loop whose generation is no longer the store’s finishes its step and publishes nothing.
 
-import { refuseReserved, rejectedError, rejectedOps } from './store-reject.mjs';
+import { opRecord, refuseReserved, rejectedError } from './store-reject.mjs';
 import { snapshotNow, syncDir } from './store-snapshot.mjs';
 
 /** The segment the log is being appended to, opened once. @param {import('./store.mjs').Store} store */
@@ -77,7 +77,9 @@ function applyCommits(store, commits) {
       if (r.error && !c.rejected) c.rejected = rejectedError(ev.seq, ev.type, r.error);
     }
     if (c.opId !== undefined) store.ops.set(c.opId, c.events.at(-1).seq); // the last seq, as the design says
-    if (c.opId !== undefined && c.rejected) rejectedOps(store).set(c.opId, { seq: c.rejected.seq, type: c.rejected.type, error: c.rejected.cause?.message });
+    // A rejected commit's retry is rejected again; a commit that lands clears any earlier rejection of its opId.
+    if (c.opId !== undefined && c.rejected) store.opsRejected.set(c.opId, opRecord(c.rejected.seq, c.rejected.type, c.rejected.cause));
+    else if (c.opId !== undefined) store.opsRejected.delete(c.opId);
     store.sinceSnapshot += c.events.length;
   }
   for (const ev of heard) store.notify(ev);
@@ -102,7 +104,7 @@ const lineOf = (events) => `${JSON.stringify(events.length === 1 ? events[0] : e
  */
 function sequenced(store, c) {
   if (c.opId !== undefined && store.ops.has(c.opId)) {
-    const no = rejectedOps(store).get(c.opId); // a retry of a commit held as rejected is rejected the same way
+    const no = store.opsRejected.get(c.opId); // a retry of a commit held as rejected is rejected the same way
     if (no) c.reject(rejectedError(no.seq, no.type, no.error));
     else c.resolve({ seq: store.ops.get(c.opId), duplicate: true });
     return null;

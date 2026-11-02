@@ -66,6 +66,7 @@ export class Store {
     this.lost = null; // history the log lost, { from, to, count }, found at load (server/store-replay.mjs)
     this.rejected = /** @type {import('./store-reject.mjs').Rejected | null} */ (null); // events the reducer rejected
     this.lastRejected = 0; // the last rejected seq this run, so since() from before it resyncs
+    this.opsRejected = /** @type {Map<string, ReturnType<typeof import('./store-reject.mjs').opRecord>>} */ (new Map()); // opIds of rejected commits
     this.closed = false; // close() ran: nothing is applied or written here again
     this.closing = false; // close() has begun: no Retry starts, no commit or emit is taken, no destructive step runs
     this.warning = null; // a snapshot that failed, while the log goes on
@@ -166,11 +167,11 @@ export class Store {
    * rejected (server/store-reject.mjs). @returns {{ line: string, heard: any, error: unknown }} heard: what listeners get
    */
   record(ev) {
-    const { line, heard, error } = applyOrHold(this, ev);
+    const { line, kept, heard, error } = applyOrHold(this, ev);
     this.version++;
     this.state.seq = ev.seq;
     this.ahead--;
-    this.events.push({ seq: ev.seq, line: error ? JSON.stringify(heard) : line });
+    if (kept) this.events.push({ seq: ev.seq, line: kept });
     if (this.events.length > KEEP_EVENTS) this.events.splice(0, this.events.length - KEEP_EVENTS);
     return { line, heard, error };
   }

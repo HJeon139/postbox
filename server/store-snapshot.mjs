@@ -5,7 +5,6 @@
 // from server/store-commit.mjs under the file-length rule.
 
 import { writeAll } from './store-commit.mjs';
-import { rejectedOps } from './store-reject.mjs';
 import { snapshotFailed, snapshotSucceeded } from './store-retry.mjs';
 
 const PIECE = 1 << 20; // the snapshot’s text goes to the disk in pieces this long
@@ -84,6 +83,6 @@ async function takeSnapshot(store) {
   store.freshSegment = true;
   store.sinceSnapshot = 0;
   store.ops.clear(); // opIds are remembered for the commits newer than the latest snapshot
-  rejectedOps(store).clear();
+  store.opsRejected.clear(); // and the rejected ones with them
   for (const seg of covered) if (seg.name !== store.segment && !store.retiring) await store.io.rm(store.at(seg.name), { force: true });
 }

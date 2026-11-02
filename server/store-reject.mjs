@@ -16,8 +16,9 @@ const KEEP = 20;
 
 /**
  * The names no producer may emit: the stand-in, and the event stream's own frames. A frame name emitted as an event
- * would reach the reducer, throw and be held as rejected; refusing it first keeps it out of the log. PR 1's `RESERVED`
- * in shared/state.mjs (design-a1-pr1) names the four stream frames, and replaces them here when it lands.
+ * would reach the reducer, throw and be held as rejected; refusing it first keeps it out of the log. The four frame
+ * names are a naming concern, not a rejection one: they move to #630's `RESERVED` in shared/state.mjs at the seam,
+ * and only `rejected` stays here.
  */
 const RESERVED_TYPES = new Set([REJECTED, 'cursor', 'status', 'epoch', 'resync']);
 
@@ -48,34 +49,31 @@ export function noteRejected(holder, seq, type, error) {
 
 /**
  * Applies a numbered live event to the store's state (Store.record), or holds it as rejected: kept and counted on the
- * store, and logged once. Gives back the line the log keeps for it (the JSON made before applying, as it was emitted),
- * what listeners hear, and the reducer's error, if any. @param {any} store @param {any} ev
- * @returns {{ line: string, heard: any, error: unknown }}
+ * store, and logged once. Decides both of the seq's lines in one place: `line`, what the log keeps (the JSON made
+ * before applying, as it was emitted, or the stand-in with it inside), and `kept`, what the since() backlog keeps (the
+ * same JSON, or nothing for a rejected one, since since() from before it resyncs). `heard` is what listeners get.
+ * @param {any} store @param {any} ev @returns {{ line: string, kept: string | null, heard: any, error: unknown }}
  */
 export function applyOrHold(store, ev) {
   const line = JSON.stringify(ev);
   try {
     apply(store.state, ev.type, ev.data);
-    return { line, heard: ev, error: null };
+    return { line, kept: line, heard: ev, error: null };
   } catch (error) {
     noteRejected(store, ev.seq, ev.type, error);
     store.lastRejected = ev.seq;
-    console.error(`The store couldn’t apply event ${ev.seq} (${ev.type}), and keeps it as rejected: ${messageOf(error)}`);
-    return { line: JSON.stringify(loggedStandIn(ev, error)), heard: standIn(ev.seq), error };
+    // Its seq and type only: the reducer's message can quote what it was given (store.rejected keeps it, on the server).
+    console.error(`The store couldn’t apply event ${ev.seq} (${ev.type}), and keeps it as rejected.`);
+    return { line: JSON.stringify(loggedStandIn(ev, error)), kept: null, heard: standIn(ev.seq), error };
   }
 }
 
-/**
- * The opIds of commits held as rejected, beside `store.ops` and cleared with it at a snapshot, so a retry of one gets
- * the same rejection, not a duplicate success. @param {any} holder @returns {Map<string, { seq: number, type: string, error: string }>}
- */
-export const rejectedOps = (holder) => (holder.opsRejected ??= new Map());
+/** What a rejected commit's opId keeps, live and on replay. @param {number} seq @param {string} type @param {unknown} error */
+export const opRecord = (seq, type, error) => ({ seq, type, error: messageOf(error) });
 
-/** The error the caller of an emit or a commit gets: the event is in the log, held as rejected. */
+/**
+ * The error the caller of an emit or a commit gets: the event is in the log, held as rejected. Its message names the
+ * seq and type only, since a tool returns `message` to the agent (server/mcp.mjs); the reducer's error is the cause.
+ */
 export const rejectedError = (seq, type, cause) =>
-  Object.assign(new Error(`The store couldn’t apply event ${seq} (${type}), so it’s kept as rejected: ${messageOf(cause)}`), {
-    code: 'EREJECTED',
-    seq,
-    type,
-    cause,
-  });
+  Object.assign(new Error(`The store couldn’t apply event ${seq} (${type}), so it’s kept as rejected.`), { code: 'EREJECTED', seq, type, cause });

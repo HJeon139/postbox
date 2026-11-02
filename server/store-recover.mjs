@@ -8,7 +8,6 @@
 import { join } from 'node:path';
 import { emptyState, ownState } from '../shared/state.mjs';
 import { lockStore, unlockStore } from './store-lock.mjs';
-import { rejectedOps } from './store-reject.mjs';
 import { replay } from './store-replay.mjs';
 import { settledWithin } from './store-retry.mjs';
 import { syncDir, writeSnapshot } from './store-snapshot.mjs';
@@ -18,6 +17,7 @@ import { syncDir, writeSnapshot } from './store-snapshot.mjs';
  *   io: typeof import('node:fs/promises'), dir: string, at: (name: string) => string, segments: () => Promise<{ name: string }[]>,
  *   state: any, ops: Map<string, number>, sinceSnapshot: number, lost: { from: number, to: number, count: number } | null,
  *   rejected: { count: number, first: { seq: number, type: string, error: string }[] } | null,
+ *   opsRejected: Map<string, { seq: number, type: string, error: string }>,
  *   segment: string, freshSegment: boolean, retiring: boolean,
  * }} Candidate  what the folder holds, read without touching the store
  */
@@ -40,6 +40,7 @@ export async function recover(store) {
     sinceSnapshot: 0,
     lost: null,
     rejected: null,
+    opsRejected: new Map(),
     segment: '',
     freshSegment: false,
     get retiring() {
@@ -85,13 +86,10 @@ export function install(store, c) {
   for (const key of Object.keys(store.state)) delete store.state[key];
   Object.assign(store.state, c.state);
   store.ops = c.ops;
-  const rejectedNow = rejectedOps(store); // a retry of a commit the load held as rejected is rejected again
-  rejectedNow.clear();
-  for (const [op, no] of rejectedOps(c)) rejectedNow.set(op, no);
+  store.opsRejected = c.opsRejected; // a retry of a commit the load held as rejected is rejected again
   store.sinceSnapshot = c.sinceSnapshot;
   store.lost = c.lost;
   store.rejected = c.rejected;
-  store.lastRejected = 0; // since() starts over with this load
   if (c.rejected)
     console.warn(
       `The event log holds ${c.rejected.count} event${c.rejected.count === 1 ? '' : 's'} Postbox couldn’t apply, kept as rejected (first at ${c.rejected.first[0].seq}).`,
