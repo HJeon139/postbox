@@ -23,14 +23,31 @@ function blobsOf(rt) {
   return folders.get(rt) ?? null;
 }
 
-const count = (/** @type {number} */ k) => k.toLocaleString('en-US');
-const when = (/** @type {number} */ at) => new Date(at).toISOString().replace(/\.\d+Z$/, 'Z');
-const refused = (/** @type {string} */ message) => ({ ok: false, message });
-/** An id as an agent sent it, bounded for the answer that names it. */
-const shown = (/** @type {unknown} */ id) => clipText(String(id ?? ''), 80);
-/** The room’s asset by id, or null; ids come from agents, so only the record’s own keys count. */
-const assetById = (/** @type {any} */ rt, /** @type {unknown} */ id) =>
-  typeof id === 'string' && rt.s.assets && Object.hasOwn(rt.s.assets, id) ? rt.s.assets[id] : null;
+/** A number as an answer writes it, with thousands separators. @param {number} n */
+function count(n) {
+  return n.toLocaleString('en-US');
+}
+
+/** A time as an answer writes it: UTC, to the second. @param {number} at */
+function when(at) {
+  return new Date(at).toISOString().replace(/\.\d+Z$/, 'Z');
+}
+
+/** A tool’s refusal: nothing was written, and the message says what to do. @param {string} message */
+function refused(message) {
+  return { ok: false, message };
+}
+
+/** An id as an agent sent it, bounded for the answer that names it. @param {unknown} id */
+function shown(id) {
+  return clipText(String(id ?? ''), 80);
+}
+
+/** The asset with this id, or null. Ids come from agents, so only the record’s own keys count. @param {any} rt @param {unknown} id */
+function assetById(rt, id) {
+  if (typeof id !== 'string' || !rt.s.assets || !Object.hasOwn(rt.s.assets, id)) return null;
+  return rt.s.assets[id];
+}
 
 /** Types for the names agents write most, when a write gives none; anything else is text/plain or binary by its bytes. */
 const TYPES = {
@@ -70,10 +87,7 @@ export function assetTools(rt, sessionId, turn, { onHost = false } = {}) {
       argsProblem({ id, base }) ?? publish({ kind: 'rename', id, base, name: typeof name === 'string' ? name : '', op }),
     delete_asset: ({ id, base, op } = /** @type {any} */ ({})) => argsProblem({ id, base }) ?? publish({ kind: 'delete', id, base, op }),
     restore_asset: ({ id, version, base, op } = /** @type {any} */ ({})) =>
-      argsProblem({ id, base }) ??
-      (Number.isInteger(version) && version >= 1
-        ? publish({ kind: 'restore', id, base, version, op })
-        : refused('Name the version to restore, such as version: 1.')),
+      restoreProblem({ id, base, version }) ?? publish({ kind: 'restore', id, base, version, op }),
   };
 }
 
@@ -86,6 +100,17 @@ function argsProblem({ id, base }) {
   if (typeof id !== 'string' || !id) return refused('Name the asset by its id. list_assets gives each asset’s id.');
   if (!Number.isInteger(base) || /** @type {number} */ (base) < 1)
     return refused(`Name the version you read as base, such as base: 2. read_asset { id: "${shown(id)}" } gives the newest.`);
+  return null;
+}
+
+/**
+ * What’s wrong with a restore, or null: an update’s id and base, and the version to bring back.
+ * @param {{ id: unknown, base: unknown, version: unknown }} args
+ */
+function restoreProblem({ id, base, version }) {
+  const problem = argsProblem({ id, base });
+  if (problem) return problem;
+  if (!Number.isInteger(version) || /** @type {number} */ (version) < 1) return refused('Name the version to restore, such as version: 1.');
   return null;
 }
 
