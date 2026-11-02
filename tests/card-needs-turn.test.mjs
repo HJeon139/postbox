@@ -108,3 +108,20 @@ test('a turn’s end records its id on the session, in the store', async () => {
   assert.ok(turnId);
   assert.equal(r.store.state.sessions[r.alpha.id].lastTurnId, turnId);
 });
+
+test('a turn that does not move on keeps the block it found, through a permission released mid-turn and at its end (gpt)', async () => {
+  const r = room();
+  const b = r.block(); // open, from turn_last
+  r.setNeed('block', b.id);
+  const work = held();
+  r.adapter.next.push(work.step);
+  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' }); // another agent's wake
+  await sleep(5);
+  const p = r.permission();
+  r.setNeed('permission', p.id);
+  r.rt.settlePermission(p.id, 'allowed');
+  assert.equal(r.needs()?.itemId, b.id, 'the block is the need again once the permission is answered');
+  work.release();
+  await settle(r.rt);
+  assert.equal(r.needs()?.itemId, b.id, 'and still at the turn’s end');
+});

@@ -632,6 +632,9 @@ export class Runtime {
     });
     // Rules the person allowed once (from a refusal card) apply to this turn only.
     turn.allowOnce = se.allowOnce ?? [];
+    // A turn that doesn't move on keeps the block it found waiting (#69): it counts mid-turn and at the turn's end
+    // (card-needs.mjs `keep`), even if a permission takes the need meanwhile.
+    turn.kept = !turn.movesOn && se.needs?.kind === 'block' ? se.needs.itemId : null;
     this.updateSession(sessionId, {
       allowOnce: [],
       endingSubagents: [],
@@ -1019,7 +1022,7 @@ export class Runtime {
     const open = items.filter(
       (it) => it.kind === 'block' && it.turnId === turn.id && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered,
     );
-    const waiting = se.needs?.kind === 'block' && !turn.movesOn ? items.find((it) => it.id === se.needs?.itemId) : null;
+    const waiting = turn.kept ? items.find((it) => it.id === turn.kept) : null;
     if (!open.length && waiting && !waiting.answered) open.push(waiting);
     const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
     const viewing = this.isViewing(turn.threadId);

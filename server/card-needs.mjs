@@ -49,7 +49,8 @@ const RANK = { permission: 0, block: 1, denial: 2, toolask: 3, appsend: 4, hop: 
 
 /**
  * Which turn's asking blocks, refusals and tool requests count, answered here only (design-633-turn-1). During a
- * running turn none do: its end decides them, and main's mid-turn release left no need. Otherwise the last ended turn,
+ * running turn none do, except the block a turn that doesn't move on kept (`turn.kept`, nextNeed's `keep`): its end
+ * decides them, and main's mid-turn release left no need. Otherwise the last ended turn,
  * which the session keeps in the store so a restart keeps it, or, for a session from before it did, the turn of the
  * card being released, which was the need.
  * @param {any} rt @param {any} se @param {any} [released]
@@ -62,10 +63,11 @@ function turnOf(rt, se, released = null) {
 /**
  * The card of the agent that comes first among those that still wait for the person, as a `needs` value, or null. It
  * reads pending: its result decides a write, so a card held behind a commit counts (#601). The turn's end passes its
- * own turn and the block it kept; a release passes the released card, for `turnOf`.
+ * own turn and the block it kept; a release passes the released card, for `turnOf`, and a running turn's kept block
+ * counts by default.
  * @param {any} rt @param {any} se @param {{ turnId?: string | null, keep?: string | null, released?: any }} [o]
  */
-export function nextNeed(rt, se, { released = null, turnId = turnOf(rt, se, released), keep = null } = {}) {
+export function nextNeed(rt, se, { released = null, turnId = turnOf(rt, se, released), keep = rt.turns.get(se.id)?.kept ?? null } = {}) {
   /** @type {{ at: number, need: any, it: any } | null} */
   let best = null;
   let refused = 0;
