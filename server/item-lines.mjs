@@ -132,7 +132,7 @@ export function topicRootLine(rt, se, t) {
       return `${from} @${root.handle}’s ${what}${b.title ? ` “${clipText(String(b.title), 200)}”` : ''}: ${text(body)}`;
     }
     default: {
-      const line = describeItem(rt, root, se);
+      const line = describeItem(rt, root, se, READING.item, se);
       return line ? `${from} this message: ${line}` : null;
     }
   }
@@ -140,11 +140,11 @@ export function topicRootLine(rt, se, t) {
 
 /**
  * One conversation item as a line an agent can read, from the point of view of `se`; null to leave it out. Its
- * text is cut at n characters, saying so (#109). `reader`, the session its attachments are given to, is `se` unless the
- * read tools pass their caller, with no `se` (#671).
- * @param {any} rt @param {any} i @param {any} [se] @param {number} [n] @param {any} [reader]
+ * text is cut at n characters, saying so (#109). `reader` is the session its attachments are given to, or null for
+ * none (#671). Runtime’s describeItem decides the defaults: `se` and `n` as given, and the reader as `se`.
+ * @param {any} rt @param {any} i @param {any} se @param {number} n @param {any} reader
  */
-export function describeItem(rt, i, se = null, n = READING.item, reader = se) {
+export function describeItem(rt, i, se, n, reader) {
   const text = (s) => clipItem(s, n, i.id);
   switch (i.kind) {
     case 'user':
