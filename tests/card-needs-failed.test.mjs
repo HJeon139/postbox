@@ -53,3 +53,35 @@ test('Retry clears the failure without the block you moved past flashing as the 
   await settle(r.rt);
   assert.ok(!kinds.includes('block'), `the needs Retry set: ${JSON.stringify(kinds)}`);
 });
+
+test('Retry doesn’t flash a block the failed turn showed before it threw (critic’s subagent)', async () => {
+  const r = room();
+  r.adapter.next.push(async (_c, _m, se) => {
+    r.rt.addItem(r.t.id, {
+      kind: 'block',
+      sessionId: se.id,
+      handle: 'alpha',
+      turnId: r.rt.turns.get(se.id).id,
+      valid: true,
+      block: { id: 'b_mid', type: 'choice', version: 1, fallback: 'Pick', prompt: 'Pick', options: [{ id: 'a', label: 'A' }] },
+    });
+    throw new Error('the model went away');
+  });
+  r.rt.sendMessage(r.t.id, { text: '@alpha go on' });
+  await settle(r.rt);
+  assert.equal(r.needs()?.kind, 'failed');
+  const failed = r.store.items(r.t.id).find((x) => x.kind === 'agent' && x.status === 'failed');
+  const kinds = [];
+  const update = r.rt.updateSession.bind(r.rt);
+  r.rt.updateSession = (id, patch) => {
+    if (id === r.alpha.id && 'needs' in patch) kinds.push(patch.needs?.kind ?? null);
+    return update(id, patch);
+  };
+  const work = held();
+  r.adapter.next.push(work.step);
+  r.rt.retry(r.t.id, failed.id);
+  await sleep(5);
+  work.release();
+  await settle(r.rt);
+  assert.ok(!kinds.includes('block'), `the needs Retry set: ${JSON.stringify(kinds)}`);
+});
