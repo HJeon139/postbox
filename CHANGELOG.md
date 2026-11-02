@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.12.0 (2026-11-02)
+
+### Features
+
+- **state:** one event table decides what reaches the browser (#508)
+
+### Fixes
+
+- **state:** the browser boundary claims only what it enforces, and telemetry keeps public types
+- **state:** freeze each event-table entry, and name the frozen switch a transcription
+
 ## 1.11.2 (2026-11-02)
 
 ### Fixes
