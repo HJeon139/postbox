@@ -14,7 +14,7 @@ The design is three files, one per part, each signed on its own. Read this page 
 - **`settled(t)`** (Part 3) is `t.replied || !!t.replying`: the one test of whether a call is taken. The hello resend, `driverLost` and the timer use it.
 - **`driverLost(b): void`** (Part 2) calls `settleOffline` for every unsettled read, in the same tick as the connection's close.
 - **`armReadTimer(b, t): void`** (Part 1) arms or re-arms one timer, which calls `settleOffline` when it fires.
-- **Fields on `t`:** `replied`, `replying`, `result` are Part 3's; `timer`, `arrived` are Part 1's. No part writes another part's fields.
+- **Fields on `t`:** `replied`, `replying`, `result` are Part 3's; `timer`, `arrived` are Part 1's. No part writes another part's fields, with one exception: Part 1 arms `t.timer`, and Part 3's `settleOffline` and `onReply` clear it (and so does the broker's `close()`), so a settled call never keeps a timer.
 
 ## Order
 
