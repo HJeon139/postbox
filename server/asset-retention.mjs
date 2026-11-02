@@ -21,8 +21,9 @@ export function isTextBytes(bytes) {
 }
 
 /**
- * The versions a new head makes prunable: binary versions over ASSETS.largeBinaryBytes, not pruned or pinned yet, with
- * at least ASSETS.binaryVersionsKept newer versions. Never the head, a text version, a small binary or a delete.
+ * The versions a new head makes prunable: binary versions over ASSETS.largeBinaryBytes, not pruned yet, with at least
+ * ASSETS.binaryVersionsKept newer versions. Never the head, a text version, a small binary or a delete. Nothing pins a
+ * version yet; the slices that add pins (#516 S6 and S8) add the check with them.
  * @param {any[]} versions  the asset’s versions, the new head last
  * @param {{ largeBinaryBytes?: number, binaryVersionsKept?: number }} [limits]
  * @returns {number[]} their version numbers
@@ -30,7 +31,7 @@ export function isTextBytes(bytes) {
 export function prunable(versions, { largeBinaryBytes = ASSETS.largeBinaryBytes, binaryVersionsKept = ASSETS.binaryVersionsKept } = {}) {
   const head = versions.at(-1);
   return versions
-    .filter((x) => x !== head && x.sha256 && !x.isText && !x.pruned && !x.pinned && x.size > largeBinaryBytes)
+    .filter((x) => x !== head && x.sha256 && !x.isText && !x.pruned && x.size > largeBinaryBytes)
     .filter((x) => versions.filter((y) => y.v > x.v).length >= binaryVersionsKept)
     .map((x) => x.v);
 }

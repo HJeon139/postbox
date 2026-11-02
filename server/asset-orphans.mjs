@@ -32,6 +32,13 @@ async function filesIn(dir) {
   return out;
 }
 
+/** The log’s line for files nothing names: how many, how big, where they come from, and that they stay. */
+function unclaimedLine({ count, bytes }) {
+  const files = count === 1 ? '1 file' : `${count} files`;
+  const why = 'writes that never committed, or assets an older Postbox dropped';
+  return `Postbox found ${files} (${bytes} bytes) in the asset folder that no asset names: ${why}. They’re kept.`;
+}
+
 /**
  * Deletes the released files no version keeps, then drops their hashes, and every released hash a version keeps again,
  * from assetReleases in one commit. A crash between the two deletes nothing twice and loses nothing: the next load
@@ -51,7 +58,8 @@ export async function sweepAssets(store, blobs, { warn = console.warn } = {}) {
         await unlink(blobs.pathOf(sha));
       } catch (e) {
         if (/** @type {any} */ (e).code !== 'ENOENT') {
-          warn(`Postbox couldn’t delete a released asset file, ${sha}: ${e instanceof Error ? e.message : e}. It tries again at the next start.`);
+          const why = e instanceof Error ? e.message : String(e);
+          warn(`Postbox couldn’t delete a released asset file, ${sha}: ${why}. It tries again at the next start.`);
           continue;
         }
       }
@@ -70,9 +78,6 @@ export async function sweepAssets(store, blobs, { warn = console.warn } = {}) {
     unclaimed.count++;
     unclaimed.bytes += (await stat(f.path)).size;
   }
-  if (unclaimed.count)
-    warn(
-      `Postbox found ${unclaimed.count} file${unclaimed.count === 1 ? '' : 's'} (${unclaimed.bytes} bytes) in the asset folder that no asset names: writes that never committed, or assets an older Postbox dropped. They’re kept.`,
-    );
+  if (unclaimed.count) warn(unclaimedLine(unclaimed));
   return { deleted, unclaimed };
 }

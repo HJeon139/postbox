@@ -28,14 +28,13 @@ test('a large binary version is pruned once binaryVersionsKept newer versions ex
   assert.deepEqual(prunable(versions.slice(0, kept)), [], 'one fewer newer: kept');
 });
 
-test('never pruned: the head, a text version, a small binary, a delete, a pinned or an already pruned version', () => {
+test('never pruned: the head, a text version, a small binary, a delete, or an already pruned version', () => {
   const n = ASSETS.binaryVersionsKept + 2;
   const tail = Array.from({ length: n - 1 }, (_, i) => v(i + 2, { size: big }));
   for (const [what, first] of [
     ['text', v(1, { size: big, isText: true })],
     ['small binary', v(1, { size: ASSETS.largeBinaryBytes })],
     ['delete', v(1, { sha256: null, size: 0 })],
-    ['pinned', v(1, { size: big, pinned: true })],
     ['already pruned', v(1, { size: big, pruned: 5 })],
   ])
     assert.ok(!prunable([first, ...tail]).includes(1), what);

@@ -66,9 +66,36 @@ export function roomOf(threads, threadId) {
   return id;
 }
 
+/** An error’s own words, for a message that quotes it. @param {unknown} e */
+const said = (e) => (e instanceof Error ? e.message : String(e));
+
+/** What the agent is told, for each refusal and failure: what happened, and what to do next. One place for the wording. */
+const SAY = {
+  notFound: (id) => `There’s no asset ${id} in this conversation. list_assets gives each asset’s id.`,
+  noId: () => 'Name the asset by its id. list_assets gives each asset’s id.',
+  nameTaken: (holder) => `The name “${holder.name}” is taken in this conversation, by asset ${holder.id}.`,
+  tooManyAssets: (count) => `A conversation holds at most ${ASSETS.roomAssets} assets, and this one has ${count}.`,
+  tooManyVersions: (id) => `An asset keeps at most ${ASSETS.assetVersions} versions, and ${id} has them all.`,
+  restoreDelete: (v) => `Version ${v} is a delete, so there’s nothing to restore.`,
+  noVersion: (id, v) => `Asset ${id} has no version ${v}.`,
+  pruned: (v) => `Version ${v} was pruned under the room’s retention rule, so its bytes are gone.`,
+  deleted: (id) => `Asset ${id} is deleted already.`,
+  stale: (asset, head, base) =>
+    `@${head?.author} wrote version ${asset.head} of ${asset.id} since version ${base ?? 'none'}. Read version ${asset.head}, then write again from it.`,
+  budget: (total) =>
+    `This conversation’s assets would keep ${total} bytes, over its budget of ${ASSETS.roomBytes}. ` +
+    'Delete an asset and prune its history, or ask the person to raise the budget.',
+  tooBig: (size) => `An asset version is at most ${ASSETS.assetBytes} bytes; this one is ${size}.`,
+  noBytes: () => 'A write needs its bytes.',
+  failed: (e) => `Postbox couldn’t store the bytes: ${said(e)}. Nothing was published, and your copy is still yours; try again once there’s space.`,
+  unconfirmed: (e) =>
+    `Postbox couldn’t confirm the write was saved: ${said(e)}. Don’t report it as published: read the asset again, or write again with the same op.`,
+};
+
 /** The room’s live asset with this name, ignoring case, other than `except`. */
 function holderOf(assets, room, name, except = null) {
-  return Object.values(assets).find((a) => a.room === room && a.id !== except && headOf(a)?.sha256 && sameName(a.name, name)) ?? null;
+  const live = (a) => a.room === room && a.id !== except && headOf(a)?.sha256;
+  return Object.values(assets).find((a) => live(a) && sameName(a.name, name)) ?? null;
 }
 
 /**
@@ -94,28 +121,34 @@ function repeatOf(asset, req) {
 function targetOf(assets, req) {
   if (req.id) {
     const asset = assets[req.id];
-    if (!asset || asset.room !== req.room) refuse('not-found', `There’s no asset ${req.id} in this conversation. list_assets gives each asset’s id.`);
+    if (!asset || asset.room !== req.room) refuse('not-found', SAY.notFound(req.id));
     return asset;
   }
-  if (req.kind !== 'write') refuse('not-found', 'Name the asset by its id. list_assets gives each asset’s id.');
+  if (req.kind !== 'write') refuse('not-found', SAY.noId());
   const holder = holderOf(assets, req.room, req.name);
   if (holder && repeatOf(holder, { ...req, base: null })) return holder;
-  if (holder)
-    refuse('name-taken', `The name “${holder.name}” is taken in this conversation, by asset ${holder.id}. Write to it with its id, or pick another name.`);
+  if (holder) refuse('name-taken', `${SAY.nameTaken(holder)} Write to it with its id, or pick another name.`);
   const count = Object.values(assets).filter((a) => a.room === req.room).length;
-  if (count >= ASSETS.roomAssets) refuse('too-many', `A conversation holds at most ${ASSETS.roomAssets} assets, and this one has ${count}.`);
+  if (count >= ASSETS.roomAssets) refuse('too-many', SAY.tooManyAssets(count));
   return null;
+}
+
+/** The version a restore or rename takes its bytes from: the one named, or the head; none for a write or delete. */
+function sourceOf(asset, req) {
+  if (req.kind === 'rename') return headOf(asset);
+  if (req.kind !== 'restore') return null;
+  const from = asset.versions.find((x) => x.v === req.version);
+  if (!from) refuse('no-version', SAY.noVersion(asset.id, req.version));
+  if (!from.sha256) refuse('no-version', SAY.restoreDelete(req.version));
+  if (from.pruned) refuse('pruned', SAY.pruned(req.version));
+  return from;
 }
 
 /** The new version’s bytes: the write’s, an older version’s for a restore, the head’s for a rename, none for a delete. */
 function bytesOf(asset, req) {
   if (req.kind === 'delete') return { sha256: null, size: 0, type: asset.versions.at(-1)?.type ?? null, isText: false };
-  const from = req.kind === 'restore' ? asset.versions.find((x) => x.v === req.version) : req.kind === 'rename' ? headOf(asset) : null;
-  if (req.kind === 'restore' && !from?.sha256)
-    refuse('no-version', from ? `Version ${req.version} is a delete, so there’s nothing to restore.` : `Asset ${asset.id} has no version ${req.version}.`);
-  if (from?.pruned) refuse('pruned', `Version ${req.version} was pruned under the room’s retention rule, so its bytes are gone.`);
-  if (from) return { sha256: from.sha256, size: from.size, type: from.type, isText: from.isText };
-  return { sha256: req.sha256, size: req.size, type: req.type, isText: req.isText };
+  const from = sourceOf(asset, req) ?? req;
+  return { sha256: from.sha256, size: from.size, type: from.type, isText: from.isText };
 }
 
 /**
@@ -124,18 +157,22 @@ function bytesOf(asset, req) {
  */
 function checkUpdate(assets, asset, req) {
   const head = headOf(asset);
-  if ((req.base ?? null) !== asset.head)
-    refuse(
-      'stale',
-      `@${head?.author} wrote version ${asset.head} of ${asset.id} since version ${req.base ?? 'none'}. Read version ${asset.head}, then write again from it.`,
-    );
-  if (asset.versions.length >= ASSETS.assetVersions)
-    refuse('too-many', `An asset keeps at most ${ASSETS.assetVersions} versions, and ${asset.id} has them all.`);
-  if (req.kind === 'delete' && !head?.sha256) refuse('deleted', `Asset ${asset.id} is deleted already.`);
+  if ((req.base ?? null) !== asset.head) refuse('stale', SAY.stale(asset, head, req.base));
+  if (asset.versions.length >= ASSETS.assetVersions) refuse('too-many', SAY.tooManyVersions(asset.id));
+  if (req.kind === 'delete' && !head?.sha256) refuse('deleted', SAY.deleted(asset.id));
   const name = req.kind === 'rename' ? req.name : asset.name;
   const comesBack = !head?.sha256 && req.kind !== 'delete';
   const holder = req.kind === 'rename' || comesBack ? holderOf(assets, asset.room, name, asset.id) : null;
-  if (holder) refuse('name-taken', `The name “${holder.name}” is taken in this conversation, by asset ${holder.id}.`);
+  if (holder) refuse('name-taken', SAY.nameTaken(holder));
+}
+
+/** The version a write makes: the next number, its bytes, who, when, and the head it was written from. */
+function versionOf(asset, req) {
+  /** @type {any} */
+  const version = { v: (asset?.versions.length ?? 0) + 1, ...bytesOf(asset, req) };
+  Object.assign(version, { author: req.author, at: req.at, base: asset?.head ?? null });
+  if (req.op) version.op = req.op;
+  return version;
 }
 
 /**
@@ -153,18 +190,11 @@ export function planWrite(state, req) {
   if (repeat) return { events: [], id: asset.id, version: repeat, repeat: true };
   if (asset) checkUpdate(assets, asset, req);
   const id = asset?.id ?? req.newId;
-  /** @type {any} */
-  const version = { v: (asset?.versions.length ?? 0) + 1, ...bytesOf(asset, req), author: req.author, at: req.at, base: asset?.head ?? null };
-  if (req.op) version.op = req.op;
+  const version = versionOf(asset, req);
   const prunes = prunable([...(asset?.versions ?? []), version]);
   const released = prunes.map((v) => asset.versions.find((x) => x.v === v).sha256);
   const total = roomBytes(assets, req.room, { prunes: { id, vs: prunes }, added: version });
-  const before = roomBytes(assets, req.room);
-  if (total > ASSETS.roomBytes && total > before)
-    refuse(
-      'budget',
-      `This conversation’s assets would keep ${total} bytes, over its budget of ${ASSETS.roomBytes}. Delete an asset and prune its history, or ask the person to raise the budget.`,
-    );
+  if (total > ASSETS.roomBytes && total > roomBytes(assets, req.room)) refuse('budget', SAY.budget(total));
   const events = [];
   if (!asset || req.kind === 'rename') {
     const name = (req.kind === 'rename' || !asset ? req.name : asset.name).normalize('NFC');
@@ -174,20 +204,32 @@ export function planWrite(state, req) {
   return { events, id, version, repeat: false };
 }
 
+/** What’s wrong with a write before anything is stored (F1), or null: its name, its op, its size, its bytes. */
+function writeProblem(req) {
+  const named = (req.kind === 'write' && !req.id) || req.kind === 'rename';
+  if (named && nameProblem(req.name)) return nameProblem(req.name);
+  if (opProblem(req.op)) return opProblem(req.op);
+  if (req.bytes && req.bytes.length > ASSETS.assetBytes) return SAY.tooBig(req.bytes.length);
+  if (req.kind === 'write' && !req.bytes) return SAY.noBytes();
+  return null;
+}
+
+/**
+ * @typedef {{ ok: true, id: string, version: any, repeat: boolean }} Published
+ * @typedef {{ ok: false, code: string, message: string, cause?: unknown }} NotPublished
+ */
+
 /**
  * Publishes one version through the store’s one commit path. Checks the name, op and size before anything is written
  * (F1), puts the bytes (F2), then commits; a refusal there leaves the bytes unnamed (F3). A commit the store couldn’t
  * confirm (F5, F7) is reported as not confirmed, never as published.
  * @param {import('./store.mjs').Store} store @param {Blobs} blobs
  * @param {any} req  as planWrite’s, with `bytes` (a Buffer) for a write in place of sha256, size and isText
- * @returns {Promise<{ ok: true, id: string, version: any, repeat: boolean } | { ok: false, code: string, message: string, cause?: unknown }>}
+ * @returns {Promise<Published | NotPublished>}
  */
 export async function writeAsset(store, blobs, req) {
-  const problem = (req.kind === 'write' && !req.id) || req.kind === 'rename' ? nameProblem(req.name) : null;
-  const tooBig =
-    req.bytes && req.bytes.length > ASSETS.assetBytes ? `An asset version is at most ${ASSETS.assetBytes} bytes; this one is ${req.bytes.length}.` : null;
-  const refused = problem ?? opProblem(req.op) ?? tooBig ?? (req.kind === 'write' && !req.bytes ? 'A write needs its bytes.' : null);
-  if (refused) return { ok: false, code: 'invalid', message: refused };
+  const problem = writeProblem(req);
+  if (problem) return { ok: false, code: 'invalid', message: problem };
   const at = req.at ?? Date.now();
   let put = {};
   if (req.bytes) {
@@ -195,8 +237,7 @@ export async function writeAsset(store, blobs, req) {
       const { sha256, size } = await blobs.put(req.bytes);
       put = { sha256, size, isText: isTextBytes(req.bytes) };
     } catch (e) {
-      const message = `Postbox couldn’t store the bytes: ${e instanceof Error ? e.message : e}. Nothing was published, and your copy is still yours; try again once there’s space.`;
-      return { ok: false, code: 'failed', message, cause: e };
+      return { ok: false, code: 'failed', message: SAY.failed(e), cause: e };
     }
   }
   /** @type {any} */
@@ -208,8 +249,7 @@ export async function writeAsset(store, blobs, req) {
     });
   } catch (e) {
     if (e instanceof AssetRefusal) return { ok: false, code: e.code, message: e.message };
-    const message = `Postbox couldn’t confirm the write was saved: ${e instanceof Error ? e.message : e}. Don’t report it as published: read the asset again, or write again with the same op.`;
-    return { ok: false, code: 'unconfirmed', message, cause: e };
+    return { ok: false, code: 'unconfirmed', message: SAY.unconfirmed(e), cause: e };
   }
   return { ok: true, id: out.id, version: out.version, repeat: out.repeat };
 }
