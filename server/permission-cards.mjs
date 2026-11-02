@@ -2,7 +2,7 @@
 // Runtime keeps a one-line method for each, so its callers and tests don’t change.
 
 import { POSTBOX_TIMEOUT_MS } from './adapters/setup.mjs';
-import { releaseNeed } from './card-needs.mjs';
+import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { httpError } from './helpers.mjs';
 import { editedInput, MAX_EDIT_INPUT, MAX_REASON } from './permission-edit.mjs';
 import { addAllowRule, alwaysAllow, cleanRule, rulesFor, takeBackRule } from './permission-rules.mjs';
@@ -72,10 +72,7 @@ export function askPerson(
   });
   // The text so far is finished; the reply continues below the card.
   rt.closeSegment(turn);
-  rt.updateSession(sessionId, {
-    state: 'needs',
-    needs: { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}`, ...rt.awayFrom(se, turn.threadId) },
-  });
+  offerNeed(rt, se, { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}`, ...rt.awayFrom(se, turn.threadId) }, 'needs');
   rt.notify('blocking', se, `@${se.handle} asks permission`, `To ${it.summary}.`, turn.threadId);
   return new Promise((resolve) => {
     // A host prompt’s card expires when its host says so (permissionWaitMax, `prompt-expired`, #120): the host’s

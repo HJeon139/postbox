@@ -6,7 +6,7 @@
 import { NOT_YOUR_PROMPT } from '../../shared/mcp-tools.mjs';
 import { message as protocolMessage, REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
 import { describePermission } from '../adapters/claude-stream.mjs';
-import { releaseNeed } from '../card-needs.mjs';
+import { offerNeed, releaseNeed } from '../card-needs.mjs';
 import { asksByPrompt } from '../permission-prompt.mjs';
 import { linkOf } from './turns-need.mjs';
 import { ENDED_TEXT, key, ON_HOST, send, sessionOfTurn, updateRemote } from './turns-shared.mjs';
@@ -62,10 +62,7 @@ function waitOn(rts, live, card, m) {
   const rt = rts.rt;
   const se = rt.s.sessions[live.sessionId];
   const p = new Promise((resolve) => rt.permissionWaits.set(card.it.id, { resolve, threadId: card.threadId, sessionId: live.sessionId }));
-  rt.updateSession(live.sessionId, {
-    state: 'needs',
-    needs: { kind: 'permission', itemId: card.it.id, text: `@${se.handle} asks to ${card.it.summary}`, ...rt.awayFrom(se, card.threadId) },
-  });
+  offerNeed(rt, se, { kind: 'permission', itemId: card.it.id, text: `@${se.handle} asks to ${card.it.summary}`, ...rt.awayFrom(se, card.threadId) }, 'needs');
   setWaiting(rts, live, true);
   void p.then((answer) => {
     setWaiting(rts, live, false);

@@ -48,12 +48,25 @@ function needOf(rt, se, it, threadId, turnId, keep) {
 const RANK = { permission: 0, block: 1, denial: 2, toolask: 3, appsend: 4, hop: 4 };
 
 /**
- * The card of the agent that comes first among those that still wait for the person, as a `needs` value, or null. It
- * reads pending: its result decides a write, so a card held behind a commit counts (#601).
- * @param {any} rt @param {any} se @param {{ turnId?: string | null, keep?: string | null }} [o]
+ * Which turn's asking blocks, refusals and tool requests count, answered here only (design-633-turn-1). During a
+ * running turn none do: its end decides them, and main's mid-turn release left no need. Otherwise the last ended turn,
+ * which the session keeps in the store so a restart keeps it, or, for a session from before it did, the turn of the
+ * card being released, which was the need.
+ * @param {any} rt @param {any} se @param {any} [released]
  */
-export function nextNeed(rt, se, { turnId = rt.lastTurn.get(se.id) ?? null, keep = null } = {}) {
-  /** @type {{ at: number, need: any } | null} */
+function turnOf(rt, se, released = null) {
+  if (rt.turns.has(se.id)) return null;
+  return se.lastTurnId ?? released?.turnId ?? null;
+}
+
+/**
+ * The card of the agent that comes first among those that still wait for the person, as a `needs` value, or null. It
+ * reads pending: its result decides a write, so a card held behind a commit counts (#601). The turn's end passes its
+ * own turn and the block it kept; a release passes the released card, for `turnOf`.
+ * @param {any} rt @param {any} se @param {{ turnId?: string | null, keep?: string | null, released?: any }} [o]
+ */
+export function nextNeed(rt, se, { released = null, turnId = turnOf(rt, se, released), keep = null } = {}) {
+  /** @type {{ at: number, need: any, it: any } | null} */
   let best = null;
   let refused = 0;
   for (const threadId of threadsOf(rt, se))
@@ -62,21 +75,39 @@ export function nextNeed(rt, se, { turnId = rt.lastTurn.get(se.id) ?? null, keep
       if (!need) continue;
       if (need.kind === 'denial') refused++;
       const ahead = !best || RANK[need.kind] < RANK[best.need.kind] || (RANK[need.kind] === RANK[best.need.kind] && (it.at ?? 0) >= best.at);
-      if (ahead) best = { at: it.at ?? 0, need };
+      if (ahead) best = { at: it.at ?? 0, need, it };
     }
   // Several refusals are counted, as the turn's end always said.
-  if (best?.need.kind === 'denial' && refused > 1) best.need.text = best.need.text.replace(/^A step was refused/, `${refused} steps were refused`);
+  if (best?.need.kind === 'denial' && refused > 1) best.need.text = `${refused} steps were refused: ${best.it.summary}`;
   return best?.need ?? null;
+}
+
+/**
+ * A new card offers itself as the agent's need: it takes it when none is set, or when it ranks ahead of the current
+ * need or the same (the newest within a rank comes first, as in nextNeed). Otherwise it waits, and a release reaches
+ * it. Every setter goes through here, so which card shows doesn't depend on whether it was set or released. A failed
+ * turn still sets its need directly: it ends the turn, as the turn's end does.
+ * @param {any} rt @param {any} se @param {any} need @param {string} state  the session's state if it takes the need
+ * @returns {boolean} whether it took the need
+ */
+export function offerNeed(rt, se, need, state) {
+  const cur = se.needs;
+  if (cur && cur.itemId !== need.itemId && RANK[need.kind] > (RANK[cur.kind] ?? Number.POSITIVE_INFINITY)) return false;
+  rt.updateSession(se.id, { needs: need, state });
+  return true;
 }
 
 /**
  * A card was answered or retired. If the agent's need is that card, it falls back to the next card that waits, and
  * an app card that becomes the need without ever being notified is notified now. Any other need is left alone.
- * @param {any} rt @param {any} se @param {string} itemId @param {string} [busy]  the state while a turn runs
+ * @param {any} rt @param {any} se @param {string} itemId
+ * @param {string} [busy]  the state while a turn runs: a permission's release passes 'tool', since the tool call it
+ *   held goes on; others keep the session's state
  */
 export function releaseNeed(rt, se, itemId, busy = se?.state) {
   if (!se || se.needs?.itemId !== itemId) return;
-  const need = nextNeed(rt, se);
+  const released = rt.store.pending.items(se.needs.threadId ?? se.threadId).find((/** @type {any} */ x) => x.id === itemId);
+  const need = nextNeed(rt, se, { released });
   rt.updateSession(se.id, { needs: need, state: rt.turns.has(se.id) ? busy : need ? 'needs' : 'idle' });
   noticeNeed(rt, se, need);
 }

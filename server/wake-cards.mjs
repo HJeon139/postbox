@@ -4,7 +4,7 @@
 // raises them. Functions take the Runtime first (architecture.md, “What a move may change”).
 
 import { HELD_WAKES } from '../shared/limits.mjs';
-import { releaseNeed } from './card-needs.mjs';
+import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { clip, httpError } from './helpers.mjs';
 
 /** The card for a wake past the limit (#108), which waits for the person’s Allow. */
@@ -86,10 +86,7 @@ function holdOnCard(rt, card, parent, from, p, wake) {
 
 /** The agent asking needs the person, at the card in the conversation (#121). */
 function needsCard(rt, from, parent, it, text) {
-  rt.updateSession(from.id, {
-    needs: { kind: 'hop', itemId: it.id, text, ...rt.awayFrom(from, parent.id) },
-    state: rt.turns.has(from.id) ? from.state : 'needs',
-  });
+  offerNeed(rt, from, { kind: 'hop', itemId: it.id, text, ...rt.awayFrom(from, parent.id) }, rt.turns.has(from.id) ? from.state : 'needs');
 }
 
 export function resolveHop(rt, threadId, itemId, allow) {

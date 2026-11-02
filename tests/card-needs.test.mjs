@@ -3,44 +3,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
-
-/** A conversation with @alpha, whose last ended turn is `turn_last`, and helpers that add its cards. */
-function room() {
-  const ctx = setup();
-  const { rt, t, alpha } = ctx;
-  rt.lastTurn.set(alpha.id, 'turn_last');
-  const needs = () => rt.s.sessions[alpha.id].needs;
-  const setNeed = (kind, itemId) => rt.updateSession(alpha.id, { needs: { kind, itemId, text: kind }, state: 'needs' });
-  const appCard = () => rt.addItem(t.id, { kind: 'appsend', sessionId: alpha.id, appId: 'app1', title: 'App', events: [{ action: 'x' }], status: 'open' });
-  const block = (turnId = 'turn_last') =>
-    rt.addItem(t.id, {
-      kind: 'block',
-      sessionId: alpha.id,
-      handle: 'alpha',
-      turnId,
-      valid: true,
-      block: { id: `b${Math.random()}`, type: 'choice', version: 1, fallback: 'Pick', prompt: 'Pick', options: [{ id: 'a', label: 'A' }] },
-    });
-  const permission = () => {
-    const it = rt.addItem(t.id, { kind: 'permission', sessionId: alpha.id, handle: 'alpha', summary: 'run ls', status: 'open' });
-    rt.permissionWaits.set(it.id, { threadId: t.id, sessionId: alpha.id, timer: null, resolve: () => {} });
-    return it;
-  };
-  const toolAsk = () =>
-    rt.addItem(t.id, {
-      kind: 'toolask',
-      sessionId: alpha.id,
-      personaId: ctx.a.id,
-      handle: 'alpha',
-      label: 'Shell',
-      tool: 'shell',
-      turnId: 'turn_last',
-      status: 'open',
-    });
-  const hop = () => rt.addItem(t.id, { kind: 'hop', fromSessionId: alpha.id, from: 'alpha', to: 'beta', status: 'open', text: 'please' });
-  return { ...ctx, needs, setNeed, appCard, block, permission, toolAsk, hop };
-}
+import { room } from './card-needs-fixture.mjs';
+import { held, settle, sleep } from './side-threads-fixture.mjs';
 
 test('#366 case 1: an app card, then a permission card; allowing the permission leaves the agent needing you for the app card', async () => {
   const r = room();
@@ -90,7 +54,7 @@ test('#366 case 1: an app card, then a failed reply; Retry leaves the agent need
   await settle(r.rt);
 });
 
-test('#366 case 2: two app cards; answering the first leaves the agent needing you for the second, notified once', async () => {
+test('#366 case 2: two app cards; the second is the need at once, notified once, and answering it leaves the first', async () => {
   const r = room();
   const notes = [];
   r.rt.notify = (_level, _se, title) => notes.push(title);
@@ -99,12 +63,12 @@ test('#366 case 2: two app cards; answering the first leaves the agent needing y
   r.rt.needAppSend(app, first.id, 1);
   const second = r.appCard();
   r.rt.needAppSend(app, second.id, 1);
-  assert.equal(notes.length, 1, 'the second card is not notified while the first is the need');
-  r.rt.resolveAppSend(r.t.id, first.id, 'deny');
-  assert.equal(r.needs()?.itemId, second.id);
-  assert.equal(notes.length, 2, 'the second card is notified once it becomes the need');
+  // Same rank, newest first, whether set or released (offerNeed; the integrator's review of #633, point 3).
+  assert.equal(r.needs()?.itemId, second.id, 'the newer card is the need');
+  assert.equal(notes.length, 2, 'and it is notified');
   r.rt.resolveAppSend(r.t.id, second.id, 'deny');
-  assert.equal(notes.length, 2, 'and not again');
+  assert.equal(r.needs()?.itemId, first.id, 'answering it leaves the first');
+  assert.equal(notes.length, 2, 'which was notified already, so not again');
 });
 
 test('the integrator’s item: a block is the need, then a wake request; allowing the request leaves the need on the block', async () => {
@@ -206,7 +170,7 @@ test('a permission card whose wait has ended does not count', async () => {
   assert.equal(nextNeed(r.rt, r.rt.s.sessions[r.alpha.id])?.itemId, app.id);
 });
 
-test('an app card that waited behind a wake request is notified when the turn’s end makes it the need', async () => {
+test('an app card that waited behind an older block is notified when the turn’s end makes it the need', async () => {
   const r = room();
   const notes = [];
   r.rt.notify = (_level, _se, title) => notes.push(title);
@@ -214,14 +178,14 @@ test('an app card that waited behind a wake request is notified when the turn’
   r.adapter.next.push(work.step);
   r.rt.sendMessage(r.t.id, { text: '@alpha a long job' });
   await sleep(5);
-  const h = r.hop();
-  r.setNeed('hop', h.id);
+  const b = r.block();
+  r.setNeed('block', b.id);
   const card = r.appCard();
   r.rt.needAppSend({ sessionId: r.alpha.id, title: 'App', threadId: r.t.id }, card.id, 1);
-  assert.equal(notes.length, 0, 'not notified while the wake request is the need');
+  assert.equal(notes.length, 0, 'not notified while the block, which ranks ahead, is the need');
   work.release();
   await settle(r.rt);
-  assert.equal(r.needs()?.itemId, card.id, 'the newer app card is the need at the turn’s end');
+  assert.equal(r.needs()?.itemId, card.id, 'the app card is the need at the turn’s end, the block being from a turn moved past');
   assert.equal(notes.filter((n) => /wants to send/.test(n)).length, 1, 'and it is notified once');
 });
 

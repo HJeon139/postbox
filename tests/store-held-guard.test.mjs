@@ -69,9 +69,9 @@ const DIRECT = {
 
 /** store.pending reads. */
 const PENDING = {
-  // The agent's next need when a card is answered, and the card it notifies: the result decides a write, so a card held
-  // behind a commit counts (#366).
-  'card-needs.mjs': ['nextNeed', 'notifyOnce'],
+  // The agent's next need when a card is answered, the released card whose turn it may read, and the card it notifies:
+  // each decides a write, so a card held behind a commit counts (#366).
+  'card-needs.mjs': ['nextNeed', 'releaseNeed', 'notifyOnce'],
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp', 'release'], // retire_app of an app the turn may have just shown, and its sweep of open sends
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown

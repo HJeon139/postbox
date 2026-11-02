@@ -181,7 +181,6 @@ export class Runtime {
     /** @type {Map<string, [any, any][]>} what deliver held for a session in its Undo window (#597), in arrival order */
     this.heldForUndo = new Map();
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
-    this.lastTurn = new Map(); // sessionId → the id of its last turn that ended
     this.spawnShell = spawnShell ?? undefined;
     this.shellRuns = new Map(); // command item id → { stop, kill, done, flush, stopped, closing }
     // What each conversation’s agents changed, ran and published (#132).
@@ -1031,6 +1030,8 @@ export class Runtime {
     this.updateSession(se.id, {
       state: needs ? 'needs' : 'idle',
       needs,
+      // Which turn's asks count from now on (card-needs.mjs `turnOf`): in the store, so a restart keeps it.
+      lastTurnId: turn.id,
       sideTurn: null,
       glimpse: '',
       subagents: [],
@@ -1052,7 +1053,6 @@ export class Runtime {
     const stalled = this.stallSteps(turn, se);
     if (turn.kind === 'lint') this.quietLint(turn, se);
     else this.endLint(turn, [...this.checkTurn(turn, se), ...stalled]);
-    this.lastTurn.set(se.id, turn.id);
     if (topic && !viewing && (turn.said || open.length)) this.putThread({ ...this.s.threads[topic.id], unread: (this.s.threads[topic.id].unread ?? 0) + 1 });
     if (turn.threadId !== se.threadId) settleThread(this, turn.threadId);
 
