@@ -2,7 +2,7 @@
 // data folder; F1 is in tests/assets.test.mjs. A reopen goes through openDataFolder, as Postbox’s start does, so the
 // asset folder’s pass at load (server/asset-orphans.mjs) runs where it runs in production.
 import assert from 'node:assert/strict';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -223,4 +223,50 @@ test('F12: an older Postbox loses the asset versions logged since its last snaps
   const swept = await sweepAssets(store, f.blobs, { warn: (l) => warned.push(l) });
   assert.deepEqual([swept.deleted, swept.unclaimed.count, swept.unclaimed.bytes], [[], 1, 3]);
   assert.match(warned.join('\n'), /1 file \(3 bytes\) .* no asset names.*They’re kept/);
+});
+
+test('F8: a released file that can’t be deleted stays released, so the next load tries again, and isn’t counted as unclaimed', async (t) => {
+  const f = await folder(t);
+  const store = await f.reopen();
+  store.emit('thread', { id: 'c1', members: [] });
+  const a = await writeAsset(store, f.blobs, req({ name: 'a.md', bytes: text('one') }));
+  store.emit('asset.erase', { room: 'c1', at: 5 });
+  await store.flush();
+  const sha = a.version.sha256;
+  const folderOf = join(f.dir, 'assets', sha.slice(0, 2));
+  chmodSync(folderOf, 0o500); // its folder can’t be written, so unlink fails with EACCES
+  const warned = [];
+  let swept;
+  try {
+    swept = await sweepAssets(store, f.blobs, { warn: (l) => warned.push(l) });
+  } finally {
+    chmodSync(folderOf, 0o700);
+  }
+  assert.deepEqual(swept.deleted, []);
+  assert.ok(store.state.assetReleases[sha], 'still released');
+  assert.ok(f.files().includes(sha));
+  assert.equal(swept.unclaimed.count, 0, 'a released file isn’t unclaimed');
+  assert.match(warned.join('\n'), /couldn’t delete a released asset file.*tries again at the next start/);
+  const again = await sweepAssets(store, f.blobs, { warn: () => {} });
+  assert.deepEqual(again.deleted, [sha], 'the next pass deletes it');
+});
+
+test('F8: the hashes are dropped only after their files are gone, so a load that stops between the two loses nothing', async (t) => {
+  const f = await folder(t);
+  let store = await f.reopen();
+  store.emit('thread', { id: 'c1', members: [] });
+  const a = await writeAsset(store, f.blobs, req({ name: 'a.md', bytes: text('one') }));
+  store.emit('asset.erase', { room: 'c1', at: 5 });
+  await store.flush();
+  const sha = a.version.sha256;
+  // The commit that drops the hash fails, as if Postbox stopped right after the delete.
+  const stopped = { state: store.state, commit: async () => Promise.reject(new Error('stopped')) };
+  const warned = [];
+  await sweepAssets(/** @type {any} */ (stopped), f.blobs, { warn: (l) => warned.push(l) });
+  assert.ok(!f.files().includes(sha), 'the file is gone');
+  assert.ok(store.state.assetReleases[sha], 'its hash is still released');
+  assert.match(warned.join('\n'), /deleted released asset files but couldn’t record it/);
+  store = await f.reopen();
+  assert.deepEqual(Object.keys(store.state.assetReleases), [], 'the next load drops it');
+  assert.deepEqual(f.files(), []);
 });

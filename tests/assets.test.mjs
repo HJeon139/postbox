@@ -37,6 +37,16 @@ test('names: relative paths in the room, NFC, bounded, with no empty, . or .. pa
   ])
     assert.ok(nameProblem(bad), JSON.stringify(bad));
   assert.match(nameProblem('é'.repeat(200)) ?? '', /at most 255 bytes/, 'counted in UTF-8 bytes, not characters');
+  assert.match(nameProblem('/abs.md') ?? '', /relative to the room: it doesn’t start with \//, 'a leading / says so, not only that a part is empty');
+});
+
+test('I8: a name is stored NFC, so the same name typed either way is one name', async () => {
+  const { write, asset } = room();
+  const nfd = 'Cafe\u0301.md';
+  const a = await write({ name: nfd, bytes: text('one') });
+  assert.equal(asset(a.id).name, 'Café.md');
+  assert.equal(asset(a.id).name, nfd.normalize('NFC'));
+  assert.equal((await write({ name: 'Café.md', bytes: text('two'), author: 'critic' })).code, 'name-taken');
 });
 
 test('an op is 1 to 64 letters, digits, - and _, or none', () => {
@@ -138,6 +148,22 @@ test('I6: a write that would take the room past its budget is refused, naming bo
   assert.equal(planWrite(state, { ...req, size: 10 }).events.length, 2, 'exactly at the budget fits');
   assert.equal(planWrite(state, { ...req, sha256: big.sha256 }).events.length, 2, 'the same bytes again count once');
   assert.equal(planWrite(state, { ...req, room: 'other' }).events.length, 2, 'another room has its own budget');
+});
+
+test('I6: a room already over its budget still takes a delete, and a write that adds no bytes', () => {
+  // Over it already: the budget is a draft, and calibration may set it lower than a room holds (#516 S3, the bounds).
+  const big = { v: 1, sha256: 'a'.repeat(64), size: ASSETS.roomBytes + 1, isText: false, author: 'dev', at: 1, base: null };
+  const state = { assets: { as_1: { id: 'as_1', room: 'r', name: 'big.bin', created: 1, head: 1, versions: [big] } } };
+  const del = { kind: 'delete', room: 'r', id: 'as_1', base: 1, author: 'dev', at: 2 };
+  assert.equal(planWrite(state, del).events.length, 1, 'a delete adds nothing');
+  const same = { kind: 'write', room: 'r', id: 'as_1', base: 1, sha256: big.sha256, size: big.size, isText: false, author: 'critic', at: 2 };
+  assert.equal(planWrite(state, same).events.length, 1, 'the same bytes again add nothing');
+  const more = { ...same, sha256: 'b'.repeat(64), size: 1 };
+  assert.throws(
+    () => planWrite(state, more),
+    (e) => e.code === 'budget',
+    'new bytes are still refused',
+  );
 });
 
 test('I9: the version and room bounds refuse a write past them, naming the limit', () => {
