@@ -137,3 +137,69 @@ test('a detached read on a turn whose record is full is refused with the record-
     h.done();
   }
 });
+
+// T07 and T08 (settle.md §5), as a sweep: for each delay d between the offline trigger and the live reply, every shim of
+// the turn gets exactly one result for the call, and the loser of the race is refused or silent. The claim is
+// synchronous, so no delay lets a second answer through; a claim moved after an await lets one through at some d.
+const raceOnce = async (d, liveFirst) => {
+  const h = makeHome();
+  try {
+    const k = makeBroker(h);
+    const turn = `t_race_${d}_${liveFirst ? 'l' : 'o'}`;
+    h.turn(turn);
+    await k.post('snapshot', { turn, ...snapOf(2) });
+    await k.b.starting(turn);
+    const s = connectShim(k.b, turn);
+    await s.next('welcome');
+    const first = s.call('call_r', 'read_message', { id: 'i0' });
+    first.catch(() => {});
+    await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'call_r'), 'the read sent to Postbox');
+    k.state.attached = false;
+    const s2 = connectShim(k.b, turn);
+    await s2.next('welcome');
+    const tick = async (n) => {
+      for (let i = 0; i < n; i++) await new Promise((r) => setImmediate(r));
+    };
+    let live;
+    let errors = [];
+    const resend = () => s2.send('call', { id: 'call_r', name: 'read_message', args: { id: 'i0' } });
+    if (liveFirst) {
+      live = k.post('reply', { turn, id: 'call_r', ok: true, text: 'LIVE' });
+      await tick(d);
+      resend();
+    } else {
+      resend();
+      await tick(d);
+      live = k.post('reply', { turn, id: 'call_r', ok: true, text: 'LIVE' });
+    }
+    ({ errors } = await live);
+    await tick(60);
+    // One answer per shim: every result it gets for the call has the same text. A resend answered from the kept
+    // result can add a second copy to the resending connection (the broadcast reaches it too); shim-link drops the
+    // copy for a settled call (shim-link.mjs:82-83), so the agent sees one answer. That copy is a wire-level finding.
+    const results = (sh) => sh.got.filter((m) => m.type === 'result' && m.id === 'call_r');
+    for (const sh of [s, s2]) {
+      assert.ok(results(sh).length >= 1, `d=${d}: the shim gets the answer`);
+      assert.equal(new Set(results(sh).map((m) => m.text)).size, 1, `d=${d}: the shim gets one answer, not two different ones`);
+    }
+    const answer = s.got.find((m) => m.type === 'result' && m.id === 'call_r');
+    const liveAccepted = errors.length === 0;
+    if (liveAccepted) assert.equal(answer.text, 'LIVE', `d=${d}: a live reply accepted is the answer`);
+    else {
+      assert.ok(
+        errors.some((e) => e.code === 'no-tool'),
+        `d=${d}: a refused live reply is no-tool`,
+      );
+      assert.match(answer.text, /x 0/, `d=${d}: the offline settle is the answer`);
+    }
+  } finally {
+    h.done();
+  }
+};
+
+test('no delay between an offline settle and a live reply lets a second answer through (T07, T08 sweep)', async () => {
+  for (let d = 0; d <= 12; d++) {
+    await raceOnce(d, false);
+    await raceOnce(d, true);
+  }
+});
