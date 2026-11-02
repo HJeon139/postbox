@@ -113,7 +113,7 @@ async function metrics(cdp) {
   return Object.fromEntries(m.map((x) => [x.name, x.value]));
 }
 
-/** Sends n events, one a time, waiting for the page to hear each and draw; returns the per-event medians. */
+/** Sends n events, one at a time, waiting for the page to hear each and draw; returns the per-event medians. */
 async function perEvent(page, n, send) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Performance.enable');
@@ -161,6 +161,44 @@ test('#622: a ring whose agent changes state and context at once builds its SVG 
   expect(built, 'the ring’s SVG, built once for its state, context and subagent together').toBe(1);
 });
 
+test('#622: the ring beside an earlier reply says only whose it is, after a redraw and a reload too', async ({ page }) => {
+  const p = app.rt.createPersona({ handle: 'earlier' });
+  const t = app.rt.createThread({ projectId: 'pr_live', title: 'Earlier', personaIds: [p.id] });
+  const se = app.rt.sessionsIn(t.id)[0];
+  const reply = (n) =>
+    app.rt.addItem(t.id, {
+      kind: 'agent',
+      sessionId: se.id,
+      personaId: se.personaId,
+      handle: se.handle,
+      turnId: `tu_e${n}`,
+      text: `Reply ${n}.`,
+      status: 'done',
+    });
+  const first = reply(1);
+  reply(2);
+  app.rt.updateSession(se.id, { state: 'needs', ctx: 40 });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const rings = page.locator(`.transcript .who pb-ring[data-session="${se.id}"]`);
+  const label = (r) => r.locator('svg[role=img]');
+  const earlierSaysOnlyWhose = async (when) => {
+    await expect(label(rings.last()), when).toHaveAttribute('aria-label', '@earlier: Needs you, 40% of context used');
+    await expect(label(rings.first()), when).toHaveAttribute('aria-label', '@earlier');
+    await expect(rings.first(), when).not.toHaveAttribute('role', 'button');
+  };
+  await earlierSaysOnlyWhose('on the first draw');
+  app.rt.updateSession(se.id, { ctx: 80 });
+  app.store.emit('item.patch', { threadId: t.id, id: first.id, patch: { text: 'Reply 1, edited.' } });
+  await synced(page, app);
+  await expect(label(rings.last())).toHaveAttribute('aria-label', '@earlier: Needs you, 80% of context used');
+  await expect(label(rings.first()), 'after the earlier reply is drawn again').toHaveAttribute('aria-label', '@earlier');
+  app.rt.updateSession(se.id, { ctx: 40 });
+  await page.reload();
+  await synced(page, app);
+  await earlierSaysOnlyWhose('after a reload');
+});
+
 test('#622: a session event in a 1,000-item room rebuilds the rings that show it, not one per reply', async ({ page }) => {
   test.setTimeout(180_000);
   const { t, sa } = await seeded(page);
@@ -175,8 +213,9 @@ test('#622: a session event in a 1,000-item room rebuilds the rings that show it
   const rings = page.locator(`.transcript[data-thread="${t.id}"] .who pb-ring[data-session="${sa.id}"]`);
   await expect.soft(rings.last()).toHaveAttribute('state', 'think');
   await expect.soft(rings.last()).toHaveAttribute('ctx', '33');
-  await expect.soft(rings.nth(0)).toHaveAttribute('state', 'idle');
-  expect.soft(await rings.evaluateAll((rs) => rs.filter((r) => r.getAttribute('state') !== 'idle').length), 'rings showing the live state').toBe(1);
+  await expect.soft(rings.nth(0)).toHaveAttribute('state', 'rest');
+  await expect.soft(rings.nth(0).locator('svg[role=img]')).toHaveAttribute('aria-label', `@${sa.handle}`);
+  expect.soft(await rings.evaluateAll((rs) => rs.filter((r) => r.getAttribute('state') !== 'rest').length), 'rings showing the live state').toBe(1);
 });
 
 test('#622: a session event in a 1,000-item room looks up the status words that can change, not every one', async ({ page }) => {
