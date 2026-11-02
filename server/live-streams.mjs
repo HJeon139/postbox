@@ -9,25 +9,32 @@
 // lost. A stream that names another epoch, or a seq past the store’s, is told to resync, whatever its seq. Event ids
 // stay the plain seq, so tools reading the stream (tools/uat/history.mjs) are unchanged; the stream names its epoch in
 // its first frame, which they ignore.
+//
+// Every event frame is built from the event’s public form (server/public-state.mjs): a type the page may not see goes
+// out as a cursor with its seq. The control frames’ names are shared/state.mjs’s STREAM, which no event type may take.
+
+import { EVENTS, STREAM } from '../shared/state.mjs';
+import { publicFrame } from './public-state.mjs';
 
 /**
  * Sends the store’s events to every open stream, and a keep-alive every 15 s; stream() opens one for a request to
  * /api/stream.
  * @param {import('./store.mjs').Store} store
+ * @param {typeof EVENTS} [events]  the event table, which a spec replaces to show a private type
  * @returns {{
  *   streams: Set<import('node:http').ServerResponse>,
  *   stop: () => void,
  *   stream: (req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse, url: URL) => void,
  * }}
  */
-export function liveStreams(store) {
+export function liveStreams(store, events = EVENTS) {
   /** @type {Set<import('node:http').ServerResponse>} */
   const streams = new Set();
   // POSTBOX_STREAM_LAG holds every event back that many milliseconds, as a busy computer can. The browser specs run
   // with it in CI to show they wait for the page to hear a change, not for a fixed time.
   const lag = Number(process.env.POSTBOX_STREAM_LAG) || 0;
   store.subscribe((ev) => {
-    const line = `id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`;
+    const line = publicFrame(ev, events);
     const epoch = store.epoch; // the history the event belongs to: a send held back past a Retry says nothing (gpt’s finding)
     const send = () => {
       if (store.epoch !== epoch) return;
@@ -39,12 +46,12 @@ export function liveStreams(store) {
   // The store’s status, unnumbered, each time writes close or reopen, a Retry starts or ends, or a warning changes
   // (#508’s storage design, “When a write fails (ST-3)”): the page shows one status line from it.
   store.onStatus((status) => {
-    const frame = `event: status\ndata: ${JSON.stringify(status)}\n\n`;
+    const frame = `event: ${STREAM.status}\ndata: ${JSON.stringify(status)}\n\n`;
     for (const res of streams) res.write(frame);
   });
   // Retry installs a new epoch: every open stream is told to load the state again.
   store.onReload(() => {
-    for (const res of streams) res.write(`event: epoch\ndata: ${JSON.stringify(store.epoch)}\n\nevent: resync\ndata: {}\n\n`);
+    for (const res of streams) res.write(`event: ${STREAM.epoch}\ndata: ${JSON.stringify(store.epoch)}\n\nevent: ${STREAM.resync}\ndata: {}\n\n`);
   });
   const keepAlive = setInterval(() => {
     for (const res of streams) res.write(': keep-alive\n\n');
@@ -56,11 +63,13 @@ export function liveStreams(store) {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store', connection: 'keep-alive', 'x-accel-buffering': 'no' });
     // The epoch, then the store’s status, so a page that connects or reconnects while writes are closed sees it even
     // though it missed the frame that closed them (critic’s finding on 1b).
-    res.write(`retry: 1500\n\nevent: epoch\ndata: ${JSON.stringify(store.epoch)}\n\nevent: status\ndata: ${JSON.stringify(store.status)}\n\n`);
+    res.write(
+      `retry: 1500\n\nevent: ${STREAM.epoch}\ndata: ${JSON.stringify(store.epoch)}\n\nevent: ${STREAM.status}\ndata: ${JSON.stringify(store.status)}\n\n`,
+    );
     const backlog = lost ? null : store.since(since);
     // Too far behind, or on a lost timeline: the browser refetches the whole state, then resumes from its seq.
-    if (backlog === null) res.write(`event: resync\ndata: {}\n\n`);
-    else for (const ev of backlog) res.write(`id: ${ev.seq}\nevent: ${ev.type}\ndata: ${JSON.stringify(ev.data)}\n\n`);
+    if (backlog === null) res.write(`event: ${STREAM.resync}\ndata: {}\n\n`);
+    else for (const ev of backlog) res.write(publicFrame(ev, events));
     streams.add(res);
     req.on('close', () => streams.delete(res));
   }
