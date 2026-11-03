@@ -1,4 +1,4 @@
-// Every Postbox tool call in a run's recorded streams, with what Postbox answered: what the triggers read to see that a
+// Every Postbox tool call in a run’s recorded streams, with what Postbox answered: what the triggers read to see that a
 // phase made an agent call Postbox (tools/uat/triggers.mjs).
 
 import { POSTBOX_SERVER } from '../../server/adapters/setup.mjs';
