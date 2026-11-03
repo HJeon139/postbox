@@ -1,6 +1,6 @@
 # #633: which card an agent needs you for, until A1b
 
-**Status:** revision 3, after lead-delivery’s peer read and critic’s verdict on revision 1 (RR 13); for critic’s re-read of the changes. A stopgap: A1b derives needs from open ask records and replaces `nextNeed` (`design.md:607`; `execution-plan.md:41`). #508 actions 4 and 9 ask every stopgap note for a restart matrix and `main`’s behavior as a table; both are below.
+**Status:** revision 3, after lead-delivery’s peer read and critic’s verdict (RR 13). critic’s re-read of the changes from revision 2 is still to come. A stopgap: A1b derives needs from open ask records and replaces `nextNeed` (`design.md:607`; `execution-plan.md:41`). #508 actions 4 and 9 ask every stopgap note for a restart matrix and `main`’s behavior as a table; both are below.
 
 ## Decisions
 
@@ -27,7 +27,7 @@ Which comes first: `RANK` (permission, failed, block, refusal, tool request, the
 
   The two `failed` writes end the turn, so they outrank whatever it waited on, a host permission it kept included: that permission belonged to the turn that just failed, and its prompt goes with it. That is `main`’s order too. R: read from the code; no rig drives a host interrupt with a kept permission card.
 - **I2. A clear is its own.** A resolver clears the need only when the need is its card (`releaseNeed`’s `itemId` check).
-- **I3. A turn that doesn’t move on changes nothing about which cards count.** Its start records `keptTurnIds`: of the last turn and the turns kept before, those with a turn-tied card still open (`keptTurns`). So the list is bounded by the turns with an open turn-tied card, and shrinks as you answer them; a spec pins that a wake when nothing waits keeps none. And its end keeps a failed turn’s need, which `nextNeed` never counts, while Retry waits (`keptOrNext`). They count mid-turn, at its end and after a restart, until you move on, which clears the list. This head adds I3; `e776d4b0` kept only a block (`keptId`), so the turn before’s refusals stopped counting under a wake (critic’s finding).
+- **I3. A turn that doesn’t move on changes nothing about which cards count.** Its start records `keptTurnIds`: of the last turn and the turns kept before, those with a turn-tied card still open (`keptTurns`). Their cards count mid-turn, at its end and after a restart, until you move on, which clears the list. So the list is bounded by the turns with an open turn-tied card, and shrinks as you answer them; a spec pins that a wake when nothing waits keeps none. Its end also keeps a failed turn’s need, which `nextNeed` never counts, while Retry waits (`keptOrNext`). This head adds I3; `e776d4b0` kept only a block (`keptId`), so the turn before’s refusals stopped counting under a wake (critic’s finding).
 - **I4. The state survives a restart.** `lastTurnId`, `keptId` and `keptTurnIds` are on the session, in the store, and land in the snapshot. Nothing in memory decides a need.
 - **I5. A need is kept only while its card waits.** After a restart, a laptop permission is no longer waiting (its tool call is gone), so it’s never kept; a host’s is, while the host keeps the prompt (`remote.keepsCard`).
 
@@ -44,7 +44,7 @@ Which comes first: `RANK` (permission, failed, block, refusal, tool request, the
 | 10× (10,001 items) | 2,001 | 0.933 ms | 1.449 ms |
 
   So 2,000 threads add about 0.5 ms, and 10× the items about 0.4 ms. Both stay well under a frame.
-- **Not done here, for critic to rule:** an index of a thread’s children would turn T into the agent’s own threads. It would be a second structure kept in step with the store, for a function A1b replaces with a read of the agent’s open ask records. At 2,000 threads the walk costs about 0.5 ms per call (above), and the sweep makes one call per running session. Left for A1b unless critic asks for it here.
+- **No index of a thread’s children on this head** (critic’s ruling): it would turn T into the agent’s own threads, but it would be a second structure kept in step with the store, for a function A1b replaces with a read of the agent’s open ask records. At 2,000 threads the walk costs about 0.5 ms per call (above), and the sweep makes one call per running session.
 
 ## Restart matrix
 
