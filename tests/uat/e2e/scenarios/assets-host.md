@@ -31,8 +31,10 @@ Pass if host1 reads Connected again on its own, critic’s turn keeps working, a
 
 ## Phase 4: A call while the host is disconnected
 
-- triggers: fault-kill-daemon
+- triggers: fault-restart-postbox
 
-Kill Postbox’s daemon on host1 (fault kill-daemon, target host1), and while it’s reconnecting, ask critic to list the conversation’s assets and to quote Postbox’s answer word for word. Then, once host1 reads Connected, ask again.
+The broker on the host refuses a call only while its host is detached, and only a turn that’s already running can make one then: a new turn waits for the host’s welcome before it starts (server/remote/turns.mjs). So the call has to come from inside one turn that spans the fault.
 
-Pass if the first answer says Postbox isn’t connected to this host, and to try again in a few seconds if it’s reconnecting, or that Postbox may be closed if it stays this way; and the second lists the assets. Fail, and file it, if the first answer says only to wait until Postbox is open, or the second fails.
+Ask critic, in one turn, to list the conversation’s assets six times, running `sleep 4` in its folder between each, and to quote every answer word for word, numbered. About 8 seconds into that turn, restart Postbox (an interrupt with fault restart-postbox). The turn keeps running on host1 while Postbox is down.
+
+Pass if the answers critic got while Postbox was down, by the run’s records of the restart and of host1’s reconnect, say Postbox isn’t connected to this host, and to try again in a few seconds if it’s reconnecting, or that Postbox may be closed if it stays this way; and the answers after host1 reads Connected again list the assets. If no call fell inside the restart, say so: the refusal is then unverified here, and tests/remote-broker.test.mjs decides it. Fail, and file it, if a call made while Postbox was down lists the assets, or its answer says only to wait until Postbox is open, or a call after the reconnect fails, or the turn stops.

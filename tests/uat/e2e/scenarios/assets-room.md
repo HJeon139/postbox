@@ -10,9 +10,9 @@ researcher and critic are in the room, both on Claude Code, with the six asset t
 
 ## Phase 1: Publish and share
 
-Ask researcher to put a short plan, five bullets for cleaning up the login page, where critic can read it later. Don’t name a tool. Then ask critic to find the plan researcher shared and add one bullet to it.
+Ask researcher to put a short plan, five bullets for cleaning up the login page, where critic can read it later, as `notes/plan.md`. Don’t name a tool. Then ask critic to find the plan researcher shared and add one bullet to it.
 
-Pass if researcher publishes it as an asset without being told how, critic finds it by listing the conversation’s assets, quotes researcher’s lines, and publishes version 2 from base 1, and the read names researcher as the author of version 1. Fail, and file it, if researcher pastes the plan into a message instead, or critic can’t find it, or critic’s version isn’t based on version 1.
+Pass if researcher publishes it as an asset named `notes/plan.md` without being told how, critic finds it by listing the conversation’s assets, quotes researcher’s lines, and publishes version 2 from base 1, and the read names researcher as the author of version 1. Fail, and file it, if researcher pastes the plan into a message instead, or critic can’t find it, or critic’s version isn’t based on version 1.
 
 ## Phase 2: A stale write
 
