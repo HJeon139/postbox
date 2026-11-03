@@ -43,9 +43,9 @@ function needOf(rt, se, it, threadId, turnId, keep) {
 /**
  * Which need comes first when several wait, as the turn's end has always chosen: a permission the running turn is
  * blocked on, then a failed turn (its Retry: only its own release clears it, and no card but a permission, which a
- * running turn is blocked on, replaces it, as on main), then the last turn's asking block, its refusals, its tool
- * request, and last the cards that wait until answered (app sends, wake requests). Within a kind, the newest. Every kind
- * a need can have is listed; tests/card-needs-kinds.test.mjs checks the kinds its scan of server/ finds.
+ * running turn is blocked on, replaces it; on main a wake request's card did too), then the last turn's asking block,
+ * its refusals, its tool request, and last the cards that wait until answered (app sends, wake requests). Within a kind,
+ * the newest. It ranks exactly the kinds a need can have, shared/needs.mjs's NEEDS_KINDS (tests/card-needs-kinds.test.mjs).
  */
 export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, denial: 3, toolask: 4, appsend: 5, hop: 5 });
 

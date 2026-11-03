@@ -999,7 +999,6 @@ export class Runtime {
       this.updateSession(se.id, {
         state: 'failed',
         needs: { kind: 'failed', itemId: target, text: message, ...this.awayFrom(se, turn.threadId) },
-        keptId: null,
         sideTurn: null,
         subagents: [],
         currentStep: 'Failed',
@@ -1040,7 +1039,6 @@ export class Runtime {
     this.updateSession(se.id, {
       state: needs ? 'needs' : 'idle',
       needs,
-      keptId: null,
       sideTurn: null,
       glimpse: '',
       subagents: [],

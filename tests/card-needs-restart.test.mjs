@@ -169,8 +169,36 @@ test('a restart keeps a host turn’s permission as the need: its card stays ope
   const p = r.permission();
   r.setNeed('permission', p.id);
   const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
-  const rt = new Runtime({ store: r.store, adapters: new AdapterRegistry().register(r.adapter), corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 } });
+  const rt = new Runtime({
+    store: r.store,
+    adapters: new AdapterRegistry().register(r.adapter),
+    corpus,
+    config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
+  });
   rt.remote.keepsCard = (it) => it.id === p.id; // its host keeps the prompt
   settleInterrupted(rt);
   assert.equal(r.store.state.sessions[r.alpha.id].needs?.itemId, p.id);
+});
+
+test('after a restart, a block the interrupted turn showed ranks ahead of a wake request that was the need', async () => {
+  const r = room();
+  const h = r.hop();
+  r.setNeed('hop', h.id);
+  r.adapter.next.push(async (c, _m, se) => {
+    r.rt.addItem(r.t.id, {
+      kind: 'block',
+      sessionId: se.id,
+      handle: 'alpha',
+      turnId: r.rt.turns.get(se.id).id,
+      valid: true,
+      block: { id: 'b_rank', type: 'choice', version: 1, fallback: 'Pick', prompt: 'Pick', options: [{ id: 'a', label: 'A' }] },
+    });
+    c.text('Pick one.');
+    await new Promise(() => {});
+  });
+  r.rt.sendMessage(r.t.id, { text: '@alpha go on' });
+  await sleep(5);
+  assert.equal(r.needs()?.itemId, h.id, 'the wake request waits through the turn');
+  restart(r);
+  assert.equal(r.store.state.sessions[r.alpha.id].needs?.kind, 'block');
 });
