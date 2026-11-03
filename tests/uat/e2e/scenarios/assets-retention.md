@@ -22,9 +22,7 @@ Pass if every version reads back with its own lines. Fail, and file it, if any t
 
 ## Phase 3: A restart, then the load pass
 
-This phase needs a run with hosts (`--host`), where the restart-postbox fault exists (tools/uat/tester.mjs). In a run without hosts, skip it, and the report says it went unrun.
-
-Restart Postbox (fault restart-postbox). Then ask researcher to read version 1 of `model.bin` again.
+Restart Postbox (`fault {fault: "restart-postbox"}`, in a local run as in one with hosts). Then ask researcher to read version 1 of `model.bin` again.
 
 Pass if it still says pruned, and the store’s log has one `asset.released` for its hash: the load pass deleted the released file once. Fail, and file it, if the read finds the bytes, or the file is released twice.
 
@@ -32,6 +30,6 @@ Pass if it still says pruned, and the store’s log has one `asset.released` for
 
 Deleting a conversation stops every agent in it, topic threads included, so no agent can be asked to write during the 10 seconds of Undo: only a write already in flight can meet it, and #688’s refusal for that case, `deleting`, is decided by the deterministic tests (tests/asset-room-exists.test.mjs, tests/asset-tools.test.mjs). This phase confirms the rest.
 
-Delete the conversation from the page, and press Undo within its 10 seconds. Then ask researcher to publish `notes/after-undo.md` with one line, and to list the assets.
+Delete the conversation and press Undo 3 seconds later (`{conversation: "delete", undo_after: 3}`). Then ask researcher to publish `notes/after-undo.md` with one line, and to list the assets.
 
 Pass if the write publishes, and every asset from before the delete is still listed, with its versions. Fail, and file it, if anything is missing after Undo, or the write is refused.
