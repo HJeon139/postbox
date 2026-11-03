@@ -18,9 +18,9 @@ Pass if the turn stops at the delete, and the run’s records hold no `asset.ver
 
 Expected to fail until #725 is fixed: a wake delivered during the window starts a turn. If it fails that way, name #725 and file nothing new.
 
-Open a new conversation with researcher and critic (conversation, do new). Ask researcher to schedule a wake in 1 minute whose note says to publish `notes/wake.md` with one line. About 52 seconds later, delete the conversation (conversation, do delete), and press Undo 12 seconds after that (conversation, do undo).
+Open a new conversation with researcher and critic (conversation, do new). Ask researcher to schedule a wake in 1 minute whose note says to publish `notes/wake.md` with one line, and to quote Postbox’s answer, which gives the time it wakes. About 8 seconds before that time, delete the conversation (conversation, do delete), and press Undo 12 seconds after the delete (conversation, do undo), so the wake falls due inside the window.
 
-Pass if no turn runs while the conversation is being deleted, and after Undo the wake is delivered and `notes/wake.md` is published. Fail, and file it, if a turn runs in the window (#725), or the wake is lost after Undo.
+Pass if the run’s records show the wake was due between the delete and the Undo, no turn ran while the conversation was being deleted, and after Undo the wake is delivered and `notes/wake.md` is published. If the wake wasn’t due inside the window, say so: the phase is unverified, not passed, and #725’s spec decides it (tests/conversation-delete-turns.test.mjs, in its pull request). Fail, and file it, if a turn runs in the window (#725), or the wake is lost after Undo.
 
 ## Phase 3: The host’s link down across the delete
 
@@ -30,13 +30,13 @@ Pass if any call that reaches Postbox after the reconnect is refused: inside the
 
 ## Phase 4: Delete, then Undo
 
-In the conversation from phase 2 (or a new one, in the host run), ask researcher to publish `notes/keep.md` with one line. Delete the conversation (conversation, do delete), and press Undo within its 10 seconds (conversation, do undo). Then ask researcher to list the assets, and to write `notes/keep.md` again from its newest version.
+In the conversation from phase 2 (or a new one, in the host run), ask researcher to publish `notes/keep.md` with one line, and to say the asset’s id. Delete the conversation (conversation, do delete), and press Undo within its 10 seconds (conversation, do undo). Then ask researcher to list the assets, and to write `notes/keep.md` again from its newest version.
 
 Pass if `notes/keep.md` is still listed after Undo, and the write publishes version 2. Fail, and file it, if anything is missing after Undo, or the write is refused.
 
 ## Phase 5: A second conversation can’t see them
 
-Open a second conversation with researcher (conversation, do new). Ask it to list the assets there, then to read `notes/keep.md` by the id it had in the conversation from phase 4.
+Open a second conversation with researcher (conversation, do new). Its researcher is a new session, with no record of phase 4, so give it the id researcher said there. Ask it to list the assets there, then to read the asset by that id.
 
 Pass if the list is empty, and the read is refused as not in this conversation. Fail, and file it, if any asset of the conversation from phase 4 is listed or read.
 
