@@ -33,7 +33,8 @@ function drawDiagram(fig) {
   const pre = h('pre.mono', { hidden: true }, src);
   // Sandboxed by the policy the page is served with, like the apps. It loads only as it nears the view (#695): each
   // frame runs all of Mermaid, and Safari runs frames on the page’s own thread, so a long room’s diagrams loading at
-  // once held every keystroke for 40 s.
+  // once held every keystroke for 40 s. So a broken or too-small diagram is reported to its agent (#573, onError and
+  // onSize) only once its frame loads, not as its reply is drawn (#731).
   const iframe = h('iframe', { title: 'Diagram', src: `/sandbox/mermaid?theme=${theme()}`, referrerpolicy: 'no-referrer', loading: 'lazy' });
   const btn = h(
     'button.btn.sm.ghost',

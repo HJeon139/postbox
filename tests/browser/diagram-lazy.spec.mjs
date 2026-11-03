@@ -44,9 +44,10 @@ test('#695: diagrams out of view don’t load, and one scrolled to draws', async
   // The newest reply’s diagram is in view at the end of the conversation, and draws.
   const last = page.locator(`[data-key="${ids[29]}"] figure.diagram iframe`);
   await expect(last, 'the diagram in view draws').toHaveAttribute('data-sized', '1');
-  expect.soft(loads, `diagram pages loaded with the first diagram 40,000 px up: ${loads}`).toBeLessThan(DIAGRAMS.length);
+  // The four diagrams are about 13,000 px apart, so only the one in view loads; a mutant leaving any other eager fails.
+  expect(loads, 'only the diagram in view loaded its page').toBe(1);
   const first = page.locator(`[data-key="${ids[0]}"] figure.diagram iframe`);
   await first.scrollIntoViewIfNeeded();
   await expect(first, 'the first diagram draws once scrolled to').toHaveAttribute('data-sized', '1');
-  expect(loads, 'scrolling to it loaded its page').toBeLessThanOrEqual(DIAGRAMS.length);
+  expect(loads, 'scrolling to it loaded its page, and no other').toBe(2);
 });
