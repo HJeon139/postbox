@@ -1,7 +1,8 @@
 // A UAT run’s host mode (#120): the runner (tools/uat-run.mjs) with agents on other machines over ssh. This module
 // holds the run’s record of its hosts (facts.hosts, tools/uat/remote-facts.mjs) and sets them up the way a person
 // would, through the UI (tools/uat/driver-hosts.mjs): add each host, set its settings and the project’s folder there,
-// Install with its confirm, connect, and put each agent on its host in its persona’s Runs on. Before that, it reads
+// Install with its confirm (or stage an older Postbox there instead, tools/uat/hosts-stage.mjs), connect, and put each
+// agent on its host in its persona’s Runs on. Before that, it reads
 // what listens and what runs on each machine, so the end-of-run checks (tools/uat/hosts-end.mjs) have a baseline.
 // While the run goes on, tools/uat/hosts-watch.mjs samples it and does the faults the tester asks for.
 
@@ -11,14 +12,16 @@ import { join, resolve } from 'node:path';
 import { addHost, closeAll, editHost, install, placePersona } from './driver-hosts.mjs';
 import { addrs, localListeners, remoteListeners } from './hosts-probe.mjs';
 import { launcherScript, linesOf, measureOn, onHost, processesOf, SCRIPTS, UUID, workScript } from './hosts-ssh.mjs';
+import { stageOlder } from './hosts-stage.mjs';
 
 /**
  * @typedef {{ label: string, destination: string, settings: Record<string, any>, id: string|null, home: string|null,
- *   made: { parent: boolean } | null }} RunHost  made: the run made its folder there (and ~/postbox-uat too, if parent)
+ *   made: { parent: boolean } | null, stage?: { tag: string, version: string } }} RunHost  made: the run made its
+ *   folder there (and ~/postbox-uat too, if parent); stage: the older Postbox staged there (tools/uat/hosts-stage.mjs)
  * @typedef {{ hosts: RunHost[], placement: Record<string, string>, launcher: string|null, root: string, stamp: string,
  *   log: (line: string) => void, record: any, postbox: any, kit: any, api: (p: string) => Promise<any>, samples: Map<string, any>,
  *   trees: Map<string, Map<string, import('./hosts-ssh.mjs').HostProc>>, cleaning?: Promise<void>, ending?: Promise<void>,
- *   starting?: Promise<void>, hostStates?: () => { at: number, id: string, state: string|null }[] }} HostRun
+ *   starting?: Promise<void>, hostStates?: () => { at: number, id: string, state: string|null, failure?: string|null }[] }} HostRun
  *   trees: every process seen under each host turn (hosts-watch.mjs), by “PID start”
  */
 
@@ -148,19 +151,38 @@ export async function makeRunFolder(hr, h, { run = onHost } = {}) {
   h.made = { parent: linesOf(r.stdout).includes('made') };
 }
 
+/** What setting a host up does, which a test replaces. */
+const SETUP = { addHost, editHost, install, makeRunFolder, stage: stageOlder };
+
+/**
+ * Stages an older Postbox on a host in place of the run’s Install (#464), with the token in the run’s data folder,
+ * and says so as the setup’s record: the version and when, never a path or the destination.
+ * @param {HostRun} hr @param {RunHost} h @param {typeof stageOlder} stage
+ */
+async function stageOn(hr, h, stage) {
+  const { tag, version } = /** @type {{ tag: string, version: string }} */ (h.stage);
+  const host = { id: /** @type {string} */ (h.id), name: h.destination, settings: h.settings };
+  await stage({ root: hr.root, tag, version, data: hr.record.laptopData, label: h.label, host });
+  hr.log(`${h.label}: staged Postbox ${version} (${tag}) in place of the run’s Install, so its first turn finds that older version.`);
+  return { staged: version, stagedAt: Date.now() };
+}
+
 /**
  * Sets one host up through the UI, and records what it showed. It connects with its first turn: an installed host
  * that nothing needs offers no Connect, and the manager connects only for a turn or a prompt (afterStep fails the
- * run with the host’s own message if it doesn’t).
- * @param {HostRun} hr @param {RunHost} h @param {string} projectId
+ * run with the host’s own message if it doesn’t). A host with an older Postbox to stage gets that instead of Install.
+ * @param {HostRun} hr @param {RunHost} h @param {string} projectId @param {Partial<typeof SETUP>} [o]
  */
-async function setUpHost(hr, h, projectId) {
-  h.id = await addHost(hr.kit, h.destination);
+export async function setUpHost(hr, h, projectId, o = {}) {
+  const ui = { ...SETUP, ...o };
+  h.id = await ui.addHost(hr.kit, h.destination);
   /** @type {any} */ (hr.record.hosts.find((x) => x.label === h.label)).id = h.id;
-  await makeRunFolder(hr, h);
-  await editHost(hr.kit, h.id, h.settings, { project: projectId, folder: `${h.home}/postbox-uat/${hr.stamp}/work` });
-  const shown = await install(hr.kit, h.id);
-  hr.log(`${h.label}: ${shown.installOffered ? 'Install…' : 'no Install… on its card, so the runner opened the confirm'}; it said: ${shown.confirm}`);
+  await ui.makeRunFolder(hr, h);
+  await ui.editHost(hr.kit, h.id, h.settings, { project: projectId, folder: `${h.home}/postbox-uat/${hr.stamp}/work` });
+  /** @type {Record<string, any>} */
+  const shown = h.stage ? await stageOn(hr, h, ui.stage) : await ui.install(hr.kit, h.id);
+  if (!h.stage)
+    hr.log(`${h.label}: ${shown.installOffered ? 'Install…' : 'no Install… on its card, so the runner opened the confirm'}; it said: ${shown.confirm}`);
   const placed = Object.values(hr.placement).includes(h.label);
   const launcher = hr.launcher && placed ? await putLauncher(hr, h) : null;
   hr.record.setup.push({ label: h.label, ...shown, launcher, card: shown.card });

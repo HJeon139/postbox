@@ -6,6 +6,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { hostMode } from './hosts-options.mjs';
+import { tagRepo } from './hosts-stage.mjs';
 import { phasesOf, selectPhases } from './phases.mjs';
 import { compatBackends, parseScenario, releaseGate } from './scenario.mjs';
 import { unknownTriggers } from './triggers.mjs';
@@ -20,7 +21,7 @@ export function runScenario(opt, root) {
   // Host mode (#120): agents on other machines over ssh (--host), Claude Code only (tools/uat/hosts-options.mjs).
   const parsed = parseScenario(readFileSync(scenarioFile, 'utf8'));
   const phases = phasesOf(opt, parsed.phases.length);
-  const { hosts, placement, scenario } = hostMode(opt, name, selectPhases(parsed, phases));
+  const { hosts, placement, scenario } = hostMode(opt, name, selectPhases(parsed, phases), tagRepo(root));
   const other = compatBackends(scenario);
   if (other.length && !opt.compat && !opt.release)
     throw new Error(

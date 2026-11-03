@@ -4,13 +4,19 @@
 //   --host-setting <hostN>.<key>=<value>  a host setting (shared/remote-settings.mjs), such as host1.claudePath=/…/claude
 //                                          or host2.idleTimeout=1min; keepAlive’s as keepAlive.interval and keepAlive.count
 //   --place <handle>=<hostN|local>        where an agent runs, over the scenario’s `- place:` line
+//   --stage-host-version <tag>            an older Postbox, a release tag here such as v1.16.1, staged on host1 before
+//                                          the run in place of its Install (#464, tools/uat/hosts-stage.mjs)
 //
 // Host names come only from these options, never from the repo. This pass is Claude Code only, so a run with a host
-// refuses a scenario with an agent on another backend. Pure, so tests can feed it options.
+// refuses a scenario with an agent on another backend. Pure, so tests can feed it options, and the checkout’s tags.
 
 import { checkDestination, checkHostSettings } from '../../shared/remote-settings.mjs';
 import { forHosts } from './hosts-scenario.mjs';
+import { TAG_RE } from './hosts-stage.mjs';
 import { compatBackends } from './scenario.mjs';
+
+/** A checkout with no tags, for a caller that gives none. */
+const NO_TAGS = { current: () => '', versionAt: () => null };
 
 /** Scenarios host mode refuses by name: Codex’s, and the rooms with a Kiro or an Antigravity agent. */
 export const NOT_ON_HOSTS = ['codex', 'mixedroom', 'geminiroom'];
@@ -47,7 +53,45 @@ export const HOST_OPTIONS = {
   place: { type: 'string', multiple: true },
   // Lets the run install over a Postbox already installed on a host, which its Remove at the end then deletes.
   'replace-host-install': { type: 'boolean', default: false },
+  // An older Postbox staged on host1 before the run, as someone who updated Postbox here has on a host (#464).
+  'stage-host-version': { type: 'string' },
 };
+
+/** The trigger a phase played with an older Postbox staged names, and only such a phase. */
+export const STAGED_TRIGGER = 'host-staged-older';
+
+/**
+ * The older Postbox --stage-host-version stages, or null without it: a release tag of this checkout’s, whose package
+ * version isn’t this checkout’s, for a run with a --host. Only host1 gets it: one host on the older version is what
+ * the phase that needs it plays, and the others stay as the run installs them.
+ * @param {{ 'stage-host-version'?: string }} opt @param {number} count  how many hosts
+ * @param {{ current: () => string, versionAt: (tag: string) => string|null }} repo  tools/uat/hosts-stage.mjs, tagRepo
+ * @returns {{ tag: string, version: string } | null}
+ */
+export function stagedOf(opt, count, repo) {
+  const tag = opt['stage-host-version'];
+  if (tag === undefined) return null;
+  if (!TAG_RE.test(tag)) throw new Error(`--stage-host-version takes a release tag, such as v1.16.1, not “${tag}”.`);
+  if (!count) throw new Error('--stage-host-version stages Postbox on host1, and this run has no --host.');
+  const version = repo.versionAt(tag);
+  if (!version) throw new Error(`--stage-host-version ${tag}: there’s no such tag in this checkout. Run git fetch --tags, or pick one git tag lists.`);
+  if (version === repo.current())
+    throw new Error(`--stage-host-version ${tag} is Postbox ${version}, the version this run installs. Pick an older tag, such as the release before it.`);
+  return { tag, version };
+}
+
+/**
+ * Why a run can’t play these phases with what it stages, or null: a phase that names host-staged-older needs an older
+ * Postbox staged, and one that doesn’t can’t take one, since host1’s turns would read not installed.
+ * @param {{ phases: { title: string, triggers?: string[] }[] }} scenario @param {boolean} staged
+ */
+export function stageRefusal(scenario, staged) {
+  const wrong = scenario.phases.filter((p) => (p.triggers ?? []).includes(STAGED_TRIGGER) !== staged).map((p) => `“${p.title}”`);
+  if (!wrong.length) return null;
+  return staged
+    ? `--stage-host-version leaves host1 without this run’s Postbox, which ${wrong.join(' and ')} need${wrong.length > 1 ? '' : 's'}. Play only the phase that names ${STAGED_TRIGGER}, with --phases.`
+    : `${wrong.join(' and ')} need${wrong.length > 1 ? '' : 's'} an older Postbox on host1. Pass --stage-host-version with an older tag, such as v1.16.1, or leave ${wrong.length > 1 ? 'them' : 'it'} out with --phases.`;
+}
 
 /** One `hostN.key=value`, checked against the hosts given. @param {string} spec @param {number} count */
 function settingOf(spec, count) {
@@ -126,14 +170,17 @@ export const unplaced = (placement, hosts) => hosts.map((h) => h.label).filter((
 
 /**
  * The run’s host mode from its options: its hosts, where each agent runs, and the scenario as the run plays it. A
- * run without --host gets the scenario as it is, and no hosts.
+ * run without --host gets the scenario as it is, and no hosts. host1 carries what --stage-host-version stages.
  * @param {Record<string, any>} opt @param {string} name  the scenario’s file name @param {any} scenario
+ * @param {Parameters<typeof stagedOf>[2]} [repo]  the checkout’s tags, read only for --stage-host-version
  */
-export function hostMode(opt, name, scenario) {
+export function hostMode(opt, name, scenario, repo = NO_TAGS) {
   const hosts = hostsOf(opt);
+  const stage = stagedOf(opt, hosts.length, repo);
   if (!hosts.length) return { hosts, placement: {}, scenario };
-  const refused = refusal(name, scenario);
+  const refused = refusal(name, scenario) ?? stageRefusal(scenario, Boolean(stage));
   if (refused) throw new Error(refused);
+  if (stage) Object.assign(hosts[0], { stage });
   const placement = placementOf(scenario, opt.place ?? [], hosts.length);
   return { hosts, placement, scenario: forHosts(scenario, placement, hosts) };
 }
