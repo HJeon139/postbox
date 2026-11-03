@@ -1,0 +1,3 @@
+[
+  { "item": "#671-a", "card": 3, "driver": "One shared attachment line used at runtime.mjs:1748 and :1774, which must know whether the reading session is on a remote host (pathOf is per adapter today, guide.mjs:280); likely a move of describeItem out of runtime.mjs as its own commit, node:test tests for local and remote, and merge-tree checks against #633 and #639. Like #430." }
+]

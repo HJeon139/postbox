@@ -1,0 +1,3 @@
+[
+  { "item": "#671-a", "card": 3, "driver": "The line change itself is about 2, but runtime.mjs is past its ceiling, so a move of describeItem comes first as its own commit, plus a remote-agent wording path and merge-tree checks against #633 and #639." }
+]

@@ -1,0 +1,4 @@
+[
+  { "item": "#464-a", "card": 3, "driver": "One classifier split (ssh-failures.mjs:147-148, also reached from install.mjs:204) plus messages, but each case needs a recorded host stderr fixture, so one real remote capture; no new UI or setting." },
+  { "item": "#464-b", "card": 8, "driver": "Uses the existing verified install, but adds a stored setting off by default, its settings UI and browser spec, a once-per-version guard that survives a restart, a security review, and a real run across a version bump on a host." }
+]

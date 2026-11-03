@@ -1,0 +1,3 @@
+[
+  { "item": "#670", "card": 5, "driver": "Config projects, tags on a subset of 98 specs, a new nightly workflow and two doc updates are small each; the unknown is how many subset specs fail on WebKit or Firefox (the app sandbox already has #76), each needing a drafted issue and a mark." }
+]

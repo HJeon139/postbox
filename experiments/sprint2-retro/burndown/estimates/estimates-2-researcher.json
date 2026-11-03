@@ -1,0 +1,4 @@
+[
+  { "item": "#464-a", "card": 3, "driver": "One module and its messages, but exit 126 vs 127 may not separate the two cases, so it likely needs a small probe on the host and a recorded case for each." },
+  { "item": "#464-b", "card": 8, "driver": "A stored, off-by-default consent setting with UI, an at-most-once install-and-reconnect over the existing verified installer, a security review and a real remote run across a version bump." }
+]

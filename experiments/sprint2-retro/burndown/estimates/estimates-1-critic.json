@@ -1,0 +1,5 @@
+[
+  { "item": "#564-rest", "card": 3, "driver": "Two small client fixes, but each needs a browser spec shown failing first, and the topic-thread inheritance is an untested inference that may grow or vanish" },
+  { "item": "#544", "card": 5, "driver": "Recovery path already exists; cost is a recorded fixture of Kiro's real size-limit error (hard to trigger), branching on a structured field, and the sweep of five other backends" },
+  { "item": "#464", "card": 13, "driver": "Standing consent to install on a remote host is a new consent mechanism across a security boundary: security review, integrator checkpoint, real remote runs, two failure modes told apart; sprint 1's 8 predates choosing standing consent" }
+]

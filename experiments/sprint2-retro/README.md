@@ -20,3 +20,7 @@ A work-in-progress folder, not meant to merge, in the shape of `wip/sprint1-retr
 - `designs/508/execution-plan.md`, "Where it stands" (#710): the decisions made in the room and the unfinished work.
 - `designs/508/room-rules.md`: rules 1 to 21. `designs/review-guide.md` (#659): the integrator's review guide.
 - The closing summary on #508.
+
+## The P0 burndown room
+
+A second sprint 2 ran in another room at the same time: the backlog’s P0 burndown, retrospective #692. Its records are in `burndown/`, starting at `burndown/README.md`.

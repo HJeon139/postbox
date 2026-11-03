@@ -1,0 +1,4 @@
+[
+  { "item": "#516-S3a", "card": 13, "driver": "A new durable, concurrent store: one commit function with base check, budget and retention in one step, fsync before visible, op with author, load-time deletion only on assetReleases, a new public state key under security review, and twelve failure rows each as a test, several needing crash points. Like #423. If cut: model, commit, op and the state key first; retention, releases and orphans second." },
+  { "item": "#516-S3b", "card": 8, "driver": "Six tools over S3a's commit path, local in full and remote text-only, with paging pinned to the first page's version, refusals that keep the agent's copy, name checks and the guide, sharing mcp-tools.mjs and mcp.mjs with #639. Like #449's spread, without real-backend runs." }
+]

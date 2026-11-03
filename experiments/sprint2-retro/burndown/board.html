@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sprint 2 board and burndown</title>
+<style>
+  body { margin: 0; padding: 12px; font: 13px/1.4 system-ui, sans-serif; color: var(--text); background: var(--bg); }
+  h2 { font-size: 14px; margin: 16px 0 8px; }
+  .sb-cols { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 8px; overflow-x: auto; }
+  .sb-col { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; min-height: 80px; }
+  .sb-col h3 { font-size: 12px; margin: 0 0 6px; color: var(--dim); font-weight: 600; }
+  .sb-card { border: 1px solid var(--line); border-radius: 6px; padding: 6px; margin-bottom: 6px; background: var(--bg); }
+  .sb-card b { display: block; }
+  .sb-meta { color: var(--dim); font-size: 11.5px; }
+  .sb-pts { float: right; font-variant-numeric: tabular-nums; }
+  .sb-sum { display: flex; gap: 16px; flex-wrap: wrap; margin: 4px 0 8px; }
+  .sb-sum div { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; }
+  .sb-sum b { font-size: 16px; display: block; }
+  svg text { fill: var(--dim); font-size: 11px; }
+  @media (max-width: 600px) { .sb-cols { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<div class="sb-sum" id="sum"></div>
+<h2>Board</h2>
+<div class="sb-cols" id="cols" aria-label="Sprint board columns"></div>
+<h2>Burndown: points left, done (PR open) and merged</h2>
+<div id="chart"></div>
+<p class="small dim" id="note"></p>
+<script>
+// Data as of the last update; each figure is rebuilt from GitHub (gh pr view createdAt, mergedAt) and .scratch/sprint2/estimates-final.json.
+const ASOF = '2026-11-03T00:07:00Z';
+const START = '2026-11-02T19:35:00Z';
+const END = '2026-11-05T01:00:00Z';
+const COLS = ['To estimate', 'Ready', 'Building', 'In review', 'PR open', 'Merged'];
+const ITEMS = [
+  { id: '#544', title: 'Kiro size-limit restart', pts: 5, col: 'Merged', owner: 'developer', head: '#677 at 28ae71fb' },
+  { id: '#564-rest', title: 'Glossary listener and inherited terms', pts: 3, col: 'Merged', owner: 'claude-ssh', head: '#678' },
+  { id: '#464-a', title: 'Launcher missing vs could not start', pts: 3, col: 'Merged', owner: 'kiro-ssh-x86', head: '#676 at 30fd5ed6' },
+  { id: '#671-a', title: 'Local agents get an attachment’s path', pts: 3, col: 'Merged', owner: 'developer', head: '#682' },
+  { id: '#516-S1', title: 'App code through read_message', pts: 5, col: 'Merged', owner: 'claude-ssh', head: '#679' },
+  { id: '#673', title: 'Long choice options as panels', pts: 5, col: 'Merged', owner: 'kiro-ssh-x86', head: '#687' },
+  { id: '#516-S3a', title: 'Asset store and commit path', pts: 8, col: 'PR open', owner: 'developer', head: '#688 at dbad81c8' },
+  { id: '#516-S3b', title: 'The six asset tools', pts: 5, col: 'In review', owner: 'claude-ssh', head: 'ffeb3eb5, test fix due' },
+  { id: '#427', title: 'Closed: fixed by #597', pts: 0, col: 'Merged', owner: 'no code' },
+  { id: '#296', title: 'Closed: fixed by #557, #562', pts: 0, col: 'Merged', owner: 'no code' },
+];
+// Events: when a PR opened (done) or merged, with its points.
+const EVENTS = [
+  { kind: 'open', id: '#464-a', pts: 3, at: '2026-11-02T20:46:10Z' },
+  { kind: 'open', id: '#544', pts: 5, at: '2026-11-02T20:49:10Z' },
+  { kind: 'open', id: '#564-rest', pts: 3, at: '2026-11-02T21:03:58Z' },
+  { kind: 'open', id: '#516-S1', pts: 5, at: '2026-11-02T21:04:21Z' },
+  { kind: 'open', id: '#671-a', pts: 3, at: '2026-11-02T21:20:43Z' },
+  { kind: 'merged', id: '#464-a', pts: 3, at: '2026-11-02T21:06:37Z' },
+  { kind: 'merged', id: '#544', pts: 5, at: '2026-11-02T21:06:49Z' },
+  { kind: 'merged', id: '#564-rest', pts: 3, at: '2026-11-02T22:58:14Z' },
+  { kind: 'merged', id: '#516-S1', pts: 5, at: '2026-11-02T22:58:26Z' },
+  { kind: 'merged', id: '#671-a', pts: 3, at: '2026-11-02T22:58:37Z' },
+  { kind: 'open', id: '#673', pts: 5, at: '2026-11-02T23:13:25Z' },
+  { kind: 'open', id: '#516-S3a', pts: 8, at: '2026-11-02T23:59:24Z' },
+  { kind: 'merged', id: '#673', pts: 5, at: '2026-11-02T23:33:47Z' },
+];
+
+const total = ITEMS.reduce((s, i) => s + (i.pts || 0), 0);
+const done = (k) => EVENTS.filter((e) => e.kind === k).reduce((s, e) => s + e.pts, 0);
+const sum = document.getElementById('sum');
+for (const [label, v] of [['Points planned', total], ['Done (PR open)', done('open')], ['Merged', done('merged')], ['Not yet estimated', ITEMS.filter((i) => i.pts == null).length + ' items']]) {
+  const d = document.createElement('div');
+  const b = document.createElement('b'); b.textContent = String(v);
+  d.append(b, document.createTextNode(label)); sum.append(d);
+}
+const cols = document.getElementById('cols');
+for (const c of COLS) {
+  const col = document.createElement('section'); col.className = 'sb-col';
+  const h = document.createElement('h3'); h.textContent = c; col.append(h);
+  for (const i of ITEMS.filter((x) => x.col === c)) {
+    const card = document.createElement('div'); card.className = 'sb-card';
+    const p = document.createElement('span'); p.className = 'sb-pts'; p.textContent = i.pts == null ? '?' : i.pts + ' pt';
+    const b = document.createElement('b'); b.textContent = i.id;
+    const t = document.createElement('div'); t.textContent = i.title;
+    const m = document.createElement('div'); m.className = 'sb-meta'; m.textContent = i.owner + (i.head ? ' · ' + i.head : '');
+    card.append(p, b, t, m); col.append(card);
+  }
+  cols.append(col);
+}
+function draw() {
+  const el = document.getElementById('chart'); el.textContent = '';
+  const W = Math.max(320, el.clientWidth || 600), H = 200, L = 36, R = 10, T = 10, B = 24;
+  const t0 = Date.parse(START), t1 = Date.parse(END), now = Date.parse(ASOF);
+  const x = (t) => L + ((t - t0) / (t1 - t0)) * (W - L - R);
+  const y = (p) => T + (1 - p / Math.max(total, 1)) * (H - T - B);
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg'); svg.setAttribute('width', W); svg.setAttribute('height', H);
+  svg.setAttribute('role', 'img'); svg.setAttribute('aria-label', 'Burndown of points left by done and by merged');
+  const line = (pts, color, dash) => {
+    const p = document.createElementNS(ns, 'polyline');
+    p.setAttribute('points', pts.map(([a, b]) => x(a) + ',' + y(b)).join(' '));
+    p.setAttribute('fill', 'none'); p.setAttribute('stroke', color); p.setAttribute('stroke-width', '2');
+    if (dash) p.setAttribute('stroke-dasharray', '4 3');
+    svg.append(p);
+  };
+  const series = (k) => {
+    let left = total; const out = [[t0, left]];
+    for (const e of EVENTS.filter((e) => e.kind === k).sort((a, b) => Date.parse(a.at) - Date.parse(b.at))) { out.push([Date.parse(e.at), left]); left -= e.pts; out.push([Date.parse(e.at), left]); }
+    out.push([now, left]); return out;
+  };
+  line([[t0, total], [t1, 0]], 'var(--line-strong, var(--line))', true);
+  line(series('open'), 'var(--s1)');
+  line(series('merged'), 'var(--s2)');
+  for (const [p, lab] of [[0, '0'], [total, String(total)]]) { const tx = document.createElementNS(ns, 'text'); tx.setAttribute('x', 4); tx.setAttribute('y', y(p) + 4); tx.textContent = lab; svg.append(tx); }
+  for (const [t, lab] of [[t0, '2 Nov'], [Date.parse('2026-11-03T08:00:00Z'), '3 Nov'], [Date.parse('2026-11-04T08:00:00Z'), '4 Nov']]) { const tx = document.createElementNS(ns, 'text'); tx.setAttribute('x', x(t)); tx.setAttribute('y', H - 6); tx.textContent = lab; svg.append(tx); }
+  el.append(svg);
+  const key = document.createElement('p'); key.className = 'small';
+  key.innerHTML = '';
+  for (const [c, l] of [['var(--s1)', 'Done (PR open)'], ['var(--s2)', 'Merged'], ['var(--dim)', 'Ideal (dashed)']]) {
+    const s = document.createElement('span'); s.style.marginRight = '12px';
+    const sw = document.createElement('span'); sw.style.cssText = 'display:inline-block;width:10px;height:10px;margin-right:4px;background:' + c;
+    s.append(sw, document.createTextNode(l)); key.append(s);
+  }
+  el.append(key);
+}
+draw();
+addEventListener('resize', draw);
+document.getElementById('note').textContent = 'As of ' + ASOF.replace('T', ' ').slice(0, 16) + ' UTC. Points are the median of three blind cards. #427 and #296 closed without code, at 0 points.';
+postbox.ready.then(() => postbox.on('theme', draw));
+</script>
+</body>
+</html>

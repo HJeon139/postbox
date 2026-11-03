@@ -1,0 +1,3 @@
+[
+  { "item": "#670", "card": 5, "driver": "Config, tags and a scheduled workflow are small; the unknown is how many tagged specs fail on WebKit or Firefox (sandbox CSP header, userActivation, CDP-using specs) and each needs a drafted issue, plus a first nightly run to read back" }
+]

@@ -1,0 +1,3 @@
+[
+  { "item": "#670", "card": 5, "driver": "Config moves from one top-level use to three projects with a tag grep, a new nightly plus workflow_dispatch workflow that installs both engines, local runs to triage the subset (the app sandbox on WebKit is likely to fail, per #76) and draft its issues, and two docs; the workflow is proven only by a dispatched run on GitHub. Like #445." }
+]

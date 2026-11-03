@@ -1,0 +1,5 @@
+[
+  { "item": "#564-rest", "card": 3, "driver": "Client only, two small fixes in apps.mjs and thread.mjs, but the topic-thread inheritance is untested, so it needs a browser spec for each plus finding how a topic thread reads its parent's glossary." },
+  { "item": "#544", "card": 5, "driver": "The classification and restart reuse the missing-session path; the cost is a real Kiro run that hits the size limit, and a survey of four other backends that may each need a fix or an issue." },
+  { "item": "#464", "card": 8, "driver": "Reuses install.mjs's verified install, but adds a standing-consent host setting, a bounded install-and-reconnect, a new failure class, a security review and a real run across a version bump on a remote host." }
+]

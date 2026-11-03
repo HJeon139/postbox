@@ -1,0 +1,104 @@
+[
+ {
+  "item": "#564-rest",
+  "points": 3,
+  "cards": {
+   "critic": 3,
+   "developer": 3,
+   "researcher": 3
+  },
+  "round": 1
+ },
+ {
+  "item": "#544",
+  "points": 5,
+  "cards": {
+   "critic": 5,
+   "developer": 5,
+   "researcher": 5
+  },
+  "round": 1
+ },
+ {
+  "item": "#464-a",
+  "points": 3,
+  "cards": {
+   "critic": 3,
+   "developer": 3,
+   "researcher": 3
+  },
+  "round": 2
+ },
+ {
+  "item": "#464-b",
+  "points": 8,
+  "cards": {
+   "critic": 8,
+   "developer": 8,
+   "researcher": 8
+  },
+  "round": 2,
+  "dependsOn": "#464-a"
+ },
+ {
+  "item": "#670",
+  "points": 5,
+  "cards": {
+   "critic": 5,
+   "developer": 5,
+   "researcher": 5
+  },
+  "round": 3
+ },
+ {
+  "item": "#671-a",
+  "points": 3,
+  "cards": {
+   "critic": 3,
+   "developer": 3,
+   "researcher": 3
+  },
+  "round": 4
+ },
+ {
+  "item": "#516-S1",
+  "points": 5,
+  "cards": {
+   "critic": 5,
+   "developer": 5,
+   "researcher": 5
+  },
+  "round": 6
+ },
+ {
+  "item": "#673",
+  "points": 5,
+  "cards": {
+   "critic": 5,
+   "developer": 5,
+   "researcher": 5
+  },
+  "round": 7
+ },
+ {
+  "item": "#516-S3a",
+  "points": 8,
+  "cards": {
+   "critic": 8,
+   "developer": 13,
+   "researcher": 8
+  },
+  "round": 8
+ },
+ {
+  "item": "#516-S3b",
+  "points": 5,
+  "cards": {
+   "critic": 5,
+   "developer": 8,
+   "researcher": 5
+  },
+  "round": 8,
+  "dependsOn": "#516-S3a"
+ }
+]

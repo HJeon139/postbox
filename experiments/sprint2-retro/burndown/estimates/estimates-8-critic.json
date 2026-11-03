@@ -1,0 +1,4 @@
+[
+  { "item": "#516-S3a", "card": 8, "driver": "New durable state with a compare-and-set commit, retention and a delete pass at load; twelve failure rows as tests, with interleavings forced by latches, and a security review of a new public key" },
+  { "item": "#516-S3b", "card": 5, "driver": "Six thin tools over S3a, paging reused from S1, names checked, host text-only path and the guide; a merge seam with #639 in two files" }
+]

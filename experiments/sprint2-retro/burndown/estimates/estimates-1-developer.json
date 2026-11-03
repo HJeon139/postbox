@@ -1,0 +1,5 @@
+[
+  { "item": "#564-rest", "card": 3, "driver": "Two client fixes (listener cleanup on replace in apps.mjs:863, inherited-term redraw in thread.mjs:365), each with a browser spec that fails first; no real run; like #430." },
+  { "item": "#544", "card": 5, "driver": "The restart path exists (kiro-cli.mjs:467-472), but the size-limit error text must come from a recorded real Kiro turn, plus a survey of four other backends with fix-or-file; like #445 plus a real run." },
+  { "item": "#464", "card": 13, "driver": "Install code exists (server/remote/install*.mjs), but standing consent is a new setting and a security boundary, the 127/126 split needs a recorded host case, and it needs real remote-host runs; like #423." }
+]

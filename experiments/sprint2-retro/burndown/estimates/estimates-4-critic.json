@@ -1,0 +1,3 @@
+[
+  { "item": "#671-a", "card": 3, "driver": "pathOf already exists and three call sites share describeItem, but the path must depend on the reading session's host, runtime.mjs needs a move commit first with a two-way diff, and it has a merge seam with #633 and #639" }
+]

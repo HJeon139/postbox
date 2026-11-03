@@ -1,0 +1,3 @@
+[
+  { "item": "#516-S1", "card": 5, "driver": "Read-only, but version pinning and offsets over code alone need care (my review's two P1s), plus a remote reading path, a tool schema change and a merge seam with #639; sized with critic-design-516-r1's conditions in" }
+]
