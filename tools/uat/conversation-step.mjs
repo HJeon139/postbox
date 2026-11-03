@@ -47,9 +47,31 @@ async function undo({ d, api, facts }, del) {
   return `Pressed Undo ${((at - del.at) / 1000).toFixed(1)} s after the delete, and opened “${del.title}” again.`;
 }
 
-/** Deletes the conversation that’s open, through its menu and the confirm, then presses Undo after undo_after seconds. */
+/** The longest a delete waits for its `at`: a phase’s wait, so a time far off is a mistake, not a plan. */
+const AT_MAX_MS = 5 * 60_000;
+
+/**
+ * How long to wait before a delete given `at`, in ms, and what to say about it: 0 when `at` has passed or none was
+ * given. `at` is an ISO time, such as the one schedule_wake answers with.
+ * @param {unknown} at @param {number} now
+ * @returns {{ wait: number, note: string }}
+ */
+export function delayUntil(at, now) {
+  if (at === undefined || at === null || at === '') return { wait: 0, note: '' };
+  const when = Date.parse(String(at));
+  if (!Number.isFinite(when)) throw new Error(`A delete’s at is a time such as 2026-11-03T10:45:44Z, not “${at}”.`);
+  if (when - now > AT_MAX_MS) throw new Error(`A delete’s at is at most 5 minutes away; ${at} is ${Math.round((when - now) / 1000)} s away.`);
+  if (when <= now) return { wait: 0, note: ` Its at, ${at}, had passed ${((now - when) / 1000).toFixed(1)} s before, so it went at once.` };
+  return { wait: when - now, note: ` It waited for its at, ${at}.` };
+}
+
+/**
+ * Deletes the conversation that’s open, through its menu and the confirm, at `at` if it’s given (the confirm is open
+ * and waiting), then presses Undo after undo_after seconds.
+ */
 async function remove(ctx, a) {
   const { d, api, facts } = ctx;
+  delayUntil(a.at, Date.now()); // a bad at is refused before anything is clicked
   const threadId = await openThread(d.kit.ev);
   const state = (await api('/api/state')).state;
   const t = state.threads?.[threadId];
@@ -57,6 +79,8 @@ async function remove(ctx, a) {
   const room = t.kind === 'room';
   await d.kit.clickAt(`document.querySelector(${js(`[aria-label="Actions for ${t.title}"]`)})`, 'the conversation’s menu');
   await d.kit.clickAt(byText('document', '.menu .mi, [role=menuitem]', `Delete ${room ? 'room' : 'conversation'}`), 'Delete in its menu');
+  const { wait: atWait, note } = delayUntil(a.at, Date.now());
+  if (atWait > 0) await sleep(atWait);
   await d.kit.clickAt(byText('document.querySelector(".dialog")', 'button.danger', `Delete ${room ? 'room' : 'conversation'}`), 'the confirm’s Delete');
   const at = Date.now();
   let until = null;
@@ -67,7 +91,7 @@ async function remove(ctx, a) {
   if (!until) throw new Error(`“${t.title}” wasn’t marked as being deleted after its confirm.`);
   const del = { do: 'delete', at, threadId, title: t.title, handles: handlesIn(state, threadId), until };
   facts.probes.conversation.push(del);
-  const said = `Deleted “${t.title}”; its Undo runs out ${((until - at) / 1000).toFixed(1)} s from now.`;
+  const said = `Deleted “${t.title}” at ${new Date(at).toISOString()}; its Undo runs out ${((until - at) / 1000).toFixed(1)} s from then.${note}`;
   if (a.undo_after === undefined || a.undo_after === null) return said;
   const wait = Math.max(0, Number(a.undo_after) || 0) * 1000 - (Date.now() - at);
   if (wait > 0) await sleep(wait);

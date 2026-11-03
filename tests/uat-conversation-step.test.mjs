@@ -3,6 +3,7 @@
 // records (facts.probes.conversation) are what turn-in-deleting-conversation reads.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { delayUntil } from '../tools/uat/conversation-step.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { interruptAct, localRestart, STEPS } from '../tools/uat/steps.mjs';
 import { SCHEMA, systemPrompt } from '../tools/uat/tester.mjs';
@@ -50,7 +51,50 @@ test('the tester has the action, and a delete as an interrupt, and is told how t
   assert.deepEqual(action.conversation.enum, ['delete', 'undo', 'new', 'open']);
   assert.deepEqual(action.interrupt.properties.conversation.enum, ['delete']);
   const prompt = systemPrompt({ scenario: parseScenario('# T\n'), issues: [] });
-  assert.match(prompt, /- conversation \{conversation, undo_after\?, agents\?, title\?\}/);
+  assert.match(prompt, /- conversation \{conversation, at\?, undo_after\?, agents\?, title\?\}/);
+  assert.equal(action.at.type, 'string');
   assert.match(prompt, /an interrupt \{after, do: conversation, conversation: delete, undo_after\?\}/);
   assert.match(prompt, /- fault \{fault: restart-postbox\}: in a run without hosts too/);
+});
+
+test('a delete’s at: it waits until then, goes at once if it has passed, and refuses a time it can’t read or far off', async () => {
+  const now = Date.parse('2026-11-03T10:45:40Z');
+  assert.deepEqual(delayUntil(undefined, now), { wait: 0, note: '' });
+  // A wake due at 10:45:48.9, less 4 s, as #726’s phase 2 asks.
+  const soon = delayUntil('2026-11-03T10:45:44.900Z', now);
+  assert.equal(soon.wait, 4900);
+  assert.match(soon.note, /waited for its at/);
+  const late = delayUntil('2026-11-03T10:45:38Z', now);
+  assert.equal(late.wait, 0);
+  assert.match(late.note, /had passed 2\.0 s before, so it went at once/);
+  assert.throws(() => delayUntil('in a bit', now), /a time such as .*, not “in a bit”/);
+  assert.throws(() => delayUntil('2026-11-03T11:00:00Z', now), /at most 5 minutes away/);
+  // A bad at is refused before anything is clicked.
+  let clicked = 0;
+  const c = ctx();
+  c.d.kit.ev = async () => '#/t/th_1';
+  c.d.kit.clickAt = async () => clicked++;
+  c.api = async () => ({ state: { threads: { th_1: { id: 'th_1', title: 'T' } }, sessions: {}, projects: {} } });
+  await assert.rejects(STEPS.conversation(c, { conversation: 'delete', at: 'soon' }), /not “soon”/);
+  assert.equal(clicked, 0);
+});
+
+test('a delete with at opens its confirm first, and presses Delete no earlier than at', async () => {
+  const clicks = [];
+  const thread = { id: 'th_1', title: 'T', projectId: 'p1' };
+  const c = ctx();
+  c.d.kit.ev = async () => '#/t/th_1';
+  c.d.kit.clickAt = async (_expr, what) => clicks.push({ what, at: Date.now() });
+  // Marked as being deleted once the confirm’s Delete is pressed, as the server does.
+  c.api = async () => ({ state: { threads: { th_1: { ...thread, deleting: clicks.length >= 3 ? Date.now() + 10_000 : null } }, sessions: {}, projects: {} } });
+  const at = new Date(Date.now() + 400).toISOString();
+  const said = await STEPS.conversation(c, { conversation: 'delete', at });
+  assert.deepEqual(
+    clicks.map((x) => x.what),
+    ['the conversation’s menu', 'Delete in its menu', 'the confirm’s Delete'],
+  );
+  assert.ok(clicks[1].at < Date.parse(at), 'the confirm opened before at');
+  assert.ok(clicks[2].at >= Date.parse(at), `Delete pressed ${Date.parse(at) - clicks[2].at} ms before at`);
+  assert.match(said, /waited for its at/);
+  assert.equal(c.facts.probes.conversation[0].do, 'delete');
 });
