@@ -294,8 +294,8 @@ test('apps: a missing-data message is #47, tiny marks are #53, status colors for
 const EXIT = ['wikisearch', 'announcement', 'papersurvey', 'longresearch'];
 
 // Scenarios with more than three phases: Codex's four features, and the acceptance scenarios whose phases are a design's
-// steps: #508's delivery (A1 to A4) and big room (B1 to B3) (designs/508/testing-strategy.md), and #516 S3's three assets.
-const LONGER = { codex: 4, delivery: 8, bigroom: 4, 'assets-room': 11, 'assets-retention': 4, 'assets-host': 4 };
+// steps: #508's delivery (A1 to A4) and big room (B1 to B3) (designs/508/testing-strategy.md), and #516's assets.
+const LONGER = { codex: 4, delivery: 8, bigroom: 4, 'assets-room': 11, 'assets-retention': 4, 'assets-host': 4, 'assets-delete': 7 };
 
 test('the scenarios parse into phases the tester works through', () => {
   const dir = new URL('uat/e2e/scenarios/', import.meta.url);
