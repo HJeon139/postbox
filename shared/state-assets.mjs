@@ -29,10 +29,13 @@ const releasesOf = (s) => (s.assetReleases ??= map());
 /** The records a room’s index holds, each by key with only its own keys: the one list of its shape. */
 const ROOM_RECORDS = ['ids', 'names', 'files', 'ops'];
 
+/** A room’s index with no assets yet: the one place its shape is written. */
+export const emptyIndex = () => ({ count: 0, bytes: 0, ...Object.fromEntries(ROOM_RECORDS.map((k) => [k, map()])) });
+
 /** A room’s index, made empty the first time the room has an asset. @param {any} s @param {string} room */
 function indexOf(s, room) {
   const rooms = (s.assetRooms ??= map());
-  if (!own(rooms, room)) rooms[room] = { count: 0, bytes: 0, ...Object.fromEntries(ROOM_RECORDS.map((k) => [k, map()])) };
+  if (!own(rooms, room)) rooms[room] = emptyIndex();
   return rooms[room];
 }
 

@@ -8,7 +8,7 @@
 
 import { join } from 'node:path';
 import { ASSETS } from '../shared/limits.mjs';
-import { nameKey, opKey, own } from '../shared/state-assets.mjs';
+import { emptyIndex, nameKey, opKey, own } from '../shared/state-assets.mjs';
 import { bytesAfter, isTextBytes, prunable } from './asset-retention.mjs';
 import { Blobs } from './blobs.mjs';
 import { newId } from './store.mjs';
@@ -67,8 +67,8 @@ export const versionAt = (asset, v) => (Number.isInteger(v) ? asset.versions[/**
 /** The version an asset shows now. @param {any} asset */
 export const headOf = (asset) => versionAt(asset, asset.head) ?? null;
 
-/** A room with no assets yet, as its index would read. */
-const NO_ASSETS = Object.freeze({ count: 0, ids: {}, names: {}, files: {}, bytes: 0, ops: {} });
+/** A room with no assets yet, as its index would read, shared by every read of such a room and never changed. */
+const NO_ASSETS = Object.freeze(emptyIndex());
 
 /**
  * A room’s assets, deleted ones included, read through its index: the cost is the room’s, however many other rooms
