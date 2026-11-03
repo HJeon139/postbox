@@ -11,7 +11,7 @@ The room is seeded with about 1,000 items, so the page holds only a window of it
 
 ## Phase 1: Reading back while agents write (B1, B3)
 
-- triggers: window-paged-back, diagram-deferred
+- triggers: window-paged-back
 - steps: 8
 
 Ask @researcher and @critic each for a long write-up, one after the other. While they write, scroll up slowly through the room to its first day, and say whether what you were reading ever moved without your scrolling. Then press End.
@@ -36,3 +36,10 @@ The seeded room holds a review block from @researcher near its start. Ask @resea
 - steps: 8
 
 Search for a word that only appears in the seeded room’s first day, and open the result. Switch to another conversation and back while @critic is writing, and say whether anything it wrote is missing or shown twice.
+
+## Phase 5: Diagrams far above (#701)
+
+- triggers: diagram-deferred
+- steps: 4
+
+The seeded room has six diagrams spread through it. Without scrolling, type a short message to @researcher asking for a one-line summary of the room, and say how quickly what you type appears. Then scroll up until you reach a diagram, and say whether it’s drawn.
