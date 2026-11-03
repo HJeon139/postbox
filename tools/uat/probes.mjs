@@ -5,6 +5,8 @@
 // - interrupts: how the runner answered Stop’s question about background jobs (#126)
 // - panels, panes, drafts: what the Agents section, the right pane and full screen showed (#105, #146)
 // - jumps: where going to what an agent needs landed (#285, tools/uat/driver-needs.mjs)
+// - diagrams, once the conversation has one: which diagram frames had loaded, and which were in view (#701,
+//   tools/uat/diagram-probe.mjs); a run with none has no such probe, so its trigger can’t tell
 
 export const newProbes = () => ({
   fullScreen: [],

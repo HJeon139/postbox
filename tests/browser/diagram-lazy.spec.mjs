@@ -5,6 +5,7 @@
 // pages it asks the server for, and a diagram scrolled to still draws.
 
 import { expect, test } from '@playwright/test';
+import { sampleDiagrams } from '../../tools/uat/diagram-probe.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -46,6 +47,11 @@ test('#695: diagrams out of view don’t load, and one scrolled to draws', async
   await expect(last, 'the diagram in view draws').toHaveAttribute('data-sized', '1');
   // The four diagrams are about 13,000 px apart, so only the one in view loads; a mutant leaving any other eager fails.
   expect(loads, 'only the diagram in view loaded its page').toBe(1);
+  // The UAT’s diagram probe reads the same (tools/uat/diagram-probe.mjs, #701’s trigger).
+  const probe = await sampleDiagrams((e) => page.evaluate(e));
+  expect(probe.frames.map((f) => [f.key, f.loaded, f.inView])).toEqual(
+    ids.filter((_, i) => DIAGRAMS.includes(i)).map((k) => [k, k === ids[29], k === ids[29]]),
+  );
   const first = page.locator(`[data-key="${ids[0]}"] figure.diagram iframe`);
   await first.scrollIntoViewIfNeeded();
   await expect(first, 'the first diagram draws once scrolled to').toHaveAttribute('data-sized', '1');

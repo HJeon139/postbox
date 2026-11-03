@@ -3,6 +3,7 @@
 - persona: A lead reading back through a long room to find an earlier decision, while two agents keep posting. Jumps by link, by “Next that needs you”, and by searching, and scrolls up slowly through long messages.
 - agents: researcher, critic
 - seed: big-room
+- seed-diagrams: 6
 - steps: 30
 - conversation: The release, in a long room
 
@@ -10,7 +11,7 @@ The room is seeded with about 1,000 items, so the page holds only a window of it
 
 ## Phase 1: Reading back while agents write (B1, B3)
 
-- triggers: window-paged-back
+- triggers: window-paged-back, diagram-deferred
 - steps: 8
 
 Ask @researcher and @critic each for a long write-up, one after the other. While they write, scroll up slowly through the room to its first day, and say whether what you were reading ever moved without your scrolling. Then press End.
