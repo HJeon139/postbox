@@ -2,6 +2,21 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.15.0 (2026-11-03)
+
+### Features
+
+- **assets:** the readers the asset tools share with the write path
+- **assets:** released files are deleted at load, and an erased conversation takes its assets
+- **assets:** one commit path for a conversation's asset versions
+- **state:** a conversation's assets and the hashes their prunes release
+
+### Fixes
+
+- **assets:** say a conversation is being deleted, not that it's missing
+- **assets:** refuse a write to a conversation that's gone or being deleted
+- **assets:** a room index the reducer keeps, so a write's checks look up
+
 ## 1.14.1 (2026-11-03)
 
 ### Fixes
