@@ -61,8 +61,19 @@ test('#464 --stage-host-version refuses this checkout’s own version, and a tag
 test('#464 a staged run plays only the phase that names host-staged-older, and a run without it never plays that phase', () => {
   const opt = { ...twoHosts, 'stage-host-version': 'v1.16.1' };
   assert.throws(() => hostMode(opt, 'remotehosts', remotehosts(), repo()), /“Phase 1: .*need.*--phases/);
-  assert.throws(() => hostMode(twoHosts, 'remotehosts', remotehosts(), repo()), /“Phase 4: An older Postbox on the host” needs an older Postbox/);
+  const four = { ...twoHosts, phases: '4' };
+  assert.throws(
+    () => hostMode(four, 'remotehosts', selectPhases(remotehosts(), [4]), repo()),
+    /“Phase 4: An older Postbox on the host” needs an older Postbox/,
+  );
   assert.doesNotThrow(() => hostMode(twoHosts, 'remotehosts', selectPhases(remotehosts(), [1, 2, 3]), repo()));
+});
+
+test('#464 a plain run that names no phases plays every phase but the staged one, as before phase 4 existed', () => {
+  const { scenario } = hostMode(twoHosts, 'remotehosts', remotehosts(), repo());
+  const titles = scenario.phases.map((p) => p.title);
+  assert.equal(titles.length, remotehosts().phases.length - 1);
+  assert.ok(!titles.some((t) => t.startsWith('Phase 4')), 'the staged phase is left out');
 });
 
 test('#464 the checkout’s tags: a tag that isn’t a commit here has no version, and one that is reads its package.json', () => {

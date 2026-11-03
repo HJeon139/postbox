@@ -93,6 +93,15 @@ export function stageRefusal(scenario, staged) {
     : `${wrong.join(' and ')} need${wrong.length > 1 ? '' : 's'} an older Postbox on host1. Pass --stage-host-version with an older tag, such as v1.16.1, or leave ${wrong.length > 1 ? 'them' : 'it'} out with --phases.`;
 }
 
+/**
+ * The scenario without its phases that need an older Postbox staged: what a run without --stage-host-version plays when
+ * it names no phases, so a plain run of remotehosts.md still plays the rest. Naming such a phase without the option is
+ * still refused (stageRefusal). @param {{ phases: { triggers?: string[] }[] }} scenario
+ */
+export function withoutStaged(scenario) {
+  return { ...scenario, phases: scenario.phases.filter((p) => !(p.triggers ?? []).includes(STAGED_TRIGGER)) };
+}
+
 /** One `hostN.key=value`, checked against the hosts given. @param {string} spec @param {number} count */
 function settingOf(spec, count) {
   const m = /^host(\d+)\.([\w.]+)=(.*)$/s.exec(String(spec));
@@ -178,6 +187,8 @@ export function hostMode(opt, name, scenario, repo = NO_TAGS) {
   const hosts = hostsOf(opt);
   const stage = stagedOf(opt, hosts.length, repo);
   if (!hosts.length) return { hosts, placement: {}, scenario };
+  const chosen = opt.phases != null || opt.phase != null;
+  if (!stage && !chosen) scenario = withoutStaged(scenario);
   const refused = refusal(name, scenario) ?? stageRefusal(scenario, Boolean(stage));
   if (refused) throw new Error(refused);
   if (stage) Object.assign(hosts[0], { stage });

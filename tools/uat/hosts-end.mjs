@@ -113,6 +113,20 @@ async function removeRunFolder(hr, h, run = onHost) {
     );
 }
 
+/**
+ * Removes what the run staged on a host (#464): Remove goes through this version’s daemon, which a host with only the
+ * staged version hasn’t, so the runner stops that Postbox and deletes ~/.postbox-remote itself. baseline() refused the
+ * host if Postbox was there before the run, so nothing of anyone else’s is deleted.
+ * @param {HostRun} hr @param {RunHost} h @param {typeof onHost} run
+ */
+async function removeStaged(hr, h, run) {
+  const r = await run(h.destination, SCRIPTS.removeStaged);
+  const done = r.code === 0 && linesOf(r.stdout).includes('removed');
+  const result = done ? { exists: false, left: [], staged: true } : { error: `removing the staged Postbox exited ${r.code}` };
+  hr.record.cleanup[h.label] = result;
+  return result;
+}
+
 /** Whether a Remove’s record shows Postbox gone from the host: no error, no ~/.postbox-remote, nothing of it running. */
 const removedThere = (r) => !!r && !r.error && r.exists === false && Array.isArray(r.left) && !r.left.length;
 
@@ -155,6 +169,7 @@ export function cleanUp(hr, { removeOne = remove, run = onHost } = {}) {
       }
       await removeRunFolder(hr, h, run);
       if (!h.id) continue;
+      if (h.stage && !removedThere(r)) r = await removeStaged(hr, h, run);
       if (!removedThere(r))
         hr.log(
           `Postbox may still be on ${h.label}: ${notGone(r).replace(/\.$/, '')}. On ${h.destination}, stop what pgrep -u "$USER" -fa '[.]postbox-remote' lists, then run: rm -rf ~/.postbox-remote (tests/uat/remote-hosts.md, “Clean up”).`,

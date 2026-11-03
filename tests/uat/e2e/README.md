@@ -316,7 +316,7 @@ node tools/uat-run.mjs --scenario remotehosts \
   --host-setting host1.claudePath=/home/user/tools/bin/claude \
   --host-setting host2.claudePath=/home/user/tools/bin/claude \
   --host-setting host1.idleTimeout=1min --host-setting host2.idleTimeout=1min \
-  --phases 1,2,3 --budget 25 --max-cost 100 --file no
+  --budget 25 --max-cost 100 --file no
 ```
 
 Phase 4 plays alone, with an older Postbox staged on host1: the same command with `--phases 4 --stage-host-version v1.16.1`.
@@ -328,7 +328,7 @@ Run it in a terminal where `ssh -o BatchMode=yes host-a.example.com true` exits 
 - `--host-setting <hostN>.<key>=<value>`: a host setting from `shared/remote-settings.mjs`, checked as the server checks it. A duration takes its unit (`90s`, `1min`, `2h`, `7d`) or milliseconds; `keepAlive.interval` and `keepAlive.count` are written so; `signInCheck` is a JSON list.
 - `--place <handle>=<hostN|local>`: where an agent runs, over the scenario’s line. A scenario that places an agent on host2 needs two `--host`s, or a `--place` that moves it.
 - `--max-cost <dollars>`: the run’s whole spend, as for any run (“A run’s budget”, above). `--budget` caps the tester alone.
-- `--stage-host-version <tag>`: before the run, install an older Postbox, a release tag in this checkout such as `v1.16.1`, on host1 instead of this one (#464). The runner checks the tag out to a temporary worktree in the run’s folder, installs that version’s host code with its own `server/remote/install.mjs`, puts the token in the run’s data folder, and removes the worktree. Only host1 gets it, and only the phase that names `host-staged-older` plays with it (remotehosts’ phase 4, with `--phases 4`); a run without it refuses that phase. `hosts.json` records the staged version. The run’s Remove at its end goes through this version’s daemon, which host1 doesn’t have: until Postbox installs its own version there by itself (#464), the run ends saying `~/.postbox-remote` is still on host1, with the command to remove it by hand. Run that before host1’s next run, which otherwise refuses the host.
+- `--stage-host-version <tag>`: before the run, install an older Postbox, a release tag in this checkout such as `v1.16.1`, on host1 instead of this one (#464). The runner checks the tag out to a temporary worktree in the run’s folder, installs that version’s host code with its own `server/remote/install.mjs`, puts the token in the run’s data folder, and removes the worktree. Only host1 gets it, and only the phase that names `host-staged-older` plays with it (remotehosts’ phase 4, with `--phases 4`). A run without it that names no phases plays every other phase; one that names phase 4 is refused. `hosts.json` records the staged version. The run’s Remove at its end goes through this version’s daemon, which host1 may not have; when Remove leaves `~/.postbox-remote` there, the runner stops what of Postbox runs on host1 and deletes it itself. That’s safe because the run refuses a host where Postbox was before it.
 - `--replace-host-install`: let the run use a host where Postbox is already installed (`~/.postbox-remote` is there). Without it the run refuses such a host, since its Remove at the end deletes all of `~/.postbox-remote`: every version, the token and the turn records. A host where Postbox runs is refused either way.
 
 **Setup, through the UI** (`tools/uat/driver-hosts.mjs`), after the project is made and before the conversation starts:

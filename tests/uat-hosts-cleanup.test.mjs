@@ -129,3 +129,34 @@ test('#120 UAT Stop: a command the turn detached and left running in the run’s
   const got = await leftBy(hr, h, TURN, Date.now(), { measure: ok(AFTER_DETACHED), wait: async () => {} });
   assert.deepEqual(got, { watched: 4, left: ['4400 bash -c for i in $(seq 1 36); do date >> heartbeat.log; sleep 5; done'] });
 });
+
+test('#464 UAT cleanup: a host the run staged an older Postbox on is cleared by the runner when Remove can’t', async () => {
+  const staged = hostRun({ record: { ended: true, removed: { host1: { confirm: `Remove ${DEST}?`, exists: true, left: [] } } } });
+  staged.h.stage = { tag: 'v1.16.1', version: '1.16.1' };
+  const scripts = [];
+  await cleanUp(staged.hr, {
+    removeOne: async () => ({ confirm: `Remove ${DEST}?`, exists: true, left: [] }),
+    run: async (_d, script) => {
+      scripts.push(script);
+      return { code: 0, stdout: 'removed\n', stderr: '' };
+    },
+  });
+  assert.ok(
+    scripts.some((s) => s.includes('rm -rf -- "$HOME/.postbox-remote"')),
+    'the runner removed it itself',
+  );
+  assert.deepEqual(staged.hr.record.cleanup.host1, { exists: false, left: [], staged: true });
+  assert.ok(!staged.lines.some((l) => l.includes('still be on')), 'nothing left to do by hand');
+
+  const plain = hostRun({ record: { ended: true, removed: { host1: { confirm: `Remove ${DEST}?`, exists: true, left: [] } } } });
+  const seen = [];
+  await cleanUp(plain.hr, {
+    removeOne: async () => ({ confirm: `Remove ${DEST}?`, exists: true, left: [] }),
+    run: async (_d, script) => {
+      seen.push(script);
+      return { code: 0, stdout: 'removed\n', stderr: '' };
+    },
+  });
+  assert.ok(!seen.some((s) => s.includes('.postbox-remote')), 'a host it didn’t stage is never cleared by the runner');
+  assert.ok(plain.lines.some((l) => l.includes('still be on host1')));
+});

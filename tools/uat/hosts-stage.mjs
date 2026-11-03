@@ -4,8 +4,8 @@
 // run’s Postbox data folder, where the run’s Postbox finds it once it’s there (server/remote/hosts-status.mjs,
 // tokenOf), so that Postbox sees an installed host without its own version on it: what someone who updated Postbox
 // on their laptop has. The run’s Remove at its end goes through this version’s daemon, which a host with only the
-// older version can’t start: until Postbox installs its own version there by itself (#464), the end of the run finds
-// ~/.postbox-remote still there and says what to run by hand (tools/uat/hosts-end.mjs, cleanUp).
+// older version can’t start, so when Remove leaves ~/.postbox-remote there, the end of the run stops that Postbox and
+// deletes it itself (tools/uat/hosts-end.mjs, removeStaged); baseline() refused the host if Postbox was there before.
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
