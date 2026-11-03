@@ -36,7 +36,7 @@ import { restoreArchives } from './archive-lifecycle.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
-import { nextNeed, noticeNeed, releaseNeed, TURN_TIED } from './card-needs.mjs';
+import { keptTurns, nextNeed, noticeNeed, releaseNeed, TURN_TIED } from './card-needs.mjs';
 import { catchUp, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
@@ -641,9 +641,12 @@ export class Runtime {
       state: 'think',
       // Moving on clears a need tied to a turn; the cards that wait until answered stay (card-needs.mjs RANK).
       needs: turn.movesOn && TURN_TIED.has(se.needs?.kind) ? null : se.needs,
-      // This turn is the last turn from its start (card-needs.mjs turnOf), so a restart that cuts it off, or a card
+      // This turn is the last turn from its start (card-needs.mjs turnsOf), so a restart that cuts it off, or a card
       // released after it leaves the running turns, doesn't count a block from the turn before.
       lastTurnId: turn.id,
+      // A turn that doesn't move on keeps the turns still asking you something, so their refusals and tool requests
+      // count until you move on (card-needs.mjs keptTurns). Read before this patch moves lastTurnId on.
+      keptTurnIds: turn.movesOn ? [] : keptTurns(this, se),
       // A turn that doesn't move on keeps the block it found waiting (#69): it counts mid-turn, at the turn's end and
       // after a restart (card-needs.mjs `keep`), even if a permission takes the need meanwhile. In the store, as above.
       keptId: !turn.movesOn && se.needs?.kind === 'block' ? se.needs.itemId : null,
@@ -1034,7 +1037,7 @@ export class Runtime {
     const viewing = this.isViewing(turn.threadId);
     const topic = turn.threadId !== se.threadId && this.s.threads[turn.threadId]?.kind === 'topic' ? this.s.threads[turn.threadId] : null;
     // The newest card that still waits (card-needs.mjs): this turn's asks, and the cards that wait until answered.
-    const needs = nextNeed(this, se, { turnId: turn.id, keep: waiting?.id ?? null });
+    const needs = nextNeed(this, se, { turnIds: [turn.id, ...(se.keptTurnIds ?? [])], keep: waiting?.id ?? null });
     const mentionsYou = /(^|\W)@you\b/i.test(turn.said);
     this.updateSession(se.id, {
       state: needs ? 'needs' : 'idle',
@@ -1514,7 +1517,7 @@ export class Runtime {
       this.patchItem(threadId, itemId, { status: 'retried' });
       // Only the cards that wait until answered can take the need: the failed turn's own asks would flash until the
       // retried turn starts, and that turn's end decides them.
-      releaseNeed(this, this.s.sessions[it.sessionId], itemId, undefined, { turnId: null });
+      releaseNeed(this, this.s.sessions[it.sessionId], itemId, undefined, { turnIds: [] });
       this.deliver(it.sessionId, { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [] }, { summarizeTo: asked.summarizeTo, threadId });
     });
   }

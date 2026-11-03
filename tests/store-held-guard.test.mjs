@@ -71,7 +71,7 @@ const DIRECT = {
 const PENDING = {
   // The agent's next need when a card is answered, the released card whose turn it may read, and the card it notifies:
   // each decides a write, so a card held behind a commit counts (#366).
-  'card-needs.mjs': ['nextNeed', 'releaseNeed', 'notifyOnce'],
+  'card-needs.mjs': ['keptTurns', 'nextNeed', 'releaseNeed', 'notifyOnce'],
   'restart-sweep.mjs': ['stillWaits'], // whether the need's card still waits after a restart decides the need it keeps (#366)
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp', 'release'], // retire_app of an app the turn may have just shown, and its sweep of open sends
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown

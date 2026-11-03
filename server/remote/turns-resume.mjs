@@ -156,7 +156,7 @@ export function interrupted(rts, sessionId, why) {
   rt.updateSession(sessionId, {
     state: 'failed',
     needs: { kind: 'failed', itemId: it.id, text: message },
-    // The interrupted turn is the last turn (card-needs.mjs turnOf), when the host named it.
+    // The interrupted turn is the last turn (card-needs.mjs turnsOf), when the host named it.
     ...(se.remoteTurn.rtTurn ? { lastTurnId: se.remoteTurn.rtTurn } : {}),
     currentStep: 'Interrupted',
     finishedAt: rts.now(),

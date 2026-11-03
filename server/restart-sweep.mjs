@@ -29,7 +29,8 @@ export function settleInterrupted(rt) {
     if (!['think', 'gen', 'tool', 'stopping'].includes(se.state) && se.needs?.kind !== 'permission') continue;
     const next = nextNeed(rt, se, { keep: se.keptId ?? null });
     const cur = se.needs && stillWaits(rt, se, se.needs) ? se.needs : null;
-    const needs = cur && !(next && RANK[next.kind] < RANK[cur.kind]) ? cur : next;
+    // The newest card of the first rank, as nextNeed and the turn's end choose: a tie goes to the newer card.
+    const needs = cur && !(next && RANK[next.kind] <= RANK[cur.kind]) ? cur : next;
     const state = needs?.kind === 'failed' ? 'failed' : needs ? 'needs' : 'idle';
     rt.updateSession(se.id, { state, needs, subagents: [], currentStep: 'Interrupted by a restart', stopAsk: null });
   }

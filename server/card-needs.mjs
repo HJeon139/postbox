@@ -20,10 +20,10 @@ const messages = (n) => (n === 1 ? '1 message' : `${n} messages`);
 /**
  * The need a card makes, or null if it doesn't wait. App sends, wake requests and waiting permission cards wait until
  * answered; asking blocks, refusals and tool requests wait only from the agent's last ended turn, so older ones you
- * moved past stay quiet (#69). `keep` is a card that still counts whatever its turn (a block a turn you didn't start
- * was waiting on).
+ * moved past stay quiet (#69). `turnIds` are the turns whose cards count (turnsOf); `keep` is a card that still counts
+ * whatever its turn (a block a turn you didn't start was waiting on).
  */
-function needOf(rt, se, it, threadId, turnId, keep) {
+function needOf(rt, se, it, threadId, turnIds, keep) {
   const where = rt.awayFrom(se, threadId);
   if (it.kind === 'appsend' && it.sessionId === se.id && it.status === 'open')
     return { kind: 'appsend', itemId: it.id, text: `${it.title} wants to send ${messages(it.events?.length ?? 1)} for you`, ...where };
@@ -31,7 +31,7 @@ function needOf(rt, se, it, threadId, turnId, keep) {
     return { kind: 'hop', itemId: it.id, text: `@${se.handle} wants to ${it.join ? 'add' : 'wake'} @${it.to}`, ...where };
   if (it.kind === 'permission' && it.sessionId === se.id && it.status === 'open' && rt.permissionWaits.has(it.id))
     return { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}`, ...where };
-  if (it.sessionId !== se.id || (it.turnId !== turnId && it.id !== keep)) return null;
+  if (it.sessionId !== se.id || (!turnIds.includes(it.turnId) && it.id !== keep)) return null;
   if (it.kind === 'block' && it.valid && ASKING.has(it.block?.type) && !it.answered)
     return { kind: 'block', itemId: it.id, text: it.block.title ?? clip(it.block.prompt ?? it.block.fallback, 120), ...where };
   if (it.kind === 'denial' && it.status === 'open') return { kind: 'denial', itemId: it.id, text: `A step was refused: ${it.summary}`, ...where };
@@ -53,32 +53,54 @@ export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, denial: 
 export const TURN_TIED = new Set(['failed', 'block', 'denial', 'toolask']);
 
 /**
- * Which turn's asking blocks, refusals and tool requests count, answered here only. During a
- * running turn none do, except the block a turn that doesn't move on kept (`se.keptId`, nextNeed's `keep`): its end
- * decides them, and main's mid-turn release left no need. Otherwise the last ended turn,
- * which the session keeps in the store so a restart keeps it, or, for a session from before it did, the turn of the
- * card being released, which was the need.
+ * Which turns' asking blocks, refusals and tool requests count, answered here only. A turn that doesn't move on (another
+ * agent's wake, a lint pass) keeps the turns whose cards counted when it started (`se.keptTurnIds`, keptTurns): they
+ * count mid-turn, at its end and after a restart, until you move on. During a running turn only those do, and the block
+ * it kept (`se.keptId`, nextNeed's `keep`): its own end decides its own cards, and main's mid-turn release left no need.
+ * Otherwise the last turn too, which the session keeps in the store so a restart keeps it, or, for a session from
+ * before it did, the turn of the card being released, which was the need.
  * @param {any} rt @param {any} se @param {any} [released]
+ * @returns {string[]}
  */
-function turnOf(rt, se, released = null) {
-  if (rt.turns.has(se.id)) return null;
-  return se.lastTurnId ?? released?.turnId ?? null;
+function turnsOf(rt, se, released = null) {
+  const kept = se.keptTurnIds ?? [];
+  if (rt.turns.has(se.id)) return kept;
+  const last = se.lastTurnId ?? released?.turnId ?? null;
+  return last ? [last, ...kept] : kept;
+}
+
+/**
+ * The turns a starting turn that doesn't move on keeps (runtime.mjs, the turn's start, where it already runs): of the
+ * last turn and the turns kept before, those with a turn-tied card of the agent's still open, so the list holds only
+ * turns still asking you something, however many wakes come between. One pass over the agent's threads' items, as
+ * nextNeed makes.
+ * @param {any} rt @param {any} se  the session as it was before the turn started @returns {string[]}
+ */
+export function keptTurns(rt, se) {
+  const counting = new Set([se.lastTurnId, ...(se.keptTurnIds ?? [])].filter(Boolean));
+  const asking = new Set();
+  for (const threadId of threadsOf(rt, se))
+    for (const it of rt.store.pending.items(threadId)) {
+      if (!counting.has(it.turnId) || asking.has(it.turnId)) continue;
+      if (TURN_TIED.has(needOf(rt, se, it, threadId, [it.turnId], null)?.kind)) asking.add(it.turnId);
+    }
+  return [...counting].filter((id) => asking.has(id));
 }
 
 /**
  * The card of the agent that comes first among those that still wait for the person, as a `needs` value, or null. It
  * reads pending: its result decides a write, so a card held behind a commit counts (#601). The turn's end passes its
- * own turn and the block it kept; a release passes the released card, for `turnOf`, and a running turn's kept block
+ * own turn and the block it kept; a release passes the released card, for `turnsOf`, and a running turn's kept block
  * counts by default.
- * @param {any} rt @param {any} se @param {{ turnId?: string | null, keep?: string | null, released?: any }} [o]
+ * @param {any} rt @param {any} se @param {{ turnIds?: string[], keep?: string | null, released?: any }} [o]
  */
-export function nextNeed(rt, se, { released = null, turnId = turnOf(rt, se, released), keep = rt.turns.has(se.id) ? (se.keptId ?? null) : null } = {}) {
+export function nextNeed(rt, se, { released = null, turnIds = turnsOf(rt, se, released), keep = rt.turns.has(se.id) ? (se.keptId ?? null) : null } = {}) {
   /** @type {{ at: number, need: any, it: any } | null} */
   let best = null;
   let refused = 0;
   for (const threadId of threadsOf(rt, se))
     for (const it of rt.store.pending.items(threadId)) {
-      const need = needOf(rt, se, it, threadId, turnId, keep);
+      const need = needOf(rt, se, it, threadId, turnIds, keep);
       if (!need) continue;
       if (need.kind === 'denial') refused++;
       const ahead = !best || RANK[need.kind] < RANK[best.need.kind] || (RANK[need.kind] === RANK[best.need.kind] && (it.at ?? 0) >= best.at);
@@ -111,15 +133,15 @@ export function offerNeed(rt, se, need, state) {
  * @param {any} rt @param {any} caller  the session, as the caller read it @param {string} itemId
  * @param {string} [busy]  the state while a turn runs: a permission's release passes 'tool', since the tool call it
  *   held goes on; others keep the session's state
- * @param {{ turnId?: string | null }} [o]  which turn's cards count, when it isn't turnOf's answer: Retry passes null,
+ * @param {{ turnIds?: string[] }} [o]  which turns' cards count, when it isn't turnsOf's answer: Retry passes none,
  *   since the retried turn starts at once and its end decides them
  */
-export function releaseNeed(rt, caller, itemId, busy = caller?.state, { turnId } = {}) {
+export function releaseNeed(rt, caller, itemId, busy = caller?.state, { turnIds } = {}) {
   // The session as it is now: a caller may hold a copy from before an await, and each patch makes a new one.
   const se = caller && rt.s.sessions[caller.id];
   if (!se || se.needs?.itemId !== itemId) return;
   const released = rt.store.pending.items(se.needs.threadId ?? se.threadId).find((/** @type {any} */ x) => x.id === itemId);
-  const need = nextNeed(rt, se, turnId === undefined ? { released } : { released, turnId });
+  const need = nextNeed(rt, se, turnIds === undefined ? { released } : { released, turnIds });
   rt.updateSession(se.id, { needs: need, state: rt.turns.has(se.id) ? busy : need ? 'needs' : 'idle' });
   noticeNeed(rt, se, need);
 }
