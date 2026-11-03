@@ -3,10 +3,13 @@
 // it for a local turn's tools and server/remote/turns-tools.mjs for a host's, so no path reaches a write tool around it
 // (#637: a host's call had no gate, and its writes changed memory the next load didn't have).
 
-import { ASSET_READS } from './asset-tools.mjs';
-
-/** The tools that read and never write: they answer while the store is closed. */
-export const READ_TOOLS = new Set(['read_conversation', 'read_message', 'corpus_search', ...ASSET_READS]);
+/**
+ * The tools that read and never write, the asset reads (#516) among them. Every rule about “a tool that only reads” is
+ * this set: such a tool answers while the store is closed (closedTo); a scheduled wake’s recovery doesn’t name it
+ * (scheduled-wakes.mjs); calling it isn’t an answer (empty-reply.mjs); and a host’s repeat of it runs it again rather
+ * than being answered from a kept, cut copy (remote/turns-tools.mjs). A new read tool joins it here, and only here.
+ */
+export const READ_TOOLS = new Set(['read_conversation', 'read_message', 'corpus_search', 'list_assets', 'read_asset']);
 
 /**
  * The cause to refuse a tool with while the store is closed, or null when it may run.

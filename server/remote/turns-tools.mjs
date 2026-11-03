@@ -11,15 +11,18 @@ import { noteAnswer } from '../empty-reply.mjs';
 import { reactTool } from '../reactions.mjs';
 import { recordedTools } from '../scheduled-wakes.mjs';
 import { withUrgent } from '../subagent-end.mjs';
-import { closedTo } from '../tool-gate.mjs';
+import { closedTo, READ_TOOLS } from '../tool-gate.mjs';
 import { linkOf } from './turns-need.mjs';
 import { KEPT_REPLIES, KEPT_REPLY_CHARS, key, STOPPED_TEXT, send, sessionOfTurn, TOOL_QUEUED, updateRemote } from './turns-shared.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 /** @typedef {import('./turns-shared.mjs').Live} Live */
 
-/** A search or read only reads, and its answer can be long, so a repeat runs it again rather than its reply being kept. */
-const REPEATABLE = new Set(['corpus_search', 'read_conversation', 'read_message']);
+/**
+ * A tool that only reads (tool-gate.mjs) changes nothing and its answer can be long, so a host’s repeat runs it again
+ * rather than its reply being kept: a kept reply is cut to KEPT_REPLY_CHARS, and an asset’s content mustn’t be kept.
+ */
+const REPEATABLE = READ_TOOLS;
 const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
 

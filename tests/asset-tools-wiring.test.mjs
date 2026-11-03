@@ -94,6 +94,38 @@ test('#516 S3b: an agent on a host writes and reads an asset through Postbox, wi
   await settled(r);
 });
 
+test('#516 S3b: a read the host sends again is read again, whole, and no part of an asset is kept in the session', async (ctx) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-asset-resend-'));
+  const store = await new Store(dir).load();
+  ctx.after(async () => {
+    await store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  const r = rig({ store });
+  const turn = await running(r);
+  const repliesTo = (/** @type {string} */ id) => r.link.sent.filter((m) => m.type === 'reply' && m.id === id);
+  const content = 'x'.repeat(10_000);
+  const made = r.d.tool(turn, 'write_asset', { name: 'long.txt', text: content });
+  await until(() => repliesTo(made).length === 1, 'the write’s reply');
+  const asset = /asset (as_\w+)/.exec(repliesTo(made)[0].text)?.[1];
+  for (const [name, args] of [
+    ['read_asset', { id: asset }],
+    ['list_assets', {}],
+  ]) {
+    const id = r.d.tool(turn, name, args);
+    await until(() => repliesTo(id).length === 1, `${name}’s reply`);
+    // The daemon sends a call again after a hello, until it hears the reply (#439).
+    r.link.hear({ type: 'tool', turn, id, name, args });
+    await until(() => repliesTo(id).length === 2, `the repeat of ${name}’s reply`);
+    const [first, again] = repliesTo(id);
+    assert.equal(again.text, first.text, `${name}: the repeat is the whole answer, not a kept cut`);
+    assert.ok(!(r.se().remoteTurn.replies ?? []).some((x) => x.id === id), `${name}: its answer isn’t kept in the session`);
+  }
+  assert.ok(!JSON.stringify(r.se().remoteTurn.replies ?? []).includes('x'.repeat(100)), 'no part of the asset is in the session');
+  r.d.end(turn);
+  await settled(r);
+});
+
 test('#516 S3b: a scheduled turn’s recovery names the asset writes it started, not its reads (#466)', async () => {
   const f = setup();
   const sc = f.rt.schedule(f.alpha.id, { inMs: 60_000, note: 'Publish the plan.' });

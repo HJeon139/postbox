@@ -11,9 +11,6 @@ import { isTextBytes } from './asset-retention.mjs';
 import { assetBlobs, headOf, roomAssets, roomOf, versionAt, writeAsset } from './assets.mjs';
 import { clipText } from './helpers.mjs';
 
-/** The asset tools that only read: they answer while the store is closed, and don’t count as acting. */
-export const ASSET_READS = ['list_assets', 'read_asset'];
-
 /** @type {WeakMap<object, import('./blobs.mjs').Blobs>} */
 const folders = new WeakMap();
 

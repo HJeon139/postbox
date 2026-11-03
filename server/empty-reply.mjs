@@ -4,7 +4,7 @@
 // ends as a failed reply that says so, with Retry, keeping the turn’s last raw lines for diagnosis, and the agent hears
 // of it at its next turn.
 
-import { ASSET_READS } from './asset-tools.mjs';
+import { READ_TOOLS } from './tool-gate.mjs';
 
 /**
  * The turns that owe a reply: a message from the person or from another agent. Others may end quietly: an event (a
@@ -16,16 +16,7 @@ const ASKED = new Set(['user', 'agent']);
  * Postbox’s tools that answer no one: they read, ask, or keep something for later (a wake, a term). A turn that called
  * nothing else still owes its reply.
  */
-const READS = new Set([
-  'read_conversation',
-  'read_message',
-  'corpus_search',
-  ...ASSET_READS,
-  'permission_prompt',
-  'schedule_wake',
-  'cancel_wake',
-  'define_term',
-]);
+const READS = new Set([...READ_TOOLS, 'permission_prompt', 'schedule_wake', 'cancel_wake', 'define_term']);
 
 /**
  * Marks a turn that answered through one of Postbox’s tools that act, such as a reaction or a term, which leave no
