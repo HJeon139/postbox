@@ -222,3 +222,16 @@ test('open_topic refuses mentions that aren’t a list of handles, before it ope
   assert.match(r.message, /list of handles/);
   assert.equal(topics(f.store).length, 0, 'nothing opened');
 });
+
+test('open_topic refuses a mention with a message of only spaces, and mentions that name no handle', async () => {
+  const f = await conversation();
+  const r = await alphaTurn(f, (tools) => [
+    tools.open_topic({ itemId: f.reply.id, message: '   \n ', mentions: ['beta'] }),
+    tools.open_topic({ itemId: f.reply.id, message: 'Please check', mentions: ['@'] }),
+  ]);
+  assert.equal(r?.[0]?.ok, false, JSON.stringify(r?.[0]));
+  assert.match(r[0].message, /need a message/);
+  assert.equal(r?.[1]?.ok, false, JSON.stringify(r?.[1]));
+  assert.match(r[1].message, /names no handle/);
+  assert.equal(topics(f.store).length, 0, 'nothing opened');
+});
