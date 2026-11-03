@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.16.0 (2026-11-03)
+
+### Features
+
+- **assets:** six tools for a conversation's assets, local and on a host
+
+### Fixes
+
+- **remote:** a host's refused call says Postbox may be reconnecting, not only closed
+- **assets:** one set of read tools, so a host's repeat of an asset read is read again, whole
+- **assets:** list_assets reads one room from its index; versions by their index
+
 ## 1.15.0 (2026-11-03)
 
 ### Features
