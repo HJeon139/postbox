@@ -8,6 +8,7 @@ The room: `scrum-master`, `researcher`, `developer` and `critic` on this compute
 
 1. #692: the retrospective as filed, with the sprint’s figures, what worked, eight themes and their actions, and the working agreement’s measures against sprint 1.
 2. `retro/aggregate.md`: the aggregate behind it, by theme, with a source for every point.
+3. `addendum.md`: what came up after the retrospective, with the final figures at the sprint’s close.
 
 ## The records
 
@@ -20,4 +21,4 @@ The room: `scrum-master`, `researcher`, `developer` and `critic` on this compute
 
 ## What the room shipped
 
-#676 (#464-a), #677 (#544), #678 (#564), #679 (#516 S1), #682 (#671-a), #687 (#673) and #688 (#516 S3a) merged; #689 (#516 S3b) was open at the close. #427 and #296 closed after grooming with no code.
+#676 (#464-a), #677 (#544), #678 (#564), #679 (#516 S1), #682 (#671-a), #687 (#673) and #688 (#516 S3a) and #689 (#516 S3b) merged, and so did #726, #727 and #728 after the retrospective. #427 and #296 closed after grooming with no code.
