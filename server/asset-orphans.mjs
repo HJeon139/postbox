@@ -13,9 +13,10 @@ const keptHashes = (state) => new Set(Object.values(state.assetRooms ?? {}).flat
 
 /** Every file in the asset folder, as { name, path }: a blob’s name is its hash, a draft’s more. @param {string} dir */
 async function filesIn(dir) {
-  const folders = (await readdir(dir).catch((e) => (e.code === 'ENOENT' ? [] : Promise.reject(e)))).filter((f) => /^[a-f0-9]{2}$/.test(f));
-  const listed = await Promise.all(folders.map(async (f) => (await readdir(join(dir, f))).map((n) => ({ name: f + n, path: join(dir, f, n) }))));
-  return listed.flat();
+  const entries = await readdir(dir).catch((e) => (e.code === 'ENOENT' ? [] : Promise.reject(e)));
+  const folders = entries.filter((f) => /^[a-f0-9]{2}$/.test(f));
+  const filesOf = async (f) => (await readdir(join(dir, f))).map((n) => ({ name: f + n, path: join(dir, f, n) }));
+  return (await Promise.all(folders.map(filesOf))).flat();
 }
 
 /** The log’s line for files nothing names: how many, how big, where they come from, and that they stay. */

@@ -26,10 +26,13 @@ const assetsOf = (s) => (s.assets ??= map());
 /** @param {any} s */
 const releasesOf = (s) => (s.assetReleases ??= map());
 
+/** The records a room’s index holds, each by key with only its own keys: the one list of its shape. */
+const ROOM_RECORDS = ['ids', 'names', 'files', 'ops'];
+
 /** A room’s index, made empty the first time the room has an asset. @param {any} s @param {string} room */
 function indexOf(s, room) {
   const rooms = (s.assetRooms ??= map());
-  if (!own(rooms, room)) rooms[room] = { count: 0, ids: map(), names: map(), files: map(), bytes: 0, ops: map() };
+  if (!own(rooms, room)) rooms[room] = { count: 0, bytes: 0, ...Object.fromEntries(ROOM_RECORDS.map((k) => [k, map()])) };
   return rooms[room];
 }
 
@@ -132,7 +135,9 @@ function unrelease(s, d) {
  * as shared/state.mjs’s ownState makes the collections. @param {any} s
  */
 export function ownAssetRooms(s) {
-  for (const index of Object.values(s.assetRooms ?? {})) for (const k of ['ids', 'names', 'files', 'ops']) index[k] = Object.assign(map(), index[k]);
+  for (const index of Object.values(s.assetRooms ?? {})) {
+    for (const k of ROOM_RECORDS) index[k] = Object.assign(map(), index[k]);
+  }
 }
 
 /** The asset events, as EVENTS entries. Public: they carry metadata only, never an asset’s contents. */
