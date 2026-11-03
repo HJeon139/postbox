@@ -64,7 +64,7 @@ Pass if researcher’s first answer shows nothing about `notes/thread.md` was pu
 
 ## Phase 10: Another conversation can’t see them
 
-Start a second conversation with researcher. Ask it to list the assets there, then to read the plan by the id it used in the first conversation.
+First ask researcher to say the plan’s id. Then start a second conversation with researcher (`{conversation: "new", agents: ["researcher"]}`). Its researcher is a new session, with no record of the first conversation, so give it that id. Ask it to list the assets there, then to read the plan by that id. Then open the first conversation again (`{conversation: "open", title: "Shared plan"}`) for phase 11.
 
 Pass if the list there is empty, and the read is refused as not found in this conversation. Fail, and file it, if any of the first conversation’s assets is listed or read.
 

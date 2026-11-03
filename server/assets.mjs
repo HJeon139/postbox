@@ -102,6 +102,7 @@ const said = (e) => (e instanceof Error ? e.message : String(e));
 const SAY = {
   notFound: (id) => `There’s no asset ${id} in this conversation. list_assets gives each asset’s id.`,
   noId: () => 'Name the asset by its id. list_assets gives each asset’s id.',
+  noConversation: () => 'This conversation was deleted, and its assets with it, so nothing can be written to it. Nothing was published.',
   deleting: () =>
     'This conversation is being deleted, so nothing can be written to it. Nothing was published; if the person restores it with Undo, write again.',
   nameTaken: (holder) => `The name “${holder.name}” is taken in this conversation, by asset ${holder.id}.`,
@@ -148,7 +149,7 @@ function repeatOf(look, asset, req) {
  */
 function checkRoom(state, req) {
   const thread = own(state.threads, req.room);
-  if (!thread) refuse('not-found', SAY.notFound(req.id ?? req.name));
+  if (!thread) refuse('no-conversation', SAY.noConversation());
   if (thread.deleting) refuse('deleting', SAY.deleting());
 }
 
