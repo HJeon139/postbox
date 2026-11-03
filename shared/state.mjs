@@ -1,6 +1,7 @@
 // The state shape and the reducer, shared by the server’s store and the browser. Every change is an
 // event { seq, type, data }; applying the same events in order gives the same state on both sides.
 
+import { ASSET_EVENTS, ownAssetRooms } from './state-assets.mjs';
 import { putHost, putHostStatus } from './state-hosts.mjs';
 
 /**
@@ -35,6 +36,12 @@ export function emptyState() {
     hostStatus: map(),
     // The work ledger (#132): per conversation, what its agents’ turns changed, ran and published (shared/work.mjs).
     work: map(),
+    // A conversation’s assets (#516 S3, shared/state-assets.mjs): each with its versions, metadata only; the bytes are in
+    // assets/ under the data folder. And the hashes committed prunes and erases released, until a load deletes them.
+    assets: map(),
+    assetReleases: map(),
+    // Each room’s index of its assets, which the reducer keeps so a write’s checks look up instead of scanning.
+    assetRooms: map(),
   };
 }
 
@@ -56,6 +63,7 @@ const MAPS = Object.entries(emptyState()).flatMap(([k, v]) => (v && typeof v ===
 export function ownState(s) {
   for (const c of MAPS) s[c] = map(s[c] ?? {});
   for (const t of Object.keys(s.glossary)) s.glossary[t] = map(s.glossary[t]);
+  ownAssetRooms(s);
   return s;
 }
 
@@ -82,6 +90,10 @@ export const PUBLIC_STATE_KEYS = Object.freeze([
   'hosts',
   'hostStatus',
   'work',
+  // Metadata only, like files: names, sizes, hashes and authors, never an asset’s contents (#516 S3).
+  'assets',
+  'assetReleases',
+  'assetRooms',
 ]);
 export const PRIVATE_STATE_KEYS = Object.freeze(/** @type {string[]} */ ([]));
 
@@ -144,6 +156,7 @@ export const EVENTS = Object.freeze({
   notify: { apply: () => {}, public: true },
   host: { apply: putHost, public: true },
   'host.status': { apply: putHostStatus, public: true },
+  ...ASSET_EVENTS,
 });
 
 // Each entry too, so no code can make a type private or public at run time.

@@ -118,8 +118,11 @@ const LEDGER = {
   'write-intent.mjs': ['madeBy', 'judged'], // the PRs this conversation made, and the judge’s cost
 };
 
-/** Production commits, with the lists each touches. None on main. */
-const COMMITS = {};
+/** Production commits, with the lists each touches. */
+const COMMITS = {
+  'asset-orphans.mjs': ['sweepAssets'], // the released hashes a load deleted: assetReleases only (#516 S3)
+  'assets.mjs': ['writeAsset'], // an asset version: assets and assetReleases only, none of items, work or apps (#516 S3)
+};
 
 const DECL =
   /^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)|^\s*(?:async\s+)?(?!if\b|for\b|while\b|switch\b|catch\b)(\w+)\s*\([^)]*\)\s*\{\s*$|^(?:export\s+)?const\s+(\w+)\s*=/;

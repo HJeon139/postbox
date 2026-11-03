@@ -7,7 +7,7 @@
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { mkdir, readFile, stat } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
 import { extname, join, resolve } from 'node:path';
@@ -17,9 +17,10 @@ import { AdapterRegistry } from './adapters/adapter.mjs';
 import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { PROBES, registerBackends } from './backends.mjs';
-import { Blobs, INLINE_TYPES } from './blobs.mjs';
+import { INLINE_TYPES } from './blobs.mjs';
 import { buildInfo } from './build-info.mjs';
 import { Corpus } from './corpus.mjs';
+import { openDataFolder } from './data-folder.mjs';
 import { listFolder } from './folders.mjs';
 import { dataFolder } from './home.mjs';
 import { listen as listenServer } from './listen.mjs';
@@ -36,7 +37,7 @@ import { seed, toBoilerplate } from './seed.mjs';
 import { decodePath, mediaPath, servedFile } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { isLoopback } from './shell.mjs';
-import { newId, Store } from './store.mjs';
+import { newId } from './store.mjs';
 import { watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
 
@@ -109,12 +110,7 @@ export async function start({
 } = {}) {
   const origin = `http://127.0.0.1:${port}`;
   process.env.POSTBOX_ORIGIN = origin;
-  // Agents copy the images their apps show here; show_app’s description names the variable.
-  const mediaDir = join(dataDir, 'media');
-  await mkdir(mediaDir, { recursive: true });
-  process.env.POSTBOX_MEDIA = mediaDir;
-  const store = await new Store(dataDir).load({ fresh }); // a fresh start empties the folder under the lock
-  const blobs = new Blobs(join(dataDir, 'blobs'));
+  const { store, blobs, mediaDir } = await openDataFolder(dataDir, { fresh });
   const corpus = await new Corpus().loadDir(join(ROOT, 'server', 'corpus', 'books'));
   const adapters = new AdapterRegistry().register(new MockAdapter());
   const { real, claude, kiro, agy, codex } = await registerBackends(adapters, { dataDir, demo, probes });
