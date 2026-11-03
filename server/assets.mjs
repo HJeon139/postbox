@@ -58,14 +58,26 @@ export function opProblem(op) {
   return ok ? null : `A write’s op is 1 to ${ASSETS.opChars} letters, digits, - and _.`;
 }
 
-/** An asset’s version v, or undefined: version v is always versions[v - 1] (shared/state-assets.mjs). @param {any} asset @param {unknown} v */
-const versionAt = (asset, v) => (Number.isInteger(v) ? asset.versions[/** @type {number} */ (v) - 1] : undefined);
+/**
+ * An asset’s version v, or undefined: version v is always versions[v - 1] (shared/state-assets.mjs), so this is the one
+ * place that rule is read, for the write path and the tools alike. @param {any} asset @param {unknown} v
+ */
+export const versionAt = (asset, v) => (Number.isInteger(v) ? asset.versions[/** @type {number} */ (v) - 1] : undefined);
 
 /** The version an asset shows now. @param {any} asset */
-const headOf = (asset) => versionAt(asset, asset.head) ?? null;
+export const headOf = (asset) => versionAt(asset, asset.head) ?? null;
 
 /** A room with no assets yet, as its index would read. */
 const NO_ASSETS = Object.freeze({ count: 0, ids: {}, names: {}, files: {}, bytes: 0, ops: {} });
+
+/**
+ * A room’s assets, deleted ones included, read through its index: the cost is the room’s, however many other rooms
+ * Postbox holds. In no particular order. @param {any} state @param {string} room @returns {any[]}
+ */
+export function roomAssets(state, room) {
+  const index = own(state.assetRooms, room) ?? NO_ASSETS;
+  return Object.keys(index.ids).map((id) => own(state.assets, id));
+}
 
 /**
  * What a write’s checks read: every asset, and the room’s index, which the reducer keeps so each check is a lookup.

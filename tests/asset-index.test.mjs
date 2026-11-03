@@ -6,7 +6,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { assetBlobs, writeAsset } from '../server/assets.mjs';
+import { assetBlobs, headOf, roomAssets, versionAt, writeAsset } from '../server/assets.mjs';
 import { Store } from '../server/store.mjs';
 import { ASSETS } from '../shared/limits.mjs';
 import { ownState } from '../shared/state.mjs';
@@ -105,4 +105,27 @@ test('a name like __proto__ or constructor is an ordinary name, before and after
   assert.equal(Object.getPrototypeOf(store.state.assetRooms.c1.names), null, 'its records have no prototype again');
   assert.equal((await write({ name: '__proto__', bytes: Buffer.from('d') })).code, 'name-taken', 'still one name after the reload');
   assert.equal((await write({ name: 'hasOwnProperty', bytes: Buffer.from('e') })).ok, true);
+});
+
+test('the readers the tools use: a room’s assets through its index, an asset’s version by number, and its head', async () => {
+  const store = new Store(null);
+  const blobs = assetBlobs(mkdtempSync(join(tmpdir(), 'pb-index-')));
+  const write = (req) => writeAsset(store, blobs, { kind: 'write', type: 'x', author: 'dev', ...req });
+  const a = await write({ room: 'c1', name: 'a.md', bytes: Buffer.from('1') });
+  const b = await write({ room: 'c1', name: 'b.md', bytes: Buffer.from('2') });
+  await write({ room: 'c2', name: 'a.md', bytes: Buffer.from('3') });
+  await write({ room: 'c1', kind: 'delete', id: b.id, base: 1 });
+  await write({ room: 'c1', id: a.id, base: 1, bytes: Buffer.from('1b') });
+  assert.deepEqual(
+    roomAssets(store.state, 'c1')
+      .map((x) => x.id)
+      .sort(),
+    [a.id, b.id].sort(),
+    'deleted ones too; none from c2',
+  );
+  assert.deepEqual(roomAssets(store.state, 'nowhere'), []);
+  const asset = store.state.assets[a.id];
+  assert.equal(versionAt(asset, 1).sha256, a.version.sha256);
+  assert.equal(headOf(asset).v, 2);
+  for (const bad of [0, 3, 1.5, '1', null]) assert.equal(versionAt(asset, bad), undefined, String(bad));
 });
