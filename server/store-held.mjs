@@ -28,6 +28,8 @@ const LISTS = /** @type {const} */ ({
  */
 const ENTITIES = /** @type {const} */ ({
   apps: { event: 'app', removed: 'app' },
+  // A topic the turn or the page may have just opened (#637): startTopic reads it to make one topic per message.
+  threads: { event: 'thread', removed: 'thread' },
 });
 /** @typedef {keyof typeof LISTS} PendingList */
 /** @typedef {keyof typeof ENTITIES} PendingCollection */
@@ -36,11 +38,13 @@ const ENTITIES = /** @type {const} */ ({
  * @typedef {{ [K in PendingList]: (key: string) => readonly Entry[] } & {
  *   app: (id: string) => Entry | undefined,
  *   apps: () => Readonly<Record<string, Entry>>,
+ *   thread: (id: string) => Entry | undefined,
  * }} PendingReads
  */
 
 /**
- * The pending reads of a store: one per list in LISTS, and, for apps, one entity by id and the whole collection.
+ * The pending reads of a store: one per list in LISTS; for apps, one entity by id and the whole collection; and for
+ * threads, one by id.
  * @param {import('./store.mjs').Store} store @returns {PendingReads}
  */
 export function pendingReads(store) {
@@ -48,6 +52,7 @@ export function pendingReads(store) {
   for (const list of /** @type {PendingList[]} */ (Object.keys(LISTS))) reads[list] = (/** @type {string} */ key) => pendingList(store, list, key);
   reads.apps = () => pendingCollection(store, 'apps');
   reads.app = (/** @type {string} */ id) => pendingCollection(store, 'apps')[id];
+  reads.thread = (/** @type {string} */ id) => pendingCollection(store, 'threads')[id];
   return /** @type {PendingReads} */ (reads);
 }
 
@@ -67,8 +72,12 @@ function pendingCollection(store, coll) {
     if (held.type !== event && !(held.type === 'remove' && held.data?.kind === removed)) continue;
     out ??= { ...published };
     const { type, data } = JSON.parse(json);
-    if (type === event) out[data.id] = data;
-    else delete out[data.id];
+    try {
+      if (type === event) out[data.id] = data;
+      else delete out[data.id];
+    } catch {
+      // the reducer rejects it the same way (missing data), and the release holds it as rejected (#609): skipped
+    }
   }
   return out ?? published;
 }
@@ -88,13 +97,7 @@ function pendingList(store, list, key) {
     store.views.set(name, v);
   }
   // Held jobs leave heldLog only by release, which records, so a view whose version holds has seen a prefix of it.
-  try {
-    applyHeld(store, v, list, key);
-  } catch (e) {
-    // An event the reducer rejects throws here as it will at release (#610). No view is kept that has seen part of it.
-    store.views.delete(name);
-    throw e;
-  }
+  applyHeld(store, v, list, key); // an event the reducer rejects is skipped, as the release holds it (#609)
   // One copy per change, shared by every read until the next held event: readers in a loop don't copy the list each time.
   if (v.copiedAt !== v.seen) {
     v.copy = Object.freeze([...v.entries]);
@@ -117,6 +120,11 @@ function applyHeld(store, v, list, key) {
       if (at >= 0 && !v.own.has(data.id)) v.entries[at] = structuredClone(v.entries[at]);
       v.own.add(data.id);
     }
-    apply({ [list]: { [key]: v.entries } }, type, data);
+    try {
+      apply({ [list]: { [key]: v.entries } }, type, data);
+    } catch {
+      // The release holds this event as rejected (#609), and by the reducer's contract its throw changed nothing, so
+      // the view skips it too: what is pending stays what the release will publish.
+    }
   }
 }

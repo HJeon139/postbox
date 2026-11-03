@@ -144,6 +144,20 @@ export const TOOL_DEFS = [
     inputSchema: { type: 'object', properties: { handle: { type: 'string' }, message: { type: 'string' } }, required: ['handle', 'message'] },
   },
   {
+    name: 'open_topic',
+    // lint-allow thread: read_conversation's parameter of that name.
+    description: `Open a topic thread from a message in your conversation, by its item id, or find the topic thread it has, and optionally post a first message there, up to ${count(SENDING.message)} characters. Each agent in mentions is woken in the topic thread, as wake_agent wakes it, and answers there; one message serves them all. The topic thread opens beside the message in the page. A message in a topic thread can’t start another one: reply in that topic thread. The reply gives the topic thread’s id, which read_conversation { thread } reads.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        itemId: { type: 'string', description: 'The id (it_…) of the message the topic thread is about, in your conversation.' },
+        message: { type: 'string', description: 'A first message to post in the topic thread, in Markdown.' },
+        mentions: { type: 'array', items: { type: 'string' }, description: 'The handles of agents to wake there with that message.' },
+      },
+      required: ['itemId'],
+    },
+  },
+  {
     name: 'bring_to_conversation',
     description: `Post text in the main conversation from the topic thread you’re in, up to ${count(SENDING.message)} characters. Use it only when the person asks for something to go to the main chat, in a message to you there: nothing goes there on its own. It shows as shared by you from the topic thread, and wakes no one; the conversation’s agents read it at their next turn.`,
     inputSchema: { type: 'object', properties: { text: { type: 'string', description: 'What to post, in Markdown.' } }, required: ['text'] },
@@ -162,12 +176,13 @@ export const TOOL_DEFS = [
   },
   {
     name: 'read_message',
-    description: `Read one message or block of this conversation, or of one of its side or topic threads, in full: a message’s whole text, or a block’s whole content with its comments and the person’s answer. Your history and read_conversation cut each item at ${count(READING.item)} characters, say how much they kept, and give its id. Your history cuts a message that @-mentions you at ${count(READING.mention)} instead. For an app, also returns its current version and recorded browser check, which may stay pending indefinitely without an open browser. Reading does not trigger a check. Say passed only for that version’s recorded pass; report pending as unverified rather than waiting. An author’s summary or a separate render is not this recorded check. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
+    description: `Read one message or block of this conversation, or of one of its side or topic threads, in full: a message’s whole text, or a block’s whole content with its comments and the person’s answer. Your history and read_conversation cut each item at ${count(READING.item)} characters, say how much they kept, and give its id. Your history cuts a message that @-mentions you at ${count(READING.mention)} instead. For an app, also returns its code, in parts, and its current version and recorded browser check, which may stay pending indefinitely without an open browser; version reads an older version’s code. Reading does not trigger a check. Say passed only for that version’s recorded pass; report pending as unverified rather than waiting. An author’s summary or a separate render is not this recorded check. Returns up to ${count(READING.part)} characters, and says how to read on from there.`,
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string', description: 'The id a cut gives, such as it_4kQ2xY9a, or a block’s id.' },
-        from: { type: 'number', description: 'The character to start from, for a message longer than one read.' },
+        from: { type: 'number', description: 'The character to start from, for a message longer than one read; for an app, of its code.' },
+        version: { type: 'number', description: 'For an app, the version whose code to read. Without it, the current one.' },
       },
       required: ['id'],
     },

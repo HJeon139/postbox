@@ -15,6 +15,7 @@
 
 import { eventsOf } from '../shared/log-lines.mjs';
 import { apply } from '../shared/state.mjs';
+import { noteRejected, opRecord, REJECTED } from './store-reject.mjs';
 
 /** Replays the segments after the snapshot, in order, leaving the writer at the end of the last. @param {import('./store-recover.mjs').Candidate} store */
 export async function replay(store) {
@@ -78,12 +79,36 @@ function applyGroup(store, events, seg, n, offset) {
   if (first <= store.state.seq)
     throw refusal(seg, n, offset, `holds seqs ${first} to ${end}, across the snapshot’s ${store.state.seq}: a commit can’t be applied in part`);
   if (first > store.state.seq + 1) noteGap(store, store.state.seq + 1, first - 1, seg, n);
+  /** @type {{ seq: number, type: string, error: string } | null} */
+  let no = null;
   for (const ev of events) {
-    apply(store.state, ev.type, ev.data);
+    const held = replayEvent(store, ev); // every event is applied, or held, in order
+    no ??= held; // the first rejected one names the commit, as applyCommits keeps it
     store.state.seq = ev.seq;
     store.sinceSnapshot++;
   }
   if (events[0].op !== undefined) store.ops.set(events[0].op, end); // the last seq, as a commit resolves
+  if (events[0].op !== undefined && no)
+    store.opsRejected.set(events[0].op, no); // and a retry is rejected again
+  else if (events[0].op !== undefined) store.opsRejected.delete(events[0].op);
+}
+
+/**
+ * Applies one replayed event, or holds it as rejected as the live run did (#609): a stand-in the log kept for an emit,
+ * or an event the reducer rejects again, such as a commit's whose original was written before it was applied.
+ */
+function replayEvent(store, ev) {
+  if (ev.type === REJECTED) {
+    noteRejected(store, ev.seq, ev.data?.event?.type ?? '?', ev.data?.error ?? '');
+    return null; // an emit's stand-in: it carries no opId
+  }
+  try {
+    apply(store.state, ev.type, ev.data);
+    return null;
+  } catch (e) {
+    noteRejected(store, ev.seq, ev.type, e);
+    return opRecord(ev.seq, ev.type, e);
+  }
 }
 
 /** Records lost history (seqs `from` to `to`, acknowledged once and gone) on the store, and warns. */

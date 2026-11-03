@@ -174,7 +174,7 @@ async function afterUnrecordedEnd(h, clock, opts, file, wait) {
     ['p2'],
   );
   assert.equal((await again.post('answer', { turn: 't1', prompt: 'p1', result: { behavior: 'deny', message: 'late' } })).errors[0]?.code, 'no-prompt');
-  again.b.close();
+  await again.b.close();
   // Restarted past that point, the prompts nobody has sent again are ended at the hello, not shown.
   const third = makeBroker(h, opts);
   writeFileSync(file, `${JSON.stringify({ op: 'prompt', id: 'p3', request: REQUEST, at: clock.now() - wait })}\n`, { flag: 'a' });
@@ -186,7 +186,7 @@ async function afterUnrecordedEnd(h, clock, opts, file, wait) {
       ['prompt-expired', 'p3'],
     ],
   );
-  third.b.close();
+  await third.b.close();
 }
 
 test('an expiry the broker can’t write down still ends the prompt, unanswerable, and Postbox hears an error, not prompt-expired', async () => {
@@ -227,7 +227,7 @@ test('an expiry the broker can’t write down still ends the prompt, unanswerabl
     );
     rmSync(file, { recursive: true });
     writeFileSync(file, before);
-    k.b.close();
+    await k.b.close();
     await afterUnrecordedEnd(h, clock, opts, file, wait);
   } finally {
     await h.done();

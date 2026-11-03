@@ -112,7 +112,7 @@ export function brokerState({
     unrecordedEnds: new Set(),
     /** @type {Set<any>} The timers that end prompts read back at start that no shim sent again. */
     orphanTimers: new Set(),
-    /** @type {Map<string, Promise<void>>} appends in order, per file */
+    /** @type {Map<string, Promise<void>>} the writes in flight, in order, per file (broker-records.mjs chain) */
     appends: new Map(),
     ids: 0,
     closed: false,

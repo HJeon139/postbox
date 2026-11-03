@@ -149,7 +149,7 @@ test('a write that fails under a hold, then Retry: nothing read pending survives
   await store.close();
 });
 
-test('a held event the reducer rejects: the read throws as the release will, every time, drops its view, and leaves the rest answering (critic)', async () => {
+test('a held event the reducer rejects: the pending read skips it, as the release holds it as rejected, and the two reads agree (#609)', async () => {
   const h = await heldStore();
   const { store } = h;
   // A real rejection: a step patch on an item whose activity has no steps throws in applyItemPatch (shared/state.mjs).
@@ -159,25 +159,19 @@ test('a held event the reducer rejects: the read throws as the release will, eve
   h.hold();
   const commit = store.commit([{ type: 'settings', data: { theme: 'system' } }]);
   await h.atSync;
-  store.emit('item.patch', { threadId: 't1', id: 'a', activityStep: { id: 's1', label: 'Read' } });
-  const first = (() => {
-    try {
-      store.pending.items('t1');
-    } catch (e) {
-      return e;
-    }
-  })();
-  assert.ok(first instanceof TypeError, 'the read throws, as apply will at release');
-  assert.equal(store.views.has('items:t1'), false, 'and keeps no view that has seen part of an event');
-  assert.throws(() => store.pending.items('t1'), { message: first.message }, 'again, the same way');
-  assert.deepEqual(JSON.parse(JSON.stringify(store.state.items.t1)), [{ id: 'a', kind: 'agent', text: 'one', activity: {} }], 'published untouched');
-  assert.deepEqual(ids(store.pending.items('t2')), ['c'], 'another thread’s read still answers');
-  // The release would throw in the writer too (#610). So the spec can end, the item is given its steps first: a test’s
-  // own repair, not something the server does.
-  store.state.items.t1[0].activity.steps = [];
+  store.emit('item.add', { threadId: 't1', item: { id: 'j', kind: 'user', text: 'held' } });
+  store.emit('item.patch', { threadId: 't1', id: 'a', activityStep: { id: 's1', label: 'Read' } }); // rejected at release
+  // The integrator's probe on #632: the pending read threw here while the release held the event as rejected.
+  assert.deepEqual(ids(store.pending.items('t1')), ['a', 'j'], 'the read answers, without the rejected patch');
+  assert.deepEqual(ids(store.pending.items('t2')), ['c'], 'another thread’s read answers too');
+  store.emit('app', null); // an app event the release will hold as rejected: the apps read skips it too
+  assert.doesNotThrow(() => store.pending.apps(), 'the apps read answers');
+  const pending = JSON.parse(JSON.stringify(store.pending.items('t1')));
   h.release();
   await commit;
   await store.flush();
+  assert.deepEqual(JSON.parse(JSON.stringify(store.items('t1'))), pending, 'what was pending is what was published');
+  assert.equal(store.rejected?.count, 2);
   await store.close();
 });
 
