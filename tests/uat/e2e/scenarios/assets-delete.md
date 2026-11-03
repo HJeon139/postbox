@@ -18,7 +18,7 @@ Pass if the turn stops at the delete, and the run’s records hold no `asset.ver
 
 Expected to fail until #725 is fixed: a wake delivered during the window starts a turn. If it fails that way, name #725 and file nothing new.
 
-Open a new conversation with researcher and critic (conversation, do new). Ask researcher to schedule a wake in 1 minute whose note says to publish `notes/wake.md` with one line, and to quote Postbox’s answer, which gives the time it wakes. About 8 seconds before that time, delete the conversation (conversation, do delete), and press Undo 12 seconds after the delete (conversation, do undo), so the wake falls due inside the window.
+Open a new conversation with researcher and critic (conversation, do new). Ask researcher to schedule a wake in 1 minute whose note says to publish `notes/wake.md` with one line, and to quote Postbox’s answer, which gives the time it wakes. About 4 seconds before that time, delete the conversation (conversation, do delete), and press Undo 7 seconds after the delete (conversation, do undo, after 7). The wake then falls due about 4 seconds into the 10-second window, and Undo lands 3 seconds before the purge.
 
 Pass if the run’s records show the wake was due between the delete and the Undo, no turn ran while the conversation was being deleted, and after Undo the wake is delivered and `notes/wake.md` is published. If the wake wasn’t due inside the window, say so: the phase is unverified, not passed, and #725’s spec decides it (tests/conversation-delete-turns.test.mjs, in its pull request). Fail, and file it, if a turn runs in the window (#725), or the wake is lost after Undo.
 
