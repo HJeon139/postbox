@@ -100,6 +100,8 @@ export function parseScenario(md) {
     // `- gh: none` starts Postbox with no gh, and `- telemetry: manual` leaves recording to the scenario. `- seed:
     // fake-env` plants the allow-once scenario’s fake .env (tools/uat/workspace.mjs).
     seed: meta.seed ?? null,
+    // `- seed-diagrams: 6` (#701): with `- seed: big-room`, that many of its agent replies end in a Mermaid diagram.
+    seedDiagrams: seedDiagramsOf(meta['seed-diagrams']),
     gh: meta.gh === 'none' ? 'none' : 'yes',
     telemetry: meta.telemetry === 'manual' ? 'manual' : 'runner',
     summary: lines.filter((l) => l && !l.startsWith('#') && !/^- [\w-]+: /.test(l)).join('\n'),
@@ -150,6 +152,14 @@ const count = (v) => {
   const n = Number(String(v ?? '').trim());
   return Number.isInteger(n) && n >= 1 && n <= 500 ? n : null;
 };
+
+/** How many diagrams the big room gets: none unless the scenario says, and a mistyped count is refused. @param {string|undefined} spec */
+function seedDiagramsOf(spec) {
+  if (spec === undefined) return 0;
+  const n = count(spec);
+  if (!n) throw new Error(`- seed-diagrams takes a whole number from 1 to 500, not “${String(spec).trim()}”.`);
+  return n;
+}
 
 /** The chain limit a scenario asks for, which can only lower the backstop: 1 to 50, null for none. @param {string|undefined} spec */
 function chainLimitOf(spec) {

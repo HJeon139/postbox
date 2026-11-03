@@ -205,7 +205,7 @@ async function main() {
     log(`Conversation ${mainThread} started with @${scenario.agents.join(', @')}.`);
     // `- seed: big-room` (#508): the conversation fills with about 1,000 generated items before the tester arrives.
     if (scenario.seed === 'big-room')
-      scenario.summary += `\n\n${await openBigRoom({ postbox, data: paths.data, threadId: mainThread, agents: scenario.agents, page, log })}`;
+      scenario.summary += `\n\n${await openBigRoom({ postbox, data: paths.data, threadId: mainThread, agents: scenario.agents, page, log, diagrams: scenario.seedDiagrams })}`;
     const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });

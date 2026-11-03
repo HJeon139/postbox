@@ -145,3 +145,29 @@ test('the seeded review is answered as the person’s answer records it, and its
     'a stub where it was',
   );
 });
+
+// #701’s UAT trigger needs diagrams far above the view; the measured rooms (the key-press tool) stay without them.
+const MERMAID = /```mermaid\n/;
+test('#701: by default the room has no diagrams; with diagrams: n, n agent replies far apart each end in one, and nothing else changes', () => {
+  const plain = bigRoomItems();
+  assert.equal(plain.items.filter((it) => MERMAID.test(it.text ?? '')).length, 0);
+  const drawn = bigRoomItems({ diagrams: 6 });
+  const withDiagram = drawn.items.filter((it) => MERMAID.test(it.text ?? ''));
+  assert.equal(withDiagram.length, 6);
+  for (const it of withDiagram) assert.equal(it.kind, 'agent');
+  const at = withDiagram.map((it) => drawn.items.indexOf(it));
+  for (let k = 1; k < at.length; k++) assert.ok(at[k] - at[k - 1] >= 100, `diagrams ${at[k - 1]} and ${at[k]} are far apart`);
+  // The same room otherwise: the same ids, kinds and authors, and the same text before the diagram.
+  assert.deepEqual(
+    drawn.items.map((it) => [it.id, it.kind, it.handle, String(it.text ?? '').split('\n\n```mermaid')[0]]),
+    plain.items.map((it) => [it.id, it.kind, it.handle, String(it.text ?? '')]),
+  );
+});
+
+test('#701: `- seed-diagrams: n` asks the big room for n diagrams; absent, none; mistyped, it’s refused', async () => {
+  const { parseScenario } = await import('../tools/uat/scenario.mjs');
+  const head = (extra) => `# Big room\n\n- seed: big-room\n${extra}- steps: 4\n\nRead back.\n`;
+  assert.equal(parseScenario(head('')).seedDiagrams, 0);
+  assert.equal(parseScenario(head('- seed-diagrams: 6\n')).seedDiagrams, 6);
+  for (const bad of ['six', '0', '-2', '1.5']) assert.throws(() => parseScenario(head(`- seed-diagrams: ${bad}\n`)), /seed-diagrams/, bad);
+});
