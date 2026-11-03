@@ -5,7 +5,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { isTextBytes, prunable, roomBytes } from '../server/asset-retention.mjs';
+import { bytesAfter, isTextBytes, prunable } from '../server/asset-retention.mjs';
 import { assetBlobs, writeAsset } from '../server/assets.mjs';
 import { Store } from '../server/store.mjs';
 import { ASSETS } from '../shared/limits.mjs';
@@ -28,29 +28,41 @@ test('a large binary version is pruned once binaryVersionsKept newer versions ex
   assert.deepEqual(prunable(versions.slice(0, kept)), [], 'one fewer newer: kept');
 });
 
-test('never pruned: the head, a text version, a small binary, a delete, or an already pruned version', () => {
-  const n = ASSETS.binaryVersionsKept + 2;
-  const tail = Array.from({ length: n - 1 }, (_, i) => v(i + 2, { size: big }));
+test('never pruned: a text version, a small binary, a delete, or one already pruned', () => {
+  // Each sits where a new head would make it prunable: exactly binaryVersionsKept newer versions behind it.
+  const tail = Array.from({ length: ASSETS.binaryVersionsKept }, (_, i) => v(i + 2, { size: big }));
+  assert.deepEqual(prunable([v(1, { size: big }), ...tail]), [1], 'a large binary there is pruned');
   for (const [what, first] of [
     ['text', v(1, { size: big, isText: true })],
     ['small binary', v(1, { size: ASSETS.largeBinaryBytes })],
     ['delete', v(1, { sha256: null, size: 0 })],
     ['already pruned', v(1, { size: big, pruned: 5 })],
   ])
-    assert.ok(!prunable([first, ...tail]).includes(1), what);
-  assert.deepEqual(prunable([v(1, { size: big })]), [], 'a lone head');
-  assert.deepEqual(prunable([v(1, { size: big }), v(2, { size: big })], { binaryVersionsKept: 0 }), [1], 'the head, even when no newer version is kept');
+    assert.deepEqual(prunable([first, ...tail]), [], what);
 });
 
-test('a room’s bytes count each distinct file once, without pruned versions, with a commit’s prunes and addition', () => {
-  const assets = {
-    a: { id: 'a', room: 'r', versions: [v(1), v(2), v(3, { pruned: 9 })] },
-    b: { id: 'b', room: 'r', versions: [v(1)] },
-    c: { id: 'c', room: 'other', versions: [v(4, { size: 1000 })] },
-  };
-  assert.equal(roomBytes(assets, 'r'), 20, 'versions 1 and 2; 1 twice counts once; 3 is pruned; c is another room');
-  assert.equal(roomBytes(assets, 'r', { prunes: { id: 'a', vs: [2] } }), 10);
-  assert.equal(roomBytes(assets, 'r', { added: { sha256: 'f'.repeat(64), size: 5 } }), 25);
+test('the head is never pruned: a version waits for at least one newer, whatever binaryVersionsKept says', () => {
+  assert.deepEqual(prunable([v(1, { size: big })]), [], 'a lone head');
+  assert.deepEqual(prunable([v(1, { size: big })], { binaryVersionsKept: 0 }), [], 'a lone head, with none kept');
+  assert.deepEqual(prunable([v(1, { size: big }), v(2, { size: big })], { binaryVersionsKept: 0 }), [1], 'the old head, once it isn’t');
+});
+
+test('a new head looks at one version only, the one it makes prunable: each commit pruned the one before', () => {
+  const kept = ASSETS.binaryVersionsKept;
+  // Version 1 is a large binary that a real store would have pruned at version kept + 1. Version 2 is small.
+  const versions = [v(1, { size: big }), v(2), ...Array.from({ length: kept }, (_, i) => v(i + 3, { size: big }))];
+  assert.deepEqual(prunable(versions), [], 'version 2 is the candidate, and it’s small');
+});
+
+test('a room’s bytes after a commit, from its index: a new file adds, a kept one doesn’t, a last keeper pruned frees', () => {
+  const index = { bytes: 30, files: { [v(1).sha256]: { n: 2, size: 10 }, [v(2).sha256]: { n: 1, size: 20 } } };
+  const fresh = { sha256: 'f'.repeat(64), size: 5 };
+  assert.equal(bytesAfter(index, fresh, []), 35);
+  assert.equal(bytesAfter(index, { sha256: v(1).sha256, size: 10 }, []), 30, 'a file the room keeps counts once');
+  assert.equal(bytesAfter(index, { sha256: null, size: 0 }, []), 30, 'a delete adds nothing');
+  assert.equal(bytesAfter(index, fresh, [v(2)]), 15, 'version 2’s file has one keeper, so the prune frees it');
+  assert.equal(bytesAfter(index, fresh, [v(1)]), 35, 'version 1’s file has two keepers, so it stays');
+  assert.equal(bytesAfter(index, { sha256: v(2).sha256, size: 20 }, [v(2)]), 30, 'pruned and written again in one commit: it stays');
 });
 
 test('the commit that makes a version prunable prunes it and releases its hash; text is never pruned', async () => {

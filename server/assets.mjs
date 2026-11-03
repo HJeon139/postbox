@@ -8,7 +8,8 @@
 
 import { join } from 'node:path';
 import { ASSETS } from '../shared/limits.mjs';
-import { isTextBytes, prunable, roomBytes } from './asset-retention.mjs';
+import { nameKey, opKey, own } from '../shared/state-assets.mjs';
+import { bytesAfter, isTextBytes, prunable } from './asset-retention.mjs';
 import { Blobs } from './blobs.mjs';
 import { newId } from './store.mjs';
 
@@ -57,11 +58,20 @@ export function opProblem(op) {
   return ok ? null : `A write’s op is 1 to ${ASSETS.opChars} letters, digits, - and _.`;
 }
 
-/** Names that are one asset’s, ignoring case, as the person chose (2 November 2026). @param {string} a @param {string} b */
-const sameName = (a, b) => a.normalize('NFC').toLowerCase() === b.normalize('NFC').toLowerCase();
+/** An asset’s version v, or undefined: version v is always versions[v - 1] (shared/state-assets.mjs). @param {any} asset @param {unknown} v */
+const versionAt = (asset, v) => (Number.isInteger(v) ? asset.versions[/** @type {number} */ (v) - 1] : undefined);
 
 /** The version an asset shows now. @param {any} asset */
-const headOf = (asset) => asset.versions.find((x) => x.v === asset.head) ?? null;
+const headOf = (asset) => versionAt(asset, asset.head) ?? null;
+
+/** A room with no assets yet, as its index would read. */
+const NO_ASSETS = Object.freeze({ count: 0, ids: {}, names: {}, files: {}, bytes: 0, ops: {} });
+
+/**
+ * What a write’s checks read: every asset, and the room’s index, which the reducer keeps so each check is a lookup.
+ * @param {any} state @param {string} room
+ */
+const lookupsFor = (state, room) => ({ assets: state.assets ?? {}, index: own(state.assetRooms, room) ?? NO_ASSETS });
 
 /** The most parents roomOf follows, as Runtime’s lineage does: a thread’s parent is one level, a fork’s a few more. */
 const MAX_DEPTH = 8;
@@ -99,44 +109,40 @@ const SAY = {
     `Postbox couldn’t confirm the write was saved: ${said(e)}. Don’t report it as published: read the asset again, or write again with the same op.`,
 };
 
-/** The room’s live asset with this name, ignoring case, other than `except`. */
-function holderOf(assets, room, name, except = null) {
-  const live = (a) => a.room === room && a.id !== except && headOf(a)?.sha256;
-  return Object.values(assets).find((a) => live(a) && sameName(a.name, name)) ?? null;
+/** The room’s live asset with this name, ignoring case, other than `except`: one lookup in its index. */
+function holderOf(look, name, except = null) {
+  const id = own(look.index.names, nameKey(name));
+  return id && id !== except ? look.assets[id] : null;
 }
 
 /**
  * The version that is already this write, or null (I5): one with the write’s op and author, or a head with the same
  * base, bytes and author (and name, for a rename). Durable, unlike the store’s op ids, which a snapshot drops.
  */
-function repeatOf(asset, req) {
-  if (req.op) {
-    const same = asset.versions.find((x) => x.op === req.op && x.author === req.author);
-    if (same) return same;
-  }
+function repeatOf(look, asset, req) {
+  const byOp = req.op && own(look.index.ops, opKey(asset.id, req.author, req.op));
+  if (byOp) return versionAt(asset, byOp);
   const head = headOf(asset);
-  const base = req.base ?? null;
-  const bytes = req.kind === 'restore' ? asset.versions.find((x) => x.v === req.version)?.sha256 : req.sha256;
-  if (!head || head.author !== req.author || head.base !== base || head.sha256 !== bytes) return null;
-  return req.kind !== 'rename' || sameName(asset.name, req.name) ? head : null;
+  const bytes = req.kind === 'restore' ? versionAt(asset, req.version)?.sha256 : req.sha256;
+  if (!head || head.author !== req.author || head.base !== (req.base ?? null) || head.sha256 !== bytes) return null;
+  return req.kind !== 'rename' || nameKey(asset.name) === nameKey(req.name) ? head : null;
 }
 
 /**
  * The asset a write is to, checked: an existing one in this room, or none for a new one whose name is free. A repeat
  * of a create finds the asset it made.
  */
-function targetOf(assets, req) {
+function targetOf(look, req) {
   if (req.id) {
-    const asset = assets[req.id];
+    const asset = own(look.assets, req.id);
     if (!asset || asset.room !== req.room) refuse('not-found', SAY.notFound(req.id));
     return asset;
   }
   if (req.kind !== 'write') refuse('not-found', SAY.noId());
-  const holder = holderOf(assets, req.room, req.name);
-  if (holder && repeatOf(holder, { ...req, base: null })) return holder;
+  const holder = holderOf(look, req.name);
+  if (holder && repeatOf(look, holder, { ...req, base: null })) return holder;
   if (holder) refuse('name-taken', `${SAY.nameTaken(holder)} Write to it with its id, or pick another name.`);
-  const count = Object.values(assets).filter((a) => a.room === req.room).length;
-  if (count >= ASSETS.roomAssets) refuse('too-many', SAY.tooManyAssets(count));
+  if (look.index.count >= ASSETS.roomAssets) refuse('too-many', SAY.tooManyAssets(look.index.count));
   return null;
 }
 
@@ -144,7 +150,7 @@ function targetOf(assets, req) {
 function sourceOf(asset, req) {
   if (req.kind === 'rename') return headOf(asset);
   if (req.kind !== 'restore') return null;
-  const from = asset.versions.find((x) => x.v === req.version);
+  const from = versionAt(asset, req.version);
   if (!from) refuse('no-version', SAY.noVersion(asset.id, req.version));
   if (!from.sha256) refuse('no-version', SAY.restoreDelete(req.version));
   if (from.pruned) refuse('pruned', SAY.pruned(req.version));
@@ -162,14 +168,14 @@ function bytesOf(asset, req) {
  * Checks an update against its asset, as the commit sees it: the base is the head (I4), the version bound, a delete
  * of a live asset, and a free name when it changes or a deleted asset comes back.
  */
-function checkUpdate(assets, asset, req) {
+function checkUpdate(look, asset, req) {
   const head = headOf(asset);
   if ((req.base ?? null) !== asset.head) refuse('stale', SAY.stale(asset, head, req.base));
   if (asset.versions.length >= ASSETS.assetVersions) refuse('too-many', SAY.tooManyVersions(asset.id));
   if (req.kind === 'delete' && !head?.sha256) refuse('deleted', SAY.deleted(asset.id));
   const name = req.kind === 'rename' ? req.name : asset.name;
   const comesBack = !head?.sha256 && req.kind !== 'delete';
-  const holder = req.kind === 'rename' || comesBack ? holderOf(assets, asset.room, name, asset.id) : null;
+  const holder = req.kind === 'rename' || comesBack ? holderOf(look, name, asset.id) : null;
   if (holder) refuse('name-taken', SAY.nameTaken(holder));
 }
 
@@ -191,24 +197,25 @@ function versionOf(asset, req) {
  * @returns {{ events: any[], id: string, version: any, repeat: boolean }}
  */
 export function planWrite(state, req) {
-  const assets = state.assets ?? {};
-  const asset = targetOf(assets, req);
-  const repeat = asset && repeatOf(asset, req.id ? req : { ...req, base: null });
+  const look = lookupsFor(state, req.room);
+  const asset = targetOf(look, req);
+  const repeat = asset && repeatOf(look, asset, req.id ? req : { ...req, base: null });
   if (repeat) return { events: [], id: asset.id, version: repeat, repeat: true };
-  if (asset) checkUpdate(assets, asset, req);
+  if (asset) checkUpdate(look, asset, req);
   const id = asset?.id ?? req.newId;
   const version = versionOf(asset, req);
   const prunes = prunable([...(asset?.versions ?? []), version]);
-  const released = prunes.map((v) => asset.versions.find((x) => x.v === v).sha256);
-  const total = roomBytes(assets, req.room, { prunes: { id, vs: prunes }, added: version });
-  if (total > ASSETS.roomBytes && total > roomBytes(assets, req.room)) refuse('budget', SAY.budget(total));
-  const events = [];
-  if (!asset || req.kind === 'rename') {
-    const name = (req.kind === 'rename' || !asset ? req.name : asset.name).normalize('NFC');
-    events.push({ type: 'asset', data: { id, room: req.room, name, created: asset?.created ?? req.at } });
-  }
-  events.push({ type: 'asset.version', data: { id, version, prunes, released } });
-  return { events, id, version, repeat: false };
+  const pruned = prunes.map((v) => versionAt(asset, v));
+  const total = bytesAfter(look.index, version, pruned);
+  if (total > ASSETS.roomBytes && total > look.index.bytes) refuse('budget', SAY.budget(total));
+  const named = !asset || req.kind === 'rename' ? [assetEvent(asset, req, id)] : [];
+  const versioned = { type: 'asset.version', data: { id, version, prunes, released: pruned.map((x) => x.sha256) } };
+  return { events: [...named, versioned], id, version, repeat: false };
+}
+
+/** The 'asset' event a create or rename writes: the asset’s name, NFC, and when it was made. */
+function assetEvent(asset, req, id) {
+  return { type: 'asset', data: { id, room: req.room, name: req.name.normalize('NFC'), created: asset?.created ?? req.at } };
 }
 
 /** What’s wrong with a write before anything is stored (F1), or null: its name, its op, its size, its bytes. */

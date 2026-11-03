@@ -8,8 +8,19 @@ import { test } from 'node:test';
 import { assetBlobs, nameProblem, opProblem, planWrite, roomOf, writeAsset } from '../server/assets.mjs';
 import { Store } from '../server/store.mjs';
 import { ASSETS } from '../shared/limits.mjs';
+import { apply, emptyState } from '../shared/state.mjs';
 
 const text = (s) => Buffer.from(s, 'utf8');
+
+/** A state with these assets, built through the reducer, so the rooms’ indexes are as the store keeps them. */
+function stateOf(assets) {
+  const s = emptyState();
+  for (const { versions, ...asset } of assets) {
+    apply(s, 'asset', asset);
+    for (const version of versions) apply(s, 'asset.version', { id: asset.id, version, prunes: [], released: [] });
+  }
+  return s;
+}
 
 function room() {
   const store = new Store(null);
@@ -139,7 +150,7 @@ test('an id from another room, or none for a rename, is refused as not found', a
 
 test('I6: a write that would take the room past its budget is refused, naming both; one that adds no bytes isn’t', () => {
   const big = { v: 1, sha256: 'a'.repeat(64), size: ASSETS.roomBytes - 10, isText: false, author: 'dev', at: 1, base: null };
-  const state = { assets: { as_1: { id: 'as_1', room: 'r', name: 'big.bin', created: 1, head: 1, versions: [big] } } };
+  const state = stateOf([{ id: 'as_1', room: 'r', name: 'big.bin', created: 1, versions: [big] }]);
   const req = { kind: 'write', room: 'r', name: 'more.bin', newId: 'as_2', sha256: 'b'.repeat(64), size: 11, isText: false, author: 'dev', at: 2 };
   assert.throws(
     () => planWrite(state, req),
@@ -153,7 +164,7 @@ test('I6: a write that would take the room past its budget is refused, naming bo
 test('I6: a room already over its budget still takes a delete, and a write that adds no bytes', () => {
   // Over it already: the budget is a draft, and calibration may set it lower than a room holds (#516 S3, the bounds).
   const big = { v: 1, sha256: 'a'.repeat(64), size: ASSETS.roomBytes + 1, isText: false, author: 'dev', at: 1, base: null };
-  const state = { assets: { as_1: { id: 'as_1', room: 'r', name: 'big.bin', created: 1, head: 1, versions: [big] } } };
+  const state = stateOf([{ id: 'as_1', room: 'r', name: 'big.bin', created: 1, versions: [big] }]);
   const del = { kind: 'delete', room: 'r', id: 'as_1', base: 1, author: 'dev', at: 2 };
   assert.equal(planWrite(state, del).events.length, 1, 'a delete adds nothing');
   const same = { kind: 'write', room: 'r', id: 'as_1', base: 1, sha256: big.sha256, size: big.size, isText: false, author: 'critic', at: 2 };
@@ -176,21 +187,18 @@ test('I9: the version and room bounds refuse a write past them, naming the limit
     at: 1,
     base: i || null,
   }));
-  const full = { assets: { as_1: { id: 'as_1', room: 'r', name: 'a.md', created: 1, head: ASSETS.assetVersions, versions } } };
+  const full = stateOf([{ id: 'as_1', room: 'r', name: 'a.md', created: 1, versions }]);
   const update = { kind: 'write', room: 'r', id: 'as_1', base: ASSETS.assetVersions, sha256: 'b'.repeat(64), size: 1, isText: true, author: 'dev', at: 2 };
   assert.throws(
     () => planWrite(full, update),
     (e) => e.code === 'too-many' && e.message.includes(String(ASSETS.assetVersions)),
   );
-  const many = Object.fromEntries(
-    Array.from({ length: ASSETS.roomAssets }, (_, i) => [
-      `as_${i}`,
-      { id: `as_${i}`, room: 'r', name: `${i}.md`, created: 1, head: 1, versions: [versions[0]] },
-    ]),
+  const many = stateOf(
+    Array.from({ length: ASSETS.roomAssets }, (_, i) => ({ id: `as_${i}`, room: 'r', name: `${i}.md`, created: 1, versions: [versions[0]] })),
   );
   const create = { kind: 'write', room: 'r', name: 'one-more.md', newId: 'as_new', sha256: 'c'.repeat(64), size: 1, isText: true, author: 'dev', at: 2 };
   assert.throws(
-    () => planWrite({ assets: many }, create),
+    () => planWrite(many, create),
     (e) => e.code === 'too-many' && e.message.includes(String(ASSETS.roomAssets)),
   );
 });

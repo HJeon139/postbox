@@ -49,7 +49,7 @@ test('asset.erase removes the room’s assets and releases each kept hash; other
   const s = made();
   apply(s, 'asset.version', { id: 'as_1', version: version(2), prunes: [1], released: [sha('1')] });
   apply(s, 'asset', { id: 'as_2', room: 'r2', name: 'a.md', created: 10 });
-  apply(s, 'asset.version', { id: 'as_2', version: version(3), prunes: [], released: [] });
+  apply(s, 'asset.version', { id: 'as_2', version: version(1, { sha256: sha('3') }), prunes: [], released: [] });
   apply(s, 'asset.erase', { room: 'r1', at: 99 });
   assert.deepEqual(Object.keys(s.assets), ['as_2']);
   assert.equal(s.assetReleases[sha('2')], 99, 'the kept version released by the erase');
@@ -64,11 +64,14 @@ test('asset.released drops hashes from the releases', () => {
   assert.deepEqual(Object.keys(s.assetReleases), []);
 });
 
-test('an asset event with missing data throws, and changes nothing', () => {
+test('an asset event with missing or out-of-order data throws, and changes nothing', () => {
   for (const [type, data] of [
     ['asset', { id: 'as_9', room: 'r1' }],
     ['asset.version', { id: 'as_none', version: version(1) }],
     ['asset.version', { id: 'as_1' }],
+    // Version v is always versions[v - 1], which a write’s checks rely on: the next one is 2, never 3 or 1 again.
+    ['asset.version', { id: 'as_1', version: version(3) }],
+    ['asset.version', { id: 'as_1', version: version(1) }],
     ['asset.erase', { at: 1 }],
     ['asset.released', {}],
   ]) {

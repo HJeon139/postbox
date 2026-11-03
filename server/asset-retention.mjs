@@ -3,6 +3,7 @@
 // only in the commit of the version that makes it prunable, never at another time and never to make room.
 
 import { ASSETS } from '../shared/limits.mjs';
+import { own } from '../shared/state-assets.mjs';
 
 const UTF8 = new TextDecoder('utf-8', { fatal: true });
 
@@ -21,39 +22,33 @@ export function isTextBytes(bytes) {
 }
 
 /**
- * The versions a new head makes prunable: binary versions over ASSETS.largeBinaryBytes, not pruned yet, with at least
- * ASSETS.binaryVersionsKept newer versions. Never the head, a text version, a small binary or a delete. Nothing pins a
- * version yet; the slices that add pins (#516 S6 and S8) add the check with them.
+ * The version a new head makes prunable, as a list of none or one: the one that now has ASSETS.binaryVersionsKept
+ * newer versions, and at least one, since the head is never pruned. It goes when it’s a binary over
+ * ASSETS.largeBinaryBytes, not pruned yet. Never a text version, a small binary or a delete. Each commit prunes the one
+ * it makes prunable, so no older version is left to find. Nothing pins a version yet; the slices that add pins (#516 S6
+ * and S8) add the check with them.
  * @param {any[]} versions  the asset’s versions, the new head last
  * @param {{ largeBinaryBytes?: number, binaryVersionsKept?: number }} [limits]
- * @returns {number[]} their version numbers
+ * @returns {number[]} its version number, or none
  */
 export function prunable(versions, { largeBinaryBytes = ASSETS.largeBinaryBytes, binaryVersionsKept = ASSETS.binaryVersionsKept } = {}) {
-  const head = versions.at(-1);
-  return versions
-    .filter((x) => x !== head && x.sha256 && !x.isText && !x.pruned && x.size > largeBinaryBytes)
-    .filter((x) => versions.filter((y) => y.v > x.v).length >= binaryVersionsKept)
-    .map((x) => x.v);
+  const x = versions[versions.length - 1 - Math.max(binaryVersionsKept, 1)];
+  const goes = x?.sha256 && !x.isText && !x.pruned && x.size > largeBinaryBytes;
+  return goes ? [x.v] : [];
 }
 
 /**
- * The bytes a room keeps: every version not pruned, each distinct file counted once, with `prunes` taken off and
- * `added` counted, as the commit would leave them.
- * @param {Record<string, any>} assets  the state’s assets
- * @param {string} room
- * @param {{ prunes?: { id: string, vs: number[] }, added?: { sha256: string, size: number } | null }} [change]
+ * The bytes a room keeps after a commit adds a version and prunes others, from its index (shared/state-assets.mjs):
+ * a file it doesn’t keep yet adds its size, and a pruned file’s last keeper takes its size off.
+ * @param {{ bytes: number, files: Record<string, { n: number, size: number }> }} index  the room’s index, or an empty one
+ * @param {{ sha256: string | null, size: number }} added  the new version
+ * @param {{ sha256: string }[]} pruned  the versions the commit prunes
  */
-export function roomBytes(assets, room, { prunes, added = null } = {}) {
-  const sizes = new Map();
-  for (const asset of Object.values(assets)) {
-    if (asset.room !== room) continue;
-    for (const x of asset.versions) {
-      const goes = Boolean(prunes && prunes.id === asset.id && prunes.vs.includes(x.v));
-      if (x.sha256 && !x.pruned && !goes) sizes.set(x.sha256, x.size);
-    }
-  }
-  if (added?.sha256) sizes.set(added.sha256, added.size);
-  let total = 0;
-  for (const n of sizes.values()) total += n;
-  return total;
+export function bytesAfter(index, added, pruned) {
+  const adds = added.sha256 && !own(index.files, added.sha256) ? added.size : 0;
+  const frees = pruned
+    .map((x) => own(index.files, x.sha256))
+    .filter((file, i) => file?.n === 1 && pruned[i].sha256 !== added.sha256)
+    .reduce((sum, file) => sum + file.size, 0);
+  return index.bytes + adds - frees;
 }
