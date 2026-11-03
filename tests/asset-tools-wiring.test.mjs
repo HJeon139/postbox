@@ -3,7 +3,7 @@
 // These import only what was there before the tools, so each fails without them.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -69,8 +69,14 @@ test('#516 S3b: on a host, each asset tool crosses to Postbox and waits for its 
   }
 });
 
-test('#516 S3b: an agent on a host writes and reads an asset through Postbox, with text only', async () => {
-  const r = rig({ store: await new Store(mkdtempSync(join(tmpdir(), 'pb-asset-host-'))).load() });
+test('#516 S3b: an agent on a host writes and reads an asset through Postbox, with text only', async (ctx) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-asset-host-'));
+  const store = await new Store(dir).load();
+  ctx.after(async () => {
+    await store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  const r = rig({ store });
   const turn = await running(r);
   const answer = async (name, args) => {
     const id = r.d.tool(turn, name, args);
