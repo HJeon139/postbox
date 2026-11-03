@@ -98,3 +98,27 @@ test('a delete with at opens its confirm first, and presses Delete no earlier th
   assert.match(said, /waited for its at/);
   assert.equal(c.facts.probes.conversation[0].do, 'delete');
 });
+
+test('Undo’s time is taken before its click, so a turn that starts as the click returns isn’t in the window', async () => {
+  // A recorded rerun (assets-delete phase 2, with #727): the wake’s turn came right after Undo, and Undo’s time, taken
+  // after the click returned, was 0.25 s late, so the turn read as started in the window.
+  const clicks = [];
+  const c = ctx();
+  c.d.kit.ev = async () => true;
+  c.d.kit.clickAt = async (_expr, what) => {
+    clicks.push({ what, at: Date.now() });
+    await new Promise((r) => setTimeout(r, 250));
+  };
+  c.d.kit.page = { waitFor: async () => {} };
+  c.api = async () => ({ state: { threads: { th_1: { id: 'th_1', title: 'T', deleting: null } } } });
+  const del = { do: 'delete', at: Date.now() - 3000, threadId: 'th_1', title: 'T', handles: ['researcher'], until: Date.now() + 7000 };
+  c.facts.probes.conversation = [del];
+  await STEPS.conversation(c, { conversation: 'undo' });
+  const undo = c.facts.probes.conversation.find((x) => x.do === 'undo');
+  const pressed = clicks.find((x) => x.what === 'Undo on the delete’s toast').at;
+  assert.ok(undo.at <= pressed, `Undo recorded ${undo.at - pressed} ms after its click began`);
+  // The turn check then counts a turn that starts 0.3 s after that time as after Undo.
+  const { turnsInDeletes } = await import('../tools/uat/checks-assets.mjs');
+  const stream = { handle: 'researcher', events: [], started: undo.at + 300, ended: undo.at + 5000 };
+  assert.deepEqual(turnsInDeletes({ probes: { conversation: c.facts.probes.conversation }, streams: [stream] }), []);
+});

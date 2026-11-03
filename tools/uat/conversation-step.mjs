@@ -39,8 +39,10 @@ async function openRow({ kit }, threadId, what) {
 async function undo({ d, api, facts }, del) {
   const { kit } = d;
   if (!(await kit.ev(`!!${undoButton(del.title)}`))) return `There was no Undo for “${del.title}” on screen: its 10 seconds had passed.`;
-  await kit.clickAt(undoButton(del.title), 'Undo on the delete’s toast');
+  // Its time is taken before the click: the page sends the Undo as the click lands, and the click returns later, so a
+  // turn that starts right after a real Undo would read as started in the window (a recorded rerun, 0.25 s late).
   const at = Date.now();
+  await kit.clickAt(undoButton(del.title), 'Undo on the delete’s toast');
   facts.probes.conversation.push({ do: 'undo', at, threadId: del.threadId });
   for (let i = 0; i < 20 && (await api('/api/state')).state.threads[del.threadId]?.deleting; i++) await sleep(250);
   await openRow(d, del.threadId, `“${del.title}” in the rail`);
