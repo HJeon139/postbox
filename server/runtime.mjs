@@ -105,7 +105,7 @@ import {
 import { newId } from './store.mjs';
 import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
-import { discardHeld, eraseThreads } from './thread-erase.mjs';
+import { conversationDeleting, discardHeld, eraseThreads, releaseHeld } from './thread-erase.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
@@ -525,10 +525,10 @@ export class Runtime {
   deliver(sessionId, message, { summarizeTo = null, threadId = null } = {}) {
     const se = this.session(sessionId);
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
-    // An agent being deleted starts no turn in its Undo window: every path that delivers comes through here, so one
-    // check covers them all (#597 review). What arrives is held, not dropped: Undo delivers it in order, the purge
-    // drops it with the session (critic). The person’s queued messages wait in the queue instead (R1).
-    if (se.deleting) {
+    // An agent being deleted, or in a conversation being deleted (#725), starts no turn in its Undo window: every path
+    // that delivers comes through here, so one check covers them all (#597 review). What arrives is held, not dropped:
+    // Undo delivers it in order, the purge drops it with the session (critic). Queued messages wait in the queue (R1).
+    if (se.deleting || conversationDeleting(this, se.threadId)) {
       this.heldForUndo.set(sessionId, [...(this.heldForUndo.get(sessionId) ?? []), [message, { summarizeTo, threadId }]]);
       return;
     }
@@ -2700,6 +2700,8 @@ export class Runtime {
     this.putThread({ ...t, deleting: null });
     // Its stopped turns skipped the drain (a silent stop): what its queues held goes now, as after a session’s Undo.
     for (const x of this.archiveScope(threadId)) this.drainQueue(x.id);
+    // …and what reached its agents in the window (deliver held it), in the order it came (#725).
+    for (const x of this.archiveScope(threadId)) for (const se of this.sessionsIn(x.id)) releaseHeld(this, se.id);
   }
 
   purgeThread(threadId) {
@@ -2744,9 +2746,7 @@ export class Runtime {
     const conv = this.lineage(se.threadId).at(-1);
     if (this.s.threads[conv]) for (const x of this.archiveScope(conv)) this.drainQueue(x.id);
     // …and what reached it while it was being deleted (deliver held it), in the order it came.
-    const held = this.heldForUndo.get(sessionId) ?? [];
-    this.heldForUndo.delete(sessionId);
-    for (const [message, options] of held) this.deliver(sessionId, message, options);
+    releaseHeld(this, sessionId);
   }
 
   purgeSession(sessionId) {
