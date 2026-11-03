@@ -10,7 +10,6 @@ import { held, oldSide, settle, sleep } from './side-threads-fixture.mjs';
 
 test('after a restart (the runtime knows no turns), answering a refusal falls back to the last turn’s next refusal', async () => {
   const r = room();
-  r.rt.lastTurn?.clear?.(); // what a restart leaves in memory: nothing
   const one = r.denial('one');
   await sleep(2);
   const two = r.denial('two');
@@ -22,7 +21,6 @@ test('after a restart (the runtime knows no turns), answering a refusal falls ba
 test('a session from before lastTurnId: the released card’s own turn counts', async () => {
   const r = room();
   r.rt.updateSession(r.alpha.id, { lastTurnId: undefined });
-  r.rt.lastTurn?.clear?.();
   const one = r.denial('one', 'turn_old');
   await sleep(2);
   const two = r.denial('two', 'turn_old');
@@ -37,7 +35,6 @@ test('a permission released during a running turn brings back no block from the 
   r.adapter.next.push(work.step);
   r.rt.sendMessage(r.t.id, { text: '@alpha go on' });
   await sleep(5);
-  r.rt.lastTurn?.set?.(r.alpha.id, 'turn_last'); // the integrator's probe: memory still names the turn before
   r.block(); // open, from turn_last, which this turn moved past
   const p = r.permission();
   r.setNeed('permission', p.id);

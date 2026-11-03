@@ -17,6 +17,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { settleInterrupted } from '../../server/restart-sweep.mjs';
 import { Store } from '../../server/store.mjs';
 import { gone, until } from './host.mjs';
 import { alive, appliedRuns, daemonPid, LINUX, marked, onMachines, RUN, replyOf, standins, TEST } from './remote-pipeline-machines.mjs';
@@ -159,8 +160,7 @@ test('#120 pipeline: Postbox restarts mid-turn; the new one attaches to the turn
 
     // A new Postbox on the same store, starting up as server/index.mjs does.
     const second = await postbox(m, postboxes, store);
-    for (const se of Object.values(store.state.sessions))
-      if (['think', 'gen', 'tool', 'stopping'].includes(se.state)) second.rt.updateSession(se.id, { state: 'idle', currentStep: 'Interrupted by a restart' });
+    settleInterrupted(second.rt);
     for (const [threadId, list] of Object.entries(store.state.items))
       for (const it of list) if (it.status === 'streaming') second.rt.patchItem(threadId, it.id, { status: 'stopped' });
     second.rt.expireStalePermissions();

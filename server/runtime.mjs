@@ -632,9 +632,6 @@ export class Runtime {
     });
     // Rules the person allowed once (from a refusal card) apply to this turn only.
     turn.allowOnce = se.allowOnce ?? [];
-    // A turn that doesn't move on keeps the block it found waiting (#69): it counts mid-turn and at the turn's end
-    // (card-needs.mjs `keep`), even if a permission takes the need meanwhile.
-    turn.kept = !turn.movesOn && se.needs?.kind === 'block' ? se.needs.itemId : null;
     this.updateSession(sessionId, {
       allowOnce: [],
       endingSubagents: [],
@@ -647,6 +644,9 @@ export class Runtime {
       // This turn is the last turn from its start (card-needs.mjs turnOf), so a restart that cuts it off, or a card
       // released after it leaves the running turns, doesn't count a block from the turn before.
       lastTurnId: turn.id,
+      // A turn that doesn't move on keeps the block it found waiting (#69): it counts mid-turn, at the turn's end and
+      // after a restart (card-needs.mjs `keep`), even if a permission takes the need meanwhile. In the store, as above.
+      keptId: !turn.movesOn && se.needs?.kind === 'block' ? se.needs.itemId : null,
       currentStep: 'Thinking',
       finishedAt: null,
     });
@@ -936,13 +936,15 @@ export class Runtime {
   endTurn(turn, err) {
     if (turn.closed) return;
     turn.closed = true;
+    // Its permissions expire while it still counts as running, so their release counts no card tied to a turn: the
+    // turn's end, below, decides those.
+    for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
     this.turns.delete(turn.sessionId);
     this.settleSubagentSteps(turn);
     // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
     if (turn.remote) err = this.remote.ended(turn, err);
     settleScheduledWake(this, turn, err);
     this.endWork(turn, !err ? 'done' : err.name === 'AbortError' ? 'stopped' : 'failed');
-    for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
     // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
     this.mirrors.get(turn.sessionId)?.tail.skipToEnd();
     const se = this.s.sessions[turn.sessionId];
@@ -997,8 +999,7 @@ export class Runtime {
       this.updateSession(se.id, {
         state: 'failed',
         needs: { kind: 'failed', itemId: target, text: message, ...this.awayFrom(se, turn.threadId) },
-        // A failed turn is the last turn too (card-needs.mjs turnOf): a block you moved past stays quiet.
-        lastTurnId: turn.id,
+        keptId: null,
         sideTurn: null,
         subagents: [],
         currentStep: 'Failed',
@@ -1028,7 +1029,7 @@ export class Runtime {
     const open = items.filter(
       (it) => it.kind === 'block' && it.turnId === turn.id && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered,
     );
-    const waiting = turn.kept ? items.find((it) => it.id === turn.kept) : null;
+    const waiting = se.keptId ? items.find((it) => it.id === se.keptId) : null;
     if (!open.length && waiting && !waiting.answered) open.push(waiting);
     const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
     const viewing = this.isViewing(turn.threadId);
@@ -1039,8 +1040,7 @@ export class Runtime {
     this.updateSession(se.id, {
       state: needs ? 'needs' : 'idle',
       needs,
-      // Which turn's asks count from now on (card-needs.mjs `turnOf`): in the store, so a restart keeps it.
-      lastTurnId: turn.id,
+      keptId: null,
       sideTurn: null,
       glimpse: '',
       subagents: [],

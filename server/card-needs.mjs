@@ -54,7 +54,7 @@ export const TURN_TIED = new Set(['failed', 'block', 'denial', 'toolask']);
 
 /**
  * Which turn's asking blocks, refusals and tool requests count, answered here only. During a
- * running turn none do, except the block a turn that doesn't move on kept (`turn.kept`, nextNeed's `keep`): its end
+ * running turn none do, except the block a turn that doesn't move on kept (`se.keptId`, nextNeed's `keep`): its end
  * decides them, and main's mid-turn release left no need. Otherwise the last ended turn,
  * which the session keeps in the store so a restart keeps it, or, for a session from before it did, the turn of the
  * card being released, which was the need.
@@ -72,7 +72,7 @@ function turnOf(rt, se, released = null) {
  * counts by default.
  * @param {any} rt @param {any} se @param {{ turnId?: string | null, keep?: string | null, released?: any }} [o]
  */
-export function nextNeed(rt, se, { released = null, turnId = turnOf(rt, se, released), keep = rt.turns.get(se.id)?.kept ?? null } = {}) {
+export function nextNeed(rt, se, { released = null, turnId = turnOf(rt, se, released), keep = rt.turns.has(se.id) ? (se.keptId ?? null) : null } = {}) {
   /** @type {{ at: number, need: any, it: any } | null} */
   let best = null;
   let refused = 0;

@@ -14,6 +14,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { createHostManager } from '../server/remote/hosts.mjs';
 import { tokenFile } from '../server/remote/install.mjs';
+import { settleInterrupted } from '../server/restart-sweep.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { createFakeDaemon, FAKE_TOKEN, FIXTURE_PROMPT, fixtureLines } from './fake-daemon.mjs';
@@ -162,8 +163,7 @@ async function inOneGo() {
 
 /** A Postbox starting up on a store as server/index.mjs does, as far as remote turns go. @param {any} p @param {Store} store */
 function startUp(p, store) {
-  for (const se of Object.values(store.state.sessions))
-    if (['think', 'gen', 'tool', 'stopping'].includes(se.state)) p.rt.updateSession(se.id, { state: 'idle', currentStep: 'Interrupted by a restart' });
+  settleInterrupted(p.rt);
   for (const [threadId, list] of Object.entries(store.state.items))
     for (const it of list) if (it.status === 'streaming') p.rt.patchItem(threadId, it.id, { status: 'stopped' });
   p.rt.expireStalePermissions();
