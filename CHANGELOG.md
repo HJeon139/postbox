@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.17.0 (2026-11-03)
+
+### Features
+
+- **uat:** a conversation delete can wait for a time, so it lands where a phase needs it
+- **uat:** the tester deletes, restores, starts and opens conversations, and restarts locally
+
+### Fixes
+
+- **uat:** a delete at a time waits until the clock has reached it
+- **uat:** Undo's time is taken before its click, so a turn right after Undo isn't in the window
+- **uat:** the content check skips only what someone wrote, and looks things up in sets
+
 ## 1.16.1 (2026-11-03)
 
 ### Fixes
