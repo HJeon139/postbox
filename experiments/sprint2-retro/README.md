@@ -6,7 +6,8 @@ A work-in-progress folder, not meant to merge, in the shape of `wip/sprint1-retr
 
 1. `state-at-close.md`: open PRs, the work carried into the next sprint, WIP branches and decisions waiting on the person.
 2. `action-items.md`: the twelve actions approved for the next #508 sprint, with owners and measures.
-3. `retro/aggregate.md`: what the team said, by theme, with who raised each and the evidence.
+3. `continue-508.md`: the prompt to paste as the first message of the next #508 room.
+4. `retro/aggregate.md`: what the team said, by theme, with who raised each and the evidence.
 
 ## The records
 
