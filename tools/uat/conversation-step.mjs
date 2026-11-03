@@ -68,6 +68,14 @@ export function delayUntil(at, now) {
 }
 
 /**
+ * Waits until the clock reaches `until`. A timer can fire a millisecond early, so it waits again until then.
+ * @param {number} until @param {{ now?: () => number, wait?: (ms: number) => Promise<unknown> }} [clock]  a test’s own
+ */
+export async function waitUntil(until, { now = Date.now, wait = sleep } = {}) {
+  for (let left = until - now(); left > 0; left = until - now()) await wait(left);
+}
+
+/**
  * Deletes the conversation that’s open, through its menu and the confirm, at `at` if it’s given (the confirm is open
  * and waiting), then presses Undo after undo_after seconds.
  */
@@ -82,7 +90,7 @@ async function remove(ctx, a) {
   await d.kit.clickAt(`document.querySelector(${js(`[aria-label="Actions for ${t.title}"]`)})`, 'the conversation’s menu');
   await d.kit.clickAt(byText('document', '.menu .mi, [role=menuitem]', `Delete ${room ? 'room' : 'conversation'}`), 'Delete in its menu');
   const { wait: atWait, note } = delayUntil(a.at, Date.now());
-  if (atWait > 0) await sleep(atWait);
+  await waitUntil(Date.now() + atWait);
   await d.kit.clickAt(byText('document.querySelector(".dialog")', 'button.danger', `Delete ${room ? 'room' : 'conversation'}`), 'the confirm’s Delete');
   const at = Date.now();
   let until = null;

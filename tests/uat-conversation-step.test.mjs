@@ -3,7 +3,7 @@
 // records (facts.probes.conversation) are what turn-in-deleting-conversation reads.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { delayUntil } from '../tools/uat/conversation-step.mjs';
+import { delayUntil, waitUntil } from '../tools/uat/conversation-step.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { interruptAct, localRestart, STEPS } from '../tools/uat/steps.mjs';
 import { SCHEMA, systemPrompt } from '../tools/uat/tester.mjs';
@@ -121,4 +121,20 @@ test('Undo’s time is taken before its click, so a turn that starts as the clic
   const { turnsInDeletes } = await import('../tools/uat/checks-assets.mjs');
   const stream = { handle: 'researcher', events: [], started: undo.at + 300, ended: undo.at + 5000 };
   assert.deepEqual(turnsInDeletes({ probes: { conversation: c.facts.probes.conversation }, streams: [stream] }), []);
+});
+
+test('waiting for at goes on until the clock reaches it, though a timer fires early', async () => {
+  // The gate once saw Delete pressed 1 ms before at: a timer can fire a millisecond early.
+  let clock = 1000;
+  const waits = [];
+  const early = async (ms) => {
+    waits.push(ms);
+    clock += ms > 1 ? ms - 1 : ms; // a millisecond early, as the gate saw, but time still passes
+  };
+  await waitUntil(1400, { now: () => clock, wait: early });
+  assert.ok(clock >= 1400, `stopped at ${clock}`);
+  assert.deepEqual(waits.slice(0, 2), [400, 1], 'it waits again for what’s left');
+  waits.length = 0;
+  await waitUntil(900, { now: () => clock, wait: early });
+  assert.deepEqual(waits, [], 'a time already reached waits for nothing');
 });
