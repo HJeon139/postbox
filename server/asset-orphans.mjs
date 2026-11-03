@@ -8,28 +8,14 @@
 import { readdir, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
-/** The hashes the state’s asset versions name: `kept` only those not pruned, `all` every one. @param {any} state */
-function namedHashes(state) {
-  const kept = new Set();
-  const all = new Set();
-  for (const asset of Object.values(state.assets ?? {}))
-    for (const x of asset.versions) {
-      if (!x.sha256) continue;
-      all.add(x.sha256);
-      if (!x.pruned) kept.add(x.sha256);
-    }
-  return { kept, all };
-}
+/** The hashes some room’s unpruned versions keep, from the rooms’ indexes (shared/state-assets.mjs). @param {any} state */
+const keptHashes = (state) => new Set(Object.values(state.assetRooms ?? {}).flatMap((index) => Object.keys(index.files)));
 
 /** Every file in the asset folder, as { name, path }: a blob’s name is its hash, a draft’s more. @param {string} dir */
 async function filesIn(dir) {
-  const out = [];
-  const folders = await readdir(dir).catch((e) => (e.code === 'ENOENT' ? [] : Promise.reject(e)));
-  for (const f of folders) {
-    if (!/^[a-f0-9]{2}$/.test(f)) continue;
-    for (const n of await readdir(join(dir, f))) out.push({ name: f + n, path: join(dir, f, n) });
-  }
-  return out;
+  const folders = (await readdir(dir).catch((e) => (e.code === 'ENOENT' ? [] : Promise.reject(e)))).filter((f) => /^[a-f0-9]{2}$/.test(f));
+  const listed = await Promise.all(folders.map(async (f) => (await readdir(join(dir, f))).map((n) => ({ name: f + n, path: join(dir, f, n) }))));
+  return listed.flat();
 }
 
 /** The log’s line for files nothing names: how many, how big, where they come from, and that they stay. */
@@ -40,44 +26,42 @@ function unclaimedLine({ count, bytes }) {
 }
 
 /**
+ * Deletes a released file, and says whether it’s gone: deleted now, or already. Any other failure keeps it released,
+ * for the next load to try again. @returns {Promise<boolean>}
+ */
+async function removed(blobs, sha, warn) {
+  try {
+    await unlink(blobs.pathOf(sha));
+    return true;
+  } catch (e) {
+    if (/** @type {any} */ (e).code === 'ENOENT') return true;
+    warn(`Postbox couldn’t delete a released asset file, ${sha}: ${e instanceof Error ? e.message : e}. It tries again at the next start.`);
+    return false;
+  }
+}
+
+/**
  * Deletes the released files no version keeps, then drops their hashes, and every released hash a version keeps again,
  * from assetReleases in one commit. A crash between the two deletes nothing twice and loses nothing: the next load
- * finds the file gone and drops the hash then.
+ * finds the file gone and drops the hash then. Files nothing keeps and nothing released are counted, never deleted.
  * @param {import('./store.mjs').Store} store @param {import('./blobs.mjs').Blobs} blobs
  * @param {{ warn?: (line: string) => void }} [log]
  * @returns {Promise<{ deleted: string[], unclaimed: { count: number, bytes: number } }>}
  */
 export async function sweepAssets(store, blobs, { warn = console.warn } = {}) {
-  const { kept, all } = namedHashes(store.state);
-  const released = Object.keys(store.state.assetReleases ?? {});
-  const deleted = [];
-  const done = [];
-  for (const sha of released) {
-    if (!kept.has(sha)) {
-      try {
-        await unlink(blobs.pathOf(sha));
-      } catch (e) {
-        if (/** @type {any} */ (e).code !== 'ENOENT') {
-          const why = e instanceof Error ? e.message : String(e);
-          warn(`Postbox couldn’t delete a released asset file, ${sha}: ${why}. It tries again at the next start.`);
-          continue;
-        }
-      }
-      deleted.push(sha);
-    }
-    done.push(sha);
-  }
+  const kept = keptHashes(store.state);
+  const released = new Set(Object.keys(store.state.assetReleases ?? {}));
+  const toDelete = [...released].filter((sha) => !kept.has(sha));
+  const gone = await Promise.all(toDelete.map((sha) => removed(blobs, sha, warn)));
+  const deleted = toDelete.filter((_, i) => gone[i]);
+  const done = [...[...released].filter((sha) => kept.has(sha)), ...deleted];
   if (done.length) {
-    await store
-      .commit([{ type: 'asset.released', data: { hashes: done } }])
-      .catch((e) => warn(`Postbox deleted released asset files but couldn’t record it: ${e.message}. The next start records it.`));
+    const note = (e) => warn(`Postbox deleted released asset files but couldn’t record it: ${e.message}. The next start records it.`);
+    await store.commit([{ type: 'asset.released', data: { hashes: done } }]).catch(note);
   }
-  const unclaimed = { count: 0, bytes: 0 };
-  for (const f of await filesIn(blobs.dir)) {
-    if (all.has(f.name) || released.includes(f.name)) continue; // named, or released and not deleted yet
-    unclaimed.count++;
-    unclaimed.bytes += (await stat(f.path)).size;
-  }
+  const strays = (await filesIn(blobs.dir)).filter((f) => !kept.has(f.name) && !released.has(f.name));
+  const sizes = await Promise.all(strays.map(async (f) => (await stat(f.path)).size));
+  const unclaimed = { count: strays.length, bytes: sizes.reduce((sum, n) => sum + n, 0) };
   if (unclaimed.count) warn(unclaimedLine(unclaimed));
   return { deleted, unclaimed };
 }
