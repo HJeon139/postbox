@@ -107,6 +107,8 @@ test('#508’s delivery and bigroom scenarios parse: the big-room seed, phase 3�
   assert.equal(bigroom.seed, 'big-room');
   assert.equal(bigroom.seedDiagrams, 6, 'phase 1 reaches #701’s diagram-deferred');
   assert.deepEqual(bigroom.phases[0].triggers, ['window-paged-back', 'diagram-deferred']);
+  // #701’s trigger exists; window-paged-back comes with B1b.
+  assert.deepEqual(unknownTriggers({ phases: bigroom.phases.slice(0, 1) }), ['window-paged-back']);
   assert.deepEqual([delivery.phases.length, bigroom.phases.length], [8, 4]);
   assert.deepEqual(
     delivery.phases.map((p) => p.fault),
