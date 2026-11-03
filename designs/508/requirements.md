@@ -53,6 +53,7 @@ flowchart TD
 | MD-6 | Who a message reaches: the agents it mentions (only those, #107), and in a topic thread its owner. A reply wakes its waker only if it mentions it. | Replying to one agent while mentioning another wakes only the second. | INT Conversation (composer row) and Attention (reply row); #107; #469 (P1) |
 | MD-7 | Reactions and acknowledgments start no turn. Outcomes and edits notify. | A reaction wakes no one; an outcome post notifies the agents it names. | INT Attention (reactions row); #331; #382; #472 table |
 | MD-8 | **Tell it now.** The person can send a message to a working agent that reaches it while its turn continues, in a mode of its own beside wake and Send now (which interrupts). Only a route whose exact backend, version and local-or-remote configuration has passed the delivery-route spike with live evidence promises one agent step; a hook or native input is a candidate until then, not a capability. The person sees which route carried it and whether it was delivered. If the backend has no route faster than the next Postbox tool result, the message says so rather than claiming promptness. | The issue’s measured case, an agent blocked on a 3-minute background job and an answered choice, reads the message within one agent step on a configuration whose route passed the spike, and says “waits for its next tool call” on any other. | #470; critic’s review `critic-427-470-coverage` |
+| MD-9 | **An agent opens a topic thread.** An agent can open a topic thread from any message in its conversation, locally and on a host, and the first message there reaches whom MD-6 says. One message has one topic, whoever opens it. | `open_topic` opens one topic per message, even while a commit is held, and its first message wakes each agent it names there; a host's call is applied once and passes the same write gate. | #637; #507 |
 
 ## 3. The person’s attention and control
 
@@ -190,6 +191,7 @@ flowchart TD
 | MD-3 | Spec | Past the cap, notifies fold into one line and one record, with a count | none | none | Covered |
 | MD-4, MD-5 | Spec | A hand-off to two agents is one message naming both; no agent is offered `wake_agent` | none | none | Later (#481) |
 | MD-6 | Spec | A reply in a topic thread wakes its owner; mentioning one agent wakes only that one | none | none | Covered |
+| MD-9 | Spec | An agent opens a topic from a message, once; the first message wakes the agents it names there; the same from a host | none | none | Covered (`tests/open-topic.test.mjs`, `tests/remote-open-topic.test.mjs`) |
 | MD-7 | Spec | A reaction and an outcome post start no turn | none | none | Covered |
 | MD-8 | UAT + spike | #470’s measured case: a Claude Code agent with a 3-minute background job and an answered choice reads the message within one agent step; today it takes 3 min 46 s | *tell-now-background-job* | none | **Planned, A2 (route), spike before A3** |
 | AT-1 | Spec | #439: two held wakes behind one card; Allow delivers both, Don’t allow expires both and tells each sender | *held-behind-card*, *held-released* | *ask-dropped* | Covered |

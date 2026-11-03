@@ -21,6 +21,9 @@ export { HOP_LIMIT };
  * ends, as any message to a busy agent waits. A persona the conversation doesn’t have needs the
  * person: a card asks to add it. After HOP_LIMIT wakes in a row without you, the next one waits for your confirm.
  */
+/** What a wake from a summary's turn is told (#225): one text, whichever tool it came through. */
+export const SUMMARY_WAKES_NO_ONE = 'A summary for the conversation wakes no one: finish it, and the person decides the rest.';
+
 export function agentWake(
   rt,
   fromSessionId,
@@ -28,6 +31,10 @@ export function agentWake(
   text,
   { confirmed = false, replyIn = undefined, fromTurnId = rt.turns.get(fromSessionId)?.id, itemId = null } = {},
 ) {
+  // Checked here, not in each tool, so no path that wakes from a turn gets around it (#225, #637). The turn is the one the
+  // call came from: Allow on a card wakes from the turn that asked, after a summary may have started.
+  const live = rt.turns.get(fromSessionId);
+  if (live?.summarizeTo && live.id === fromTurnId) return { ok: false, message: SUMMARY_WAKES_NO_ONE };
   const from = rt.s.sessions[fromSessionId];
   const p = rt.personaByHandle(handle);
   if (!from || !p) return { ok: false, message: `There’s no agent called @${handle}.` };
@@ -135,10 +142,8 @@ export function dropWakes(rt, se, how = 'stopped') {
   }
 }
 
-/** wake_agent { handle, message }, the tool, for the session rt.toolsFor made it for. A summary’s turn wakes no one (#225). */
+/** wake_agent { handle, message }, the tool, for the session rt.toolsFor made it for. A summary’s turn wakes no one (#225, agentWake). */
 export function wakeAgent(rt, sessionId, { handle, message }) {
-  if (rt.turns.get(sessionId)?.summarizeTo)
-    return { ok: false, message: 'A summary for the conversation wakes no one: finish it, and the person decides the rest.' };
   const text = String(message ?? '');
   return tooLongToSend('A message to another agent', text) ?? rt.agentWake(sessionId, String(handle).replace(/^@/, ''), text);
 }

@@ -1,0 +1,9 @@
+// SYNTHETIC PROTOCOL BASELINE ONLY — NOT FOR RECEIVER TESTS (see tests/fixtures/delivery-routes.md)
+{"event":"session_start","session_id":"agy-sess-spike-01","model":"gemini-3.8-flash-low"}
+{"step_update":{"step_type":"agent_response","state":"ACTIVE","text_delta":"Starting evaluation command in workspace..."}}
+{"step_update":{"step_type":"tool","tool_name":"run_command","state":"ACTIVE","tool_info":{"command":"sleep 180"}}}
+{"step_update":{"step_type":"tool","tool_name":"run_command","state":"DONE","duration_seconds":0.5,"tool_info":{"output":"Command backgrounded (pid 5521)"}}}
+{"step_update":{"step_type":"tool","tool_name":"mcp__postbox__show_block","state":"ACTIVE","tool_info":{"name":"mcp__postbox__show_block"}}}
+{"step_update":{"step_type":"tool","tool_name":"mcp__postbox__show_block","state":"DONE","duration_seconds":0.1,"tool_info":{"output":"[Postbox] URGENT: The person sent a mid-turn instruction: 'Skip private modules'.\n\nBlock shown."}}}
+{"step_update":{"step_type":"agent_response","state":"ACTIVE","text_delta":"Received urgent note via Postbox tool result: skipping private modules as requested."}}
+{"result":{"status":"SUCCESS","usage":{"input_tokens":350,"output_tokens":85}}}
