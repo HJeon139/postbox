@@ -176,6 +176,9 @@ test('#516 S3b: topic and side threads share their conversation’s assets, and 
   assert.match((await there.read_asset({ id })).message, /There’s no asset as_\w+ in this conversation/);
   assert.match((await there.write_asset({ id, base: 1, text: 'x' })).message, /no asset/);
   assert.equal(idOf((await there.write_asset({ name: 'shared.md', text: 'two' })).message) !== id, true, 'the name is free in another room');
+  // Each conversation lists its own assets alone.
+  assert.match((await there.list_assets({})).message, /\(Page 1 of 1: 1 asset\.\)$/);
+  assert.match((await A.list_assets({})).message, /\(Page 1 of 1: 1 asset\.\)$/);
 });
 
 test('#516 S3b: a store kept in memory has no assets folder, so a write says so and a read finds nothing', async (ctx) => {

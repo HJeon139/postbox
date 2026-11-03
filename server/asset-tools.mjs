@@ -5,6 +5,7 @@
 // text only: a path there names a file on the host, which Postbox can’t read until S5 copies files.
 
 import { ASSETS } from '../shared/limits.mjs';
+import { own } from '../shared/state-assets.mjs';
 import { fenceFor, partOf } from '../shared/text-parts.mjs';
 import { AgentFileError } from './agent-files.mjs';
 import { isTextBytes } from './asset-retention.mjs';
@@ -69,6 +70,8 @@ const TYPES = {
   pdf: 'application/pdf',
 };
 const TYPE = /^[a-z0-9][a-z0-9.+-]{0,63}\/[a-z0-9][a-z0-9.+-]{0,63}$/;
+/** list_assets’ order: by name, ignoring case and accents, as the person reads a listing. */
+const BY_NAME = new Intl.Collator('en', { sensitivity: 'base' });
 
 /**
  * The asset tools for one session’s turn, as toolsFor’s are: the room is the turn’s conversation’s, and the author
@@ -81,7 +84,7 @@ export function assetTools(rt, sessionId, turn, { onHost = false } = {}) {
   const room = () => roomOf(rt.s.threads, turn?.threadId ?? se().threadId);
   const publish = (/** @type {any} */ req) => publishAsset(rt, { ...req, room: room(), author: se().handle });
   return {
-    list_assets: (/** @type {any} */ args = {}) => listAssets(rt.s.assets ?? {}, room(), args),
+    list_assets: (/** @type {any} */ args = {}) => listAssets(rt.s, room(), args),
     read_asset: (/** @type {any} */ args = {}) => readAsset(rt, room(), args),
     write_asset: (/** @type {any} */ args = {}) => writeRequest(rt, sessionId, args, onHost).then((req) => (req.ok === false ? req : publish(req))),
     rename_asset: ({ id, base, name, op } = /** @type {any} */ ({})) =>
@@ -166,25 +169,27 @@ async function publishAsset(rt, req) {
 
 /** One asset as list_assets shows it. */
 function lineOf(asset) {
-  const head = asset.versions.find((x) => x.v === asset.head);
+  // Version v is always versions[v - 1] (shared/state-assets.mjs).
+  const head = asset.versions[asset.head - 1];
   if (!head?.sha256) return `[${asset.id}] ${asset.name}: deleted at v${asset.head} by @${head?.author}; restore_asset brings back an earlier version.`;
   return `[${asset.id}] ${asset.name}: v${asset.head} by @${head.author}, ${count(head.size)} bytes, ${head.type}, ${when(head.at)}.`;
 }
 
 /**
- * list_assets: the room’s assets by name, deleted ones too, a page at a time.
- * @param {Record<string, any>} assets @param {string} room @param {{ page?: unknown }} args
+ * list_assets: the room’s assets by name, deleted ones too, a page at a time. The room’s index (`assetRooms`, kept by the
+ * reducer) gives its ids, so a listing reads that room alone.
+ * @param {any} state @param {string} room @param {{ page?: unknown }} args
  */
-export function listAssets(assets, room, { page = 1 } = {}) {
-  const mine = Object.values(assets)
-    .filter((a) => a.room === room)
-    .sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }) || a.id.localeCompare(b.id));
+export function listAssets(state, room, { page = 1 } = {}) {
+  const ids = Object.keys(own(state.assetRooms, room)?.ids ?? {});
+  const mine = ids.map((id) => state.assets[id]).sort((a, b) => BY_NAME.compare(a.name, b.name) || (a.id < b.id ? -1 : 1));
   if (!mine.length) return { ok: true, message: 'This conversation has no assets yet. write_asset { name, text } publishes one.' };
   const pages = Math.ceil(mine.length / ASSETS.listPage);
   const p = Number.isInteger(page) ? Math.min(Math.max(1, /** @type {number} */ (page)), pages) : 1;
   const lines = mine.slice((p - 1) * ASSETS.listPage, p * ASSETS.listPage).map(lineOf);
   const more = p < pages ? ` list_assets { page: ${p + 1} } lists more.` : '';
-  return { ok: true, message: `${lines.join('\n')}\n\n(Page ${p} of ${pages}: ${count(mine.length)} assets.${more})` };
+  const total = mine.length === 1 ? '1 asset' : `${count(mine.length)} assets`;
+  return { ok: true, message: `${lines.join('\n')}\n\n(Page ${p} of ${pages}: ${total}.${more})` };
 }
 
 /**
@@ -197,7 +202,7 @@ export async function readAsset(rt, room, { id, version, from = 0 } = {}) {
   const asset = assetById(rt, id);
   if (!asset || asset.room !== room) return refused(`There’s no asset ${shown(id)} in this conversation. list_assets gives each asset’s id.`);
   const v = version === undefined || version === null ? asset.head : version;
-  const ver = Number.isInteger(v) ? asset.versions.find((x) => x.v === v) : null;
+  const ver = Number.isInteger(v) ? asset.versions[/** @type {number} */ (v) - 1] : null;
   if (!ver) return refused(`Asset ${asset.id} has no version ${clipText(String(v), 20)}: it has v1 to v${asset.head}, and v${asset.head} is the newest.`);
   const newest = ver.v === asset.head ? ' (the newest)' : `; v${asset.head} is the newest`;
   const head = `Asset ${asset.id}, “${asset.name}”, v${ver.v}${newest}, by @${ver.author}, ${when(ver.at)}.`;
