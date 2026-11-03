@@ -5,11 +5,10 @@
 // text only: a path there names a file on the host, which Postbox can’t read until S5 copies files.
 
 import { ASSETS } from '../shared/limits.mjs';
-import { own } from '../shared/state-assets.mjs';
 import { fenceFor, partOf } from '../shared/text-parts.mjs';
 import { AgentFileError } from './agent-files.mjs';
 import { isTextBytes } from './asset-retention.mjs';
-import { assetBlobs, roomOf, writeAsset } from './assets.mjs';
+import { assetBlobs, headOf, roomAssets, roomOf, versionAt, writeAsset } from './assets.mjs';
 import { clipText } from './helpers.mjs';
 
 /** The asset tools that only read: they answer while the store is closed, and don’t count as acting. */
@@ -169,20 +168,18 @@ async function publishAsset(rt, req) {
 
 /** One asset as list_assets shows it. */
 function lineOf(asset) {
-  // Version v is always versions[v - 1] (shared/state-assets.mjs).
-  const head = asset.versions[asset.head - 1];
+  const head = headOf(asset);
   if (!head?.sha256) return `[${asset.id}] ${asset.name}: deleted at v${asset.head} by @${head?.author}; restore_asset brings back an earlier version.`;
   return `[${asset.id}] ${asset.name}: v${asset.head} by @${head.author}, ${count(head.size)} bytes, ${head.type}, ${when(head.at)}.`;
 }
 
 /**
- * list_assets: the room’s assets by name, deleted ones too, a page at a time. The room’s index (`assetRooms`, kept by the
- * reducer) gives its ids, so a listing reads that room alone.
+ * list_assets: the room’s assets by name, deleted ones too, a page at a time. roomAssets reads them through the room’s
+ * index, so a listing costs that room alone.
  * @param {any} state @param {string} room @param {{ page?: unknown }} args
  */
 export function listAssets(state, room, { page = 1 } = {}) {
-  const ids = Object.keys(own(state.assetRooms, room)?.ids ?? {});
-  const mine = ids.map((id) => state.assets[id]).sort((a, b) => BY_NAME.compare(a.name, b.name) || (a.id < b.id ? -1 : 1));
+  const mine = roomAssets(state, room).sort((a, b) => BY_NAME.compare(a.name, b.name) || (a.id < b.id ? -1 : 1));
   if (!mine.length) return { ok: true, message: 'This conversation has no assets yet. write_asset { name, text } publishes one.' };
   const pages = Math.ceil(mine.length / ASSETS.listPage);
   const p = Number.isInteger(page) ? Math.min(Math.max(1, /** @type {number} */ (page)), pages) : 1;
@@ -202,7 +199,7 @@ export async function readAsset(rt, room, { id, version, from = 0 } = {}) {
   const asset = assetById(rt, id);
   if (!asset || asset.room !== room) return refused(`There’s no asset ${shown(id)} in this conversation. list_assets gives each asset’s id.`);
   const v = version === undefined || version === null ? asset.head : version;
-  const ver = Number.isInteger(v) ? asset.versions[/** @type {number} */ (v) - 1] : null;
+  const ver = versionAt(asset, v);
   if (!ver) return refused(`Asset ${asset.id} has no version ${clipText(String(v), 20)}: it has v1 to v${asset.head}, and v${asset.head} is the newest.`);
   const newest = ver.v === asset.head ? ' (the newest)' : `; v${asset.head} is the newest`;
   const head = `Asset ${asset.id}, “${asset.name}”, v${ver.v}${newest}, by @${ver.author}, ${when(ver.at)}.`;
