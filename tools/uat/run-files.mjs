@@ -6,6 +6,7 @@ import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { patchSession } from '../../shared/state.mjs';
+import { lines } from './history.mjs';
 
 /** The run’s folders, made: Postbox’s data, the workspace, each backend’s recorded streams, and screenshots. @param {string} dir */
 export async function runPaths(dir) {
@@ -237,4 +238,28 @@ export async function readUi(page) {
       `Object.fromEntries([...document.querySelectorAll('[data-key]')].filter((n) => n.querySelector(':scope .rv-doc')).map((n) => [n.dataset.key, n.querySelector('.rv-doc').innerText.split('\\n').filter((l) => /^\\s*\\|.*\\|\\s*$/.test(l)).length]))`,
     ),
   };
+}
+
+/** The asset files under a data folder, as { sha, bytes }: a blob’s name is its hash, split after two characters. */
+function assetFiles(dir) {
+  if (!existsSync(dir)) return [];
+  const folders = readdirSync(dir).filter((f) => /^[a-f0-9]{2}$/.test(f));
+  return folders.flatMap((f) => readdirSync(join(dir, f)).map((n) => ({ sha: f + n, bytes: readFileSync(join(dir, f, n)) })));
+}
+
+/**
+ * What a run’s store left in its data folder, for the asset checks (tools/uat/checks-assets.mjs): every event its log
+ * still has, whole and in order from its last snapshot, the snapshot, and the asset files with their bytes. Null when
+ * the run made no asset, so a run without one reads nothing more.
+ * @param {string} data  the run’s data folder
+ */
+export function readStore(data) {
+  const files = assetFiles(join(data, 'assets'));
+  if (!files.length) return null;
+  const segments = readdirSync(data)
+    .filter((n) => /^events-\d+\.jsonl$/.test(n))
+    .sort((a, b) => Number(a.slice(7, -6)) - Number(b.slice(7, -6)));
+  const log = segments.flatMap((n) => lines(readFileSync(join(data, n), 'utf8')));
+  const snap = join(data, 'snapshot.json');
+  return { log, snapshot: existsSync(snap) ? JSON.parse(readFileSync(snap, 'utf8')) : null, files };
 }

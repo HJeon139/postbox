@@ -14,7 +14,7 @@ import { newProbes } from './probes.mjs';
 import { presetFindings } from './regressions.mjs';
 import { writeReport } from './report.mjs';
 import { reviewFindings } from './review.mjs';
-import { readStreams, transcriptsFor, userSetup } from './run-files.mjs';
+import { readStore, readStreams, transcriptsFor, userSetup } from './run-files.mjs';
 import { readRun, runsRoot, writeJsonAtomic } from './runs.mjs';
 import { isTargeted, parseScenario, phaseCap } from './scenario.mjs';
 import { gapFinding, phaseGoals } from './triggers.mjs';
@@ -53,6 +53,7 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }
     agyStreams: readStreams(join(dir, 'streams', 'agy')),
     codexStreams: readStreams(join(dir, 'streams', 'codex')),
     events: readHistory(dir),
+    store: readStore(join(dir, 'data')),
     console: logs,
     apps: {},
     probes: { ...newProbes(), ...(saved.probes ?? {}) },

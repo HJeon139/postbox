@@ -51,7 +51,7 @@ import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
-import { keeper, readReceived, readStreams, readTranscripts, readUi, runPaths, userSetup } from './uat/run-files.mjs';
+import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi, runPaths, userSetup } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { chainLimitEnv, phaseCap, stepCap } from './uat/scenario.mjs';
@@ -267,7 +267,7 @@ async function main() {
     const refreshFacts = async () => {
       facts.state = (await api('/api/state')).state;
       facts.threads = threadsUnderTest(facts.state);
-      Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received) });
+      Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received), store: readStore(paths.data) });
       facts.kiroStreams = readStreams(paths.kiroStreams);
       facts.agyStreams = readStreams(paths.agyStreams);
       facts.codexStreams = readStreams(paths.codexStreams);
