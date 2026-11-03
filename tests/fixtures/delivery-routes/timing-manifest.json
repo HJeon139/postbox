@@ -1,0 +1,171 @@
+{
+  "version": 1,
+  "capturedAt": "2026-11-01T02:43:00Z",
+  "cliVersion": "2.1.296",
+  "model": "claude-haiku-5-5",
+  "scoringNote": "Manifest outcome 'passed' records transport and model-facing artifact delivery validity. Behavioral compliance per tests/spike-scorer.test.mjs distinguishes: Scenario B plain passed_exact_line; Scenario A' plain passed_line_prefix; Scenario A' attributed acknowledged_not_exact_line; negative controls passed_negative_control; PreToolUse hook refused.",
+  "runs": [
+    {
+      "name": "ScenarioA_Prime_Control_NoInject",
+      "scenario": "A'",
+      "framing": "None (Control)",
+      "fixture": "tests/fixtures/delivery-routes/scenarioa-prime-control-noinject.jsonl",
+      "outcome": "passed",
+      "behaviorOutcome": "passed_negative_control",
+      "durationMs": 11865,
+      "costUSD": 0.00424932,
+      "timings": {
+        "injectSentAt": null,
+        "echoReceivedAt": null,
+        "turn1EndedAt": 1793500942201,
+        "turn2FirstTokenAt": 1793500949990,
+        "sendToInitMs": null,
+        "sendToFirstTokenMs": null,
+        "writeToEchoMs": null
+      },
+      "eventRelativeTimestamps": {
+        "turn1ResultReceivedMs": 3192,
+        "injectSentMs": null,
+        "turn2InitReceivedMs": null,
+        "echoReceivedMs": null,
+        "firstTokenReceivedMs": 10981,
+        "taskNotificationReceivedMs": 9510
+      }
+    },
+    {
+      "name": "ScenarioA_Prime_Framing1_Plain_PostResult",
+      "scenario": "A'",
+      "framing": "Plain text",
+      "fixture": "tests/fixtures/delivery-routes/scenarioa-prime-framing1-plain-postresult.jsonl",
+      "outcome": "passed",
+      "behaviorOutcome": "passed_line_prefix",
+      "durationMs": 12968,
+      "costUSD": 0.00422895,
+      "timings": {
+        "injectSentAt": 1793500954434,
+        "echoReceivedAt": 1793500955637,
+        "turn1EndedAt": 1793500953432,
+        "turn2FirstTokenAt": 1793500955813,
+        "sendToInitMs": 46,
+        "sendToFirstTokenMs": 1379,
+        "writeToEchoMs": 1203
+      },
+      "eventRelativeTimestamps": {
+        "turn1ResultReceivedMs": 2624,
+        "injectSentMs": 3626,
+        "turn2InitReceivedMs": 3672,
+        "echoReceivedMs": 4829,
+        "firstTokenReceivedMs": 5005,
+        "taskNotificationReceivedMs": 11246
+      }
+    },
+    {
+      "name": "ScenarioA_Prime_Framing2_Attributed_PostResult",
+      "scenario": "A'",
+      "framing": "Person attribution",
+      "fixture": "tests/fixtures/delivery-routes/scenarioa-prime-framing2-attributed-postresult.jsonl",
+      "outcome": "passed",
+      "behaviorOutcome": "acknowledged_not_exact_line",
+      "durationMs": 13581,
+      "costUSD": 0.00423165,
+      "timings": {
+        "injectSentAt": 1793500967889,
+        "echoReceivedAt": 1793500969384,
+        "turn1EndedAt": 1793500966887,
+        "turn2FirstTokenAt": 1793500969597,
+        "sendToInitMs": 53,
+        "sendToFirstTokenMs": 1708,
+        "writeToEchoMs": 1495
+      },
+      "eventRelativeTimestamps": {
+        "turn1ResultReceivedMs": 3084,
+        "injectSentMs": 4086,
+        "turn2InitReceivedMs": 4139,
+        "echoReceivedMs": 5581,
+        "firstTokenReceivedMs": 5794,
+        "taskNotificationReceivedMs": 11447
+      }
+    },
+    {
+      "name": "ScenarioB_Control_NoInject",
+      "scenario": "B",
+      "framing": "None (Control)",
+      "fixture": "tests/fixtures/delivery-routes/scenariob-control-noinject.jsonl",
+      "outcome": "passed",
+      "behaviorOutcome": "passed_negative_control",
+      "durationMs": 8356,
+      "costUSD": 0.0041423300000000005,
+      "timings": {
+        "injectSentAt": null,
+        "echoReceivedAt": null,
+        "turn1EndedAt": 1793500984951,
+        "turn2FirstTokenAt": null,
+        "sendToInitMs": null,
+        "sendToFirstTokenMs": null,
+        "writeToEchoMs": null
+      },
+      "eventRelativeTimestamps": {
+        "turn1ResultReceivedMs": 7577,
+        "injectSentMs": null,
+        "turn2InitReceivedMs": null,
+        "echoReceivedMs": null,
+        "firstTokenReceivedMs": null,
+        "taskNotificationReceivedMs": 6599
+      }
+    },
+    {
+      "name": "ScenarioB_Framing1_Plain_30sTool",
+      "scenario": "B",
+      "framing": "Plain text",
+      "fixture": "tests/fixtures/delivery-routes/scenariob-framing1-plain-30stool.jsonl",
+      "outcome": "passed",
+      "behaviorOutcome": "passed_exact_line",
+      "durationMs": 33491,
+      "costUSD": 0.00432328,
+      "timings": {
+        "injectSentAt": 1793500990292,
+        "echoReceivedAt": 1793501016737,
+        "turn1EndedAt": 1793501018587,
+        "turn2FirstTokenAt": null,
+        "sendToInitMs": null,
+        "sendToFirstTokenMs": null,
+        "writeToEchoMs": 26445
+      },
+      "eventRelativeTimestamps": {
+        "turn1ResultReceivedMs": 32803,
+        "injectSentMs": 4508,
+        "turn2InitReceivedMs": null,
+        "echoReceivedMs": 30953,
+        "firstTokenReceivedMs": null,
+        "taskNotificationReceivedMs": 30914
+      }
+    },
+    {
+      "name": "ScenarioB_Framing3_Hook_Refused",
+      "scenario": "B",
+      "framing": "PreToolUse hook",
+      "fixture": "tests/fixtures/delivery-routes/scenarioB-framing3-hook-refused.jsonl",
+      "outcome": "refused",
+      "behaviorOutcome": "refused",
+      "durationMs": 8304,
+      "costUSD": 0.00426592,
+      "timings": {
+        "injectSentAt": null,
+        "echoReceivedAt": null,
+        "turn1EndedAt": 1793499730652,
+        "turn2FirstTokenAt": null,
+        "sendToInitMs": null,
+        "sendToFirstTokenMs": null,
+        "writeToEchoMs": null
+      },
+      "eventRelativeTimestamps": {
+        "turn1ResultReceivedMs": 8974,
+        "injectSentMs": null,
+        "turn2InitReceivedMs": null,
+        "echoReceivedMs": null,
+        "firstTokenReceivedMs": null,
+        "taskNotificationReceivedMs": 7003
+      }
+    }
+  ]
+}

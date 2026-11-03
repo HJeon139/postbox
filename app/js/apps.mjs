@@ -1,14 +1,15 @@
 // Agent-written apps on the host side: sandboxed frames, the bridge, the pre-display check, versions,
 // review mode, full screen, and unloading far-off-screen frames (they reload from saved state as you approach).
-// Also renders Mermaid diagrams (in their own sandbox) and KaTeX math in messages.
+// Diagrams and math in messages are md-enhance.mjs's; the bundled libraries both use are sandbox-libs.mjs's.
 
-import { MIN_TEXT_PX } from '/shared/diagram-lint.mjs';
 import { afterAppChecks, appChecksRunning, installAppChecks, recordAppCheck } from './app-check.mjs';
 import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
 import { api, client, itemsOf } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
+import { libSource, theme } from './sandbox-libs.mjs';
 import { openMenu, toast } from './ui.mjs';
 
+export { enhanceMarkdown } from './md-enhance.mjs';
 export { renderAppSendCard };
 
 const frames = new Set(); // { appId, version, iframe, check, review, onPin, onAnchors, onCrash }
@@ -16,7 +17,6 @@ const crashes = new Map(); // `${appId}:${v}` → message (a script error after 
 const reloaded = new Set(); // `${appId}:${v}` you chose Reload for after its check crashed: run it, don’t show the crash again
 const viewing = new Map(); // appId → an older version you’re looking at, read-only
 const unloaded = new Set(); // appIds whose frames are unloaded while off screen
-const theme = () => (document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
 const cap = () => Math.min(innerHeight * 0.8, 760);
 
 addEventListener('message', async (e) => {
@@ -340,49 +340,6 @@ addEventListener('resize', () => {
     for (const rec of frames) sizeFrame(rec);
   }, 100);
 });
-
-// ── Libraries for sandboxed pages ───────────────────────────────────────────────────────
-// Apps and diagrams get the bundled libraries from here, as text, and run them inline (see kit.js). KaTeX’s
-// fonts travel inside its stylesheet as data: URLs, since the page can’t fetch them either.
-const LIB_FILES = { d3: 'd3/d3.min.js', katex: 'katex/katex.min.js', mermaid: 'mermaid/mermaid.min.js' };
-const libCache = new Map();
-function libSource(name) {
-  if (!LIB_FILES[name]) return Promise.reject(new Error(`There’s no bundled library called “${name}”.`));
-  if (!libCache.has(name)) {
-    const text = (path) =>
-      fetch(`/kit/vendor/${path}`).then((r) => {
-        if (!r.ok) throw new Error(`Couldn’t load ${path}.`);
-        return r;
-      });
-    const css =
-      name === 'katex'
-        ? text('katex/katex.min.css')
-            .then((r) => r.text())
-            .then(inlineFonts)
-        : Promise.resolve(null);
-    const p = Promise.all([text(LIB_FILES[name]).then((r) => r.text()), css]).then(([js, c]) => ({ js, css: c }));
-    p.catch(() => libCache.delete(name));
-    libCache.set(name, p);
-  }
-  return libCache.get(name);
-}
-async function inlineFonts(css) {
-  const files = [...new Set([...css.matchAll(/url\(fonts\/([\w-]+\.woff2)\)/g)].map((m) => m[1]))];
-  const data = new Map();
-  await Promise.all(
-    files.map(async (f) => {
-      const buf = new Uint8Array(await (await fetch(`/kit/vendor/katex/fonts/${f}`)).arrayBuffer());
-      let bin = '';
-      for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
-      data.set(f, `data:font/woff2;base64,${btoa(bin)}`);
-    }),
-  );
-  // Keep the woff2 source of each font face, as a data: URL, and drop the woff and ttf fallbacks.
-  return css.replace(
-    /url\(fonts\/([\w-]+)\.woff2\) format\("woff2"\)(?:,url\([^)]*\) format\("[^"]*"\))*/g,
-    (_m, f) => `url(${data.get(`${f}.woff2`)}) format('woff2')`,
-  );
-}
 
 export function onThemeChange() {
   for (const rec of frames) {
@@ -810,94 +767,6 @@ addEventListener('focusin', (e) => {
   if (to instanceof HTMLIFrameElement) tabbing = { frame: to, at: Date.now() };
   to?.focus();
 });
-
-// ── Diagrams and math in messages ────────────────────────────────────────────────────────
-
-export function enhanceMarkdown(root) {
-  for (const fig of root.querySelectorAll('figure.md-mermaid:not(.done)')) {
-    fig.classList.add('done');
-    const src = fig.textContent;
-    const pre = h('pre.mono', { hidden: true }, src);
-    // Sandboxed by the policy the page is served with, like the apps.
-    const iframe = h('iframe', { title: 'Diagram', src: `/sandbox/mermaid?theme=${theme()}`, referrerpolicy: 'no-referrer' });
-    const btn = h(
-      'button.btn.sm.ghost',
-      {
-        type: 'button',
-        'aria-expanded': 'false',
-        onclick: () => {
-          pre.hidden = !pre.hidden;
-          btn.textContent = pre.hidden ? 'Show source' : 'Hide source';
-          btn.setAttribute('aria-expanded', String(!pre.hidden));
-        },
-      },
-      'Show source',
-    );
-    const box = h('figure.diagram', h('div.d-bar', h('span.label.grow', 'Diagram'), btn), iframe, pre);
-    fig.replaceWith(box);
-    const onMsg = (e) => {
-      if (e.source !== iframe.contentWindow || e.data?.__pbd !== 1 || e.origin !== 'null') return;
-      if (e.data.type === 'ready')
-        libSource('mermaid').then(({ js }) => iframe.contentWindow?.postMessage({ __pbd: 1, type: 'render', src, label: 'Diagram', lib: js }, '*'));
-      const itemEl = box.closest('[data-key]');
-      const threadId = box.closest('[data-thread]')?.dataset.thread;
-      // A diagram that couldn’t be drawn goes to the server, once, so the agent hears Mermaid’s message and can
-      // fix it. The person still sees the frame’s “couldn’t be drawn” text and Show source.
-      if (e.data.type === 'error' && e.data.render && itemEl && threadId) {
-        if (!iframe.dataset.failed) {
-          iframe.dataset.failed = '1';
-          const error = { message: String(e.data.message ?? ''), line: e.data.line ?? null };
-          api(`/api/threads/${threadId}/items/${itemEl.dataset.key}/diagram`, { src, error }).catch(() => {});
-        }
-      } else if (e.data.type === 'error') console.error(`Diagram: ${e.data.message}`);
-      if (e.data.type === 'size') {
-        iframe.style.height = `${Math.min(e.data.height, 900)}px`;
-        iframe.dataset.sized = '1';
-        // Too small to read: tell the server, once per diagram, so the agent can redraw it.
-        if (typeof e.data.textPx === 'number') iframe.dataset.textPx = String(e.data.textPx);
-        if (e.data.textPx < MIN_TEXT_PX && itemEl && threadId && !iframe.dataset.reported) {
-          iframe.dataset.reported = '1';
-          api(`/api/threads/${threadId}/items/${itemEl.dataset.key}/diagram`, { src, textPx: e.data.textPx, width: e.data.width }).catch(() => {});
-        }
-      }
-      if (!iframe.isConnected) removeEventListener('message', onMsg);
-    };
-    addEventListener('message', onMsg);
-  }
-  const math = root.querySelectorAll('.md-math:not(.rendered)');
-  if (math.length)
-    loadKatex()
-      .then((katex) => {
-        for (const el of math) {
-          const tex = el.textContent;
-          try {
-            katex.render(tex, el, { displayMode: el.dataset.display === 'true', throwOnError: false, trust: false, strict: 'ignore' });
-            // KaTeX writes MathML beside the visual math, which is what screen readers read.
-            el.classList.add('rendered');
-            // A wide formula scrolls sideways in a narrow column; the keyboard has to be able to scroll it too.
-            if (el.dataset.display === 'true')
-              requestAnimationFrame(() => {
-                if (el.scrollWidth > el.clientWidth + 1) el.tabIndex = 0;
-              });
-          } catch {
-            /* leave the source visible */
-          }
-        }
-      })
-      .catch(() => {});
-}
-
-let katexP = null;
-function loadKatex() {
-  katexP ??= new Promise((resolve, reject) => {
-    document.head.append(h('link', { rel: 'stylesheet', href: '/kit/vendor/katex/katex.min.css' }));
-    const s = h('script', { src: '/kit/vendor/katex/katex.min.js' });
-    s.onload = () => resolve(window.katex);
-    s.onerror = reject;
-    document.head.append(s);
-  });
-  return katexP;
-}
 
 addEventListener('resize', () => {
   for (const rec of frames.values()) sizeFrame(rec);

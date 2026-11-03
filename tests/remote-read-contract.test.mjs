@@ -277,6 +277,7 @@ test('read calls over 2,000 chars are repeatable and not truncated on retry', as
   const session = { id: 's1', remoteTurn: { replies: [] } };
   const rt = {
     s: { sessions: { s1: session } },
+    store: { writable: true }, // the one write gate reads it, as for every tool call (server/tool-gate.mjs)
     updateSession: (_id, patch) => Object.assign(session, patch),
     toolsFor: () => ({ read_message: () => ({ ok: true, message: fullText }) }),
   };

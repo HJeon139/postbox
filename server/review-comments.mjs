@@ -8,6 +8,7 @@
 import { validateBlock } from '../shared/catalog.mjs';
 import { commentErrors, MAX_COMMENTS, quoteOf, VERDICTS } from '../shared/review-comments.mjs';
 import { findQuote, splitLines } from '../shared/review-diff.mjs';
+import { SUMMARY_WAKES_NO_ONE } from './side-threads.mjs';
 
 /**
  * review_block { blockId, comments, verdict? } for the session’s turn.
@@ -17,7 +18,8 @@ import { findQuote, splitLines } from '../shared/review-diff.mjs';
 export function reviewBlock(rt, sessionId, args) {
   const se = rt.session(sessionId);
   // A summary for the conversation wakes no one (#225, #93): a review would wake the block’s agent, and post in the room.
-  if (rt.turns.get(sessionId)?.summarizeTo) return no('A summary for the conversation wakes no one: finish it, and the person decides the rest.');
+  // Refused here as well as in agentWake, since its comments would be written before any wake.
+  if (rt.turns.get(sessionId)?.summarizeTo) return no(SUMMARY_WAKES_NO_ONE);
   const { blockId, comments, verdict } = args && typeof args === 'object' ? args : {};
   if (typeof blockId !== 'string' || !blockId.trim()) return no('blockId names the review block: its id, or its item id.');
   if (verdict !== undefined && !VERDICTS.includes(verdict)) return no('verdict is “comment”, “approve” or “request_changes”, or left out.');

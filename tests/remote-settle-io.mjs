@@ -44,7 +44,10 @@ export const holdingIo = (match, { reject = false } = {}) => {
         await hold({ kind: 'appendFile', path, line });
         return fsp.appendFile(path, line, opt);
       },
-      stat: (path) => fsp.stat(path),
+      stat: async (path) => {
+        await hold({ kind: 'stat', path });
+        return fsp.stat(path);
+      },
     },
     entered,
     release,

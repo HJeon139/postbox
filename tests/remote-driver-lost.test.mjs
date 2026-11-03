@@ -25,7 +25,7 @@ test('driverLost on a closed broker answers nothing and writes nothing', async (
     s.send('call', { id: 'call_r', name: 'read_message', args: { id: 'i0' } });
     await until(() => k.sent.some((m) => m.type === 'tool' && m.id === 'call_r'), 'the read sent to Postbox');
     const before = journal(h, turn).length;
-    k.b.close();
+    await k.b.close();
     k.state.attached = false;
     k.b.driverLost();
     // The claim is the observable: an unguarded driverLost claims the read (settleOffline sets it before any await),

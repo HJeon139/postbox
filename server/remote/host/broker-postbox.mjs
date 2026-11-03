@@ -4,12 +4,15 @@
 import { REMOTE_READ_TIMEOUT_MS } from '../../../shared/limits.mjs';
 import { armReadTimer, settled, settleOffline } from './broker-offline.mjs';
 import { endPrompt, onAnswer, orphaned, promptBody } from './broker-prompts.mjs';
-import { ended, exists, note } from './broker-records.mjs';
+import { CLOSING, ended, exists, note } from './broker-records.mjs';
 import { saveSnapshot, snapshotItems } from './broker-snapshot.mjs';
 import { CANCELED } from './broker-state.mjs';
 import { onReply, toolBody } from './broker-tools.mjs';
 
 /** @typedef {import('./broker-state.mjs').Broker} Broker */
+
+/** The message types onMessage takes. */
+const HANDLED = new Set(['snapshot', 'snapshot-items', 'answer', 'reply']);
 
 /**
  * snapshot, snapshot-items, answer and reply; false for any other.
@@ -17,6 +20,13 @@ import { onReply, toolBody } from './broker-tools.mjs';
  * @param {{ send: (type: string, body: Record<string, unknown>) => void, fail: (code: string, text: string) => void }} reply
  */
 export async function onMessage(b, m, reply) {
+  // A closed broker takes nothing from Postbox (#426): a reply would take a new claim, whose record the close isn't
+  // waiting for. A reply or answer is left for the next daemon, which Postbox sends it to again; a snapshot is dropped.
+  if (b.closed) {
+    if (m.type === 'reply' || m.type === 'answer' || m.type === 'snapshot-items')
+      reply.fail('internal', `${CLOSING[0].toUpperCase()}${CLOSING.slice(1)}. Send it again.`);
+    return HANDLED.has(m.type);
+  }
   switch (m.type) {
     case 'snapshot':
       await saveSnapshot(b, m.turn, { turn: m.turn, home: m.home, threads: m.threads });

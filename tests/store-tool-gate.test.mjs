@@ -43,6 +43,7 @@ test('every tool is classified for the gate: the read set, or the writers; a new
     'add_dataset',
     'ask_for_tool',
     'bring_to_conversation',
+    'open_topic',
     'cancel_wake',
     'define_term',
     'permission_prompt',

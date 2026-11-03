@@ -1,6 +1,7 @@
-// What reaches the browser (designs/architecture.md, “What reaches the browser”). Every path that sends state or
-// events to the page goes through these: today /api/state, the live frames and the backlog frames. The Store’s
-// history, its snapshots and its other subscribers keep the raw state and events.
+// What reaches the browser (designs/architecture.md, “What reaches the browser”). The state and the event stream go
+// through these: /api/state, and the live and backlog frames. Every other route that answers with a piece of state
+// does so directly, and carries only public keys’ data, which review holds until A1b’s check. The Store’s history, its
+// snapshots and its other subscribers keep the raw state and events.
 
 import { EVENTS, PUBLIC_STATE_KEYS, STREAM } from '../shared/state.mjs';
 

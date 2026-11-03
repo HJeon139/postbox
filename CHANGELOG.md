@@ -2,6 +2,58 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.14.0 (2026-11-03)
+
+### Features
+
+- **threads:** an agent opens a topic thread from any message with open_topic (#637)
+
+### Fixes
+
+- **threads:** the no-handle refusal quotes its example as the list refusal does (#637)
+- **threads:** agentWake refuses a wake from a summary's turn, for every tool (#637)
+- **threads:** open_topic posts its message first and wakes each mention from it (#637)
+- **threads:** open_topic posts its message when no wake did, and the reply says why (#637)
+- **threads:** a host's queued call the gate refuses gets no reply, so it runs again (#637)
+- **threads:** I6 compares the handles an open named; a refused host call keeps nothing (#637)
+- **threads:** a thread's catch-up keeps an ask that mentions the agent (#507)
+- **store:** a host's tool call passes the same write gate as a local one (#637)
+- **threads:** a message has one topic, even while a commit is held (#637)
+
+## 1.13.1 (2026-11-02)
+
+### Fixes
+
+- **blocks:** choose panels for wrapping options
+
+## 1.13.0 (2026-11-02)
+
+### Features
+
+- **read-message:** read_message on an app gives its code, in parts, pinned to a version
+
+### Fixes
+
+- **read-message:** a part never ends inside a character; test the longer fence
+- **runtime:** agents a message wasn't sent to get its attachments' paths
+- **thread:** a diagram's listener goes with its frame; topic threads redraw for inherited terms
+
+## 1.12.3 (2026-11-02)
+
+### Fixes
+
+- **remote:** classify launcher exits by status
+- **kiro:** a session over the request size limit starts over with the usual catch-up
+- **remote:** distinguish launcher startup failures
+
+## 1.12.2 (2026-11-02)
+
+### Fixes
+
+- **remote:** a closed broker takes no reply or answer from Postbox (#426)
+- **remote:** a closed broker starts no write, and close waits for the rest (#426)
+- **remote:** broker.close waits for writes in flight, and the settle specs wait for it (#426)
+
 ## 1.12.1 (2026-11-02)
 
 ### Fixes

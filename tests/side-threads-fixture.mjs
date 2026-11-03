@@ -26,8 +26,8 @@ export class ScriptedAdapter {
   }
 }
 
-export function setup() {
-  const store = new Store(null);
+/** @param {Store} [store]  a store of the spec's own, such as a held one (tests/stop-reply-fixture.mjs) */
+export function setup(store = new Store(null)) {
   const adapter = new ScriptedAdapter();
   const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({

@@ -52,6 +52,8 @@ const outcome = () => str({ min: 1, max: LIMITS.outcome });
 
 const COMMON = { id: id(), type: str(), version: int({ min: 1, max: 999 }), title: str({ max: 200 }), fallback: str({ min: 1, max: LIMITS.fallback }) };
 const COMMON_REQUIRED = ['id', 'type', 'version', 'fallback'];
+// Retired fields stay valid so an update to a stored block doesn’t invalidate what an older agent showed.
+const RETIRED = { choice: { display: oneOf('chips', 'buttons') } };
 
 const SCHEMAS = {
   choice: {
@@ -61,7 +63,6 @@ const SCHEMAS = {
       multiple: bool(),
       max: int({ min: 1, max: LIMITS.choiceOptions }),
       other: obj({ label: str({ min: 1, max: 80 }), placeholder: str({ max: 120 }) }, ['label']),
-      display: oneOf('chips', 'buttons'),
       submitLabel: str({ min: 1, max: 40 }),
       outcome: outcome(),
     },
@@ -275,7 +276,7 @@ export function validateBlock(raw, opts = {}) {
     };
   }
   const schema = SCHEMAS[raw.type];
-  obj({ ...COMMON, ...schema.fields }, [...COMMON_REQUIRED, ...schema.required])(raw, 'block', errors);
+  obj({ ...COMMON, ...schema.fields, ...(RETIRED[raw.type] ?? {}) }, [...COMMON_REQUIRED, ...schema.required])(raw, 'block', errors);
   if (!errors.length) schema.check?.(raw, errors, opts);
   // Paths read better without the leading "block." for people.
   const clean = errors.map((e) => e.replace(/^block\./, '').replace(/^block /, 'The block '));
