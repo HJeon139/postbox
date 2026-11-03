@@ -60,3 +60,37 @@ test('a write while its conversation is being deleted is refused as deleting, sa
   store.emit('thread', { id: 'c1', members: [], deleting: null });
   assert.equal((await write({ name: 'a.md', bytes: Buffer.from('one') })).ok, true, 'Undo sets deleting to null');
 });
+
+test('a conversation erased between the bytes being stored and the commit: the write is refused, and no room is rebuilt (#723)', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-assetroom-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const store = new Store(null);
+  store.emit('thread', { id: 'c1', members: [] });
+  const real = assetBlobs(dir);
+  assert.equal(
+    (await writeAsset(store, real, { kind: 'write', room: 'c1', type: 'text/plain', author: 'dev', name: 'a.md', bytes: Buffer.from('one') })).ok,
+    true,
+  );
+  // The bytes are stored first, then the commit checks the room: here the conversation's erase lands in between, as
+  // deleting it emits (server/thread-erase.mjs).
+  const racing = {
+    put: async (/** @type {Buffer} */ bytes) => {
+      const r = await real.put(bytes);
+      store.emit('asset.erase', { room: 'c1', at: 5 });
+      store.emit('remove', { kind: 'thread', id: 'c1' });
+      return r;
+    },
+  };
+  const late = await writeAsset(store, /** @type {any} */ (racing), {
+    kind: 'write',
+    room: 'c1',
+    type: 'text/plain',
+    author: 'dev',
+    name: 'b.md',
+    bytes: Buffer.from('two'),
+  });
+  assert.deepEqual([late.ok, late.code], [false, 'no-conversation'], 'the room is checked in the commit, after the erase');
+  assert.equal(store.state.assetRooms?.c1, undefined, 'no index rebuilt for the erased conversation');
+  assert.deepEqual(Object.keys(store.state.assets), []);
+  assert.deepEqual(kept(store.state), []);
+});
