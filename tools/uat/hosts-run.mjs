@@ -9,6 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { checkHostSettings } from '../../shared/remote-settings.mjs';
 import { addHost, closeAll, editHost, install, placePersona } from './driver-hosts.mjs';
 import { addrs, localListeners, remoteListeners } from './hosts-probe.mjs';
 import { launcherScript, linesOf, measureOn, onHost, processesOf, SCRIPTS, UUID, workScript } from './hosts-ssh.mjs';
@@ -161,7 +162,11 @@ const SETUP = { addHost, editHost, install, makeRunFolder, stage: stageOlder };
  */
 async function stageOn(hr, h, stage) {
   const { tag, version } = /** @type {{ tag: string, version: string }} */ (h.stage);
-  const host = { id: /** @type {string} */ (h.id), name: h.destination, settings: h.settings };
+  // The settings as the server keeps them, every key filled in from the defaults: the older installer’s sshArgs reads
+  // them whole (server/remote/ssh-args.mjs), and the options give only what they change.
+  const settings = checkHostSettings(h.settings);
+  if (!settings.ok) throw new Error(`${h.label}’s settings: ${settings.error}`);
+  const host = { id: /** @type {string} */ (h.id), name: h.destination, settings: settings.value };
   await stage({ root: hr.root, tag, version, data: hr.record.laptopData, label: h.label, host });
   hr.log(`${h.label}: staged Postbox ${version} (${tag}) in place of the run’s Install, so its first turn finds that older version.`);
   return { staged: version, stagedAt: Date.now() };

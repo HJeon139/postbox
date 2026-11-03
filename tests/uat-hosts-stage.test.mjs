@@ -7,6 +7,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { defaultHostSettings } from '../shared/remote-settings.mjs';
 import { hostMode, stagedOf } from '../tools/uat/hosts-options.mjs';
 import { createHostRun, setUpHost } from '../tools/uat/hosts-run.mjs';
 import { stageOlder, tagRepo } from '../tools/uat/hosts-stage.mjs';
@@ -122,7 +123,7 @@ test('#464 setting up a host with an older Postbox to stage stages it in place o
   await setUpHost(hr, hr.hosts[0], 'pr_1', ui);
   done();
   assert.equal(staged.length, 1);
-  assert.deepEqual(staged[0].host, { id: 'ho_1', name: DEST, settings: { idleTimeout: 60_000 } });
+  assert.deepEqual(staged[0].host, { id: 'ho_1', name: DEST, settings: { ...defaultHostSettings(), idleTimeout: 60_000 } });
   assert.equal(staged[0].version, '1.16.1');
   assert.equal(staged[0].data, hr.record.laptopData, 'the token goes where the run’s Postbox reads it');
   assert.equal(hr.record.setup[0].label, 'host1');
