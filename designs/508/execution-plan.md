@@ -27,6 +27,32 @@
 | 6 | Confirm which backends gemini can run: `delivery.md` runs on Claude Code, Codex, Kiro and Antigravity (DL-8), and Kiro isn’t among the paid backends. Three runs leave Kiro unverified; they don’t meet DL-8 | The person | A2’s confirmation |
 | 7 | Set a spending limit for UAT runs per step | The person | Every confirmation |
 
+## Where it stands (2 November 2026, when the room closed)
+
+The “rearchitecture-508” room closed on 2 November 2026. This section records what it decided that the other documents don't yet say, and where every unfinished piece lives, so nothing exists only in the room.
+
+**Merged:** Harness (#539), Now (#537), the read contract (#577, #616), Store 1a (#588) and 1b (#598) with the held readers (#611), the queue view (#597, #427), PR 1 of A1, one event table and the browser projection (#630), rejected events (#632, #609, #610), `broker.close()` (#629), and room rules 19 to 21 (#636).
+
+**Waiting on the integrator:** #631 (the delivery-route spike's evidence), #639 (`open_topic` and the thread catch-up, #637 and #507), #659 (the review guide). **Still in review:** #633 (the needs stopgap, #366), at its fifth round on the restart sweep.
+
+**Decided in the room, not yet in `design.md`:**
+- **Client-side virtualization first, the server window later.** The page keeps a conversation's data in memory and draws only the items near the view, anchored by B1b's explicit view state. B1a (positions), B2 (the items API) and B3 (the server window) wait until a measurement on a large room shows virtualization isn't enough for PF-1. Virtualization needs no change to A1, since needs-you and open asks still read the whole state in memory. (The person, 2 November.)
+- **#305 is parked** behind the integrator's answer on slice order (#615's comment of 2 November). It cuts the state the page loads (old turns' work and activity), not the number of messages drawn.
+- **A1 is split,** as the integrator asked on #608: PR 1 is merged (#630); A1b, the ask-only reducer with its first producer and #366's and #594's cases as specs, is next and not yet designed. It waits on #633. A2 to A4 follow it.
+- **The process now in force:** rules 19 to 21 (`room-rules.md`); critic's adversarial pass in a fresh subagent on every pull request; authors read `designs/review-guide.md` (#659); the author's UAT run for changes that touch a conversation surface; the person approves pushes, not reply texts; a rebase with no code change keeps its sign-off.
+
+**Unfinished work, and where it is:**
+
+| Piece | Where | Owner |
+|---|---|---|
+| B1b, the view state and #356/#357's specs, with B1's design note | branch `feat/508-b1b-view-state`, linked from #531 | engineer |
+| The #305 archive pass and its readers | branches `fix/305-archive-turns`, `fix/305-readers`, linked from #305; design in #615 | engineer |
+| The A1 and A2 delivery-routes design (approved by critic and developer) | a docs pull request into `designs/508/delivery-routes.md` | gpt |
+| A1b, client-side virtualization, the flaky epoch-token test | their own issues, linked from #508 | gpt, engineer, open |
+| The lag hotfix branch `fix/chunk-snapshot` | abandoned (#560: v1.3.0's fixes cured the lag) | none |
+
+**Decisions still open:** #544 (P0 Kiro), #538 (a supervisor agent), #564 (split and priority), and #305's slice order (the integrator's).
+
 ## Waves
 
 At most three steps in flight at once, so reviews keep up. Track A is the critical path.
@@ -44,7 +70,7 @@ flowchart TD
 |---|---|---|
 | 1 | Harness, Store, Now, Queue view (#427) | None depends on another step; the queue view (#427) is a view over `main`’s queue list and A3 later keeps its spec. Harness and Store gate A1; Now ships #504’s and #515’s fixes early. Now merges first and Store rebases onto it, since both change `server/store.mjs` and the session path. |
 | 2 | A1, B1, Remote read contract; A2’s recorded turns | A1 needs Harness and Store. B1 needs nothing; the read contract needs #489 for Kiro. gemini records a failing turn and the turn after it on each backend, so A2 can start in wave 3. |
-| 3 | A2, B2 | A2 needs A1 and the recorded turns. B2 needs B1. |
+| 3 | A2, B2 | A2 needs A1 and the recorded turns. B2 needs B1. **From 2 November, B2 waits for a measurement (see “Where it stands”); client-side virtualization comes after B1b instead.** |
 | 4 | Delivery-route spike, then A3, A4, B3 | The spike records its own mid-turn fixtures with #586’s tooling and comes before A3 (#470, MD-8). A3 and A4 need A2. B3 needs B2, A1 and #495. |
 
 ## One step, start to finish

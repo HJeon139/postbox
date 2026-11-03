@@ -462,6 +462,8 @@ Decided (8.5): any change to an item reaches the agents it concerns, as `notify`
 
 ## 10. Browser
 
+**Decided 2 November 2026: client-side virtualization comes first.** The page keeps an open conversation's items in memory, as today, and mounts only those near the view, anchored by the view state (B1b). The window below, which pages items from the server (B1a's positions, B2's items API, B3), waits until a measurement on a large room shows virtualization alone misses PF-1. The view state, interactive state across unmounting (#494) and the search box for PF-8 apply to both. (`execution-plan.md`, “Where it stands”.)
+
 - **State:** thread headers, app headers, sessions and open records for every conversation. Items only for open conversations.
 - **The window** is one contiguous range of items per open conversation:
   - Scrolling near its top loads the page before it.
