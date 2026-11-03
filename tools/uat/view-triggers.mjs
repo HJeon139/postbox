@@ -3,30 +3,26 @@
 // (tools/uat/diagram-probe.mjs), not the state, since what’s drawn isn’t in it.
 
 /**
- * How long after the page loads every frame it drew eagerly has loaded. A frame loads as its reply is drawn without
- * #701, in well under a second for one small diagram, so a frame still unloaded past this is one the page deferred.
- */
-export const SETTLED_MS = 5000;
-
-/**
- * A diagram out of view was still unloaded once the page had settled, and a later sample shows it drawn: the page
- * deferred it until it neared the view, and it drew once it did (#695, #701). The runner’s screenshots scroll to each
- * diagram after the first sample, which is the scroll that draws it.
+ * The page had asked for fewer diagram pages than it had diagram frames, with one out of view and not drawn, and a later
+ * sample of the same page load shows more pages asked for and that frame drawn: the page deferred the frame until it
+ * neared the view, then loaded it (#695, #701). An eager frame is requested as it’s mounted, so without #701 the page
+ * has asked for every frame by the first sample, and this stays silent. A sample whose timing buffer was full can’t
+ * count, so it’s skipped. The runner’s screenshots scroll to each diagram after the first sample, which loads it.
  * @param {{ probes?: { diagrams?: any[] } }} f
  */
 function diagramDeferred(f) {
-  const samples = f.probes?.diagrams ?? [];
+  const samples = (f.probes?.diagrams ?? []).filter((s) => !s.full);
   for (const [i, s] of samples.entries()) {
-    if (s.sinceLoad < SETTLED_MS) continue;
-    for (const fr of s.frames) {
-      if (fr.loaded || fr.inView) continue;
-      const drawn = samples.slice(i + 1).find((later) => later.frames.some((x) => x.key === fr.key && x.loaded));
+    if (s.requested >= s.frames.length) continue;
+    const waiting = s.frames.filter((fr) => !fr.loaded && !fr.inView);
+    for (const fr of waiting) {
+      const samePage = samples.slice(i + 1).filter((later) => later.sinceLoad > s.sinceLoad);
+      const drawn = samePage.find((later) => later.requested > s.requested && later.frames.some((x) => x.key === fr.key && x.loaded));
       if (!drawn) continue;
-      const after = Math.round(s.sinceLoad / 1000);
       return [
         {
           at: s.at,
-          evidence: `The diagram in ${fr.key} was out of view and not loaded ${after} s after the page loaded (step ${s.step}); it had drawn by step ${drawn.step}.`,
+          evidence: `At step ${s.step} the page had asked for ${s.requested} of its ${s.frames.length} diagram pages, and the diagram in ${fr.key} was out of view and not drawn; by step ${drawn.step} it had asked for ${drawn.requested}, and that diagram had drawn.`,
         },
       ];
     }
@@ -37,7 +33,7 @@ function diagramDeferred(f) {
 export const VIEW_TRIGGERS = {
   'diagram-deferred': {
     issue: 695,
-    says: 'a diagram out of view stayed unloaded once the page settled, and drew once it was scrolled to',
+    says: 'the page asked for fewer diagram pages than it had diagrams, and a diagram out of view loaded and drew later',
     recorded: (f) => Array.isArray(f.probes?.diagrams),
     run: diagramDeferred,
   },

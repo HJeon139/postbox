@@ -42,4 +42,4 @@ Search for a word that only appears in the seeded room’s first day, and open t
 - triggers: diagram-deferred
 - steps: 4
 
-The seeded room has six diagrams spread through it. Without scrolling, type a short message to @researcher asking for a one-line summary of the room, and say how quickly what you type appears. Then scroll up until you reach a diagram, and say whether it’s drawn.
+The seeded room has six diagrams spread through it. Without scrolling, type a short message to @researcher asking for a one-line summary of the room, and say how quickly what you type appears. Then scroll up until you reach a diagram, and say whether it’s drawn. (The runner’s screenshots also scroll to each diagram after the first step; the trigger reads what the page had asked for before them.)

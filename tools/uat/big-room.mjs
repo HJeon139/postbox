@@ -103,16 +103,20 @@ export function bigRoomItems({
 }
 
 /**
- * Ends `n` agent replies in a Mermaid diagram: the first agent reply at or after each of n even steps through the filler.
- * It draws no random numbers, so the room is otherwise the one without diagrams. @param {any[]} items @param {number} n
+ * Ends `n` agent replies in a Mermaid diagram, one each: the first agent reply not yet given one at or after each of n
+ * even steps through the filler. It draws no random numbers, so the room is otherwise the one without diagrams. A room
+ * with fewer agent replies than n after its landmarks is refused. @param {any[]} items @param {number} n
  */
 function addDiagrams(items, n) {
   const first = 6; // after the landmarks
   const stride = Math.floor((items.length - first) / Math.max(n, 1));
+  let last = first - 1;
   for (let k = 0; k < n; k++) {
-    const at = items.findIndex((it, i) => i >= first + k * stride && it.kind === 'agent');
-    if (at < 0) return;
+    const from = Math.max(last + 1, first + k * stride);
+    const at = items.findIndex((it, i) => i >= from && it.kind === 'agent');
+    if (at < 0) throw new Error(`The big room has too few agent replies for ${n} diagrams.`);
     items[at] = { ...items[at], text: `${items[at].text}\n\n\`\`\`mermaid\nflowchart TD\n  D${k}a[Plan] --> D${k}b[Ship]\n\`\`\`\n` };
+    last = at;
   }
 }
 

@@ -164,6 +164,15 @@ test('#701: by default the room has no diagrams; with diagrams: n, n agent repli
   );
 });
 
+test('#701: each diagram is in its own reply, however many are asked for, and a room too small for them is refused', () => {
+  for (const n of [1, 6, 200, 500]) {
+    const drawn = bigRoomItems({ diagrams: n }).items.filter((it) => MERMAID.test(it.text ?? ''));
+    assert.equal(drawn.length, n, `${n} replies end in a diagram`);
+    for (const it of drawn) assert.equal(it.text.split('```mermaid').length, 2, `${it.id} has one diagram`);
+  }
+  assert.throws(() => bigRoomItems({ count: 10, diagrams: 6 }), /too few agent replies for 6 diagrams/);
+});
+
 test('#701: `- seed-diagrams: n` asks the big room for n diagrams; absent, none; mistyped, it’s refused', async () => {
   const { parseScenario } = await import('../tools/uat/scenario.mjs');
   const head = (extra) => `# Big room\n\n- seed: big-room\n${extra}- steps: 4\n\nRead back.\n`;

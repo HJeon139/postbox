@@ -6,6 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { sampleDiagrams } from '../../tools/uat/diagram-probe.mjs';
+import { VIEW_TRIGGERS } from '../../tools/uat/view-triggers.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -47,13 +48,21 @@ test('#695: diagrams out of view don’t load, and one scrolled to draws', async
   await expect(last, 'the diagram in view draws').toHaveAttribute('data-sized', '1');
   // The four diagrams are about 13,000 px apart, so only the one in view loads; a mutant leaving any other eager fails.
   expect(loads, 'only the diagram in view loaded its page').toBe(1);
-  // The UAT’s diagram probe reads the same (tools/uat/diagram-probe.mjs, #701’s trigger).
-  const probe = await sampleDiagrams((e) => page.evaluate(e));
-  expect(probe.frames.map((f) => [f.key, f.loaded, f.inView])).toEqual(
-    ids.filter((_, i) => DIAGRAMS.includes(i)).map((k) => [k, k === ids[29], k === ids[29]]),
-  );
+  // The UAT’s diagram probe counts the same request, and its trigger reads it (tools/uat/diagram-probe.mjs, #701).
+  const before = await sampleDiagrams((e) => page.evaluate(e));
+  expect([before.requested, before.frames.length, before.full]).toEqual([1, 4, false]);
   const first = page.locator(`[data-key="${ids[0]}"] figure.diagram iframe`);
   await first.scrollIntoViewIfNeeded();
   await expect(first, 'the first diagram draws once scrolled to').toHaveAttribute('data-sized', '1');
   expect(loads, 'scrolling to it loaded its page, and no other').toBe(2);
+  const after = await sampleDiagrams((e) => page.evaluate(e));
+  const fired = VIEW_TRIGGERS['diagram-deferred'].run({
+    probes: {
+      diagrams: [
+        { step: 1, ...before },
+        { step: 2, ...after },
+      ],
+    },
+  });
+  expect(fired, 'diagram-deferred fires on these two samples').toHaveLength(1);
 });
