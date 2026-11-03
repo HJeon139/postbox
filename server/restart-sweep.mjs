@@ -9,7 +9,7 @@ import { nextNeed, RANK } from './card-needs.mjs';
  * expireStalePermissions). @param {any} rt @param {any} se @param {any} need
  */
 function stillWaits(rt, se, need) {
-  const card = rt.store.pending.items(need.threadId ?? se.threadId).find((/** @type {any} */ x) => x.id === need.itemId);
+  const card = cardOf(rt, se, need);
   if (!card) return false;
   if (need.kind === 'failed') return card.status === 'failed';
   if (need.kind === 'permission') return card.status === 'open' && rt.remote.keepsCard(card);
@@ -38,8 +38,28 @@ export function settleInterrupted(rt) {
  * @param {any} rt @param {any} se @returns {{ needs: any, state: string }}
  */
 export function settledNeed(rt, se) {
-  const next = nextNeed(rt, se, { keep: se.keptId ?? null });
+  const needs = keptOrNext(rt, se, nextNeed(rt, se, { keep: se.keptId ?? null }));
+  return { needs, state: stateFor(needs) };
+}
+
+/** The session's state for a need it settles on: a failed turn shows Retry. @param {any} needs */
+export const stateFor = (needs) => (needs?.kind === 'failed' ? 'failed' : needs ? 'needs' : 'idle');
+
+/** The card a need names, read from pending, as nextNeed reads. @param {any} rt @param {any} se @param {any} need */
+function cardOf(rt, se, need) {
+  return rt.store.pending.items(need.threadId ?? se.threadId).find((/** @type {any} */ x) => x.id === need.itemId) ?? null;
+}
+
+/**
+ * The agent's current need, if its card still waits, or `next`, whichever comes first by RANK; on a tie the newer
+ * card, by its time, as nextNeed chooses within a kind. The restart sweep, a Retry's reset and the turn's end go
+ * through it, so a need nextNeed doesn't count (a failed turn's, a kept block from an older turn) isn't dropped while
+ * its card waits. @param {any} rt @param {any} se @param {any} next @returns {any}
+ */
+export function keptOrNext(rt, se, next) {
   const cur = se.needs && stillWaits(rt, se, se.needs) ? se.needs : null;
-  const needs = cur && !(next && RANK[next.kind] <= RANK[cur.kind]) ? cur : next;
-  return { needs, state: needs?.kind === 'failed' ? 'failed' : needs ? 'needs' : 'idle' };
+  if (!cur || cur.itemId === next?.itemId) return next ?? cur;
+  if (!next || RANK[next.kind] > RANK[cur.kind]) return cur;
+  if (RANK[next.kind] < RANK[cur.kind]) return next;
+  return (cardOf(rt, se, next)?.at ?? 0) >= (cardOf(rt, se, cur)?.at ?? 0) ? next : cur;
 }

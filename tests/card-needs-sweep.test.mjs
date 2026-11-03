@@ -76,3 +76,12 @@ test('a card in a topic of another conversation is never this agent’s need', (
   const se = cutOff(r, null);
   assert.equal(se.needs, null);
 });
+
+test('on a tie the sweep compares the cards’ times: a newer need nextNeed doesn’t count isn’t replaced by an older card', () => {
+  const r = room();
+  const older = r.denial('ls'); // from turn_last: nextNeed counts it
+  const newer = r.denial('pwd', 'turn_other'); // a turn that no longer counts, but its card waits
+  r.rt.patchItem(r.t.id, newer.id, { at: (older.at ?? 0) + 1 });
+  const se = cutOff(r, { kind: 'denial', itemId: newer.id, text: 'A step was refused: pwd' });
+  assert.equal(se.needs?.itemId, newer.id);
+});

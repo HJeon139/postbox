@@ -127,3 +127,15 @@ test('a wake keeps only turns still asking you something, so the list doesn’t 
   await settle(r.rt);
   assert.deepEqual(r.store.state.sessions[r.alpha.id].keptTurnIds, [d.turnId], 'only the wake that left a refusal open');
 });
+
+test('a wake’s end keeps a failed turn’s need and its Retry, where main drops it', async () => {
+  const r = room();
+  const f = r.rt.addItem(r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', text: '', status: 'failed', error: 'x' });
+  r.rt.updateSession(r.alpha.id, { needs: { kind: 'failed', itemId: f.id, text: 'failed' }, state: 'failed' });
+  r.adapter.next.push(async (c) => c.text('Thanks, noted.'));
+  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
+  await settle(r.rt);
+  const se = r.store.state.sessions[r.alpha.id];
+  assert.equal(se.needs?.itemId, f.id, `Retry still waits, not ${JSON.stringify(se.needs)}`);
+  assert.equal(se.state, 'failed');
+});

@@ -75,6 +75,7 @@ import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './r
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere, runsHere } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
+import { keptOrNext, stateFor } from './restart-sweep.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
 import {
@@ -1036,11 +1037,13 @@ export class Runtime {
     const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
     const viewing = this.isViewing(turn.threadId);
     const topic = turn.threadId !== se.threadId && this.s.threads[turn.threadId]?.kind === 'topic' ? this.s.threads[turn.threadId] : null;
-    // The newest card that still waits (card-needs.mjs): this turn's asks, and the cards that wait until answered.
-    const needs = nextNeed(this, se, { turnIds: [turn.id, ...(se.keptTurnIds ?? [])], keep: waiting?.id ?? null });
+    // The newest card that still waits (card-needs.mjs): this turn's asks, and the cards that wait until answered. A
+    // failed turn's need, which nextNeed never counts, is kept under a wake while its Retry waits, unless outranked.
+    const counted = nextNeed(this, se, { turnIds: [turn.id, ...(se.keptTurnIds ?? [])], keep: waiting?.id ?? null });
+    const needs = se.needs?.kind === 'failed' ? keptOrNext(this, se, counted) : counted;
     const mentionsYou = /(^|\W)@you\b/i.test(turn.said);
     this.updateSession(se.id, {
-      state: needs ? 'needs' : 'idle',
+      state: stateFor(needs),
       needs,
       sideTurn: null,
       glimpse: '',
