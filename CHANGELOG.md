@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.14.1 (2026-11-03)
+
+### Fixes
+
+- **composer:** an empty composer stays one line when its placeholder wraps
+- **composer:** a key typed into the composer costs one layout, not three
+
 ## 1.14.0 (2026-11-03)
 
 ### Features
