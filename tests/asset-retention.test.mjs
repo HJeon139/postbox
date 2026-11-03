@@ -78,6 +78,7 @@ test('a room’s bytes after a commit, from its index: a new file adds, a kept o
 
 test('the commit that makes a version prunable prunes it and releases its hash; text is never pruned', async () => {
   const store = new Store(null);
+  store.emit('thread', { id: 'r', members: [] });
   const blobs = assetBlobs(temp('pb-ret-'));
   const write = (req) => writeAsset(store, blobs, { kind: 'write', room: 'r', type: 'application/octet-stream', author: 'dev', ...req });
   const bin = (i) => Buffer.concat([Buffer.from([0, i]), Buffer.alloc(big)]);

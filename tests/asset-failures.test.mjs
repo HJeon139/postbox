@@ -19,6 +19,12 @@ import { eio, logDisk } from './store-retry-fixture.mjs';
 const text = (s) => Buffer.from(s, 'utf8');
 const req = (over) => ({ kind: 'write', room: 'c1', type: 'text/markdown', author: 'dev', ...over });
 
+/** Conversations c1 and c2, the rooms these tests write to, once per folder: a write needs its room’s conversation. */
+function withRooms(store) {
+  for (const id of ['c1', 'c2']) if (!store.state.threads[id]) store.emit('thread', { id, members: [] });
+  return store;
+}
+
 /** A data folder of its own, removed after the test, with the stores opened on it closed first. */
 async function folder(t) {
   const dir = await mkdtemp(join(tmpdir(), 'pb-assetf-'));
@@ -33,7 +39,7 @@ async function folder(t) {
     await open.at(-1)?.close();
     const { store } = await openDataFolder(dir).catch((e) => Promise.reject(e));
     open.push(store);
-    return store;
+    return withRooms(store);
   };
   return { dir, blobs: assetBlobs(dir), reopen, open, warned, files: () => filesUnder(join(dir, 'assets')) };
 }
@@ -86,7 +92,7 @@ test('F4: Postbox stops after the bytes are put, before the commit: the next loa
 test('F5: the log’s fsync fails: the write is not confirmed, the store closes, and the next load decides', async (t) => {
   const f = await folder(t);
   const faults = {};
-  const store = await new Store(f.dir, { io: logDisk(faults) }).load();
+  const store = withRooms(await new Store(f.dir, { io: logDisk(faults) }).load());
   f.open.push(store);
   faults.sync = async () => Promise.reject(eio('fsync refused'));
   const r = await writeAsset(store, f.blobs, req({ name: 'a.md', bytes: text('one') }));

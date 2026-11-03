@@ -23,9 +23,13 @@ after(() => {
 
 const text = (s) => Buffer.from(s, 'utf8');
 
-/** A state with these assets, built through the reducer, so the rooms’ indexes are as the store keeps them. */
+/**
+ * A state with these assets, built through the reducer, so the rooms’ indexes are as the store keeps them, and with
+ * conversations for rooms r and other, since a write needs its room’s conversation.
+ */
 function stateOf(assets) {
   const s = emptyState();
+  for (const id of ['r', 'other']) apply(s, 'thread', { id, members: [] });
   for (const { versions, ...asset } of assets) {
     apply(s, 'asset', asset);
     for (const version of versions) apply(s, 'asset.version', { id: asset.id, version, prunes: [], released: [] });
@@ -35,6 +39,7 @@ function stateOf(assets) {
 
 function room() {
   const store = new Store(null);
+  for (const id of ['th_1', 'th_2']) store.emit('thread', { id, members: [] });
   const dir = temp('pb-assets-');
   const blobs = assetBlobs(dir);
   const write = (req) => writeAsset(store, blobs, { kind: 'write', room: 'th_1', type: 'text/markdown', author: 'dev', ...req });

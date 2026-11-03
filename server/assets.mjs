@@ -141,6 +141,15 @@ function repeatOf(look, asset, req) {
 }
 
 /**
+ * Refuses a write to a room whose conversation is gone or being deleted (the flag deleting a conversation sets, and
+ * Undo clears): checked in the commit, so a write can’t make a room index again after its conversation’s erase.
+ */
+function checkRoom(state, req) {
+  const thread = own(state.threads, req.room);
+  if (!thread || thread.deleting) refuse('not-found', SAY.notFound(req.id ?? req.name));
+}
+
+/**
  * The asset a write is to, checked: an existing one in this room, or none for a new one whose name is free. A repeat
  * of a create finds the asset it made.
  */
@@ -209,6 +218,7 @@ function versionOf(asset, req) {
  * @returns {{ events: any[], id: string, version: any, repeat: boolean }}
  */
 export function planWrite(state, req) {
+  checkRoom(state, req);
   const look = lookupsFor(state, req.room);
   const asset = targetOf(look, req);
   const repeat = asset && repeatOf(look, asset, req.id ? req : { ...req, base: null });

@@ -23,6 +23,13 @@ after(() => {
   for (const dir of made) rmSync(dir, { recursive: true, force: true });
 });
 
+/** A store with conversations c1 and c2, the rooms these tests write to: a write needs its room’s conversation. */
+function storeWithRooms() {
+  const store = new Store(null);
+  for (const id of ['c1', 'c2']) store.emit('thread', { id, members: [] });
+  return store;
+}
+
 /** Each room’s index, counted from the assets alone, in the shape the reducer keeps. @param {any} state */
 function recount(state) {
   const rooms = {};
@@ -55,7 +62,7 @@ function random(seed) {
 }
 
 test('the rooms’ indexes equal a count from scratch after every write, rename, delete, restore, prune and erase', async (t) => {
-  const store = new Store(null);
+  const store = storeWithRooms();
   const blobs = assetBlobs(temp('pb-index-'));
   const pick = random(516);
   const big = (i) => Buffer.concat([Buffer.from([0, i % 251]), Buffer.alloc(ASSETS.largeBinaryBytes)]);
@@ -106,7 +113,7 @@ test('the rooms’ indexes equal a count from scratch after every write, rename,
 });
 
 test('a name like __proto__ or constructor is an ordinary name, before and after a snapshot’s JSON (#352)', async () => {
-  const store = new Store(null);
+  const store = storeWithRooms();
   const blobs = assetBlobs(temp('pb-index-'));
   const write = (req) => writeAsset(store, blobs, { kind: 'write', room: 'c1', type: 'x', author: 'dev', ...req });
   assert.equal((await write({ name: 'constructor', bytes: Buffer.from('a') })).ok, true, 'not taken by a prototype');
@@ -119,7 +126,7 @@ test('a name like __proto__ or constructor is an ordinary name, before and after
 });
 
 test('the readers the tools use: a room’s assets through its index, an asset’s version by number, and its head', async () => {
-  const store = new Store(null);
+  const store = storeWithRooms();
   const blobs = assetBlobs(temp('pb-index-'));
   const write = (req) => writeAsset(store, blobs, { kind: 'write', type: 'x', author: 'dev', ...req });
   const a = await write({ room: 'c1', name: 'a.md', bytes: Buffer.from('1') });
