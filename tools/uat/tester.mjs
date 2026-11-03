@@ -108,6 +108,7 @@ export const SCHEMA = {
             'stop',
             'agent_panel',
             'go_to_needs',
+            'conversation',
             'pane',
             'fullscreen',
             'fullscreen_draft',
@@ -137,6 +138,17 @@ export const SCHEMA = {
           enum: ['next', 'rail', 'agents', 'message'],
           description: 'go_to_needs: the global “Next that needs you” button, or where to click the agent’s ring.',
         },
+        conversation: {
+          enum: ['delete', 'undo', 'new', 'open'],
+          description: 'conversation: delete the one open, press Undo on its delete, start another, or open one by title.',
+        },
+        undo_after: { type: 'integer', description: 'conversation delete: press Undo this many seconds after the delete.' },
+        at: {
+          type: 'string',
+          description: 'conversation delete: the time to press the confirm’s Delete, such as a wake’s time less a few seconds, as 2026-11-03T10:45:44Z.',
+        },
+        agents: { type: 'array', items: { type: 'string' }, description: 'conversation new: the agents in it, by handle.' },
+        title: { type: 'string', description: 'conversation new or open: its title.' },
         open: { enum: ['work', 'thread'], description: 'pane: the view to open in the right pane.' },
         pane: { enum: ['work', 'thread'], description: 'fullscreen: the view to open full screen.' },
         permissions: { type: 'boolean', description: 'settings: also open its permissions panel.' },
@@ -154,7 +166,9 @@ export const SCHEMA = {
           description: 'send, thread, act, review: act while the turn this starts is running.',
           properties: {
             after: { type: 'integer', description: 'Seconds to let the agent work first.' },
-            do: { enum: ['stop', 'send_now', 'answer', 'fault'] },
+            do: { enum: ['stop', 'send_now', 'answer', 'fault', 'conversation'] },
+            conversation: { enum: ['delete'], description: 'conversation: delete the conversation while its agent works.' },
+            undo_after: { type: 'integer', description: 'conversation: press Undo this many seconds after the delete.' },
             jobs: { enum: ['stop', 'keep'], description: 'stop: how to answer if Postbox asks whether to stop background jobs too.' },
             text: { type: 'string', description: 'send_now: the message to send.' },
             fault: { enum: ['kill-ssh', 'kill-daemon', 'restart-postbox'], description: 'fault: what to break while the agent works.' },
@@ -203,6 +217,8 @@ Then choose one action:
 - settings {target, permissions?}: open Settings › Personas and edit that agent (target is its handle), to see what it runs on, its model, permissions and setup; with permissions, also open its permissions panel. You get what they say and their screenshots; they close after.
 - agent_panel {target, model?, effort?, mode?, shell?}: open that agent’s row in the sidebar’s Agents section, set what you give, and close it. You get what the panel says, including each setting’s scope.
 - go_to_needs {from, target?}: go to what an agent needs: from next, press the top bar’s “Next that needs you” button; from rail, agents or message, click that agent’s pulsing needs-you ring in its rail row, in its Agents-section row (its name there opens its quick panel instead), or beside its newest message. You get which item focus landed in, whether it’s on screen, and whether it was outlined.
+- conversation {conversation, at?, undo_after?, agents?, title?}: delete deletes the conversation that’s open, through its menu and the confirm, as you would; with at (an ISO time at most 5 minutes away), it opens the confirm and presses Delete at that moment, since your own step takes seconds; with undo_after, it presses Undo that many seconds later (within its 10 seconds) and opens it again. undo presses Undo on the last delete, if its 10 seconds haven’t passed. new starts another conversation in the project with agents, and opens it; open opens one by its title. You get when each happened. To delete while an agent works, give send an interrupt {after, do: conversation, conversation: delete, undo_after?}.
+- fault {fault: restart-postbox}: in a run without hosts too, stop Postbox and start it again on the same data, and reload the page.
 - pane {open: work|thread, item?}: open Work (its top-bar button) or a thread in the right pane. You get each view’s size.
 - fullscreen {pane: work|thread}: open that view full screen, read it, and close it with Escape.
 - fullscreen_draft {text}: open the thread full screen, type text into its reply box without sending, and leave full screen. You get whether the draft and the scroll survived.

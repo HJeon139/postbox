@@ -1,0 +1,96 @@
+{
+  "source": "Trimmed from two recorded UAT runs of tests/uat/e2e/scenarios/assets-room.md (3 November 2026): the run on #689 at 13d8fa0a (phases 1 and 4), and one earlier run whose session.patch is kept as recorded. Kept: the asset files, the asset events, the conversation’s first thread event, and every event that holds a line of an asset.",
+  "files": [
+    {
+      "sha": "2e0480110d77ae24c8d26efb5d2b475b0f1538f65a0aaa0917b100c979894034",
+      "text": "# Login page cleanup plan\n\n- **Consolidate the layout.** Move the login form, error messages and footer links into one container component, and remove the duplicated wrapper markup.\n- **Simplify form state.** Replace the separate loading, error and submitted flags with one explicit state value (idle, submitting, failed, succeeded) so impossible combinations can't occur.\n- **Unify error handling.** Show one message per failure type, mapped from the auth response, and make sure no raw server errors reach the page.\n- **Tidy styles and copy.** Remove unused CSS rules, reuse the shared button and input styles, and move the visible strings into the existing text resources.\n- **Check accessibility and tests.** Give every input a label, keep focus on the first invalid field after a failed submit, and add tests for the empty, wrong-password and success paths.\n- **Inventory the login code first.** Before any edit, list the files that render the login page, the auth call it makes, and the test command, and record them in this plan. Every other bullet depends on that list.\n\nOpen question: this plan is written without reading the login code. The first step should be to confirm which files hold the login page before any edits.\n"
+    },
+    {
+      "sha": "7600be5620f2785ad997f9a7c13407d0d75838587810a84815714bb6dbf51d32",
+      "text": "# Login page cleanup plan\n\n- **Consolidate the layout.** Move the login form, error messages and footer links into one container component, and remove the duplicated wrapper markup.\n- **Simplify form state.** Replace the separate loading, error and submitted flags with one explicit state value (idle, submitting, failed, succeeded) so impossible combinations can't occur.\n- **Unify error handling.** Show one message per failure type, mapped from the auth response, and make sure no raw server errors reach the page.\n- **Tidy styles and copy.** Remove unused CSS rules, reuse the shared button and input styles, and move the visible strings into the existing text resources.\n- **Check accessibility and tests.** Give every input a label, keep focus on the first invalid field after a failed submit, and add tests for the empty, wrong-password and success paths.\n\nOpen question: this plan is written without reading the login code. The first step should be to confirm which files hold the login page before any edits.\n"
+    },
+    {
+      "sha": "e6344dcaae42d7e02a00980dbe17b0342d56979b79ba1b24bdf4c9d46227950a",
+      "text": "Scratch note from @critic. Placeholder text for the login cleanup project.\n"
+    }
+  ],
+  "log": [
+    {
+      "type": "thread",
+      "data": {
+        "id": "th_TUHDYg9b",
+        "title": "Shared plan",
+        "members": [],
+        "projectId": "pr_A0TPkV1y"
+      },
+      "seq": 16
+    },
+    {
+      "type": "asset",
+      "data": {
+        "id": "as_GyTvGcB",
+        "room": "th_TUHDYg9b",
+        "name": "notes/plan.md",
+        "created": 1793723037196
+      },
+      "seq": 101
+    },
+    {
+      "type": "asset.version",
+      "data": {
+        "id": "as_GyTvGcB",
+        "version": {
+          "v": 1,
+          "sha256": "7600be5620f2785ad997f9a7c13407d0d75838587810a84815714bb6dbf51d32",
+          "size": 1018,
+          "type": "text/markdown",
+          "isText": true,
+          "author": "researcher",
+          "at": 1793723037196,
+          "base": null,
+          "op": "login-cleanup-plan-v1"
+        },
+        "prunes": [],
+        "released": []
+      },
+      "seq": 102
+    },
+    {
+      "type": "asset.version",
+      "data": {
+        "id": "as_GyTvGcB",
+        "version": {
+          "v": 2,
+          "sha256": "2e0480110d77ae24c8d26efb5d2b475b0f1538f65a0aaa0917b100c979894034",
+          "size": 1233,
+          "type": "text/markdown",
+          "isText": true,
+          "author": "critic",
+          "at": 1793723136114,
+          "base": 1,
+          "op": "critic-add-inventory-bullet"
+        },
+        "prunes": [],
+        "released": []
+      },
+      "seq": 1312
+    }
+  ],
+  "quotedLastMessage": {
+    "event": {
+      "type": "session.patch",
+      "data": {
+        "id": "se_B0c2oYv8",
+        "patch": {
+          "lastMessage": "I published notes/thread.md as a new asset (as_sDUzXrvj, v1) with one line: \"@researcher greeted the room and is ready to turn papers into explainers with exercises.\"",
+          "glimpse": ""
+        }
+      },
+      "seq": 103
+    },
+    "file": {
+      "sha": "b7bf4ddf39277660939207f42b6453edb6d982d5c385f45f7f5e9964daf6377a",
+      "text": "@researcher greeted the room and is ready to turn papers into explainers with exercises.\n"
+    }
+  }
+}

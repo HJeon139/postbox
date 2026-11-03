@@ -37,7 +37,6 @@ import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
-import { goToNeedsStep } from './uat/driver-needs.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
 import { followEvents } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
@@ -51,12 +50,13 @@ import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
-import { keeper, readReceived, readStreams, readTranscripts, readUi, runPaths, userSetup } from './uat/run-files.mjs';
+import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi, runPaths, userSetup } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { chainLimitEnv, phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
+import { interruptAct, localRestart, STEPS } from './uat/steps.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
 import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
@@ -252,7 +252,7 @@ async function main() {
       return `Answered ${it.item}${now?.revision ? ` (at revision ${now.revision} when you answered)` : ''} while the agent worked.`;
     };
     // What the tester breaks on purpose in a host run (tools/uat/hosts-watch.mjs).
-    const hostFault = (spec) => (hr ? fault(hr, spec, page) : Promise.reject(new Error('A fault needs a run with --host.')));
+    const hostFault = (spec) => (hr ? fault(hr, spec, page) : localRestart({ postbox, page, log }, spec));
     let lastAction = null;
     let actionError = null;
     let actionResult = null; // what an action measured, when it worked
@@ -267,7 +267,7 @@ async function main() {
     const refreshFacts = async () => {
       facts.state = (await api('/api/state')).state;
       facts.threads = threadsUnderTest(facts.state);
-      Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received) });
+      Object.assign(facts, { streams: readStreams(paths.streams), received: readReceived(paths.data, facts.received), store: readStore(paths.data) });
       facts.kiroStreams = readStreams(paths.kiroStreams);
       facts.agyStreams = readStreams(paths.agyStreams);
       facts.codexStreams = readStreams(paths.codexStreams);
@@ -399,7 +399,7 @@ async function main() {
         const key = a.item ? keys.get(a.item) : null;
         if (a.item && !key) throw new Error(`There’s no item ${a.item}.`);
         if (a.type === 'telemetry') actionResult = await tm.telemetryAction(td, a, key, tel);
-        else if (a.type === 'go_to_needs') actionResult = await goToNeedsStep({ d, page, api, keys, facts, step }, a);
+        else if (Object.hasOwn(STEPS, a.type)) actionResult = await STEPS[a.type]({ d, page, api, keys, facts, step }, a);
         else if (a.type === 'send') {
           await d.send(a.text ?? '');
           // A message that addresses an agent by name without its @ goes to the last speaker, not to that agent: say
@@ -500,10 +500,10 @@ async function main() {
         if (a.interrupt && ['send', 'thread', 'act', 'review'].includes(a.type)) {
           // Where the turn runs: a reply in a thread, or an answer to a block in the panel, works there.
           const panel = a.type === 'thread' || (key ? await d.inPanel(key) : false);
-          // A fault mid-turn is the driver’s answer while the agent works, with the fault for its answer.
-          const now = a.interrupt.do === 'fault' ? () => hostFault(a.interrupt) : () => answerMidTurn(a.interrupt);
+          // A fault or a conversation action mid-turn is the driver’s answer while the agent works (tools/uat/steps.mjs).
+          const mid = interruptAct(a.interrupt, { fault: hostFault, answer: answerMidTurn, ctx: { d, api, facts } });
           const said = await timing.time('waits', () =>
-            d.interrupt({ ...a.interrupt, do: a.interrupt.do === 'fault' ? 'answer' : a.interrupt.do }, { panel, onWait: () => midTurnChecks(), answer: now }),
+            d.interrupt({ ...a.interrupt, do: mid.do }, { panel, onWait: () => midTurnChecks(), answer: mid.answer }),
           );
           facts.probes.interrupts.push({ step, at: Date.now(), do: a.interrupt.do, answered: /You answered “([^”]+)”/.exec(said)?.[1] ?? null });
           actionResult = actionResult ? `${actionResult} ${said}` : said;

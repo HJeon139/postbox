@@ -6,4 +6,15 @@
 // - panels, panes, drafts: what the Agents section, the right pane and full screen showed (#105, #146)
 // - jumps: where going to what an agent needs landed (#285, tools/uat/driver-needs.mjs)
 
-export const newProbes = () => ({ fullScreen: [], attachments: [], answers: [], stale: [], interrupts: [], panels: [], panes: [], drafts: [], jumps: [] });
+export const newProbes = () => ({
+  fullScreen: [],
+  attachments: [],
+  answers: [],
+  stale: [],
+  interrupts: [],
+  panels: [],
+  panes: [],
+  drafts: [],
+  jumps: [],
+  conversation: [],
+});
