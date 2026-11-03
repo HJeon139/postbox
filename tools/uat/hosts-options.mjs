@@ -64,7 +64,7 @@ export const STAGED_TRIGGER = 'host-staged-older';
  * The older Postbox --stage-host-version stages, or null without it: a release tag of this checkout’s, whose package
  * version isn’t this checkout’s, for a run with a --host. Only host1 gets it: one host on the older version is what
  * the phase that needs it plays, and the others stay as the run installs them.
- * @param {{ 'stage-host-version'?: string }} opt @param {number} count  how many hosts
+ * @param {{ 'stage-host-version'?: string, 'replace-host-install'?: boolean }} opt @param {number} count  how many hosts
  * @param {{ current: () => string, versionAt: (tag: string) => string|null }} repo  tools/uat/hosts-stage.mjs, tagRepo
  * @returns {{ tag: string, version: string } | null}
  */
@@ -73,6 +73,12 @@ export function stagedOf(opt, count, repo) {
   if (tag === undefined) return null;
   if (!TAG_RE.test(tag)) throw new Error(`--stage-host-version takes a release tag, such as v1.16.1, not “${tag}”.`);
   if (!count) throw new Error('--stage-host-version stages Postbox on host1, and this run has no --host.');
+  // The run’s cleanup deletes what it staged, which is safe only because baseline() refused a host where Postbox
+  // already was; --replace-host-install lets such a host through, so the two don’t combine.
+  if (opt['replace-host-install'] === true)
+    throw new Error(
+      '--stage-host-version and --replace-host-install don’t combine: the run deletes what it staged at its end, so it stages only on a host with no Postbox.',
+    );
   const version = repo.versionAt(tag);
   if (!version) throw new Error(`--stage-host-version ${tag}: there’s no such tag in this checkout. Run git fetch --tags, or pick one git tag lists.`);
   if (version === repo.current())

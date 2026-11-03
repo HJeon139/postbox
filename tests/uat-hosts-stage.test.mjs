@@ -151,12 +151,13 @@ test('#464 staging installs with the tag’s own install.mjs from a worktree in 
   });
   const host = { id: 'ho_1', name: DEST, settings: {} };
   await stageOlder({ root: '/repo', tag: 'v1.16.1', version: '1.16.1', data: hr.record.laptopData, label: 'host1', host }, { run: fakeGit(calls), load });
-  const tree = calls[0][3];
-  assert.deepEqual(calls[0], ['worktree', 'add', '--detach', tree, 'v1.16.1']);
+  assert.deepEqual(calls[0], ['worktree', 'prune'], 'a worktree a killed run left registered is forgotten first');
+  const tree = calls[1][3];
+  assert.deepEqual(calls[1], ['worktree', 'add', '--detach', tree, 'v1.16.1']);
   assert.ok(tree.startsWith(join(dir, 'staged-')), 'in the run’s own folder');
   assert.equal(got[0].file, join(tree, 'server', 'remote', 'install.mjs'));
   assert.deepEqual(got[0].o, { host, version: '1.16.1', dataDir: hr.record.laptopData });
-  assert.deepEqual(calls[1], ['worktree', 'remove', '--force', tree]);
+  assert.deepEqual(calls[2], ['worktree', 'remove', '--force', tree]);
   assert.deepEqual(readdirSync(dir), [], 'the temporary folder is gone');
   done();
 });
@@ -175,13 +176,31 @@ test('#464 staging that fails still removes its worktree, and its error names th
     stageOlder(o, { run: fakeGit(calls), load }),
     (e) => /Staging Postbox 1\.16\.1 on host1 failed: .*installed on host1\./.test(e.message) && !e.message.includes(DEST),
   );
-  assert.deepEqual(calls.at(-1), ['worktree', 'remove', '--force', calls[0][3]]);
-  assert.equal(existsSync(calls[0][3]), false);
+  assert.deepEqual(calls.at(-1), ['worktree', 'remove', '--force', calls[1][3]]);
+  assert.equal(existsSync(calls[1][3]), false);
   const failedAdd = [];
   await assert.rejects(stageOlder(o, { run: fakeGit(failedAdd, 128), load }), /git couldn’t check v1\.16\.1 out to stage it on host1/);
   assert.deepEqual(failedAdd.at(-1)[1], 'remove', 'a worktree half made is removed too');
   assert.deepEqual(readdirSync(dir), []);
   done();
+});
+
+test('#464 a staging error that quotes only the host part of user@host still names the label', async () => {
+  const { hr, done } = stagedRun();
+  const load = async () => ({
+    installHost: async () => {
+      throw new Error('ssh: connect to host host-a.example.com port 22: Connection refused');
+    },
+  });
+  const host = { id: 'ho_1', name: `user@${DEST}`, settings: {} };
+  const o = { root: '/repo', tag: 'v1.16.1', version: '1.16.1', data: hr.record.laptopData, label: 'host1', host };
+  await assert.rejects(stageOlder(o, { run: fakeGit([]), load }), (e) => e.message.includes('connect to host host1') && !e.message.includes(DEST));
+  done();
+});
+
+test('#464 --stage-host-version refuses --replace-host-install, since the run deletes what it staged', () => {
+  const opt = { ...twoHosts, 'stage-host-version': 'v1.16.1', 'replace-host-install': true };
+  assert.throws(() => stagedOf(opt, 2, repo()), /--stage-host-version and --replace-host-install don’t combine/);
 });
 
 /** A staged host1 whose setup is recorded, and the status Postbox shows for it. */

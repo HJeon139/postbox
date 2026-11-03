@@ -59,8 +59,11 @@ export function tagRepo(root, run = git) {
  */
 export async function stageOlder({ root, tag, version, data, label, host }, { run = git, load = (file) => import(pathToFileURL(file).href) } = {}) {
   const tree = await mkdtemp(join(dirname(data), 'staged-'));
-  const hide = (/** @type {string} */ s) => String(s).replaceAll(host.name, label);
+  const bare = host.name.includes('@') ? host.name.slice(host.name.lastIndexOf('@') + 1) : host.name;
+  const hide = (/** @type {string} */ s) => String(s).replaceAll(host.name, label).replaceAll(bare, label);
   try {
+    // A runner killed mid-install leaves its worktree registered here; prune forgets any whose folder is gone.
+    run(['worktree', 'prune'], root);
     const add = run(['worktree', 'add', '--detach', tree, tag], root);
     if (add.code !== 0) throw new Error(`git couldn’t check ${tag} out to stage it on ${label}: ${add.stderr.trim().slice(-300)}`);
     const { installHost } = await load(join(tree, 'server', 'remote', 'install.mjs'));

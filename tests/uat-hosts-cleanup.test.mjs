@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cleanUp } from '../tools/uat/hosts-end.mjs';
 import { makeRunFolder } from '../tools/uat/hosts-run.mjs';
+import { SCRIPTS } from '../tools/uat/hosts-ssh.mjs';
 import { beforeStop, leftBy } from '../tools/uat/hosts-watch.mjs';
 import { TREE_AFTER, TREE_BEFORE, TURN } from './uat-hosts-facts.mjs';
 
@@ -159,4 +160,31 @@ test('#464 UAT cleanup: a host the run staged an older Postbox on is cleared by 
   });
   assert.ok(!seen.some((s) => s.includes('.postbox-remote')), 'a host it didn’t stage is never cleared by the runner');
   assert.ok(plain.lines.some((l) => l.includes('still be on host1')));
+});
+
+test('#464 UAT cleanup: clearing a staged host counts only when the script says removed, and never after a Remove that worked', async () => {
+  const silent = hostRun({ record: { ended: true, removed: { host1: { confirm: `Remove ${DEST}?`, exists: true, left: [] } } } });
+  silent.h.stage = { tag: 'v1.16.1', version: '1.16.1' };
+  await cleanUp(silent.hr, {
+    removeOne: async () => ({ confirm: `Remove ${DEST}?`, exists: true, left: [] }),
+    run: async () => ({ code: 0, stdout: '', stderr: '' }),
+  });
+  assert.ok(silent.hr.record.cleanup.host1.error, 'exit 0 without “removed” is a failure');
+  assert.ok(silent.lines.some((l) => l.includes('still be on host1')));
+
+  const worked = hostRun({ record: { ended: true, removed: { host1: GONE } } });
+  worked.h.stage = { tag: 'v1.16.1', version: '1.16.1' };
+  const scripts = [];
+  await cleanUp(worked.hr, {
+    removeOne: async () => assert.fail('a confirmed Remove isn’t tried again'),
+    run: async (_d, script) => {
+      scripts.push(script);
+      return { code: 0, stdout: 'removed\n', stderr: '' };
+    },
+  });
+  assert.ok(!scripts.some((s) => s.includes('.postbox-remote')), 'nothing is deleted after a Remove that worked');
+});
+
+test('#464 the staged cleanup stops only Postbox’s own programs, not anything that names the folder', () => {
+  assert.match(SCRIPTS.removeStaged, /pkill -KILL -u "\$\(id -u\)" -f '\[\.\]postbox-remote\/\[\^ \]\*\/host'/);
 });
