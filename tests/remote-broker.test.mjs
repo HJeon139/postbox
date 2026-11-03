@@ -229,7 +229,12 @@ test('an asked call: refused at once with no Postbox, else Postbox’s reply is 
     k.state.attached = false;
     const away = await s.call('c1', 'corpus_search', { query: 'x' });
     assert.equal(away.ok, false);
-    assert.match(away.text, /^Postbox isn’t connected to this host right now, so corpus_search can’t run/);
+    // The host can’t tell a reconnect from a closed Postbox, so the refusal covers both and names what to do in each.
+    const notConnected = (/** @type {string} */ name) =>
+      `Postbox isn’t connected to this host, so ${name} can’t run. If it’s reconnecting, try again in a few seconds; if it stays this way, Postbox may be closed.`;
+    assert.equal(away.text, notConnected('corpus_search'));
+    const asset = await s.call('c1b', 'list_assets', {});
+    assert.deepEqual({ ok: asset.ok, text: asset.text }, { ok: false, text: notConnected('list_assets') }, 'every asked tool, the asset tools among them');
     assert.equal((await k.hello()).length, 0, 'a refused call isn’t queued');
     k.state.attached = true;
     s.send('call', { id: 'c2', name: 'corpus_search', args: { query: 'y' } });
