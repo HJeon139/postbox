@@ -16,6 +16,7 @@
 // A restart while the store is closed starts again from what the disk holds, as any restart does.
 
 import { rearmPersonaDeletes } from './persona-delete.mjs';
+import { settledNeed } from './restart-sweep.mjs';
 import { rearmWakes } from './scheduled-wakes.mjs';
 
 /** @typedef {import('./runtime.mjs').Runtime} Runtime */
@@ -64,13 +65,15 @@ export function watchStore(rt) {
  * of #598 at 355a09e4). A session whose process is still exiting reads as stopping, and its exit ends it.
  * @param {Runtime} rt
  */
-function settleOrphanTurns(rt) {
+export function settleOrphanTurns(rt) {
   const recording = new Set(rt.storeWait.map((entry) => /** @type {any} */ (entry).stopOf).filter(Boolean));
   for (const se of Object.values(rt.s.sessions)) {
     if (!['think', 'gen', 'tool', 'stopping'].includes(se.state) || rt.turns.has(se.id) || recording.has(se.id)) continue;
     const exiting = rt.exiting.has(se.id);
     const step = exiting ? 'Stopping' : 'Interrupted: Postbox couldn’t save changes';
-    rt.updateSession(se.id, { state: exiting ? 'stopping' : 'idle', subagents: [], currentStep: step, stopAsk: null });
+    // Its need as a restart settles it (restart-sweep.mjs): a card answered or gone isn't kept, and one that waits is.
+    const settled = exiting ? { state: 'stopping' } : settledNeed(rt, se);
+    rt.updateSession(se.id, { ...settled, subagents: [], currentStep: step, stopAsk: null });
     for (const it of rt.store.items(se.threadId))
       if (it.sessionId === se.id && it.status === 'streaming') rt.patchItem(se.threadId, it.id, { status: 'stopped', stopReason: 'store' });
   }

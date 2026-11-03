@@ -27,11 +27,19 @@ export function settleInterrupted(rt) {
   for (const se of Object.values(rt.s.sessions)) {
     // A turn was running: its state says so, or a permission it was blocked on is the need, which only a running turn has.
     if (!['think', 'gen', 'tool', 'stopping'].includes(se.state) && se.needs?.kind !== 'permission') continue;
-    const next = nextNeed(rt, se, { keep: se.keptId ?? null });
-    const cur = se.needs && stillWaits(rt, se, se.needs) ? se.needs : null;
-    // The newest card of the first rank, as nextNeed and the turn's end choose: a tie goes to the newer card.
-    const needs = cur && !(next && RANK[next.kind] <= RANK[cur.kind]) ? cur : next;
-    const state = needs?.kind === 'failed' ? 'failed' : needs ? 'needs' : 'idle';
-    rt.updateSession(se.id, { state, needs, subagents: [], currentStep: 'Interrupted by a restart', stopAsk: null });
+    rt.updateSession(se.id, { ...settledNeed(rt, se), subagents: [], currentStep: 'Interrupted by a restart', stopAsk: null });
   }
+}
+
+/**
+ * The need and state of an agent whose turn was cut off, by a restart or by a Retry that finds it mid-turn with no
+ * turn running (store-outage.mjs settleOrphanTurns): the one rule both go through. It keeps the need while its card
+ * still waits, unless a card that ranks ahead now waits; on a tie the newer card, as nextNeed and the turn's end choose.
+ * @param {any} rt @param {any} se @returns {{ needs: any, state: string }}
+ */
+export function settledNeed(rt, se) {
+  const next = nextNeed(rt, se, { keep: se.keptId ?? null });
+  const cur = se.needs && stillWaits(rt, se, se.needs) ? se.needs : null;
+  const needs = cur && !(next && RANK[next.kind] <= RANK[cur.kind]) ? cur : next;
+  return { needs, state: needs?.kind === 'failed' ? 'failed' : needs ? 'needs' : 'idle' };
 }

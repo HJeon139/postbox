@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { settleInterrupted } from '../server/restart-sweep.mjs';
+import { settleOrphanTurns } from '../server/store-outage.mjs';
 import { room } from './card-needs-fixture.mjs';
 
 /** The store as a restart finds it: @alpha was mid-turn with `needs` set, and the sweep runs on the new runtime's view. */
@@ -50,4 +51,28 @@ test('a block still open stays the need even when its turn no longer counts, as 
   const b = r.block('turn_old');
   const se = cutOff(r, { kind: 'block', itemId: b.id, text: 'Pick' });
   assert.equal(se.needs?.itemId, b.id);
+});
+
+test('a Store Retry that finds the agent mid-turn with no turn running settles its need as a restart does', () => {
+  const r = room();
+  const b = r.block();
+  r.rt.patchItem(r.t.id, b.id, { answered: { action: 'choose' } });
+  r.rt.updateSession(r.alpha.id, { needs: { kind: 'block', itemId: b.id, text: 'Pick' }, state: 'tool' });
+  settleOrphanTurns(r.rt);
+  assert.equal(r.needs(), null, 'the answered block isn’t kept');
+  const card = r.appCard();
+  r.rt.updateSession(r.alpha.id, { needs: { kind: 'appsend', itemId: card.id, text: 'App' }, state: 'tool' });
+  settleOrphanTurns(r.rt);
+  const se = r.rt.s.sessions[r.alpha.id];
+  assert.equal(se.needs?.itemId, card.id, 'the app card still waits');
+  assert.equal(se.state, 'needs', 'and the ring says so, not idle');
+});
+
+test('a card in a topic of another conversation is never this agent’s need', () => {
+  const r = room();
+  r.rt.putThread({ id: 'th_elsewhere', kind: 'conversation', title: 'Other', members: [], createdAt: 0 });
+  r.rt.putThread({ id: 'th_other_topic', kind: 'topic', parentId: 'th_elsewhere', title: 'T', members: [], createdAt: 0 });
+  r.appCard('th_other_topic');
+  const se = cutOff(r, null);
+  assert.equal(se.needs, null);
 });
