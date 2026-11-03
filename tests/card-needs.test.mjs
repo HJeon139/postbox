@@ -214,3 +214,31 @@ test('a later event of an older app card doesn’t take the need back from a new
   r.rt.needAppSend(app, card.id, 2); // the card's second event: the card isn't new
   assert.equal(r.needs()?.itemId, h.id, 'the newer wake request keeps the need');
 });
+
+test('an app card that waited behind a block is notified when answering the block makes it the need', async () => {
+  const r = room();
+  const notes = [];
+  r.rt.notify = (_level, _se, title) => notes.push(title);
+  const b = r.block();
+  r.setNeed('block', b.id);
+  const card = r.appCard();
+  r.rt.needAppSend({ sessionId: r.alpha.id, title: 'App', threadId: r.t.id }, card.id, 1);
+  assert.equal(notes.length, 0, 'not while the block is the need');
+  r.rt.act(r.t.id, b.id, 'choose', { selected: ['a'] });
+  assert.equal(r.needs()?.itemId, card.id);
+  assert.equal(notes.filter((n) => /wants to send/.test(n)).length, 1, 'notified once, at the release');
+  await settle(r.rt);
+});
+
+test('moving on clears a failed turn’s need, as main does', async () => {
+  const r = room();
+  const f = r.rt.addItem(r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', text: '', status: 'failed', error: 'x' });
+  r.rt.updateSession(r.alpha.id, { needs: { kind: 'failed', itemId: f.id, text: 'x' }, state: 'failed' });
+  const work = held();
+  r.adapter.next.push(work.step);
+  r.rt.sendMessage(r.t.id, { text: '@alpha try something else' });
+  await sleep(5);
+  assert.equal(r.needs(), null);
+  work.release();
+  await settle(r.rt);
+});

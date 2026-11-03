@@ -132,3 +132,45 @@ test('a failed turn that showed a block, then asked permission, doesn’t flash 
   assert.ok(!kinds.includes('block'), `the needs the turn set: ${JSON.stringify(kinds)}`);
   assert.equal(kinds.at(-1), 'failed');
 });
+
+/** The need is `kind`'s card from the turn before; @beta wakes @alpha (a turn that doesn't move on), and a restart cuts it off. */
+async function restartDuringWake(r, kind) {
+  let need;
+  if (kind === 'denial') {
+    const d = r.denial('rm -rf build');
+    need = { kind, itemId: d.id };
+  } else if (kind === 'toolask') {
+    const a = r.toolAsk();
+    need = { kind, itemId: a.id };
+  } else {
+    const f = r.rt.addItem(r.t.id, { kind: 'agent', sessionId: r.alpha.id, handle: 'alpha', turnId: 'turn_last', text: '', status: 'failed', error: 'x' });
+    need = { kind, itemId: f.id };
+  }
+  r.rt.updateSession(r.alpha.id, { needs: { ...need, text: kind }, state: kind === 'failed' ? 'failed' : 'needs' });
+  r.adapter.next.push(held().step);
+  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
+  await sleep(5);
+  restart(r);
+  return need;
+}
+
+for (const kind of ['denial', 'toolask', 'failed'])
+  test(`a restart during a turn that didn’t move on keeps a ${kind} need from the turn before, as main does`, async () => {
+    const r = room();
+    const need = await restartDuringWake(r, kind);
+    assert.equal(r.store.state.sessions[r.alpha.id].needs?.itemId, need.itemId);
+  });
+
+test('a restart keeps a host turn’s permission as the need: its card stays open for the host to ask again', async () => {
+  const r = room();
+  r.adapter.next.push(held().step);
+  r.rt.sendMessage(r.t.id, { text: '@alpha go on' });
+  await sleep(5);
+  const p = r.permission();
+  r.setNeed('permission', p.id);
+  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
+  const rt = new Runtime({ store: r.store, adapters: new AdapterRegistry().register(r.adapter), corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 } });
+  rt.remote.keepsCard = (it) => it.id === p.id; // its host keeps the prompt
+  settleInterrupted(rt);
+  assert.equal(r.store.state.sessions[r.alpha.id].needs?.itemId, p.id);
+});
