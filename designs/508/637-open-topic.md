@@ -31,11 +31,11 @@ No new event type or state key, and one field on an item: the open's first messa
 |---|---|---|
 | The store is closed | refused by the gate, local or on a host; nothing written or kept. A host's queued call gets no reply, so the daemon sends it again at the next hello | an asked call's reply says why; a queued one runs at the repeat, if the store has reopened |
 | The opener posts the same open twice on purpose | the second is dropped by I6, the cost of a retry that doesn't double-post | one copy; the agent can rephrase |
-| Two agents open the same item | JavaScript runs each call whole, so the second finds the first's `topicId` (I1), through `store.pending` even while a commit is held. Its message, if any, goes into the first topic | one thread, with both messages |
+| Two agents open the same item | JavaScript runs each call whole, so the second finds the first's `topicId` (I1), through `store.pending` even while a commit is held. Its message, if any, goes into the first topic once that topic is published. While the commit holds it, the message and its wake still read the published threads (`agentWake`, `addItem`: #623's class), so they go to the conversation. That isn't reachable today, since the only production commit runs while the store is closed and the gate refuses the call | one thread, with both messages; while held, the message in the conversation |
 | The item was deleted, or is in a topic or side thread | 404 or 409 before any write | the agent's reply says so |
 | A remote turn loses its link mid-call | Postbox keeps each reply by turn and call id (`remoteTurn.replies`, up to `KEPT_REPLIES` = 200, `turns-tools.mjs` `onTool`), so the daemon's resend after a hello gets the kept reply, and a repeat that arrives while the first runs is dropped (`rts.applying`). For an `ask` route the daemon keeps the reply's text too, so after a daemon restart `answerKnown` returns it. I6 is for the rest: Postbox ran the call but its kept reply never landed (a restart between `applyTool` and `updateRemote`, the store closing in that gap, or 200 later replies pushing it out). Then the call runs again, finds the topic (I1) and posts nothing new | one thread, one message |
 | A reader looks between the topic's creation and its first message | Every write is in one synchronous call, so no turn reads in between. The page can draw the thread's link one event before the message | the link, then the message |
-| A mentioned agent is busy, archived or not in the conversation | `agentWake`'s rules: queued, refused, or a card asks you to add it | as for `wake_agent` |
+| A mentioned agent is busy, archived or not in the conversation, or the opener's turn is a summary | `agentWake`'s rules: queued, refused, or a card asks you to add it; a summary's turn wakes no one (#225), checked in `agentWake` for every tool | as for `wake_agent`; the message still posts, and the reply says why each mention was refused |
 
 ## What A1b and A2 change later
 
@@ -52,7 +52,7 @@ No new event type or state key, and one field on an item: the open's first messa
 5. Two opens of one item while a commit is held give one topic, both while held and after the release (I1 through `store.pending`).
 6. #507: a 25-item thread whose ask, which mentions the agent, is its first message still shows the ask in the agent's catch-up, whole. The catch-up says how many items it left out, and its hint names the thread.
 7. A repeated open with the same message and mentions, after the topic exists, posts nothing new; the same text from the person, or after an open from the page, still posts (I6).
-8. A UAT trigger in `tests/uat/e2e/scenarios/delivery.md`: an agent opens a thread from a message, and the agent it asks answers there.
+8. A UAT run of `tests/uat/e2e/scenarios/opentopic.md`, since `delivery.md` already has its eight phases: an agent opens a thread from a message, and the agent it asks answers there. The tester judges each phase, with no new trigger.
 
 ## Size
 
