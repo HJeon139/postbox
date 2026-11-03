@@ -46,19 +46,48 @@ function placesIn(root, needles, path = []) {
 }
 
 /**
- * The item kinds whose text someone wrote, who may quote an asset, or give the text an agent then publishes: the
- * person’s messages, and an agent’s replies, blocks and apps. Postbox’s own items (notices, catch-ups) aren’t among them.
+ * The fields of an item that someone wrote, by the item’s kind, where they may quote an asset or give the text an agent
+ * then publishes: the person’s message, an agent’s reply and its narration, and a block with its answer. Everything
+ * else in an item is Postbox’s own record, such as the steps it writes for each tool call.
  */
-const AUTHORED_KINDS = new Set(['user', 'agent', 'block', 'app']);
+const AUTHORED = { user: new Set(['text']), agent: new Set(['text']), voice: new Set(['text']), block: new Set(['block', 'answer']) };
+/** The steps that are an agent’s own words, not a tool call: its thinking, and a subagent’s narration (server/runtime.mjs). */
+const WORD_STEPS = new Set(['thought', 'said']);
 /**
  * A session’s keys that hold its agent’s own words: its last reply and the glimpse of it, and the messages it sent
  * other agents. A recorded run’s `lastMessage` quoted the line its agent had just published.
  */
 const SESSION_OWN = new Set(['lastMessage', 'glimpse', 'agentMessages']);
-const always = () => true;
 const never = () => false;
 /** Whether a path in a session, or a patch of one, is under a key that holds its agent’s words. */
 const sessionOwn = (path) => path.split('.').some((k) => SESSION_OWN.has(k));
+
+/** Whether a step is an agent’s own words: its thinking or a subagent’s narration. @param {any} step */
+const wordStep = (step) => WORD_STEPS.has(step?.kind);
+
+/**
+ * Whether a path in an item of this kind is someone’s own words: a field its author wrote, or one of an agent’s steps
+ * that’s its thinking. @param {string|undefined} kind @param {any} item @param {string[]} keys  the path in the item
+ */
+function itemOwn(kind, item, keys) {
+  if (AUTHORED[kind]?.has(keys[0])) return true;
+  return kind === 'agent' && keys[0] === 'activity' && keys[1] === 'steps' && wordStep(item?.activity?.steps?.[keys[2]]);
+}
+
+/**
+ * Which paths of a logged item event are someone’s own words: the item an item.add carries, an item.patch’s or
+ * item.move’s patch, one step an item.patch adds, and an item.text’s streamed reply.
+ * @param {any} e @param {string|undefined} kind  the item’s kind, from its item.add
+ */
+function itemEventOwn(e, kind) {
+  return (path) => {
+    const [head, ...keys] = path.split('.');
+    if (head === 'item') return itemOwn(kind, e.data.item, keys);
+    if (head === 'patch') return itemOwn(kind, e.data.patch, keys);
+    if (head === 'activityStep') return kind === 'agent' && wordStep(e.data.activityStep);
+    return e.type === 'item.text' && head === 'text' && AUTHORED[kind]?.has('text') === true;
+  };
+}
 
 /** Each logged event as where it was, its type, its data, and which of its paths are someone’s own words. */
 function logPlaces(log) {
@@ -66,18 +95,17 @@ function logPlaces(log) {
   return log.map((e) => {
     const item = e.data?.item;
     if (item?.id) kinds.set(item.id, item.kind);
-    const itemId = item?.id ?? e.data?.itemId ?? e.data?.id;
-    const ownItem = e.type.startsWith('item.') && AUTHORED_KINDS.has(kinds.get(itemId));
-    const own = ownItem ? always : e.type.startsWith('session') ? sessionOwn : never;
-    return { where: `log #${e.seq}`, type: e.type, data: e.data, own };
+    const where = `log #${e.seq}`;
+    if (e.type.startsWith('item.')) return { where, type: e.type, data: e.data, own: itemEventOwn(e, kinds.get(item?.id ?? e.data?.id)) };
+    return { where, type: e.type, data: e.data, own: e.type.startsWith('session') ? sessionOwn : never };
   });
 }
 
-/** The state’s parts, each with which of its paths are someone’s own words: its items, by kind, its sessions, and the rest. */
+/** The state’s parts, each with which of its paths are someone’s own words: its items, its sessions, and the rest. */
 function stateParts(state, where) {
   if (!state) return [];
   const items = Object.entries(state.items ?? {}).flatMap(([threadId, list]) =>
-    (list ?? []).map((it) => ({ where, type: `items.${threadId}`, data: it, own: AUTHORED_KINDS.has(it.kind) ? always : never })),
+    (list ?? []).map((it) => ({ where, type: `items.${threadId}`, data: it, own: (path) => itemOwn(it.kind, it, path.split('.')) })),
   );
   const rest = Object.entries(state)
     .filter(([k]) => k !== 'items')
@@ -125,7 +153,8 @@ export function strayKeys(state) {
 export function orphanRooms(state) {
   const gone = (room) => !state?.threads?.[room];
   const rooms = Object.keys(state?.assetRooms ?? {}).filter(gone);
-  const assets = Object.values(state?.assets ?? {}).filter((a) => gone(a.room) && !rooms.includes(a.room));
+  const indexed = new Set(rooms);
+  const assets = Object.values(state?.assets ?? {}).filter((a) => gone(a.room) && !indexed.has(a.room));
   return [...rooms.map((room) => ({ room, what: 'its room index' })), ...assets.map((a) => ({ room: a.room, what: `asset ${a.id}` }))];
 }
 
@@ -151,16 +180,17 @@ export function deleteWindows(done = []) {
  * window, or, when no Undo came, one still writing after the purge. @param {any} facts
  */
 export function turnsInDeletes(facts) {
-  return deleteWindows(facts.probes?.conversation).flatMap((w) =>
-    (facts.streams ?? [])
-      .filter((s) => (w.handles ?? []).includes(s.handle))
+  return deleteWindows(facts.probes?.conversation).flatMap((w) => {
+    const handles = new Set(w.handles ?? []);
+    return (facts.streams ?? [])
+      .filter((s) => handles.has(s.handle))
       .flatMap((s) => {
         if (s.started > w.at + SLACK_MS && s.started < w.until) return [{ ...w, handle: s.handle, started: s.started, why: 'started in the window' }];
         if (w.purged && s.started < w.until && s.ended > w.until + SLACK_MS)
           return [{ ...w, handle: s.handle, started: s.started, why: 'ran on after the purge' }];
         return [];
-      }),
-  );
+      });
+  });
 }
 
 const shortSha = (sha) => String(sha).slice(0, 12);

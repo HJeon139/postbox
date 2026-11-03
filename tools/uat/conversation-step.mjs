@@ -12,11 +12,13 @@ const openThread = async (ev) => /#\/t\/([^/?]+)/.exec(String(await ev('location
 
 /** The handles of the agents in a conversation and its topic and side threads, which its delete stops. */
 function handlesIn(state, threadId) {
-  const ids = Object.values(state.threads ?? {})
-    .filter((t) => t.id === threadId || t.parentId === threadId)
-    .map((t) => t.id);
+  const ids = new Set(
+    Object.values(state.threads ?? {})
+      .filter((t) => t.id === threadId || t.parentId === threadId)
+      .map((t) => t.id),
+  );
   return Object.values(state.sessions ?? {})
-    .filter((se) => ids.includes(se.threadId))
+    .filter((se) => ids.has(se.threadId))
     .map((se) => se.handle);
 }
 

@@ -165,3 +165,32 @@ test('readStore: null for a run with no asset, else the whole log in order, the 
     [[sha, recorded.files[0].text]],
   );
 });
+
+test('#722: an agent’s item is its words only where it wrote them; a tool call’s step in it is Postbox’s record', () => {
+  const line = recorded.files[0].text.split('\n')[0];
+  const room = recorded.log.find((e) => e.type === 'asset').data.room;
+  // The step Postbox wrote for a read_asset call in the 13d8fa0a run, with an asset’s first line edited into its detail.
+  const tool = { id: 'toolu_bdrk_01SsvLsW8Vu1tKXzSsz9cNzf', label: 'read asset (postbox)', state: 'done', ms: 74, detail: line };
+  const thought = { id: 'thought-1', label: 'Reading it', state: 'done', ms: null, detail: `It says: ${line}`, kind: 'thought' };
+  const agent = { id: 'it_a', kind: 'agent', text: '', activity: { steps: [thought, tool] } };
+  const where = (store, state = emptyState()) =>
+    found({ store: { files: files(), snapshot: null, ...store }, state })['asset-content-in-store'].map((x) => x.evidence);
+  const added = { seq: 1, type: 'item.add', data: { threadId: room, item: { id: 'it_a', kind: 'agent', text: '' } } };
+  const step = (s, seq) => ({ seq, type: 'item.patch', data: { threadId: room, id: 'it_a', activityStep: s } });
+  assert.deepEqual(where({ log: [added, step(thought, 2)] }), [], 'its thinking is its own words');
+  const streamed = { seq: 6, type: 'item.text', data: { threadId: room, id: 'it_a', text: line } };
+  assert.deepEqual(where({ log: [added, streamed] }), [], 'its reply, as it streams, is its own words');
+  assert.match(where({ log: [added, step(tool, 3)] }).join(' | '), /in the log #3 under item\.patch\.activityStep\.detail/);
+  const snapshot = { items: { [room]: [agent] } };
+  assert.match(where({ log: [], snapshot }).join(' | '), /in the snapshot under items\..*\.activity\.steps\.1\.detail/);
+  // Versions 1 and 2 of the recorded plan share that line, so both files are found, each in the tool step alone.
+  assert.ok(
+    where({ log: [], snapshot }).every((e) => e.includes('activity.steps.1.detail')),
+    'the thought step at 0 isn’t counted',
+  );
+  // The same tool step in an item.add’s whole item, or an item.patch’s patch.
+  const whole = { seq: 4, type: 'item.add', data: { threadId: room, item: { ...agent, id: 'it_b' } } };
+  assert.match(where({ log: [whole] }).join(' | '), /under item\.add\.item\.activity\.steps\.1\.detail/);
+  const patch = { seq: 5, type: 'item.patch', data: { threadId: room, id: 'it_a', patch: { activity: agent.activity } } };
+  assert.match(where({ log: [added, patch] }).join(' | '), /under item\.patch\.patch\.activity\.steps\.1\.detail/);
+});
