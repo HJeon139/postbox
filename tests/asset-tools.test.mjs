@@ -181,6 +181,17 @@ test('#516 S3b: topic and side threads share their conversation’s assets, and 
   assert.match((await A.list_assets({})).message, /\(Page 1 of 1: 1 asset\.\)$/);
 });
 
+test('#516 S3b: a write while its conversation is being deleted says so, and after Undo the same write is published', async (ctx) => {
+  const { A, rt, t } = await assetRoom(ctx);
+  rt.deleteThread(t.id);
+  const during = await A.write_asset({ name: 'late.md', text: 'x' });
+  assert.equal(during.ok, false);
+  assert.match(during.message, /being deleted/, 'the tool passes the store’s refusal through as it is');
+  rt.undoDeleteThread(t.id);
+  const after = await A.write_asset({ name: 'late.md', text: 'x' });
+  assert.equal(after.ok, true, after.message);
+});
+
 test('#516 S3b: a store kept in memory has no assets folder, so a write says so and a read finds nothing', async (ctx) => {
   const { A } = await assetRoom(ctx, { store: new Store(null) });
   const r = await A.write_asset({ name: 'a.md', text: 'x' });
