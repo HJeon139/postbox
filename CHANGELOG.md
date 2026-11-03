@@ -2,6 +2,40 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.13.1 (2026-11-02)
+
+### Fixes
+
+- **blocks:** choose panels for wrapping options
+
+## 1.13.0 (2026-11-02)
+
+### Features
+
+- **read-message:** read_message on an app gives its code, in parts, pinned to a version
+
+### Fixes
+
+- **read-message:** a part never ends inside a character; test the longer fence
+- **runtime:** agents a message wasn't sent to get its attachments' paths
+- **thread:** a diagram's listener goes with its frame; topic threads redraw for inherited terms
+
+## 1.12.3 (2026-11-02)
+
+### Fixes
+
+- **remote:** classify launcher exits by status
+- **kiro:** a session over the request size limit starts over with the usual catch-up
+- **remote:** distinguish launcher startup failures
+
+## 1.12.2 (2026-11-02)
+
+### Fixes
+
+- **remote:** a closed broker takes no reply or answer from Postbox (#426)
+- **remote:** a closed broker starts no write, and close waits for the rest (#426)
+- **remote:** broker.close waits for writes in flight, and the settle specs wait for it (#426)
+
 ## 1.12.1 (2026-11-02)
 
 ### Fixes

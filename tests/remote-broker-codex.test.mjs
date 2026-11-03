@@ -54,7 +54,7 @@ async function codexRestarted(h, clock, k, out, wait) {
   h.turn('cc');
   await again.b.started('cc');
   assert.deepEqual(again.b.pending.watches, []);
-  again.b.close();
+  await again.b.close();
   assert.equal(codexPromptId(7), 'codex:7');
   assert.equal(codexPromptId('x'.repeat(200)), null);
 }
@@ -136,7 +136,7 @@ test('Codex: a daemon that dies before its decline reaches the held stdin leaves
     void clock.tick(wait);
     await until(() => tries, 'the decline to start');
     assert.deepEqual(k.sent, [], 'Postbox hears nothing before Codex has the decline');
-    k.b.close();
+    await k.b.close();
     // The next daemon finds the request unanswered in in.jsonl, so it still waits, and it’s past permissionWaitMax
     // from when the first daemon saw it: declined as the turn is watched again.
     const again = makeBroker(h, opts);
@@ -154,7 +154,7 @@ test('Codex: a daemon that dies before its decline reaches the held stdin leaves
     assert.match(late.refused, /was declined at the host’s permissionWaitMax/);
     await clock.tick(wait);
     assert.equal(again.writes.length, 1, 'declined once');
-    again.b.close();
+    await again.b.close();
   } finally {
     await h.done();
   }
@@ -200,14 +200,14 @@ test('Codex: a decline the runner doesn’t take leaves the request waiting, wit
     );
     assert.ok('refused' in k.b.checkWrite('cx', ACCEPT_7));
     await until(() => lines(h.p.turn('cx', TURN_FILES.prompts)).some((x) => x.op === 'expiry-sent'), 'the expiry’s record');
-    k.b.close();
+    await k.b.close();
     // A restarted daemon refuses a late answer to it, and has nothing more to tell Postbox.
     const again = makeBroker(h, { now: clock.now, timers: clock.timers, settings: () => ({ ...HOST_DEFAULTS, permissionWaitMax: wait }) });
     await again.b.load([{ turn: 'cx', state: 'running' }]);
     assert.ok('refused' in again.b.checkWrite('cx', ACCEPT_7));
     assert.deepEqual(await again.hello(), []);
     assert.deepEqual(again.writes, []);
-    again.b.close();
+    await again.b.close();
   } finally {
     await h.done();
   }
@@ -241,11 +241,11 @@ test('Codex: in.jsonl says what Codex got: after a restart a decline there still
     assert.deepEqual(k.writes, [], 'nothing is declined again');
     assert.deepEqual(await k.hello(), [], 'an expiry is sent once');
     await until(() => lines(h.p.turn('cx', TURN_FILES.prompts)).some((x) => x.op === 'expiry-sent'), 'the expiry’s record');
-    k.b.close();
+    await k.b.close();
     const again = makeBroker(h, opts);
     await again.b.load([{ turn: 'cx', state: 'running' }]);
     assert.deepEqual(await again.hello(), [], 'and not after the next restart');
-    again.b.close();
+    await again.b.close();
   } finally {
     await h.done();
   }

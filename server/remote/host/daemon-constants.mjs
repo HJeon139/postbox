@@ -64,7 +64,7 @@ export const READ_CHUNK = 64 * 1024;
  *   message?: (msg: any, reply: { send: (type: string, body: Record<string, unknown>) => void, fail: (code: string, text: string) => void }) => boolean | Promise<boolean>,
  *   load?: (turns: TurnFound[]) => Promise<void>, starting?: (turn: string) => Promise<void>, started?: (turn: string) => unknown,
  *   stopping?: (turn: string) => Promise<void>, checkWrite?: (turn: string, line: string) => { refused: string } | { done: (ok: boolean) => void },
- *   shim?: ShimSeam, driverLost?: () => void, close?: () => void }} Broker
+ *   shim?: ShimSeam, driverLost?: () => void, close?: () => void | Promise<void> }} Broker
  *   broker.mjs’s seam: hello is called after each welcome (to resend what waits for Postbox); message gets snapshot,
  *   snapshot-items, answer and reply (remove is the daemon’s own: cleanup.mjs), and returns false for one it doesn’t
  *   take; load replays the turn folders at start; starting and started bracket a turn’s runner launch; stopping comes

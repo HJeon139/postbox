@@ -89,14 +89,16 @@ export function makeHome() {
     return write;
   };
   /**
-   * Closes this home’s brokers, waits for the appends they still have in flight, then removes the home. A broker
-   * writes some records without waiting on them (an expiry sent, a reply after an offline answer), so a spec can end
-   * while one lands in a turn folder: removing the folder under it fails with ENOTEMPTY. A held append, as the
-   * settle specs make, waits at most HELD_MS.
+   * Closes this home’s brokers, waits for what they still have in flight, then removes the home. A broker writes some
+   * records without waiting on them (an expiry sent, a reply after an offline answer), so a spec can end while one
+   * lands in a turn folder: removing the folder under it fails with ENOTEMPTY. Both waits, under one deadline: the
+   * close covers a claim that holds no append yet (a reply reading its snapshot), and `appending` covers the appends
+   * no broker waits for (writeStdin) and any that start during the wait. A held write, as the settle specs make,
+   * waits at most HELD_MS.
    */
   const done = async () => {
-    for (const b of brokers) b.close();
     const end = Date.now() + HELD_MS;
+    await Promise.race([Promise.allSettled(brokers.map((b) => b.close())), sleep(HELD_MS)]);
     while (appending.size && Date.now() < end) await Promise.race([Promise.allSettled([...appending]), sleep(end - Date.now())]);
     await rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 25 });
   };

@@ -37,6 +37,13 @@ export function claim(t) {
 /** Whether a call is taken: answered, or being answered by settleOffline or a live reply (settle.md, “The claim”). @param {any} t */
 export const settled = (t) => t.replied || !!t.replying;
 
+/**
+ * What the broker is writing now, for its close to wait on: each journal's append chain (its last link waits on the
+ * ones before) and each claim, which is held until its reply record is written.
+ * @param {Broker} b @returns {Promise<unknown>[]}
+ */
+export const inFlight = (b) => [...b.appends.values(), ...[...b.tools.values()].flatMap((t) => (t.replying ? [t.replying] : []))];
+
 /** The answer cut to replyChars, the offline notice kept at its end (settle.md, “The settle path”). @param {string} s */
 export const offlineText = (s) => (s.length <= REMOTE_LIMITS.replyChars ? s : s.slice(0, REMOTE_LIMITS.replyChars - OFFLINE_NOTE.length) + OFFLINE_NOTE);
 
@@ -48,7 +55,8 @@ export const offlineText = (s) => (s.length <= REMOTE_LIMITS.replyChars ? s : s.
  */
 export async function settleOffline(b, t) {
   // Only a read has a snapshot answer; an ask or queue call waits for Postbox (settle.md, “Which path answers a read”).
-  if (t.route !== 'read' || settled(t)) return;
+  // A closed broker takes no new claim: its close waits only for the claims held when it was called.
+  if (t.route !== 'read' || settled(t) || b.closed) return;
   const release = claim(t);
   // Marks the claim as the offline one: the hello must not send this call on, whereas a live reply's write in flight
   // (also `replying`) can still fail and leave the call to be sent again. Never cleared, and it needs no reset: a
@@ -73,7 +81,7 @@ export async function settleOffline(b, t) {
     toShims(b, t.turn, 'result', { id: t.id, ok: r.ok, text });
     // A reply record follows a call record, when there is one: a read that was never sent to Postbox wrote none.
     if (t.saved && !(await t.saved)) {
-      const why = await written(b, t.turn, 'tools', { op: 'reply', id: t.id, ok: r.ok, text });
+      const why = await written(b, t.turn, 'tools', { op: 'reply', id: t.id, ok: r.ok, text }, true);
       if (why) b.log(`Turn ${t.turn}’s ${t.name} (${t.id}) offline record failed: ${why}`);
     }
   } finally {

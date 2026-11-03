@@ -11,6 +11,7 @@ export const FAILURE_KINDS = Object.freeze({
   'host-key': { retry: false },
   unreachable: { retry: true },
   'not-installed': { retry: false },
+  'could-not-start': { retry: false },
   version: { retry: false },
   'bad-token': { retry: false },
   busy: { retry: false },
@@ -105,9 +106,10 @@ export function failure(kind, d, detail = {}) {
       `Postbox couldn’t reach ${d}.${quote}`,
       `Check that ${d} is running and that this computer can reach its network, such as over a VPN. ${tryAgain}`,
     ],
-    'not-installed': [
-      `Postbox’s host program isn’t installed on ${d}, or it couldn’t start.${quote}`,
-      `Install Postbox on ${d} from the host’s settings, then reconnect.`,
+    'not-installed': [`This Postbox’s host program isn’t installed on ${d}.${quote}`, `Install Postbox on ${d} from the host’s settings, then reconnect.`],
+    'could-not-start': [
+      `Postbox’s host program is installed on ${d}, but the host’s login shell couldn’t start it.${quote}`,
+      `On ${d}, check that the version’s host launcher is executable and that its folders can be entered, then reconnect.`,
     ],
     version: [
       `The Postbox daemon on ${d} speaks another version of the protocol.${quote}`,
@@ -144,8 +146,9 @@ export function classifyExit({ destination, code, signal, stderr }) {
     if (UNREACHABLE.test(text)) return failure('unreachable', destination, { ...detail, said: lastMatch(text) });
     return failure('failed', destination, detail);
   }
-  // The login shell couldn’t find (127) or run (126) the host program: the fixed command names nothing else.
-  if (code === 127 || code === 126) return failure('not-installed', destination, detail);
+  // The login shell reserves 127 for a command it couldn’t find and 126 for one it found but couldn’t run.
+  if (code === 127) return failure('not-installed', destination, detail);
+  if (code === 126) return failure('could-not-start', destination, detail);
   if (code === 0) return failure('ended', destination, detail);
   return failure('failed', destination, detail);
 }

@@ -113,6 +113,7 @@ test('after a restart, a read that lost its link with no reply record replays op
     await again.b.load([{ turn: 't_s5', state: 'running' }]);
     const resent = await again.hello();
     assert.equal(resent.filter((m) => m.type === 'tool' && m.id === 'c1').length, 1, 'the replayed call is open, and sent again');
+    hold.release(); // the stand-in for the dead daemon lets go, so the first broker can close
   } finally {
     await h.done();
   }

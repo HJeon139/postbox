@@ -3,8 +3,13 @@
 // snapshot-items while the turn runs.
 
 import { encodedBytes, REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
+import { appOf } from '../apps.mjs';
 import { linkOf } from './turns-need.mjs';
 import { SNAPSHOT_FLUSH_MS, send } from './turns-shared.mjs';
+
+/** What an app item's snapshot text ends with, in place of its code. @param {string} id */
+export const appCodeOfflineLine = (id) =>
+  `Its code needs Postbox connected, and Postbox isn’t answering this host now: try read_message { id: "${id}" } again in a moment.`;
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 /** @typedef {import('./turns-shared.mjs').Live} Live */
@@ -35,7 +40,9 @@ function readable(rts, threadId) {
 /** @param {RemoteTurns} rts @param {any} i @param {any} se */
 function itemOf(rts, i, se) {
   const line = String(rts.rt.readLine(i, se) ?? '').slice(0, REMOTE_LIMITS.snapshotLineChars);
-  const text = String(rts.rt.readLine(i, se, Number.POSITIVE_INFINITY) ?? '').slice(0, REMOTE_LIMITS.snapshotTextChars);
+  // An app's code isn't in the snapshot (#516's S1): read with Postbox away, its item says how to read it.
+  const offline = appOf(rts.rt, i) ? `\n\n${appCodeOfflineLine(i.id)}` : '';
+  const text = `${rts.rt.readLine(i, se, Number.POSITIVE_INFINITY) ?? ''}${offline}`.slice(0, REMOTE_LIMITS.snapshotTextChars);
   return { id: i.id, line, text, ...(i.kind === 'block' && i.valid && typeof i.block?.id === 'string' ? { blockId: i.block.id } : {}) };
 }
 
