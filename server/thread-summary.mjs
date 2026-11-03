@@ -3,7 +3,8 @@
 // something new, as a line they choose whether to read; and after a thread’s last reply settles, one cheap model call
 // (Haiku) writes a summary of about 20 tokens that the line carries.
 
-import { CATCH_UP_CHARS } from './blocks.mjs';
+import { READING } from '../shared/limits.mjs';
+import { keepFor, leftOut, mentions } from './catch-up-keep.mjs';
 import { clipText } from './helpers.mjs';
 
 /** How long a thread stays quiet after a reply before its summary is written. */
@@ -45,6 +46,9 @@ export function threadHeader(rt, threadId) {
   return `[Postbox] You’re answering in ${where}.`;
 }
 
+/** How many of a thread's items its catch-up keeps, past the mentions of the agent: fewer than a conversation's. */
+const THREAD_ITEMS = 20;
+
 /**
  * What a turn in a topic or side thread catches up on there: the message a topic thread is on, the first time, and
  * what was said in the thread since this agent last took part in it. null when there’s nothing.
@@ -58,20 +62,20 @@ export function threadCatchUp(rt, se, threadId, excludeId) {
   const at = seen ? items.findIndex((i) => i.id === seen) : -1;
   rt.updateSession(se.id, { seenIn: { ...(se.seenIn ?? {}), [threadId]: items.at(-1)?.id ?? null } });
   const root = seen === undefined ? rt.topicRootLine(se, t) : null;
-  // The newest, up to 20 and as much text as the conversation’s own catch-up takes (CATCH_UP_CHARS).
-  const lines = [];
-  let size = 0;
-  for (const i of items.slice(at + 1).reverse()) {
-    const line = i.id !== excludeId && i.sessionId !== se.id ? rt.describeItem(i, se) : null;
-    if (!line) continue;
-    if (lines.length >= 20 || size + line.length > CATCH_UP_CHARS) break;
-    lines.unshift(line);
-    size += line.length;
-  }
-  lines.push(...reactionLines(rt, se, threadId));
+  // The conversation's own rules (#507): a message that @-mentions the agent first and whole, then the newest, up to
+  // THREAD_ITEMS and CATCH_UP_CHARS, and a line saying what was left out and how to read it in this thread.
+  const entries = items
+    .slice(at + 1)
+    .filter((i) => i.id !== excludeId && i.sessionId !== se.id)
+    .map((item) => ({ item, line: rt.describeItem(item, se, mentions(item, se.handle) ? READING.mention : READING.item) }))
+    .filter((e) => e.line);
+  const kept = keepFor(entries, se.handle, THREAD_ITEMS);
+  const left = entries.filter((e) => !kept.includes(e));
+  const lines = [...kept.map((e) => e.line), ...reactionLines(rt, se, threadId)];
   if (!root && !lines.length) return null;
   const header = threadHeader(rt, threadId);
-  return `${header}${root ? ` ${root}` : ''}${lines.length ? `\n\nWhat was said there since you last took part:\n\n${lines.join('\n\n')}` : ''}`;
+  const since = `What was said there since you last took part${left.length ? ` ${leftOut(kept, left, items, se.handle, threadId)}` : ''}:`;
+  return `${header}${root ? ` ${root}` : ''}${lines.length ? `\n\n${since}\n\n${lines.join('\n\n')}` : ''}`;
 }
 
 /**

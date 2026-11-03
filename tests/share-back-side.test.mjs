@@ -87,6 +87,23 @@ test('#225: nor does a summary’s review_block, which would wake the block’s 
   assert.equal(store.items(t.id).find((i) => i.kind === 'block')?.block.threads, undefined, 'no comment on the block');
 });
 
+test('#225: nor does a summary’s open_topic: its message posts, and each mention is refused as wake_agent refuses it', async () => {
+  const { store, rt, adapter, t, side } = await sideThread();
+  const root = rt.addItem(t.id, { kind: 'user', text: 'Which editions differ?' });
+  let said = null;
+  adapter.next.push(async (c) => {
+    said = c.tools.open_topic({ itemId: root.id, message: 'Check my summary.', mentions: ['beta'] });
+    c.text('Two chapters differ.');
+  });
+  const before = adapter.calls.length;
+  const hops = store.state.threads[t.id].hops;
+  rt.summarizeBack(side.id);
+  await settle(rt);
+  assert.match(said?.message ?? '', /wakes no one/, JSON.stringify(said));
+  assert.equal(adapter.calls.length, before + 1, 'only the summary’s own turn ran');
+  assert.equal(store.state.threads[t.id].hops, hops);
+});
+
 /**
  * Asks for the summary while the agent that writes it is busy, so it waits behind that turn, and returns whether it
  * was still pending once its own turn had started. The person’s message in busyIn, the thread itself unless it’s a
