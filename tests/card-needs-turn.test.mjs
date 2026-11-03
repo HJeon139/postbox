@@ -140,3 +140,41 @@ test('an app check’s note after the turn ended is scoped to the session’s la
   assert.deepEqual(scoped, [{ sessionId: r.alpha.id, turnId: r.store.state.sessions[r.alpha.id].lastTurnId }]);
   assert.ok(scoped[0].turnId);
 });
+
+test('mid-turn, a block the running turn itself showed isn’t the need when a permission is released', async () => {
+  const r = room();
+  const work = held();
+  r.adapter.next.push(async (c, m, se) => {
+    r.rt.addItem(r.t.id, {
+      kind: 'block',
+      sessionId: se.id,
+      handle: 'alpha',
+      turnId: r.rt.turns.get(se.id).id,
+      valid: true,
+      block: { id: 'b_now', type: 'choice', version: 1, fallback: 'Pick', prompt: 'Pick', options: [{ id: 'a', label: 'A' }] },
+    });
+    await work.step(c, m, se);
+  });
+  r.rt.sendMessage(r.t.id, { text: '@alpha go on' });
+  await sleep(5);
+  const p = r.permission();
+  r.setNeed('permission', p.id);
+  r.rt.settlePermission(p.id, 'allowed');
+  assert.equal(r.needs(), null, 'the turn’s end decides its own block');
+  work.release();
+  await settle(r.rt);
+});
+
+test('moving on keeps an open wake request as the need: it waits until answered', async () => {
+  const r = room();
+  const h = r.hop();
+  r.setNeed('hop', h.id);
+  const work = held();
+  r.adapter.next.push(work.step);
+  r.rt.sendMessage(r.t.id, { text: '@alpha go on' });
+  await sleep(5);
+  assert.equal(r.needs()?.itemId, h.id, 'not dropped at the turn’s start, as main did');
+  work.release();
+  await settle(r.rt);
+  assert.equal(r.needs()?.itemId, h.id, 'and still the need at its end');
+});

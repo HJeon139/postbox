@@ -79,3 +79,56 @@ test('a permission that expires at the turn’s end doesn’t flash the block yo
   await settle(r.rt);
   assert.ok(!kinds.includes('block'), `the needs the turn set: ${JSON.stringify(kinds)}`);
 });
+
+/** Turn 1 left block B as the need; then @beta wakes @alpha, a turn that doesn't move on, and it keeps B. */
+async function wokenWithBlockKept(r) {
+  const b = r.block();
+  r.setNeed('block', b.id);
+  r.adapter.next.push(held().step);
+  r.rt.deliver(r.alpha.id, { kind: 'agent', from: '@beta', text: 'Here are the numbers.' });
+  await sleep(5);
+  return b;
+}
+
+test('after a restart cuts off a turn that didn’t move on, the block it kept is still the need', async () => {
+  const r = room();
+  const b = await wokenWithBlockKept(r);
+  restart(r);
+  assert.equal(r.store.state.sessions[r.alpha.id].needs?.itemId, b.id);
+});
+
+test('…and when a permission took the need mid-turn, the kept block is the need after the restart', async () => {
+  const r = room();
+  const b = await wokenWithBlockKept(r);
+  const p = r.permission();
+  r.setNeed('permission', p.id);
+  restart(r);
+  assert.equal(r.store.state.sessions[r.alpha.id].needs?.itemId, b.id);
+});
+
+test('a failed turn that showed a block, then asked permission, doesn’t flash its block as the need', async () => {
+  const r = room();
+  r.adapter.next.push(async (_c, _m, se) => {
+    r.rt.addItem(r.t.id, {
+      kind: 'block',
+      sessionId: se.id,
+      handle: 'alpha',
+      turnId: r.rt.turns.get(se.id).id,
+      valid: true,
+      block: { id: 'b_own', type: 'choice', version: 1, fallback: 'Pick', prompt: 'Pick', options: [{ id: 'a', label: 'A' }] },
+    });
+    const p = r.permission();
+    r.setNeed('permission', p.id);
+    throw new Error('the model went away');
+  });
+  const kinds = [];
+  const update = r.rt.updateSession.bind(r.rt);
+  r.rt.updateSession = (id, patch) => {
+    if (id === r.alpha.id && 'needs' in patch) kinds.push(patch.needs?.kind ?? null);
+    return update(id, patch);
+  };
+  r.rt.sendMessage(r.t.id, { text: '@alpha go on' });
+  await settle(r.rt);
+  assert.ok(!kinds.includes('block'), `the needs the turn set: ${JSON.stringify(kinds)}`);
+  assert.equal(kinds.at(-1), 'failed');
+});
