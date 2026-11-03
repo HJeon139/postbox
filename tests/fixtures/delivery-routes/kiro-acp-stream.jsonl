@@ -1,0 +1,9 @@
+// SYNTHETIC PROTOCOL BASELINE ONLY — NOT FOR RECEIVER TESTS (see tests/fixtures/delivery-routes.md)
+{"type":"runStarted","data":{"sessionId":"kiro-spike-sess-001"}}
+{"type":"sessionUpdate","data":{"update":{"type":"tool_call","toolCallId":"call_kiro_01","title":"Running background evaluation","kind":"execute","rawInput":{"command":"sleep 180"}}}}
+{"type":"metadata","data":{"contextUsagePercentage":14.2}}
+{"type":"sessionUpdate","data":{"update":{"type":"tool_call_update","toolCallId":"call_kiro_01","status":"completed","content":[{"type":"text","text":"Process started with PID 9912"}]}}}
+{"type":"sessionUpdate","data":{"update":{"type":"tool_call","toolCallId":"call_kiro_02","title":"Showing options","kind":"execute","rawInput":{"tool_id":"postbox::show_block"}}}}
+{"type":"sessionUpdate","data":{"update":{"type":"tool_call_update","toolCallId":"call_kiro_02","status":"completed","content":[{"type":"text","text":"[Postbox] URGENT: The person sent: 'Use 50 questions'.\n\nBlock displayed."}]}}}
+{"type":"sessionUpdate","data":{"update":{"type":"thought","content":[{"type":"text","text":"The person sent an urgent note requesting 50 questions instead of 200. I will adjust the configuration accordingly."}]}}}
+{"type":"runFinished","data":{"status":"success"}}
