@@ -1,6 +1,11 @@
 # #633: which card an agent needs you for, until A1b
 
-**Status:** draft for #633’s head after `e776d4b0`, for lead-delivery’s peer read and critic’s verdict (RR 13). A stopgap: A1b derives needs from open ask records and replaces `nextNeed` (`design.md:607`; `execution-plan.md:41`). #508 actions 4 and 9 ask every stopgap note for a restart matrix and `main`’s behavior as a table; both are below.
+**Status:** revision 2, after lead-delivery’s peer read; for critic’s verdict (RR 13). A stopgap: A1b derives needs from open ask records and replaces `nextNeed` (`design.md:607`; `execution-plan.md:41`). #508 actions 4 and 9 ask every stopgap note for a restart matrix and `main`’s behavior as a table; both are below.
+
+## Decisions
+
+- **`keptTurnIds`, a list, where the person chose one `keptTurnId`** (`s3-groom-633-q`, Q-A). With one field, a second wake in a row drops the first wake’s own refusals; the spec “two wakes in a row…” pins that case. The list holds only turns still asking something (I3), so it stays short. This changes the person’s answer, so it goes to them in round 1’s decisions after critic’s verdict.
+- **Ties go to the newer card everywhere,** the restart sweep included (Q-B).
 
 ## The rule
 
@@ -23,9 +28,18 @@ Which comes first: `RANK` (permission, failed, block, refusal, tool request, the
 
 ## Cost
 
-- `nextNeed` and `keptTurns`: one pass over the items of the agent’s conversation and its side and topic threads, O(items there). `turnsOf` answers a list of at most the turns still asking (I3), so `includes` costs O(turns still asking), in practice 0 to 2.
-- They run when a card is answered, a turn ends or starts without moving on, and once per running session at a restart. Not per tool call or per message.
-- A1b replaces the pass with a read of the agent’s open ask records.
+- **`nextNeed` and `keptTurns`:** O(T + I), where T is every thread in the store and I the items of the agent’s conversation and its side and topic threads. `threadsOf` (`server/card-needs.mjs:11–16`) finds the child threads by walking every thread, since the store keeps no index of a thread’s children. `turnsOf` answers at most the turns still asking (I3), so `includes` adds O(turns still asking), in practice 0 to 2.
+- **When:** a card answered, a turn’s end, a turn’s start that doesn’t move on, and once per running session at a restart or a Retry. Never per tool call or per message. `main`’s turn end also scans the turn’s thread’s items (`runtime.mjs`, `endTurn`), so the added cost over `main` is the thread walk and the child threads’ items.
+- **Measured** (`nextNeed` alone, 200 runs after 20 warm-ups, on `tools/uat/big-room.mjs`’s generated room, node 24.21.0, this build host):
+
+| Room | Threads in the store | p50 | p95 |
+|---|---|---|---|
+| 1× (1,001 items) | 1 | 0.077 ms | 0.175 ms |
+| 10× (10,001 items) | 1 | 0.448 ms | 0.869 ms |
+| 10× (10,001 items) | 2,001 | 0.933 ms | 1.449 ms |
+
+  So 2,000 threads add about 0.5 ms, and 10× the items about 0.4 ms. Both stay well under a frame.
+- **Not done here:** an index of a thread’s children would turn T into the agent’s own threads, but it would be a second derived structure kept beside the store, for a function A1b replaces with a read of the agent’s open ask records. Left for A1b; critic to rule.
 
 ## Restart matrix
 
@@ -46,6 +60,10 @@ The sweep (`server/restart-sweep.mjs`, `settleInterrupted`) runs at startup befo
 | Two cards of one rank both waiting | any | the current one | the newer one (the tie rule) | S: “on a tie, the newer card takes the need…” (fails on `e776d4b0`) |
 | A block answered, or a card gone, before the stop | any | that need, stale | dropped | S: “a block you answered before the restart…”; “a need whose card is gone…” |
 | No turn running, need not a permission | — | unchanged | unchanged (the sweep skips it) | R: the sweep’s `continue` |
+| **Store Retry** finds the agent mid-turn with no turn running (`store-outage.mjs`, `settleOrphanTurns`) | — | state set idle, need left as it was: an answered block stays the need, and a waiting app card shows with the ring idle | settled by the same rule as a restart (`restart-sweep.mjs`, `settledNeed`) | S: “a Store Retry that finds the agent mid-turn…” (fails with `main`’s reset in its place) |
+| A card answered while the store is closed | the answer is refused with the store’s error; nothing changes | the same: in `resolveDenial`, `settlePermission` and `resolveHop` the card’s patch comes before the need’s, so a refused answer moves neither | R: those three resolvers |
+| A host turn’s end | — | the same `nextNeed` call as a laptop turn: `endTurn` hands a remote turn to `server/remote/turns-end.mjs` and then chooses the need itself | R: `turns-end.mjs` header; `runtime.mjs`, `endTurn` |
+| A card in a topic of another conversation | not the agent’s | not the agent’s: `threadsOf` takes only threads whose `parentId` is the agent’s conversation | S: “a card in a topic of another conversation…” |
 
 **`main`’s laptop-permission row, probed at `48f20ccd`:** a script against the checkout opens a permission card with the need on it, then runs `main`’s startup reset (`server/index.mjs:136–138`) and `expireStalePermissions` (`:144`). It printed `card expired | needs {"kind":"permission",…} | state needs`, exit 0.
 
@@ -70,8 +88,10 @@ The sweep (`server/restart-sweep.mjs`, `settleInterrupted`) runs at startup befo
 
 - **A host card nobody waits on during a running turn** (`endCard`’s `'tool'` state, `server/remote/turns-prompts.mjs`): no rig drives it. Unchanged from `e776d4b0`.
 - **`keptId` and `keptTurnIds` overlap:** a kept block is a turn-tied card of a kept turn, so `keptTurnIds` could absorb `keptId`. Left as is to keep this head small; A1b removes both.
+- **Privacy of the run’s history:** a recorded room’s events now keep each session’s handle, and its need’s kind and card id (`server/room-events.mjs`, `keepEvent`), never the need’s text. These are public session fields, and #508 action 8’s scan reads the same file.
+- **Size:** Biome counts `server/card-needs.mjs` at between 110 and 119 lines against its 300-line cap, and `server/room-events.mjs` under 50 against 300. No ceiling changed (`lint-caps` exit 0).
 - **Backends:** the decider runs on the server, the same for every backend. UAT runs on Claude Code only (Q6); a host’s permission path is covered by specs, not by UAT.
 
 ## UAT
 
-Trigger `app-need-fallback`: a session’s need goes from an app card to a newer need of another kind and back to the same app card. Reached by `tests/uat/e2e/scenarios/needsnav.md` phase 3, in which an agent’s app card waits, the agent asks a newer question, and you answer it. Its unit test fires on a recorded-shape room where the need falls back and stays silent on two where it doesn’t. It is still to be checked on a recorded needsnav run before the paid run; none was on this host when this was written.
+Trigger `app-need-fallback`: a session’s need goes from an app card to a newer need of another kind and back to the same app card. Reached by `tests/uat/e2e/scenarios/needsnav.md` phase 3, in which an agent’s app card waits, the agent asks a newer question, and you answer it. Its unit test fires on a recorded-shape room where the need falls back and stays silent on two where it doesn’t. No recorded needsnav run is on this host. On the recorded run lead-delivery pointed to (`uc04-evalgen-t09`, 5,688 events, 4,108 of them session events), the trigger reports `recorded: false` and fires 0 times: the run predates the field. So a fresh recorded run is the first real check, before the paid one.
