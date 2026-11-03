@@ -37,7 +37,6 @@ import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
-import { goToNeedsStep } from './uat/driver-needs.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
 import { followEvents } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
@@ -57,6 +56,7 @@ import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { chainLimitEnv, phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
+import { STEPS } from './uat/steps.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
 import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
@@ -399,7 +399,7 @@ async function main() {
         const key = a.item ? keys.get(a.item) : null;
         if (a.item && !key) throw new Error(`There’s no item ${a.item}.`);
         if (a.type === 'telemetry') actionResult = await tm.telemetryAction(td, a, key, tel);
-        else if (a.type === 'go_to_needs') actionResult = await goToNeedsStep({ d, page, api, keys, facts, step }, a);
+        else if (Object.hasOwn(STEPS, a.type)) actionResult = await STEPS[a.type]({ d, page, api, keys, facts, step }, a);
         else if (a.type === 'send') {
           await d.send(a.text ?? '');
           // A message that addresses an agent by name without its @ goes to the last speaker, not to that agent: say
