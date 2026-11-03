@@ -199,7 +199,7 @@ The same lookups are served in memory: each thread’s items are a list kept sor
 
 | Data | In `store.state` | In `/api/state` | In the store |
 |---|---|---|---|
-| Open records (`waiting`, `sent`, `open`) | Yes | Yes | In the snapshot, and as events in the log |
+| Open records (`waiting`, `sent`, `open`) | Yes | No: private (architecture.md, “What reaches the browser”). The page gets a cursor for their events, and from A1b small reviewed headers | In the snapshot, and as events in the log |
 | Closed records | No | No | Only as the events that opened and closed them, and as receipts |
 | Receipts (“Receipts”) | No | No | Derived by the reducer from the record events; checkpointed with the snapshot; server-only, bounded |
 | Items | Yes | No: the items API serves pages | In the snapshot (a shard per conversation, from step S2), and as events |
@@ -207,7 +207,7 @@ The same lookups are served in memory: each thread’s items are a list kept sor
 | App headers | Yes | Yes (PF-7) | In the snapshot |
 | The event sequence | — | Resumed from `Last-Event-ID` | The log; segments are pruned below the snapshot’s `seq` |
 
-Closed records leave state, so `/api/state` stays bounded by what is open, not by a room’s age. The history that explains a delivery lives in the receipts (“Receipts”), derived from the record events, so a close and its receipt can’t disagree.
+Closed records leave state, so `store.state` stays bounded by what is open, not by a room’s age. The history that explains a delivery lives in the receipts (“Receipts”), derived from the record events, so a close and its receipt can’t disagree.
 
 ### 6.4 Receipts
 
@@ -227,8 +227,8 @@ A server-only entry per delivery record, derived by the reducer from the record 
 
 **Decision (the person, 31 October 2026, recalling the 28 October decision for a bundled Redis 8).** Persistence stays on the JSON Lines log plus a snapshot. The decision, the reasons, the line format, the writer, recovery, failing closed, the epoch, the lock, snapshots, the crash points and the test plan are in **`designs/508/storage-design.md`**, so the text exists once. In short:
 
-- A commit is written whole and fsynced. A one-event commit is a plain event line with an operation id; a commit of several events is a JSON array. A commit is applied, broadcast and visible to anything (the public state, `since()`, `/api/state`, the read tools, an adapter start) only after its sync; emits made meanwhile are held and released in order. The integrator’s alternative, applying in call order and holding only what leaves the process, is recorded in `storage-design.md` and not adopted until its readers are named.
-- A bad line in the middle of a segment refuses to start. A gap in `seq` starts, logs the range lost and shows it once.
+- A commit is written whole and fsynced. A one-event commit is a plain event line with an operation id; a commit of several events is a JSON array. A commit is applied, broadcast and visible to anything (the public state, `since()`, `/api/state`, the read tools, an adapter start) only after its sync, whole, unless the reducer rejects one of its events, which is then held as rejected (`storage-design.md` §8, #609) while the rest apply; emits made meanwhile are held and released in order. The integrator’s alternative, applying in call order and holding only what leaves the process, is recorded in `storage-design.md` and not adopted until its readers are named.
+- A bad line in the middle of a segment refuses to start; a line the reducer rejects doesn’t: it is held as rejected (#609). A gap in `seq` starts, logs the range lost and shows it once.
 - A failed write rejects what was queued and closes writes. Retry is a reload, the same recovery a restart runs, after the old writer is quiesced and with a durability barrier on a fresh descriptor and the runtime reconciled.
 - A history epoch tells a tab on a lost timeline to resync. A lock file refuses a second Postbox on the data folder.
 - Receipts are derived by the reducer from the record events and checkpointed with the snapshot.

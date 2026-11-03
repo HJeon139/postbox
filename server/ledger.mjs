@@ -91,7 +91,7 @@ export class Ledger {
   track(p) {
     const q = Promise.resolve(p).catch((e) => console.error(`The work ledger couldn’t record something: ${e.message}`));
     this.pending.add(q);
-    q.finally(() => this.pending.delete(q));
+    void q.finally(() => this.pending.delete(q)); // q never rejects: its catch is above
     return q;
   }
   async idle() {

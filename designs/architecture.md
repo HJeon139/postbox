@@ -59,7 +59,7 @@ flowchart LR
 - **Schema.** Events carry plain JSON. If an event’s shape ever changes, the reducer upgrades old events as it reads them (an “upcaster”), so there are no migrations to run.
 - **Stage 2 data** in `store.json` is read once as the first snapshot, then renamed `store.json.migrated`.
 
-**Attachments.** Files are stored by the SHA-256 of their contents under `blobs/ab/cdef…`, so identical files are kept once and corruption is detectable. The log holds only metadata: `{ id, name, type, size, sha256 }`. Files are served with `X-Content-Type-Options: nosniff` and a `sandbox` content-security policy. Only PNG, JPEG, GIF and WebP images are shown inline; everything else downloads. Large content never enters the log, so snapshots stay small.
+**Attachments.** Files are stored by the SHA-256 of their contents under `blobs/ab/cdef…`, so identical files are kept once and corruption is detectable. The log holds only metadata: `{ id, name, type, size, sha256 }`. Files are served with `X-Content-Type-Options: nosniff` and a `sandbox` content-security policy. Only PNG, JPEG, GIF and WebP images are shown inline; everything else downloads. Large content never enters the log, so snapshots stay small. An agent reads an attachment from its path on disk: the turn a message is sent to gets the paths in that message, and every other agent in the room gets them in its history, catch-up, a topic thread’s opener and the read tools (#671). An agent on a remote host has only the turn’s own copies, so it gets the names, and a line saying its host can’t open them yet.
 
 **Revisit when** Postbox runs as more than one server process, serves more than one person, or needs queries across history (for example, search). Then move the same interface onto SQLite, Redis Streams or Postgres, and choose by the need then. Redis Streams was chosen on 28 October 2026 and recalled on 31 October (see “Decided next”).
 
@@ -758,3 +758,26 @@ Tests that need `/proc` or logind skip on macOS and say why; CI runs them on Lin
 - People want to keep a remote turn’s background jobs on Stop, or stop one job. Then route `keepJobs` and `stopJobUnder` to the daemon.
 - A host has no Node 22, and people want Postbox to bring one. That needs a decided source and checksum check first.
 - People need Postbox itself on the host, served to the browser over a tunnel. That changes the assumptions in “Writes need the page’s token”, and is out of scope here.
+
+## 19. What reaches the browser
+
+**Decision** (1 November 2026, from the integrator’s review of #608). What the page may see is decided once, in `shared/state.mjs`: each event type’s entry in `EVENTS` says whether it is `public`, and each state key is in `PUBLIC_STATE_KEYS` or `PRIVATE_STATE_KEYS`. `server/public-state.mjs` applies that to the state and the event stream: `/api/state` (`server/page-state.mjs`), and the live and backlog frames (`server/live-streams.mjs`). An event the page may not see goes out as a `cursor` that keeps only its seq, so the page stays in step. Every other route that answers with state does so with a piece of it directly: the routes that create or change an entity, `PUT /api/settings`, `/api/hosts/:id/status`, the permissions view (`GET /api/permissions`), the Work view’s answers and the telemetry reports, which read the store’s items and sessions directly. Such an answer may carry only data of public keys. Review holds that rule today, while every key is public; A1b, which adds the first private key, adds a check that holds it before that key exists.
+
+```mermaid
+flowchart TD
+  T[EVENTS and the state-key lists] --> R[the reducer]
+  T --> P[server/public-state.mjs]
+  T --> C[the page’s stream listeners]
+  P --> S["/api/state and the event stream"]
+```
+
+**What it rests on**
+- **A list kept beside the reducer drifts.** #608 kept the public types in a list of their own, checked by a regular expression over the reducer’s source. The integrator added a type three ways (a `switch` in an imported helper, a lookup list in a helper, a helper two levels deep), and each passed. With one table, the reducer can’t apply a type that hasn’t said whether it is public, and the page’s listeners come from the same table (`app/js/client.mjs`).
+- **It fails closed.** A type with no entry, or one that isn’t public, reaches the page only as a cursor, and a state key not listed as public isn’t sent. A spec fails when a key of `emptyState()` is in neither list, or in both.
+- **The store keeps the raw history.** The log, snapshots and the remote hosts’ subscribers read the store directly. Telemetry keeps only public types (`keepEvent` in `server/room-events.mjs` checks `EVENTS`), since its reports reach the page.
+- **Only the bulk paths are projected.** They send the whole state and every event. The other routes answer with one entity or report each, so the rule for them is about what they may carry, not a second projection.
+- **The stream’s own frame names are reserved.** `STREAM` in `shared/state.mjs` holds `cursor`, `status`, `epoch` and `resync`, and none of them may be an event type.
+
+**When to revisit**
+- A remote host gets a snapshot built from the store’s state. No key is private yet. When A1b adds one, its design says whether a host gets `publicState` or a projection of its own.
+- A route that answers with state, today’s or a new one such as B2’s paged items fetch or A1b’s headers, carries only data of public keys. Before A1b’s first private key, that rule gets a check, not only review.

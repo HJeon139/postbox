@@ -28,3 +28,8 @@ export function appCheckText(app) {
   const problems = check.problems.map((p) => `- ${p.code}: ${p.message}`).join('\n');
   return `App ${app.id}, v${check.version}. Browser check: ${check.status}.${app.retired ? ' This app is retired.' : ''}${problems ? `\n${problems}` : ''}`;
 }
+
+/** The head line for a version that isn't the current one: Postbox records a check only for that (#516's S1). @param {any} app @param {number} v */
+export function appVersionText(app, v) {
+  return `App ${app.id}, v${v}; v${app.current} is the current version. v${v}’s browser check isn’t kept: Postbox records one only for the current version.${app.retired ? ' This app is retired.' : ''}`;
+}

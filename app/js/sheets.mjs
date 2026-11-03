@@ -758,7 +758,7 @@ export function openRename(threadId) {
       .then(() => dlg.close())
       .catch((e) => toast({ title: 'Couldn’t rename it', text: e.message, level: 'blocking' }));
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') save();
+    if (e.key === 'Enter') void save();
   });
   const dlg = openDialog({
     title: `Rename the ${t?.kind === 'room' ? 'room' : 'conversation'}`,
@@ -1212,7 +1212,7 @@ export function openFolderPicker(projectId, onPick, { folders = false } = {}) {
       }
     }
   };
-  load('');
+  void load('');
   const dlg = openDialog({
     title: folders ? 'Add a folder' : 'Attach from the project folder',
     sub: folders ? 'The agent may work in it from its next turn.' : 'Postbox attaches a reference; nothing is copied.',

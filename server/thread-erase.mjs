@@ -25,7 +25,7 @@ export function eraseThreads(rt, ids, why, stopped = []) {
   rt.stopKeptJobs(
     ids.flatMap((id) => rt.s.threads[id]?.members ?? []).filter((sid) => !stopped.includes(sid)),
     why,
-  );
+  ).catch((e) => console.error(`Postbox couldn’t stop the background jobs of a removed conversation: ${e.message}`));
   for (const id of ids) {
     for (const sid of rt.s.threads[id]?.members ?? []) {
       discardHeld(rt, sid, 'was removed with its conversation');

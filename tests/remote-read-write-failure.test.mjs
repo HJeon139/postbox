@@ -68,7 +68,7 @@ test('T24: a live write that fails after the deadline has passed answers the rea
     assert.match(res.text, /Read offline/);
     await sleep(100);
     assert.equal(results(s, 'c_t24a'), 1, 'exactly one answer to the shim');
-    k.b.close();
+    await k.b.close();
   } finally {
     await h.done();
   }
@@ -105,7 +105,7 @@ test('T24: a live write that fails with the deadline still ahead waits for the d
     assert.match(res.text, /Read offline/);
     await sleep(100);
     assert.equal(results(s, 'c_t24b'), 1, 'exactly one answer to the shim');
-    k.b.close();
+    await k.b.close();
   } finally {
     await h.done();
   }

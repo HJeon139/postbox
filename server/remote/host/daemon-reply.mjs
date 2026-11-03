@@ -6,7 +6,11 @@ import { exists } from './daemon-files.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
 
-/** @param {Conn} c @param {string} type @param {Record<string, unknown>} body @returns {Promise<void> | undefined} */
+/**
+ * Sends one message. The promise, when there is one, only resolves, once the output has drained: a caller that doesn’t
+ * pace itself on it marks it void.
+ * @param {Conn} c @param {string} type @param {Record<string, unknown>} body @returns {Promise<void> | undefined}
+ */
 export function send(c, type, body) {
   if (c.closed) return;
   const ok = c.output.write(encode(message('daemon-to-postbox', type, body)));
@@ -14,7 +18,7 @@ export function send(c, type, body) {
 }
 /** @param {Conn} c @param {string} code @param {string} text @param {string} [re] @param {string} [turn] @param {string} [id]  the prompt or call it refuses @returns {undefined} */
 export function fail(c, code, text, re, turn, id) {
-  send(c, 'error', { code, message: text.slice(0, REMOTE_LIMITS.messageChars), ...(re ? { re } : {}), ...(turn ? { turn } : {}), ...(id ? { id } : {}) });
+  void send(c, 'error', { code, message: text.slice(0, REMOTE_LIMITS.messageChars), ...(re ? { re } : {}), ...(turn ? { turn } : {}), ...(id ? { id } : {}) });
 }
 
 /** The turn’s folder, or an error to the connection. @param {Daemon} d @param {Conn} c @param {string} turn @param {string} re */
@@ -29,6 +33,6 @@ export const attached = (d) => Boolean(d.driver && !d.driver.closed && d.driver.
 /** Sends a message to the driving Postbox, if one is attached. Returns whether it went. @param {Daemon} d @param {string} type @param {Record<string, unknown>} body */
 export const toPostbox = (d, type, body) => {
   if (!d.driver || !attached(d)) return false;
-  send(d.driver, type, body);
+  void send(d.driver, type, body);
   return true;
 };

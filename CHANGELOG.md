@@ -2,6 +2,69 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.13.1 (2026-11-02)
+
+### Fixes
+
+- **blocks:** choose panels for wrapping options
+
+## 1.13.0 (2026-11-02)
+
+### Features
+
+- **read-message:** read_message on an app gives its code, in parts, pinned to a version
+
+### Fixes
+
+- **read-message:** a part never ends inside a character; test the longer fence
+- **runtime:** agents a message wasn't sent to get its attachments' paths
+- **thread:** a diagram's listener goes with its frame; topic threads redraw for inherited terms
+
+## 1.12.3 (2026-11-02)
+
+### Fixes
+
+- **remote:** classify launcher exits by status
+- **kiro:** a session over the request size limit starts over with the usual catch-up
+- **remote:** distinguish launcher startup failures
+
+## 1.12.2 (2026-11-02)
+
+### Fixes
+
+- **remote:** a closed broker takes no reply or answer from Postbox (#426)
+- **remote:** a closed broker starts no write, and close waits for the rest (#426)
+- **remote:** broker.close waits for writes in flight, and the settle specs wait for it (#426)
+
+## 1.12.1 (2026-11-02)
+
+### Fixes
+
+- **store:** every reader of a held or replayed event agrees on a rejected one (#632 review)
+- **store:** replay names a commit's first rejected event, as the live path does
+- **store:** a retry of a rejected commit is rejected again, not a duplicate success
+- **store:** no producer may emit a stream frame's name either
+- **store:** an event the reducer rejects is numbered, written and held as rejected (#609, #610)
+- **state:** a reducer handler that throws changes nothing first (#609)
+
+## 1.12.0 (2026-11-02)
+
+### Features
+
+- **state:** one event table decides what reaches the browser (#508)
+
+### Fixes
+
+- **state:** the browser boundary claims only what it enforces, and telemetry keeps public types
+- **state:** freeze each event-table entry, and name the frozen switch a transcription
+
+## 1.11.2 (2026-11-02)
+
+### Fixes
+
+- **server:** a failed stop of a deleted session's kept jobs is logged
+- **adapters:** a stop that fails still ends the turn
+
 ## 1.11.1 (2026-11-02)
 
 ### Fixes

@@ -206,6 +206,35 @@ export async function stopTurn(child, { keep = [], exited, graceMs = GRACE_MS, p
 }
 
 /**
+ * A CLI turn’s Stop (#126). When the turn is aborted, `start` stops it (stopTurn), and `settle` ends the turn once the
+ * CLI’s whole group has exited, so the session’s next turn never runs beside it. A turn that wasn’t stopped ends at once.
+ * `now` stops it without an abort, and `off` stops listening, once the turn has ended on its own.
+ *
+ * A stop that fails ends the turn too, and says why: the session is never left stopping. Its rejection is handled as
+ * the stop starts, not when the CLI closes, since one left unhandled until then would bring Postbox down.
+ * @param {AbortSignal} signal
+ * @param {() => Promise<{ gone: Promise<void> }>} start
+ * @returns {{ now: () => void, settle: (end: () => void) => void, off: () => void }}
+ */
+export function stopOnAbort(signal, start) {
+  /** @type {Promise<{ gone: Promise<void> }> | null} */
+  let stopping = null;
+  const onAbort = () => {
+    stopping ??= start().catch((e) => {
+      console.error(`Postbox couldn’t stop a turn’s processes, so it ended the turn anyway: ${e?.message ?? e}`);
+      return { gone: Promise.resolve() };
+    });
+  };
+  if (signal.aborted) onAbort();
+  else signal.addEventListener('abort', onAbort, { once: true });
+  return {
+    now: onAbort,
+    settle: (end) => (stopping === null ? end() : void stopping.then((r) => r.gone).then(end)),
+    off: () => signal.removeEventListener('abort', onAbort),
+  };
+}
+
+/**
  * Stops one background job by its tool shell, found under a CLI that’s still running. Resolves to the job’s group, or
  * null if no shell runs its command. For a remote child it’s false, at once: a job’s own Stop isn’t offered for a turn
  * on a host (#120, remote-hosts.md “Stop, in all three”), and like null it’s falsy, so a caller that only checks for a

@@ -19,7 +19,7 @@ export function check(d, c) {
     return fail(c, 'no-check', 'This host has no signInCheck in its settings, so there’s no sign-in check to run.', 'check');
   d.checks = d.checks.then(async () => {
     const r = await runCheck(d, argv);
-    send(c, 'checked', { ok: r.code === 0, code: r.code, at: d.now() });
+    void send(c, 'checked', { ok: r.code === 0, code: r.code, at: d.now() });
   });
 }
 /** @param {Daemon} d @param {string[]} argv @returns {Promise<{ code: number | null }>} */

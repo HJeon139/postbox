@@ -72,8 +72,12 @@ function pendingCollection(store, coll) {
     if (held.type !== event && !(held.type === 'remove' && held.data?.kind === removed)) continue;
     out ??= { ...published };
     const { type, data } = JSON.parse(json);
-    if (type === event) out[data.id] = data;
-    else delete out[data.id];
+    try {
+      if (type === event) out[data.id] = data;
+      else delete out[data.id];
+    } catch {
+      // the reducer rejects it the same way (missing data), and the release holds it as rejected (#609): skipped
+    }
   }
   return out ?? published;
 }
@@ -93,13 +97,7 @@ function pendingList(store, list, key) {
     store.views.set(name, v);
   }
   // Held jobs leave heldLog only by release, which records, so a view whose version holds has seen a prefix of it.
-  try {
-    applyHeld(store, v, list, key);
-  } catch (e) {
-    // An event the reducer rejects throws here as it will at release (#610). No view is kept that has seen part of it.
-    store.views.delete(name);
-    throw e;
-  }
+  applyHeld(store, v, list, key); // an event the reducer rejects is skipped, as the release holds it (#609)
   // One copy per change, shared by every read until the next held event: readers in a loop don't copy the list each time.
   if (v.copiedAt !== v.seen) {
     v.copy = Object.freeze([...v.entries]);
@@ -122,6 +120,11 @@ function applyHeld(store, v, list, key) {
       if (at >= 0 && !v.own.has(data.id)) v.entries[at] = structuredClone(v.entries[at]);
       v.own.add(data.id);
     }
-    apply({ [list]: { [key]: v.entries } }, type, data);
+    try {
+      apply({ [list]: { [key]: v.entries } }, type, data);
+    } catch {
+      // The release holds this event as rejected (#609), and by the reducer's contract its throw changed nothing, so
+      // the view skips it too: what is pending stays what the release will publish.
+    }
   }
 }

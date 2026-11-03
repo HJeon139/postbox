@@ -39,7 +39,6 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { realpathSync } from 'node:fs';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -48,106 +47,20 @@ import { checkRemoteContext } from './adapter.mjs';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
+import { KIRO_TOOL_RULES, kiroAgent } from './kiro-cli-agent.mjs';
 import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_REMOTE, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
-import { kiroError, kiroExitError } from './kiro-errors.mjs';
-import { listProcesses, stopTurn } from './process-group.mjs';
-import { effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf } from './setup.mjs';
+import { kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
+import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
+import { effortOf, modelOf, recorderFor, setupOf } from './setup.mjs';
 
+export { KIRO_PUBLISHING, KIRO_TOOL_RULES, kiroAgent, kiroRules } from './kiro-cli-agent.mjs';
 export { findKiro, kiroModel, kiroModels, kiroVersion, modelIds, postboxModel } from './kiro-cli-models.mjs';
 export { kiroRemoteEnv } from './kiro-cli-remote.mjs';
 export { kiroExitError as exitError } from './kiro-errors.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117), on a remote host too (KIRO_REMOTE). The adapter adds the models it found. */
 export const KIRO_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'deny-list', promptTool: false, remote: KIRO_REMOTE });
-
-/**
- * MCP tools that publish outside Postbox, as Kiro’s `server/tool` match patterns, where `*` is any text: the verb
- * rules of PUBLISHING_TOOLS (server/adapters/setup.mjs). Kiro has no claude.ai connectors or built-in publishing
- * tools, so only the verbs carry over. None may match Postbox’s own tools: tests/kiro-cli.test.mjs checks that.
- */
-export const KIRO_PUBLISHING = [
-  ...['send', 'post', 'reply', 'publish', 'share', 'comment'].flatMap((v) => [`*/${v}`, `*/${v}_*`]),
-  ...['send', 'publish'].map((v) => `*/*_${v}_*`),
-];
-
-/**
- * The persona’s Tools checklist as Kiro capabilities (kiro.dev/docs/permissions): an id that isn’t ticked denies
- * them. agents.outside has nothing to deny here: Kiro’s subagent tool runs inside the turn, as Claude Code’s Task
- * does, and the chat command has no tool that messages or schedules other sessions.
- */
-export const KIRO_TOOL_RULES = /** @type {Record<string, string[]>} */ ({ shell: ['shell'], 'web.fetch': ['web_fetch', 'web_search'] });
-
-/** A folder as given and as resolved: Kiro matches resolved paths (/tmp is /private/tmp on macOS). */
-const spellings = (dir) => {
-  try {
-    const real = realpathSync(dir);
-    return real === dir ? [dir] : [dir, real];
-  } catch {
-    return [dir];
-  }
-};
-
-/**
- * The agent’s permission rules. Their order doesn’t matter: in Kiro, deny beats ask beats allow, whatever the scope
- * a rule comes from (kiro.dev/docs/permissions), so a deny here holds against an allow in your own rules.
- * @param {{ persona: any, folders: string[], resolve?: boolean }} turn  folders: where the agent works, and the folders
- *   it may also use; resolve: also name each as resolved here (false for a host’s folders, which aren’t on this disk)
- */
-export function kiroRules({ persona, folders, resolve = true }) {
-  const { canPublish, usesHostSetup, mcpOff } = setupOf(persona);
-  const has = new Set(Array.isArray(persona?.tools) ? persona.tools : []);
-  const dirs = [...new Set(folders.filter(Boolean).flatMap(resolve ? spellings : (d) => [d]))];
-  const rules = [
-    // Postbox’s own tools never need asking: they only show things in the thread.
-    { capability: 'mcp', match: [`${POSTBOX_SERVER}/*`], effect: 'allow' },
-  ];
-  if (dirs.length) rules.push({ capability: 'fs_read', match: dirs, effect: 'allow' });
-  if (persona?.permissionMode === 'acceptEdits' && dirs.length) rules.push({ capability: 'fs_write', match: dirs, effect: 'allow' });
-  for (const [id, caps] of Object.entries(KIRO_TOOL_RULES))
-    if (!has.has(id)) for (const capability of caps) rules.push({ capability, match: ['*'], effect: 'deny' });
-  if (!canPublish) rules.push({ capability: 'mcp', match: KIRO_PUBLISHING, effect: 'deny' });
-  // Servers the persona turned off: their tools are denied.
-  if (usesHostSetup && mcpOff.length) rules.push({ capability: 'mcp', match: mcpOff.map((n) => `${n}/*`), effect: 'deny' });
-  // Isolated: every server but Postbox’s is denied. An empty Kiro home and includeMcpJson: false aren’t enough on
-  // their own: a managed install can add its own server, and an allow rule for it, to every agent file when the
-  // CLI starts (seen with a toolbox-installed kiro-cli 2.33.1), and the deny beats that allow. Checked live: a second
-  // server’s call was refused by this rule while Postbox’s went through (tests/fixtures/kiro-cli/isolated-deny.jsonl).
-  // Kiro still lists the denied server’s tools to the model; it refuses the call.
-  if (!usesHostSetup) rules.push({ capability: 'mcp', match: ['*/*'], exclude: [`${POSTBOX_SERVER}/*`], effect: 'deny' });
-  return rules;
-}
-
-// A live turn (kiro-cli 2.33.1) had a command refused as “The user rejected this tool call.”, and the agent told the
-// person they had declined it. Nobody was asked, so the agent is told what a refusal means here.
-const HEADLESS_NOTE =
-  '## Refused tool calls\n\nPostbox runs you headless, so Kiro can’t ask the person to approve a tool call: one that would need approval is refused, and Kiro reports it as “The user rejected this tool call.” The person didn’t see or decline it. Say which call was refused and that the agent’s permissions in Postbox didn’t allow it, then carry on without it.';
-
-// Kiro still lists a denied server’s tools to the model; it only refuses the call. In the mixed-room UAT, an Isolated
-// agent offered “Manage scoped AWS credentials” from a server a managed install had added, so it’s told.
-const ISOLATED_NOTE =
-  '## Tools you can use\n\nOnly Postbox’s MCP server is allowed for you here. Tools from any other MCP server you see listed are refused, so don’t offer or use them, and don’t count them among what you can do.';
-
-/**
- * The custom agent for one turn. Pure, so the tests can check it.
- * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[] }} turn
- *   shim: on a remote host, Postbox’s server is the host’s stdio shim, run as this command, in place of mcpUrl; the
- *   folders are then the host’s
- */
-export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders }) {
-  const { usesHostSetup } = setupOf(persona);
-  return {
-    name,
-    description: `@${persona.handle} in Postbox`,
-    prompt: `${guide}\n\n${HEADLESS_NOTE}${usesHostSetup ? '' : `\n\n${ISOLATED_NOTE}`}`,
-    tools: ['*'],
-    // Your global and workspace mcp.json, unless the persona is Isolated.
-    includeMcpJson: usesHostSetup,
-    // A local server is a command and its arguments (kiro.dev/docs/custom-agents/configuration-reference).
-    mcpServers: { [POSTBOX_SERVER]: shim ? { command: shim.command, args: [...shim.args] } : { type: 'http', url: mcpUrl } },
-    permissions: { rules: kiroRules({ persona, folders, resolve: !shim }) },
-  };
-}
 
 /**
  * The CLI arguments for one turn. Pure, so the tests can check them.
@@ -412,6 +325,13 @@ export function createKiroMapper(ctx, { now = Date.now, effort = null } = {}) {
   };
 }
 
+/** A run still over the size limit fails with what Kiro said, and its session isn’t kept to resume (#544). */
+function failOverLimit(ctx, { tooLarge = null }) {
+  if (!tooLarge) return;
+  ctx.saveState({ kiroSessionId: null });
+  throw kiroError(tooLarge, tooLarge);
+}
+
 export class KiroCliAdapter {
   name = 'kiro-cli';
 
@@ -458,18 +378,22 @@ export class KiroCliAdapter {
     const attach = ctx.remote?.attach?.turn ?? null;
     if (ctx.remote) checkRemoteContext(ctx.remote, { attach: Boolean(attach) });
     if (attach) {
-      await this.run({ ctx, cwd, folders, prompt: promptOn(attach), guide, sessionId: ctx.state.kiroSessionId ?? null, turn: attach, attach: true });
+      failOverLimit(
+        ctx,
+        await this.run({ ctx, cwd, folders, prompt: promptOn(attach), guide, sessionId: ctx.state.kiroSessionId ?? null, turn: attach, attach: true }),
+      );
       return;
     }
     const first = await this.run({ ctx, cwd, folders, prompt: promptOn(), guide, sessionId: ctx.state.kiroSessionId ?? null, turn: ctx.remote?.turn });
     // A session Kiro no longer has (its history was cleared, or the persona moved between your setup and
-    // Isolated, which keep sessions in different homes) starts over, once.
-    if (first.missingSession) {
+    // Isolated, which keep sessions in different homes) starts over, once. So does one grown past the request size
+    // limit, which would fail every turn that resumes it, Retry included (#544).
+    if (first.missingSession || first.tooLarge) {
       ctx.saveState({ kiroSessionId: null });
-      const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
+      const note = `[Postbox] ${first.tooLarge ? SIZE_LIMIT_START_TEXT : FRESH_START_TEXT}\n\n`;
       // On a host, a second host turn, which the runtime persists before nextTurn returns.
       const turn = ctx.remote ? await ctx.remote.nextTurn() : undefined;
-      await this.run({ ctx, cwd, folders, prompt: note + promptOn(turn), guide, sessionId: null, turn });
+      failOverLimit(ctx, await this.run({ ctx, cwd, folders, prompt: note + promptOn(turn), guide, sessionId: null, turn }));
     }
   }
 
@@ -515,13 +439,7 @@ export class KiroCliAdapter {
           c.once('close', r);
           c.once('error', r);
         });
-        /** @type {Promise<{ gone: Promise<void> }>|null} */
-        let stopping = null;
-        const onAbort = () => {
-          stopping = stopTurn(c, { exited, kill: this.kill, list: this.list });
-        };
-        if (ctx.signal.aborted) onAbort();
-        else ctx.signal.addEventListener('abort', onAbort, { once: true });
+        const stop = stopOnAbort(ctx.signal, () => stopTurn(c, { exited, kill: this.kill, list: this.list }));
         child.on('error', (e) =>
           reject(
             kiroError(
@@ -560,10 +478,11 @@ export class KiroCliAdapter {
         const done = (code) => {
           if (finished) return;
           finished = true;
-          ctx.signal.removeEventListener('abort', onAbort);
+          stop.off();
           if (mapper.model) ctx.saveState({ model: mapper.model });
           if (ctx.signal.aborted) return resolve({});
           if (sessionId && mapper.missingSession) return resolve({ missingSession: true });
+          if (overSizeLimit(mapper.error)) return resolve({ tooLarge: mapper.error });
           if (mapper.error) return reject(kiroError(mapper.error, mapper.error));
           if (code !== 0 || !mapper.finished) {
             const message = kiroExitError(code, stderr);
@@ -572,10 +491,7 @@ export class KiroCliAdapter {
           resolve({});
         };
         // A stopped turn ends once the CLI’s whole group has exited, as for the Claude backends (#126).
-        const settle = (code) => {
-          if (ctx.signal.aborted && stopping) stopping.then((r) => r.gone).then(() => done(code));
-          else done(code);
-        };
+        const settle = (code) => stop.settle(() => done(code));
         child.on('close', settle);
         child.on('exit', (code) => {
           if (ctx.signal.aborted) settle(code);

@@ -25,7 +25,7 @@ export async function write(d, c, m) {
     return fail(c, e.code === 'internal' ? 'internal' : 'turn-ended', e.message, 'write', m.turn);
   }
   check.done(true);
-  send(c, 'written', { turn: m.turn, upTo });
+  void send(c, 'written', { turn: m.turn, upTo });
 }
 
 /** One line for a turn’s held stdin, through its runner; resolves with in.jsonl’s size after it. @param {Daemon} d @param {string} turn @param {string} line */

@@ -23,6 +23,7 @@ import { test } from 'node:test';
 const PUBLISHED = {
   'apps.mjs': ['appEvent', 'resolveAppSend'], // the page’s app events and an app send it answers: what the person sees
   'blocks.mjs': ['act', 'answerDelivered'], // the person’s answer to a block they see
+  'item-lines.mjs': ['topicRootLine', 'describeItem'], // a read tool and a prompt
   'catch-up.mjs': ['catchUp', 'pointerIfSeen'], // the prompt for a later turn
   'permission-cards.mjs': ['resolvePermission', 'resolveDenial', 'resolveDenial'], // the person’s answer to a card they see
   'queue-batch.mjs': ['latestMessage'], // the person’s queued messages
@@ -30,7 +31,7 @@ const PUBLISHED = {
   'read-message.mjs': ['readMessage', 'readMessage'], // a read tool (T-31)
   'remote/turns-snapshot.mjs': ['readable'], // the snapshot sent to a host: it leaves the process
   'review-comments.mjs': ['find'], // review_block on a block shown in the room
-  'runtime.mjs': ['retry', 'resolveProposal', 'topicRootLine', 'describeItem', 'readConversation', 'diagramCheck', 'stopShellCommand'], // a person’s action on an item they see, or a read tool and a prompt
+  'runtime.mjs': ['retry', 'resolveProposal', 'readConversation', 'diagramCheck', 'stopShellCommand'], // a person’s action on an item they see, or a read tool
   'scheduled-wakes.mjs': ['prepareScheduledRetry'], // the person’s Retry of a wake line they see
   'share-back.mjs': ['shareToConversation', 'shareToConversation'], // the person’s Share of an item they see
   'store-outage.mjs': ['settleOrphanTurns'], // at a reload, when nothing is held
@@ -44,8 +45,9 @@ const PUBLISHED = {
 
 /** Direct reads of state.items, state.work or state.apps: published reads. */
 const DIRECT = {
-  'apps.mjs': ['appCheck', 'appEvent', 'appState', 'appQuery', 'appFile'], // HTTP answers to the page about an app
+  'apps.mjs': ['appCheck', 'appEvent', 'appState', 'appQuery', 'appFile', 'appOf'], // HTTP answers to the page about an app, and appOf for read_message and the host snapshot (#516's S1): a read tool and what it sends
   'index.mjs': ['start', 'route'], // /api/state and startup
+  'item-lines.mjs': ['describeItem', 'describeItem'], // a read tool’s app line
   'ledger-git.mjs': ['gitState'], // the Work view’s git state: an answer to the page
   'ledger-answers.mjs': ['published'], // the Work view’s diff and output, answers to the page
   'ledger.mjs': ['expireStale'], // at startup
@@ -58,7 +60,7 @@ const DIRECT = {
   'room-checks.mjs': ['itemsOf', 'ledgerEntries', 'CHECKS', 'CHECKS', 'CHECKS', 'CHECKS', 'CHECKS'], // the same
   'room-delivery.mjs': ['itemsOf'], // the same
   'room-unverified.mjs': ['uncheckedThreads'], // the same
-  'runtime.mjs': ['describeItem', 'describeItem', 'expireStaleCommands'], // a read tool’s app line; expireStaleCommands at startup
+  'runtime.mjs': ['expireStaleCommands'], // at startup
   'telemetry-record.mjs': ['blockRow', 'workOf'], // a run’s record, after it
   'telemetry-report.mjs': ['liveFacts', 'liveFacts'], // the same
   'tool-ask.mjs': ['settleToolAsks'], // only the thread ids; each thread is read through store.pending

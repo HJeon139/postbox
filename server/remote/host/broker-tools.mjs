@@ -215,7 +215,13 @@ export async function onReply(b, m, reply) {
   // Written down before it’s taken or the shim hears it: an asked call’s answer is kept, with its text, for a
   // shim that sends the call again after the daemon restarts. One that can’t be written leaves the call waiting.
   const release = claim(t);
-  const why = await written(b, m.turn, 'tools', { op: 'reply', id: t.id, ok: m.ok, ...(t.route === 'ask' || t.route === 'read' ? { text: m.text } : {}) });
+  const why = await written(
+    b,
+    m.turn,
+    'tools',
+    { op: 'reply', id: t.id, ok: m.ok, ...(t.route === 'ask' || t.route === 'read' ? { text: m.text } : {}) },
+    true,
+  );
   release();
   if (why) {
     reply.fail(

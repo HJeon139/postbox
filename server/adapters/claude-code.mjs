@@ -37,7 +37,7 @@ import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, forgetMemory, memoryRootFor } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
-import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
+import { listProcesses, stopJobUnder, stopOnAbort, stopTurn } from './process-group.mjs';
 import { hostMemoryRoot } from './remote-turn.mjs';
 import { effortOf, fromContext, recorderFor } from './setup.mjs';
 
@@ -228,21 +228,17 @@ export class ClaudeCodeAdapter {
         child.once('error', r);
       });
       const procs = { kill: this.kill, list: this.list };
-      /** @type {Promise<{ gone: Promise<void> }>|null} */
-      let stopping = null;
       // Stop: the background jobs the runtime asked to keep running (ctx.signal.reason.keepJobs) are kept, and
       // reported with their process group so the person can stop them later. On a host none is kept (the daemon stops
       // the whole turn): one the runtime asked to keep anyway is reported stopped, not kept.
-      const onAbort = () => {
+      const stop = stopOnAbort(ctx.signal, () => {
         const keep = Array.isArray(ctx.signal.reason?.keepJobs) ? ctx.signal.reason.keepJobs : [];
-        stopping = stopTurn(child, { keep, exited, ...procs }).then((r) => {
+        return stopTurn(child, { keep, exited, ...procs }).then((r) => {
           for (const k of r.kept) ctx.job?.({ id: k.id, kept: true, pgid: k.pgid, groups: k.groups });
           if (remote) for (const k of keep) if (typeof k?.id === 'string') ctx.job?.({ id: k.id, state: 'stopped' });
           return r;
         });
-      };
-      if (ctx.signal.aborted) onAbort();
-      else ctx.signal.addEventListener('abort', onAbort, { once: true });
+      });
       // A background job’s own Stop, while the CLI waits for it. Not offered on a host (stopJobUnder would refuse it
       // there too): the runtime then says the job can’t be reached, and to stop the agent.
       if (!remote) ctx.control?.({ stopJob: (job) => stopJobUnder(child, job, procs) });
@@ -264,7 +260,7 @@ export class ClaudeCodeAdapter {
       const done = (code) => {
         if (finished) return;
         finished = true;
-        ctx.signal.removeEventListener('abort', onAbort);
+        stop.off();
         // A fork whose branch point is gone keeps nothing from this run: no session id, no checkpoint.
         if (fork?.uuid && !ctx.signal.aborted && forkPointMissing(mapper.result, stderr)) return resolve({ missingForkPoint: true });
         ctx.saveState({ ...mapper.endState, ...(mapper.sessionId ? { fork: null } : {}) });
@@ -283,10 +279,7 @@ export class ClaudeCodeAdapter {
       };
       // A stopped turn ends once its CLI’s whole group has exited, even if something it started still holds its output
       // open, so the session’s next turn never runs beside it (#126).
-      const settle = (code) => {
-        if (ctx.signal.aborted && stopping) stopping.then((r) => r.gone).then(() => done(code));
-        else done(code);
-      };
+      const settle = (code) => stop.settle(() => done(code));
       child.on('close', settle);
       child.on('exit', (code) => {
         if (ctx.signal.aborted) settle(code);

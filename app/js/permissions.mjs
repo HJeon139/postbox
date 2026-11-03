@@ -136,7 +136,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
                       current = se.id;
                       mcp = null;
                       status = '';
-                      load();
+                      void load();
                     },
                   },
                   `@${se.handle}`,
@@ -393,7 +393,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
                 onclick: () => {
                   const r = rule();
                   if (!r) return toast({ title: 'Write the rule first', text: 'Name an MCP server or tool, such as mcp__github.' });
-                  change(
+                  void change(
                     () => api('/api/permissions/rules', { ...target(), behavior: draft.behavior, rule: r, where: draft.where }),
                     `Added ${r} to ${SOURCE[draft.where]}. It applies from @${p.handle}’s next turn.`,
                   ).then(() => {
@@ -503,7 +503,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
                           const next = new Set(off);
                           if (next.has(m.name)) next.delete(m.name);
                           else next.add(m.name);
-                          change(
+                          void change(
                             () => api(`/api/personas/${p.id}`, { mcpOff: [...next] }, 'PATCH'),
                             `${m.name} is ${next.has(m.name) ? 'off' : 'on'} for @${p.handle} from its next turn.`,
                           );
@@ -594,7 +594,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
     initialFocus: () => body.querySelector('[role="radio"][aria-checked="true"], button, input'),
   });
   paint();
-  load().then(() => {
+  void load().then(() => {
     if (focus) document.getElementById(focus === 'mcp' ? 'perm-mcp' : 'perm-dir')?.scrollIntoView({ block: 'center' });
   });
 }

@@ -200,6 +200,7 @@ flowchart TD
 - **The first unapplied `seq`** is expected to be `state.seq + 1`. A larger one invokes the gap handling below; a malformed group, or one that overlaps the snapshot boundary, is refused rather than partly applied.
 - **A gap in `seq` is counted against the applied `seq`,** not against the previous line (a real segment begins with events the snapshot already holds, see “Context: the store today”). **Decided (the integrator, developer): start anyway, log the range and the count lost, and show it once on 1b’s status line.** A gap means acknowledged history was lost, refusing to start does not recover it, and today’s silent append failures (P2) can have left a gap in a user’s existing store, so refusing would brick it. No override flag. Refusal stays for what refusing can protect: a damaged line, or a malformed group.
 - A commit whose events’ `seq` are already applied is skipped as a whole, as single events are today.
+- **An event the reducer rejects on replay** is held as rejected, as it was live, and doesn't refuse the load: a stand-in the log kept for an emit, or an original a commit wrote before it was applied (`609-reducer-throw.md`).
 
 ### 6.6 When a write fails (ST-3)
 
@@ -310,6 +311,7 @@ What a kill at each step leaves, and what the next start does. Every row is a te
 | `fsync` error | The same, in each step. A commit that landed is present after the restart (1a) or the reload (1b), and the caller’s retry returns `duplicate`. After `EIO` no recovery can prove the lines are on disk |
 | A corrupt line or a malformed group | Postbox refuses to start and names the file and offset |
 | A gap in `seq` (history already lost) | Postbox starts, logs the range and count lost, and shows it once on the status line |
+| **An event the reducer rejects** (#609, #610) | It is numbered, written and held as rejected, live and on every load, so `seq` has no gap and no throw closes the store, crashes the writer or refuses a load. The page and `since()` get a stand-in that carries nothing, and every stream resyncs. For an emit or a held release the log holds the stand-in with the original inside it; for a commit, written before it is applied, the log holds the original, and the commit is applied in part and rejects with `EREJECTED`. `store.rejected` keeps a count and the first 20, and load reports it once. A handler that throws must leave the state as it was, which `tests/state-reject-contract.test.mjs` checks. See `609-reducer-throw.md` |
 | A second Postbox on the folder | Refused with a message naming the pid |
 | A tab ahead of or behind the store | `resync`, by epoch or by sequence number |
 | A missing or mismatched shard (S2) | An error naming the shard; never an empty conversation |
