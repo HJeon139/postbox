@@ -158,7 +158,9 @@ for (const kind of ['denial', 'toolask', 'failed'])
   test(`a restart during a turn that didn’t move on keeps a ${kind} need from the turn before, as main does`, async () => {
     const r = room();
     const need = await restartDuringWake(r, kind);
-    assert.equal(r.store.state.sessions[r.alpha.id].needs?.itemId, need.itemId);
+    const se = r.store.state.sessions[r.alpha.id];
+    assert.equal(se.needs?.itemId, need.itemId);
+    assert.equal(se.state, kind === 'failed' ? 'failed' : 'needs', 'a failed turn still shows Retry');
   });
 
 test('a restart keeps a host turn’s permission as the need: its card stays open for the host to ask again', async () => {
