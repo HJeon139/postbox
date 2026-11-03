@@ -56,7 +56,7 @@ import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { chainLimitEnv, phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
-import { STEPS } from './uat/steps.mjs';
+import { interruptAct, localRestart, STEPS } from './uat/steps.mjs';
 import { onStopSignal, runStop } from './uat/stop.mjs';
 import * as tm from './uat/telemetry-run.mjs';
 import { createTester, systemPrompt, unaddressed } from './uat/tester.mjs';
@@ -252,7 +252,7 @@ async function main() {
       return `Answered ${it.item}${now?.revision ? ` (at revision ${now.revision} when you answered)` : ''} while the agent worked.`;
     };
     // What the tester breaks on purpose in a host run (tools/uat/hosts-watch.mjs).
-    const hostFault = (spec) => (hr ? fault(hr, spec, page) : Promise.reject(new Error('A fault needs a run with --host.')));
+    const hostFault = (spec) => (hr ? fault(hr, spec, page) : localRestart({ postbox, page, log }, spec));
     let lastAction = null;
     let actionError = null;
     let actionResult = null; // what an action measured, when it worked
@@ -500,10 +500,10 @@ async function main() {
         if (a.interrupt && ['send', 'thread', 'act', 'review'].includes(a.type)) {
           // Where the turn runs: a reply in a thread, or an answer to a block in the panel, works there.
           const panel = a.type === 'thread' || (key ? await d.inPanel(key) : false);
-          // A fault mid-turn is the driver’s answer while the agent works, with the fault for its answer.
-          const now = a.interrupt.do === 'fault' ? () => hostFault(a.interrupt) : () => answerMidTurn(a.interrupt);
+          // A fault or a conversation action mid-turn is the driver’s answer while the agent works (tools/uat/steps.mjs).
+          const mid = interruptAct(a.interrupt, { fault: hostFault, answer: answerMidTurn, ctx: { d, api, facts } });
           const said = await timing.time('waits', () =>
-            d.interrupt({ ...a.interrupt, do: a.interrupt.do === 'fault' ? 'answer' : a.interrupt.do }, { panel, onWait: () => midTurnChecks(), answer: now }),
+            d.interrupt({ ...a.interrupt, do: mid.do }, { panel, onWait: () => midTurnChecks(), answer: mid.answer }),
           );
           facts.probes.interrupts.push({ step, at: Date.now(), do: a.interrupt.do, answered: /You answered “([^”]+)”/.exec(said)?.[1] ?? null });
           actionResult = actionResult ? `${actionResult} ${said}` : said;
