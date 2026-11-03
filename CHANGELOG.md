@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.16.1 (2026-11-03)
+
+### Fixes
+
+- **assets:** a write to a deleted conversation says it was deleted
+- **threads:** no turn starts in a conversation's Undo window, and the purge stops any it has
+
 ## 1.16.0 (2026-11-03)
 
 ### Features
