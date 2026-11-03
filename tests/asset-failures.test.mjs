@@ -113,11 +113,13 @@ test('F6: Postbox stops after the commit, before the tool answers: a retry with 
   assert.equal(store.state.assets[a.id].versions.length, 1);
 });
 
-test('F7: a Retry reloads the store while the commit is in flight: the write is not confirmed', async () => {
+test('F7: a Retry reloads the store while the commit is in flight: the write is not confirmed', async (t) => {
   const reloaded = Object.assign(new Error('The store was reset while this write was in flight.'), { code: 'ERELOADED' });
   // The store’s side of this is its own tests’; here, what the asset write makes of that rejection.
   const store = /** @type {any} */ ({ commit: async () => Promise.reject(reloaded) });
-  const blobs = assetBlobs(await mkdtemp(join(tmpdir(), 'pb-assetf7-')));
+  const dir = await mkdtemp(join(tmpdir(), 'pb-assetf7-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const blobs = assetBlobs(dir);
   const r = await writeAsset(store, blobs, req({ name: 'a.md', bytes: text('one') }));
   assert.deepEqual([r.ok, r.code, r.cause], [false, 'unconfirmed', reloaded]);
 });

@@ -1,14 +1,25 @@
 // The person’s retention rule (#516 S3, server/asset-retention.mjs): text keeps every version; a large binary keeps its
 // last few; a version is pruned in the commit of the version that makes it prunable, and the prune releases its hash.
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { bytesAfter, isTextBytes, prunable } from '../server/asset-retention.mjs';
 import { assetBlobs, writeAsset } from '../server/assets.mjs';
 import { Store } from '../server/store.mjs';
 import { ASSETS } from '../shared/limits.mjs';
+
+/** Temp folders this file makes, removed when its tests are done. */
+const made = [];
+const temp = (/** @type {string} */ prefix) => {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  made.push(dir);
+  return dir;
+};
+after(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true });
+});
 
 const v = (n, over = {}) => ({ v: n, sha256: String(n).padStart(64, '0'), size: 10, isText: false, author: 'dev', at: n, base: n - 1 || null, ...over });
 const big = ASSETS.largeBinaryBytes + 1;
@@ -67,7 +78,7 @@ test('a room’s bytes after a commit, from its index: a new file adds, a kept o
 
 test('the commit that makes a version prunable prunes it and releases its hash; text is never pruned', async () => {
   const store = new Store(null);
-  const blobs = assetBlobs(mkdtempSync(join(tmpdir(), 'pb-ret-')));
+  const blobs = assetBlobs(temp('pb-ret-'));
   const write = (req) => writeAsset(store, blobs, { kind: 'write', room: 'r', type: 'application/octet-stream', author: 'dev', ...req });
   const bin = (i) => Buffer.concat([Buffer.from([0, i]), Buffer.alloc(big)]);
   const a = await write({ name: 'big.bin', bytes: bin(1) });

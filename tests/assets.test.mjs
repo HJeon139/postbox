@@ -1,14 +1,25 @@
 // A conversation’s assets through the one commit path (#516 S3, server/assets.mjs): names, the base check, repeats,
 // renames, deletes and restores, the bounds and the budget. The failure table’s rows are in tests/asset-failures.test.mjs.
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { assetBlobs, nameProblem, opProblem, planWrite, roomOf, writeAsset } from '../server/assets.mjs';
 import { Store } from '../server/store.mjs';
 import { ASSETS } from '../shared/limits.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
+
+/** Temp folders this file makes, removed when its tests are done. */
+const made = [];
+const temp = (/** @type {string} */ prefix) => {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  made.push(dir);
+  return dir;
+};
+after(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true });
+});
 
 const text = (s) => Buffer.from(s, 'utf8');
 
@@ -24,7 +35,7 @@ function stateOf(assets) {
 
 function room() {
   const store = new Store(null);
-  const dir = mkdtempSync(join(tmpdir(), 'pb-assets-'));
+  const dir = temp('pb-assets-');
   const blobs = assetBlobs(dir);
   const write = (req) => writeAsset(store, blobs, { kind: 'write', room: 'th_1', type: 'text/markdown', author: 'dev', ...req });
   return { store, dir, blobs, write, asset: (id) => store.state.assets[id] };

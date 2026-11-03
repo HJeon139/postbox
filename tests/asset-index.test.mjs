@@ -2,15 +2,26 @@
 // scanning every asset. An index is only right if it always equals what the assets say, so a long run of every kind of
 // write, prune and erase checks it against a count from scratch after each step, and through a snapshot’s JSON.
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { assetBlobs, headOf, roomAssets, versionAt, writeAsset } from '../server/assets.mjs';
 import { Store } from '../server/store.mjs';
 import { ASSETS } from '../shared/limits.mjs';
 import { ownState } from '../shared/state.mjs';
 import { nameKey, opKey } from '../shared/state-assets.mjs';
+
+/** Temp folders this file makes, removed when its tests are done. */
+const made = [];
+const temp = (/** @type {string} */ prefix) => {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  made.push(dir);
+  return dir;
+};
+after(() => {
+  for (const dir of made) rmSync(dir, { recursive: true, force: true });
+});
 
 /** Each room’s index, counted from the assets alone, in the shape the reducer keeps. @param {any} state */
 function recount(state) {
@@ -45,7 +56,7 @@ function random(seed) {
 
 test('the rooms’ indexes equal a count from scratch after every write, rename, delete, restore, prune and erase', async (t) => {
   const store = new Store(null);
-  const blobs = assetBlobs(mkdtempSync(join(tmpdir(), 'pb-index-')));
+  const blobs = assetBlobs(temp('pb-index-'));
   const pick = random(516);
   const big = (i) => Buffer.concat([Buffer.from([0, i % 251]), Buffer.alloc(ASSETS.largeBinaryBytes)]);
   const bodies = [(i) => Buffer.from(`text ${i % 5}`), big];
@@ -96,7 +107,7 @@ test('the rooms’ indexes equal a count from scratch after every write, rename,
 
 test('a name like __proto__ or constructor is an ordinary name, before and after a snapshot’s JSON (#352)', async () => {
   const store = new Store(null);
-  const blobs = assetBlobs(mkdtempSync(join(tmpdir(), 'pb-index-')));
+  const blobs = assetBlobs(temp('pb-index-'));
   const write = (req) => writeAsset(store, blobs, { kind: 'write', room: 'c1', type: 'x', author: 'dev', ...req });
   assert.equal((await write({ name: 'constructor', bytes: Buffer.from('a') })).ok, true, 'not taken by a prototype');
   assert.equal((await write({ name: '__proto__', bytes: Buffer.from('b') })).ok, true);
@@ -109,7 +120,7 @@ test('a name like __proto__ or constructor is an ordinary name, before and after
 
 test('the readers the tools use: a room’s assets through its index, an asset’s version by number, and its head', async () => {
   const store = new Store(null);
-  const blobs = assetBlobs(mkdtempSync(join(tmpdir(), 'pb-index-')));
+  const blobs = assetBlobs(temp('pb-index-'));
   const write = (req) => writeAsset(store, blobs, { kind: 'write', type: 'x', author: 'dev', ...req });
   const a = await write({ room: 'c1', name: 'a.md', bytes: Buffer.from('1') });
   const b = await write({ room: 'c1', name: 'b.md', bytes: Buffer.from('2') });
