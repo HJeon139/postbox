@@ -187,8 +187,12 @@ export async function call(b, c, turn, m) {
     if (route === 'read' && !b.attached() && !settled(known)) return void settleOffline(b, known);
     return;
   }
+  // The host can’t tell a reconnect of a few seconds from a Postbox that’s closed, so the refusal names both.
   if (route === 'ask' && !b.attached() && m.name !== 'add_dataset')
-    return result(false, `Postbox isn’t connected to this host right now, so ${m.name} can’t run. Try again once Postbox is open and connected.`);
+    return result(
+      false,
+      `Postbox isn’t connected to this host, so ${m.name} can’t run. If it’s reconnecting, try again in a few seconds; if it stays this way, Postbox may be closed.`,
+    );
   const r = await prepare(b, turn, m.name, m.args);
   if (!r.ok) {
     b.log(`Turn ${turn}’s ${m.name} (${m.id}) was refused: ${r.text}`);

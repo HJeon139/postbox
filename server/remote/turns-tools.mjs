@@ -6,19 +6,23 @@
 
 import { LIMITS } from '../../shared/limits.mjs';
 import { REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
+import { assetTools } from '../asset-tools.mjs';
 import { noteAnswer } from '../empty-reply.mjs';
 import { reactTool } from '../reactions.mjs';
 import { recordedTools } from '../scheduled-wakes.mjs';
 import { withUrgent } from '../subagent-end.mjs';
-import { closedTo } from '../tool-gate.mjs';
+import { closedTo, READ_TOOLS } from '../tool-gate.mjs';
 import { linkOf } from './turns-need.mjs';
 import { KEPT_REPLIES, KEPT_REPLY_CHARS, key, STOPPED_TEXT, send, sessionOfTurn, TOOL_QUEUED, updateRemote } from './turns-shared.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 /** @typedef {import('./turns-shared.mjs').Live} Live */
 
-/** A search or read only reads, and its answer can be long, so a repeat runs it again rather than its reply being kept. */
-const REPEATABLE = new Set(['corpus_search', 'read_conversation', 'read_message']);
+/**
+ * A tool that only reads (tool-gate.mjs) changes nothing and its answer can be long, so a host’s repeat runs it again
+ * rather than its reply being kept: a kept reply is cut to KEPT_REPLY_CHARS, and an asset’s content mustn’t be kept.
+ */
+const REPEATABLE = READ_TOOLS;
 const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
 
@@ -66,9 +70,13 @@ export async function onTool(rts, hostId, m) {
 
 /** @param {RemoteTurns} rts @param {Live} live @param {{ name: string, args: Record<string, any> }} m @returns {Promise<{ ok: boolean, text: string, closed?: boolean }>} */
 async function applyTool(rts, live, m) {
-  // react is the reactions’ own (server/reactions.mjs), beside the runtime’s tools and recorded as they are, as server/mcp.mjs adds it.
-  const react = { react: (/** @type {any} */ a) => reactTool(rts.rt, rts.rt.session(live.sessionId), a) };
-  const tools = { ...rts.rt.toolsFor(live.sessionId, live.rt), ...recordedTools(rts.rt, live.rt, react) };
+  // react and the asset tools are their own modules’, beside the runtime’s tools and recorded as they are, as server/mcp.mjs
+  // adds them; the asset tools take text only here, since a path names a file on the host.
+  const own = {
+    react: (/** @type {any} */ a) => reactTool(rts.rt, rts.rt.session(live.sessionId), a),
+    ...assetTools(rts.rt, live.sessionId, live.rt, { onHost: true }),
+  };
+  const tools = { ...rts.rt.toolsFor(live.sessionId, live.rt), ...recordedTools(rts.rt, live.rt, own) };
   if (m.name === 'add_dataset')
     return {
       ok: false,

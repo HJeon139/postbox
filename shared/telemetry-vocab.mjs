@@ -63,6 +63,12 @@ export const POSTBOX_TOOLS = [
   'ask_for_tool',
   'corpus_search',
   'add_dataset',
+  'list_assets',
+  'read_asset',
+  'write_asset',
+  'rename_asset',
+  'delete_asset',
+  'restore_asset',
 ];
 /** Claude Code’s own tools, a call’s class by name; one not listed is “other”. */
 export const BUILT_INS = [

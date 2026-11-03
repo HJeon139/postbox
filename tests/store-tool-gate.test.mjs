@@ -46,9 +46,12 @@ test('every tool is classified for the gate: the read set, or the writers; a new
     'open_topic',
     'cancel_wake',
     'define_term',
+    'delete_asset',
     'permission_prompt',
     'propose_agent',
     'react',
+    'rename_asset',
+    'restore_asset',
     'retire_app',
     'review_block',
     'schedule_wake',
@@ -57,6 +60,7 @@ test('every tool is classified for the gate: the read set, or the writers; a new
     'update_app',
     'update_block',
     'wake_agent',
+    'write_asset',
   ]);
   for (const name of READ_TOOLS)
     assert.ok(

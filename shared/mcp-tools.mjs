@@ -4,6 +4,7 @@
 // So this file imports only node: modules and shared/, as host code must (#120); tests/host-imports.test.mjs checks it.
 
 import { HOP_LIMIT, limitText as n, PALETTES, READING, SENDING } from './limits.mjs';
+import { ASSET_TOOLS } from './mcp-tools-assets.mjs';
 import { REACTIONS } from './reactions.mjs';
 import { COMMENT_MAX, MAX_COMMENTS, QUOTE_MAX, VERDICTS } from './review-comments.mjs';
 
@@ -187,6 +188,7 @@ export const TOOL_DEFS = [
       required: ['id'],
     },
   },
+  ...ASSET_TOOLS,
   {
     name: 'permission_prompt',
     description: 'Postbox calls this for you before a tool needs the person’s permission. Don’t call it yourself.',

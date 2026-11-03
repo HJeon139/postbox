@@ -4,6 +4,7 @@ import { httpError } from './helpers.mjs';
 import { ON_HOST } from './remote/turns-shared.mjs';
 import { newId } from './store.mjs';
 import { whenWritable } from './store-outage.mjs';
+import { READ_TOOLS } from './tool-gate.mjs';
 
 const DAY = 24 * 3600 * 1000;
 const RETRY_MAX_MS = 5 * 60_000;
@@ -98,8 +99,8 @@ export function recordScheduledTool(rt, turn, call, ledger = true) {
   addTool(rt, turn, call?.name, call?.id);
 }
 
-/** Postbox’s tools that only read, which can’t have changed anything a recovery must check. */
-const READS = new Set(['read_conversation', 'read_message', 'corpus_search']);
+/** Postbox’s tools that only read, which can’t have changed anything a recovery must check (tool-gate.mjs). */
+const READS = READ_TOOLS;
 
 /**
  * A turn’s Postbox tools (toolsFor), each recorded as it starts for a scheduled wake’s recovery (#466). Every backend calls
