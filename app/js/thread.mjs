@@ -132,6 +132,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const off = client.on((ch) => {
     if (ch.type === 'load') {
       all();
+      view.rebuilt();
       return;
     }
     const d = ch.data;

@@ -216,3 +216,54 @@ test.describe('at 2× pixels', () => {
     expect(Number(v.offset) % 1, 'the scroll left the anchor on a half pixel').not.toBe(0);
   });
 });
+
+test('V1: a redraw from new state that no longer has the anchor takes the anchor again where the view is', async ({ page }) => {
+  const { t } = room('View read: anchor gone on a load');
+  await open(page, t);
+  await page.mouse.move(640, 400);
+  await page.mouse.wheel(0, -1200);
+  await settled(page);
+  const before = await holds(page, t, 'reading');
+  const after = await page.evaluate(
+    async ({ threadId, anchor }) => {
+      const { client } = await import('/app/js/client.mjs');
+      const el = /** @type {HTMLElement} */ (document.querySelector(`#main.transcript[data-thread="${threadId}"]`));
+      client.state.items[threadId] = client.state.items[threadId].filter((it) => it.id !== anchor);
+      client.emit({ type: 'load' });
+      const now = el.dataset.viewAnchor;
+      return { now, present: !!el.querySelector(`:scope > [data-key="${CSS.escape(String(now))}"]`) };
+    },
+    { threadId: t.id, anchor: before.anchor },
+  );
+  expect(after.now, 'a new anchor').not.toBe(before.anchor);
+  expect(after.present, 'the published anchor is on the page').toBe(true);
+});
+
+test('V1 in the side panel: its own transcript publishes too', async ({ page }) => {
+  const { t } = room('View read: panel');
+  const { rt } = app;
+  const side = rt.createThread({ projectId: t.projectId, title: 'A topic', kind: 'side', parentId: t.id, personaIds: [rt.personaByHandle('researcher').id] });
+  const [se] = rt.sessionsIn(side.id);
+  for (let i = 1; i <= 20; i++)
+    rt.addItem(side.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: LONG(i), status: 'done' });
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${app.origin}/#/t/${t.id}/side/${side.id}`);
+  await synced(page, app);
+  const panel = page.locator(`.sidepanel .transcript[data-thread="${side.id}"]`);
+  await expect(panel).toBeAttached();
+  await settled(page);
+  await expect(panel).toHaveAttribute('data-view-mode', 'following');
+  const box = await page.locator('.sidepanel .sp-body').boundingBox();
+  await page.mouse.move(/** @type {any} */ (box).x + 50, /** @type {any} */ (box).y + 100);
+  await page.mouse.wheel(0, -800);
+  await settled(page);
+  await expect(panel).toHaveAttribute('data-view-mode', 'reading');
+  const v = await page.evaluate((id) => {
+    const el = /** @type {HTMLElement} */ (document.querySelector(`.sidepanel .transcript[data-thread="${id}"]`));
+    const n = el.querySelector(`:scope > [data-key="${CSS.escape(String(el.dataset.viewAnchor))}"]`);
+    const top = /** @type {Element} */ (el.closest('.sp-body')).getBoundingClientRect().top;
+    return { offset: Number(el.dataset.viewOffset), actual: n ? n.getBoundingClientRect().top - top : null };
+  }, side.id);
+  expect(v.actual, 'the panel’s anchor is on the page').not.toBeNull();
+  expect(Math.abs(/** @type {number} */ (v.actual) - v.offset), 'it starts where it says, in the panel’s box').toBeLessThanOrEqual(1);
+});

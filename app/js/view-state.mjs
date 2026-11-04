@@ -218,6 +218,15 @@ function settle(v, scrolled, resized) {
   v.lastTop = s?.scrollTop ?? 0;
   if (s) v.size = sizeOf(s);
 }
+/**
+ * After the transcript is drawn again from new state (a load, after a restart or a Retry): an anchor that's no longer
+ * there is taken again where the view is, so what's published names an item on the page.
+ * @param {View} v
+ */
+function rebuilt(v) {
+  const kept = v.anchor && v.nodes.get(v.anchor.key)?.isConnected;
+  if (!v.stuck && !kept) v.anchor = findAnchor(v);
+}
 // What arrived counts as unseen when the view isn’t on the newest message, including when follow() finds you
 // scrolled up in this frame, before its scroll event told the transcript (#341).
 /** @param {View} v */
@@ -238,7 +247,7 @@ export function mountView({ el, inPanel, nodes, was }) {
   const v = /** @type {any} */ ({ el, inPanel, nodes, unseen: was?.unseen ?? 0, stuck: !was, anchor: was?.anchor ?? null, dead: false });
   Object.assign(v, { shown: -1, lastTop: 0, held: { end: 0, last: 0, width: 0 }, jump: null, bound: null, size: '' });
   // Each way in that can change the mode or the anchor without a scroll event of its own ends by publishing: a scroll,
-  // the end, a reply in the frame you scrolled in (#341), and mounting. An item moved ends in grew(), so it publishes there. A resize or a settle that moves the
+  // the end, a reply in the frame you scrolled in (#341), a redraw from new state, and mounting. An item moved ends in grew(), so it publishes there. A resize or a settle that moves the
   // view does it by scrolling, and its scroll event publishes in the next frame.
   /** @template {any[]} A @param {(...a: A) => any} fn */
   const thenPublish =
@@ -265,6 +274,7 @@ export function mountView({ el, inPanel, nodes, was }) {
     settle: () => settle(v, scrolled, resized),
     scrollToEnd: thenPublish((/** @type {boolean} */ smooth) => scrollToEnd(v, smooth)),
     grew: thenPublish(() => grew(v)),
+    rebuilt: thenPublish(() => rebuilt(v)),
     release: () => release(v),
     setJump: (/** @type {(n: number) => void} */ fn) => (v.jump = fn),
     /** An item moved to the end (item.move): if it was the anchor, its stub holds the place. */
