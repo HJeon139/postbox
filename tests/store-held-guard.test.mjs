@@ -25,7 +25,7 @@ const PUBLISHED = {
   'blocks.mjs': ['act', 'answerDelivered'], // the person’s answer to a block they see
   'item-lines.mjs': ['topicRootLine', 'describeItem'], // a read tool and a prompt
   'catch-up.mjs': ['catchUp', 'pointerIfSeen'], // the prompt for a later turn
-  'permission-cards.mjs': ['resolvePermission', 'resolveDenial', 'resolveDenial'], // the person’s answer to a card they see
+  'permission-cards.mjs': ['resolvePermission', 'resolveDenial'], // the person’s answer to a card they see
   'queue-batch.mjs': ['latestMessage'], // the person’s queued messages
   'reactions.mjs': ['toggleReaction', 'reactTool'], // a reaction aimed at an item the person or the agent sees
   'read-message.mjs': ['readMessage', 'readMessage'], // a read tool (T-31)
@@ -69,6 +69,10 @@ const DIRECT = {
 
 /** store.pending reads. */
 const PENDING = {
+  // The agent's next need when a card is answered, the released card whose turn it may read, and the card it notifies:
+  // each decides a write, so a card held behind a commit counts (#366).
+  'card-needs.mjs': ['keptTurns', 'nextNeed', 'releaseNeed', 'notifyOnce'],
+  'restart-sweep.mjs': ['cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366)
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp', 'release'], // retire_app of an app the turn may have just shown, and its sweep of open sends
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
