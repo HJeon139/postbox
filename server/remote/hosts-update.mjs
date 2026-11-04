@@ -135,11 +135,25 @@ async function autoInstall(m, id, signal) {
     if (signal.aborted) throw new SshFailure('failed', 'Postbox closed before the install started.', 'Install it from here once Postbox is running again.');
     result = await installNow(m, id, signal);
   } catch (e) {
-    if (!signal.aborted && !m.closed) await noteEnd(m, id, tried, e?.detail?.code === BUSY_EXIT ? 'busy' : 'failed');
+    if (!signal.aborted && !m.closed) await noteFailed(m, id, tried, e);
     throw e;
   }
   await noteEnd(m, id, tried, result.installed ? 'installed' : 'present');
   return result;
+}
+
+/**
+ * Rewrites the try as busy or failed. A failure’s own reason and next step go on the host’s status, kept in memory
+ * only, so the card can say why, in the words Install… would show (#464-b2b); the next write of the record clears
+ * them. Anything else installHost throws (a TypeError, or an error keeping the token) may name a path here, so it
+ * puts nothing on the status, and the card says it couldn’t install.
+ * @param {Manager} m @param {string} id @param {{ version: string, at: number, outcome: string }} tried @param {any} e
+ */
+async function noteFailed(m, id, tried, e) {
+  const busy = e?.detail?.code === BUSY_EXIT;
+  await noteEnd(m, id, tried, busy ? 'busy' : 'failed');
+  if (busy || e?.name !== 'SshFailure') return;
+  noteError(m, id, `${e.message} ${e.next}`);
 }
 
 /**
