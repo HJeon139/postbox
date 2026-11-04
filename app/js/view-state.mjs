@@ -108,7 +108,9 @@ function scrollToEnd(v, smooth = false) {
 // that needs you arrives. Instead the transcript keeps its height, until the next message or a new width.
 /** @param {View} v */
 function lastItem(v) {
-  for (let n = v.el.lastElementChild; n; n = n.previousElementSibling) if (n instanceof HTMLElement && n.dataset.key) return n;
+  for (let n = v.el.lastElementChild; n; n = n.previousElementSibling) {
+    if (n instanceof HTMLElement && n.dataset.key) return n;
+  }
   return null;
 }
 /** @param {View} v @param {Element} s */
@@ -147,8 +149,8 @@ function follow(v) {
   showJump(v, s);
 }
 /**
- * A scroll the transcript hasn't heard of yet: its event comes in the next frame, after this resize (#341). It moved the
- * anchor by that much, so the place to hold is there, not where the last scroll event left it.
+ * A scroll the transcript hasn't heard of yet: its event comes in the next frame, after this resize (#341). It moved
+ * the anchor by that much, so the place to hold is there, not where the last scroll event left it.
  * @param {View} v @param {Element} s
  */
 function heard(v, s) {
@@ -164,7 +166,8 @@ function onScroll(v) {
   const s = box(v);
   if (!s) return;
   // The event for a scroll the transcript made itself, holding what you read in place, comes in a later frame, maybe
-  // after what’s above has moved again: hold it in place again before taking the anchor there, or you lose your place (#297).
+  // after what’s above has moved again: hold it in place again before taking the anchor there, or you lose your place
+  // (#297).
   const moved = s.scrollTop !== v.lastTop;
   if (atEnd(s)) {
     if (!v.stuck) v.held = measure(v, s);
@@ -235,13 +238,33 @@ function grew(v) {
 }
 
 /**
+ * A view's state as it starts: following, unless it comes back from a rebuild while reading (was). Its observers are
+ * added by mountView.
+ * @param {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, was?: { anchor: any, unseen: number } }} o
+ * @returns {View}
+ */
+function newView({ el, inPanel, nodes, was }) {
+  return /** @type {any} */ ({
+    el,
+    inPanel,
+    nodes,
+    unseen: was?.unseen ?? 0,
+    stuck: !was,
+    anchor: was?.anchor ?? null,
+    dead: false,
+    shown: -1,
+    lastTop: 0,
+    held: { end: 0, last: 0, width: 0 },
+    jump: null,
+    bound: null,
+  });
+}
+/**
  * The view of one transcript.
  * @param {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, was?: { anchor: any, unseen: number } }} o
  */
 export function mountView({ el, inPanel, nodes, was }) {
-  /** @type {View} */
-  const v = /** @type {any} */ ({ el, inPanel, nodes, unseen: was?.unseen ?? 0, stuck: !was, anchor: was?.anchor ?? null, dead: false });
-  Object.assign(v, { shown: -1, lastTop: 0, held: { end: 0, last: 0, width: 0 }, jump: null, bound: null });
+  const v = newView({ el, inPanel, nodes, was });
   // Each way in that can change the mode or the anchor without a scroll event of its own ends by publishing: a scroll,
   // the end, a reply in the frame you scrolled in (#341), a redraw from new state, and mounting. An item moved ends in
   // grew(), so it publishes there. A resize or a settle that moves the view does it by scrolling, and its scroll event
@@ -279,7 +302,10 @@ export function mountView({ el, inPanel, nodes, was }) {
       if (v.anchor?.key === id) v.anchor = { key: stubId, at: Math.max(0, v.anchor.at) };
     },
     /** Where you were reading, to keep through a rebuild; null while following. */
-    keep: () => (!v.stuck && el.isConnected ? { anchor: findAnchor(v) ?? v.anchor, unseen: v.unseen } : null),
+    keep() {
+      if (v.stuck || !el.isConnected) return null;
+      return { anchor: findAnchor(v) ?? v.anchor, unseen: v.unseen };
+    },
     destroy() {
       v.dead = true;
       v.sizes.disconnect();
