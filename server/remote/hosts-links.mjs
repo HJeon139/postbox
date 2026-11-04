@@ -194,10 +194,12 @@ export function release(m, id, why) {
  * The host’s welcome, connecting first if need be. A failure while an install of this Postbox runs there (m.updating,
  * hosts-update.mjs) waits for that install, then tries once more from the top; an install that fails throws its own
  * failure, with its next step, unless it was busy (#464-b2b; designs/464-keep-updated.md, “What b2b adds”).
- * waitForInstall: false throws the failure at once instead, for removing Postbox from the host.
- * @param {Manager} m @param {string} id @param {{ waitForInstall?: boolean }} [o] @returns {Promise<any>}
+ * waitForInstall: false throws the failure at once instead, for removing Postbox from the host. signal: the caller’s
+ * Stop, which ends its wait at once, with signal.reason; the install goes on.
+ * @param {Manager} m @param {string} id @param {{ waitForInstall?: boolean, signal?: AbortSignal }} [o]
+ * @returns {Promise<any>}
  */
-export async function ensureWelcome(m, id, { waitForInstall = true } = {}) {
+export async function ensureWelcome(m, id, { waitForInstall = true, signal } = {}) {
   const l = linkOf(m, id);
   if (l.connected) return l.welcome;
   try {
@@ -205,10 +207,24 @@ export async function ensureWelcome(m, id, { waitForInstall = true } = {}) {
   } catch (failure) {
     const install = waitForInstall ? m.updating.get(id) : undefined;
     if (!install) throw failure;
-    const outcome = await install.done;
+    const outcome = await untilAborted(install.done, signal);
     if (!outcome.ok && !busyInstall(outcome.failure)) throw outcome.failure;
     return await welcomeAfterInstall(m, id);
   }
+}
+
+/**
+ * The install’s outcome, or signal.reason as soon as the signal fires, whichever comes first. The listener goes either
+ * way. @param {Promise<any>} done @param {AbortSignal} [signal] @returns {Promise<any>}
+ */
+function untilAborted(done, signal) {
+  if (!signal) return done;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const stop = () => reject(signal.reason);
+    signal.addEventListener('abort', stop, { once: true });
+    done.then(resolve).finally(() => signal.removeEventListener('abort', stop));
+  });
 }
 
 /**

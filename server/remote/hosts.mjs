@@ -127,10 +127,10 @@ function linkMethods(m) {
     /**
      * The host’s latest welcome, connecting first if it isn’t connected. Rejects with the link’s SshFailure when the
      * attempt fails, or when a failure only the person can fix has stopped it; after an install under way there, if any,
-     * or with that install’s own failure.
-     * @param {string} hostId @returns {Promise<any>}
+     * or with that install’s own failure. o.signal: the caller’s Stop, which ends a wait for an install at once.
+     * @param {string} hostId @param {{ signal?: AbortSignal }} [o] @returns {Promise<any>}
      */
-    ensureWelcome: (hostId) => ensureWelcome(m, hostId),
+    ensureWelcome: (hostId, o) => ensureWelcome(m, hostId, o),
     /**
      * The person asked to connect (Retry, Reconnect, Take over): now, whatever stopped it and though nothing needs
      * it, for one welcome; then it may idle. Resolves with the welcome; rejects as link() throws, or with the failure.
