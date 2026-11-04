@@ -1,8 +1,9 @@
-// What #508’s benches share (tools/bench-key-frame.mjs and the server’s): a free port, a whole-number option, and the
-// room a bench seeds the big room into, as the page would have started it.
+// What #508’s benches share (tools/bench-key-frame.mjs, tools/bench-snapshot-stall.mjs and tools/bench-server.mjs): a
+// free port, a whole-number option, and the room a bench seeds the big room into, as the page would have started it.
 
 import { createServer } from 'node:net';
 import { Store } from '../server/store.mjs';
+import { seedBigRoomData } from './uat/big-room.mjs';
 
 export const THREAD = 'th_keyframe';
 export const AGENTS = ['researcher', 'critic', 'developer'];
@@ -35,4 +36,18 @@ export async function startRoom(data) {
   store.emit('thread', { id: THREAD, projectId: 'pr_keyframe', kind: 'room', title: 'The release, in a long room', members });
   for (const handle of AGENTS) store.emit('session', { id: `se_${handle}`, threadId: THREAD, handle, personaId: `pe_${handle}` });
   await store.close();
+}
+
+/** Seeds the big room at `items` into a data folder, in the room startRoom() makes. @param {string} data @param {number} items */
+export async function seedRoomFolder(data, items) {
+  await startRoom(data);
+  await seedBigRoomData(data, THREAD, AGENTS, { count: items });
+}
+
+/** The state a data folder loads to, read by the server’s own Store, which is closed after. @param {string} data */
+export async function loadState(data) {
+  const store = await new Store(data).load();
+  const { state } = store;
+  await store.close();
+  return state;
 }

@@ -1,25 +1,26 @@
 #!/usr/bin/env node
 // Benchmark event-loop stall during snapshot serialization and writes (#508, designs/508/storage-design.md).
-// Measures JSON.stringify time, atomic disk write time, and event-loop delay (p50, p95, max)
-// using monitorEventLoopDelay. Serves as the decision trigger for S2 (sharded snapshot).
+// Measures JSON.stringify time, the server’s own writeSnapshot() (server/store-snapshot.mjs: 1 MB pieces to a temporary
+// file, fsynced, renamed), and event-loop delay (p50, p95, max) using monitorEventLoopDelay. Serves as the decision
+// trigger for S2 (sharded snapshot).
 //
-// Budget:
-//   - Max snapshot stall: 50 ms
-//   - Max store size: 40 MB
+// Budget: a snapshot stall of at most 50 ms, the only trigger (“Decisions and open questions”, Q1: the 40 MB size
+// trigger is dropped; the size is still reported).
 //
 // Usage:
-//   node tools/bench-snapshot-stall.mjs [--snapshot <path>] [--data <dir>] [--iterations <n>]
+//   node tools/bench-snapshot-stall.mjs [--snapshot <path>] [--data <dir>] [--items <n>] [--iterations <n>]
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
-import { open, rename, unlink, writeFile } from 'node:fs/promises';
+import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { writeSnapshot } from '../server/store-snapshot.mjs';
+import { count, loadState, seedRoomFolder } from './bench-room.mjs';
 
 export const DEFAULT_STALL_BUDGET_MS = 50;
-export const DEFAULT_SIZE_BUDGET_MB = 40;
 
 /**
  * Creates a synthetic state object if no real snapshot file is available.
@@ -105,27 +106,28 @@ export function resolveSnapshotState(opts = {}) {
   };
 }
 
-async function writeSnapshotAtomic(scratchDir, json) {
-  const tmpPath = join(scratchDir, `bench-snap-${process.pid}-${Math.random().toString(36).slice(2)}.tmp`);
-  const targetPath = join(scratchDir, `bench-snap-${process.pid}.json`);
-  const t0 = performance.now();
-  await writeFile(tmpPath, json);
-  const fh = await open(tmpPath, 'r+');
-  await fh.sync();
-  await fh.close();
-  await rename(tmpPath, targetPath);
-  const writeMs = performance.now() - t0;
+/**
+ * The big room at `items`, seeded into a temporary data folder and loaded by the server’s Store, as the state to
+ * snapshot; the folder is removed after. @param {number} items
+ */
+export async function seededState(items) {
+  const data = await fs.mkdtemp(join(tmpdir(), `pb-bench-items-${items}-`));
   try {
-    await unlink(targetPath);
-  } catch {}
-  return writeMs;
+    await seedRoomFolder(data, items);
+    const state = await loadState(data);
+    const bytes = Buffer.byteLength(JSON.stringify(state));
+    return { state, source: `a seeded big room of ${items} items`, bytes, storeBytes: computeStoreBytes(data, bytes) };
+  } finally {
+    await fs.rm(data, { recursive: true, force: true });
+  }
 }
 
 /**
- * Measures event loop stall and I/O duration for a single snapshot write pass.
+ * Measures event loop stall and I/O duration for a single snapshot write pass, through the server’s own
+ * writeSnapshot() into scratchDir. io stands in for node:fs/promises, as the Store’s does (tests).
  * @param {any} state
  * @param {string} scratchDir
- * @param {{ syncWork?: (() => void) | null }} [opts]
+ * @param {{ syncWork?: (() => void) | null, io?: typeof fs }} [opts]
  */
 export async function measureSnapshotPass(state, scratchDir, opts = {}) {
   const delay = monitorEventLoopDelay({ resolution: 1 });
@@ -145,8 +147,13 @@ export async function measureSnapshotPass(state, scratchDir, opts = {}) {
   const json = JSON.stringify(state);
   const stringifyMs = performance.now() - tStringify0;
 
-  // 2. Atomic disk write matching server/store.mjs writeSnapshot()
-  const writeMs = await writeSnapshotAtomic(scratchDir, json);
+  // 2. The server’s own snapshot write, which stringifies again, then writes in 1 MB pieces
+  const io = opts.io ?? fs;
+  const at = (/** @type {string} */ name) => join(scratchDir, name);
+  const tWrite0 = performance.now();
+  await writeSnapshot({ io, at, state });
+  const writeMs = performance.now() - tWrite0;
+  await io.rm(at('snapshot.json'), { force: true });
 
   // Let event loop catch up to record the stall
   await new Promise((r) => setTimeout(r, 50));
@@ -164,7 +171,13 @@ export async function measureSnapshotPass(state, scratchDir, opts = {}) {
   };
 }
 
-async function executePasses(state, iterations) {
+/** The stall a pass measured: the longest of the stringify, the loop’s worst delay and the timer’s lag. @param {{ stringifyMs: number, maxDelay: number, timerDelay: number }} pass */
+export function stallOf(pass) {
+  return Math.max(pass.stringifyMs, pass.maxDelay, pass.timerDelay);
+}
+
+/** Every pass after one warm-up. @param {any} state  @param {number} iterations */
+export async function executePasses(state, iterations) {
   const scratchDir = join(tmpdir(), `pb-bench-snap-${process.pid}-${Date.now()}`);
   mkdirSync(scratchDir, { recursive: true });
   const passes = [];
@@ -186,17 +199,16 @@ async function executePasses(state, iterations) {
  * @param {{
  *   snapshot?: string,
  *   data?: string,
+ *   items?: number,
  *   iterations?: number,
  *   stallBudgetMs?: number,
- *   sizeBudgetMB?: number,
- * }} [opts]
+ * }} [opts]  items: a seeded big room of that many items, in place of a snapshot
  */
 export async function runBenchmark(opts = {}) {
   const iterations = Math.max(1, opts.iterations ?? 3);
   const stallBudgetMs = opts.stallBudgetMs ?? DEFAULT_STALL_BUDGET_MS;
-  const sizeBudgetMB = opts.sizeBudgetMB ?? DEFAULT_SIZE_BUDGET_MB;
 
-  const { state, source, storeBytes } = resolveSnapshotState(opts);
+  const { state, source, storeBytes } = opts.items ? await seededState(opts.items) : resolveSnapshotState(opts);
   const passes = await executePasses(state, iterations);
 
   // Use median of iterations
@@ -204,18 +216,16 @@ export async function runBenchmark(opts = {}) {
   const median = passes[Math.floor(passes.length / 2)];
 
   const sizeMB = (storeBytes ?? median.bytes) / (1024 * 1024);
-  const isSizeExceeded = sizeMB >= sizeBudgetMB;
 
   // The stall is the measured CPU blocking time / event loop delay
-  const stallMs = Math.max(median.stringifyMs, median.maxDelay, median.timerDelay);
+  const stallMs = stallOf(median);
   const isStallExceeded = stallMs >= stallBudgetMs;
-  const triggerS2 = isSizeExceeded || isStallExceeded;
+  const triggerS2 = isStallExceeded;
 
   return {
     source,
+    items: opts.items ?? null,
     sizeMB,
-    sizeBudgetMB,
-    isSizeExceeded,
     stringifyMs: median.stringifyMs,
     writeMs: median.writeMs,
     totalWriteMs: median.totalWriteMs,
@@ -237,10 +247,10 @@ export async function runBenchmark(opts = {}) {
 function printReport(result, out = console.log) {
   out('=== Snapshot Stall Benchmark (#508, designs/508/storage-design.md) ===');
   out(`Source: ${result.source}`);
-  out(`Store Size: ${result.sizeMB.toFixed(2)} MB / ${result.sizeBudgetMB} MB budget (${result.isSizeExceeded ? 'EXCEEDED' : 'within budget'})`);
+  out(`Store Size: ${result.sizeMB.toFixed(2)} MB`);
   out(`JSON.stringify CPU time: ${result.stringifyMs.toFixed(2)} ms`);
-  out(`Atomic disk write time:   ${result.writeMs.toFixed(2)} ms`);
-  out(`Total writeSnapshot:      ${result.totalWriteMs.toFixed(2)} ms`);
+  out(`writeSnapshot() time:     ${result.writeMs.toFixed(2)} ms (it stringifies again, then writes in 1 MB pieces)`);
+  out(`Stringify and write:      ${result.totalWriteMs.toFixed(2)} ms`);
   out(
     `Event loop delay:         p50 = ${result.loopDelay.p50.toFixed(2)} ms, p95 = ${result.loopDelay.p95.toFixed(2)} ms, max = ${result.loopDelay.max.toFixed(2)} ms (timer lag = ${result.timerDelayMs.toFixed(2)} ms)`,
   );
@@ -248,7 +258,7 @@ function printReport(result, out = console.log) {
     `Measured stall:           ${result.stallMs.toFixed(2)} ms / ${result.stallBudgetMs} ms budget (${result.isStallExceeded ? 'EXCEEDED' : 'within budget'})`,
   );
   out('---');
-  out(`S2 Trigger: ${result.triggerS2 ? 'YES (budget exceeded; sharded snapshot is required)' : 'NO (within 50 ms stall and 40 MB budget; S2 stays on hold)'}`);
+  out(`S2 Trigger: ${result.triggerS2 ? 'YES (budget exceeded; sharded snapshot is required)' : 'NO (within the 50 ms stall budget; S2 stays on hold)'}`);
 }
 
 /**
@@ -273,9 +283,9 @@ export async function benchCli(args = process.argv.slice(2), { out = console.log
     options: {
       snapshot: { type: 'string', short: 's' },
       data: { type: 'string', short: 'd' },
+      items: { type: 'string' },
       iterations: { type: 'string', short: 'n', default: '3' },
       'budget-stall': { type: 'string', default: '50' },
-      'budget-size': { type: 'string', default: '40' },
       json: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
@@ -291,9 +301,9 @@ Measures snapshot serialization and write latency against the S2 budget.
 Options:
   -s, --snapshot <file>    Path to snapshot.json (defaults to synthetic state if omitted)
   -d, --data <dir>         Path to Postbox data folder (measures snapshot.json and events-*.jsonl segments)
+      --items <n>          A big room of n generated items, seeded into a temporary store (tools/uat/big-room.mjs)
   -n, --iterations <n>     Number of benchmark iterations (default: 3)
       --budget-stall <ms>  Event loop stall budget in milliseconds (default: 50)
-      --budget-size <mb>   Store size budget in megabytes (default: 40)
       --json               Output machine-readable JSON
   -h, --help               Show this help message
 `);
@@ -303,9 +313,9 @@ Options:
   const result = await runBenchmark({
     snapshot: values.snapshot ?? positionals[0],
     data: values.data,
+    items: values.items === undefined ? undefined : count('items', values.items),
     iterations: parseNum(values.iterations, 3),
     stallBudgetMs: parseNum(values['budget-stall'], DEFAULT_STALL_BUDGET_MS),
-    sizeBudgetMB: parseNum(values['budget-size'], DEFAULT_SIZE_BUDGET_MB),
   });
 
   if (values.json) out(JSON.stringify(result, null, 2));

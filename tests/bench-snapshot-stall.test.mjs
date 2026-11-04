@@ -1,5 +1,6 @@
 // Tests for tools/bench-snapshot-stall.mjs (#508, designs/508/storage-design.md).
-// Verifies snapshot stall measurements, event-loop delay reporting, and budget trigger checks.
+// Verifies snapshot stall measurements, event-loop delay reporting, the stall trigger, and that the bench writes
+// through the server’s own writeSnapshot.
 
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -11,12 +12,12 @@ import {
   benchCli,
   computeStoreBytes,
   createSyntheticState,
-  DEFAULT_SIZE_BUDGET_MB,
   DEFAULT_STALL_BUDGET_MS,
   measureSnapshotPass,
   parseNum,
   resolveSnapshotState,
   runBenchmark,
+  stallOf,
 } from '../tools/bench-snapshot-stall.mjs';
 
 test('createSyntheticState builds a populated Postbox state', () => {
@@ -106,49 +107,91 @@ test('parseNum preserves 0 and finite numbers', () => {
   assert.equal(parseNum('invalid', 50), 50);
 });
 
-test('runBenchmark calculates budgets and evaluates PR 2 trigger status', async () => {
+test('runBenchmark triggers S2 on the stall budget alone, with no size budget (#508’s storage design, Q1)', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'pb-bench-run-'));
   try {
     const file = join(dir, 'snapshot.json');
-    const smallState = createSyntheticState(20);
-    writeFileSync(file, JSON.stringify(smallState));
+    writeFileSync(file, JSON.stringify(createSyntheticState(20)));
 
-    // Case 1: Small snapshot well within default budgets (50 ms, 40 MB)
-    const withinBudget = await runBenchmark({
-      snapshot: file,
-      iterations: 2,
-      stallBudgetMs: 50,
-      sizeBudgetMB: 40,
-    });
-    assert.equal(withinBudget.sizeBudgetMB, 40);
+    const withinBudget = await runBenchmark({ snapshot: file, iterations: 2, stallBudgetMs: 50 });
     assert.equal(withinBudget.stallBudgetMs, 50);
-    assert.equal(withinBudget.isSizeExceeded, false);
     assert.equal(withinBudget.isStallExceeded, false);
     assert.equal(withinBudget.triggerS2, false);
+    assert.ok(withinBudget.sizeMB > 0, 'the size is still reported');
+    assert.equal('sizeBudgetMB' in withinBudget, false);
+    assert.equal('isSizeExceeded' in withinBudget, false);
 
-    // Case 2: Zero / low stall budget forces trigger without reverting to 50
-    const zeroBudget = await runBenchmark({
-      snapshot: file,
-      iterations: 1,
-      stallBudgetMs: 0,
-      sizeBudgetMB: 40,
-    });
+    // A zero stall budget triggers without reverting to 50
+    const zeroBudget = await runBenchmark({ snapshot: file, iterations: 1, stallBudgetMs: 0 });
     assert.equal(zeroBudget.stallBudgetMs, 0);
     assert.equal(zeroBudget.isStallExceeded, true);
     assert.equal(zeroBudget.triggerS2, true);
-
-    // Case 3: Exceeded size budget
-    const exceededSize = await runBenchmark({
-      snapshot: file,
-      iterations: 1,
-      stallBudgetMs: 50,
-      sizeBudgetMB: 0.0001,
-    });
-    assert.equal(exceededSize.isSizeExceeded, true);
-    assert.equal(exceededSize.triggerS2, true);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('stallOf is the longest of the stringify, the loop’s worst delay and the timer’s lag', () => {
+  assert.equal(stallOf({ stringifyMs: 3, maxDelay: 7, timerDelay: 5 }), 7);
+  assert.equal(stallOf({ stringifyMs: 9, maxDelay: 7, timerDelay: 5 }), 9);
+  assert.equal(stallOf({ stringifyMs: 3, maxDelay: 2, timerDelay: 5 }), 5);
+});
+
+/** A stand-in for node:fs/promises that records what writeSnapshot asks of it. */
+function recordingIo() {
+  const seen = { opened: '', writes: /** @type {number[]} */ ([]), renamed: /** @type {string[]} */ ([]), removed: /** @type {string[]} */ ([]) };
+  const fh = {
+    write: async (/** @type {Buffer} */ _buf, /** @type {number} */ _off, /** @type {number} */ len) => {
+      seen.writes.push(len);
+      return { bytesWritten: len };
+    },
+    sync: async () => {},
+    close: async () => {},
+  };
+  const io = {
+    open: async (/** @type {string} */ path) => {
+      seen.opened = path;
+      return fh;
+    },
+    rename: async (/** @type {string} */ from, /** @type {string} */ to) => {
+      seen.renamed = [from, to];
+    },
+    rm: async (/** @type {string} */ path) => {
+      seen.removed.push(path);
+    },
+  };
+  return { io, seen };
+}
+
+test('measureSnapshotPass writes through the server’s writeSnapshot: 1 MB pieces to a temp file, renamed over snapshot.json', async () => {
+  const { io, seen } = recordingIo();
+  const state = { version: 1, seq: 1, items: { th_bench: [{ id: 'it_1', text: 'x'.repeat(3.5 * 2 ** 20) }] } };
+  const pass = await measureSnapshotPass(state, '/nowhere', { io: /** @type {any} */ (io) });
+  const bytes = Buffer.byteLength(JSON.stringify(state));
+  assert.equal(pass.bytes, bytes);
+  assert.equal(seen.writes.length, 4, 'a 3.5 MB snapshot goes in four pieces');
+  for (const n of seen.writes) assert.ok(n <= 2 ** 20, `a piece of ${n} bytes is over 1 MB`);
+  assert.equal(
+    seen.writes.reduce((a, b) => a + b, 0),
+    bytes,
+  );
+  assert.notEqual(seen.opened, join('/nowhere', 'snapshot.json'), 'written to a temporary file first');
+  assert.deepEqual(seen.renamed, [seen.opened, join('/nowhere', 'snapshot.json')]);
+  assert.deepEqual(seen.removed, [join('/nowhere', 'snapshot.json')], 'the bench removes the snapshot it wrote');
+});
+
+test('runBenchmark measures a seeded big-room store with --items', async () => {
+  const lines = [];
+  const code = await benchCli(['--json', '--items', '40', '--iterations', '1'], { out: (s) => lines.push(s) });
+  assert.equal(code, 0);
+  const parsed = JSON.parse(lines.join('\n'));
+  assert.equal(parsed.source, 'a seeded big room of 40 items');
+  assert.equal(parsed.items, 40);
+});
+
+test('CLI refuses the dropped size budget and a malformed --items', async () => {
+  await assert.rejects(benchCli(['--budget-size', '40'], { out: () => {} }), /budget-size/);
+  await assert.rejects(benchCli(['--items', '1e3'], { out: () => {} }), /--items takes a whole number/);
 });
 
 test('CLI runs default synthetic path and outputs JSON when requested', async () => {
@@ -160,6 +203,5 @@ test('CLI runs default synthetic path and outputs JSON when requested', async ()
   assert.ok(typeof parsed.stallMs === 'number');
   assert.ok(typeof parsed.sizeMB === 'number');
   assert.equal(parsed.stallBudgetMs, DEFAULT_STALL_BUDGET_MS);
-  assert.equal(parsed.sizeBudgetMB, DEFAULT_SIZE_BUDGET_MB);
   assert.ok(typeof parsed.triggerS2 === 'boolean');
 });

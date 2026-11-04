@@ -17,12 +17,11 @@ import { loadavg, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { AGENTS, count, freePort, startRoom, THREAD } from './bench-room.mjs';
+import { count, freePort, seedRoomFolder, THREAD } from './bench-room.mjs';
 import { launch } from './browser.mjs';
 import { commitOf, conditionsOf, EVENT_THRESHOLD, machineOf, measureKeys } from './key-frame-measure.mjs';
 import { formatReport, shownPath } from './key-frame-report.mjs';
 import { summarize } from './key-frame-stats.mjs';
-import { seedBigRoomData } from './uat/big-room.mjs';
 import { startPostbox } from './uat/postbox.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -105,8 +104,7 @@ export async function measureSize(page, items, o, log, { start = startPostbox, p
     postbox = await start({ root: ROOT, port: await port(), data, env: { POSTBOX_BACKENDS: 'mock' }, log: () => {} });
     await postbox.restart({
       whileDown: async () => {
-        await startRoom(data);
-        await seedBigRoomData(data, THREAD, AGENTS, { count: items });
+        await seedRoomFolder(data, items);
       },
     });
     for (let run = 1; run <= o.runs; run++) {
