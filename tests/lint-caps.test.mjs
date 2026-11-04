@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { addedLines, ceilings, configChanges, configDiff, noBase, suppressions } from '../tools/lint-caps.mjs';
+import { addedLines, ceilings, configChanges, configDiff, suppressions } from '../tools/lint-caps.mjs';
+import { baseRef, noBase } from '../tools/merge-base.mjs';
 
 const cap = (n, extra = {}) => ({ level: 'error', options: { maxLines: n, ...extra } });
 /** A biome.json with the repo's defaults, and the given overrides. */
@@ -130,8 +131,8 @@ test('lint-caps: a Biome config other than the root biome.json, added or changed
 });
 
 test('lint-caps: with no base to compare with, it fails in CI and skips elsewhere', () => {
-  assert.equal(noBase('origin/main', { CI: 'true' }).code, 1);
-  assert.equal(noBase('origin/main', {}).code, 0);
+  assert.equal(noBase('lint-caps', 'origin/main', { CI: 'true' }).code, 1);
+  assert.equal(noBase('lint-caps', 'origin/main', {}).code, 0);
 });
 
 test('lint-caps: the repo’s own biome.json against itself has no difference', () => {
@@ -159,4 +160,11 @@ test('lint-caps: a new override’s length rule may hold only a level and a maxL
   assert.equal(configDiff(base, fnLoose).length, 1);
   const extraKey = biome([...base.overrides, fileCap('server/new.mjs', { level: 'error', options: { maxLines: 300 }, fix: 'none' })]);
   assert.equal(configDiff(base, extraKey).length, 1, 'a key beside level and options');
+});
+
+test('merge-base: the ref is the one given, else origin/$BASE_REF, else origin/main', () => {
+  assert.equal(baseRef('v1', { BASE_REF: 'dev' }), 'v1');
+  assert.equal(baseRef(undefined, { BASE_REF: 'dev' }), 'origin/dev');
+  assert.equal(baseRef(undefined, { BASE_REF: '' }), 'origin/main');
+  assert.equal(baseRef(undefined, {}), 'origin/main');
 });

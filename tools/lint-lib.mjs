@@ -5,8 +5,9 @@
 // comments and regular expressions, with their line numbers. It doesn’t parse; it only has to tell
 // those apart from code, which is what the lint rules look at.
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** @typedef {{ kind: 'string'|'template'|'comment'|'regex', text: string, line: number, start: number, end: number }} Token */
 
@@ -197,4 +198,25 @@ export function report(name, findings) {
     );
     process.exitCode = 1;
   } else console.log(`${name}: no problems.`);
+}
+
+/**
+ * Whether the module at url is the script node was asked to run. Comparing real paths, not `file://` strings, keeps a
+ * lint running from a folder whose path has a space or an accent, which a URL writes percent-encoded, or that is
+ * reached through a symlink, which node resolves for the module but not for process.argv[1]. In either case the string
+ * test was false, and the lint exited 0 without checking anything.
+ * @param {string} url  the module’s import.meta.url @param {string | undefined} script  process.argv[1]
+ */
+export function isEntry(url, script) {
+  if (!script) return false;
+  return realPath(fileURLToPath(url)) === realPath(script);
+}
+
+/** A path with its symlinks resolved, or as given when it doesn’t exist. @param {string} path */
+function realPath(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
 }

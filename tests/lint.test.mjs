@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
+import { pathToFileURL } from 'node:url';
 import { britishWords, checkMarkdown, checkJs as copyJs, straightQuotes, threadWords } from '../tools/lint-copy.mjs';
 import { checkJs as domJs } from '../tools/lint-dom.mjs';
-import { codeOnly, scan } from '../tools/lint-lib.mjs';
+import { codeOnly, isEntry, scan } from '../tools/lint-lib.mjs';
 import { checkCss, checkJs as tokensJs } from '../tools/lint-tokens.mjs';
 
 test('the scanner tells strings, templates, regexes and comments from code', () => {
@@ -121,4 +125,24 @@ test('lint-copy: what agents read says “conversation” for one, too (#75)', (
 
 test('lint-copy: docs are checked for spelling outside code', () => {
   assert.equal(checkMarkdown('The colour.\n\n```\ncolour\n```\n`colour`', 'a.md').length, 1);
+});
+
+test('isEntry: a lint runs as a script from a folder whose path has a space or an accent', () => {
+  assert.equal(isEntry(pathToFileURL('/tmp/a b/é/tools/x.mjs').href, '/tmp/a b/é/tools/x.mjs'), true);
+  assert.equal(isEntry(pathToFileURL('/tmp/a/tools/x.mjs').href, '/tmp/a/tools/../tools/x.mjs'), true);
+  assert.equal(isEntry(pathToFileURL('/tmp/a/tools/x.mjs').href, '/tmp/a/tests/x.test.mjs'), false);
+  assert.equal(isEntry(pathToFileURL('/tmp/a/tools/x.mjs').href, undefined), false);
+});
+
+test('isEntry: a lint run through a symlinked folder is still the script node ran', () => {
+  const real = mkdtempSync(join(tmpdir(), 'pb-is-entry-'));
+  const linked = `${real}-link`;
+  try {
+    writeFileSync(join(real, 'x.mjs'), '');
+    symlinkSync(real, linked);
+    assert.equal(isEntry(pathToFileURL(realpathSync(join(real, 'x.mjs'))).href, join(linked, 'x.mjs')), true);
+  } finally {
+    rmSync(linked, { force: true });
+    rmSync(real, { recursive: true, force: true });
+  }
 });
