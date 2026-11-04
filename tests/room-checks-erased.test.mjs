@@ -145,9 +145,35 @@ test('refusal-without-card still reports a live agent’s uncarded refusal when 
   assert.match(out[0].evidence, /^1 refused, 0 cards\. @researcher: Bash/);
 });
 
+test('an agent removed from a kept conversation: its refusal with its card, and its commands, are left out today', () => {
+  // Its session is gone, so its streams read as erased, though its card and its Work stay in the conversation, which
+  // keeps its Work (#729). Neither side is judged: a command of its missing from Work goes unreported.
+  assert.deepEqual(found(roomWithRemovedAgent([removedTurn([refusal('r_removed')])]), 'refusal-without-card'), []);
+  assert.deepEqual(found(roomWithRemovedAgent([removedTurn(call('b_removed', 'Bash', { command: 'pytest' }))]), 'work-commands-match-stream'), []);
+});
+
 test('a state in which no session has a Claude Code session id keeps every stream: it can’t tell which are erased', () => {
   const f = room([turn(LIVE, call('b_live', 'Bash', { command: 'pytest' }))]);
   f.state.sessions.s1.backendState = {};
   assert.equal(keptStreams(f).length, 1);
   assert.equal(found(f, 'work-commands-match-stream').length, 1);
+});
+
+test('a session deleted but still in its Undo window keeps its streams: its Work is still in the state', () => {
+  const DELETING = 'de1e7000-undo';
+  const f = room([turn(DELETING, call('b_undo', 'Bash', { command: 'pytest' }))]);
+  f.state.sessions.s2 = { id: 's2', handle: 'researcher', state: 'idle', deleting: 1000, backendState: { claudeSessionId: DELETING } };
+  const out = found(f, 'work-commands-match-stream');
+  assert.equal(out.length, 1);
+  assert.match(out[0].evidence, /`pytest`/);
+});
+
+test('a purged topic thread’s streams are left out today, though its commands stay in its conversation’s Work', () => {
+  // Purging a topic thread removes its sessions; Work is kept by conversation, so the root keeps the topic’s entries.
+  const topic = turn('70p1c000-purged', call('b_topic', 'Bash', { command: 'pytest' }));
+  const f = room([topic]);
+  assert.deepEqual(keptStreams(f), []);
+  assert.deepEqual(found(f, 'work-commands-match-stream'), []);
+  f.state.work.t1 = [{ kind: 'command', toolUseId: 'b_topic' }];
+  assert.deepEqual(found(f, 'work-commands-match-stream'), []);
 });
