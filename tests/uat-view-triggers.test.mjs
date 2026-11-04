@@ -154,3 +154,27 @@ test('on samples recorded in Chromium, diagram-deferred fires on #701’s lazy f
   assert.equal(run(recorded.lazy).length, 1);
   assert.deepEqual(run(recorded.eager), []);
 });
+
+// items-skipped (#712a): the run read a long room with most of its items skipped, on Chromium samples.
+const skipSamples = JSON.parse(readFileSync(new URL('./fixtures/uat/skip-probe-samples.json', import.meta.url), 'utf8'));
+const skippedRun = (skipped) => VIEW_TRIGGERS['items-skipped'].run({ probes: { skipped } });
+
+test('items-skipped fires on a long room with most of its items skipped, and says how many', () => {
+  const [hit] = skippedRun(skipSamples.on);
+  assert.match(hit.evidence, /1176 of the conversation’s 1200 items/);
+});
+
+test('items-skipped stays silent with the rule off, on a room of 1,000 or fewer, unsettled, or unsupported', () => {
+  assert.deepEqual(skippedRun(skipSamples.off), []);
+  const on = skipSamples.on[0];
+  assert.deepEqual(skippedRun([{ ...on, items: 1000, skipped: 990 }]), [], 'a room of 1,000 is not long');
+  assert.deepEqual(skippedRun([{ ...on, items: 1001, skipped: 500 }]), [], 'half or fewer is not most');
+  assert.deepEqual(skippedRun([{ ...on, settled: false }]), [], 'unsettled');
+  assert.deepEqual(skippedRun([{ ...on, supported: false, skipped: null }]), [], 'the browser can’t say');
+  assert.deepEqual(skippedRun([]), []);
+});
+
+test('items-skipped can tell only from a run that recorded the probe', () => {
+  assert.equal(VIEW_TRIGGERS['items-skipped'].recorded({ probes: {} }), false);
+  assert.equal(VIEW_TRIGGERS['items-skipped'].recorded({ probes: { skipped: [] } }), true);
+});
