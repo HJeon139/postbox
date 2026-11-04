@@ -112,3 +112,41 @@ test('#357 a scroll up, then a change in the same frame, isn’t taken for a cla
   const at = await page.evaluate(() => scrollY);
   expect(at, 'the view stays where you scrolled it, not back at the end').toBeLessThan(end - 200);
 });
+
+test('#341 two resizes before the scroll event take an unheard scroll once, not twice', async ({ page }) => {
+  const { t } = room('Two resizes, one unheard scroll');
+  await open(page, t);
+  await page.mouse.move(640, 400);
+  await page.mouse.wheel(0, -900);
+  await settled(page);
+  // Scroll up by 240 px and, before its scroll event, have the transcript hear two resizes: the first takes the unheard
+  // scroll into the anchor, and the second must find nothing left to take.
+  const moved = await page.evaluate(async () => {
+    const s = /** @type {Element} */ (document.scrollingElement);
+    const before = s.scrollTop;
+    s.scrollTop = before - 240;
+    dispatchEvent(new Event('resize'));
+    dispatchEvent(new Event('resize'));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return before - s.scrollTop;
+  });
+  expect(moved, 'the view stays where the scroll put it').toBeGreaterThanOrEqual(239);
+  expect(moved).toBeLessThanOrEqual(241);
+});
+
+test('#341 following, a scroll up the transcript hasn’t heard of, then a resize: the view stays where the scroll put it', async ({ page }) => {
+  const { t } = room('Unheard scroll up from the end');
+  await open(page, t);
+  // At the end, following. Scroll up by 240 px and, before its scroll event, have the transcript hear a resize: it
+  // unsticks there, takes the anchor where the view now is, and must not take the same scroll in again.
+  const moved = await page.evaluate(async () => {
+    const s = /** @type {Element} */ (document.scrollingElement);
+    const before = s.scrollTop;
+    s.scrollTop = before - 240;
+    dispatchEvent(new Event('resize'));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return before - s.scrollTop;
+  });
+  expect(moved, 'the view stays where the scroll put it').toBeGreaterThanOrEqual(239);
+  expect(moved).toBeLessThanOrEqual(241);
+});

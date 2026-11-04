@@ -130,6 +130,8 @@ function follow(v) {
   if (v.stuck && s.scrollTop < v.lastTop - 1 && !atEnd(s)) {
     v.stuck = false;
     v.anchor = findAnchor(v);
+    // The anchor is taken where the view now is, so that scroll is heard: heard() below mustn't take it in again.
+    v.lastTop = s.scrollTop;
   }
   if (v.stuck) {
     const now = measure(v, s);
