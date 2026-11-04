@@ -90,4 +90,5 @@ test('a room is measured only when at most 10% of its keys had no Event Timing e
 test('a room of no keys, or no count of missing keys, is not measured', () => {
   assert.equal(enoughEntries(0, 0), false);
   assert.equal(enoughEntries(undefined, 100), false);
+  assert.equal(enoughEntries(null, 100), false, 'null would divide to no keys missing');
 });

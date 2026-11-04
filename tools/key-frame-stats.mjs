@@ -17,7 +17,8 @@ export const MAX_MISSING_SHARE = 0.1;
  * @param {number} below  the keys with no entry  @param {number} keys
  */
 export function enoughEntries(below, keys) {
-  if (!Number.isInteger(below) || !(keys > 0)) return false;
+  // A null count would divide to no keys missing. No keys divide to NaN, which is never at most the share.
+  if (!Number.isInteger(below)) return false;
   return below / keys <= MAX_MISSING_SHARE;
 }
 
