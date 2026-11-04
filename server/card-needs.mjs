@@ -115,7 +115,9 @@ export function nextNeed(rt, se, o = {}) {
     }
   // Several refusals are counted, as the turn's end always said.
   if (best?.need.kind === 'denial' && refused > 1) best.need.text = `${refused} steps were refused: ${best.it.summary}`;
-  return best?.need ?? null;
+  // Typed again: TypeScript 7 can narrow it to never after the line above, though a card may have set it.
+  const found = /** @type {{ at: number, need: any, it: any } | null} */ (best);
+  return found?.need ?? null;
 }
 
 /**
