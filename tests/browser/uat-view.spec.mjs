@@ -63,6 +63,9 @@ const streamIn = (/** @type {any} */ page, /** @type {any} */ t) => async () => 
   }
   rt.patchItem(t.id, it.id, { status: 'done' });
   await expect(page.locator(`[data-key="${it.id}"]`)).toContainText('Reply 82');
+  // Done adds the reply's actions. With the events late, that can land after the restore, and the view doesn't hear a
+  // reply that grows inside the height it holds while following: filed apart, it's the page's, not the runner's.
+  await expect(page.locator(`[data-key="${it.id}"] .msg-actions`)).toBeAttached();
   await settled(page);
 };
 
