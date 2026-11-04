@@ -74,6 +74,15 @@ export async function addHost(kit, destination) {
   throw new Error(`Adding ${destination} showed no card for it.`);
 }
 
+/**
+ * Turns a host’s consent to install this Postbox’s version by itself on (#464), through the page’s own request with
+ * its token, as the toggle in the host editor will (#464-b2b). Resolves whether Postbox kept it. @param {any} kit @param {string} id
+ */
+export const keepUpdated = (kit, id) =>
+  kit.ev(
+    `fetch(${js(`/api/hosts/${encodeURIComponent(id)}/keep-updated`)}, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on: true }) }).then(async (r) => r.ok && (await r.json()).keepUpdated === true, () => false)`,
+  );
+
 /** Sets one setting’s field in the open editor, by the kind of control it is. @param {any} kit */
 async function setField(kit, id, key, value) {
   const cid = `#ho-${id}-${key.replace('.', '-')}`;

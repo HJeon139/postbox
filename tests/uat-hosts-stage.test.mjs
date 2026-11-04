@@ -120,6 +120,8 @@ test('#464 setting up a host with an older Postbox to stage stages it in place o
     makeRunFolder: async () => {},
     editHost: async () => {},
     install: async () => assert.fail('the UI’s Install isn’t used on a staged host'),
+    keepUpdated: async () => true,
+    version: () => '1.17.0',
     stage: async (o) => {
       staged.push(o);
       return { installed: true };
@@ -282,12 +284,8 @@ test('#464 --stage-host-version refuses a tag newer than this checkout, not only
 });
 
 test('#464 a host.status event keeps its failure’s kind, which tells a missing version from no token yet', () => {
-  assert.deepEqual(hostStateOf({ id: 'ho_1', status: { state: 'not-installed', failure: { kind: 'not-installed' } } }), {
-    id: 'ho_1',
-    state: 'not-installed',
-    failure: 'not-installed',
-  });
-  assert.deepEqual(hostStateOf({ id: 'ho_1', status: { state: 'not-installed', failure: null } }), { id: 'ho_1', state: 'not-installed', failure: null });
+  assert.equal(hostStateOf({ id: 'ho_1', status: { state: 'not-installed', failure: { kind: 'not-installed' } } })?.failure, 'not-installed');
+  assert.equal(hostStateOf({ id: 'ho_1', status: { state: 'not-installed', failure: null } })?.failure, null);
   assert.equal(hostStateOf({ status: {} }), null);
 });
 

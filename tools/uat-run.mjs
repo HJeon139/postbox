@@ -41,7 +41,7 @@ import { faultSetup } from './uat/fault-run.mjs';
 import { followEvents } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
 import { HOST_OPTIONS } from './uat/hosts-options.mjs';
-import { createHostRun, startHosts } from './uat/hosts-run.mjs';
+import { createHostRun, followStatuses, startHosts } from './uat/hosts-run.mjs';
 import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
 import { portFree, startPostbox } from './uat/postbox.mjs';
@@ -166,7 +166,7 @@ async function main() {
   // Host mode’s record of its hosts (tools/uat/hosts-run.mjs), which its checks and triggers read as facts.hosts.
   const hr = hosts.length ? createHostRun({ hosts, placement, launcher: scenario.launcher, root: ROOT, stamp, data: paths.data, log }) : null;
   Object.assign(run, { hr, history, page, postbox });
-  if (hr) hr.hostStates = history.hostStates;
+  if (hr) followStatuses(hr, history.hostStates);
   const findings = new Map(); // key → finding
   const timeline = [];
   const facts = {

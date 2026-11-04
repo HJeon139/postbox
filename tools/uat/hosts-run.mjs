@@ -10,10 +10,10 @@ import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { checkHostSettings } from '../../shared/remote-settings.mjs';
-import { addHost, closeAll, editHost, install, placePersona } from './driver-hosts.mjs';
+import { addHost, closeAll, editHost, install, keepUpdated, placePersona } from './driver-hosts.mjs';
 import { addrs, localListeners, remoteListeners } from './hosts-probe.mjs';
 import { launcherScript, linesOf, measureOn, onHost, processesOf, SCRIPTS, UUID, workScript } from './hosts-ssh.mjs';
-import { stageOlder } from './hosts-stage.mjs';
+import { stageOlder, tagRepo } from './hosts-stage.mjs';
 
 /**
  * @typedef {{ label: string, destination: string, settings: Record<string, any>, id: string|null, home: string|null,
@@ -22,8 +22,9 @@ import { stageOlder } from './hosts-stage.mjs';
  * @typedef {{ hosts: RunHost[], placement: Record<string, string>, launcher: string|null, root: string, stamp: string,
  *   log: (line: string) => void, record: any, postbox: any, kit: any, api: (p: string) => Promise<any>, samples: Map<string, any>,
  *   trees: Map<string, Map<string, import('./hosts-ssh.mjs').HostProc>>, cleaning?: Promise<void>, ending?: Promise<void>,
- *   starting?: Promise<void>, hostStates?: () => { at: number, id: string, state: string|null, failure?: string|null }[] }} HostRun
+ *   starting?: Promise<void>, hostStates?: () => HostSeen[] }} HostRun
  *   trees: every process seen under each host turn (hosts-watch.mjs), by “PID start”
+ * @typedef {{ at: number, id: string, state: string|null, failure?: string|null, update?: import('./history.mjs').UpdateSeen|null }} HostSeen
  */
 
 /**
@@ -57,6 +58,16 @@ export function createHostRun({ hosts, placement, launcher, root, stamp, data, l
       before: {},
     },
   };
+}
+
+/**
+ * Each host’s status events as they come (tools/uat/history.mjs, followEvents), for the faults and the setup, and in
+ * the run’s record as statuses, so the triggers and --recheck read every install try Postbox made by itself (#464).
+ * The record holds the list itself, which grows as events come. @param {HostRun} hr @param {() => HostSeen[]} hostStates
+ */
+export function followStatuses(hr, hostStates) {
+  hr.hostStates = hostStates;
+  hr.record.statuses = hostStates();
 }
 
 /** Runs a script on a host, or throws with what ssh said. @param {RunHost} h @param {string} script */
@@ -152,24 +163,31 @@ export async function makeRunFolder(hr, h, { run = onHost } = {}) {
   h.made = { parent: linesOf(r.stdout).includes('made') };
 }
 
-/** What setting a host up does, which a test replaces. */
-const SETUP = { addHost, editHost, install, makeRunFolder, stage: stageOlder };
+/** What setting a host up does, which a test replaces. version: the version the run’s Postbox has, from this checkout. */
+const SETUP = { addHost, editHost, install, makeRunFolder, stage: stageOlder, keepUpdated, version: (/** @type {string} */ root) => tagRepo(root).current() };
 
 /**
  * Stages an older Postbox on a host in place of the run’s Install (#464), with the token in the run’s data folder,
- * and says so as the setup’s record: the version and when, never a path or the destination.
- * @param {HostRun} hr @param {RunHost} h @param {typeof stageOlder} stage
+ * then turns the host’s consent to install this Postbox’s version by itself on, through the page’s own request: its
+ * first turn still finds only the older version and fails as not installed (host-staged-older), and Postbox installs
+ * its own then (host-auto-installed). Says so as the setup’s record: the versions, when, and the consent, never a path
+ * or the destination. @param {HostRun} hr @param {RunHost} h @param {typeof SETUP} ui
  */
-async function stageOn(hr, h, stage) {
+async function stageOn(hr, h, ui) {
   const { tag, version } = /** @type {{ tag: string, version: string }} */ (h.stage);
   // The settings as the server keeps them, every key filled in from the defaults: the older installer’s sshArgs reads
   // them whole (server/remote/ssh-args.mjs), and the options give only what they change.
   const settings = checkHostSettings(h.settings);
   if (!settings.ok) throw new Error(`${h.label}’s settings: ${settings.error}`);
   const host = { id: /** @type {string} */ (h.id), name: h.destination, settings: settings.value };
-  await stage({ root: hr.root, tag, version, data: hr.record.laptopData, label: h.label, host });
+  await ui.stage({ root: hr.root, tag, version, data: hr.record.laptopData, label: h.label, host });
+  const stagedAt = Date.now();
   hr.log(`${h.label}: staged Postbox ${version} (${tag}) in place of the run’s Install, so its first turn finds that older version.`);
-  return { staged: version, stagedAt: Date.now() };
+  if (!(await ui.keepUpdated(hr.kit, host.id)))
+    throw new Error(`${h.label}’s consent to install Postbox by itself wasn’t kept: the page’s request to turn it on failed. See run.log.`);
+  const runVersion = ui.version(hr.root);
+  hr.log(`${h.label}: its consent to install Postbox ${runVersion} by itself is on.`);
+  return { staged: version, stagedAt, runVersion, consent: true };
 }
 
 /**
@@ -185,7 +203,7 @@ export async function setUpHost(hr, h, projectId, o = {}) {
   await ui.makeRunFolder(hr, h);
   await ui.editHost(hr.kit, h.id, h.settings, { project: projectId, folder: `${h.home}/postbox-uat/${hr.stamp}/work` });
   /** @type {Record<string, any>} */
-  const shown = h.stage ? await stageOn(hr, h, ui.stage) : await ui.install(hr.kit, h.id);
+  const shown = h.stage ? await stageOn(hr, h, ui) : await ui.install(hr.kit, h.id);
   if (!h.stage)
     hr.log(`${h.label}: ${shown.installOffered ? 'Install…' : 'no Install… on its card, so the runner opened the confirm'}; it said: ${shown.confirm}`);
   const placed = Object.values(hr.placement).includes(h.label);
