@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkContentPrivacy, checkFilePrivacy, isBinary, isSyntheticLabel, missingSyntheticFixtures, syntheticFixturePaths } from './privacy-check.mjs';
+import { checkContentPrivacy, checkFilePrivacy, isBinary, isSyntheticLabel, missingSyntheticFixtures, syntheticFixturePaths } from '../tools/privacy-check.mjs';
 
 test('fixtures privacy checker flags path violations', () => {
   // Home paths: Unix, Windows, slugs
@@ -126,7 +126,7 @@ test('privacy checker allows the placeholders, system homes and example addresse
 });
 
 test('privacy checker exempts its own files, and only account fields in the #660 fixture', () => {
-  assert.deepEqual(checkFilePrivacy('tests/privacy-check.mjs', '/Users/melissa'), []);
+  assert.deepEqual(checkFilePrivacy('tools/privacy-check.mjs', '/Users/melissa'), []);
   assert.ok(checkFilePrivacy('tests/other.test.mjs', '/Users/melissa').length > 0, 'another file is checked');
   const fixture = 'tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl';
   assert.deepEqual(checkFilePrivacy(fixture, '{"planType": "pro"}'), []);

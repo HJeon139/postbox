@@ -164,7 +164,7 @@ export function checkContentPrivacy(content, options = {}) {
 }
 
 /** The checker’s own files, which hold the examples its tests must flag. */
-const SELF_EXAMPLES = new Set(['tests/privacy-check.mjs', 'tests/fixtures-privacy.test.mjs']);
+const SELF_EXAMPLES = new Set(['tools/privacy-check.mjs', 'tests/fixtures-privacy.test.mjs']);
 
 /** A recorded Codex turn that still holds account fields, filed as #660. */
 const ACCOUNT_FIELDS_660 = 'tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl';
