@@ -144,16 +144,15 @@ export function commitOf(root) {
   return git('status', '--porcelain').length ? `${head}+changes` : head;
 }
 
-/** The machine, without its name or any home path: os, arch, cpu model, Node and Chromium. @param {Page} page */
+/** The machine, without its name or any home path: os, arch, cpu model and Node. */
+export function hostOf() {
+  return { os: `${type()} ${release()}`, arch: arch(), cpu: cpus()[0]?.model ?? 'unknown', node: process.version };
+}
+
+/** The machine as hostOf() gives it, and Chromium’s version. @param {Page} page */
 export async function machineOf(page) {
   const { product } = await page.send('Browser.getVersion');
-  return {
-    os: `${type()} ${release()}`,
-    arch: arch(),
-    cpu: cpus()[0]?.model ?? 'unknown',
-    node: process.version,
-    chromium: String(product).replace(/^[^/]*\//, ''),
-  };
+  return { ...hostOf(), chromium: String(product).replace(/^[^/]*\//, '') };
 }
 
 /**
