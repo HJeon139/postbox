@@ -6,6 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
+import { holds, LONG, open as openIn, read, room as roomIn } from './view-read-fixture.mjs';
 
 test.use({ colorScheme: 'light' });
 
@@ -19,55 +20,8 @@ test.afterAll(async () => {
 });
 failOnPageErrors(test);
 
-const LONG = (n) =>
-  `Reply ${n}. The observation is the only outside evidence in the loop, so it keeps the plan grounded while the agent reads the results one at a time.`;
-
-/** A long room with @researcher, and a way for it to say more. */
-function room(title) {
-  const { rt, store } = app;
-  const project = Object.values(store.state.projects)[0];
-  const t = rt.createThread({ projectId: project.id, title, personaIds: [rt.personaByHandle('researcher').id] });
-  const [se] = rt.sessionsIn(t.id);
-  const say = (/** @type {string} */ text) =>
-    rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done' });
-  for (let i = 1; i <= 30; i++) {
-    if (i % 3 === 1) rt.addItem(t.id, { kind: 'user', text: `Question ${i}?` });
-    else say(LONG(i));
-  }
-  return { t, say };
-}
-
-async function open(page, t, width = 1280) {
-  await page.setViewportSize({ width, height: 800 });
-  await page.goto(`${app.origin}/#/t/${t.id}`);
-  await synced(page, app);
-  await expect(page.locator(`.transcript[data-thread="${t.id}"] .item`).first()).toBeVisible();
-  await settled(page);
-}
-
-/** What the transcript publishes, and what the page shows: the gap to the end, and where the named item really starts. */
-const read = (page, t) =>
-  page.evaluate((threadId) => {
-    const el = /** @type {HTMLElement} */ (document.querySelector(`#main.transcript[data-thread="${threadId}"]`));
-    const s = /** @type {Element} */ (document.scrollingElement);
-    const { viewMode: mode, viewAnchor: anchor, viewOffset: offset } = el.dataset;
-    const n = anchor ? el.querySelector(`:scope > [data-key="${CSS.escape(anchor)}"]`) : null;
-    return { mode, anchor, offset, gap: s.scrollHeight - s.scrollTop - s.clientHeight, actual: n ? n.getBoundingClientRect().top : null };
-  }, t.id);
-
-/** V1: the attributes say what the page shows. */
-async function holds(page, t, label) {
-  const v = await read(page, t);
-  if (v.mode === 'following') {
-    expect(v.gap, `${label}: following is at the end`).toBeLessThanOrEqual(2);
-    expect([v.anchor, v.offset], `${label}: no anchor while following`).toEqual(['', '']);
-    return v;
-  }
-  expect(v.mode, label).toBe('reading');
-  expect(v.actual, `${label}: the anchor ${v.anchor} is on the page`).not.toBeNull();
-  expect(Math.abs(/** @type {number} */ (v.actual) - Number(v.offset)), `${label}: the anchor starts where it says`).toBeLessThanOrEqual(1);
-  return v;
-}
+const room = (/** @type {string} */ title) => roomIn(app, title);
+const open = (/** @type {any} */ page, /** @type {any} */ t, width = 1280) => openIn(app, page, t, width);
 
 for (const width of [1280, 375]) {
   test(`V1 at ${width} px: mount, a wheel up, a reply growing below, End`, async ({ page }) => {
@@ -266,24 +220,4 @@ test('V1 in the side panel: its own transcript publishes too', async ({ page }) 
   }, side.id);
   expect(v.actual, 'the panel’s anchor is on the page').not.toBeNull();
   expect(Math.abs(/** @type {number} */ (v.actual) - v.offset), 'it starts where it says, in the panel’s box').toBeLessThanOrEqual(1);
-});
-
-// Reading with no anchor: the view is scrolled up from the end, but no item crosses it, as when the height held after a
-// shrink (release, view-state.mjs) is taller than the window. findAnchor returns null there, and the mode is reading.
-test('V1: scrolled up into space below the last item, the view reads with no anchor, and says so', async ({ page }) => {
-  const { t } = room('View read: no anchor');
-  await open(page, t);
-  const v = await page.evaluate(async (threadId) => {
-    const el = /** @type {HTMLElement} */ (document.querySelector(`#main.transcript[data-thread="${threadId}"]`));
-    el.style.minHeight = `${el.getBoundingClientRect().height + 3 * innerHeight}px`;
-    const s = /** @type {Element} */ (document.scrollingElement);
-    s.scrollTop = s.scrollHeight;
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    s.scrollTop -= innerHeight;
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const last = [...el.querySelectorAll(':scope > [data-key]')].at(-1);
-    return { ...el.dataset, lastBottom: /** @type {Element} */ (last).getBoundingClientRect().bottom };
-  }, t.id);
-  expect(v.lastBottom, 'no item is in view').toBeLessThan(0);
-  expect([v.viewMode, v.viewAnchor, v.viewOffset]).toEqual(['reading', '', '']);
 });
