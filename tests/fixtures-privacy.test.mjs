@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import {
   checkContentPrivacy,
   checkFilePrivacy,
@@ -10,22 +12,54 @@ import {
   syntheticFixturePaths,
 } from '../tools/privacy-check.mjs';
 
+// Every example the checker must flag is built from parts here, at run time, so this file’s own text holds none and
+// the tree test checks it like any other file (#508).
+
+/** A path joined with “/”: slashed('', 'Users', 'a') is the absolute path. @param {string[]} parts */
+const slashed = (...parts) => parts.join('/');
+
+/** A Windows path joined with “\”. @param {string[]} parts */
+const backslashed = (...parts) => parts.join('\\');
+
+/** A slug, or any name joined with “-”. @param {string[]} parts */
+const dashed = (...parts) => parts.join('-');
+
+/** An email address. @param {string} name @param {string} domain */
+const email = (name, domain) => `${name}@${domain}`;
+
+/** JSON text for an object, so a key isn’t written in quotes here. @param {object} value */
+const json = (value) => JSON.stringify(value);
+
+/** That JSON escaped inside another JSON string, as a recorded line holds it. @param {object} value */
+const escaped = (value) => JSON.stringify({ line: JSON.stringify(value) });
+
+/** A made-up installation id that isn’t all zeros. */
+const ID = dashed('12345678', 'abcd', '1234', 'abcd', '123456789abc');
+
 test('fixtures privacy checker flags path violations', () => {
   // Home paths: Unix, Windows, slugs
-  assert.ok(checkContentPrivacy('/Users/melissa/repo').length > 0, 'flags /Users/melissa');
-  assert.ok(checkContentPrivacy('/home/userbob/repo').length > 0, 'flags /home/userbob');
-  assert.ok(checkContentPrivacy('-home-userbob-repo').length > 0, 'flags -home-userbob-');
-  assert.ok(checkContentPrivacy('-Users-melissa-repo').length > 0, 'flags -Users-melissa-');
-  assert.ok(checkContentPrivacy('C:\\Users\\melissa\\repo').length > 0, 'flags Windows C:\\Users\\melissa');
-  assert.ok(checkContentPrivacy('C:\\home\\userbob\\repo').length > 0, 'flags Windows C:\\home\\userbob');
+  for (const path of [
+    slashed('', 'Users', 'melissa', 'repo'),
+    slashed('', 'home', 'userbob', 'repo'),
+    dashed('', 'home', 'userbob', 'repo'),
+    dashed('', 'Users', 'melissa', 'repo'),
+    backslashed('C:', 'Users', 'melissa', 'repo'),
+    backslashed('C:', 'home', 'userbob', 'repo'),
+  ]) {
+    assert.ok(checkContentPrivacy(path).length > 0, `flags ${path}`);
+  }
 
   // Temp folder paths
-  assert.ok(checkContentPrivacy('/private/var/folders/2c/62/T/work').length > 0, 'flags /private/var/folders/');
-  assert.ok(checkContentPrivacy('/var/folders/2c/62/T/work').length > 0, 'flags /var/folders/');
-  assert.ok(checkContentPrivacy('-private-var-folders-2c-62-work').length > 0, 'flags -private-var-folders-');
-  assert.ok(checkContentPrivacy('-var-folders-2c-62-work').length > 0, 'flags -var-folders-');
-  assert.ok(checkContentPrivacy('/private/tmp/claude-501/work').length > 0, 'flags /private/tmp/claude-501/');
-  assert.ok(checkContentPrivacy('/tmp/claude-501/work').length > 0, 'flags /tmp/claude-501/');
+  for (const path of [
+    slashed('', 'private', 'var', 'folders', '2c', '62', 'T', 'work'),
+    slashed('', 'var', 'folders', '2c', '62', 'T', 'work'),
+    dashed('', 'private', 'var', 'folders', '2c', '62', 'work'),
+    dashed('', 'var', 'folders', '2c', '62', 'work'),
+    slashed('', 'private', 'tmp', dashed('claude', '501'), 'work'),
+    slashed('', 'tmp', dashed('claude', '501'), 'work'),
+  ]) {
+    assert.ok(checkContentPrivacy(path).length > 0, `flags ${path}`);
+  }
 
   // Allowed placeholders pass cleanly
   assert.equal(checkContentPrivacy('/Users/me/repo').length, 0);
@@ -41,19 +75,16 @@ test('fixtures privacy checker flags path violations', () => {
 
 test('fixtures privacy checker flags identifier, account, and email violations', () => {
   // installationId (camelCase and snake_case)
-  assert.ok(checkContentPrivacy('{"installationId": "12345678-abcd-1234-abcd-123456789abc"}').length > 0, 'flags real installationId');
-  assert.ok(checkContentPrivacy('{"installation_id": "12345678-abcd-1234-abcd-123456789abc"}').length > 0, 'flags real installation_id');
+  assert.ok(checkContentPrivacy(json({ installationId: ID })).length > 0, 'flags real installationId');
+  assert.ok(checkContentPrivacy(json({ installation_id: ID })).length > 0, 'flags real installation_id');
 
   // Account metadata (camelCase and snake_case)
-  assert.ok(checkContentPrivacy('{"planType": "pro"}').length > 0, 'flags planType');
-  assert.ok(checkContentPrivacy('{"authMode": "oauth"}').length > 0, 'flags authMode');
-  assert.ok(checkContentPrivacy('{"usedPercent": 50}').length > 0, 'flags usedPercent');
-  assert.ok(checkContentPrivacy('{"plan_type": "pro"}').length > 0, 'flags plan_type');
-  assert.ok(checkContentPrivacy('{"auth_mode": "oauth"}').length > 0, 'flags auth_mode');
-  assert.ok(checkContentPrivacy('{"used_percent": 50}').length > 0, 'flags used_percent');
+  for (const field of ['planType', 'authMode', 'usedPercent', 'plan_type', 'auth_mode', 'used_percent']) {
+    assert.ok(checkContentPrivacy(json({ [field]: 'pro' })).length > 0, `flags ${field}`);
+  }
 
   // Leaked email
-  assert.ok(checkContentPrivacy('developer@company.org').length > 0, 'flags real email');
+  assert.ok(checkContentPrivacy(email('developer', 'company.org')).length > 0, 'flags real email');
 
   // Allowed placeholders pass cleanly
   assert.equal(checkContentPrivacy('{"installationId": "00000000-0000-0000-0000-000000000000"}').length, 0);
@@ -63,27 +94,29 @@ test('fixtures privacy checker flags identifier, account, and email violations',
 });
 
 test('privacy checker flags a home folder inside a slug, whatever comes before it', () => {
-  assert.ok(checkContentPrivacy('-local-home-alice-x').length > 0, 'flags -local-home-alice-');
-  assert.ok(checkContentPrivacy('projects/-private-tmp-Users-alice-repo').length > 0, 'flags -private-tmp-Users-alice-');
-  assert.ok(checkContentPrivacy('-Users-me-home-alice-x').length > 0, 'flags a second home folder in one slug');
-  assert.ok(checkContentPrivacy('projects/C--Users-alice-repo').length > 0, 'flags a Windows slug, which starts with its drive');
+  assert.ok(checkContentPrivacy(dashed('', 'local', 'home', 'alice', 'x')).length > 0, 'flags a home under /local');
+  assert.ok(checkContentPrivacy(`projects/${dashed('', 'private', 'tmp', 'Users', 'alice', 'repo')}`).length > 0);
+  assert.ok(checkContentPrivacy(dashed('-Users-me', 'home', 'alice', 'x')).length > 0, 'flags a second home folder in one slug');
+  const windows = `projects/${dashed('C', '', 'Users', 'alice', 'repo')}`;
+  assert.ok(checkContentPrivacy(windows).length > 0, 'flags a Windows slug, which starts with its drive');
   assert.equal(checkContentPrivacy('projects/C--Users-me-repo').length, 0);
   assert.equal(checkContentPrivacy('-local-home-me-x').length, 0);
   assert.equal(checkContentPrivacy('https://github.blog/welcome-home-agents/').length, 0, 'prose with -home- in it is not a slug');
 });
 
 test('privacy checker flags a Claude Code uid without the temp folder’s slashes', () => {
-  assert.ok(checkContentPrivacy('-tmp-claude-501-w').length > 0, 'flags -tmp-claude-501-');
-  assert.ok(checkContentPrivacy('claude-501').length > 0, 'flags claude-501');
-  assert.ok(checkContentPrivacy('-private-tmp-claude-1000--home-me-x').length > 0, 'flags claude-1000');
+  const uid = (digits) => dashed('claude', digits);
+  assert.ok(checkContentPrivacy(dashed('', 'tmp', uid('501'), 'w')).length > 0, 'flags a uid in a slug');
+  assert.ok(checkContentPrivacy(uid('501')).length > 0, 'flags a bare uid');
+  assert.ok(checkContentPrivacy(dashed('', 'private', 'tmp', uid('1000'), '-home-me-x')).length > 0, 'flags a Linux uid');
   assert.equal(checkContentPrivacy('-private-tmp-claude-000--Users-me-x').length, 0, 'all zeros is the scrubbed placeholder');
   assert.equal(checkContentPrivacy('claude-3-5-sonnet').length, 0, 'a model name is not a uid');
   assert.equal(checkContentPrivacy('pwd -P >| /tmp/claude-0167-cwd').length, 0, 'the shell’s cwd file has a random name, not a uid');
 });
 
 test('privacy checker flags the user placeholder in a slug, where it can be a real name’s first part', () => {
-  assert.ok(checkContentPrivacy('-Users-user-postbox').length > 0, 'flags -Users-user-');
-  assert.ok(checkContentPrivacy('-home-user-repo').length > 0, 'flags -home-user-');
+  assert.ok(checkContentPrivacy(dashed('', 'Users', 'user', 'postbox')).length > 0, 'flags it under Users');
+  assert.ok(checkContentPrivacy(dashed('', 'home', 'user', 'repo')).length > 0, 'flags it under home');
   assert.equal(checkContentPrivacy('/Users/user/postbox').length, 0, 'a slashed path keeps the name whole');
   assert.equal(checkContentPrivacy('-Users-you-postbox').length, 0);
 });
@@ -101,18 +134,17 @@ test('privacy checker flags Anthropic API keys and GitHub tokens at a real key�
 });
 
 test('privacy checker flags a rate limit’s utilization unless it is 0', () => {
-  assert.ok(checkContentPrivacy('{"utilization":0.13}').length > 0, 'flags 0.13');
-  assert.ok(checkContentPrivacy('{"utilization": 1}').length > 0, 'flags 1');
+  assert.ok(checkContentPrivacy(json({ utilization: 0.13 })).length > 0, 'flags 0.13');
+  assert.ok(checkContentPrivacy(json({ utilization: 1 })).length > 0, 'flags 1');
   assert.equal(checkContentPrivacy('{"utilization":0,"status":"allowed"}').length, 0);
   assert.equal(checkContentPrivacy('{"utilization": 0}').length, 0);
-  assert.ok(checkContentPrivacy('{"utilization":0.05}').length > 0, 'flags a small value that only starts with 0');
+  assert.ok(checkContentPrivacy(json({ utilization: 0.05 })).length > 0, 'flags a small value that only starts with 0');
 });
 
 test('privacy checker flags keys JSON-escaped inside another string', () => {
-  assert.ok(checkContentPrivacy('{"line":"{\\"utilization\\":0.13}"}').length > 0, 'flags an escaped utilization');
-  assert.ok(checkContentPrivacy('{"line":"{\\"planType\\":\\"pro\\"}"}').length > 0, 'flags an escaped account field');
-  const id = '12345678-abcd-1234-abcd-123456789abc';
-  assert.ok(checkContentPrivacy(`{"line":"{\\"installationId\\":\\"${id}\\"}"}`).length > 0, 'flags an escaped installationId');
+  assert.ok(checkContentPrivacy(escaped({ utilization: 0.13 })).length > 0, 'flags an escaped utilization');
+  assert.ok(checkContentPrivacy(escaped({ planType: 'pro' })).length > 0, 'flags an escaped account field');
+  assert.ok(checkContentPrivacy(escaped({ installationId: ID })).length > 0, 'flags an escaped installationId');
   assert.equal(checkContentPrivacy('{"line":"{\\"utilization\\":0}"}').length, 0);
   assert.equal(checkContentPrivacy('{"line":"{\\"installationId\\":\\"00000000-0000\\"}"}').length, 0);
 });
@@ -121,25 +153,56 @@ test('privacy checker allows the placeholders, system homes and example addresse
   assert.equal(checkContentPrivacy('/Users/someone/project').length, 0);
   assert.equal(checkContentPrivacy('/home/linuxbrew/.linuxbrew/bin').length, 0);
   assert.equal(checkContentPrivacy('for dir in "$home/.nvm/versions/node:v"').length, 0, 'a dotfolder is not a user');
-  for (const email of ['user@build.example.com', 'a@zorvex-internal.example', 'git@github.com', 'a@indexer.com']) {
-    assert.equal(checkContentPrivacy(`mail ${email}`).length, 0, email);
+  for (const address of ['user@build.example.com', 'a@zorvex-internal.example', 'git@github.com', 'a@indexer.com']) {
+    assert.equal(checkContentPrivacy(`mail ${address}`).length, 0, address);
   }
   assert.equal(checkContentPrivacy("'plugins.sample@test.mcp_servers.sample.mode'").length, 0, 'a TOML key is not an address');
-  assert.ok(checkContentPrivacy('alice@corp.com_backup').length > 0, 'flags an address with a name run on after it');
-  assert.ok(checkContentPrivacy('plugins.alice@corp.com_servers').length > 0, 'flags any other key shaped like the TOML one');
-  assert.ok(checkContentPrivacy('/home/linuxbrewer/x').length > 0, 'flags a name that only starts like a system home');
-  assert.ok(checkContentPrivacy('/Users/someone2/x').length > 0, 'flags a name that only starts like a placeholder');
-  assert.ok(checkContentPrivacy('bob@example.community').length > 0, 'flags a domain that only starts like example.com');
-  assert.ok(checkContentPrivacy('b@indexer.com').length > 0, 'flags another address at a mention test’s domain');
+  assert.ok(checkContentPrivacy(email('alice', 'corp.com_backup')).length > 0, 'flags an address with a name run on after it');
+  assert.ok(checkContentPrivacy(email('plugins.alice', 'corp.com_servers')).length > 0, 'flags another key shaped like it');
+  assert.ok(checkContentPrivacy(slashed('', 'home', 'linuxbrewer', 'x')).length > 0, 'flags a name that starts like a system home');
+  assert.ok(checkContentPrivacy(slashed('', 'Users', 'someone2', 'x')).length > 0, 'flags a name that starts like a placeholder');
+  assert.ok(checkContentPrivacy(email('bob', 'example.community')).length > 0, 'flags a domain that starts like example.com');
+  assert.ok(checkContentPrivacy(email('b', 'indexer.com')).length > 0, 'flags another address at a mention test’s domain');
 });
 
-test('privacy checker exempts its own files, and only account fields in the #660 fixture', () => {
-  assert.deepEqual(checkFilePrivacy('tools/privacy-check.mjs', '/Users/melissa'), []);
-  assert.ok(checkFilePrivacy('tests/other.test.mjs', '/Users/melissa').length > 0, 'another file is checked');
-  assert.ok(checkFilePrivacy('docs/privacy-notes.md', '/Users/melissa').length > 0, 'a file named for privacy is still checked');
+test('privacy checker checks its own files, and exempts only account fields in the #660 fixture', () => {
+  const leak = slashed('', 'Users', 'melissa');
+  for (const path of ['tools/privacy-check.mjs', 'tests/fixtures-privacy.test.mjs', 'docs/privacy-notes.md']) {
+    assert.ok(checkFilePrivacy(path, leak).length > 0, `${path} is checked`);
+  }
   const fixture = 'tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl';
-  assert.deepEqual(checkFilePrivacy(fixture, '{"planType": "pro"}'), []);
-  assert.ok(checkFilePrivacy(fixture, '/Users/melissa').length > 0, 'the #660 fixture still has its paths checked');
+  assert.deepEqual(checkFilePrivacy(fixture, json({ planType: 'pro' })), []);
+  assert.ok(checkFilePrivacy(fixture, leak).length > 0, 'the #660 fixture still has its paths checked');
+});
+
+test('a home path pasted into this file’s own text is flagged, though its examples are not', () => {
+  const own = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+  const path = 'tests/fixtures-privacy.test.mjs';
+  assert.deepEqual(checkFilePrivacy(path, own), [], 'every example here is built at run time');
+  const planted = `${own}\n// ${slashed('', 'Users', 'melissa', 'repo')}\n`;
+  assert.ok(checkFilePrivacy(path, planted).length > 0, 'a pasted home path is flagged');
+});
+
+test('privacy checker flags a home folder in any case, as macOS paths are case-insensitive', () => {
+  for (const path of [slashed('', 'USERS', 'x'), slashed('', 'Home', 'x'), slashed('', 'users', 'x'), dashed('', 'users', 'x', '')]) {
+    assert.ok(checkContentPrivacy(path).length > 0, `flags ${path}`);
+  }
+  assert.equal(checkContentPrivacy('/USERS/Me/repo').length, 0, 'a placeholder in another case');
+  assert.equal(checkContentPrivacy('-HOME-YOU-repo').length, 0, 'a slug’s placeholder in another case');
+  assert.equal(checkContentPrivacy('mkdir "$HOME/postbox-uat"').length, 0, 'a shell variable is not a home folder');
+  assert.equal(checkContentPrivacy('<https://docs.example.com/users/memory>').length, 0, 'a web page’s section');
+  assert.ok(checkContentPrivacy(`https://host/${slashed('Users', 'x')}`).length > 0, 'a disk’s own case in a web address');
+  assert.ok(checkContentPrivacy(`file://${slashed('', 'users', 'x')}`).length > 0, 'a file address is a disk’s path');
+});
+
+test('privacy checker reads 200 KB with no address in well under a second, whatever it repeats', () => {
+  for (const unit of ['a', '.', '-', '/', '\\', '1', '_', 'a.', 'a-', '-a']) {
+    const text = unit.repeat(200_000 / unit.length);
+    const started = performance.now();
+    checkContentPrivacy(text);
+    const elapsed = performance.now() - started;
+    assert.ok(elapsed < 100, `${JSON.stringify(unit)} took ${Math.round(elapsed)} ms`);
+  }
 });
 
 test('a file is binary when its first 8,000 bytes hold a zero byte, as git decides it', () => {
@@ -150,7 +213,7 @@ test('a file is binary when its first 8,000 bytes hold a zero byte, as git decid
 
 test('the tree scan checks every text file whatever its size, and skips binaries and files that are gone', () => {
   const files = new Map([
-    ['docs/big.md', Buffer.from(`${'a'.repeat(200_000)}\n/Users/melissa/repo\n`)],
+    ['docs/big.md', Buffer.from(`${'a'.repeat(200_000)}\n${slashed('', 'Users', 'melissa', 'repo')}\n`)],
     ['docs/clean.md', Buffer.from('nothing private\n')],
     ['app/logo.png', Buffer.from([0x89, 0x50, 0x00, 0x2f, 0x55])],
   ]);

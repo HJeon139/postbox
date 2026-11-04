@@ -1,36 +1,57 @@
-// The privacy checker for committed text, kept apart from its test so a CI tool can reuse it (#508).
+/**
+ * The privacy checker for committed text, kept apart from its test so a CI tool can reuse it (#508). Its own file and
+ * its test are checked like any other, so the examples in these comments name each part generically, and the test
+ * builds its examples at run time.
+ *
+ * Known gaps, which it lets through:
+ * - a token with a “_” and more name characters run on before or after it, where a word boundary never comes;
+ * - a token or an address split across two lines;
+ * - a path whose slashes are JSON-escaped (a backslash before each “/”) or URL-encoded (“%2F”);
+ * - a home written as “~” and a user name, and root’s home under “/root”;
+ * - a leak after a zero byte early in a file, which is then counted as binary and not read;
+ * - a real account named “me” or “you” in a slug, which reads as the placeholder;
+ * - UTF-16 text, read as UTF-8 with a zero byte after each ASCII character.
+ */
 
-/** Placeholder user names a slashed home path may use. “someone” is the tests’ made-up home. */
+/** Placeholder user names a slashed home path may use, compared in lower case. “someone” is the tests’ made-up home. */
 const ALLOWED_USERNAMES = new Set(['me', 'you', 'user', 'someone']);
 
 /**
- * Placeholder user names a slug may use. A slug turns every “/” and “.” into “-”, so “-Users-user-name-” can’t tell
- * “/Users/user/name” from a real account named “user.name” or “user-name”, and “user” is the placeholder that most
- * often starts a real name. A slashed path keeps the name whole, so “/Users/user/” stays allowed there.
+ * Placeholder user names a slug may use, compared in lower case. A slug turns every “/” and “.” into “-”, so a slug of
+ * the placeholder “user” and a folder can’t be told from a real account whose name starts with “user” and a “.” or
+ * “-”, and “user” is the placeholder that most often starts a real name. A slashed path keeps the name whole, so “user”
+ * stays allowed there.
  */
 const ALLOWED_SLUG_USERNAMES = new Set(['me', 'you']);
 
-/** Home folders that belong to a system account, not a person: Homebrew on Linux installs under /home/linuxbrew. */
+/** Home folders that belong to a system account, not a person: Homebrew on Linux installs under its own home. */
 const SYSTEM_HOMES = new Set(['linuxbrew']);
 
-// A home path, Unix or Windows (“/Users/x”, “/home/x”, “C:\Users\x”, “\home\x”), and the user name after it. A
-// name doesn’t start with a dot, so a shell script’s “$home/.nvm” is a folder in a home, not a user.
-const SLASHED_HOME = /(?:[A-Za-z]:[/\\]+|(?<=^|[^A-Za-z0-9_-]))[/\\]*(?:Users|home)[/\\]+([a-zA-Z0-9_][a-zA-Z0-9._-]*)/g;
+// A home folder, Unix or Windows (“Users” or “home” in any case, as macOS paths are case-insensitive, then a “/” or
+// “\”), and the user name after it. It starts where no name character comes before: after a “/” or “\” (a Windows
+// drive’s too, so the drive needs no pattern of its own), or at the start of the text. The slashes before it aren’t
+// part of the match, so a long run of them is no slower. A name doesn’t start with a dot, so a shell script’s
+// “$home/.nvm” is a folder in a home, not a user, and one after a “$” is a shell variable, such as “$HOME/x”.
+const SLASHED_HOME = /(?<![A-Za-z0-9_$-])((?i:Users|home))[/\\]+([a-zA-Z0-9_][a-zA-Z0-9._-]*)/g;
 
-// A Claude Code project slug: a path with each “/” and “.” turned into “-”, such as “-local-home-alice-repo”. It starts
-// with a “-” that follows no slug character, so “welcome-home-agents” in prose isn’t one. On Windows the drive letter
-// comes first and its “:” and “\” each become a “-”, as in “C--Users-alice-repo”.
+// A web address, up to the first space, quote or bracket.
+const WEB_URL = /https?:\/\/[^\s"'<>()[\]]+/g;
+
+// A Claude Code project slug: a path with each “/” and “.” turned into “-”. It starts with a “-” that follows no slug
+// character, so a word with “-home-” inside it in prose isn’t one. On Windows the drive letter comes first and its “:”
+// and “\” each become a “-”.
 const SLUG = /(?<![A-Za-z0-9_.-])(?:[A-Za-z]-)?-[A-Za-z0-9_.-]+/g;
 
-// A home folder inside a slug, and the user name after it, up to the next “-”.
-const SLUG_HOME = /-(?:Users|home)-([A-Za-z0-9_.]+)/g;
+// A home folder inside a slug, in any case, and the user name after it, up to the next “-”.
+const SLUG_HOME = /-(?i:Users|home)-([A-Za-z0-9_.]+)/g;
 
-// macOS temp folders (slashed or slugged), and Claude Code’s “/tmp/claude-<uid>/” folder.
-const TEMP_FOLDER = /(?:\/(?:private\/)?var\/folders\/|-+(?:private-)?var-folders-|\/(?:private\/)?tmp\/claude-\d+\/)[a-zA-Z0-9._-]*/g;
+// macOS temp folders (slashed or slugged), and Claude Code’s temp folder with its uid. A slugged one starts at a “-”
+// that follows no other “-”, so a run of dashes is tried once.
+const TEMP_FOLDER = /(?:\/(?:private\/)?var\/folders\/|(?<!-)-+(?:private-)?var-folders-|\/(?:private\/)?tmp\/claude-\d+\/)[a-zA-Z0-9._-]*/g;
 
-// Claude Code’s temp folder uid without its slashes, such as “claude-501” or the slug “-tmp-claude-501-w”. A uid has
-// three digits or more (macOS starts at 501, Linux at 1000), so a model name such as “claude-3-5” isn’t one.
-// “claude-0167-cwd” is the random name of the file a shell writes its folder to, not a uid.
+// Claude Code’s temp folder uid without its slashes, bare or in a slug. A uid has three digits or more (macOS starts at
+// 501, Linux at 1000), so a model name such as “claude-3-5” isn’t one. The random name of the file a shell writes its
+// folder to ends in “-cwd”, and its digits aren’t a uid.
 const CLAUDE_UID = /(?<![A-Za-z0-9])claude-(\d{3,})(?![A-Za-z0-9]|-cwd\b)/g;
 
 // A scrubbed id: all zeros, with or without dashes.
@@ -54,9 +75,10 @@ const UTILIZATION = /\\?"utilization\\?"\s*:\s*([^,}\]\s]+)/g;
 // The value a scrubbed utilization holds.
 const ZERO = /^0(?:\.0+)?$/;
 
-// An email address. It stops at the first character an address can’t hold, so “alice@corp.com_backup” is still the
-// address “alice@corp.com” with a name run on after it.
-const EMAIL = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+// An email address. It stops at the first character an address can’t hold, so an address with “_” and a name run on
+// after it is still the address. It starts where no address character comes before, so a long run of them with no “@”
+// is tried once, not once from each of its characters.
+const EMAIL = /(?<![a-zA-Z0-9._%+-])[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
 // A placeholder address: at a domain reserved for examples (example.com, .org or .net, or a subdomain of one), or under
 // a top-level domain reserved for examples and tests (RFC 2606).
@@ -79,13 +101,18 @@ const NOT_EMAILS = new Set(['plugins.sample@test.mcp']);
 /** Home paths, slashed or in a slug, whose user name isn’t a placeholder. @param {string} content */
 function homePaths(content) {
   const found = [];
-  for (const [path, name] of content.matchAll(SLASHED_HOME)) {
+  const urls = [...content.matchAll(WEB_URL)].map((url) => [url.index, url.index + url[0].length]);
+  for (const match of content.matchAll(SLASHED_HOME)) {
+    const [path, folder, name] = match;
+    // A web page’s path with “users” or “home” in another case than a disk’s, such as a docs section, is no home.
+    const inUrl = urls.some(([start, end]) => match.index >= start && match.index < end);
+    if (inUrl && folder !== 'Users' && folder !== 'home') continue;
     const user = name.split(/[/\\]/)[0];
-    if (!ALLOWED_USERNAMES.has(user) && !SYSTEM_HOMES.has(user)) found.push(`home path: ${path}`);
+    if (!ALLOWED_USERNAMES.has(user.toLowerCase()) && !SYSTEM_HOMES.has(user)) found.push(`home path: ${path}`);
   }
   for (const [slug] of content.matchAll(SLUG)) {
     for (const [path, name] of slug.matchAll(SLUG_HOME)) {
-      if (!ALLOWED_SLUG_USERNAMES.has(name)) found.push(`home path: ${path}`);
+      if (!ALLOWED_SLUG_USERNAMES.has(name.toLowerCase())) found.push(`home path: ${path}`);
     }
   }
   return found;
@@ -163,9 +190,6 @@ export function checkContentPrivacy(content, options = {}) {
   ];
 }
 
-/** The checker’s own files, which hold the examples its tests must flag. */
-const SELF_EXAMPLES = new Set(['tools/privacy-check.mjs', 'tests/fixtures-privacy.test.mjs']);
-
 /** A recorded Codex turn that still holds account fields, filed as #660. */
 const ACCOUNT_FIELDS_660 = 'tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl';
 
@@ -177,7 +201,6 @@ const ACCOUNT_FIELDS_660 = 'tests/fixtures/codex-app-server/resume-turn-after-fa
  * @returns {string[]} list of violations found
  */
 export function checkFilePrivacy(path, content) {
-  if (SELF_EXAMPLES.has(path)) return [];
   return checkContentPrivacy(content, { exemptAccountFields: path === ACCOUNT_FIELDS_660 });
 }
 
