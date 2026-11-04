@@ -5,7 +5,9 @@
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
-test.use({ colorScheme: 'light' });
+// Tracing is off: Playwright's trace snapshots walk every node of the page each action, and on a room of 1,000 items
+// or more under content-visibility that takes longer than the test (view-skipped.spec.mjs).
+test.use({ colorScheme: 'light', trace: 'off' });
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
