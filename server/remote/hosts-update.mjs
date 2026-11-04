@@ -143,10 +143,11 @@ async function autoInstall(m, id, signal) {
 }
 
 /**
- * Rewrites the try as busy or failed. A failure’s own reason and next step go on the host’s status, kept in memory
- * only, so the card can say why, in the words Install… would show (#464-b2b); the next write of the record clears
- * them. Anything else installHost throws (a TypeError, or an error keeping the token) may name a path here, so it
- * puts nothing on the status, and the card says it couldn’t install.
+ * Rewrites the try as busy or failed. An installer’s SshFailure goes on the host’s status, its reason and next step,
+ * kept in memory only, so the card can say why (#464-b2b); the next write of the record clears them. It’s the text
+ * Install… already shows the person, which can name the ssh destination, or a path here when ssh couldn’t start
+ * (install.mjs’s run). Anything else installHost throws (a TypeError, or an error keeping the token) isn’t worded for
+ * the person, so it puts nothing on the status, and the card says it couldn’t install.
  * @param {Manager} m @param {string} id @param {{ version: string, at: number, outcome: string }} tried @param {any} e
  */
 async function noteFailed(m, id, tried, e) {
