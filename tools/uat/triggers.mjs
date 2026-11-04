@@ -17,7 +17,7 @@ import { postboxCalls } from './postbox-calls.mjs';
 import { TELEMETRY_TRIGGERS } from './telemetry-triggers.mjs';
 import { clip, cell as esc, itemsOf } from './trigger-facts.mjs';
 import { HOST_TRIGGERS } from './triggers-host.mjs';
-import { answeredStop, jobsRecorded, jobTimeline } from './triggers-jobs.mjs';
+import { JOB_TRIGGERS } from './triggers-jobs.mjs';
 import { VIEW_TRIGGERS } from './view-triggers.mjs';
 import { WAITING_TRIGGERS } from './waiting-triggers.mjs';
 
@@ -89,37 +89,7 @@ export const TRIGGERS = {
         .filter((c) => c.name === 'show_block' && /^Block .+ is already shown\./.test(c.text))
         .map((c) => ({ at: c.at, evidence: `@${c.handle}’s show_block was refused: “${clip(c.text, 160)}”` })),
   },
-  'stop-keep-jobs': {
-    issue: 126,
-    says: 'Stop asked about a background job, and the person kept it running',
-    recorded: jobsRecorded,
-    run: (f) =>
-      jobTimeline(f.events)
-        .filter((j) => j.keptAt !== null && j.afterStop)
-        .map((j) => ({ at: null, evidence: `Stop asked about background job ${j.id}, and Postbox kept it running (events ${j.askedAt}–${j.keptAt}).` })),
-  },
-  'stop-jobs-too': {
-    issue: 126,
-    says: 'Stop asked about a background job, and the person stopped it too',
-    recorded: jobsRecorded,
-    run: (f) =>
-      // A job Postbox couldn’t keep also ends with its turn, so the runner’s own record of the answer has to agree.
-      jobTimeline(f.events)
-        .filter((j) => j.endedAt !== null && j.afterStop && answeredStop(f, j))
-        .map((j) => ({ at: j.stopAt, evidence: `Stop asked about background job ${j.id}, and it ended with the turn (event ${j.endedAt}).` })),
-  },
-  'send-now-job-running': {
-    issue: 126,
-    says: 'Send now interrupted a turn with a background job running, and the job kept running without a question',
-    recorded: jobsRecorded,
-    run: (f) =>
-      jobTimeline(f.events)
-        .filter((j) => j.keptAt !== null && !j.afterStop)
-        .map((j) => ({
-          at: null,
-          evidence: `Background job ${j.id} was kept running when its turn was interrupted, with no question from Stop (event ${j.keptAt}).`,
-        })),
-  },
+  ...JOB_TRIGGERS,
   ...HOST_TRIGGERS,
   ...TELEMETRY_TRIGGERS,
   ...NEEDS_TRIGGERS,
