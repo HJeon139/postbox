@@ -31,6 +31,7 @@ import { pageState } from './page-state.mjs';
 import { rearmPersonaDeletes } from './persona-delete.mjs';
 import { createProject, setPushUrl } from './projects.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
+import { settleInterrupted } from './restart-sweep.mjs';
 import { httpError, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { seed, toBoilerplate } from './seed.mjs';
@@ -132,10 +133,7 @@ export async function start({
   watchTelemetry(rt);
   const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
   await seed(rt, { dataDir, booksDir: join(ROOT, 'server', 'corpus', 'books'), backend: firstReal, demo });
-  // Turns that were running when the server stopped can’t resume; mark them so nothing looks stuck.
-  for (const se of Object.values(store.state.sessions))
-    if (['think', 'gen', 'tool', 'stopping'].includes(se.state))
-      rt.updateSession(se.id, { state: 'idle', subagents: [], currentStep: 'Interrupted by a restart', stopAsk: null });
+  settleInterrupted(rt);
   for (const [threadId, list] of Object.entries(store.state.items))
     for (const it of list) if (it.status === 'streaming') rt.patchItem(threadId, it.id, { status: 'stopped' });
   rt.rearmSchedules();

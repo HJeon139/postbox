@@ -2,6 +2,26 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.18.1 (2026-11-04)
+
+### Fixes
+
+- **uat:** an app click hits the button inside a matching row, and phase 3 needs one click (#366)
+- **needs:** a failed reply is a card tied to its turn, so a wake keeps its Retry (#366)
+- **needs:** a wake's end keeps a failed turn's Retry, and ties compare the cards' times (#366)
+- **needs:** a Store Retry settles a cut-off turn's need as a restart does (#366)
+- **needs:** a turn that doesn't move on keeps the turns still asking you (#366)
+- **needs:** a restart keeps the need it had while its card still waits (#366)
+- **needs:** the kept block is on the session, so a restart keeps it (#366)
+- **needs:** a turn is the last turn from its start, and a restart sets the need it left (#366)
+- **needs:** Retry falls back only to cards that wait until answered (#366)
+- **needs:** a failed turn ranks ahead of every card, and is recorded as the last turn (#366)
+- **needs:** a turn that doesn't move on keeps its block through a mid-turn release (#366)
+- **needs:** which turn's cards count is read from the store, and every setter keeps the order (#366)
+- **needs:** the turn's end notifies an app card it makes the need, and three more specs (#366)
+- **needs:** the next need keeps main's order and counts several refusals (#366)
+- **needs:** an agent needs you until its last waiting card is answered (#366)
+
 ## 1.18.0 (2026-11-04)
 
 ### Features

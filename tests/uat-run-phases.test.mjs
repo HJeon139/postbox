@@ -35,10 +35,10 @@ test('delivery without --phases is still refused, with the message it had', () =
 });
 
 test('--phases refuses a phase the scenario hasn’t, or anything but phase numbers', () => {
-  for (const bad of ['9', '0', '1,9', 'two', '1,,2', '1-2', '', '1.5'])
+  for (const bad of ['10', '0', '1,10', 'two', '1,,2', '1-2', '', '1.5'])
     assert.throws(
       () => run({ phases: bad }),
-      (e) => /--phases takes phase numbers from 1 to 8/.test(e.message) && e.message.includes(`“${bad}”`),
+      (e) => /--phases takes phase numbers from 1 to 9/.test(e.message) && e.message.includes(`“${bad}”`),
       bad,
     );
 });
@@ -82,4 +82,13 @@ test('--phases in any order or repeated plays them once each, in the scenario’
   // A recheck plays the phases the record names, and every phase for a record without them.
   assert.deepEqual(recordedPhases(record), [1, 2]);
   assert.equal(recordedPhases({ startPhase: 1 }), null);
+});
+
+test('#694: delivery.md’s phase 9 names only triggers that exist, so it runs on its own', () => {
+  const { scenario, phases } = run({ phases: '9' });
+  assert.deepEqual(phases, [9]);
+  assert.deepEqual(
+    scenario.phases.map((p) => p.title),
+    ['Phase 9: A newer message from you, named mid-turn (#694)'],
+  );
 });

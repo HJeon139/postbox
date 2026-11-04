@@ -55,7 +55,7 @@ export async function onTool(rts, hostId, m) {
   if (r.closed) return TOOL_QUEUED.has(m.name) ? undefined : void send(link, 'reply', { turn: m.turn, id: m.id, ok: false, text: r.text });
   // An urgent note for the agent comes first, as on the laptop (server/mcp.mjs, #229), in an answer it waits for: a
   // queued call’s reply never reaches it (the shim answered at once), so its note waits for the next.
-  const text = (TOOL_QUEUED.has(m.name) ? r.text : withUrgent(rts.rt, live.sessionId, r.text)).slice(0, REMOTE_LIMITS.replyChars);
+  const text = (TOOL_QUEUED.has(m.name) ? r.text : withUrgent(rts.rt, live.sessionId, r.text, live.rt)).slice(0, REMOTE_LIMITS.replyChars);
   // The reply is kept for the daemon’s repeats, which come after a hello until one is heard: a link that drops
   // before it lands mustn’t post a hand-off, or schedule a wake, twice (#439).
   const now = rts.rt.s.sessions[live.sessionId];
