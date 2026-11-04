@@ -168,7 +168,7 @@ test('items-skipped stays silent with the rule off, on a room of 1,000 or fewer,
   assert.deepEqual(skippedRun(skipSamples.off), []);
   const on = skipSamples.on[0];
   assert.deepEqual(skippedRun([{ ...on, items: 1000, skipped: 990 }]), [], 'a room of 1,000 is not long');
-  assert.deepEqual(skippedRun([{ ...on, items: 1001, skipped: 500 }]), [], 'half or fewer is not most');
+  assert.deepEqual(skippedRun([{ ...on, items: 1002, skipped: 501 }]), [], 'exactly half is not most');
   assert.deepEqual(skippedRun([{ ...on, settled: false }]), [], 'unsettled');
   assert.deepEqual(skippedRun([{ ...on, supported: false, skipped: null }]), [], 'the browser can’t say');
   assert.deepEqual(skippedRun([]), []);
