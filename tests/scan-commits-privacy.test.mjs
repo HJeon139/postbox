@@ -1,10 +1,11 @@
 // The commit privacy scan’s pure parts (tools/scan-commits-privacy.mjs, #508): reading the lines a commit adds out of
-// git’s diff, and checking each commit of a range through a git reader. The diffs below are in the shape
+// git’s diff (tools/diff-added-lines.mjs), and checking each commit of a range through a git reader. The diffs below are in the shape
 // `git show --format= -U0` prints, copied from its output; tests/process/scan-commits-privacy.test.mjs runs real git.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { formatFinding, parseAddedLines, scanCommits } from '../tools/scan-commits-privacy.mjs';
+import { parseAddedLines } from '../tools/diff-added-lines.mjs';
+import { formatFinding, scanCommits } from '../tools/scan-commits-privacy.mjs';
 
 // A made-up home path, built here so this file doesn’t hold one for the tree’s own privacy check to flag.
 const HOME = ['', 'Users', 'alice'].join('/');
