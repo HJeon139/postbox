@@ -1,6 +1,6 @@
 # #633: which card an agent needs you for, until A1b
 
-**Status:** revision 3, after lead-delivery’s peer read and critic’s verdict (RR 13). critic’s re-read of the changes from revision 2 is still to come. A stopgap: A1b derives needs from open ask records and replaces `nextNeed` (`design.md:607`; `execution-plan.md:41`). #508 actions 4 and 9 ask every stopgap note for a restart matrix and `main`’s behavior as a table; both are below.
+**Status:** revision 4: revision 3, which the person approved, plus the fixes from the pre-review packet’s independent read (S3 rule 4). critic’s re-read of the changes since revision 2 is still to come. A stopgap: A1b derives needs from open ask records and replaces `nextNeed` (`design.md:607`; `execution-plan.md:41`). #508 actions 4 and 9 ask every stopgap note for a restart matrix and `main`’s behavior as a table; both are below.
 
 ## Decisions
 
@@ -14,21 +14,21 @@ An agent needs you until its last waiting card is answered (#366). One slot, `se
 Two kinds of cards:
 
 - **Cards that wait until answered:** an app card’s messages (`appsend`), a wake or add request (`hop`), a permission while its tool call waits (`permissionWaits`). They count whatever turn made them.
-- **Cards tied to a turn:** an asking block, a refusal (`denial`), a tool request (`toolask`), a failed reply. They count only while you haven’t moved past their turn (#69). Moving on means you, not another agent, started a turn (`turn.movesOn`, `runtime.mjs`).
+- **Cards tied to a turn:** an asking block, a refusal (`denial`), a tool request (`toolask`), a failed reply (an agent item with status `failed`, whose Retry waits). They count only while you haven’t moved past their turn (#69). Moving on means you, not another agent, started a turn (`turn.movesOn`, `runtime.mjs`).
 
-Which comes first: `RANK` (permission, failed, block, refusal, tool request, then app cards and wake requests), and within a rank the newest by the card’s time (`at`, which `addItem` always stamps). `nextNeed`, `keptOrNext` (the turn’s end, the restart sweep, a Retry’s reset) and a release all choose the same way.
+Which comes first: `RANK` (permission, failed, block, refusal, tool request, then app cards and wake requests), and within a rank the newest by the card’s time (`at`, which `addItem` always stamps). `nextNeed` (the turn’s end, a release) and `keptOrNext` (the restart sweep and a Retry’s reset, through `settledNeed`) choose the same way.
 
 ## Invariants
 
-- **I1. One decider, and four direct writes.** Every write to `se.needs` goes through `offerNeed` (a new card), `releaseNeed` (its card answered or retired), or `nextNeed` with `keptOrNext` (`server/restart-sweep.mjs`: the turn’s end, the restart sweep, a Retry’s reset), except four:
+- **I1. One decider, and four direct writes.** Every write to `se.needs` goes through `offerNeed` (a new card), `releaseNeed` (its card answered or retired), `nextNeed` (the turn’s end), or `settledNeed` (`server/restart-sweep.mjs`: the restart sweep and a Retry’s reset), except four:
   - a laptop turn that fails sets `failed` (`server/runtime.mjs:1005`);
   - a host turn interrupted on its host sets `failed` (`server/remote/turns-resume.mjs:158`);
   - archiving an agent (`runtime.mjs:2607`) and retiring a fork (`server/side-threads.mjs:196`) clear it.
 
   The two `failed` writes end the turn, so they outrank whatever it waited on, a host permission it kept included: that permission belonged to the turn that just failed, and its prompt goes with it. That is `main`’s order too. R: read from the code; no rig drives a host interrupt with a kept permission card.
 - **I2. A clear is its own.** A resolver clears the need only when the need is its card (`releaseNeed`’s `itemId` check).
-- **I3. A turn that doesn’t move on changes nothing about which cards count.** Its start records `keptTurnIds`: of the last turn and the turns kept before, those with a turn-tied card still open (`keptTurns`). Their cards count mid-turn, at its end and after a restart, until you move on, which clears the list. So the list is bounded by the turns with an open turn-tied card, and shrinks as you answer them; a spec pins that a wake when nothing waits keeps none. Its end also keeps a failed turn’s need, which `nextNeed` never counts, while Retry waits (`keptOrNext`). This head adds I3; `e776d4b0` kept only a block (`keptId`), so the turn before’s refusals stopped counting under a wake (critic’s finding).
-- **I4. The state survives a restart.** `lastTurnId`, `keptId` and `keptTurnIds` are on the session, in the store, and land in the snapshot. Nothing in memory decides a need.
+- **I3. A turn that doesn’t move on changes nothing about which cards count.** Its start records `keptTurnIds`: of the last turn and the turns kept before, those with a turn-tied card still open (`keptTurns`). Their cards count mid-turn, at its end and after a restart, until you move on, which clears the list. So the list is bounded by the turns with an open turn-tied card, and shrinks as you answer them; a spec pins that a wake when nothing waits keeps none. A failed reply is a turn-tied card too, so a wake keeps its Retry, through a permission answered mid-wake and a restart. This head adds I3; `e776d4b0` kept only a block (`keptId`), so the turn before’s refusals stopped counting under a wake (critic’s finding).
+- **I4. The state survives a restart.** `lastTurnId`, `keptId` and `keptTurnIds` are on the session, in the store, and land in the snapshot. What lives only in memory is what a restart ends anyway: the running turns (`rt.turns`) and the permission calls still waiting (`rt.permissionWaits`), which is why a laptop permission is never kept (I5). `lastTurnId` is set at a turn’s start, so it means the running or the last turn; its one other reader, `server/apps.mjs:51`, reads it only when no turn runs.
 - **I5. A need is kept only while its card waits.** After a restart, a laptop permission is no longer waiting (its tool call is gone), so it’s never kept; a host’s is, while the host keeps the prompt (`remote.keepsCard`).
 
 ## Cost
@@ -69,7 +69,8 @@ The sweep (`server/restart-sweep.mjs`, `settleInterrupted`) runs at startup befo
 | A card answered while the store is closed | the answer is refused with the store’s error; nothing changes | the same: in `resolveDenial`, `settlePermission` and `resolveHop` the card’s patch comes before the need’s, so a refused answer moves neither | R: those three resolvers |
 | A host turn’s end | — | the same `nextNeed` call as a laptop turn: `endTurn` hands a remote turn to `server/remote/turns-end.mjs` and then chooses the need itself | R: `turns-end.mjs` header; `runtime.mjs`, `endTurn` |
 | A host permission a release or a turn’s end meets after a restart, before the host asks again | — | not counted: `nextNeed` counts a permission only while its wait is registered, and the host re-registers it when it sends the prompt again (`server/remote/turns-prompts.mjs:42`, `waitOn`, which offers the need at `:65`) | R |
-| A failed need under a wake that ends | **dropped, with its Retry** | kept while Retry waits, unless a card that ranks ahead waits | S: “a wake’s end keeps a failed turn’s need…” (fails with `main`’s rule in place) |
+| A failed need under a wake that ends | **dropped, with its Retry** | kept while Retry waits, unless a card that ranks ahead waits; also after a permission answered mid-wake, and across a restart | S: “a wake’s end keeps a failed turn’s need…”; “the packet’s probe: a wake’s permission answered…” (both fail on `ca42ae8c`) |
+| A block from an older turn that was the need, under a wake | that block | that block, kept by `keptId` alone (its turn isn’t a kept turn), through a permission and a restart | S: “a block from an older turn that was the need…” (both) |
 | A card in a topic of another conversation | not the agent’s | not the agent’s: `threadsOf` takes only threads whose `parentId` is the agent’s conversation | S: “a card in a topic of another conversation…” |
 
 **`main`’s laptop-permission row, probed at `48f20ccd`:** a script against the checkout opens a permission card with the need on it, then runs `main`’s startup reset (`server/index.mjs:136–138`) and `expireStalePermissions` (`:144`). It printed `card expired | needs {"kind":"permission",…} | state needs`, exit 0.
@@ -81,6 +82,7 @@ The sweep (`server/restart-sweep.mjs`, `settleInterrupted`) runs at startup befo
 | A newer card while an app card is the need | replaces it; answering the newer clears both (#366 case 1) | waits behind or takes it by rank; answering it falls back to the app card | S: “#366 case 1…” (4 specs) |
 | A second app card | never the need, never notified (#366 case 2) | the need at once, notified once; answering it falls back to the first | S: “#366 case 2…” |
 | Answering a card that isn’t the need | some resolvers cleared the need anyway (wake request, retire, Retry) | the need stays | S: “the integrator’s item…” (3 specs) |
+| An agent withdraws its block, a stale wake card retires, an app retires, a host’s prompt ends with no wait | the need goes to none | falls back to the next card that waits | S: `tests/card-needs-callers.test.mjs`, one spec each, each failing with `main`’s clear in place |
 | A permission released mid-turn | no need | no need; a wake’s kept turns still count | S: “a permission released during a running turn…”; “mid-turn: answering one refusal…” |
 | Moving on | clears needs tied to a turn and a wake request | clears needs tied to a turn and the kept turns; a wake request waits until answered | S: “moving on keeps an open wake request…”; “moving on still clears…” |
 | Retry | clears the need | falls back to cards that wait until answered only; the retried turn’s end decides the rest | S: “Retry clears the failure…”; “Retry doesn’t flash a block…” |
