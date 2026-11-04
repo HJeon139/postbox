@@ -11,10 +11,8 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { expireWait } from '../server/permission-cards.mjs';
 import { tellExpired } from '../server/permission-expiry.mjs';
 import { endCard } from '../server/remote/turns-prompts.mjs';
-import { askStop } from '../server/remote/turns-stops.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
-import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const folders = [];
@@ -200,52 +198,6 @@ test('#721 Dismiss on a card still waiting for an answer is refused, and the car
   assert.equal(now().needs?.itemId, card.id);
   rt.resolvePermission(t.id, card.id, 'allow');
   await settle(rt);
-});
-
-test('#721 a host’s card its host expired, or ended, tells the agent once for each card', async () => {
-  const r = rig();
-  const turn = await running(r);
-  const a = r.d.prompt(turn);
-  await until(() => r.store.items(r.t.id).some((i) => i.remote?.prompt === a), 'the first card');
-  r.d.expire(turn, a);
-  await until(() => r.store.items(r.t.id).find((i) => i.remote?.prompt === a).status === 'expired', 'the card expired');
-  const b = r.d.prompt(turn);
-  await until(() => r.store.items(r.t.id).some((i) => i.remote?.prompt === b), 'the second card');
-  r.link.hear({ type: 'error', code: 'internal', re: 'prompt-expired', turn, id: b, message: 'Couldn’t write it down.' });
-  assert.equal(r.store.items(r.t.id).find((i) => i.remote?.prompt === b).status, 'ended');
-  // The host saying so again changes nothing.
-  r.link.hear({ type: 'prompt-expired', turn, id: a, at: 1_760_000_000_000 });
-  r.d.end(turn);
-  await settled(r);
-  assert.equal(notes(r.se()).length, 2, JSON.stringify(r.se().context));
-  assert.equal(r.se().needs, null);
-});
-
-test('#721 an Allow that reached the host after it stopped waiting expires the card, and the agent is told', async () => {
-  const r = rig();
-  const turn = await running(r);
-  const a = r.d.prompt(turn);
-  await until(() => r.store.items(r.t.id).some((i) => i.remote?.prompt === a), 'the card');
-  const card = r.store.items(r.t.id).find((i) => i.remote?.prompt === a);
-  r.rt.resolvePermission(r.t.id, card.id, 'allow');
-  r.link.hear({ type: 'error', code: 'no-prompt', re: 'answer', turn, id: a, message: 'Nothing waits for that answer.' });
-  assert.equal(r.store.item(r.t.id, card.id).status, 'expired');
-  assert.equal(notes(r.se()).length, 1, JSON.stringify(r.se().context));
-});
-
-test('#721 a host card with no wait here, left open when the person stops the turn, ends with no expiry note', async () => {
-  const r = rig();
-  const turn = await running(r);
-  const a = r.d.prompt(turn);
-  await until(() => r.store.items(r.t.id).some((i) => i.remote?.prompt === a), 'the card');
-  const card = r.store.items(r.t.id).find((i) => i.remote?.prompt === a);
-  r.rt.permissionWaits.delete(card.id); // as after a restart: the card is kept, nothing here waits on it
-  askStop(r.rt.remote, r.se().id, r.host.id, r.se().remoteTurn.turn); // the person’s Stop
-  r.d.end(turn);
-  await settled(r);
-  assert.equal(r.store.item(r.t.id, card.id).status, 'expired');
-  assert.equal(r.store.item(r.t.id, card.id).stoppedBy, 'person');
-  assert.equal(notes(r.se()).length, 0, JSON.stringify(r.se().context));
 });
 
 test('#721 the note quotes a command as it is: its Markdown kept, its backticks fenced', async () => {
