@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.18.2 (2026-11-04)
+
+### Fixes
+
+- **delivery:** name a newer waiting message from the turn’s sender on the next tool result
+
 ## 1.18.1 (2026-11-04)
 
 ### Fixes
