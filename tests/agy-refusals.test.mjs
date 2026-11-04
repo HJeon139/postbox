@@ -163,3 +163,15 @@ test('#370 condition 1: AntigravityCliAdapter writes read-only hooks.json and fa
   assert.doesNotMatch(missingScript.rules, /## Calls that need approval/);
   assert.deepEqual(missingScript.args.slice(missingScript.args.indexOf('--mode'), missingScript.args.indexOf('--mode') + 2), ['--mode', 'accept-edits']);
 });
+
+test('#730: hooks.json is read-only at mode 0o444 whatever the umask', async () => {
+  for (const mask of [0o022, 0o077]) {
+    const old = process.umask(mask);
+    try {
+      const turn = await runDeliverTurn('auto', { version: '1.4.7' });
+      assert.equal(turn.hooksMode, 0o444, `umask ${mask.toString(8).padStart(3, '0')}`);
+    } finally {
+      process.umask(old);
+    }
+  }
+});

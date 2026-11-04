@@ -47,7 +47,7 @@
 // Stop sends SIGINT, then SIGKILL if the CLI doesn’t exit. POSTBOX_AGY_RECORD=<folder> saves each turn’s raw stream.
 
 import { spawn } from 'node:child_process';
-import { mkdir, rm, rmdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL } from '../../shared/agent-facts.mjs';
@@ -612,6 +612,8 @@ export class AntigravityCliAdapter {
         await mkdir(dirname(file), { recursive: true });
         if (path === 'hooks.json') await rm(file, { force: true }).catch(() => {});
         await writeFile(file, text, path === 'hooks.json' ? { mode: 0o444 } : undefined);
+        // The umask masks writeFile’s mode (077 leaves 0o400), so hooks.json is set to 0o444 after it’s written (#730).
+        if (path === 'hooks.json') await chmod(file, 0o444);
       }
       const hookConfirmed = Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript })));
       // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
