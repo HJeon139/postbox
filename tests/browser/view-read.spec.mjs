@@ -267,3 +267,23 @@ test('V1 in the side panel: its own transcript publishes too', async ({ page }) 
   expect(v.actual, 'the panel’s anchor is on the page').not.toBeNull();
   expect(Math.abs(/** @type {number} */ (v.actual) - v.offset), 'it starts where it says, in the panel’s box').toBeLessThanOrEqual(1);
 });
+
+// Reading with no anchor: the view is scrolled up from the end, but no item crosses it, as when the height held after a
+// shrink (release, view-state.mjs) is taller than the window. findAnchor returns null there, and the mode is reading.
+test('V1: scrolled up into space below the last item, the view reads with no anchor, and says so', async ({ page }) => {
+  const { t } = room('View read: no anchor');
+  await open(page, t);
+  const v = await page.evaluate(async (threadId) => {
+    const el = /** @type {HTMLElement} */ (document.querySelector(`#main.transcript[data-thread="${threadId}"]`));
+    el.style.minHeight = `${el.getBoundingClientRect().height + 3 * innerHeight}px`;
+    const s = /** @type {Element} */ (document.scrollingElement);
+    s.scrollTop = s.scrollHeight;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    s.scrollTop -= innerHeight;
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const last = [...el.querySelectorAll(':scope > [data-key]')].at(-1);
+    return { ...el.dataset, lastBottom: /** @type {Element} */ (last).getBoundingClientRect().bottom };
+  }, t.id);
+  expect(v.lastBottom, 'no item is in view').toBeLessThan(0);
+  expect([v.viewMode, v.viewAnchor, v.viewOffset]).toEqual(['reading', '', '']);
+});
