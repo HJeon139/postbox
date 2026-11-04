@@ -79,3 +79,40 @@ test('#693 the issue’s acceptance, which passes on main too: declining a card 
   const told = notices(f, f.beta).join(' | ');
   assert.match(told, /so your message held on it .* didn’t go to @gamma/, told);
 });
+
+test('#693 a later add the person allowed lifts the decline: once that agent is removed, a mention asks again', async () => {
+  const f = await declined();
+  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'I really need gamma for this.' });
+  const second = addCards(f).find((c) => c.status === 'open');
+  f.rt.resolveHop(f.t.id, second.id, true);
+  await settle(f.rt);
+  const gamma = f.rt.sessionsIn(f.t.id).find((x) => x.handle === 'gamma');
+  f.rt.deleteSession(gamma.id);
+  f.rt.purgeSession(gamma.id);
+  const r = f.rt.agentWake(f.beta.id, 'gamma', 'Back again?', { itemId: 'it_w', prose: true });
+  assert.equal(r.waiting, true, 'the person’s latest answer was yes');
+});
+
+test('#693 a card retiring forks declined isn’t the person’s decline', async () => {
+  const f = setup();
+  f.rt.addItem(f.t.id, { kind: 'hop', join: true, fromSessionId: 'se_fork', from: 'alpha', to: 'gamma', text: 'x', status: 'declined' });
+  f.store.emit('session', { id: 'se_fork', personaId: f.a.id, handle: 'alpha', threadId: f.t.id, archived: true, retiredFork: true });
+  const r = f.rt.agentWake(f.beta.id, 'gamma', 'Over to gamma.', { itemId: 'it_v', prose: true });
+  assert.equal(r.waiting, true);
+});
+
+test('#693 a mention of a declined agent while another card waits is refused, not held on that card', async () => {
+  const f = await declined();
+  f.rt.createPersona({ handle: 'delta' });
+  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'delta', message: 'Chart?' });
+  const r = f.rt.agentWake(f.beta.id, 'gamma', 'And gamma.', { itemId: 'it_u', prose: true });
+  assert.deepEqual([r.ok, r.held], [false, undefined]);
+  assert.match(r.message, /chose not to add @gamma/);
+});
+
+test('#693 a declined wake-limit card for an agent isn’t a declined add', async () => {
+  const f = setup();
+  f.rt.addItem(f.t.id, { kind: 'hop', fromSessionId: f.alpha.id, from: 'alpha', to: 'gamma', text: 'x', status: 'declined', n: 51 });
+  const r = f.rt.agentWake(f.beta.id, 'gamma', 'Gamma?', { itemId: 'it_t', prose: true });
+  assert.equal(r.waiting, true);
+});

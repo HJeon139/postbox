@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { catchUp } from '../server/catch-up.mjs';
+import { HOP_LIMIT } from '../shared/limits.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /** @alpha asks to add @gamma; @beta's wake of @alpha, which needs a card too, is held on that card. */
@@ -34,4 +35,27 @@ test('#693 a message held for an agent in the room is named in its catch-up whil
 test('#693 a message held for another agent isn’t named in this one’s catch-up', () => {
   const f = heldForAlpha();
   assert.doesNotMatch(catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '', /is held on/);
+});
+
+/** A card from @beta's wake of @alpha past the chain limit, left open, with `n` more wakes of @alpha held on it. */
+function wakeLimitCard(n) {
+  const f = setup();
+  for (let i = 0; i < HOP_LIMIT; i++) f.rt.agentWake(...(i % 2 ? [f.alpha.id, 'beta'] : [f.beta.id, 'alpha']), `hand-off ${i + 1}`);
+  f.rt.agentWake(f.beta.id, 'alpha', 'The card’s own wake.');
+  for (let i = 0; i < n; i++) f.rt.agentWake(f.beta.id, 'alpha', `Held ${i + 1}.`);
+  return f;
+}
+
+test('#693 a wake-limit card’s own wake for this agent is named too, with what’s held on it', () => {
+  const f = wakeLimitCard(1);
+  const text = catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '';
+  assert.match(text, /@beta’s message to you \(“The card’s own wake\.”\) is held on @beta’s request to wake @alpha/);
+  assert.match(text, /@beta’s message to you \(“Held 1\.”\) is held on/);
+});
+
+test('#693 the catch-up names at most three held messages, and says how many more', () => {
+  const f = wakeLimitCard(5);
+  const text = catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '';
+  assert.equal(text.match(/is held on/g)?.length, 3);
+  assert.match(text, /And 3 more messages for you are held on it/);
 });
