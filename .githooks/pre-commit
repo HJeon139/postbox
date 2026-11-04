@@ -1,0 +1,9 @@
+#!/bin/sh
+# Runs the project lints (npm run lint:project) before each commit, and stops the commit when one fails, so a
+# lint CI would fail shows here first (#508). Turn it on with: npm run hooks
+out=$(npm run -s lint:project 2>&1) && exit 0
+printf '%s\n' "$out" >&2
+# Each lint ends a failing run with "lint-<name>: <n> problem(s).", and lint:project stops at the first that fails.
+failed=$(printf '%s\n' "$out" | sed -n 's/^\(lint-[a-z]*\): [0-9]* problem.*/\1/p' | tail -n 1)
+echo "pre-commit: ${failed:-npm run lint:project} failed, so nothing was committed. Fix it and commit again, or in an emergency skip the hook with git commit --no-verify." >&2
+exit 1
