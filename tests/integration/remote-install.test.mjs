@@ -181,7 +181,8 @@ test('a symbolic link for ~/.postbox-remote or the version’s folder is refused
   try {
     const { tar } = bundle({ version: VERSION });
     const elsewhere = join(m.root, 'elsewhere');
-    mkdirSync(elsewhere, { mode: 0o755 });
+    mkdirSync(elsewhere);
+    chmodSync(elsewhere, 0o755); // set after, so the umask doesn’t mask it (#730)
     const root = join(m.home, '.postbox-remote');
     symlinkSync(elsewhere, root);
     const r = installOnce(m, tar);
