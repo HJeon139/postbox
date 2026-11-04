@@ -243,7 +243,8 @@ export function closeHop(rt, conv, card, how) {
   if (asker)
     rt.tellAgent(asker.id, `${cardName(card).replace(`@${card.from}’s request`, 'Your request')} was closed: you were ${how}. Ask again if you still need it.`);
   for (const w of card.held ?? []) {
-    if (!rt.s.sessions[w.fromSessionId]) continue;
+    // The agent that asked has its note above, which covers its own wakes held here.
+    if (!rt.s.sessions[w.fromSessionId] || w.fromSessionId === card.fromSessionId) continue;
     rt.tellAgent(
       w.fromSessionId,
       `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${why}. Send it again if you still need it.`,
