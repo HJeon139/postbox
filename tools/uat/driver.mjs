@@ -34,13 +34,17 @@ export function driver(page, hooks = {}) {
   const runnerClick = () => hooks.input?.({ kind: 'runner-click' });
   const keep = keeper(ev, hooks.input);
 
-  /** Clicks the centre of the first element that matches, after scrolling it into view. */
+  /**
+   * Clicks the centre of the first element that matches. As a person does, it scrolls only when it can’t reach that
+   * centre where it is, off screen or under the top bar or the composer, and then to the middle, clear of both (#531).
+   */
   async function clickAt(findExpr, what) {
     runnerClick();
     const r = await ev(`(() => {
       const el = ${findExpr};
       if (!el) return null;
-      el.scrollIntoView({ block: 'center' });
+      const at = el.getBoundingClientRect();
+      if (!el.contains(document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2))) el.scrollIntoView({ block: 'center' });
       const b = el.getBoundingClientRect();
       return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
     })()`);
