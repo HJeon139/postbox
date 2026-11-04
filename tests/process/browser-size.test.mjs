@@ -10,14 +10,14 @@ import { chromiumMissing } from './chrome.mjs';
 
 const skip = await chromiumMissing();
 
-test('page.size() makes the window as large as the page it emulates', { skip, timeout: 90_000 }, async () => {
+test('page.size() makes the window exactly the size of the page it emulates', { skip, timeout: 90_000 }, async () => {
   const page = await launch();
   try {
     await page.size(1280, 900);
     await page.goto('about:blank');
     const { outer, inner } = await page.evaluate('({ outer: [outerWidth, outerHeight], inner: [innerWidth, innerHeight] })');
     assert.deepEqual(inner, [1280, 900]);
-    assert.ok(outer[0] >= 1280 && outer[1] >= 900, `the window is ${outer.join('×')}, smaller than the 1280×900 page`);
+    assert.deepEqual(outer, inner, 'headless, the window has no frame: its outer size is the page’s');
   } finally {
     await page.close();
   }

@@ -71,7 +71,7 @@ function kill(pid) {
  * @param {number} width  @param {number} height
  * @param {{ mobile?: boolean, scale?: number, theme?: 'light' | 'dark' }} [options]
  */
-async function sizePage(send, pw, width, height, { mobile = width < 768, scale = mobile ? 2 : 1, theme } = {}) {
+export async function sizePage(send, pw, width, height, { mobile = width < 768, scale = mobile ? 2 : 1, theme } = {}) {
   const { windowId } = await send('Browser.getWindowForTarget');
   await send('Browser.setWindowBounds', { windowId, bounds: { width, height } });
   await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale, mobile });
