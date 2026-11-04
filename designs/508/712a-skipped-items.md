@@ -1,0 +1,46 @@
+# #712a: the page skips the items off screen
+
+Part of #508's lane: a long room should perform like a small one. #712a is the page's half, and #712b (the reducer's lookups) is the script's. The reviewed design was revision 2 of the #712 note, with critic's six conditions and the jump addendum. This file records what was built, and where it differs from that design.
+
+## The rule
+
+- **Every item stays mounted.** `.transcript.cv-skip > .item` gets `content-visibility: auto; contain-intrinsic-size: auto 71px` (91 px under 600 px). Those are the median item of a generated 1,000-item room (`app/workbench.css`).
+- **The browser skips the layout and paint of items off screen.** It lays each one out at the estimate until it draws, and then remembers the item's real size.
+- **Nothing is unmounted,** so focus, drafts, app frames and find-in-page keep working. Find-in-page draws the item it finds (`beforematch`).
+- **Where it applies:** only where `CSS.supports('content-visibility', 'auto')` (`app/js/view-skip.mjs`).
+- **An item with a fixed descendant is never skipped:** a full-screen review, a full-screen app, or an app's check frame (`:has(.rv-full, .app-full.fullscreen, .check-frame)`). Skipping contains layout and paint, so the item would become the box those are placed in.
+
+## Keeping your place (B1b's view state)
+
+- **Each draw is heard.** An item drawing for the first time changes size, and the view holds its anchor through `follow()`. The view hears that from the transcript's ResizeObserver, and from `contentvisibilityautostatechange` on the transcript, in capture.
+  - **Why the event is needed:** while following, the transcript holds a `min-height`. An item drawing inside that held height changes nothing the observer sees, so the anchor would go stale, and the next resize would apply the stale correction as a scroll. `composer-grow.spec.mjs` "#422: scrolled up" fails without the listener: the message you read moves 27 px.
+  - **Nothing is observed per item.** Revision 2 observed each drawn item; the draw event alone is enough.
+- **A jump makes its target the anchor.** `jumpTo(el, block)`, in `app/js/view-jump.mjs`:
+  - it measures the target with its item drawn;
+  - it puts the target where `block` says, in the part of the view you can see, below the main pane's sticky top bar;
+  - it pins the item as the anchor (`pin()` in `view-state.mjs`) until you scroll, so the items it passed can draw at their real size without pushing it away.
+  - **The item stays drawn until painted,** so a target deep inside a tall item isn't skipped again.
+  - **Every jump to an item goes through it:** seven sites in `app/js/`, and the UAT runner's own jumps. `tests/view-jump-sites.test.mjs` fails on any `scrollIntoView`, or any `focus()` without `preventScroll`, outside the allowed list.
+- **The smooth jump to the end stays smooth.** While it runs, `follow()` doesn't snap to the end. On `scrollend` it goes the rest of the way, if it got where it was aimed. If it stopped short, you stopped it, and the view reads where it stopped.
+  - Without `scrollend`, or with reduced motion, it jumps at once.
+
+## The checks
+
+- **`rows-skipped`** (`tools/uat/checks-view.mjs`) fires when fewer than half of a room's items are skipped, in a room of more than 1,000. The probe (`tools/uat/skip-probe.mjs`) samples each step, before any screenshot draws an item.
+- **The specs:**
+  - `view-skipped*.spec.mjs`: the estimates, V3, find-in-page, Tab out of an app, and the smooth jump;
+  - `view-jump*.spec.mjs`: jumps at 10,000 items, a diagram item, and a target deep in a tall item;
+  - `view-jump-sites.spec.mjs`: each site through its real control.
+
+## The test harness
+
+- **Playwright's trace snapshots** read every element's scroll position around each action. In Chromium, each read inside a skipped item lays that item out, about 150 ms per snapshot at 200 items.
+  - So specs that count layouts, and specs on rooms of 1,000 or more items, turn snapshots or tracing off, each with a comment.
+  - The page itself lays out nothing while idle.
+  - Measurements must be taken without snapshots.
+- **Playwright's `scrollIntoViewIfNeeded`** on an element inside a skipped item scrolls to the item's estimate. The page's own `scrollIntoView` and `jumpTo` don't do that.
+
+## Not done here
+
+- Unmounting items far from the view. The rule keeps every item's DOM node in memory.
+- WebKit isn't in the browser runs, so its fallbacks are untested: no `scrollend`, and no `checkVisibility` option.
