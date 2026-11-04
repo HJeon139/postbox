@@ -3,6 +3,7 @@
 // It owns that state for one transcript, holds the anchor through changes in size (#88, #297, #341), and publishes what
 // it is on the transcript as data-view-* (publish). Moved from thread.mjs’s mountTranscript (#531).
 
+import { anchorIn } from './view-anchor.mjs';
 import { skipOffscreen } from './view-skip.mjs';
 
 /**
@@ -30,41 +31,10 @@ function showJump(v, s) {
 // under it moves. A wide font rewraps it where macOS’s doesn’t (#88, seen on Linux in #162).
 // It runs on every scroll event, so it halves its way to the middle rather than reading every reply above it: in a
 // room of 1,000 replies, a dozen rects instead of a thousand (#572).
-const keyed = (/** @type {any} */ n) => n instanceof HTMLElement && !!n.dataset.key;
 /** @param {View} v */
 function findAnchor(v) {
   const s = box(v);
-  if (!s) return null;
-  const top = viewTop(v, s);
-  const mid = top + s.clientHeight / 2;
-  const kids = v.el.children;
-  let lo = 0;
-  let hi = kids.length;
-  while (lo < hi) {
-    const m = (lo + hi) >> 1;
-    if (kids[m].getBoundingClientRect().bottom > mid) hi = m;
-    else lo = m + 1;
-  }
-  // Back to the reply before the first one across the middle (one that takes no room doesn’t count), then on as before.
-  let from = 0;
-  for (let i = lo - 1; i >= 0; i--) {
-    const n = kids[i];
-    if (!keyed(n)) continue;
-    const r = n.getBoundingClientRect();
-    if (!r.height) continue;
-    from = i;
-    if (r.bottom <= mid) break;
-  }
-  let last = null;
-  for (let i = from; i < kids.length; i++) {
-    const n = /** @type {HTMLElement} */ (kids[i]);
-    if (!keyed(n)) continue;
-    const r = n.getBoundingClientRect();
-    if (r.bottom <= top) continue;
-    last = { key: /** @type {string} */ (n.dataset.key), at: r.top - top };
-    if (r.bottom > mid) return last;
-  }
-  return last;
+  return s ? anchorIn(v.el, s, viewTop(v, s)) : null;
 }
 /** @param {View} v */
 function holdAnchor(v) {
