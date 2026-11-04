@@ -11,8 +11,9 @@ import { skipOffscreen } from './view-skip.mjs';
 
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
- *   anchor: { key: string, at: number } | null, pinned: boolean, dead: boolean, shown: number, lastTop: number,
- *   held: { end: number, last: number, width: number }, jump: ((n: number) => void) | null, bound: any, size: string,
+ *   anchor: { key: string, at: number } | null, pinned: boolean, smoothing: boolean, dead: boolean, shown: number,
+ *   lastTop: number, held: { end: number, last: number, width: number }, jump: ((n: number) => void) | null, bound: any,
+ *   size: string,
  *   sizes: ResizeObserver, changes: MutationObserver }} View
  */
 
@@ -49,15 +50,38 @@ function seen(v) {
   v.unseen = 0;
   showJump(v, null);
 }
+// Smoothly only in the main pane, with motion allowed, and where the browser says when a scroll ends: follow() holds
+// off while it runs, and smoothEnded() goes the rest of the way (#712a).
 /** @param {View} v @param {boolean} [smooth] */
 function scrollToEnd(v, smooth = false) {
   v.stuck = true;
   v.pinned = false;
   const s = box(v);
-  if (s && smooth && !v.inPanel && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+  v.smoothing = !!s && smooth && !v.inPanel && 'onscrollend' in window && !atEnd(s);
+  if (v.smoothing && matchMedia('(prefers-reduced-motion: reduce)').matches) v.smoothing = false;
+  if (v.smoothing) {
+    const aim = /** @type {Element} */ (s).scrollHeight - /** @type {Element} */ (s).clientHeight;
+    addEventListener('scrollend', () => smoothEnded(v, aim), { once: true });
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
-  else if (s) s.scrollTop = s.scrollHeight;
+  } else if (s) s.scrollTop = s.scrollHeight;
   seen(v);
+}
+// The smooth jump to the end stopped. Where it got where it was aimed, the items it passed drew at their real sizes
+// on the way, so the end may have moved further down: go the rest of the way. Short of there, you stopped it: a wheel
+// turn or a drag ends it, and Chromium drops a wheel turn's own scroll. That's you reading where it stopped.
+/** @param {View} v @param {number} aim */
+function smoothEnded(v, aim) {
+  const s = box(v);
+  if (!v.smoothing || v.dead || !s) return;
+  v.smoothing = false;
+  if (atEnd(s)) return;
+  if (s.scrollTop >= aim - 2) s.scrollTop = s.scrollHeight;
+  else {
+    v.stuck = false;
+    v.anchor = findAnchor(v);
+    v.lastTop = s.scrollTop;
+    publish(v);
+  }
 }
 // While stuck, what comes after the newest message shrinking (a working row going, a card getting shorter once
 // answered, the composer) would shorten the page and pull everything down, under your pointer, just as a card
@@ -83,7 +107,8 @@ function follow(v) {
     if (now.width !== v.held.width) release(v);
     else if (now.end < v.held.end && Math.abs(now.last - v.held.last) < 1 && v.held.end > s.clientHeight)
       v.el.style.minHeight = `${v.el.getBoundingClientRect().height + v.held.end - now.end}px`;
-    if (!atEnd(s)) s.scrollTop = s.scrollHeight;
+    // A smooth jump to the end is on its way there: snapping now would end it in one frame (#712a).
+    if (!atEnd(s) && !v.smoothing) s.scrollTop = s.scrollHeight;
     v.held = measure(v, s);
   } else {
     heard(v, s);
@@ -227,6 +252,7 @@ function newView({ el, inPanel, nodes, was }) {
     stuck: !was,
     anchor: was?.anchor ?? null,
     pinned: false,
+    smoothing: false,
     dead: false,
     shown: -1,
     lastTop: 0,
