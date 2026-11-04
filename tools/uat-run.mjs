@@ -205,7 +205,7 @@ async function main() {
     log(`Conversation ${mainThread} started with @${scenario.agents.join(', @')}.`);
     // `- seed: big-room` (#508): the conversation fills with about 1,000 generated items before the tester arrives.
     if (scenario.seed === 'big-room') scenario.summary += `\n\n${await openBigRoom({ postbox, data: paths.data, threadId: mainThread, scenario, page, log })}`;
-    const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log });
+    const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log, input: d.input });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
     budget.track({ streams: streamResults(paths.streams), tester, log });
@@ -251,7 +251,7 @@ async function main() {
       return `Answered ${it.item}${now?.revision ? ` (at revision ${now.revision} when you answered)` : ''} while the agent worked.`;
     };
     // What the tester breaks on purpose in a host run (tools/uat/hosts-watch.mjs).
-    const hostFault = (spec) => (hr ? fault(hr, spec, page) : localRestart({ postbox, page, log }, spec));
+    const hostFault = (spec) => (hr ? fault(hr, spec, page, d.input) : localRestart({ postbox, page, log, input: d.input }, spec));
     let lastAction = null;
     let actionError = null;
     let actionResult = null; // what an action measured, when it worked

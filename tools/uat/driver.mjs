@@ -83,6 +83,8 @@ export function driver(page, hooks = {}) {
   const inApp = (ctx, expression) => ctx.frame.evaluate(expression).catch(() => undefined);
 
   return {
+    // What records the runner’s inputs, for its other drivers: telemetry’s clicks, and a reload.
+    input: (/** @type {any} */ e) => hooks.input?.(e),
     clickAt,
     press,
     // What tools/uat/driver-hosts.mjs drives the Hosts tab and a persona’s Runs on with (#120).

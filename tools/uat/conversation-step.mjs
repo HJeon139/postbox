@@ -150,10 +150,14 @@ export async function conversationStep(ctx, a) {
   throw new Error(`A conversation action is delete, undo, new or open, not “${kind}”.`);
 }
 
-/** restart-postbox in a run without hosts: stops Postbox, starts it on the same data, and reloads the page. */
-export async function localRestart({ postbox, page, log }, spec) {
+/**
+ * restart-postbox in a run without hosts: stops Postbox, starts it on the same data, and reloads the page. A reload
+ * brings a reading view back following, so `input` hears it first (facts.probes.inputs, #531).
+ */
+export async function localRestart({ postbox, page, log, input = () => {} }, spec) {
   if (spec.fault !== 'restart-postbox') throw new Error(`A run without --host can only restart Postbox, not ${spec.fault}.`);
   const downMs = await postbox.restart();
+  input({ kind: 'reload' });
   await page.reload();
   const said = `Restarted Postbox on the same data. It was down ${(downMs / 1000).toFixed(1)} s.`;
   log(`fault restart-postbox: ${said}`);
