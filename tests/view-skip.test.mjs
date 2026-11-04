@@ -1,55 +1,36 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-/** A transcript element as skipOffscreen() uses it: its classes and its listeners. */
+/** A transcript element as skipOffscreen() uses it: its classes. */
 function fakeTranscript() {
   const classes = new Set();
-  /** @type {Map<string, Function>} */
-  const listeners = new Map();
-  return {
-    classes,
-    listeners,
-    classList: { add: (/** @type {string} */ c) => classes.add(c) },
-    addEventListener: (/** @type {string} */ type, /** @type {Function} */ fn) => listeners.set(type, fn),
-    removeEventListener: (/** @type {string} */ type) => listeners.delete(type),
-  };
+  return { classes, classList: { add: (/** @type {string} */ c) => classes.add(c) } };
 }
-const noSizes = { observe() {}, unobserve() {} };
 
-test('#712 a browser that never says when a skipped item draws gets no skipping, and no listener', async () => {
-  globalThis.HTMLElement = /** @type {any} */ (class {});
+/** Runs fn with a CSS.supports that answers `supported`. @param {boolean} supported @param {() => Promise<void>} fn */
+async function withCss(supported, fn) {
+  globalThis.CSS = /** @type {any} */ ({
+    supports: (/** @type {string} */ p, /** @type {string} */ v) => supported && p === 'content-visibility' && v === 'auto',
+  });
   try {
+    await fn();
+  } finally {
+    delete globalThis.CSS;
+  }
+}
+
+test('#712 a browser without content-visibility gets no skipping', () =>
+  withCss(false, async () => {
     const { skipOffscreen } = await import('../app/js/view-skip.mjs');
     const el = fakeTranscript();
-    skipOffscreen(/** @type {any} */ (el), /** @type {any} */ (noSizes))();
+    skipOffscreen(/** @type {any} */ (el));
     assert.deepEqual([...el.classes], []);
-    assert.deepEqual([...el.listeners.keys()], []);
-  } finally {
-    delete globalThis.HTMLElement;
-  }
-});
+  }));
 
-test('#712 a browser that says when a skipped item draws skips them, and the view watches each item while it’s drawn', async () => {
-  globalThis.HTMLElement = /** @type {any} */ (class {});
-  /** @type {any} */ (globalThis.HTMLElement.prototype).oncontentvisibilityautostatechange = null;
-  try {
+test('#712 a browser with content-visibility skips the transcript’s items off screen', () =>
+  withCss(true, async () => {
     const { skipOffscreen, SKIP_CLASS } = await import('../app/js/view-skip.mjs');
     const el = fakeTranscript();
-    const watched = new Set();
-    const sizes = { observe: (/** @type {any} */ n) => watched.add(n), unobserve: (/** @type {any} */ n) => watched.delete(n) };
-    const stop = skipOffscreen(/** @type {any} */ (el), /** @type {any} */ (sizes));
+    skipOffscreen(/** @type {any} */ (el));
     assert.deepEqual([...el.classes], [SKIP_CLASS]);
-    const item = { parentElement: el };
-    const changed = /** @type {Function} */ (el.listeners.get('contentvisibilityautostatechange'));
-    changed({ target: item, skipped: false });
-    assert.deepEqual([...watched], [item], 'watched once it draws');
-    changed({ target: { parentElement: item }, skipped: false });
-    assert.deepEqual([...watched], [item], 'only the transcript’s own items');
-    changed({ target: item, skipped: true });
-    assert.deepEqual([...watched], [item], 'still watched once it’s skipped again: unwatching made the view and the browser take turns');
-    stop();
-    assert.deepEqual([...el.listeners.keys()], []);
-  } finally {
-    delete globalThis.HTMLElement;
-  }
-});
+  }));
