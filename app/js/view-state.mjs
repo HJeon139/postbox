@@ -3,6 +3,7 @@
 // It owns that state for one transcript, holds the anchor through changes in size (#88, #297, #341), and publishes what
 // it is on the transcript as data-view-* (publish, view-publish.mjs). Moved from thread.mjs’s mountTranscript (#531).
 
+import { inSight, measure } from './view-box.mjs';
 import { register, unregister } from './view-jump.mjs';
 import { skipOffscreen } from './view-skip.mjs';
 
@@ -53,19 +54,6 @@ function scrollToEnd(v, smooth = false) {
 // While stuck, what comes after the newest message shrinking (a working row going, a card getting shorter once
 // answered, the composer) would shorten the page and pull everything down, under your pointer, just as a card
 // that needs you arrives. Instead the transcript keeps its height, until the next message or a new width.
-/** @param {View} v */
-function lastItem(v) {
-  for (let n = v.el.lastElementChild; n; n = n.previousElementSibling) {
-    if (n instanceof HTMLElement && n.dataset.key) return n;
-  }
-  return null;
-}
-/** @param {View} v @param {Element} s */
-const measure = (v, s) => ({
-  end: s.scrollHeight,
-  last: (lastItem(v)?.getBoundingClientRect().top ?? 0) - viewTop(v, s) + s.scrollTop,
-  width: v.el.clientWidth,
-});
 /** @param {View} v */
 function release(v) {
   if (v.el.style.minHeight) v.el.style.minHeight = '';
@@ -241,20 +229,6 @@ const jumpable = (v) => ({
   seen: () => inSight(v),
   pin: (/** @type {HTMLElement} */ item) => pin(v, item),
 });
-/**
- * Where what you can see of the view starts and ends, in the page's y: the panel's scroll box, or the window below
- * the main pane's sticky top bar.
- * @param {View} v
- */
-function inSight(v) {
-  const s = /** @type {Element} */ (box(v));
-  if (v.inPanel) {
-    const r = s.getBoundingClientRect();
-    return { top: r.top, bottom: r.top + s.clientHeight };
-  }
-  const bar = document.querySelector('header.topbar')?.getBoundingClientRect().bottom ?? 0;
-  return { top: Math.max(0, bar), bottom: s.clientHeight };
-}
 
 /**
  * A view’s state as it starts: following, unless it comes back from a rebuild while reading (was). Its observers are
