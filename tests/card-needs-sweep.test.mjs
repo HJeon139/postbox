@@ -85,3 +85,12 @@ test('on a tie the sweep compares the cards’ times: a newer need nextNeed does
   const se = cutOff(r, { kind: 'denial', itemId: newer.id, text: 'A step was refused: pwd' });
   assert.equal(se.needs?.itemId, newer.id);
 });
+
+test('on a tie of the same time, the card nextNeed found wins, as within nextNeed', () => {
+  const r = room();
+  const first = r.block();
+  const second = r.block();
+  r.rt.patchItem(r.t.id, second.id, { at: first.at });
+  const se = cutOff(r, { kind: 'block', itemId: first.id, text: 'Pick' });
+  assert.equal(se.needs?.itemId, second.id);
+});
