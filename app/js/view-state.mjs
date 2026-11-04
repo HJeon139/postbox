@@ -74,6 +74,21 @@ function holdAnchor(v) {
   s.scrollTop += d;
   v.lastTop = s.scrollTop;
 }
+/**
+ * What the view is, on the transcript for anyone to read (the UAT's probe, #531): data-view-mode is following or
+ * reading, and while reading, data-view-anchor and data-view-offset are the anchor's key and how far down the view it
+ * starts, to 0.1 px. Written after each entry point, and only what changed.
+ * @param {View} v
+ */
+function publish(v) {
+  const reading = !v.stuck && v.anchor;
+  const next = {
+    viewMode: v.stuck ? 'following' : 'reading',
+    viewAnchor: reading ? v.anchor.key : '',
+    viewOffset: reading ? String(Math.round(v.anchor.at * 10) / 10) : '',
+  };
+  for (const [k, value] of Object.entries(next)) if (v.el.dataset[k] !== value) v.el.dataset[k] = value;
+}
 /** @param {View} v */
 function seen(v) {
   v.unseen = 0;
@@ -222,8 +237,19 @@ export function mountView({ el, inPanel, nodes, was }) {
   /** @type {View} */
   const v = /** @type {any} */ ({ el, inPanel, nodes, unseen: was?.unseen ?? 0, stuck: !was, anchor: was?.anchor ?? null, dead: false });
   Object.assign(v, { shown: -1, lastTop: 0, held: { end: 0, last: 0, width: 0 }, jump: null, bound: null, size: '' });
+  // Each way in that can change the mode or the anchor without a scroll event of its own ends by publishing: a scroll,
+  // the end, a reply in the frame you scrolled in (#341), and mounting. An item moved ends in grew(), so it publishes there. A resize or a settle that moves the
+  // view does it by scrolling, and its scroll event publishes in the next frame.
+  /** @template {any[]} A @param {(...a: A) => any} fn */
+  const thenPublish =
+    (fn) =>
+    (/** @type {A} */ ...a) => {
+      const r = fn(...a);
+      publish(v);
+      return r;
+    };
   const resized = () => follow(v);
-  const scrolled = () => onScroll(v);
+  const scrolled = thenPublish(() => onScroll(v));
   v.sizes = new ResizeObserver(resized);
   // A change that makes the transcript shorter while stuck (a held height released, an app’s check giving way to its
   // frame) pulls the view up to the page’s new end. That isn’t you, but its scroll event can come after the page grew
@@ -234,10 +260,11 @@ export function mountView({ el, inPanel, nodes, was }) {
     if (v.stuck && s && !v.dead && atEnd(s)) v.lastTop = Math.min(v.lastTop, s.scrollTop);
   });
   v.changes.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+  publish(v);
   return {
     settle: () => settle(v, scrolled, resized),
-    scrollToEnd: (/** @type {boolean} */ smooth) => scrollToEnd(v, smooth),
-    grew: () => grew(v),
+    scrollToEnd: thenPublish((/** @type {boolean} */ smooth) => scrollToEnd(v, smooth)),
+    grew: thenPublish(() => grew(v)),
     release: () => release(v),
     setJump: (/** @type {(n: number) => void} */ fn) => (v.jump = fn),
     /** An item moved to the end (item.move): if it was the anchor, its stub holds the place. */
