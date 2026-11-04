@@ -19,7 +19,8 @@ export function wakeMentions(rt, se, turn, text) {
   for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, rt.handles())) {
     if (h.toLowerCase() === se.handle.toLowerCase() || turn.woken.includes(h)) continue;
     // Its turn has ended, so where it spoke comes from the turn: a topic thread it spoke in, else the conversation.
-    const r = rt.agentWake(se.id, h, text, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id, itemId: said });
+    const replyIn = turn.threadId !== se.threadId ? turn.threadId : null;
+    const r = rt.agentWake(se.id, h, text, { replyIn, fromTurnId: turn.id, itemId: said, prose: true });
     if (r.itemId) said = r.itemId;
     if (r.ok || r.waiting) woke.push(h);
     else rt.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);

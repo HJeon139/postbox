@@ -31,11 +31,16 @@ export function askToWake(rt, from, parent, p, wake) {
 /**
  * An agent wakes a persona the conversation doesn’t have (#228): only the person adds one, so a card asks them. Allow
  * adds it, with a note, and delivers the wake; Decline tells the agent (resolveHop). One whose session here is
- * archived needs the person to restore it.
+ * archived needs the person to restore it. After the person declines adding it here, a prose mention asks no more
+ * (#693): wake_agent still does, since it’s a deliberate ask.
+ * @param {any} rt @param {any} from @param {any} parent @param {any} p @param {any} wake
+ * @param {{ prose?: boolean }} [opts]  prose: the wake is an @-mention in a turn’s reply
  */
-export function askToAdd(rt, from, parent, p, wake) {
+export function askToAdd(rt, from, parent, p, wake, { prose = false } = {}) {
   if (rt.sessionsIn(parent.id).some((x) => x.personaId === p.id))
     return { ok: false, message: `@${p.handle}’s session in this conversation is archived, so it can’t be woken. Ask the person to restore it.` };
+  if (prose && declinedAdd(rt, parent.id, p.handle))
+    return { ok: false, message: `the person chose not to add @${p.handle} to this conversation. Carry on without it, or ask the person.` };
   const open = openCard(rt, parent);
   if (open) return holdOnCard(rt, open, parent, from, p, wake);
   const it = rt.addItem(parent.id, {
@@ -56,6 +61,12 @@ export function askToAdd(rt, from, parent, p, wake) {
     message: `@${p.handle} isn’t in this conversation, so the person was asked to add it. If they do, it gets your message; if not, you’ll be told.`,
   };
 }
+
+/**
+ * Whether the person declined adding `handle` to the conversation (#693), read from its cards, so a restart keeps it.
+ * O(items in the conversation), once per mention of an agent it doesn’t have.
+ */
+const declinedAdd = (rt, conv, handle) => rt.store.pending.items(conv).some((x) => x.kind === 'hop' && x.join && x.status === 'declined' && x.to === handle);
 
 /** One request at a time: the card waiting for the person, if there is one. */
 const openCard = (rt, parent) => rt.store.pending.items(parent.id).find((x) => x.kind === 'hop' && x.status === 'open') ?? null;

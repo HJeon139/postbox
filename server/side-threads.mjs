@@ -29,7 +29,7 @@ export function agentWake(
   fromSessionId,
   handle,
   text,
-  { confirmed = false, replyIn = undefined, fromTurnId = rt.turns.get(fromSessionId)?.id, itemId = null } = {},
+  { confirmed = false, replyIn = undefined, fromTurnId = rt.turns.get(fromSessionId)?.id, itemId = null, prose = false } = {},
 ) {
   // Checked here, not in each tool, so no path that wakes from a turn gets around it (#225, #637). The turn is the one the
   // call came from: Allow on a card wakes from the turn that asked, after a summary may have started.
@@ -52,7 +52,7 @@ export function agentWake(
   if (back && rt.s.threads[back]?.kind === 'side') sideThreadsGone(rt, from);
   // A card keeps the mention’s message, so Allow wakes from it rather than posting it again.
   const card = { text, replyIn: at === parent.id ? null : at, fromTurnId, itemId };
-  if (!target) return askToAdd(rt, from, parent, p, card);
+  if (!target) return askToAdd(rt, from, parent, p, card, { prose });
   // No limit between two agents (#492): the room shows the chain’s count, with a hint to Stop past CHAIN_HINT.
   if (!confirmed && (parent.hops ?? 0) >= HOP_LIMIT) return askToWake(rt, from, parent, p, card);
   const hop = (parent.hops ?? 0) + 1;
