@@ -61,11 +61,14 @@ async function stopOn(signal) {
   process.exit(signal === 'SIGINT' ? 130 : 143);
 }
 
-/** A whole number of at least one from an option, or an error that names it. */
+/**
+ * A whole number of at least one from an option, written in digits, or an error that names it. Number() alone took
+ * “1e3” and “0x10”, and an empty value as 0.
+ * @param {string} name  @param {string} raw
+ */
 function count(name, raw) {
-  const n = Number(raw);
-  if (!Number.isInteger(n) || n < 1) throw new Error(`--${name} takes a whole number of at least 1, not “${raw}”.`);
-  return n;
+  if (!/^[1-9]\d*$/.test(raw)) throw new Error(`--${name} takes a whole number of at least 1, not “${raw}”.`);
+  return Number(raw);
 }
 
 /** The options, checked. @param {string[]} argv */
@@ -85,7 +88,7 @@ export function options(argv) {
   return {
     sizes,
     keys: count('keys', values.keys),
-    warmup: Number(values.warmup),
+    warmup: count('warmup', values.warmup),
     runs: count('runs', values.runs),
     intervalMs: count('interval', values.interval),
     out: resolve(values.out),
