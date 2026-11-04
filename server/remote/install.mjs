@@ -70,14 +70,23 @@ const SCRIPT_EXITS = Object.freeze({
 
 // ── Installing ──────────────────────────────────────────────────────────────────────
 
+/** What an install stopped by its signal (Postbox closing) rejects with. @param {string} destination */
+const stopped = (destination) => failure('failed', destination, { why: 'Postbox closed before the install finished.' });
+
 /**
- * Runs ssh once: `input` on its stdin, then stdout and stderr when it exits.
+ * Runs ssh once: `input` on its stdin, then stdout and stderr when it exits. abort: when it fires, the child is
+ * killed (SIGKILL), as at the timeout, and the run rejects.
  * @param {{ spawn: import('./ssh.mjs').SpawnLike, program: string, args: string[], input: Buffer | null, timeout: number,
- *   destination: string, setTimer: (fn: () => void, ms: number) => any, clearTimer: (t: any) => void }} o
+ *   destination: string, setTimer: (fn: () => void, ms: number) => any, clearTimer: (t: any) => void,
+ *   abort?: AbortSignal }} o
  * @returns {Promise<{ code: number | null, signal: string | null, stdout: string, stderr: string }>}
  */
-function run({ spawn, program, args, input, timeout, destination, setTimer, clearTimer }) {
+function run({ spawn, program, args, input, timeout, destination, setTimer, clearTimer, abort }) {
   return new Promise((resolve, reject) => {
+    if (abort?.aborted) {
+      reject(stopped(destination));
+      return;
+    }
     let child;
     try {
       child = spawn(program, args, { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -89,14 +98,21 @@ function run({ spawn, program, args, input, timeout, destination, setTimer, clea
     const err = [];
     let done = false;
     let timedOut = false;
+    let aborted = false;
     const timer = setTimer(() => {
       timedOut = true;
       child.kill('SIGKILL');
     }, timeout);
+    const onAbort = () => {
+      aborted = true;
+      child.kill('SIGKILL');
+    };
+    abort?.addEventListener('abort', onAbort, { once: true });
     const finish = (/** @type {() => void} */ settle) => {
       if (done) return;
       done = true;
       clearTimer(timer);
+      abort?.removeEventListener('abort', onAbort);
       settle();
     };
     child.stdout.on('data', (b) => out.push(Buffer.from(b)));
@@ -113,7 +129,8 @@ function run({ spawn, program, args, input, timeout, destination, setTimer, clea
     );
     child.on('close', (code, signal) =>
       finish(() => {
-        if (timedOut) reject(failure('unreachable', destination, { why: `The host didn’t finish within ${Math.round(timeout / 1000)} seconds.` }));
+        if (aborted) reject(stopped(destination));
+        else if (timedOut) reject(failure('unreachable', destination, { why: `The host didn’t finish within ${Math.round(timeout / 1000)} seconds.` }));
         else resolve({ code, signal, stdout: Buffer.concat(out).toString('utf8'), stderr: Buffer.concat(err).toString('utf8') });
       }),
     );
@@ -217,9 +234,10 @@ export function tokenOutcome(d, r) {
  * @param {{ host: { id: string, name: string, settings: import('../../shared/remote-settings.mjs').HostSettings },
  *   version: string, dataDir: string, spawn?: import('./ssh.mjs').SpawnLike, program?: string, root?: string,
  *   setTimer?: (fn: () => void, ms: number) => any, clearTimer?: (t: any) => void, installTimeout?: number,
- *   tokenTimeout?: number, mtime?: number }} o
+ *   tokenTimeout?: number, mtime?: number, signal?: AbortSignal }} o
  *   host: as the runtime keeps it (its name is the ssh destination). version: Postbox’s package version. dataDir: the
- *   data folder server/index.mjs uses (`data/` by default). spawn and program run ssh; the rest are for tests.
+ *   data folder server/index.mjs uses (`data/` by default). spawn and program run ssh. signal: when it fires (Postbox
+ *   closing), the ssh run under way is killed and the install rejects. The rest are for tests.
  * @returns {Promise<{ token: string, installed: boolean, version: string }>} installed: false when the version was there
  * @throws {SshFailure} with a message and the next step, or a TypeError for an invalid host, version or nodePath
  */
@@ -235,13 +253,14 @@ export async function installHost({
   installTimeout = INSTALL_TIMEOUT,
   tokenTimeout = TOKEN_TIMEOUT,
   mtime,
+  signal,
 }) {
   const file = tokenFile(dataDir, host?.id);
   const install = installArgs(host, version, installCommand(version));
   const token = installArgs(host, version, tokenCommand(version));
   const { tar } = bundle({ version, nodePath: host.settings?.nodePath ?? null, root, mtime });
   const d = host.name;
-  const common = { spawn, program, destination: d, setTimer, clearTimer };
+  const common = { spawn, program, destination: d, setTimer, clearTimer, abort: signal };
   const installed = installOutcome(d, version, await run({ ...common, args: install, input: tar, timeout: installTimeout }));
   const got = tokenOutcome(d, await run({ ...common, args: token, input: null, timeout: tokenTimeout }));
   await storeToken(file, got);

@@ -14,7 +14,9 @@ function hostManager(rt) {
 /**
  * A host’s connection as the page shows it: the link’s state, its failure in words with the next step, what the
  * daemon’s welcome said about the host (its home, Node, harnesses and problems, not its turns), and when Postbox last
- * heard from it. Null before the host manager knows of it.
+ * heard from it, and whether Postbox keeps it up to date by itself, with its newest automatic install (its version,
+ * when, how it ended, and why the record couldn’t be read or written, never a token or a path). Null before the host
+ * manager knows of it.
  * @param {any} rt @param {string} id
  */
 export function hostStatus(rt, id) {
@@ -28,7 +30,32 @@ export function hostStatus(rt, id) {
     failure: f && { kind: f.kind ?? 'failed', message: String(f.message ?? ''), next: f.next ?? null, retry: f.retry === true },
     welcome: w && { version: w.version, home: w.home, node: w.node, harnesses: w.harnesses ?? [], problems: w.problems ?? [] },
     lastHeard: st.lastHeard ?? null,
+    keepUpdated: st.keepUpdated === true,
+    update: updateOf(st.update),
   };
+}
+
+/** The status’s automatic install, field by field. @param {any} u */
+function updateOf(u) {
+  if (!u) return null;
+  const said = { version: u.version ?? null, at: u.at ?? null, outcome: u.outcome ?? null };
+  return typeof u.error === 'string' ? { ...said, error: u.error } : said;
+}
+
+/**
+ * Sets the person’s standing consent to install this Postbox’s version on the host by itself (#464-b2a), from the
+ * host editor: the body is exactly { on: true } or { on: false }. Kept in the host’s install record on this computer,
+ * never in its settings, so it never reaches the host or an older Postbox.
+ * @param {any} rt @param {string} id @param {unknown} body
+ */
+export async function setHostKeepUpdated(rt, id, body) {
+  host(rt, id);
+  const exact = body !== null && typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === 1;
+  const on = exact ? /** @type {{ on?: unknown }} */ (body).on : undefined;
+  if (typeof on !== 'boolean') throw httpError(422, 'Send { on: true } or { on: false }.');
+  await hostManager(rt).setKeepUpdated(id, on);
+  publishHostStatus(rt, id);
+  return { ok: true, keepUpdated: on };
 }
 
 /**

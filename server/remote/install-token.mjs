@@ -11,7 +11,7 @@ export const INSTANCE_FILE = 'remote-instance';
 /** The daemon’s token’s shape (shared/remote-protocol.mjs checks hello.token against the same). */
 export const TOKEN_RE = /^[A-Za-z0-9_-]{32,128}$/;
 /** A host ID, as store.mjs’s newId makes them; it names a file, so nothing else passes. */
-const HOST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+export const HOST_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** The token’s file on the laptop. @param {string} dataDir @param {unknown} hostId */
 export function tokenFile(dataDir, hostId) {

@@ -36,15 +36,17 @@
 
 //
 // This module makes the manager and holds its methods; its parts are beside it, each taking the manager’s state first:
-// hosts-status.mjs (the host, its token and its status), hosts-links.mjs (the links and why each host is needed) and
-// hosts-requests.mjs (the sign-in check and Remove, through the daemon).
+// hosts-status.mjs (the host, its token and its status), hosts-links.mjs (the links and why each host is needed),
+// hosts-requests.mjs (the sign-in check and Remove, through the daemon) and hosts-update.mjs (installs, one at a time
+// per host, and installing this version by itself where the person said so).
 
 import { EventEmitter } from 'node:events';
-import { sameToken } from '../helpers.mjs';
 import { connectNow, disconnected, dropLink, dropRenamed, ensureWelcome, isRenamed, linkOf, need, release } from './hosts-links.mjs';
 import { removeFromHost, signInCheck } from './hosts-requests.mjs';
 import { hostOf, statusOf, tokenOf, update } from './hosts-status.mjs';
-import { describeInstall, forgetToken, installHost } from './install.mjs';
+import { installNow, maybeUpdate, setKeepUpdated, track } from './hosts-update.mjs';
+import { describeInstall, forgetToken } from './install.mjs';
+import { removeRecord } from './install-record.mjs';
 
 export { IDLE_GRACE_MS } from './hosts-links.mjs';
 export { CHECK_WAIT_MS, REMOVE_CONFIRM_MS } from './hosts-requests.mjs';
@@ -103,8 +105,13 @@ export function createHostManager({
     checks: new Map(),
     removals: new Map(),
     closed: false,
+    updating: new Map(),
+    installRecords: new Map(),
+    recordWrites: new Map(),
+    onFailure: (id, failure) => maybeUpdate(m, id, failure),
   };
-  return Object.assign(m.events, linkMethods(m), hostMethods(m));
+  // updating: the install under way per host, for tests and callers that wait on one (hosts-update.mjs); read only.
+  return Object.assign(m.events, linkMethods(m), hostMethods(m), { updating: m.updating });
 }
 
 /** The methods about a host’s link. @param {Manager} m */
@@ -165,12 +172,20 @@ function hostMethods(m) {
     /**
      * Installs this Postbox on the host (install.mjs’s installHost), once the person has confirmed. It then connects,
      * as connect() does, so its card shows what the daemon found; a link made with another token is replaced.
-     * @param {string} hostId @returns {ReturnType<typeof installHost>}
+     * One install at a time per host: a call while one runs, the person’s or an automatic one (hosts-update.mjs),
+     * gets that one’s outcome.
+     * @param {string} hostId @returns {ReturnType<typeof installNow>}
      */
     install: (hostId) => install(m, hostId),
     /**
-     * Closes the host’s link and forgets its token and reasons, as removing the host does. Resolves with whether
-     * there was a token.
+     * Sets the person’s standing consent to install this Postbox’s version on the host by itself when it’s missing,
+     * once per version (hosts-update.mjs). Kept in the host’s install record, never in its settings.
+     * @param {string} hostId @param {boolean} on @returns {Promise<void>}
+     */
+    setKeepUpdated: (hostId, on) => setKeepUpdated(m, hostId, on),
+    /**
+     * Closes the host’s link and forgets its token, its install record and reasons, as removing the host does, once
+     * an install under way has ended. Resolves with whether there was a token.
      * @param {string} hostId
      */
     forget: (hostId) => forget(m, hostId),
@@ -204,26 +219,16 @@ function hostMethods(m) {
 
 /** @param {Manager} m @param {string} hostId */
 async function install(m, hostId) {
-  const host = hostOf(m, hostId);
-  const r = await installHost({
-    host,
-    version: m.version,
-    dataDir: m.dataDir,
-    ...(m.spawn ? { spawn: m.spawn } : {}),
-    setTimer: m.setTimer,
-    clearTimer: m.clearTimer,
-  });
-  m.tokens.set(hostId, r.token);
-  const e = m.links.get(hostId);
-  if (e && !sameToken(e.token, r.token)) dropLink(m, hostId);
-  update(m, hostId);
-  // The person installed it: it connects now, for its welcome, and for a turn or a prompt that waited for the install.
-  connectNow(m, hostId).catch(() => {});
-  return r;
+  const running = m.updating.get(hostId) ?? track(m, hostId, (signal) => installNow(m, hostId, signal));
+  const outcome = await running.done;
+  if (!outcome.ok) throw outcome.failure;
+  return outcome.result;
 }
 
 /** @param {Manager} m @param {string} hostId */
 async function forget(m, hostId) {
+  // An install under way runs to its end first, so nothing it writes comes back after the host is forgotten.
+  await m.updating.get(hostId)?.done;
   dropLink(m, hostId);
   m.reasons.delete(hostId);
   m.heard.delete(hostId);
@@ -231,6 +236,7 @@ async function forget(m, hostId) {
   if (m.heardTimers.has(hostId)) m.clearTimer(m.heardTimers.get(hostId));
   m.heardTimers.delete(hostId);
   const had = await forgetToken({ dataDir: m.dataDir, hostId });
+  await removeRecord(m, hostId);
   m.tokens.delete(hostId);
   update(m, hostId);
   m.emitted.delete(hostId);
@@ -275,6 +281,8 @@ function wake(m) {
 function close(m) {
   if (m.closed) return;
   m.closed = true;
+  // No install outlives the manager: each one’s ssh is killed, and its record stays started (hosts-update.mjs).
+  for (const { abort } of m.updating.values()) abort.abort();
   for (const id of [...m.links.keys()]) dropLink(m, id);
   for (const t of m.heardTimers.values()) m.clearTimer(t);
   m.heardTimers.clear();
