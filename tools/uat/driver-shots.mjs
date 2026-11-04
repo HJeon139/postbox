@@ -48,8 +48,10 @@ const RESTORE = (before) => `(() => {
     }
   }
 })()`;
-// A scroll set now reaches the page’s onScroll, which publishes, only in a later frame.
-const SETTLED = 'new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))';
+// A scroll set now reaches the page’s onScroll, which publishes there and then (view-state.mjs, thenPublish), in the
+// next frame. A frame runs its scroll events before its animation frame callbacks (HTML, “update the rendering”), so
+// one callback is enough: it runs once the page has published.
+const SETTLED = 'new Promise((r) => requestAnimationFrame(r))';
 
 /**
  * Whether a view came back as it was: the same mode, and while reading, the same anchor at its offset within 1 px. A
