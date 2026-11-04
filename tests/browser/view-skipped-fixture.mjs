@@ -6,14 +6,15 @@ import { seedBigRoom } from '../../tools/uat/big-room.mjs';
 
 /**
  * A generated room of `count` items, seeded into the running store: into `into` when given, else a new conversation.
- * @param {any} app @param {string} title @param {number} [count] @param {any} [into]
+ * opts: the rest of what bigRoomItems takes, such as `diagrams`.
+ * @param {any} app @param {string} title @param {number} [count] @param {any} [into] @param {{ diagrams?: number }} [opts]
  */
-export function bigRoom(app, title, count = 1000, into = null) {
+export function bigRoom(app, title, count = 1000, into = null, opts = {}) {
   const { rt, store } = app;
   const project = /** @type {any} */ (Object.values(store.state.projects)[0]);
   const t = into ?? rt.createThread({ projectId: project.id, title, personaIds: [rt.personaByHandle('researcher').id] });
   const [se] = rt.sessionsIn(t.id);
-  seedBigRoom(store, t.id, { count }, { researcher: { sessionId: se.id, personaId: se.personaId } });
+  seedBigRoom(store, t.id, { ...opts, count }, { researcher: { sessionId: se.id, personaId: se.personaId } });
   return t;
 }
 
@@ -45,4 +46,35 @@ export async function still(page, timeout = 10_000) {
       { message: 'the page to hold still for two frames', timeout },
     )
     .toBe(true);
+}
+
+/**
+ * Waits until no item of the transcript, nor the transcript, changes size for `quiet` frames in a row: a skipped item
+ * drawing for the first time, or a diagram's frame sizing, comes in a later frame than the scroll that brought it near.
+ * Its observer's first report, of every item's size, counts as a change.
+ * @param {any} page @param {{ quiet?: number, timeout?: number }} [o]
+ */
+export async function quiet(page, { quiet = 5, timeout = 10_000 } = {}) {
+  const held = await page.evaluate(
+    ({ quiet, timeout }) =>
+      new Promise((done) => {
+        const el = /** @type {HTMLElement} */ (document.querySelector('#main.transcript'));
+        let calm = 0;
+        const sizes = new ResizeObserver(() => {
+          calm = 0;
+        });
+        sizes.observe(el);
+        for (const n of el.children) sizes.observe(n);
+        const end = performance.now() + timeout;
+        const tick = () => {
+          if (++calm > quiet || performance.now() > end) {
+            sizes.disconnect();
+            done(calm > quiet);
+          } else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+    { quiet, timeout },
+  );
+  expect(held, `no item changed size for ${quiet} frames`).toBe(true);
 }
