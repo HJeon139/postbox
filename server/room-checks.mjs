@@ -38,7 +38,7 @@ import { NEEDS_CHECKS } from './room-checks-needs.mjs';
 import { TELEMETRY_CHECKS } from './room-checks-telemetry.mjs';
 import { THREAD_CHECKS } from './room-checks-threads.mjs';
 import { claudeSessionOf, toolCalls } from './room-checks-tools.mjs';
-import { WORK_CHECKS } from './room-checks-work.mjs';
+import { keptStreams, WORK_CHECKS } from './room-checks-work.mjs';
 
 export { agyTokens, kiroCredits } from './room-checks-backends.mjs';
 
@@ -381,7 +381,7 @@ export const CHECKS = [
     issue: 65,
     run: (f) => {
       const cards = itemsOf(f).filter((it) => it.kind === 'denial').length;
-      const refused = f.streams.flatMap(({ handle, events }) => {
+      const refused = keptStreams(f).flatMap(({ handle, events }) => {
         const listed = events.filter((e) => e.type === 'result').flatMap((e) => e.permission_denials ?? []);
         const declined = new Set(
           events
@@ -1056,7 +1056,7 @@ export const CHECKS = [
     run: (f) =>
       (f.probes?.panels ?? []).flatMap((p) => {
         if (p.set?.shell !== false) return [];
-        const after = (f.streams ?? []).filter((s) => s.handle === p.handle && (s.started ?? 0) > p.at);
+        const after = keptStreams(f).filter((s) => s.handle === p.handle && (s.started ?? 0) > p.at);
         const refused = after.flatMap((s) => toolCalls(s.events).filter((c) => c.name === 'Bash' && (c.denied || c.result?.is_error)));
         if (!refused.length) return [];
         const shown = itemsOf(f).some((it) => it.kind === 'denial' && it.handle === p.handle && it.at > p.at);

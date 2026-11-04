@@ -1,9 +1,23 @@
 // The Work ledger’s checks (#132): what the turns’ streams changed and ran, against what Work shows. Part of
 // server/room-checks.mjs’s CHECKS, outside it at its size ceiling.
 
-import { toolCalls } from './room-checks-tools.mjs';
+import { claudeSessionOf, toolCalls } from './room-checks-tools.mjs';
 
 const ledgerEntries = (f) => Object.values(f.state?.work ?? {}).flat();
+/**
+ * The turns’ streams of sessions the state still has (#729). Deleting a conversation removes its sessions, and with
+ * them its Work ledger, its cards and its steps, but not its turns’ stream files, which only the Claude Code session
+ * id in their init ties to a session. So a check that compares the streams with the state reads them through this.
+ * A stream with no session id is kept: it can’t be shown erased. A session keeps only its current id, so a live
+ * session whose id Postbox reset (Claude Code had lost it) loses its turns from before the reset here.
+ */
+export function keptStreams(f) {
+  const held = new Set(Object.values(f.state?.sessions ?? {}).map((se) => se?.backendState?.claudeSessionId));
+  return (f.streams ?? []).filter((s) => {
+    const id = claudeSessionOf(s.events ?? []);
+    return !id || held.has(id);
+  });
+}
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 
 export const WORK_CHECKS = [
@@ -15,7 +29,7 @@ export const WORK_CHECKS = [
       // A file changed on a host is in Work as an edit step there, with no diff (server/ledger-remote.mjs, #120).
       const ledger = new Set(ledgerEntries(f).flatMap((e) => (e.kind === 'file' || e.kind === 'edit' ? [e.path] : [])));
       const edited = new Set(
-        (f.streams ?? []).flatMap((s) =>
+        keptStreams(f).flatMap((s) =>
           toolCalls(s.events)
             .filter((c) => EDIT_TOOLS.has(c.name) && !c.denied && c.result && !c.result.is_error)
             .map((c) => c.input.file_path ?? c.input.notebook_path),
@@ -42,7 +56,7 @@ export const WORK_CHECKS = [
           .filter((e) => e.kind === 'command')
           .map((e) => e.toolUseId),
       );
-      const ran = (f.streams ?? []).flatMap((s) =>
+      const ran = keptStreams(f).flatMap((s) =>
         toolCalls(s.events)
           .filter((c) => c.name === 'Bash')
           .map((c) => ({ ...c, handle: s.handle })),
