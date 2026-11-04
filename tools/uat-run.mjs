@@ -31,7 +31,6 @@ import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { launch, sleep } from './browser.mjs';
-import { openBigRoom } from './uat/big-room.mjs';
 import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { streamResults } from './uat/cost.mjs';
@@ -42,6 +41,7 @@ import { endHosts } from './uat/hosts-end.mjs';
 import { HOST_OPTIONS } from './uat/hosts-options.mjs';
 import { createHostRun, followStatuses, startHosts } from './uat/hosts-run.mjs';
 import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
+import { openRunRoom } from './uat/key-frame-run.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
 import { openIssues } from './uat/open-issues.mjs';
 import { portFree, startPostbox } from './uat/postbox.mjs';
@@ -89,8 +89,7 @@ const { values: opt } = parseArgs({
     'force-agent-model': { type: 'boolean', default: false },
     recheck: { type: 'string' },
     // After a run, verify the findings that have no verdict (--verify no skips it), and file the confirmed ones that no
-    // open issue covers (--file no verifies without filing).
-    // (A recheck verifies only when it files, unless --verify yes: --recheck --file no stays free.)
+    // open issue covers (--file no verifies without filing). A recheck verifies only when it files, unless --verify yes: --recheck --file no stays free.
     verify: { type: 'string' },
     file: { type: 'string', default: 'yes' },
     // The run for a version release: only it may use the release-only backends (tools/uat/scenario.mjs, RELEASE_ONLY).
@@ -101,6 +100,7 @@ const { values: opt } = parseArgs({
     ...HOST_OPTIONS,
     // Every run records itself and saves one telemetry report (designs/telemetry-persona.md, U4); no opts out.
     telemetry: { type: 'string', default: 'yes' },
+    'measure-key-frame': { type: 'string' }, // with `- seed: big-room`, measure the room and write its report here (#508, tools/uat/key-frame-run.mjs)
   },
 });
 
@@ -202,7 +202,8 @@ async function main() {
     if (!mainThread) throw new Error(`Starting the conversation didn’t open it (at ${hash}).`);
     log(`Conversation ${mainThread} started with @${scenario.agents.join(', @')}.`);
     // `- seed: big-room` (#508): the conversation fills with about 1,000 generated items before the tester arrives.
-    if (scenario.seed === 'big-room') scenario.summary += `\n\n${await openBigRoom({ postbox, data: paths.data, threadId: mainThread, scenario, page, log })}`;
+    if (scenario.seed === 'big-room')
+      scenario.summary += `\n\n${await openRunRoom({ postbox, data: paths.data, threadId: mainThread, scenario, page, log, opt, facts })}`;
     const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log, input: d.input });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });

@@ -45,8 +45,8 @@ function record(threshold) {
   }).observe(/** @type {any} */ ({ type: 'event', durationThreshold: threshold }));
 }
 
-/** Empties the draft, as the setup before a run, not as part of what it measures. */
-function clearDraft() {
+/** Empties the draft, as the setup before a run, not as part of what it measures, and after it. */
+export function clearDraft() {
   const ta = /** @type {HTMLTextAreaElement} */ (document.getElementById('composer-input'));
   ta.value = '';
   ta.dispatchEvent(new Event('input', { bubbles: true }));

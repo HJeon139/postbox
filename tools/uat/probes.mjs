@@ -10,6 +10,7 @@
 // - inputs: every input the run made that can move the person’s view, by step (#531): the tester’s scroll, and the
 //   runner’s clicks, which scroll what they click into view; and, as the runner’s (cause: 'runner'), a shot that didn’t
 //   leave the view as it was (tools/uat/driver-shots.mjs, keepView). A run saved before these were recorded has none.
+// - keyFrame: the key-to-frame measurements --measure-key-frame made of the run’s room (#508, tools/uat/key-frame-run.mjs)
 
 export const newProbes = () => ({
   fullScreen: [],
@@ -23,6 +24,7 @@ export const newProbes = () => ({
   jumps: [],
   conversation: [],
   inputs: [],
+  keyFrame: [],
 });
 
 /**

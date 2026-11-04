@@ -1,10 +1,16 @@
 // The measurement triggers (tools/uat/triggers-measure.mjs): each fires on a run’s facts that show what it names, and
-// stays silent on facts that don’t. The facts are built inline, in the shapes a run records: the tester’s deletes and
-// Undos (facts.probes.conversation, tools/uat/conversation-step.mjs) and the turns’ streams (tools/uat/run-files.mjs).
+// stays silent on facts that don’t. erased-conversation-commands (#729): the facts are built inline, in the shapes a run
+// records: the tester’s deletes and Undos (facts.probes.conversation, tools/uat/conversation-step.mjs) and the turns’
+// streams (tools/uat/run-files.mjs). key-frame-measured (#508): it fires when a run with --measure-key-frame measured
+// its own seeded room and wrote the report; it doesn’t judge the numbers, the report does. Its rooms are the big-room
+// seed, as the run writes it.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { Store } from '../server/store.mjs';
+import { seedBigRoom } from '../tools/uat/big-room.mjs';
+import { newProbes } from '../tools/uat/probes.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { TRIGGERS, triggersFired, unknownTriggers } from '../tools/uat/triggers.mjs';
 
@@ -72,4 +78,37 @@ test('assets-delete’s phase 1 waits on erased-conversation-commands, a trigger
   const scenario = parseScenario(readFileSync(new URL('uat/e2e/scenarios/assets-delete.md', import.meta.url), 'utf8'));
   assert.ok(scenario.phases[0].triggers.includes(ID), JSON.stringify(scenario.phases[0]));
   assert.deepEqual(unknownTriggers(scenario), []);
+});
+
+/** A run’s facts after `- seed: big-room`, with what its runner recorded of a measurement, if any. */
+function seededRun(keyFrame = []) {
+  const store = new Store(null);
+  store.emit('thread', { id: 'th_big', kind: 'room', title: 'The release, in a long room', members: [] });
+  seedBigRoom(store, 'th_big');
+  return { state: store.state, threads: ['th_big'], probes: { ...newProbes(), keyFrame } };
+}
+
+const measured = { threadId: 'th_big', items: 1000, keys: 40, report: 'key-frame.md', at: 1 };
+
+test('key-frame-measured fires when the run measured its own room and wrote the report', () => {
+  const hits = TRIGGERS['key-frame-measured'].run(seededRun([measured]));
+  assert.equal(hits.length, 1);
+  assert.match(hits[0].evidence, /40 keys in th_big’s 1,000 items/);
+  assert.match(hits[0].evidence, /key-frame\.md/);
+});
+
+test('key-frame-measured stays silent on a seeded run that didn’t measure, and says the run could have shown it', () => {
+  const f = seededRun();
+  assert.deepEqual(TRIGGERS['key-frame-measured'].run(f), []);
+  assert.deepEqual(triggersFired(f, ['key-frame-measured']), { 'key-frame-measured': false });
+});
+
+test('key-frame-measured stays silent on a measurement of another conversation, one that wrote no report, one that failed, or one of no keys', () => {
+  const other = seededRun([{ ...measured, threadId: 'th_other' }]);
+  const unwritten = seededRun([{ ...measured, report: null }]);
+  const failed = seededRun([{ ...measured, keys: 0, report: null, error: 'Timed out waiting for: the composer' }]);
+  assert.deepEqual(TRIGGERS['key-frame-measured'].run(other), []);
+  assert.deepEqual(TRIGGERS['key-frame-measured'].run(unwritten), []);
+  assert.deepEqual(TRIGGERS['key-frame-measured'].run(failed), []);
+  assert.deepEqual(TRIGGERS['key-frame-measured'].run(seededRun([{ ...measured, keys: 0 }])), [], 'a report of no keys measured nothing');
 });
