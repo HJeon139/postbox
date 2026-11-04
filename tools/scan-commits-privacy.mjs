@@ -15,7 +15,8 @@
 // Each commit’s message, subject, body and trailers, is checked with the same checker. Its author and committer names
 // and emails aren’t: each commit’s author is a real person’s GitHub identity, by design.
 //
-// Exit codes: 0 when nothing private was added, 1 when something was, and 2 when the range or a diff can’t be read.
+// Exit codes: 0 when nothing private was added, 1 when something was, and 2 when the range or a diff can’t be read, or
+// git is older than 2.36.
 
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -92,6 +93,27 @@ const SHOW_OPTIONS = [
   ...['-M', '--no-relative', '--src-prefix=a/', '--dst-prefix=b/', '--remerge-diff'],
 ];
 
+// The oldest git whose `git show` has --remerge-diff (git 2.36’s release notes).
+const MIN_GIT = [2, 36, 0];
+
+// The version `git --version` prints, such as “git version 2.39.3 (Apple Git-145)” or “git version 2.45.1.windows.1”:
+// its first three numbers, and nothing a vendor adds after them.
+const GIT_VERSION = /^git version (\d+)\.(\d+)(?:\.(\d+))?/;
+
+/**
+ * Why this git can’t run the scan, or null when it can.
+ * @param {string} output what `git --version` printed
+ * @returns {string | null}
+ */
+export function gitVersionProblem(output) {
+  const match = GIT_VERSION.exec(output.trim());
+  if (!match) return `can’t read git’s version from “${output.trim()}”. The scan needs git ${MIN_GIT.join('.')} or later.`;
+  const version = [match[1], match[2], match[3] ?? '0'].map(Number);
+  const older = version.findIndex((part, i) => part !== MIN_GIT[i]);
+  if (older === -1 || version[older] > MIN_GIT[older]) return null;
+  return `git ${version.join('.')} is too old: the scan needs git ${MIN_GIT.join('.')} or later, for --remerge-diff.`;
+}
+
 /**
  * The commits of a range, their diffs and their messages, from real git, run at the top of the repository the current
  * folder is in.
@@ -131,6 +153,11 @@ function main(args) {
   }
   let result;
   try {
+    const problem = gitVersionProblem(execFileSync('git', ['--version'], { encoding: 'utf8', stdio: 'pipe' }));
+    if (problem) {
+      console.error(`scan-commits-privacy: ${problem}`);
+      return 2;
+    }
     result = scanCommits(range, realGit());
   } catch (error) {
     console.error(`scan-commits-privacy: ${/** @type {Error} */ (error).message}`);
