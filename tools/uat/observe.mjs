@@ -4,12 +4,14 @@
 
 import { join, relative } from 'node:path';
 import { recordDiagrams } from './diagram-probe.mjs';
+import { recordSkipped } from './skip-probe.mjs';
 
 /** What changed on screen, labeled for the tester, and each agent’s state. */
 export async function observe({ d, labels, keys, seen, paths, timeline, dir, facts }) {
   const out = [];
-  // Before any screenshot below scrolls to an item, and so loads its frames (#701).
+  // Before any screenshot below scrolls to an item, and so loads its frames (#701) and draws it (#712a).
   await recordDiagrams(d.kit.ev, facts, timeline.length);
+  await recordSkipped(d.kit.ev, facts, timeline.length);
   const items = await d.items();
   for (const it of items) {
     if (!labels.has(it.key)) {

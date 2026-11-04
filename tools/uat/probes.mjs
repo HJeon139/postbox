@@ -7,6 +7,8 @@
 // - jumps: where going to what an agent needs landed (#285, tools/uat/driver-needs.mjs)
 // - diagrams, once the conversation has one: which diagram frames had loaded, and which were in view (#701,
 //   tools/uat/diagram-probe.mjs); a run with none has no such probe, so its trigger can’t tell
+// - skipped, once the page shows a conversation: how many of its items the browser skipped (#712a,
+//   tools/uat/skip-probe.mjs); a run from before it has none, and rows-skipped stays silent
 
 export const newProbes = () => ({
   fullScreen: [],

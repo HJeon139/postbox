@@ -7,7 +7,7 @@
 - steps: 30
 - conversation: The release, in a long room
 
-The room is seeded with about 1,000 items, so the page holds only a window of it. Agents keep writing while you read far back. Nothing you’re reading should move unless you scroll, a jump should land on its target, and a block revised far above should come back as its one live copy at the bottom.
+The room is seeded with about 1,000 items, so the page holds only a window of it. Agents keep writing while you read far back. Nothing you’re reading should move unless you scroll, a jump should land on its target, and a block revised far above should come back as its one live copy at the bottom. The checks run every step, as in every scenario; once the room passes 1,000 items, `rows-skipped` fires if the browser lays out most of them (#712a).
 
 ## Phase 1: Reading back while agents write (B1, B3)
 
