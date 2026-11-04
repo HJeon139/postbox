@@ -4,10 +4,11 @@
 
 import { conversationStep } from './conversation-step.mjs';
 import { goToNeedsStep } from './driver-needs.mjs';
+import { scrollStep } from './scroll-step.mjs';
 
 export { localRestart } from './conversation-step.mjs';
 
-export const STEPS = Object.freeze({ go_to_needs: goToNeedsStep, conversation: conversationStep });
+export const STEPS = Object.freeze({ go_to_needs: goToNeedsStep, conversation: conversationStep, scroll: scrollStep });
 
 /**
  * What an interrupt does once the agent has worked its seconds: stop and send_now are the driver’s own; a fault, a

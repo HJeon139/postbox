@@ -112,6 +112,7 @@ export const SCHEMA = {
             'pane',
             'fullscreen',
             'fullscreen_draft',
+            'scroll',
             'restore',
             'fault',
             'next_phase',
@@ -150,6 +151,7 @@ export const SCHEMA = {
         agents: { type: 'array', items: { type: 'string' }, description: 'conversation new: the agents in it, by handle.' },
         title: { type: 'string', description: 'conversation new or open: its title.' },
         open: { enum: ['work', 'thread'], description: 'pane: the view to open in the right pane.' },
+        by: { enum: ['up', 'down', 'end', 'start'], description: 'scroll: a page up or down, or to the end or the start.' },
         pane: { enum: ['work', 'thread'], description: 'fullscreen: the view to open full screen.' },
         permissions: { type: 'boolean', description: 'settings: also open its permissions panel.' },
         fault: { enum: ['kill-ssh', 'kill-daemon', 'restart-postbox'], description: 'fault, in a run with hosts: what to break; target is the host.' },
@@ -222,6 +224,7 @@ Then choose one action:
 - pane {open: work|thread, item?}: open Work (its top-bar button) or a thread in the right pane. You get each view’s size.
 - fullscreen {pane: work|thread}: open that view full screen, read it, and close it with Escape.
 - fullscreen_draft {text}: open the thread full screen, type text into its reply box without sending, and leave full screen. You get whether the draft and the scroll survived.
+- scroll {by: up|down|end|start}: scroll the conversation with the keys, as you would: a page up (PageUp) or down (PageDown), to the newest message at the end (End), or to the start (Home). Use it to read back while agents work, and to come back.
 - restore {target}: in Work full screen, restore (or remove) that file, and confirm.
 - app_click {item, target}: click something inside that app by its visible text.
 - attach_screenshot {item, text}: attach a screenshot of that item, and send it with your message.

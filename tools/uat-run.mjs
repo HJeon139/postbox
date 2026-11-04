@@ -45,7 +45,7 @@ import { createHostRun, followStatuses, startHosts } from './uat/hosts-run.mjs';
 import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
 import { portFree, startPostbox } from './uat/postbox.mjs';
-import { newProbes } from './uat/probes.mjs';
+import { newProbes, recordInput } from './uat/probes.mjs';
 import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
@@ -196,7 +196,7 @@ async function main() {
     await page.goto(`${origin}/`);
     const state0 = (await api('/api/state')).state;
     facts.startPersonas = Object.values(state0.personas).filter((p) => !p.retired);
-    const d = driver(page, { beforeStop: () => beforeStop(hr) });
+    const d = driver(page, { beforeStop: () => beforeStop(hr), input: recordInput(facts.probes, () => timeline.length, log) });
     await d.newProject(scenario.project, paths.workspace);
     if (hr) await startHosts(hr, { postbox, api, kit: d.kit, dir, project: scenario.project });
     const hash = await d.newConversation(scenario.project, scenario.conversation, scenario.agents);

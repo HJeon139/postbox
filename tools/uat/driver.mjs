@@ -23,14 +23,18 @@ const JOBS_BOX = (b) =>
 
 /**
  * @param {any} page  from tools/browser.mjs launch()
- * @param {{ beforeStop?: () => Promise<void> }} [hooks]  beforeStop: runs just before every press of Stop (a host-mode
- *   run looks at what runs under each turn on its hosts then, tools/uat/hosts-watch.mjs)
+ * @param {{ beforeStop?: () => Promise<void>, input?: (e: any) => void }} [hooks]  beforeStop: runs just before every
+ *   press of Stop (a host-mode run looks at what runs under each turn on its hosts then, tools/uat/hosts-watch.mjs);
+ *   input: hears each input the driver makes that can move the person’s view, before it does (facts.probes.inputs,
+ *   tools/uat/probes.mjs): a runner click, which scrolls what it clicks into view, and a shot that moved the view
  */
 export function driver(page, hooks = {}) {
   const ev = (expr) => page.evaluate(expr);
+  const runnerClick = () => hooks.input?.({ kind: 'runner-click' });
 
   /** Clicks the centre of the first element that matches, after scrolling it into view. */
   async function clickAt(findExpr, what) {
+    runnerClick();
     const r = await ev(`(() => {
       const el = ${findExpr};
       if (!el) return null;
@@ -55,6 +59,7 @@ export function driver(page, hooks = {}) {
   /** An agent app’s frame and where it sits on the page, so its content can be read and clicked. */
   async function appContext(key) {
     // Apps far off screen are unloaded: bring it into view, and give its frame a moment to load.
+    runnerClick();
     await ev(`${ITEM(key)}?.scrollIntoView({ block: 'center' })`);
     for (let i = 0; i < 20 && !(await ev(`!!${ITEM(key)}?.querySelector('.appframe iframe')`)); i++) await sleep(200);
     await sleep(800);
@@ -223,6 +228,7 @@ export function driver(page, hooks = {}) {
     async appClick(key, text) {
       const ctx = await appContext(key);
       if (!ctx) throw new Error('Couldn’t reach inside that app.');
+      runnerClick();
       await ev(`${ITEM(key)}.scrollIntoView({ block: 'center' })`);
       await sleep(200);
       const fresh = await appContext(key);
@@ -284,7 +290,7 @@ export function driver(page, hooks = {}) {
     /** The working row: which agents it shows, and their glimpse. */
     working: () => ev(`[...document.querySelectorAll('.working .work-row')].map((r) => r.innerText.replace(/\\s+/g, ' ').trim())`),
 
-    ...shots({ ev, page, sleep }),
+    ...shots({ ev, page, sleep, input: hooks.input }),
 
     /** Presses an app’s Expand (full screen) button and reports whether anything visibly changed. */
     /**
