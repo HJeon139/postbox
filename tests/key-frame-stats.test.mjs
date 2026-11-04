@@ -23,6 +23,11 @@ test('a rank that falls between two keys rounds up: the p95 of ten keys is the s
   assert.equal(percentile(ten, 50), 50);
 });
 
+test('the p95 of eleven keys is the slowest: its rank, 10.45, rounds up to 11, not to the nearest 10', () => {
+  const eleven = Array.from({ length: 11 }, (_, i) => (i + 1) * 10);
+  assert.equal(percentile(eleven, 95), 110);
+});
+
 test('a percentile of no values is null, not zero', () => {
   assert.equal(percentile([], 95), null);
 });
@@ -35,6 +40,12 @@ test('a large room’s p95 exactly 10% over 1×’s is within budget, and just p
   assert.deepEqual(withinBudget(40, 44), { ratio: 1.1, pass: true });
   assert.equal(withinBudget(40, 44.5).pass, false);
   assert.equal(withinBudget(40, 30).pass, true);
+});
+
+test('the budget is 10%, not more: 10.05% over 1×’s fails and 9.95% passes', () => {
+  assert.equal(withinBudget(100, 110.05).pass, false);
+  assert.equal(withinBudget(100, 109.95).pass, true);
+  assert.equal(withinBudget(8, 8.8).pass, true, 'exactly 10% over, where the sum is exact');
 });
 
 test('each key takes the longest Event Timing entry that started between it and the next key', () => {
