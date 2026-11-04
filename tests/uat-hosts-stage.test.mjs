@@ -179,7 +179,7 @@ test('#464 staging that fails still removes its worktree, and its error names th
   const o = { root: '/repo', tag: 'v1.16.1', version: '1.16.1', data: hr.record.laptopData, label: 'host1', host };
   await assert.rejects(
     stageOlder(o, { run: fakeGit(calls), load }),
-    (e) => /Staging Postbox 1\.16\.1 on host1 failed: .*installed on host1\./.test(e.message) && !e.message.includes(DEST),
+    (e) => /Staging Postbox 1\.16\.1 on host1 failed: .*installed on host1\./.test(e.message) && !/example\.com/.test(e.message),
   );
   assert.deepEqual(calls.at(-1), ['worktree', 'remove', '--force', calls[1][3]]);
   assert.equal(existsSync(calls[1][3]), false);
@@ -199,7 +199,7 @@ test('#464 a staging error that quotes only the host part of user@host still nam
   });
   const host = { id: 'ho_1', name: `user@${DEST}`, settings: {} };
   const o = { root: '/repo', tag: 'v1.16.1', version: '1.16.1', data: hr.record.laptopData, label: 'host1', host };
-  await assert.rejects(stageOlder(o, { run: fakeGit([]), load }), (e) => e.message.includes('connect to host host1') && !e.message.includes(DEST));
+  await assert.rejects(stageOlder(o, { run: fakeGit([]), load }), (e) => e.message.includes('connect to host host1') && !/example\.com/.test(e.message));
   done();
 });
 

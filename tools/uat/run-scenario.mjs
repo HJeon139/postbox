@@ -22,7 +22,6 @@ export function runScenario(opt, root) {
   const parsed = parseScenario(readFileSync(scenarioFile, 'utf8'));
   const phases = phasesOf(opt, parsed.phases.length);
   const { hosts, placement, scenario } = hostMode(opt, name, selectPhases(parsed, phases), tagRepo(root));
-
   const other = compatBackends(scenario);
   if (other.length && !opt.compat && !opt.release)
     throw new Error(
