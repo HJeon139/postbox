@@ -86,6 +86,8 @@ test('observe records the diagram and document-query probes before any screensho
           calls.push('queries');
           return { origin: 1, sessionEvents: 0, scanCount: 0, scans: [], byId: 0, items: 1 };
         }
+        // The skipped-items probe also runs (tests/uat-skip-probe.test.mjs); this stand-in shows it no conversation.
+        if (!expr.includes('/sandbox/mermaid')) return null;
         calls.push('probe');
         return { sinceLoad: 9000, requested: 0, full: false, frames: [{ key: 'it_a', loaded: false, inView: false }] };
       },
