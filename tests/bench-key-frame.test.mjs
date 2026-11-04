@@ -2,8 +2,11 @@
 // leaves behind when a size’s Postbox doesn’t start.
 
 import assert from 'node:assert/strict';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
-import { commandLine, options } from '../tools/bench-key-frame.mjs';
+import { commandLine, measureSize, options } from '../tools/bench-key-frame.mjs';
 
 // A home folder under a prefix, as on a Cloud Desktop: replacing the home with ~ turned /local/home/user/… into /local~/….
 const ROOT = '/local/home/user/postbox';
@@ -14,4 +17,21 @@ test('the report’s command shows --out relative to the repo, or as just its na
   assert.match(inside, / --out designs\/508\/key-frame\.md$/);
   assert.match(outside, / --out report\.md$/);
   for (const shown of [inside, outside]) assert.doesNotMatch(shown, /\/local|~/, shown);
+});
+
+test('a size whose Postbox doesn’t start leaves no data folder behind', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'pb-bench-test-'));
+  try {
+    const start = async () => {
+      throw new Error('Postbox didn’t start: refused');
+    };
+    const o = options(['--sizes', '200']);
+    await assert.rejects(
+      measureSize(null, 200, o, () => {}, { start, port: async () => 1, tmp }),
+      /Postbox didn’t start: refused/,
+    );
+    assert.deepEqual(readdirSync(tmp), []);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });

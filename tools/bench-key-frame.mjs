@@ -90,12 +90,16 @@ async function startRoom(data) {
   await store.close();
 }
 
-/** One size: a fresh Postbox with the room seeded at that count, measured runs times. */
-async function measureSize(page, items, o, log) {
-  const data = await mkdtemp(join(tmpdir(), `pb-key-frame-${items}-`));
-  const postbox = await startPostbox({ root: ROOT, port: await freePort(), data, env: { POSTBOX_BACKENDS: 'mock' }, log: () => {} });
+/**
+ * One size: a fresh Postbox with the room seeded at that count, measured runs times. Its data folder is removed
+ * however it ends, a Postbox that didn’t start included. start, port and tmp are for tests.
+ */
+export async function measureSize(page, items, o, log, { start = startPostbox, port = freePort, tmp = tmpdir() } = {}) {
+  const data = await mkdtemp(join(tmp, `pb-key-frame-${items}-`));
   const pooled = { eventTiming: [], nextFrame: [], below: 0 };
+  let postbox = null;
   try {
+    postbox = await start({ root: ROOT, port: await port(), data, env: { POSTBOX_BACKENDS: 'mock' }, log: () => {} });
     await postbox.restart({
       whileDown: async () => {
         await startRoom(data);
@@ -111,7 +115,7 @@ async function measureSize(page, items, o, log) {
       log(`${items.toLocaleString('en-US')} items, run ${run} of ${o.runs}: ${r.eventTiming.length} keys.`);
     }
   } finally {
-    await postbox.kill();
+    await postbox?.kill();
     await rm(data, { recursive: true, force: true });
   }
   return { items, eventTiming: summarize(pooled.eventTiming), nextFrame: summarize(pooled.nextFrame), below: pooled.below };
