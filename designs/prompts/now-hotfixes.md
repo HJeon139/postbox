@@ -1,6 +1,6 @@
 # Prompt: implement the five “Now” hotfixes
 
-A wave 1 session; [README.md](README.md) has the rules every wave session shares. Give this prompt to a new Claude Code session in `/Users/hohyunjeon/postbox`, in its own worktree. It implements the hotfix milestone of the plan ([#64](https://github.com/HJeon139/postbox/issues/64)) as one pull request, then hands it to the reviewing session, which runs the end-to-end UAT.
+A wave 1 session; [README.md](README.md) has the rules every wave session shares. Give this prompt to a new Claude Code session in `/Users/me/postbox`, in its own worktree. It implements the hotfix milestone of the plan ([#64](https://github.com/HJeon139/postbox/issues/64)) as one pull request, then hands it to the reviewing session, which runs the end-to-end UAT.
 
 ---
 

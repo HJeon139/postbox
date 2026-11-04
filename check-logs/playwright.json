@@ -1,14 +1,14 @@
 {
   "config": {
     "argv": [
-      "/Users/hohyunjeon/.local/share/mise/installs/node/24.22.1/bin/node",
-      "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/node_modules/.bin/playwright",
+      "/Users/me/.local/share/mise/installs/node/24.22.1/bin/node",
+      "/Users/me/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/node_modules/.bin/playwright",
       "test",
       "--shard=3/3",
       "--list"
     ],
-    "configFile": "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/playwright.config.mjs",
-    "rootDir": "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/tests/browser",
+    "configFile": "/Users/me/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/playwright.config.mjs",
+    "rootDir": "/Users/me/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/tests/browser",
     "failOnFlakyTests": true,
     "forbidOnly": true,
     "fullyParallel": false,
@@ -22,13 +22,13 @@
     "preserveOutput": "always",
     "projects": [
       {
-        "outputDir": "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/test-results",
+        "outputDir": "/Users/me/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/test-results",
         "repeatEach": 1,
         "retries": 0,
         "metadata": {},
         "id": "",
         "name": "",
-        "testDir": "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/tests/browser",
+        "testDir": "/Users/me/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/tests/browser",
         "testIgnore": [],
         "testMatch": [
           "**/*.spec.mjs"
@@ -40,13 +40,13 @@
       {
         "grep": {},
         "grepInvert": null,
-        "outputDir": "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/test-results",
+        "outputDir": "/Users/me/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/test-results",
         "repeatEach": 1,
         "retries": 0,
         "metadata": {},
         "name": "",
-        "testDir": "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/tests/browser",
-        "snapshotDir": "/Users/hohyunjeon/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/tests/browser",
+        "testDir": "/Users/me/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/tests/browser",
+        "snapshotDir": "/Users/me/postbox/.claude/worktrees/agent-ad8d622104b7af7c7/tests/browser",
         "testIgnore": [],
         "testMatch": "**/*.spec.mjs",
         "timeout": 30000,

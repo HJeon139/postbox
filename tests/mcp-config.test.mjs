@@ -11,7 +11,7 @@ import { mcpServerList, yourMcpServers } from '../server/adapters/mcp-config.mjs
 import { isPublishingTool, WRITE_TOOLS } from '../server/adapters/setup.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
-const HOME = '/home/pat';
+const HOME = '/home/you';
 const WORK = '/work/site';
 /** A file reader over an in-memory folder tree, so the tests never read the real home folder. */
 const files = (tree) => async (path) => {
