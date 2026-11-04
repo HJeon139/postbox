@@ -8,7 +8,7 @@ import { js, sleep } from '../browser.mjs';
 import { targetScript } from './app-target.mjs';
 import { review } from './driver-review.mjs';
 import { pressKey } from './keys.mjs';
-import { byText, ITEM } from './selectors.mjs';
+import { byText, ITEM, JUMP } from './selectors.mjs';
 
 // The answers to Stop’s question about background jobs, in the decision’s words (#126), with “Stop them too” for more
 // than one job. Written against fix/p0-stop’s ask row before it merged; if its buttons change, change them here.
@@ -30,10 +30,10 @@ export function driver(page, hooks = {}) {
 
   /** Clicks the centre of the first element that matches, after scrolling it into view. */
   async function clickAt(findExpr, what) {
-    const r = await ev(`(() => {
+    const r = await ev(`(async () => {
       const el = ${findExpr};
       if (!el) return null;
-      el.scrollIntoView({ block: 'center' });
+      ${JUMP('el', 'center')};
       const b = el.getBoundingClientRect();
       return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
     })()`);
@@ -54,7 +54,7 @@ export function driver(page, hooks = {}) {
   /** An agent app’s frame and where it sits on the page, so its content can be read and clicked. */
   async function appContext(key) {
     // Apps far off screen are unloaded: bring it into view, and give its frame a moment to load.
-    await ev(`${ITEM(key)}?.scrollIntoView({ block: 'center' })`);
+    await ev(`(async () => { const n = ${ITEM(key)}; if (n) ${JUMP('n', 'center')}; })()`);
     for (let i = 0; i < 20 && !(await ev(`!!${ITEM(key)}?.querySelector('.appframe iframe')`)); i++) await sleep(200);
     await sleep(800);
     // Playwright reaches into the frame wherever Chromium runs it, in the page’s process or a sandboxed one of its own.
@@ -222,7 +222,7 @@ export function driver(page, hooks = {}) {
     async appClick(key, text) {
       const ctx = await appContext(key);
       if (!ctx) throw new Error('Couldn’t reach inside that app.');
-      await ev(`${ITEM(key)}.scrollIntoView({ block: 'center' })`);
+      await ev(`(async () => ${JUMP(ITEM(key), 'center')})()`);
       await sleep(200);
       const fresh = await appContext(key);
       const r = await inApp(fresh, targetScript(text));
@@ -289,7 +289,7 @@ export function driver(page, hooks = {}) {
      */
     async shotItem(key, file) {
       const ok = await ev(
-        `(() => { const n = ${ITEM(key)}; if (!n) return false; n.scrollIntoView({ block: 'start' }); scrollBy(0, -((document.querySelector('header.topbar')?.offsetHeight ?? 0) + 8)); return true; })()`,
+        `(async () => { const n = ${ITEM(key)}; if (!n) return false; ${JUMP('n', 'start')}; scrollBy(0, -((document.querySelector('header.topbar')?.offsetHeight ?? 0) + 8)); return true; })()`,
       );
       if (!ok) return null;
       // Apps far off screen are unloaded; give them a moment to load again and draw. (The clip is in page
