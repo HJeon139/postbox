@@ -2,8 +2,13 @@
 // run’s page and leaves the tester an empty composer, whether or not the measurement finished.
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { test } from 'node:test';
-import { measureRunRoom } from '../tools/uat/key-frame-run.mjs';
+import { keyFrameOut, measureRunRoom } from '../tools/uat/key-frame-run.mjs';
+import { parseScenario } from '../tools/uat/scenario.mjs';
+
+const scenario = (name) => parseScenario(readFileSync(new URL(`uat/e2e/scenarios/${name}.md`, import.meta.url), 'utf8'));
 
 /**
  * A page whose composer is on screen and that fails on its third key, as one does when the browser goes away
@@ -43,4 +48,18 @@ test('a measurement that fails partway still empties the composer of the keys it
   assert.ok(typedAt >= 0, 'the measurement started recording');
   const clearedAfter = page.ran.slice(typedAt + 1).some((e) => e.includes("ta.value = ''"));
   assert.ok(clearedAfter, 'the draft was emptied after the keys were typed');
+});
+
+test('the big-room scenario turns the measurement on, and its first phase waits for it', () => {
+  const bigroom = scenario('bigroom');
+  assert.equal(bigroom.measureKeyFrame, true);
+  assert.ok(bigroom.phases[0].triggers.includes('key-frame-measured'), bigroom.phases[0].triggers.join(', '));
+  assert.equal(scenario('delivery').measureKeyFrame, false, 'another scenario in the seeded room doesn’t measure');
+});
+
+test('the report goes where --measure-key-frame says, else to the run’s folder when the scenario asks, else nowhere', () => {
+  const dir = join('/runs', '2026-11-04-bigroom');
+  assert.equal(keyFrameOut({ 'measure-key-frame': 'kf.md' }, { measureKeyFrame: true }, dir), 'kf.md');
+  assert.equal(keyFrameOut({}, { measureKeyFrame: true }, dir), join(dir, 'key-frame-report.md'));
+  assert.equal(keyFrameOut({}, { measureKeyFrame: false }, dir), null);
 });

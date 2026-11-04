@@ -5,7 +5,7 @@
 // the bench’s, at 1×, 4× and 10×. tools/uat-run.mjs declares the option.
 
 import { writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clearDraft, commitOf, EVENT_THRESHOLD, machineOf, measureKeys } from '../key-frame-measure.mjs';
 import { formatReport, shownPath } from '../key-frame-report.mjs';
@@ -17,13 +17,23 @@ const INPUTS = { keys: 40, warmup: 10, runs: 1, intervalMs: 50 };
 const ITEMS = 1000;
 
 /**
- * `- seed: big-room`: seeds and opens the run’s room (tools/uat/big-room.mjs), and with --measure-key-frame measures
- * it there. Returns the room’s note for the tester’s summary.
- * @param {Parameters<typeof openBigRoom>[0] & { opt: Record<string, any>, facts: { probes: { keyFrame: any[] } } }} o
+ * Where the run writes its key-to-frame report: the path --measure-key-frame names, else the run’s folder when the
+ * scenario says `- measure-key-frame: on`, else nowhere, and the run doesn’t measure.
+ * @param {Record<string, any>} opt  @param {{ measureKeyFrame?: boolean }} scenario  @param {string} dir
  */
-export async function openRunRoom({ opt, facts, ...room }) {
+export function keyFrameOut(opt, scenario, dir) {
+  if (opt['measure-key-frame']) return opt['measure-key-frame'];
+  if (scenario.measureKeyFrame) return join(dir, 'key-frame-report.md');
+  return null;
+}
+
+/**
+ * `- seed: big-room`: seeds and opens the run’s room (tools/uat/big-room.mjs), and with a report to write (keyFrameOut())
+ * measures it there. Returns the room’s note for the tester’s summary.
+ * @param {Parameters<typeof openBigRoom>[0] & { out: string|null, facts: { probes: { keyFrame: any[] } } }} o
+ */
+export async function openRunRoom({ out, facts, ...room }) {
   const note = await openBigRoom({ ...room, count: ITEMS });
-  const out = opt['measure-key-frame'];
   if (out) {
     const root = fileURLToPath(new URL('../..', import.meta.url));
     await measureRunRoom({ page: room.page, root, threadId: room.threadId, items: ITEMS, out, probes: facts.probes, log: room.log });
