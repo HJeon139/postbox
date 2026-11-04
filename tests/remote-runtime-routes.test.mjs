@@ -74,7 +74,8 @@ test('#120: the page adds a host, sets a project’s folder on it, installs, ret
 
   fake.statuses.set(id, { state: 'connected', failure: null, welcome: null, lastHeard: 5 });
   fake.emit('status', id, fake.statuses.get(id));
-  assert.deepEqual((await call({ path: `/api/hosts/${id}/status` })).json.status, { state: 'connected', failure: null, welcome: null, lastHeard: 5 });
+  const connected = { state: 'connected', failure: null, welcome: null, lastHeard: 5, keepUpdated: false, update: null };
+  assert.deepEqual((await call({ path: `/api/hosts/${id}/status` })).json.status, connected);
   const state = await call({ path: '/api/state' });
   assert.equal(state.json.state.hosts[id].name, 'host.example.com');
   assert.equal(state.json.state.hostStatus[id].state, 'connected');

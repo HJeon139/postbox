@@ -42,7 +42,8 @@ const PLACED = {
   'remote/hosts-links.mjs': 5, // a link’s idle timer and listener microtasks: connections, no store
   'remote/hosts-requests.mjs': 2, // request timeouts on a host link: no store
   'remote/hosts-status.mjs': 1, // a host’s heard-from timer: connection status, no store
-  'remote/hosts.mjs': 5, // a reconnect’s timer: no store
+  'remote/hosts-update.mjs': 2, // an install’s ssh timeouts, passed to installHost: no store
+  'remote/hosts.mjs': 3, // a reconnect’s timer: no store
   'remote/install.mjs': 5, // a wait and an injected timeout: no store
   'remote/link.mjs': 7, // passes an injected setTimer through to a host link: no store
   'remote/process-receive.mjs': 1, // an ack: no store
