@@ -32,7 +32,7 @@ const SYSTEM_HOMES = new Set(['linuxbrew']);
 // drive’s too, so the drive needs no pattern of its own), or at the start of the text. The slashes before it aren’t
 // part of the match, so a long run of them is no slower. A name doesn’t start with a dot, so a shell script’s
 // “$home/.nvm” is a folder in a home, not a user, and one after a “$” is a shell variable, such as “$HOME/x”.
-const SLASHED_HOME = /(?<![A-Za-z0-9_$-])((?i:Users|home))[/\\]+([a-zA-Z0-9_][a-zA-Z0-9._-]*)/g;
+const SLASHED_HOME = /(?<![A-Za-z0-9_$-])((?:[Uu][Ss][Ee][Rr][Ss]|[Hh][Oo][Mm][Ee]))[/\\]+([a-zA-Z0-9_][a-zA-Z0-9._-]*)/g;
 
 // A web address, up to the first space, quote or bracket.
 const WEB_URL = /https?:\/\/[^\s"'<>()[\]]+/g;
@@ -43,7 +43,7 @@ const WEB_URL = /https?:\/\/[^\s"'<>()[\]]+/g;
 const SLUG = /(?<![A-Za-z0-9_.-])(?:[A-Za-z]-)?-[A-Za-z0-9_.-]+/g;
 
 // A home folder inside a slug, in any case, and the user name after it, up to the next “-”.
-const SLUG_HOME = /-(?i:Users|home)-([A-Za-z0-9_.]+)/g;
+const SLUG_HOME = /-(?:[Uu][Ss][Ee][Rr][Ss]|[Hh][Oo][Mm][Ee])-([A-Za-z0-9_.]+)/g;
 
 // macOS temp folders (slashed or slugged), and Claude Code’s temp folder with its uid. A slugged one starts at a “-”
 // that follows no other “-”, so a run of dashes is tried once.
