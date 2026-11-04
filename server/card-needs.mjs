@@ -32,6 +32,11 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
   if (it.kind === 'permission' && it.sessionId === se.id && it.status === 'open' && rt.permissionWaits.has(it.id))
     return { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}`, ...where };
   if (it.sessionId !== se.id || (!turnIds.includes(it.turnId) && it.id !== keep)) return null;
+  // A failed reply waits for its Retry while you haven't moved past its turn, so a wake's release finds it again.
+  if (it.kind === 'agent' && it.status === 'failed') {
+    const text = it.error ?? `@${se.handle}’s turn failed.`;
+    return { kind: 'failed', itemId: it.id, text, ...where };
+  }
   if (it.kind === 'block' && it.valid && ASKING.has(it.block?.type) && !it.answered)
     return { kind: 'block', itemId: it.id, text: it.block.title ?? clip(it.block.prompt ?? it.block.fallback, 120), ...where };
   if (it.kind === 'denial' && it.status === 'open') return { kind: 'denial', itemId: it.id, text: `A step was refused: ${it.summary}`, ...where };
@@ -142,7 +147,7 @@ export function releaseNeed(rt, caller, itemId, busy = caller?.state, { turnIds 
   if (!se || se.needs?.itemId !== itemId) return;
   const released = rt.store.pending.items(se.needs.threadId ?? se.threadId).find((/** @type {any} */ x) => x.id === itemId);
   const need = nextNeed(rt, se, turnIds === undefined ? { released } : { released, turnIds });
-  rt.updateSession(se.id, { needs: need, state: rt.turns.has(se.id) ? busy : need ? 'needs' : 'idle' });
+  rt.updateSession(se.id, { needs: need, state: rt.turns.has(se.id) ? busy : stateFor(need) });
   noticeNeed(rt, se, need);
 }
 
@@ -163,3 +168,6 @@ function notifyOnce(rt, se, need) {
   rt.patchItem(threadId, card.id, { notifiedAt: Date.now() });
   rt.notify('blocking', se, need.text, `Apps send up to ${APP_SEND_LIMIT} a minute in your voice. Allow these, or don’t.`);
 }
+
+/** The session's state for a need it settles on, with no turn running: a failed turn shows Retry. @param {any} need */
+export const stateFor = (need) => (need?.kind === 'failed' ? 'failed' : need ? 'needs' : 'idle');

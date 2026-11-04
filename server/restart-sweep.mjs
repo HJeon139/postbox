@@ -1,7 +1,7 @@
 // What a restart does with the turns that were running when the server stopped (server/index.mjs).
 
 import { ASKING } from '../shared/catalog.mjs';
-import { nextNeed, RANK } from './card-needs.mjs';
+import { nextNeed, RANK, stateFor } from './card-needs.mjs';
 
 /**
  * Whether the need's card still waits for you after the restart. A failed turn waits for Retry. A permission waits only
@@ -42,9 +42,6 @@ export function settledNeed(rt, se) {
   return { needs, state: stateFor(needs) };
 }
 
-/** The session's state for a need it settles on: a failed turn shows Retry. @param {any} needs */
-export const stateFor = (needs) => (needs?.kind === 'failed' ? 'failed' : needs ? 'needs' : 'idle');
-
 /** The card a need names, read from pending, as nextNeed reads. @param {any} rt @param {any} se @param {any} need */
 function cardOf(rt, se, need) {
   return rt.store.pending.items(need.threadId ?? se.threadId).find((/** @type {any} */ x) => x.id === need.itemId) ?? null;
@@ -52,11 +49,11 @@ function cardOf(rt, se, need) {
 
 /**
  * The agent's current need, if its card still waits, or `next`, whichever comes first by RANK; on a tie the newer
- * card, by its time, as nextNeed chooses within a kind. The restart sweep, a Retry's reset and the turn's end go
- * through it, so a need nextNeed doesn't count (a failed turn's, a kept block from an older turn) isn't dropped while
- * its card waits. @param {any} rt @param {any} se @param {any} next @returns {any}
+ * card, by its time, as nextNeed chooses within a kind. The restart sweep and a Retry's reset go through it
+ * (settledNeed), so a need nextNeed doesn't count, such as a block from an older turn, isn't dropped while its card
+ * waits. @param {any} rt @param {any} se @param {any} next @returns {any}
  */
-export function keptOrNext(rt, se, next) {
+function keptOrNext(rt, se, next) {
   const cur = se.needs && stillWaits(rt, se, se.needs) ? se.needs : null;
   if (!cur || cur.itemId === next?.itemId) return next ?? cur;
   if (!next || RANK[next.kind] > RANK[cur.kind]) return cur;
