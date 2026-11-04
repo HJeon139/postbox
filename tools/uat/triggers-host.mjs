@@ -122,7 +122,8 @@ function expiredNoNeed(f) {
 
 /**
  * #464-b2b: the first turn on a staged host, which found the older Postbox there, waited while Postbox installed its
- * own version, and then finished there: it started before the install ended.
+ * own version, and then finished there. The turn’s own item appears only once it starts on the host, after the
+ * install, so it’s the message that asked for it that came before the install ended.
  * @param {any} f
  */
 function waitedForInstall(f) {
@@ -131,11 +132,23 @@ function waitedForInstall(f) {
     const there = agentTurns(f).filter((t) => recs.get(t.turnId)?.hostId === id);
     const first = there.sort((a, b) => (a.at ?? 0) - (b.at ?? 0))[0];
     if (first?.status !== 'done') return [];
-    if ((first.at ?? 0) >= installedAt) return [];
+    const asked = askedAt(f, first);
+    if (asked === null || asked >= installedAt) return [];
     return [
       { at: first.at, evidence: `${x.label}’s first turn, @${first.handle}’s, waited while Postbox installed ${x.runVersion} there by itself, then finished.` },
     ];
   });
+}
+
+/**
+ * When the person’s message just before a turn’s item, in its thread, was sent; null with none.
+ * @param {any} f @param {{ turnId: string, threadId: string }} t @returns {number | null}
+ */
+function askedAt(f, t) {
+  const items = f.state?.items?.[t.threadId] ?? [];
+  const at = items.findIndex((it) => it?.kind === 'agent' && it.turnId === t.turnId);
+  const asked = items.slice(0, Math.max(at, 0)).findLast((it) => it?.kind === 'user');
+  return Number.isFinite(asked?.at) ? asked.at : null;
 }
 
 /** @type {Record<string, { issue: number, says: string, recorded: (f: any) => boolean, run: (f: any) => { at: number|null, evidence: string }[] }>} */
