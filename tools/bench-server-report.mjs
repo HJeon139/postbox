@@ -65,7 +65,7 @@ function tables(results) {
     '',
     '## Streamed reply',
     '',
-    'Each `item.text` chunk through the shared reducer (shared/state.mjs), for a reply added at the end of the thread, whose item the reducer finds by a scan.',
+    'Each `item.text` chunk through the shared reducer (shared/state.mjs), for a reply added at the end of the thread.',
     '',
     ...table(
       ['Items', 'Size', 'p50', 'p95', 'Max'],

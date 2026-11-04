@@ -237,6 +237,8 @@ test('the report has the command, inputs, commit and machine, and a row a size i
   assert.match(report, /\| 1,000 \| 1× \| 1\.00 MB \| 1\.0 ms \| 2\.0 ms \| 4\.0 ms \| 6\.0 ms \| pass \|/);
   assert.match(report, /\| 4,000 \| 4× \| 4,000,000 \| 40\.0 ms \| 80\.0 ms \| 120\.0 ms \|/);
   assert.match(report, /\| 1,000 \| 1× \| 4\.0 µs \| 8\.0 µs \| 12\.0 µs \|/);
+  assert.match(report, /Each `item\.text` chunk through the shared reducer \(shared\/state\.mjs\), for a reply added at the end of the thread\.\n/);
+  assert.doesNotMatch(report, /by a scan/, 'the report doesn’t say how the reducer finds the item');
 });
 
 test('the report fails the stall budget when a size’s worst stall reaches 50 ms', () => {
