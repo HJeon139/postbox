@@ -202,7 +202,7 @@ export function archiveForks(rt) {
     if (t.queue?.some((q) => q.sessionIds.some((id) => gone.has(id))))
       rt.putThread({ ...t, queue: t.queue.map((q) => ({ ...q, sessionIds: q.sessionIds.filter((id) => !gone.has(id)) })).filter((q) => q.sessionIds.length) });
     for (const it of rt.store.pending.items(t.id))
-      if (it.kind === 'hop' && it.status === 'open' && gone.has(it.fromSessionId)) closeHop(rt, t.id, it, `@${it.from} was retired`);
+      if (it.kind === 'hop' && it.status === 'open' && gone.has(it.fromSessionId)) closeHop(rt, t.id, it, 'retired');
   }
   rt.store.emit('settings', { forksArchived: true });
   return forks.length;

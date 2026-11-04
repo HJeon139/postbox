@@ -63,10 +63,15 @@ export function askToAdd(rt, from, parent, p, wake, { prose = false } = {}) {
 }
 
 /**
- * Whether the person declined adding `handle` to the conversation (#693), read from its cards, so a restart keeps it.
- * O(items in the conversation), once per mention of an agent it doesn’t have.
+ * Whether the person’s last answer to adding `handle` to the conversation was no (#693), read from its cards, so a
+ * restart keeps it: a later Add lifts it. A card retiring forks declined (side-threads.mjs, archiveForks, before #693)
+ * isn’t the person’s answer. O(items in the conversation), once per mention of an agent it doesn’t have.
  */
-const declinedAdd = (rt, conv, handle) => rt.store.pending.items(conv).some((x) => x.kind === 'hop' && x.join && x.status === 'declined' && x.to === handle);
+function declinedAdd(rt, conv, handle) {
+  const answered = (x) => x.kind === 'hop' && x.join && x.to === handle && (x.status === 'allowed' || x.status === 'declined');
+  const last = rt.store.pending.items(conv).findLast(answered);
+  return last?.status === 'declined' && !rt.s.sessions[last.fromSessionId]?.retiredFork;
+}
 
 /** One request at a time: the card waiting for the person, if there is one. */
 const openCard = (rt, parent) => rt.store.pending.items(parent.id).find((x) => x.kind === 'hop' && x.status === 'open') ?? null;
@@ -102,6 +107,7 @@ function needsCard(rt, from, parent, it, text) {
 
 export function resolveHop(rt, threadId, itemId, allow) {
   const it = rt.store.item(threadId, itemId);
+  if (it?.kind === 'hop' && it.status === 'closed') throw httpError(409, `That request was closed: ${it.closedWhy}.`);
   if (it?.kind !== 'hop' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
   // Added while its session here is being removed, Undo would leave two of it: wait for the removal to finish (#228).
   const removing = (rt.s.threads[threadId]?.members ?? []).map((id) => rt.s.sessions[id]).find((x) => x?.deleting && x.handle === it.to);
@@ -224,17 +230,24 @@ export function dropHeld(rt, se, how) {
 
 /**
  * A card that closes with no answer from the person (#693): the agent that asked was archived, removed or retired, so
- * nothing can answer for it. It closes, its agent stops needing the person, and each agent whose wake was held on it
- * is told at its next turn, as dropHeld tells; nothing it held goes. The one way every such close goes.
- * @param {any} rt @param {string} conv @param {any} card @param {string} why  what happened, said to each held agent
+ * nothing can answer for it. It closes, its agent stops needing the person, and nothing it held goes. Its agent and
+ * each agent whose wake was held on it are told at their next turn, as dropHeld tells, archived or being removed
+ * included: a Restore or an Undo finds the note, and the card stays closed. The one way every such close goes.
+ * @param {any} rt @param {string} conv @param {any} card @param {string} how  what happened to the agent that asked
  */
-export function closeHop(rt, conv, card, why) {
+export function closeHop(rt, conv, card, how) {
+  const why = `@${card.from} was ${how}`;
   rt.patchItem(conv, card.id, { status: 'closed', closedWhy: why, closedAt: Date.now() });
-  releaseNeed(rt, rt.s.sessions[card.fromSessionId], card.id);
+  const asker = rt.s.sessions[card.fromSessionId];
+  releaseNeed(rt, asker, card.id);
+  if (asker)
+    rt.tellAgent(asker.id, `${cardName(card).replace(`@${card.from}’s request`, 'Your request')} was closed: you were ${how}. Ask again if you still need it.`);
   for (const w of card.held ?? []) {
-    const se = rt.s.sessions[w.fromSessionId];
-    if (!se || se.archived || se.deleting) continue;
-    rt.tellAgent(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${why}. Send it again if you still need it.`);
+    if (!rt.s.sessions[w.fromSessionId]) continue;
+    rt.tellAgent(
+      w.fromSessionId,
+      `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${why}. Send it again if you still need it.`,
+    );
   }
 }
 
@@ -242,7 +255,7 @@ export function closeHop(rt, conv, card, why) {
 export function closeOwnCard(rt, se, how) {
   const conv = rt.lineage(se.threadId).at(-1);
   const card = openCard(rt, { id: conv });
-  if (card?.fromSessionId === se.id) closeHop(rt, conv, card, `@${se.handle} was ${how}`);
+  if (card?.fromSessionId === se.id) closeHop(rt, conv, card, how);
 }
 
 /**
@@ -253,17 +266,27 @@ export function closeOrphanCards(rt) {
   for (const t of Object.values(rt.s.threads)) {
     const card = openCard(rt, t);
     const from = card && rt.s.sessions[card.fromSessionId];
-    if (card && (!from || from.archived || from.deleting)) closeHop(rt, t.id, card, `@${card.from} is no longer in this conversation`);
+    if (card && (!from || from.archived || from.deleting)) closeHop(rt, t.id, card, 'archived or removed');
   }
 }
 
+/** How many held messages a catch-up names, one line each; the rest are counted (#693). */
+const HELD_NAMED = 3;
+
 /**
- * The messages held for an agent on its conversation’s open card, one line each for its catch-up (#693): it learns a
- * message is coming, and from whom, while the person hasn’t answered. O(items in the conversation), once per turn.
+ * The messages waiting for an agent on its conversation’s open card, for its catch-up (#693): a wake-limit card’s own
+ * wake, and each wake held on the card, so it learns a message is coming, and from whom, while the person hasn’t
+ * answered. Up to HELD_NAMED lines, then a count. O(items in the conversation), once per turn.
  * @param {any} rt @param {any} se  the agent the messages are for @returns {string[]}
  */
 export function heldFor(rt, se) {
   const card = openCard(rt, { id: rt.lineage(se.threadId).at(-1) });
-  const mine = (card?.held ?? []).filter((w) => w.to === se.handle);
-  return mine.map((w) => `@${w.from}’s message to you (“${clip(w.text, 120)}”) is held on ${cardName(card)}, waiting for the person.`);
+  if (!card) return [];
+  const own = !card.join && card.to === se.handle ? [{ from: card.from, text: card.text ?? card.reason ?? '' }] : [];
+  const mine = [...own, ...(card.held ?? []).filter((w) => w.to === se.handle)];
+  const lines = mine
+    .slice(0, HELD_NAMED)
+    .map((w) => `@${w.from}’s message to you (“${clip(w.text, 120)}”) is held on ${cardName(card)}, waiting for the person.`);
+  const more = mine.length - lines.length;
+  return more > 0 ? [...lines, `And ${more} more messages for you are held on it.`] : lines;
 }

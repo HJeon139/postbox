@@ -191,9 +191,10 @@ export class Runtime {
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
     // Forks are gone (#228): any left from before are archived, once.
     archiveForks(this);
-    closeOrphanCards(this);
     // Nothing archives a conversation by itself any more (#320): what idle archiving hid comes back, once.
     restoreArchives(this);
+    // After the restore, so a card it brings back stays the person’s to answer (#693).
+    closeOrphanCards(this);
   }
 
   get s() {

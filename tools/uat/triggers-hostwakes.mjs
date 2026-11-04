@@ -47,9 +47,12 @@ export function hopCards(f) {
       // A card retired because its target got a turn another way (#439’s fix) records when, with no line. Its wake may
       // raise the same card again, so an Allow line after it is the new card’s, not its own.
       const retiredAt = it.status === 'retired' && Number.isFinite(it.retiredAt) ? it.retiredAt : null;
-      const allowedAt = retiredAt === null ? said(it, yes) : null;
-      const declinedAt = retiredAt === null && allowedAt === null ? said(it, no) : null;
-      const answeredAt = retiredAt ?? allowedAt ?? declinedAt;
+      // One closed because its agent was archived, removed or retired (#693) says when, with no line either.
+      const closedAt = it.status === 'closed' && Number.isFinite(it.closedAt) ? it.closedAt : null;
+      const settledAt = retiredAt ?? closedAt;
+      const allowedAt = settledAt === null ? said(it, yes) : null;
+      const declinedAt = settledAt === null && allowedAt === null ? said(it, no) : null;
+      const answeredAt = settledAt ?? allowedAt ?? declinedAt;
       return {
         from: it.from,
         to: it.to,
