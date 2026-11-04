@@ -9,7 +9,7 @@
 import { execFileSync } from 'node:child_process';
 import { arch, cpus, release, type } from 'node:os';
 import { sleep } from './browser.mjs';
-import { keyDurations } from './key-frame-stats.mjs';
+import { keyDurations, outsideWindow } from './key-frame-stats.mjs';
 import { heldStill } from './page-still.mjs';
 
 /** The smallest durationThreshold Chromium allows, and the one PF-1 measures at. */
@@ -79,6 +79,11 @@ const frames = (page) => page.evaluate('new Promise((r) => requestAnimationFrame
  */
 export async function measureKeys(page, { keys = 200, warmup = 20, intervalMs = 50, threshold = EVENT_THRESHOLD } = {}) {
   await clickComposer(page);
+  const shown = await page.evaluate(
+    `(() => { const b = document.getElementById('composer-input').getBoundingClientRect(); return { rect: { top: b.top, bottom: b.bottom, left: b.left, right: b.right }, window: { width: outerWidth, height: outerHeight } }; })()`,
+  );
+  const hidden = outsideWindow(shown.rect, shown.window);
+  if (hidden) throw new Error(`${hidden} Size the window with page.size() before measuring.`);
   await page.evaluate(`(${clearDraft})()`);
   await page.waitFor(`(${heldStill})()`, { timeout: 30_000, label: 'the page to hold still for two frames' });
   await page.evaluate(`(${record})(${Number(threshold)})`);

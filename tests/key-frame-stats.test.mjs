@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { keyDurations, percentile, summarize, withinBudget } from '../tools/key-frame-stats.mjs';
+import { keyDurations, outsideWindow, percentile, summarize, withinBudget } from '../tools/key-frame-stats.mjs';
 
 const hundred = Array.from({ length: 100 }, (_, i) => i + 1);
 
@@ -50,4 +50,11 @@ test('each key takes the longest Event Timing entry that started between it and 
 test('entries from before the first key, such as the warm-up’s, count for no key', () => {
   const { values } = keyDurations([100], [{ name: 'keydown', startTime: 90, duration: 200 }], 16);
   assert.deepEqual(values, [16]);
+});
+
+test('outsideWindow: a composer the window doesn’t show is named, since a key typed there presents no frame', () => {
+  const window = { width: 1280, height: 900 };
+  assert.equal(outsideWindow({ top: 824, bottom: 854, left: 300, right: 1200 }, window), null);
+  assert.match(outsideWindow({ top: 824, bottom: 854, left: 300, right: 1200 }, { width: 800, height: 600 }), /854.*600/);
+  assert.match(outsideWindow({ top: 10, bottom: 40, left: 300, right: 1300 }, window), /1300.*1280/);
 });

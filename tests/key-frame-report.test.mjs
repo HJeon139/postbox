@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { budgetRows, formatReport } from '../tools/key-frame-report.mjs';
+import { belowLine, budgetRows, formatReport } from '../tools/key-frame-report.mjs';
 
 const sum = (p95) => ({ n: 200, p50: p95 / 2, p95, max: p95 * 2 });
 const results = [
@@ -52,4 +52,9 @@ test('the report records its command, inputs, commit and machine', () => {
   const md = report();
   for (const want of ['node tools/bench-key-frame.mjs --sizes 1000,4000,10000', 'abc1234', 'Linux 6.12', 'x64', 'Test CPU', 'v24.0.0', '140.0.1', '200 keys'])
     assert.ok(md.includes(want), `the report names ${want}`);
+});
+
+test('belowLine: with no key under the threshold, the report says every key had an entry', () => {
+  assert.equal(belowLine(0, 100, 16), 'Every key had an Event Timing entry.');
+  assert.equal(belowLine(3, 100, 16), '3 of 100 keys had no Event Timing entry, so took under 16 ms; each counts at 16 ms.');
 });

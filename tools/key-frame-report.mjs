@@ -55,7 +55,7 @@ function sizeTable(result, row, threshold) {
     line('Event Timing (keydown, keypress, input)', result.eventTiming),
     line('Next frame (keydown → rAF → rAF)', result.nextFrame),
     '',
-    `${result.below} of ${result.eventTiming.n} keys had no Event Timing entry, so took under ${threshold} ms; each counts at ${threshold} ms.`,
+    belowLine(result.below, result.eventTiming.n, threshold),
     '',
   ];
 }
@@ -95,4 +95,13 @@ export function formatReport({ command, commit, date, machine, inputs, results, 
     `- Machine: ${machine.os}, ${machine.arch}, ${machine.cpu}; Node ${machine.node}; Chromium ${machine.chromium}`,
     '',
   ].join('\n');
+}
+
+/**
+ * How many keys had no Event Timing entry, which Chromium leaves out below its threshold.
+ * @param {number} below @param {number} keys @param {number} threshold  in ms
+ */
+export function belowLine(below, keys, threshold) {
+  if (below === 0) return 'Every key had an Event Timing entry.';
+  return `${below} of ${keys} keys had no Event Timing entry, so took under ${threshold} ms; each counts at ${threshold} ms.`;
 }
