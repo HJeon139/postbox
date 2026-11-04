@@ -89,8 +89,9 @@ const updateView = (host, st) => {
 };
 
 /**
- * A failed automatic install, with Install… beside it: why, when Postbox couldn’t note the install (update.error).
- * The installer’s own failure isn’t in the host’s status, so otherwise it says to install by hand to see why.
+ * A failed automatic install, with Install… beside it: why (update.error), the installer’s own failure as Install…
+ * would show it, or why Postbox couldn’t note the install. A status without it (after a restart, or an error that
+ * isn’t the installer’s) says to install by hand to see why.
  * @param {any} host @param {any} update
  */
 const updateFailure = (host, update) => {
