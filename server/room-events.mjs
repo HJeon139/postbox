@@ -42,7 +42,7 @@ export function keepEvent(seq, type, data, sessions = new Map(), events = EVENTS
         // Who the agent is and the card it needs you for, when the session has them: app-need-fallback reads the
         // sequence of a session's needs (server/room-checks-needs.mjs, #366).
         ...(typeof data.handle === 'string' ? { handle: data.handle } : {}),
-        ...(Object.hasOwn(data, 'needs') ? { needs: data.needs ? { kind: data.needs.kind ?? null, itemId: data.needs.itemId ?? null } : null } : {}),
+        ...(Object.hasOwn(data, 'needs') ? { needs: needOf(data.needs) } : {}),
         // A turn on a remote host (#120): which host, its turn there, and Postbox’s own turn, for the host-mode checks.
         ...(data.remoteTurn?.turn ? { remoteTurn: remoteOf(data.remoteTurn) } : {}),
       },
@@ -56,3 +56,9 @@ const remoteOf = (r) => ({ hostId: r.hostId ?? null, turn: r.turn, rtTurn: r.rtT
 
 /** A background job, cut to what the triggers read. */
 const jobOf = (j) => ({ id: String(j?.id ?? ''), state: j?.state ?? null, kept: j?.kept === true, turnId: j?.turnId ?? null });
+
+/** A session's need as a run's history keeps it: its kind and card, never its text (#366). @param {any} needs */
+function needOf(needs) {
+  if (!needs) return null;
+  return { kind: needs.kind ?? null, itemId: needs.itemId ?? null };
+}

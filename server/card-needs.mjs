@@ -99,7 +99,10 @@ export function keptTurns(rt, se) {
  * counts by default.
  * @param {any} rt @param {any} se @param {{ turnIds?: string[], keep?: string | null, released?: any }} [o]
  */
-export function nextNeed(rt, se, { released = null, turnIds = turnsOf(rt, se, released), keep = rt.turns.has(se.id) ? (se.keptId ?? null) : null } = {}) {
+export function nextNeed(rt, se, o = {}) {
+  const released = o.released ?? null;
+  const turnIds = o.turnIds ?? turnsOf(rt, se, released);
+  const keep = o.keep === undefined ? runningKeep(rt, se) : o.keep;
   /** @type {{ at: number, need: any, it: any } | null} */
   let best = null;
   let refused = 0;
@@ -108,8 +111,8 @@ export function nextNeed(rt, se, { released = null, turnIds = turnsOf(rt, se, re
       const need = needOf(rt, se, it, threadId, turnIds, keep);
       if (!need) continue;
       if (need.kind === 'denial') refused++;
-      const ahead = !best || RANK[need.kind] < RANK[best.need.kind] || (RANK[need.kind] === RANK[best.need.kind] && (it.at ?? 0) >= best.at);
-      if (ahead) best = { at: it.at ?? 0, need, it };
+      const at = it.at ?? 0;
+      if (comesFirst(need, at, best)) best = { at, need, it };
     }
   // Several refusals are counted, as the turn's end always said.
   if (best?.need.kind === 'denial' && refused > 1) best.need.text = `${refused} steps were refused: ${best.it.summary}`;
@@ -170,4 +173,27 @@ function notifyOnce(rt, se, need) {
 }
 
 /** The session's state for a need it settles on, with no turn running: a failed turn shows Retry. @param {any} need */
-export const stateFor = (need) => (need?.kind === 'failed' ? 'failed' : need ? 'needs' : 'idle');
+export function stateFor(need) {
+  if (!need) return 'idle';
+  if (need.kind === 'failed') return 'failed';
+  return 'needs';
+}
+
+/** The block a running turn that didn't move on kept (`se.keptId`), which counts mid-turn; none otherwise. */
+function runningKeep(rt, se) {
+  if (!rt.turns.has(se.id)) return null;
+  return se.keptId ?? null;
+}
+
+/**
+ * Whether a card's need comes before the best so far: a kind that ranks ahead, or the same kind and the newer card.
+ * @param {any} need @param {number} at @param {{ at: number, need: any } | null} best
+ */
+function comesFirst(need, at, best) {
+  if (!best) return true;
+  const rank = RANK[need.kind];
+  const bestRank = RANK[best.need.kind];
+  if (rank !== bestRank) return rank < bestRank;
+  const sameRankNewer = at >= best.at;
+  return sameRankNewer;
+}
