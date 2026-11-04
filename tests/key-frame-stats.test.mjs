@@ -69,3 +69,11 @@ test('outsideWindow: a composer the window doesn’t show is named, since a key 
   assert.match(outsideWindow({ top: 824, bottom: 854, left: 300, right: 1200 }, { width: 800, height: 600 }), /854.*600/);
   assert.match(outsideWindow({ top: 10, bottom: 40, left: 300, right: 1300 }, window), /1300.*1280/);
 });
+
+test('outsideWindow: a composer cut off at any edge is named, one whose top is in the window and bottom isn’t too', () => {
+  const window = { width: 1280, height: 900 };
+  assert.match(outsideWindow({ top: 880, bottom: 910, left: 300, right: 1200 }, window), /910.*900/);
+  assert.match(outsideWindow({ top: -12, bottom: 18, left: 300, right: 1200 }, window), /starts at -12 px, above the window/);
+  assert.match(outsideWindow({ top: 824, bottom: 854, left: -4, right: 1200 }, window), /starts at -4 px, left of the window/);
+  assert.equal(outsideWindow({ top: 0, bottom: 900, left: 0, right: 1280 }, window), null, 'a composer that fills the window to its edges');
+});

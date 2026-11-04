@@ -69,6 +69,16 @@ async function press(page, ch) {
   await page.send('Input.dispatchKeyEvent', { type: 'keyUp', ...key });
 }
 
+/**
+ * The browser window’s size, as Chromium reports it. The page’s outerWidth and outerHeight follow mobile emulation,
+ * so a phone-sized page in a smaller window would read as fitting. @param {Page} page
+ */
+async function windowSize(page) {
+  const { windowId } = await page.send('Browser.getWindowForTarget');
+  const { bounds } = await page.send('Browser.getWindowBounds', { windowId });
+  return { width: bounds.width, height: bounds.height };
+}
+
 /** Until the page has drawn two more frames. @param {Page} page */
 const frames = (page) => page.evaluate('new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))');
 
@@ -80,9 +90,9 @@ const frames = (page) => page.evaluate('new Promise((r) => requestAnimationFrame
 export async function measureKeys(page, { keys = 200, warmup = 20, intervalMs = 50, threshold = EVENT_THRESHOLD } = {}) {
   await clickComposer(page);
   const shown = await page.evaluate(
-    `(() => { const b = document.getElementById('composer-input').getBoundingClientRect(); return { rect: { top: b.top, bottom: b.bottom, left: b.left, right: b.right }, window: { width: outerWidth, height: outerHeight } }; })()`,
+    `(() => { const b = document.getElementById('composer-input').getBoundingClientRect(); return { rect: { top: b.top, bottom: b.bottom, left: b.left, right: b.right } }; })()`,
   );
-  const hidden = outsideWindow(shown.rect, shown.window);
+  const hidden = outsideWindow(shown.rect, await windowSize(page));
   if (hidden) throw new Error(`${hidden} Size the window with page.size() before measuring.`);
   await page.evaluate(`(${clearDraft})()`);
   await page.waitFor(`(${heldStill})()`, { timeout: 30_000, label: 'the page to hold still for two frames' });

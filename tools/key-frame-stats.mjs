@@ -58,9 +58,11 @@ export function keyDurations(keys, entries, threshold) {
  * Why the composer isn’t inside the browser’s window, or null when it is. What lies outside the window is never
  * presented, so a key typed there gets no Event Timing entry until some other change presents a frame (#508, PF-1).
  * @param {{ top: number, bottom: number, left: number, right: number }} rect  the composer’s box, in CSS px
- * @param {{ width: number, height: number }} window  the window’s outer size, in CSS px
+ * @param {{ width: number, height: number }} window  the window’s size, as Chromium reports it
  */
 export function outsideWindow(rect, window) {
+  if (rect.top < 0) return `The composer starts at ${rect.top} px, above the window.`;
+  if (rect.left < 0) return `The composer starts at ${rect.left} px, left of the window.`;
   if (rect.bottom > window.height) return `The composer ends at ${rect.bottom} px, below the window’s ${window.height} px.`;
   if (rect.right > window.width) return `The composer ends at ${rect.right} px, right of the window’s ${window.width} px.`;
   return null;
