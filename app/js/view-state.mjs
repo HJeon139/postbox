@@ -3,11 +3,12 @@
 // It owns that state for one transcript, holds the anchor through changes in size (#88, #297, #341), and publishes what
 // it is on the transcript as data-view-* (publish). Moved from thread.mjs’s mountTranscript (#531).
 
+import { register, unregister } from './view-jump.mjs';
 import { skipOffscreen } from './view-skip.mjs';
 
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
- *   anchor: { key: string, at: number } | null, dead: boolean, shown: number, lastTop: number,
+ *   anchor: { key: string, at: number } | null, pinned: boolean, dead: boolean, shown: number, lastTop: number,
  *   held: { end: number, last: number, width: number }, jump: ((n: number) => void) | null, bound: any, size: string,
  *   sizes: ResizeObserver, changes: MutationObserver, changed?: boolean, noted?: number }} View
  */
@@ -55,6 +56,7 @@ function seen(v) {
 /** @param {View} v @param {boolean} [smooth] */
 function scrollToEnd(v, smooth = false) {
   v.stuck = true;
+  v.pinned = false;
   const s = box(v);
   if (s && smooth && !v.inPanel && !matchMedia('(prefers-reduced-motion: reduce)').matches)
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
@@ -140,8 +142,11 @@ function onScroll(v) {
   if (gapOf(s) <= PILL_ROOM) seen(v);
   v.lastTop = s.scrollTop;
   v.size = sizeOf(s);
+  if (moved) v.pinned = false;
   if (v.stuck) return;
   if (!moved) holdAnchor(v);
+  // Our own hold after a jump: the target stays the anchor while what’s between it and the middle draws (#712).
+  if (v.pinned) return;
   v.anchor = findAnchor(v);
 }
 /** @param {View} v @param {() => void} scrolled @param {() => void} resized */
@@ -221,6 +226,28 @@ function grew(v) {
 }
 
 /**
+ * After a jump has put item where it was sent: it’s the anchor, kept until you scroll (#712, view-jump.mjs).
+ * @param {View} v @param {HTMLElement} item
+ */
+function pin(v, item) {
+  const s = box(v);
+  if (!s || v.dead) return;
+  v.stuck = atEnd(s);
+  v.pinned = !v.stuck;
+  v.anchor = { key: /** @type {string} */ (item.dataset.key), at: item.getBoundingClientRect().top - viewTop(v, s) };
+  v.lastTop = s.scrollTop;
+  if (gapOf(s) <= PILL_ROOM) seen(v);
+  showJump(v, s);
+  publish(v);
+}
+/** What view-jump.mjs needs of a view. @param {View} v */
+const jumpable = (v) => ({
+  box: () => box(v),
+  top: () => viewTop(v, /** @type {Element} */ (box(v))),
+  pin: (/** @type {HTMLElement} */ item) => pin(v, item),
+});
+
+/**
  * A view’s state as it starts: following, unless it comes back from a rebuild while reading (was). Its observers are
  * added by mountView.
  * @param {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, was?: { anchor: any, unseen: number } }} o
@@ -234,6 +261,7 @@ function newView({ el, inPanel, nodes, was }) {
     unseen: was?.unseen ?? 0,
     stuck: !was,
     anchor: was?.anchor ?? null,
+    pinned: false,
     dead: false,
     shown: -1,
     lastTop: 0,
@@ -272,6 +300,7 @@ export function mountView({ el, inPanel, nodes, was }) {
   v.changes = new MutationObserver((records) => changed(v, records));
   v.changes.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
   publish(v);
+  register(el, jumpable(v));
   return {
     settle: () => settle(v, scrolled, resized),
     scrollToEnd: thenPublish((/** @type {boolean} */ smooth) => scrollToEnd(v, smooth)),
@@ -296,6 +325,7 @@ export function mountView({ el, inPanel, nodes, was }) {
     },
     destroy() {
       v.dead = true;
+      unregister(el);
       unskip();
       v.sizes.disconnect();
       v.changes.disconnect();
