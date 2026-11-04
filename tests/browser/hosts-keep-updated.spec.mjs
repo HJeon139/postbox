@@ -70,6 +70,11 @@ async function toggle(page) {
     ['setKeepUpdated', id, false],
   ]);
   await expect.soft(box, 'and it shows off').toHaveAttribute('aria-checked', 'false');
+
+  const on = freshHost(app, fake, NAME);
+  fake.set(on, { state: 'disconnected', keepUpdated: true });
+  await openHosts(page, app);
+  await expect.soft(await openToggle(page), 'a host whose consent is on opens with the toggle on').toHaveAttribute('aria-checked', 'true');
 }
 
 /** @param {import('@playwright/test').Page} page */
@@ -89,6 +94,10 @@ async function refused(page) {
   await expect.soft(box, 'marked invalid').toHaveAttribute('aria-invalid', 'true');
   expect.soft(app.store.state.hostStatus[id]?.keepUpdated, 'and nothing was saved').toBe(false);
   await audit(page, 'a refused toggle');
+
+  app.store.emit('host', { ...app.store.state.hosts[id] });
+  await expect.soft(box, 'a repaint of the tab keeps the error').toHaveAccessibleErrorMessage(/^Something went wrong on the server/);
+  await expect.soft(box, 'still marked invalid').toHaveAttribute('aria-invalid', 'true');
 
   fake.keepUpdatedError = null;
   await box.click();
@@ -139,6 +148,10 @@ async function cardStates(page) {
     await expect.soft(c.getByRole('button', { name: 'Install…' }), 'and only one Install… on the card').toHaveCount(1);
     await noSecrets(c);
     await audit(page, 'a failed install');
+
+    fake.set(id, { ...withUpdate('not-installed', { outcome: 'failed' }), failure: null });
+    await expect.soft(line, 'a failed install on a host not installed yet').toContainText(`Postbox couldn’t install ${VERSION} here by itself.`);
+    await expect.soft(c.getByRole('button', { name: 'Install…' }), 'still only one Install… on the card').toHaveCount(1);
 
     const why = 'Postbox couldn’t note the install in its data folder (EACCES), so it didn’t install by itself. Install it from here.';
     fake.set(id, withUpdate('failed', { outcome: 'started', error: why }));
