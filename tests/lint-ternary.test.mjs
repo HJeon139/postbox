@@ -1,9 +1,9 @@
-// The pure parts of tools/lint-ternary.mjs (#685): the lines a diff adds, the nested ternaries in Biome’s report, and
-// which of them sit on an added line. Its runs against real git and Biome are in tests/process/lint-ternary.test.mjs.
+// The pure parts of tools/lint-ternary.mjs (#685): the lines a diff adds, the nested ternaries in Biome’s report,
+// which of them sit on an added line, and which files have more than at the base. Its runs against real git and Biome are in tests/process/lint-ternary.test.mjs.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addedRanges, nestedTernaries, newHits, overlapsAdded } from '../tools/lint-ternary.mjs';
+import { addedRanges, changedFiles, countByPath, nestedTernaries, newHits, overlapsAdded, risenCounts } from '../tools/lint-ternary.mjs';
 
 test('lint-ternary: a hunk’s added lines come from its +start,count header, with a missing count meaning one', () => {
   const diff = `diff --git a/x.mjs b/x.mjs
@@ -123,4 +123,19 @@ test('lint-ternary: a hunk that says it has more lines than the diff holds fails
 
 test('lint-ternary: a diff cut off inside a hunk that only removes lines fails, rather than passing as no added lines', () => {
   assert.throws(() => addedRanges('--- a/x.mjs\n+++ b/x.mjs\n@@ -1,3 +0,0 @@\n-x'), /ends inside a hunk/);
+});
+
+test('lint-ternary: git’s -z name-status gives each file’s path now and at the base, with none for an added one', () => {
+  const listed = ['M', 'a b.mjs', 'A', 'new.mjs', 'R087', 'old.mjs', 'moved/new.mjs', ''].join('\0');
+  assert.deepEqual(changedFiles(listed), [
+    { path: 'a b.mjs', oldPath: 'a b.mjs' },
+    { path: 'new.mjs', oldPath: '' },
+    { path: 'moved/new.mjs', oldPath: 'old.mjs' },
+  ]);
+});
+
+test('lint-ternary: a file fails when it has more hits than at the base, where a file missing from the base has none', () => {
+  const before = countByPath([{ path: 'same.mjs' }, { path: 'same.mjs' }, { path: 'fewer.mjs' }]);
+  const after = countByPath([{ path: 'same.mjs' }, { path: 'same.mjs' }, { path: 'more.mjs' }]);
+  assert.deepEqual(risenCounts(['same.mjs', 'fewer.mjs', 'more.mjs'], before, after), [{ path: 'more.mjs', before: 0, after: 1 }]);
 });

@@ -29,13 +29,14 @@ export const before = 1;
 const NEW_TERNARY = 'export const fresh = (a, b) => (a ? 1 : b ? 2 : 3);\n';
 
 let count = 0;
-/** A fresh repository whose base commit, also origin/main, holds old.mjs with its old nested ternary. */
-function repo({ withOrigin = true } = {}) {
+/** A fresh repository whose base commit, also origin/main, holds old.mjs with its old nested ternary, and any files given. */
+function repo({ withOrigin = true, files = {} } = {}) {
   const dir = join(home, `repo-${++count}`);
   mkdirSync(dir);
   const git = (/** @type {string[]} */ ...args) => execFileSync('git', args, { cwd: dir, env: gitEnv, stdio: 'pipe' }).toString();
   git('init', '-q');
   write(dir, 'old.mjs', OLD);
+  for (const [path, text] of Object.entries(files)) write(dir, path, text);
   git('add', '.');
   git('commit', '-q', '-m', 'base');
   if (withOrigin) git('update-ref', 'refs/remotes/origin/main', 'HEAD');
@@ -71,7 +72,24 @@ test('lint-ternary: an old nested ternary on a line the change doesn’t touch p
   git('commit', '-q', '-m', 'other');
   const r = run(dir);
   assert.equal(r.status, 0, r.out);
-  assert.match(r.out, /^lint-ternary: no nested ternary on a line changed since \w{8}\.$/m);
+  assert.match(r.out, /^lint-ternary: no nested ternary on a line changed since \w{8}, and no file has more than there\.$/m);
+});
+
+test('lint-ternary: a file git doesn’t track passes, and the pass message says such files aren’t checked', () => {
+  const { dir } = repo();
+  write(dir, 'untracked.mjs', NEW_TERNARY);
+  const r = run(dir);
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.out, /^Files git doesn’t track aren’t checked: CI sees only committed files\.$/m);
+});
+
+test('lint-ternary: a new outer ternary added above an old plain one fails, though Biome reports the unchanged inner line', () => {
+  const { dir, git } = repo({ files: { 'plain.mjs': 'export const f = (a, b) =>\n  b ? 2 : 3;\n' } });
+  write(dir, 'plain.mjs', 'export const f = (a, b) =>\n  a ? 1 :\n  b ? 2 : 3;\n');
+  git('commit', '-q', '-am', 'nest');
+  const r = run(dir);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /^plain\.mjs: 1 nested ternary, up from 0 at the base$/m);
 });
 
 test('lint-ternary: removing an old nested ternary doesn’t pay for adding a new one in the same file', () => {
