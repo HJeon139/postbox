@@ -8,8 +8,9 @@ export const RESOURCE_BUFFER = 250;
 /**
  * One sample. origin: when this page load began, so samples from one load can be told from another’s. requested: the
  * `/sandbox/mermaid` pages the page has asked for since it loaded, from resource timing, which counts a frame’s request
- * whether or not it has drawn: an eager frame out of view is requested but never draws in Chromium. full: the timing buffer may have dropped entries, so requested can’t be trusted. A frame has drawn once
- * it has a size (data-sized) or reported it couldn’t draw (data-failed), app/js/md-enhance.mjs.
+ * whether or not it has drawn: an eager frame out of view is requested but never draws in Chromium. full: the timing
+ * buffer may have dropped entries, so requested can’t be trusted. A frame has drawn once it has a size (data-sized) or
+ * reported it couldn’t draw (data-failed), app/js/md-enhance.mjs.
  * @param {(expr: string) => Promise<any>} ev  the driver’s page.evaluate
  * @returns {Promise<{ origin: number, sinceLoad: number, requested: number, full: boolean, frames: { key: string, loaded: boolean, inView: boolean }[] }>}
  */
