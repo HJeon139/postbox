@@ -19,8 +19,8 @@
 // git is older than 2.36.
 
 import { execFileSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
 import { parseAddedLines } from './diff-added-lines.mjs';
+import { isEntry } from './lint-lib.mjs';
 import { checkContentPrivacy, checkFilePrivacy, isBinary } from './privacy-check.mjs';
 
 /**
@@ -180,4 +180,4 @@ function main(args) {
   return 1;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) process.exit(main(process.argv.slice(2)));
+if (isEntry(import.meta.url, process.argv[1])) process.exit(main(process.argv.slice(2)));

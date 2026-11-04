@@ -4,9 +4,9 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -74,6 +74,22 @@ test('a commit that adds a home path fails, naming its commit and file', async (
   const { status, err } = scan(dir, 'main..HEAD');
   assert.equal(status, 1);
   assert.match(err, new RegExp(`^${sha} notes\\.md: home path: ${REPORTED_HOME}$`, 'm'));
+});
+
+test('the tool run through a symlink to the checkout’s folder still scans, and fails on a home path', async () => {
+  const dir = await repo();
+  const sha = await commit(dir, 'notes.md', `see ${HOME_PATH}\n`);
+  // node runs the tool under its real path, while process.argv[1] keeps the symlink’s.
+  const linked = join(home, 'linked-checkout');
+  await symlink(dirname(dirname(TOOL)), linked);
+  const run = spawnSync(process.execPath, [join(linked, 'tools', 'scan-commits-privacy.mjs'), 'main..HEAD'], {
+    cwd: dir,
+    env,
+    encoding: 'utf8',
+    timeout: 20_000,
+  });
+  assert.equal(run.status, 1, run.stdout + run.stderr);
+  assert.match(run.stderr, new RegExp(`^${sha} notes\\.md: home path: ${REPORTED_HOME}$`, 'm'));
 });
 
 test('a home path added in one commit and removed in a later one still fails', async () => {
