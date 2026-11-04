@@ -24,7 +24,10 @@ export const sampleDiagrams = (ev) =>
       full: resources.length >= ${RESOURCE_BUFFER},
       frames: [...document.querySelectorAll('#main.transcript > .item figure.diagram iframe')].map((f) => {
         const r = f.getBoundingClientRect();
-        return { key: f.closest('.item').dataset.key, loaded: f.dataset.sized === '1' || f.dataset.failed === '1', inView: r.bottom > 0 && r.top < innerHeight };
+        const key = f.closest('.item').dataset.key;
+        const loaded = f.dataset.sized === '1' || f.dataset.failed === '1';
+        const inView = r.bottom > 0 && r.top < innerHeight;
+        return { key, loaded, inView };
       }),
     };
   })()`);
