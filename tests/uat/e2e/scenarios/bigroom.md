@@ -15,7 +15,9 @@ The room is seeded with about 1,000 items, so the page holds only a window of it
 - triggers: window-paged-back, key-frame-measured
 - steps: 8
 
-Ask @researcher and @critic each for a long write-up, one after the other. While they write, scroll up slowly through the room to its first day, and say whether what you were reading ever moved without your scrolling. Then press End.
+Ask @researcher and @critic each for a long write-up, one after the other. While they write, press Home to go to the room’s first day, then page down slowly, and say whether what you were reading ever moved without your scrolling. Then press End.
+
+What this phase tests: `window-paged-back` only shows that you reached the first day. The goals are that `view-moved` stays silent across the pages down while the two replies stream, and that End brings the view back to following as a change of mode with your input before it. A run that fires `window-paged-back` alone isn’t a pass.
 
 ## Phase 2: Jumps (B2, B3)
 
