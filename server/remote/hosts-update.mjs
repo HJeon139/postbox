@@ -1,4 +1,4 @@
-// Keeping a host’s Postbox up to date (#464-b2a; design note 464b, §3.1–3.4): with the person’s standing consent for a
+// Keeping a host’s Postbox up to date (#464-b2a; designs/464-keep-updated.md, “How it works”): with the person’s standing consent for a
 // host (install-record.mjs’s keepUpdated), a 127 from its launcher, meaning this Postbox’s version isn’t there,
 // installs that version once, with the same commands and checks as the person’s Install… (install.mjs).
 //

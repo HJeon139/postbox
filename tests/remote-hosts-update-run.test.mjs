@@ -1,5 +1,5 @@
-// An automatic install’s life (server/remote/hosts-update.mjs and hosts.mjs’s install(), #464-b2a; design note 464b,
-// §3.3–3.4 and revision 4’s P1): one install at a time per host, shared with the person’s Install…; exit 75; a
+// An automatic install’s life (server/remote/hosts-update.mjs and hosts.mjs’s install(), #464-b2a; designs/464-keep-updated.md,
+// “One install at a time, and exit 75”): one install at a time per host, shared with the person’s Install…; exit 75; a
 // failure nobody waits for; close() and forget() while one runs.
 
 import assert from 'node:assert/strict';

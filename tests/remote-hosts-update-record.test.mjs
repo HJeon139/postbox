@@ -1,5 +1,5 @@
-// The record of automatic installs (server/remote/hosts-update.mjs, #464-b2a; design note 464b, §3.3 and revision 4’s
-// strict read): `<data>/remote-installs/<host id>`, `{ keepUpdated, installs: [{ version, at, outcome }] }`, newest
+// The record of automatic installs (server/remote/hosts-update.mjs, #464-b2a; designs/464-keep-updated.md,
+// “The record”): `<data>/remote-installs/<host id>`, `{ keepUpdated, installs: [{ version, at, outcome }] }`, newest
 // first, read fail-closed, written before the install starts, and “tried” per version since the last other version.
 
 import assert from 'node:assert/strict';
