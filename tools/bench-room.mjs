@@ -1,7 +1,9 @@
 // What #508’s benches share (tools/bench-key-frame.mjs, tools/bench-snapshot-stall.mjs and tools/bench-server.mjs): a
 // free port, a whole-number option, and the room a bench seeds the big room into, as the page would have started it.
 
+import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
+import { arch, cpus, release, type } from 'node:os';
 import { Store } from '../server/store.mjs';
 import { seedBigRoomData } from './uat/big-room.mjs';
 
@@ -50,4 +52,16 @@ export async function loadState(data) {
   const { state } = store;
   await store.close();
   return state;
+}
+
+/** The commit measured: HEAD’s short hash, with “+changes” when the tree differs from it. @param {string} root */
+export function commitOf(root) {
+  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
+  const head = git('rev-parse', '--short=8', 'HEAD');
+  return git('status', '--porcelain').length ? `${head}+changes` : head;
+}
+
+/** The machine, without its name or any home path: os, arch, cpu model and Node. */
+export function hostOf() {
+  return { os: `${type()} ${release()}`, arch: arch(), cpu: cpus()[0]?.model ?? 'unknown', node: process.version };
 }
