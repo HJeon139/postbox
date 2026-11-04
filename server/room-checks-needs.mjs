@@ -75,6 +75,43 @@ export const NEEDS_CHECKS = [
   },
 ];
 
+/**
+ * Each time an agent's need fell back to an app card (#366): the app card was its need, a newer need of another kind
+ * took its place, and when that was answered the need went back to the same app card, with no gap where it needed
+ * nothing. Reads the sessions' needs as the history kept them (server/room-events.mjs).
+ * @param {any[]} events
+ */
+function appFallbacks(events) {
+  // By session: its need's kind and card, the app card it last needed you for, and whether a need of another kind
+  // has taken that card's place since.
+  /** @type {Map<string, { key: string, app: string|null, other: boolean }>} */
+  const bySession = new Map();
+  const found = [];
+  for (const e of events ?? []) {
+    if (e.type !== 'session' || !Object.hasOwn(e.data ?? {}, 'needs')) continue;
+    const n = e.data.needs;
+    const key = n ? `${n.kind}:${n.itemId}` : '';
+    const was = bySession.get(e.data.id) ?? { key: '', app: null, other: false };
+    // A session event comes with every patch: only a change of need counts.
+    if (key === was.key) continue;
+    let { app, other } = was;
+    if (!n) {
+      app = null;
+      other = false;
+    } else if (n.kind !== 'appsend') {
+      other = app !== null;
+    } else {
+      if (other && app === n.itemId) {
+        found.push({ at: null, evidence: `@${e.data.handle ?? e.data.id}’s need fell back to its app card ${n.itemId} (event ${e.seq}).` });
+      }
+      app = n.itemId;
+      other = false;
+    }
+    bySession.set(e.data.id, { key, app, other });
+  }
+  return found;
+}
+
 export const NEEDS_TRIGGERS = {
   'two-need-you': {
     issue: 285,
@@ -102,5 +139,12 @@ export const NEEDS_TRIGGERS = {
       (f.probes.jumps ?? [])
         .filter((j) => j.from !== 'next' && (j.expect?.needing ?? []).some((n) => n.handle === j.handle))
         .map((j) => ({ at: j.at ?? null, evidence: `@${j.handle}, from ${PLACES[j.from] ?? j.from}, at step ${j.step}.` })),
+  },
+  'app-need-fallback': {
+    issue: 366,
+    says: 'an app card was an agent’s need, a newer need of another kind took it, and once that was answered the need fell back to the same app card',
+    // A history from before sessions' needs were kept (server/room-events.mjs) didn't record them.
+    recorded: (f) => (f.events ?? []).some((e) => e.type === 'session' && Object.hasOwn(e.data ?? {}, 'needs')),
+    run: (f) => appFallbacks(f.events),
   },
 };

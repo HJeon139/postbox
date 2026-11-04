@@ -2,11 +2,14 @@
 // and triggers of where going to an ask landed (server/room-checks-needs.mjs).
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { runChecks } from '../server/room-checks.mjs';
 import { NEEDS_CHECKS, NEEDS_TRIGGERS, needsAt } from '../server/room-checks-needs.mjs';
+import { keepEvent } from '../server/room-events.mjs';
 import { conversationOf, NEEDS_KINDS, needsOrder, needsYouNow, whereNeeds } from '../shared/needs.mjs';
-import { TRIGGERS } from '../tools/uat/triggers.mjs';
+import { parseScenario } from '../tools/uat/scenario.mjs';
+import { TRIGGERS, unknownTriggers } from '../tools/uat/triggers.mjs';
 
 // Two conversations: a room with a side thread and a topic thread, and a direct message. Each agent's ask was posted
 // at the time in its item, which is the order they waited in, whatever their sessions' updatedAt says.
@@ -115,4 +118,40 @@ test('the #285 triggers fire on two agents waiting, a side-thread ask, and a rin
   assert.equal(NEEDS_TRIGGERS['side-thread-need'].run(f).length, 2);
   assert.equal(NEEDS_TRIGGERS['ring-jump'].run(f).length, 1);
   assert.equal(NEEDS_TRIGGERS['ring-jump'].recorded({ probes: {} }), false);
+});
+
+// A run's history as tools/uat/history.mjs keeps it: one session, then a session.patch for each need it had in turn.
+const history = (...needs) => {
+  const sessions = new Map();
+  const first = keepEvent(1, 'session', { id: 'se_a', handle: 'researcher', threadId: 'room', state: 'idle', needs: null, updatedAt: 1 }, sessions);
+  const patches = needs.map((n, i) =>
+    keepEvent(i + 2, 'session.patch', { id: 'se_a', patch: { needs: n && { ...n, text: 'Waits', threadId: 'room' }, updatedAt: i + 2 } }, sessions),
+  );
+  return [first, ...patches];
+};
+const app = (itemId) => ({ kind: 'appsend', itemId });
+const ask = { kind: 'block', itemId: 'it_ask' };
+
+test('app-need-fallback fires when a newer need of another kind took an app card’s place and the need fell back to it', () => {
+  const t = NEEDS_TRIGGERS['app-need-fallback'];
+  assert.ok(TRIGGERS['app-need-fallback'], 'it is registered');
+  const f = { events: history(app('it_app'), ask, app('it_app')) };
+  assert.equal(t.recorded(f), true);
+  assert.deepEqual(t.run(f), [{ at: null, evidence: '@researcher’s need fell back to its app card it_app (event 4).' }]);
+});
+
+test('app-need-fallback stays silent when the need cleared after the newer one, or moved to another app card', () => {
+  const t = NEEDS_TRIGGERS['app-need-fallback'];
+  assert.deepEqual(t.run({ events: history(app('it_app'), ask, null) }), []);
+  assert.deepEqual(t.run({ events: history(app('it_app'), app('it_other')) }), []);
+  // A need that cleared between the two isn't a fallback: the app card was shown again.
+  assert.deepEqual(t.run({ events: history(app('it_app'), ask, null, app('it_app')) }), []);
+  // A history from before sessions' needs were kept didn't record what it reads.
+  assert.equal(t.recorded({ events: [{ seq: 1, type: 'session', data: { id: 'se_a', state: 'idle' } }] }), false);
+});
+
+test('the needsnav scenario’s phases name only triggers that exist, its third the app card’s fallback', () => {
+  const s = parseScenario(readFileSync(new URL('uat/e2e/scenarios/needsnav.md', import.meta.url), 'utf8'));
+  assert.deepEqual(unknownTriggers(s), []);
+  assert.deepEqual(s.phases[2]?.triggers, ['app-need-fallback']);
 });

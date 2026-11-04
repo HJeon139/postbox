@@ -20,3 +20,10 @@ Ask @critic which of two load formats it would pick for the logs, Parquet or com
 - steps: 8
 
 Open a topic thread on @researcher’s write-up and ask it, there, to pick between two retention periods for the raw logs, 90 days or a year, and to let you choose. Don’t answer in the thread yet. Close the thread, then go to that ask by clicking @researcher’s ring in the Agents section (its ring, not its name, which opens its quick panel): the topic thread should open beside the conversation, with the ask focused. Close the thread again and do it once more with the “Next that needs you” button. Then answer it.
+
+## Phase 3: An app card waits behind a newer question
+
+- triggers: app-need-fallback
+- steps: 10
+
+Ask @critic to show you a small app with exactly one button, labeled “Send six”, whose click handler calls `postbox.send('step', { n })` six times in a row, for n from 1 to 6, and nothing else; tell it to answer those messages in a word. An app sends five messages a minute on its own, so one click on “Send six” sends five and a card under the app asks you to allow the sixth. Click “Send six” once. Don’t allow or decline that card yet. Then ask @critic a newer question: which compression to use for the Parquet files, Snappy or Zstandard, as a choice for you. Answer the choice. @critic should still need you, now for the app’s card: go there with the “Next that needs you” button and say where you landed. It should be that card, not nothing. Then allow the card.

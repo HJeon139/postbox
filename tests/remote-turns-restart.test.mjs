@@ -124,10 +124,20 @@ test('#120 L5: a record on disk naming no thread, or a handle that isn’t one, 
 test('#120 L5: after a restart a turn the welcome doesn’t list is Interrupted, and resumes once the host is back', async () => {
   const { store, d } = restarted({ welcome: 'missing' });
   const r = rig({ store, d });
+  // The interrupt's own patch: the resume starts a new turn at once, which records itself as the last turn.
+  const failedPatches = [];
+  const update = r.rt.updateSession.bind(r.rt);
+  r.rt.updateSession = (id, patch) => {
+    if (patch.needs?.kind === 'failed') failedPatches.push(patch);
+    return update(id, patch);
+  };
   startUp(r);
   await until(() => r.store.items(r.t.id).some((i) => i.kind === 'agent' && i.status === 'failed'), 'Interrupted');
   const failed = r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'failed');
   assert.match(failed.error, /^Interrupted on host\.example\.com: the host has no record of it\.$/);
+  // The interrupted turn is the last turn (card-needs.mjs turnOf), so a block it moved past stays quiet (#366).
+  assert.ok(failed.turnId, 'the interrupted reply names its turn');
+  assert.equal(failedPatches.find((p) => p.needs.itemId === failed.id)?.lastTurnId, failed.turnId);
   await until(() => starts(d).length === 1, 'the resume');
   assert.equal(starts(d)[0].env.CLAUDE_CODE_RESUME_INTERRUPTED_TURN, '1');
   assert.match(messageOf(starts(d)[0]), /was interrupted before it finished/);
