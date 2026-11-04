@@ -3,6 +3,7 @@
 // server/room-checks.mjs’s CHECKS, kept apart to keep that file to its size.
 
 import { conversationOf, needsOrder, whereNeeds } from '../shared/needs.mjs';
+import { escapeRegExp } from '../shared/regex.mjs';
 
 const PLACES = {
   next: 'the “Next that needs you” button',
@@ -140,6 +141,12 @@ export const NEEDS_TRIGGERS = {
         .filter((j) => j.from !== 'next' && (j.expect?.needing ?? []).some((n) => n.handle === j.handle))
         .map((j) => ({ at: j.at ?? null, evidence: `@${j.handle}, from ${PLACES[j.from] ?? j.from}, at step ${j.step}.` })),
   },
+  'declined-add-no-card': {
+    issue: 693,
+    says: 'after you declined adding an agent, another agent mentioned it in prose, and no new card asked you again',
+    recorded: (f) => !!f.state,
+    run: declinedThenMentioned,
+  },
   'app-need-fallback': {
     issue: 366,
     says: 'an app card was an agent’s need, a newer need of another kind took it, and once that was answered the need fell back to the same app card',
@@ -148,3 +155,28 @@ export const NEEDS_TRIGGERS = {
     run: (f) => appFallbacks(f.events),
   },
 };
+
+/**
+ * Each prose mention of an agent the person declined to add, later in that conversation, with no add-agent card for it
+ * after the decline (#693). Read from the items alone, in the order the conversation keeps them; O(items).
+ * @param {any} f  the run's facts: threads, and state.items by thread
+ */
+function declinedThenMentioned(f) {
+  const out = [];
+  for (const t of f.threads ?? []) {
+    const items = f.state?.items?.[t] ?? [];
+    items.forEach((card, i) => {
+      if (card.kind !== 'hop' || !card.join || card.status !== 'declined') return;
+      const after = items.slice(i + 1);
+      const askedAgain = after.some((x) => x.kind === 'hop' && x.join && x.to === card.to);
+      const mention = new RegExp(`(^|[^\\w@])@${escapeRegExp(card.to)}(?![\\w-])`);
+      const said = after.find((x) => x.kind === 'agent' && typeof x.text === 'string' && mention.test(x.text));
+      if (said && !askedAgain)
+        out.push({
+          at: said.at ?? null,
+          evidence: `card ${card.id} to add @${card.to} was declined; @${said.handle} then mentioned @${card.to} (${said.id}), and no card asked again`,
+        });
+    });
+  }
+  return out;
+}

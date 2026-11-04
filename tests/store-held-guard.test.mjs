@@ -55,6 +55,7 @@ const DIRECT = {
   'room-checks-agy.mjs': ['deniedSteps'], // facts from a recorded run, offline
   'room-checks-backends.mjs': ['BACKEND_CHECKS'], // the same
   'room-checks-asks.mjs': ['droppedAsks', 'needsMismatches'], // the same
+  'room-checks-needs.mjs': ['declinedThenMentioned'], // the same
   'room-checks-telemetry.mjs': ['fiveWordRuns', 'secretsOf', 'CHECKS'], // the same
   'room-checks-threads.mjs': ['missingThreadTasks'], // the same
   'room-checks.mjs': ['itemsOf', 'ledgerEntries', 'CHECKS', 'CHECKS', 'CHECKS', 'CHECKS', 'CHECKS'], // the same
