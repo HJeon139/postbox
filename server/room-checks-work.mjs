@@ -11,12 +11,19 @@ const ledgerEntries = (f) => Object.values(f.state?.work ?? {}).flat();
  * A stream with no session id is kept: it can’t be shown erased. A session keeps only its current id, so a live
  * session whose id Postbox reset (Claude Code had lost it) loses its turns from before the reset here.
  */
-export function keptStreams(f) {
+export const keptStreams = (f) => splitStreams(f).kept;
+/** The turns’ streams of erased sessions: the ones keptStreams leaves out. */
+export const erasedStreams = (f) => splitStreams(f).erased;
+
+function splitStreams(f) {
   const held = new Set(Object.values(f.state?.sessions ?? {}).map((se) => se?.backendState?.claudeSessionId));
-  return (f.streams ?? []).filter((s) => {
+  const kept = [];
+  const erased = [];
+  for (const s of f.streams ?? []) {
     const id = claudeSessionOf(s.events ?? []);
-    return !id || held.has(id);
-  });
+    (!id || held.has(id) ? kept : erased).push(s);
+  }
+  return { kept, erased };
 }
 const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 

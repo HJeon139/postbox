@@ -18,6 +18,7 @@ import { TELEMETRY_TRIGGERS } from './telemetry-triggers.mjs';
 import { clip, cell as esc, itemsOf } from './trigger-facts.mjs';
 import { HOST_TRIGGERS } from './triggers-host.mjs';
 import { JOB_TRIGGERS } from './triggers-jobs.mjs';
+import { MEASURE_TRIGGERS } from './triggers-measure.mjs';
 import { VIEW_TRIGGERS } from './view-triggers.mjs';
 import { WAITING_TRIGGERS } from './waiting-triggers.mjs';
 
@@ -97,6 +98,7 @@ export const TRIGGERS = {
   ...DELIVERY_TRIGGERS,
   ...VIEW_TRIGGERS,
   ...WAITING_TRIGGERS,
+  ...MEASURE_TRIGGERS,
 };
 
 /**
