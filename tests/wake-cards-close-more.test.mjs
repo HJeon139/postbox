@@ -74,3 +74,15 @@ test('#693 answering a closed card says why it closed, not that it was answered'
   f.rt.archive(f.alpha.id);
   assert.throws(() => f.rt.resolveHop(f.t.id, f.open.id, true), { status: 409, message: 'That request was closed: @alpha was archived.' });
 });
+
+test('#693 an agent whose own wake is held on its own card gets one note when the card closes', () => {
+  const f = setup();
+  f.rt.createPersona({ handle: 'delta' });
+  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
+  const open = f.store.items(f.t.id).find((i) => i.kind === 'hop' && i.status === 'open');
+  assert.equal(f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'delta', message: 'Draw the chart.' }).held, true);
+  f.rt.deleteSession(f.alpha.id);
+  assert.equal(card(f, open.id).status, 'closed');
+  const notes = (f.store.state.sessions[f.alpha.id].context ?? []).filter((l) => /closed|didn’t go/.test(l));
+  assert.equal(notes.length, 1, notes.join(' | '));
+});

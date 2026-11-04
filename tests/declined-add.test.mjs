@@ -116,3 +116,23 @@ test('#693 a declined wake-limit card for an agent isn’t a declined add', asyn
   const r = f.rt.agentWake(f.beta.id, 'gamma', 'Gamma?', { itemId: 'it_t', prose: true });
   assert.equal(r.waiting, true);
 });
+
+test('#693 a card closed because its agent was archived isn’t a decline: a later mention asks the person', async () => {
+  const f = setup();
+  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
+  f.rt.archive(f.alpha.id);
+  assert.equal(addCards(f)[0].status, 'closed');
+  await says(f, f.beta, 'Then @gamma can take a look.');
+  assert.equal(addCards(f).filter((c) => c.status === 'open').length, 1, 'a new card asks');
+});
+
+test('#693 a prose mention from a topic thread is refused after a decline in its conversation', async () => {
+  const f = await declined();
+  const reply = f.store.items(f.t.id).find((i) => i.kind === 'agent' && i.handle === 'alpha');
+  const topic = f.rt.startTopic(f.t.id, reply.id).threadId;
+  f.adapter.next.push(async (c) => c.text('Then @gamma can check it here.'));
+  f.rt.sendMessage(topic, { text: '@beta over to you' });
+  await settle(f.rt);
+  assert.equal(addCards(f).length, 1, 'no second card');
+  assert.match((f.store.state.sessions[f.beta.id].context ?? []).join(' | '), /Your mention of @gamma woke no one: the person chose not to add @gamma/);
+});

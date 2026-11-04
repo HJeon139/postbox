@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { addressed } from '../server/room-delivery.mjs';
 import { runChecks } from '../tools/uat/checks.mjs';
 import { hopCards } from '../tools/uat/triggers-hostwakes.mjs';
 import { ROUND_TWO, room, T0 } from './delivery-fixture.mjs';
@@ -30,4 +31,26 @@ test('#693 a closed card was answered, for the hostwakes checks, when it closed'
   const card = { id: 'it_c', kind: 'hop', from: 'alpha', to: 'gamma', join: true, text: 'Add?', at: s(1), status: 'closed', closedAt: s(9) };
   const f = { threads: ['th'], state: { items: { th: [card] } } };
   assert.equal(hopCards(f)[0].answeredAt, s(9));
+});
+
+test('#693 a message held on a closed card stopped waiting when the card closed, read from the state', () => {
+  const r = room();
+  r.agent('researcher');
+  r.agent('critic');
+  r.add({ id: 'it_m', at: s(1), kind: 'agent', handle: 'researcher', sessionId: 'se_researcher', text: '@critic round two', status: 'done' });
+  r.add({
+    id: 'it_c',
+    at: s(1),
+    kind: 'hop',
+    from: 'researcher',
+    fromSessionId: 'se_researcher',
+    to: 'gamma',
+    join: true,
+    status: 'closed',
+    closedAt: s(9),
+    held: [{ fromSessionId: 'se_researcher', from: 'researcher', to: 'critic', text: '@critic round two', itemId: 'it_m', at: s(2) }],
+  });
+  r.f.events = [];
+  const due = addressed(r.f).find((a) => a.to === 'critic' && a.itemId === 'it_m');
+  assert.equal(due?.due, s(9));
 });
