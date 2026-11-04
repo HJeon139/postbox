@@ -5,6 +5,7 @@ import { nextNeedsYou } from './needs-nav.mjs';
 import { openPalette } from './sheets.mjs';
 import { toggleRail } from './shell.mjs';
 import { focusComposer } from './thread.mjs';
+import { jumpTo } from './view-jump.mjs';
 
 document.addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;
@@ -31,8 +32,8 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     const at = items.findIndex((n) => n.contains(document.activeElement));
     const next = items[at < 0 ? items.length - 1 : Math.max(0, Math.min(items.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)))];
-    next.focus();
-    next.scrollIntoView({ block: 'nearest' });
+    next.focus({ preventScroll: true });
+    jumpTo(next, 'nearest');
   }
   if (e.altKey && e.key === 'End') {
     e.preventDefault();
