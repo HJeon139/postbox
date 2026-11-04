@@ -141,17 +141,19 @@ test('writeLog leaves a snapshot of the room and a log of LOG_EVENTS events afte
 
 /**
  * A stand-in for startPostbox(): its start empties the folder, as the real one’s --fresh does, and its restart runs
- * whileDown; it records whether the folder held the room once it was back up.
+ * whileDown; it records whether the folder held the room once it was back up, and each kill.
  */
 function fakePostbox() {
-  const seen = { starts: 0, servedRoom: false };
+  const seen = { starts: 0, kills: 0, servedRoom: false };
   const start = async (/** @type {{ data: string }} */ o) => {
     seen.starts++;
     rmSync(o.data, { recursive: true, force: true });
     mkdirSync(o.data);
     return {
       origin: 'http://127.0.0.1:1',
-      kill: async () => {},
+      kill: async () => {
+        seen.kills++;
+      },
       restart: async (/** @type {{ whileDown?: () => Promise<void> }} */ r = {}) => {
         await r.whileDown?.();
         seen.servedRoom = existsSync(join(o.data, 'snapshot.json')) || readdirSync(o.data).some((n) => n.startsWith('events-'));
@@ -182,6 +184,7 @@ test('measureSize measures the four numbers on a seeded room, a run at a time, a
     assert.equal(r.logEvents, 10);
     assert.ok(r.snapshotMB > 0);
     assert.equal(seen.starts, 1);
+    assert.equal(seen.kills, 1, 'its Postbox is stopped');
     assert.equal(seen.servedRoom, true, 'the room is copied in while Postbox is down, after its fresh start');
     assert.deepEqual(readdirSync(tmp), [], 'its temp folder is removed');
   } finally {
@@ -189,9 +192,56 @@ test('measureSize measures the four numbers on a seeded room, a run at a time, a
   }
 });
 
-test('measureSize refuses an /api/state that doesn’t hold the whole room, and still removes its folder', async () => {
+/**
+ * A stand-in for measureSnapshotPass() that records each pass, the state it was given and that state’s JSON then,
+ * and returns the pass’s number as its stringify time, so a pooled value shows which passes were pooled.
+ */
+function recordingPass() {
+  const passes = [];
+  const snapshotPass = async (/** @type {any} */ state) => {
+    passes.push({ state, json: JSON.stringify(state) });
+    return { bytes: 100, stringifyMs: passes.length, maxDelay: 0, timerDelay: 0 };
+  };
+  return { snapshotPass, passes };
+}
+
+test('measureSize runs one warm-up snapshot pass before the runs, and pools only the runs', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'pb-bench-size-'));
   const { start } = fakePostbox();
+  const { snapshotPass, passes } = recordingPass();
+  const body = stateBody(30);
+  const get = async () => ({ arrayBuffer: async () => body });
+  try {
+    const o = { runs: 2, requests: 1, chunks: 1, logEvents: 1 };
+    const r = await measureSize(30, o, { start, port: async () => 1, tmp, get, snapshotPass });
+    assert.equal(passes.length, 3, 'one warm-up pass and one a run');
+    assert.deepEqual(r.stringify, { n: 2, p50: 2, p95: 3, max: 3 }, 'the first pass, the warm-up, isn’t pooled');
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('measureSize streams its chunks into a copy, leaving the state the snapshot passes measure unchanged', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'pb-bench-size-'));
+  const { start } = fakePostbox();
+  const { snapshotPass, passes } = recordingPass();
+  const body = stateBody(30);
+  const get = async () => ({ arrayBuffer: async () => body });
+  try {
+    const o = { runs: 2, requests: 1, chunks: 3, logEvents: 1 };
+    await measureSize(30, o, { start, port: async () => 1, tmp, get, snapshotPass });
+    const [first, ...rest] = passes;
+    assert.equal(first.state.items[THREAD].length, 30);
+    assert.equal(JSON.stringify(first.state), first.json, 'the state is as it was before the chunk runs');
+    for (const pass of rest) assert.equal(pass.state, first.state, 'every pass measures the same state');
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('measureSize refuses an /api/state that doesn’t hold the whole room, and still removes its folder', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'pb-bench-size-'));
+  const { start, seen } = fakePostbox();
   const body = stateBody(0);
   const get = async () => ({ arrayBuffer: async () => body });
   try {
@@ -199,6 +249,7 @@ test('measureSize refuses an /api/state that doesn’t hold the whole room, and 
       measureSize(30, { runs: 1, requests: 1, chunks: 1, logEvents: 1 }, { start, port: async () => 1, tmp, get }),
       /\/api\/state held 0 of the room’s 30 items/,
     );
+    assert.equal(seen.kills, 1, 'its Postbox is stopped before the refusal');
     assert.deepEqual(readdirSync(tmp), [], 'its temp folder is removed');
   } finally {
     rmSync(tmp, { recursive: true, force: true });

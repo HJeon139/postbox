@@ -103,9 +103,12 @@ export async function writeLog(data, events = LOG_EVENTS) {
   await store.close();
 }
 
-/** One run of the in-process numbers: a snapshot pass, a streamed reply on a copy of the state, a load of the log. */
-async function inProcessRun(state, boot, scratch, chunks) {
-  const pass = await measureSnapshotPass(state, scratch);
+/**
+ * One run of the in-process numbers: a snapshot pass, a streamed reply on a copy of the state, a load of the log.
+ * snapshotPass is measureSnapshotPass(), or a test’s stand-in.
+ */
+async function inProcessRun(state, boot, scratch, chunks, snapshotPass) {
+  const pass = await snapshotPass(state, scratch);
   const chunk = streamChunks(structuredClone(state), THREAD, chunks);
   const t0 = performance.now();
   const store = await new Store(boot).load();
@@ -144,10 +147,11 @@ async function apiRuns(room, items, total, { start, port, get }) {
 /**
  * One size: the room seeded into a temp folder, and a copy of it with the log for the startup; the in-process numbers
  * a run at a time, after one warm-up snapshot; then `/api/state`. The folder is removed however it ends. start, port,
- * tmp and get are for tests; logEvents too.
+ * tmp, get and snapshotPass are for tests; logEvents too.
  * @param {number} items  @param {{ runs: number, requests: number, chunks: number, logEvents?: number }} o
  */
-export async function measureSize(items, o, { start = startPostbox, port = freePort, tmp = tmpdir(), get = fetch } = {}) {
+export async function measureSize(items, o, deps = {}) {
+  const { start = startPostbox, port = freePort, tmp = tmpdir(), get = fetch, snapshotPass = measureSnapshotPass } = deps;
   const dir = await mkdtemp(join(tmp, `pb-bench-server-${items}-`));
   const room = join(dir, 'room');
   const boot = join(dir, 'boot');
@@ -159,9 +163,9 @@ export async function measureSize(items, o, { start = startPostbox, port = freeP
     await writeLog(boot, logEvents);
     await mkdir(scratch); // where the snapshot passes write, and remove what they wrote
     const state = await loadState(room);
-    await measureSnapshotPass(state, scratch);
+    await snapshotPass(state, scratch);
     const runs = [];
-    for (let run = 0; run < o.runs; run++) runs.push(await inProcessRun(state, boot, scratch, o.chunks));
+    for (let run = 0; run < o.runs; run++) runs.push(await inProcessRun(state, boot, scratch, o.chunks, snapshotPass));
     const api = await apiRuns(room, items, o.runs * o.requests, { start, port, get });
     return {
       items,
