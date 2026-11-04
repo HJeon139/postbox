@@ -7,7 +7,9 @@ import { FIRST_DAY_WORD } from '../../tools/uat/big-room.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 import { bigRoom, still } from './view-skipped-fixture.mjs';
 
-test.use({ colorScheme: 'light' });
+// Tracing is off: Playwright's trace snapshots walk all 1,000 items with their skipped styles each action, which
+// takes longer than the test.
+test.use({ colorScheme: 'light', trace: 'off' });
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -67,38 +69,37 @@ function sideRoom(title) {
 }
 
 for (const where of ['#main', 'the side panel']) {
-  test(`V3 in ${where}: an item above the anchor grows as one below shrinks by as much, in one frame, and what you read stays put`, async ({ page }) => {
+  test(`V3 in ${where}: reading where no item has drawn yet, what you read stays put while the items around it draw`, async ({ page }) => {
     const inPanel = where !== '#main';
     const room = inPanel ? sideRoom('Skipped: V3 in the panel') : { conv: bigRoom(app, 'Skipped: V3'), side: null };
     await open(page, { ...room, count: 1000 });
-    const scroller = page.locator(inPanel ? '.sidepanel .sp-body' : '#main');
-    const at = /** @type {{ x: number, y: number, width: number }} */ (await scroller.boundingBox());
-    await page.mouse.move(at.x + at.width / 2, inPanel ? at.y + 200 : 400);
-    await page.mouse.wheel(0, -3000);
-    await still(page);
     const shown = room.side ?? room.conv;
+    // Put the view halfway up, among items that have never drawn and so sit at the estimate, and take the anchor
+    // there. Then, frame by frame, the items above and below it draw at their real sizes.
     const v = await page.evaluate(
       async ({ threadId, inPanel }) => {
         const el = /** @type {HTMLElement} */ (document.querySelector(`.transcript[data-thread="${threadId}"]`));
-        const top = () => (inPanel ? /** @type {Element} */ (el.parentElement).getBoundingClientRect().top : 0);
-        const anchor = /** @type {HTMLElement} */ (el.querySelector(`:scope > [data-key="${CSS.escape(String(el.dataset.viewAnchor))}"]`));
-        const offset = Number(el.dataset.viewOffset);
-        const before = anchor.getBoundingClientRect().top - top();
+        const box = /** @type {Element} */ (inPanel ? el.parentElement : document.scrollingElement);
+        const top = () => (inPanel ? box.getBoundingClientRect().top : 0);
         const frame = () => new Promise((r) => requestAnimationFrame(r));
-        const GROWTH = 120;
-        // In one frame: the item above the anchor that much taller, the one below that much shorter, so the
-        // transcript's height doesn't change. Read in the next frame's callback, that is what this frame painted.
+        box.scrollTop = box.scrollHeight / 2;
         await frame();
-        /** @type {HTMLElement} */ (anchor.previousElementSibling).style.paddingTop = `${GROWTH}px`;
-        /** @type {HTMLElement} */ (anchor.nextElementSibling).style.marginBottom = `-${GROWTH}px`;
         await frame();
-        return { mode: el.dataset.viewMode, offset, before, painted: anchor.getBoundingClientRect().top - top() };
+        const key = String(el.dataset.viewAnchor);
+        const anchor = /** @type {HTMLElement} */ (el.querySelector(`:scope > [data-key="${CSS.escape(key)}"]`));
+        const at = anchor.getBoundingClientRect().top - top();
+        let worst = 0;
+        for (let i = 0; i < 20; i++) {
+          await frame();
+          worst = Math.max(worst, Math.abs(anchor.getBoundingClientRect().top - top() - at));
+        }
+        return { mode: el.dataset.viewMode, key, now: el.dataset.viewAnchor, worst };
       },
       { threadId: shown.id, inPanel },
     );
     expect(v.mode).toBe('reading');
-    expect(Math.abs(v.before - v.offset), 'the anchor started where the view says').toBeLessThanOrEqual(1);
-    expect(Math.abs(v.painted - v.offset), `the item you were reading didn’t move (${v.before} to ${v.painted})`).toBeLessThanOrEqual(1);
+    expect(v.now, 'the anchor is the same item').toBe(v.key);
+    expect(v.worst, 'the item you were reading moved at most 1 px in any frame while its neighbours drew').toBeLessThanOrEqual(1);
   });
 }
 
