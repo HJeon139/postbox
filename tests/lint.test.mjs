@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
 import { britishWords, checkMarkdown, checkJs as copyJs, straightQuotes, threadWords } from '../tools/lint-copy.mjs';
@@ -129,4 +132,17 @@ test('isEntry: a lint runs as a script from a folder whose path has a space or a
   assert.equal(isEntry(pathToFileURL('/tmp/a/tools/x.mjs').href, '/tmp/a/tools/../tools/x.mjs'), true);
   assert.equal(isEntry(pathToFileURL('/tmp/a/tools/x.mjs').href, '/tmp/a/tests/x.test.mjs'), false);
   assert.equal(isEntry(pathToFileURL('/tmp/a/tools/x.mjs').href, undefined), false);
+});
+
+test('isEntry: a lint run through a symlinked folder is still the script node ran', () => {
+  const real = mkdtempSync(join(tmpdir(), 'pb-is-entry-'));
+  const linked = `${real}-link`;
+  try {
+    writeFileSync(join(real, 'x.mjs'), '');
+    symlinkSync(real, linked);
+    assert.equal(isEntry(pathToFileURL(realpathSync(join(real, 'x.mjs'))).href, join(linked, 'x.mjs')), true);
+  } finally {
+    rmSync(linked, { force: true });
+    rmSync(real, { recursive: true, force: true });
+  }
 });
