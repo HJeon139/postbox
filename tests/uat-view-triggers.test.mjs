@@ -79,7 +79,9 @@ test('observe records the diagram probe before any screenshot scrolls the page',
   const item = { key: 'it_a', where: 'conversation', text: 'A diagram', block: null, app: false, diagram: true, math: false, buttons: [], fields: [] };
   const d = {
     kit: {
-      ev: async () => {
+      ev: async (expr) => {
+        // The skipped-items probe also runs (tests/uat-skip-probe.test.mjs); this stand-in shows it no conversation.
+        if (!expr.includes('/sandbox/mermaid')) return null;
         calls.push('probe');
         return { sinceLoad: 9000, requested: 0, full: false, frames: [{ key: 'it_a', loaded: false, inView: false }] };
       },
