@@ -208,11 +208,15 @@ export async function executePasses(state, iterations) {
  *   items?: number,
  *   iterations?: number,
  *   stallBudgetMs?: number,
- * }} [opts]  items: a seeded big room of that many items, in place of a snapshot
+ * }} [opts]  items: a seeded big room of that many items, in place of a snapshot, and refused with one
  */
 export async function runBenchmark(opts = {}) {
   const iterations = Math.max(1, opts.iterations ?? 3);
   const stallBudgetMs = opts.stallBudgetMs ?? DEFAULT_STALL_BUDGET_MS;
+  // Each names what to measure: --items used to win silently, so the report named a room that wasn’t asked for.
+  if (opts.items && (opts.snapshot || opts.data)) {
+    throw new Error('--items seeds a room of its own: give it without --snapshot or --data.');
+  }
 
   const { state, source, storeBytes } = opts.items ? await seededState(opts.items) : resolveSnapshotState(opts);
   const passes = await executePasses(state, iterations);
@@ -307,7 +311,8 @@ Measures snapshot serialization and write latency against the S2 budget.
 Options:
   -s, --snapshot <file>    Path to snapshot.json (synthetic state when neither it nor --data is given)
   -d, --data <dir>         Path to Postbox data folder (measures snapshot.json and events-*.jsonl segments)
-      --items <n>          A big room of n generated items, seeded into a temporary store (tools/uat/big-room.mjs)
+      --items <n>          A big room of n generated items, seeded into a temporary store (tools/uat/big-room.mjs);
+                           not with --snapshot or --data
   -n, --iterations <n>     Number of benchmark iterations (default: 3)
       --budget-stall <ms>  Event loop stall budget in milliseconds (default: 50)
       --json               Output machine-readable JSON

@@ -231,6 +231,16 @@ test('CLI refuses the dropped size budget and a malformed --items', async () => 
   await assert.rejects(benchCli(['--items', '1e3'], { out: () => {} }), /--items takes a whole number/);
 });
 
+test('the CLI refuses --items with --snapshot or --data, and measures nothing', async () => {
+  const lines = [];
+  const out = (/** @type {string} */ s) => lines.push(s);
+  const refused = /--items seeds a room of its own: give it without --snapshot or --data/;
+  await assert.rejects(benchCli(['--json', '--items', '40', '--snapshot', 'snapshot.json'], { out }), refused);
+  await assert.rejects(benchCli(['--json', '--items', '40', '--data', 'data'], { out }), refused);
+  await assert.rejects(benchCli(['--json', '--items', '40', 'snapshot.json'], { out }), refused);
+  assert.deepEqual(lines, [], 'no report from the seeded room in the snapshot’s place');
+});
+
 test('CLI runs default synthetic path and outputs JSON when requested', async () => {
   const lines = [];
   const code = await benchCli(['--json', '--iterations', '1'], { out: (s) => lines.push(s) });
