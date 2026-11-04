@@ -280,7 +280,7 @@ export function mountView({ el, inPanel, nodes, was }) {
   const resized = () => follow(v);
   const scrolled = thenPublish(() => onScroll(v));
   v.sizes = new ResizeObserver(resized);
-  const unskip = skipOffscreen(el, v.sizes);
+  skipOffscreen(el);
   // A change that makes the transcript shorter while stuck (a held height released, an app’s check giving way to its
   // frame) pulls the view up to the page’s new end. That isn’t you, but its scroll event can come after the page grew
   // back, and read as you scrolling up (#297). So note where the view is, if it’s at the new end: a wheel turn moves it
@@ -311,7 +311,6 @@ export function mountView({ el, inPanel, nodes, was }) {
     destroy() {
       v.dead = true;
       unregister(el);
-      unskip();
       v.sizes.disconnect();
       v.changes.disconnect();
       v.bound?.removeEventListener('scroll', scrolled);
