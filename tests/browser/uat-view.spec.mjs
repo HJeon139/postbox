@@ -7,7 +7,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { driver } from '../../tools/uat/driver.mjs';
 import { shots } from '../../tools/uat/driver-shots.mjs';
+import { observe } from '../../tools/uat/observe.mjs';
+import { newProbes, recordInput } from '../../tools/uat/probes.mjs';
 import { STEPS } from '../../tools/uat/steps.mjs';
 import { failOnPageErrors, frames, settled, startPostbox } from './postbox.mjs';
 import { holds, LONG, open as openIn, read, room as roomIn } from './view-read-fixture.mjs';
@@ -28,11 +31,20 @@ test.afterAll(async () => {
 });
 failOnPageErrors(test);
 
-/** tools/browser.mjs’s page, over this one: evaluate, and send, whose key presses `onKey` sees first. */
+/**
+ * tools/browser.mjs’s page, over this one: evaluate, the frame an element shows, and send, whose key presses `onKey`
+ * sees first.
+ */
 async function runnerPage(page, onKey = async () => {}) {
   const cdp = await page.context().newCDPSession(page);
   return {
     evaluate: (/** @type {string} */ expr) => page.evaluate(expr),
+    frameOf: async (/** @type {string} */ expr) => {
+      const handle = await page.evaluateHandle(expr);
+      const frame = (await handle.asElement()?.contentFrame()) ?? null;
+      await handle.dispose();
+      return frame;
+    },
     send: async (/** @type {string} */ method, /** @type {any} */ params) => {
       if (method === 'Input.dispatchKeyEvent' && params.type === 'keyDown') await onKey(params.key);
       return cdp.send(/** @type {any} */ (method), params);
@@ -115,4 +127,94 @@ test('scroll up reaches the page as PageUp from the composer: focusing the conve
   await holds(page, t, 'after PageUp');
   await STEPS.scroll({ page: await runnerPage(page), facts, step: 8 }, { by: 'end' });
   await expect.poll(async () => (await read(page, t)).mode, { message: 'End brought it back to the end' }).toBe('following');
+});
+
+/** A long room with an app far above its end, open, its check passed, and the runner’s driver, recording its inputs. */
+async function appRoom(page, title) {
+  const { t, say } = roomIn(app, title);
+  const [se] = app.rt.sessionsIn(t.id);
+  app.rt.toolsFor(se.id).show_app({ id: `app-${t.id}`, title: 'Tally', code: '<p>Inside the app: 3 votes</p>' });
+  for (let i = 31; i <= 60; i++) say(LONG(i));
+  await openIn(app, page, t);
+  // The page runs the app’s check.
+  await expect.poll(() => app.rt.s.apps[`app-${t.id}`]?.check?.status, { timeout: 30_000 }).toBe('passed');
+  await settled(page);
+  const facts = { probes: newProbes(), apps: /** @type {Record<string, any>} */ ({}), threads: [], state: app.store.state };
+  const d = driver(await runnerPage(page), {
+    input: recordInput(
+      facts.probes,
+      () => 1,
+      () => {},
+    ),
+  });
+  return { t, d, facts };
+}
+
+/** One step of the runner’s look at the screen (tools/uat/observe.mjs): a shot of the app, then a read inside it. */
+async function observeStep(page, d, facts) {
+  const step = await observe({ d, labels: new Map(), keys: new Map(), seen: new Map(), paths: { shots: dir }, timeline: [], dir, facts });
+  await settled(page);
+  expect(step.items.join('\n'), 'the app was shot and read').toMatch(/Screenshot: .*\n.*Inside the app: Inside the app: 3 votes/s);
+}
+
+test('a step that shots an app far above and reads inside it leaves a following view following, and records nothing', async ({ page }) => {
+  const { t, d, facts } = await appRoom(page, 'Runner view: app, following');
+  expect((await holds(page, t, 'opened')).mode).toBe('following');
+  await observeStep(page, d, facts);
+  expect((await holds(page, t, 'after the step')).mode, 'still following').toBe('following');
+  expect(facts.probes.inputs, 'a read is kept, not recorded').toEqual([]);
+});
+
+test('a step that shots an app far above and reads inside it puts a reading view back at its anchor', async ({ page }) => {
+  const { t, d, facts } = await appRoom(page, 'Runner view: app, reading');
+  await page.mouse.move(640, 400);
+  await page.mouse.wheel(0, -1200);
+  await settled(page);
+  const before = await holds(page, t, 'reading');
+  expect(before.mode).toBe('reading');
+  await observeStep(page, d, facts);
+  const after = await holds(page, t, 'after the step');
+  expect([after.mode, after.anchor], 'still reading, at the same anchor').toEqual(['reading', before.anchor]);
+  expect(Math.abs(Number(after.offset) - Number(before.offset)), 'at its offset, within 1 px').toBeLessThanOrEqual(1);
+  expect(facts.probes.inputs).toEqual([]);
+});
+
+test('a runner click on a control already on screen leaves a reading view’s anchor where it was', async ({ page }) => {
+  const { t } = roomIn(app, 'Runner view: click');
+  await openIn(app, page, t);
+  await page.mouse.move(640, 400);
+  await page.mouse.wheel(0, -1200);
+  await settled(page);
+  const before = await holds(page, t, 'reading');
+  expect(before.mode).toBe('reading');
+  const probes = newProbes();
+  const d = driver(await runnerPage(page), {
+    input: recordInput(
+      probes,
+      () => 1,
+      () => {},
+    ),
+  });
+  await d.clickAt(`document.querySelector('#composer-input')`, 'the composer');
+  await expect(page.locator('#composer-input'), 'the click landed').toBeFocused();
+  await settled(page);
+  const after = await holds(page, t, 'after the click');
+  expect([after.mode, after.anchor], 'still reading, at the same anchor').toEqual(['reading', before.anchor]);
+  expect(Math.abs(Number(after.offset) - Number(before.offset)), 'at its offset, within 1 px').toBeLessThanOrEqual(1);
+  expect(
+    probes.inputs.map((x) => x.kind),
+    'the click is recorded',
+  ).toEqual(['runner-click']);
+});
+
+test('a runner click on a control off screen still brings it to the middle of the view, and clicks it', async ({ page }) => {
+  const { t } = roomIn(app, 'Runner view: click off screen');
+  await openIn(app, page, t);
+  const key = app.store.state.items[t.id][10].id;
+  const d = driver(await runnerPage(page));
+  await d.clickAt(`document.querySelector('#main [data-key="${key}"]')`, 'an item far above');
+  await settled(page);
+  const box = await page.locator(`#main [data-key="${key}"]`).boundingBox();
+  const middle = /** @type {number} */ (box?.y) + /** @type {number} */ (box?.height) / 2;
+  expect(Math.abs(middle - 400), 'its middle at the middle of the window').toBeLessThanOrEqual(40);
 });
