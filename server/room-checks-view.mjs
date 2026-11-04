@@ -9,7 +9,20 @@ const MOVED_PX = 1;
 const END_PX = 2;
 
 const px = (n) => `${Math.round(n * 10) / 10} px`;
-const samePage = (a, b) => a.where === b.where && a.thread === b.thread && a.origin === b.origin;
+/** One transcript in one page load: its samples are compared only with each other. */
+const pageKey = (s) => `${s.where}\u0000${s.thread}\u0000${s.origin}`;
+
+/** Whether an input's time falls in [from, to], by binary search of the sorted times: O(log inputs). */
+function inputBetween(/** @type {number[]} */ times, from, to) {
+  let lo = 0;
+  let hi = times.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] < from) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo < times.length && times[lo] <= to;
+}
 /** A sample the check may read: settled, and not one the runner caused. */
 const usable = (s) => s.settled === true && s.cause !== 'runner';
 const where = (s) => (s.where === 'panel' ? 'the side panel' : 'the conversation');
@@ -57,11 +70,15 @@ function viewMoved(f) {
   const inputs = f.probes?.inputs;
   if (!Array.isArray(views) || !Array.isArray(inputs)) return [];
   const out = views.filter(usable).map(stale).filter(Boolean);
+  const times = inputs.map((x) => x.at).sort((x, y) => x - y);
+  const last = new Map(); // the previous sample of each transcript and page load: O(1) per sample, not a scan back
   const skipped = new Map();
-  for (const [i, b] of views.entries()) {
-    const a = views.slice(0, i).findLast((x) => samePage(x, b));
+  for (const b of views) {
+    const page = pageKey(b);
+    const a = last.get(page);
+    last.set(page, b);
     if (!a || !usable(a) || !usable(b)) continue;
-    if (inputs.some((x) => x.at >= a.at && x.at <= b.at)) continue;
+    if (inputBetween(times, a.at, b.at)) continue;
     const r = moved(a, b);
     const key = `${b.where}:${b.thread}`;
     const n = skipped.get(key) ?? { thread: b.thread, where: b.where, skipped: 0, pairs: 0 };
