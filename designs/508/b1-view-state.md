@@ -13,20 +13,18 @@ The person chose client-side virtualization first, with the server window deferr
 
 ## Where it stands
 
-On `feat/508-b1b-view-state`, from `main` at `202d6e1d`:
+On `feat/508-b1b-view-state`, rebased onto `main` at `48f20ccd`. B1b is now three slices (sprint 3): **B1b-a**, the view read, is this branch; B1b-b (the runner keeps the view, and the tester can scroll) and B1b-c (the probe, `view-moved`, `window-paged-back` and phase 1’s UAT) follow, designed in the B1b addendum.
 
 | Commit | What it does |
 |---|---|
-| `db38ad77` | The view logic moves out of `thread.mjs` into `app/js/view-state.mjs`, logic unchanged. `thread.mjs` drops from 1,812 to 1,635 lines, and its ceiling with it |
-| `c2ef73fc` | #341 part 2's spec, made deterministic: a 1 px padding doesn't change the transcript's height, so the old guard never ran the race. With 40 px it fails every time |
-| `c6da4854` | The fix: a scroll the transcript hasn't heard of yet isn't taken back by a resize in the same frame. A size change of the scroll box itself (the window, the panel) is the browser's, which keeps #88's resize case |
-| `c1d48b20` | #357's clamp fix (`a0b13bf5`) gets a spec that fails without it. #356's spec cites it: CI's `late` pass runs the #88 panel case with the events late |
-
-Checks at `c1d48b20`: the 64 scroll and transcript specs pass, normally and with `POSTBOX_STREAM_LAG=300`, and `npm run check` exits 0.
+| the move | The view logic moves out of `thread.mjs` into `app/js/view-state.mjs`, logic unchanged. `thread.mjs` drops from 1,812 to 1,635 lines, and its ceiling with it |
+| #341’s spec | #341 part 2’s spec, made deterministic: a 1 px padding doesn’t change the transcript’s height, so the old guard never ran the race. With 40 px it fails every time |
+| #341’s fix | A scroll the transcript hasn’t heard of yet isn’t taken back by a resize in the same frame. A size change of the scroll box itself (the window, the panel) is the browser’s, which keeps #88’s resize case |
+| #357 and #356 | #357’s clamp fix (`a0b13bf5`) gets a spec that fails without it. #356’s spec names it: CI’s `late` pass runs the #88 panel case with the events late |
+| the view read (B1b-a) | `data-view-mode`, `data-view-anchor` and `data-view-offset` on the transcript, main and panel, after each way in that can change them without a scroll event of its own; a redraw from new state takes an anchor that’s gone again. V1: `tests/browser/view-read.spec.mjs` |
 
 **Still to do for B1b:**
-- the explicit read `{ mode, anchorId, offset }`, which the probe needs;
-- `bigroom.md` phase 1's trigger `window-paged-back` and check `view-moved`, in `tools/uat/`;
+- B1b-b and B1b-c, as above. B1b-a counts as done only when B1b-c’s phase 1 run passes (Q4);
 - PF-3's list: replace #357, a merged PR, with the clamp fix it found (`a0b13bf5`);
 - a UAT run of phase 1 before review.
 
