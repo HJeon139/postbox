@@ -1,6 +1,6 @@
 # Big room: reading far back while agents keep writing
 
-- persona: A lead reading back through a long room to find an earlier decision, while two agents keep posting. Jumps by link, by “Next that needs you”, and by searching, and scrolls up slowly through long messages.
+- persona: A lead reading back through a long room to find an earlier decision, while two agents keep posting. Jumps by link, by “Next that needs you”, and by searching, and pages through long messages, going to the first day with Home.
 - agents: researcher, critic
 - seed: big-room
 - seed-diagrams: 6

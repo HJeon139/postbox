@@ -32,6 +32,7 @@ function stale(s) {
   if (s.mode !== 'reading' || typeof s.actual !== 'number' || typeof s.expected !== 'number') return null;
   if (Math.abs(s.actual - s.expected) <= MOVED_PX) return null;
   return {
+    key: `view-moved:stale:${s.where}:${s.thread}:${s.step}`,
     title: 'The view’s published place isn’t where its anchor is',
     evidence: `At step ${s.step}, ${where(s)} said ${s.anchorId} was ${px(s.expected)} down the view; it was at ${px(s.actual)}.`,
   };
@@ -44,40 +45,63 @@ function stale(s) {
  * when the earlier anchor isn’t mounted any more, or null.
  */
 function moved(a, b) {
+  const pair = `${b.where}:${b.thread}:${a.step}-${b.step}`;
   if (a.mode !== b.mode)
     return {
+      key: `view-moved:mode:${pair}`,
       title: 'The view changed between following and reading without a scroll',
       evidence: `Between steps ${a.step} and ${b.step}, with no input between, ${where(b)} went from ${a.mode} to ${b.mode}.`,
     };
   if (b.mode === 'following')
     return b.gap > END_PX
       ? {
+          key: `view-moved:drift:${pair}`,
           title: 'The view stopped following the newest message without a scroll',
           evidence: `At step ${b.step}, ${where(b)} was following, ${px(b.gap)} above the end, with no input since step ${a.step}.`,
         }
       : null;
-  if (!b.prev || typeof a.actual !== 'number') return 'skipped';
+  if (!b.prev || b.prev.anchorId !== a.anchorId || typeof a.actual !== 'number') return 'skipped';
   if (Math.abs(b.prev.actual - a.actual) <= MOVED_PX) return null;
   return {
+    key: `view-moved:moved:${pair}`,
     title: 'What you were reading moved without a scroll',
     evidence: `Between steps ${a.step} and ${b.step}, with no input between, ${b.prev.anchorId} in ${where(b)} went from ${px(a.actual)} to ${px(b.prev.actual)} down the view.`,
   };
 }
 
+/** What the check says of a run with views but no inputs: it checked nothing, which isn't a pass. */
+const NO_INPUTS = Object.freeze({
+  key: 'view-moved:unverified:no-inputs',
+  issue: null,
+  title: 'view-moved checked nothing: the run recorded no inputs',
+  evidence:
+    'The view probe sampled the transcript, but the run kept no record of its scrolls and clicks, so a move it made can’t be told from one the page made.',
+  verdict: 'measurement',
+  note: 'Not a defect: the run predates the input recorder (B1b-b).',
+  unverified: { check: 'view-moved', thread: null },
+});
+
 /** @param {{ probes?: { views?: any[], inputs?: { at: number }[] } }} f */
 function viewMoved(f) {
   const views = f.probes?.views;
   const inputs = f.probes?.inputs;
-  if (!Array.isArray(views) || !Array.isArray(inputs)) return [];
+  if (!Array.isArray(views) || !views.length) return [];
+  if (!Array.isArray(inputs)) return [NO_INPUTS]; // a run that recorded views but not inputs can't tell a scroll from a move
   const out = views.filter(usable).map(stale).filter(Boolean);
   const times = inputs.map((x) => x.at).sort((x, y) => x - y);
   const last = new Map(); // the previous sample of each transcript and page load: O(1) per sample, not a scan back
   const skipped = new Map();
   for (const b of views) {
     const page = pageKey(b);
+    if (!usable(b)) {
+      // An unsettled sample is passed over, so the next settled one is compared with the last. A step the runner moved
+      // (B1b-b's keepView marks one it couldn't put back) starts the comparison over instead.
+      if (b.cause === 'runner') last.delete(page);
+      continue;
+    }
     const a = last.get(page);
     last.set(page, b);
-    if (!a || !usable(a) || !usable(b)) continue;
+    if (!a) continue;
     if (inputBetween(times, a.at, b.at)) continue;
     const r = moved(a, b);
     const key = `${b.where}:${b.thread}`;
@@ -91,7 +115,7 @@ function viewMoved(f) {
       key: `view-moved:unverified:${s.where}:${s.thread}`,
       issue: null,
       title: `view-moved couldn’t check every step in ${where(s)}`,
-      evidence: `${s.skipped} of ${s.pairs} pairs of steps with no input between went unchecked: the earlier step’s anchor wasn’t on the page any more, so where it went can’t be measured.`,
+      evidence: `${s.skipped} of ${s.pairs} pairs of steps with no input between went unchecked: the later step couldn’t measure the earlier step’s anchor (it had left the page, or the conversation changed between them), so where it went is unknown.`,
       verdict: 'measurement',
       note: 'Not a defect: an anchor that left the page can’t be measured.',
       unverified: { check: 'view-moved', thread: s.thread },

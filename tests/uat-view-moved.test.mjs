@@ -77,10 +77,52 @@ test('view-moved skips an unsettled sample', () => {
   assert.deepEqual(findings([sample(1, { actual: 130, settled: false })]), []);
 });
 
-test('view-moved says nothing on a run with no inputs recorded: it can’t tell a scroll from a move', () => {
-  assert.deepEqual(check.run({ probes: { views: jump } }), []);
-  assert.deepEqual(check.run({ probes: { views: [following(1), sample(2), sample(3, { actual: 150 })] } }), []);
-  assert.deepEqual(check.run({ probes: {} }), []);
+test('view-moved raises no finding on a run with no inputs recorded, and says it checked nothing', () => {
+  for (const views of [jump, [following(1), sample(2), sample(3, { actual: 150 })]]) {
+    const out = check.run({ probes: { views } });
+    assert.deepEqual(
+      out.map((x) => x.key),
+      ['view-moved:unverified:no-inputs'],
+    );
+    assert.equal(out[0].unverified.check, 'view-moved');
+  }
+  assert.deepEqual(check.run({ probes: {} }), [], 'no views: nothing to say');
+  assert.deepEqual(check.run({ probes: { views: [], inputs: [] } }), []);
+});
+
+test('view-moved compares across an unsettled sample: a move hidden behind one is still caught', () => {
+  const hidden = [
+    sample(1, { actual: 120 }),
+    sample(2, { settled: false, prev: { anchorId: 'it_big0500', actual: 420 } }),
+    sample(3, { anchorId: 'it_big0480', actual: 140, expected: 140, prev: { anchorId: 'it_big0500', actual: 420 } }),
+  ];
+  assert.equal(findings(hidden).length, 1);
+  assert.match(findings(hidden)[0].evidence, /steps 1 and 3/);
+});
+
+test('view-moved starts over after a step the runner moved, so the runner’s own scroll isn’t a finding', () => {
+  const moved = [
+    sample(1, { actual: 120 }),
+    sample(2, { cause: 'runner' }),
+    sample(3, { anchorId: 'it_big0480', actual: 140, expected: 140, prev: { anchorId: 'it_big0500', actual: 420 } }),
+  ];
+  assert.deepEqual(findings(moved), []);
+});
+
+test('view-moved doesn’t read a prev that measured some other item than the earlier anchor', () => {
+  const wrong = [sample(1, { anchorId: 'it_big0500', actual: 120 }), sample(2, { prev: { anchorId: 'it_big0499', actual: 900 } })];
+  assert.deepEqual(findings(wrong), []);
+});
+
+test('view-moved keys each finding by its kind, transcript and steps, so a run keeps every one', () => {
+  const twice = [
+    sample(1, { actual: 120 }),
+    sample(2, { actual: 120, prev: { anchorId: 'it_big0500', actual: 300 } }),
+    sample(3, { actual: 120, prev: { anchorId: 'it_big0500', actual: 500 } }),
+  ];
+  const keys = findings(twice).map((x) => x.key);
+  assert.equal(new Set(keys).size, keys.length);
+  assert.deepEqual(keys, ['view-moved:moved:main:t_big:1-2', 'view-moved:moved:main:t_big:2-3']);
 });
 
 test('view-moved skips a step the runner caused', () => {

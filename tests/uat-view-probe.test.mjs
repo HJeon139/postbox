@@ -152,3 +152,14 @@ test('#531: the last anchor goes into the page code escaped, so a key can’t cl
   assert.ok(!expr.includes('\u2028'), 'no raw line separator');
   assert.ok(expr.includes('\\u003c/script\\u003e'), 'the key is escaped, not dropped');
 });
+
+test('#531: a reply growing below a reading anchor leaves the sample settled; while following, a changed gap doesn’t', async () => {
+  const growing = (mode) => {
+    const page = pageWith([{ where: 'main', mode, anchor: mode === 'reading' ? 'it_b' : '', offset: mode === 'reading' ? '100' : '', items: { it_b: 100 } }]);
+    let reads = 0;
+    Object.defineProperty(page.document.scrollingElement, 'scrollHeight', { get: () => 50_000 + 200 * reads++ });
+    return page;
+  };
+  assert.equal((await sampleViews(evIn(growing('reading')), {}))[0].settled, true);
+  assert.equal((await sampleViews(evIn(growing('following')), {}))[0].settled, false);
+});

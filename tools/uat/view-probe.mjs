@@ -47,8 +47,10 @@ export const sampleViews = (ev, last) =>
       };
     };
     const near = (x, y) => (x === null && y === null) || (x !== null && y !== null && Math.abs(x - y) <= ${SETTLE_PX});
+    // The gap counts only while following: a reply growing below a reading anchor changes it without moving the view.
+    const gapAgrees = (a, b) => a.mode !== 'following' || near(a.gap, b.gap);
     const agree = (a, b) =>
-      a.mode === b.mode && a.anchorId === b.anchorId && near(a.actual, b.actual) && near(a.gap, b.gap) &&
+      a.mode === b.mode && a.anchorId === b.anchorId && near(a.actual, b.actual) && gapAgrees(a, b) &&
       near(a.prev && a.prev.actual, b.prev && b.prev.actual);
     const first = els.map(read);
     const framed = await new Promise((done) => {
