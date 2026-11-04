@@ -6,8 +6,8 @@ import assert from 'node:assert/strict';
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
-import { sleep } from './remote-hosts-fixtures.mjs';
-import { fails, MISMATCH, rig } from './remote-hosts-update-fixtures.mjs';
+import { sleep, until } from './remote-hosts-fixtures.mjs';
+import { BUSY, fails, hangs, MISMATCH, rig } from './remote-hosts-update-fixtures.mjs';
 
 const settle = () => sleep(40);
 
@@ -42,6 +42,45 @@ test('#464-b2b: a failed install that isn’t an SshFailure puts no message of i
     const shown = t.mgr.status('h1').update;
     assert.equal(shown?.outcome, 'failed', 'the token couldn’t be kept');
     assert.equal(shown.error, undefined, `a raw error’s message may name a path on this computer: ${shown.error}`);
+  } finally {
+    t.done();
+  }
+});
+
+test('#464-b2b: a caller waiting on a busy install goes on once the host connects after it', async () => {
+  /** @type {any} */
+  let t = null;
+  t = rig({
+    install: (/** @type {any} */ c) => {
+      t.attach = 'daemon';
+      c.fail(75, BUSY);
+    },
+  });
+  try {
+    await t.mgr.setKeepUpdated('h1', true);
+    const welcome = await t.mgr.ensureWelcome('h1');
+    assert.ok(welcome, 'the other Postbox’s install of this version let it connect');
+    assert.equal(t.mgr.status('h1').update.outcome, 'busy');
+    assert.equal(t.runs.length, 1);
+  } finally {
+    t.done();
+  }
+});
+
+test('#464-b2b: a caller that hears any failure while the person’s Install… runs waits for it, not only a 127', async () => {
+  const t = rig({ attach: '126', install: hangs });
+  try {
+    t.mgr.install('h1').catch(() => {});
+    await until(() => t.runs.length === 1, 'the install started');
+    let settled = false;
+    const call = t.mgr.ensureWelcome('h1').finally(() => {
+      settled = true;
+    });
+    call.catch(() => {});
+    await settle();
+    assert.equal(settled, false, 'it waits for the install under way');
+    t.mgr.close();
+    await assert.rejects(call);
   } finally {
     t.done();
   }
