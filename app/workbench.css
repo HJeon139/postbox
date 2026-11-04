@@ -310,6 +310,12 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 /* The transcript keeps its own place (mountTranscript): on the newest message, or on what you were reading. The
    browser's own scroll anchoring is off, so every browser behaves the same and only your scrolling moves it. */
 :root:has(.transcript), .sp-body { overflow-anchor: none; }
+/* Every item stays mounted, but the browser skips the layout and paint of those off screen, each at an estimate until
+   it draws, and remembers its size once it has (#712). The estimates are the median item of a generated 1,000-item
+   room, 71 px at 1,280 px and 91 px at 375 px. Only where the browser says when an item draws (cv-skip,
+   app/js/view-skip.mjs), so the view can keep your place as it does. */
+.transcript.cv-skip > .item { content-visibility: auto; contain-intrinsic-size: auto 71px; }
+@media (max-width: 600px) { .transcript.cv-skip > .item { contain-intrinsic-size: auto 91px; } }
 .col { width: 100%; max-width: 760px; margin: 0 auto; }
 .wide { width: 100%; }
 

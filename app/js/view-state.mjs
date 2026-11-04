@@ -3,6 +3,8 @@
 // It owns that state for one transcript, holds the anchor through changes in size (#88, #297, #341), and publishes what
 // it is on the transcript as data-view-* (publish). Moved from thread.mjs’s mountTranscript (#531).
 
+import { skipOffscreen } from './view-skip.mjs';
+
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
  *   anchor: { key: string, at: number } | null, dead: boolean, shown: number, lastTop: number,
@@ -287,6 +289,7 @@ export function mountView({ el, inPanel, nodes, was }) {
   const resized = () => follow(v);
   const scrolled = thenPublish(() => onScroll(v));
   v.sizes = new ResizeObserver(resized);
+  const unskip = skipOffscreen(el, v.sizes);
   // A change that makes the transcript shorter while stuck (a held height released, an app’s check giving way to its
   // frame) pulls the view up to the page’s new end. That isn’t you, but its scroll event can come after the page grew
   // back, and read as you scrolling up (#297). So note where the view is, if it’s at the new end: a wheel turn moves it
@@ -315,6 +318,7 @@ export function mountView({ el, inPanel, nodes, was }) {
     },
     destroy() {
       v.dead = true;
+      unskip();
       v.sizes.disconnect();
       v.changes.disconnect();
       v.bound?.removeEventListener('scroll', scrolled);
