@@ -64,11 +64,12 @@ test('appClick brings the app’s item into view with the page’s jumpTo, cente
   assert.doesNotMatch(sent.join('\n'), /scrollIntoView/);
 });
 
-test('shotItem puts the item at the top with the page’s jumpTo, then clears the sticky top bar', async (t) => {
+test('shotItem puts the item at the top with the page’s jumpTo, which starts below the sticky top bar', async (t) => {
   const { page, sent } = standIn();
   const dir = mkdtempSync(join(tmpdir(), 'uat-jump-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   await fast(t, () => driver(page).shotItem('it_a', join(dir, 'a.png')));
-  assert.match(sent[0], /jumpTo\(n, "start"\); scrollBy\(0, -\(/);
+  assert.match(sent[0], /jumpTo\(n, "start"\); return true;/);
+  assert.doesNotMatch(sent[0], /scrollBy/, 'a scroll after the jump would unpin the item');
   assert.doesNotMatch(sent.join('\n'), /scrollIntoView/);
 });
