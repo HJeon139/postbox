@@ -18,8 +18,9 @@ const SYSTEM_HOMES = new Set(['linuxbrew']);
 const SLASHED_HOME = /(?:[A-Za-z]:[/\\]+|(?<=^|[^A-Za-z0-9_-]))[/\\]*(?:Users|home)[/\\]+([a-zA-Z0-9_][a-zA-Z0-9._-]*)/g;
 
 // A Claude Code project slug: a path with each “/” and “.” turned into “-”, such as “-local-home-alice-repo”. It starts
-// with a “-” that follows no slug character, so “welcome-home-agents” in prose isn’t one.
-const SLUG = /(?<![A-Za-z0-9_.-])-[A-Za-z0-9_.-]+/g;
+// with a “-” that follows no slug character, so “welcome-home-agents” in prose isn’t one. On Windows the drive letter
+// comes first and its “:” and “\” each become a “-”, as in “C--Users-alice-repo”.
+const SLUG = /(?<![A-Za-z0-9_.-])(?:[A-Za-z]-)?-[A-Za-z0-9_.-]+/g;
 
 // A home folder inside a slug, and the user name after it, up to the next “-”.
 const SLUG_HOME = /-(?:Users|home)-([A-Za-z0-9_.]+)/g;
@@ -35,24 +36,27 @@ const CLAUDE_UID = /(?<![A-Za-z0-9])claude-(\d{3,})(?![A-Za-z0-9]|-cwd\b)/g;
 // A scrubbed id: all zeros, with or without dashes.
 const ALL_ZEROS = /^0+(?:-0+)*$/;
 
-// Codex’s installationId or installation_id, and its value.
-const INSTALLATION_ID = /"installation(?:Id|_id)"\s*:\s*"([^"]+)"/g;
+// Codex’s installationId or installation_id, and its value. Each quote may follow a “\”, as it does where the JSON is
+// escaped inside another string, so the value stops at a “\” too.
+const INSTALLATION_ID = /\\?"installation(?:Id|_id)\\?"\s*:\s*\\?"([^"\\]+)\\?"/g;
 
-// Account metadata keys (camelCase and snake_case).
-const ACCOUNT_FIELD = /"(planType|authMode|usedPercent|plan_type|auth_mode|used_percent)"/g;
+// Account metadata keys (camelCase and snake_case), with or without a “\” before each quote.
+const ACCOUNT_FIELD = /\\?"(planType|authMode|usedPercent|plan_type|auth_mode|used_percent)\\?"/g;
 
 // Anthropic API keys and GitHub tokens, at the lengths server/telemetry-secrets.mjs matches, so a placeholder such as
 // “sk-ant-...” or “ghp_xxxx” in prose isn’t one.
 const API_TOKEN = /\bsk-ant-[A-Za-z0-9_-]{20,}|\bgh[pousr]_[A-Za-z0-9]{30,}\b|\bgithub_pat_[A-Za-z0-9_]{30,}/g;
 
-// A rate limit’s “utilization”, how much of the account’s limit it used, and its value. Only 0 says nothing.
-const UTILIZATION = /"utilization"\s*:\s*([^,}\]\s]+)/g;
+// A rate limit’s “utilization”, how much of the account’s limit it used, and its value, with or without a “\” before
+// each quote. Only 0 says nothing.
+const UTILIZATION = /\\?"utilization\\?"\s*:\s*([^,}\]\s]+)/g;
 
 // The value a scrubbed utilization holds.
 const ZERO = /^0(?:\.0+)?$/;
 
-// An email address. One that runs on into a name, as in the TOML key “plugins.sample@test.mcp_servers”, isn’t one.
-const EMAIL = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?![A-Za-z0-9_])/g;
+// An email address. It stops at the first character an address can’t hold, so “alice@corp.com_backup” is still the
+// address “alice@corp.com” with a name run on after it.
+const EMAIL = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
 // A placeholder address: at a domain reserved for examples (example.com, .org or .net, or a subdomain of one), or under
 // a top-level domain reserved for examples and tests (RFC 2606).
@@ -63,6 +67,14 @@ const EXAMPLE_EMAIL = /@(?:(?:[A-Za-z0-9-]+\.)*example\.(?:com|org|net)|(?:[A-Za
  * mention tests write to check that “@indexer” and “@critic” inside an address aren’t mentions of those agents.
  */
 const BOT_EMAILS = new Set(['noreply@anthropic.com', 'noreply@openai.com', 'git@github.com', 'a@indexer.com', 'x@critic.com']);
+
+/**
+ * Text shaped like an address that isn’t one, each matched exactly. “plugins.sample@test.mcp” is the start of a Codex
+ * TOML key, “plugins.sample@test.mcp_servers…”, in tests/codex-mcp-approval.test.mjs: a plugin named “sample” from the
+ * “test” marketplace. Listing that one string, rather than skipping “.mcp” or anything followed by “_”, keeps every
+ * other address checked.
+ */
+const NOT_EMAILS = new Set(['plugins.sample@test.mcp']);
 
 /** Home paths, slashed or in a slug, whose user name isn’t a placeholder. @param {string} content */
 function homePaths(content) {
@@ -124,7 +136,7 @@ function utilizations(content) {
 function emails(content) {
   const found = [];
   for (const [email] of content.matchAll(EMAIL)) {
-    if (!EXAMPLE_EMAIL.test(email) && !BOT_EMAILS.has(email)) found.push(`email: ${email}`);
+    if (!EXAMPLE_EMAIL.test(email) && !BOT_EMAILS.has(email) && !NOT_EMAILS.has(email)) found.push(`email: ${email}`);
   }
   return found;
 }
@@ -172,4 +184,42 @@ export function checkFilePrivacy(path, content) {
 /** Whether a file is binary, as git decides it: a zero byte in its first 8,000. @param {Buffer} bytes */
 export function isBinary(bytes) {
   return bytes.subarray(0, 8000).includes(0);
+}
+
+// A fixture labelled synthetic says so on its first line, after a “#” or “//” comment marker, as the delivery spike’s
+// baselines do. “SYNTHETIC” later in the line, such as inside a JSON string, isn’t a label.
+const SYNTHETIC_LABEL = /^(?:#|\/\/)\s*SYNTHETIC\b/;
+
+/** Whether a fixture’s first line labels it synthetic. @param {string} firstLine */
+export function isSyntheticLabel(firstLine) {
+  return SYNTHETIC_LABEL.test(firstLine);
+}
+
+// A “## ” heading at the start of a line, where the README’s next section begins.
+const SECTION = /^## /m;
+
+// A listed fixture: a “- ” line that starts with its path in backticks.
+const LISTED_PATH = /^- `([^`]+)`/gm;
+
+/**
+ * The paths the fixtures README lists under “Synthetic fixtures”, one per “- `path`” line.
+ *
+ * @param {string} readme the text of tests/fixtures/README.md
+ * @returns {string[]}
+ */
+export function syntheticFixturePaths(readme) {
+  const section = readme.split(SECTION).find((part) => part.startsWith('Synthetic fixtures'));
+  if (!section) throw new Error('tests/fixtures/README.md has no “Synthetic fixtures” section');
+  return [...section.matchAll(LISTED_PATH)].map(([, path]) => path);
+}
+
+/**
+ * The synthetic fixtures the README lists that the tree doesn’t hold.
+ *
+ * @param {string} readme the text of tests/fixtures/README.md
+ * @param {(path: string) => boolean} exists whether a path from the repository’s root is in the tree
+ * @returns {string[]}
+ */
+export function missingSyntheticFixtures(readme, exists) {
+  return syntheticFixturePaths(readme).filter((path) => !exists(path));
 }

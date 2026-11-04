@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkContentPrivacy, checkFilePrivacy } from './privacy-check.mjs';
+import { checkContentPrivacy, checkFilePrivacy, isBinary, isSyntheticLabel, missingSyntheticFixtures, syntheticFixturePaths } from './privacy-check.mjs';
 
 test('fixtures privacy checker flags path violations', () => {
   // Home paths: Unix, Windows, slugs
@@ -58,6 +58,8 @@ test('privacy checker flags a home folder inside a slug, whatever comes before i
   assert.ok(checkContentPrivacy('-local-home-alice-x').length > 0, 'flags -local-home-alice-');
   assert.ok(checkContentPrivacy('projects/-private-tmp-Users-alice-repo').length > 0, 'flags -private-tmp-Users-alice-');
   assert.ok(checkContentPrivacy('-Users-me-home-alice-x').length > 0, 'flags a second home folder in one slug');
+  assert.ok(checkContentPrivacy('projects/C--Users-alice-repo').length > 0, 'flags a Windows slug, which starts with its drive');
+  assert.equal(checkContentPrivacy('projects/C--Users-me-repo').length, 0);
   assert.equal(checkContentPrivacy('-local-home-me-x').length, 0);
   assert.equal(checkContentPrivacy('https://github.blog/welcome-home-agents/').length, 0, 'prose with -home- in it is not a slug');
 });
@@ -86,6 +88,8 @@ test('privacy checker flags Anthropic API keys and GitHub tokens at a real key�
   }
   assert.equal(checkContentPrivacy('set ANTHROPIC_API_KEY=sk-ant-... first').length, 0, 'a placeholder in prose');
   assert.equal(checkContentPrivacy('ghp_xxxx and github_pat_xxxx').length, 0, 'placeholders shorter than a token');
+  assert.ok(checkContentPrivacy(`key sk-ant-${'a'.repeat(21)}`).length > 0, 'flags a key just past the shortest length');
+  assert.equal(checkContentPrivacy(`key sk-ant-${'a'.repeat(19)}`).length, 0, 'a key just short of it');
 });
 
 test('privacy checker flags a rate limit’s utilization unless it is 0', () => {
@@ -93,6 +97,16 @@ test('privacy checker flags a rate limit’s utilization unless it is 0', () => 
   assert.ok(checkContentPrivacy('{"utilization": 1}').length > 0, 'flags 1');
   assert.equal(checkContentPrivacy('{"utilization":0,"status":"allowed"}').length, 0);
   assert.equal(checkContentPrivacy('{"utilization": 0}').length, 0);
+  assert.ok(checkContentPrivacy('{"utilization":0.05}').length > 0, 'flags a small value that only starts with 0');
+});
+
+test('privacy checker flags keys JSON-escaped inside another string', () => {
+  assert.ok(checkContentPrivacy('{"line":"{\\"utilization\\":0.13}"}').length > 0, 'flags an escaped utilization');
+  assert.ok(checkContentPrivacy('{"line":"{\\"planType\\":\\"pro\\"}"}').length > 0, 'flags an escaped account field');
+  const id = '12345678-abcd-1234-abcd-123456789abc';
+  assert.ok(checkContentPrivacy(`{"line":"{\\"installationId\\":\\"${id}\\"}"}`).length > 0, 'flags an escaped installationId');
+  assert.equal(checkContentPrivacy('{"line":"{\\"utilization\\":0}"}').length, 0);
+  assert.equal(checkContentPrivacy('{"line":"{\\"installationId\\":\\"00000000-0000\\"}"}').length, 0);
 });
 
 test('privacy checker allows the placeholders, system homes and example addresses the tree holds', () => {
@@ -103,6 +117,8 @@ test('privacy checker allows the placeholders, system homes and example addresse
     assert.equal(checkContentPrivacy(`mail ${email}`).length, 0, email);
   }
   assert.equal(checkContentPrivacy("'plugins.sample@test.mcp_servers.sample.mode'").length, 0, 'a TOML key is not an address');
+  assert.ok(checkContentPrivacy('alice@corp.com_backup').length > 0, 'flags an address with a name run on after it');
+  assert.ok(checkContentPrivacy('plugins.alice@corp.com_servers').length > 0, 'flags any other key shaped like the TOML one');
   assert.ok(checkContentPrivacy('/home/linuxbrewer/x').length > 0, 'flags a name that only starts like a system home');
   assert.ok(checkContentPrivacy('/Users/someone2/x').length > 0, 'flags a name that only starts like a placeholder');
   assert.ok(checkContentPrivacy('bob@example.community').length > 0, 'flags a domain that only starts like example.com');
@@ -115,4 +131,42 @@ test('privacy checker exempts its own files, and only account fields in the #660
   const fixture = 'tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl';
   assert.deepEqual(checkFilePrivacy(fixture, '{"planType": "pro"}'), []);
   assert.ok(checkFilePrivacy(fixture, '/Users/melissa').length > 0, 'the #660 fixture still has its paths checked');
+});
+
+test('a file is binary when its first 8,000 bytes hold a zero byte, as git decides it', () => {
+  const bytes = (zeroAt) => Buffer.alloc(9000, 'a').fill(0, zeroAt, zeroAt + 1);
+  assert.equal(isBinary(bytes(7999)), true, 'a zero in the last byte git reads');
+  assert.equal(isBinary(bytes(8000)), false, 'a zero just past what git reads');
+});
+
+test('a first line is a synthetic label only when “SYNTHETIC” follows a comment marker', () => {
+  assert.equal(isSyntheticLabel('# SYNTHETIC baseline, not recorded'), true);
+  assert.equal(isSyntheticLabel('// SYNTHETIC PROTOCOL BASELINE ONLY'), true);
+  assert.equal(isSyntheticLabel('{"note":"SYNTHETIC baseline"}'), false, 'a word inside a JSON line is not a label');
+  assert.equal(isSyntheticLabel('{"type":"runStarted"}'), false);
+});
+
+const README = `# Test fixtures
+
+## Synthetic fixtures
+
+Why each is allowed.
+- \`tests/fixtures/a.jsonl\`: the first.
+- \`tests/fixtures/b.jsonl\`: the second.
+
+## Another section
+- \`tests/fixtures/not-listed.jsonl\`: in another section.
+`;
+
+test('the fixtures README’s synthetic fixtures are the paths its “Synthetic fixtures” section lists', () => {
+  assert.deepEqual(syntheticFixturePaths(README), ['tests/fixtures/a.jsonl', 'tests/fixtures/b.jsonl']);
+  assert.throws(() => syntheticFixturePaths('# Test fixtures\n'), /no “Synthetic fixtures” section/);
+});
+
+test('a synthetic fixture the README lists but the tree doesn’t hold is reported missing', () => {
+  assert.deepEqual(
+    missingSyntheticFixtures(README, (path) => path === 'tests/fixtures/a.jsonl'),
+    ['tests/fixtures/b.jsonl'],
+  );
+  assert.equal(missingSyntheticFixtures(README, () => true).length, 0, 'nothing is missing when every listed file is there');
 });
