@@ -38,6 +38,11 @@ const REFUSED = {
     writeRecord(dataDir, ok({ installs: Array.from({ length: 17 }, (_, i) => entry(`0.${i + 1}.0`, 'installed', 100 - i)) })),
   'an unknown outcome': (/** @type {string} */ dataDir) => writeRecord(dataDir, ok({ installs: [entry('0.9.0', 'maybe')] })),
   'a bad version': (/** @type {string} */ dataDir) => writeRecord(dataDir, ok({ installs: [entry('../0.9.0', 'installed')] })),
+  'a version that isn’t one': (/** @type {string} */ dataDir) => writeRecord(dataDir, ok({ installs: [entry('not a version', 'installed')] })),
+  'a time that isn’t a number': (/** @type {string} */ dataDir) =>
+    writeRecord(dataDir, ok({ installs: [entry('0.9.0', 'installed', /** @type {any} */ ('1'))] })),
+  'keepUpdated “false”': (/** @type {string} */ dataDir) => writeRecord(dataDir, ok({ keepUpdated: 'false' })),
+  'keepUpdated 1': (/** @type {string} */ dataDir) => writeRecord(dataDir, ok({ keepUpdated: 1 })),
   'a valid record padded past 8 KB': (/** @type {string} */ dataDir) => writeRecord(dataDir, `${JSON.stringify(ok())}${' '.repeat(9000)}`),
 };
 
