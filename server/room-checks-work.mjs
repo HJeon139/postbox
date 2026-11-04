@@ -25,7 +25,8 @@ function splitStreams(f) {
   }
   return { kept, erased };
 }
-const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
+/** The tools that change a file: its path is in the call’s input. */
+export const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 
 export const WORK_CHECKS = [
   {

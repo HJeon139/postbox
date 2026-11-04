@@ -8,10 +8,10 @@
 // the ledger records there by design: a file an agent changed on a host is an edit step with no diff
 // (server/ledger-remote.mjs), never a file of this computer’s.
 
+import { EDIT_TOOLS, keptStreams } from '../../server/room-checks-work.mjs';
 import { agentTurns, hostIdOf, hostTurnIds, labelOf, localFacts, placeOf, remoteStream, remoteTurns, toolUses } from './remote-facts.mjs';
 import { HOSTWAKE_CHECKS } from './triggers-hostwakes.mjs';
 
-const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 const NOT_HERE = new Set(['settings-leak', 'mcp-servers-missing', 'mcp-side-channel']);
 const list = (xs, n = 5) => `${xs.slice(0, n).join(', ')}${xs.length > n ? ` and ${xs.length - n} more` : ''}`;
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -40,13 +40,13 @@ const hereOnly = (c) => ({
   },
 });
 
-/** A file an agent changed on a host must be in Work as an edit step on the host, with no diff of this computer’s. */
+/** A file an agent changed on a host is in Work as an edit step there, with no diff. Erased turns are left out (#729). */
 function remoteEdits(f) {
   const work = Object.values(f.state?.work ?? {}).flat();
   const steps = new Set(work.filter((e) => e.kind === 'edit').map((e) => e.path));
   const files = new Set(work.filter((e) => e.kind === 'file').map((e) => e.path));
   const edited = new Set(
-    (f.streams ?? [])
+    keptStreams(f)
       .filter((s) => remoteStream(f, s))
       .flatMap((s) => toolUses(s.events).filter((c) => EDIT_TOOLS.has(c.name) && c.ok))
       .map((c) => c.input.file_path ?? c.input.notebook_path)

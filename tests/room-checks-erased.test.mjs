@@ -118,3 +118,15 @@ test('a limit: a live session whose Claude Code session id was reset loses its o
   assert.deepEqual(keptStreams(room([before])), []);
   assert.deepEqual(found(room([before]), 'work-commands-match-stream'), []);
 });
+
+test('work-files-match-stream on a host leaves out an erased conversation’s edits, and still finds a live one’s', () => {
+  const hosts = { placement: { researcher: 'h1' } };
+  const erased = turn(GONE, call('e_gone', 'Write', { file_path: '/h/gone.md' }));
+  assert.deepEqual(found(room([erased], { hosts }), 'work-files-match-stream'), []);
+  const out = found(room([erased, turn(LIVE, call('e_live', 'Write', { file_path: '/h/live.md' }))], { hosts }), 'work-files-match-stream');
+  assert.deepEqual(
+    out.map((x) => x.key),
+    ['remote-missing'],
+  );
+  assert.match(out[0].evidence, /: \/h\/live\.md\.$/);
+});
