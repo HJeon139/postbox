@@ -64,7 +64,7 @@ Every stall is within budget, before and after, so S2 (splitting the snapshot) s
 | | 10× | 17.5 ms | 17.7 ms |
 
 **What #712b changed on the server:**
-- **A streamed chunk:** each chunk finds its item through the index in constant time, where before it scanned the conversation’s list. At 10×, the p95 falls from 152.8 µs to 0.3 µs. The worst chunk was 1.72 ms at 10×. That’s probably the first chunk in a list, which builds that list’s index, but this run doesn’t show it.
+- **A streamed chunk:** each chunk finds its item through the index in constant time, where before it scanned the conversation’s list. At 10×, the p95 falls from 152.8 µs to 0.3 µs. The 1× figure after, 1.5 µs, is warm-up: 1× runs first. A second pass that measured 1× again at the end (`--sizes 1000,4000,10000,1000`, 22:58 UTC, load average about 2.5) gave a p95 of 1.4 µs for the first 1× and 0.2 µs for the last, against 13.1 µs and 12.6 µs before. The worst chunk was 1.72 ms at 10×. That’s probably the first chunk in a list, which builds that list’s index, but this run doesn’t show it.
 - **Startup:** replaying the log no longer scans a list once per event. At 10×, it falls from 662.5 ms to 18.7 ms.
 - **`/api/state`:** unchanged, since it still serializes the whole state.
 
