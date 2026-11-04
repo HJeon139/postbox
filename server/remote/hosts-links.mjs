@@ -193,8 +193,8 @@ export function release(m, id, why) {
 /**
  * The host’s welcome, connecting first if need be. A failure while an install of this Postbox runs there (m.updating,
  * hosts-update.mjs) waits for that install, then tries once more from the top; an install that fails throws its own
- * failure, with its next step (#464-b2b; designs/464-keep-updated.md, “What b2b adds”). waitForInstall: false throws
- * the failure at once instead, for removing Postbox from the host.
+ * failure, with its next step, unless it was busy (#464-b2b; designs/464-keep-updated.md, “What b2b adds”).
+ * waitForInstall: false throws the failure at once instead, for removing Postbox from the host.
  * @param {Manager} m @param {string} id @param {{ waitForInstall?: boolean }} [o] @returns {Promise<any>}
  */
 export async function ensureWelcome(m, id, { waitForInstall = true } = {}) {
@@ -206,10 +206,17 @@ export async function ensureWelcome(m, id, { waitForInstall = true } = {}) {
     const install = waitForInstall ? m.updating.get(id) : undefined;
     if (!install) throw failure;
     const outcome = await install.done;
-    if (!outcome.ok) throw outcome.failure;
+    if (!outcome.ok && !busyInstall(outcome.failure)) throw outcome.failure;
     return await welcomeAfterInstall(m, id);
   }
 }
+
+/**
+ * An install that found another of this version running or starting there (exit 75, install.mjs’s exit codes): the
+ * host connects once more by itself after it (hosts-update.mjs, afterBusy), since that one may be this Postbox’s.
+ * @param {any} failure
+ */
+const busyInstall = (failure) => failure?.detail?.code === 75;
 
 /**
  * Once more from the top, after an install, and never waiting for another: the link again, since the install may

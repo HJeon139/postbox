@@ -126,7 +126,8 @@ function linkMethods(m) {
     link: (hostId) => linkOf(m, hostId),
     /**
      * The host’s latest welcome, connecting first if it isn’t connected. Rejects with the link’s SshFailure when the
-     * attempt fails, or when a failure only the person can fix has stopped it; after an install under way there, if any.
+     * attempt fails, or when a failure only the person can fix has stopped it; after an install under way there, if any,
+     * or with that install’s own failure.
      * @param {string} hostId @returns {Promise<any>}
      */
     ensureWelcome: (hostId) => ensureWelcome(m, hostId),
