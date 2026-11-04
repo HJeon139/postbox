@@ -6,7 +6,8 @@
 //
 //   node tools/bench-key-frame.mjs --sizes 1000,4000,10000 --keys 200 --runs 3 --out designs/508/key-frame.md
 //
-// Each size gets a fresh Postbox on a free port and a temp data folder of its own, on mock agents, removed after.
+// Each size gets a fresh Postbox on a free port and a temp data folder of its own, on mock agents, removed after,
+// on Ctrl-C and SIGTERM too.
 // Each run reloads the room, clicks the composer, waits for the page to hold still, and types --warmup keys and then
 // --keys keys, one every --interval ms (tools/key-frame-measure.mjs). The report (tools/key-frame-report.mjs) pools
 // every run’s keys for each size.
@@ -37,6 +38,28 @@ const freePort = () =>
       s.close(() => ok(port));
     });
   });
+
+/**
+ * What a Ctrl-C or a SIGTERM must undo, as the bench goes: the page, and the size being measured, whose own finally
+ * stops its Postbox and removes its data folder.
+ * @type {{ page: any, size: Promise<any> | null, stopping: boolean }}
+ */
+const live = { page: null, size: null, stopping: false };
+
+/**
+ * Closes Chromium, so the size being measured fails at its next step and cleans up after itself, waits for that, and
+ * exits as a shell reports the signal: 130 for SIGINT, 143 for SIGTERM. Removing the folder here instead raced the
+ * size’s own steps, which went on writing into it.
+ * @param {'SIGINT' | 'SIGTERM'} signal
+ */
+async function stopOn(signal) {
+  if (live.stopping) return;
+  live.stopping = true;
+  const quietly = (p) => Promise.resolve(p).catch(() => null);
+  await quietly(live.page?.close());
+  await quietly(live.size);
+  process.exit(signal === 'SIGINT' ? 130 : 143);
+}
 
 /** A whole number of at least one from an option, or an error that names it. */
 function count(name, raw) {
@@ -124,11 +147,18 @@ export async function measureSize(page, items, o, log, { start = startPostbox, p
 async function main() {
   const o = options(process.argv.slice(2));
   const log = (line) => console.log(line);
-  const page = await launch();
+  // Detached, so the bench owns Ctrl-C and SIGTERM, and Chromium stays up until stopOn() has used and closed it.
+  for (const signal of /** @type {const} */ (['SIGINT', 'SIGTERM'])) process.once(signal, () => void stopOn(signal));
+  const page = await launch({ detached: true });
+  live.page = page;
   try {
     await page.size(1280, 900, { theme: 'dark' });
     const results = [];
-    for (const items of o.sizes) results.push(await measureSize(page, items, o, log));
+    for (const items of o.sizes) {
+      if (live.stopping) return;
+      live.size = measureSize(page, items, o, log);
+      results.push(await live.size);
+    }
     if (page.logs.length) log(`The page logged ${page.logs.length} errors; the first: ${page.logs[0]}`);
     const report = formatReport({
       command: commandLine(o, ROOT),
@@ -148,6 +178,8 @@ async function main() {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
   main().catch((e) => {
+    // Stopped by a signal: what failed is what stopOn() closed under it, and it exits with the signal’s code.
+    if (live.stopping) return;
     console.error(e.message);
     process.exit(1);
   });
