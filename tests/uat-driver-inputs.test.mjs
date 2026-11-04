@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { localRestart } from '../tools/uat/conversation-step.mjs';
 import { driver } from '../tools/uat/driver.mjs';
-import { kept } from '../tools/uat/driver-shots.mjs';
+import { keepView, kept } from '../tools/uat/driver-shots.mjs';
 import { fault } from '../tools/uat/hosts-watch.mjs';
 import { newProbes, recordInput } from '../tools/uat/probes.mjs';
 import { telemetryDriver } from '../tools/uat/telemetry-driver.mjs';
@@ -181,4 +181,30 @@ test('the driver hands its input hook on, for telemetry’s clicks and the reloa
     [[3, 'reload']],
   );
   driver({}).input({ kind: 'reload' });
+});
+
+test('a capture that throws keeps its own error when putting the view back throws too; a restore that throws alone is reported', async () => {
+  let calls = 0;
+  // The first evaluate reads the view, here no transcript; every later one, the restore's, fails.
+  const ev = async () => {
+    calls++;
+    if (calls > 1) throw new Error('The page went away.');
+    return [];
+  };
+  const capture = async () => {
+    throw new Error('The capture failed.');
+  };
+  await assert.rejects(
+    keepView(ev, capture, () => {}),
+    /The capture failed\./,
+  );
+  calls = 0;
+  await assert.rejects(
+    keepView(
+      ev,
+      async () => 'shot',
+      () => {},
+    ),
+    /The page went away\./,
+  );
 });
