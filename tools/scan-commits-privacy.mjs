@@ -10,7 +10,7 @@
 // `git show --remerge-diff`: that shows only what the merge itself adds beyond the merge git would have made, such as a
 // conflict’s resolution or a file added before the merge was committed, as the lines it brings in are checked in the
 // commits that added them. A file whose added lines hold a zero byte is binary, as git decides it, and isn’t checked;
-// .gitattributes can’t hide a text file, as the diff is asked for as text. The checker’s own example files aren’t checked.
+// .gitattributes can’t hide a text file, as the diff is asked for as text. The checker’s own files are checked too.
 //
 // Each commit’s message, subject, body and trailers, is checked with the same checker. Its author and committer names
 // and emails aren’t: each commit’s author is a real person’s GitHub identity, by design.

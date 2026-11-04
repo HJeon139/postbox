@@ -10,6 +10,8 @@ import { formatFinding, gitVersionProblem, scanCommits } from '../tools/scan-com
 // A made-up home path, built here so this file doesn’t hold one for the tree’s own privacy check to flag.
 const HOME = ['', 'Users', 'alice'].join('/');
 const HOME_PATH = `${HOME}/x`;
+// The home as the checker reports it: from the folder name on, without the slash before it.
+const REPORTED_HOME = HOME.slice(1);
 
 /** git’s diff of one new text file holding these lines. */
 function newFile(path, lines) {
@@ -134,8 +136,8 @@ test('a note like remerge-diff’s, outside a file’s header, is an error rathe
 test('a home path a commit adds is reported with its commit and file', () => {
   const sha = 'abcdef1234567890';
   const result = scanCommits('main..HEAD', fakeGit({ [sha]: diff(newFile('notes.md', [`see ${HOME_PATH}`])) }));
-  assert.deepEqual(result.findings, [{ sha, path: 'notes.md', violation: `home path: ${HOME}` }]);
-  assert.equal(formatFinding(result.findings[0]), `abcdef1 notes.md: home path: ${HOME}`);
+  assert.deepEqual(result.findings, [{ sha, path: 'notes.md', violation: `home path: ${REPORTED_HOME}` }]);
+  assert.equal(formatFinding(result.findings[0]), `abcdef1 notes.md: home path: ${REPORTED_HOME}`);
 });
 
 test('a private string added in one commit and removed in a later one is still reported', () => {
@@ -150,10 +152,14 @@ test('a private string added in one commit and removed in a later one is still r
   );
 });
 
-test('the privacy checker’s own example files aren’t reported', () => {
-  const result = scanCommits('main..HEAD', fakeGit({ aaaaaaa1: diff(newFile('tools/privacy-check.mjs', [HOME_PATH])) }));
-  assert.deepEqual(result.findings, []);
-  assert.equal(result.lines, 1);
+test('the privacy checker’s own files are checked like any other, at its old path and its new one', () => {
+  for (const path of ['tools/privacy-check.mjs', 'tests/privacy-check.mjs', 'tests/fixtures-privacy.test.mjs']) {
+    const result = scanCommits('main..HEAD', fakeGit({ aaaaaaa1: diff(newFile(path, [HOME_PATH])) }));
+    assert.deepEqual(
+      result.findings.map((f) => f.path),
+      [path],
+    );
+  }
 });
 
 test('a binary file a commit adds isn’t checked, and the summary counts it', () => {
@@ -173,8 +179,8 @@ test('a file whose added lines hold a zero byte is skipped as binary, as git wou
 test('a home path in a commit’s message is reported as the message’s', () => {
   const sha = 'abcdef1234567890';
   const result = scanCommits('main..HEAD', fakeGit({ [sha]: '' }, { [sha]: `change\n\nSeen-at: ${HOME_PATH}\n` }));
-  assert.deepEqual(result.findings, [{ sha, path: null, violation: `home path: ${HOME}` }]);
-  assert.equal(formatFinding(result.findings[0]), `abcdef1 message: home path: ${HOME}`);
+  assert.deepEqual(result.findings, [{ sha, path: null, violation: `home path: ${REPORTED_HOME}` }]);
+  assert.equal(formatFinding(result.findings[0]), `abcdef1 message: home path: ${REPORTED_HOME}`);
 });
 
 test('git older than 2.36, which has no --remerge-diff, is refused, naming its version and the minimum', () => {
