@@ -46,9 +46,9 @@ The server passes ran at 22:23 UTC, before then after, at load averages of 1.36 
 | 1,000 | 2.2 ms | 2.2 ms | 3.2 ms |
 | 4,000 | 5.0 ms | 4.9 ms | 5.6 ms |
 | 10,000 | 10.4 ms | 10.6 ms | 12.1 ms |
-| The real copy, 2.53 MB | 26.03 ms | 26.72 ms | 26.64 ms |
+| The real copy, 2.53 MB (the median of 10 passes, not the max) | 26.03 ms | 26.72 ms | 26.64 ms |
 
-Every stall is within budget, before and after, so S2 (splitting the snapshot) stays on hold (`storage-design.md:261`). The index lives outside the state, so the snapshot doesn’t change size.
+The generated rooms’ rows are the worst stall over every run. For the real copy, `bench-snapshot-stall.mjs` reports the stall of its median pass by stringify time, so a single pass could have stalled longer. Every stall is within budget, before and after, so S2 (splitting the snapshot) stays on hold (`storage-design.md:261`). The index lives outside the state, so the snapshot doesn’t change size.
 
 ### Reads and writes by id
 
