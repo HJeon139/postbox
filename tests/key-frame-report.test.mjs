@@ -42,6 +42,15 @@ test('the report has a table per size, the ratio and verdict, and fails PF-1 whe
   assert.match(md, /PF-1: \*\*fail\*\*/);
 });
 
+test('under the summary, the report says Event Timing’s 8 ms steps are coarser than the budget near 24 ms', () => {
+  const md = report();
+  const summary = md.slice(md.indexOf('## Summary'), md.indexOf('## By size'));
+  assert.match(
+    summary,
+    /\| 1\.20 \| fail \|[^\n]*\n\nEvent Timing reports durations in 8 ms steps, so near a 1× p95 of 24 ms the 10% budget is finer than one step, which is why the next-frame timer is shown\.\n/,
+  );
+});
+
 test('the report says Safari wasn’t measured, and that it isn’t a CI gate', () => {
   const md = report();
   assert.match(md, /Safari: not measured/);
