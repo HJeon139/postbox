@@ -29,7 +29,7 @@ const env = {
 const run = (cwd, cmd, args) => {
   const r = spawnSync(cmd, args, { cwd, env, encoding: 'utf8', timeout: 30_000 });
   if (r.error) throw r.error;
-  return { code: r.status, out: `${r.stdout}${r.stderr}` };
+  return { code: r.status, out: `${r.stdout}${r.stderr}`, err: r.stderr };
 };
 const git = (cwd, ...args) => run(cwd, 'git', args);
 
@@ -61,8 +61,9 @@ test('a commit that a project lint fails is stopped, and the hook names the lint
   const r = git(dir, 'commit', '-m', 'Add b');
   assert.notEqual(r.code, 0, r.out);
   assert.equal(commits(dir), 1, 'nothing was committed');
-  assert.match(r.out, /server\/b\.mjs:1 {2}.*colour/);
-  assert.match(r.out, /pre-commit: lint-copy failed.*git commit --no-verify/);
+  // git hands a hook’s output on as its own stderr, so the lint’s findings and the hook’s line are there.
+  assert.match(r.err, /server\/b\.mjs:1 {2}.*colour/);
+  assert.match(r.err, /pre-commit: lint-copy failed.*git commit --no-verify/);
 });
 
 test('a commit that passes the project lints goes through', async () => {
