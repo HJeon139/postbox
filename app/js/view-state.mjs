@@ -4,6 +4,7 @@
 // `v` first; the logic is unchanged.
 
 import { anchorIn } from './view-anchor.mjs';
+import { atEnd, box, gapOf, inSight, measure, viewTop } from './view-box.mjs';
 import { register, unregister } from './view-jump.mjs';
 import { skipOffscreen } from './view-skip.mjs';
 
@@ -14,11 +15,6 @@ import { skipOffscreen } from './view-skip.mjs';
  *   sizes: ResizeObserver, changes: MutationObserver }} View
  */
 
-const box = (/** @type {View} */ v) => (v.inPanel ? v.el.parentElement : document.scrollingElement);
-const viewTop = (/** @type {View} */ v, /** @type {Element} */ s) => (v.inPanel ? s.getBoundingClientRect().top : 0);
-const gapOf = (/** @type {Element} */ s) => s.scrollHeight - s.scrollTop - s.clientHeight;
-// At the bottom, give or take a pixel of rounding.
-const atEnd = (/** @type {Element} */ s) => gapOf(s) <= 2;
 // The pill floats just above the composer. It shows only while the end is further below than that, so what it
 // floats over is never the working rows or the end of the last message (#91).
 const PILL_ROOM = 48;
@@ -80,19 +76,6 @@ function scrollToEnd(v, smooth = false) {
 // While stuck, what comes after the newest message shrinking (a working row going, a card getting shorter once
 // answered, the composer) would shorten the page and pull everything down, under your pointer, just as a card
 // that needs you arrives. Instead the transcript keeps its height, until the next message or a new width.
-/** @param {View} v */
-function lastItem(v) {
-  for (let n = v.el.lastElementChild; n; n = n.previousElementSibling) {
-    if (n instanceof HTMLElement && n.dataset.key) return n;
-  }
-  return null;
-}
-/** @param {View} v @param {Element} s */
-const measure = (v, s) => ({
-  end: s.scrollHeight,
-  last: (lastItem(v)?.getBoundingClientRect().top ?? 0) - viewTop(v, s) + s.scrollTop,
-  width: v.el.clientWidth,
-});
 /** @param {View} v */
 function release(v) {
   if (v.el.style.minHeight) v.el.style.minHeight = '';
@@ -236,20 +219,6 @@ const jumpable = (v) => ({
   seen: () => inSight(v),
   pin: (/** @type {HTMLElement} */ item) => pin(v, item),
 });
-/**
- * Where what you can see of the view starts and ends, in the page's y: the panel's scroll box, or the window below
- * the main pane's sticky top bar.
- * @param {View} v
- */
-function inSight(v) {
-  const s = /** @type {Element} */ (box(v));
-  if (v.inPanel) {
-    const r = s.getBoundingClientRect();
-    return { top: r.top, bottom: r.top + s.clientHeight };
-  }
-  const bar = document.querySelector('header.topbar')?.getBoundingClientRect().bottom ?? 0;
-  return { top: Math.max(0, bar), bottom: s.clientHeight };
-}
 
 /**
  * A view's state as it starts: following, unless it comes back from a rebuild while reading (was). Its observers are
