@@ -9,6 +9,7 @@
 // (server/ledger-remote.mjs), never a file of this computer’s.
 
 import { EDIT_TOOLS, keptStreams } from '../../server/room-checks-work.mjs';
+import { INSTALL_CHECKS } from './host-installs.mjs';
 import { agentTurns, hostIdOf, hostTurnIds, labelOf, localFacts, placeOf, remoteStream, remoteTurns, toolUses } from './remote-facts.mjs';
 import { HOSTWAKE_CHECKS } from './triggers-hostwakes.mjs';
 
@@ -200,6 +201,7 @@ export const REMOTE_CHECKS = [
   { id: 'host-done-when', issue: 120, run: hostDoneWhen },
   // A hand-off between machines while a wake card waits (tests/uat/e2e/scenarios/hostwakes.md).
   ...HOSTWAKE_CHECKS,
+  ...INSTALL_CHECKS,
   {
     // A new TCP listener of the run’s own processes during a turn: Postbox’s or its daemon’s on a host, or Postbox’s
     // and its children’s here (tools/uat/hosts-probe.mjs). Other processes’ come and go on a shared machine.

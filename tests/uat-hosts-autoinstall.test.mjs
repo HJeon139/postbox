@@ -7,9 +7,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { runChecks } from '../tools/uat/checks.mjs';
 import { hostStateOf } from '../tools/uat/history.mjs';
 import { createHostRun, followStatuses, setUpHost } from '../tools/uat/hosts-run.mjs';
+import { HOST_TRIGGERS } from '../tools/uat/triggers-host.mjs';
+import { facts, remote } from './uat-hosts-facts.mjs';
 
+const trigger = HOST_TRIGGERS['host-auto-installed'];
 const RUNS = '1.17.0';
 /** A host status event as the run keeps it (hostStateOf), arriving at `at`, with its newest install try. */
 const status = (at, outcome, { id = 'ho_1', version = RUNS, tried = 5000, state = 'disconnected' } = {}) => ({
@@ -19,6 +23,23 @@ const status = (at, outcome, { id = 'ho_1', version = RUNS, tried = 5000, state 
   failure: null,
   update: outcome ? { version, at: tried, outcome } : null,
 });
+/** One automatic install of this run’s version on host1: started, then installed. */
+const once = () => [status(4000, null), status(5001, 'started'), status(6000, 'installed'), status(6500, 'installed', { state: 'connected' })];
+
+/**
+ * host1 staged with an older Postbox, its consent on, these statuses, and @researcher’s turns there: the first failed
+ * as not installed before the install, and the second, at 7000, ran there after it.
+ */
+function installed({ statuses = once(), setup = {}, second = {} } = {}) {
+  const f = facts();
+  f.hosts.setup = [{ label: 'host1', staged: '1.16.1', stagedAt: 1000, runVersion: RUNS, consent: true, notInstalled: 3000, ...setup }];
+  f.hosts.statuses = statuses;
+  const turn = { id: 'i4', kind: 'agent', handle: 'researcher', sessionId: 's1', turnId: 'tu_r2', status: 'done', at: 7000, ...second };
+  f.state.items.t1 = [{ ...f.state.items.t1[0], status: 'error', at: 2500 }, ...f.state.items.t1.slice(1), turn];
+  f.events.push({ seq: 9, type: 'session', data: { id: 's1', state: 'gen', remoteTurn: remote(second.host ?? 'ho_1', 'tu_r2', 'h-2') } });
+  return f;
+}
+
 test('#464 hostStateOf keeps the newest install try’s version, time and outcome, never its error', () => {
   const d = {
     id: 'ho_1',
@@ -108,4 +129,57 @@ test('#464 the run’s record of its hosts keeps the status events as they come,
   seen.push(status(5001, 'started'));
   assert.deepEqual(hr.record.statuses, seen, 'one that came after is there too');
   assert.equal(hr.hostStates?.(), seen, 'the faults and the setup read the same');
+});
+
+test('#464 host-auto-installed fires when a staged host installed this run’s version once, and a turn then ran there', () => {
+  const hits = trigger.run(installed());
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].at, 7000);
+  assert.match(hits[0].evidence, /host1, staged with Postbox 1\.16\.1, installed 1\.17\.0 by itself, then @researcher finished a turn there/);
+  assert.equal(trigger.issue, 464);
+});
+
+test('#464 host-auto-installed stays silent on a host that wasn’t staged', () => {
+  assert.deepEqual(trigger.run(installed({ setup: { staged: undefined } })), []);
+  assert.deepEqual(trigger.run({}), [], 'a run without hosts');
+});
+
+test('#464 host-auto-installed stays silent when the install was of another version', () => {
+  const other = once().map((s) => (s.update ? { ...s, update: { ...s.update, version: '1.16.2' } } : s));
+  assert.deepEqual(trigger.run(installed({ statuses: other })), []);
+});
+
+test('#464 host-auto-installed stays silent when the try didn’t end installed', () => {
+  assert.deepEqual(trigger.run(installed({ statuses: [status(5001, 'started'), status(6000, 'failed')] })), []);
+});
+
+test('#464 host-auto-installed stays silent when this run’s version was installed there more than once', () => {
+  const twice = [...once(), status(8000, 'started', { tried: 7900 }), status(8500, 'installed', { tried: 7900 })];
+  assert.deepEqual(trigger.run(installed({ statuses: twice, second: { at: 9000 } })), []);
+});
+
+test('#464 host-auto-installed stays silent when no turn ran on that host after the install', () => {
+  assert.deepEqual(trigger.run(installed({ second: { at: 5500 } })), [], 'the turn started before the install ended');
+  assert.deepEqual(trigger.run(installed({ second: { status: 'error' } })), [], 'the turn after it didn’t finish');
+  assert.deepEqual(trigger.run(installed({ second: { host: 'ho_2' } })), [], 'the turn after it ran on another host');
+});
+
+const repeated = (statuses) => runChecks(installed({ statuses }), { only: ['auto-install-repeated'] });
+
+test('#464 auto-install-repeated: two automatic installs of one version on one host is a finding', () => {
+  const twice = [...once(), status(8000, 'started', { tried: 7900 })];
+  const got = repeated(twice);
+  assert.deepEqual(
+    got.map((x) => [x.key, x.issue]),
+    [['host1:1.17.0', 464]],
+  );
+  assert.match(got[0].title, /Postbox installed 1\.17\.0 on host1 by itself 2 times/);
+});
+
+test('#464 auto-install-repeated stays silent for one try, however often its status came, and for tries of other versions or hosts', () => {
+  assert.deepEqual(repeated(once()), [], 'one try’s started and installed, and its status again');
+  assert.deepEqual(repeated([...once(), status(8000, 'started', { tried: 7900, version: '1.18.0' })]), [], 'another version');
+  assert.deepEqual(repeated([...once(), status(8000, 'started', { tried: 7900, id: 'ho_2' })]), [], 'another host');
+  assert.deepEqual(repeated([...once(), status(8000, 'failed', { tried: 7900 })]), [], 'a status with only a failed try shows no install started');
+  assert.deepEqual(runChecks(facts(), { only: ['auto-install-repeated'] }), [], 'a run with no statuses kept');
 });

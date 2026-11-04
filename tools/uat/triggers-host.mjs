@@ -4,6 +4,7 @@
 // the runner’s own records in facts.hosts. Each says it can’t tell (recorded false) in a run without hosts.
 
 import { ASKING } from '../../shared/catalog.mjs';
+import { triesOf, triesWith } from './host-installs.mjs';
 import { agentTurns, hostIdOf, itemsUnderTest, labelOf, onHost, placeOf, remoteStream, remoteTurns, toolUses } from './remote-facts.mjs';
 import { HOSTWAKE_TRIGGERS } from './triggers-hostwakes.mjs';
 
@@ -69,6 +70,28 @@ const stagedOlder = (f) =>
       at: x.notInstalled,
       evidence: `${x.label}, with Postbox ${x.staged} staged on it, read not installed before this run’s version ran there.`,
     }));
+
+/**
+ * A staged host (#464) where Postbox installed this run’s version by itself, once, from its recorded statuses
+ * (tools/uat/host-installs.mjs), and where a turn that started after that install ended ran there and finished. The
+ * setup’s record gives the version this run’s Postbox has (tools/uat/hosts-run.mjs, stageOn).
+ */
+function autoInstalled(f) {
+  const recs = remoteTurns(f);
+  return (f.hosts?.setup ?? [])
+    .filter((x) => x.staged && typeof x.runVersion === 'string')
+    .flatMap((x) => {
+      const id = hostIdOf(f, x.label);
+      const done = triesWith(triesOf(f, id).get(x.runVersion), new Set(['installed']));
+      if (done.length !== 1) return [];
+      const installedAt = /** @type {number} */ (done[0].get('installed'));
+      const t = agentTurns(f).find((t) => t.status === 'done' && recs.get(t.turnId)?.hostId === id && (t.at ?? 0) > installedAt);
+      if (!t) return [];
+      return [
+        { at: t.at, evidence: `${x.label}, staged with Postbox ${x.staged}, installed ${x.runVersion} by itself, then @${t.handle} finished a turn there.` },
+      ];
+    });
+}
 
 /** @type {Record<string, { issue: number, says: string, recorded: (f: any) => boolean, run: (f: any) => { at: number|null, evidence: string }[] }>} */
 export const HOST_TRIGGERS = {
@@ -178,6 +201,12 @@ export const HOST_TRIGGERS = {
     says: 'a host with an older Postbox on it read not installed, before this run’s version was installed there',
     recorded: hostRun,
     run: stagedOlder,
+  },
+  'host-auto-installed': {
+    issue: 464,
+    says: 'Postbox installed its own version by itself, once, on a host with an older one, and a turn then ran there',
+    recorded: hostRun,
+    run: autoInstalled,
   },
   // A hand-off between machines while a wake card waits (tests/uat/e2e/scenarios/hostwakes.md).
   ...HOSTWAKE_TRIGGERS,
