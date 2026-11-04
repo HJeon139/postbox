@@ -221,9 +221,20 @@ test('#721 on #633: an expired card that was the need hands it to the next card 
   const app = rt.addItem(t.id, { kind: 'appsend', sessionId: now().id, appId: 'a1', title: 'App', events: [{ action: 'x' }], status: 'open' });
   assert.equal(now().needs?.itemId, card.id, 'the permission ranks ahead');
   expireWait(rt, card.id);
+  assert.equal(now().needs?.itemId, app.id, 'the app card is the need at once, before the turn’s end decides again');
   await settle(rt);
-  assert.equal(now().needs?.itemId, app.id, 'the app card is the need now');
+  assert.equal(now().needs?.itemId, app.id, 'and after it');
   assert.equal(notes(now()).length, 1);
+});
+
+test('#721 on #633: a host card with no wait here that its host ends hands the need to the next waiting card', async () => {
+  const { rt, t, now } = await setup();
+  const it = rt.addItem(t.id, { kind: 'permission', sessionId: now().id, handle: 'deployer', tool: 'Bash', summary: 'run the deploy', status: 'open' });
+  const app = rt.addItem(t.id, { kind: 'appsend', sessionId: now().id, appId: 'a1', title: 'App', events: [{ action: 'x' }], status: 'open' });
+  rt.updateSession(now().id, { needs: { kind: 'permission', itemId: it.id, text: 'x' }, state: 'needs' });
+  endCard({ rt, now: () => Date.now() }, { it, threadId: t.id }, 'expired', 'Expired on its host.', Date.now());
+  assert.equal(now().needs?.itemId, app.id);
+  assert.equal(now().state, 'needs');
 });
 
 test('#721 closing a card moves the need before the card’s patch, so the page redraws the card with nothing waiting on it', async () => {
