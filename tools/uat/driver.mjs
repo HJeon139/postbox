@@ -7,7 +7,7 @@ import { writeFile } from 'node:fs/promises';
 import { js, sleep } from '../browser.mjs';
 import { targetScript } from './app-target.mjs';
 import { review } from './driver-review.mjs';
-import { shots } from './driver-shots.mjs';
+import { keeper, shots } from './driver-shots.mjs';
 import { pressKey } from './keys.mjs';
 import { byText, ITEM } from './selectors.mjs';
 
@@ -26,11 +26,13 @@ const JOBS_BOX = (b) =>
  * @param {{ beforeStop?: () => Promise<void>, input?: (e: any) => void }} [hooks]  beforeStop: runs just before every
  *   press of Stop (a host-mode run looks at what runs under each turn on its hosts then, tools/uat/hosts-watch.mjs);
  *   input: hears each input the driver makes that can move the person’s view, before it does (facts.probes.inputs,
- *   tools/uat/probes.mjs): a runner click, which scrolls what it clicks into view, and a shot that moved the view
+ *   tools/uat/probes.mjs): a runner click, which scrolls what it clicks into view, and a shot or a read inside an app
+ *   that didn’t put the view back
  */
 export function driver(page, hooks = {}) {
   const ev = (expr) => page.evaluate(expr);
   const runnerClick = () => hooks.input?.({ kind: 'runner-click' });
+  const keep = keeper(ev, hooks.input);
 
   /** Clicks the centre of the first element that matches, after scrolling it into view. */
   async function clickAt(findExpr, what) {
@@ -56,10 +58,12 @@ export function driver(page, hooks = {}) {
     await sleep(150);
   };
 
-  /** An agent app’s frame and where it sits on the page, so its content can be read and clicked. */
+  /**
+   * An agent app’s frame and where it sits on the page, so its content can be read and clicked. It scrolls: a click
+   * records itself first, and a read puts the view back after.
+   */
   async function appContext(key) {
     // Apps far off screen are unloaded: bring it into view, and give its frame a moment to load.
-    runnerClick();
     await ev(`${ITEM(key)}?.scrollIntoView({ block: 'center' })`);
     for (let i = 0; i < 20 && !(await ev(`!!${ITEM(key)}?.querySelector('.appframe iframe')`)); i++) await sleep(200);
     await sleep(800);
@@ -226,9 +230,9 @@ export function driver(page, hooks = {}) {
 
     /** Clicks something inside an agent app by its visible text, with a real mouse event. */
     async appClick(key, text) {
+      runnerClick();
       const ctx = await appContext(key);
       if (!ctx) throw new Error('Couldn’t reach inside that app.');
-      runnerClick();
       await ev(`${ITEM(key)}.scrollIntoView({ block: 'center' })`);
       await sleep(200);
       const fresh = await appContext(key);
@@ -245,20 +249,24 @@ export function driver(page, hooks = {}) {
       await sleep(400);
     },
 
-    /** What’s inside an app: its text, and the size of its SVG marks and text (for the legibility check). */
-    async appInside(key) {
-      const ctx = await appContext(key);
-      if (!ctx) return null;
-      return inApp(
-        ctx,
-        `(() => {
+    /**
+     * What’s inside an app: its text, and the size of its SVG marks and text (for the legibility check). The runner’s
+     * own read, so the view is put back after (R1, #531).
+     */
+    appInside: (key) =>
+      keep(async () => {
+        const ctx = await appContext(key);
+        if (!ctx) return null;
+        return inApp(
+          ctx,
+          `(() => {
           const marks = [...document.querySelectorAll('svg circle, svg rect, svg path, svg line, svg ellipse')].map((m) => { const b = m.getBoundingClientRect(); return Math.max(b.width, b.height); }).filter((s) => s > 0);
           const texts = [...document.querySelectorAll('svg text')].map((t) => parseFloat(getComputedStyle(t).fontSize) * (t.getScreenCTM?.()?.a ?? 1));
           const fonts = [...new Set([...document.querySelectorAll('body, body *')].slice(0, 400).map((e) => getComputedStyle(e).fontFamily))];
           return { text: document.body.innerText.slice(0, 2000), marks: marks.length, tinyMarks: marks.filter((s) => s < 4).length, svgText: texts.length, tinyText: texts.filter((s) => s < 9).length, fonts: fonts.slice(0, 6) };
         })()`,
-      );
-    },
+        );
+      }),
 
     /** Everything visible in the conversation (and the thread panel, if open), by item. */
     async items() {

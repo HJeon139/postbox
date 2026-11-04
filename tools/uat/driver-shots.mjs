@@ -87,11 +87,22 @@ export async function keepView(ev, fn, moved) {
 }
 
 /**
+ * keepView for the driver: what it runs puts the view back after, and one that didn’t is heard by `input` as the
+ * runner’s (facts.probes.inputs, tools/uat/probes.mjs).
+ * @param {(expr: string) => Promise<any>} ev  @param {(e: any) => void} [input]
+ * @returns {<T>(fn: () => Promise<T>) => Promise<T>}
+ */
+export const keeper =
+  (ev, input = () => {}) =>
+  (fn) =>
+    keepView(ev, fn, (m) => input({ cause: 'runner', ...m }));
+
+/**
  * @param {{ ev: (expr: string) => Promise<any>, page: any, sleep: (ms: number) => Promise<unknown>, input?: (e: any) => void }} o
  *   ev: the driver’s page.evaluate; page: from tools/browser.mjs launch(); input: hears a shot that moved the person’s
  *   view, as the runner’s (facts.probes.inputs, tools/uat/probes.mjs)
  */
-export function shots({ ev, page, sleep, input = () => {} }) {
+export function shots({ ev, page, sleep, input }) {
   /** What a person sees of an item, scrolled to it: shotItem, without putting the view back. */
   async function shotOf(key, file) {
     const ok = await ev(
@@ -108,14 +119,14 @@ export function shots({ ev, page, sleep, input = () => {} }) {
     await writeFile(file, Buffer.from(data, 'base64'));
     return file;
   }
-  const moved = (/** @type {any} */ m) => input({ cause: 'runner', ...m });
+  const keep = keeper(ev, input);
   return {
     /**
      * What a person sees of an item: scrolled to just below the top bar, and only what fits in the window.
      * (Capturing beyond the window paints the sticky top bar mid-item, and leaves sandboxed frames blank.) The view
      * is put back after, as it was.
      */
-    shotItem: (key, file) => keepView(ev, () => shotOf(key, file), moved),
+    shotItem: (key, file) => keep(() => shotOf(key, file)),
 
     // It doesn’t scroll, so there’s no view to put back.
     async shotScreen(file) {
