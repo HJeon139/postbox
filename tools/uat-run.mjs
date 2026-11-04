@@ -41,7 +41,7 @@ import { endHosts } from './uat/hosts-end.mjs';
 import { HOST_OPTIONS } from './uat/hosts-options.mjs';
 import { createHostRun, followStatuses, startHosts } from './uat/hosts-run.mjs';
 import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
-import { keyFrameOut, openRunRoom } from './uat/key-frame-run.mjs';
+import { keyFrameOut, seededNote } from './uat/key-frame-run.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
 import { openIssues } from './uat/open-issues.mjs';
 import { portFree, startPostbox } from './uat/postbox.mjs';
@@ -202,8 +202,7 @@ async function main() {
     if (!mainThread) throw new Error(`Starting the conversation didn’t open it (at ${hash}).`);
     log(`Conversation ${mainThread} started with @${scenario.agents.join(', @')}.`);
     // `- seed: big-room` (#508): the conversation fills with about 1,000 generated items before the tester arrives.
-    if (scenario.seed === 'big-room')
-      scenario.summary += `\n\n${await openRunRoom({ postbox, data: paths.data, threadId: mainThread, scenario, page, log, out: keyFrameOut(opt, scenario, dir), facts })}`;
+    scenario.summary += await seededNote(scenario, { postbox, data: paths.data, threadId: mainThread, page, log, opt, dir, facts });
     const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log, input: d.input });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });

@@ -42,6 +42,17 @@ export async function openRunRoom({ out, facts, ...room }) {
 }
 
 /**
+ * What a scenario adds to its summary once its conversation is open: for `- seed: big-room`, the seeded room’s note,
+ * after the room is measured when --measure-key-frame asks; for any other scenario, nothing.
+ * @param {{ seed?: string }} scenario
+ * @param {{ opt: Record<string, unknown>, dir: string } & Record<string, any>} room  what openRunRoom() takes, less out
+ */
+export async function seededNote(scenario, { opt, dir, ...room }) {
+  if (scenario.seed !== 'big-room') return '';
+  return `\n\n${await openRunRoom({ ...room, scenario, out: keyFrameOut(opt, scenario, dir) })}`;
+}
+
+/**
  * The record of a finished measurement, for the key-frame-measured trigger: its keys, and how many had no Event
  * Timing entry, which decides whether it measured anything.
  * @param {{ threadId: string, items: number, report: string, at: number }} where

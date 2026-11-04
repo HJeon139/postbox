@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { keyFrameOut, measuredProbe, measureRunRoom } from '../tools/uat/key-frame-run.mjs';
+import { keyFrameOut, measuredProbe, measureRunRoom, seededNote } from '../tools/uat/key-frame-run.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 
 const scenario = (name) => parseScenario(readFileSync(new URL(`uat/e2e/scenarios/${name}.md`, import.meta.url), 'utf8'));
@@ -68,4 +68,9 @@ test('a finished measurement records how many of its keys had no Event Timing en
   const r = { eventTiming: [16, 16, 24], nextFrame: [10, 11, 12], below: 2 };
   const probe = measuredProbe({ threadId: 'th_big', items: 1000, report: 'kf.md', at: 5 }, r);
   assert.deepEqual(probe, { threadId: 'th_big', items: 1000, keys: 3, below: 2, report: 'kf.md', at: 5 });
+});
+
+test('a scenario with no big-room seed adds nothing to its summary, and seeds and measures nothing', async () => {
+  assert.equal(await seededNote({}, { opt: { 'measure-key-frame': 'out.md' }, dir: '.' }), '');
+  assert.equal(await seededNote({ seed: 'other' }, { opt: {}, dir: '.' }), '');
 });
