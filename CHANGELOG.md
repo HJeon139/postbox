@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.19.1 (2026-11-04)
+
+### Fixes
+
+- **tests:** the privacy check joins each stream's deltas, and scrubs denials.jsonl's split slug
+- **tests:** the privacy check's case-blind home folders load on Node 22
+- **tests:** the privacy check reads its own files, any case, in linear time
+- **tests:** git ignores check-logs/, and the committed check log is untracked
+- **tests:** close the privacy check's gaps the review found
+- **tests:** scrub account usage and home paths from committed files
+
 ## 1.19.0 (2026-11-04)
 
 ### Features
