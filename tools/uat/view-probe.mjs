@@ -64,16 +64,20 @@ export const sampleViews = (ev, last) =>
   })(${js(last)})`);
 
 /**
- * Records a sample of each transcript into facts.probes.views, with the step and when; nothing when the page has none
- * or the probe fails.
- * @param {(expr: string) => Promise<any>} ev  @param {{ probes: { views?: any[] } }} facts  @param {number} step
+ * Records a sample of each transcript into facts.probes.views, with the step and when. When the page has none or the
+ * probe fails, it counts the miss in facts.probes.viewMisses instead.
+ * @param {(expr: string) => Promise<any>} ev  @param {{ probes: { views?: any[], viewMisses?: number } }} facts  @param {number} step
  */
 export async function recordViews(ev, facts, step) {
   /** @type {Record<string, { origin: number, thread: string, anchorId: string }>} */
   const last = {};
-  for (const s of facts.probes.views ?? []) last[s.where] = { origin: s.origin, thread: s.thread, anchorId: s.anchorId };
+  // The last settled sample of each transcript: an unsettled one, mid-scroll, may name an anchor the next can't compare.
+  for (const s of facts.probes.views ?? []) if (s.settled) last[s.where] = { origin: s.origin, thread: s.thread, anchorId: s.anchorId };
   const samples = await sampleViews(ev, last).catch(() => null);
-  if (!Array.isArray(samples) || !samples.length) return;
+  if (!Array.isArray(samples) || !samples.length) {
+    facts.probes.viewMisses = (facts.probes.viewMisses ?? 0) + 1; // so a probe that never reads isn't taken for a quiet view
+    return;
+  }
   facts.probes.views ??= [];
   const at = Date.now();
   for (const s of samples) facts.probes.views.push({ step, at, ...s });

@@ -100,15 +100,6 @@ test('view-moved compares across an unsettled sample: a move hidden behind one i
   assert.match(findings(hidden)[0].evidence, /steps 1 and 3/);
 });
 
-test('view-moved starts over after a step the runner moved, so the runner’s own scroll isn’t a finding', () => {
-  const moved = [
-    sample(1, { actual: 120 }),
-    sample(2, { cause: 'runner' }),
-    sample(3, { anchorId: 'it_big0480', actual: 140, expected: 140, prev: { anchorId: 'it_big0500', actual: 420 } }),
-  ];
-  assert.deepEqual(findings(moved), []);
-});
-
 test('view-moved doesn’t read a prev that measured some other item than the earlier anchor', () => {
   const wrong = [sample(1, { anchorId: 'it_big0500', actual: 120 }), sample(2, { prev: { anchorId: 'it_big0499', actual: 900 } })];
   assert.deepEqual(findings(wrong), []);
@@ -123,11 +114,6 @@ test('view-moved keys each finding by its kind, transcript and steps, so a run k
   const keys = findings(twice).map((x) => x.key);
   assert.equal(new Set(keys).size, keys.length);
   assert.deepEqual(keys, ['view-moved:moved:main:t_big:1-2', 'view-moved:moved:main:t_big:2-3']);
-});
-
-test('view-moved skips a step the runner caused', () => {
-  assert.deepEqual(findings([jump[0], { ...jump[1], cause: 'runner' }]), []);
-  assert.deepEqual(findings([following(1), sample(2, { cause: 'runner' })]), []);
 });
 
 test('view-moved fires on one sample whose published offset is stale by more than a pixel', () => {
@@ -164,4 +150,24 @@ test('view-moved is one of the room checks, and reads only the probes', () => {
     out.map((x) => x.check),
     ['view-moved'],
   );
+});
+
+test('view-moved stays silent when the runner’s own move, recorded as its input, came between two samples', () => {
+  // B1b-b records a shot that couldn’t put the view back as an input with cause: 'runner' (tools/uat/driver-shots.mjs).
+  assert.deepEqual(findings(jump, [{ step: 1, at: T0 + 1500, kind: 'shot', cause: 'runner' }]), []);
+});
+
+test('view-moved counts an input at exactly either sample’s time as between them', () => {
+  assert.deepEqual(findings(jump, [{ step: 1, at: jump[0].at, kind: 'scroll' }]), [], 'at the first');
+  assert.deepEqual(findings(jump, [{ step: 2, at: jump[1].at, kind: 'scroll' }]), [], 'at the second');
+  assert.equal(findings(jump, [{ step: 0, at: jump[0].at - 1, kind: 'scroll' }]).length, 1, 'just before the first');
+  assert.equal(findings(jump, [{ step: 3, at: jump[1].at + 1, kind: 'scroll' }]).length, 1, 'just after the second');
+});
+
+test('view-moved says it checked nothing when the probe ran but never read a view', () => {
+  assert.deepEqual(
+    check.run({ probes: { inputs: [], viewMisses: 4 } }).map((x) => x.key),
+    ['view-moved:unverified:no-views'],
+  );
+  assert.deepEqual(check.run({ probes: { inputs: [] } }), [], 'a run from before the probe says nothing');
 });

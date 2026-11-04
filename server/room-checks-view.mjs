@@ -23,8 +23,8 @@ function inputBetween(/** @type {number[]} */ times, from, to) {
   }
   return lo < times.length && times[lo] <= to;
 }
-/** A sample the check may read: settled, and not one the runner caused. */
-const usable = (s) => s.settled === true && s.cause !== 'runner';
+/** A sample the check may read: one whose two reads a frame apart agreed. A runner's move is an input (B1b-b), not a sample. */
+const usable = (s) => s.settled === true;
 const where = (s) => (s.where === 'panel' ? 'the side panel' : 'the conversation');
 
 /** One sample: the offset the page published for its anchor isn’t where the anchor is (a stale publish). */
@@ -69,6 +69,17 @@ function moved(a, b) {
   };
 }
 
+/** What the check says of a run whose probe ran but never read a view: a broken probe, not a quiet view. */
+const NO_VIEWS = Object.freeze({
+  key: 'view-moved:unverified:no-views',
+  issue: null,
+  title: 'view-moved checked nothing: the view probe read no transcript',
+  evidence: 'The view probe ran each step but recorded no sample, so nothing about the view was seen.',
+  verdict: 'measurement',
+  note: 'Not a defect in the page: the probe failed or found no transcript.',
+  unverified: { check: 'view-moved', thread: null },
+});
+
 /** What the check says of a run with views but no inputs: it checked nothing, which isn't a pass. */
 const NO_INPUTS = Object.freeze({
   key: 'view-moved:unverified:no-inputs',
@@ -81,11 +92,11 @@ const NO_INPUTS = Object.freeze({
   unverified: { check: 'view-moved', thread: null },
 });
 
-/** @param {{ probes?: { views?: any[], inputs?: { at: number }[] } }} f */
+/** @param {{ probes?: { views?: any[], inputs?: { at: number }[], viewMisses?: number } }} f */
 function viewMoved(f) {
   const views = f.probes?.views;
   const inputs = f.probes?.inputs;
-  if (!Array.isArray(views) || !views.length) return [];
+  if (!Array.isArray(views) || !views.length) return f.probes?.viewMisses ? [NO_VIEWS] : [];
   if (!Array.isArray(inputs)) return [NO_INPUTS]; // a run that recorded views but not inputs can't tell a scroll from a move
   const out = views.filter(usable).map(stale).filter(Boolean);
   const times = inputs.map((x) => x.at).sort((x, y) => x - y);
@@ -93,12 +104,7 @@ function viewMoved(f) {
   const skipped = new Map();
   for (const b of views) {
     const page = pageKey(b);
-    if (!usable(b)) {
-      // An unsettled sample is passed over, so the next settled one is compared with the last. A step the runner moved
-      // (B1b-b's keepView marks one it couldn't put back) starts the comparison over instead.
-      if (b.cause === 'runner') last.delete(page);
-      continue;
-    }
+    if (!usable(b)) continue; // passed over, so the next settled sample is compared with the last settled one
     const a = last.get(page);
     last.set(page, b);
     if (!a) continue;

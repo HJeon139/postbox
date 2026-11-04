@@ -112,6 +112,24 @@ test('recordViews records nothing when the page has no transcript, or the probe 
   await recordViews(evIn(pageWith([])), facts, 1);
   await recordViews(async () => Promise.reject(new Error('gone')), facts, 2);
   assert.equal(facts.probes.views, undefined);
+  assert.equal(facts.probes.viewMisses, 2, 'each miss is counted, so view-moved can say it saw nothing');
+});
+
+test('recordViews gives the probe the last settled sample’s anchor, not an unsettled one taken mid-scroll', async () => {
+  const settled = { step: 1, at: 1, where: 'main', thread: 't_big', origin: ORIGIN, anchorId: 'it_a', settled: true };
+  const midScroll = { ...settled, step: 2, anchorId: 'it_z', settled: false };
+  const facts = { probes: { views: [settled, midScroll] } };
+  const seen = [];
+  await recordViews(
+    async (expr) => {
+      seen.push(expr);
+      return [];
+    },
+    facts,
+    3,
+  );
+  assert.match(seen[0], /"anchorId":"it_a"/);
+  assert.doesNotMatch(seen[0], /it_z/);
 });
 
 test('observe records the view probe before any screenshot scrolls the page', async () => {
