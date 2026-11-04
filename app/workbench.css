@@ -312,10 +312,12 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 :root:has(.transcript), .sp-body { overflow-anchor: none; }
 /* Every item stays mounted, but the browser skips the layout and paint of those off screen, each at an estimate until
    it draws, and remembers its size once it has (#712). The estimates are the median item of a generated 1,000-item
-   room, 71 px at 1,280 px and 91 px at 375 px. Only where the browser says when an item draws (cv-skip,
-   app/js/view-skip.mjs), so the view can keep your place as it does. */
+   room, 71 px at 1,280 px and 91 px at 375 px. Only where the browser can (cv-skip, app/js/view-skip.mjs).
+   Skipping contains layout and paint, which makes the item the box a fixed descendant is placed in. So an item with
+   one is never skipped: a review or an app full screen, and an app's check frame, off screen on purpose. */
 .transcript.cv-skip > .item { content-visibility: auto; contain-intrinsic-size: auto 71px; }
 @media (max-width: 600px) { .transcript.cv-skip > .item { contain-intrinsic-size: auto 91px; } }
+.transcript.cv-skip > .item:has(.rv-full, .app-full.fullscreen, .check-frame) { content-visibility: visible; }
 .col { width: 100%; max-width: 760px; margin: 0 auto; }
 .wide { width: 100%; }
 
