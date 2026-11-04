@@ -190,21 +190,61 @@ export function release(m, id, why) {
   reconsider(m, id);
 }
 
-/** @param {Manager} m @param {string} id @returns {Promise<any>} */
-export async function ensureWelcome(m, id) {
+/**
+ * The host’s welcome, connecting first if need be. A failure while an install of this Postbox runs there (m.updating,
+ * hosts-update.mjs) waits for that install, then tries once more from the top; an install that fails throws its own
+ * failure, with its next step (#464-b2b; designs/464-keep-updated.md, “What b2b adds”). waitForInstall: false throws
+ * the failure at once instead, for removing Postbox from the host.
+ * @param {Manager} m @param {string} id @param {{ waitForInstall?: boolean }} [o] @returns {Promise<any>}
+ */
+export async function ensureWelcome(m, id, { waitForInstall = true } = {}) {
   const l = linkOf(m, id);
   if (l.connected) return l.welcome;
-  if (l.state === 'stopped') throw l.failure;
+  try {
+    return await attempt(m, id, l, { afterInstall: false });
+  } catch (failure) {
+    const install = waitForInstall ? m.updating.get(id) : undefined;
+    if (!install) throw failure;
+    const outcome = await install.done;
+    if (!outcome.ok) throw outcome.failure;
+    return await welcomeAfterInstall(m, id);
+  }
+}
+
+/**
+ * Once more from the top, after an install, and never waiting for another: the link again, since the install may
+ * have replaced it, and a welcome that arrived meanwhile.
+ * @param {Manager} m @param {string} id @returns {Promise<any>}
+ */
+async function welcomeAfterInstall(m, id) {
+  const l = linkOf(m, id);
+  if (l.connected) return l.welcome;
+  return await attempt(m, id, l, { afterInstall: true });
+}
+
+/**
+ * One attempt of the link, needed until it settles. A stopped link throws its failure, except after an install: the
+ * install’s own connect may have failed already, so it’s retried here.
+ * @param {Manager} m @param {string} id @param {HostLink} l @param {{ afterInstall: boolean }} o @returns {Promise<any>}
+ */
+async function attempt(m, id, l, { afterInstall }) {
+  if (l.state === 'stopped' && !afterInstall) throw l.failure;
   const why = Symbol('welcome');
   need(m, id, why);
   try {
     const welcome = nextWelcome(l);
-    if (l.state === 'waiting') l.wake();
-    else l.need();
+    start(l);
     return await welcome;
   } finally {
     release(m, id, why);
   }
+}
+
+/** Starts the link’s next attempt now: after its backoff, from a stop, or from idle. @param {HostLink} l */
+function start(l) {
+  if (l.state === 'waiting') l.wake();
+  else if (l.state === 'stopped') l.retry();
+  else l.need();
 }
 
 /**

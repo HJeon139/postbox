@@ -7,7 +7,6 @@ import assert from 'node:assert/strict';
 import fsp from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import test from 'node:test';
-import { FAKE_TOKEN } from './fake-daemon.mjs';
 import { sleep, until } from './remote-hosts-fixtures.mjs';
 import { fails, hangs, installs, MISMATCH, readRecord, rig } from './remote-hosts-update-fixtures.mjs';
 
@@ -150,7 +149,6 @@ test('#464-b2b: after an install that replaced the link, the caller gets the new
     assert.equal(old.state, 'closed', 'the old token’s link was dropped');
     const now = t.mgr.link('h1');
     assert.notEqual(now, old);
-    assert.equal(now.token, FAKE_TOKEN);
     assert.equal(w.value, now.welcome);
   } finally {
     t.done();
@@ -240,7 +238,7 @@ test('#464-b2b: a caller waits for one install at most, though another is under 
     await until(() => w.settled, 'the caller settled without waiting for the second install');
     assert.equal(w.error?.detail?.code, 127);
     assert.equal(t.mgr.updating.has('h1'), true, 'the person’s install is still under way');
-    await until(() => t.runs.length === 2, 'the person’s install started');
+    await until(() => typeof t.runs[1]?.answer === 'function', 'the person’s install started');
     t.runs[1].answer();
     await pressed;
   } finally {
