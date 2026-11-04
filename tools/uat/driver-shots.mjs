@@ -75,16 +75,25 @@ export function kept(b, a) {
  */
 export async function keepView(ev, fn, moved) {
   const before = await ev(READ({}));
+  let result;
   try {
-    return await fn();
-  } finally {
-    await ev(RESTORE(before));
-    await ev(SETTLED);
-    const after = await ev(READ(Object.fromEntries(before.map((b) => [b.where, b.anchor]))));
-    for (const b of before) {
-      const a = after.find((x) => x.where === b.where);
-      if (a && !kept(b, a)) moved({ where: b.where, before: b, after: a });
-    }
+    result = await fn();
+  } catch (e) {
+    // A restore that fails after the capture failed mustn't hide the capture's own error.
+    await putBack(ev, before, moved).catch(() => {});
+    throw e;
+  }
+  await putBack(ev, before, moved);
+  return result;
+}
+/** Puts each view back as it was, and once the page has heard it, hears each one that isn't. */
+async function putBack(ev, before, moved) {
+  await ev(RESTORE(before));
+  await ev(SETTLED);
+  const after = await ev(READ(Object.fromEntries(before.map((b) => [b.where, b.anchor]))));
+  for (const b of before) {
+    const a = after.find((x) => x.where === b.where);
+    if (a && !kept(b, a)) moved({ where: b.where, before: b, after: a });
   }
 }
 
