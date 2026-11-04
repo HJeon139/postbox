@@ -186,6 +186,27 @@ export function isBinary(bytes) {
   return bytes.subarray(0, 8000).includes(0);
 }
 
+/**
+ * Checks each file of a tree, read by its path, whatever its size. A binary file, or one the reader can’t find, is
+ * skipped and not counted.
+ *
+ * @param {string[]} paths paths from the repository’s root
+ * @param {(path: string) => Buffer | null} read the file’s bytes, or null when it’s gone
+ * @returns {{ checked: number, findings: { path: string, violations: string[] }[] }}
+ */
+export function checkFilesPrivacy(paths, read) {
+  const findings = [];
+  let checked = 0;
+  for (const path of paths) {
+    const bytes = read(path);
+    if (bytes === null || isBinary(bytes)) continue;
+    checked++;
+    const violations = checkFilePrivacy(path, bytes.toString('utf8'));
+    if (violations.length > 0) findings.push({ path, violations });
+  }
+  return { checked, findings };
+}
+
 // A fixture labelled synthetic says so on its first line, after a “#” or “//” comment marker, as the delivery spike’s
 // baselines do. “SYNTHETIC” later in the line, such as inside a JSON string, isn’t a label.
 const SYNTHETIC_LABEL = /^(?:#|\/\/)\s*SYNTHETIC\b/;

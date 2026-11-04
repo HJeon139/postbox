@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkContentPrivacy, checkFilePrivacy, isBinary, isSyntheticLabel, missingSyntheticFixtures, syntheticFixturePaths } from '../tools/privacy-check.mjs';
+import {
+  checkContentPrivacy,
+  checkFilePrivacy,
+  checkFilesPrivacy,
+  isBinary,
+  isSyntheticLabel,
+  missingSyntheticFixtures,
+  syntheticFixturePaths,
+} from '../tools/privacy-check.mjs';
 
 test('fixtures privacy checker flags path violations', () => {
   // Home paths: Unix, Windows, slugs
@@ -128,6 +136,7 @@ test('privacy checker allows the placeholders, system homes and example addresse
 test('privacy checker exempts its own files, and only account fields in the #660 fixture', () => {
   assert.deepEqual(checkFilePrivacy('tools/privacy-check.mjs', '/Users/melissa'), []);
   assert.ok(checkFilePrivacy('tests/other.test.mjs', '/Users/melissa').length > 0, 'another file is checked');
+  assert.ok(checkFilePrivacy('docs/privacy-notes.md', '/Users/melissa').length > 0, 'a file named for privacy is still checked');
   const fixture = 'tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl';
   assert.deepEqual(checkFilePrivacy(fixture, '{"planType": "pro"}'), []);
   assert.ok(checkFilePrivacy(fixture, '/Users/melissa').length > 0, 'the #660 fixture still has its paths checked');
@@ -137,6 +146,21 @@ test('a file is binary when its first 8,000 bytes hold a zero byte, as git decid
   const bytes = (zeroAt) => Buffer.alloc(9000, 'a').fill(0, zeroAt, zeroAt + 1);
   assert.equal(isBinary(bytes(7999)), true, 'a zero in the last byte git reads');
   assert.equal(isBinary(bytes(8000)), false, 'a zero just past what git reads');
+});
+
+test('the tree scan checks every text file whatever its size, and skips binaries and files that are gone', () => {
+  const files = new Map([
+    ['docs/big.md', Buffer.from(`${'a'.repeat(200_000)}\n/Users/melissa/repo\n`)],
+    ['docs/clean.md', Buffer.from('nothing private\n')],
+    ['app/logo.png', Buffer.from([0x89, 0x50, 0x00, 0x2f, 0x55])],
+  ]);
+  const scan = checkFilesPrivacy([...files.keys(), 'docs/deleted.md'], (path) => files.get(path) ?? null);
+  assert.equal(scan.checked, 2, 'the two text files are checked, not the binary or the deleted file');
+  assert.deepEqual(
+    scan.findings.map(({ path }) => path),
+    ['docs/big.md'],
+    'a leak past 100 KB is flagged',
+  );
 });
 
 test('a first line is a synthetic label only when “SYNTHETIC” follows a comment marker', () => {

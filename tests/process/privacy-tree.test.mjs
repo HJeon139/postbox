@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { checkFilePrivacy, isBinary, isSyntheticLabel, missingSyntheticFixtures, syntheticFixturePaths } from '../../tools/privacy-check.mjs';
+import { checkFilesPrivacy, isSyntheticLabel, missingSyntheticFixtures, syntheticFixturePaths } from '../../tools/privacy-check.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -19,17 +19,10 @@ function trackedFiles() {
 }
 
 test('every committed text file is free of home paths, uids, account data, tokens and real addresses', () => {
-  const failures = [];
-  let checked = 0;
-  for (const path of trackedFiles()) {
-    // A file deleted in the working tree but not yet in the index has nothing left to leak.
-    if (!existsSync(join(ROOT, path))) continue;
-    const bytes = readFileSync(join(ROOT, path));
-    if (isBinary(bytes)) continue;
-    checked++;
-    const violations = checkFilePrivacy(path, bytes.toString('utf8'));
-    if (violations.length > 0) failures.push(`  - ${path}: ${violations.join('; ')}`);
-  }
+  // A file deleted in the working tree but not yet in the index has nothing left to leak.
+  const read = (path) => (existsSync(join(ROOT, path)) ? readFileSync(join(ROOT, path)) : null);
+  const { checked, findings } = checkFilesPrivacy(trackedFiles(), read);
+  const failures = findings.map(({ path, violations }) => `  - ${path}: ${violations.join('; ')}`);
   assert.ok(checked > 100, `only ${checked} text files were checked, so the list of files is wrong`);
   assert.equal(failures.length, 0, `Found private data in ${failures.length} committed file(s):\n${failures.join('\n')}`);
 });
