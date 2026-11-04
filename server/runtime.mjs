@@ -36,6 +36,7 @@ import { restoreArchives } from './archive-lifecycle.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
+import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
 import { catchUp, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
@@ -180,7 +181,6 @@ export class Runtime {
     /** @type {Map<string, [any, any][]>} what deliver held for a session in its Undo window (#597), in arrival order */
     this.heldForUndo = new Map();
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
-    this.lastTurn = new Map(); // sessionId → the id of its last turn that ended
     this.spawnShell = spawnShell ?? undefined;
     this.shellRuns = new Map(); // command item id → { stop, kill, done, flush, stopped, closing }
     // What each conversation’s agents changed, ran and published (#132).
@@ -639,7 +639,17 @@ export class Runtime {
       // Where the turn is, when it’s in a side thread (#121): the conversation shows the agent at work there.
       sideTurn: where === se.threadId ? null : { threadId: where, by: message.kind === 'agent' ? turn.from : message.kind === 'user' ? 'you' : null },
       state: 'think',
-      needs: turn.movesOn && se.needs?.kind !== 'appsend' ? null : se.needs,
+      // Moving on clears a need tied to a turn; the cards that wait until answered stay (card-needs.mjs RANK).
+      needs: turn.movesOn && TURN_TIED.has(se.needs?.kind) ? null : se.needs,
+      // This turn is the last turn from its start (card-needs.mjs turnsOf), so a restart that cuts it off, or a card
+      // released after it leaves the running turns, doesn't count a block from the turn before.
+      lastTurnId: turn.id,
+      // A turn that doesn't move on keeps the turns still asking you something, so their refusals and tool requests
+      // count until you move on (card-needs.mjs keptTurns). Read before this patch moves lastTurnId on.
+      keptTurnIds: turn.movesOn ? [] : keptTurns(this, se),
+      // A turn that doesn't move on keeps the block it found waiting (#69): it counts mid-turn, at the turn's end and
+      // after a restart (card-needs.mjs `keep`), even if a permission takes the need meanwhile. In the store, as above.
+      keptId: !turn.movesOn && se.needs?.kind === 'block' ? se.needs.itemId : null,
       currentStep: 'Thinking',
       finishedAt: null,
     });
@@ -929,13 +939,15 @@ export class Runtime {
   endTurn(turn, err) {
     if (turn.closed) return;
     turn.closed = true;
+    // Its permissions expire while it still counts as running, so their release counts no card tied to a turn: the
+    // turn's end, below, decides those.
+    for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
     this.turns.delete(turn.sessionId);
     this.settleSubagentSteps(turn);
     // How a remote turn ended on its host decides what the person sees: Sign-in needed and Interrupted say so (#120).
     if (turn.remote) err = this.remote.ended(turn, err);
     settleScheduledWake(this, turn, err);
     this.endWork(turn, !err ? 'done' : err.name === 'AbortError' ? 'stopped' : 'failed');
-    for (const [id, w] of this.permissionWaits) if (w.sessionId === turn.sessionId) this.settlePermission(id, 'expired');
     // The turn’s own lines in an attached session’s transcript aren’t terminal activity.
     this.mirrors.get(turn.sessionId)?.tail.skipToEnd();
     const se = this.s.sessions[turn.sessionId];
@@ -1019,35 +1031,17 @@ export class Runtime {
     const open = items.filter(
       (it) => it.kind === 'block' && it.turnId === turn.id && it.sessionId === se.id && it.valid && ASKING.has(it.block.type) && !it.answered,
     );
-    const waiting = se.needs?.kind === 'block' && !turn.movesOn ? items.find((it) => it.id === se.needs?.itemId) : null;
+    const waiting = se.keptId ? items.find((it) => it.id === se.keptId) : null;
     if (!open.length && waiting && !waiting.answered) open.push(waiting);
     const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
     const viewing = this.isViewing(turn.threadId);
     const topic = turn.threadId !== se.threadId && this.s.threads[turn.threadId]?.kind === 'topic' ? this.s.threads[turn.threadId] : null;
-    const refused = items.filter((it) => it.kind === 'denial' && it.turnId === turn.id && it.status === 'open');
-    const askedTool = items.filter((it) => it.kind === 'toolask' && it.turnId === turn.id && it.status === 'open').at(-1);
-    const needs = open.length
-      ? {
-          kind: 'block',
-          itemId: open.at(-1).id,
-          text: open.at(-1).block.title ?? clip(open.at(-1).block.prompt ?? open.at(-1).block.fallback, 120),
-          ...(open.at(-1) === waiting ? { threadId: se.needs?.threadId } : this.awayFrom(se, turn.threadId)),
-        }
-      : refused.length
-        ? {
-            kind: 'denial',
-            itemId: refused.at(-1).id,
-            text: `${refused.length === 1 ? 'A step was' : `${refused.length} steps were`} refused: ${refused.at(-1).summary}`,
-            ...this.awayFrom(se, turn.threadId),
-          }
-        : askedTool
-          ? { kind: 'toolask', itemId: askedTool.id, text: `@${se.handle} asks you to turn on “${askedTool.label}”`, ...this.awayFrom(se, turn.threadId) }
-          : se.needs?.kind === 'hop' || se.needs?.kind === 'appsend'
-            ? se.needs
-            : null;
+    // The newest card that still waits (card-needs.mjs): this turn's asks, the kept turns' (a failed reply's Retry
+    // among them), and the cards that wait until answered.
+    const needs = nextNeed(this, se, { turnIds: [turn.id, ...(se.keptTurnIds ?? [])], keep: waiting?.id ?? null });
     const mentionsYou = /(^|\W)@you\b/i.test(turn.said);
     this.updateSession(se.id, {
-      state: needs ? 'needs' : 'idle',
+      state: stateFor(needs),
       needs,
       sideTurn: null,
       glimpse: '',
@@ -1059,6 +1053,7 @@ export class Runtime {
       unread: topic ? se.unread : viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
       stopAsk: null,
     });
+    noticeNeed(this, se, needs);
     if (needs && (needs.kind === 'block' || needs.kind === 'denial' || needs.kind === 'toolask'))
       this.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
     else if (mentionsYou && !viewing) this.notify('info', se, `@${se.handle} mentioned you`, clip(turn.said, 120), turn.threadId);
@@ -1069,7 +1064,6 @@ export class Runtime {
     const stalled = this.stallSteps(turn, se);
     if (turn.kind === 'lint') this.quietLint(turn, se);
     else this.endLint(turn, [...this.checkTurn(turn, se), ...stalled]);
-    this.lastTurn.set(se.id, turn.id);
     if (topic && !viewing && (turn.said || open.length)) this.putThread({ ...this.s.threads[topic.id], unread: (this.s.threads[topic.id].unread ?? 0) + 1 });
     if (turn.threadId !== se.threadId) settleThread(this, turn.threadId);
 
@@ -1522,7 +1516,9 @@ export class Runtime {
     // What it was asked (turn-marks.mjs): refused, with nothing sent, when it was kept and can’t be read back exactly.
     return askedAgain(this, threadId, it, (asked) => {
       this.patchItem(threadId, itemId, { status: 'retried' });
-      this.updateSession(it.sessionId, { needs: null, state: 'idle' });
+      // Only the cards that wait until answered can take the need: the failed turn's own asks would flash until the
+      // retried turn starts, and that turn's end decides them.
+      releaseNeed(this, this.s.sessions[it.sessionId], itemId, undefined, { turnIds: [] });
       this.deliver(it.sessionId, { ...asked.message, retry: true, woken: it.wokeOnFailure ?? [] }, { summarizeTo: asked.summarizeTo, threadId });
     });
   }

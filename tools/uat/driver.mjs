@@ -5,6 +5,7 @@
 
 import { writeFile } from 'node:fs/promises';
 import { js, sleep } from '../browser.mjs';
+import { targetScript } from './app-target.mjs';
 import { review } from './driver-review.mjs';
 import { pressKey } from './keys.mjs';
 import { byText, ITEM } from './selectors.mjs';
@@ -224,10 +225,7 @@ export function driver(page, hooks = {}) {
       await ev(`${ITEM(key)}.scrollIntoView({ block: 'center' })`);
       await sleep(200);
       const fresh = await appContext(key);
-      const r = await inApp(
-        fresh,
-        `(() => { const el = [...document.querySelectorAll('button, a, [role=button], [role=tab], label, summary, option, li, td, text, g')].find((e) => e.textContent.trim().toLowerCase().includes(${js(String(text).toLowerCase())})); if (!el) return null; if (el.tagName === 'OPTION') { const s = el.closest('select'); s.value = el.value; s.dispatchEvent(new Event('input', { bubbles: true })); s.dispatchEvent(new Event('change', { bubbles: true })); return { selected: true }; } const b = el.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()`,
-      );
+      const r = await inApp(fresh, targetScript(text));
       if (!r) throw new Error(`Couldn’t find “${text}” in the app.`);
       // A native dropdown’s options can’t be clicked where they’re drawn, so the option is chosen the way a person’s pick ends.
       if (r.selected) return sleep(400);

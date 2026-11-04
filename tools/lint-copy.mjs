@@ -6,7 +6,7 @@
 //   node tools/lint-copy.mjs
 
 import { fileURLToPath } from 'node:url';
-import { allowed, files, read, report, scan } from './lint-lib.mjs';
+import { allowed, files, isEntry, read, report, scan } from './lint-lib.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -123,7 +123,7 @@ export function checkHtml(text, file) {
   return findings;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isEntry(import.meta.url, process.argv[1])) {
   const findings = [];
   const code = files(ROOT, ['app', 'server', 'shared', 'tools/demo.mjs'], ['.js', '.mjs'], ['app/kit/vendor', 'server/corpus/books']);
   for (const f of code) findings.push(...checkJs(read(ROOT, f), f));
