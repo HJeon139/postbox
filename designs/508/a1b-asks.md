@@ -166,3 +166,9 @@ None for this note: it’s docs only, and no run reaches it. The code PR runs `d
 - **The code PR’s first commit, move-only:** `server/routes.mjs` (new) and `server/index.mjs`.
 - **Then:** `shared/records.mjs` (new); `shared/state.mjs` and `server/live-streams.mjs`, both shared and mine this sprint (the stream is unchanged unless a frame needs it); `tests/store-held-guard.test.mjs`, also shared; `server/store.mjs`, `store-snapshot.mjs`, `store-recover.mjs`, `store-replay.mjs`, `store-retry.mjs`; `server/public-state.mjs`, `server/telemetry-report.mjs`, `server/card-needs.mjs` (from #633), `shared/needs.mjs`, the read tools’ module; and `tools/lint-security.mjs`.
 - **This note:** `designs/508/a1b-asks.md`, a row in `designs/508/README.md`, and links from `design.md:133`, `:196`, `:562` and “Receipts”.
+
+**Conditions the code PRs must meet** (the reviewer’s, from review of this note):
+1. **Where the file lives:** `held-<seq>.json` is written with mode 0600 and stays on the laptop, never synced or sent anywhere. §4’s canary test covers it as a channel off the laptop.
+2. **The commit point:** `held-<seq>.json` is written and fsynced before `snapshot.json` is renamed into place. The snapshot’s rename stays the one point where a save takes effect.
+3. **Loading:** a held file counts only if its seq and length match the loaded snapshot. Any other held file is ignored, and removed only after the next snapshot is committed.
+4. **A test:** the process is killed between the two writes, in both orders, and the loaded state is consistent. A mutant that prunes the old held file too early fails it.
