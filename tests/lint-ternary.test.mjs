@@ -44,7 +44,9 @@ test('lint-ternary: a path with a space loses the tab git appends, and a quoted 
 --- a/q.mjs
 +++ "b/q\\"t\\303\\251.mjs"
 @@ -1 +1,2 @@
+-was
 +y
++z
 `;
   assert.deepEqual([...addedRanges(diff).keys()], ['dir é/a b.mjs', 'q"té.mjs']);
 });
@@ -94,4 +96,27 @@ test('lint-ternary: only hits on an added line of their own file are new', () =>
     { path: 'b.mjs', start: 4, end: 4 },
   ];
   assert.deepEqual(newHits(hits, added), [{ path: 'a.mjs', start: 4, end: 4 }]);
+});
+
+test('lint-ternary: a removed line that reads “-- a/…” and an added one that reads “++ b/…” stay in their hunk', () => {
+  // With -U0 they show as “--- a/other.mjs” and “+++ b/other.mjs”, which a parser that doesn’t count a hunk’s lines
+  // takes for a new file’s header, moving the rest of x.mjs’s hunks to other.mjs.
+  const diff = ['--- a/x.mjs', '+++ b/x.mjs', '@@ -2 +2 @@', '--- a/other.mjs', '+++ b/other.mjs', '@@ -24,0 +24 @@', '+late', ''].join('\n');
+  assert.deepEqual(
+    addedRanges(diff),
+    new Map([
+      [
+        'x.mjs',
+        [
+          { start: 2, end: 2 },
+          { start: 24, end: 24 },
+        ],
+      ],
+    ]),
+  );
+});
+
+test('lint-ternary: a hunk that says it has more lines than the diff holds fails, rather than reading on', () => {
+  const diff = ['--- a/x.mjs', '+++ b/x.mjs', '@@ -1 +1,2 @@', '+only one', ''].join('\n');
+  assert.throws(() => addedRanges(diff), /ends inside a hunk/);
 });

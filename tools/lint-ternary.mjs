@@ -14,12 +14,13 @@
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { isEntry } from './lint-lib.mjs';
 import { baseRef, mergeBase, noBase } from './merge-base.mjs';
 
 const BIOME = fileURLToPath(new URL('../node_modules/@biomejs/biome/bin/biome', import.meta.url));
 const RULE = 'lint/style/noNestedTernary';
 const LINTED = /\.(mjs|js|cjs)$/;
-const HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 const C_ESCAPES = /** @type {Record<string, number>} */ ({ a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 });
 
 /**
@@ -50,9 +51,10 @@ function unquotePath(written) {
 }
 
 /**
- * The lines a `git diff -U0` adds, by file: each file’s added ranges, first and last line, from its hunk headers. A
- * `+++` line that names no new file throws: the diff asks only for added, modified and renamed files, so one would be a
- * diff this can’t read, and must not pass as no added lines.
+ * The lines a `git diff -U0` adds, by file: each file’s added ranges, first and last line, from its hunk headers. Each
+ * hunk’s lines are counted off its header, so a removed line that reads “-- a/…” or an added one that reads “++ b/…”
+ * stays in its hunk and is never taken for the next file’s header. A `+++` line that names no new file throws, and so
+ * does a diff that ends inside a hunk: either would be a diff this can’t read, and must not pass as no added lines.
  * @param {string} diff
  * @returns {Map<string, { start: number, end: number }[]>}
  */
@@ -60,23 +62,40 @@ export function addedRanges(diff) {
   /** @type {Map<string, { start: number, end: number }[]>} */
   const byFile = new Map();
   let path = '';
+  let removedLeft = 0;
+  let addedLeft = 0;
   for (const line of diff.split('\n')) {
+    if (removedLeft + addedLeft > 0) {
+      if (line.startsWith('-')) removedLeft--;
+      if (line.startsWith('+')) addedLeft--;
+      continue;
+    }
     if (line.startsWith('+++ ')) {
-      const written = unquotePath(line.slice(4));
-      if (!written.startsWith('b/')) throw new Error(`lint-ternary: can’t read the diff’s “${line}”.`);
-      path = written.slice(2);
+      path = newPath(line);
       continue;
     }
     const hunk = HUNK.exec(line);
     if (!hunk) continue;
-    const start = Number(hunk[1]);
-    const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
-    if (count === 0) continue;
+    removedLeft = hunkCount(hunk[2]);
+    addedLeft = hunkCount(hunk[4]);
+    if (addedLeft === 0) continue;
+    const start = Number(hunk[3]);
     const ranges = byFile.get(path) ?? [];
-    ranges.push({ start, end: start + count - 1 });
+    ranges.push({ start, end: start + addedLeft - 1 });
     byFile.set(path, ranges);
   }
+  if (removedLeft + addedLeft > 0) throw new Error('lint-ternary: the diff ends inside a hunk.');
   return byFile;
+}
+
+/** A hunk header’s line count: one when the header leaves it out. @param {string | undefined} written */
+const hunkCount = (written) => (written === undefined ? 1 : Number(written));
+
+/** The new file a `+++ ` header names, or a throw when it names none. @param {string} line */
+function newPath(line) {
+  const written = unquotePath(line.slice(4));
+  if (!written.startsWith('b/')) throw new Error(`lint-ternary: can’t read the diff’s “${line}”.`);
+  return written.slice(2);
 }
 
 /**
@@ -119,6 +138,15 @@ export function newHits(hits, added) {
   return hits.filter((hit) => overlapsAdded(added.get(hit.path) ?? [], hit.start, hit.end));
 }
 
+/** The top folder of the git checkout the lint runs in, or '' outside one. */
+function checkoutTop() {
+  try {
+    return execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {
+    return '';
+  }
+}
+
 /** Biome’s report of nested ternaries in these files, run once from the repo’s top folder. */
 function biomeReport(/** @type {string} */ top, /** @type {string[]} */ files) {
   const args = [BIOME, 'lint', `--only=${RULE.slice('lint/'.length)}`, '--reporter=json', '--no-errors-on-unmatched', '--max-diagnostics=none'];
@@ -127,8 +155,13 @@ function biomeReport(/** @type {string} */ top, /** @type {string[]} */ files) {
   return JSON.parse(result.stdout);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const top = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
+if (isEntry(import.meta.url, process.argv[1])) {
+  const top = checkoutTop();
+  if (!top) {
+    const result = noBase('lint-ternary', 'git checkout here', process.env);
+    console.log(result.message);
+    process.exit(result.code);
+  }
   const git = (/** @type {string[]} */ args) =>
     execFileSync('git', args, { cwd: top, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
   const ref = baseRef(process.argv[2], process.env);
