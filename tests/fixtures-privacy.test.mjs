@@ -1,35 +1,6 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
 import { test } from 'node:test';
-import { checkContentPrivacy } from './privacy-check.mjs';
-
-function walk(dir) {
-  const files = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) files.push(...walk(full));
-    else if (!entry.name.startsWith('.')) files.push(full);
-  }
-  return files;
-}
-
-const FIXTURES_DIR = resolve(import.meta.dirname, 'fixtures');
-
-/**
- * Checks a fixture file for leaked personal data or un-sanitized environment paths.
- *
- * @param {string} filePath
- * @returns {string[]} list of violations found
- */
-export function checkFixturePrivacy(filePath) {
-  const rel = relative(FIXTURES_DIR, filePath);
-  // Pre-existing issue on main (#660), filed separately
-  const isPreExisting660 = rel === 'codex-app-server/resume-turn-after-failure.jsonl';
-
-  const content = readFileSync(filePath, 'utf8');
-  return checkContentPrivacy(content, { exemptAccountFields: isPreExisting660 });
-}
+import { checkContentPrivacy, checkFilePrivacy } from './privacy-check.mjs';
 
 test('fixtures privacy checker flags path violations', () => {
   // Home paths: Unix, Windows, slugs
@@ -124,21 +95,24 @@ test('privacy checker flags a rate limit’s utilization unless it is 0', () => 
   assert.equal(checkContentPrivacy('{"utilization": 0}').length, 0);
 });
 
-test('fixtures privacy: recorded fixtures contain no leaked home paths, accounts, or identifiers', () => {
-  const allFiles = walk(FIXTURES_DIR);
-  const failures = [];
-
-  for (const file of allFiles) {
-    const violations = checkFixturePrivacy(file);
-    if (violations.length > 0) {
-      const rel = relative(FIXTURES_DIR, file);
-      failures.push({ file: rel, violations });
-    }
+test('privacy checker allows the placeholders, system homes and example addresses the tree holds', () => {
+  assert.equal(checkContentPrivacy('/Users/someone/project').length, 0);
+  assert.equal(checkContentPrivacy('/home/linuxbrew/.linuxbrew/bin').length, 0);
+  assert.equal(checkContentPrivacy('for dir in "$home/.nvm/versions/node:v"').length, 0, 'a dotfolder is not a user');
+  for (const email of ['user@build.example.com', 'a@zorvex-internal.example', 'git@github.com', 'a@indexer.com']) {
+    assert.equal(checkContentPrivacy(`mail ${email}`).length, 0, email);
   }
+  assert.equal(checkContentPrivacy("'plugins.sample@test.mcp_servers.sample.mode'").length, 0, 'a TOML key is not an address');
+  assert.ok(checkContentPrivacy('/home/linuxbrewer/x').length > 0, 'flags a name that only starts like a system home');
+  assert.ok(checkContentPrivacy('/Users/someone2/x').length > 0, 'flags a name that only starts like a placeholder');
+  assert.ok(checkContentPrivacy('bob@example.community').length > 0, 'flags a domain that only starts like example.com');
+  assert.ok(checkContentPrivacy('b@indexer.com').length > 0, 'flags another address at a mention test’s domain');
+});
 
-  assert.equal(
-    failures.length,
-    0,
-    `Found private data in ${failures.length} fixture file(s):\n${failures.map((f) => `  - ${f.file}: ${f.violations.join('; ')}`).join('\n')}`,
-  );
+test('privacy checker exempts its own files, and only account fields in the #660 fixture', () => {
+  assert.deepEqual(checkFilePrivacy('tests/privacy-check.mjs', '/Users/melissa'), []);
+  assert.ok(checkFilePrivacy('tests/other.test.mjs', '/Users/melissa').length > 0, 'another file is checked');
+  const fixture = 'tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl';
+  assert.deepEqual(checkFilePrivacy(fixture, '{"planType": "pro"}'), []);
+  assert.ok(checkFilePrivacy(fixture, '/Users/melissa').length > 0, 'the #660 fixture still has its paths checked');
 });

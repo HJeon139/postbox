@@ -1,7 +1,7 @@
 // The privacy checker for committed text, kept apart from its test so a CI tool can reuse it (#508).
 
-/** Placeholder user names a slashed home path may use. */
-const ALLOWED_USERNAMES = new Set(['me', 'you', 'user']);
+/** Placeholder user names a slashed home path may use. “someone” is the tests’ made-up home. */
+const ALLOWED_USERNAMES = new Set(['me', 'you', 'user', 'someone']);
 
 /**
  * Placeholder user names a slug may use. A slug turns every “/” and “.” into “-”, so “-Users-user-name-” can’t tell
@@ -10,8 +10,12 @@ const ALLOWED_USERNAMES = new Set(['me', 'you', 'user']);
  */
 const ALLOWED_SLUG_USERNAMES = new Set(['me', 'you']);
 
-// A home path, Unix or Windows (“/Users/x”, “/home/x”, “C:\Users\x”, “\home\x”), and the user name after it.
-const SLASHED_HOME = /(?:[A-Za-z]:[/\\]+|(?<=^|[^A-Za-z0-9_-]))[/\\]*(?:Users|home)[/\\]+([a-zA-Z0-9._-]+)/g;
+/** Home folders that belong to a system account, not a person: Homebrew on Linux installs under /home/linuxbrew. */
+const SYSTEM_HOMES = new Set(['linuxbrew']);
+
+// A home path, Unix or Windows (“/Users/x”, “/home/x”, “C:\Users\x”, “\home\x”), and the user name after it. A
+// name doesn’t start with a dot, so a shell script’s “$home/.nvm” is a folder in a home, not a user.
+const SLASHED_HOME = /(?:[A-Za-z]:[/\\]+|(?<=^|[^A-Za-z0-9_-]))[/\\]*(?:Users|home)[/\\]+([a-zA-Z0-9_][a-zA-Z0-9._-]*)/g;
 
 // A Claude Code project slug: a path with each “/” and “.” turned into “-”, such as “-local-home-alice-repo”. It starts
 // with a “-” that follows no slug character, so “welcome-home-agents” in prose isn’t one.
@@ -47,20 +51,25 @@ const UTILIZATION = /"utilization"\s*:\s*([^,}\]\s]+)/g;
 // The value a scrubbed utilization holds.
 const ZERO = /^0(?:\.0+)?$/;
 
-// An email address.
-const EMAIL = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+// An email address. One that runs on into a name, as in the TOML key “plugins.sample@test.mcp_servers”, isn’t one.
+const EMAIL = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?![A-Za-z0-9_])/g;
 
-// A placeholder address, at example.com, the domain reserved for examples.
-const EXAMPLE_EMAIL = /@(?:host\.)?example\.com$/;
+// A placeholder address: at a domain reserved for examples (example.com, .org or .net, or a subdomain of one), or under
+// a top-level domain reserved for examples and tests (RFC 2606).
+const EXAMPLE_EMAIL = /@(?:(?:[A-Za-z0-9-]+\.)*example\.(?:com|org|net)|(?:[A-Za-z0-9-]+\.)+(?:example|test|invalid|localhost))$/;
 
-/** Addresses that belong to no person: the agents’ commit authors. */
-const BOT_EMAILS = new Set(['noreply@anthropic.com', 'noreply@openai.com']);
+/**
+ * Addresses that belong to no person: the agents’ commit authors, the user of every GitHub SSH remote, and the two the
+ * mention tests write to check that “@indexer” and “@critic” inside an address aren’t mentions of those agents.
+ */
+const BOT_EMAILS = new Set(['noreply@anthropic.com', 'noreply@openai.com', 'git@github.com', 'a@indexer.com', 'x@critic.com']);
 
 /** Home paths, slashed or in a slug, whose user name isn’t a placeholder. @param {string} content */
 function homePaths(content) {
   const found = [];
   for (const [path, name] of content.matchAll(SLASHED_HOME)) {
-    if (!ALLOWED_USERNAMES.has(name.split(/[/\\]/)[0])) found.push(`home path: ${path}`);
+    const user = name.split(/[/\\]/)[0];
+    if (!ALLOWED_USERNAMES.has(user) && !SYSTEM_HOMES.has(user)) found.push(`home path: ${path}`);
   }
   for (const [slug] of content.matchAll(SLUG)) {
     for (const [path, name] of slug.matchAll(SLUG_HOME)) {
@@ -140,4 +149,27 @@ export function checkContentPrivacy(content, options = {}) {
     ...utilizations(content),
     ...emails(content),
   ];
+}
+
+/** The checker’s own files, which hold the examples its tests must flag. */
+const SELF_EXAMPLES = new Set(['tests/privacy-check.mjs', 'tests/fixtures-privacy.test.mjs']);
+
+/** A recorded Codex turn that still holds account fields, filed as #660. */
+const ACCOUNT_FIELDS_660 = 'tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl';
+
+/**
+ * Checks one committed file, by its path from the repository’s root, with the exemptions files have.
+ *
+ * @param {string} path
+ * @param {string} content
+ * @returns {string[]} list of violations found
+ */
+export function checkFilePrivacy(path, content) {
+  if (SELF_EXAMPLES.has(path)) return [];
+  return checkContentPrivacy(content, { exemptAccountFields: path === ACCOUNT_FIELDS_660 });
+}
+
+/** Whether a file is binary, as git decides it: a zero byte in its first 8,000. @param {Buffer} bytes */
+export function isBinary(bytes) {
+  return bytes.subarray(0, 8000).includes(0);
 }
