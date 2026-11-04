@@ -10,7 +10,7 @@
 // install’s, goes through one promise chain per host (m.recordWrites), and each applies its change to the record as
 // the write before it left it, so neither overwrites the other.
 
-import { lstatSync, readFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs';
 import { chmod, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { VERSION_RE } from '../../shared/remote-protocol-checks.mjs';
@@ -79,15 +79,37 @@ const refusedRecord = (error) => ({ keepUpdated: false, installs: [], refused: t
  */
 function readRecord(dataDir, hostId) {
   try {
-    const file = recordFile(dataDir, hostId);
-    const st = lstatSync(file);
-    // Read in the failure’s own tick, so a file far larger than any record Postbox writes is refused unread.
-    if (!st.isFile() || st.size > MAX_RECORD_BYTES) return refusedRecord(UNREADABLE);
-    const record = parseRecord(readFileSync(file, 'utf8'));
+    const text = readSmallFile(recordFile(dataDir, hostId));
+    const record = text === null ? null : parseRecord(text);
     return record ?? refusedRecord(UNREADABLE);
   } catch (e) {
     if (e?.code === 'ENOENT') return { keepUpdated: false, installs: [] };
     return refusedRecord(`${UNREADABLE} (${e?.code ?? 'error'})`);
+  }
+}
+
+/**
+ * A regular file’s text, read in the failure’s own tick, at most MAX_RECORD_BYTES of it; null for anything but a
+ * regular file, or for a file far larger than any record Postbox writes, refused unread. It’s opened once and checked
+ * on what was opened: a symbolic link fails the open (ELOOP), and a FIFO opens without waiting for a writer, so
+ * neither can swap the file or block the read. Throws for a file that isn’t there (ENOENT) and other errors opening it.
+ * @param {string} file @returns {string | null}
+ */
+function readSmallFile(file) {
+  const fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile() || st.size > MAX_RECORD_BYTES) return null;
+    const buf = Buffer.alloc(MAX_RECORD_BYTES);
+    let n = 0;
+    while (n < buf.length) {
+      const got = readSync(fd, buf, n, buf.length - n, null);
+      if (got === 0) break;
+      n += got;
+    }
+    return buf.toString('utf8', 0, n);
+  } finally {
+    closeSync(fd);
   }
 }
 
