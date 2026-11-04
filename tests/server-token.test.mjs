@@ -232,7 +232,7 @@ test('#464-b2a: the consent’s route needs the page’s token, takes only { on:
     assert.equal(refused.status, 403);
     assert.equal(refused.json.code, 'token');
     assert.equal(existsSync(record), false, 'nothing was written without the token');
-    for (const body of [{ on: 'yes' }, { on: 1 }, { on: null }, {}, { on: true, other: 1 }]) {
+    for (const body of [{ on: 'yes' }, { on: 1 }, { on: null }, {}, { on: true, other: 1 }, null, 5, [true]]) {
       const r = await call({ method: 'PUT', path, body, cookie });
       assert.equal(r.status, 422, `${JSON.stringify(body)}: ${r.text}`);
     }
@@ -247,4 +247,11 @@ test('#464-b2a: the consent’s route needs the page’s token, takes only { on:
   } finally {
     await call({ method: 'DELETE', path: `/api/hosts/${id}`, cookie });
   }
+});
+
+test('#464-b2a: the consent’s route on a host that isn’t there is a 404, and writes no record', async () => {
+  const cookie = await pageCookie();
+  const r = await call({ method: 'PUT', path: '/api/hosts/h_missing0/keep-updated', body: { on: true }, cookie });
+  assert.equal(r.status, 404, r.text);
+  assert.equal(existsSync(join(dir, 'remote-installs', 'h_missing0')), false);
 });
