@@ -2,6 +2,21 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.20.0 (2026-11-04)
+
+### Features
+
+- **uat:** stage an older Postbox on a test host (#464)
+
+### Fixes
+
+- **uat:** record a staged host cleared at the end of the run as gone (#464)
+- **uat:** test the refused-host guard, read a plain run’s phases in the recheck (#464)
+- **uat:** keep --phase working on remotehosts, record the phases played, refuse a newer tag (#464)
+- **uat:** refuse staging with --replace-host-install, and narrow its cleanup (#464)
+- **uat:** give the staged installer the host’s full settings (#464)
+- **uat:** skip the staged phase in a plain run, and clear a staged host (#464)
+
 ## 1.19.1 (2026-11-04)
 
 ### Fixes
