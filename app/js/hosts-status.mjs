@@ -1,12 +1,13 @@
 // A host’s status on its card in the Hosts tab (app/js/hosts.mjs): its connection in words, when Postbox last heard
-// from it, what to do about a failure (the command to run in a terminal, Reconnect, Install, Take over), and what
-// its daemon found there, with its warnings.
+// from it, what to do about a failure (the command to run in a terminal, Reconnect, Install, Take over), how its
+// newest automatic install stands (#464-b2b), and what its daemon found there, with its warnings.
 
 import { api, client } from './client.mjs';
 import { ago, fill, h, icon } from './dom.mjs';
 import { confirmInstall, confirmTakeover } from './hosts-confirm.mjs';
 import { openEditor } from './hosts-editor.mjs';
 import { command, commandsIn, withCode } from './hosts-parts.mjs';
+import { updateShown } from './keep-updated.mjs';
 import { keepFocus, say, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -26,6 +27,9 @@ const HARNESSES = {
   'kiro-cli': ['Kiro CLI', 'kiroPath'],
   codex: ['Codex', 'codexPath'],
 };
+
+/** The failures whose own action is Install… or Reinstall…, which a failed automatic install’s Install… stands for. */
+const INSTALL_KINDS = new Set(['not-installed', 'version', 'bad-token']);
 
 /** Repaints one host’s status, leaving its editor alone. @param {import('./hosts.mjs').Panel} p @param {string} id */
 export const paintStatus = (p, id) => {
@@ -47,9 +51,60 @@ export const statusView = (p, host) => {
       h(`span.status-tag${state === 'connected' ? '.ok' : ''}`, state === 'failed' ? icon('warn', 'i-sm') : null, STATES[state] ?? 'Not connected yet'),
       h('span.small.dim', heard),
     ),
-    st?.failure && state !== 'connected' ? failureView(p, host, st.failure) : stateNote(host, state),
+    updateView(host, st),
+    linkView(p, host, st),
     st?.welcome ? welcomeView(host, st.welcome) : null,
   ];
+};
+
+/**
+ * The link’s failure, or what its state means, unless a failed automatic install already offers its Install…: one
+ * Install… on the card, beside the install’s failure.
+ * @param {import('./hosts.mjs').Panel} p @param {any} host @param {any} st
+ */
+const linkView = (p, host, st) => {
+  const state = st?.state ?? null;
+  const failure = st?.failure && state !== 'connected' ? st.failure : null;
+  const offersInstall = failure ? INSTALL_KINDS.has(failure.kind) : state === 'not-installed';
+  if (offersInstall && updateShown(st) === 'failed') return null;
+  return failure ? failureView(p, host, failure) : stateNote(host, state);
+};
+
+/** What the card says of an automatic install under way or done, by keep-updated.mjs’s state. */
+const UPDATE_LINES = {
+  installing: (/** @type {string} */ version) => `Installing Postbox ${version}…`,
+  installed: (/** @type {string} */ version) => `Postbox installed ${version} here by itself`,
+};
+
+/**
+ * How the host’s newest automatic install stands (keep-updated.mjs): under way, installed by itself, or failed, with
+ * Install… beside it. Only its version, never a token or a path.
+ * @param {any} host @param {any} st
+ */
+const updateView = (host, st) => {
+  const shown = updateShown(st);
+  if (shown === 'failed') return updateFailure(host, st.update);
+  const line = shown ? UPDATE_LINES[shown] : null;
+  return line ? h('p.small.ho-update', { dataset: { update: shown }, style: { margin: 0 } }, line(st.update.version)) : null;
+};
+
+/**
+ * A failed automatic install, with Install… beside it: why, when Postbox couldn’t note the install (update.error).
+ * The installer’s own failure isn’t in the host’s status, so otherwise it says to install by hand to see why.
+ * @param {any} host @param {any} update
+ */
+const updateFailure = (host, update) => {
+  const why = update.error ?? `Postbox couldn’t install ${update.version} here by itself. Install it yourself to see why.`;
+  return h(
+    'div.callout.warn.ho-update',
+    { dataset: { update: 'failed' } },
+    icon('warn'),
+    h(
+      'div.grow',
+      h('p', { style: { margin: 0, overflowWrap: 'anywhere' } }, why),
+      h('div.row-flex.wrap', { style: { marginTop: '8px' } }, installButton(host, 'Install…')),
+    ),
+  );
 };
 
 /** What a state without a failure means, and the action it takes. @param {any} host @param {string|null} state */
