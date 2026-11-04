@@ -55,7 +55,6 @@ test('fixtures privacy checker flags path violations', () => {
   assert.equal(checkContentPrivacy('/home/user/repo').length, 0);
   assert.equal(checkContentPrivacy('/home/you/repo').length, 0);
   assert.equal(checkContentPrivacy('-Users-me-repo').length, 0);
-  assert.equal(checkContentPrivacy('-home-user-repo').length, 0);
   assert.equal(checkContentPrivacy('C:\\Users\\me\\repo').length, 0);
   assert.equal(checkContentPrivacy('C:\\home\\user\\repo').length, 0);
   assert.equal(checkContentPrivacy('/tmp/claude/-sanitized-workspace/tasks').length, 0);
@@ -82,6 +81,47 @@ test('fixtures privacy checker flags identifier, account, and email violations',
   assert.equal(checkContentPrivacy('{"installation_id": "00000000-0000-0000-0000-000000000000"}').length, 0);
   assert.equal(checkContentPrivacy('user@example.com').length, 0);
   assert.equal(checkContentPrivacy('noreply@anthropic.com').length, 0);
+});
+
+test('privacy checker flags a home folder inside a slug, whatever comes before it', () => {
+  assert.ok(checkContentPrivacy('-local-home-alice-x').length > 0, 'flags -local-home-alice-');
+  assert.ok(checkContentPrivacy('projects/-private-tmp-Users-alice-repo').length > 0, 'flags -private-tmp-Users-alice-');
+  assert.ok(checkContentPrivacy('-Users-me-home-alice-x').length > 0, 'flags a second home folder in one slug');
+  assert.equal(checkContentPrivacy('-local-home-me-x').length, 0);
+  assert.equal(checkContentPrivacy('https://github.blog/welcome-home-agents/').length, 0, 'prose with -home- in it is not a slug');
+});
+
+test('privacy checker flags a Claude Code uid without the temp folder’s slashes', () => {
+  assert.ok(checkContentPrivacy('-tmp-claude-501-w').length > 0, 'flags -tmp-claude-501-');
+  assert.ok(checkContentPrivacy('claude-501').length > 0, 'flags claude-501');
+  assert.ok(checkContentPrivacy('-private-tmp-claude-1000--home-me-x').length > 0, 'flags claude-1000');
+  assert.equal(checkContentPrivacy('-private-tmp-claude-000--Users-me-x').length, 0, 'all zeros is the scrubbed placeholder');
+  assert.equal(checkContentPrivacy('claude-3-5-sonnet').length, 0, 'a model name is not a uid');
+  assert.equal(checkContentPrivacy('pwd -P >| /tmp/claude-0167-cwd').length, 0, 'the shell’s cwd file has a random name, not a uid');
+});
+
+test('privacy checker flags the user placeholder in a slug, where it can be a real name’s first part', () => {
+  assert.ok(checkContentPrivacy('-Users-user-postbox').length > 0, 'flags -Users-user-');
+  assert.ok(checkContentPrivacy('-home-user-repo').length > 0, 'flags -home-user-');
+  assert.equal(checkContentPrivacy('/Users/user/postbox').length, 0, 'a slashed path keeps the name whole');
+  assert.equal(checkContentPrivacy('-Users-you-postbox').length, 0);
+});
+
+test('privacy checker flags Anthropic API keys and GitHub tokens at a real key’s length', () => {
+  // Built here, so no file holds a string shaped like a real key.
+  const tail = 'Ab3'.repeat(14);
+  for (const prefix of ['sk-ant-api03-', 'ghp_', 'gho_', 'ghs_', 'github_pat_']) {
+    assert.ok(checkContentPrivacy(`key ${prefix}${tail}`).length > 0, `flags ${prefix}`);
+  }
+  assert.equal(checkContentPrivacy('set ANTHROPIC_API_KEY=sk-ant-... first').length, 0, 'a placeholder in prose');
+  assert.equal(checkContentPrivacy('ghp_xxxx and github_pat_xxxx').length, 0, 'placeholders shorter than a token');
+});
+
+test('privacy checker flags a rate limit’s utilization unless it is 0', () => {
+  assert.ok(checkContentPrivacy('{"utilization":0.13}').length > 0, 'flags 0.13');
+  assert.ok(checkContentPrivacy('{"utilization": 1}').length > 0, 'flags 1');
+  assert.equal(checkContentPrivacy('{"utilization":0,"status":"allowed"}').length, 0);
+  assert.equal(checkContentPrivacy('{"utilization": 0}').length, 0);
 });
 
 test('fixtures privacy: recorded fixtures contain no leaked home paths, accounts, or identifiers', () => {
