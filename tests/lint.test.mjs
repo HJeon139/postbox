@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { pathToFileURL } from 'node:url';
 import { britishWords, checkMarkdown, checkJs as copyJs, straightQuotes, threadWords } from '../tools/lint-copy.mjs';
 import { checkJs as domJs } from '../tools/lint-dom.mjs';
-import { codeOnly, scan } from '../tools/lint-lib.mjs';
+import { codeOnly, isEntry, scan } from '../tools/lint-lib.mjs';
 import { checkCss, checkJs as tokensJs } from '../tools/lint-tokens.mjs';
 
 test('the scanner tells strings, templates, regexes and comments from code', () => {
@@ -121,4 +122,11 @@ test('lint-copy: what agents read says “conversation” for one, too (#75)', (
 
 test('lint-copy: docs are checked for spelling outside code', () => {
   assert.equal(checkMarkdown('The colour.\n\n```\ncolour\n```\n`colour`', 'a.md').length, 1);
+});
+
+test('isEntry: a lint runs as a script from a folder whose path has a space or an accent', () => {
+  assert.equal(isEntry(pathToFileURL('/tmp/a b/é/tools/x.mjs').href, '/tmp/a b/é/tools/x.mjs'), true);
+  assert.equal(isEntry(pathToFileURL('/tmp/a/tools/x.mjs').href, '/tmp/a/tools/../tools/x.mjs'), true);
+  assert.equal(isEntry(pathToFileURL('/tmp/a/tools/x.mjs').href, '/tmp/a/tests/x.test.mjs'), false);
+  assert.equal(isEntry(pathToFileURL('/tmp/a/tools/x.mjs').href, undefined), false);
 });

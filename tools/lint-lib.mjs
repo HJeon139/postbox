@@ -6,7 +6,8 @@
 // those apart from code, which is what the lint rules look at.
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** @typedef {{ kind: 'string'|'template'|'comment'|'regex', text: string, line: number, start: number, end: number }} Token */
 
@@ -197,4 +198,15 @@ export function report(name, findings) {
     );
     process.exitCode = 1;
   } else console.log(`${name}: no problems.`);
+}
+
+/**
+ * Whether the module at url is the script node was asked to run. Comparing paths, not `file://` strings, keeps a lint
+ * running from a folder whose path has a space or an accent, which a URL writes percent-encoded: there the string test
+ * was false, and the lint exited 0 without checking anything.
+ * @param {string} url  the module’s import.meta.url @param {string | undefined} script  process.argv[1]
+ */
+export function isEntry(url, script) {
+  if (!script) return false;
+  return fileURLToPath(url) === resolve(script);
 }

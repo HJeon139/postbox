@@ -17,6 +17,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { isEntry } from './lint-lib.mjs';
 import { baseRef, mergeBase, noBase } from './merge-base.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -233,7 +234,7 @@ function configs(rev) {
   return new Map(paths.map((p) => [p, git(['hash-object', p]).trim()]));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isEntry(import.meta.url, process.argv[1])) {
   const ref = baseRef(process.argv[2], process.env);
   const at = mergeBase(git, ref);
   if (!at) {
