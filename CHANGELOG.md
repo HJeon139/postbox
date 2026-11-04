@@ -2,6 +2,20 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.18.0 (2026-11-04)
+
+### Features
+
+- **uat:** TRIGGERS knows #701's diagram-deferred
+- **uat:** diagram-deferred, #701's trigger, from a diagram probe taken before screenshots
+- **uat:** `- seed-diagrams: n` ends n of the big room's agent replies in a Mermaid diagram (#701)
+
+### Fixes
+
+- **uat:** #701 packet findings: seed wiring tested end to end, exact page loads, probe branches
+- **uat:** diagram-deferred counts diagram pages asked for; eager frames out of view never draw
+- **thread:** a diagram frame loads only as it nears the view
+
 ## 1.17.0 (2026-11-03)
 
 ### Features
