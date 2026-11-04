@@ -1,0 +1,127 @@
+{
+  "recorded": "Chromium (Playwright), 3 Nov 2026, from tests/browser/diagram-lazy.spec.mjs's room of 30 replies with 4 diagrams: a sample 3 s after the room drew, then one 3 s after scrolling to the first diagram. 'lazy' is #701's build; 'eager' is the same build with loading=\"lazy\" removed, as main draws frames.",
+  "lazy": [
+    {
+      "step": 1,
+      "at": 1,
+      "origin": 1793755370813,
+      "sinceLoad": 4481,
+      "requested": 1,
+      "full": false,
+      "frames": [
+        {
+          "key": "it_bRDY7Zcg",
+          "loaded": false,
+          "inView": false
+        },
+        {
+          "key": "it_e1eqx5zz",
+          "loaded": false,
+          "inView": false
+        },
+        {
+          "key": "it_dtMbQigm",
+          "loaded": false,
+          "inView": false
+        },
+        {
+          "key": "it_Bg2if9dh",
+          "loaded": true,
+          "inView": true
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "at": 2,
+      "origin": 1793755370813,
+      "sinceLoad": 7564,
+      "requested": 2,
+      "full": false,
+      "frames": [
+        {
+          "key": "it_bRDY7Zcg",
+          "loaded": true,
+          "inView": true
+        },
+        {
+          "key": "it_e1eqx5zz",
+          "loaded": false,
+          "inView": false
+        },
+        {
+          "key": "it_dtMbQigm",
+          "loaded": false,
+          "inView": false
+        },
+        {
+          "key": "it_Bg2if9dh",
+          "loaded": true,
+          "inView": false
+        }
+      ]
+    }
+  ],
+  "eager": [
+    {
+      "step": 1,
+      "at": 1,
+      "origin": 1793755380880,
+      "sinceLoad": 4022,
+      "requested": 4,
+      "full": false,
+      "frames": [
+        {
+          "key": "it_xV9ZQuCg",
+          "loaded": false,
+          "inView": false
+        },
+        {
+          "key": "it_1zKwXJDc",
+          "loaded": false,
+          "inView": false
+        },
+        {
+          "key": "it_89IpGh42",
+          "loaded": false,
+          "inView": false
+        },
+        {
+          "key": "it_VCiRf5Y",
+          "loaded": true,
+          "inView": true
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "at": 2,
+      "origin": 1793755380880,
+      "sinceLoad": 7093,
+      "requested": 4,
+      "full": false,
+      "frames": [
+        {
+          "key": "it_xV9ZQuCg",
+          "loaded": true,
+          "inView": true
+        },
+        {
+          "key": "it_1zKwXJDc",
+          "loaded": false,
+          "inView": false
+        },
+        {
+          "key": "it_89IpGh42",
+          "loaded": false,
+          "inView": false
+        },
+        {
+          "key": "it_VCiRf5Y",
+          "loaded": true,
+          "inView": false
+        }
+      ]
+    }
+  ]
+}

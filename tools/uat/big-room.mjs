@@ -160,11 +160,14 @@ export async function seedBigRoomData(data, threadId, agents, { diagrams = 0 } =
 
 /**
  * `- seed: big-room` in a run (tools/uat-run.mjs): once the page has started the conversation, stops Postbox, seeds the
- * room into its store, starts it again on the same data, and opens the room. Returns the note for the tester.
+ * room into its store, starts it again on the same data, and opens the room. Returns the note for the tester. The
+ * scenario gives the room its agents and, with `- seed-diagrams:`, its diagrams (#701).
  * @param {{ postbox: { origin: string, restart: (o?: { whileDown?: () => Promise<void> }) => Promise<number> }, data: string,
- *   threadId: string, agents: string[], page: { goto: (url: string) => Promise<any> }, log: (line: string) => void }} o
+ *   threadId: string, scenario: { agents: string[], seedDiagrams?: number }, page: { goto: (url: string) => Promise<any> },
+ *   log: (line: string) => void }} o
  */
-export async function openBigRoom({ postbox, data, threadId, agents, page, log, diagrams = 0 }) {
+export async function openBigRoom({ postbox, data, threadId, scenario, page, log }) {
+  const { agents, seedDiagrams: diagrams = 0 } = scenario;
   /** @type {Awaited<ReturnType<typeof seedBigRoomData>> | null} */
   let seeded = null;
   await postbox.restart({

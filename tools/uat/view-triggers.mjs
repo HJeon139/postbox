@@ -8,15 +8,18 @@
  * neared the view, then loaded it (#695, #701). An eager frame is requested as it’s mounted, so without #701 the page
  * has asked for every frame by the first sample, and this stays silent. A sample whose timing buffer was full can’t
  * count, so it’s skipped. The runner’s screenshots scroll to each diagram after the first sample, which loads it.
+ * It can miss, never fire falsely, once a page has asked for as many pages as it has frames: requested counts every
+ * diagram page since the load, in any conversation, so after a switch back, or once every frame has loaded, it stays
+ * silent. O(samples² × frames²), with samples at most the run’s steps.
  * @param {{ probes?: { diagrams?: any[] } }} f
  */
 function diagramDeferred(f) {
   const samples = (f.probes?.diagrams ?? []).filter((s) => !s.full);
   for (const [i, s] of samples.entries()) {
     if (s.requested >= s.frames.length) continue;
+    const samePage = samples.slice(i + 1).filter((later) => later.origin === s.origin);
     const waiting = s.frames.filter((fr) => !fr.loaded && !fr.inView);
     for (const fr of waiting) {
-      const samePage = samples.slice(i + 1).filter((later) => later.sinceLoad > s.sinceLoad);
       const drawn = samePage.find((later) => later.requested > s.requested && later.frames.some((x) => x.key === fr.key && x.loaded));
       if (!drawn) continue;
       return [

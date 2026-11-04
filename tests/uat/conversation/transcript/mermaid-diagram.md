@@ -12,7 +12,8 @@ Agents explain structure with diagrams; they render in a sandbox so diagram text
 
 - Renders with the app’s colors in both themes; Show source toggles the source.
 - Sized to its content; text stays legible (see [diagram lint](../agent-apps/diagram-lint.md)).
-- A diagram Mermaid can’t draw shows “This diagram couldn’t be drawn” and keeps Show source; Postbox sends Mermaid’s message and line to the agent once, as a lint turn, so it can fix the diagram.
+- A diagram’s frame loads only as it nears the view (#695), so a long room’s diagrams don’t all run Mermaid at once. Scrolled to, a diagram draws at its full height.
+- A diagram Mermaid can’t draw shows “This diagram couldn’t be drawn” and keeps Show source; Postbox sends Mermaid’s message and line to the agent once, as a lint turn, so it can fix the diagram. That happens once its frame has loaded: a broken diagram far above the view reaches its agent only when you scroll near it (#731 tracks a server-side check).
 - Works in the Claude desktop browser pane.
 
 ## Steps to reproduce
@@ -21,5 +22,6 @@ Agents explain structure with diagrams; they render in a sandbox so diagram text
 2. Open “ReAct, step by step”, toggle Show source, switch light/dark.
 
 3. For a broken diagram, run `npx playwright test feedback` (`tests/browser/feedback.spec.mjs`): it has an agent send one and checks that the agent hears back.
+4. For loading, run `npx playwright test diagram-lazy` (`tests/browser/diagram-lazy.spec.mjs`): of four diagrams far apart, only the one in view loads, and one scrolled to draws. The UAT’s `bigroom.md` phase 5 checks the same in a run (`diagram-deferred`).
 
-**Pass if:** The diagram renders in both themes and the source toggles, and a broken diagram reaches its agent once.
+**Pass if:** The diagram renders in both themes and the source toggles; only diagrams near the view load; and a broken diagram reaches its agent once, after its frame loads.

@@ -10,8 +10,10 @@ import { CATCH_UP_ITEMS } from '../server/catch-up.mjs';
 import { liveChecks } from '../server/room-checks.mjs';
 import { Store } from '../server/store.mjs';
 import { parseMentions } from '../shared/text.mjs';
-import { bigRoomItems, FIRST_DAY_WORD, seedBigRoom, seedBigRoomData } from '../tools/uat/big-room.mjs';
+import { bigRoomItems, FIRST_DAY_WORD, openBigRoom, seedBigRoom, seedBigRoomData } from '../tools/uat/big-room.mjs';
 import { setup, turn } from './blocks-fixture.mjs';
+
+const MERMAID = /```mermaid\n/;
 
 const HANDLES = ['researcher', 'critic', 'developer'];
 
@@ -99,6 +101,31 @@ test('seeding a run’s data folder while Postbox is down writes the room for th
   }
 });
 
+test('#701: a scenario’s seed-diagrams reaches the run’s store through openBigRoom and seedBigRoomData', async () => {
+  const data = mkdtempSync(join(tmpdir(), 'pb-big-room-'));
+  try {
+    const before = await new Store(data).load();
+    startRoom(before);
+    await before.close();
+    const postbox = {
+      origin: 'http://127.0.0.1:4310',
+      restart: async ({ whileDown }) => {
+        await whileDown();
+        return 0;
+      },
+    };
+    const opened = [];
+    const scenario = { agents: ['researcher', 'critic'], seedDiagrams: 3 };
+    await openBigRoom({ postbox, data, threadId: 'th_big', scenario, page: { goto: async (u) => opened.push(u) }, log: () => {} });
+    const after = await new Store(data).load();
+    assert.equal(after.items('th_big').filter((it) => MERMAID.test(it.text ?? '')).length, 3);
+    assert.deepEqual(opened, ['http://127.0.0.1:4310/#/t/th_big']);
+    await after.close();
+  } finally {
+    rmSync(data, { recursive: true, force: true });
+  }
+});
+
 // The critic’s finding on the harness (#508): the seed’s review block was unanswered, so needs-mismatch fired on every
 // run that used the seed, a finding the seed caused and not Postbox. Seeded and left alone, the room raises nothing.
 test('a freshly seeded big room, with no agent activity, raises no needs-mismatch or other state finding', () => {
@@ -147,7 +174,6 @@ test('the seeded review is answered as the person’s answer records it, and its
 });
 
 // #701’s UAT trigger needs diagrams far above the view; the measured rooms (the key-press tool) stay without them.
-const MERMAID = /```mermaid\n/;
 test('#701: by default the room has no diagrams; with diagrams: n, n agent replies far apart each end in one, and nothing else changes', () => {
   const plain = bigRoomItems();
   assert.equal(plain.items.filter((it) => MERMAID.test(it.text ?? '')).length, 0);
@@ -179,4 +205,5 @@ test('#701: `- seed-diagrams: n` asks the big room for n diagrams; absent, none;
   assert.equal(parseScenario(head('')).seedDiagrams, 0);
   assert.equal(parseScenario(head('- seed-diagrams: 6\n')).seedDiagrams, 6);
   for (const bad of ['six', '0', '-2', '1.5']) assert.throws(() => parseScenario(head(`- seed-diagrams: ${bad}\n`)), /seed-diagrams/, bad);
+  assert.throws(() => parseScenario('# Plain\n\n- seed-diagrams: 6\n- steps: 4\n\nRead back.\n'), /needs `- seed: big-room`/);
 });
