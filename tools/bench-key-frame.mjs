@@ -13,12 +13,11 @@
 // every run’s keys for each size.
 
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { loadavg, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { Store } from '../server/store.mjs';
+import { AGENTS, count, freePort, startRoom, THREAD } from './bench-room.mjs';
 import { launch } from './browser.mjs';
 import { commitOf, conditionsOf, EVENT_THRESHOLD, machineOf, measureKeys } from './key-frame-measure.mjs';
 import { formatReport, shownPath } from './key-frame-report.mjs';
@@ -27,17 +26,6 @@ import { seedBigRoomData } from './uat/big-room.mjs';
 import { startPostbox } from './uat/postbox.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
-const THREAD = 'th_keyframe';
-const AGENTS = ['researcher', 'critic', 'developer'];
-
-/** A port nothing listens on, from the system. @returns {Promise<number>} */
-const freePort = () =>
-  new Promise((ok) => {
-    const s = createServer().listen(0, '127.0.0.1', () => {
-      const { port } = /** @type {import('node:net').AddressInfo} */ (s.address());
-      s.close(() => ok(port));
-    });
-  });
 
 /**
  * What a Ctrl-C or a SIGTERM must undo, as the bench goes: the page, and the size being measured, whose own finally
@@ -59,16 +47,6 @@ async function stopOn(signal) {
   await quietly(live.page?.close());
   await quietly(live.size);
   process.exit(signal === 'SIGINT' ? 130 : 143);
-}
-
-/**
- * A whole number of at least one from an option, written in digits, or an error that names it. Number() alone took
- * “1e3” and “0x10”, and an empty value as 0.
- * @param {string} name  @param {string} raw
- */
-function count(name, raw) {
-  if (!/^[1-9]\d*$/.test(raw)) throw new Error(`--${name} takes a whole number of at least 1, not “${raw}”.`);
-  return Number(raw);
 }
 
 /** The options, checked. @param {string[]} argv */
@@ -113,17 +91,6 @@ export function commandLine(o, root) {
 export async function openFresh(page, url) {
   await page.goto('about:blank');
   await page.goto(url);
-}
-
-/** The room as the page would have started it: a project, its three agents, and a room with their sessions. */
-async function startRoom(data) {
-  const store = await new Store(data).load();
-  store.emit('project', { id: 'pr_keyframe', name: 'Key to frame', folder: data });
-  const members = AGENTS.map((handle) => `se_${handle}`);
-  for (const handle of AGENTS) store.emit('persona', { id: `pe_${handle}`, handle, backend: 'mock', model: 'mock' });
-  store.emit('thread', { id: THREAD, projectId: 'pr_keyframe', kind: 'room', title: 'The release, in a long room', members });
-  for (const handle of AGENTS) store.emit('session', { id: `se_${handle}`, threadId: THREAD, handle, personaId: `pe_${handle}` });
-  await store.close();
 }
 
 /**
