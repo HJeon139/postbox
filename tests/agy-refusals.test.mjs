@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { agyHookCommand, agyHooksJson, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT, HOOK_TIMEOUT_S } from '../server/adapters/agy-hook.mjs';
+import { makeReadOnly } from '../server/adapters/agy-plugin.mjs';
 import { refusalFollowUp, refusalOf } from '../server/adapters/agy-refusals.mjs';
 import { AntigravityCliAdapter, agyArgs, createAgyMapper, modeArgs, PLUGIN_DIR } from '../server/adapters/antigravity-cli.mjs';
 import { CARD_WAIT_MS } from '../server/permission-cards.mjs';
@@ -174,4 +175,12 @@ test('#730: hooks.json is read-only at mode 0o444 whatever the umask', async () 
       process.umask(old);
     }
   }
+});
+
+test('#730: a filesystem that refuses chmod leaves hooks.json as written, and the turn still starts', async () => {
+  const refuse = async () => {
+    throw Object.assign(new Error('chmod refused'), { code: 'EPERM' });
+  };
+  assert.equal(await makeReadOnly('/no/such/hooks.json', refuse), false);
+  assert.equal(await makeReadOnly('/no/such/hooks.json', async () => {}), true);
 });

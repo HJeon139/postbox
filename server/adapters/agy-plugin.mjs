@@ -1,7 +1,7 @@
 // The plugin Postbox puts in an Antigravity agent’s folder for a turn: its files, where it goes, and keeping it out of
 // git status.
 
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { agyHooksJson, HOOK_TIMEOUT_S } from './agy-hook.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
@@ -52,4 +52,19 @@ export async function excludePlugin(cwd) {
   await writeFile(tmp, `${text}${text && !text.endsWith('\n') ? '\n' : ''}# Postbox’s plugin for an Antigravity turn, there only while it runs\n${line}\n`);
   await rename(tmp, file);
   return true;
+}
+
+/**
+ * Sets a file to mode 0o444, read-only for everyone, whatever the umask left it at (#730), and says whether it did. A
+ * filesystem that refuses chmod (some FUSE, SMB or FAT mounts) leaves the file as written, already read-only to its
+ * owner, so the turn goes on rather than failing to start.
+ * @param {string} file @param {(path: string, mode: number) => Promise<void>} [setMode]  chmod; a test gives its own
+ */
+export async function makeReadOnly(file, setMode = chmod) {
+  try {
+    await setMode(file, 0o444);
+    return true;
+  } catch {
+    return false;
+  }
 }
