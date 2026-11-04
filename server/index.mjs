@@ -23,6 +23,7 @@ import { Corpus } from './corpus.mjs';
 import { openDataFolder } from './data-folder.mjs';
 import { listFolder } from './folders.mjs';
 import { dataFolder } from './home.mjs';
+import { hostsRoute } from './hosts-routes.mjs';
 import { listen as listenServer } from './listen.mjs';
 import { liveStreams } from './live-streams.mjs';
 import { handleMcp } from './mcp.mjs';
@@ -313,8 +314,6 @@ export async function start({
         'content-security-policy': "sandbox; default-src 'none'",
         'cache-control': 'no-store',
       });
-    if ((m = path.match(/^\/api\/hosts\/([^/]+)\/install$/)) && req.method === 'GET') return send(res, 200, await rt.describeHostInstall(m[1]));
-    if ((m = path.match(/^\/api\/hosts\/([^/]+)\/status$/)) && req.method === 'GET') return send(res, 200, { status: rt.hostStatus(m[1]) });
     if (path === '/api/stream' && req.method === 'GET') {
       if (Date.now() < offlineUntil) {
         res.writeHead(503, { 'retry-after': '1' });
@@ -394,17 +393,9 @@ export async function start({
     if (path === '/api/permissions/rules' && req.method === 'POST') return send(res, 200, await rt.changePermissionRule(body));
     if (path === '/api/permissions/folders' && req.method === 'POST') return send(res, 200, await rt.changePermissionFolder(body));
     if (path === '/api/permissions/mode' && req.method === 'POST') return send(res, 200, await rt.setPermissionMode(body.personaId, body.mode));
-    // Remote hosts (#120): add, change and remove one, a project’s folder on one, installing Postbox’s host program
-    // (the page shows the GET’s text and asks first), connecting again, and the connection’s status. The hosts and
-    // their status are also in /api/state, kept current by 'host' and 'host.status' events.
-    if (path === '/api/hosts' && req.method === 'POST') return send(res, 201, rt.addHost(body));
-    if ((m = path.match(/^\/api\/hosts\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, rt.updateHost(m[1], body));
-    if ((m = path.match(/^\/api\/hosts\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, await rt.removeHost(m[1]));
-    if ((m = path.match(/^\/api\/hosts\/([^/]+)\/install$/)) && req.method === 'POST') return send(res, 200, await rt.installHost(m[1]));
-    if ((m = path.match(/^\/api\/hosts\/([^/]+)\/retry$/)) && req.method === 'POST')
-      return send(res, 200, rt.retryHost(m[1], { takeover: body.takeover ?? false }));
-    if ((m = path.match(/^\/api\/projects\/([^/]+)\/hosts\/([^/]+)\/folder$/)) && req.method === 'PUT')
-      return send(res, 200, rt.setProjectHostFolder(m[1], m[2], body.folder));
+    // Remote hosts (#120): their routes, reads and writes (server/hosts-routes.mjs).
+    const hostsDid = await hostsRoute(rt, path, req.method, body);
+    if (hostsDid) return send(res, hostsDid.status, hostsDid.body);
     if (path === '/api/projects' && req.method === 'POST') return send(res, 201, await createProject(store, body));
     if ((m = path.match(/^\/api\/projects\/([^/]+)\/push-url$/)) && req.method === 'PUT') return send(res, 200, setPushUrl(store, m[1], body.url));
     if ((m = path.match(/^\/api\/projects\/([^/]+)\/files$/)) && req.method === 'GET')
