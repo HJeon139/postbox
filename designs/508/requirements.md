@@ -79,7 +79,7 @@ flowchart TD
 
 | Id | Requirement | Check | Sources |
 |---|---|---|---|
-| PF-1 | A large room is as responsive as a small one: typing and painting cost about the same whatever the room’s size. | Key-to-frame p95 within 10% of a small room’s; Safari’s idle painting no higher, on copies of real rooms. | #305; D508 Why and “Decided” (budget is parity, the person’s choice) |
+| PF-1 | A large room is as responsive as a small one: typing and painting cost about the same whatever the room’s size. | Key-to-frame p95 within 10% of a small room’s, in rooms the big-room seed generates at 1× (1,000 items), 4× and 10×; Safari’s idle painting no higher (not measured in sprint 3, which measures Chromium only). | #305; D508 Why and “Decided” (budget is parity, the person’s choice) |
 | PF-2 | Animations don’t keep the page repainting: an agent working doesn’t cost the whole transcript a repaint. | Safari’s painting share with one agent working is near idle. | INT principle 3 (“eases in, eases out, then rests”); #463 |
 | PF-3 | Reading history stays put: nothing moves what you’re reading unless you scroll, and following the newest message keeps following. | The 13 scroll issues D508 change 3 lists each pass as a regression check. | INT Conversation (“Jump to latest”); #88, #91, #92, #232, #285, #297, #341, #356, #357, #360, #410, #422, #478 |
 | PF-4 | Any message can be opened by link, ask or “Next needs you”, wherever it is in history. | An `m=` link to a message far back opens at it. | #168; INT Attention (ring goes to its ask) |
