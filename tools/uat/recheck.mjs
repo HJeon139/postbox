@@ -6,9 +6,10 @@ import { launch, sleep } from '../browser.mjs';
 import { runChecks } from './checks.mjs';
 import { driver } from './driver.mjs';
 import { readHistory } from './history.mjs';
+import { asPlayed } from './hosts-options.mjs';
 import { readHosts } from './hosts-run.mjs';
 import { forHosts } from './hosts-scenario.mjs';
-import { recordedPhases, selectPhases } from './phases.mjs';
+import { recordedPhases } from './phases.mjs';
 import { portFree } from './postbox.mjs';
 import { newProbes } from './probes.mjs';
 import { presetFindings } from './regressions.mjs';
@@ -81,7 +82,7 @@ export async function recheck(dir, { root, opt, review }) {
   const name = existsSync(join(dir, 'run.json')) && record?.scenario ? record.scenario : dir.replace(/^.*-([\w-]+)$/, '$1');
   // A host-mode run’s hosts (#120), with what its checks read, and a --phases run’s phases: its phases as played.
   const hostsRec = readHosts(dir);
-  const parsed = selectPhases(parseScenario(readFileSync(join(root, 'tests', 'uat', 'e2e', 'scenarios', `${name}.md`), 'utf8')), recordedPhases(record));
+  const parsed = asPlayed(parseScenario(readFileSync(join(root, 'tests', 'uat', 'e2e', 'scenarios', `${name}.md`), 'utf8')), hostsRec, recordedPhases(record));
   const scenario = hostsRec ? forHosts(parsed, hostsRec.placement, hostsRec.hosts) : parsed;
   const port = Number(opt.port);
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);

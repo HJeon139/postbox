@@ -5,8 +5,9 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cleanUp } from '../tools/uat/hosts-end.mjs';
+import { cleanUp, removedOrCleared } from '../tools/uat/hosts-end.mjs';
 import { makeRunFolder } from '../tools/uat/hosts-run.mjs';
+import { SCRIPTS } from '../tools/uat/hosts-ssh.mjs';
 import { beforeStop, leftBy } from '../tools/uat/hosts-watch.mjs';
 import { TREE_AFTER, TREE_BEFORE, TURN } from './uat-hosts-facts.mjs';
 
@@ -128,4 +129,100 @@ test('#120 UAT Stop: a command the turn detached and left running in the run’s
   await beforeStop(hr, { measure: ok(TREE_BEFORE) });
   const got = await leftBy(hr, h, TURN, Date.now(), { measure: ok(AFTER_DETACHED), wait: async () => {} });
   assert.deepEqual(got, { watched: 4, left: ['4400 bash -c for i in $(seq 1 36); do date >> heartbeat.log; sleep 5; done'] });
+});
+
+test('#464 UAT cleanup: a host the run staged an older Postbox on is cleared by the runner when Remove can’t', async () => {
+  const staged = hostRun({ record: { ended: true, removed: { host1: { confirm: `Remove ${DEST}?`, exists: true, left: [] } } } });
+  staged.h.stage = { tag: 'v1.16.1', version: '1.16.1' };
+  const scripts = [];
+  await cleanUp(staged.hr, {
+    removeOne: async () => ({ confirm: `Remove ${DEST}?`, exists: true, left: [] }),
+    run: async (_d, script) => {
+      scripts.push(script);
+      return { code: 0, stdout: 'removed\n', stderr: '' };
+    },
+  });
+  assert.ok(
+    scripts.some((s) => s.includes('rm -rf -- "$HOME/.postbox-remote"')),
+    'the runner removed it itself',
+  );
+  assert.deepEqual(staged.hr.record.cleanup.host1, { exists: false, left: [], staged: true });
+  assert.ok(!staged.lines.some((l) => l.includes('still be on')), 'nothing left to do by hand');
+
+  const plain = hostRun({ record: { ended: true, removed: { host1: { confirm: `Remove ${DEST}?`, exists: true, left: [] } } } });
+  const seen = [];
+  await cleanUp(plain.hr, {
+    removeOne: async () => ({ confirm: `Remove ${DEST}?`, exists: true, left: [] }),
+    run: async (_d, script) => {
+      seen.push(script);
+      return { code: 0, stdout: 'removed\n', stderr: '' };
+    },
+  });
+  assert.ok(!seen.some((s) => s.includes('.postbox-remote')), 'a host it didn’t stage is never cleared by the runner');
+  assert.ok(plain.lines.some((l) => l.includes('still be on host1')));
+});
+
+test('#464 UAT cleanup: clearing a staged host counts only when the script says removed, and never after a Remove that worked', async () => {
+  const silent = hostRun({ record: { ended: true, removed: { host1: { confirm: `Remove ${DEST}?`, exists: true, left: [] } } } });
+  silent.h.stage = { tag: 'v1.16.1', version: '1.16.1' };
+  await cleanUp(silent.hr, {
+    removeOne: async () => ({ confirm: `Remove ${DEST}?`, exists: true, left: [] }),
+    run: async () => ({ code: 0, stdout: '', stderr: '' }),
+  });
+  assert.ok(silent.hr.record.cleanup.host1.error, 'exit 0 without “removed” is a failure');
+  assert.ok(silent.lines.some((l) => l.includes('still be on host1')));
+
+  const worked = hostRun({ record: { ended: true, removed: { host1: GONE } } });
+  worked.h.stage = { tag: 'v1.16.1', version: '1.16.1' };
+  const scripts = [];
+  await cleanUp(worked.hr, {
+    removeOne: async () => assert.fail('a confirmed Remove isn’t tried again'),
+    run: async (_d, script) => {
+      scripts.push(script);
+      return { code: 0, stdout: 'removed\n', stderr: '' };
+    },
+  });
+  assert.ok(!scripts.some((s) => s.includes('.postbox-remote')), 'nothing is deleted after a Remove that worked');
+});
+
+test('#464 the staged cleanup stops only Postbox’s own programs, not anything that names the folder', () => {
+  assert.match(SCRIPTS.removeStaged, /pkill -KILL -u "\$\(id -u\)" -f '\[\.\]postbox-remote\/\[\^ \]\*\/host'/);
+});
+
+test('#464 UAT cleanup: a host baseline() refused, which has no id, is never cleared, staged or not', async () => {
+  const refused = hostRun({ record: { ended: true } });
+  refused.h.id = null;
+  refused.h.stage = { tag: 'v1.16.1', version: '1.16.1' };
+  const scripts = [];
+  await cleanUp(refused.hr, {
+    removeOne: async () => assert.fail('a host never added isn’t removed'),
+    run: async (_d, script) => {
+      scripts.push(script);
+      return { code: 0, stdout: 'removed\n', stderr: '' };
+    },
+  });
+  assert.ok(!scripts.includes(SCRIPTS.removeStaged), 'someone else’s Postbox there is never deleted');
+});
+
+test('#464 UAT end of run: a staged host’s refused Remove is cleared by the runner and recorded as gone, with what Remove said', async () => {
+  const h = { label: 'host1', destination: DEST, stage: { tag: 'v1.16.1', version: '1.16.1' } };
+  const scripts = [];
+  const run = async (_d, script) => {
+    scripts.push(script);
+    return { code: 0, stdout: 'removed\n', stderr: '' };
+  };
+  const r = await removedOrCleared(h, { error: 'Remove was refused: not installed' }, { run, look: async () => ({ left: [] }) });
+  assert.deepEqual(scripts, [SCRIPTS.removeStaged]);
+  assert.equal(r.exists, false);
+  assert.deepEqual(r.left, []);
+  assert.equal(r.removeFirst, 'Remove was refused: not installed');
+  assert.equal(r.error, undefined, 'the host is gone, so the record carries no error');
+
+  const plain = { label: 'host2', destination: DEST };
+  const refused = { error: 'Remove was refused' };
+  const never = { run: async () => assert.fail('never cleared') };
+  assert.equal(await removedOrCleared(plain, refused, never), refused, 'a host it didn’t stage');
+  assert.equal(await removedOrCleared(h, GONE, never), GONE, 'a Remove that worked needs nothing more');
+  const still = await removedOrCleared(h, refused, { run, look: async () => ({ left: ['4100 host.mjs serve'] }) });
+  assert.deepEqual(still.left, ['4100 host.mjs serve'], 'what still runs is listed, not assumed gone');
 });
