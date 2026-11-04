@@ -39,6 +39,7 @@ import { PANEL_CHECKS } from './room-checks-panels.mjs';
 import { TELEMETRY_CHECKS } from './room-checks-telemetry.mjs';
 import { THREAD_CHECKS } from './room-checks-threads.mjs';
 import { claudeSessionOf, toolCalls } from './room-checks-tools.mjs';
+import { VIEW_CHECKS } from './room-checks-view.mjs';
 import { keptStreams, WORK_CHECKS } from './room-checks-work.mjs';
 
 export { agyTokens, kiroCredits } from './room-checks-backends.mjs';
@@ -804,6 +805,7 @@ export const CHECKS = [
   ...TELEMETRY_CHECKS,
   ...NEEDS_CHECKS,
   ...ASK_CHECKS,
+  ...VIEW_CHECKS,
   ...DELIVERY_CHECKS,
   {
     // Two processes in one Claude Code session (#126): a turn that started while the session’s previous turn was still
