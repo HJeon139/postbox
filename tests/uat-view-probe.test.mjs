@@ -138,3 +138,17 @@ test('observe records the view probe before any screenshot scrolls the page', as
   assert.deepEqual(calls, ['diagrams', 'views', 'shot']);
   assert.equal(facts.probes.views.length, 1);
 });
+
+test('#531: the last anchor goes into the page code escaped, so a key can’t close a script or break a line', async () => {
+  let expr = '';
+  await sampleViews(
+    async (e) => {
+      expr = e;
+      return [];
+    },
+    [{ where: 'main', thread: 't', origin: 1, anchorId: 'it_</script>\u2028x', actual: 0 }],
+  );
+  assert.ok(!expr.includes('</script>'), 'no raw </script>');
+  assert.ok(!expr.includes('\u2028'), 'no raw line separator');
+  assert.ok(expr.includes('\\u003c/script\\u003e'), 'the key is escaped, not dropped');
+});

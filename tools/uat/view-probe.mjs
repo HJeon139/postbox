@@ -2,6 +2,8 @@
 // transcript’s view is, as app/js/view-state.mjs publishes it (data-view-mode, data-view-anchor, data-view-offset) and
 // as the page measures it. server/room-checks-view.mjs’s view-moved and tools/uat/view-triggers.mjs read it.
 
+import { js } from '../browser.mjs';
+
 /** Two reads a frame apart that differ by more than this, in px, aren’t settled. */
 const SETTLE_PX = 0.5;
 /** How long to wait for that frame before calling the sample unsettled, in ms. */
@@ -57,7 +59,7 @@ export const sampleViews = (ev, last) =>
       const s = read(el);
       return { ...s, settled: framed && agree(first[i], s) };
     });
-  })(${JSON.stringify(last)})`);
+  })(${js(last)})`);
 
 /**
  * Records a sample of each transcript into facts.probes.views, with the step and when; nothing when the page has none
