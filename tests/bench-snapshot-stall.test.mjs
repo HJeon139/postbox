@@ -50,6 +50,43 @@ test('resolveSnapshotState reads a provided snapshot path', () => {
   }
 });
 
+test('resolveSnapshotState refuses a --snapshot that isn’t there, rather than measuring synthetic data', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-bench-test-'));
+  try {
+    const missing = join(dir, 'snapshot.json');
+    assert.throws(() => resolveSnapshotState({ snapshot: missing }), /No snapshot at .*snapshot\.json/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('resolveSnapshotState refuses a --data folder with no snapshot.json in it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-bench-data-'));
+  try {
+    assert.throws(() => resolveSnapshotState({ data: dir }), /No snapshot at .*snapshot\.json/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('resolveSnapshotState refuses a snapshot it can’t parse, and says which file', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-bench-test-'));
+  try {
+    const file = join(dir, 'snapshot.json');
+    writeFileSync(file, '{ not json');
+    assert.throws(() => resolveSnapshotState({ snapshot: file }), /Could not parse the snapshot at .*snapshot\.json/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the CLI fails on a missing --snapshot and measures nothing', async () => {
+  const lines = [];
+  const missing = join(tmpdir(), 'pb-bench-no-such-folder', 'snapshot.json');
+  await assert.rejects(benchCli(['--json', '--snapshot', missing], { out: (s) => lines.push(s) }), /No snapshot at/);
+  assert.deepEqual(lines, [], 'no report from synthetic data');
+});
+
 test('computeStoreBytes and resolveSnapshotState add up snapshot.json and events segments when data is provided', () => {
   const dir = mkdtempSync(join(tmpdir(), 'pb-bench-data-'));
   try {

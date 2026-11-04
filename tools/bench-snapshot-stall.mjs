@@ -71,39 +71,45 @@ export function computeStoreBytes(dataDir, fallbackBytes) {
 }
 
 /**
- * Resolves the snapshot to benchmark, returning its raw object and description.
- * Defaults to synthetic state if neither snapshot nor data directory is provided.
+ * Resolves the snapshot to benchmark, returning its raw object and description: the --snapshot file, else the --data
+ * folder’s snapshot.json, else synthetic state when neither is given. A snapshot named but missing, or one that can’t
+ * be parsed, is refused: measuring synthetic data in its place read as a result for the snapshot.
  * @param {{ snapshot?: string, data?: string }} opts
  */
 export function resolveSnapshotState(opts = {}) {
-  let snapPath = opts.snapshot ? resolve(opts.snapshot) : null;
   const dataDir = opts.data ? resolve(opts.data) : null;
-  if (!snapPath && dataDir) {
-    snapPath = join(dataDir, 'snapshot.json');
-  }
-
-  if (snapPath && existsSync(snapPath)) {
-    try {
-      const text = readFileSync(snapPath, 'utf8');
-      const state = JSON.parse(text);
-      const snapBytes = Buffer.byteLength(text);
-      const storeBytes = computeStoreBytes(dataDir, snapBytes);
-      return { state, source: snapPath, bytes: snapBytes, storeBytes };
-    } catch (e) {
-      console.warn(`Could not parse snapshot at ${snapPath}: ${e.message}`);
-    }
-  }
+  let snapPath = opts.snapshot ? resolve(opts.snapshot) : null;
+  if (!snapPath && dataDir) snapPath = join(dataDir, 'snapshot.json');
+  if (snapPath) return readSnapshotState(snapPath, dataDir);
 
   const synthetic = createSyntheticState(5000);
-  const json = JSON.stringify(synthetic);
-  const syntheticBytes = Buffer.byteLength(json);
-  const storeBytes = computeStoreBytes(dataDir, syntheticBytes);
+  const syntheticBytes = Buffer.byteLength(JSON.stringify(synthetic));
   return {
     state: synthetic,
     source: 'synthetic (5,000 items)',
     bytes: syntheticBytes,
-    storeBytes,
+    storeBytes: syntheticBytes,
   };
+}
+
+/**
+ * The snapshot at snapPath, parsed, or an error that says what to give instead.
+ * @param {string} snapPath  @param {string|null} dataDir
+ */
+function readSnapshotState(snapPath, dataDir) {
+  if (!existsSync(snapPath)) {
+    const whatToGive = 'Give --snapshot a snapshot.json, or --data a Postbox data folder that holds one.';
+    throw new Error(`No snapshot at ${snapPath}. ${whatToGive}`);
+  }
+  const text = readFileSync(snapPath, 'utf8');
+  let state;
+  try {
+    state = JSON.parse(text);
+  } catch (e) {
+    throw new Error(`Could not parse the snapshot at ${snapPath}: ${e.message}. Give it a snapshot.json a Postbox wrote.`);
+  }
+  const snapBytes = Buffer.byteLength(text);
+  return { state, source: snapPath, bytes: snapBytes, storeBytes: computeStoreBytes(dataDir, snapBytes) };
 }
 
 /**
@@ -299,7 +305,7 @@ Usage: node tools/bench-snapshot-stall.mjs [options] [path-to-snapshot.json]
 Measures snapshot serialization and write latency against the S2 budget.
 
 Options:
-  -s, --snapshot <file>    Path to snapshot.json (defaults to synthetic state if omitted)
+  -s, --snapshot <file>    Path to snapshot.json (synthetic state when neither it nor --data is given)
   -d, --data <dir>         Path to Postbox data folder (measures snapshot.json and events-*.jsonl segments)
       --items <n>          A big room of n generated items, seeded into a temporary store (tools/uat/big-room.mjs)
   -n, --iterations <n>     Number of benchmark iterations (default: 3)
@@ -325,7 +331,7 @@ Options:
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   benchCli().catch((e) => {
-    console.error(e);
+    console.error(e.message);
     process.exit(1);
   });
 }
