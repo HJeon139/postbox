@@ -37,7 +37,8 @@ import { DELIVERY_CHECKS } from './room-checks-delivery.mjs';
 import { NEEDS_CHECKS } from './room-checks-needs.mjs';
 import { TELEMETRY_CHECKS } from './room-checks-telemetry.mjs';
 import { THREAD_CHECKS } from './room-checks-threads.mjs';
-import { toolCalls } from './room-checks-tools.mjs';
+import { claudeSessionOf, toolCalls } from './room-checks-tools.mjs';
+import { WORK_CHECKS } from './room-checks-work.mjs';
 
 export { agyTokens, kiroCredits } from './room-checks-backends.mjs';
 
@@ -68,8 +69,6 @@ const clip200 = (s) => {
   return t.length > 200 ? `${t.slice(0, 199)}…` : t;
 };
 const clock = (ms) => `${new Date(ms).toISOString().slice(11, 19)} UTC`;
-/** The Claude Code session a turn’s stream ran in, from its init. */
-const claudeSessionOf = (events) => events.find((e) => e?.type === 'system' && e.subtype === 'init')?.session_id ?? null;
 /**
  * When a turn’s process started (its stream file is named for it), and the last time it did anything: its newest
  * message, or the file’s last write when no message carries a time.
@@ -299,8 +298,6 @@ export const MID_TURN = ['background-step-closed', 'two-processes-one-session'];
 
 // ── The Agents section, the Work ledger and the right pane (#105, #132, #146) ──────────────────────────────
 
-const ledgerEntries = (f) => Object.values(f.state?.work ?? {}).flat();
-const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 /** A model as the panel names it (“Opus 5.5”) and as a stream names it (“claude-opus-5-5”), reduced to compare. */
 const modelKey = (m) =>
   String(m ?? '')
@@ -1033,57 +1030,7 @@ export const CHECKS = [
           ]
         : [],
   },
-  {
-    id: 'work-files-match-stream',
-    inputs: ['state', 'streams'],
-    issue: 132,
-    run: (f) => {
-      // A file changed on a host is in Work as an edit step there, with no diff (server/ledger-remote.mjs, #120).
-      const ledger = new Set(ledgerEntries(f).flatMap((e) => (e.kind === 'file' || e.kind === 'edit' ? [e.path] : [])));
-      const edited = new Set(
-        (f.streams ?? []).flatMap((s) =>
-          toolCalls(s.events)
-            .filter((c) => EDIT_TOOLS.has(c.name) && !c.denied && c.result && !c.result.is_error)
-            .map((c) => c.input.file_path ?? c.input.notebook_path),
-        ),
-      );
-      const missing = [...edited].filter((p) => p && !ledger.has(p));
-      return missing.length
-        ? [
-            {
-              title: 'A file an agent changed isn’t in the Work view',
-              evidence: `Changed by an Edit or Write call, but not in the ledger: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ` and ${missing.length - 5} more` : ''}.`,
-            },
-          ]
-        : [];
-    },
-  },
-  {
-    id: 'work-commands-match-stream',
-    inputs: ['state', 'streams'],
-    issue: 132,
-    run: (f) => {
-      const ledger = new Set(
-        ledgerEntries(f)
-          .filter((e) => e.kind === 'command')
-          .map((e) => e.toolUseId),
-      );
-      const ran = (f.streams ?? []).flatMap((s) =>
-        toolCalls(s.events)
-          .filter((c) => c.name === 'Bash')
-          .map((c) => ({ ...c, handle: s.handle })),
-      );
-      const missing = ran.filter((c) => !ledger.has(c.id));
-      return missing.length
-        ? [
-            {
-              title: 'A command an agent ran isn’t in the Work view',
-              evidence: `${missing.length} of ${ran.length} Bash calls aren’t in the ledger, such as @${missing[0].handle}’s \`${String(missing[0].input.command ?? '').slice(0, 80)}\`.`,
-            },
-          ]
-        : [];
-    },
-  },
+  ...WORK_CHECKS,
   {
     id: 'quick-panel-takes-effect',
     inputs: ['probes', 'streams'],

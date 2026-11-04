@@ -13,3 +13,6 @@ export function toolCalls(events) {
     .flatMap((e) => contentBlocks(e.message?.content).filter((c) => c?.type === 'tool_use'))
     .map((c) => ({ id: c.id, name: c.name, input: c.input ?? {}, result: results.get(c.id) ?? null, denied: denied.has(c.id) }));
 }
+
+/** The Claude Code session a turn’s stream ran in, from its init. */
+export const claudeSessionOf = (events) => events.find((e) => e?.type === 'system' && e.subtype === 'init')?.session_id ?? null;
