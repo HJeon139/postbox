@@ -46,7 +46,8 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: node tools/lint-commits.mjs "origin/$BASE_REF..HEAD" --since "$(git log -1 --format=%cI v0.2.0)"
       # The tree check sees only the last commit’s files: a private string one commit adds and a later one removes stays
-      # in the history a merge keeps, so the lines each of the pull request’s commits adds are checked too (#508).
+      # in the history a merge keeps, so the lines each of the pull request’s commits adds, its merges’ own among them, and
+      # each commit’s message are checked too (#508).
       - name: The pull request’s commits add nothing private
         if: github.event_name == 'pull_request'
         env:

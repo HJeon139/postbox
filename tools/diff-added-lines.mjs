@@ -8,6 +8,10 @@ const FILE_START = /^diff --git /;
 const EXTENDED_HEADER =
   /^(?:old mode|new mode|deleted file mode|new file mode|copy from|copy to|rename from|rename to|similarity index|dissimilarity index|index) /;
 
+// A note `git show --remerge-diff` writes in a merge’s file header, such as “remerge CONFLICT (content): Merge conflict
+// in c.txt”: what the automatic merge left for the person to resolve.
+const REMERGE_NOTE = /^remerge /;
+
 // The old file’s name, before its hunks.
 const OLD_PATH = /^--- /;
 
@@ -75,7 +79,8 @@ function hunkCount(written) {
 }
 
 /**
- * The lines a commit’s diff adds, by file, from `git show --format= -U0` output. Each hunk’s lines are counted off its
+ * The lines a commit’s diff adds, by file, from `git show --format= -U0` output, and for a merge from
+ * `git show --remerge-diff`, whose file headers may hold its “remerge ” notes. Each hunk’s lines are counted off its
  * header, so an added line that reads “++ b/…” or a removed one that reads “-- a/…” stays in its hunk, and is never
  * taken for the next file’s header. Outside a hunk, a line git’s diff format doesn’t have is an error, and so is a diff
  * that ends inside a hunk: either is a diff this can’t read, and must not pass as one that adds nothing.
@@ -89,6 +94,8 @@ export function parseAddedLines(diff) {
   let binary = 0;
   /** @type {string | null} */
   let path = null;
+  // Whether the line is in a file’s header, between its “diff --git” line and its first hunk or “+++ ” line.
+  let inHeader = false;
   let removedLeft = 0;
   let addedLeft = 0;
   const lines = diff.split('\n');
@@ -113,10 +120,13 @@ export function parseAddedLines(diff) {
     }
     if (FILE_START.test(line)) {
       path = null;
+      inHeader = true;
       return;
     }
+    if (inHeader && REMERGE_NOTE.test(line)) return;
     if (NEW_PATH.test(line)) {
       path = newPath(line, at);
+      inHeader = false;
       return;
     }
     if (BINARY.test(line)) {
@@ -125,6 +135,7 @@ export function parseAddedLines(diff) {
     }
     const hunk = HUNK.exec(line);
     if (hunk) {
+      inHeader = false;
       removedLeft = hunkCount(hunk[1]);
       addedLeft = hunkCount(hunk[2]);
       return;

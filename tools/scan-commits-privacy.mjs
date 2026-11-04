@@ -6,24 +6,31 @@
 //   node tools/scan-commits-privacy.mjs origin/main..HEAD
 //
 // It reads each commit’s diff without context (`git show -U0`), so its cost is O(lines added and removed in the range),
-// never the size of the tree. Binary files and the checker’s own example files aren’t checked. Merge commits are left
-// out, as tools/lint-commits.mjs leaves them out: the lines a merge brings in are checked in the commits that added them.
+// never the size of the tree. Merge commits are read too, CI’s own among them (a pull request’s HEAD is a merge), with
+// `git show --remerge-diff`: that shows only what the merge itself adds beyond the merge git would have made, such as a
+// conflict’s resolution or a file added before the merge was committed, as the lines it brings in are checked in the
+// commits that added them. A file whose added lines hold a zero byte is binary, as git decides it, and isn’t checked;
+// .gitattributes can’t hide a text file, as the diff is asked for as text. The checker’s own example files aren’t checked.
+//
+// Each commit’s message, subject, body and trailers, is checked with the same checker. Its author and committer names
+// and emails aren’t: each commit’s author is a real person’s GitHub identity, by design.
 //
 // Exit codes: 0 when nothing private was added, 1 when something was, and 2 when the range or a diff can’t be read.
 
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { parseAddedLines } from './diff-added-lines.mjs';
-import { checkFilePrivacy } from './privacy-check.mjs';
+import { checkContentPrivacy, checkFilePrivacy, isBinary } from './privacy-check.mjs';
 
 /**
- * @typedef {{ sha: string, path: string, violation: string }} Finding
- * @typedef {{ commits: (range: string) => string[], show: (sha: string) => string }} GitReader
+ * A private string, and where it was added: a commit’s file, or its message when the path is null.
+ * @typedef {{ sha: string, path: string | null, violation: string }} Finding
+ * @typedef {{ commits: (range: string) => string[], show: (sha: string) => string, message: (sha: string) => string }} GitReader
  */
 
 /**
- * Checks the lines each commit of a range adds, oldest first. A commit’s lines are checked as that commit added them,
- * so a later commit that removes them doesn’t clear them.
+ * Checks each commit of a range, oldest first: its message, and the lines it adds. A commit’s lines are checked as that
+ * commit added them, so a later commit that removes them doesn’t clear them.
  *
  * @param {string} range
  * @param {GitReader} git
@@ -33,6 +40,7 @@ export function scanCommits(range, git) {
   const result = { commits: 0, files: 0, lines: 0, binary: 0, findings: /** @type {Finding[]} */ ([]) };
   for (const sha of git.commits(range)) {
     result.commits++;
+    for (const violation of checkContentPrivacy(git.message(sha))) result.findings.push({ sha, path: null, violation });
     let parsed;
     try {
       parsed = parseAddedLines(git.show(sha));
@@ -41,6 +49,10 @@ export function scanCommits(range, git) {
     }
     result.binary += parsed.binary;
     for (const [path, added] of parsed.files) {
+      if (isBinary(Buffer.from(added.join('\n')))) {
+        result.binary++;
+        continue;
+      }
       result.files++;
       result.lines += added.length;
       for (const violation of checkFilePrivacy(path, added.join('\n'))) result.findings.push({ sha, path, violation });
@@ -49,9 +61,9 @@ export function scanCommits(range, git) {
   return result;
 }
 
-/** One finding as the tool reports it: “<short sha> <path>: <violation>”. @param {Finding} finding */
+/** One finding as the tool reports it: “<short sha> <path>: <violation>”, or “<short sha> message: …”. @param {Finding} finding */
 export function formatFinding({ sha, path, violation }) {
-  return `${sha.slice(0, 7)} ${path}: ${violation}`;
+  return `${sha.slice(0, 7)} ${path ?? 'message'}: ${violation}`;
 }
 
 /** A count and its noun, plural unless the count is one. @param {number} n @param {string} noun */
@@ -60,28 +72,53 @@ function count(n, noun) {
   return `${n} ${noun}s`;
 }
 
-/** The commits of a range and their diffs, from real git in the current folder. @returns {GitReader} */
+/**
+ * A commit’s message, from what `git cat-file commit` prints: after its header lines, which end at the first empty line,
+ * and hold its author and committer. A commit with no message has nothing after them.
+ * @param {string} raw
+ */
+function commitMessage(raw) {
+  const end = raw.indexOf('\n\n');
+  if (end === -1) return '';
+  return raw.slice(end + 2);
+}
+
+// The diff options that fix the shape this reads, so the person’s own git config can’t change it: no colors, external
+// diff or text conversion; “a/” and “b/” prefixes; renames; every file from the repository’s root, whatever folder
+// diff.relative names; hunks without context, whatever diff.interHunkContext says; binary files as text, whatever
+// .gitattributes says, as scanCommits decides what’s binary; and a merge as what it adds beyond the automatic merge.
+const SHOW_OPTIONS = [
+  ...['--format=', '-U0', '--inter-hunk-context=0', '--no-color', '--no-ext-diff', '--no-textconv', '--text'],
+  ...['-M', '--no-relative', '--src-prefix=a/', '--dst-prefix=b/', '--remerge-diff'],
+];
+
+/**
+ * The commits of a range, their diffs and their messages, from real git, run at the top of the repository the current
+ * folder is in.
+ * @returns {GitReader}
+ */
 function realGit() {
-  const options = { encoding: /** @type {const} */ ('utf8'), maxBuffer: 512 * 1024 * 1024 };
+  const options = { encoding: /** @type {const} */ ('utf8'), maxBuffer: 512 * 1024 * 1024, stdio: /** @type {const} */ ('pipe') };
+  let top;
+  try {
+    top = execFileSync('git', ['rev-parse', '--show-toplevel'], options).trim();
+  } catch (error) {
+    throw new Error(`can’t find the repository. git said: ${String(/** @type {{ stderr?: string }} */ (error).stderr ?? '').trim()}`);
+  }
+  const atTop = { ...options, cwd: top };
   return {
     commits(range) {
       let out;
       try {
-        out = execFileSync('git', ['rev-list', '--reverse', '--no-merges', '--end-of-options', range], { ...options, stdio: 'pipe' });
+        out = execFileSync('git', ['rev-list', '--reverse', '--end-of-options', range], atTop);
       } catch (error) {
         const said = String(/** @type {{ stderr?: string }} */ (error).stderr ?? '').trim();
         throw new Error(`can’t list the commits in ${range}. Fetch the base first, or check the range. git said: ${said}`);
       }
       return out.split('\n').filter(Boolean);
     },
-    // The prefixes, renames, colors and text conversion are set here, so the person’s own git config can’t change
-    // the shape this reads.
-    show: (sha) =>
-      execFileSync(
-        'git',
-        ['show', '--format=', '-U0', '--no-color', '--no-ext-diff', '--no-textconv', '-M', '--src-prefix=a/', '--dst-prefix=b/', sha],
-        options,
-      ),
+    show: (sha) => execFileSync('git', ['show', ...SHOW_OPTIONS, sha], atTop),
+    message: (sha) => commitMessage(execFileSync('git', ['cat-file', 'commit', sha], atTop)),
   };
 }
 

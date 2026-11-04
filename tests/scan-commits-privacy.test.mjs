@@ -36,11 +36,12 @@ function removedLine(path, line) {
 
 const diff = (...sections) => `${sections.flat().join('\n')}\n`;
 
-/** A git reader over commits given as { sha: diff text }, oldest first. */
-function fakeGit(history) {
+/** A git reader over commits given as { sha: diff text }, oldest first, with messages given as { sha: message }. */
+function fakeGit(history, messages = {}) {
   return {
     commits: () => Object.keys(history),
     show: (sha) => history[sha],
+    message: (sha) => messages[sha] ?? `change ${sha}\n`,
   };
 }
 
@@ -104,6 +105,32 @@ test('a line git’s diff format doesn’t have, outside a hunk, is an error rat
   assert.throws(() => parseAddedLines(diff(newFile('a.txt', ['one']), 'surprise')), /can’t read git’s diff at line 8/);
 });
 
+test('a diff that ends inside a hunk is an error, not a commit that adds fewer lines', () => {
+  const cut = diff(['diff --git a/a.txt b/a.txt', '--- /dev/null', '+++ b/a.txt', '@@ -0,0 +1,2 @@', '+one']);
+  assert.throws(() => parseAddedLines(cut), /it ends inside a hunk/);
+});
+
+test('the notes `git show --remerge-diff` writes in a merge’s file headers are read past', () => {
+  const text = diff(
+    ['diff --git a/c.txt b/c.txt', 'remerge CONFLICT (content): Merge conflict in c.txt', 'index ed2f78b..53c74cd 100644'],
+    ['--- a/c.txt', '+++ b/c.txt', '@@ -1,3 +1 @@', '-<<<<<<< 215b818 (w)', '-=======', '->>>>>>> 8c2a855 (side)', '+evil'],
+    ['diff --git a/k2.txt b/k2.txt', 'remerge CONFLICT (rename/delete): keep.txt renamed to k2.txt in 8c2a855 (side)'],
+    newFile('d.txt', ['two']),
+  );
+  assert.deepEqual(
+    [...parseAddedLines(text).files],
+    [
+      ['c.txt', ['evil']],
+      ['d.txt', ['two']],
+    ],
+  );
+});
+
+test('a note like remerge-diff’s, outside a file’s header, is an error rather than skipped', () => {
+  const text = diff(newFile('a.txt', ['one']), 'remerge CONFLICT (content): Merge conflict in a.txt');
+  assert.throws(() => parseAddedLines(text), /can’t read git’s diff at line 8/);
+});
+
 test('a home path a commit adds is reported with its commit and file', () => {
   const sha = 'abcdef1234567890';
   const result = scanCommits('main..HEAD', fakeGit({ [sha]: diff(newFile('notes.md', [`see ${HOME_PATH}`])) }));
@@ -136,4 +163,16 @@ test('a binary file a commit adds isn’t checked, and the summary counts it', (
 
 test('an empty range checks nothing and finds nothing', () => {
   assert.deepEqual(scanCommits('main..main', fakeGit({})), { commits: 0, files: 0, lines: 0, binary: 0, findings: [] });
+});
+
+test('a file whose added lines hold a zero byte is skipped as binary, as git would call it', () => {
+  const result = scanCommits('main..HEAD', fakeGit({ aaaaaaa1: diff(newFile('b.bin', [`\0${HOME_PATH}`])) }));
+  assert.deepEqual(result, { commits: 1, files: 0, lines: 0, binary: 1, findings: [] });
+});
+
+test('a home path in a commit’s message is reported as the message’s', () => {
+  const sha = 'abcdef1234567890';
+  const result = scanCommits('main..HEAD', fakeGit({ [sha]: '' }, { [sha]: `change\n\nSeen-at: ${HOME_PATH}\n` }));
+  assert.deepEqual(result.findings, [{ sha, path: null, violation: `home path: ${HOME}` }]);
+  assert.equal(formatFinding(result.findings[0]), `abcdef1 message: home path: ${HOME}`);
 });
