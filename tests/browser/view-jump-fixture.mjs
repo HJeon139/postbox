@@ -44,7 +44,7 @@ export async function landed(page) {
 }
 
 /**
- * Where the target is, where its block puts it at its drawn height, and the view.
+ * Where the target is in what you can see, below the top bar, where its block puts it at its drawn height, and the view.
  * @param {any} page @param {string} key @param {'start' | 'center'} block
  */
 export const where = (page, key, block) =>
@@ -53,10 +53,12 @@ export const where = (page, key, block) =>
       const el = /** @type {HTMLElement} */ (document.querySelector('#main.transcript'));
       const r = /** @type {HTMLElement} */ (el.querySelector(`:scope > [data-key="${CSS.escape(key)}"]`)).getBoundingClientRect();
       const s = /** @type {Element} */ (document.scrollingElement);
+      // What you can see starts under the sticky top bar.
+      const bar = Math.max(0, document.querySelector('header.topbar')?.getBoundingClientRect().bottom ?? 0);
       return {
-        top: r.top,
+        top: r.top - bar,
         height: r.height,
-        want: block === 'start' ? 0 : Math.max(0, (innerHeight - r.height) / 2),
+        want: block === 'start' ? 0 : Math.max(0, (innerHeight - bar - r.height) / 2),
         scrollY,
         atEnd: s.scrollHeight - s.scrollTop - s.clientHeight <= 2,
         mode: el.dataset.viewMode,
