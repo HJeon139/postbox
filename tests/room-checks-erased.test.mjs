@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import { toolCalls } from '../server/room-checks-tools.mjs';
 import { erasedStreams, keptStreams } from '../server/room-checks-work.mjs';
 import { runChecks } from '../tools/uat/checks.mjs';
 
@@ -184,6 +185,42 @@ test('every conversation deleted: no session left, and every stream with a sessi
   assert.deepEqual(erasedStreams(f), [gone]);
   assert.deepEqual(keptStreams(f), [bare]);
   assert.deepEqual(found(f, 'work-commands-match-stream'), []);
+});
+
+/** A Bash call Claude Code never ran: Postbox stopped the turn, and Claude Code answered it as rejected. */
+const rejectedCall = (id, command) => [
+  { type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }] } },
+  {
+    type: 'user',
+    message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: true, content: 'The user doesn’t want to proceed with this tool use.' }] },
+    tool_use_result: 'User rejected tool use',
+    tool_result_meta: [{ id, non_execution_kind: 'user-rejected' }],
+  },
+];
+
+test('work-commands-match-stream leaves out a Bash call Claude Code never ran, and counts one that exited 1', () => {
+  assert.deepEqual(found(room([turn(LIVE, rejectedCall('b_rej', 'sleep 30'))]), 'work-commands-match-stream'), []);
+  const failed = turn(LIVE, call('b_fail', 'Bash', { command: 'false' }, { is_error: true, content: 'Exit code 1' }));
+  const out = found(room([failed]), 'work-commands-match-stream');
+  assert.equal(out.length, 1, JSON.stringify(out));
+  assert.match(out[0].evidence, /^1 of 1 Bash calls .*`false`/);
+  // Both together: only the one that ran is counted.
+  const both = found(room([turn(LIVE, [...rejectedCall('b_rej', 'sleep 30'), ...failed.events.slice(1)])]), 'work-commands-match-stream');
+  assert.match(both[0].evidence, /^1 of 1 Bash calls /);
+});
+
+test('toolCalls marks a call Claude Code answered without running it as rejected, by any non-execution kind', () => {
+  const calls = toolCalls([...rejectedCall('b1', 'x'), ...call('b2', 'Bash', { command: 'y' }, { is_error: true })]);
+  assert.deepEqual(
+    calls.map((c) => [c.id, c.rejected]),
+    [
+      ['b1', true],
+      ['b2', false],
+    ],
+  );
+  const other = rejectedCall('b3', 'z');
+  other[1].tool_result_meta = [{ id: 'b3', non_execution_kind: 'interrupted' }];
+  assert.equal(toolCalls(other)[0].rejected, true);
 });
 
 test('a session deleted but still in its Undo window keeps its streams: its Work is still in the state', () => {

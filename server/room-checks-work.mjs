@@ -75,7 +75,8 @@ export const WORK_CHECKS = [
       );
       const ran = keptStreams(f).flatMap((s) =>
         toolCalls(s.events)
-          .filter((c) => c.name === 'Bash')
+          // A call Claude Code answered without running it, such as one left when Postbox stopped the turn, ran nothing.
+          .filter((c) => c.name === 'Bash' && !c.denied && !c.rejected)
           .map((c) => ({ ...c, handle: s.handle })),
       );
       const missing = ran.filter((c) => !ledger.has(c.id));
