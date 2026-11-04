@@ -288,9 +288,7 @@ export function driver(page, hooks = {}) {
      * (Capturing beyond the window paints the sticky top bar mid-item, and leaves sandboxed frames blank.)
      */
     async shotItem(key, file) {
-      const ok = await ev(
-        `(async () => { const n = ${ITEM(key)}; if (!n) return false; ${JUMP('n', 'start')}; scrollBy(0, -((document.querySelector('header.topbar')?.offsetHeight ?? 0) + 8)); return true; })()`,
-      );
+      const ok = await ev(`(async () => { const n = ${ITEM(key)}; if (!n) return false; ${JUMP('n', 'start')}; return true; })()`);
       if (!ok) return null;
       // Apps far off screen are unloaded; give them a moment to load again and draw. (The clip is in page
       // coordinates, so the scroll offset is added below.)
