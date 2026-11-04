@@ -181,7 +181,7 @@ async function main() {
     transcripts: [],
     console: page.logs,
     apps: {},
-    probes: newProbes(),
+    probes: { ...newProbes(), keyFrameOn: Boolean(opt['measure-key-frame']) },
     samples: [],
     ui: {},
     ...userSetup(paths.workspace),

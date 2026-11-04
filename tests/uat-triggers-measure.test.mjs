@@ -80,12 +80,12 @@ test('assets-delete’s phase 1 waits on erased-conversation-commands, a trigger
   assert.deepEqual(unknownTriggers(scenario), []);
 });
 
-/** A run’s facts after `- seed: big-room`, with what its runner recorded of a measurement, if any. */
+/** A run’s facts after `- seed: big-room`, with --measure-key-frame on, and what it recorded of a measurement, if any. */
 function seededRun(keyFrame = []) {
   const store = new Store(null);
   store.emit('thread', { id: 'th_big', kind: 'room', title: 'The release, in a long room', members: [] });
   seedBigRoom(store, 'th_big');
-  return { state: store.state, threads: ['th_big'], probes: { ...newProbes(), keyFrame } };
+  return { state: store.state, threads: ['th_big'], probes: { ...newProbes(), keyFrameOn: true, keyFrame } };
 }
 
 const measured = { threadId: 'th_big', items: 1000, keys: 40, report: 'key-frame.md', at: 1 };
@@ -101,6 +101,16 @@ test('key-frame-measured stays silent on a seeded run that didn’t measure, and
   const f = seededRun();
   assert.deepEqual(TRIGGERS['key-frame-measured'].run(f), []);
   assert.deepEqual(triggersFired(f, ['key-frame-measured']), { 'key-frame-measured': false });
+});
+
+test('key-frame-measured can’t tell on a run without --measure-key-frame, or a recheck of one from before it recorded that', () => {
+  const off = seededRun();
+  off.probes.keyFrameOn = false;
+  // A recheck merges the run’s saved probes over newProbes(), as tools/uat/recheck.mjs’s savedFacts() does.
+  const saved = { fullScreen: [], answers: [] };
+  const older = seededRun();
+  older.probes = { ...newProbes(), ...saved };
+  for (const f of [off, older]) assert.deepEqual(triggersFired(f, ['key-frame-measured']), { 'key-frame-measured': null });
 });
 
 test('key-frame-measured stays silent on a measurement of another conversation, one that wrote no report, one that failed, or one of no keys', () => {

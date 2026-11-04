@@ -60,7 +60,8 @@ export const MEASURE_TRIGGERS = {
     issue: 508,
     requirements: ['PF-1'],
     says: 'the key-to-frame tool measured the run’s seeded room and wrote its report',
-    recorded: (f) => Array.isArray(f.probes?.keyFrame),
+    // Only a run with --measure-key-frame on could show it: every other one, older ones too, has keyFrame empty.
+    recorded: (f) => f.probes?.keyFrameOn === true,
     run: (f) =>
       measuredRooms(f).map((m) => ({
         at: Number.isFinite(m.at) ? m.at : null,

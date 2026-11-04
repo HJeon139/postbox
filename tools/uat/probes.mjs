@@ -11,6 +11,8 @@
 //   runner’s clicks, which scroll what they click into view; and, as the runner’s (cause: 'runner'), a shot that didn’t
 //   leave the view as it was (tools/uat/driver-shots.mjs, keepView). A run saved before these were recorded has none.
 // - keyFrame: the key-to-frame measurements --measure-key-frame made of the run’s room (#508, tools/uat/key-frame-run.mjs)
+// - keyFrameOn: whether the run had --measure-key-frame on, so a run without it, or one saved before this was, can’t
+//   say it didn’t measure (tools/uat/triggers-measure.mjs)
 
 export const newProbes = () => ({
   fullScreen: [],
@@ -25,6 +27,7 @@ export const newProbes = () => ({
   conversation: [],
   inputs: [],
   keyFrame: [],
+  keyFrameOn: false,
 });
 
 /**
