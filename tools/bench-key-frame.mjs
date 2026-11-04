@@ -13,14 +13,14 @@
 
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { Store } from '../server/store.mjs';
 import { launch } from './browser.mjs';
 import { commitOf, EVENT_THRESHOLD, machineOf, measureKeys } from './key-frame-measure.mjs';
-import { formatReport } from './key-frame-report.mjs';
+import { formatReport, shownPath } from './key-frame-report.mjs';
 import { summarize } from './key-frame-stats.mjs';
 import { seedBigRoomData } from './uat/big-room.mjs';
 import { startPostbox } from './uat/postbox.mjs';
@@ -69,10 +69,14 @@ export function options(argv) {
   };
 }
 
-/** The command as the report shows it: the repo’s paths relative, and a home folder as ~. @param {string[]} argv */
-function commandLine(argv) {
-  const shown = argv.map((a) => a.replaceAll(homedir(), '~'));
-  return ['node tools/bench-key-frame.mjs', ...shown].join(' ');
+/**
+ * The command as the report shows it, from the options as checked: every one spelled out, and --out as shownPath()
+ * shows it, never an absolute path.
+ * @param {ReturnType<typeof options>} o  @param {string} root
+ */
+export function commandLine(o, root) {
+  const args = [`--sizes ${o.sizes.join(',')}`, `--keys ${o.keys}`, `--warmup ${o.warmup}`, `--runs ${o.runs}`, `--interval ${o.intervalMs}`];
+  return ['node tools/bench-key-frame.mjs', ...args, `--out ${shownPath(o.out, root)}`].join(' ');
 }
 
 /** The room as the page would have started it: a project, its three agents, and a room with their sessions. */
@@ -114,8 +118,7 @@ async function measureSize(page, items, o, log) {
 }
 
 async function main() {
-  const argv = process.argv.slice(2);
-  const o = options(argv);
+  const o = options(process.argv.slice(2));
   const log = (line) => console.log(line);
   const page = await launch();
   try {
@@ -124,7 +127,7 @@ async function main() {
     for (const items of o.sizes) results.push(await measureSize(page, items, o, log));
     if (page.logs.length) log(`The page logged ${page.logs.length} errors; the first: ${page.logs[0]}`);
     const report = formatReport({
-      command: commandLine(argv),
+      command: commandLine(o, ROOT),
       commit: commitOf(ROOT),
       date: new Date().toISOString(),
       machine: await machineOf(page),
@@ -133,7 +136,7 @@ async function main() {
       threshold: EVENT_THRESHOLD,
     });
     await writeFile(o.out, report);
-    log(`Wrote ${o.out}.`);
+    log(`Wrote ${shownPath(o.out, ROOT)}.`);
   } finally {
     await page.close();
   }

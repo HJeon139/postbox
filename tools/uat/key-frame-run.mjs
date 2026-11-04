@@ -5,11 +5,10 @@
 // the bench’s, at 1×, 4× and 10×. tools/uat-run.mjs declares the option.
 
 import { writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clearDraft, commitOf, EVENT_THRESHOLD, machineOf, measureKeys } from '../key-frame-measure.mjs';
-import { formatReport } from '../key-frame-report.mjs';
+import { formatReport, shownPath } from '../key-frame-report.mjs';
 import { summarize } from '../key-frame-stats.mjs';
 import { openBigRoom } from './big-room.mjs';
 
@@ -39,7 +38,7 @@ export async function openRunRoom({ opt, facts, ...room }) {
  *   probes: { keyFrame: any[] }, log: (line: string) => void }} o
  */
 export async function measureRunRoom({ page, root, threadId, items, out, probes, log }) {
-  const shown = out.replaceAll(homedir(), '~');
+  const shown = shownPath(out, root);
   try {
     const r = await measureKeys(page, INPUTS);
     // The tester arrives at an empty composer, not at the keys the measurement typed.

@@ -2,12 +2,24 @@
 // size’s ratio to the 1× room and its verdict against the budget, that Safari wasn’t measured, and the provenance a
 // reader needs to rerun it. Pure, so tests feed it results.
 
+import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
 import { PF1_BUDGET, withinBudget } from './key-frame-stats.mjs';
 
 /**
  * @typedef {{ n: number, p50: number|null, p95: number|null, max: number|null }} Summary
  * @typedef {{ items: number, eventTiming: Summary, nextFrame: Summary, below: number }} SizeResult
  */
+
+/**
+ * A path as a report shows it: relative to the repo when it’s inside it, else just its file name, so a report never
+ * names a folder of the machine it ran on.
+ * @param {string} path  @param {string} root  the repo’s folder
+ */
+export function shownPath(path, root) {
+  const inRepo = relative(root, resolve(path));
+  const outside = inRepo === '' || inRepo === '..' || inRepo.startsWith(`..${sep}`) || isAbsolute(inRepo);
+  return outside ? basename(path) : inRepo;
+}
 
 const count = (n) => n.toLocaleString('en-US');
 const ms = (v) => (v === null ? 'none' : `${v.toFixed(1)} ms`);
