@@ -16,12 +16,16 @@ export const keptStreams = (f) => splitStreams(f).kept;
 /** The turns’ streams of erased sessions: the ones keptStreams leaves out. */
 export const erasedStreams = (f) => splitStreams(f).erased;
 
+/** A session that has run a turn: one ends with finishedAt set, and a turn’s result sets lastModel. */
+const hasRun = (se) => typeof se?.finishedAt === 'number' || (typeof se?.lastModel === 'string' && !!se.lastModel);
+
 function splitStreams(f) {
-  const ids = Object.values(f.state?.sessions ?? {}).map((se) => se?.backendState?.claudeSessionId);
-  const held = new Set(ids.filter(Boolean));
-  // A state in which no session has an id, such as one saved before sessions kept them, can’t tell an erased stream
-  // from a live one, so every stream is kept. So is every stream once every conversation is deleted.
-  if (!held.size) return { kept: [...(f.streams ?? [])], erased: [] };
+  const sessions = Object.values(f.state?.sessions ?? {});
+  // A state with a session that ran a turn but has no id, such as one saved before sessions kept them, can’t tell an
+  // erased stream from a live one, so every stream is kept. A session that never ran a turn has no id to hold, so
+  // sessions like that alone, or none at all once every conversation is deleted, still split the streams.
+  if (sessions.some((se) => hasRun(se) && !se?.backendState?.claudeSessionId)) return { kept: [...(f.streams ?? [])], erased: [] };
+  const held = new Set(sessions.map((se) => se?.backendState?.claudeSessionId).filter(Boolean));
   const kept = [];
   const erased = [];
   for (const s of f.streams ?? []) {

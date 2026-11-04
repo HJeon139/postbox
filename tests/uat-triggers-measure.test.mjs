@@ -35,6 +35,16 @@ test('erased-conversation-commands fires when a purged conversation’s session 
   assert.match(out[0].evidence, /“Second” was purged with 2 Bash calls in its turns \(by @researcher\)/);
 });
 
+test('erased-conversation-commands fires when the sessions left never ran a turn, or none is left (UAT 2026-11-04)', () => {
+  const ran = [turn('gone-1', [bash('b1'), bash('b2')])];
+  const fresh = { s1: { id: 's1', handle: 'developer', finishedAt: null }, s2: { id: 's2', handle: 'critic', finishedAt: null, backendState: {} } };
+  for (const sessions of [fresh, {}]) {
+    const out = TRIGGERS[ID].run(facts({ streams: ran, sessions }));
+    assert.equal(out.length, 1, JSON.stringify(sessions));
+    assert.match(out[0].evidence, /purged with 2 Bash calls/);
+  }
+});
+
 test('erased-conversation-commands stays silent without a purge, a Bash call, or an erased session', () => {
   const ran = [turn('gone-1', [bash('b1')])];
   // Undo inside the window: nothing was purged.
@@ -45,8 +55,9 @@ test('erased-conversation-commands stays silent without a purge, a Bash call, or
   // The session that ran the command is still in the state.
   const held = { s1: { id: 's1', handle: 'researcher', backendState: { claudeSessionId: 'gone-1' } } };
   assert.deepEqual(TRIGGERS[ID].run(facts({ streams: ran, sessions: held })), []);
-  // No session in the state has an id, as before sessions kept them: no stream can be shown erased.
-  assert.deepEqual(TRIGGERS[ID].run(facts({ streams: ran, sessions: {} })), []);
+  // A session that ran a turn has no id, as before sessions kept them: no stream can be shown erased.
+  const legacy = { s1: { id: 's1', handle: 'developer', finishedAt: T0, backendState: {} } };
+  assert.deepEqual(TRIGGERS[ID].run(facts({ streams: ran, sessions: legacy })), []);
   // An erased session of an agent that wasn’t in the deleted conversation.
   assert.deepEqual(TRIGGERS[ID].run(facts({ streams: [{ ...ran[0], handle: 'critic' }] })), []);
   // A run that records deletes but did none: false, not unknown.

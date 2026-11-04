@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { keptStreams } from '../server/room-checks-work.mjs';
+import { erasedStreams, keptStreams } from '../server/room-checks-work.mjs';
 import { runChecks } from '../tools/uat/checks.mjs';
 
 const LIVE = 'c0ffee00-live';
@@ -152,11 +152,38 @@ test('an agent removed from a kept conversation: its refusal with its card, and 
   assert.deepEqual(found(roomWithRemovedAgent([removedTurn(call('b_removed', 'Bash', { command: 'pytest' }))]), 'work-commands-match-stream'), []);
 });
 
-test('a state in which no session has a Claude Code session id keeps every stream: it can’t tell which are erased', () => {
+test('a state with a session that ran a turn but has no Claude Code session id keeps every stream: it’s legacy', () => {
+  // Saved before sessions kept their ids: it can’t tell an erased stream from a live one.
   const f = room([turn(LIVE, call('b_live', 'Bash', { command: 'pytest' }))]);
   f.state.sessions.s1.backendState = {};
+  f.state.sessions.s1.finishedAt = 1000;
   assert.equal(keptStreams(f).length, 1);
+  assert.deepEqual(erasedStreams(f), []);
   assert.equal(found(f, 'work-commands-match-stream').length, 1);
+});
+
+test('only sessions that never ran a turn left: a removed session’s stream is erased, not kept (UAT 2026-11-04)', () => {
+  // The run’s shape: the deleted conversation’s session ran Bash calls, then was purged; the sessions left had
+  // never run a turn, so none holds an id. That isn’t a legacy state: the stream is erased.
+  const gone = turn(GONE, [...call('b1', 'Bash', { command: 'sleep 1' }), ...call('b2', 'Bash', { command: 'ls' })]);
+  const f = room([gone]);
+  f.state.sessions = {
+    s1: { id: 's1', handle: 'researcher', state: 'idle', finishedAt: null, backendState: {} },
+    s2: { id: 's2', handle: 'critic', state: 'idle', finishedAt: null },
+  };
+  assert.deepEqual(erasedStreams(f), [gone]);
+  assert.deepEqual(keptStreams(f), []);
+  assert.deepEqual(found(f, 'work-commands-match-stream'), []);
+});
+
+test('every conversation deleted: no session left, and every stream with a session id is erased', () => {
+  const gone = turn(GONE, call('b1', 'Bash', { command: 'sleep 1' }));
+  const bare = turn(undefined, []);
+  const f = room([gone, bare]);
+  f.state.sessions = {};
+  assert.deepEqual(erasedStreams(f), [gone]);
+  assert.deepEqual(keptStreams(f), [bare]);
+  assert.deepEqual(found(f, 'work-commands-match-stream'), []);
 });
 
 test('a session deleted but still in its Undo window keeps its streams: its Work is still in the state', () => {
