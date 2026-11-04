@@ -41,8 +41,6 @@ export async function measureRunRoom({ page, root, threadId, items, out, probes,
   const shown = shownPath(out, root);
   try {
     const r = await measureKeys(page, INPUTS);
-    // The tester arrives at an empty composer, not at the keys the measurement typed.
-    await page.evaluate(`(${clearDraft})()`);
     const report = formatReport({
       command: `node tools/uat-run.mjs --measure-key-frame ${shown}`,
       commit: commitOf(root),
@@ -58,5 +56,8 @@ export async function measureRunRoom({ page, root, threadId, items, out, probes,
   } catch (e) {
     probes.keyFrame.push({ threadId, items, keys: 0, report: null, at: Date.now(), error: String(e?.message ?? e) });
     log(`Couldn’t measure the big room’s key-to-frame times: ${e?.message ?? e}`);
+  } finally {
+    // The tester arrives at an empty composer, not at the keys the measurement typed, even when it stopped partway.
+    await page.evaluate(`(${clearDraft})()`).catch((e) => log(`Couldn’t empty the composer after measuring: ${e?.message ?? e}`));
   }
 }
