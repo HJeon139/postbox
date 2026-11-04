@@ -20,6 +20,8 @@ import { HOST_ID_RE } from './install-token.mjs';
 export const INSTALLS_DIR = 'remote-installs';
 /** How many tries a record keeps, newest first. */
 export const MAX_INSTALLS = 16;
+/** The largest record file read: 16 entries are about 1.3 KB, so anything near this isn’t one Postbox wrote. */
+export const MAX_RECORD_BYTES = 8192;
 /** What an install’s entry can say: started, before ssh runs; then how it ended. */
 export const OUTCOMES = Object.freeze(['started', 'installed', 'present', 'reinstalled', 'busy', 'failed']);
 /** What the host’s status says when its record couldn’t be read. */
@@ -78,7 +80,9 @@ const refusedRecord = (error) => ({ keepUpdated: false, installs: [], refused: t
 function readRecord(dataDir, hostId) {
   try {
     const file = recordFile(dataDir, hostId);
-    if (!lstatSync(file).isFile()) return refusedRecord(UNREADABLE);
+    const st = lstatSync(file);
+    // Read in the failure’s own tick, so a file far larger than any record Postbox writes is refused unread.
+    if (!st.isFile() || st.size > MAX_RECORD_BYTES) return refusedRecord(UNREADABLE);
     const record = parseRecord(readFileSync(file, 'utf8'));
     return record ?? refusedRecord(UNREADABLE);
   } catch (e) {
