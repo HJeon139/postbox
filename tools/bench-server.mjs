@@ -179,22 +179,60 @@ export async function measureSize(items, o, { start = startPostbox, port = freeP
   }
 }
 
-/** Every size, one after another, in the order given. @param {{ sizes: number[] }} o  @param {(items: number) => Promise<any>} measure */
-export async function measureAll(o, measure) {
+/**
+ * What a Ctrl-C or a SIGTERM must wait for: the size being measured, whose own finally stops its Postbox and removes
+ * its folder; and whether the bench is stopping, so no further size starts.
+ * @typedef {{ size: Promise<any> | null, stopping: boolean }} Live
+ */
+
+/**
+ * Every size, one after another, in the order given, until the bench is stopping. Each size in progress is kept in
+ * live, for a stop to wait for.
+ * @param {{ sizes: number[] }} o  @param {(items: number) => Promise<any>} measure  @param {Live} [live]
+ */
+export async function measureAll(o, measure, live = { size: null, stopping: false }) {
   const results = [];
-  for (const items of o.sizes) results.push(await measure(items));
+  for (const items of o.sizes) {
+    if (live.stopping) break;
+    live.size = measure(items);
+    results.push(await live.size);
+  }
   return results;
 }
 
+/**
+ * The stop for a signal: marks the bench stopping, waits for the size in progress to finish or fail, so its finally
+ * removes its folder and stops its Postbox, and exits as a shell reports the signal: 130 for SIGINT, 143 for SIGTERM.
+ * Exiting at once skipped that finally. exit is for tests.
+ * @param {Live} live  @param {(code: number) => void} [exit]
+ */
+export function stopper(live, exit = process.exit) {
+  return async (/** @type {'SIGINT' | 'SIGTERM'} */ signal) => {
+    if (live.stopping) return;
+    live.stopping = true;
+    await Promise.resolve(live.size).catch(() => null);
+    exit(signal === 'SIGINT' ? 130 : 143);
+  };
+}
+
+/** @type {Live} */
+const live = { size: null, stopping: false };
+
 async function main() {
   const o = options(process.argv.slice(2));
-  // A Ctrl-C runs the exit handlers, which stop a Postbox still running.
-  process.once('SIGINT', () => process.exit(130));
-  const results = await measureAll(o, async (items) => {
-    const r = await measureSize(items, o);
-    console.log(`${items.toLocaleString('en-US')} items: measured ${o.runs} runs.`);
-    return r;
-  });
+  const stop = stopper(live);
+  for (const signal of /** @type {const} */ (['SIGINT', 'SIGTERM'])) process.once(signal, () => void stop(signal));
+  const results = await measureAll(
+    o,
+    async (items) => {
+      const r = await measureSize(items, o);
+      console.log(`${items.toLocaleString('en-US')} items: measured ${o.runs} runs.`);
+      return r;
+    },
+    live,
+  );
+  // Stopped by a signal: the stop exits with the signal’s code, and no report is written from part of the sizes.
+  if (live.stopping) return;
   const report = formatServerReport({
     command: commandLine(o, ROOT),
     commit: commitOf(ROOT),
@@ -209,6 +247,8 @@ async function main() {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
   main().catch((e) => {
+    // Stopped by a signal: the stop exits with the signal’s code once the size has cleaned up.
+    if (live.stopping) return;
     console.error(e.message);
     process.exit(1);
   });
