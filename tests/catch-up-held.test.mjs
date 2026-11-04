@@ -22,7 +22,10 @@ test('#693 a message held for an agent in the room is named in its catch-up whil
   const card = f.store.items(f.t.id).find((i) => i.kind === 'hop' && i.status === 'open');
   f.rt.patchItem(f.t.id, card.id, { held: [{ fromSessionId: f.beta.id, from: 'beta', to: 'alpha', text: 'Approved: #12 and #13.', at: Date.now() }] });
   const text = catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '';
-  assert.match(text, /@beta’s message to you \(“Approved: #12 and #13\.”\) is held on @alpha’s request to add @gamma, waiting for the person/);
+  assert.match(
+    text,
+    /@beta’s message to you \(“Approved: #12 and #13\.”\) is held on @alpha’s request to add @gamma \(since \d\d:\d\d UTC\), waiting for the person/,
+  );
   f.rt.resolveHop(f.t.id, card.id, false);
   await settle(f.rt);
   assert.doesNotMatch(catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '', /is held on/, 'gone once the card is answered');

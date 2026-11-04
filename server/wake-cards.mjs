@@ -256,3 +256,14 @@ export function closeOrphanCards(rt) {
     if (card && (!from || from.archived || from.deleting)) closeHop(rt, t.id, card, `@${card.from} is no longer in this conversation`);
   }
 }
+
+/**
+ * The messages held for an agent on its conversation’s open card, one line each for its catch-up (#693): it learns a
+ * message is coming, and from whom, while the person hasn’t answered. O(items in the conversation), once per turn.
+ * @param {any} rt @param {any} se  the agent the messages are for @returns {string[]}
+ */
+export function heldFor(rt, se) {
+  const card = openCard(rt, { id: rt.lineage(se.threadId).at(-1) });
+  const mine = (card?.held ?? []).filter((w) => w.to === se.handle);
+  return mine.map((w) => `@${w.from}’s message to you (“${clip(w.text, 120)}”) is held on ${cardName(card)}, waiting for the person.`);
+}
