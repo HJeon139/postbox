@@ -6,7 +6,7 @@
 import { HOP_LIMIT } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
-import { askToAdd, askToWake, dropHeld, retireStale } from './wake-cards.mjs';
+import { askToAdd, askToWake, closeHop, closeOwnCard, dropHeld, retireStale } from './wake-cards.mjs';
 
 export { resolveHop } from './wake-cards.mjs';
 // Agent wakes in a row, without you, before the next waits for your Allow (shared/limits.mjs: wake_agent’s description
@@ -132,6 +132,8 @@ export function endChain(rt, threadId) {
  */
 export function dropWakes(rt, se, how = 'stopped') {
   dropHeld(rt, se, how);
+  // Archived or removed, it can't answer for its own card; stopped, it can, and the person still may (#693).
+  if (how !== 'stopped') closeOwnCard(rt, se, how);
   for (const t of Object.values(rt.s.threads)) {
     const mine = (t.queue ?? []).filter((q) => q.kind === 'wake' && q.sessionIds.includes(se.id));
     if (!mine.length) continue;
@@ -200,7 +202,7 @@ export function archiveForks(rt) {
     if (t.queue?.some((q) => q.sessionIds.some((id) => gone.has(id))))
       rt.putThread({ ...t, queue: t.queue.map((q) => ({ ...q, sessionIds: q.sessionIds.filter((id) => !gone.has(id)) })).filter((q) => q.sessionIds.length) });
     for (const it of rt.store.pending.items(t.id))
-      if (it.kind === 'hop' && it.status === 'open' && gone.has(it.fromSessionId)) rt.patchItem(t.id, it.id, { status: 'declined' });
+      if (it.kind === 'hop' && it.status === 'open' && gone.has(it.fromSessionId)) closeHop(rt, t.id, it, `@${it.from} was retired`);
   }
   rt.store.emit('settings', { forksArchived: true });
   return forks.length;

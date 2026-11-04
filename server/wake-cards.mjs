@@ -221,3 +221,38 @@ export function dropHeld(rt, se, how) {
         `@${se.handle} was ${how} before your message held for it (“${clip(w.text, 120)}”) went, so it won’t go. Wake it again if you still need it.`,
       );
 }
+
+/**
+ * A card that closes with no answer from the person (#693): the agent that asked was archived, removed or retired, so
+ * nothing can answer for it. It closes, its agent stops needing the person, and each agent whose wake was held on it
+ * is told at its next turn, as dropHeld tells; nothing it held goes. The one way every such close goes.
+ * @param {any} rt @param {string} conv @param {any} card @param {string} why  what happened, said to each held agent
+ */
+export function closeHop(rt, conv, card, why) {
+  rt.patchItem(conv, card.id, { status: 'closed', closedWhy: why, closedAt: Date.now() });
+  releaseNeed(rt, rt.s.sessions[card.fromSessionId], card.id);
+  for (const w of card.held ?? []) {
+    const se = rt.s.sessions[w.fromSessionId];
+    if (!se || se.archived || se.deleting) continue;
+    rt.tellAgent(se.id, `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${why}. Send it again if you still need it.`);
+  }
+}
+
+/** The agent that asked is archived or removed (#693): its open card closes. O(items in its conversation). */
+export function closeOwnCard(rt, se, how) {
+  const conv = rt.lineage(se.threadId).at(-1);
+  const card = openCard(rt, { id: conv });
+  if (card?.fromSessionId === se.id) closeHop(rt, conv, card, `@${se.handle} was ${how}`);
+}
+
+/**
+ * At startup, an open card whose agent is archived, being removed or gone closes (#693): a room from before the fix,
+ * or one whose removal a restart cut short, would hold every wake on it. O(items), once per start.
+ */
+export function closeOrphanCards(rt) {
+  for (const t of Object.values(rt.s.threads)) {
+    const card = openCard(rt, t);
+    const from = card && rt.s.sessions[card.fromSessionId];
+    if (card && (!from || from.archived || from.deleting)) closeHop(rt, t.id, card, `@${card.from} is no longer in this conversation`);
+  }
+}

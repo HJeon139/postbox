@@ -113,7 +113,7 @@ import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
-import { retireStale } from './wake-cards.mjs';
+import { closeOrphanCards, retireStale } from './wake-cards.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
@@ -191,6 +191,7 @@ export class Runtime {
     this.remote = new RemoteTurns(this, { hosts: this.hosts });
     // Forks are gone (#228): any left from before are archived, once.
     archiveForks(this);
+    closeOrphanCards(this);
     // Nothing archives a conversation by itself any more (#320): what idle archiving hid comes back, once.
     restoreArchives(this);
   }

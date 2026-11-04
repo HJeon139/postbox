@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Runtime } from '../server/runtime.mjs';
-import { settle, setup } from './side-threads-fixture.mjs';
+import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 const card = (f, id) => f.store.item(f.t.id, id);
 const toldOf = (f, se) => (f.store.state.sessions[se.id].context ?? []).join(' | ');
@@ -41,10 +41,17 @@ for (const [how, act] of [
   });
 
 test('#693 Stop leaves the card open: the person can still answer it', async () => {
-  const f = heldOnAlphasCard();
-  f.rt.stop(f.alpha.id);
+  const f = setup();
+  const work = held();
+  f.adapter.next.push(work.step);
+  f.rt.sendMessage(f.t.id, { text: '@alpha go on' });
+  await sleep(5);
+  f.rt.toolsFor(f.alpha.id).wake_agent({ handle: 'gamma', message: 'Check the numbers.' });
+  const open = f.store.items(f.t.id).find((i) => i.kind === 'hop' && i.status === 'open');
+  assert.equal(f.rt.stop(f.alpha.id), true, 'a turn was running, so Stop reached its wakes');
+  work.release();
   await settle(f.rt);
-  assert.equal(card(f, f.open.id).status, 'open');
+  assert.equal(card(f, open.id).status, 'open');
 });
 
 test('#693 retiring forks at startup tells the agent whose wake was held on a fork’s card', async () => {
