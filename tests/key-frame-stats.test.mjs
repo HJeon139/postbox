@@ -17,6 +17,12 @@ test('the p95 of twenty keys is the 19th slowest, not the slowest', () => {
   assert.equal(percentile(twenty, 95), 190);
 });
 
+test('a rank that falls between two keys rounds up: the p95 of ten keys is the slowest', () => {
+  const ten = Array.from({ length: 10 }, (_, i) => (i + 1) * 10);
+  assert.equal(percentile(ten, 95), 100);
+  assert.equal(percentile(ten, 50), 50);
+});
+
 test('a percentile of no values is null, not zero', () => {
   assert.equal(percentile([], 95), null);
 });
