@@ -32,14 +32,20 @@ export function wantedTop(top, height, room, block) {
 
 /**
  * el's rect with its item drawn: a skipped item is laid out at its estimated size, so el's height and top would be the
- * estimate's, and the item drawn at its real size would then sit off where block puts it.
+ * estimate's, and the item drawn at its real size would then sit off where block puts it. The item stays drawn until
+ * the browser has painted it, which is when it remembers the item's real size: let go sooner, a tall item falls back
+ * to its estimate, and a target deep inside it is left off screen, where it's skipped again.
  * @param {HTMLElement} item @param {Element} el
  */
 function drawnRect(item, el) {
   const was = item.style.contentVisibility;
   item.style.contentVisibility = 'visible';
   const r = el.getBoundingClientRect();
-  item.style.contentVisibility = was;
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      item.style.contentVisibility = was;
+    }),
+  );
   return r;
 }
 
