@@ -5,6 +5,7 @@
 // the subagent or the turn ends.
 
 import { httpError } from './helpers.mjs';
+import { newerFromSender } from './newer-waiting.mjs';
 
 const URGENT = '[Postbox] URGENT:';
 
@@ -33,13 +34,14 @@ export const notUrgent = (/** @type {string[]} */ context) => context.filter((x)
 
 /**
  * A Postbox tool’s result text, with any urgent note for its agent first. A note given this way isn’t given again at
- * the agent’s next turn.
- * @param {any} rt @param {string} sessionId @param {string} text
+ * the agent’s next turn. `turn` is the turn that made the call, taken before its tool ran.
+ * @param {any} rt @param {string} sessionId @param {string} text @param {any} turn
  */
-export function withUrgent(rt, sessionId, text) {
+export function withUrgent(rt, sessionId, text, turn) {
   const se = rt.s.sessions[sessionId];
   const urgent = (se?.context ?? []).filter((/** @type {string} */ x) => x.startsWith(URGENT));
-  if (!urgent.length) return text;
-  rt.updateSession(sessionId, { context: se.context.filter((/** @type {string} */ x) => !x.startsWith(URGENT)) });
-  return `${urgent.join('\n')}\n\n${text}`;
+  if (urgent.length) rt.updateSession(sessionId, { context: se.context.filter((/** @type {string} */ x) => !x.startsWith(URGENT)) });
+  // A newer message from the sender the agent is answering, waiting in this thread (#694), comes after any urgent note.
+  const notes = [...urgent, ...newerFromSender(rt, sessionId, turn)];
+  return notes.length ? `${notes.join('\n')}\n\n${text}` : text;
 }

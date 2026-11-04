@@ -94,7 +94,7 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
         const r = await tools[name](app.args, app.files ? { files: app.files } : {});
         noteAnswer(rt.turns.get(sessionId) ?? null, name, r);
         // An urgent note for the agent comes first (#229): this is how it hears one mid-turn.
-        const text = withUrgent(rt, sessionId, r.results ? JSON.stringify(r.results) : r.message);
+        const text = withUrgent(rt, sessionId, r.results ? JSON.stringify(r.results) : r.message, turn);
         return reply({ content: [{ type: 'text', text }], isError: r.ok === false && !r.waiting });
       } catch (e) {
         if (e instanceof AgentFileError) return reply({ content: [{ type: 'text', text: e.message }], isError: true });

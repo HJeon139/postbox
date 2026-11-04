@@ -75,3 +75,12 @@ Compact @critic’s session from its quick panel. Then ask @critic what you aske
 Give @critic a long job. While it works, send it a second message, which waits in the queue, and change it with the queued message’s Edit before @critic is free. Sent messages have no Edit, so use the queued one. Then, while @critic is busy again, ask @researcher to revise its review block “release-plan.md”. When @critic is free, ask it to quote your second message as it reached it, and which revision of the review it was told about.
 
 This phase confirms DL-7 and AT-6. It has no baseline on `main`: queued messages aren’t items there, and revisions aren’t delivered as amendments until A2.
+
+## Phase 9: A newer message from you, named mid-turn (#694)
+
+- triggers: newer-waiting-named
+- steps: 6
+
+Give @developer a long job that uses Postbox’s tools as it goes: define a glossary term for each of five words in the project, one at a time. While it works, send it a second message (“use only words from the server folder”), with Enter, not Send now, so it waits in the queue. Say whether @developer’s work changed course before its turn ended, and what it said told it a newer message was waiting.
+
+This phase has no baseline on `main`: there, nothing tells a busy agent that your newer message is waiting, so it changes course only at its next turn.
