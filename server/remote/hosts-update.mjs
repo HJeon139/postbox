@@ -110,7 +110,10 @@ function noteError(m, id, error) {
   } catch {}
 }
 
-/** After a busy install, the host connects once more: the other Postbox may have installed it. @param {Manager} m @param {string} id @param {InstallOutcome} outcome */
+/**
+ * After a busy install, the host connects once more: the other Postbox may have installed it.
+ * @param {Manager} m @param {string} id @param {InstallOutcome} outcome
+ */
 function afterBusy(m, id, outcome) {
   if (outcome.ok || m.closed || outcome.failure?.detail?.code !== BUSY_EXIT) return;
   connectNow(m, id).catch(() => {});

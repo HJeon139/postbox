@@ -10,7 +10,7 @@
 // install’s, goes through one promise chain per host (m.recordWrites), and each applies its change to the record as
 // the write before it left it, so neither overwrites the other.
 
-import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from 'node:fs';
 import { chmod, mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { VERSION_RE } from '../../shared/remote-protocol-checks.mjs';
@@ -79,13 +79,21 @@ const refusedRecord = (error) => ({ keepUpdated: false, installs: [], refused: t
  */
 function readRecord(dataDir, hostId) {
   try {
-    const text = readSmallFile(recordFile(dataDir, hostId));
+    const file = recordFile(dataDir, hostId);
+    // O_NOFOLLOW covers only the file itself, so the folder must be a real one too, not a link to elsewhere.
+    if (!isRealFolder(dirname(file))) return refusedRecord(UNREADABLE);
+    const text = readSmallFile(file);
     const record = text === null ? null : parseRecord(text);
     return record ?? refusedRecord(UNREADABLE);
   } catch (e) {
     if (e?.code === 'ENOENT') return { keepUpdated: false, installs: [] };
     return refusedRecord(`${UNREADABLE} (${e?.code ?? 'error'})`);
   }
+}
+
+/** Whether a path is a folder itself, not a link to one; a missing one throws ENOENT. @param {string} dir */
+function isRealFolder(dir) {
+  return lstatSync(dir).isDirectory();
 }
 
 /**
@@ -130,6 +138,8 @@ export function recordOf(m, hostId) {
 async function writeRecordFile(/** @type {string} */ file, /** @type {InstallRecord} */ record) {
   const dir = dirname(file);
   await mkdir(dir, { recursive: true, mode: 0o700 });
+  // chmod follows a link, so a folder that’s a link to elsewhere is refused rather than changed.
+  if (!isRealFolder(dir)) throw Object.assign(new Error('The install records’ folder isn’t a real folder.'), { code: 'ENOTDIR' });
   await chmod(dir, 0o700);
   const tmp = `${file}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
   try {
@@ -198,11 +208,10 @@ export function removeRecord(m, hostId) {
 
 /**
  * Whether this version was tried here: the newest entry is this version’s, so no other version came after it. A record
- * that couldn’t be read counts as tried.
+ * that couldn’t be read never reaches this: it holds no consent (refusedRecord), and the rule stops on that first.
  * @param {KeptRecord} record @param {string} version
  */
 export function isTried(record, version) {
-  if (record.refused) return true;
   return record.installs[0]?.version === version;
 }
 

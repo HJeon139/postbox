@@ -1,8 +1,8 @@
 // The remote hosts’ routes (#120), which server/index.mjs’s route() calls in one line: add, change and remove one, a
 // project’s folder on one, installing Postbox’s host program (the page shows the GET’s text and asks first),
-// connecting again, keeping it up to date by itself (#464-b2a), and the connection’s status. The hosts and their status are also in /api/state, kept current by
-// 'host' and 'host.status' events. Every write here needs the page’s token, as every other one does
-// (tests/server-token.test.mjs reads this file).
+// connecting again, keeping it up to date by itself (#464-b2a), and the connection’s status. The hosts and their
+// status are also in /api/state, kept current by 'host' and 'host.status' events. Every write here needs the page’s
+// token, as every other one does (tests/server-token.test.mjs reads this file).
 
 import { setHostKeepUpdated } from './remote/host-status.mjs';
 

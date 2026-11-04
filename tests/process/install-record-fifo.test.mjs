@@ -20,7 +20,7 @@ const m = { dataDir: process.argv[1], installRecords: new Map(), recordWrites: n
 console.log(JSON.stringify(recordOf(m, 'h1')));
 `;
 
-const hasMkfifo = process.platform !== 'win32' && spawnSync('mkfifo', ['--version'], { timeout: 5000 }).status === 0;
+const hasMkfifo = process.platform !== 'win32' && spawnSync('sh', ['-c', 'command -v mkfifo'], { timeout: 5000 }).status === 0;
 
 test('#464-b2a: a record that’s a FIFO is no consent, refused at once rather than waiting for a writer', { skip: !hasMkfifo && 'no mkfifo here' }, () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'pb-test-record-fifo-'));
