@@ -181,3 +181,9 @@ test('#531: a reply growing below a reading anchor leaves the sample settled; wh
   assert.equal((await sampleViews(evIn(growing('reading')), {}))[0].settled, true);
   assert.equal((await sampleViews(evIn(growing('following')), {}))[0].settled, false);
 });
+
+test('#531: a sample whose earlier anchor is still moving between the two reads isn’t settled', async () => {
+  const page = pageWith([{ where: 'main', mode: 'reading', anchor: 'it_b', offset: '100', items: { it_a: (frame) => 880 + frame * 3, it_b: 100 } }]);
+  const last = { main: { origin: ORIGIN, thread: 't_big', anchorId: 'it_a' } };
+  assert.equal((await sampleViews(evIn(page), last))[0].settled, false);
+});

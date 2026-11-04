@@ -171,3 +171,9 @@ test('view-moved says it checked nothing when the probe ran but never read a vie
   );
   assert.deepEqual(check.run({ probes: { inputs: [] } }), [], 'a run from before the probe says nothing');
 });
+
+test('view-moved doesn’t read a move from an earlier sample whose anchor couldn’t be measured', () => {
+  // A reading sample whose anchor isn’t a direct item of the transcript records actual: null.
+  const unmeasured = [sample(1, { actual: null, expected: 120 }), sample(2, { prev: { anchorId: 'it_big0500', actual: 900 } })];
+  assert.deepEqual(findings(unmeasured), []);
+});
