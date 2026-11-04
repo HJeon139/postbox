@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect } from '@playwright/test';
 import { start } from '../../server/index.mjs';
+import { heldStill } from '../../tools/page-still.mjs';
 
 /** Whether nothing listens on a port of 127.0.0.1. */
 const free = (port) =>
@@ -126,29 +127,7 @@ export const frames = (page) => page.evaluate(() => new Promise((r) => requestAn
  * @param {import('@playwright/test').Page} page
  */
 export async function settled(page) {
-  await expect
-    .poll(
-      () =>
-        page.evaluate(async () => {
-          const snap = () =>
-            JSON.stringify([
-              scrollX,
-              scrollY,
-              innerWidth,
-              innerHeight,
-              document.scrollingElement?.scrollHeight,
-              ...[...document.querySelectorAll('.sp-body, #main > *, .working, .jump')].map((n) => {
-                const b = n.getBoundingClientRect();
-                return [n.scrollTop, Math.round(b.top), Math.round(b.height)];
-              }),
-            ]);
-          const before = snap();
-          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-          return snap() === before;
-        }),
-      { message: 'the page to hold still for two frames' },
-    )
-    .toBe(true);
+  await expect.poll(() => page.evaluate(heldStill), { message: 'the page to hold still for two frames' }).toBe(true);
 }
 
 /**
