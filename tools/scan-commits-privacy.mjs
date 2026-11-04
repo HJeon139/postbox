@@ -19,7 +19,7 @@
 // git is older than 2.36.
 
 import { execFileSync } from 'node:child_process';
-import { parseAddedLines } from './diff-added-lines.mjs';
+import { DIFF_OPTIONS, parseAddedLines } from './diff-added-lines.mjs';
 import { isEntry } from './lint-lib.mjs';
 import { checkContentPrivacy, checkFilePrivacy, isBinary } from './privacy-check.mjs';
 
@@ -84,14 +84,10 @@ function commitMessage(raw) {
   return raw.slice(end + 2);
 }
 
-// The diff options that fix the shape this reads, so the person’s own git config can’t change it: no colors, external
-// diff or text conversion; “a/” and “b/” prefixes; renames; every file from the repository’s root, whatever folder
-// diff.relative names; hunks without context, whatever diff.interHunkContext says; binary files as text, whatever
-// .gitattributes says, as scanCommits decides what’s binary; and a merge as what it adds beyond the automatic merge.
-const SHOW_OPTIONS = [
-  ...['--format=', '-U0', '--inter-hunk-context=0', '--no-color', '--no-ext-diff', '--no-textconv', '--text'],
-  ...['-M', '--no-relative', '--src-prefix=a/', '--dst-prefix=b/', '--remerge-diff'],
-];
+// The diff options that fix the shape this reads (DIFF_OPTIONS), and, for `git show`: no commit header; binary files
+// as text, whatever .gitattributes says, as scanCommits decides what’s binary; and a merge as what it adds beyond the
+// automatic merge.
+const SHOW_OPTIONS = ['--format=', ...DIFF_OPTIONS, '--text', '--remerge-diff'];
 
 // The oldest git whose `git show` has --remerge-diff (git 2.36’s release notes).
 const MIN_GIT = [2, 36, 0];

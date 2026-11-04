@@ -157,3 +157,18 @@ test('lint-ternary: with no base to compare with, it fails in CI and skips elsew
   assert.equal(local.status, 0, local.out);
   assert.match(local.out, /lint-ternary: skipped, there is no origin\/main to compare with\./);
 });
+
+test('lint-ternary: diff.noprefix in a person’s own git config doesn’t change what is read', () => {
+  const { dir, git } = repo();
+  write(dir, 'old.mjs', `${OLD}${NEW_TERNARY}`);
+  git('commit', '-q', '-am', 'add');
+  const r = run(dir, {
+    GIT_CONFIG_COUNT: '2',
+    GIT_CONFIG_KEY_0: 'diff.noprefix',
+    GIT_CONFIG_VALUE_0: 'true',
+    GIT_CONFIG_KEY_1: 'color.ui',
+    GIT_CONFIG_VALUE_1: 'always',
+  });
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /^old\.mjs:5: nested ternary on a changed line$/m);
+});

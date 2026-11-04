@@ -203,3 +203,14 @@ test('the added lines and their ranges come from the same read: as many lines as
     ['c.mjs', 1],
   ]);
 });
+
+test('a removed line after its hunk’s removed count is spent fails, though the hunk still has an added line left', () => {
+  const text = diff(['diff --git a/x.mjs b/x.mjs', '--- a/x.mjs', '+++ b/x.mjs', '@@ -0,0 +1,2 @@', '+a', '-x'], newFile('y.mjs', ['b']));
+  assert.throws(() => parseAddedLines(text), /can’t read git’s diff at line 6: it doesn’t fit its hunk’s counts/);
+});
+
+test('a file’s hunk with no “+++ ” line before it fails, rather than counting for the file before it or for none', () => {
+  const unnamed = (/** @type {string[]} */ hunk) => diff(newFile('a.mjs', ['one']), ['diff --git a/b.mjs b/b.mjs', 'index 814f4a4..e69de29 100644', ...hunk]);
+  assert.throws(() => parseAddedLines(unnamed(['@@ -0,0 +1 @@', '+two'])), /can’t read git’s diff at line 10: a hunk before its file’s “\+\+\+ ” line/);
+  assert.throws(() => addedRanges(unnamed(['@@ -1 +0,0 @@', '-gone'])), /can’t read git’s diff at line 10: a hunk before its file’s “\+\+\+ ” line/);
+});

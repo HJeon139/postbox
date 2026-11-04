@@ -20,7 +20,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { addedRanges } from './diff-added-lines.mjs';
+import { addedRanges, DIFF_OPTIONS } from './diff-added-lines.mjs';
 import { isEntry } from './lint-lib.mjs';
 import { baseRef, mergeBase, noBase } from './merge-base.mjs';
 
@@ -156,12 +156,26 @@ function baseHits(top, git, at, files) {
   }
 }
 
-if (isEntry(import.meta.url, process.argv[1])) {
+/**
+ * The line ranges a `git diff -U0` adds, by file, read by the shared parser (tools/diff-added-lines.mjs), whose errors
+ * are lint-ternary’s here.
+ * @param {string} diff
+ */
+export function changedRanges(diff) {
+  try {
+    return addedRanges(diff);
+  } catch (error) {
+    throw new Error(`lint-ternary: ${/** @type {Error} */ (error).message}`);
+  }
+}
+
+/** Runs the lint against the base in argv, from the checkout’s top folder, prints what it found, and returns the exit code. */
+function main() {
   const top = checkoutTop();
   if (!top) {
     const result = noBase('lint-ternary', 'git checkout here', process.env);
     console.log(result.message);
-    process.exit(result.code);
+    return result.code;
   }
   const git = (/** @type {string[]} */ args) =>
     execFileSync('git', args, { cwd: top, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
@@ -170,11 +184,11 @@ if (isEntry(import.meta.url, process.argv[1])) {
   if (!at) {
     const result = noBase('lint-ternary', ref, process.env);
     console.log(result.message);
-    process.exit(result.code);
+    return result.code;
   }
-  const diffArgs = ['-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', '-M', '--diff-filter=AMR'];
+  const diffArgs = ['-c', 'core.quotePath=false', 'diff', ...DIFF_OPTIONS, '--diff-filter=AMR'];
   const globs = ['--', '*.mjs', '*.js', '*.cjs'];
-  const added = addedRanges(git([...diffArgs, '-U0', at, ...globs]));
+  const added = changedRanges(git([...diffArgs, at, ...globs]));
   const changed = changedFiles(git([...diffArgs, '-z', '--name-status', at, ...globs]));
   const linted = changed.filter((file) => added.has(file.path) && LINTED.test(file.path));
   const files = linted.map((file) => file.path);
@@ -188,9 +202,20 @@ if (isEntry(import.meta.url, process.argv[1])) {
     if (hits.length) found.push(`${ternaries(hits.length)} on a changed line`);
     if (risen.length) found.push(`${risen.length === 1 ? '1 file' : `${risen.length} files`} with more than at ${at.slice(0, 8)}`);
     console.log(`\nlint-ternary: ${found.join(', and ')}. Use an if, or a small named helper with early returns.`);
+    return 1;
+  }
+  console.log(`lint-ternary: no nested ternary on a line changed since ${at.slice(0, 8)}, and no file has more than there.`);
+  console.log('Files git doesn’t track aren’t checked: CI sees only committed files.');
+  return 0;
+}
+
+// A diff, git or Biome that fails is a failed lint, under lint-ternary’s name, rather than a stack trace.
+if (isEntry(import.meta.url, process.argv[1])) {
+  try {
+    process.exitCode = main();
+  } catch (error) {
+    const { message } = /** @type {Error} */ (error);
+    console.error(message.startsWith('lint-ternary: ') ? message : `lint-ternary: ${message}`);
     process.exitCode = 1;
-  } else {
-    console.log(`lint-ternary: no nested ternary on a line changed since ${at.slice(0, 8)}, and no file has more than there.`);
-    console.log('Files git doesn’t track aren’t checked: CI sees only committed files.');
   }
 }

@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { changedFiles, countByPath, nestedTernaries, newHits, overlapsAdded, risenCounts } from '../tools/lint-ternary.mjs';
+import { changedFiles, changedRanges, countByPath, nestedTernaries, newHits, overlapsAdded, risenCounts } from '../tools/lint-ternary.mjs';
 
 test('lint-ternary: a hit counts when any line of its span is an added line, and not when it only borders one', () => {
   const added = [
@@ -61,4 +61,8 @@ test('lint-ternary: a file fails when it has more hits than at the base, where a
   const before = countByPath([{ path: 'same.mjs' }, { path: 'same.mjs' }, { path: 'fewer.mjs' }]);
   const after = countByPath([{ path: 'same.mjs' }, { path: 'same.mjs' }, { path: 'more.mjs' }]);
   assert.deepEqual(risenCounts(['same.mjs', 'fewer.mjs', 'more.mjs'], before, after), [{ path: 'more.mjs', before: 0, after: 1 }]);
+});
+
+test('lint-ternary: a diff the shared parser can’t read fails under lint-ternary’s name', () => {
+  assert.throws(() => changedRanges('--- a/x.mjs\n+++ x.mjs\n'), /^Error: lint-ternary: can’t read git’s diff at line 2: the new file’s name has no “b\/”$/);
 });

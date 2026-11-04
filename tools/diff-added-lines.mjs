@@ -3,6 +3,15 @@
 // strictly. It reads only what it’s given, and starts nothing, so tests/diff-added-lines.test.mjs tests it on diffs
 // copied from git.
 
+// The diff options that fix the shape readDiff reads, so a person’s own git config can’t change it: hunks without
+// context, whatever diff.interHunkContext says; no colors, external diff or text conversion; renames; and “a/” and “b/”
+// prefixes on every file’s path from the repository’s root, whatever diff.noprefix, diff.mnemonicPrefix or
+// diff.relative say. Both tools that read such diffs ask git for them with these.
+export const DIFF_OPTIONS = Object.freeze([
+  ...['-U0', '--inter-hunk-context=0', '--no-color', '--no-ext-diff', '--no-textconv', '-M'],
+  ...['--no-relative', '--src-prefix=a/', '--dst-prefix=b/'],
+]);
+
 // The line that starts each file’s part of a diff.
 const FILE_START = /^diff --git /;
 
@@ -115,7 +124,7 @@ function readDiff(diff) {
       return;
     }
     if (FILE_START.test(line)) {
-      file = null;
+      // The file stays the last one named until this one’s “+++ ” line, as a hunk before that line fails.
       inHeader = true;
       return;
     }
@@ -131,7 +140,8 @@ function readDiff(diff) {
     }
     const hunk = HUNK.exec(line);
     if (hunk) {
-      inHeader = false;
+      // A hunk in a file’s header has no “+++ ” line naming its file, so its lines can’t be put down to any file.
+      if (inHeader) throw new Error(`can’t read git’s diff at line ${at}: a hunk before its file’s “+++ ” line`);
       startHunk(hunk, left, file);
       return;
     }
