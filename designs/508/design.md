@@ -130,7 +130,7 @@ flowchart TD
 | `state.threads` | thread id | thread header, now with `nextN` | Everything | Number of threads |
 | `state.items` | thread id | that thread’s items, sorted by `n` | The window, the items API, catch-up | Grows with history; the browser holds only windows |
 | `state.sessions` | session id | session, with `seenItem` | Everything | Number of sessions |
-| `state.records` | record id | one open record (“Records”) | `shared/records.mjs` | Open records only: waiting and sent deliveries, open asks |
+| `state.records` | record id | one open record (“Records”) | `shared/records.mjs` | Open records only: waiting and sent deliveries, open asks. For A1, `a1b-asks.md` keeps its one record kind, the hold, outside `state` (D13) |
 | Item index (in memory, never stored) | item id | its thread and position | The reducer, per streamed chunk | Same as `state.items`; replaces the linear `find` (#305 factor 4) |
 
 The same lookups are served in memory: each thread’s items are a list kept sorted by `n`, so a page is a binary search and a slice, and the id index is rebuilt on load and kept current by the reducer (“Storage”).
@@ -193,7 +193,7 @@ The same lookups are served in memory: each thread’s items are a list kept sor
 - **Open notifications are bounded.** At most `openNotifies` open `notify` records per recipient (a setting in “Observability and calibration”). Past it, the oldest close as `folded` into one record that carries a count and the oldest folded item’s `n` (`folded`), so an idle agent in a busy room doesn’t grow `/api/state` (INV-7). Every folded source is an item (“Postbox notices as items”), so nothing becomes unreadable; the envelope says how many were folded and gives the cursor. A2’s done-when distinguishes what the envelope included from what it left behind a pointer.
 - **Size:** each part’s `text` is bounded by the composer’s and the tools’ existing limits, and MD-3’s cap folds a sender’s parts beyond it.
 - **Notices from Postbox** (`tellAgent` today) are `notify` deliveries with `from: 'postbox'` whose source is a notice item (“Postbox notices as items”). Nothing drops the oldest; MD-3’s fold applies instead. Urgent notes are the same deliveries with `urgent: true`.
-- **`se.needs` mapping:** `block`, `permission`, `toolask`, `hop` and `appsend` become `ask` records. `failed` and `denial` describe a session, not a request, so they stay as session status. `needsOrder` in `shared/records.mjs` takes the union: an open ask sorts by its `at`, and a failed or denied session by `se.updatedAt`, which is what `waitedSince` (`shared/needs.mjs:26`) falls back to today. Neither reads items.
+- **`se.needs` mapping:** `block`, `permission`, `toolask`, `hop` and `appsend` become `ask` records. `failed` and `denial` describe a session, not a request, so they stay as session status. `needsOrder` in `shared/records.mjs` takes the union: an open ask sorts by its `at`, and a failed or denied session by `se.updatedAt`, which is what `waitedSince` (`shared/needs.mjs:26`) falls back to today. Neither reads items. For A1, `a1b-asks.md` derives asks from the open cards instead of storing them (D1).
 
 ### 6.3 What is state, what is in the store, and what reaches the browser
 
@@ -210,6 +210,8 @@ The same lookups are served in memory: each thread’s items are a list kept sor
 Closed records leave state, so `store.state` stays bounded by what is open, not by a room’s age. The history that explains a delivery lives in the receipts (“Receipts”), derived from the record events, so a close and its receipt can’t disagree.
 
 ### 6.4 Receipts
+
+A1b’s design (`a1b-asks.md`, D6) keeps this: receipts are derived inside the reducer.
 
 A server-only entry per delivery record, derived by the reducer from the record events, not written as a second file. It is not in `/api/state`.
 - **One row when a delivery record opens** and one when it closes or is resent: `{ event: opened | delivered | superseded | expired | withdrawn | answered | resent, at, rev, sentRev?, turnId?, attempt?, reason? }`, beside the record’s `kind`, `to`, `from`, `threadId`, `sourceId` and `openedAt`.
@@ -559,7 +561,7 @@ It needs no state, so it runs the same on a copy, and its counts don’t change 
 - **Storage:** nothing to migrate. Events, segments and `snapshot.json` keep their format. Step S2 reads an unversioned snapshot as version 1 and writes shards at its next snapshot (“Storage”).
 - **Value shapes:** never migrated. Each event and shard carries `v`, and readers lift older shapes (“Storage”, decision 6).
 - **Positions:** numbered when a snapshot loads (“Items: position and revision”). No versioned migration.
-- **`se.needs` → asks (A1):** at startup, each session’s `needs` of an ask kind becomes an open ask record, and `needs` is cleared. Readers move to `shared/records.mjs` in the same step.
+- **`se.needs` → asks (A1):** at startup, each session’s `needs` of an ask kind becomes an open ask record, and `needs` is cleared. Readers move to `shared/records.mjs` in the same step. Superseded for A1 by `a1b-asks.md`: asks are derived from the cards, so nothing is converted at startup except today’s `card.held`, into hold records (D1, D2).
 - **`se.context` → deliveries (A2):** at startup, each notice becomes a notice item (“Postbox notices as items”) and a `notify` delivery from `postbox`, urgent ones with `urgent: true`, and `context` is cleared, all in one `commit`. The conversion is idempotent: a notice that already has an item is skipped.
 - **`thread.queue` → deliveries (A3) and `schedules` → deliveries (A4):** the same pattern, one step each.
 - **Hosts:** the read contract raises `PROTOCOL_VERSION` from 2 to 3 (`shared/remote-protocol-constants.mjs:8`). Both ends of the handshake reject a mismatch (`server/remote/ssh-connection.mjs:169`, `server/remote/host/daemon-hello.mjs:30`), so there is no mixed-version mode: a host on 2 fails to connect with the existing `version` failure (“It speaks protocol 2; this Postbox speaks 3”), its agents are unavailable until the host’s Postbox is updated, and nothing is delivered to them meanwhile. That is deliberate: one version at a time, as today (decided 28 October). It conflicts with #464 (“Updating Postbox should not strand agents on remote hosts”, P2): under this decision, every agent on a protocol-2 host is unavailable from the person’s update until that host updates. So the remote read contract’s release notes say which hosts to update and how, and #464 gets a comment recording the decision. A v2-against-v3 handshake test covers the message.
