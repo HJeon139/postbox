@@ -20,89 +20,13 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { addedRanges } from './diff-added-lines.mjs';
 import { isEntry } from './lint-lib.mjs';
 import { baseRef, mergeBase, noBase } from './merge-base.mjs';
 
 const BIOME = fileURLToPath(new URL('../node_modules/@biomejs/biome/bin/biome', import.meta.url));
 const RULE = 'lint/style/noNestedTernary';
 const LINTED = /\.(mjs|js|cjs)$/;
-const HUNK = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
-const C_ESCAPES = /** @type {Record<string, number>} */ ({ a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 });
-
-/**
- * A path as git writes it after `+++ `: quoted C-style when it holds a quote, a backslash or a control character, and
- * followed by a tab when it holds a space.
- * @param {string} written
- */
-function unquotePath(written) {
-  if (!written.startsWith('"')) return written.replace(/\t$/, '');
-  const inner = written.slice(1, written.lastIndexOf('"'));
-  /** @type {number[]} */
-  const bytes = [];
-  for (let i = 0; i < inner.length; i++) {
-    if (inner[i] !== '\\') {
-      bytes.push(...Buffer.from(inner[i]));
-      continue;
-    }
-    const octal = inner.slice(i + 1, i + 4);
-    if (/^[0-7]{3}$/.test(octal)) {
-      bytes.push(Number.parseInt(octal, 8));
-      i += 3;
-      continue;
-    }
-    bytes.push(C_ESCAPES[inner[i + 1]] ?? inner.charCodeAt(i + 1));
-    i += 1;
-  }
-  return Buffer.from(bytes).toString('utf8');
-}
-
-/**
- * The lines a `git diff -U0` adds, by file: each file’s added ranges, first and last line, from its hunk headers. Each
- * hunk’s lines are counted off its header, so a removed line that reads “-- a/…” or an added one that reads “++ b/…”
- * stays in its hunk and is never taken for the next file’s header. A `+++` line that names no new file throws, and so
- * does a diff that ends inside a hunk: either would be a diff this can’t read, and must not pass as no added lines.
- * @param {string} diff
- * @returns {Map<string, { start: number, end: number }[]>}
- */
-export function addedRanges(diff) {
-  /** @type {Map<string, { start: number, end: number }[]>} */
-  const byFile = new Map();
-  let path = '';
-  let removedLeft = 0;
-  let addedLeft = 0;
-  for (const line of diff.split('\n')) {
-    if (removedLeft + addedLeft > 0) {
-      if (line.startsWith('-')) removedLeft--;
-      if (line.startsWith('+')) addedLeft--;
-      continue;
-    }
-    if (line.startsWith('+++ ')) {
-      path = newPath(line);
-      continue;
-    }
-    const hunk = HUNK.exec(line);
-    if (!hunk) continue;
-    removedLeft = hunkCount(hunk[2]);
-    addedLeft = hunkCount(hunk[4]);
-    if (addedLeft === 0) continue;
-    const start = Number(hunk[3]);
-    const ranges = byFile.get(path) ?? [];
-    ranges.push({ start, end: start + addedLeft - 1 });
-    byFile.set(path, ranges);
-  }
-  if (removedLeft + addedLeft > 0) throw new Error('lint-ternary: the diff ends inside a hunk.');
-  return byFile;
-}
-
-/** A hunk header’s line count: one when the header leaves it out. @param {string | undefined} written */
-const hunkCount = (written) => (written === undefined ? 1 : Number(written));
-
-/** The new file a `+++ ` header names, or a throw when it names none. @param {string} line */
-function newPath(line) {
-  const written = unquotePath(line.slice(4));
-  if (!written.startsWith('b/')) throw new Error(`lint-ternary: can’t read the diff’s “${line}”.`);
-  return written.slice(2);
-}
 
 /**
  * Whether a span, from line start to line end, holds any of the added lines.

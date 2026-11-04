@@ -1,5 +1,7 @@
-// Reads the lines a commit adds out of git’s diff of it, by file, for tools/scan-commits-privacy.mjs (#508). It reads
-// only what it’s given, and starts nothing, so tests/scan-commits-privacy.test.mjs tests it on diffs copied from git.
+// Reads the lines a diff without context (`-U0`) adds, by file: their text, for tools/scan-commits-privacy.mjs (#508),
+// and their line ranges, for tools/lint-ternary.mjs (#685). It’s the one parser of those diffs, so both read them as
+// strictly. It reads only what it’s given, and starts nothing, so tests/diff-added-lines.test.mjs tests it on diffs
+// copied from git.
 
 // The line that starts each file’s part of a diff.
 const FILE_START = /^diff --git /;
@@ -21,8 +23,8 @@ const NEW_PATH = /^\+\+\+ /;
 // What git writes in place of hunks for a binary file.
 const BINARY = /^Binary files .* differ$/;
 
-// A hunk’s header and its line counts: “@@ -start,count +start,count @@”, where a count left out means one.
-const HUNK = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/;
+// A hunk’s header, its line counts and its first new line: “@@ -start,count +start,count @@”, where a count left out means one.
+const HUNK = /^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
 // “\ No newline at end of file”, after a hunk’s last line on either side. It isn’t one of the hunk’s lines.
 const NO_NEWLINE = /^\\ /;
@@ -79,70 +81,137 @@ function hunkCount(written) {
 }
 
 /**
- * The lines a commit’s diff adds, by file, from `git show --format= -U0` output, and for a merge from
+ * A file’s added lines in a diff: their text, and their ranges of line numbers in the new file.
+ * @typedef {{ lines: string[], ranges: { start: number, end: number }[] }} Added
+ */
+
+/**
+ * The lines a diff adds, by file, from `git show --format= -U0` or `git diff -U0` output, and for a merge from
  * `git show --remerge-diff`, whose file headers may hold its “remerge ” notes. Each hunk’s lines are counted off its
  * header, so an added line that reads “++ b/…” or a removed one that reads “-- a/…” stays in its hunk, and is never
  * taken for the next file’s header. Outside a hunk, a line git’s diff format doesn’t have is an error, and so is a diff
  * that ends inside a hunk: either is a diff this can’t read, and must not pass as one that adds nothing.
  *
  * @param {string} diff
- * @returns {{ files: Map<string, string[]>, binary: number }} the added lines by file, and how many binary files it skipped
+ * @returns {{ files: Map<string, Added>, binary: number, deleted: { at: number, line: string }[] }} the added lines by
+ *   file, how many binary files it skipped, and the “+++ /dev/null” lines of the files it deletes
  */
-export function parseAddedLines(diff) {
-  /** @type {Map<string, string[]>} */
+function readDiff(diff) {
+  /** @type {Map<string, Added>} */
   const files = new Map();
-  let binary = 0;
-  /** @type {string | null} */
-  let path = null;
+  const result = { files, binary: 0, deleted: /** @type {{ at: number, line: string }[]} */ ([]) };
+  /** @type {Added | null} */
+  let file = null;
   // Whether the line is in a file’s header, between its “diff --git” line and its first hunk or “+++ ” line.
   let inHeader = false;
-  let removedLeft = 0;
-  let addedLeft = 0;
+  const left = { removed: 0, added: 0 };
   const lines = diff.split('\n');
   // The diff ends in a newline, which leaves an empty last line that isn’t one of git’s.
   if (lines.at(-1) === '') lines.pop();
   lines.forEach((line, i) => {
     const at = i + 1;
-    if (removedLeft + addedLeft > 0) {
-      if (NO_NEWLINE.test(line)) return;
-      if (line.startsWith('-') && removedLeft > 0) {
-        removedLeft--;
-        return;
-      }
-      if (line.startsWith('+') && addedLeft > 0 && path !== null) {
-        addedLeft--;
-        const added = files.get(path) ?? [];
-        added.push(line.slice(1));
-        files.set(path, added);
-        return;
-      }
-      throw new Error(`can’t read git’s diff at line ${at}: it doesn’t fit its hunk’s counts`);
+    if (left.removed + left.added > 0) {
+      hunkLine(line, at, left, file);
+      return;
     }
     if (FILE_START.test(line)) {
-      path = null;
+      file = null;
       inHeader = true;
       return;
     }
     if (inHeader && REMERGE_NOTE.test(line)) return;
     if (NEW_PATH.test(line)) {
-      path = newPath(line, at);
+      file = fileOf(files, line, at, result.deleted);
       inHeader = false;
       return;
     }
     if (BINARY.test(line)) {
-      binary++;
+      result.binary++;
       return;
     }
     const hunk = HUNK.exec(line);
     if (hunk) {
       inHeader = false;
-      removedLeft = hunkCount(hunk[1]);
-      addedLeft = hunkCount(hunk[2]);
+      startHunk(hunk, left, file);
       return;
     }
     if (EXTENDED_HEADER.test(line) || OLD_PATH.test(line) || NO_NEWLINE.test(line)) return;
     throw new Error(`can’t read git’s diff at line ${at}`);
   });
-  if (removedLeft + addedLeft > 0) throw new Error('can’t read git’s diff: it ends inside a hunk');
-  return { files, binary };
+  if (left.removed + left.added > 0) throw new Error('can’t read git’s diff: it ends inside a hunk');
+  return result;
+}
+
+/**
+ * The added lines of the file a “+++ ” line names, kept in files when it adds any, or null for /dev/null, which is
+ * noted in deleted.
+ * @param {Map<string, Added>} files @param {string} line @param {number} at @param {{ at: number, line: string }[]} deleted
+ * @returns {Added | null}
+ */
+function fileOf(files, line, at, deleted) {
+  const path = newPath(line, at);
+  if (path === null) {
+    deleted.push({ at, line });
+    return null;
+  }
+  const file = files.get(path) ?? { lines: [], ranges: [] };
+  files.set(path, file);
+  return file;
+}
+
+/**
+ * Starts a hunk: its counts of lines left to read, and its added range in the file’s new lines, if it adds any.
+ * @param {RegExpExecArray} hunk @param {{ removed: number, added: number }} left @param {Added | null} file
+ */
+function startHunk(hunk, left, file) {
+  left.removed = hunkCount(hunk[1]);
+  left.added = hunkCount(hunk[3]);
+  const start = Number(hunk[2]);
+  if (left.added > 0 && file) file.ranges.push({ start, end: start + left.added - 1 });
+}
+
+/**
+ * Reads one of a hunk’s lines, counting it off what the hunk has left.
+ * @param {string} line @param {number} at @param {{ removed: number, added: number }} left @param {Added | null} file
+ */
+function hunkLine(line, at, left, file) {
+  if (NO_NEWLINE.test(line)) return;
+  if (line.startsWith('-') && left.removed > 0) {
+    left.removed--;
+    return;
+  }
+  if (line.startsWith('+') && left.added > 0 && file) {
+    left.added--;
+    file.lines.push(line.slice(1));
+    return;
+  }
+  throw new Error(`can’t read git’s diff at line ${at}: it doesn’t fit its hunk’s counts`);
+}
+
+/** The files a diff adds lines to, left out when it adds none. @param {Map<string, Added>} files */
+function withAdded(files) {
+  return [...files].filter(([, file]) => file.lines.length > 0);
+}
+
+/**
+ * The lines a commit’s diff adds, by file, read as readDiff reads them; a file it deletes adds none.
+ * @param {string} diff
+ * @returns {{ files: Map<string, string[]>, binary: number }} the added lines by file, and how many binary files it skipped
+ */
+export function parseAddedLines(diff) {
+  const { files, binary } = readDiff(diff);
+  return { files: new Map(withAdded(files).map(([path, file]) => [path, file.lines])), binary };
+}
+
+/**
+ * The line ranges a `git diff -U0` adds, by file, each its first and last line, read as readDiff reads them. A diff
+ * that deletes a file fails: lint-ternary asks only for added, modified and renamed files, so a “+++ /dev/null” there is
+ * a diff it misread, and must not drop that file’s lines.
+ * @param {string} diff
+ * @returns {Map<string, { start: number, end: number }[]>}
+ */
+export function addedRanges(diff) {
+  const { files, deleted } = readDiff(diff);
+  if (deleted.length) throw new Error(`can’t read git’s diff at line ${deleted[0].at}: “${deleted[0].line}” names no new file`);
+  return new Map(withAdded(files).map(([path, file]) => [path, file.ranges]));
 }
