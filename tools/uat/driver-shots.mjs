@@ -5,7 +5,7 @@
 
 import { writeFile } from 'node:fs/promises';
 import { js } from '../browser.mjs';
-import { ITEM } from './selectors.mjs';
+import { ITEM, JUMP } from './selectors.mjs';
 
 // Each transcript on the page, its scroll box, and where its view starts: view-state.mjs’s box() and viewTop().
 const TRANSCRIPTS = `[['main', document.querySelector('#main.transcript')], ['panel', document.querySelector('.sidepanel .transcript')]]
@@ -116,9 +116,7 @@ export const keeper =
 export function shots({ ev, page, sleep, input }) {
   /** What a person sees of an item, scrolled to it: shotItem, without putting the view back. */
   async function shotOf(key, file) {
-    const ok = await ev(
-      `(() => { const n = ${ITEM(key)}; if (!n) return false; n.scrollIntoView({ block: 'start' }); scrollBy(0, -((document.querySelector('header.topbar')?.offsetHeight ?? 0) + 8)); return true; })()`,
-    );
+    const ok = await ev(`(async () => { const n = ${ITEM(key)}; if (!n) return false; ${JUMP('n', 'start')}; return true; })()`);
     if (!ok) return null;
     // Apps far off screen are unloaded; give them a moment to load again and draw. (The clip is in page
     // coordinates, so the scroll offset is added below.)
