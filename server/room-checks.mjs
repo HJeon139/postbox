@@ -305,6 +305,40 @@ const modelKey = (m) =>
     .replace(/^claude-/, '')
     .replace(/[^a-z0-9]/g, '');
 
+/** How many refusal cards each agent has in the conversations: one pass over their items. */
+function countDenialCardsByHandle(items) {
+  const counts = new Map();
+  for (const it of items) {
+    if (it.kind !== 'denial') continue;
+    counts.set(it.handle, (counts.get(it.handle) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** Whether a tool result is the person declining a call in Postbox, which a card already answered. */
+const isDeclinedResult = (b) =>
+  b.type === 'tool_result' && /The person didn’t allow/.test(typeof b.content === 'string' ? b.content : JSON.stringify(b.content));
+
+/** Each agent’s refused calls (a result’s `permission_denials`) the person didn’t decline: one pass over the streams. */
+function uncardedRefusalsByHandle(streams) {
+  const byHandle = new Map();
+  for (const { handle, events } of streams) {
+    const declined = new Set(
+      events
+        .filter((e) => e.type === 'user')
+        .flatMap((e) => contentBlocks(e.message?.content))
+        .filter(isDeclinedResult)
+        .map((b) => b.tool_use_id),
+    );
+    const listed = events.filter((e) => e.type === 'result').flatMap((e) => e.permission_denials ?? []);
+    const refusals = listed.filter((d) => !declined.has(d.tool_use_id));
+    if (!refusals.length) continue;
+    if (!byHandle.has(handle)) byHandle.set(handle, []);
+    byHandle.get(handle).push(...refusals);
+  }
+  return byHandle;
+}
+
 export const CHECKS = [
   {
     id: 'fresh-install-agents',
@@ -382,21 +416,13 @@ export const CHECKS = [
     run: (f) => {
       // Per agent: a removed agent’s cards stay in its conversation while its streams are left out (#729), and one
       // agent’s cards never stand for another’s refusals.
-      const cardsOf = (handle) => itemsOf(f).filter((it) => it.kind === 'denial' && it.handle === handle).length;
-      const all = keptStreams(f).flatMap(({ handle, events }) => {
-        const listed = events.filter((e) => e.type === 'result').flatMap((e) => e.permission_denials ?? []);
-        const declined = new Set(
-          events
-            .filter((e) => e.type === 'user')
-            .flatMap((e) => contentBlocks(e.message?.content))
-            .filter((b) => b.type === 'tool_result' && /The person didn’t allow/.test(typeof b.content === 'string' ? b.content : JSON.stringify(b.content)))
-            .map((b) => b.tool_use_id),
-        );
-        return listed.filter((d) => !declined.has(d.tool_use_id)).map((d) => ({ handle, d }));
-      });
-      const short = [...new Set(all.map((r) => r.handle))].filter((h) => all.filter((r) => r.handle === h).length > cardsOf(h));
-      const refused = all.filter((r) => short.includes(r.handle));
-      const cards = short.reduce((n, h) => n + cardsOf(h), 0);
+      const cardsByHandle = countDenialCardsByHandle(itemsOf(f));
+      const refusalsByHandle = uncardedRefusalsByHandle(keptStreams(f));
+      const cardsOf = (handle) => cardsByHandle.get(handle) ?? 0;
+      const isShort = ([handle, refusals]) => refusals.length > cardsOf(handle);
+      const short = [...refusalsByHandle].filter(isShort).map(([handle]) => handle);
+      const refused = short.flatMap((handle) => refusalsByHandle.get(handle).map((d) => ({ handle, d })));
+      const cards = short.reduce((n, handle) => n + cardsOf(handle), 0);
       return short.length
         ? [
             {

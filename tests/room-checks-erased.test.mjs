@@ -177,3 +177,20 @@ test('a purged topic thread’s streams are left out today, though its commands 
   f.state.work.t1 = [{ kind: 'command', toolUseId: 'b_topic' }];
   assert.deepEqual(found(f, 'work-commands-match-stream'), []);
 });
+
+test('refusal-without-card weighs each agent’s refusals against its own cards, among several agents', () => {
+  // @researcher has two refusals and two cards, @critic one and one, @scribe one and none: only @scribe is short,
+  // though the room holds more cards (3) than @scribe has refusals.
+  const f = room([
+    { ...turn(LIVE, [refusal('r_a'), refusal('r_b')]) },
+    { ...turn('c0ffee01-critic', [refusal('r_c')]), handle: 'critic' },
+    { ...turn('c0ffee02-scribe', [refusal('r_s')]), handle: 'scribe' },
+  ]);
+  f.state.sessions.s2 = { id: 's2', handle: 'critic', state: 'idle', backendState: { claudeSessionId: 'c0ffee01-critic' } };
+  f.state.sessions.s3 = { id: 's3', handle: 'scribe', state: 'idle', backendState: { claudeSessionId: 'c0ffee02-scribe' } };
+  const card = (id, handle) => ({ id: `d_${id}`, kind: 'denial', handle, toolUseId: id });
+  f.state.items.t1 = [card('r_a', 'researcher'), card('r_b', 'researcher'), card('r_c', 'critic')];
+  const out = found(f, 'refusal-without-card');
+  assert.equal(out.length, 1, JSON.stringify(out));
+  assert.equal(out[0].evidence, '1 refused, 0 cards. @scribe: Bash rm -rf build.');
+});
