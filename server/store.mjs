@@ -9,6 +9,7 @@
 import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
+import { itemOf } from '../shared/item-index.mjs';
 import { emptyState } from '../shared/state.mjs';
 import { commit, run } from './store-commit.mjs';
 import { pendingReads } from './store-held.mjs';
@@ -303,13 +304,6 @@ export class Store {
     return this.state.items[threadId] ?? [];
   }
   item(threadId, id) {
-    return this.items(threadId).find((i) => i.id === id);
-  }
-  findItem(id) {
-    for (const [threadId, list] of Object.entries(this.state.items)) {
-      const it = list.find((i) => i.id === id);
-      if (it) return { threadId, item: it };
-    }
-    return null;
+    return itemOf(this.items(threadId), id);
   }
 }

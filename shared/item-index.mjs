@@ -15,6 +15,7 @@
 /** @type {WeakMap<readonly any[], ListIndex>} */
 const INDEX = new WeakMap();
 let rebuilds = 0;
+let builds = 0;
 
 /** Indexes positions from..to-1, keeping an id's earlier place while that place still holds it, as find() would. */
 function indexRange(/** @type {readonly any[]} */ list, /** @type {ListIndex} */ ix, from, to) {
@@ -30,6 +31,7 @@ function indexRange(/** @type {readonly any[]} */ list, /** @type {ListIndex} */
 function indexOf(/** @type {readonly any[]} */ list) {
   let ix = INDEX.get(list);
   if (!ix) {
+    builds++;
     ix = { at: new Map(), seen: 0 };
     INDEX.set(list, ix);
   }
@@ -75,4 +77,9 @@ export function noteReplaced(list, p) {
 /** How many times a lookup found the index stale and rebuilt it: 0 in every flow the reducer drives (tests read it). */
 export function rebuildCount() {
   return rebuilds;
+}
+
+/** How many lists have been indexed from scratch, each O(n): once per list, so a read path that indexes a new copy each time shows here (tests read it). */
+export function buildCount() {
+  return builds;
 }

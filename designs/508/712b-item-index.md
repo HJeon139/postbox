@@ -23,14 +23,14 @@ Part of #712 (#508’s B1): the server’s and the page’s half, beside #712a�
 
 **Readers switched** (a one-line change each, `find`/`findIndex`/`some` by id on a store list → the index):
 - **Per event, both sides:** `withItem` and `moveItem` in `shared/state.mjs`. That’s every `item.patch`, `item.text` and `item.move`, on the server and in the page, which runs the same reducer.
-- **Per event, page:** `thread.mjs` `rerender`, `:355` and `updateText`, `reactions.mjs:73`, `reply-rings.mjs:53`, and `hover-content.mjs` and `side-panel.mjs`.
+- **Per event or per render, page:** `thread.mjs` `rerender`, the move handler, `:355`, `updateText` and the moved line, `apps.mjs`’s retired line, `reactions.mjs:73`, `reply-rings.mjs:53`, and `hover-content.mjs` and `side-panel.mjs`.
 - **Per call or per flush, server:** `store.item` (`store.mjs:306`, 20 callers), `store-held.mjs:117`, `catch-up.mjs:17`, `:46`, `queue-batch.mjs:30`, `share-back.mjs:20`, `topic-open.mjs:18`, `runtime.mjs` (a shell command’s output flush, every 100 ms, and its exit; a job’s step; the terminal mirror), `side-threads.mjs:63`, `permission-prompt.mjs:29`, `thread-summary.mjs:62`, `shared/needs.mjs:26`.
 - **Left as they are, each with its reason:**
   - `thread-summary.mjs:105`’s `indexOf(item)` is by object;
   - `room-checks*.mjs` read recorded facts, not the store;
   - `broker-reading.mjs:47` reads the host’s snapshot;
   - `runtime.mjs:319` (a move) and `:1022` (each turn’s end, beside a whole-list `filter`, so the index wouldn’t change its cost); `runtime.mjs` is at its size cap;
-  - `thread.mjs`’s move stub (`:340`), on each move.
+  - `thread-summary.mjs:106` and `threads-page.mjs:52`, which run per summary or per page, not per event.
 
   The scans for anything other than an id (`speaker-line`, `open-asks`, the flush loops in researcher’s list) are out of scope, named in the PR.
 
@@ -83,4 +83,4 @@ Part of #712 (#508’s B1): the server’s and the page’s half, beside #712a�
 
 ## Not here
 
-The scans by anything other than an item’s id, and the whole-list renders, go in a follow-up issue with their evidence: `catch-up.mjs:23`, `read-message.mjs:22`, `thread-summary.mjs:93`, `:106`, `:184`, `:211`, `thread.mjs`’s moved line, `apps.mjs`’s retired line, `threads-page.mjs:52`, `topic-open.mjs:93`, `:95`, and `block-show.mjs:54` and `blocks.mjs:199` (by block id, on each show and update). The dead `store.findItem` is removed here.
+The scans by anything other than an item’s id, and the whole-list renders, go in a follow-up issue with their evidence: `catch-up.mjs:23`, `read-message.mjs:22`, `thread-summary.mjs:93`, `:184`, `:211`, `topic-open.mjs:93`, `:95`, and `block-show.mjs:54` and `blocks.mjs:199` (by block id, on each show and update). The dead `store.findItem` is removed here.

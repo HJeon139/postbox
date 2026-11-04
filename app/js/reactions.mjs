@@ -7,7 +7,7 @@
 // Each reaction is drawn with its icon (app/media/reactions), and its emoji is the icon’s text.
 
 import { REACTIONS } from '/shared/reactions.mjs';
-import { api, client } from './client.mjs';
+import { api, client, itemIn } from './client.mjs';
 import { fill, h } from './dom.mjs';
 import { toast } from './ui.mjs';
 
@@ -70,7 +70,7 @@ export function reactTo(bar, _node, it, ctx) {
 // A reaction’s patch (it carries `reaction`) repaints that item’s buttons wherever they’re shown, and nothing else of it.
 client.on((ch) => {
   if (ch.type !== 'item.patch' || !ch.data.reaction) return;
-  const it = client.state.items[ch.data.threadId]?.find((x) => x.id === ch.data.id);
+  const it = itemIn(ch.data.threadId, ch.data.id);
   if (!it) return;
   for (const row of document.querySelectorAll(`.react-row[data-reactions="${CSS.escape(it.id)}"]`)) {
     // Focus stays on the button you used (designs/engineering-practices.md, “Accessibility (axe)”).

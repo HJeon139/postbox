@@ -179,7 +179,7 @@ The view is applied with the shared `apply`, so the reducer exists once. It is c
 **Identity.** With nothing held, a pending read returns the published array itself, as `items()` does. While something is held it returns a fresh array, in which an item no held event touched is the published object and one that was touched is a clone. So a pending read is never the same array as the published one during a hold, and is the same one outside it (gpt). The readers in §8 compare by `id`, `turnId` and `toolUseId`, never by object identity: I read each one. A new call site is a line in the guard, so whoever adds it is reviewed on the same question.
 
 **Guard** (`tests/store-held-guard.test.mjs`), keyed by file and enclosing function, so an edit elsewhere in a file doesn’t churn it (critic). It places every read of items, work and apps, by the rule in §4:
-- each published read: `store.items()`, `item()` and `findItem()`, and each direct read of `state.items`, `state.work` or `state.apps`;
+- each published read: `store.items()` and `item()` (`findItem()` was removed in #712b), and each direct read of `state.items`, `state.work` or `state.apps`;
 - each pending read: `store.pending`, and the ledger’s `entries()` and `entry()`, which use it;
 - each production `commit` call, with the lists it touches (none on `main`; A1a’s `commitRecords`, which writes `records` and `dispatches` only, is placed when it lands).
 
