@@ -5,18 +5,23 @@ import { claudeSessionOf, toolCalls } from './room-checks-tools.mjs';
 
 const ledgerEntries = (f) => Object.values(f.state?.work ?? {}).flat();
 /**
- * The turns’ streams of sessions the state still has (#729). Deleting a conversation removes its sessions, and with
- * them its Work ledger, its cards and its steps, but not its turns’ stream files, which only the Claude Code session
- * id in their init ties to a session. So a check that compares the streams with the state reads them through this.
- * A stream with no session id is kept: it can’t be shown erased. A session keeps only its current id, so a live
- * session whose id Postbox reset (Claude Code had lost it) loses its turns from before the reset here.
+ * The turns’ streams of sessions the state still has (#729). Deleting a conversation removes its sessions, its cards
+ * and its steps, and its Work ledger goes with it, since Work is kept by conversation, but its turns’ stream files
+ * stay, and only the Claude Code session id in their init ties them to a session. So a check that compares the
+ * streams with the state reads them through this. A stream with no session id is kept: it can’t be shown erased. A
+ * session keeps only its current id, so a live session whose id Postbox reset (Claude Code had lost it) loses its
+ * turns from before the reset here.
  */
 export const keptStreams = (f) => splitStreams(f).kept;
 /** The turns’ streams of erased sessions: the ones keptStreams leaves out. */
 export const erasedStreams = (f) => splitStreams(f).erased;
 
 function splitStreams(f) {
-  const held = new Set(Object.values(f.state?.sessions ?? {}).map((se) => se?.backendState?.claudeSessionId));
+  const ids = Object.values(f.state?.sessions ?? {}).map((se) => se?.backendState?.claudeSessionId);
+  const held = new Set(ids.filter(Boolean));
+  // A state in which no session has an id, such as one saved before sessions kept them, can’t tell an erased stream
+  // from a live one, so every stream is kept. So is every stream once every conversation is deleted.
+  if (!held.size) return { kept: [...(f.streams ?? [])], erased: [] };
   const kept = [];
   const erased = [];
   for (const s of f.streams ?? []) {

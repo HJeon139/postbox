@@ -25,7 +25,7 @@ const room = (streams, over = {}) => ({
     threads: { t1: { id: 't1', title: 'Deletes and Undo', kind: 'thread', members: ['s1'] } },
     items: { t1: [] },
     sessions: { s1: { id: 's1', handle: 'researcher', state: 'idle', backendState: { claudeSessionId: LIVE } } },
-    work: { s1: [] },
+    work: { t1: [] },
     personas: {},
     apps: {},
     glossary: {},
@@ -143,4 +143,11 @@ test('refusal-without-card still reports a live agent’s uncarded refusal when 
   const out = found(roomWithRemovedAgent([removedTurn([refusal('r_removed')]), turn(LIVE, [refusal('r_live')])]), 'refusal-without-card');
   assert.equal(out.length, 1, JSON.stringify(out));
   assert.match(out[0].evidence, /^1 refused, 0 cards\. @researcher: Bash/);
+});
+
+test('a state in which no session has a Claude Code session id keeps every stream: it can’t tell which are erased', () => {
+  const f = room([turn(LIVE, call('b_live', 'Bash', { command: 'pytest' }))]);
+  f.state.sessions.s1.backendState = {};
+  assert.equal(keptStreams(f).length, 1);
+  assert.equal(found(f, 'work-commands-match-stream').length, 1);
 });

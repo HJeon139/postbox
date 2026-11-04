@@ -18,8 +18,11 @@ const turn = (sessionId, events) => ({
   events: [{ type: 'system', subtype: 'init', session_id: sessionId }, ...events],
 });
 
+/** A live session of the conversation the run kept. */
+const LIVE = { s0: { id: 's0', handle: 'developer', backendState: { claudeSessionId: 'live-0' } } };
+
 /** A run that deleted “Second” at T0 + 30 s, with researcher in it; Undo ran out 10 s later unless `undoAt`. */
-function facts({ streams, undoAt = null, sessions = {} }) {
+function facts({ streams, undoAt = null, sessions = LIVE }) {
   const conversation = [{ do: 'delete', at: T0 + 30_000, threadId: 't2', title: 'Second', handles: ['researcher'], until: T0 + 40_000 }];
   if (undoAt !== null) conversation.push({ do: 'undo', at: undoAt, threadId: 't2' });
   return { state: { sessions, threads: {}, items: {} }, streams, probes: { conversation } };
@@ -42,6 +45,8 @@ test('erased-conversation-commands stays silent without a purge, a Bash call, or
   // The session that ran the command is still in the state.
   const held = { s1: { id: 's1', handle: 'researcher', backendState: { claudeSessionId: 'gone-1' } } };
   assert.deepEqual(TRIGGERS[ID].run(facts({ streams: ran, sessions: held })), []);
+  // No session in the state has an id, as before sessions kept them: no stream can be shown erased.
+  assert.deepEqual(TRIGGERS[ID].run(facts({ streams: ran, sessions: {} })), []);
   // An erased session of an agent that wasn’t in the deleted conversation.
   assert.deepEqual(TRIGGERS[ID].run(facts({ streams: [{ ...ran[0], handle: 'critic' }] })), []);
   // A run that records deletes but did none: false, not unknown.
