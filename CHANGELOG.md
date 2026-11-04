@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.19.0 (2026-11-04)
+
+### Features
+
+- **tools:** fail a nested ternary on a line the change adds
+
+### Fixes
+
+- **tools:** lint-ternary fails a file with more nested ternaries than at the base
+- **tools:** the lints run from a folder reached through a symlink
+- **tools:** lint-ternary counts each hunk's lines, and fails cleanly outside a checkout
+- **tools:** the lints run from a folder whose path has a space
+
 ## 1.18.2 (2026-11-04)
 
 ### Fixes
