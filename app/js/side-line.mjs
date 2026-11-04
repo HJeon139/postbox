@@ -4,6 +4,7 @@ import { api, liveSessions } from './client.mjs';
 import { h, icon, plural } from './dom.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { toast } from './ui.mjs';
+import { jumpTo } from './view-jump.mjs';
 
 export function sideLine(it, ctx) {
   // The agent at work in it, with the ring and state word the sidebar rows use (#121), so the conversation shows
@@ -54,8 +55,8 @@ function goToCard(itemId, frames = 180) {
     if (frames) requestAnimationFrame(() => goToCard(itemId, frames - 1));
     return;
   }
-  node.scrollIntoView({ block: 'center' });
-  (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus();
+  jumpTo(node);
+  (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus({ preventScroll: true });
 }
 
 /**
