@@ -91,6 +91,8 @@ export function maybeUpdate(m, id, failure) {
     const record = recordOf(m, id);
     if (!record.keepUpdated || isTried(record, m.version)) return;
     if (m.updating.has(id)) return;
+    // A host being removed isn’t installed on first: Remove connects to stop its turns, and a 127 then is no consent to install.
+    if (m.removals.has(id)) return;
     if (!m.getHost(id)) return;
     if (!tokenOf(m, id)) return;
     const entry = track(m, id, (signal) => autoInstall(m, id, signal));

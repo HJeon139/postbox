@@ -43,8 +43,8 @@ function updateOf(u) {
 }
 
 /**
- * Sets the person’s standing consent to install this Postbox’s version on the host by itself (#464-b2a), from the
- * host editor: the body is exactly { on: true } or { on: false }. Kept in the host’s install record on this computer,
+ * Sets the person’s standing consent to install this Postbox’s version on the host by itself (#464-b2a), for the
+ * page (its toggle in the host editor comes with #464-b2b): the body is exactly { on: true } or { on: false }. Kept in the host’s install record on this computer,
  * never in its settings, so it never reaches the host or an older Postbox.
  * @param {any} rt @param {string} id @param {unknown} body
  */
