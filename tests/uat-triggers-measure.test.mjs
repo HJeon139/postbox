@@ -88,7 +88,7 @@ function seededRun(keyFrame = []) {
   return { state: store.state, threads: ['th_big'], probes: { ...newProbes(), keyFrameOn: true, keyFrame } };
 }
 
-const measured = { threadId: 'th_big', items: 1000, keys: 40, report: 'key-frame.md', at: 1 };
+const measured = { threadId: 'th_big', items: 1000, keys: 40, below: 0, report: 'key-frame.md', at: 1 };
 
 test('key-frame-measured fires when the run measured its own room and wrote the report', () => {
   const hits = TRIGGERS['key-frame-measured'].run(seededRun([measured]));
@@ -121,4 +121,13 @@ test('key-frame-measured stays silent on a measurement of another conversation, 
   assert.deepEqual(TRIGGERS['key-frame-measured'].run(unwritten), []);
   assert.deepEqual(TRIGGERS['key-frame-measured'].run(failed), []);
   assert.deepEqual(TRIGGERS['key-frame-measured'].run(seededRun([{ ...measured, keys: 0 }])), [], 'a report of no keys measured nothing');
+});
+
+test('key-frame-measured refuses a measurement whose keys had no Event Timing entry, or more than 10% of them', () => {
+  const run = (m) => TRIGGERS['key-frame-measured'].run(seededRun([{ ...measured, ...m }]));
+  assert.deepEqual(run({ below: 40 }), [], 'every key missing an entry measured nothing');
+  assert.deepEqual(run({ below: 5 }), [], '5 of 40 is over the share');
+  assert.equal(run({ below: 4 }).length, 1, '4 of 40 is the share');
+  const { below, ...uncounted } = measured;
+  assert.deepEqual(TRIGGERS['key-frame-measured'].run(seededRun([uncounted])), [], 'a measurement that didn’t count its missing keys');
 });

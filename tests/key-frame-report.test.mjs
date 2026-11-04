@@ -11,15 +11,14 @@ const results = [
   { items: 4000, eventTiming: sum(42), nextFrame: sum(31), below: 0 },
   { items: 10000, eventTiming: sum(48), nextFrame: sum(36), below: 0 },
 ];
-const report = () =>
-  formatReport({
-    command: 'node tools/bench-key-frame.mjs --sizes 1000,4000,10000 --out designs/508/key-frame.md',
-    commit: 'abc1234',
-    date: '2026-11-04T10:00:00.000Z',
-    machine: { os: 'Linux 6.12', arch: 'x64', cpu: 'Test CPU', node: 'v24.0.0', chromium: '140.0.1' },
-    inputs: { sizes: [1000, 4000, 10000], keys: 200, warmup: 20, runs: 3, intervalMs: 50 },
-    results,
-  });
+const reportInputs = {
+  command: 'node tools/bench-key-frame.mjs --sizes 1000,4000,10000 --out designs/508/key-frame.md',
+  commit: 'abc1234',
+  date: '2026-11-04T10:00:00.000Z',
+  machine: { os: 'Linux 6.12', arch: 'x64', cpu: 'Test CPU', node: 'v24.0.0', chromium: '140.0.1' },
+  inputs: { sizes: [1000, 4000, 10000], keys: 200, warmup: 20, runs: 3, intervalMs: 50 },
+};
+const report = () => formatReport({ ...reportInputs, results });
 
 test('each size is judged by its Event Timing p95 against the smallest room’s, the 1× room', () => {
   const rows = budgetRows(results, 0.1);
@@ -73,4 +72,41 @@ test('shownPath: a path in the repo shows relative to it, one outside it as its 
   assert.equal(shownPath(`${root}/designs/508/key-frame.md`, root), 'designs/508/key-frame.md');
   assert.equal(shownPath('/local/home/user/runs/key-frame.md', root), 'key-frame.md');
   assert.equal(shownPath('/local/home/user/postbox-other/key-frame.md', root), 'key-frame.md', 'a sibling folder whose name starts like the repo’s');
+});
+
+/** Two rooms whose p95s are within budget, the 1× room with `below` of its 100 keys missing an Event Timing entry. */
+const missing = (below) => [
+  { items: 1000, eventTiming: { ...sum(16), n: 100 }, nextFrame: sum(16), below },
+  { items: 4000, eventTiming: { ...sum(16), n: 100 }, nextFrame: sum(16), below: 0 },
+];
+const reportOf = (rooms) => formatReport({ ...reportInputs, results: rooms });
+
+test('a run whose every key had no Event Timing entry is not measured, not a pass at the 16 ms fill', () => {
+  const rows = budgetRows(missing(100));
+  assert.deepEqual(
+    rows.map((r) => r.verdict),
+    ['not measured', 'not measured'],
+  );
+  assert.match(reportOf(missing(100)), /PF-1: \*\*not measured\*\*/);
+});
+
+test('a room just over 10% of its keys missing an entry is not measured, and PF-1 with it', () => {
+  const md = reportOf(missing(11));
+  assert.match(md, /\| 1,000 \| 1× \| 16\.0 ms \| 1\.00 \| not measured \|/);
+  assert.match(md, /PF-1: \*\*not measured\*\*/);
+});
+
+test('a room just under 10% of its keys missing an entry gets its verdict', () => {
+  assert.deepEqual(
+    budgetRows(missing(9)).map((r) => r.verdict),
+    ['pass', 'pass'],
+  );
+  assert.match(reportOf(missing(9)), /PF-1: \*\*pass\*\*/);
+});
+
+test('belowLine: a size with over 10% of its keys missing an entry says it is not measured', () => {
+  assert.equal(
+    belowLine(11, 100, 16),
+    '11 of 100 keys had no Event Timing entry, so took under 16 ms; each counts at 16 ms. That is over 10% of them, so this size is not measured.',
+  );
 });

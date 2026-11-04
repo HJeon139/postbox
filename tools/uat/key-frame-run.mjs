@@ -42,6 +42,16 @@ export async function openRunRoom({ out, facts, ...room }) {
 }
 
 /**
+ * The record of a finished measurement, for the key-frame-measured trigger: its keys, and how many had no Event
+ * Timing entry, which decides whether it measured anything.
+ * @param {{ threadId: string, items: number, report: string, at: number }} where
+ * @param {{ eventTiming: number[], below: number }} r  what measureKeys() returned
+ */
+export function measuredProbe({ threadId, items, report, at }, r) {
+  return { threadId, items, keys: r.eventTiming.length, below: r.below, report, at };
+}
+
+/**
  * Measures the open room and writes the report to out, then records the measurement. One that fails is recorded
  * with no report, so the trigger stays silent, and the run goes on: the tester still has the room to test.
  * @param {{ page: import('../key-frame-measure.mjs').Page, root: string, threadId: string, items: number, out: string,
@@ -61,7 +71,7 @@ export async function measureRunRoom({ page, root, threadId, items, out, probes,
       threshold: EVENT_THRESHOLD,
     });
     await writeFile(resolve(out), report);
-    probes.keyFrame.push({ threadId, items, keys: r.eventTiming.length, report: shown, at: Date.now() });
+    probes.keyFrame.push(measuredProbe({ threadId, items, report: shown, at: Date.now() }, r));
     log(`Measured ${r.eventTiming.length} keys in the big room; wrote ${shown}.`);
   } catch (e) {
     probes.keyFrame.push({ threadId, items, keys: 0, report: null, at: Date.now(), error: String(e?.message ?? e) });

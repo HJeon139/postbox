@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { keyFrameOut, measureRunRoom } from '../tools/uat/key-frame-run.mjs';
+import { keyFrameOut, measuredProbe, measureRunRoom } from '../tools/uat/key-frame-run.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 
 const scenario = (name) => parseScenario(readFileSync(new URL(`uat/e2e/scenarios/${name}.md`, import.meta.url), 'utf8'));
@@ -62,4 +62,10 @@ test('the report goes where --measure-key-frame says, else to the run’s folder
   assert.equal(keyFrameOut({ 'measure-key-frame': 'kf.md' }, { measureKeyFrame: true }, dir), 'kf.md');
   assert.equal(keyFrameOut({}, { measureKeyFrame: true }, dir), join(dir, 'key-frame-report.md'));
   assert.equal(keyFrameOut({}, { measureKeyFrame: false }, dir), null);
+});
+
+test('a finished measurement records how many of its keys had no Event Timing entry, for the trigger to judge', () => {
+  const r = { eventTiming: [16, 16, 24], nextFrame: [10, 11, 12], below: 2 };
+  const probe = measuredProbe({ threadId: 'th_big', items: 1000, report: 'kf.md', at: 5 }, r);
+  assert.deepEqual(probe, { threadId: 'th_big', items: 1000, keys: 3, below: 2, report: 'kf.md', at: 5 });
 });

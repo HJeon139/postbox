@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { keyDurations, outsideWindow, percentile, summarize, withinBudget } from '../tools/key-frame-stats.mjs';
+import { enoughEntries, keyDurations, MAX_MISSING_SHARE, outsideWindow, percentile, summarize, withinBudget } from '../tools/key-frame-stats.mjs';
 
 const hundred = Array.from({ length: 100 }, (_, i) => i + 1);
 
@@ -76,4 +76,18 @@ test('outsideWindow: a composer cut off at any edge is named, one whose top is i
   assert.match(outsideWindow({ top: -12, bottom: 18, left: 300, right: 1200 }, window), /starts at -12 px, above the window/);
   assert.match(outsideWindow({ top: 824, bottom: 854, left: -4, right: 1200 }, window), /starts at -4 px, left of the window/);
   assert.equal(outsideWindow({ top: 0, bottom: 900, left: 0, right: 1280 }, window), null, 'a composer that fills the window to its edges');
+});
+
+test('a room is measured only when at most 10% of its keys had no Event Timing entry', () => {
+  assert.equal(MAX_MISSING_SHARE, 0.1);
+  assert.equal(enoughEntries(0, 100), true);
+  assert.equal(enoughEntries(9, 100), true, 'just under the share');
+  assert.equal(enoughEntries(10, 100), true, 'exactly the share');
+  assert.equal(enoughEntries(11, 100), false, 'just over the share');
+  assert.equal(enoughEntries(100, 100), false, 'every key missing');
+});
+
+test('a room of no keys, or no count of missing keys, is not measured', () => {
+  assert.equal(enoughEntries(0, 0), false);
+  assert.equal(enoughEntries(undefined, 100), false);
 });

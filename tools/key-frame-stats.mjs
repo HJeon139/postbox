@@ -6,6 +6,22 @@
 export const PF1_BUDGET = 0.1;
 
 /**
+ * The most of a room’s keys that may have no Event Timing entry and its p95 still mean something. Each such key counts
+ * at the threshold, so past this share the p95 is the fill, not a measurement.
+ */
+export const MAX_MISSING_SHARE = 0.1;
+
+/**
+ * Whether a room had enough Event Timing entries to judge: some keys, a count of those with no entry, and at most
+ * MAX_MISSING_SHARE of them without one.
+ * @param {number} below  the keys with no entry  @param {number} keys
+ */
+export function enoughEntries(below, keys) {
+  if (!Number.isInteger(below) || !(keys > 0)) return false;
+  return below / keys <= MAX_MISSING_SHARE;
+}
+
+/**
  * The p-th percentile by nearest rank: the smallest value that at least p% of the values are at or under. Null for
  * no values, so an empty run can’t read as a fast one.
  * @param {number[]} values  @param {number} p  from 0 to 100
