@@ -5,7 +5,7 @@
 
 import { inSight, measure } from './view-box.mjs';
 import { register, unregister } from './view-jump.mjs';
-import { skipOffscreen } from './view-skip.mjs';
+import { DRAWN, skipOffscreen } from './view-skip.mjs';
 
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
@@ -162,6 +162,8 @@ function bind(v, scrolled, resized) {
   v.bound.addEventListener('scroll', scrolled, { passive: true });
   addEventListener('resize', resized);
   v.sizes.observe(v.el);
+  // An item's first draw can grow inside the height held while stuck, unseen by v.sizes (view-skip.mjs, DRAWN).
+  v.el.addEventListener(DRAWN, resized, true);
   // What’s around it changing moves the end too: the composer, the panel’s height, the thread’s root above. A shrink
   // there clamps the view like one in the transcript, so its changes are noted the same way (#360). The panel’s
   // composer isn’t beside the transcript: it’s in the panel’s foot, under the scroll box.
@@ -338,6 +340,7 @@ export function mountView({ el, inPanel, nodes, was }) {
       v.sizes.disconnect();
       v.changes.disconnect();
       v.bound?.removeEventListener('scroll', scrolled);
+      el.removeEventListener(DRAWN, resized, true);
       removeEventListener('resize', resized);
     },
   };
