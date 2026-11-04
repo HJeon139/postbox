@@ -13,13 +13,13 @@ The person chose client-side virtualization first, with the server window deferr
 
 ## Where it stands
 
-On `feat/508-b1b-view-state`, rebased onto `main` at `48f20ccd`. B1b is now three slices (sprint 3): **B1b-a**, the view read, is this branch; B1b-b (the runner keeps the view, and the tester can scroll) and B1b-c (the probe, `view-moved`, `window-paged-back` and phase 1’s UAT) follow, designed in the B1b addendum.
+On `feat/508-b1b-view-state`, rebased onto `main` after #633 and #741 merged. B1b is now three slices (sprint 3): **B1b-a**, the view read, is this branch; B1b-b (the runner keeps the view, and the tester can scroll) and B1b-c (the probe, `view-moved`, `window-paged-back` and phase 1’s UAT) follow, designed in the B1b addendum.
 
 | Commit | What it does |
 |---|---|
-| the move | The view logic moves out of `thread.mjs` into `app/js/view-state.mjs`, logic unchanged. `thread.mjs` drops from 1,812 to 1,635 lines, and its ceiling with it |
+| the move | The view logic moves out of `thread.mjs` into `app/js/view-state.mjs`, logic unchanged. `thread.mjs` drops from 1,812 to 1,635 lines; its ceiling is lowered after the merge (AGENTS.md, “Code size”) |
 | #341’s spec | #341 part 2’s spec, made deterministic: a 1 px padding doesn’t change the transcript’s height, so the old guard never ran the race. With 40 px it fails every time |
-| #341’s fix | A scroll the transcript hasn’t heard of yet isn’t taken back by a resize in the same frame. A size change of the scroll box itself (the window, the panel) is the browser’s, which keeps #88’s resize case |
+| #341’s fix | A scroll the transcript hasn’t heard of yet isn’t taken back by a resize in the same frame: `follow()` moves the anchor by that scroll (`heard()`). A first version also skipped this when the scroll box changed size; no spec reached that check, #88’s resize cases included, so a later commit removes it |
 | #357 and #356 | #357’s clamp fix (`a0b13bf5`) gets a spec that fails without it. #356’s spec names it: CI’s `late` pass runs the #88 panel case with the events late |
 | the view read (B1b-a) | `data-view-mode`, `data-view-anchor` and `data-view-offset` on the transcript, main and panel, after each way in that can change them without a scroll event of its own; a redraw from new state takes an anchor that’s gone again. V1: `tests/browser/view-read.spec.mjs` |
 
