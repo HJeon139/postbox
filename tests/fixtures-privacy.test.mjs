@@ -8,6 +8,7 @@ import {
   checkFilesPrivacy,
   isBinary,
   isSyntheticLabel,
+  joinedDeltas,
   missingSyntheticFixtures,
   syntheticFixturePaths,
 } from '../tools/privacy-check.mjs';
@@ -256,4 +257,53 @@ test('a synthetic fixture the README lists but the tree doesn’t hold is report
     ['tests/fixtures/b.jsonl'],
   );
   assert.equal(missingSyntheticFixtures(README, () => true).length, 0, 'nothing is missing when every listed file is there');
+});
+
+/** A recorded Claude Code stream line: one delta of a message’s content block. */
+const deltaLine = (messageId, index, delta) => json({ type: 'stream_event', event: { type: 'content_block_delta', index, delta }, api_message_id: messageId });
+
+/** A home slug cut across three tool-input deltas, as denials.jsonl once held one (#742). */
+function splitSlugStream() {
+  const slug = dashed('', 'Users', 'janedoe', 'postbox');
+  const parts = [slug.slice(0, 4), slug.slice(4, 11), slug.slice(11)];
+  return parts.map((part) => deltaLine('msg_a', 1, { type: 'input_json_delta', partial_json: part })).join('\n');
+}
+
+test('a value split across a stream’s deltas is found once the deltas are joined', () => {
+  const stream = splitSlugStream();
+  assert.deepEqual(checkContentPrivacy(stream), [], 'no single line holds the slug, so a line-by-line scan misses it');
+  const violations = checkFilePrivacy('tests/fixtures/x.jsonl', stream);
+  assert.equal(violations.length, 1);
+  assert.match(violations[0], /^home path: .*\(joined deltas from line 1\)$/);
+});
+
+test('joined deltas are checked only in JSONL files, and each stream is joined on its own', () => {
+  assert.deepEqual(checkFilePrivacy('tests/fixtures/x.json', splitSlugStream()), []);
+  // The same three parts in three different streams, by message, by block and by delta type, never form the slug.
+  const slug = dashed('', 'Users', 'janedoe', 'postbox');
+  const apart = [
+    deltaLine('msg_a', 1, { type: 'input_json_delta', partial_json: slug.slice(0, 4) }),
+    deltaLine('msg_b', 1, { type: 'input_json_delta', partial_json: slug.slice(4, 11) }),
+    deltaLine('msg_a', 2, { type: 'input_json_delta', partial_json: slug.slice(11) }),
+  ].join('\n');
+  assert.deepEqual(checkFilePrivacy('tests/fixtures/x.jsonl', apart), []);
+});
+
+test('a stream’s text and thinking deltas are joined too, and lines that aren’t stream events are skipped', () => {
+  const home = slashed('', 'home', 'janedoe', 'x');
+  const lines = [
+    'not json, but it says delta',
+    json({ delta: 'a bare string' }),
+    deltaLine('msg_a', 0, { type: 'text_delta', text: home.slice(0, 6) }),
+    deltaLine('msg_a', 0, { type: 'text_delta', text: home.slice(6) }),
+    deltaLine('msg_a', 3, { type: 'thinking_delta', thinking: home.slice(0, 3) }),
+    deltaLine('msg_a', 3, { type: 'thinking_delta', thinking: home.slice(3) }),
+  ];
+  assert.deepEqual(
+    joinedDeltas(lines.join('\n')).map(({ firstLine, text }) => [firstLine, text]),
+    [
+      [3, home],
+      [5, home],
+    ],
+  );
 });
