@@ -63,7 +63,7 @@ test('a commit that a project lint fails is stopped, and the hook names the lint
   assert.equal(commits(dir), 1, 'nothing was committed');
   // git hands a hook’s output on as its own stderr, so the lint’s findings and the hook’s line are there.
   assert.match(r.err, /server\/b\.mjs:1 {2}.*colour/);
-  assert.match(r.err, /pre-commit: lint-copy failed.*git commit --no-verify/);
+  assert.match(r.err, /pre-commit: lint-copy failed, so nothing was committed\. Fix it and commit again\.$/m);
 });
 
 test('a commit that passes the project lints goes through', async () => {

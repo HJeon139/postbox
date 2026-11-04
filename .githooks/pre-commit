@@ -5,5 +5,5 @@ out=$(npm run -s lint:project 2>&1) && exit 0
 printf '%s\n' "$out" >&2
 # Each lint ends a failing run with "lint-<name>: <n> problem(s).", and lint:project stops at the first that fails.
 failed=$(printf '%s\n' "$out" | sed -n 's/^\(lint-[a-z]*\): [0-9]* problem.*/\1/p' | tail -n 1)
-echo "pre-commit: ${failed:-npm run lint:project} failed, so nothing was committed. Fix it and commit again, or in an emergency skip the hook with git commit --no-verify." >&2
+echo "pre-commit: ${failed:-npm run lint:project} failed, so nothing was committed. Fix it and commit again." >&2
 exit 1
