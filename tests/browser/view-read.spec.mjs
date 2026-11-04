@@ -33,7 +33,9 @@ for (const width of [1280, 375]) {
     await settled(page);
     const up = await holds(page, t, 'after a wheel up');
     expect(up.mode).toBe('reading');
-    say(`${LONG(31)}\n\n${LONG(32)}\n\n${LONG(33)}`);
+    const reply = say(`${LONG(31)}\n\n${LONG(32)}\n\n${LONG(33)}`);
+    // With the events late (CI's lag pass), settled() can pass before the reply lands, which then lands during End.
+    await expect(page.locator(`[data-key="${reply.id}"]`), 'the reply below is on the page').toBeAttached();
     await settled(page);
     const grown = await holds(page, t, 'after a reply below');
     expect(grown.anchor, 'the anchor stays while a reply lands below').toBe(up.anchor);
