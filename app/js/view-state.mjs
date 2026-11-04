@@ -6,7 +6,7 @@
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
  *   anchor: { key: string, at: number } | null, dead: boolean, shown: number, lastTop: number,
- *   held: { end: number, last: number, width: number }, jump: ((n: number) => void) | null, bound: any, size: string,
+ *   held: { end: number, last: number, width: number }, jump: ((n: number) => void) | null, bound: any,
  *   sizes: ResizeObserver, changes: MutationObserver }} View
  */
 
@@ -144,18 +144,14 @@ function follow(v) {
   }
   showJump(v, s);
 }
-/** The scroll box's size, to tell a scroll from the browser keeping the view in a box that changed size. @param {Element} s */
-const sizeOf = (s) => `${s.clientWidth}x${s.clientHeight}`;
 /**
  * A scroll the transcript hasn't heard of yet: its event comes in the next frame, after this resize (#341). It moved the
- * anchor by that much, so the place to hold is there, not where the last scroll event left it. A box that changed size
- * (the window, the panel) moves the view itself, and that isn't you: the anchor holds as before (#88).
+ * anchor by that much, so the place to hold is there, not where the last scroll event left it.
  * @param {View} v @param {Element} s
  */
 function heard(v, s) {
   const unheard = s.scrollTop - v.lastTop;
   if (!v.anchor || Math.abs(unheard) < 1) return;
-  if (sizeOf(s) !== v.size) return;
   v.anchor = { key: v.anchor.key, at: v.anchor.at - unheard };
   v.lastTop = s.scrollTop;
 }
@@ -175,7 +171,6 @@ function onScroll(v) {
   // However you got near the end, there’s nothing unread below any more (#91).
   if (gapOf(s) <= PILL_ROOM) seen(v);
   v.lastTop = s.scrollTop;
-  v.size = sizeOf(s);
   if (v.stuck) return;
   if (!moved) holdAnchor(v);
   v.anchor = findAnchor(v);
@@ -216,7 +211,6 @@ function settle(v, scrolled, resized) {
     v.held = measure(v, s);
   }
   v.lastTop = s?.scrollTop ?? 0;
-  if (s) v.size = sizeOf(s);
 }
 /**
  * After the transcript is drawn again from new state (a load, after a restart or a Retry): an anchor that's no longer
@@ -245,10 +239,11 @@ function grew(v) {
 export function mountView({ el, inPanel, nodes, was }) {
   /** @type {View} */
   const v = /** @type {any} */ ({ el, inPanel, nodes, unseen: was?.unseen ?? 0, stuck: !was, anchor: was?.anchor ?? null, dead: false });
-  Object.assign(v, { shown: -1, lastTop: 0, held: { end: 0, last: 0, width: 0 }, jump: null, bound: null, size: '' });
+  Object.assign(v, { shown: -1, lastTop: 0, held: { end: 0, last: 0, width: 0 }, jump: null, bound: null });
   // Each way in that can change the mode or the anchor without a scroll event of its own ends by publishing: a scroll,
-  // the end, a reply in the frame you scrolled in (#341), a redraw from new state, and mounting. An item moved ends in grew(), so it publishes there. A resize or a settle that moves the
-  // view does it by scrolling, and its scroll event publishes in the next frame.
+  // the end, a reply in the frame you scrolled in (#341), a redraw from new state, and mounting. An item moved ends in
+  // grew(), so it publishes there. A resize or a settle that moves the view does it by scrolling, and its scroll event
+  // publishes in the next frame.
   /** @template {any[]} A @param {(...a: A) => any} fn */
   const thenPublish =
     (fn) =>
