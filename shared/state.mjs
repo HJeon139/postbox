@@ -1,6 +1,7 @@
 // The state shape and the reducer, shared by the server’s store and the browser. Every change is an
 // event { seq, type, data }; applying the same events in order gives the same state on both sides.
 
+import { itemOf, noteReplaced, positionOf } from './item-index.mjs';
 import { ASSET_EVENTS, ownAssetRooms } from './state-assets.mjs';
 import { putHost, putHostStatus } from './state-hosts.mjs';
 
@@ -103,7 +104,8 @@ export const RESERVED = Object.freeze(Object.values(STREAM));
 
 /** Calls f with the item an event names, if it's there. */
 const withItem = (s, d, f) => {
-  const it = s.items[d.threadId]?.find((i) => i.id === d.id);
+  const list = s.items[d.threadId];
+  const it = list && itemOf(list, d.id); // O(1), through the index (shared/item-index.mjs, #712b)
   if (it) f(it);
 };
 
@@ -176,9 +178,10 @@ export function apply(s, type, d) {
 // last, so whatever names it (an answer, a needs-you, an app) still finds the one live copy.
 function moveItem(s, d) {
   const list = s.items[d.threadId];
-  const i = list?.findIndex((x) => x.id === d.id) ?? -1;
+  const i = list ? positionOf(list, d.id) : -1;
   if (i < 0) return;
   const [it] = list.splice(i, 1, d.stub);
+  noteReplaced(list, i);
   list.push(Object.assign(it, d.patch));
 }
 
