@@ -46,6 +46,8 @@ test('#464-b2a: an install that exits 75 records busy and connects once more', a
     await t.mgr.setKeepUpdated('h1', true);
     await t.mgr.connect('h1').catch(() => {});
     await until(() => readRecord(t.dataDir)?.installs?.[0]?.outcome === 'busy', 'busy');
+    // A slow machine dials the connect after busy later than a fixed wait (CI on 3d831e58): wait for it, then settle.
+    await until(() => t.dials.length >= 2, 'the connect after busy');
     await settle();
     assert.equal(t.dials.length, 2, 'the 127, then one connectNow after busy');
     assert.equal(t.runs.length, 1, 'the second 127 finds this version tried');
