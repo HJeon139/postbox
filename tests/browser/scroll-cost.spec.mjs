@@ -98,7 +98,9 @@ test('#572: scrolling 1,000 replies on light costs about what it does on dark to
   const cost = {};
   for (const theme of /** @type {const} */ (['dark', 'light'])) {
     await page.emulateMedia({ colorScheme: theme });
-    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    // Read in the page, not with a locator: a locator's check that misses takes an aria snapshot of the page, and on
+    // 1,000 skipped items that lays each one out, seconds the theme's change then waits behind (#712a).
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe(theme);
     const ms = await traced(page, 60);
     cost[theme] = Math.round(COMPOSITING.reduce((sum, name) => sum + (ms[name] ?? 0), 0));
   }
