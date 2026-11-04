@@ -5,10 +5,11 @@
 // tests/remote-hosts-update-fixtures.mjs answers.
 
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import test from 'node:test';
 import { FAKE_TOKEN } from './fake-daemon.mjs';
 import { sleep, until, VERSION } from './remote-hosts-fixtures.mjs';
-import { hangs, readRecord, rig } from './remote-hosts-update-fixtures.mjs';
+import { hangs, readRecord, recordFile, rig } from './remote-hosts-update-fixtures.mjs';
 
 const settle = () => sleep(40);
 
@@ -118,6 +119,16 @@ test('#464-b2a: an install whose token differs from the link’s replaces the li
     assert.equal(r.token, FAKE_TOKEN);
     assert.equal(old.state, 'closed', 'the old token’s link is closed');
     assert.notEqual(t.mgr.link('h1'), old, 'and a new one made with the new token');
+  } finally {
+    t.done();
+  }
+});
+
+test('#464-b2a: the consent for a host that isn’t configured is refused, and writes no record for it', async () => {
+  const t = rig();
+  try {
+    await assert.rejects(t.mgr.setKeepUpdated('h9', true), (/** @type {any} */ e) => e?.code === 'no-host');
+    assert.equal(existsSync(recordFile(t.dataDir, 'h9')), false);
   } finally {
     t.done();
   }
