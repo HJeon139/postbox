@@ -28,7 +28,7 @@ const never = () => {
  * A spawn whose attach exits 127 until an install has run, then reaches the daemon. runs: the install runs.
  * @param {ReturnType<typeof createFakeDaemon>} d
  */
-function hostWithoutVersion(d) {
+function hostWithoutVersion(d, { hang = false } = {}) {
   const ssh = fakeSsh({ daemon: d });
   const plain = fakeSsh({ script: (/** @type {any} */ child) => child.plan(child) });
   const t = { installed: false, runs: /** @type {any[]} */ ([]), dials: 0 };
@@ -48,6 +48,7 @@ function hostWithoutVersion(d) {
     } else {
       t.runs.push(child);
       child.plan = (/** @type {any} */ c) => {
+        if (hang) return;
         t.installed = true;
         installs(c);
       };
@@ -57,10 +58,13 @@ function hostWithoutVersion(d) {
   return Object.assign(t, { spawn });
 }
 
-/** A Postbox with one Claude Code persona placed on a host that has this Postbox’s token but not its version. */
-function postbox() {
+/**
+ * A Postbox with one Claude Code persona placed on a host that has this Postbox’s token but not its version. hang: the
+ * install never ends, until Postbox closes.
+ */
+function postbox({ hang = false } = {}) {
   const d = createFakeDaemon({ autoEnd: false });
-  const host = hostWithoutVersion(d);
+  const host = hostWithoutVersion(d, { hang });
   const dataDir = mkdtempSync(join(tmpdir(), 'pbe-auto-'));
   const store = new Store(null);
   const claude = new ClaudeCodeAdapter({ bin: 'claude', workRoot: '/tmp/pb-remote-never', spawnImpl: never, kill: never, listProcesses: async () => never() });
@@ -100,6 +104,23 @@ test('#464-b2b e2e: a turn on a host without this version, with the consent on, 
     assert.equal(p.hosts.status(p.hostId).update.outcome, 'installed');
     const failed = p.store.items(p.threadId).filter((i) => i.status === 'failed' || i.error);
     assert.deepEqual(failed, [], 'no failure reached the thread');
+  } finally {
+    await p.done();
+  }
+});
+
+test('#464-b2b e2e: Stop ends a turn that waits for the install at once, and the install goes on', async () => {
+  const p = postbox({ hang: true });
+  try {
+    await p.hosts.setKeepUpdated(p.hostId, true);
+    p.rt.sendMessage(p.threadId, { text: 'hi' });
+    await until(() => p.host.runs.length === 1, 'the automatic install to start', 4000);
+    const se = Object.values(p.rt.s.sessions).find((x) => x.threadId === p.threadId);
+    await until(() => p.rt.s.sessions[se.id].state !== 'idle', 'the turn to be under way');
+    p.rt.stop(se.id);
+    await until(() => p.rt.s.sessions[se.id].state === 'idle', 'the turn to end', 1000);
+    assert.equal(p.hosts.updating.has(p.hostId), true, 'the install is still running');
+    assert.equal(p.d.received.filter((m) => m.type === 'start').length, 0, 'nothing started on the host');
   } finally {
     await p.done();
   }
