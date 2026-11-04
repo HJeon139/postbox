@@ -10,6 +10,15 @@ import { keepEvent } from '../../server/room-events.mjs';
 export { keepEvent };
 
 /**
+ * A host.status event’s data as the run keeps it: the host, its state and its failure’s kind, or null for one that
+ * names no host. @param {any} d @returns {{ id: string, state: string|null, failure: string|null } | null}
+ */
+export function hostStateOf(d) {
+  if (typeof d?.id !== 'string') return null;
+  return { id: d.id, state: d.status?.state ?? null, failure: d.status?.failure?.kind ?? null };
+}
+
+/**
  * Follows a Postbox server’s event stream (/api/stream) from its first event, keeping the events the checks read,
  * and, apart from them, each host’s status as it changed, with when it arrived (#120): a host-mode fault is judged
  * by these, since a drop and its reconnect can both come between two reads of the state. Each keeps its failure’s
@@ -40,7 +49,8 @@ export function followEvents(origin) {
     if (type === 'host.status') {
       try {
         const d = JSON.parse(data);
-        if (typeof d?.id === 'string') hostStates.push({ at: Date.now(), id: d.id, state: d.status?.state ?? null, failure: d.status?.failure?.kind ?? null });
+        const h = hostStateOf(d);
+        if (h) hostStates.push({ at: Date.now(), ...h });
       } catch {}
       return;
     }

@@ -10,6 +10,7 @@
 // Host names come only from these options, never from the repo. This pass is Claude Code only, so a run with a host
 // refuses a scenario with an agent on another backend. Pure, so tests can feed it options, and the checkout’s tags.
 
+import { compareVersions } from '../../server/remote/host/cleanup-root.mjs';
 import { checkDestination, checkHostSettings } from '../../shared/remote-settings.mjs';
 import { forHosts } from './hosts-scenario.mjs';
 import { TAG_RE } from './hosts-stage.mjs';
@@ -81,8 +82,10 @@ export function stagedOf(opt, count, repo) {
     );
   const version = repo.versionAt(tag);
   if (!version) throw new Error(`--stage-host-version ${tag}: there’s no such tag in this checkout. Run git fetch --tags, or pick one git tag lists.`);
-  if (version === repo.current())
-    throw new Error(`--stage-host-version ${tag} is Postbox ${version}, the version this run installs. Pick an older tag, such as the release before it.`);
+  if (compareVersions(version, repo.current()) >= 0)
+    throw new Error(
+      `--stage-host-version ${tag} is Postbox ${version}, not older than ${repo.current()}, the version this run installs. Pick an older tag, such as the release before it.`,
+    );
   return { tag, version };
 }
 
@@ -193,8 +196,8 @@ export function hostMode(opt, name, scenario, repo = NO_TAGS) {
   const hosts = hostsOf(opt);
   const stage = stagedOf(opt, hosts.length, repo);
   if (!hosts.length) return { hosts, placement: {}, scenario };
-  const chosen = opt.phases != null || opt.phase != null;
-  if (!stage && !chosen) scenario = withoutStaged(scenario);
+  // --phases chooses phases; --phase only says where to start, so it still drops the staged phase as a plain run does.
+  if (!stage && opt.phases == null) scenario = withoutStaged(scenario);
   const refused = refusal(name, scenario) ?? stageRefusal(scenario, Boolean(stage));
   if (refused) throw new Error(refused);
   if (stage) Object.assign(hosts[0], { stage });

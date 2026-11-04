@@ -219,3 +219,28 @@ test('#120 UAT host scripts: after Stop, a process left with its working folder 
     h.done();
   }
 });
+
+test('#464 UAT host scripts: the staged cleanup deletes ~/.postbox-remote and says removed, and says nothing when it can’t', async () => {
+  const h = host({ fakes: { pkill: 'exit 1' } });
+  try {
+    mkdirSync(join(h.home, '.postbox-remote', '1.16.1'), { recursive: true });
+    writeFileSync(join(h.home, '.postbox-remote', 'token'), 't');
+    writeFileSync(join(h.home, 'keep.txt'), 'theirs');
+    const r = await h.run(SCRIPTS.removeStaged);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout.trim(), 'removed');
+    assert.equal(existsSync(join(h.home, '.postbox-remote')), false);
+    assert.equal(readFileSync(join(h.home, 'keep.txt'), 'utf8'), 'theirs', 'nothing else in the home goes');
+  } finally {
+    h.done();
+  }
+  const stuck = host({ fakes: { pkill: 'exit 1', rm: 'exit 0' } });
+  try {
+    mkdirSync(join(stuck.home, '.postbox-remote'), { recursive: true });
+    const r = await stuck.run(SCRIPTS.removeStaged);
+    assert.notEqual(r.code, 0, 'a folder still there is a failure');
+    assert.doesNotMatch(r.stdout, /removed/);
+  } finally {
+    stuck.done();
+  }
+});

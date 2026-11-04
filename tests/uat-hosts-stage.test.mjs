@@ -8,11 +8,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { defaultHostSettings } from '../shared/remote-settings.mjs';
+import { hostStateOf } from '../tools/uat/history.mjs';
 import { hostMode, stagedOf } from '../tools/uat/hosts-options.mjs';
 import { createHostRun, setUpHost } from '../tools/uat/hosts-run.mjs';
 import { stageOlder, tagRepo } from '../tools/uat/hosts-stage.mjs';
 import { hostsUp } from '../tools/uat/hosts-watch.mjs';
 import { selectPhases } from '../tools/uat/phases.mjs';
+import { playedPhases, runScenario } from '../tools/uat/run-scenario.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { HOST_TRIGGERS } from '../tools/uat/triggers-host.mjs';
 
@@ -55,7 +57,10 @@ test('#464 --stage-host-version needs a --host to stage on', () => {
 });
 
 test('#464 --stage-host-version refuses this checkout’s own version, and a tag that isn’t here', () => {
-  assert.throws(() => stagedOf({ ...twoHosts, 'stage-host-version': 'v1.17.0' }, 2, repo()), /Postbox 1\.17\.0, the version this run installs/);
+  assert.throws(
+    () => stagedOf({ ...twoHosts, 'stage-host-version': 'v1.17.0' }, 2, repo()),
+    /Postbox 1\.17\.0, not older than 1\.17\.0, the version this run installs/,
+  );
   assert.throws(() => stagedOf({ ...twoHosts, 'stage-host-version': 'v9.9.9' }, 2, repo()), /no such tag in this checkout/);
 });
 
@@ -251,4 +256,37 @@ test('#464 host-staged-older stays silent without a staging, or when this run’
   assert.deepEqual(trigger.run(factsWith([{ label: 'host1', staged: '1.16.1' }])), []);
   assert.deepEqual(trigger.run(factsWith([{ label: 'host1', staged: '1.16.1', notInstalled: 2000, connected: { at: 1500 } }])), []);
   assert.deepEqual(trigger.run({}), []);
+});
+
+test('#464 --phase only says where to start, so a plain run with it still leaves the staged phase out', () => {
+  const { scenario } = hostMode({ ...twoHosts, phase: '2' }, 'remotehosts', remotehosts(), repo());
+  assert.ok(!scenario.phases.some((p) => p.title.startsWith('Phase 4')));
+  assert.equal(scenario.phases.length, remotehosts().phases.length - 1);
+});
+
+test('#464 a plain run records the phases it played, so a recheck reads the scenario as it was played', () => {
+  const all = remotehosts();
+  const { scenario } = hostMode(twoHosts, 'remotehosts', all, repo());
+  assert.deepEqual(playedPhases(all, scenario), [1, 2, 3]);
+  assert.equal(playedPhases(all, all), null, 'all of them played: nothing to record');
+});
+
+test('#464 --stage-host-version refuses a tag newer than this checkout, not only its own version', () => {
+  assert.throws(() => stagedOf({ ...twoHosts, 'stage-host-version': 'v1.18.0' }, 2, repo({ 'v1.18.0': '1.18.0' })), /not older than 1\.17\.0/);
+});
+
+test('#464 a host.status event keeps its failure’s kind, which tells a missing version from no token yet', () => {
+  assert.deepEqual(hostStateOf({ id: 'ho_1', status: { state: 'not-installed', failure: { kind: 'not-installed' } } }), {
+    id: 'ho_1',
+    state: 'not-installed',
+    failure: 'not-installed',
+  });
+  assert.deepEqual(hostStateOf({ id: 'ho_1', status: { state: 'not-installed', failure: null } }), { id: 'ho_1', state: 'not-installed', failure: null });
+  assert.equal(hostStateOf({ status: {} }), null);
+});
+
+test('#464 runScenario hands the runner the phases a plain host run played, for run.json', () => {
+  const root = new URL('..', import.meta.url).pathname;
+  assert.deepEqual(runScenario({ scenario: 'remotehosts', ...twoHosts }, root).phases, [1, 2, 3]);
+  assert.deepEqual(runScenario({ scenario: 'remotehosts', ...twoHosts, phases: '2' }, root).phases, [2]);
 });
