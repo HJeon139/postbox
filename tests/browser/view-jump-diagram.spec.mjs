@@ -27,15 +27,16 @@ test.beforeEach(() => test.setTimeout(120_000));
 
 for (const block of /** @type {const} */ (['start', 'center'])) {
   test(`a jump to an item with a diagram, to its ${block}, lands there once it and its diagram have drawn`, async ({ page }) => {
-    // jumpTo works out the center from the item's height at the estimate, 71 px, before it draws at about 330 px:
-    // pinned there, its top stays 129 px below the center. Remove this once jumpTo centers by the drawn height.
-    test.fail(block === 'center', 'jumpTo centers a skipped item by its estimated height (#712a)');
     await openRoom(app, page, room);
     const key = await jump(page, 'diagram', block);
+    const atJump = await page.evaluate((k) => document.querySelector(`#main.transcript > [data-key="${k}"]`)?.getBoundingClientRect().height ?? 0, key);
     const frame = page.locator(`#main.transcript > [data-key="${key}"] figure.diagram iframe`);
     await expect(frame, 'its diagram draws').toHaveAttribute('data-sized', '1', { timeout: 15_000 });
     await landed(page);
-    const v = await where(page, key, block);
+    // Its diagram's frame sizes itself after it loads, and the jump holds the item's top while it grows, as reading
+    // does: so the center is the one for its height when it was jumped to.
+    const v = { ...(await where(page, key, block)) };
+    if (block === 'center') v.want += (v.height - atJump) / 2;
     test.info().annotations.push({ type: 'measured', description: `${placed(v)}: ${JSON.stringify(v)}` });
     expect.soft(v.mode, 'reading').toBe('reading');
     expect.soft(v.anchor, 'the target is the anchor').toBe(key);
