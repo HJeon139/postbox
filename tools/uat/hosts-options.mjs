@@ -14,6 +14,7 @@ import { compareVersions } from '../../server/remote/host/cleanup-root.mjs';
 import { checkDestination, checkHostSettings } from '../../shared/remote-settings.mjs';
 import { forHosts } from './hosts-scenario.mjs';
 import { TAG_RE } from './hosts-stage.mjs';
+import { selectPhases } from './phases.mjs';
 import { compatBackends } from './scenario.mjs';
 
 /** A checkout with no tags, for a caller that gives none. */
@@ -97,9 +98,13 @@ export function stagedOf(opt, count, repo) {
 export function stageRefusal(scenario, staged) {
   const wrong = scenario.phases.filter((p) => (p.triggers ?? []).includes(STAGED_TRIGGER) !== staged).map((p) => `“${p.title}”`);
   if (!wrong.length) return null;
-  return staged
-    ? `--stage-host-version leaves host1 without this run’s Postbox, which ${wrong.join(' and ')} need${wrong.length > 1 ? '' : 's'}. Play only the phase that names ${STAGED_TRIGGER}, with --phases.`
-    : `${wrong.join(' and ')} need${wrong.length > 1 ? '' : 's'} an older Postbox on host1. Pass --stage-host-version with an older tag, such as v1.16.1, or leave ${wrong.length > 1 ? 'them' : 'it'} out with --phases.`;
+  const many = wrong.length > 1;
+  const need = many ? 'need' : 'needs';
+  const names = wrong.join(' and ');
+  if (staged)
+    return `--stage-host-version leaves host1 without this run’s Postbox, which ${names} ${need}. Play only the phase that names ${STAGED_TRIGGER}, with --phases.`;
+  const them = many ? 'them' : 'it';
+  return `${names} ${need} an older Postbox on host1. Pass --stage-host-version with an older tag, such as v1.16.1, or leave ${them} out with --phases.`;
 }
 
 /**
@@ -109,6 +114,19 @@ export function stageRefusal(scenario, staged) {
  */
 export function withoutStaged(scenario) {
   return { ...scenario, phases: scenario.phases.filter((p) => !(p.triggers ?? []).includes(STAGED_TRIGGER)) };
+}
+
+/**
+ * The scenario as a recorded run played it, for a recheck: cut to its recorded --phases, and, for a host run that
+ * named none and staged nothing, without the staged phase it left out (hostMode), rather than finding that phase’s
+ * trigger missing. @param {any} parsed  the whole scenario @param {any} hostsRec  hosts.json, or null
+ * @param {number[]|null} recorded  run.json’s phases
+ */
+export function asPlayed(parsed, hostsRec, recorded) {
+  const cut = selectPhases(parsed, recorded);
+  const staged = (hostsRec?.setup ?? []).some((x) => x.staged);
+  if (!hostsRec || recorded || staged) return cut;
+  return withoutStaged(cut);
 }
 
 /** One `hostN.key=value`, checked against the hosts given. @param {string} spec @param {number} count */

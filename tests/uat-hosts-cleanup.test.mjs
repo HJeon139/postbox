@@ -188,3 +188,18 @@ test('#464 UAT cleanup: clearing a staged host counts only when the script says 
 test('#464 the staged cleanup stops only Postbox’s own programs, not anything that names the folder', () => {
   assert.match(SCRIPTS.removeStaged, /pkill -KILL -u "\$\(id -u\)" -f '\[\.\]postbox-remote\/\[\^ \]\*\/host'/);
 });
+
+test('#464 UAT cleanup: a host baseline() refused, which has no id, is never cleared, staged or not', async () => {
+  const refused = hostRun({ record: { ended: true } });
+  refused.h.id = null;
+  refused.h.stage = { tag: 'v1.16.1', version: '1.16.1' };
+  const scripts = [];
+  await cleanUp(refused.hr, {
+    removeOne: async () => assert.fail('a host never added isn’t removed'),
+    run: async (_d, script) => {
+      scripts.push(script);
+      return { code: 0, stdout: 'removed\n', stderr: '' };
+    },
+  });
+  assert.ok(!scripts.includes(SCRIPTS.removeStaged), 'someone else’s Postbox there is never deleted');
+});

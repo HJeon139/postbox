@@ -118,7 +118,9 @@ export async function beforeStop(hr, { measure = measureOn } = {}) {
  */
 function stagedNotInstalled(hr, h, s, after) {
   const seen = (hr.hostStates?.() ?? []).find((e) => e.id === h.id && e.state === 'not-installed' && e.failure === 'not-installed' && e.at > after);
-  return seen?.at ?? (s?.state === 'not-installed' && s.failure?.kind === 'not-installed' ? Date.now() : null);
+  if (seen) return seen.at;
+  const now = s?.state === 'not-installed' && s.failure?.kind === 'not-installed';
+  return now ? Date.now() : null;
 }
 
 /**

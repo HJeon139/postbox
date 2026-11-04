@@ -22,7 +22,7 @@ export function runScenario(opt, root) {
   const parsed = parseScenario(readFileSync(scenarioFile, 'utf8'));
   const phases = phasesOf(opt, parsed.phases.length);
   const { hosts, placement, scenario } = hostMode(opt, name, selectPhases(parsed, phases), tagRepo(root));
-  const played = phases ?? playedPhases(parsed, scenario);
+
   const other = compatBackends(scenario);
   if (other.length && !opt.compat && !opt.release)
     throw new Error(
@@ -34,16 +34,5 @@ export function runScenario(opt, root) {
   if (gate.error) throw new Error(gate.error);
   const unknown = unknownTriggers(scenario);
   if (unknown.length) throw new Error(`This scenario names triggers that don’t exist: ${unknown.join(', ')}. See tools/uat/triggers.mjs.`);
-  return { name, hosts, placement, scenario, phases: played, gate };
-}
-
-/**
- * The phases a run plays when host mode left some out (a plain run without --stage-host-version, #464), by number,
- * so run.json records them and a recheck reads the scenario as it was played; null when it plays them all.
- * @param {{ phases: { title: string }[] }} parsed @param {{ phases: { title: string }[] }} scenario
- */
-export function playedPhases(parsed, scenario) {
-  if (scenario.phases.length === parsed.phases.length) return null;
-  const kept = new Set(scenario.phases.map((p) => p.title));
-  return parsed.phases.flatMap((p, i) => (kept.has(p.title) ? [i + 1] : []));
+  return { name, hosts, placement, scenario, phases, gate };
 }

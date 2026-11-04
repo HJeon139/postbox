@@ -9,12 +9,12 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { defaultHostSettings } from '../shared/remote-settings.mjs';
 import { hostStateOf } from '../tools/uat/history.mjs';
-import { hostMode, stagedOf } from '../tools/uat/hosts-options.mjs';
+import { asPlayed, hostMode, stagedOf } from '../tools/uat/hosts-options.mjs';
 import { createHostRun, setUpHost } from '../tools/uat/hosts-run.mjs';
 import { stageOlder, tagRepo } from '../tools/uat/hosts-stage.mjs';
 import { hostsUp } from '../tools/uat/hosts-watch.mjs';
 import { selectPhases } from '../tools/uat/phases.mjs';
-import { playedPhases, runScenario } from '../tools/uat/run-scenario.mjs';
+import { runScenario } from '../tools/uat/run-scenario.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { HOST_TRIGGERS } from '../tools/uat/triggers-host.mjs';
 
@@ -264,11 +264,17 @@ test('#464 --phase only says where to start, so a plain run with it still leaves
   assert.equal(scenario.phases.length, remotehosts().phases.length - 1);
 });
 
-test('#464 a plain run records the phases it played, so a recheck reads the scenario as it was played', () => {
+test('#464 a recheck of a plain host run leaves the staged phase out, as the run did', () => {
   const all = remotehosts();
-  const { scenario } = hostMode(twoHosts, 'remotehosts', all, repo());
-  assert.deepEqual(playedPhases(all, scenario), [1, 2, 3]);
-  assert.equal(playedPhases(all, all), null, 'all of them played: nothing to record');
+  const plain = { setup: [{ label: 'host1' }] };
+  assert.equal(asPlayed(all, plain, null).phases.length, all.phases.length - 1);
+  assert.equal(asPlayed(all, { setup: [{ label: 'host1', staged: '1.16.1' }] }, null).phases.length, all.phases.length, 'a staged run is read whole');
+  assert.equal(asPlayed(all, plain, [1, 2, 3, 4]).phases.length, 4, 'recorded --phases are read as recorded');
+  assert.deepEqual(
+    asPlayed(all, plain, [2]).phases.map((p) => p.title),
+    [all.phases[1].title],
+  );
+  assert.equal(asPlayed(all, null, null), all, 'a run with no hosts is read whole');
 });
 
 test('#464 --stage-host-version refuses a tag newer than this checkout, not only its own version', () => {
@@ -285,8 +291,8 @@ test('#464 a host.status event keeps its failure’s kind, which tells a missing
   assert.equal(hostStateOf({ status: {} }), null);
 });
 
-test('#464 runScenario hands the runner the phases a plain host run played, for run.json', () => {
+test('#464 runScenario records only the --phases asked for, not the phases a plain host run played', () => {
   const root = new URL('..', import.meta.url).pathname;
-  assert.deepEqual(runScenario({ scenario: 'remotehosts', ...twoHosts }, root).phases, [1, 2, 3]);
+  assert.equal(runScenario({ scenario: 'remotehosts', ...twoHosts }, root).phases, null);
   assert.deepEqual(runScenario({ scenario: 'remotehosts', ...twoHosts, phases: '2' }, root).phases, [2]);
 });
