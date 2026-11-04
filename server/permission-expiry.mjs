@@ -54,6 +54,9 @@ export function closeCard(rt, threadId, itemId, sessionId, patch) {
   // 'tool': a turn still running goes on with the tool call this card held.
   releaseNeed(rt, rt.s.sessions[sessionId], itemId, 'tool');
   rt.patchItem(threadId, itemId, patch);
+  // Also when the turn still runs and its waiting call got the refusal (a card past its wait, or a host’s deny at
+  // permissionWaitMax): the note repeats it on the next turn, by intent, since a turn that ends at the same moment
+  // can’t be told apart here, and a repeated “ask again” costs one line where a lost one strands the request.
   if (EXPIRED.has(patch.status)) tellExpired(rt, threadId, itemId);
 }
 

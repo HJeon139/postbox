@@ -273,3 +273,25 @@ test('#721 on #633: an expired card that was the need hands it to the next card 
   assert.equal(now().needs?.itemId, app.id, 'the app card is the need now');
   assert.equal(notes(now()).length, 1);
 });
+
+test('#721 closing a card moves the need before the card’s patch, so the page redraws the card with nothing waiting on it', async () => {
+  const { rt, t, ask, now } = await setup();
+  const { card } = await ask();
+  const order = [];
+  const update = rt.updateSession.bind(rt);
+  const patch = rt.patchItem.bind(rt);
+  rt.updateSession = (id, p) => {
+    if (Object.hasOwn(p, 'needs')) order.push('need');
+    return update(id, p);
+  };
+  rt.patchItem = (threadId, id, p) => {
+    if (id === card.id && Object.hasOwn(p, 'status')) order.push('card');
+    return patch(threadId, id, p);
+  };
+  rt.resolvePermission(t.id, card.id, 'allow');
+  rt.updateSession = update;
+  rt.patchItem = patch;
+  await settle(rt);
+  assert.deepEqual(order.slice(0, 2), ['need', 'card']);
+  assert.equal(now().needs, null);
+});
