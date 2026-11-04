@@ -4,7 +4,11 @@
 // scroll (view-state.mjs, pin()). Every jump to an item goes through jumpTo; tests/view-jump-sites.test.mjs finds any
 // that doesn't.
 
-/** @typedef {{ box: () => Element | null, top: () => number, pin: (item: HTMLElement) => void }} Jumpable */
+/**
+ * What a view gives a jump: its scroll box; the page's y where what you can see of it starts and ends, below the top
+ * bar in the main pane; and pin(), which makes an item its anchor.
+ * @typedef {{ box: () => Element | null, seen: () => { top: number, bottom: number }, pin: (item: HTMLElement) => void }} Jumpable
+ */
 
 /** Each mounted transcript's view, so a jump from anywhere on the page finds the one its target is in. */
 const views = /** @type {WeakMap<Element, Jumpable>} */ (new WeakMap());
@@ -27,6 +31,19 @@ export function wantedTop(top, height, room, block) {
 }
 
 /**
+ * el's rect with its item drawn: a skipped item is laid out at its estimated size, so el's height and top would be the
+ * estimate's, and the item drawn at its real size would then sit off where block puts it.
+ * @param {HTMLElement} item @param {Element} el
+ */
+function drawnRect(item, el) {
+  const was = item.style.contentVisibility;
+  item.style.contentVisibility = 'visible';
+  const r = el.getBoundingClientRect();
+  item.style.contentVisibility = was;
+  return r;
+}
+
+/**
  * Puts el where block says, and its item becomes its transcript's anchor. Outside a transcript, a plain scrollIntoView.
  * @param {Element} el @param {'start' | 'center' | 'nearest'} [block]
  */
@@ -38,9 +55,10 @@ export function jumpTo(el, block = 'center') {
     el.scrollIntoView({ block });
     return;
   }
-  const r = el.getBoundingClientRect();
-  const top = r.top - view.top();
-  const wanted = wantedTop(top, r.height, s.clientHeight, block);
+  const r = drawnRect(item, el);
+  const seen = view.seen();
+  const top = r.top - seen.top;
+  const wanted = wantedTop(top, r.height, seen.bottom - seen.top, block);
   if (wanted !== null) s.scrollTop += top - wanted;
   view.pin(item);
 }
