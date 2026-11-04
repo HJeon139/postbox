@@ -109,6 +109,16 @@ test('lint-ternary: a renamed file keeps its old nested ternary without failing'
   assert.equal(r.status, 0, r.out);
 });
 
+test('lint-ternary: a renamed file whose edit adds a nested ternary fails, under its new name', () => {
+  const { dir, git } = repo();
+  git('mv', 'old.mjs', 'new.mjs');
+  write(dir, 'new.mjs', `${OLD}${NEW_TERNARY}`);
+  git('commit', '-q', '-am', 'move and add');
+  const r = run(dir);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /^new\.mjs:5: nested ternary on a changed line$/m);
+});
+
 test('lint-ternary: a deleted file with an old nested ternary passes', () => {
   const { dir, git } = repo();
   git('rm', '-q', 'old.mjs');

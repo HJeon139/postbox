@@ -120,3 +120,7 @@ test('lint-ternary: a hunk that says it has more lines than the diff holds fails
   const diff = ['--- a/x.mjs', '+++ b/x.mjs', '@@ -1 +1,2 @@', '+only one', ''].join('\n');
   assert.throws(() => addedRanges(diff), /ends inside a hunk/);
 });
+
+test('lint-ternary: a diff cut off inside a hunk that only removes lines fails, rather than passing as no added lines', () => {
+  assert.throws(() => addedRanges('--- a/x.mjs\n+++ b/x.mjs\n@@ -1,3 +0,0 @@\n-x'), /ends inside a hunk/);
+});
