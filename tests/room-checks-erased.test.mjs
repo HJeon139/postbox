@@ -130,3 +130,17 @@ test('work-files-match-stream on a host leaves out an erased conversation’s ed
   );
   assert.match(out[0].evidence, /: \/h\/live\.md\.$/);
 });
+
+/** The room with @critic removed from it: its session is gone, and its refusal card stays, marked deletedAgent. */
+function roomWithRemovedAgent(streams) {
+  const f = room(streams);
+  f.state.items.t1 = [{ id: 'd1', kind: 'denial', handle: 'critic', sessionId: 's2', toolUseId: 'r_removed', deletedAgent: true }];
+  return f;
+}
+const removedTurn = (events) => ({ handle: 'critic', started: 10, ended: 15, events: [init('0ff00000-removed'), ...events] });
+
+test('refusal-without-card still reports a live agent’s uncarded refusal when a removed agent’s card stays', () => {
+  const out = found(roomWithRemovedAgent([removedTurn([refusal('r_removed')]), turn(LIVE, [refusal('r_live')])]), 'refusal-without-card');
+  assert.equal(out.length, 1, JSON.stringify(out));
+  assert.match(out[0].evidence, /^1 refused, 0 cards\. @researcher: Bash/);
+});

@@ -380,8 +380,10 @@ export const CHECKS = [
     inputs: ['state', 'threads', 'streams'],
     issue: 65,
     run: (f) => {
-      const cards = itemsOf(f).filter((it) => it.kind === 'denial').length;
-      const refused = keptStreams(f).flatMap(({ handle, events }) => {
+      // Per agent: a removed agent’s cards stay in its conversation while its streams are left out (#729), and one
+      // agent’s cards never stand for another’s refusals.
+      const cardsOf = (handle) => itemsOf(f).filter((it) => it.kind === 'denial' && it.handle === handle).length;
+      const all = keptStreams(f).flatMap(({ handle, events }) => {
         const listed = events.filter((e) => e.type === 'result').flatMap((e) => e.permission_denials ?? []);
         const declined = new Set(
           events
@@ -392,7 +394,10 @@ export const CHECKS = [
         );
         return listed.filter((d) => !declined.has(d.tool_use_id)).map((d) => ({ handle, d }));
       });
-      return refused.length > cards
+      const short = [...new Set(all.map((r) => r.handle))].filter((h) => all.filter((r) => r.handle === h).length > cardsOf(h));
+      const refused = all.filter((r) => short.includes(r.handle));
+      const cards = short.reduce((n, h) => n + cardsOf(h), 0);
+      return short.length
         ? [
             {
               title: 'Claude Code refused calls, and Postbox showed no card',
