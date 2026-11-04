@@ -223,6 +223,7 @@ function pin(v, item) {
   if (!s || v.dead) return;
   v.stuck = atEnd(s);
   v.pinned = !v.stuck;
+  if (v.stuck) v.held = measure(v, s);
   v.anchor = { key: /** @type {string} */ (item.dataset.key), at: item.getBoundingClientRect().top - viewTop(v, s) };
   v.lastTop = s.scrollTop;
   if (gapOf(s) <= PILL_ROOM) seen(v);
@@ -232,9 +233,23 @@ function pin(v, item) {
 /** What view-jump.mjs needs of a view. @param {View} v */
 const jumpable = (v) => ({
   box: () => box(v),
-  top: () => viewTop(v, /** @type {Element} */ (box(v))),
+  seen: () => inSight(v),
   pin: (/** @type {HTMLElement} */ item) => pin(v, item),
 });
+/**
+ * Where what you can see of the view starts and ends, in the page's y: the panel's scroll box, or the window below
+ * the main pane's sticky top bar.
+ * @param {View} v
+ */
+function inSight(v) {
+  const s = /** @type {Element} */ (box(v));
+  if (v.inPanel) {
+    const r = s.getBoundingClientRect();
+    return { top: r.top, bottom: r.top + s.clientHeight };
+  }
+  const bar = document.querySelector('header.topbar')?.getBoundingClientRect().bottom ?? 0;
+  return { top: Math.max(0, bar), bottom: s.clientHeight };
+}
 
 /**
  * A view's state as it starts: following, unless it comes back from a rebuild while reading (was). Its observers are
