@@ -112,3 +112,18 @@ test('#464-b2a: forget() during an automatic install waits for it, and leaves no
     t.done();
   }
 });
+
+test('#464-b2a: turning the consent on for a host already stopped on a 127 connects once, and that installs', async () => {
+  const t = rig();
+  try {
+    const f = await t.mgr.connect('h1').catch((e) => e);
+    assert.equal(f.detail.code, 127);
+    await settle();
+    assert.equal(t.runs.length, 0, 'no consent yet, so no install');
+    await t.mgr.setKeepUpdated('h1', true);
+    await until(() => readRecord(t.dataDir)?.installs?.[0]?.outcome === 'installed', 'the record says installed');
+    assert.equal(t.runs.length, 1);
+  } finally {
+    t.done();
+  }
+});

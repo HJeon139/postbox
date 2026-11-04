@@ -25,6 +25,7 @@ import { SshFailure } from './ssh-failures.mjs';
  * @typedef {Awaited<ReturnType<typeof installHost>>} InstallResult
  * @typedef {{ ok: true, result: InstallResult } | { ok: false, failure: any }} InstallOutcome
  * @typedef {{ done: Promise<InstallOutcome>, abort: AbortController }} Updating
+ * @typedef {import('./install-record.mjs').InstallEntry} InstallEntry
  */
 
 /** The installer’s exit when another attach or install holds this version’s lock (install-script.mjs). */
@@ -163,15 +164,27 @@ async function noteEnd(m, id, tried, outcome) {
   try {
     await changeRecord(m, id, (was) => {
       if (!m.getHost(id)) return null;
-      const at = was.installs.findIndex((i) => i.version === tried.version && i.at === tried.at && i.outcome === 'started');
-      const installs = at === -1 ? [ended, ...was.installs] : was.installs.map((i, n) => (n === at ? ended : i));
-      return { keepUpdated: was.keepUpdated, installs };
+      return { keepUpdated: was.keepUpdated, installs: withEnded(was.installs, tried, ended) };
     });
   } catch (e) {
     noteError(m, id, `Postbox couldn’t note how its install ended in its data folder (${e?.code ?? 'error'}).`);
     return;
   }
   update(m, id);
+}
+
+/**
+ * The tries with this one’s started entry replaced by how it ended, or the ended entry added first when the started
+ * one is gone (a record rewritten meanwhile).
+ * @param {InstallEntry[]} installs @param {InstallEntry} tried @param {InstallEntry} ended @returns {InstallEntry[]}
+ */
+function withEnded(installs, tried, ended) {
+  const isThisTry = (/** @type {InstallEntry} */ i) => i.version === tried.version && i.at === tried.at && i.outcome === 'started';
+  const at = installs.findIndex(isThisTry);
+  if (at === -1) return [ended, ...installs];
+  const replaced = [...installs];
+  replaced[at] = ended;
+  return replaced;
 }
 
 /**
@@ -183,4 +196,7 @@ export async function setKeepUpdated(m, id, on) {
   hostOf(m, id);
   await changeRecord(m, id, (was) => ({ keepUpdated: on, installs: was.installs }));
   update(m, id);
+  // A host already stopped on a 127 hears no more failures by itself (wake() skips a stopped link), so turning the
+  // consent on connects once, and the rule sees that attempt’s failure.
+  if (on && m.links.get(id)?.link.state === 'stopped') connectNow(m, id).catch(() => {});
 }
