@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cleanUp } from '../tools/uat/hosts-end.mjs';
+import { cleanUp, removedOrCleared } from '../tools/uat/hosts-end.mjs';
 import { makeRunFolder } from '../tools/uat/hosts-run.mjs';
 import { SCRIPTS } from '../tools/uat/hosts-ssh.mjs';
 import { beforeStop, leftBy } from '../tools/uat/hosts-watch.mjs';
@@ -202,4 +202,27 @@ test('#464 UAT cleanup: a host baseline() refused, which has no id, is never cle
     },
   });
   assert.ok(!scripts.includes(SCRIPTS.removeStaged), 'someone else’s Postbox there is never deleted');
+});
+
+test('#464 UAT end of run: a staged host’s refused Remove is cleared by the runner and recorded as gone, with what Remove said', async () => {
+  const h = { label: 'host1', destination: DEST, stage: { tag: 'v1.16.1', version: '1.16.1' } };
+  const scripts = [];
+  const run = async (_d, script) => {
+    scripts.push(script);
+    return { code: 0, stdout: 'removed\n', stderr: '' };
+  };
+  const r = await removedOrCleared(h, { error: 'Remove was refused: not installed' }, { run, look: async () => ({ left: [] }) });
+  assert.deepEqual(scripts, [SCRIPTS.removeStaged]);
+  assert.equal(r.exists, false);
+  assert.deepEqual(r.left, []);
+  assert.equal(r.removeFirst, 'Remove was refused: not installed');
+  assert.equal(r.error, undefined, 'the host is gone, so the record carries no error');
+
+  const plain = { label: 'host2', destination: DEST };
+  const refused = { error: 'Remove was refused' };
+  const never = { run: async () => assert.fail('never cleared') };
+  assert.equal(await removedOrCleared(plain, refused, never), refused, 'a host it didn’t stage');
+  assert.equal(await removedOrCleared(h, GONE, never), GONE, 'a Remove that worked needs nothing more');
+  const still = await removedOrCleared(h, refused, { run, look: async () => ({ left: ['4100 host.mjs serve'] }) });
+  assert.deepEqual(still.left, ['4100 host.mjs serve'], 'what still runs is listed, not assumed gone');
 });

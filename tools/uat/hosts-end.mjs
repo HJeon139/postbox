@@ -92,7 +92,7 @@ export async function finish(hr) {
     );
   });
   for (const h of set) {
-    hr.record.removed[h.label] = await remove(hr, h);
+    hr.record.removed[h.label] = await removedOrCleared(h, await remove(hr, h));
     hr.log(`${h.label} removed: ${JSON.stringify(hr.record.removed[h.label])}`);
   }
   for (const h of set) await removeRunFolder(hr, h);
@@ -120,11 +120,33 @@ async function removeRunFolder(hr, h, run = onHost) {
  * @param {HostRun} hr @param {RunHost} h @param {typeof onHost} run
  */
 async function removeStaged(hr, h, run) {
-  const r = await run(h.destination, SCRIPTS.removeStaged);
-  const done = r.code === 0 && linesOf(r.stdout).includes('removed');
-  const result = done ? { exists: false, left: [], staged: true } : { error: `removing the staged Postbox exited ${r.code}` };
+  const result = await clearStaged(h, run);
   hr.record.cleanup[h.label] = result;
   return result;
+}
+
+/** Stops the staged Postbox on the host and deletes ~/.postbox-remote, as the record of a Remove. @param {RunHost} h @param {typeof onHost} run */
+async function clearStaged(h, run) {
+  const r = await run(h.destination, SCRIPTS.removeStaged);
+  const done = r.code === 0 && linesOf(r.stdout).includes('removed');
+  return done ? { exists: false, left: [], staged: true } : { error: `removing the staged Postbox exited ${r.code}` };
+}
+
+/**
+ * The end of a run’s Remove for one host. A host the run staged an older Postbox on (#464) can’t be removed through
+ * this version’s daemon, which it hasn’t got, so the runner clears it itself and records that, with what Remove said
+ * first; the end-of-run checks then read a host that’s gone, as it is. Any other host’s Remove stands as it was.
+ * What runs there afterwards is listed, as after a Remove, rather than assumed.
+ * @param {RunHost} h @param {any} removed  what Remove through the UI recorded
+ * @param {{ run?: typeof onHost, look?: (h: RunHost) => Promise<{ left: string[] | null, unmeasured?: string }> }} [o]
+ */
+export async function removedOrCleared(h, removed, { run = onHost, look = (x) => untilNothing(x, 30_000) } = {}) {
+  if (!h.stage || removedThere(removed)) return removed;
+  const cleared = await clearStaged(h, run);
+  const first = removed?.error ?? 'Remove left ~/.postbox-remote there';
+  if (cleared.error) return { ...cleared, removeFirst: first };
+  const { left, unmeasured } = await look(h);
+  return { exists: false, left, staged: true, removeFirst: first, ...(unmeasured ? { unmeasured } : {}) };
 }
 
 /** Whether a Remove’s record shows Postbox gone from the host: no error, no ~/.postbox-remote, nothing of it running. */
