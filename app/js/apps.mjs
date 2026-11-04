@@ -6,6 +6,7 @@ import { afterAppChecks, appChecksRunning, installAppChecks, recordAppCheck } fr
 import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
 import { api, client, itemsOf } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
+import { goToItem } from './go-to-item.mjs';
 import { libSource, theme } from './sandbox-libs.mjs';
 import { openMenu, toast } from './ui.mjs';
 
@@ -681,13 +682,7 @@ export function renderAppItem(item, ctx) {
 function retiredLine(app, versionBtn, ctx) {
   const r = app.retired;
   const to = r.replacedBy && itemsOf(ctx.threadId).some((x) => x.id === r.replacedBy.itemId) ? r.replacedBy : null;
-  const goTo = (e) => {
-    const box = /** @type {HTMLElement} */ (e.currentTarget).closest('.transcript');
-    const node = box?.querySelector(`:scope > [data-key="${CSS.escape(to.itemId)}"]`);
-    if (!(node instanceof HTMLElement)) return;
-    node.scrollIntoView({ block: 'center' });
-    (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus({ preventScroll: true });
-  };
+  const goTo = (e) => goToItem(e, to.itemId);
   return h(
     'div.col.sys-line.app-retired',
     { role: 'group', 'aria-label': `${app.title}, retired` },

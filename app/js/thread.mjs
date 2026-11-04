@@ -18,6 +18,7 @@ import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
 import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
+import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
@@ -537,13 +538,7 @@ function movedLine(it, ctx) {
             type: 'button',
             // The name starts with the words on the button, so saying what you see presses it (WCAG 2.5.3).
             'aria-label': `Go to it: ${it.title}`,
-            onclick: (e) => {
-              const box = /** @type {HTMLElement} */ (e.currentTarget).closest('.transcript');
-              const node = box?.querySelector(`:scope > [data-key="${CSS.escape(it.itemId)}"]`);
-              if (!(node instanceof HTMLElement)) return;
-              node.scrollIntoView({ block: 'center' });
-              (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus({ preventScroll: true });
-            },
+            onclick: (e) => goToItem(e, it.itemId),
           },
           'Go to it',
         )
