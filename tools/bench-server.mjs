@@ -10,7 +10,7 @@
 //
 //   node tools/bench-server.mjs --sizes 1000,4000,10000 --runs 3 --out designs/508/server-report.md
 
-import { cp, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -218,6 +218,17 @@ export function stopper(live, exit = process.exit) {
   };
 }
 
+/**
+ * Writes text to path whole: to a file beside it first, then renamed over it, so a reader or a stop never sees part
+ * of it. fs is for tests.
+ * @param {string} path  @param {string} text  @param {{ writeFile: typeof writeFile, rename: typeof rename }} [fs]
+ */
+export async function writeWhole(path, text, fs = { writeFile, rename }) {
+  const draft = `${path}.tmp`;
+  await fs.writeFile(draft, text);
+  await fs.rename(draft, path);
+}
+
 /** @type {Live} */
 const live = { size: null, stopping: false };
 
@@ -244,7 +255,9 @@ async function main() {
     inputs: { sizes: o.sizes, runs: o.runs, requests: o.requests, chunks: o.chunks },
     results,
   });
-  await writeFile(o.out, report);
+  // A signal now waits for the write, as it does for a size, so it never leaves half a report.
+  live.size = writeWhole(o.out, report);
+  await live.size;
   console.log(`Wrote ${shownPath(o.out, ROOT)}.`);
 }
 

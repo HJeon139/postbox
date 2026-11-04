@@ -1,10 +1,13 @@
-// The server bench’s stop (#508, tools/bench-server.mjs): every size runs in order until a signal, which waits for
-// the size in progress before it exits. Split from
+// The server bench’s stop and its report write (#508, tools/bench-server.mjs): every size runs in order until a
+// signal, which waits for the size in progress, or the report’s write, before it exits. Split from
 // tests/bench-server.test.mjs, which was at its size cap.
 
 import assert from 'node:assert/strict';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
-import { measureAll, stopper } from '../tools/bench-server.mjs';
+import { measureAll, stopper, writeWhole } from '../tools/bench-server.mjs';
 
 test('measureAll measures every size, in the order given', async () => {
   const seen = [];
@@ -73,4 +76,25 @@ test('measureAll keeps the size in progress where a stop can wait for it', async
   const live = { size: null, stopping: false };
   await measureAll({ sizes: [10] }, async (items) => ({ items }), live);
   assert.deepEqual(await live.size, { items: 10 });
+});
+
+test('the report is written whole: to a file beside it, then renamed over it', async () => {
+  const calls = [];
+  const fs = {
+    writeFile: async (path, text) => calls.push(['write', path, text]),
+    rename: async (from, to) => calls.push(['rename', from, to]),
+  };
+  await writeWhole('out/report.md', '# report', fs);
+  assert.deepEqual(calls, [
+    ['write', 'out/report.md.tmp', '# report'],
+    ['rename', 'out/report.md.tmp', 'out/report.md'],
+  ]);
+  const dir = mkdtempSync(join(tmpdir(), 'pb-bench-whole-'));
+  try {
+    await writeWhole(join(dir, 'r.md'), 'whole');
+    assert.equal(readFileSync(join(dir, 'r.md'), 'utf8'), 'whole');
+    assert.deepEqual(readdirSync(dir), ['r.md']);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
