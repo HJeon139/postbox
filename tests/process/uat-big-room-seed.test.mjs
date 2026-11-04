@@ -41,7 +41,7 @@ test('the runner seeds the big room into the conversation the page started, and 
     });
     const opened = [];
     const page = { goto: async (url) => opened.push(url) };
-    const note = await openBigRoom({ postbox, data, threadId: 'th_big', agents: ['researcher'], page, log: (l) => lines.push(l) });
+    const note = await openBigRoom({ postbox, data, threadId: 'th_big', scenario: { agents: ['researcher'] }, page, log: (l) => lines.push(l) });
     const { state } = await postbox.api('/api/state');
     assert.equal(state.items.th_big.length, 1000, lines.join('\n'));
     assert.equal(state.items.th_big[0].id, 'it_big0000');

@@ -18,6 +18,7 @@ import { TELEMETRY_TRIGGERS } from './telemetry-triggers.mjs';
 import { clip, cell as esc, itemsOf } from './trigger-facts.mjs';
 import { HOST_TRIGGERS } from './triggers-host.mjs';
 import { answeredStop, jobsRecorded, jobTimeline } from './triggers-jobs.mjs';
+import { VIEW_TRIGGERS } from './view-triggers.mjs';
 
 export { jobTimeline } from './triggers-jobs.mjs';
 
@@ -123,6 +124,7 @@ export const TRIGGERS = {
   ...NEEDS_TRIGGERS,
   ...ALLOW_ONCE_TRIGGERS,
   ...DELIVERY_TRIGGERS,
+  ...VIEW_TRIGGERS,
 };
 
 /**

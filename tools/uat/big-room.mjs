@@ -52,9 +52,17 @@ const idOf = (i) => `it_big${String(i).padStart(4, '0')}`;
 
 /**
  * The room’s items, oldest first, and its landmarks’ ids. handles: the agents in it; the mention is of the first.
- * @param {{ count?: number, start?: number, seed?: number, handles?: string[] }} [opts]
+ * diagrams: how many agent replies, spread evenly through the room, end in a Mermaid diagram (#701’s UAT trigger,
+ * `- seed-diagrams:`). None by default, so the rooms the key-press tool measures don’t change.
+ * @param {{ count?: number, start?: number, seed?: number, handles?: string[], diagrams?: number }} [opts]
  */
-export function bigRoomItems({ count = 1000, start = Date.UTC(2026, 8, 1, 9), seed = 508, handles = ['researcher', 'critic', 'developer'] } = {}) {
+export function bigRoomItems({
+  count = 1000,
+  start = Date.UTC(2026, 8, 1, 9),
+  seed = 508,
+  handles = ['researcher', 'critic', 'developer'],
+  diagrams = 0,
+} = {}) {
   const rnd = random(seed);
   const step = Math.floor((5 * DAY_MS) / count);
   const at = (i) => start + i * step;
@@ -90,7 +98,26 @@ export function bigRoomItems({ count = 1000, start = Date.UTC(2026, 8, 1, 9), se
     { id: landmarks.decision, at: at(5), kind: 'user', text: 'Decision: 2.0 ships on the release train, not on a fixed date.' },
   ];
   for (let i = items.length; i < count; i++) items.push(filler(rnd, i, at(i), handles.slice(1).length ? handles.slice(1) : handles, at(i) < start + DAY_MS));
+  addDiagrams(items, diagrams);
   return { items, landmarks };
+}
+
+/**
+ * Ends `n` agent replies in a Mermaid diagram, one each: the first agent reply not yet given one at or after each of n
+ * even steps through the filler. It draws no random numbers, so the room is otherwise the one without diagrams. A room
+ * with fewer agent replies than n after its landmarks is refused. @param {any[]} items @param {number} n
+ */
+function addDiagrams(items, n) {
+  const first = 6; // after the landmarks
+  const stride = Math.floor((items.length - first) / Math.max(n, 1));
+  let last = first - 1;
+  for (let k = 0; k < n; k++) {
+    const from = Math.max(last + 1, first + k * stride);
+    const at = items.findIndex((it, i) => i >= from && it.kind === 'agent');
+    if (at < 0) throw new Error(`The big room has too few agent replies for ${n} diagrams.`);
+    items[at] = { ...items[at], text: `${items[at].text}\n\n\`\`\`mermaid\nflowchart TD\n  D${k}a[Plan] --> D${k}b[Ship]\n\`\`\`\n` };
+    last = at;
+  }
 }
 
 /**
@@ -113,14 +140,15 @@ export function seedBigRoom(store, threadId, opts, sessions = {}) {
  * Seeds the room into a conversation in a run’s data folder while its Postbox is down, with the agents’ sessions the
  * page made there, and says where its decision is, for the tester (bigroom.md’s phase 2: “the run gives it to you”).
  * @param {string} data  @param {string} threadId  @param {string[]} agents  the scenario’s; the mention is of the first
+ * @param {{ diagrams?: number }} [opts]  diagrams: as bigRoomItems takes it
  */
-export async function seedBigRoomData(data, threadId, agents) {
+export async function seedBigRoomData(data, threadId, agents, { diagrams = 0 } = {}) {
   const store = await new Store(data).load();
   /** @type {Record<string, { sessionId: string, personaId?: string }>} */
   const sessions = {};
   for (const se of Object.values(store.state.sessions ?? {}))
     if (se?.threadId === threadId && !se.archived && !sessions[se.handle]) sessions[se.handle] = { sessionId: se.id, personaId: se.personaId };
-  const landmarks = seedBigRoom(store, threadId, { handles: agents }, sessions);
+  const landmarks = seedBigRoom(store, threadId, { handles: agents, diagrams }, sessions);
   await store.close(); // and release the folder for the Postbox that starts next
   return {
     landmarks,
@@ -132,16 +160,19 @@ export async function seedBigRoomData(data, threadId, agents) {
 
 /**
  * `- seed: big-room` in a run (tools/uat-run.mjs): once the page has started the conversation, stops Postbox, seeds the
- * room into its store, starts it again on the same data, and opens the room. Returns the note for the tester.
+ * room into its store, starts it again on the same data, and opens the room. Returns the note for the tester. The
+ * scenario gives the room its agents and, with `- seed-diagrams:`, its diagrams (#701).
  * @param {{ postbox: { origin: string, restart: (o?: { whileDown?: () => Promise<void> }) => Promise<number> }, data: string,
- *   threadId: string, agents: string[], page: { goto: (url: string) => Promise<any> }, log: (line: string) => void }} o
+ *   threadId: string, scenario: { agents: string[], seedDiagrams?: number }, page: { goto: (url: string) => Promise<any> },
+ *   log: (line: string) => void }} o
  */
-export async function openBigRoom({ postbox, data, threadId, agents, page, log }) {
+export async function openBigRoom({ postbox, data, threadId, scenario, page, log }) {
+  const { agents, seedDiagrams: diagrams = 0 } = scenario;
   /** @type {Awaited<ReturnType<typeof seedBigRoomData>> | null} */
   let seeded = null;
   await postbox.restart({
     whileDown: async () => {
-      seeded = await seedBigRoomData(data, threadId, agents);
+      seeded = await seedBigRoomData(data, threadId, agents, { diagrams });
     },
   });
   if (!seeded) throw new Error('Postbox restarted without seeding the big room.');
