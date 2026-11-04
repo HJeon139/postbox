@@ -3,7 +3,7 @@
 // tests/process/ (npm run test:process). It reads the working tree and writes nothing.
 
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -49,4 +49,20 @@ test('every synthetic fixture the fixtures README lists exists, and every fixtur
     [],
     'labelled synthetic but not listed in tests/fixtures/README.md',
   );
+});
+
+// The folders tools write their output to, which designs/developing.md (“Temporary files go where they’re cleaned up”)
+// says git ignores. A check log under one of them was committed once, with a real home path in it.
+const OUTPUT_FOLDERS = ['screenshots/latest/', 'uat-runs/', 'check-logs/'];
+
+test('the folders tools write to are ignored, and git tracks no file in them', () => {
+  for (const folder of OUTPUT_FOLDERS) {
+    const checked = spawnSync('git', ['check-ignore', '--no-index', '-q', `${folder}probe.json`], { cwd: ROOT, timeout: 10_000 });
+    assert.equal(checked.status, 0, `.gitignore ignores ${folder}`);
+    assert.deepEqual(
+      trackedFiles().filter((path) => path.startsWith(folder)),
+      [],
+      `git tracks files under ${folder}`,
+    );
+  }
 });
