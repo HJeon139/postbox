@@ -1,6 +1,6 @@
 # #633: which card an agent needs you for, until A1b
 
-**Status:** revision 4: revision 3, which the person approved, plus the fixes from the pre-review packet’s independent read (S3 rule 4). critic’s re-read of the changes since revision 2 is still to come. A stopgap: A1b derives needs from open ask records and replaces `nextNeed` (`design.md:607`; `execution-plan.md:41`). #508 actions 4 and 9 ask every stopgap note for a restart matrix and `main`’s behavior as a table; both are below.
+**Status:** revision 5: revision 3, which the person approved, plus the pre-review packet’s fixes (revision 4) and critic’s and researcher’s reads at `2d967ecb` (I1’s fifth write, functions cited instead of lines). A stopgap: A1b derives needs from open ask records and replaces `nextNeed` (`design.md:607`; `execution-plan.md:41`). #508 actions 4 and 9 ask every stopgap note for a restart matrix and `main`’s behavior as a table; both are below.
 
 ## Decisions
 
@@ -20,10 +20,13 @@ Which comes first: `RANK` (permission, failed, block, refusal, tool request, the
 
 ## Invariants
 
-- **I1. One decider, and four direct writes.** Every write to `se.needs` goes through `offerNeed` (a new card), `releaseNeed` (its card answered or retired), `nextNeed` (the turn’s end), or `settledNeed` (`server/restart-sweep.mjs`: the restart sweep and a Retry’s reset), except four:
-  - a laptop turn that fails sets `failed` (`server/runtime.mjs:1005`);
-  - a host turn interrupted on its host sets `failed` (`server/remote/turns-resume.mjs:158`);
-  - archiving an agent (`runtime.mjs:2607`) and retiring a fork (`server/side-threads.mjs:196`) clear it.
+- **I1. One decider, and four direct writes.** Every write to `se.needs` goes through `offerNeed` (a new card), `releaseNeed` (its card answered or retired), `nextNeed` (the turn’s end), or `settledNeed` (`server/restart-sweep.mjs`: the restart sweep and a Retry’s reset), except five:
+  - a turn that moves on clears a need tied to a turn at its start, the “moving on” rule of #69 (`Runtime.deliver`, where the turn starts, with `TURN_TIED`);
+  - a laptop turn that fails sets `failed` (`Runtime.endTurn`, its failed path);
+  - a host turn interrupted on its host sets `failed` (`server/remote/turns-resume.mjs`, the interrupted branch);
+  - archiving an agent (`Runtime.archive`) and retiring a fork (`server/side-threads.mjs`, `archiveForks`) clear it.
+
+  A new session starts with `needs: null`, which is its initial value, not a write.
 
   The two `failed` writes end the turn, so they outrank whatever it waited on, a host permission it kept included: that permission belonged to the turn that just failed, and its prompt goes with it. That is `main`’s order too. R: read from the code; no rig drives a host interrupt with a kept permission card.
 - **I2. A clear is its own.** A resolver clears the need only when the need is its card (`releaseNeed`’s `itemId` check).
