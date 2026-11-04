@@ -37,8 +37,8 @@ function onlyNeeds(sessionId, needs) {
 }
 
 /**
- * The transcript's view of a thread, and where a target in it starts in its scroll box: the page, or the side panel's
- * body. clamped says the box is scrolled to its start or its end, where a jump can't put the target where it wants.
+ * The transcript's view of a thread, and where a target in it starts in what you can see of its scroll box: the page
+ * below the top bar, or the side panel's body. clamped says the box is scrolled to its start or its end, where a jump can't put the target where it wants.
  * @param {any} page @param {string} threadId @param {string} target  a selector for the target
  */
 const where = (page, threadId, target) =>
@@ -47,7 +47,9 @@ const where = (page, threadId, target) =>
       const el = /** @type {HTMLElement} */ (document.querySelector(`.transcript[data-thread="${id}"]`));
       const inPanel = !!el.closest('.sidepanel');
       const s = /** @type {Element} */ (inPanel ? el.parentElement : document.scrollingElement);
-      const top0 = inPanel ? s.getBoundingClientRect().top : 0;
+      // What you can see starts at the panel's body, or under the main pane's sticky top bar.
+      const bar = document.querySelector('header.topbar')?.getBoundingClientRect().bottom ?? 0;
+      const top0 = inPanel ? s.getBoundingClientRect().top : Math.max(0, bar);
       const r = /** @type {Element} */ (document.querySelector(sel)).getBoundingClientRect();
       const gap = s.scrollHeight - s.scrollTop - s.clientHeight;
       return {
@@ -55,7 +57,7 @@ const where = (page, threadId, target) =>
         anchor: el.dataset.viewAnchor,
         top: r.top - top0,
         height: r.height,
-        room: s.clientHeight,
+        room: inPanel ? s.clientHeight : s.clientHeight - top0,
         clamped: s.scrollTop <= 0 || gap <= 1,
       };
     },
