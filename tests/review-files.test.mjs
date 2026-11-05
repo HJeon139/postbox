@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { keptRef, revisedFiles, servedReviewFile } from '../server/review-files.mjs';
+import { keptIfShown, keptRef, revisedFiles, servedReviewFile } from '../server/review-files.mjs';
 import { png, reviewBlock, setup } from './review-files-fixture.mjs';
 
 /** The bytes the route would serve for this file, or null. */
@@ -189,4 +189,69 @@ test('#780 pastFiles keeps each replaced file once, and never one still on the i
   assert.deepEqual(back, { files: [a], pastFiles: [b] }, 'a is on the item again, so it isn’t past');
   const again = revisedFiles({ files: [a], pastFiles: [b, a] }, [b]);
   assert.deepEqual(again.pastFiles, [a], 'once each');
+});
+
+/** Every blob file in the fixture’s store, by name. */
+const blobsIn = async (f) => (await readdir(join(f.root, 'blobs'), { recursive: true }).catch(() => [])).filter((p) => /[0-9a-f]{62}$/.test(p)).sort();
+
+test('#780 an invalid block with valid files leaves the blob store as it was, and so does a refused update', async () => {
+  const f = await setup();
+  await writeFile(join(f.folder, 'figs/today.png'), png(4, 3));
+  const invalid = reviewBlock('bad', [{ path: 'figs/today.png' }]);
+  invalid.block.format = 'nope';
+  const r = await f.call('show_block', invalid);
+  assert.equal(r.isError, true, r.text);
+  assert.deepEqual(await blobsIn(f), [], 'the files passed their checks, but the block was refused: nothing is kept');
+  const update = await f.call('update_block', reviewBlock('never-shown', [{ path: 'figs/today.png' }]));
+  assert.equal(update.isError, true, update.text);
+  assert.deepEqual(await blobsIn(f), [], 'an update of a block that isn’t shown keeps nothing either');
+});
+
+test('#780 a refused call never removes bytes another item already uses', async () => {
+  const f = await setup();
+  await writeFile(join(f.folder, 'figs/today.png'), png(4, 3));
+  await f.call('show_block', reviewBlock('fig', [{ path: 'figs/today.png' }]));
+  const before = await blobsIn(f);
+  assert.equal(before.length, 1);
+  const again = await f.call('show_block', reviewBlock('fig', [{ path: 'figs/today.png' }]));
+  assert.equal(again.isError, true, 'already shown');
+  assert.deepEqual(await blobsIn(f), before);
+  const [kept] = f.review('fig').files;
+  assert.deepEqual(await reviewFile(f.rt, f.t.id, f.review('fig').id, 'today.png', kept.sha256), png(4, 3));
+});
+
+test('#780 two calls with the same bytes at once: the refused one leaves the kept one’s blob', async () => {
+  const f = await setup();
+  const bytes = png(4, 3);
+  const a = await f.rt.blobs.put(bytes, { staged: true });
+  const b = await f.rt.blobs.put(bytes, { staged: true });
+  assert.deepEqual([a.fresh, b.fresh], [true, false]);
+  await f.rt.blobs.settle([{ sha256: b.sha256, fresh: b.fresh }], true);
+  await f.rt.blobs.settle([{ sha256: a.sha256, fresh: a.fresh }], false);
+  assert.deepEqual(await f.rt.blobs.get(a.sha256), bytes, 'kept by the other call');
+  // And the other way round: refused first, while the other still holds it.
+  const c = await f.rt.blobs.put(png(8, 8), { staged: true });
+  const d = await f.rt.blobs.put(png(8, 8), { staged: true });
+  await f.rt.blobs.settle([{ sha256: c.sha256, fresh: c.fresh }], false);
+  await f.rt.blobs.settle([{ sha256: d.sha256, fresh: d.fresh }], true);
+  assert.deepEqual(await f.rt.blobs.get(c.sha256), png(8, 8), 'held by the other call when the first was refused');
+});
+
+test('#780 a plain put of bytes a staged call holds keeps them when that call is refused', async () => {
+  const f = await setup();
+  const bytes = png(4, 3);
+  const staged = await f.rt.blobs.put(bytes, { staged: true });
+  await f.rt.blobs.put(bytes); // an attachment of the same bytes, say
+  await f.rt.blobs.settle([{ sha256: staged.sha256, fresh: staged.fresh }], false);
+  assert.deepEqual(await f.rt.blobs.get(staged.sha256), bytes);
+});
+
+test('#780 keptIfShown keeps the files when the tool shows the block, and drops them when it refuses or throws', async () => {
+  const settled = [];
+  const app = { args: {}, settle: async (keep) => settled.push(keep) };
+  await keptIfShown(app, () => ({ ok: true }));
+  await keptIfShown(app, () => ({ ok: false }));
+  await assert.rejects(() => keptIfShown(app, () => Promise.reject(new Error('boom'))), /boom/);
+  assert.deepEqual(settled, [true, false, false]);
+  assert.deepEqual(await keptIfShown({ args: {} }, () => ({ ok: true })), { ok: true }, 'an app’s files have nothing to settle');
 });
