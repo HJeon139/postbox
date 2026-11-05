@@ -100,7 +100,8 @@ test('#564-b1 after switching conversations back and forth, a session event pain
   const b = room(1);
   await open(page, a.t);
   await sessionEvent(page, a.se, { state: 'idle', ctx: 1 });
-  for (let i = 0; i < 12; i++) {
+  // Fewer switches than the lists keep, so a line or button off the page is still on them, and must be skipped.
+  for (let i = 0; i < 5; i++) {
     await page.evaluate((id) => (location.hash = `#/t/${id}`), b.t.id);
     await page.waitForFunction((id) => document.querySelector(`#main[data-thread="${id}"]`), b.t.id);
     await page.evaluate((id) => (location.hash = `#/t/${id}`), a.t.id);
