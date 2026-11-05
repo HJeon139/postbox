@@ -2,12 +2,14 @@
 // host in temp folders, ssh’s stand-in, a fake harness, waiting, and the processes of Postbox’s left on the host.
 
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { installCommand, installHost, ROOT, tokenCommand } from '../../server/remote/install.mjs';
 import { createSshConnection, remoteCommand } from '../../server/remote/ssh.mjs';
 import { hostPaths, REMOTE_DIR } from '../../shared/remote-protocol.mjs';
 import { defaultHostSettings, RANGES } from '../../shared/remote-settings.mjs';
+import { hostSocketBase } from '../socket-base.mjs';
+import { tempDir } from '../temp-dirs.mjs';
 import { sleep } from './host.mjs';
 
 export const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
@@ -33,12 +35,13 @@ setTimeout(() => {}, Number(ms));
 `;
 
 /**
- * A host home and a laptop data folder under one temp folder in /tmp (short enough for the sockets’ paths), the
+ * A host home and a laptop data folder under one temp folder (where the sockets’ paths fit), removed by reap or when
+ * the test file ends, the
  * harness beside them, and the host’s settings: the harness’s node as claudePath, and the shortest idleTimeout. `env`
  * adds to the host’s environment, as POSTBOX_DAEMON_TIMINGS. @param {{ env?: Record<string, string> }} [o]
  */
 export function machines({ env = {} } = {}) {
-  const root = mkdtempSync('/tmp/pbv-');
+  const root = tempDir('pbv-', hostSocketBase('pbv-', '/h'));
   const home = join(root, 'h');
   mkdirSync(home);
   const harness = join(root, 'harness.mjs');
