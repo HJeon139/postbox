@@ -78,6 +78,18 @@ test('the sweep keeps a folder whose pid answers EPERM: another user’s process
   assert.equal(fs.existsSync(dir), true);
 });
 
+test('the sweep keeps a folder whose pid answers any error but ESRCH, since only ESRCH says the run exited', (t) => {
+  const kill = () => {
+    const e = /** @type {NodeJS.ErrnoException} */ (new Error('EINVAL'));
+    e.code = 'EINVAL';
+    throw e;
+  };
+  const { tmp, deps } = scratch(t, { kill });
+  const dir = leftover(tmp, DEAD);
+  sweep(deps);
+  assert.equal(fs.existsSync(dir), true);
+});
+
 test('the sweep keeps a dead run’s folder younger than an hour', (t) => {
   const { tmp, deps } = scratch(t);
   const dir = leftover(tmp, DEAD, STALE_MS - 60_000);
