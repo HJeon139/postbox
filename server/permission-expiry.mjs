@@ -17,7 +17,8 @@ export const EXPIRED = new Set(['expired', 'ended']);
  * @param {any} rt @param {string} threadId @param {string} itemId @param {any} [card]  the card, when the caller has it
  */
 export function tellExpired(rt, threadId, itemId, card = undefined) {
-  const it = card ?? rt.store.pending.items(threadId).find((/** @type {any} */ x) => x.id === itemId);
+  // The card as it will be, found by id in O(1) (#712b’s index), not by scanning the thread.
+  const it = card ?? rt.store.pending.item(threadId, itemId);
   // Only the person’s Stop holds the note back: a shutdown, a hung stop or a store outage records who stopped it too.
   if (it?.kind !== 'permission' || it.agentTold || it.stoppedBy === 'you') return;
   if (!rt.s.sessions[it.sessionId]) return;
