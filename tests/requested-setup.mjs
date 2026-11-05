@@ -1,12 +1,12 @@
 // The setup the request tests share (#296): a Claude Code agent whose turns a test scripts, a judge that answers as
 // told, and helpers for the calls of a turn and the lines and cards they leave. Moved out of tests/write-intent.test.mjs.
 
-import { mkdir, mkdtemp } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export const until = async (ok) => {
@@ -28,7 +28,7 @@ export const allow = (quote, costUsd = 0.0004) => ({ text: JSON.stringify({ deci
 
 /** A Claude Code agent whose turns the test scripts, and a judge that answers with `judged`. */
 export async function setup({ judged = () => allow('open the PR') } = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'pb-requested-'));
+  const root = tempDir('pb-requested-');
   const folder = join(root, 'work');
   await mkdir(join(folder, '.claude'), { recursive: true });
   const store = new Store(null);
