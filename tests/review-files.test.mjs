@@ -4,11 +4,14 @@
 // the list; one with files replaces it, and the files it replaces stay readable by their SHA-256.
 
 import assert from 'node:assert/strict';
-import { writeFile } from 'node:fs/promises';
+import { readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { keptRef, reviewFile } from '../server/review-files.mjs';
+import { keptRef, revisedFiles, servedReviewFile } from '../server/review-files.mjs';
 import { png, reviewBlock, setup } from './review-files-fixture.mjs';
+
+/** The bytes the route would serve for this file, or null. */
+const reviewFile = async (...a) => (await servedReviewFile(...a))?.bytes ?? null;
 
 test('#780 a review block’s file is read from the agent’s folder, checked and kept with its revision', async () => {
   const f = await setup();
@@ -153,4 +156,37 @@ test('#780 an answered review whose update changes only its files asks again', a
   assert.equal(f.review('fig').answered, false, 'the person sees a different figure, so it asks again');
   assert.equal(f.review('fig').revision, 2);
   assert.notEqual(f.review('fig').files[0].sha256, before, 'with the new figure');
+});
+
+test('#780 a name that could break the route’s header, such as one with a quote, is refused', async () => {
+  const f = await setup();
+  await writeFile(join(f.folder, 'figs/today.png'), png(4, 3));
+  for (const name of ['a"b.png', 'a b.png', 'a;b.png', '../a.png']) {
+    const r = await f.call('show_block', reviewBlock(`q${name.length}${name.charCodeAt(1)}`, [{ name, path: 'figs/today.png' }]));
+    assert.equal(r.isError, true, name);
+    assert.match(r.text, /can’t name a file/, name);
+  }
+});
+
+test('#780 a call refused at its last file stores none of its files', async () => {
+  const f = await setup();
+  await writeFile(join(f.folder, 'figs/today.png'), png(4, 3));
+  await writeFile(join(f.folder, 'figs/a.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  const blobs = async () => (await readdir(join(f.root, 'blobs'), { recursive: true }).catch(() => [])).length;
+  const before = await blobs();
+  const r = await f.call('show_block', reviewBlock('fig', [{ path: 'figs/today.png' }, { path: 'figs/a.svg' }]));
+  assert.equal(r.isError, true, r.text);
+  assert.equal(await blobs(), before, 'no blob left behind');
+});
+
+test('#780 pastFiles keeps each replaced file once, and never one still on the item', () => {
+  const file = (name, sha256) => ({ name, ref: null, sha256, size: 1, type: 'image/png', width: 1, height: 1 });
+  const a = file('a.png', 'a'.repeat(64));
+  const b = file('a.png', 'b'.repeat(64));
+  const once = revisedFiles({ files: [a], pastFiles: [] }, [b]);
+  assert.deepEqual(once, { files: [b], pastFiles: [a] });
+  const back = revisedFiles({ files: [b], pastFiles: [a] }, [a]);
+  assert.deepEqual(back, { files: [a], pastFiles: [b] }, 'a is on the item again, so it isn’t past');
+  const again = revisedFiles({ files: [a], pastFiles: [b, a] }, [b]);
+  assert.deepEqual(again.pastFiles, [a], 'once each');
 });
