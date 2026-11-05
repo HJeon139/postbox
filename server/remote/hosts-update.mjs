@@ -66,7 +66,7 @@ export function track(m, id, job) {
 export async function installNow(m, id, signal) {
   const host = hostOf(m, id);
   // Read before the install, which writes the new token in its place (#464-b3, D4).
-  const before = tokenOf(m, id);
+  const before = tokenBefore(m, id);
   const r = await installHost({
     host,
     version: m.version,
@@ -84,6 +84,19 @@ export async function installNow(m, id, signal) {
   update(m, id);
   connectNow(m, id).catch(() => {});
   return done;
+}
+
+/**
+ * This computer’s token for the host before an install, to compare with the new one; null when it can’t be read
+ * (EACCES, say), which the install itself replaces, as Install… always has.
+ * @param {Manager} m @param {string} id @returns {string | null}
+ */
+function tokenBefore(m, id) {
+  try {
+    return tokenOf(m, id);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -157,8 +170,9 @@ async function autoInstall(m, id, signal) {
 
 /** How an install that worked ended, for the record. @param {InstallResult} result */
 function outcomeOf(result) {
-  if (result.tokenChanged) return 'reinstalled';
-  return result.installed ? 'installed' : 'present';
+  if (!result.installed) return 'present';
+  // A version already there with a new token isn't Postbox put back: its turns there may still be on the host.
+  return result.tokenChanged ? 'reinstalled' : 'installed';
 }
 
 /**
