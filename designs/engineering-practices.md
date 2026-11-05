@@ -204,7 +204,7 @@ Postbox follows [Conventional Commits](https://www.conventionalcommits.org/en/v1
 
 **Enforced:**
 - `tools/lint-commits.mjs` checks a pull request’s commits in CI, from v0.2.0 on.
-- `npm run hooks` turns on `.githooks/commit-msg`, which checks each message as you commit.
+- `npm run hooks` turns on `.githooks/commit-msg`, which checks each message as you commit, and `.githooks/pre-commit`, which runs `npm run lint:project` and stops a commit it fails (#508).
 - Merge commits, `chore(release)` commits and git’s own `Revert "…"` pass.
 
 **A release after each merge to main:**
