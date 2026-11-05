@@ -6,9 +6,11 @@
 
 import { LIMITS } from '../../shared/limits.mjs';
 import { REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
+import { AgentFileError } from '../agent-files.mjs';
 import { assetTools } from '../asset-tools.mjs';
 import { noteAnswer } from '../empty-reply.mjs';
 import { reactTool } from '../reactions.mjs';
+import { blockFiles } from '../review-files.mjs';
 import { recordedTools } from '../scheduled-wakes.mjs';
 import { withUrgent } from '../subagent-end.mjs';
 import { closedTo, READ_TOOLS } from '../tool-gate.mjs';
@@ -87,8 +89,9 @@ async function applyTool(rts, live, m) {
   const closed = closedTo(rts.rt, m.name);
   if (closed) return { ok: false, text: closed, closed: true };
   try {
-    // show_app’s and update_app’s files were read on the host (the broker), and come as base64.
-    const app = m.name === 'show_app' || m.name === 'update_app' ? await appFiles(rts, m.args) : { args: m.args };
+    // show_app’s and update_app’s files, and a review block’s (#780), were read on the host (the broker), and come as base64.
+    const app =
+      m.name === 'show_app' || m.name === 'update_app' ? await appFiles(rts, m.args) : await blockFiles(rts.rt, live.sessionId, m.name, m.args, hostFile);
     const r = await tools[m.name](app.args, app.files ? { files: app.files } : {});
     noteAnswer(live.rt, m.name, r);
     return { ok: !(r.ok === false && !r.waiting), text: r.results ? JSON.stringify(r.results) : String(r.message ?? '') };
@@ -120,4 +123,22 @@ async function appFiles(rts, args) {
     stored.push({ name, ...(await rts.rt.blobs.put(buf)) });
   }
   return { args: rest, files: stored };
+}
+
+/**
+ * A review block’s file as the host’s broker sent it, { name, path, base64 } (#780): its bytes, for storeReviewFiles
+ * to check as it checks a local agent’s. The string is bounded before it’s decoded: no longer than max bytes take
+ * in base64, a multiple of 4 and only the alphabet, so a host can’t make Postbox decode more than one image.
+ * @param {any} f @param {number} max @param {string} what  “the image “a.png” (up to 5 MiB)”
+ */
+async function hostFile(f, max, what) {
+  const What = what.charAt(0).toUpperCase() + what.slice(1);
+  const over = new AgentFileError(`${What} is over its limit as it came from the host, so Postbox didn’t read it.`);
+  const s = f?.base64;
+  if (typeof s === 'string' && s.length > 4 * Math.ceil(max / 3)) throw over;
+  if (typeof s !== 'string' || s.length % 4 || !BASE64.test(s))
+    throw new AgentFileError(`${What} didn’t arrive whole from the host, so Postbox didn’t read it.`);
+  const buf = Buffer.from(s, 'base64');
+  if (buf.length > max) throw over;
+  return buf;
 }

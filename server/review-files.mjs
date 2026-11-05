@@ -59,25 +59,32 @@ export async function storeReviewFiles(rt, wanted, read) {
 }
 
 /**
+ * How an agent on this computer’s review files are read: each from its folders by agentFile.
+ * @param {any} rt @param {string} sessionId @returns {(f: any, max: number, what: string) => Promise<Buffer>}
+ */
+const fromFolders = (rt, sessionId) => (f, max, what) => rt.agentFile(sessionId, typeof f === 'string' ? f : f?.path, max, what);
+
+/**
  * A review’s files as an agent on this computer names them: each read from its folders by agentFile.
  * @param {any} rt @param {string} sessionId @param {unknown} wanted
  */
-export const reviewFiles = (rt, sessionId, wanted) =>
-  storeReviewFiles(rt, wanted, (f, max, what) => rt.agentFile(sessionId, typeof f === 'string' ? f : f?.path, max, what));
+export const reviewFiles = (rt, sessionId, wanted) => storeReviewFiles(rt, wanted, fromFolders(rt, sessionId));
 
 /**
- * show_block and update_block as an agent calls them over MCP (#780): a review block’s files are read and stored
- * here, and the block goes on without them, so the catalog sees only what it validates. Any other tool, or a block
- * with no files, passes as it came.
+ * show_block and update_block as an agent calls them (#780): a review block’s files are read and stored here, and
+ * the block goes on without them, so the catalog sees only what it validates. Any other tool, or a block with no
+ * files, passes as it came. read is how a file’s bytes are had: the agent’s folders over MCP, or a host’s base64
+ * for a remote turn (server/remote/turns-tools.mjs), which only that path passes.
  * @param {any} rt @param {string} sessionId @param {string} name  the tool @param {any} args
+ * @param {(f: any, max: number, what: string) => Promise<Buffer>} [read]
  * @returns {Promise<{ args: any, files?: ReviewFile[] }>}
  */
-export async function blockFiles(rt, sessionId, name, args) {
+export async function blockFiles(rt, sessionId, name, args, read = fromFolders(rt, sessionId)) {
   const block = args?.block;
   if ((name !== 'show_block' && name !== 'update_block') || !block || typeof block !== 'object' || block.files === undefined) return { args };
   if (block.type !== 'review') throw new AgentFileError('Only a review block carries files: images its Markdown shows. Send this block without files.');
   const { files: wanted, ...rest } = block;
-  return { args: { ...args, block: rest }, files: await reviewFiles(rt, sessionId, wanted) };
+  return { args: { ...args, block: rest }, files: await storeReviewFiles(rt, wanted, read) };
 }
 
 /**
