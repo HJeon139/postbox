@@ -17,7 +17,7 @@ researcher read the first before numbers; critic reads this note.
   - `node tools/bench-server.mjs --sizes 1000,4000,10000 --runs 3`
   - `node tools/bench-snapshot-stall.mjs --snapshot <copy> --iterations 10`
 - **Fairness:** the before and after runs of each pass ran one after the other, in one session, holding the gate lock. Each number below gives its pass, commit and load average. The gate lock holds back gates only, not other agents’ browser or UAT runs, so the load average is the best record of how busy the host was.
-- **The after side:** `99c15ffa` with #712b’s `74faa16c` merged into it. That merge was made locally, as `6fd9c743`, and wasn’t pushed. Its tree, `fe77f2ea`, is exactly what `git merge-tree --write-tree 99c15ffa 74faa16c` gives, so the after side can be rebuilt from those two commits, which are both on GitHub.
+- **The two sides:** before is `a5d2a0f7`, `main` just before #712b merged; after is `2b6d6358`, #712b’s merge (#769), whose first parent is `a5d2a0f7`. Between them, the diff is #712b’s 27 files. Both sides ran the bench’s own files, copied unchanged from this PR’s head into each, with `server/store.mjs`’s `SNAPSHOT_EVERY` exported, so the method is the same on both. These passes replace an earlier pair measured on commits that were later rewritten and can’t be reached.
 - **The real snapshot:** a 2.53 MB copy of one real host’s store snapshot, with top-level keys `turn`, `home` and `threads`. It isn’t filtered. The copy stays on the host, and only its size and the timings are reported.
 
 ## PF-1: a key press to the next frame
@@ -29,44 +29,43 @@ Each size had 200 keys × 3 runs, 600 keys in all. In every run below, every key
 | Pass | Commit | Load average at start | 1× p95 | 4× p95 (ratio) | 10× p95 (ratio) | PF-1 |
 |---|---|---|---|---|---|---|
 | First before run, 17:55 UTC | `ee5fa4d5` | 3.95 | 40.0 ms | 136.0 ms (3.40) | 336.0 ms (8.40) | fail |
-| Before, 22:11 UTC | `99c15ffa` | 6.70 | 32.0 ms | 144.0 ms (4.50) | 336.0 ms (10.50) | fail |
-| After #712b, 22:17 UTC | `99c15ffa` + `74faa16c` | 2.52 | 32.0 ms | 144.0 ms (4.50) | 344.0 ms (10.75) | fail |
+| Before, 5 Nov 19:50 UTC | `a5d2a0f7` | 10.90 | 32.0 ms | 136.0 ms (4.25) | 344.0 ms (10.75) | fail |
+| After #712b, 5 Nov 19:57 UTC | `2b6d6358` | 5.12 | 32.0 ms | 136.0 ms (4.25) | 376.0 ms (11.75) | fail |
 
-The p95 figures are Event Timing’s. The tool’s own next-frame timer agrees with Event Timing within 4% at every size: 343.1 ms before and 340.7 ms after at 10×.
+The p95 figures are Event Timing’s. The tool’s own next-frame timer agrees with Event Timing within 4% at every size: 346.5 ms before and 378.4 ms after at 10×.
 
-**#712b doesn’t change PF-1, as expected.** The time to the next frame in a long room goes on the page’s style and layout over every item it draws, which is #712a’s part. Event Timing reports in 8 ms steps, so 336 ms against 344 ms at 10× is one step, within the noise. The 1× p95 moved between 40 ms and 32 ms with the host’s load, so each ratio has to be read against the 1× figure from the same pass.
+**#712b doesn’t change PF-1, as expected.** The time to the next frame in a long room goes on the page’s style and layout over every item it draws, which is #712a’s part. Event Timing reports in 8 ms steps. At 10× this pair differs by four steps, 344 ms against 376 ms, and the next-frame timer agrees; the earlier pair differed by one step. Two pairs don’t settle whether #712b costs the page anything at 10×, and PF-1 fails either way. The 1× p95 moved between 40 ms and 32 ms with the host’s load, so each ratio has to be read against the 1× figure from the same pass.
 
 ## The server
 
 ### The snapshot stall (#578; the budget is 50 ms)
 
-The server passes ran at 22:23 UTC, before then after, at load averages of 1.36 and 1.01.
+The server passes ran at 20:04 and 20:05 UTC on 5 Nov, before then after, at load averages of 4.69 and 3.40.
 
-| Items | Before: stall max (`99c15ffa`) | After: stall max (`99c15ffa` + `74faa16c`) | Earlier before (`ee5fa4d5`) |
+| Items | Before: stall max (`a5d2a0f7`) | After: stall max (`2b6d6358`) | Earlier before (`ee5fa4d5`) |
 |---|---|---|---|
-| 1,000 | 2.2 ms | 2.2 ms | 3.2 ms |
-| 4,000 | 5.0 ms | 4.9 ms | 5.6 ms |
-| 10,000 | 10.4 ms | 10.6 ms | 12.1 ms |
-| The real copy, 2.53 MB (the median of 10 passes, not the max) | 26.03 ms | 26.72 ms | 26.64 ms |
+| 1,000 | 2.1 ms | 2.7 ms | 3.2 ms |
+| 4,000 | 4.9 ms | 5.0 ms | 5.6 ms |
+| 10,000 | 11.4 ms | 12.1 ms | 12.1 ms |
 
-The generated rooms’ rows are the worst stall over every run. For the real copy, `bench-snapshot-stall.mjs` reports the stall of its median pass by stringify time, so a single pass could have stalled longer. Every stall is within budget, before and after, so S2 (splitting the snapshot) stays on hold (`storage-design.md:261`). The index lives outside the state, so the snapshot doesn’t change size.
+The rows are the worst stall over every run. **The real copy wasn’t rerun:** its stall, 26.03 ms before and 26.72 ms after #712b for the median of 10 passes, was measured on the earlier pair of commits, which can’t be reached, so it can’t be reproduced from this note. `bench-snapshot-stall.mjs` reports the stall of its median pass by stringify time, so a single pass could have stalled longer. Every stall is within budget, before and after, so S2 (splitting the snapshot) stays on hold (`storage-design.md:261`). The index lives outside the state, so the snapshot doesn’t change size.
 
 ### Reads and writes by id
 
-| Measure, p95 | Size | Before (`99c15ffa`) | After (`99c15ffa` + `74faa16c`) |
+| Measure, p95 | Size | Before (`a5d2a0f7`) | After (`2b6d6358`) |
 |---|---|---|---|
-| A streamed `item.text` chunk | 1× | 13.5 µs | 1.5 µs |
-| | 4× | 36.8 µs | 0.3 µs |
-| | 10× | 152.8 µs | 0.3 µs |
-| Startup, replaying 5,000 log events | 1× | 82.1 ms | 12.7 ms |
-| | 4× | 224.6 ms | 13.0 ms |
-| | 10× | 662.5 ms | 18.7 ms |
-| `/api/state` (2.0 MB at 10×) | 1× | 3.8 ms | 3.0 ms |
-| | 10× | 17.5 ms | 17.7 ms |
+| A streamed `item.text` chunk | 1× | 13.2 µs | 1.4 µs |
+| | 4× | 49.2 µs | 0.3 µs |
+| | 10× | 136.2 µs | 0.2 µs |
+| Startup, replaying 5,000 log events, as measured | 1× | 81.9 ms | 11.1 ms |
+| | 4× | 225.6 ms | 23.7 ms |
+| | 10× | 628.3 ms | 27.1 ms |
+| `/api/state` (2.0 MB at 10×) | 1× | 2.8 ms | 3.9 ms |
+| | 10× | 17.7 ms | 18.1 ms |
 
 **What #712b changed on the server:**
-- **A streamed chunk:** each chunk finds its item through the index in constant time, where before it scanned the conversation’s list. At 10×, the p95 falls from 152.8 µs to 0.3 µs. The 1× figure after, 1.5 µs, is warm-up: 1× runs first. A second pass that measured 1× again at the end (`--sizes 1000,4000,10000,1000`, 22:58 UTC, load average about 2.5) gave a p95 of 1.4 µs for the first 1× and 0.2 µs for the last, against 13.1 µs and 12.6 µs before. The worst chunk was 1.72 ms at 10×. That’s probably the first chunk in a list, which builds that list’s index, but this run doesn’t show it.
-- **Startup:** replaying the log no longer scans a list once per event. At 10×, it falls from 662.5 ms to 18.7 ms.
+- **A streamed chunk:** each chunk finds its item through the index in constant time, where before it scanned the conversation’s list. At 10×, the p95 falls from 136.2 µs to 0.2 µs, which is near the timer’s floor (#813). The 1× figure after, 1.4 µs, is likely warm-up, since 1× runs first. The worst chunk after was 1.76 ms at 10×; that’s probably the first chunk in a list, which builds that list’s index, but this run doesn’t show it.
+- **Startup:** replaying the log no longer scans a list once per event. At 10×, it falls from 628.3 ms to 27.1 ms. Every load, before and after, replayed the 5,000 events, as `checkReplay` measured them.
 - **`/api/state`:** unchanged, since it still serializes the whole state.
 
 ## Not met, and what comes next
