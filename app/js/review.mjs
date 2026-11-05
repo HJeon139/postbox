@@ -4,6 +4,7 @@
 
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { diffLines, followLines, splitLines } from '/shared/review-diff.mjs';
+import { reviewFileKeys } from '/shared/review-files.mjs';
 import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { enhanceMarkdown, mountApp } from './apps.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
@@ -20,6 +21,7 @@ import { fullScreen, revisionOf, seg, setView, viewOf } from './review-view.mjs'
 export function renderReview(b, item, ctx, kit) {
   const { draft, seen, renderBlock, head, staleNote, submit, errLine, outcomeLine } = kit;
   const d = draft(item.id, () => newReviewDraft(b.content));
+  const files = reviewFileKeys(ctx.threadId, item); // its attached images, as Preview resolves them (#780)
   // Draft comments name lines of the text they were written on. If the agent changed it under them (#123), each
   // follows its line into the new text; one whose line changed or went moves to the next line, marked. One on a
   // selection follows its quote (#179).
@@ -189,7 +191,7 @@ export function renderReview(b, item, ctx, kit) {
           gutter(u),
           h(
             'span.tx',
-            plain ? null : { html: trusted(inlineMd(text)) },
+            plain ? null : { html: trusted(inlineMd(text, files)) },
             code?.first && code.lang ? h('span.code-lang', code.lang) : null,
             plain ? text || ' ' : null,
           ),
@@ -205,7 +207,7 @@ export function renderReview(b, item, ctx, kit) {
     // column, and its threads right after it. If the rendered rows or items don't match the targets,
     // the block is drawn line by line, as before.
     const blockRows = (g) => {
-      const box = h('div.tx.md', { class: quoted(g.depth), html: trusted(renderMarkdown(g.source, { folds: false, pageOrigin: location.origin })) });
+      const box = h('div.tx.md', { class: quoted(g.depth), html: trusted(renderMarkdown(g.source, { folds: false, pageOrigin: location.origin, files })) });
       const els = [...box.querySelectorAll(g.type === 'table' ? 'tr' : 'li')];
       const matches =
         els.length === g.units.length && (g.type === 'table' || g.units.every((u, i) => words(els[i].textContent ?? '').startsWith(itemWords(u))));

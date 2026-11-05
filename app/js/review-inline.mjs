@@ -2,9 +2,13 @@
 
 import { LIST_ITEM, renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 
-/** Bold, italic and code inside a review line, without block structure. A fold shows as its source. */
-export function inlineMd(t) {
-  return renderMarkdown(t || ' ', { folds: false, pageOrigin: location.origin })
+/**
+ * Bold, italic and code inside a review line, without block structure. A fold shows as its source. files: the
+ * review’s attached images (reviewFileKeys, #780), the same keys Preview resolves, so a figure draws here too.
+ * @param {string} t @param {Record<string, { url: string, width: number, height: number }>} [files]
+ */
+export function inlineMd(t, files) {
+  return renderMarkdown(t || ' ', { folds: false, pageOrigin: location.origin, files })
     .replace(/^<p>|<\/p>$/g, '')
     .replace(/^<h\d>|<\/h\d>$/g, '');
 }
