@@ -13,6 +13,7 @@ import { hostVersion } from '../../server/remote/host/paths.mjs';
 import { bootId, listProcesses, startTime } from '../../server/remote/host/proc.mjs';
 import { installCommand } from '../../server/remote/install.mjs';
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
+import { hostSocketBase } from '../socket-base.mjs';
 import { tempDir } from '../temp-dirs.mjs';
 
 // This checkout’s version, which the daemon’s main() takes from package.json (paths.mjs), so the tests follow each release.
@@ -23,8 +24,8 @@ export const NODE_DIR = dirname(process.execPath);
 export const HOST = { id: 'ho_test0001', name: 'host.example.com', settings: defaultHostSettings() };
 export const SKIP = process.platform === 'win32' && 'needs a POSIX sh and tar';
 
-/** A temp folder under /tmp, short enough for the daemon’s socket path. */
-export const temp = (prefix) => tempDir(prefix, '/tmp');
+/** A temp folder short enough for the sockets of a host home in it (`h` or `home`): under TMPDIR where they fit, else /tmp. */
+export const temp = (prefix) => tempDir(prefix, hostSocketBase(prefix, '/home'));
 
 /** A spawn that runs ssh’s remote command with /bin/sh -c, as sshd hands it to the login shell, with this environment. */
 export const localShell = (env) => (_program, args, options) => spawn('/bin/sh', ['-c', args.at(-1)], { ...options, env });

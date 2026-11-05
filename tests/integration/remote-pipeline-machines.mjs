@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 import { hostVersion } from '../../server/remote/host/paths.mjs';
 import { remoteCommand } from '../../server/remote/ssh.mjs';
 import { hostPaths } from '../../shared/remote-protocol.mjs';
+import { hostSocketBase } from '../socket-base.mjs';
 import { FIXTURES, gone, NO_UNIX, sleep } from './host.mjs';
 
 export const VERSION = hostVersion();
@@ -50,7 +51,7 @@ export function replyOf(name) {
  * @param {{ timings?: Record<string, number> }} [o]  POSTBOX_SHIM_TIMINGS for the shim (it can only shorten its waits)
  */
 export function machine({ timings = {} } = {}) {
-  const root = mkdtempSync('/tmp/pbv-'); // not os.tmpdir(): macOS’s pushes the sockets’ paths past sun_path
+  const root = mkdtempSync(join(hostSocketBase('pbv-', '/h'), 'pbv-')); // TMPDIR where the sockets’ paths fit, else /tmp
   const home = join(root, 'h');
   const trace = join(root, 'trace');
   const applied = join(root, 'applied');
