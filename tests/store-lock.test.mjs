@@ -8,14 +8,14 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { lockStore, unlockStore } from '../server/store-lock.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
-const tmp = () => mkdtemp(join(tmpdir(), 'pb-lock-'));
+const tmp = () => tempDir('pb-lock-');
 const LOCK = 'store.lock';
 /** What the lock file says. @param {string} dir */
 const holder = async (dir) => JSON.parse(await readFile(join(dir, LOCK), 'utf8'));
@@ -40,7 +40,6 @@ test('a store takes a lock file naming its process in the data folder, and a sec
   a.emit('thread', { id: 't1', members: [] });
   await a.flush();
   await a.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a lock left by a process that is gone is stale and replaced; one held by a live process holds', async () => {
@@ -53,7 +52,6 @@ test('a lock left by a process that is gone is stale and replaced; one held by a
   await writeFile(join(dir, LOCK), String(process.ppid));
   await assert.rejects(new Store(dir).load(), new RegExp(String(process.ppid)), 'a live process’s lock refuses the store');
   assert.equal(await readFile(join(dir, LOCK), 'utf8'), String(process.ppid), 'and is left in place');
-  await rm(dir, { recursive: true });
 });
 
 test('a lock whose pid is alive but started at another time belongs to a process that is gone, and is taken over', async () => {
@@ -67,7 +65,6 @@ test('a lock whose pid is alive but started at another time belongs to a process
   const b = await lockStore(fs, dir, probe);
   assert.equal((await holder(dir)).token, b.token, 'the pid was reused: the lock is stale, and taken over');
   await unlockStore(fs, b);
-  await rm(dir, { recursive: true });
 });
 
 test('two stores that find the same lock stale and take it over at once: exactly one wins', async () => {
@@ -87,7 +84,6 @@ test('two stores that find the same lock stale and take it over at once: exactly
     'the stale lock, moved aside, is gone',
   );
   await unlockStore(fs, /** @type {any} */ (won[0]).value);
-  await rm(dir, { recursive: true });
 });
 
 test('a release leaves a lock another store took over meanwhile: only the lock carrying this store’s token goes', async () => {
@@ -99,7 +95,6 @@ test('a release leaves a lock another store took over meanwhile: only the lock c
   const b = await lockStore(fs, dir, { alive: () => false });
   await unlockStore(fs, b);
   assert.equal(existsSync(join(dir, LOCK)), false, 'its own lock goes');
-  await rm(dir, { recursive: true });
 });
 
 test('close() flushes what is queued and releases the lock, so the next store on the folder loads', async () => {
@@ -111,5 +106,4 @@ test('close() flushes what is queued and releases the lock, so the next store on
   const b = await new Store(dir).load();
   assert.ok(b.state.threads.t1, 'what was queued at close() is in the log');
   await b.close();
-  await rm(dir, { recursive: true });
 });

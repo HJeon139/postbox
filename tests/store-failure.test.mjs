@@ -5,14 +5,14 @@
 // splits a surrogate pair.
 import assert from 'node:assert/strict';
 import * as realFs from 'node:fs/promises';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { disk, handleWith } from './store-jsonl-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
-const tmp = () => mkdtemp(join(tmpdir(), 'pb-failure-'));
+const tmp = () => tempDir('pb-failure-');
 
 test('Q9: the first failed sync closes the store to commits; later commits and a repeat of the failed opId are refused, emits go on in memory', async () => {
   const dir = await tmp();
@@ -54,7 +54,6 @@ test('Q9: the first failed sync closes the store to commits; later commits and a
   assert.equal(b.state.threads.after, undefined, 'what was emitted while closed was never written');
   assert.equal(b.state.threads.later, undefined);
   await b.close();
-  await rm(dir, { recursive: true });
 });
 
 test('Q9: the numbers a failed commit took are given back, so the held emit and the next one follow the applied seq', async () => {
@@ -91,7 +90,6 @@ test('Q9: the numbers a failed commit took are given back, so the held emit and 
     'the stream has no gap',
   );
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a snapshot piece never splits a surrogate pair: an emoji across the boundary survives the round trip', async () => {
@@ -100,7 +98,6 @@ test('a snapshot piece never splits a surrogate pair: an emoji across the bounda
   const text = `${'x'.repeat((1 << 20) - '{"text":"'.length - 1)}🌙 and on`;
   await writeSnapshot({ io: realFs, at: (n) => join(dir, n), state: { text } });
   assert.equal(JSON.parse(await readFile(join(dir, 'snapshot.json'), 'utf8')).text, text);
-  await rm(dir, { recursive: true });
 });
 
 test('two commits with one opId queued behind a pending commit: the second gets the first’s seq as a duplicate, written once', async () => {
@@ -138,7 +135,6 @@ test('two commits with one opId queued behind a pending commit: the second gets 
   ]);
   assert.equal(s.state.seq, 2, 'the repeat wrote nothing');
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a flush whose fsync fails is the first failed sync: the store closes to commits', async () => {
@@ -161,7 +157,6 @@ test('a flush whose fsync fails is the first failed sync: the store closes to co
   refuse = false;
   await assert.rejects(s.commit([{ type: 'thread', data: { id: 'later', members: [] } }], { opId: 'later' }), /EIO/, 'commits stay refused');
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a closed store never writes again: a late emit is dropped and a late commit refused, while the next store holds the folder', async () => {
@@ -180,5 +175,4 @@ test('a closed store never writes again: a late emit is dropped and a late commi
   assert.deepEqual(Object.keys(c.state.threads).sort(), ['a1', 'b1'], 'the log holds only what the folder’s holders wrote, in order');
   assert.equal(c.state.seq, 2);
   await c.close();
-  await rm(dir, { recursive: true });
 });

@@ -5,15 +5,15 @@
 
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
-import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { disk, handleWith } from './store-jsonl-fixture.mjs';
 import { gate, holding } from './store-kill-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
-const tmp = () => mkdtemp(join(tmpdir(), 'pb-commit-'));
+const tmp = () => tempDir('pb-commit-');
 const segmentOf = async (dir) => join(dir, /** @type {string} */ ((await readdir(dir)).find((n) => n.startsWith('events-'))));
 /** The non-empty lines of the current segment. @param {string} dir */
 const lines = async (dir) => (await readFile(await segmentOf(dir), 'utf8')).split('\n').filter((l) => l.trim());
@@ -65,7 +65,6 @@ test('a commit writes its events as one fsynced log line with their opId, beside
   assert.deepEqual(Object.keys(b.state.threads).sort(), ['t0', 't1', 't2']);
   assert.equal(b.state.items.t1[0].text, 'hi');
   await b.close();
-  await rm(dir, { recursive: true });
 });
 
 test('nothing of a commit is applied, broadcast or served by since() before its fsync', async () => {
@@ -104,7 +103,6 @@ test('nothing of a commit is applied, broadcast or served by since() before its 
     [2, 3],
   );
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('an emit while a commit’s fsync is pending is held: numbered, applied and broadcast after the commit, in order', async () => {
@@ -146,7 +144,6 @@ test('an emit while a commit’s fsync is pending is held: numbered, applied and
     'memory, log and stream keep one order',
   );
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a commit given a function builds its events from the state the store holds now', async () => {
@@ -161,7 +158,6 @@ test('a commit given a function builds its events from the state the store holds
   assert.equal(r2.duplicate, false);
   assert.equal(s.state.seq, 3, 'a commit of no events moves nothing');
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a repeated opId writes nothing and returns the first commit’s seq, in the running store and after a reload', async () => {
@@ -181,7 +177,6 @@ test('a repeated opId writes nothing and returns the first commit’s seq, in th
   assert.equal((await stat(await segmentOf(dir))).size, size);
   assert.deepEqual(await b.commit([thread('t3')], { opId: 'twice' }), { seq: 3, duplicate: false }, 'another opId writes');
   await b.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a snapshot forgets the opIds before it, so a commit with one of them writes again', async () => {
@@ -202,7 +197,6 @@ test('a snapshot forgets the opIds before it, so a commit with one of them write
   assert.ok(b.state.threads.t9, 'and the write is in the log');
   assert.equal(b.state.seq, 5);
   await b.close();
-  await rm(dir, { recursive: true });
 });
 
 test('commits issued in the same tick share one fsync', async () => {
@@ -230,7 +224,6 @@ test('commits issued in the same tick share one fsync', async () => {
   assert.equal(syncs, 1, 'one fsync for the three commits');
   assert.equal((await lines(dir)).length, 4, 'still one line per commit');
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 // Kill at every byte: a crash leaves the first N bytes of the commit’s line on disk, for each N. The store loads with
@@ -262,6 +255,4 @@ test('a commit line cut at any byte loads with all of the commit’s events or n
     await s.close();
   }
   assert.deepEqual([...outcomes].sort(), [1, 4], 'both outcomes occur: none with a short prefix, all with the whole line');
-  await rm(dir, { recursive: true });
-  await rm(cutDir, { recursive: true });
 });

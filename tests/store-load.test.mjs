@@ -5,13 +5,13 @@
 // and the next write starts on a line of its own (tests/store-jsonl-recovery.test.mjs cuts a commit at every byte).
 
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
-const tmp = () => mkdtemp(join(tmpdir(), 'pb-load-'));
+const tmp = () => tempDir('pb-load-');
 /** @param {number} seq @param {string} id */
 const line = (seq, id) => JSON.stringify({ seq, type: 'thread', data: { id, members: [] } });
 
@@ -30,7 +30,6 @@ test('a bad line in the middle of a segment makes load() refuse, naming the file
     'a bad line with complete lines after it is refused',
   );
   assert.equal((await stat(path)).size, Buffer.byteLength(text), 'the file is left as it was, not truncated');
-  await rm(dir, { recursive: true });
 });
 
 test('a last line without its newline never finished: it’s dropped, and the next write starts on a fresh line', async (t) => {
@@ -51,5 +50,4 @@ test('a last line without its newline never finished: it’s dropped, and the ne
   assert.equal(b.state.seq, 2);
   assert.deepEqual(Object.keys(b.state.threads).sort(), ['t1', 't3']);
   await b.close();
-  await rm(dir, { recursive: true });
 });
