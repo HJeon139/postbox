@@ -19,7 +19,7 @@ On `feat/508-b1b-view-state`, rebased onto `main` after #633 and #741 merged. B1
 |---|---|
 | the move | The view logic moves out of `thread.mjs` into `app/js/view-state.mjs`, logic unchanged. `thread.mjs` drops from 1,812 to 1,635 lines; its ceiling is lowered after the merge (AGENTS.md, “Code size”) |
 | #341’s spec | #341 part 2’s spec, made deterministic: a 1 px padding doesn’t change the transcript’s height, so the old guard never ran the race. With 40 px it fails every time |
-| #341’s fix | A scroll the transcript hasn’t heard of yet isn’t taken back by a resize in the same frame: `follow()` moves the anchor by that scroll (`heard()`). A first version also skipped this when the scroll box changed size; no spec reached that check, #88’s resize cases included, so a later commit removes it |
+| #341’s fix | A scroll the transcript hasn’t heard of yet isn’t taken back by a resize in the same frame: `follow()` moves the anchor by that scroll (`heard()`). It skips this when the scroll box itself changed size, since a window or panel resize moves the view itself (#88). A later commit removed that check on one passing run; the integrator’s review found #88’s resize spec (`transcript.spec.mjs:239`) failing up to 8 of 20 runs with the events late without it, so it’s back |
 | #357 and #356 | #357’s clamp fix (`a0b13bf5`) gets a spec that fails without it. #356’s spec names it: CI’s `late` pass runs the #88 panel case with the events late |
 | the view read (B1b-a) | `data-view-mode`, `data-view-anchor` and `data-view-offset` on the transcript, main and panel, after each way in that can change them without a scroll event of its own; a redraw from new state takes an anchor that’s gone again. V1: `tests/browser/view-read.spec.mjs` |
 
