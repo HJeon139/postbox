@@ -84,7 +84,7 @@ async function refused(page) {
   await openHosts(page, app);
   const box = await openToggle(page);
   fake.keepUpdatedError = new Error('EACCES: permission denied');
-  allowPageError(page, /status of 500/);
+  allowPageError(page, /status of 500/, { times: 2 });
   await box.click();
   await expect.poll(keepCalls, { message: 'it asked the server' }).toEqual([['setKeepUpdated', id, true]]);
   await expect(box, 'a failed save goes back to off').toHaveAttribute('aria-checked', 'false');
@@ -95,6 +95,16 @@ async function refused(page) {
   expect.soft(app.store.state.hostStatus[id]?.keepUpdated, 'and nothing was saved').toBe(false);
   await audit(page, 'a refused toggle');
 
+  // The toggle reads its state from the page, not from what it held when drawn (checkField, hosts-parts.mjs): the
+  // refusal put it back without drawing it again, so a click asks for on again; the server refuses it too. Nothing
+  // here waits on the stream.
+  await box.click();
+  await expect.poll(keepCalls, { message: 'a click after the toggle went back asks for on again' }).toEqual([
+    ['setKeepUpdated', id, true],
+    ['setKeepUpdated', id, true],
+  ]);
+  await expect(box, 'refused again, it goes back to off').toHaveAttribute('aria-checked', 'false');
+
   app.store.emit('host', { ...app.store.state.hosts[id] });
   await expect.soft(box, 'a repaint of the tab keeps the error').toHaveAccessibleErrorMessage(/^Something went wrong on the server/);
   await expect.soft(box, 'still marked invalid').toHaveAttribute('aria-invalid', 'true');
@@ -104,22 +114,13 @@ async function refused(page) {
   await expect.poll(keepCalls, { message: 'the next click asks for on again, not off' }).toEqual([
     ['setKeepUpdated', id, true],
     ['setKeepUpdated', id, true],
+    ['setKeepUpdated', id, true],
   ]);
   await expect.soft(box, 'it shows on').toHaveAttribute('aria-checked', 'true');
   await expect.soft(box, 'and the error goes').not.toHaveAttribute('aria-invalid', 'true');
 
   fake.set(id, { state: 'disconnected', keepUpdated: false });
   await expect.soft(box, 'a change to the status elsewhere moves the open toggle').toHaveAttribute('aria-checked', 'false');
-
-  // The toggle reads its state from the page, not from what it held when drawn: after a change elsewhere, a click
-  // turns it on again (checkField, hosts-parts.mjs).
-  await box.click();
-  await expect.poll(keepCalls, { message: 'a click after a change elsewhere asks for on, the opposite of what it shows' }).toEqual([
-    ['setKeepUpdated', id, true],
-    ['setKeepUpdated', id, true],
-    ['setKeepUpdated', id, true],
-  ]);
-  await expect.soft(box, 'and it shows on').toHaveAttribute('aria-checked', 'true');
 }
 
 /** What a step’s card says must never hold a token or a path. @param {import('@playwright/test').Locator} c */
