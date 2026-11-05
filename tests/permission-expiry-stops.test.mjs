@@ -4,10 +4,15 @@
 // any agent that still exists, archived or being removed included, so a Restore or an Undo finds the note.
 
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { tellExpired } from '../server/permission-expiry.mjs';
+import { endCard, openCards } from '../server/remote/turns-prompts.mjs';
 import { askStop } from '../server/remote/turns-stops.mjs';
 import { Runtime } from '../server/runtime.mjs';
+import { Store } from '../server/store.mjs';
 import { notes, settle, setup } from './permission-expiry-fixture.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 
@@ -98,4 +103,26 @@ test('#721 the person’s Stop on a host turn with a card open marks the card, s
   await settled(r);
   assert.equal(r.store.item(r.t.id, card.id).stoppedBy, 'you');
   assert.equal(notes(r.se()).length, 0, JSON.stringify(r.se().context));
+});
+
+test('#721 a store outage that stops a host turn isn’t the person’s Stop: its card, ended later, tells the agent', async (t) => {
+  // The integrator’s probe at f220d7b5. On a store that can reopen, with the host’s link down so the turn hasn’t
+  // exited when writes reopen, and the outage’s stop reaches the host turn.
+  const dir = await mkdtemp(join(tmpdir(), 'pb-expiry-outage-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const r = rig({ store: await new Store(dir).load() });
+  const turn = await running(r);
+  const a = r.d.prompt(turn);
+  await until(() => r.store.items(r.t.id).some((i) => i.remote?.prompt === a), 'the card');
+  const id = r.store.items(r.t.id).find((i) => i.remote?.prompt === a).id;
+  r.rt.permissionWaits.delete(id); // nothing here waits on it, so only the host’s word ends it
+  await r.store.flush();
+  r.d.drop();
+  r.store.fail(Object.assign(new Error('disk sync refused'), { code: 'EIO' }));
+  await r.store.reload();
+  await until(() => r.rt.storeWait.length === 0, 'the outage’s stop to be recorded');
+  assert.equal(r.store.item(r.t.id, id).stoppedBy, undefined, 'an outage isn’t the person’s Stop');
+  for (const card of openCards(r.rt.remote, turn)) endCard(r.rt.remote, card, 'ended', '', Date.now());
+  assert.equal(notes(r.se()).length, 1, JSON.stringify(r.se().context));
+  await r.store.close();
 });
