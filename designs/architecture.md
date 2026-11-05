@@ -763,7 +763,7 @@ Tests that need `/proc` or logind skip on macOS and say why; CI runs them on Lin
 
 ## 19. What reaches the browser
 
-**Decision** (1 November 2026, from the integrator’s review of #608). What the page may see is decided once, in `shared/state.mjs`: each event type’s entry in `EVENTS` says whether it is `public`, and each state key is in `PUBLIC_STATE_KEYS` or `PRIVATE_STATE_KEYS`. `server/public-state.mjs` applies that to the state and the event stream: `/api/state` (`server/page-state.mjs`), and the live and backlog frames (`server/live-streams.mjs`). An event the page may not see goes out as a `cursor` that keeps only its seq, so the page stays in step. Every other route that answers with state does so with a piece of it directly: the routes that create or change an entity, `PUT /api/settings`, `/api/hosts/:id/status`, the permissions view (`GET /api/permissions`), the Work view’s answers and the telemetry reports, which read the store’s items and sessions directly. Such an answer may carry only data of public keys. Review holds that rule today, while every key is public; A1b, which adds the first private key, adds a check that holds it before that key exists.
+**Decision** (1 November 2026, from the integrator’s review of #608). What the page may see is decided once, in `shared/state.mjs`: each event type’s entry in `EVENTS` says whether it is `public`, and each state key is in `PUBLIC_STATE_KEYS` or `PRIVATE_STATE_KEYS`. `server/public-state.mjs` applies that to the state and the event stream: `/api/state` (`server/page-state.mjs`), and the live and backlog frames (`server/live-streams.mjs`). An event the page may not see goes out as a `cursor` that keeps only its seq, so the page stays in step. Every other route that answers with state does so with a piece of it directly: the routes that create or change an entity, `PUT /api/settings`, `/api/hosts/:id/status`, the permissions view (`GET /api/permissions`), the Work view’s answers and the telemetry reports, which read the store’s items and sessions directly. Such an answer may carry only data of public keys. Review holds that rule today, while every key is public; A2, which adds the first private key, adds a check that holds it before that key exists (A1b adds none: `designs/508/a1b-asks.md`).
 
 ```mermaid
 flowchart TD
@@ -781,5 +781,5 @@ flowchart TD
 - **The stream’s own frame names are reserved.** `STREAM` in `shared/state.mjs` holds `cursor`, `status`, `epoch` and `resync`, and none of them may be an event type.
 
 **When to revisit**
-- A remote host gets a snapshot built from the store’s state. No key is private yet. When A1b adds one, its design says whether a host gets `publicState` or a projection of its own.
-- A route that answers with state, today’s or a new one such as B2’s paged items fetch or A1b’s headers, carries only data of public keys. Before A1b’s first private key, that rule gets a check, not only review.
+- A remote host gets a snapshot built from the store’s state. No key is private yet. When A2 adds one, its design says whether a host gets `publicState` or a projection of its own.
+- A route that answers with state, today’s or a new one such as B2’s paged items fetch or A2’s headers, carries only data of public keys. Before A2’s first private key, that rule gets a check, not only review.

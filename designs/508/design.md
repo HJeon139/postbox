@@ -130,7 +130,7 @@ flowchart TD
 | `state.threads` | thread id | thread header, now with `nextN` | Everything | Number of threads |
 | `state.items` | thread id | that thread’s items, sorted by `n` | The window, the items API, catch-up | Grows with history; the browser holds only windows |
 | `state.sessions` | session id | session, with `seenItem` | Everything | Number of sessions |
-| `state.records` | record id | one open record (“Records”) | `shared/records.mjs` | Open records only: waiting and sent deliveries, open asks. For A1, `a1b-asks.md` keeps its one record kind, the hold, outside `state` (D13) |
+| `state.records` | record id | one open record (“Records”) | `shared/records.mjs` | Open records only: waiting and sent deliveries, open asks. A1b adds no records; `a1b-asks.md` (“Carried to A2”) keeps A2’s outside `state` |
 | Item index (in memory, never stored) | item id | its thread and position | The reducer, per streamed chunk | Same as `state.items`; replaces the linear `find` (#305 factor 4) |
 
 The same lookups are served in memory: each thread’s items are a list kept sorted by `n`, so a page is a binary search and a slice, and the id index is rebuilt on load and kept current by the reducer (“Storage”).
@@ -199,7 +199,7 @@ The same lookups are served in memory: each thread’s items are a list kept sor
 
 | Data | In `store.state` | In `/api/state` | In the store |
 |---|---|---|---|
-| Open records (`waiting`, `sent`, `open`) | Yes | No: private (architecture.md, “What reaches the browser”). The page gets a cursor for their events, and from A1b small reviewed headers | In the snapshot, and as events in the log |
+| Open records (`waiting`, `sent`, `open`) | Yes | No: private (architecture.md, “What reaches the browser”). The page gets a cursor for their events, and from A2 small reviewed headers | In the snapshot, and as events in the log |
 | Closed records | No | No | Only as the events that opened and closed them, and as receipts |
 | Receipts (“Receipts”) | No | No | Derived by the reducer from the record events; checkpointed with the snapshot; server-only, bounded |
 | Items | Yes | No: the items API serves pages | In the snapshot (a shard per conversation, from step S2), and as events |
@@ -211,7 +211,7 @@ Closed records leave state, so `store.state` stays bounded by what is open, not 
 
 ### 6.4 Receipts
 
-A1b’s design (`a1b-asks.md`, D6) keeps this: receipts are derived inside the reducer.
+`a1b-asks.md` adds no records, so receipts arrive with A2’s, derived inside the reducer as above.
 
 A server-only entry per delivery record, derived by the reducer from the record events, not written as a second file. It is not in `/api/state`.
 - **One row when a delivery record opens** and one when it closes or is resent: `{ event: opened | delivered | superseded | expired | withdrawn | answered | resent, at, rev, sentRev?, turnId?, attempt?, reason? }`, beside the record’s `kind`, `to`, `from`, `threadId`, `sourceId` and `openedAt`.
@@ -561,7 +561,7 @@ It needs no state, so it runs the same on a copy, and its counts don’t change 
 - **Storage:** nothing to migrate. Events, segments and `snapshot.json` keep their format. Step S2 reads an unversioned snapshot as version 1 and writes shards at its next snapshot (“Storage”).
 - **Value shapes:** never migrated. Each event and shard carries `v`, and readers lift older shapes (“Storage”, decision 6).
 - **Positions:** numbered when a snapshot loads (“Items: position and revision”). No versioned migration.
-- **`se.needs` → asks (A1):** at startup, each session’s `needs` of an ask kind becomes an open ask record, and `needs` is cleared. Readers move to `shared/records.mjs` in the same step. Superseded for A1 by `a1b-asks.md`: asks are derived from the cards, so nothing is converted at startup except today’s `card.held`, into hold records (D1, D2).
+- **`se.needs` → asks (A1):** at startup, each session’s `needs` of an ask kind becomes an open ask record, and `needs` is cleared. Readers move to `shared/records.mjs` in the same step. Superseded for A1 by `a1b-asks.md`: asks are derived from the cards, so nothing is converted at startup, and `card.held` stays until A2 (D1, D3).
 - **`se.context` → deliveries (A2):** at startup, each notice becomes a notice item (“Postbox notices as items”) and a `notify` delivery from `postbox`, urgent ones with `urgent: true`, and `context` is cleared, all in one `commit`. The conversion is idempotent: a notice that already has an item is skipped.
 - **`thread.queue` → deliveries (A3) and `schedules` → deliveries (A4):** the same pattern, one step each.
 - **Hosts:** the read contract raises `PROTOCOL_VERSION` from 2 to 3 (`shared/remote-protocol-constants.mjs:8`). Both ends of the handshake reject a mismatch (`server/remote/ssh-connection.mjs:169`, `server/remote/host/daemon-hello.mjs:30`), so there is no mixed-version mode: a host on 2 fails to connect with the existing `version` failure (“It speaks protocol 2; this Postbox speaks 3”), its agents are unavailable until the host’s Postbox is updated, and nothing is delivered to them meanwhile. That is deliberate: one version at a time, as today (decided 28 October). It conflicts with #464 (“Updating Postbox should not strand agents on remote hosts”, P2): under this decision, every agent on a protocol-2 host is unavailable from the person’s update until that host updates. So the remote read contract’s release notes say which hosts to update and how, and #464 gets a comment recording the decision. A v2-against-v3 handshake test covers the message.
