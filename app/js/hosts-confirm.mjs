@@ -207,6 +207,8 @@ const removeBody = (host, { noToken, placed, forgets }) => [
 /**
  * While Postbox installs its version on the host by itself (#464-b2a), Remove waits for that install to end, then
  * removes it, so the confirm says so. null otherwise, and for an install a crash cut off (its status has an error).
+ * It’s read once, as the dialog opens, on purpose: an install that ends or starts while it’s open changes only how
+ * long Remove waits, not what it does, and the next open reads the status again.
  * @param {any} host @param {any} st
  */
 function installWait(host, st) {

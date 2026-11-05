@@ -134,7 +134,6 @@ async function forgetOnly(page) {
   expect.soft(fake.calls, 'and removes nothing').toEqual([]);
 }
 
-/** @param {import('@playwright/test').Page} page */
 /** #464-b2a: Remove during an automatic install waits for it, and the confirm says so. @param {import('@playwright/test').Page} page */
 async function removeWaitsForInstall(page) {
   const id = freshHost(app, fake, NAME);
@@ -166,6 +165,7 @@ async function removeWaitsForInstall(page) {
   await confirm.getByRole('button', { name: 'Cancel' }).click();
 }
 
+/** @param {import('@playwright/test').Page} page */
 async function removing(page) {
   const id = freshHost(app, fake, NAME);
   fake.set(id, { state: 'connected', lastHeard: Date.now(), welcome: WELCOME });
