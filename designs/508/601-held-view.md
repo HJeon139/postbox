@@ -42,7 +42,7 @@ gpt’s peer read of the Stop fix (#602) held a commit in its fsync and emitted 
 
 **No production path holds an emit today, so there are no production logs.** An emit is held only while a `store.commit` is queued or in flight (`Store.emit`, `server/store.mjs`). `main` has no production caller of `commit`. 1a said so, and deferred the read-after-emit audit to A1: “nothing calls `commit` in this PR, so no emit is ever held in production until A1 adds the first caller; the audit of reads right after an emit belongs to A1” (#588’s body). A1a adds the first caller, `commitRecords` (`server/record-commands.mjs` on gpt’s `feat/508-a1-record-foundation`). It is gated off by `RECORD_PRODUCERS_ENABLED = false`. #305’s archive pass (#603) is dormant too.
 
-**So #601 is the audit 1a deferred, and it must land before A1b turns record producers on, or before #305’s pass runs.** It is not a live bug today.
+**So #601 is the audit 1a deferred, and it must land before A2 turns record producers on (A1b adds none: `a1b-asks.md`), or before #305’s pass runs.** It is not a live bug today.
 
 ## 2. The failures, as specs
 

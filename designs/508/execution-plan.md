@@ -38,7 +38,7 @@ The “rearchitecture-508” room closed on 2 November 2026. This section record
 **Decided in the room, not yet in `design.md`:**
 - **Client-side virtualization first, the server window later.** The page keeps a conversation's data in memory and draws only the items near the view, anchored by B1b's explicit view state. B1a (positions), B2 (the items API) and B3 (the server window) wait until a measurement on a large room shows virtualization isn't enough for PF-1. Virtualization needs no change to A1, since needs-you and open asks still read the whole state in memory. (The person, 2 November.)
 - **#305 is parked** behind the integrator's answer on slice order (#615's comment of 2 November). It cuts the state the page loads (old turns' work and activity), not the number of messages drawn.
-- **A1 is split,** as the integrator asked on #608: PR 1 is merged (#630); A1b, the ask-only reducer with its first producer and #366's and #594's cases as specs, is next and not yet designed. It waits on #633. A2 to A4 follow it.
+- **A1 is split,** as the integrator asked on #608: PR 1 is merged (#630); A1b was to be the ask-only reducer with its first producer; after the integrator’s review of #781 it is one tie rule (`a1b-asks.md`), and the rest of A1, #594’s case included, moves to A2. #633 is merged. A2 to A4 follow it.
 - **The process now in force:** rules 19 to 21 (`room-rules.md`); critic's adversarial pass in a fresh subagent on every pull request; authors read `designs/review-guide.md` (#659); the author's UAT run for changes that touch a conversation surface; the person approves pushes, not reply texts; a rebase with no code change keeps its sign-off.
 
 **Unfinished work, and where it is:**

@@ -1,7 +1,6 @@
-// What an agent needs you for, read from its cards (#366; the stopgap the integrator's review of #608 asked for, until
-// A1b derives needs from open records): when one card is answered, the agent needs you for the newest card that still
-// waits, and a resolver clears only a need that is its own. `nextNeed` is the one place that decides it, and the one
-// function A1b replaces.
+// What an agent needs you for, read from its cards (#366; the integrator's review of #608 asked for it, and A1b keeps it,
+// designs/508/a1b-asks.md): when one card is answered, the agent needs you for the newest card that still waits, and a
+// resolver clears only a need that is its own. `nextNeed` is the one place that decides it.
 
 import { ASKING } from '../shared/catalog.mjs';
 import { clip } from '../shared/text.mjs';
