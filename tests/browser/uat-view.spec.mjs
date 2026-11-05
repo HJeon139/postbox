@@ -52,6 +52,9 @@ async function runnerPage(page, onKey = async () => {}) {
   };
 }
 
+/** The window’s size, as the page sees it. */
+const windowSize = (/** @type {any} */ page) => page.evaluate(() => [innerWidth, innerHeight]);
+
 /** The shot’s wait for the page to draw, during which a reply streams in, a few words a frame. */
 const streamIn = (/** @type {any} */ page, /** @type {any} */ t) => async () => {
   const { rt, store } = app;
@@ -74,9 +77,11 @@ async function shoot(page, t, key) {
   const moved = [];
   const ev = (/** @type {string} */ expr) => page.evaluate(expr);
   const { shotItem } = shots({ ev, page: await runnerPage(page), sleep: streamIn(page, t), input: (m) => moved.push(m) });
+  const size = await windowSize(page);
   const file = await shotItem(key, join(dir, `${key}.png`));
   expect(file, 'the shot was taken').toBe(join(dir, `${key}.png`));
   await settled(page);
+  expect(await windowSize(page), 'the shot left the window its size').toEqual(size);
   return moved;
 }
 
@@ -155,8 +160,10 @@ async function appRoom(page, title) {
 
 /** One step of the runner’s look at the screen (tools/uat/observe.mjs): a shot of the app, then a read inside it. */
 async function observeStep(page, d, facts) {
+  const size = await windowSize(page);
   const step = await observe({ d, labels: new Map(), keys: new Map(), seen: new Map(), paths: { shots: dir }, timeline: [], dir, facts });
   await settled(page);
+  expect(await windowSize(page), 'the step left the window its size').toEqual(size);
   expect(step.items.join('\n'), 'the app was shot and read').toMatch(/Screenshot: .*\n.*Inside the app: Inside the app: 3 votes/s);
 }
 
