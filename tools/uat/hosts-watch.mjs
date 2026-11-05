@@ -250,13 +250,16 @@ const FAULT_WHAT = {
 
 /**
  * #464-b3: stops Postbox’s programs on the host and deletes its ~/.postbox-remote, as if someone removed it there by
- * hand, while this computer keeps the host’s token. Only on a host this run installed, which baseline() found clean
- * and the run’s cleanup removes anyway. 1 when it removed it. @param {import('./hosts-run.mjs').RunHost} h
+ * hand, while this computer keeps the host’s token. Refused on a host that had Postbox before this run
+ * (--replace-host-install): only a host baseline() found clean, which the run’s cleanup removes anyway. 1, since the
+ * script says removed only once the folder is gone. @param {{ label: string, destination: string, replaceInstall?: boolean }} h
+ * @param {typeof onHost} [run]
  */
-async function removePostbox(h) {
-  const r = await onHost(h.destination, SCRIPTS.removeStaged);
-  if (r.code !== 0) throw new Error(`Couldn’t remove Postbox’s folder on ${h.label}: ${r.stderr || `exit ${r.code}`}`);
-  return r.stdout.trim() === 'removed' ? 1 : 0;
+export async function removePostbox(h, run = onHost) {
+  if (h.replaceInstall) throw new Error(`remove-postbox is refused on ${h.label}: Postbox was there before this run (--replace-host-install).`);
+  const r = await run(h.destination, SCRIPTS.removeStaged);
+  if (r.code !== 0 || r.stdout.trim() !== 'removed') throw new Error(`Couldn’t remove Postbox’s folder on ${h.label}: ${r.stderr || `exit ${r.code}`}`);
+  return 1;
 }
 
 /**
@@ -282,7 +285,7 @@ export async function fault(hr, { fault: kind, target }, page, input = () => {})
   const what = FAULT_WHAT[kind](h.label);
   if (!hit) {
     hr.record.faults.push({ fault: kind, label: h.label, at, states: [], recovered: null, shown: `There was no ${what} to kill.` });
-    return `There was no ${what} to ${kind === 'remove-postbox' ? 'remove' : 'kill'}, so nothing happened.`;
+    return `There was no ${what} to kill, so nothing happened.`;
   }
   const r = await recovery(hr, h, at);
   const shown = says(h.label, r, await rowsOf(hr, [h.label]));
