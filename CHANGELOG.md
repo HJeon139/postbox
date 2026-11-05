@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.20.5 (2026-11-05)
+
+### Fixes
+
+- **antigravity:** a filesystem that refuses chmod still starts the turn
+- **antigravity:** hooks.json is read-only on every umask
+
 ## 1.20.4 (2026-11-05)
 
 ### Fixes
