@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { renderMarkdown } from '../shared/markdown.mjs';
+import { reviewFileKeys } from '../shared/review-files.mjs';
 
 const pageOrigin = 'http://127.0.0.1:4999';
 const fig = { url: '/api/threads/th_1/items/it_1/files/today.png?sha=ab12', width: 640, height: 480 };
@@ -46,4 +47,20 @@ test('#780 the URL and the size come only from the attached record, escaped', ()
   const html = renderMarkdown('![x](a.png)', { pageOrigin, files: evil });
   assert.doesNotMatch(html, /"onerror=|onload=/);
   assert.match(html, /width="0" height="2"/);
+});
+
+test('#780 the page keys each file by name and ref, as the route’s same-origin path', () => {
+  const item = { id: 'it 1', files: [{ name: 'today.png', ref: 'figs/today.png', sha256: 'ab12', width: 4, height: 3 }] };
+  const keys = reviewFileKeys('th/1', item);
+  const want = { url: '/api/threads/th%2F1/items/it%201/files/today.png?sha=ab12', width: 4, height: 3 };
+  assert.deepEqual({ ...keys }, { 'figs/today.png': want, 'today.png': want });
+  assert.equal(reviewFileKeys('th_1', { id: 'it_1' }), undefined, 'none: the message stays as on main');
+});
+
+test('#780 a name wins over another file’s ref, and a file named __proto__ is an ordinary key', () => {
+  const f = (name, ref, sha256) => ({ name, ref, sha256, width: 1, height: 1 });
+  const keys = reviewFileKeys('th_1', { id: 'it_1', files: [f('x.png', 'b.png', 'aa'), f('b.png', 'c/b.png', 'bb'), f('__proto__', null, 'cc')] });
+  assert.match(keys['b.png'].url, /files\/b\.png\?sha=bb$/);
+  assert.ok(Object.hasOwn(keys, '__proto__'));
+  assert.match(renderMarkdown('![x](__proto__)', { pageOrigin, files: keys }), /sha=cc/);
 });
