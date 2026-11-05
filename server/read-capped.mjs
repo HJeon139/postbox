@@ -8,19 +8,28 @@ import { open } from 'node:fs/promises';
 export async function readCapped(path, max) {
   const fh = await open(path, 'r');
   try {
-    const chunks = [];
-    let total = 0;
-    for (;;) {
-      // One byte past the limit is enough to know it’s over.
-      const chunk = Buffer.alloc(Math.min(1024 * 1024, max + 1 - total));
-      const { bytesRead } = await fh.read(chunk, 0, chunk.length, total);
-      if (!bytesRead) break;
-      chunks.push(chunk.subarray(0, bytesRead));
-      total += bytesRead;
-      if (total > max) return null;
-    }
-    return Buffer.concat(chunks, total);
+    return await readCappedFrom(fh, max);
   } finally {
     await fh.close();
   }
+}
+
+/**
+ * readCapped from a file already open, so what’s read is the file that was checked, not whatever its path names
+ * now (#780). The caller closes it.
+ * @param {import('node:fs/promises').FileHandle} fh @param {number} max
+ */
+export async function readCappedFrom(fh, max) {
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    // One byte past the limit is enough to know it’s over.
+    const chunk = Buffer.alloc(Math.min(1024 * 1024, max + 1 - total));
+    const { bytesRead } = await fh.read(chunk, 0, chunk.length, total);
+    if (!bytesRead) break;
+    chunks.push(chunk.subarray(0, bytesRead));
+    total += bytesRead;
+    if (total > max) return null;
+  }
+  return Buffer.concat(chunks, total);
 }
