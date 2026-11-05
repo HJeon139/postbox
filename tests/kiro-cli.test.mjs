@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import {
@@ -18,6 +17,7 @@ import {
 } from '../server/adapters/kiro-cli.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { fakeCtx, fakeSpawn, fixture } from './kiro-cli-fakes.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const replay = (name, opts) => {
   const ctx = fakeCtx();
@@ -250,7 +250,7 @@ test('exit codes the stream didn’t explain', () => {
 });
 
 test('an Isolated turn: its own Kiro home, the agent file written for the turn and removed after, the session saved', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-kiro-'));
+  const root = tempDir('pb-kiro-');
   const seen = [];
   const adapter = new KiroCliAdapter({
     workRoot: join(root, 'work'),
@@ -271,7 +271,7 @@ test('an Isolated turn: its own Kiro home, the agent file written for the turn a
 });
 
 test('a session Kiro no longer has starts over once, without --resume-id, and says so', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-kiro-'));
+  const root = tempDir('pb-kiro-');
   const seen = [];
   const adapter = new KiroCliAdapter({
     workRoot: join(root, 'work'),
@@ -298,7 +298,7 @@ test('a session Kiro no longer has starts over once, without --resume-id, and sa
 });
 
 test('a failed turn rejects with what Kiro said', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-kiro-'));
+  const root = tempDir('pb-kiro-');
   const adapter = new KiroCliAdapter({
     workRoot: join(root, 'work'),
     isolatedHome: join(root, 'home'),

@@ -1,13 +1,12 @@
 // A Kiro session grown past the request size limit fails every turn that resumes it, Retry included (#544).
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createKiroMapper, KiroCliAdapter, kiroAgent } from '../server/adapters/kiro-cli.mjs';
 import { overSizeLimit } from '../server/adapters/kiro-errors.mjs';
 import { fakeCtx, fakeSpawn, fixture } from './kiro-cli-fakes.mjs';
 import { setup } from './kiro-cli-remote-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 // Reconstructed, not recorded: the message is the one #544 quotes from a real turn (Postbox v0.44.7; the issue
 // doesn’t name the Kiro version), and the event’s shape is the recorded missing-session.jsonl’s, without a `stage`,
@@ -21,7 +20,7 @@ const tooLarge = (sessionId) => [
 ];
 
 const adapterWith = (streams, seen) => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-kiro-'));
+  const root = tempDir('pb-kiro-');
   return new KiroCliAdapter({
     workRoot: join(root, 'work'),
     isolatedHome: join(root, 'home'),
