@@ -3,6 +3,7 @@
 // at each welcome. Removing a host waits for these (confirmStops), and renaming one refuses while any is left (busyOn).
 
 import { linkOf, listen, needHost, releaseHost } from './turns-need.mjs';
+import { openCards } from './turns-prompts.mjs';
 import { hostOf, ON_HOST, send, updateRemote } from './turns-shared.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
@@ -34,6 +35,8 @@ export function askStop(rts, sessionId, hostId, turn, { send: now = true, state 
       ...(state && r.turn === turn ? { state: 'stopping', at: rts.now() } : {}),
     });
   }
+  // Its open cards learn the turn was stopped, so whichever message ends them sends no expiry note (#721).
+  for (const card of openCards(rts, turn)) rts.rt.patchItem(card.threadId, card.it.id, { stoppedBy: 'person' });
   if (now) sendStop(rts, turn);
   return true;
 }

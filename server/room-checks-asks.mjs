@@ -140,15 +140,25 @@ function needsMismatches(f) {
   for (const se of Object.values(sessions)) {
     if (se.archived || !needsYouNow(se) || !se.needs.itemId) continue;
     const it = byId.get(se.needs.itemId);
-    const settled = it?.kind === 'hop' ? it.status !== 'open' : it?.kind === 'block' && ASKING.has(it.block?.type) ? !!(it.answered || it.closed) : false;
-    if (settled)
+    if (settledAsk(it))
       out.push({
         key: `needs-mismatch:${se.id}:${it.id}`,
         title: `@${se.handle}’s ring says it needs you for an ask that’s settled`,
-        evidence: `@${se.handle} needs you for ${se.needs.kind} ${it.id}, which is ${it.kind === 'hop' ? it.status : 'answered or withdrawn'}.`,
+        evidence: `@${se.handle} needs you for ${se.needs.kind} ${it.id}, which is ${it.kind === 'block' ? 'answered or withdrawn' : it.status}.`,
       });
   }
   return out;
+}
+
+/**
+ * Whether the ask a ring points at is settled: a wake card or a permission card that’s no longer open (one that
+ * expired can’t be answered, #721), or a block that asks, answered or withdrawn.
+ * @param {any} it
+ */
+function settledAsk(it) {
+  if (it?.kind === 'hop' || it?.kind === 'permission') return it.status !== 'open';
+  if (it?.kind === 'block' && ASKING.has(it.block?.type)) return Boolean(it.answered || it.closed);
+  return false;
 }
 
 export const ASK_CHECKS = [

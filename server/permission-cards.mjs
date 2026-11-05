@@ -5,6 +5,7 @@ import { POSTBOX_TIMEOUT_MS } from './adapters/setup.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { httpError } from './helpers.mjs';
 import { editedInput, MAX_EDIT_INPUT, MAX_REASON } from './permission-edit.mjs';
+import { closeCard, dismissPermission } from './permission-expiry.mjs';
 import { addAllowRule, alwaysAllow, cleanRule, rulesFor, takeBackRule } from './permission-rules.mjs';
 import { gated } from './store-outage.mjs';
 import { draftOf, isWriteCall, whereOf } from './write-guard.mjs';
@@ -133,9 +134,8 @@ export function settlePermission(rt, itemId, status, message, answer = {}, patch
   if (!w) return false;
   clearTimeout(w.timer);
   rt.permissionWaits.delete(itemId);
-  rt.patchItem(w.threadId, itemId, { status, answeredAt: Date.now(), ...patch });
-  const se = rt.s.sessions[w.sessionId];
-  releaseNeed(rt, se, itemId, 'tool');
+  // The refusal below reaches a call nobody reads once the turn has ended, so an expiry also tells the agent (#721).
+  closeCard(rt, w.threadId, itemId, w.sessionId, { status, answeredAt: Date.now(), ...patch });
   w.resolve(status.startsWith('allowed') ? { allow: true, ...answer } : { allow: false, message: message ?? 'The request expired when the turn ended.' });
   return true;
 }
@@ -145,10 +145,12 @@ export function settlePermission(rt, itemId, status, message, answer = {}, patch
  * - allow: this once, as asked;
  * - always: this once, and Claude Code’s own suggestions as updatedPermissions (the card shows them in words);
  * - edit: with your change to the input (values.command for a command, else values.input, an object or JSON);
- * - deny: no, with values.reason, which goes to the agent.
+ * - deny: no, with values.reason, which goes to the agent;
+ * - dismiss: on a card nobody can answer any more, so it stops counting toward “needs you” (#721).
  * @param {string} threadId @param {string} itemId @param {string} action @param {Record<string, any>} [values]
  */
 export function resolvePermission(rt, threadId, itemId, action, values = {}) {
+  if (action === 'dismiss') return dismissPermission(rt, threadId, itemId);
   const it = rt.store.item(threadId, itemId);
   if (it?.kind !== 'permission' || it.status !== 'open' || !rt.permissionWaits.has(itemId))
     throw httpError(409, 'That request was already answered, or the turn that asked has ended.');

@@ -93,6 +93,24 @@ function autoInstalled(f) {
     });
 }
 
+/** The statuses an unanswered card ends in: it expired, or its host ended it (the agent is told for both). */
+const ENDED = new Set(['expired', 'ended']);
+
+/**
+ * A permission card that expired unanswered, whose agent was told so (`agentTold`, server/permission-expiry.mjs) and
+ * whose ring no longer points at it (#721). The note is what main never wrote, so the trigger can’t fire on main.
+ */
+function expiredNoNeed(f) {
+  const sessions = f.state?.sessions ?? {};
+  const told = (it) => it.kind === 'permission' && ENDED.has(it.status) && it.agentTold === true;
+  return itemsUnderTest(f)
+    .filter((it) => told(it) && sessions[it.sessionId]?.needs?.itemId !== it.id)
+    .map((it) => ({
+      at: Number.isFinite(it.answeredAt) ? it.answeredAt : null,
+      evidence: `@${it.handle}’s card ${it.id} “${String(it.summary ?? '').slice(0, 60)}” expired, and @${it.handle} doesn’t need you for it.`,
+    }));
+}
+
 /** @type {Record<string, { issue: number, says: string, recorded: (f: any) => boolean, run: (f: any) => { at: number|null, evidence: string }[] }>} */
 export const HOST_TRIGGERS = {
   'turn-on-each-place': {
@@ -207,6 +225,12 @@ export const HOST_TRIGGERS = {
     says: 'Postbox installed its own version by itself, once, on a host with an older one, and a turn then ran there',
     recorded: hostRun,
     run: autoInstalled,
+  },
+  'expired-card-no-need': {
+    issue: 721,
+    says: 'a permission card expired before you answered it, and its agent no longer said it needed you for it',
+    recorded: hostRun,
+    run: (f) => (hostRun(f) ? expiredNoNeed(f) : []),
   },
   // A hand-off between machines while a wake card waits (tests/uat/e2e/scenarios/hostwakes.md).
   ...HOSTWAKE_TRIGGERS,
