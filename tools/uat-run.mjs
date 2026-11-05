@@ -26,7 +26,6 @@
 // A run is 15 steps unless its scenario or --steps says otherwise; a targeted scenario’s phases end on their triggers
 // (tools/uat/triggers.mjs). Every finding gets a verdict: the verifier’s after the run, or yours (tools/uat-verdict.mjs).
 
-import { spawnSync } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,6 +43,7 @@ import { HOST_OPTIONS } from './uat/hosts-options.mjs';
 import { createHostRun, followStatuses, startHosts } from './uat/hosts-run.mjs';
 import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
+import { openIssues } from './uat/open-issues.mjs';
 import { portFree, startPostbox } from './uat/postbox.mjs';
 import { newProbes, recordInput } from './uat/probes.mjs';
 import { recheck } from './uat/recheck.mjs';
@@ -129,9 +129,7 @@ async function main() {
   const timing = runTiming();
   log(`UAT “${scenario.title}” → ${dir}, at most ${steps} steps`);
 
-  // Open issues, so the tester and the report can name the ones a run catches again.
-  const gh = spawnSync('gh', ['issue', 'list', '--state', 'open', '--limit', '200', '--json', 'number,title'], { cwd: ROOT, encoding: 'utf8' });
-  const issues = gh.status === 0 ? JSON.parse(gh.stdout) : [];
+  const issues = openIssues(ROOT); // so the tester and the report can name the ones a run catches again
   log(`${issues.length} open issues to match against.`);
 
   const port = Number(opt.port);
