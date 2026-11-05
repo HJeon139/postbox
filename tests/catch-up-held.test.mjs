@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { catchUp } from '../server/catch-up.mjs';
 import { HOP_LIMIT } from '../shared/limits.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
+import { heldStore } from './stop-reply-fixture.mjs';
 
 /** @alpha asks to add @gamma; @beta's wake of @alpha, which needs a card too, is held on that card. */
 function heldForAlpha() {
@@ -58,4 +59,32 @@ test('#693 the catch-up names at most three held messages, and says how many mor
   const text = catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '';
   assert.equal(text.match(/is held on/g)?.length, 3);
   assert.match(text, /And 3 more messages for you are held on it/);
+});
+
+test('#693 a card held behind a commit isn’t named in the catch-up until it’s published: the catch-up reads what the person sees', async () => {
+  const h = await heldStore();
+  const f = setup(h.store);
+  await h.store.flush();
+  h.hold();
+  const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
+  await h.atSync;
+  // A wake-limit card for @alpha, as askToWake makes it, held behind the commit.
+  f.rt.addItem(f.t.id, {
+    kind: 'hop',
+    fromSessionId: f.beta.id,
+    from: 'beta',
+    to: 'alpha',
+    text: 'Approved.',
+    reason: 'Approved.',
+    status: 'open',
+    n: HOP_LIMIT + 1,
+  });
+  const hops = (items) => items.filter((x) => x.kind === 'hop').length;
+  assert.deepEqual([hops(h.store.items(f.t.id)), hops(h.store.pending.items(f.t.id))], [0, 1], 'the card is held');
+  assert.doesNotMatch(catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '', /is held on/);
+  h.release();
+  await commit;
+  await h.store.flush();
+  assert.match(catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '', /@beta’s message to you \(“Approved\.”\) is held on @beta’s request to wake @alpha/);
+  await h.store.close();
 });
