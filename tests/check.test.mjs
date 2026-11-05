@@ -142,3 +142,19 @@ for (const [sig, exit] of /** @type {const} */ ([
     assert.equal(s.proc.listenerCount(sig), 0, 'check stops listening once it ends');
   });
 }
+
+test('a run folder that can’t be removed is a warning, and a passing check still exits 0', async () => {
+  /** @type {string[]} */
+  const log = [];
+  const runDir = {
+    open: () => ({
+      path: '/tmp/pb-gate-1-AbC123',
+      close: () => {
+        throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+      },
+    }),
+  };
+  const code = await check({ stages: ['test'], run: async () => 0, runDir, now: () => 0, log: (m) => log.push(m) });
+  assert.equal(code, 0);
+  assert.match(log.at(-1) ?? '', /couldn’t remove its temp folder \/tmp\/pb-gate-1-AbC123: EACCES/);
+});

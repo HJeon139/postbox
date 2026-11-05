@@ -69,8 +69,21 @@ export async function check(o = {}) {
   try {
     return await stagesInOrder(stages, stage, now, log);
   } finally {
-    dir?.close();
+    closeQuietly(dir, log);
     for (const [sig, h] of handlers) signals.off(sig, h);
+  }
+}
+
+/**
+ * Removes the run’s folder. A folder that can’t be removed is a warning, not a failed check: the next run’s sweep
+ * takes it once it’s over an hour old.
+ * @param {{ path: string, close: () => void } | undefined} dir @param {(m: string) => void} log
+ */
+function closeQuietly(dir, log) {
+  try {
+    dir?.close();
+  } catch (e) {
+    log(`⚠ npm run check couldn’t remove its temp folder ${dir?.path}: ${/** @type {Error} */ (e).message}`);
   }
 }
 
