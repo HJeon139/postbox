@@ -17,6 +17,7 @@ researcher read the first before numbers; critic reads this note.
   - `node tools/bench-server.mjs --sizes 1000,4000,10000 --runs 3`
   - `node tools/bench-snapshot-stall.mjs --snapshot <copy> --iterations 10`
 - **Fairness:** the before and after runs of each pass ran one after the other, in one session, holding the gate lock. Each number below gives its pass, commit and load average. The gate lock holds back gates only, not other agents’ browser or UAT runs, so the load average is the best record of how busy the host was.
+- **The after side:** `99c15ffa` with #712b’s `74faa16c` merged into it. That merge was made locally, as `6fd9c743`, and wasn’t pushed. Its tree, `fe77f2ea`, is exactly what `git merge-tree --write-tree 99c15ffa 74faa16c` gives, so the after side can be rebuilt from those two commits, which are both on GitHub.
 - **The real snapshot:** a 2.53 MB copy of one real host’s store snapshot, with top-level keys `turn`, `home` and `threads`. It isn’t filtered. The copy stays on the host, and only its size and the timings are reported.
 
 ## PF-1: a key press to the next frame
@@ -29,7 +30,7 @@ Each size had 200 keys × 3 runs, 600 keys in all. In every run below, every key
 |---|---|---|---|---|---|---|
 | First before run, 17:55 UTC | `ee5fa4d5` | 3.95 | 40.0 ms | 136.0 ms (3.40) | 336.0 ms (8.40) | fail |
 | Before, 22:11 UTC | `99c15ffa` | 6.70 | 32.0 ms | 144.0 ms (4.50) | 336.0 ms (10.50) | fail |
-| After #712b, 22:17 UTC | `6fd9c743` | 2.52 | 32.0 ms | 144.0 ms (4.50) | 344.0 ms (10.75) | fail |
+| After #712b, 22:17 UTC | `99c15ffa` + `74faa16c` | 2.52 | 32.0 ms | 144.0 ms (4.50) | 344.0 ms (10.75) | fail |
 
 The p95 figures are Event Timing’s. The tool’s own next-frame timer agrees with Event Timing within 4% at every size: 343.1 ms before and 340.7 ms after at 10×.
 
@@ -41,7 +42,7 @@ The p95 figures are Event Timing’s. The tool’s own next-frame timer agrees w
 
 The server passes ran at 22:23 UTC, before then after, at load averages of 1.36 and 1.01.
 
-| Items | Before: stall max (`99c15ffa`) | After: stall max (`6fd9c743`) | Earlier before (`ee5fa4d5`) |
+| Items | Before: stall max (`99c15ffa`) | After: stall max (`99c15ffa` + `74faa16c`) | Earlier before (`ee5fa4d5`) |
 |---|---|---|---|
 | 1,000 | 2.2 ms | 2.2 ms | 3.2 ms |
 | 4,000 | 5.0 ms | 4.9 ms | 5.6 ms |
@@ -52,7 +53,7 @@ The generated rooms’ rows are the worst stall over every run. For the real cop
 
 ### Reads and writes by id
 
-| Measure, p95 | Size | Before (`99c15ffa`) | After (`6fd9c743`) |
+| Measure, p95 | Size | Before (`99c15ffa`) | After (`99c15ffa` + `74faa16c`) |
 |---|---|---|---|
 | A streamed `item.text` chunk | 1× | 13.5 µs | 1.5 µs |
 | | 4× | 36.8 µs | 0.3 µs |
