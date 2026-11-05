@@ -1,11 +1,12 @@
 // The store’s pending read (#601, designs/508/601-held-view.md): an emit made while a commit is queued or in flight is held,
 // not yet applied, and every one is released onto memory in order (store-commit.mjs, store-retry.mjs). store.pending
 // reads a list with its held emits applied to a copy, for the in-process readers placed in store-held-guard.test.mjs.
-// The published reads (store.items(), item(), findItem(), store.state, which /api/state sends, and the stream) see a
+// The published reads (store.items(), item(), store.state, which /api/state sends, and the stream) see a
 // held emit only once it is released, as design.md says a commit is visible to anything only after its sync (T-31).
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { buildCount } from '../shared/item-index.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
 /** A store on disk with one thread of two items, durable, then a commit held in its fsync: emits from now on are held. */
@@ -45,7 +46,37 @@ test('held item events show in the pending read, in order: an add, a patch, a mo
   );
   assert.equal(pend(store, 't1', 'a')?.moved, true);
   assert.equal(store.item('t1', 'r'), undefined, 'the published read doesn’t see it');
-  assert.equal(store.findItem('r'), null, 'nor does findItem');
+  await done();
+});
+
+test('#712b: pending.item(t, id) sees each held add, patch, move and text, as the pending list does; store.item doesn’t', async () => {
+  const { store, done } = await holding();
+  assert.equal(store.pending.item('t1', 'a')?.text, 'one', 'before anything is held, it reads the published list');
+  store.emit('item.add', { threadId: 't1', item: { id: 'r', kind: 'agent', text: 'Held', status: 'streaming' } });
+  assert.equal(store.pending.item('t1', 'r')?.text, 'Held');
+  store.emit('item.text', { threadId: 't1', id: 'r', text: ' reply' });
+  store.emit('item.patch', { threadId: 't1', id: 'r', patch: { status: 'done' } });
+  store.emit('item.move', { threadId: 't1', id: 'a', stub: { id: 'a-stub', kind: 'stub' }, patch: { moved: true } });
+  for (const id of ['a', 'b', 'r', 'a-stub']) assert.deepEqual(store.pending.item('t1', id), pend(store, 't1', id), id);
+  assert.equal(store.pending.item('t1', 'r')?.text, 'Held reply');
+  assert.equal(store.pending.item('t1', 'a')?.moved, true);
+  assert.equal(store.pending.item('t1', 'gone'), undefined);
+  assert.equal(store.item('t1', 'r'), undefined, 'the published read doesn’t see a held add');
+  assert.equal(store.item('t1', 'a')?.moved, undefined, 'nor a held move');
+  await done();
+  assert.equal(store.item('t1', 'r')?.text, 'Held reply', 'once released, the published read has it');
+});
+
+test('#712b: reading one item while writes are held indexes the thread once, not once per held chunk', async () => {
+  const { store, done } = await holding();
+  store.emit('item.add', { threadId: 't1', item: { id: 'r', kind: 'agent', text: '', status: 'streaming' } });
+  store.pending.item('t1', 'r');
+  const before = buildCount();
+  for (let k = 0; k < 50; k++) {
+    store.emit('item.text', { threadId: 't1', id: 'r', text: 'x' });
+    assert.equal(store.pending.item('t1', 'r')?.text.length, k + 1);
+  }
+  assert.equal(buildCount() - before, 0, 'each held chunk would index a new frozen copy if pending.item read it');
   await done();
 });
 

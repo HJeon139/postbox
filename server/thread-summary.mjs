@@ -3,6 +3,7 @@
 // something new, as a line they choose whether to read; and after a thread’s last reply settles, one cheap model call
 // (Haiku) writes a summary of about 20 tokens that the line carries.
 
+import { positionOf } from '../shared/item-index.mjs';
 import { READING } from '../shared/limits.mjs';
 import { keepFor, leftOut, mentions } from './catch-up-keep.mjs';
 import { clipText } from './helpers.mjs';
@@ -59,7 +60,7 @@ export function threadCatchUp(rt, se, threadId, excludeId) {
   if (t?.kind !== 'topic' && t?.kind !== 'side') return null;
   const items = rt.store.items(threadId);
   const seen = se.seenIn?.[threadId];
-  const at = seen ? items.findIndex((i) => i.id === seen) : -1;
+  const at = seen ? positionOf(items, seen) : -1;
   rt.updateSession(se.id, { seenIn: { ...(se.seenIn ?? {}), [threadId]: items.at(-1)?.id ?? null } });
   const root = seen === undefined ? rt.topicRootLine(se, t) : null;
   // The conversation's own rules (#507): a message that @-mentions the agent first and whole, then the newest, up to

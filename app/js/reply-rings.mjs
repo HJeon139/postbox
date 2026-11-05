@@ -4,7 +4,7 @@
 // only whose they are, with no state or context, and their words are empty. So a session change draws one ring and
 // one word, not one of each for every reply the agent ever wrote.
 
-import { client } from './client.mjs';
+import { client, itemIn } from './client.mjs';
 import { h } from './dom.mjs';
 import { restRing, ringFor, stateWord } from './ring.mjs';
 import { latestReply } from './speaker-line.mjs';
@@ -50,8 +50,15 @@ function paintLines(root, se) {
 /** The session whose lines a change can move: its own change, or a new or moved message of its. @param {any} ch */
 function sessionOf({ type, data: d }) {
   if (type === 'session') return d;
-  const it = type === 'item.add' ? d.item : type === 'item.move' ? client.state.items[d.threadId]?.find((x) => x.id === d.id) : null;
+  const it = movedOrAdded(type, d);
   return it?.sessionId ? client.state.sessions[it.sessionId] : null;
+}
+
+/** The message a change adds or moves, or null. @param {string} type @param {any} d */
+function movedOrAdded(type, d) {
+  if (type === 'item.add') return d.item;
+  if (type === 'item.move') return itemIn(d.threadId, d.id);
+  return null;
 }
 
 // A message drawn again draws its line as it should be (replyLine); a session’s change, or a new or moved message,

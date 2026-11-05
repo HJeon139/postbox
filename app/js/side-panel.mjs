@@ -5,7 +5,7 @@ import { renderMarkdown } from '/shared/markdown.mjs';
 import { handles } from './agent-markdown.mjs';
 import { inThreadLine } from './agents.mjs';
 import { enhanceMarkdown } from './apps.mjs';
-import { api, client, itemsOf, S, threadLink } from './client.mjs';
+import { api, client, itemIn, S, threadLink } from './client.mjs';
 import { h, icon, trusted } from './dom.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';
 import { navigate, openMenu, say, toast } from './ui.mjs';
@@ -22,7 +22,7 @@ export function mountSidePanel(parentId, sideId) {
   const tr = mountTranscript(sideId, { inPanel: true });
   // A side thread from before #372 has no composer: writing there would restart what #372 ended.
   const comp = topic ? mountComposer(sideId, { side: true }) : null;
-  const root = topic ? itemsOf(parentId).find((x) => x.id === side.rootItemId) : null;
+  const root = topic ? itemIn(parentId, side.rootItemId) : null;
   const body = h('div.sp-body', topic ? threadRoot(root) : null, tr.el);
   // Who is in a topic thread, in a line: the conversation’s agents, from their one session there (#228).
   const who = topic ? inThreadLine(sideId) : null;

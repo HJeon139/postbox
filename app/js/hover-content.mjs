@@ -2,7 +2,7 @@
 // made a reaction (#320).
 
 import { REACTIONS } from '/shared/reactions.mjs';
-import { client } from './client.mjs';
+import { client, itemIn } from './client.mjs';
 import { h, icon } from './dom.mjs';
 import { reactors, who } from './reactions.mjs';
 import { mdNode } from './ui.mjs';
@@ -13,7 +13,7 @@ export function hoverContent(trigger) {
   const itemEl = trigger.closest('[data-key]');
   const threadId = trigger.closest('[data-thread]')?.dataset.thread;
   if (trigger.classList.contains('cite')) {
-    const it = (client.state.items[threadId] ?? []).find((x) => x.id === itemEl?.dataset.key);
+    const it = itemIn(threadId, itemEl?.dataset.key);
     const n = +trigger.dataset.cite;
     const s = it?.sources?.[n - 1];
     if (!s) return null;
@@ -69,7 +69,7 @@ export function hoverContent(trigger) {
 /** Who made a reaction, “You” first: none when nobody has. */
 function reactionCard(trigger) {
   const row = trigger.closest('[data-reactions]');
-  const it = (client.state.items[row?.dataset.thread ?? ''] ?? []).find((x) => x.id === row?.dataset.reactions);
+  const it = itemIn(row?.dataset.thread ?? '', row?.dataset.reactions);
   const emoji = trigger.dataset.emoji ?? '';
   const names = reactors(it, emoji);
   if (!names.length) return null;

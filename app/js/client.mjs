@@ -7,6 +7,7 @@
 // name events the server never kept (server/live-streams.mjs). The page's epoch is the one its loaded
 // state came with, never one heard on the stream alone.
 
+import { itemOf, positionOf } from '/shared/item-index.mjs';
 import { needsYouNow, whereNeeds } from '/shared/needs.mjs';
 import { apply, ownState, PUBLIC_EVENT_TYPES, STREAM } from '/shared/state.mjs';
 
@@ -191,6 +192,10 @@ export const hrefOf = (threadId) => {
 export const threadLink = (threadId) => new URL(hrefOf(threadId), location.href).href;
 export const sessionsOf = (threadId) => (S().threads[threadId]?.members ?? []).map((id) => S().sessions[id]).filter((x) => x && !x.deleting);
 export const itemsOf = (threadId) => S().items[threadId] ?? [];
+/** The item with this id in a conversation, in O(1) through the store’s index (#712b). */
+export const itemIn = (threadId, id) => itemOf(itemsOf(threadId), id);
+/** Where that item sits in its conversation’s list, or -1, in O(1) (#712b). */
+export const placeIn = (threadId, id) => positionOf(itemsOf(threadId), id);
 export const persona = (id) => S().personas[id];
 export const busy = (se) => ['think', 'gen', 'tool'].includes(se?.state);
 /**
