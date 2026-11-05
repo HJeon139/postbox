@@ -75,8 +75,8 @@ test('#120 UAT host scripts: the run’s own folder is made once, refused when i
     mkdirSync(locked);
     writeFileSync(join(locked, 'out.log'), 'x');
     chmodSync(locked, 0o500);
-    const stuck = await h.run(cleanUpScript('r1'));
-    chmodSync(locked, 0o700);
+    // Writable again even if the run throws, so the host’s folder can be removed (#797).
+    const stuck = await h.run(cleanUpScript('r1')).finally(() => chmodSync(locked, 0o700));
     assert.equal(stuck.code, 1);
     assert.match(stuck.stderr, /~\/postbox-uat\/r1 is still there\./);
     assert.doesNotMatch(stuck.stdout, /removed/);

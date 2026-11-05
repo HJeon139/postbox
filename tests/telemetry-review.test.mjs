@@ -71,21 +71,19 @@ test('round 2, 2: File issue checks the running build and strict refs, not meta.
   g.stop();
 });
 
-test('round 2, 3: a sweep that can’t delete leaves a gap, and never stops Postbox at start', async () => {
+test('round 2, 3: a sweep that can’t delete leaves a gap, and never stops Postbox at start', async (t) => {
   const f = await flaggedRoom();
   const streams = join(f.data, 'telemetry', f.t.id, 'recording', 'streams');
   const old = (Date.now() - KEEP_MS - 864e5) / 1000;
   writeFileSync(join(streams, 'old.jsonl'), '{}\n');
   utimesSync(join(streams, 'old.jsonl'), old, old);
+  t.after(() => chmodSync(streams, 0o700)); // before the chmod, so a failure below still leaves the folder removable
   chmodSync(streams, 0o500);
-  try {
-    assert.doesNotThrow(() => sweep(f.rt));
-    f.stop();
-    assert.doesNotThrow(() => watchTelemetry(f.rt)());
-    assert.equal(lostOf(f.rt).sweep, true);
-  } finally {
-    chmodSync(streams, 0o700);
-  }
+  assert.doesNotThrow(() => sweep(f.rt));
+  f.stop();
+  assert.doesNotThrow(() => watchTelemetry(f.rt)());
+  assert.equal(lostOf(f.rt).sweep, true);
+  chmodSync(streams, 0o700);
   const { draft } = await report(f);
   assert.ok(draft.report.gaps.some((g) => g.kind === 'sweep'));
 });
