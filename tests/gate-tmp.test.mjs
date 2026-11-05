@@ -116,6 +116,13 @@ test('the sweep leaves names that aren’t a gate run’s alone', (t) => {
   assert.equal(fs.existsSync(other), true);
 });
 
+test('the sweep leaves a name with more after the gate’s six characters alone', (t) => {
+  const { tmp, deps } = scratch(t);
+  const dir = leftover(tmp, DEAD, 2 * STALE_MS, 'AbC123x');
+  sweep(deps);
+  assert.equal(fs.existsSync(join(dir, 'f')), true);
+});
+
 test('without a user id, as on Windows, the sweep reads nothing and removes nothing', (t) => {
   const { tmp, deps } = scratch(t, { uid: undefined });
   const dir = leftover(tmp, DEAD);
