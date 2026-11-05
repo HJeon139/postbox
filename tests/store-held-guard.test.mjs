@@ -32,6 +32,7 @@ const PUBLISHED = {
   'read-message.mjs': ['readMessage', 'readMessage'], // a read tool (T-31)
   'remote/turns-snapshot.mjs': ['readable'], // the snapshot sent to a host: it leaves the process
   'review-comments.mjs': ['find'], // review_block on a block shown in the room
+  'review-files.mjs': ['findReviewFile'], // a review’s image, as an HTTP answer to the page (#780)
   'runtime.mjs': ['retry', 'resolveProposal', 'readConversation', 'diagramCheck', 'stopShellCommand'], // a person’s action on an item they see, or a read tool
   'scheduled-wakes.mjs': ['prepareScheduledRetry'], // the person’s Retry of a wake line they see
   'share-back.mjs': ['shareToConversation', 'shareToConversation'], // the person’s Share of an item they see
