@@ -127,8 +127,7 @@ async function runRemove(m, id) {
     const name = hostOf(m, id).name;
     const again = (/** @type {SshFailure} */ f) => new SshFailure(f.kind, f.message, `${f.next} Then remove it again.`, f.detail);
     try {
-      // Not waiting for an install under way: Remove goes ahead on the link as it is, or fails now (#464-b2b).
-      await ensureWelcome(m, id, { waitForInstall: false });
+      await ensureWelcome(m, id);
     } catch (e) {
       // No token here (link()’s not-installed) is the caller’s to decide; a host that can’t be reached is a retry.
       throw e?.name === 'SshFailure' && e.code !== 'not-installed' ? again(e) : e;

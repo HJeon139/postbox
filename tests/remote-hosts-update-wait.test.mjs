@@ -247,23 +247,6 @@ test('#464-b2b: a caller waits for one install at most, though another is under 
   }
 });
 
-test('#464-b2b: removing Postbox from a host while an install is held open doesn’t wait, and gets the stopped link’s failure', async () => {
-  const t = rig({ install: hangs });
-  try {
-    await t.mgr.setKeepUpdated('h1', true);
-    await t.mgr.connect('h1').catch(() => {});
-    await until(() => t.runs.length === 1, 'the install started, and hangs');
-    const w = watch(t.mgr.removeFromHost('h1'));
-    await until(() => w.settled, 'the removal settled while the install is held');
-    assert.equal(w.error?.detail?.code, 127, 'the stopped link’s failure');
-    assert.match(String(w.error?.next), /remove it again/);
-    assert.equal(t.runs[0].exited, false, 'the install is still held open');
-    t.runs[0].answer();
-  } finally {
-    t.done();
-  }
-});
-
 test('#464-b2b: with the consent off, a caller that hears the 127 throws it at once, as before', async () => {
   const t = rig();
   try {
