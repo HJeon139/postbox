@@ -207,19 +207,21 @@ const UNFIXED = new Set(['failed', 'busy', 'started']);
 
 /**
  * The person’s own Install… worked (hosts.mjs, install): a failed, busy or cut-off automatic try of this version, the
- * newest in the record, is rewritten with how this install ended, so the card stops offering Install… for a host that
- * has this version (the integrator’s review of #770). The try stays this version’s, so it stays tried. Nothing else
- * is written: the record is the automatic installs’. Never throws.
- * @param {Manager} m @param {string} id @param {InstallResult} result
+ * newest in the record, is rewritten as present, so the card stops offering Install… for a host that has this version
+ * and says nothing of an install Postbox didn’t do by itself (the integrator’s reviews of #770). Not installed: the
+ * card would say Postbox installed it by itself, and UAT’s host-auto-installed would count it. Not an outcome of its
+ * own: an older Postbox reads the record strictly, and would read a new one as no record. The try stays this
+ * version’s, so it stays tried. Nothing else is written: the record is the automatic installs’. Never throws.
+ * @param {Manager} m @param {string} id
  */
-export async function supersedeTry(m, id, result) {
+export async function supersedeTry(m, id) {
   let wrote = false;
   try {
     await changeRecord(m, id, (was) => {
       const newest = was.installs[0];
       if (!m.getHost(id) || newest?.version !== m.version || !UNFIXED.has(newest.outcome)) return null;
       wrote = true;
-      return { keepUpdated: was.keepUpdated, installs: [{ ...newest, outcome: result.installed ? 'installed' : 'present' }, ...was.installs.slice(1)] };
+      return { keepUpdated: was.keepUpdated, installs: [{ ...newest, outcome: 'present' }, ...was.installs.slice(1)] };
     });
   } catch (e) {
     noteError(m, id, `Postbox couldn’t note your install in its data folder (${e?.code ?? 'error'}).`);

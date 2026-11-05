@@ -228,7 +228,7 @@ async function install(m, hostId) {
   const outcome = await installing(m, hostId).done;
   if (!outcome.ok && outcome.failure?.message === WITHDRAWN) return install(m, hostId);
   if (!outcome.ok) throw outcome.failure;
-  await supersedeTry(m, hostId, outcome.result);
+  await supersedeTry(m, hostId);
   return outcome.result;
 }
 

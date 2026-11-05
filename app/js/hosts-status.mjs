@@ -78,7 +78,8 @@ const UPDATE_LINES = {
 
 /**
  * How the host’s newest automatic install stands (keep-updated.mjs): under way, installed by itself, or failed, with
- * Install… beside it. Only its version, never a token or a path.
+ * Install… beside it. Never a token. A failure’s reason can name a path on this computer when ssh couldn’t start: the
+ * same words Install… shows, on the person’s own machine.
  * @param {any} host @param {any} st
  */
 const updateView = (host, st) => {
