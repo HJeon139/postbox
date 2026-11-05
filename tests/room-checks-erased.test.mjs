@@ -258,3 +258,8 @@ test('refusal-without-card weighs each agent’s refusals against its own cards,
   assert.equal(out.length, 1, JSON.stringify(out));
   assert.equal(out[0].evidence, '1 refused, 0 cards. @scribe: Bash rm -rf build.');
 });
+
+test('work-commands-match-stream leaves out a Bash call the person refused, which never ran', () => {
+  const refused = [...call('b_den', 'Bash', { command: 'rm -rf build' }, { is_error: true, content: 'Permission denied' }), refusal('b_den')];
+  assert.deepEqual(found(room([turn(LIVE, refused)]), 'work-commands-match-stream'), []);
+});
