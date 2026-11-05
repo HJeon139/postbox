@@ -8,6 +8,7 @@ import { readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { keptIfShown, keptRef, revisedFiles, servedReviewFile } from '../server/review-files.mjs';
+import { REVIEW_IMAGES } from '../shared/limits.mjs';
 import { png, reviewBlock, setup } from './review-files-fixture.mjs';
 
 /** The bytes the route would serve for this file, or null. */
@@ -254,4 +255,17 @@ test('#780 keptIfShown keeps the files when the tool shows the block, and drops 
   await assert.rejects(() => keptIfShown(app, () => Promise.reject(new Error('boom'))), /boom/);
   assert.deepEqual(settled, [true, false, false]);
   assert.deepEqual(await keptIfShown({ args: {} }, () => ({ ok: true })), { ok: true }, 'an app’s files have nothing to settle');
+});
+
+test('#780 pastFiles keeps only the newest replaced files, however many updates there are', () => {
+  const file = (i) => ({ name: 'a.png', ref: null, sha256: i.toString(16).padStart(64, '0'), size: 1, type: 'image/png', width: 1, height: 1 });
+  let item = { files: [file(0)], pastFiles: [] };
+  for (let i = 1; i <= 20; i++) item = revisedFiles(item, [file(i)]);
+  assert.equal(REVIEW_IMAGES.reviewPastFiles, 8);
+  assert.deepEqual(
+    item.pastFiles.map((x) => Number.parseInt(x.sha256, 16)),
+    [12, 13, 14, 15, 16, 17, 18, 19],
+    'the 8 newest it replaced, oldest first',
+  );
+  assert.deepEqual(item.files, [file(20)]);
 });
