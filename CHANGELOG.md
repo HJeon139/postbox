@@ -2,6 +2,31 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.23.1 (2026-11-05)
+
+### Fixes
+
+- **tests:** make the unit fixtures' host homes where their sockets fit
+- **tests:** a folder a test makes read-only is made writable again in t.after
+- **tests:** the last temp folders removed at a test's end are removed in t.after or by tempDir
+- **tests:** the store-retry family's folders are removed even when a test fails
+- **tests:** the lifecycle, shim, Ctrl-C and leftovers fixtures make their folders where sockets fit
+- **tests:** tempDir removes a folder with a read-only folder inside it
+- **tools:** the gate’s sweep skips a system without user ids and a temp folder it can’t list
+- **tools:** a gate run folder that can’t be removed is a warning, not a failed check
+- **tools:** pass Ctrl-C and SIGTERM to the gate's running stage, then remove its run folder
+- **tests:** make the socket fixtures’ temp folders under TMPDIR where their socket paths fit
+- **tools:** run the gate’s tests in a temp folder of the run’s own, and sweep killed runs’
+- **tools:** let POSTBOX_HEAVY_DIR name the heavy-lock’s slot folder
+- **tests:** the integration host and install fixtures remove the folders they make
+- **tests:** read-only test folders are made writable again whatever fails
+- **tests:** the store tests remove their folders even when an assertion fails
+- **tests:** the store, corpus, seed and runtime tests remove their temp folders
+- **tests:** the Antigravity tests remove their temp folders
+- **tests:** the Kiro tests remove their temp folders
+- **tests:** the permission and request tests remove their temp folders
+- **tests:** the telemetry fixture removes its folders after each test file
+
 ## 1.23.0 (2026-11-05)
 
 ### Features
