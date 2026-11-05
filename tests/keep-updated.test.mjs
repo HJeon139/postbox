@@ -42,8 +42,15 @@ test('#464 busy and present say nothing on the card', () => {
 });
 
 test('#464-b3 an install that made a new token reads as reinstalled while the host is connected, and as nothing after', () => {
-  assert.equal(updateShown(status('connected', { version: '0.18.0', at, outcome: 'reinstalled' })), 'reinstalled');
-  assert.equal(updateShown(status('not-installed', { version: '0.18.0', at, outcome: 'reinstalled' })), null, 'its folder gone again');
+  const soon = at + 60_000;
+  assert.equal(updateShown(status('connected', { version: '0.18.0', at, outcome: 'reinstalled' }), soon), 'reinstalled');
+  assert.equal(updateShown(status('not-installed', { version: '0.18.0', at, outcome: 'reinstalled' }), soon), null, 'its folder gone again');
+});
+
+test('#464-b3 “reinstalled” says so for a day, then nothing: by then it’s old news, not a warning', () => {
+  const u = { version: '0.18.0', at, outcome: 'reinstalled' };
+  assert.equal(updateShown(status('connected', u), at + 23 * 3_600_000), 'reinstalled');
+  assert.equal(updateShown(status('connected', u), at + 25 * 3_600_000), null);
 });
 
 test('#464 a host with no automatic install, or no status, says nothing', () => {
