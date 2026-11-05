@@ -140,14 +140,18 @@ async function autoInstall(m, id, signal) {
 }
 
 /**
- * Writes the try before the install; a write that fails, or a host gone, stops it there.
+ * Writes the try before the install; a write that fails, a host gone, or the consent turned off since the rule
+ * decided (a write ahead of this one in the host’s chain) stops it there.
  * @param {Manager} m @param {string} id @param {{ version: string, at: number, outcome: string }} tried
  */
 async function noteStarted(m, id, tried) {
   let wrote = false;
+  let withdrawn = false;
   try {
     await changeRecord(m, id, (was) => {
       if (!m.getHost(id)) return null;
+      withdrawn = !was.keepUpdated;
+      if (withdrawn) return null;
       wrote = true;
       return { keepUpdated: was.keepUpdated, installs: [tried, ...was.installs] };
     });
@@ -156,6 +160,8 @@ async function noteStarted(m, id, tried) {
     noteError(m, id, why);
     throw new SshFailure('failed', why, 'Install it from here.');
   }
+  if (withdrawn)
+    throw new SshFailure('failed', 'Keeping Postbox up to date on this host was turned off, so Postbox didn’t install by itself.', 'Install it from here.');
   if (!wrote) throw new SshFailure('failed', 'That host doesn’t exist. It may have been removed.', 'Add it again to install there.');
   update(m, id);
 }

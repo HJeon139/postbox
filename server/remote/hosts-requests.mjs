@@ -49,7 +49,10 @@ export function removeFromHost(m, hostId) {
   }
   const under = m.removals.get(hostId);
   if (under) return under;
-  const p = runRemove(m, hostId).finally(() => m.removals.delete(hostId));
+  // An install under way runs to its end first, so Remove removes what it installed, version and token with it,
+  // through the new version’s daemon (the integrator’s review at dc600a59).
+  const installing = m.updating.get(hostId)?.done ?? Promise.resolve();
+  const p = installing.then(() => runRemove(m, hostId)).finally(() => m.removals.delete(hostId));
   m.removals.set(hostId, p);
   return p;
 }
