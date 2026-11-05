@@ -13,7 +13,7 @@ const S = () => client.state;
 // beside it instead, as “1 open review”, and stay open so you can still answer them (#69).
 
 const ASK_NOUNS = { choice: ['choice', 'choices'], form: ['form', 'forms'], confirm: ['confirmation', 'confirmations'], review: ['review', 'reviews'] };
-// Each session’s open asking blocks, found once and kept until an item or a thread changes: a session event, the
+// Each session’s open asking blocks, found once and kept until an item, a thread or a removal changes: a session event, the
 // most frequent one, only changes which of them is the need, so it reads this list, not every item (#564-b1).
 /** @type {Map<string, any[]>} */
 const asking = new Map();
@@ -56,12 +56,13 @@ export function openAsksEl(se, before = undefined) {
   buttons.add(el);
   return el;
 }
-// The buttons drawn, kept here rather than found by a query over the whole page (#564-b1). One that was on the page and
-// has left it is dropped; one drawn but not placed yet waits until it is.
+// The buttons drawn, kept here rather than found by a query over the whole page (#564-b1). One off the page is skipped,
+// not painted, since it may come back; only a long list lets go of those.
 /** @type {Set<HTMLElement>} */
 const buttons = new Set();
-/** @type {WeakSet<HTMLElement>} */
-const placed = new WeakSet();
+const KEEP = 32;
+// What can change a session’s open blocks: any item change but streamed text, a removal, a thread, a load.
+const CHANGES_BLOCKS = (/** @type {string} */ type) => (type.startsWith('item.') && type !== 'item.text') || ['remove', 'thread', 'load'].includes(type);
 function paintOpenAsks(el) {
   const se = S().sessions[el.dataset.openAsks];
   const ask = se ? openAsks(se) : null;
@@ -71,13 +72,11 @@ function paintOpenAsks(el) {
   if (ask) el.setAttribute('aria-label', `${ask.text} from @${se.handle}: go to it`);
 }
 client.on((ch) => {
-  if (['item.add', 'item.patch', 'load', 'thread'].includes(ch.type)) asking.clear();
-  if (!['session', 'item.add', 'item.patch', 'load'].includes(ch.type)) return;
-  // A session event repaints only that session’s buttons; an item or a load, all of them.
+  const blocks = CHANGES_BLOCKS(ch.type);
+  if (blocks) asking.clear();
+  if (ch.type !== 'session' && !blocks) return;
+  // A session event repaints only that session’s buttons; a change to the blocks, all of them.
   const only = ch.type === 'session' ? ch.data.id : null;
-  for (const el of buttons) {
-    if (el.isConnected) placed.add(el);
-    if (!el.isConnected && placed.has(el)) buttons.delete(el);
-    else if (!only || el.dataset.openAsks === only) paintOpenAsks(el);
-  }
+  if (buttons.size > KEEP) for (const el of buttons) if (!el.isConnected) buttons.delete(el);
+  for (const el of buttons) if (el.isConnected && (!only || el.dataset.openAsks === only)) paintOpenAsks(el);
 });
