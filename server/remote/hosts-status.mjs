@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { chmodSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { TOKEN_RE, tokenFile } from './install.mjs';
+import { recordOf, updateOf } from './install-record.mjs';
 import { INSTANCE_FILE } from './install-token.mjs';
 
 /** How often a change to lastHeard alone is emitted as 'status', at most. */
@@ -16,7 +17,9 @@ export const HEARD_EVERY_MS = 10_000;
  * @typedef {import('../../shared/remote-settings.mjs').Host} Host
  * @typedef {import('./ssh.mjs').SshFailure} SshFailure
  * @typedef {'connected' | 'reconnecting' | 'disconnected' | 'failed' | 'not-installed'} HostState
- * @typedef {{ state: HostState, failure: SshFailure | null, welcome: any, lastHeard: number | null }} HostStatus
+ * @typedef {{ state: HostState, failure: SshFailure | null, welcome: any, lastHeard: number | null, keepUpdated: boolean,
+ *   update: ReturnType<typeof updateOf> }} HostStatus
+ *   keepUpdated and update: the person’s consent to install by itself, and its newest try (install-record.mjs).
  * @typedef {{ ok: boolean, code: number | null, at: number }} SignInCheck
  * @typedef {{ link: HostLink, name: string, token: string, idleTimer: any, sent: string[] | null, session: string[] | null }} Entry
  *   sent: the signInCheck the last session opened sent in hello; session: the one the current session sent.
@@ -30,10 +33,14 @@ export const HEARD_EVERY_MS = 10_000;
  *   links: Map<string, Entry>, reasons: Map<string, Map<unknown, number>>, tokens: Map<string, string | null>,
  *   heard: Map<string, number>, emitted: Map<string, { status: HostStatus, at: number }>, heardTimers: Map<string, any>,
  *   checks: Map<string, Promise<SignInCheck | null>>, removals: Map<string, Promise<void>>, closed: boolean,
- *   instance?: string | null }} Manager
+ *   instance?: string | null, updating: Map<string, import('./hosts-update.mjs').Updating>,
+ *   installRecords: Map<string, import('./install-record.mjs').KeptRecord>, recordWrites: Map<string, Promise<unknown>>,
+ *   onFailure: (id: string, failure: any) => void }} Manager
  *   reasons: per host, each reason it’s needed and how many times. tokens: tokens read from dataDir. emitted: the last
  *   'status' emitted, per host. heardTimers: a 'status' held back for lastHeard alone. checks and removals: the sign-in
- *   check and the removal under way, per host.
+ *   check and the removal under way, per host. updating: the install under way, per host (hosts-update.mjs).
+ *   installRecords and recordWrites: each host’s install record as kept, and its writes in order (install-record.mjs).
+ *   onFailure: told of each link failure before anything else hears it (hosts-update.mjs’s maybeUpdate).
  */
 
 /** @param {Manager} m @param {string} id @returns {Host} */
@@ -110,12 +117,25 @@ function readInstance(file) {
   }
 }
 
+/**
+ * An install the record says started, with none under way here: a crash or close() cut it off, and this version
+ * counts as tried, so nothing installs it by itself. The status says so, with Install…, rather than look under way.
+ * @param {Manager} m @param {string} id @param {ReturnType<typeof updateOf>} update
+ */
+function cutOff(m, id, update) {
+  if (update?.outcome !== 'started' || m.updating.has(id)) return update;
+  const error = `Postbox stopped during its install of ${update.version} here, so it won’t install that version by itself. Install it from here.`;
+  return { ...update, error };
+}
+
 /** @param {Manager} m @param {string} id @returns {HostStatus} */
 export function statusOf(m, id) {
   const lastHeard = m.heard.get(id) ?? null;
-  if (!m.getHost(id)) return { state: 'disconnected', failure: null, welcome: null, lastHeard };
+  if (!m.getHost(id)) return { state: 'disconnected', failure: null, welcome: null, lastHeard, keepUpdated: false, update: null };
+  const record = recordOf(m, id);
+  const installs = { keepUpdated: record.keepUpdated, update: cutOff(m, id, updateOf(record)) };
   const e = m.links.get(id);
-  if (!e) return { state: tokenOf(m, id) ? 'disconnected' : 'not-installed', failure: null, welcome: null, lastHeard };
+  if (!e) return { state: tokenOf(m, id) ? 'disconnected' : 'not-installed', failure: null, welcome: null, lastHeard, ...installs };
   const l = e.link;
   const failure = l.failure ?? null;
   /** @type {HostState} */
@@ -124,7 +144,13 @@ export function statusOf(m, id) {
   else if (failure?.kind === 'not-installed') state = 'not-installed';
   else if (l.state === 'stopped') state = 'failed';
   else if (l.state === 'connecting' || l.state === 'waiting') state = 'reconnecting';
-  return { state, failure, welcome: l.welcome ?? null, lastHeard };
+  return { state, failure, welcome: l.welcome ?? null, lastHeard, ...installs };
+}
+
+/** Whether two statuses say the same, but for lastHeard. @param {HostStatus} a @param {HostStatus} b */
+function sameStatus(a, b) {
+  const sameInstalls = a.keepUpdated === b.keepUpdated && JSON.stringify(a.update) === JSON.stringify(b.update);
+  return a.state === b.state && a.failure === b.failure && a.welcome === b.welcome && sameInstalls;
 }
 
 /** Emits 'status' if it changed; a change to lastHeard alone at most every HEARD_EVERY_MS. @param {Manager} m @param {string} id */
@@ -132,7 +158,7 @@ export function update(m, id) {
   if (m.closed) return;
   const s = statusOf(m, id);
   const prev = m.emitted.get(id);
-  const same = prev && prev.status.state === s.state && prev.status.failure === s.failure && prev.status.welcome === s.welcome;
+  const same = prev && sameStatus(prev.status, s);
   if (same && prev.status.lastHeard === s.lastHeard) return;
   if (same) {
     if (m.heardTimers.has(id)) return;

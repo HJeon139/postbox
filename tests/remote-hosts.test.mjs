@@ -18,7 +18,7 @@ test('hosts: one link per host, made with its token; a host without one is not-i
     const a = s.mgr.link('h1');
     assert.equal(s.mgr.link('h1'), a, 'the same link on every call');
     assert.equal(s.ssh.calls.length, 0, 'made, not connected: nothing needs it yet');
-    assert.deepEqual(s.mgr.status('h1'), { state: 'disconnected', failure: null, welcome: null, lastHeard: null });
+    assert.deepEqual(s.mgr.status('h1'), { state: 'disconnected', failure: null, welcome: null, lastHeard: null, keepUpdated: false, update: null });
     assert.throws(
       () => s.mgr.link('h2'),
       (e) => e instanceof SshFailure && e.code === 'not-installed' && e.kind === 'not-installed' && /Install Postbox on other\.example\.com/.test(e.next),

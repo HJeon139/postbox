@@ -2,11 +2,13 @@
 // The router is called with fake requests (start({ listen: false })), since tests can’t open sockets.
 
 import assert from 'node:assert/strict';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { helloSettings } from '../server/remote/ssh.mjs';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
@@ -86,6 +88,7 @@ const WRITE_ROUTES = {
   'DELETE ^\\/api\\/hosts\\/([^/]+)$': ['/api/hosts/ho_none'],
   'POST ^\\/api\\/hosts\\/([^/]+)\\/install$': ['/api/hosts/ho_none/install'],
   'POST ^\\/api\\/hosts\\/([^/]+)\\/retry$': ['/api/hosts/ho_none/retry'],
+  'PUT ^\\/api\\/hosts\\/([^/]+)\\/keep-updated$': ['/api/hosts/ho_none/keep-updated'],
   'PUT ^\\/api\\/projects\\/([^/]+)\\/hosts\\/([^/]+)\\/folder$': ['/api/projects/pr_none/hosts/ho_none/folder'],
   'POST /api/projects': ['/api/projects'],
   'PUT ^\\/api\\/projects\\/([^/]+)\\/push-url$': ['/api/projects/pr_none/push-url'],
@@ -215,4 +218,40 @@ test('#120 L6: Resume after a turn on a host stopped needs the page’s token, a
   const r = await call({ method: 'POST', path, body: {}, cookie });
   assert.equal(r.status, 409, r.text);
   assert.match(r.json.error, new RegExp(`^@${se.handle} has no stopped turn on a host to resume\\.$`));
+});
+
+test('#464-b2a: the consent’s route needs the page’s token, takes only { on: boolean }, and never reaches the host’s settings', async () => {
+  const cookie = await pageCookie();
+  const added = await call({ method: 'POST', path: '/api/hosts', body: { name: 'keep.example.com' }, cookie });
+  assert.equal(added.status, 201, added.text);
+  const id = added.json.id;
+  const path = `/api/hosts/${id}/keep-updated`;
+  const record = join(dir, 'remote-installs', id);
+  try {
+    const refused = await call({ method: 'PUT', path, body: { on: true } });
+    assert.equal(refused.status, 403);
+    assert.equal(refused.json.code, 'token');
+    assert.equal(existsSync(record), false, 'nothing was written without the token');
+    for (const body of [{ on: 'yes' }, { on: 1 }, { on: null }, {}, { on: true, other: 1 }, null, 5, [true]]) {
+      const r = await call({ method: 'PUT', path, body, cookie });
+      assert.equal(r.status, 422, `${JSON.stringify(body)}: ${r.text}`);
+    }
+    assert.equal(existsSync(record), false, 'nor for a body that isn’t { on: boolean }');
+    const on = await call({ method: 'PUT', path, body: { on: true }, cookie });
+    assert.equal(on.status, 200, on.text);
+    assert.equal(JSON.parse(readFileSync(record, 'utf8')).keepUpdated, true);
+    assert.equal((await call({ path: `/api/hosts/${id}/status` })).json.status.keepUpdated, true, 'the page can draw it');
+    const { settings } = app.store.state.hosts[id];
+    assert.equal(Object.hasOwn(settings, 'keepUpdated'), false, 'not a host setting, which an older Postbox would refuse');
+    assert.equal(Object.hasOwn(helloSettings(settings), 'keepUpdated'), false, 'never sent to the host');
+  } finally {
+    await call({ method: 'DELETE', path: `/api/hosts/${id}`, cookie });
+  }
+});
+
+test('#464-b2a: the consent’s route on a host that isn’t there is a 404, and writes no record', async () => {
+  const cookie = await pageCookie();
+  const r = await call({ method: 'PUT', path: '/api/hosts/h_missing0/keep-updated', body: { on: true }, cookie });
+  assert.equal(r.status, 404, r.text);
+  assert.equal(existsSync(join(dir, 'remote-installs', 'h_missing0')), false);
 });

@@ -9,27 +9,34 @@ import { keepEvent } from '../../server/room-events.mjs';
 
 export { keepEvent };
 
+/** @typedef {{ version: string|null, at: number|null, outcome: string|null }} UpdateSeen  a host’s newest install try */
+
 /**
- * A host.status event’s data as the run keeps it: the host, its state and its failure’s kind, or null for one that
- * names no host. @param {any} d @returns {{ id: string, state: string|null, failure: string|null } | null}
+ * A host.status event’s data as the run keeps it: the host, its state, its failure’s kind, and its newest automatic
+ * install try (#464), without its error’s text; or null for one that names no host. A try is told apart from
+ * another of the same version by when it started (at). @param {any} d
+ * @returns {{ id: string, state: string|null, failure: string|null, update: UpdateSeen|null } | null}
  */
 export function hostStateOf(d) {
   if (typeof d?.id !== 'string') return null;
-  return { id: d.id, state: d.status?.state ?? null, failure: d.status?.failure?.kind ?? null };
+  const u = d.status?.update;
+  const update = u ? { version: u.version ?? null, at: u.at ?? null, outcome: u.outcome ?? null } : null;
+  return { id: d.id, state: d.status?.state ?? null, failure: d.status?.failure?.kind ?? null, update };
 }
 
 /**
  * Follows a Postbox server’s event stream (/api/stream) from its first event, keeping the events the checks read,
  * and, apart from them, each host’s status as it changed, with when it arrived (#120): a host-mode fault is judged
  * by these, since a drop and its reconnect can both come between two reads of the state. Each keeps its failure’s
- * kind, so a host that couldn’t run its version (not installed) reads apart from one with no token yet (#464).
+ * kind, so a host that couldn’t run its version (not installed) reads apart from one with no token yet (#464), and
+ * its newest install try, so the run can tell how often Postbox installed there by itself.
  * @param {string} origin
- * @returns {{ events: () => any[], hostStates: () => { at: number, id: string, state: string|null, failure: string|null }[], close: () => void }}
+ * @returns {{ events: () => any[], hostStates: () => { at: number, id: string, state: string|null, failure: string|null, update: UpdateSeen|null }[], close: () => void }}
  */
 export function followEvents(origin) {
   /** @type {any[]} */
   const kept = [];
-  /** @type {{ at: number, id: string, state: string|null, failure: string|null }[]} */
+  /** @type {{ at: number, id: string, state: string|null, failure: string|null, update: UpdateSeen|null }[]} */
   const hostStates = [];
   let last = 0;
   // Each session as the events so far left it, so a session.patch is kept as a whole session (keepEvent).

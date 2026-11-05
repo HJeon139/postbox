@@ -20,7 +20,10 @@ test('#120: each host’s status reaches the state, at each change the manager e
   store.emit('host.status', { id: gone, status: { state: 'connected', failure: null, welcome: null, lastHeard: 1 } });
   hosts.statuses.set(h.id, { state: 'disconnected', failure: null, welcome: null, lastHeard: 1 });
   rt.watchHosts();
-  assert.deepEqual({ ...store.state.hostStatus }, { [h.id]: { state: 'disconnected', failure: null, welcome: null, lastHeard: 1 } });
+  assert.deepEqual(
+    { ...store.state.hostStatus },
+    { [h.id]: { state: 'disconnected', failure: null, welcome: null, lastHeard: 1, keepUpdated: false, update: null } },
+  );
 
   const events = [];
   store.subscribe((ev) => ev.type === 'host.status' && events.push(ev.data));

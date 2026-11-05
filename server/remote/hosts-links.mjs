@@ -76,6 +76,8 @@ function makeLink(m, id, host, token) {
 /** Keeps the host’s status and need up to date with its link. @param {Manager} m @param {string} id @param {Entry} e */
 function follow(m, id, e) {
   const l = e.link;
+  // First of the link’s failure listeners, so an install the failure starts is in m.updating before any caller hears it.
+  l.on('failure', (/** @type {any} */ f) => m.onFailure(id, f));
   const heardNow = () => {
     m.heard.set(id, m.now());
     update(m, id);
