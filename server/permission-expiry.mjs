@@ -12,14 +12,15 @@ export const EXPIRED = new Set(['expired', 'ended']);
  * Queues a note for the agent’s next turn that its request expired, and what to do: ask again, naming the request by its
  * summary and its command, since a summary alone can be as plain as “run a command”. Once per card, even when two
  * paths expire it (the turn’s end, then its host’s word), since the card keeps that it was told. None when the person
- * stopped the turn (`stoppedBy`, as on main), or when the agent is archived or being removed: nobody would read it.
+ * stopped the turn (`stoppedBy: 'you'`, as on main), archiving or removing it included. An agent archived or being removed
+ * otherwise is told too, as #776’s closeHop tells it: the note waits in its context for a Restore or an Undo.
  * @param {any} rt @param {string} threadId @param {string} itemId @param {any} [card]  the card, when the caller has it
  */
 export function tellExpired(rt, threadId, itemId, card = undefined) {
   const it = card ?? rt.store.pending.items(threadId).find((/** @type {any} */ x) => x.id === itemId);
-  if (it?.kind !== 'permission' || it.agentTold || it.stoppedBy) return;
-  const se = rt.s.sessions[it.sessionId];
-  if (!se || se.archived || se.deleting) return;
+  // Only the person’s Stop holds the note back: a shutdown, a hung stop or a store outage records who stopped it too.
+  if (it?.kind !== 'permission' || it.agentTold || it.stoppedBy === 'you') return;
+  if (!rt.s.sessions[it.sessionId]) return;
   rt.patchItem(threadId, itemId, { agentTold: true });
   rt.tellAgent(it.sessionId, `${requestOf(it)} expired before the person answered it, so it didn’t run. Ask again if you still need it.`);
 }

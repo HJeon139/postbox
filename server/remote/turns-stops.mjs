@@ -14,12 +14,13 @@ import { hostOf, ON_HOST, send, updateRemote } from './turns-shared.mjs';
  * `ended`, a no-turn answer, or a welcome that doesn’t list it running): until then it may still run there. It’s
  * kept on the session (remoteTurn.stopping), so a restart asks again, and the host is needed, so its link
  * reconnects. send: false when the adapter’s child sends this stop itself; state: the session’s turn is in state
- * `stopping` until then; unconfirmed: as on Stop, for a stop asked first (restore passes the saved one).
+ * `stopping` until then; unconfirmed: as on Stop, for a stop asked first (restore passes the saved one); byPerson: the
+ * person’s Stop, the one stop that marks its cards so no expiry note follows (#721).
  * Returns false without a host manager, when nothing can be asked.
  * @param {RemoteTurns} rts @param {string} sessionId @param {string} hostId @param {string} turn
- * @param {{ send?: boolean, state?: boolean, unconfirmed?: boolean }} [o]
+ * @param {{ send?: boolean, state?: boolean, unconfirmed?: boolean, byPerson?: boolean }} [o]
  */
-export function askStop(rts, sessionId, hostId, turn, { send: now = true, state = false, unconfirmed = false } = {}) {
+export function askStop(rts, sessionId, hostId, turn, { send: now = true, state = false, unconfirmed = false, byPerson = false } = {}) {
   if (!rts.hosts) return false;
   let s = rts.stopping.get(turn);
   if (!s) {
@@ -35,8 +36,9 @@ export function askStop(rts, sessionId, hostId, turn, { send: now = true, state 
       ...(state && r.turn === turn ? { state: 'stopping', at: rts.now() } : {}),
     });
   }
-  // Its open cards learn the turn was stopped, so whichever message ends them sends no expiry note (#721).
-  for (const card of openCards(rts, turn)) rts.rt.patchItem(card.threadId, card.it.id, { stoppedBy: 'person' });
+  // The person’s Stop: its open cards learn it, so whichever message ends them sends no expiry note. Any other stop (a
+  // sign-in end, an errored end, a hung stop, the restart’s re-ask) leaves them, so the agent hears (#721).
+  if (byPerson) for (const card of openCards(rts, turn)) rts.rt.patchItem(card.threadId, card.it.id, { stoppedBy: 'you' });
   if (now) sendStop(rts, turn);
   return true;
 }
