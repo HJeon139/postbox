@@ -34,28 +34,36 @@ export async function storeReviewFiles(rt, wanted, read) {
   if (!Array.isArray(wanted)) throw new AgentFileError('files is a list: [{ name?, path }].');
   if (wanted.length > LIMITS.appFiles) throw new AgentFileError(`A review carries up to ${LIMITS.appFiles} files.`);
   if (!rt.blobs) throw new AgentFileError('This Postbox can’t store files.');
-  /** @type {ReviewFile[]} */
-  const stored = [];
+  // Every file is read and checked before any is stored, so a call refused at its last file leaves no blob behind.
+  /** @type {{ name: string, path: unknown, buf: Buffer, info: { type: string, width: number, height: number } }[]} */
+  const checked = [];
   let total = 0;
   for (const f of wanted) {
     const path = typeof f === 'string' ? f : f?.path;
     const name = String((typeof f === 'object' && f?.name) || basename(String(path ?? '')));
     if (!FILE_NAME.test(name)) throw new AgentFileError(`“${name}” can’t name a file: use letters, digits and - _ . (up to 64).`);
-    if (stored.some((x) => x.name === name)) throw new AgentFileError(`Two files are named “${name}”.`);
+    if (checked.some((x) => x.name === name)) throw new AgentFileError(`Two files are named “${name}”.`);
     const buf = await read(f, REVIEW_IMAGES.reviewImageBytes, `the image “${name}” (up to ${REVIEW_IMAGES.reviewImageBytes / MiB} MiB)`);
     total += buf.length;
     if (total > REVIEW_IMAGES.reviewImagesBytes) throw new AgentFileError(`A review’s images are up to ${REVIEW_IMAGES.reviewImagesBytes / MiB} MiB together.`);
-    /** @type {{ type: string, width: number, height: number }} */
-    let info;
-    try {
-      info = imageInfo(buf);
-    } catch (e) {
-      throw new AgentFileError(`The image “${name}”: ${e instanceof Error ? e.message : String(e)}`);
-    }
+    checked.push({ name, path, buf, info: imageOf(name, buf) });
+  }
+  /** @type {ReviewFile[]} */
+  const stored = [];
+  for (const { name, path, buf, info } of checked) {
     const { sha256, size } = await rt.blobs.put(buf);
     stored.push({ name, ref: keptRef(path), sha256, size, ...info });
   }
   return stored;
+}
+
+/** An image’s type and size by its bytes (imageInfo), refused in the agent’s words with its name. @param {string} name @param {Buffer} buf */
+function imageOf(name, buf) {
+  try {
+    return imageInfo(buf);
+  } catch (e) {
+    throw new AgentFileError(`The image “${name}”: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 /**
@@ -63,12 +71,6 @@ export async function storeReviewFiles(rt, wanted, read) {
  * @param {any} rt @param {string} sessionId @returns {(f: any, max: number, what: string) => Promise<Buffer>}
  */
 const fromFolders = (rt, sessionId) => (f, max, what) => rt.agentFile(sessionId, typeof f === 'string' ? f : f?.path, max, what);
-
-/**
- * A review’s files as an agent on this computer names them: each read from its folders by agentFile.
- * @param {any} rt @param {string} sessionId @param {unknown} wanted
- */
-export const reviewFiles = (rt, sessionId, wanted) => storeReviewFiles(rt, wanted, fromFolders(rt, sessionId));
 
 /**
  * show_block and update_block as an agent calls them (#780): a review block’s files are read and stored here, and
@@ -89,7 +91,7 @@ export async function blockFiles(rt, sessionId, name, args, read = fromFolders(r
 
 /**
  * A review item’s file by its name and SHA-256: one on the item’s current revision, or one an earlier revision had
- * (pastFiles), so the diff can show the old figure. Anything else is null, so the route can answer 404 without
+ * (pastFiles), so a page still showing that revision can load it. Anything else is null, so the route can answer 404 without
  * saying whether the item exists. A published read: it serves what the person sees.
  * @param {any} rt @param {string} threadId @param {string} itemId @param {string} name @param {string} sha256
  * @returns {ReviewFile | null}
@@ -98,12 +100,6 @@ function findReviewFile(rt, threadId, itemId, name, sha256) {
   const it = rt.store.item(threadId, itemId);
   if (it?.kind !== 'block' || it.block?.type !== 'review') return null;
   return [...(it.files ?? []), ...(it.pastFiles ?? [])].find((x) => x.name === name && x.sha256 === sha256) ?? null;
-}
-
-/** The bytes of a review item’s file (findReviewFile), or null. @returns {Promise<Buffer | null>} */
-export async function reviewFile(rt, threadId, itemId, name, sha256) {
-  const found = findReviewFile(rt, threadId, itemId, name, sha256);
-  return found && rt.blobs ? rt.blobs.get(found.sha256) : null;
 }
 
 /**
@@ -119,7 +115,8 @@ export async function servedReviewFile(rt, threadId, itemId, name, sha256) {
     'content-type': found.type,
     'x-content-type-options': 'nosniff',
     'content-security-policy': "sandbox; default-src 'none'",
-    'content-disposition': `inline; filename="${found.name}"`,
+    // FILE_NAME already allows only letters, digits and - _ . in a name; this keeps the header whole regardless.
+    'content-disposition': `inline; filename="${found.name.replace(/[^\w.-]/g, '_')}"`,
     'cache-control': 'private, max-age=31536000, immutable',
     'cross-origin-resource-policy': 'same-origin',
   };
