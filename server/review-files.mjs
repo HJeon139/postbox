@@ -88,6 +88,9 @@ const fromFolders = (rt, sessionId) => (f, max, what) => rt.agentFile(sessionId,
 export async function blockFiles(rt, sessionId, name, args, read = fromFolders(rt, sessionId)) {
   const block = args?.block;
   if ((name !== 'show_block' && name !== 'update_block') || !block || typeof block !== 'object' || block.files === undefined) return { args };
+  // A withdraw or an outcome applies no revision, so files it carried would be kept with nothing to show them.
+  if (Object.hasOwn(block, 'withdraw') || Object.hasOwn(block, 'outcome'))
+    throw new AgentFileError('A review’s files go with a revision, not with a withdraw or an outcome. Send it without files.');
   if (block.type !== 'review') throw new AgentFileError('Only a review block carries files: images its Markdown shows. Send this block without files.');
   const { files: wanted, ...rest } = block;
   const { files, settle } = await storeReviewFiles(rt, wanted, read);
