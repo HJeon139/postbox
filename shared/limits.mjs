@@ -89,6 +89,22 @@ export const ASSETS = Object.freeze({
   binaryVersionsKept: 3,
 });
 
+/**
+ * Images a review block carries (#780). server/image-check.mjs refuses an image past either size limit, read from its
+ * header; the caller that takes the files refuses one past either byte limit. Each refusal names the limit.
+ */
+export const REVIEW_IMAGES = Object.freeze({
+  /** One image, in bytes. */
+  reviewImageBytes: 5 * 1024 * 1024,
+  /** Every image one revision of a review carries, in bytes. */
+  reviewImagesBytes: 20 * 1024 * 1024,
+  /** An image’s width times its height, in pixels: what a browser decodes, whatever the file’s size. 32 megapixels,
+   * 32 × 2²⁰, which is 8,192 × 4,096 (#780’s note accepts 8,192 × 4,000). */
+  reviewImagePixels: 32 * 1024 * 1024,
+  /** An image’s width or height, in pixels. */
+  reviewImageSide: 8192,
+});
+
 /** The most characters in the whole-sentence glimpse shown while an agent works (#478). */
 export const GLIMPSE_CHARS = 160;
 /** The most streamed text inspected to find that glimpse, bounding work on each update (#478). */
