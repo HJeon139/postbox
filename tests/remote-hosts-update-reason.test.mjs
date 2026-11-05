@@ -85,3 +85,21 @@ test('#464-b2b: a caller that hears any failure while the person’s Install… 
     t.done();
   }
 });
+
+test('#464-b2b: a caller waiting on an install the consent withdrew gets the 127 it heard, not the withdrawal', async () => {
+  const t = rig();
+  try {
+    await t.mgr.setKeepUpdated('h1', true);
+    t.mgr.link('h1').on('failure', () => {
+      t.mgr.setKeepUpdated('h1', false).catch(() => {});
+    });
+    const e = await t.mgr.ensureWelcome('h1').then(
+      () => null,
+      (f) => f,
+    );
+    assert.equal(e?.detail?.code, 127, 'the host’s own failure, with Install…');
+    assert.equal(t.runs.length, 0);
+  } finally {
+    t.done();
+  }
+});
