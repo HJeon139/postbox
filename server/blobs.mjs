@@ -15,6 +15,8 @@ export class Blobs {
     /** @type {Map<string, number>} */ this.held = new Map();
     /** @type {Set<string>} */ this.kept = new Set();
     /** @type {Map<string, Promise<void>>} */ this.dropping = new Map();
+    // Ordinary puts in flight, by SHA-256: a refused staged call never removes bytes one of them is writing or wrote.
+    /** @type {Map<string, number>} */ this.writing = new Map();
   }
 
   pathOf(sha256) {
@@ -34,13 +36,23 @@ export class Blobs {
     const sha256 = createHash('sha256').update(buffer).digest('hex');
     // Before any await, so a staged put of the same bytes that’s refused meanwhile can’t remove what this one keeps.
     if (staged) this.held.set(sha256, (this.held.get(sha256) ?? 0) + 1);
-    else if (this.held.has(sha256)) this.kept.add(sha256);
+    else this.writing.set(sha256, (this.writing.get(sha256) ?? 0) + 1);
     try {
       return await this.write(sha256, buffer);
     } catch (e) {
       if (staged) await this.settle([{ sha256, fresh: false }], false);
       throw e;
+    } finally {
+      if (!staged) this.wrote(sha256);
     }
+  }
+
+  /** An ordinary put is done: a staged call holding the same bytes now keeps them whatever it settles. @param {string} sha256 */
+  wrote(sha256) {
+    const left = (this.writing.get(sha256) ?? 1) - 1;
+    if (left > 0) this.writing.set(sha256, left);
+    else this.writing.delete(sha256);
+    if (this.held.has(sha256)) this.kept.add(sha256);
   }
 
   /** put’s write, once the bytes are hashed. @param {string} sha256 @param {Buffer} buffer */
@@ -97,7 +109,7 @@ export class Blobs {
       }
       this.held.delete(sha256);
       const keptBySomeone = this.kept.delete(sha256);
-      if (keptBySomeone || !fresh) continue;
+      if (keptBySomeone || !fresh || this.writing.has(sha256)) continue;
       const gone = unlink(this.pathOf(sha256)).catch(() => {});
       this.dropping.set(sha256, gone);
       await gone;
