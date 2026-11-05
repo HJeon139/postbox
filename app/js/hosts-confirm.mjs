@@ -205,6 +205,21 @@ const removeBody = (host, { noToken, placed, forgets }) => [
 ];
 
 /**
+ * While Postbox installs its version on the host by itself (#464-b2a), Remove waits for that install to end, then
+ * removes it, so the confirm says so. null otherwise, and for an install a crash cut off (its status has an error).
+ * @param {any} host @param {any} st
+ */
+function installWait(host, st) {
+  const u = st?.update;
+  if (u?.outcome !== 'started' || u.error) return null;
+  return h(
+    'p.small',
+    { style: { margin: 0 } },
+    `Postbox is installing ${u.version} on ${host.name} now. Remove waits for that install to finish, up to about 7 minutes, then removes it.`,
+  );
+}
+
+/**
  * Removing stops the host’s turns, then removes Postbox from the host (the daemon deletes ~/.postbox-remote), then
  * forgets the host here. A refusal (409) says why, a turn it can’t stop or a host that didn’t confirm, with the next
  * step, and the host stays. One this computer has no token for can only be forgotten here, and says so.
@@ -224,7 +239,7 @@ export const confirmRemove = (host) => {
   const dlg = openDialog({
     title: `Remove ${host.name}?`,
     role: 'alertdialog',
-    body: [...removeBody(host, { noToken, placed, forgets }), status],
+    body: [...removeBody(host, { noToken, placed, forgets }), installWait(host, st), status],
     foot: [cancel, go],
     // Cancel first, as for anything that deletes.
     initialFocus: () => cancel,
