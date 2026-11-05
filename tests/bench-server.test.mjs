@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { SNAPSHOT_EVERY, Store } from '../server/store.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 import { seedRoomFolder, THREAD } from '../tools/bench-room.mjs';
-import { commandLine, LOG_EVENTS, measureSize, options, pooled, streamChunks, writeLog } from '../tools/bench-server.mjs';
+import { checkReplay, commandLine, LOG_EVENTS, measureSize, options, pooled, streamChunks, writeLog } from '../tools/bench-server.mjs';
 import { formatServerReport } from '../tools/bench-server-report.mjs';
 
 test('options default to the 1×, 4× and 10× rooms, 3 runs, 20 requests and 200 chunks', () => {
@@ -98,6 +98,26 @@ function fakePostbox() {
 /** A body for /api/state whose room holds n items. @param {number} n */
 const stateBody = (n) => Buffer.from(JSON.stringify({ state: { items: { [THREAD]: Array.from({ length: n }, (_, i) => ({ id: `it_${i}` })) } } }));
 
+test('a startup that replayed less than its log, or loaded less than its room, is refused', () => {
+  assert.doesNotThrow(() => checkReplay({ replayed: 10, loadedItems: 30 }, 10, 30));
+  assert.throws(() => checkReplay({ replayed: 0, loadedItems: 30 }, 10, 30), /replayed 0 of the log’s 10 events/);
+  assert.throws(() => checkReplay({ replayed: 10, loadedItems: 0 }, 10, 30), /loaded 0 of the room’s 30 items/);
+});
+
+test('measureSize refuses a startup that replayed nothing, and still removes its folder', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'pb-bench-size-'));
+  const { start } = fakePostbox();
+  const get = async () => ({ arrayBuffer: async () => stateBody(30) });
+  const openStore = async () => ({ sinceSnapshot: 0, state: { items: { [THREAD]: [] } }, close: async () => {} });
+  try {
+    const o = { runs: 1, requests: 1, chunks: 1, logEvents: 10 };
+    await assert.rejects(measureSize(30, o, { start, port: async () => 1, tmp, get, openStore }), /replayed 0 of the log’s 10 events/);
+    assert.deepEqual(readdirSync(tmp), [], 'its temp folder is removed');
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('measureSize measures the four numbers on a seeded room, a run at a time, and removes its folder', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'pb-bench-size-'));
   const { start, seen } = fakePostbox();
@@ -112,7 +132,9 @@ test('measureSize measures the four numbers on a seeded room, a run at a time, a
     assert.equal(r.apiBytes, body.length);
     assert.equal(r.chunk.n, 8);
     assert.equal(r.startup.n, 2);
-    assert.equal(r.logEvents, 10);
+    assert.ok(r.startup.max > 0, 'each startup is timed, not set');
+    assert.equal(r.logEvents, 10, 'the events the startup replayed, as measured');
+    assert.deepEqual(r.replayed, [10, 10], 'each run’s load replayed the whole log');
     assert.ok(r.snapshotMB > 0);
     assert.equal(seen.starts, 1);
     assert.equal(seen.kills, 1, 'its Postbox is stopped');
