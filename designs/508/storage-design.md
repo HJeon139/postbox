@@ -226,7 +226,7 @@ stateDiagram-v2
 
 ### 6.7 The history epoch (#567)
 
-A random token is made at each `load()`, including Retry’s. `/api/state` carries it, the stream sends it as its first frame, and the page echoes it as `?epoch=` (or `X-Postbox-Epoch`) on reconnect. A mismatch means `resync`, whatever the sequence number, also when it changes during the backlog read. The page adopts a new epoch only together with a state it loaded successfully; an advertised epoch alone does not certify synchronization (gpt). Event ids stay the plain `seq`.
+A random token is made at each `load()`, including Retry’s. The token, like every id `newId` makes, is its prefix, `_` and exactly 8 letters or digits: it draws again until it has 8, so no id comes out shorter (#713). Ids already stored keep their length. `/api/state` carries it, the stream sends it as its first frame, and the page echoes it as `?epoch=` (or `X-Postbox-Epoch`) on reconnect. A mismatch means `resync`, whatever the sequence number, also when it changes during the backlog read. The page adopts a new epoch only together with a state it loaded successfully; an advertised epoch alone does not certify synchronization (gpt). Event ids stay the plain `seq`.
 
 ### 6.8 The data-folder lock
 
