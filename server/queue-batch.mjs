@@ -1,4 +1,5 @@
 // Queue batches keep per-agent order and thread boundaries; later turns can supersede a waker’s old request (#374).
+import { positionOf } from '../shared/item-index.mjs';
 
 /** @param {any} rt @param {any} thread @param {boolean} wakesOnly */
 export function readyGroups(rt, thread, wakesOnly) {
@@ -27,7 +28,7 @@ export function latestMessage(rt, threadId, message) {
     .replace(/^@/, '')
     .toLowerCase();
   const items = rt.store.items(threadId);
-  const index = items.findIndex((item) => item.id === message.itemId);
+  const index = positionOf(items, message.itemId);
   const source = items[index];
   const turnId = source?.fromTurnId ?? source?.turnId;
   const latest = items.slice(index + 1).findLast((item) => {

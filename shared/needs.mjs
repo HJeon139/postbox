@@ -1,5 +1,6 @@
 // Who needs you, where, and in what order (#285). The page’s ⌃J, its needs-you rings and rows, and the UAT’s check of
 // where they land all read these rules, so they can’t disagree about which agent comes next.
+import { itemOf } from './item-index.mjs';
 
 /** What a session can need you for. Every one makes its ring pulse, so every one counts (#285): a refused step too. */
 export const NEEDS_KINDS = ['block', 'failed', 'hop', 'permission', 'appsend', 'denial', 'toolask'];
@@ -23,7 +24,7 @@ export function conversationOf(state, threadId) {
 
 /** When an agent started waiting on you: when its ask was posted, or failing that, its session’s last change. */
 export function waitedSince(state, se) {
-  const it = (state.items[whereNeeds(state, se)] ?? []).find((x) => x.id === se.needs?.itemId);
+  const it = itemOf(state.items[whereNeeds(state, se)] ?? [], se.needs?.itemId);
   return it?.at ?? se.updatedAt ?? 0;
 }
 
