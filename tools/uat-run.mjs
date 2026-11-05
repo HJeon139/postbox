@@ -89,7 +89,8 @@ const { values: opt } = parseArgs({
     'force-agent-model': { type: 'boolean', default: false },
     recheck: { type: 'string' },
     // After a run, verify the findings that have no verdict (--verify no skips it), and file the confirmed ones that no
-    // open issue covers (--file no verifies without filing). A recheck verifies only when it files, unless --verify yes: --recheck --file no stays free.
+    // open issue covers (--file no verifies without filing).
+    // (A recheck verifies only when it files, unless --verify yes: --recheck --file no stays free.)
     verify: { type: 'string' },
     file: { type: 'string', default: 'yes' },
     // The run for a version release: only it may use the release-only backends (tools/uat/scenario.mjs, RELEASE_ONLY).
@@ -100,7 +101,8 @@ const { values: opt } = parseArgs({
     ...HOST_OPTIONS,
     // Every run records itself and saves one telemetry report (designs/telemetry-persona.md, U4); no opts out.
     telemetry: { type: 'string', default: 'yes' },
-    'measure-key-frame': { type: 'string' }, // with `- seed: big-room`, measure the room and write its report here (#508, tools/uat/key-frame-run.mjs)
+    // With `- seed: big-room`, measure the room and write its report here (#508, tools/uat/key-frame-run.mjs).
+    'measure-key-frame': { type: 'string' },
   },
 });
 
