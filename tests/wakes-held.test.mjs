@@ -141,15 +141,16 @@ test('#439 stopping the held wake’s target drops it, so allowing the card does
 
 test('#439 a held wake whose target was archived tells its agent it didn’t go when the card is allowed', async () => {
   const f = await cardOpen();
-  await f.wake(f.gamma, 'alpha', HANDOFF);
-  f.rt.archive(f.alpha.id);
+  // Its target is the card's target, not the agent that asked: archiving that agent closes its card (#693).
+  await f.wake(f.gamma, 'beta', HANDOFF);
+  f.rt.archive(f.beta.id);
   await settle(f.rt);
   f.rt.resolveHop(f.t.id, f.card.id, true);
   await settle(f.rt);
-  assert.deepEqual(got(f, 'alpha', HANDOFF), []);
+  assert.deepEqual(got(f, 'beta', HANDOFF), []);
   const told = f.store.state.sessions[f.gamma.id].context ?? [];
   assert.ok(
-    told.some((l) => /@alpha was archived before your message held for it/.test(l)),
+    told.some((l) => /@beta was archived before your message held for it/.test(l)),
     `gamma is told: ${told.join(' | ')}`,
   );
 });

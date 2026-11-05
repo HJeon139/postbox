@@ -9,7 +9,8 @@ import { clip } from '../shared/text.mjs';
 import { cardHistory, heldKey, holds, inputsOf, recorded, turnsOf } from './room-delivery.mjs';
 import { notCheckableAll, unreadable } from './room-unverified.mjs';
 
-const ANSWERED = new Set(['allowed', 'declined']);
+// Closed: its agent was archived, removed or retired, and everyone held on it was told (#693).
+const ANSWERED = new Set(['allowed', 'declined', 'closed']);
 /**
  * How many events before a held patch a Stop’s marks can be: stop() (server/runtime.mjs) records the stopped turn’s
  * items and its session going to stopping, then what else the turn left, before dropHeld patches the card.

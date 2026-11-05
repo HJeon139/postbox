@@ -165,7 +165,7 @@ test('#228: the migration takes a fork’s queued messages and open wake card wi
   store.emit('settings', { forksArchived: false });
   new Runtime({ store, adapters: new AdapterRegistry().register(adapter), corpus: rt.corpus, config: rt.config });
   assert.deepEqual(store.state.threads[topic.id].queue, []);
-  assert.equal(store.item(topic.id, card.id).status, 'declined');
+  assert.equal(store.item(topic.id, card.id).status, 'closed', 'closed with no answer from you (#693)');
   // The conversation’s @alpha answers there now; its turn ending drains the thread’s queue, which has nothing for the fork.
   rt.sendMessage(topic.id, { text: '@alpha go on' });
   await settle(rt);

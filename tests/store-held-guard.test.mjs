@@ -39,7 +39,7 @@ const PUBLISHED = {
   'thread-summary.mjs': ['lineOf', 'lineOf', 'threadCatchUp', 'threadLines', 'readUpTo', 'summarizeThread', 'summarizeThread', 'reactionLines'], // prompts and summaries for a later turn
   'tool-ask.mjs': ['resolveToolAsk'], // the person’s answer to an ask they see
   'turn-marks.mjs': ['askedAgain', 'askedAgain'], // the person’s Retry of a reply they see
-  'wake-cards.mjs': ['resolveHop'], // the person’s answer to a hop card they see
+  'wake-cards.mjs': ['resolveHop', 'heldFor'], // the person’s answer to a hop card they see; the catch-up’s held lines, what the person sees (#693)
   'write-intent.mjs': ['requestOf', 'stopRequested', 'stopRequested'], // the request the person made, and their Stop on a line they see
 };
 
@@ -55,6 +55,7 @@ const DIRECT = {
   'room-checks-agy.mjs': ['deniedSteps'], // facts from a recorded run, offline
   'room-checks-backends.mjs': ['BACKEND_CHECKS'], // the same
   'room-checks-asks.mjs': ['droppedAsks', 'needsMismatches'], // the same
+  'room-checks-needs.mjs': ['declinedThenMentioned'], // the same
   'room-checks-telemetry.mjs': ['fiveWordRuns', 'secretsOf', 'CHECKS'], // the same
   'room-checks-threads.mjs': ['missingThreadTasks'], // the same
   'room-checks-work.mjs': ['ledgerEntries'], // the same
@@ -108,7 +109,7 @@ const PENDING = {
   'thread-erase.mjs': ['eraseThreads'], // a thread’s apps, removed in a sweep
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'topic-open.mjs': ['startTopic', 'startTopic', 'openTopic', 'conversationOf', 'conversationOf', 'repeated'], // one topic per message, the opener's woke, the item's thread and I6's check, each maybe held behind a commit (#637)
-  'wake-cards.mjs': ['openCard'], // another wake’s held hop card, so a second isn’t made
+  'wake-cards.mjs': ['declinedAdd', 'openCard'], // a declined add, so a mention asks no more (#693); another wake’s held hop card, so a second isn’t made
   'write-intent.mjs': ['stillOpen'], // the turn’s own lines, and the person’s held Stop on one
 };
 

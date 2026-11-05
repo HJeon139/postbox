@@ -46,6 +46,7 @@ import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
 import { sendLint } from './lint-delivery.mjs';
+import { wakeMentions } from './mention-wakes.mjs';
 import * as queue from './message-queue.mjs';
 import {
   allowAlways,
@@ -112,7 +113,7 @@ import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
-import { retireStale } from './wake-cards.mjs';
+import { closeOrphanCards, retireStale } from './wake-cards.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
@@ -192,6 +193,8 @@ export class Runtime {
     archiveForks(this);
     // Nothing archives a conversation by itself any more (#320): what idle archiving hid comes back, once.
     restoreArchives(this);
+    // After the restore, so a card it brings back stays the person’s to answer (#693).
+    closeOrphanCards(this);
   }
 
   get s() {
@@ -1071,27 +1074,9 @@ export class Runtime {
     this.takePending(se, turn, true);
   }
 
-  /**
-   * An agent that @-mentions another agent wakes it, there, except in a summary sent back, which wakes no one (#225).
-   * A reply doesn’t go back to the agent that woke this one by itself (#372): it’s in the conversation, read at that
-   * agent’s next turn, and it wakes it only by @-mentioning it, as a hand-off does. The chain limit stops a runaway one.
-   * Each wake after the first reuses the message the first went out as: a turn in an old side thread posts it once.
-   * One the failed reply a retry answers already woke isn’t woken again (#485).
-   * @param {any} se @param {any} turn @param {string} text  what the woken agents are sent
-   * @returns {string[]} the handles it woke, or that wait to be
-   */
+  /** The wakes a turn's @-mentions make once it ends (server/mention-wakes.mjs). */
   wakeMentions(se, turn, text) {
-    let said = turn.first;
-    const woke = [];
-    for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, this.handles())) {
-      if (h.toLowerCase() === se.handle.toLowerCase() || turn.woken.includes(h)) continue;
-      // Its turn has ended, so where it spoke comes from the turn: a topic thread it spoke in, else the conversation.
-      const r = this.agentWake(se.id, h, text, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id, itemId: said });
-      if (r.itemId) said = r.itemId;
-      if (r.ok || r.waiting) woke.push(h);
-      else this.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
-    }
-    return woke;
+    return wakeMentions(this, se, turn, text);
   }
 
   /**
