@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.21.1 (2026-11-05)
+
+### Fixes
+
+- **catch-up:** heldFor reads the open card from published items (#693)
+- **wakes:** a closed card's held message is due from its close, and its asker gets one note (#693)
+- **wakes:** close cards after the restore, tell everyone, keep the person's latest decline (#693)
+- **catch-up:** name a message held for an agent on a card that waits for the person (#693)
+- **wakes:** a card whose agent is archived, removed or retired closes, and held agents hear (#693)
+- **wakes:** after the person declines adding an agent, a prose mention asks no more (#693)
+
 ## 1.21.0 (2026-11-05)
 
 ### Features
