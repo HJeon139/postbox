@@ -50,24 +50,26 @@ export async function setup() {
   const a = rt.createPersona({ handle: 'alpha' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id] });
   const se = rt.sessionsIn(t.id)[0];
-  /** Calls a tool over MCP from inside a turn, with that turn’s token. */
-  const call = async (name, args) => {
+  /** Runs step(ctx) inside a turn of the agent’s, and gives what it returns once the turn has ended. */
+  const during = async (step) => {
     let out = null;
     adapter.next.push(async (c) => {
-      out = await handleMcp(
-        rt,
-        se.id,
-        { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
-        new URL(c.mcpUrl).searchParams.get('turn'),
-      );
+      out = await step(c);
     });
     rt.sendMessage(t.id, { text: 'go' });
     for (let i = 0; i < 100 && (out === null || rt.turns.size); i++) await sleep(5);
+    return out;
+  };
+  /** Calls a tool over MCP from inside a turn, with that turn’s token. */
+  const call = async (name, args) => {
+    const out = await during((c) =>
+      handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, new URL(c.mcpUrl).searchParams.get('turn')),
+    );
     return { text: out.result?.content?.[0]?.text ?? out.error?.message, isError: out.result?.isError ?? true };
   };
   /** The review block item with this block id. */
   const review = (id) => store.items(t.id).find((i) => i.kind === 'block' && i.block?.id === id);
-  return { rt, store, t, se, folder, root, call, review };
+  return { rt, store, t, se, folder, root, call, during, review };
 }
 
 /** A review block with Markdown content naming figs/today.png. */

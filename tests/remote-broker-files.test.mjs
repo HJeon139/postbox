@@ -124,3 +124,71 @@ test('a file swapped for a link after it was checked isn’t read: the file open
     await h.done();
   }
 });
+
+// ── A review block’s files (#780) ──
+
+const review = (id, files) => ({ block: { id, type: 'review', version: 1, format: 'markdown', content: '![A](figs/a.png)', fallback: 'A review.', files } });
+
+test('#780 a review block’s files are read from the turn’s folder and sent as name, path and base64', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    mkdirSync(join(h.work, 'figs'));
+    writeFileSync(join(h.work, 'figs', 'a.png'), 'png bytes');
+    const k = makeBroker(h);
+    const s = connectShim(k.b, 't1');
+    await s.next('welcome');
+    // A base64 the agent sends is never what crosses: the host reads the path.
+    assert.equal((await s.call('c1', 'show_block', review('fig', [{ path: 'figs/a.png', base64: 'eA==' }]))).ok, true);
+    assert.equal((await s.call('c2', 'update_block', review('fig', [{ name: 'b.png', path: './figs/a.png' }]))).ok, true);
+    const b64 = Buffer.from('png bytes').toString('base64');
+    assert.deepEqual(k.sent[0].args.block.files, [{ name: 'a.png', path: 'figs/a.png', base64: b64 }]);
+    assert.deepEqual(k.sent[1].args.block.files, [{ name: 'b.png', path: './figs/a.png', base64: b64 }]);
+    assert.equal(k.sent[0].args.block.content, '![A](figs/a.png)', 'the rest of the block is as the agent sent it');
+  } finally {
+    await h.done();
+  }
+});
+
+test('#780 a review block’s file outside the turn’s folder, or a link out of it, isn’t read or sent', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    writeFileSync(join(h.home, 'secret.png'), 'no');
+    symlinkSync(join(h.home, 'secret.png'), join(h.work, 'link.png'));
+    writeFileSync(join(h.work, 'big.png'), Buffer.alloc(5 * 1024 * 1024 + 1));
+    writeFileSync(join(h.work, 'a.png'), 'png bytes');
+    const k = makeBroker(h);
+    const s = connectShim(k.b, 't1');
+    await s.next('welcome');
+    const refused = async (id, args, name = 'show_block') => {
+      const r = await s.call(id, name, args);
+      assert.equal(r.ok, false, JSON.stringify(args));
+      return r.text;
+    };
+    assert.equal(
+      await refused('c1', review('x', [{ path: '../secret.png' }])),
+      '../secret.png is outside your folder, so Postbox didn’t read it (the image “secret.png” (up to 5 MiB)).',
+    );
+    assert.equal(
+      await refused('c2', review('x', [{ path: 'link.png' }]), 'update_block'),
+      'link.png is outside your folder, so Postbox didn’t read it (the image “link.png” (up to 5 MiB)).',
+    );
+    assert.equal(await refused('c3', review('x', [{ path: 'big.png' }])), 'big.png is over the limit for the image “big.png” (up to 5 MiB).');
+    assert.equal(
+      await refused('c4', review('x', [{ name: 'f.png', base64: 'eA==' }])),
+      'the image “f.png” (up to 5 MiB) needs a path to a file in your folder.',
+    );
+    assert.equal(await refused('c5', review('x', [{ path: 'a.png' }, { name: 'a.png', path: 'a.png' }])), 'Two files are named “a.png”.');
+    assert.equal(await refused('c6', review('x', 'a.png')), 'files is a list: [{ name?, path }].');
+    const nine = Array.from({ length: 9 }, (_, i) => ({ name: `f${i}.png`, path: 'a.png' }));
+    assert.equal(await refused('c7', review('x', nine)), 'A review carries up to 8 files.');
+    const choice = {
+      block: { id: 'q', type: 'choice', version: 1, fallback: 'Pick', prompt: 'Pick', options: [{ id: 'a', label: 'A' }], files: [{ path: 'a.png' }] },
+    };
+    assert.equal(await refused('c8', choice), 'Only a review block carries files: images its Markdown shows. Send this block without files.');
+    assert.equal(k.sent.length, 0, 'nothing refused crossed');
+  } finally {
+    await h.done();
+  }
+});
