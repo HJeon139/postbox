@@ -19,7 +19,7 @@ Ask @researcher and @critic each for a long write-up, one after the other. Once 
 
 What this phase tests: `window-paged-back` only shows that you reached the first day. The goals are that `view-moved` stays silent across Home and the pages down, while the room holds the two new replies, and that End brings the view back to following as a change of mode with your input before it. A run that fires `window-paged-back` alone isn’t a pass.
 
-What it can’t test: paging while a reply streams. The run waits for every agent to finish before each of your steps (`settle` in `tools/uat-run.mjs`), and no step scrolls while a turn runs. `tests/browser/view-moved-stream.spec.mjs` checks the nearest case on a real page: a view that is following, or reading after a scroll up, held still while a reply streams. Paging during a stream is checked by neither.
+What it can’t test: paging while a reply streams. The run waits for every agent to finish before each of your steps (`settle` in `tools/uat-run.mjs`), and no step scrolls while a turn runs. `tests/browser/view-moved-stream.spec.mjs` checks the nearest case on a real page: a view that is following, or reading after a scroll up, held still while a reply streams. Paging during a stream is checked by neither until the runner can scroll mid-turn (#805).
 
 ## Phase 2: Jumps (B2, B3)
 
