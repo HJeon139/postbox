@@ -2,6 +2,20 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.24.0 (2026-11-05)
+
+### Features
+
+- **uat:** a runner shot keeps the view, inputs are recorded, and the tester scrolls (#531, B1b-b)
+
+### Fixes
+
+- **uat:** keepView puts the view back without hiding the capture's own error (#531, B1b-b)
+- **uat:** keepView checks the view one frame after it puts it back, not two (#531, B1b-b)
+- **uat:** telemetry clicks and reloads are recorded as inputs that move the view (#531, B1b-b)
+- **uat:** a runner click scrolls only when it can't reach its control where it is (#531, B1b-b)
+- **uat:** a read inside an app puts the view back, and an app click records once (#531, B1b-b)
+
 ## 1.23.1 (2026-11-05)
 
 ### Fixes
