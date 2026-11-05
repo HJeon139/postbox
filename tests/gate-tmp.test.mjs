@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { gateRunDir, makeWritable, runBase, STALE_MS, sweep } from '../tools/gate-tmp.mjs';
+import { gateRunDir, makeWritable, removeAll, runBase, STALE_MS, sweep } from '../tools/gate-tmp.mjs';
 
 const NOW = 1_800_000_000_000;
 const DEAD = 4_000_001;
@@ -114,6 +114,35 @@ test('the sweep leaves names that aren’t a gate run’s alone', (t) => {
   fs.utimesSync(other, at, at);
   sweep(deps);
   assert.equal(fs.existsSync(other), true);
+});
+
+test('without a user id, as on Windows, the sweep reads nothing and removes nothing', (t) => {
+  const { tmp, deps } = scratch(t, { uid: undefined });
+  const dir = leftover(tmp, DEAD);
+  let reads = 0;
+  const readdirSync = (/** @type {string} */ path) => {
+    reads++;
+    return fs.readdirSync(path);
+  };
+  const watched = { ...fs, readdirSync };
+  assert.deepEqual(sweep({ ...deps, fs: /** @type {typeof fs} */ (watched) }), []);
+  assert.equal(reads, 0);
+  assert.equal(fs.existsSync(join(dir, 'f')), true);
+});
+
+test('a temp folder the sweep can’t read is skipped, and the run still opens its own', (t) => {
+  const { deps } = scratch(t);
+  const unreadable = {
+    ...fs,
+    readdirSync: () => {
+      throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+    },
+  };
+  const d = { ...deps, fs: /** @type {typeof fs} */ (unreadable) };
+  assert.deepEqual(sweep(d), []);
+  const run = gateRunDir(d).open();
+  t.after(() => removeAll(fs, run.path));
+  assert.equal(fs.lstatSync(run.path).isDirectory(), true);
 });
 
 test('the sweep removes a dead run’s read-only folder, and its chmod walk never follows a link out of it', (t) => {

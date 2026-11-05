@@ -2,6 +2,10 @@
 // pb-gate-<pid>-XXXXXX under the system temp folder and removes it at the end, so whatever the tests leave goes with
 // it. A run that’s killed can’t remove its own, so each run first sweeps the folders of earlier ones: a real folder,
 // not a link, owned by this user, whose gate process has exited, and, only as a backstop, last changed over an hour ago.
+// The pid in a name is the gate’s in its own pid namespace. A pid reused by another process keeps a dead run’s folder
+// until that process ends. A run in another namespace (a container sharing this temp folder) names a pid this one
+// can’t see, so it looks dead here, and only the hour’s age keeps its folder while it runs. Without a user id
+// (Windows) there’s no owner to check, so the sweep doesn’t run.
 
 import * as nodeFs from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
@@ -80,17 +84,26 @@ function stale(d, name, path) {
   if (!m) return false;
   const st = d.fs.lstatSync(path, { throwIfNoEntry: false });
   if (!st?.isDirectory()) return false;
-  if (d.uid === undefined || st.uid !== d.uid) return false;
+  if (st.uid !== d.uid) return false;
   if (alive(d.kill, Number(m[1]))) return false;
   return d.now() - st.mtimeMs > STALE_MS;
 }
 
 /** Removes the folders earlier runs left, and returns their paths. @param {Deps} d */
 export function sweep(d) {
-  const base = runBase(d);
   /** @type {string[]} */
   const removed = [];
-  for (const name of d.fs.readdirSync(base)) {
+  if (d.uid === undefined) return removed;
+  const base = runBase(d);
+  /** @type {string[]} */
+  let names;
+  try {
+    names = d.fs.readdirSync(base);
+  } catch {
+    // A temp folder this user can’t list has no leftovers of theirs to find.
+    return removed;
+  }
+  for (const name of names) {
     const path = join(base, name);
     try {
       if (!stale(d, name, path)) continue;
