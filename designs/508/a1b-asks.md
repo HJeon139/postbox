@@ -1,79 +1,98 @@
-# A1b: one rule for which card an agent needs you for, when two tie
+# A1b: a new card takes an agent’s need only as `nextNeed` would choose it
 
-**Status:** the design for #508’s A1b (#711), rescoped after the integrator’s review of #781. Citations are by file and function, read at `main` `23f09f80`; the code PR re-reads each one at its head. Its code is not built yet.
+**Status:** the design for #508’s A1b (#711), rescoped after the integrator’s review of #781: the maintainer chose to shrink A1b to one tie rule and move the rest of A1 to A2. Citations are by file and function, read at `main` `23f09f80`; the code PR re-reads each one at its head. Its code is not built yet.
 
-**What A1b is now.** #633 already derives an agent’s need from its cards (`nextNeed`, `server/card-needs.mjs`). The integrator’s review showed that a hold record would be lost on a downgrade, so `card.held` stays as it is until A2. With no record to add, A1b is one tie rule, shared by the three places that choose between two cards, plus a locale-free last tiebreak in `needsOrder`. Everything else in A1’s row of `design.md`’s rollout moves to A2 by name (§5).
+**What A1b is now.** #633 already derives an agent’s need from its cards (`nextNeed`, `server/card-needs.mjs`). Of the places that choose between two of an agent’s cards, two already agree, and the third, `offerNeed`, doesn’t: it lets any card of the same rank take the need, older or newer. A1b makes `offerNeed` choose as `nextNeed` would, and gives `needsOrder` a last tiebreak that doesn’t depend on the runtime’s locale. `card.held` stays as it is, and everything else in A1’s row of `design.md`’s rollout moves to A2 by name (§6).
 
-**Requirements served:** AT-4, “needs you” correct and complete, in that every place that picks a card picks the same one. AT-1 and DL-1 stay as on `main`: nothing held moves or is dropped.
+**Requirements served:** AT-4 in part: every place that sets an agent’s need picks the card `nextNeed` would. The rest of AT-4, needs-you with a room’s items not loaded, moves to A2. AT-1 and DL-1 stay as on `main`: nothing held moves or is dropped.
 
-## 1. Today
+## 1. Decisions
 
-Three places choose which of two cards an agent needs you for, and they decide an exact tie in different ways or not at all:
-- **`comesFirst`** (`server/card-needs.mjs`), inside `nextNeed`: by `RANK`, then the newer card (`at >= best.at`), so on equal rank and time the card read later wins, which depends on the order the threads and items are read in.
-- **`keptOrNext`** (`server/restart-sweep.mjs`), used by the restart sweep and by a Retry’s reset: by `RANK`, then `at` (`>=` again), comparing the kept need with the next one.
-- **`offerNeed`** (`server/card-needs.mjs`): by `RANK` only; a new card of the same rank always takes the need.
-
-Separately, **`needsOrder`** (`shared/needs.mjs`) orders the agents that need you across rooms, for Ctrl+J: nearest room first, then the longest wait, then the session id with `localeCompare`, whose order depends on the runtime’s locale. That isn’t a choice between cards, so it keeps its own order.
-
-## 2. The design
-
-- **`cardBefore(a, b)`** in `server/card-needs.mjs`, one function, used by `comesFirst`, `keptOrNext` and `offerNeed`:
-  1. the lower `RANK` first;
-  2. then the newer card (the larger `at`), as today;
-  3. only on an exact tie of rank and time, the smaller item id in code-unit order (`a.id < b.id`).
-
-  Item ids come from `newId`, which is random, so the id is an arbitrary but fixed tiebreak, never a stand-in for “older”.
-- **`offerNeed`** asks `cardBefore(new, current)`; a same-rank newer card still takes the need, as `nextNeed` would choose it.
-- **`needsOrder`** breaks its last tie with plain code-unit comparison of session ids (`a < b ? -1 : a > b ? 1 : 0`, written as an `if` chain), so the server’s room checks and the page order two agents the same way.
-- **Cost:** none added: each place already compares two cards or two sessions; the rule is O(1) per comparison.
-
-## 3. Invariants and the failure table
-
-- **I1. One rule:** `comesFirst`, `keptOrNext` and `offerNeed` agree on every pair of cards, in either order.
-- **I2. Nothing held moves:** `card.held` is written and read as on `main`.
-- **I3. Locale-free:** no reader of needs orders by `localeCompare`.
-
-| Case | Today | After |
+| # | Decision | Decided by |
 |---|---|---|
-| Two cards of one rank at the same `at` | the card read later wins in `nextNeed`; `keptOrNext` keeps the current one; `offerNeed` takes the new one | the smaller id, in all three |
-| Restart or Retry | `keptOrNext` may keep a need `nextNeed` doesn’t count (a block from an older turn), as #633 meant | the same; ties between the two follow I1 |
-| A downgrade to a build before A1b | — | nothing to read back: A1b stores nothing new |
+| R1 | Keep `card.held` as it is until A2, so a downgrade loses no held wake. | the integrator’s review of #781, which offered it; ruled in review |
+| R2 | Shrink A1b to the tie rule, and move the rest of A1 to A2. | the maintainer |
+| R3 | No `asksOf`: the page’s `openAsks` is out of a server function’s reach without new published state, so nothing would read it. | review |
+| R4 | No item-id tiebreak in `comesFirst` or `keptOrNext`: arrival order already decides their ties, deterministically, and ids are random. | review, on the code |
+| R5 | `offerNeed` chooses as `nextNeed` would (§3). | review |
+| R6 | `needsOrder` breaks its last tie by code unit, not `localeCompare`. | review |
+| R7 | The rule that review holds every route to public data moves its trigger from A1b to A2’s first private data. | review, read as a security change |
 
-## 4. Tests, failing first
+## 2. Today
 
-- **The agreement spec:** the same pair of equal-rank, equal-time cards fed to `nextNeed`, `keptOrNext` and `offerNeed` in both orders; all three pick the same card. It fails on `main`. A mutant that drops the id tiebreak fails it.
-- **The locale spec:** two session ids that `localeCompare` orders differently under a non-English collation; `needsOrder` orders them by code unit.
-- **#633’s specs** pass unchanged, except where they pinned the read-order tie, which the PR names.
+- **`comesFirst`** (inside `nextNeed`): the lower `RANK` wins; on equal rank the card with the larger `at` wins, and on equal `at` the card read later (`at >= best.at`). The read order is fixed: `threadsOf` lists the agent’s own thread and then its side threads, each with its items in order. So on a tie the later arrival wins, the same way every time.
+- **`keptOrNext`** (`server/restart-sweep.mjs`, used by the restart sweep and by a Retry’s reset through `settledNeed`): the same card is kept; otherwise the lower `RANK`, then the larger `at`, and on equal `at` it takes `next`, which is `nextNeed`’s own result. It already agrees with `comesFirst`.
+- **`offerNeed`** (`server/card-needs.mjs`): a card takes the need when none is set, or when its `RANK` is the same or lower. So a same-rank card always takes it, even an older one. Its callers:
+  - a new permission card (`permission-cards.mjs`), a new hop card (`wake-cards.mjs`), and the first event of an app card (`apps.mjs`, `needAppSend`): each a new card, so newer;
+  - `needAppSend` again for the card that already is the need, to update its “wants to send N messages” text;
+  - `waitOn` (`remote/turns-prompts.mjs`), which offers again a permission card shown before a restart, which can be older than the current need.
+- **`needsOrder`** (`shared/needs.mjs`) orders the agents that need you, for Ctrl+J: the given conversation’s first, then the longest wait (`waitedSince`), then the session id by `localeCompare`, whose order depends on the runtime’s locale. The page and the server’s room checks run it in different runtimes.
 
-## 5. What moves to A2
+## 3. The design
 
-From A1’s row of `design.md`’s rollout, by name:
-- `card.held` becoming deliveries with `heldBy`, keeping `HELD_WAKES`, and #594’s case, which needs an owner on each hold;
-- the Add card as an ask that holds (AT-7);
-- needs-you counts with a room’s items not loaded;
-- B3’s need for A1 to take `waitedSince` (`shared/needs.mjs`) and `openAsks` (`app/js/open-asks.mjs`) off items;
-- the first private records and the check that holds them (“Carried to A2” below).
+`offerNeed(rt, se, need, state)` takes the need when:
+1. none is set, or the current need’s card no longer waits (as `keptOrNext` reads it, from pending);
+2. or it’s the same card as the current need: it always takes it again, so `needAppSend`’s refresh keeps working;
+3. or its `RANK` is lower;
+4. or its `RANK` is the same and its card isn’t older than the current need’s card, by `at` read from pending, the same comparison `keptOrNext` makes. On equal `at` the offered card takes it, as the later arrival.
 
-`openAsks`, the page’s list of asking blocks left open from earlier turns (#69), runs in the page over loaded items. A server function can’t serve it without new published state, so A1b leaves it as it is.
+A current need of a kind `RANK` doesn’t list is still never replaced, as today.
 
-## 6. What’s unverified
+**What changes:** only rule 4. A same-rank card that is older than the current need no longer takes it. Of today’s callers, only `waitOn` can offer one: after a restart, an older permission card no longer takes the need from a newer one, which is what `nextNeed` would choose.
 
-- Which of #633’s specs pin today’s read-order tie: swept in the code PR.
+`needsOrder` breaks its last tie with code-unit comparison of session ids, written as an `if` chain.
+
+**Cost:** rule 4 reads two cards from pending, as `keptOrNext` already does: O(items in the two cards’ threads), once per offer, which happens once per new card. A per-thread item index (#712b, PR #769, not merged) would make it O(1).
+
+## 4. Invariants and the failure table
+
+- **I1. One choice:** after any offer, the need is the card `nextNeed` would choose between the current need and the offered card.
+- **I2. Arrival order decides ties:** two cards of one rank and one `at` order by arrival, in `comesFirst`, `keptOrNext` and `offerNeed` alike, never by id.
+- **I3. Nothing held moves:** `card.held` is written and read as on `main`.
+- **I4. Locale-free:** no reader of needs orders by `localeCompare`.
+
+| Case | Today | After | A concurrent reader | The person |
+|---|---|---|---|---|
+| A new card of the same rank | takes the need | takes it (it’s newer) | sees the new need | the ring moves to it |
+| The same card offered again | takes it, with its new text | the same | sees the new text | the count updates |
+| An older same-rank card offered after a restart (`waitOn`) | takes the need from a newer one | doesn’t | sees the newer need kept | the newer card stays the one shown |
+| Two cards of one rank in the same millisecond | the later arrival wins | the same, pinned by a test | — | — |
+| Restart or Retry | `keptOrNext` may keep a need `nextNeed` doesn’t count, as #633 meant | the same | — | as before |
+| Upgrade to A1b | — | nothing to convert: A1b stores nothing new | — | — |
+| Downgrade from A1b | — | nothing to read back | — | as on `main` |
+
+## 5. Tests, failing first
+
+- **The `waitOn` spec:** a newer permission card is the need, and an older one is offered again after a restart; the newer one stays. It fails on `main`.
+- **The `needAppSend` spec:** the card that is the need is offered again with a new count; its text updates. It passes on `main` and guards rule 2.
+- **The arrival-order spec:** two cards of one rank at the same `at`, fed to `nextNeed`, `keptOrNext` (through `settledNeed`, since it isn’t exported) and `offerNeed`; all three pick the later arrival. A mutant that adds an id tiebreak fails it.
+- **The locale spec:** two session ids that differ only in case (`se_B`, `se_a`), which `localeCompare` and code-unit order sort differently; `needsOrder` orders them by code unit.
+- **Mutants:** dropping rule 2 fails the `needAppSend` spec; dropping rule 4’s age check fails the `waitOn` spec.
+
+## 6. What moves to A2
+
+From A1’s row of `design.md`’s rollout, by name: ask records; `card.held` becoming deliveries with `heldBy`, keeping `HELD_WAKES`, and #594’s case, which needs an owner on each hold; the Add card as an ask that holds (AT-7); derived open asks, and needs-you counts with a room’s items not loaded; #439’s and #326’s cases; INV-10; the `ask-dropped` and `needs-mismatch` checks; B3’s need for A1 to take `waitedSince` and `openAsks` off items; and the first private data and the check that holds it (“Carried to A2”).
+
+`openAsks` (`app/js/open-asks.mjs`), the page’s list of asking blocks left open from earlier turns (#69), runs in the page over loaded items, and A1b leaves it as it is.
+
+## 7. What’s unverified
+
+- Whether any of #633’s specs pin `offerNeed` taking an older same-rank card: swept in the code PR.
 - Agents other than Claude Code: the change is in the server and the page’s shared code, the same for every backend.
 
-## 7. UAT
+## 8. UAT
 
 None for this note: it’s docs only. The code PR runs the needsnav scenario’s triggers, and `delivery.md` phase 1 (`held-behind-card`, `held-released`) to show held wakes behave as on `main`.
 
-## Carried to A2: the first private records
+## Carried to A2: the case for keeping the first private records outside `state`
 
-The review of this note’s earlier drafts settled how the first private records should be kept. A2 adds them, so this is A2’s to build; A2’s note takes it over and checks every new name against `main` first.
+The review of this note’s earlier drafts worked out how A2’s first private records could be kept. Where they go is A2’s to decide (`design.md`, “What is state, what is in the store, and what reaches the browser”, still has records in `store.state`); this is the review’s case, for A2’s note to take up or answer, checking every new name against `main` first.
 
-**The private store.** Records live outside `state`, in a store field of their own, `store.privateRecords`, never in `rt.s`, so no reader of `rt.s` or `store.state` can see one, including whole-object copies such as the UAT facts’ `{ ...rt.s, items }` (`liveFacts`, `server/telemetry-report.mjs`). (`store.held` is taken: it’s the count of held emits that `server/store-held.mjs` gates every pending read on.) A `lint-security` rule fails on a read of `privateRecords` outside an allowlist. The rule in `AGENTS.md` and `designs/architecture.md`, that review holds every other route to public data until a check exists, then means this store and its lint.
+**A private store.** Records would live outside `state`, in a store field of their own, `store.privateRecords`, never in `rt.s`, so no reader of `rt.s` or `store.state` could see one, including whole-object copies such as the UAT facts’ `{ ...rt.s, items }` (`liveFacts`, `server/telemetry-report.mjs`). (`store.held` is taken: it’s the count of held emits that `server/store-held.mjs` gates every pending read on.) A `lint-security` rule would fail on a read of `privateRecords` outside an allowlist.
 
 **Every channel off the laptop,** each with its reason no record leaks: `/api/state` and the stream; every other route, including write routes’ return values; the host snapshot; the host’s offline answers; telemetry reports and their `gh` issue, whose state today is `{ ...rt.s, items }`, not `publicState`; the apps’ query route; prompts and catch-ups; the agent’s own read tools, keyed on the session its turn token resolves to; error and status text (#632’s contract); and the store on disk.
 
-**The canary test** seeds a private record for two agents, each holding a canary, and fails if one appears in any channel. It enumerates a declared route table, which a move-only first commit extracts from `server/index.mjs`. It must fail first with a record written into `state`, with `appQuery` reading private records, with the read tools returning every agent’s, and with records written into `snapshot.json`.
+**A canary test** would seed a private record for two agents, each holding a canary, and fail if one appears in any channel. It enumerates a declared route table, which a move-only first commit extracts from `server/index.mjs`. It must fail first with a record written into `state`, with `appQuery` reading private records, with the read tools returning every agent’s, and with records written into `snapshot.json`.
 
 **The snapshot.** `snapshot.json` keeps its shape. Private records get their own file, `private-<seq>.json`, `{ seq, snapshotHash, records }`, with a hash of the snapshot’s text, so a stray file of the same length left by an older build’s `--fresh` isn’t accepted.
 1. The state’s text and the records’ text are serialized in one synchronous section, at the same seq, so the log never replays records onto a file that already holds them.
@@ -86,4 +105,4 @@ The review of this note’s earlier drafts settled how the first private records
 
 **#608’s limits on records:** the open and reserve size limits agree; `revise` can’t change `askKind` or `deliveryId`; `release` and `block` can’t change `mode` or `notBefore`; a closed id can’t be opened again; a dangling `deliveryId` and unknown part fields are refused; the reducer copies only the records a command touches.
 
-**Where A2’s records go:** outside `state`, as above, which answers `delivery-routes.md`’s “A1b’s design reconciles them”.
+**`delivery-routes.md`’s “A1b’s design reconciles them”** is answered here: A1b adds no records, and where A2’s go is A2’s note’s.

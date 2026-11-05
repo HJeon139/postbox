@@ -23,7 +23,7 @@
 
 **Revision 6**, after critic’s and gpt’s reads of revision 5, which the person approved:
 - The read is named for what it is. It returns every held write to a list, from any writer, so “read your own writes” overclaimed it, and the uncited sources are dropped. §8 justifies each site that reads another writer’s held write.
-- §5’s ordering assumption was false for A1b: its card migration and removal commits touch thread items (gpt). §5 now names the lists A1b’s commits touch and states the window.
+- §5’s ordering assumption was false for A1b (A1b’s records are now A2’s: `a1b-asks.md`): its card migration and removal commits touch thread items (gpt). §5 now names the lists A1b’s commits touch and states the window.
 - B1’s positions: a pending item has no `n` until its release.
 - The guard is keyed by file and enclosing function, not by line.
 
@@ -148,10 +148,10 @@ The read doesn’t know the writer. It returns every held write to the list, fro
 
 **The commit in front.** The view applies held emits to the published state without the commit in front of them, because that commit’s events don’t exist until the writer runs its builder, and may never apply. While no commit touches the list being read, the view is exact.
 - Today, no commit touches items or work: `main` has no production commit (§1). A1a’s `commitRecords` writes only `records` and `dispatches`, and is gated off. #603’s body says the archive pass leaves “active turns and kept jobs hot”.
-- A1b will touch items. `a1-record-shape.md` on gpt’s branch moves “card-held content and clear[s] legacy hold in one commit” (its migration row “Held wakes and Add card”). It retires the card-held state of blocks, permissions, tool asks, app sends and hop cards (the row that names them). Its removal command accounts for an item’s owed changes (the failure row “Source/item removed with unresolved consumer”). Whether any A1b commit changes `work` is gpt’s to confirm.
+- A1b will touch items (A1b’s records are now A2’s: `a1b-asks.md`). `a1-record-shape.md` on gpt’s branch moves “card-held content and clear[s] legacy hold in one commit” (its migration row “Held wakes and Add card”). It retires the card-held state of blocks, permissions, tool asks, app sends and hop cards (the row that names them). Its removal command accounts for an item’s owed changes (the failure row “Source/item removed with unresolved consumer”). Whether any A1b commit changes `work` is gpt’s to confirm.
 - In that window, at most one sync, a pending read of such a card’s thread can show a held patch on a card the commit in front then rewrites. That is a state no published list will hold.
 
-The rule: a commit kind that touches `items` or `work` is placed in the guard beside the pending readers of the same lists. Whoever adds one says, for each placed reader, whether the window matters. If it does, the commit must hold that reader until it settles, or the pending read must learn to apply built commit events. That decision belongs to A1b’s own design (gpt), not this PR.
+The rule: a commit kind that touches `items` or `work` is placed in the guard beside the pending readers of the same lists. Whoever adds one says, for each placed reader, whether the window matters. If it does, the commit must hold that reader until it settles, or the pending read must learn to apply built commit events. That decision belongs to the records’ own design, now A2’s (`a1b-asks.md`), not this PR.
 
 **B1’s positions.** B1 assigns an item’s position `n` where `seq` is assigned, which for a held emit is at its release (`storage-design.md` §6.3, “Sequencing”, and §6.11). A pending item has no `n`. No pending reader may depend on `n`, and B1 extends the view, or places that rule in the guard, when it adds positions.
 
@@ -168,7 +168,7 @@ Spec: hold a commit, emit a reply, read it pending, fail the write, Retry. Neith
 
 ## 7. Types, extensibility and identity
 
-The view lives in `server/store-held.mjs`, behind `store.pending`. A list is one entry in a typed registry, `LISTS`: its events, the key they name it by, and its entries’ id. A collection of whole entities, such as apps, is an entry in `ENTITIES`: the event that puts one whole and the `remove` kind that deletes it. Its pending read applies the held puts and removals to a copy of the published map, and is the published map itself when nothing held touches it. Adding either kind, such as records if A1b needs it, means adding an entry. There is no switch to edit.
+The view lives in `server/store-held.mjs`, behind `store.pending`. A list is one entry in a typed registry, `LISTS`: its events, the key they name it by, and its entries’ id. A collection of whole entities, such as apps, is an entry in `ENTITIES`: the event that puts one whole and the `remove` kind that deletes it. Its pending read applies the held puts and removals to a copy of the published map, and is the published map itself when nothing held touches it. Adding either kind, such as records if A2 needs them (A1b adds none: `a1b-asks.md`), means adding an entry. There is no switch to edit.
 
 A copy-on-write overlay over the whole state was considered and rejected. It would need proxies under the reducer, or a whole-state clone at every rebuild, and no reader needs more than one list.
 

@@ -1,6 +1,6 @@
-# #633: which card an agent needs you for, until A1b
+# #633: which card an agent needs you for
 
-**Status:** revision 5: revision 3, which the person approved, plus the pre-review packet’s fixes (revision 4) and critic’s and researcher’s reads at `2d967ecb` (I1’s fifth write, functions cited instead of lines). A stopgap: A1b derives needs from open ask records and replaces `nextNeed` (`design.md:607`; `execution-plan.md:41`). #508 actions 4 and 9 ask every stopgap note for a restart matrix and `main`’s behavior as a table; both are below.
+**Status:** revision 5: revision 3, which the person approved, plus the pre-review packet’s fixes (revision 4) and critic’s and researcher’s reads at `2d967ecb` (I1’s fifth write, functions cited instead of lines). Written as a stopgap until A1b’s ask records; `a1b-asks.md` now keeps `nextNeed`, with one tie rule, and A1’s records move to A2 (`design.md`, “Rollout”; `execution-plan.md`, “A1 is split”). #508 actions 4 and 9 ask every stopgap note for a restart matrix and `main`’s behavior as a table; both are below.
 
 ## Decisions
 
