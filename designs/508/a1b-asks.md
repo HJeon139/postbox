@@ -13,61 +13,60 @@
 | R1 | Keep `card.held` as it is until A2, so a downgrade loses no held wake. | the integrator’s review of #781, which offered it; ruled in review |
 | R2 | Shrink A1b to the tie rule, and move the rest of A1 to A2. | the maintainer |
 | R3 | No `asksOf`: the page’s `openAsks` is out of a server function’s reach without new published state, so nothing would read it. | review |
-| R4 | No item-id tiebreak in `comesFirst` or `keptOrNext`: arrival order already decides their ties, deterministically, and ids are random. | review, on the code |
-| R5 | `offerNeed` chooses as `nextNeed` would (§3). | review |
+| R4 | No item-id tiebreak: ties go to the challenger, as `comesFirst` and `keptOrNext` already decide them, and ids are random. | review, on the code |
+| R5 | One comparison, `challengerWins`, decides rank-then-time for `comesFirst`, `keptOrNext` and `offerNeed`, and `offerNeed` uses it (§3). | review |
 | R6 | `needsOrder` breaks its last tie by code unit, not `localeCompare`. | review |
 | R7 | The rule that review holds every route to public data moves its trigger from A1b to A2’s first private data. | review, read as a security change |
 
 ## 2. Today
 
-- **`comesFirst`** (inside `nextNeed`): the lower `RANK` wins; on equal rank the card with the larger `at` wins, and on equal `at` the card read later (`at >= best.at`). The read order is fixed: `threadsOf` lists the agent’s own thread and then its side threads, each with its items in order. So on a tie the later arrival wins, the same way every time.
-- **`keptOrNext`** (`server/restart-sweep.mjs`, used by the restart sweep and by a Retry’s reset through `settledNeed`): the same card is kept; otherwise the lower `RANK`, then the larger `at`, and on equal `at` it takes `next`, which is `nextNeed`’s own result. It already agrees with `comesFirst`.
-- **`offerNeed`** (`server/card-needs.mjs`): a card takes the need when none is set, or when its `RANK` is the same or lower. So a same-rank card always takes it, even an older one. Its callers:
-  - a new permission card (`permission-cards.mjs`), a new hop card (`wake-cards.mjs`), and the first event of an app card (`apps.mjs`, `needAppSend`): each a new card, so newer;
+- **`comesFirst`** (inside `nextNeed`): the lower `RANK` wins; on equal rank the card with the larger `at`, and on equal `at` the card read later (`at >= best.at`). `threadsOf` reads the agent’s own thread first, then its side threads, each in item order. So on equal `at` the later card within a thread wins, and across threads a side thread’s card wins. It’s deterministic.
+- **`keptOrNext`** (`server/restart-sweep.mjs`, used by the restart sweep and by a Retry’s reset through `settledNeed`): the same card is kept; otherwise the lower `RANK`, then the larger `at`, and on equal `at` it takes `next`, `nextNeed`’s own result. When `nextNeed` counts the current need, that’s the same choice `comesFirst` makes; when it doesn’t (a kept block from an older turn, or a host’s permission not yet waited on after a restart), `keptOrNext` takes `next` on a tie, whatever the read order.
+- **`offerNeed`** (`server/card-needs.mjs`): a card takes the need when none is set, or when its `RANK` is the same or lower, without reading either card. So a same-rank card always takes it, even an older one. Its callers:
+  - a new permission card (`permission-cards.mjs`), a new hop card (`wake-cards.mjs`), and the first event of an app card (`apps.mjs`, `needAppSend`): each a new card;
   - `needAppSend` again for the card that already is the need, to update its “wants to send N messages” text;
-  - `waitOn` (`remote/turns-prompts.mjs`), which offers again a permission card shown before a restart, which can be older than the current need.
-- **`needsOrder`** (`shared/needs.mjs`) orders the agents that need you, for Ctrl+J: the given conversation’s first, then the longest wait (`waitedSince`), then the session id by `localeCompare`, whose order depends on the runtime’s locale. The page and the server’s room checks run it in different runtimes.
+  - `waitOn` (`remote/turns-prompts.mjs`), which offers again a permission card shown before a restart. Usually that card already is the need; it can be an older card than a newer current need.
+- **`needAppSend`’s need carries no `threadId`,** unlike every other caller’s and `needOf`’s (`rt.awayFrom`). For an app card in a side thread, a lookup by the need’s thread finds nothing.
+- **`needsOrder`** (`shared/needs.mjs`) orders the agents that need you, for Ctrl+J: the given conversation’s first, then the longest wait (`waitedSince`), then the session id by `localeCompare`, whose order depends on the runtime’s locale. The page (`needs-nav.mjs`) and the server’s room checks run it in different runtimes.
 
 ## 3. The design
 
-`offerNeed(rt, se, need, state)` takes the need when:
-1. none is set, or the current need’s card no longer waits (as `keptOrNext` reads it, from pending);
-2. or it’s the same card as the current need: it always takes it again, so `needAppSend`’s refresh keeps working;
-3. or its `RANK` is lower;
-4. or its `RANK` is the same and its card isn’t older than the current need’s card, by `at` read from pending, the same comparison `keptOrNext` makes. On equal `at` the offered card takes it, as the later arrival.
+- **`challengerWins(challenger, incumbent)`** in `server/card-needs.mjs`, exported: the lower `RANK` wins; on equal rank, the challenger wins unless its `at` is smaller. `comesFirst` (the challenger is the card being read), `keptOrNext` (the challenger is `next`) and `offerNeed` (the challenger is the offered card) all call it, so one decision is made in one place, and each keeps today’s tie direction: the challenger wins a tie.
+- **`offerNeed(rt, se, need, state)`** takes the need when none is set, when it’s the same card as the current need (so `needAppSend`’s refresh keeps working), or when `challengerWins` says so. The two `at`s are read from pending, by each need’s thread and item, as `keptOrNext` reads them. When either card isn’t found there, `offerNeed` decides by rank alone, as today. A current need of a kind `RANK` doesn’t list is still never replaced.
+- **`needAppSend`** gains `rt.awayFrom(se, app.threadId)`, as every other caller has, so its need names its thread.
+- **`needsOrder`** breaks its last tie with code-unit comparison of session ids, written as an `if` chain.
 
-A current need of a kind `RANK` doesn’t list is still never replaced, as today.
+**What changes:** one case. A same-rank card that is older than the current need no longer takes it. Of today’s callers only `waitOn` can offer one: after a restart, an older permission card no longer takes the need from a newer one. `offerNeed` still doesn’t check whether the current need’s card waits; that stays the resolvers’ and the sweeps’ job, as on `main`.
 
-**What changes:** only rule 4. A same-rank card that is older than the current need no longer takes it. Of today’s callers, only `waitOn` can offer one: after a restart, an older permission card no longer takes the need from a newer one, which is what `nextNeed` would choose.
-
-`needsOrder` breaks its last tie with code-unit comparison of session ids, written as an `if` chain.
-
-**Cost:** rule 4 reads two cards from pending, as `keptOrNext` already does: O(items in the two cards’ threads), once per offer, which happens once per new card. A per-thread item index (#712b, PR #769, not merged) would make it O(1).
+**Cost:** an offer reads two cards from pending, as `keptOrNext` already does: O(items in the two cards’ threads), once per new card. A per-thread item index (#712b, PR #769, not merged) would make it O(1).
 
 ## 4. Invariants and the failure table
 
-- **I1. One choice:** after any offer, the need is the card `nextNeed` would choose between the current need and the offered card.
-- **I2. Arrival order decides ties:** two cards of one rank and one `at` order by arrival, in `comesFirst`, `keptOrNext` and `offerNeed` alike, never by id.
+- **I1. One comparison:** `comesFirst`, `keptOrNext` and `offerNeed` order any two cards they can both read the same way, through `challengerWins`; the offered card takes the need only if `challengerWins` ranks it first, or it is the same card.
+- **I2. Ties go to the challenger,** never by id.
 - **I3. Nothing held moves:** `card.held` is written and read as on `main`.
 - **I4. Locale-free:** no reader of needs orders by `localeCompare`.
 
-| Case | Today | After | A concurrent reader | The person |
-|---|---|---|---|---|
-| A new card of the same rank | takes the need | takes it (it’s newer) | sees the new need | the ring moves to it |
-| The same card offered again | takes it, with its new text | the same | sees the new text | the count updates |
-| An older same-rank card offered after a restart (`waitOn`) | takes the need from a newer one | doesn’t | sees the newer need kept | the newer card stays the one shown |
-| Two cards of one rank in the same millisecond | the later arrival wins | the same, pinned by a test | — | — |
-| Restart or Retry | `keptOrNext` may keep a need `nextNeed` doesn’t count, as #633 meant | the same | — | as before |
-| Upgrade to A1b | — | nothing to convert: A1b stores nothing new | — | — |
-| Downgrade from A1b | — | nothing to read back | — | as on `main` |
+| Case | Today | After | On disk | A concurrent reader | The person |
+|---|---|---|---|---|---|
+| A new card of the same rank | takes the need | takes it (it isn’t older) | nothing new stored | sees the new need | the ring moves to it |
+| The same card offered again | takes it, with its new text | the same | nothing new | sees the new text | the count updates |
+| An older same-rank card offered after a restart (`waitOn`) | takes the need from a newer one | doesn’t | nothing new | sees the newer need kept | the newer card stays shown |
+| A side-thread app card offered | its need has no thread | its need names its thread | nothing new | — | — |
+| Either card not in pending | — | decided by rank alone, as today | nothing new | — | — |
+| Two cards of one rank at the same `at`, in two threads | `nextNeed` keeps the side thread’s; `offerNeed` takes the offered one | the same: the challenger wins a tie | nothing new | — | — |
+| Restart or Retry | `keptOrNext` may keep a need `nextNeed` doesn’t count, as #633 meant | the same | nothing new | — | as before |
+| Upgrade or downgrade | — | nothing to convert or read back: A1b stores nothing new | — | — | as on `main` |
 
 ## 5. Tests, failing first
 
 - **The `waitOn` spec:** a newer permission card is the need, and an older one is offered again after a restart; the newer one stays. It fails on `main`.
-- **The `needAppSend` spec:** the card that is the need is offered again with a new count; its text updates. It passes on `main` and guards rule 2.
-- **The arrival-order spec:** two cards of one rank at the same `at`, fed to `nextNeed`, `keptOrNext` (through `settledNeed`, since it isn’t exported) and `offerNeed`; all three pick the later arrival. A mutant that adds an id tiebreak fails it.
-- **The locale spec:** two session ids that differ only in case (`se_B`, `se_a`), which `localeCompare` and code-unit order sort differently; `needsOrder` orders them by code unit.
-- **Mutants:** dropping rule 2 fails the `needAppSend` spec; dropping rule 4’s age check fails the `waitOn` spec.
+- **The side-thread app spec:** an app card in a side thread is offered against a same-rank hop that is older; the app card takes the need, and its need names its thread. It fails on `main`’s missing thread.
+- **The `needAppSend` spec:** the card that is the need is offered again with a new count; its text updates. It passes on `main` and guards the same-card rule.
+- **The permission-stays spec:** a permission is the need, and a hop is offered; the permission stays.
+- **The one-comparison spec:** pairs of cards fed to `nextNeed`, `keptOrNext` (through `settledNeed`, since it isn’t exported) and `offerNeed`, in both orders, with fixed `at`s, including equal ones in one thread; all three agree. A mutant that adds an id tiebreak fails it.
+- **The locale spec:** two session ids that differ only in case (`se_B`, `se_a`); `needsOrder` orders them by code unit.
+- **Mutants:** dropping the same-card rule fails the `needAppSend` spec; dropping the age check fails the `waitOn` spec; dropping `awayFrom` fails the side-thread spec.
 
 ## 6. What moves to A2
 

@@ -23,7 +23,7 @@
 
 **Revision 6**, after critic’s and gpt’s reads of revision 5, which the person approved:
 - The read is named for what it is. It returns every held write to a list, from any writer, so “read your own writes” overclaimed it, and the uncited sources are dropped. §8 justifies each site that reads another writer’s held write.
-- §5’s ordering assumption was false for A1b (A1b’s records are now A2’s: `a1b-asks.md`): its card migration and removal commits touch thread items (gpt). §5 now names the lists A1b’s commits touch and states the window.
+- §5’s ordering assumption was false for the first records’ step, then A1b’s and now A2’s (`a1b-asks.md`): its card migration and removal commits touch thread items. §5 now names the lists those commits touch and states the window.
 - B1’s positions: a pending item has no `n` until its release.
 - The guard is keyed by file and enclosing function, not by line.
 
@@ -148,7 +148,7 @@ The read doesn’t know the writer. It returns every held write to the list, fro
 
 **The commit in front.** The view applies held emits to the published state without the commit in front of them, because that commit’s events don’t exist until the writer runs its builder, and may never apply. While no commit touches the list being read, the view is exact.
 - Today, no commit touches items or work: `main` has no production commit (§1). A1a’s `commitRecords` writes only `records` and `dispatches`, and is gated off. #603’s body says the archive pass leaves “active turns and kept jobs hot”.
-- A1b will touch items (A1b’s records are now A2’s: `a1b-asks.md`). `a1-record-shape.md` on gpt’s branch moves “card-held content and clear[s] legacy hold in one commit” (its migration row “Held wakes and Add card”). It retires the card-held state of blocks, permissions, tool asks, app sends and hop cards (the row that names them). Its removal command accounts for an item’s owed changes (the failure row “Source/item removed with unresolved consumer”). Whether any A1b commit changes `work` is gpt’s to confirm.
+- The first records will touch items. That step was A1b’s and is now A2’s (`a1b-asks.md`). `a1-record-shape.md` on its author’s branch moves “card-held content and clear[s] legacy hold in one commit”; whether any of A2’s commits changes `work` is A2’s note’s to confirm.
 - In that window, at most one sync, a pending read of such a card’s thread can show a held patch on a card the commit in front then rewrites. That is a state no published list will hold.
 
 The rule: a commit kind that touches `items` or `work` is placed in the guard beside the pending readers of the same lists. Whoever adds one says, for each placed reader, whether the window matters. If it does, the commit must hold that reader until it settles, or the pending read must learn to apply built commit events. That decision belongs to the records’ own design, now A2’s (`a1b-asks.md`), not this PR.
