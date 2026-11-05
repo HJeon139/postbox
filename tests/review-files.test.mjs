@@ -269,3 +269,18 @@ test('#780 pastFiles keeps only the newest replaced files, however many updates 
   );
   assert.deepEqual(item.files, [file(20)]);
 });
+
+test('#780 a withdraw or an outcome can’t carry files, since no revision would keep them', async () => {
+  const f = await setup();
+  await writeFile(join(f.folder, 'figs/today.png'), png(4, 3));
+  await f.call('show_block', reviewBlock('fig'));
+  const files = [{ path: 'figs/today.png' }];
+  const withdraw = await f.call('update_block', { block: { id: 'fig', type: 'review', withdraw: 'Not needed.', files } });
+  const outcome = await f.call('update_block', { block: { id: 'fig', type: 'review', outcome: 'Filed.', files } });
+  for (const r of [withdraw, outcome]) {
+    assert.equal(r.isError, true, r.text);
+    assert.match(r.text, /files go with a revision/);
+  }
+  assert.deepEqual(await blobsIn(f), [], 'nothing stored');
+  assert.equal(f.review('fig').closed ?? null, null, 'and the withdraw wasn’t applied');
+});
