@@ -3,6 +3,7 @@
 // (reply-rings.mjs), so its cost grew with the page. Each now looks only at what it kept. The page counts the
 // querySelector and querySelectorAll calls on the document while session events arrive, and the rail's rings, the
 // strip's, the open-asks button and the speaker lines still follow the session (session-event-follow.spec.mjs too).
+// It counts the lookups a scan could switch to as well, getElementsByClassName and getElementsByTagName.
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
@@ -39,19 +40,25 @@ async function seeded(page, n, width = 1280) {
   return { t, se };
 }
 
-/** Counts querySelectorAll and querySelector calls on the document itself, from here on. */
+/** The lookups that walk the document: the query pair, and the collections a scan could switch to. */
+const SCANS = ['querySelector', 'querySelectorAll', 'getElementsByClassName', 'getElementsByTagName'];
+
+/**
+ * Counts the lookups that walk the document, called on the document itself, from here on: the query pair, and the
+ * collections a scan could switch to.
+ */
 const countDocQueries = (page) =>
-  page.evaluate(() => {
+  page.evaluate((names) => {
     const w = /** @type {any} */ (window);
     w.__docQueries = [];
-    for (const name of ['querySelectorAll', 'querySelector']) {
+    for (const name of names) {
       const real = Document.prototype[name];
       Document.prototype[name] = function (sel) {
-        if (this === document) w.__docQueries.push(String(sel).slice(0, 80));
+        if (this === document) w.__docQueries.push(`${name} ${String(sel).slice(0, 80)}`);
         return real.call(this, sel);
       };
     }
-  });
+  }, SCANS);
 
 test('#564-b1 a session event in a 10,000-item room runs no query over the whole document', async ({ page }) => {
   test.setTimeout(240_000);
