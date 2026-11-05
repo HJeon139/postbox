@@ -69,17 +69,20 @@ async function stream(query, headers = {}) {
   };
 }
 
+// An epoch is newId’s shape: its prefix and exactly 8 letters or digits (#713).
+const EPOCH = /^ep_[A-Za-z0-9]{8}$/;
+
 test('a store has an epoch, a token new at each load(), so a reload of the same folder runs on another', async () => {
   const d = await tmp();
   const a = await new Store(d).load();
-  assert.ok(typeof a.epoch === 'string' && a.epoch.length >= 8, `a random token: ${a.epoch}`);
+  assert.ok(EPOCH.test(a.epoch), `a random token: ${a.epoch}`);
   await a.close();
   const b = await new Store(d).load();
-  assert.ok(typeof b.epoch === 'string' && b.epoch.length >= 8, `a random token: ${b.epoch}`);
+  assert.ok(EPOCH.test(b.epoch), `a random token: ${b.epoch}`);
   assert.notEqual(b.epoch, a.epoch, 'a reload is a new history, even of the same log');
   await b.close();
   const m = new Store(null);
-  assert.ok(typeof m.epoch === 'string' && m.epoch.length >= 8, `an in-memory store has one too: ${m.epoch}`);
+  assert.ok(EPOCH.test(m.epoch), `an in-memory store has one too: ${m.epoch}`);
   await rm(d, { recursive: true });
 });
 
@@ -88,7 +91,7 @@ test('/api/state gives the page the store’s epoch beside its seq', async () =>
   assert.equal(r.status, 200);
   assert.equal(r.json.seq, app.store.state.seq);
   assert.equal(r.json.epoch, app.store.epoch);
-  assert.ok(typeof r.json.epoch === 'string' && r.json.epoch.length >= 8, `a token the page can echo: ${r.json.epoch}`);
+  assert.ok(EPOCH.test(r.json.epoch), `a token the page can echo: ${r.json.epoch}`);
 });
 
 test('a stream naming another epoch is told to resync whatever its seq; one on the store’s epoch gets the gap after its seq', async () => {
