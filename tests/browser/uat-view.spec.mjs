@@ -34,9 +34,15 @@ failOnPageErrors(test);
 /**
  * tools/browser.mjs’s page, over this one: evaluate, the frame an element shows, and send, whose key presses `onKey`
  * sees first.
+ *
+ * Its session sets the window’s size, as tools/browser.mjs’s size() does on the one session it shoots with. Left to
+ * Playwright’s own session, a shot sent on this one shrank the window on macOS (800 to 713 px tall), and the view’s
+ * middle, and so its anchor, moved with it.
  */
 async function runnerPage(page, onKey = async () => {}) {
   const cdp = await page.context().newCDPSession(page);
+  const { width, height } = /** @type {{ width: number, height: number }} */ (page.viewportSize());
+  await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
   return {
     evaluate: (/** @type {string} */ expr) => page.evaluate(expr),
     frameOf: async (/** @type {string} */ expr) => {
