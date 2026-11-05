@@ -125,3 +125,21 @@ test('#780 a local turn can’t hand Postbox base64: a file with no path is refu
   assert.equal(r.text, 'the image “today.png” (up to 5 MiB) needs a path to a file in your folder.');
   assert.equal(f.review('fig'), undefined);
 });
+
+test('#780 a host’s refused review call is answered to the agent that waits for it, not told again at its next turn', async () => {
+  const f = await setup();
+  const told = [];
+  const tell = f.rt.tellAgent.bind(f.rt);
+  f.rt.tellAgent = (sessionId, text) => {
+    told.push(text);
+    return tell(sessionId, text);
+  };
+  const r = await fromHost(f, 'show_block', reviewBlock('svg', [{ name: 'a.png', path: 'a.png', base64: Buffer.from('<svg/>').toString('base64') }]));
+  assert.equal(r.ok, false);
+  assert.match(r.text, /PNG, JPEG, GIF or WebP/);
+  assert.deepEqual(
+    told.filter((t) => /didn’t go through/.test(t)),
+    [],
+    'it waited for this answer (toolRoute), so no note follows',
+  );
+});
