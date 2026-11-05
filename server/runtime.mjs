@@ -1383,7 +1383,7 @@ export class Runtime {
   setJobStep(job, patch) {
     const live = this.turns.get(job.sessionId);
     const turn = live?.id === job.turnId ? live : null;
-    const steps = turn ? turn.steps : this.store.pending.items(job.threadId).find((x) => x.id === job.itemId)?.activity?.steps;
+    const steps = turn ? turn.steps : this.store.pending.item(job.threadId, job.itemId)?.activity?.steps;
     if (!Array.isArray(steps)) return;
     const next = steps.map((st) => (st.id === job.toolUseId ? { ...st, ...patch } : st));
     if (turn) turn.steps = next;
@@ -2080,7 +2080,7 @@ export class Runtime {
     const flush = ({ final = false } = {}) => {
       if (timer) clearTimeout(timer);
       timer = null;
-      if (!this.store.pending.items(threadId).some((x) => x.id === it.id)) return;
+      if (!this.store.pending.item(threadId, it.id)) return;
       if (!cut && out.length <= MAX_COMMAND_OUTPUT) {
         // Only the new text, as the reply of an agent streams.
         if (out.length > sent) this.store.emit('item.text', { threadId, id: it.id, text: out.slice(sent) });
@@ -2119,7 +2119,7 @@ export class Runtime {
         // How it ended is written once writes are open: the output chunks are memory-only while closed (I1), but a
         // status left “running” in the recovered state would never end.
         whenWritable(this, () => {
-          if (!this.store.pending.items(threadId).some((x) => x.id === it.id)) return;
+          if (!this.store.pending.item(threadId, it.id)) return;
           this.patchItem(threadId, it.id, {
             status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
             exitCode: typeof code === 'number' ? code : null,
@@ -2357,7 +2357,7 @@ export class Runtime {
       if (e.type === 'assistant') {
         for (const b of contentBlocks(e.message?.content)) {
           if (b.type === 'text' && b.text?.trim()) {
-            const it = m.agentItem && this.store.pending.items(se.threadId).find((x) => x.id === m.agentItem);
+            const it = m.agentItem && this.store.pending.item(se.threadId, m.agentItem);
             if (it) this.patchItem(se.threadId, it.id, { text: it.text ? `${it.text}\n\n${b.text}` : b.text });
             else m.agentItem = this.mirrorAgentItem(se, b.text);
             this.updateSession(sessionId, { state: 'gen', currentStep: 'Writing in a terminal' });

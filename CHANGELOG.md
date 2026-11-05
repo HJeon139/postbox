@@ -2,6 +2,59 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.21.0 (2026-11-05)
+
+### Features
+
+- **uat:** add the erased-conversation-commands trigger to assets-delete
+
+### Fixes
+
+- **uat:** leave out a Bash call Claude Code never ran from work-commands-match-stream
+- **uat:** split the turns' streams when only never-run sessions are left
+- **uat:** refusal-without-card counts cards and refusals by agent once
+- **uat:** pin how erased-session checks read the Undo window, removals and topics
+- **uat:** keep every stream when no session in the state has an id
+- **uat:** refusal-without-card compares each agent's refusals with its cards
+- **uat:** the host half of work-files-match-stream skips erased sessions
+- **uat:** checks that compare streams with the state skip erased sessions
+
+## 1.20.5 (2026-11-05)
+
+### Fixes
+
+- **antigravity:** a filesystem that refuses chmod still starts the turn
+- **antigravity:** hooks.json is read-only on every umask
+
+## 1.20.4 (2026-11-05)
+
+### Fixes
+
+- **state:** read items by id through the index on the server and in the page
+- **state:** find an item by id through one index kept outside the state
+
+## 1.20.3 (2026-11-05)
+
+### Fixes
+
+- **tools:** the diff parser fails a hunk with no file, and both tools ask git for one diff shape
+- **tools:** the commit scan runs through a folder reached by a symlink
+- **tests:** the commit scan checks the privacy checker's own files like any other
+- **tests:** the commit scan refuses git older than 2.36, naming both versions
+- **tests:** scan merges, commit messages and -diff files, whatever git config says
+
+## 1.20.2 (2026-11-05)
+
+### Fixes
+
+- **uat:** a recheck reads the phases a run played, and keeps them in run.json
+
+## 1.20.1 (2026-11-05)
+
+### Fixes
+
+- **store:** newId always returns 8 letters or digits
+
 ## 1.20.0 (2026-11-04)
 
 ### Features

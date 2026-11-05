@@ -15,6 +15,7 @@
 // an item.text per chunk and readers run per chunk, so each held event is applied once, not once per read. It is
 // rebuilt when the state changes (record()), and dropped when nothing is held.
 
+import { itemOf, positionOf } from '../shared/item-index.mjs';
 import { apply } from '../shared/state.mjs';
 
 /** The lists a pending read covers: the events that change one, the key they name it by, and how an add names its entry. */
@@ -37,6 +38,7 @@ const ENTITIES = /** @type {const} */ ({
 /**
  * @typedef {{ [K in PendingList]: (key: string) => readonly Entry[] } & {
  *   app: (id: string) => Entry | undefined,
+ *   item: (threadId: string, id: string) => Entry | undefined,
  *   apps: () => Readonly<Record<string, Entry>>,
  *   thread: (id: string) => Entry | undefined,
  * }} PendingReads
@@ -50,6 +52,7 @@ const ENTITIES = /** @type {const} */ ({
 export function pendingReads(store) {
   const reads = /** @type {any} */ ({});
   for (const list of /** @type {PendingList[]} */ (Object.keys(LISTS))) reads[list] = (/** @type {string} */ key) => pendingList(store, list, key);
+  reads.item = (/** @type {string} */ threadId, /** @type {string} */ id) => pendingItem(store, threadId, id);
   reads.apps = () => pendingCollection(store, 'apps');
   reads.app = (/** @type {string} */ id) => pendingCollection(store, 'apps')[id];
   reads.thread = (/** @type {string} */ id) => pendingCollection(store, 'threads')[id];
@@ -80,6 +83,17 @@ function pendingCollection(store, coll) {
     }
   }
   return out ?? published;
+}
+
+/**
+ * One item as memory will hold it once what is held is released, in O(1) (#712b). It reads the view's own entries,
+ * which the index keeps exact as held events apply, rather than its frozen copy, which is new after each held event.
+ * @param {import('./store.mjs').Store} store @param {string} threadId @param {string} id
+ */
+function pendingItem(store, threadId, id) {
+  const list = pendingList(store, 'items', threadId);
+  const view = store.held ? store.views.get(`items:${threadId}`) : null;
+  return itemOf(view?.entries ?? list, id);
 }
 
 /**
@@ -116,7 +130,7 @@ function applyHeld(store, v, list, key) {
     if (type.endsWith('.add')) v.own.add(added(data));
     else {
       // The published entry is never touched: the first held event on it takes a copy.
-      const at = v.entries.findIndex((/** @type {Entry} */ e) => e.id === data.id);
+      const at = positionOf(v.entries, data.id);
       if (at >= 0 && !v.own.has(data.id)) v.entries[at] = structuredClone(v.entries[at]);
       v.own.add(data.id);
     }

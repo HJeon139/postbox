@@ -1,5 +1,6 @@
-// What the history says about background jobs and Stop’s question about them (#126), for the triggers that read it
-// (tools/uat/triggers.mjs): when each job ran, was asked about, kept or ended, and whether Stop ended its turn.
+// What the history says about background jobs and Stop’s question about them (#126), and the triggers that read it,
+// which tools/uat/triggers.mjs lists with the rest: when each job ran, was asked about, kept or ended, and whether Stop
+// ended its turn.
 
 /**
  * Whether the history can show #126’s triggers: it keeps Stop’s question (stopAsk), which every turn on Postbox since
@@ -72,3 +73,38 @@ export const answeredStop = (f, j) =>
       /^Stop/.test(p.answered) &&
       (j.stopAt === null || !Number.isFinite(p.at) || (p.at >= j.stopAt - 5000 && p.at <= j.stopAt + 60_000)),
   );
+
+/** #126’s triggers: what Stop and Send now did with a background job, read from the history above. */
+export const JOB_TRIGGERS = {
+  'stop-keep-jobs': {
+    issue: 126,
+    says: 'Stop asked about a background job, and the person kept it running',
+    recorded: jobsRecorded,
+    run: (f) =>
+      jobTimeline(f.events)
+        .filter((j) => j.keptAt !== null && j.afterStop)
+        .map((j) => ({ at: null, evidence: `Stop asked about background job ${j.id}, and Postbox kept it running (events ${j.askedAt}–${j.keptAt}).` })),
+  },
+  'stop-jobs-too': {
+    issue: 126,
+    says: 'Stop asked about a background job, and the person stopped it too',
+    recorded: jobsRecorded,
+    run: (f) =>
+      // A job Postbox couldn’t keep also ends with its turn, so the runner’s own record of the answer has to agree.
+      jobTimeline(f.events)
+        .filter((j) => j.endedAt !== null && j.afterStop && answeredStop(f, j))
+        .map((j) => ({ at: j.stopAt, evidence: `Stop asked about background job ${j.id}, and it ended with the turn (event ${j.endedAt}).` })),
+  },
+  'send-now-job-running': {
+    issue: 126,
+    says: 'Send now interrupted a turn with a background job running, and the job kept running without a question',
+    recorded: jobsRecorded,
+    run: (f) =>
+      jobTimeline(f.events)
+        .filter((j) => j.keptAt !== null && !j.afterStop)
+        .map((j) => ({
+          at: null,
+          evidence: `Background job ${j.id} was kept running when its turn was interrupted, with no question from Stop (event ${j.keptAt}).`,
+        })),
+  },
+};
