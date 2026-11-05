@@ -15,7 +15,8 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const SLOT_DIR = join(tmpdir(), 'postbox-heavy');
+/** POSTBOX_HEAVY_DIR keeps the slots shared when npm run check gives its test stages a TMPDIR of their own (#797). */
+export const SLOT_DIR = process.env.POSTBOX_HEAVY_DIR || join(tmpdir(), 'postbox-heavy');
 
 /** Whether a process runs: signal 0 checks without sending anything. @param {number} pid */
 export function isAlive(pid) {

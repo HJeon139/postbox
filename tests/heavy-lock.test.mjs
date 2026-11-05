@@ -62,3 +62,11 @@ test('a slot file that isn’t JSON counts as free, as a damaged one would', asy
   const release = await acquire({ dir: m.dir, slots: 1, alive: m.alive, log: m.log1, pid: 7, label: 'a', sleep: () => assert.fail('it waited') });
   release();
 });
+
+test('the slots stay where every run looks for them when POSTBOX_HEAVY_DIR names them, whatever TMPDIR a gate run sets', async (t) => {
+  const was = process.env.POSTBOX_HEAVY_DIR;
+  t.after(() => (was === undefined ? delete process.env.POSTBOX_HEAVY_DIR : (process.env.POSTBOX_HEAVY_DIR = was)));
+  process.env.POSTBOX_HEAVY_DIR = '/shared/postbox-heavy';
+  const fresh = await import('../tools/heavy-lock.mjs?heavy-dir');
+  assert.equal(fresh.SLOT_DIR, '/shared/postbox-heavy');
+});
