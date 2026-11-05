@@ -3,7 +3,7 @@
 // broker.mjs’s header says what’s written down when.
 
 import { validateBlock } from '../../../shared/catalog.mjs';
-import { encodedBytes, REMOTE_LIMITS, TOOL_ROUTES, TURN_FILES } from '../../../shared/remote-protocol.mjs';
+import { encodedBytes, REMOTE_LIMITS, TURN_FILES, toolRoute } from '../../../shared/remote-protocol.mjs';
 import { filesReader, namesBlockFiles, withoutFiles } from './broker-files.mjs';
 import { armReadTimer, claim, detached, readLocal, settled, settleOffline } from './broker-offline.mjs';
 import { record, refusal, startOf, unrecorded, written } from './broker-records.mjs';
@@ -172,7 +172,7 @@ export async function call(b, c, turn, m) {
     result(false, no.text);
     return c.send('error', { code: no.code, message: no.text });
   }
-  const route = TOOL_ROUTES[/** @type {keyof typeof TOOL_ROUTES} */ (m.name)];
+  const route = toolRoute(m.name, m.args);
   if (route === 'host') {
     const r = await readLocal(b, turn, m.name, m.args, false);
     return result(r.ok, r.text);

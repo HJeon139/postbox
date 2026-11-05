@@ -137,6 +137,19 @@ export const TOOL_ROUTES = Object.freeze({
   permission_prompt: 'host',
 });
 
+/**
+ * One call’s route, from its tool and its arguments (#780): a show_block or update_block that carries a review’s
+ * files is an `ask`, since the daemon reads those files and may refuse them, and only an answer the agent waits for
+ * says why. Every other call has its tool’s route (TOOL_ROUTES). The shim, the daemon and Postbox all go by this.
+ * @param {string} name @param {any} args @returns {string | undefined}
+ */
+export function toolRoute(name, args) {
+  const block = args?.block;
+  const carriesFiles = block !== null && typeof block === 'object' && block.files !== undefined;
+  if ((name === 'show_block' || name === 'update_block') && carriesFiles) return 'ask';
+  return TOOL_ROUTES[/** @type {keyof typeof TOOL_ROUTES} */ (name)];
+}
+
 /** Codes an `error` carries. Peers branch on these, never on the message. */
 export const ERROR_CODES = Object.freeze(
   /** @type {const} */ ([

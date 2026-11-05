@@ -138,9 +138,16 @@ test('#780 a review block’s files are read from the turn’s folder and sent a
     const k = makeBroker(h);
     const s = connectShim(k.b, 't1');
     await s.next('welcome');
+    // A review’s call with files waits for Postbox’s answer (toolRoute), so Postbox answers each once it’s sent.
+    const answered = async (id, name, args) => {
+      const got = s.call(id, name, args);
+      while (!k.sent.some((m) => m.type === 'tool' && m.id === id)) await new Promise((r) => setImmediate(r));
+      await k.post('reply', { turn: 't1', id, ok: true, text: 'Shown.' });
+      return got;
+    };
     // A base64 the agent sends is never what crosses: the host reads the path.
-    assert.equal((await s.call('c1', 'show_block', review('fig', [{ path: 'figs/a.png', base64: 'eA==' }]))).ok, true);
-    assert.equal((await s.call('c2', 'update_block', review('fig', [{ name: 'b.png', path: './figs/a.png' }]))).ok, true);
+    assert.equal((await answered('c1', 'show_block', review('fig', [{ path: 'figs/a.png', base64: 'eA==' }]))).ok, true);
+    assert.equal((await answered('c2', 'update_block', review('fig', [{ name: 'b.png', path: './figs/a.png' }]))).ok, true);
     const b64 = Buffer.from('png bytes').toString('base64');
     assert.deepEqual(k.sent[0].args.block.files, [{ name: 'a.png', path: 'figs/a.png', base64: b64 }]);
     assert.deepEqual(k.sent[1].args.block.files, [{ name: 'b.png', path: './figs/a.png', base64: b64 }]);

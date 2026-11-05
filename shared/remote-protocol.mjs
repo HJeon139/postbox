@@ -99,6 +99,7 @@ import {
   STDIN_KINDS,
   TOOL_ROUTES,
   TURN_FILES,
+  toolRoute,
 } from './remote-protocol-constants.mjs';
 import { hostPaths, socketPathFits, validateExitRecord, validateRunnerRecord, validateStartRecord } from './remote-protocol-files.mjs';
 import { createLineReader, createMessageReader } from './remote-protocol-framing.mjs';
@@ -131,6 +132,7 @@ export {
   socketPathFits,
   TOOL_ROUTES,
   TURN_FILES,
+  toolRoute,
   utf8Bytes,
   VALIDATORS,
   validateExitRecord,
