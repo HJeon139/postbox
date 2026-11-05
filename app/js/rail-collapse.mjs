@@ -11,9 +11,11 @@ export function railHidden() {
   }
 }
 
+// The shell's root, found from the rail's toggle: by id, from the page's index of ids, then up its ancestors, so a
+// session event walks no more of the page than the toggle's depth (#564-b1). A view with no rail has no toggle, and
+// so nothing to hide.
+const appRoot = () => document.getElementById('rail-toggle')?.closest('.app') ?? null;
 /** Whether the rail shows: the person’s choice, unless the right pane hid it for now. */
-// The shell's root, from a live list rather than a selector, which would walk the whole page when nothing matches (#564-b1).
-const appRoot = () => document.getElementsByClassName('app')[0];
 export const railShown = () => !railHidden() && !appRoot()?.classList.contains('rail-auto');
 
 /** Whether the rail can’t show at all: the right pane is open and has no room beside it. */
