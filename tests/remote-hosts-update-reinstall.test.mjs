@@ -4,11 +4,12 @@
 // reinstalled; the token itself is never in the result’s status or the record. tests/remote-hosts-update-fixtures.mjs.
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { chmodSync, readFileSync } from 'node:fs';
 import test from 'node:test';
+import { tokenFile } from '../server/remote/install.mjs';
 import { FAKE_TOKEN } from './fake-daemon.mjs';
-import { sleep, until } from './remote-hosts-fixtures.mjs';
-import { readRecord, recordFile, rig } from './remote-hosts-update-fixtures.mjs';
+import { sleep, until, VERSION } from './remote-hosts-fixtures.mjs';
+import { readRecord, recordFile, rig, writeRecord } from './remote-hosts-update-fixtures.mjs';
 
 const OLD = 'old-token-0123456789abcdefghijklmnopqrstu';
 const settle = () => sleep(40);
@@ -67,6 +68,46 @@ test('#464-b3: once reinstalled, a folder gone again under the same version inst
     await t.mgr.connect('h1').catch(() => {});
     await settle();
     assert.equal(t.runs.length, 1, 'this version is tried');
+  } finally {
+    t.done();
+  }
+});
+
+test('#464-b3: Install… still repairs a host whose token file here can’t be read, and says no token changed', async () => {
+  const t = rig({ token: OLD });
+  try {
+    chmodSync(tokenFile(t.dataDir, 'h1'), 0o000);
+    const r = await t.mgr.install('h1');
+    assert.equal(r.installed, true);
+    assert.equal(r.tokenChanged, false, 'an unreadable token is no token to compare');
+  } finally {
+    t.done();
+  }
+});
+
+test('#464-b3: a new token where this version was already there is present, not reinstalled', async () => {
+  const t = rig({
+    token: OLD,
+    install: (/** @type {any} */ c) => {
+      c.stdout.write(`present ${VERSION}\n`);
+      c.exit(0);
+    },
+  });
+  try {
+    await t.mgr.setKeepUpdated('h1', true);
+    await t.mgr.connect('h1').catch(() => {});
+    await until(() => ['present', 'reinstalled'].includes(readRecord(t.dataDir)?.installs?.[0]?.outcome), 'it ended');
+    assert.equal(readRecord(t.dataDir).installs[0].outcome, 'present', 'the turns there weren’t shown gone');
+  } finally {
+    t.done();
+  }
+});
+
+test('#464-b3: a record that says reinstalled reads back as reinstalled', () => {
+  const t = rig();
+  try {
+    writeRecord(t.dataDir, { keepUpdated: true, installs: [{ version: VERSION, at: 1, outcome: 'reinstalled' }] });
+    assert.equal(t.mgr.status('h1').update.outcome, 'reinstalled');
   } finally {
     t.done();
   }

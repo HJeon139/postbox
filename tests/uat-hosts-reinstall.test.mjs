@@ -7,8 +7,11 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { hostMode } from '../tools/uat/hosts-options.mjs';
 import { createHostRun, setUpHost } from '../tools/uat/hosts-run.mjs';
+import { SCRIPTS } from '../tools/uat/hosts-ssh.mjs';
+import { removePostbox } from '../tools/uat/hosts-watch.mjs';
 import { selectPhases } from '../tools/uat/phases.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
+import { SCHEMA } from '../tools/uat/tester.mjs';
 import { HOST_TRIGGERS } from '../tools/uat/triggers-host.mjs';
 import { facts, remote } from './uat-hosts-facts.mjs';
 
@@ -101,4 +104,27 @@ test('#464-b3 setting a host up with keepUpdated installs it, then turns its con
   const refused = { ...ui, keepUpdated: async () => false };
   hr.hosts[0].id = null;
   await assert.rejects(setUpHost(hr, hr.hosts[0], 'pr_1', refused), /consent to keep Postbox up to date wasn’t kept/);
+});
+
+test('#464-b3 the remove-postbox fault runs the removal script, and refuses a host that had Postbox before the run', async () => {
+  const ran = [];
+  const run = async (/** @type {string} */ dest, /** @type {string} */ script) => {
+    ran.push([dest, script]);
+    return { code: 0, stdout: 'removed\n', stderr: '' };
+  };
+  const h = { label: 'host1', destination: 'host-a.example.com' };
+  assert.equal(await removePostbox(h, run), 1);
+  assert.deepEqual(ran, [['host-a.example.com', SCRIPTS.removeStaged]]);
+  await assert.rejects(removePostbox({ ...h, replaceInstall: true }, run), /refused on host1: Postbox was there before this run/);
+  assert.equal(ran.length, 1, 'nothing ran on that host');
+  const fails = async () => ({ code: 1, stdout: '', stderr: 'rm: busy' });
+  await assert.rejects(removePostbox(h, fails), /Couldn’t remove Postbox’s folder on host1: rm: busy/);
+  const silent = async () => ({ code: 0, stdout: '', stderr: '' });
+  await assert.rejects(removePostbox(h, silent), /Couldn’t remove Postbox’s folder on host1/, 'not said removed');
+});
+
+test('#464-b3 host-reinstalled is checkable on a host run, and the tester can ask for remove-postbox', () => {
+  assert.equal(trigger.recorded(reinstalled()), true);
+  const faults = JSON.stringify(SCHEMA).match(/"enum":\["kill-ssh"[^\]]*\]/g) ?? [];
+  assert.ok(faults.length >= 1 && faults.every((f) => f.includes('"remove-postbox"')), faults.join(' '));
 });
