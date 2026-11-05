@@ -1,6 +1,6 @@
 // Which messages in a transcript name their speaker: a line with the agent’s ring, its handle and the time.
 
-import { itemsOf } from './client.mjs';
+import { client, itemsOf } from './client.mjs';
 
 // A reply replaced by its replay (#120: a turn on a host attached again after a restart) shows nothing, so the replay
 // after it names its speaker.
@@ -20,10 +20,26 @@ export const namesSpeaker = (it, prev) => !(prev && speaker(prev) && speaker(pre
  * @param {string} threadId @param {string} sessionId
  */
 export function latestReply(threadId, sessionId) {
+  const key = `${threadId}\n${sessionId}`;
+  if (latest.has(key)) return latest.get(key) ?? null;
   const list = itemsOf(threadId);
-  for (let i = list.length - 1; i >= 0; i--) {
+  let found = null;
+  for (let i = list.length - 1; i >= 0 && !found; i--) {
     const it = list[i];
-    if (it.sessionId === sessionId && speaker(it)?.startsWith('s:') && namesSpeaker(it, list[i - 1])) return it.id;
+    if (it.sessionId === sessionId && speaker(it)?.startsWith('s:') && namesSpeaker(it, list[i - 1])) found = it.id;
   }
-  return null;
+  latest.set(key, found);
+  return found;
 }
+// Each thread’s latest reply per session, found once and kept until that thread’s items change. A session event, the
+// most frequent, changes no item, so it reads this rather than walking the thread from its end, which for a session with
+// no reply there is every item (#564-b1). Registered as this module loads, so it hears a change before the transcript
+// and the speaker lines do.
+/** @type {Map<string, string | null>} */
+const latest = new Map();
+client.on((ch) => {
+  if (ch.type === 'load') latest.clear();
+  const threadId = ch.type.startsWith('item.') ? ch.data?.threadId : null;
+  if (!threadId) return;
+  for (const key of latest.keys()) if (key.startsWith(`${threadId}\n`)) latest.delete(key);
+});
