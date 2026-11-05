@@ -3,6 +3,7 @@
 // function takes the manager’s state first (hosts-status.mjs’s Manager).
 
 import { hostOf, instanceOf, tokenOf, update } from './hosts-status.mjs';
+import { WITHDRAWN } from './hosts-update.mjs';
 import { createHostLink } from './link.mjs';
 import { failure as sshFailure } from './ssh.mjs';
 
@@ -208,6 +209,8 @@ export async function ensureWelcome(m, id, { signal } = {}) {
     const install = m.updating.get(id);
     if (!install) throw failure;
     const outcome = await untilAborted(install.done, signal);
+    // An install the consent withdrew before it started ran nothing: the caller gets the host’s own failure.
+    if (!outcome.ok && outcome.failure?.message === WITHDRAWN) throw failure;
     if (!outcome.ok && !busyInstall(outcome.failure)) throw outcome.failure;
     return await welcomeAfterInstall(m, id);
   }
