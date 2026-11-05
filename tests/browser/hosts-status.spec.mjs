@@ -135,6 +135,35 @@ async function forgetOnly(page) {
 }
 
 /** @param {import('@playwright/test').Page} page */
+/** #464-b2a: Remove during an automatic install waits for it, and the confirm says so. @param {import('@playwright/test').Page} page */
+async function removeWaitsForInstall(page) {
+  const id = freshHost(app, fake, NAME);
+  fake.set(id, {
+    state: 'not-installed',
+    failure: { kind: 'not-installed', message: 'Not installed', next: null, retry: false },
+    update: { version: '0.10.0', at: 1, outcome: 'started' },
+  });
+  await openHosts(page, app);
+  await card(page, NAME)
+    .getByRole('button', { name: `Remove ${NAME}` })
+    .click();
+  const confirm = page.getByRole('alertdialog', { name: `Remove ${NAME}?` });
+  await expect
+    .soft(confirm, 'an install under way: Remove waits for it')
+    .toContainText(`Postbox is installing 0.10.0 on ${NAME} now. Remove waits for that install to finish, up to about 7 minutes, then removes it.`);
+  await audit(page, 'removing during an install');
+  await confirm.getByRole('button', { name: 'Cancel' }).click();
+  fake.set(id, {
+    state: 'not-installed',
+    update: { version: '0.10.0', at: 1, outcome: 'started', error: 'Postbox stopped during its install of 0.10.0 here.' },
+  });
+  await card(page, NAME)
+    .getByRole('button', { name: `Remove ${NAME}` })
+    .click();
+  await expect.soft(confirm, 'an install a crash cut off isn’t one to wait for').not.toContainText('Remove waits');
+  await confirm.getByRole('button', { name: 'Cancel' }).click();
+}
+
 async function removing(page) {
   const id = freshHost(app, fake, NAME);
   fake.set(id, { state: 'connected', lastHeard: Date.now(), welcome: WELCOME });
@@ -160,6 +189,7 @@ for (const { width, use } of SIZES)
 
     test('#120 with no token here, Remove… says Postbox only forgets the host', ({ page }) => forgetOnly(page));
 
+    test('#464 Remove… during an automatic install says it waits for it', ({ page }) => removeWaitsForInstall(page));
     test('#120 Remove… asks first, is refused while a turn can’t be stopped and while the host can’t be reached, then removes it', ({ page }) =>
       removing(page));
   });
@@ -181,6 +211,7 @@ async function removeAsks(page, confirm) {
     .soft(confirm, 'it says what stays there, and that another Postbox using the host loses access')
     .toContainText(`working folders there, such as ~/postbox-work/<handle>, stay. Another Postbox that uses ${NAME} loses its access too`);
   await expect.soft(confirm.getByRole('button', { name: 'Cancel' }), 'Cancel has focus first, not the button that deletes').toBeFocused();
+  await expect.soft(confirm, 'no install under way, so nothing about waiting for one').not.toContainText('Remove waits');
   await audit(page, 'the remove confirm');
 }
 
