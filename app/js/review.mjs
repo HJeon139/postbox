@@ -130,7 +130,7 @@ export function renderReview(b, item, ctx, kit) {
       setView(item, b, d, 'lines');
       compose(line);
     };
-    box.append(renderPreview(b.content, { id: item.id, done, keys, composing: d.composing, ranged, threadBox, comment: compose, pick }));
+    box.append(renderPreview(b.content, { item, threadId: ctx.threadId, done, keys, composing: d.composing, ranged, threadBox, comment: compose, pick }));
   } else {
     const lines = splitLines(b.content);
     const doc = h('div.rv-doc', { class: b.format === 'code' ? 'code-doc code' : '', role: 'list', 'aria-label': 'Lines' });
