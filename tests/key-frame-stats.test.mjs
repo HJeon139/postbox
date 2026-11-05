@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { enoughEntries, keyDurations, MAX_MISSING_SHARE, outsideWindow, percentile, summarize, withinBudget } from '../tools/key-frame-stats.mjs';
+import { keyDurations, outsideWindow, percentile, summarize, underOneFrame, withinBudget } from '../tools/key-frame-stats.mjs';
 
 const hundred = Array.from({ length: 100 }, (_, i) => i + 1);
 
@@ -78,17 +78,15 @@ test('outsideWindow: a composer cut off at any edge is named, one whose top is i
   assert.equal(outsideWindow({ top: 0, bottom: 900, left: 0, right: 1280 }, window), null, 'a composer that fills the window to its edges');
 });
 
-test('a room is measured only when at most 10% of its keys had no Event Timing entry', () => {
-  assert.equal(MAX_MISSING_SHARE, 0.1);
-  assert.equal(enoughEntries(0, 100), true);
-  assert.equal(enoughEntries(9, 100), true, 'just under the share');
-  assert.equal(enoughEntries(10, 100), true, 'exactly the share');
-  assert.equal(enoughEntries(11, 100), false, 'just over the share');
-  assert.equal(enoughEntries(100, 100), false, 'every key missing');
+test('a time at the threshold or under is under one frame, a bound; one over it is an entry’s own', () => {
+  assert.equal(underOneFrame(16, 16), true, 'at the threshold');
+  assert.equal(underOneFrame(8, 16), true);
+  assert.equal(underOneFrame(24, 16), false, 'Event Timing’s next 8 ms step');
+  assert.equal(underOneFrame(null, 16), false, 'no keys: no time at all');
 });
 
-test('a room of no keys, or no count of missing keys, is not measured', () => {
-  assert.equal(enoughEntries(0, 0), false);
-  assert.equal(enoughEntries(undefined, 100), false);
-  assert.equal(enoughEntries(null, 100), false, 'null would divide to no keys missing');
+test('a 1× room under one frame lets a larger room pass at up to 16 ms × 1.1, and no further', () => {
+  assert.equal(withinBudget(16, 16).pass, true);
+  assert.equal(withinBudget(16, 17.6).pass, true);
+  assert.equal(withinBudget(16, 24).pass, false);
 });

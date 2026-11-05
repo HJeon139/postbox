@@ -9,7 +9,6 @@
 
 import { toolCalls } from '../../server/room-checks-tools.mjs';
 import { erasedStreams } from '../../server/room-checks-work.mjs';
-import { enoughEntries } from '../key-frame-stats.mjs';
 import { deleteWindows } from './checks-assets.mjs';
 
 /**
@@ -42,13 +41,13 @@ function erasedCommands(f) {
 
 /**
  * The run’s measurements of its own rooms that wrote a report: of a conversation the run is testing, over at least
- * one key, with few enough keys missing an Event Timing entry (enoughEntries()) that its p95 is a measurement.
+ * one key. It doesn’t judge the numbers, the report does: on a fast machine most keys have no Event Timing entry.
  * @param {any} f
  */
 function measuredRooms(f) {
   const threads = f.threads ?? [];
   const wrote = (m) => typeof m.report === 'string' && m.report !== '';
-  return (f.probes?.keyFrame ?? []).filter((m) => threads.includes(m.threadId) && enoughEntries(m.below, m.keys) && wrote(m));
+  return (f.probes?.keyFrame ?? []).filter((m) => threads.includes(m.threadId) && Number.isInteger(m.keys) && m.keys > 0 && wrote(m));
 }
 
 export const MEASURE_TRIGGERS = {

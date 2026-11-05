@@ -6,21 +6,13 @@
 export const PF1_BUDGET = 0.1;
 
 /**
- * The most of a room’s keys that may have no Event Timing entry and its p95 still mean something. Each such key counts
- * at the threshold, so past this share the p95 is the fill, not a measurement.
+ * Whether an Event Timing time is under one frame: a bound, not a measurement. Chromium reports no entry for a key
+ * under the threshold, and keyDurations() counts each such key at the threshold, below every entry, so a percentile
+ * over the threshold is an entry’s own and exact, and one at it says only that those keys took at most that. So
+ * withinBudget() judges a larger room against the threshold when the 1× room is under one frame: up to 16 ms × 1.1.
+ * @param {number | null} value  @param {number} threshold
  */
-export const MAX_MISSING_SHARE = 0.1;
-
-/**
- * Whether a room had enough Event Timing entries to judge: some keys, a count of those with no entry, and at most
- * MAX_MISSING_SHARE of them without one.
- * @param {number} below  the keys with no entry  @param {number} keys
- */
-export function enoughEntries(below, keys) {
-  // A null count would divide to no keys missing. No keys divide to NaN, which is never at most the share.
-  if (!Number.isInteger(below)) return false;
-  return below / keys <= MAX_MISSING_SHARE;
-}
+export const underOneFrame = (value, threshold) => value !== null && value <= threshold;
 
 /**
  * The p-th percentile by nearest rank: the smallest value that at least p% of the values are at or under. Null for

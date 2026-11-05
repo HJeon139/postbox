@@ -3,7 +3,7 @@
 // reader needs to rerun it. Pure, so tests feed it results.
 
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
-import { enoughEntries, MAX_MISSING_SHARE, PF1_BUDGET, withinBudget } from './key-frame-stats.mjs';
+import { PF1_BUDGET, underOneFrame, withinBudget } from './key-frame-stats.mjs';
 
 /**
  * @typedef {{ n: number, p50: number|null, p95: number|null, max: number|null }} Summary
@@ -23,6 +23,8 @@ export function shownPath(path, root) {
 
 const count = (n) => n.toLocaleString('en-US');
 const ms = (v) => (v === null ? 'none' : `${v.toFixed(1)} ms`);
+/** An Event Timing time, which at the threshold or under is a bound: “≤ 16 ms”. */
+const eventMs = (v, threshold) => (underOneFrame(v, threshold) ? `≤ ${threshold} ms` : ms(v));
 const ratio = (r) => r.toFixed(2);
 const verdict = (pass) => (pass ? 'pass' : 'fail');
 const NOT_MEASURED = 'not measured';
@@ -32,13 +34,13 @@ function times(items, base) {
   return `${(items / base).toLocaleString('en-US', { maximumFractionDigits: 1 })}×`;
 }
 
-/** Whether a size had enough Event Timing entries for its p95 to be a measurement. @param {SizeResult} r */
-const measured = (r) => enoughEntries(r.below, r.eventTiming.n);
+/** Whether a size measured any key: one with none has no p95 to judge. @param {SizeResult} r */
+const measured = (r) => r.eventTiming.n > 0;
 
 /**
  * Each size against the smallest, the 1× room: its Event Timing p95’s ratio and verdict, which decide PF-1, and its
- * next-frame p95’s ratio beside it, as a cross-check. A size, or a 1× room, with too many keys missing an entry is
- * “not measured”: its p95 is the threshold it was filled with.
+ * next-frame p95’s ratio beside it, as a cross-check. A size, or a 1× room, that measured no key is “not measured”.
+ * A 1× room under one frame counts at the threshold (underOneFrame()).
  * @param {SizeResult[]} results  @param {number} [budget]
  */
 export function budgetRows(results, budget = PF1_BUDGET) {
@@ -66,11 +68,19 @@ function overall(rows) {
 }
 
 /** The summary table: one row a size. */
-function summaryTable(results, rows) {
+function summaryTable(results, rows, threshold) {
   const lines = ['| Items | Size | Event Timing p95 | Ratio to 1× | Verdict | Next-frame p95 | Next-frame ratio |', '|---|---|---|---|---|---|---|'];
   results.forEach((r, i) => {
     const row = rows[i];
-    const cells = [count(r.items), row.times, ms(r.eventTiming.p95), ratio(row.ratio), row.verdict, ms(r.nextFrame.p95), ratio(row.nextFrameRatio)];
+    const cells = [
+      count(r.items),
+      row.times,
+      eventMs(r.eventTiming.p95, threshold),
+      ratio(row.ratio),
+      row.verdict,
+      ms(r.nextFrame.p95),
+      ratio(row.nextFrameRatio),
+    ];
     lines.push(`| ${cells.join(' | ')} |`);
   });
   return lines;
@@ -78,13 +88,13 @@ function summaryTable(results, rows) {
 
 /** One size’s own table: both measures’ count, p50, p95 and max. */
 function sizeTable(result, row, threshold) {
-  const line = (name, s) => `| ${name} | ${s.n} | ${ms(s.p50)} | ${ms(s.p95)} | ${ms(s.max)} |`;
+  const line = (name, s, shown = ms) => `| ${name} | ${s.n} | ${shown(s.p50)} | ${shown(s.p95)} | ${shown(s.max)} |`;
   return [
     `### ${count(result.items)} items (${row.times})`,
     '',
     '| Measure | Keys | p50 | p95 | Max |',
     '|---|---|---|---|---|',
-    line('Event Timing (keydown, keypress, input)', result.eventTiming),
+    line('Event Timing (keydown, keypress, input)', result.eventTiming, (v) => eventMs(v, threshold)),
     line('Next frame (keydown → rAF → rAF)', result.nextFrame),
     '',
     belowLine(result.below, result.eventTiming.n, threshold),
@@ -105,13 +115,15 @@ export function formatReport({ command, commit, date, machine, inputs, results, 
     '',
     `PF-1 (designs/508/requirements.md): a large room’s key-to-frame p95 within ${Math.round(budget * 100)}% of the 1× room’s. PF-1: **${overall(rows)}**.`,
     '',
+    `Event Timing leaves out keys under ${threshold} ms, one frame, so a p95 of ${threshold} ms or less is a bound: a 1× room under one frame counts at ${threshold} ms, and a larger room passes at up to ${(threshold * (1 + budget)).toFixed(1)} ms.`,
+    '',
     'A report run by hand with `tools/bench-key-frame.mjs`; not a CI gate. Event Timing decides the p95; the next-frame timer is a cross-check.',
     '',
     'Safari: not measured. This sprint measures Chromium only, so Safari’s idle painting is not part of this report.',
     '',
     '## Summary',
     '',
-    ...summaryTable(results, rows),
+    ...summaryTable(results, rows, threshold),
     '',
     `Event Timing reports durations in 8 ms steps, so near a 1× p95 of 24 ms the ${Math.round(budget * 100)}% budget is finer than one step, which is why the next-frame timer is shown.`,
     '',
@@ -136,7 +148,5 @@ export function formatReport({ command, commit, date, machine, inputs, results, 
  */
 export function belowLine(below, keys, threshold) {
   if (below === 0) return 'Every key had an Event Timing entry.';
-  const counted = `${below} of ${keys} keys had no Event Timing entry, so took under ${threshold} ms; each counts at ${threshold} ms.`;
-  if (enoughEntries(below, keys)) return counted;
-  return `${counted} That is over ${Math.round(MAX_MISSING_SHARE * 100)}% of them, so this size is not measured.`;
+  return `${below} of ${keys} keys had no Event Timing entry, so took under ${threshold} ms; each counts at ${threshold} ms.`;
 }

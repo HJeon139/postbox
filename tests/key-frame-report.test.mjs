@@ -74,39 +74,45 @@ test('shownPath: a path in the repo shows relative to it, one outside it as its 
   assert.equal(shownPath('/local/home/user/postbox-other/key-frame.md', root), 'key-frame.md', 'a sibling folder whose name starts like the repo’s');
 });
 
-/** Two rooms whose p95s are within budget, the 1× room with `below` of its 100 keys missing an Event Timing entry. */
-const missing = (below) => [
-  { items: 1000, eventTiming: { ...sum(16), n: 100 }, nextFrame: sum(16), below },
-  { items: 4000, eventTiming: { ...sum(16), n: 100 }, nextFrame: sum(16), below: 0 },
+/** A fast machine’s rooms: the 1× room with `below` of its 100 keys under one frame, and a 4× room at `p95`. */
+const fast = (below, p95) => [
+  { items: 1000, eventTiming: { ...sum(16), n: 100 }, nextFrame: sum(9), below },
+  { items: 4000, eventTiming: { ...sum(p95), n: 100 }, nextFrame: sum(44), below: 0 },
 ];
 const reportOf = (rooms) => formatReport({ ...reportInputs, results: rooms });
 
-test('a run whose every key had no Event Timing entry is not measured, not a pass at the 16 ms fill', () => {
-  const rows = budgetRows(missing(100));
+test('a fast machine’s 1× room, mostly under one frame, is judged at 16 ms: a 4× room at 48 ms fails, as on an M5 Max', () => {
   assert.deepEqual(
-    rows.map((r) => r.verdict),
-    ['not measured', 'not measured'],
+    budgetRows(fast(49, 48)).map((r) => r.verdict),
+    ['pass', 'fail'],
   );
-  assert.match(reportOf(missing(100)), /PF-1: \*\*not measured\*\*/);
+  const md = reportOf(fast(49, 48));
+  assert.match(md, /PF-1: \*\*fail\*\*/);
+  assert.match(md, /\| 1,000 \| 1× \| ≤ 16 ms \| 1\.00 \| pass \|/);
+  assert.match(md, /a larger room passes at up to 17\.6 ms/);
 });
 
-test('a room just over 10% of its keys missing an entry is not measured, and PF-1 with it', () => {
-  const md = reportOf(missing(11));
-  assert.match(md, /\| 1,000 \| 1× \| 16\.0 ms \| 1\.00 \| not measured \|/);
-  assert.match(md, /PF-1: \*\*not measured\*\*/);
-});
-
-test('a room just under 10% of its keys missing an entry gets its verdict', () => {
+test('a 4× room one Event Timing step over a 1× room under one frame fails; one under one frame too passes', () => {
   assert.deepEqual(
-    budgetRows(missing(9)).map((r) => r.verdict),
+    budgetRows(fast(49, 24)).map((r) => r.verdict),
+    ['pass', 'fail'],
+  );
+  assert.deepEqual(
+    budgetRows(fast(100, 16)).map((r) => r.verdict),
     ['pass', 'pass'],
   );
-  assert.match(reportOf(missing(9)), /PF-1: \*\*pass\*\*/);
+  assert.match(reportOf(fast(100, 16)), /PF-1: \*\*pass\*\*/);
 });
 
-test('belowLine: a size with over 10% of its keys missing an entry says it is not measured', () => {
-  assert.equal(
-    belowLine(11, 100, 16),
-    '11 of 100 keys had no Event Timing entry, so took under 16 ms; each counts at 16 ms. That is over 10% of them, so this size is not measured.',
+test('a room that measured no key is not measured, and PF-1 with it', () => {
+  const rooms = [{ items: 1000, eventTiming: { n: 0, p50: null, p95: null, max: null }, nextFrame: sum(9), below: 0 }, fast(0, 16)[1]];
+  assert.deepEqual(
+    budgetRows(rooms).map((r) => r.verdict),
+    ['not measured', 'not measured'],
   );
+  assert.match(reportOf(rooms), /PF-1: \*\*not measured\*\*/);
+});
+
+test('belowLine: a size with most of its keys under one frame says each counts at the threshold, and nothing more', () => {
+  assert.equal(belowLine(49, 100, 16), '49 of 100 keys had no Event Timing entry, so took under 16 ms; each counts at 16 ms.');
 });
