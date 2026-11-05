@@ -17,6 +17,7 @@
 | R5 | One comparison, `challengerWins`, decides rank-then-time for `comesFirst`, `keptOrNext` and `offerNeed`, and `offerNeed` uses it (§3). | review |
 | R6 | `needsOrder` breaks its last tie by code unit, not `localeCompare`. | review |
 | R7 | The rule that review holds every route to public data moves its trigger from A1b to A2’s first private data. | review, read as a security change |
+| R8 | On equal rank, an older card still takes the need when the current need’s card no longer waits, by `needOf`’s own test, so a dead need never keeps a live card from being flagged. | review, for the dead-need case after a restart |
 
 ## 2. Today
 
@@ -33,16 +34,23 @@
 
 - **`challengerWins(challenger, incumbent)`** in `server/card-needs.mjs`, exported: the lower `RANK` wins; on equal rank, the challenger wins unless its `at` is smaller. `comesFirst` (the challenger is the card being read), `keptOrNext` (the challenger is `next`) and `offerNeed` (the challenger is the offered card) all call it, so one decision is made in one place, and each keeps today’s tie direction: the challenger wins a tie.
 - **`offerNeed(rt, se, need, state)`** takes the need when none is set, when it’s the same card as the current need (so `needAppSend`’s refresh keeps working), or when `challengerWins` says so. The two `at`s are read from pending, by each need’s thread and item, as `keptOrNext` reads them. When either card isn’t found there, `offerNeed` decides by rank alone, as today. A current need of a kind `RANK` doesn’t list is still never replaced.
+- **A dead need doesn’t keep an older card out (R8).** When the ranks are equal and `challengerWins` refuses the offered card for being older, `offerNeed` still takes the need if the current need’s card no longer waits. “Waits” is `needOf`’s own test, called with no turns: for a permission, `status === 'open'` and `rt.permissionWaits.has(id)`; for an app send or a hop, `status === 'open'`. It is not `stillWaits` (`server/restart-sweep.mjs`), whose `keepsCard` is a restart rule and is false for every laptop permission. The check runs only on equal rank, and only the three kinds that wait until answered share a rank with an offered card (permission alone at 0; app send and hop at 5), so passing no turns is exact for them, and a lower-ranked card is never let past a higher one by it.
 - **`needAppSend`** gains `rt.awayFrom(se, app.threadId)`, as every other caller has, so its need names its thread.
 - **`needsOrder`** breaks its last tie with code-unit comparison of session ids, written as an `if` chain.
 
-**What changes:** one case. A same-rank card that is older than the current need no longer takes it. Of today’s callers only `waitOn` can offer one: after a restart, an older permission card no longer takes the need from a newer one. `offerNeed` still doesn’t check whether the current need’s card waits; that stays the resolvers’ and the sweeps’ job, as on `main`.
+**What changes:** one case. A same-rank card that is older than the current need no longer takes it while the current need’s card still waits. Of today’s callers only `waitOn` can offer one: after a restart, an older permission card no longer takes the need from a newer one that its host is waiting on again.
+
+**Why R8 is needed: no resolver or sweep clears a dead permission need before `waitOn` runs.** After a restart `rt.permissionWaits` starts empty, and the restart sweep keeps a host’s permission need that isn’t waited on yet on purpose (`keptOrNext`, through `stillWaits` and `keepsCard`), since its host sends it again after hello. A host permission that its host has expired or forgotten is cleared only when:
+- the host says so (`onPromptExpired`, or `onError` for `prompt-expired`, in `server/remote/turns-prompts.mjs`, through `endCard`); or
+- the turn ends (`ended`, `server/remote/turns-end.mjs`, which expires every card nobody waits on).
+
+A host that forgot the prompt sends neither before it sends its older prompts again. Without R8, the person would be shown the dead card as the need while the live, older permission wasn’t flagged. With it, the older card takes the need, as `nextNeed` would choose, since `nextNeed` doesn’t count the dead one. If the newer card is only not yet waited on again, the host sends it next, `waitOn` offers it, and it takes the need back as the newer card.
 
 **Cost:** an offer reads two cards from pending, as `keptOrNext` already does: O(items in the two cards’ threads), once per new card. A per-thread item index (#712b, PR #769, not merged) would make it O(1).
 
 ## 4. Invariants and the failure table
 
-- **I1. One comparison:** `comesFirst`, `keptOrNext` and `offerNeed` order any two cards they can both read the same way, through `challengerWins`; the offered card takes the need only if `challengerWins` ranks it first, or it is the same card.
+- **I1. One comparison:** `comesFirst`, `keptOrNext` and `offerNeed` order any two cards they can both read the same way, through `challengerWins`; the offered card takes the need only if `challengerWins` ranks it first, it is the same card, or it ties on rank with a current need whose card no longer waits (R8), which `nextNeed` wouldn’t count either.
 - **I2. Ties go to the challenger,** never by id.
 - **I3. Nothing held moves:** `card.held` is written and read as on `main`.
 - **I4. Locale-free:** no reader of needs orders by `localeCompare`.
@@ -51,7 +59,9 @@
 |---|---|---|---|---|---|
 | A new card of the same rank | takes the need | takes it (it isn’t older) | nothing new stored | sees the new need | the ring moves to it |
 | The same card offered again | takes it, with its new text | the same | nothing new | sees the new text | the count updates |
-| An older same-rank card offered after a restart (`waitOn`) | takes the need from a newer one | doesn’t | nothing new | sees the newer need kept | the newer card stays shown |
+| An older same-rank card offered after a restart (`waitOn`), the newer one waited on again | takes the need from the newer one | doesn’t | nothing new | sees the newer need kept | the newer card stays shown |
+| An older permission offered after a restart (`waitOn`), the newer one expired or forgotten on its host and not yet cleared | takes the need | takes it (R8): the current card no longer waits | nothing new | sees the live permission as the need | the live permission is flagged, not the dead one |
+| An older permission offered after a restart before the newer one is waited on again | takes the need | takes it (R8); when the host sends the newer one, `waitOn` offers it and it takes the need back | nothing new | sees the need move to the older card, then back | the ring moves to the older card, then back |
 | A side-thread app card offered | its need has no thread | its need names its thread | nothing new | — | — |
 | Either card not in pending | — | decided by rank alone, as today | nothing new | — | — |
 | Two cards of one rank at the same `at`, in two threads | `nextNeed` keeps the side thread’s; `offerNeed` takes the offered one | the same: the challenger wins a tie | nothing new | — | — |
@@ -60,13 +70,14 @@
 
 ## 5. Tests, failing first
 
-- **The `waitOn` spec:** a newer permission card is the need, and an older one is offered again after a restart; the newer one stays. It fails on `main`.
+- **The `waitOn` spec:** a newer permission card is the need and its host waits on it again (it’s in `rt.permissionWaits`), and an older one is offered again after a restart; the newer one stays. It fails on `main`.
 - **The side-thread app spec:** an app card in a side thread is offered against a same-rank hop that is older; the app card takes the need, and its need names its thread. It fails on `main`’s missing thread.
 - **The `needAppSend` spec:** the card that is the need is offered again with a new count; its text updates. It passes on `main` and guards the same-card rule.
 - **The permission-stays spec:** a permission is the need, and a hop is offered; the permission stays.
+- **The dead-need spec:** after a restart, a host’s newer permission card is the need, open but not in `rt.permissionWaits` (its host has expired or forgotten it), and no resolver has run. The host sends its older prompt again, and `waitOn` offers that card. The older card takes the need, and `nextNeed` agrees. A second case sends the newer prompt next: it takes the need back. A third has a laptop permission that waits as the need, and an older permission offered: the laptop one stays. The first case fails with the age check and without R8.
 - **The one-comparison spec:** pairs of cards fed to `nextNeed`, `keptOrNext` (through `settledNeed`, since it isn’t exported) and `offerNeed`, in both orders, with fixed `at`s, including equal ones in one thread; all three agree. A mutant that adds an id tiebreak fails it.
 - **The locale spec:** two session ids that differ only in case (`se_B`, `se_a`); `needsOrder` orders them by code unit.
-- **Mutants:** dropping the same-card rule fails the `needAppSend` spec; dropping the age check fails the `waitOn` spec; dropping `awayFrom` fails the side-thread spec.
+- **Mutants:** dropping the same-card rule fails the `needAppSend` spec; dropping the age check fails the `waitOn` spec; dropping the dead-need rule fails the dead-need spec; reading “waits” with `stillWaits` instead of `needOf` fails the dead-need spec’s third case; dropping `awayFrom` fails the side-thread spec; and inlining the opposite tie direction at any one of the three sites fails the one-comparison spec.
 
 ## 6. What moves to A2
 
