@@ -4,7 +4,7 @@
 // second Retry succeeds after a failed barrier.
 import assert from 'node:assert/strict';
 import * as realFs from 'node:fs/promises';
-import { readdir, rm } from 'node:fs/promises';
+import { readdir } from 'node:fs/promises';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { disk } from './store-jsonl-fixture.mjs';
@@ -38,7 +38,6 @@ test('a failed snapshot warns and backs off; it does not close the store, and is
   assert.equal(s.status.warning, null, 'the warning clears when a snapshot succeeds');
   assert.ok((await readdir(dir)).includes('snapshot.json'));
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('T-12: ENOSPC and EROFS on a write close the store with that cause, like EIO', async () => {
@@ -53,7 +52,6 @@ test('T-12: ENOSPC and EROFS on a write close the store with that cause, like EI
     assert.equal(s.writable, false);
     assert.equal(s.status.cause.code, code);
     await s.close();
-    await rm(dir, { recursive: true });
   }
 });
 
@@ -103,7 +101,6 @@ test('I8: a reload listener’s commit is durable before anyone hears writes reo
   const b = await new Store(dir).load();
   assert.deepEqual(Object.keys(b.state.threads).sort(), ['reconciled', 't1', 'x'], 'the outside commit never landed');
   await b.close();
-  await rm(dir, { recursive: true });
 });
 
 test('I8: a reload listener that fails leaves the store closed, naming it; the next Retry without it succeeds', async () => {
@@ -126,7 +123,6 @@ test('I8: a reload listener that fails leaves the store closed, naming it; the n
   const b = await new Store(dir).load();
   assert.deepEqual(Object.keys(b.state.threads).sort(), ['t1', 'y'], 'the landed line is kept; nothing else was written');
   await b.close();
-  await rm(dir, { recursive: true });
 });
 
 test('Retry on a store that never failed is a no-op: memory stays ahead of the disk’s view, no second handle (critic’s finding)', async () => {
@@ -153,7 +149,6 @@ test('Retry on a store that never failed is a no-op: memory stays ahead of the d
   const b = await new Store(dir).load();
   assert.equal(b.state.seq, 60, 'the disk has them all');
   await b.close();
-  await rm(dir, { recursive: true });
 });
 
 test('after a Retry whose barrier failed, a second Retry succeeds once the disk answers', async () => {
@@ -175,7 +170,6 @@ test('after a Retry whose barrier failed, a second Retry succeeds once the disk 
   const b = await new Store(dir).load();
   assert.ok(b.state.threads.after);
   await b.close();
-  await rm(dir, { recursive: true });
 });
 
 test('Retry on a store that was closed is refused: the folder may be another store’s now', async () => {
@@ -187,5 +181,4 @@ test('Retry on a store that was closed is refused: the folder may be another sto
   const b = await new Store(dir).load();
   assert.ok(b.state.threads.t1);
   await b.close();
-  await rm(dir, { recursive: true });
 });

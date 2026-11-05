@@ -27,8 +27,9 @@ function secondStore(dir) {
   return new Promise((r) => child.once('exit', () => r(out.trim())));
 }
 
-test('close() at its bound with a snapshot rename pending keeps the lock: a child store is refused, and the restart has every acknowledged event', async () => {
+test('close() at its bound with a snapshot rename pending keeps the lock: a child store is refused, and the restart has every acknowledged event', async (t) => {
   const dir = await fs.mkdtemp(join(tmpdir(), 'pb-close-handoff-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true })); // a failing assertion leaves nothing either (#797)
   let release;
   const held = new Promise((r) => {
     release = r;
@@ -60,5 +61,4 @@ test('close() at its bound with a snapshot rename pending keeps the lock: a chil
   const c = await new Store(dir).load();
   assert.deepEqual(Object.keys(c.state.threads), ['before'], 'nothing acknowledged was lost, and nothing unacknowledged appeared');
   await c.close();
-  await fs.rm(dir, { recursive: true, force: true });
 });
