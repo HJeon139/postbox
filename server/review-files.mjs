@@ -1,7 +1,7 @@
 // A review block’s files (#780, note as_BkHPLMds v3): images an agent names for a review, read from its own
 // folders as show_app’s data files are (server/agent-files.mjs), checked by their bytes, copied into the blob
 // store and kept on the item with each revision. The page loads one only by the item’s route, by its name and
-// SHA-256 (served-files: reviewFileHeaders), never by a path in the content.
+// SHA-256 (servedReviewFile), never by a path in the content.
 
 import { basename } from 'node:path';
 import { LIMITS, REVIEW_IMAGES } from '../shared/limits.mjs';
@@ -81,17 +81,42 @@ export async function blockFiles(rt, sessionId, name, args) {
 }
 
 /**
- * The bytes of a review item’s file, by its name and SHA-256: one on the item’s current revision, or one an
- * earlier revision had (pastFiles), so the diff can show the old figure. Anything else is null, so the route can
- * answer 404 without saying whether the item exists. A published read: it serves what the person sees.
+ * A review item’s file by its name and SHA-256: one on the item’s current revision, or one an earlier revision had
+ * (pastFiles), so the diff can show the old figure. Anything else is null, so the route can answer 404 without
+ * saying whether the item exists. A published read: it serves what the person sees.
  * @param {any} rt @param {string} threadId @param {string} itemId @param {string} name @param {string} sha256
- * @returns {Promise<Buffer | null>}
+ * @returns {ReviewFile | null}
  */
-export async function reviewFile(rt, threadId, itemId, name, sha256) {
+function findReviewFile(rt, threadId, itemId, name, sha256) {
   const it = rt.store.item(threadId, itemId);
   if (it?.kind !== 'block' || it.block?.type !== 'review') return null;
-  const found = [...(it.files ?? []), ...(it.pastFiles ?? [])].find((x) => x.name === name && x.sha256 === sha256);
+  return [...(it.files ?? []), ...(it.pastFiles ?? [])].find((x) => x.name === name && x.sha256 === sha256) ?? null;
+}
+
+/** The bytes of a review item’s file (findReviewFile), or null. @returns {Promise<Buffer | null>} */
+export async function reviewFile(rt, threadId, itemId, name, sha256) {
+  const found = findReviewFile(rt, threadId, itemId, name, sha256);
   return found && rt.blobs ? rt.blobs.get(found.sha256) : null;
+}
+
+/**
+ * The route’s answer for a review’s image (§4): its bytes, with /api/files’s headers for an inline image, plus
+ * Cross-Origin-Resource-Policy: same-origin so a page on another site can’t embed it. Null for anything else.
+ * @param {any} rt @param {string} threadId @param {string} itemId @param {string} name @param {string} sha256
+ * @returns {Promise<{ bytes: Buffer, headers: Record<string, string> } | null>}
+ */
+export async function servedReviewFile(rt, threadId, itemId, name, sha256) {
+  const found = findReviewFile(rt, threadId, itemId, name, sha256);
+  if (!found || !rt.blobs) return null;
+  const headers = {
+    'content-type': found.type,
+    'x-content-type-options': 'nosniff',
+    'content-security-policy': "sandbox; default-src 'none'",
+    'content-disposition': `inline; filename="${found.name}"`,
+    'cache-control': 'private, max-age=31536000, immutable',
+    'cross-origin-resource-policy': 'same-origin',
+  };
+  return { bytes: await rt.blobs.get(found.sha256), headers };
 }
 
 /**

@@ -33,6 +33,7 @@ import { rearmPersonaDeletes } from './persona-delete.mjs';
 import { createProject, setPushUrl } from './projects.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { settleInterrupted } from './restart-sweep.mjs';
+import { servedReviewFile } from './review-files.mjs';
 import { httpError, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { seed, toBoilerplate } from './seed.mjs';
@@ -314,6 +315,12 @@ export async function start({
         'content-security-policy': "sandbox; default-src 'none'",
         'cache-control': 'no-store',
       });
+    // A review’s image (#780): only a file on that item, by its name and SHA-256; every miss is the same 404.
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/files\/([^/]+)$/)) && req.method === 'GET') {
+      const served = await servedReviewFile(rt, decodePath(m[1]), decodePath(m[2]), decodePath(m[3]), url.searchParams.get('sha') ?? '');
+      if (!served) throw httpError(404, 'That file doesn’t exist.');
+      return raw(res, 200, served.bytes, served.headers);
+    }
     if (path === '/api/stream' && req.method === 'GET') {
       if (Date.now() < offlineUntil) {
         res.writeHead(503, { 'retry-after': '1' });
