@@ -65,6 +65,10 @@ function alive(/** @type {Deps['kill']} */ kill, /** @type {number} */ pid) {
  */
 export function makeWritable(fs, path) {
   const st = fs.lstatSync(path, { throwIfNoEntry: false });
+  // The link check is spelled out though the directory and file checks below would also stop a link: keep both, so
+  // a later edit to either can’t let chmod or readdir follow one. A folder swapped for a link between this lstat and
+  // the chmod or readdir below would be followed; that needs write access inside a 0700 folder of this user’s, so
+  // it’s accepted.
   if (!st || st.isSymbolicLink()) return;
   if (st.isFile()) return fs.chmodSync(path, (st.mode & 0o7777) | 0o200);
   if (!st.isDirectory()) return;
