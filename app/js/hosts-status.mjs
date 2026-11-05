@@ -74,6 +74,8 @@ const linkView = (p, host, st) => {
 const UPDATE_LINES = {
   installing: (/** @type {string} */ version) => `Installing Postbox ${version}…`,
   installed: (/** @type {string} */ version) => `Postbox installed ${version} here by itself`,
+  reinstalled: (/** @type {string} */ version, /** @type {string} */ name) =>
+    `Postbox wasn’t on ${name} any more, so it installed ${version} there again and made a new token. Turns that ran there before are gone.`,
 };
 
 /**
@@ -86,7 +88,7 @@ const updateView = (host, st) => {
   const shown = updateShown(st);
   if (shown === 'failed') return updateFailure(host, st.update);
   const line = shown ? UPDATE_LINES[shown] : null;
-  return line ? h('p.small.ho-update', { dataset: { update: shown }, style: { margin: 0 } }, line(st.update.version)) : null;
+  return line ? h('p.small.ho-update', { dataset: { update: shown }, style: { margin: 0 } }, line(st.update.version, host.name)) : null;
 };
 
 /**
