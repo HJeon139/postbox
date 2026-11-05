@@ -117,12 +117,23 @@ function readInstance(file) {
   }
 }
 
+/**
+ * An install the record says started, with none under way here: a crash or close() cut it off, and this version
+ * counts as tried, so nothing installs it by itself. The status says so, with Install…, rather than look under way.
+ * @param {Manager} m @param {string} id @param {ReturnType<typeof updateOf>} update
+ */
+function cutOff(m, id, update) {
+  if (update?.outcome !== 'started' || m.updating.has(id)) return update;
+  const error = `Postbox stopped during its install of ${update.version} here, so it won’t install that version by itself. Install it from here.`;
+  return { ...update, error };
+}
+
 /** @param {Manager} m @param {string} id @returns {HostStatus} */
 export function statusOf(m, id) {
   const lastHeard = m.heard.get(id) ?? null;
   if (!m.getHost(id)) return { state: 'disconnected', failure: null, welcome: null, lastHeard, keepUpdated: false, update: null };
   const record = recordOf(m, id);
-  const installs = { keepUpdated: record.keepUpdated, update: updateOf(record) };
+  const installs = { keepUpdated: record.keepUpdated, update: cutOff(m, id, updateOf(record)) };
   const e = m.links.get(id);
   if (!e) return { state: tokenOf(m, id) ? 'disconnected' : 'not-installed', failure: null, welcome: null, lastHeard, ...installs };
   const l = e.link;
