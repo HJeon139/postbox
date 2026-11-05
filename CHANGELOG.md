@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.20.1 (2026-11-05)
+
+### Fixes
+
+- **store:** newId always returns 8 letters or digits
+
 ## 1.20.0 (2026-11-04)
 
 ### Features
