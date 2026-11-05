@@ -7,7 +7,7 @@ import { createServer } from 'node:http';
 import { after, before, test } from 'node:test';
 import { openFresh } from '../../tools/bench-key-frame.mjs';
 import { launch } from '../../tools/browser.mjs';
-import { measureKeys } from '../../tools/key-frame-measure.mjs';
+import { conditionsOf, measureKeys } from '../../tools/key-frame-measure.mjs';
 import { chromiumMissing } from './chrome.mjs';
 
 const skip = await chromiumMissing();
@@ -58,6 +58,11 @@ test('each run opens the room in a new document, so a second run measures with o
       assert.equal(r.nextFrame.length, KEYS.keys, `run ${run + 1} timed each measured key’s next frame, and no warm-up key`);
     }
     assert.notEqual(origins[1], origins[0], 'the second run’s document is a new one');
+    // A start no real load average can have, so the end can only be read afresh.
+    const c = await conditionsOf(page, -1);
+    assert.deepEqual([c.headless, c.window, c.scale], [true, { width: 1280, height: 900 }, 1], 'Chromium’s own account of the run');
+    assert.equal(c.load.start, -1);
+    assert.ok(c.load.end >= 0, `the load at the end is read when the run ends, not copied: ${c.load.end}`);
   } finally {
     await page.close();
   }

@@ -5,9 +5,10 @@
 // the bench’s, at 1×, 4× and 10×. tools/uat-run.mjs declares the option.
 
 import { writeFile } from 'node:fs/promises';
+import { loadavg } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { clearDraft, commitOf, EVENT_THRESHOLD, machineOf, measureKeys } from '../key-frame-measure.mjs';
+import { clearDraft, commitOf, conditionsOf, EVENT_THRESHOLD, machineOf, measureKeys } from '../key-frame-measure.mjs';
 import { formatReport, shownPath } from '../key-frame-report.mjs';
 import { summarize } from '../key-frame-stats.mjs';
 import { openBigRoom } from './big-room.mjs';
@@ -71,12 +72,14 @@ export function measuredProbe({ threadId, items, report, at }, r) {
 export async function measureRunRoom({ page, root, threadId, items, out, probes, log }) {
   const shown = shownPath(out, root);
   try {
+    const loadAtStart = loadavg()[0];
     const r = await measureKeys(page, INPUTS);
     const report = formatReport({
       command: `node tools/uat-run.mjs --measure-key-frame ${shown}`,
       commit: commitOf(root),
       date: new Date().toISOString(),
       machine: await machineOf(page),
+      conditions: await conditionsOf(page, loadAtStart),
       inputs: { sizes: [items], ...INPUTS },
       results: [{ items, eventTiming: summarize(r.eventTiming), nextFrame: summarize(r.nextFrame), below: r.below }],
       threshold: EVENT_THRESHOLD,

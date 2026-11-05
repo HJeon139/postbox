@@ -8,6 +8,8 @@ import { PF1_BUDGET, underOneFrame, withinBudget } from './key-frame-stats.mjs';
 /**
  * @typedef {{ n: number, p50: number|null, p95: number|null, max: number|null }} Summary
  * @typedef {{ items: number, eventTiming: Summary, nextFrame: Summary, below: number }} SizeResult
+ * @typedef {{ load: { start: number, end: number }, headless: boolean, window: { width: number, height: number },
+ *   scale: number }} Conditions
  */
 
 /**
@@ -105,10 +107,10 @@ function sizeTable(result, row, threshold) {
 /**
  * The whole report.
  * @param {{ command: string, commit: string, date: string, threshold?: number, budget?: number,
- *   machine: { os: string, arch: string, cpu: string, node: string, chromium: string },
+ *   machine: { os: string, arch: string, cpu: string, node: string, chromium: string }, conditions: Conditions,
  *   inputs: { sizes: number[], keys: number, warmup: number, runs: number, intervalMs: number }, results: SizeResult[] }} o
  */
-export function formatReport({ command, commit, date, machine, inputs, results, threshold = 16, budget = PF1_BUDGET }) {
+export function formatReport({ command, commit, date, machine, conditions, inputs, results, threshold = 16, budget = PF1_BUDGET }) {
   const rows = budgetRows(results, budget);
   return [
     '# Key-to-frame p95 by room size (PF-1, #508)',
@@ -138,6 +140,7 @@ export function formatReport({ command, commit, date, machine, inputs, results, 
     `- Commit: ${commit}`,
     `- Date: ${date}`,
     `- Machine: ${machine.os}, ${machine.arch}, ${machine.cpu}; Node ${machine.node}; Chromium ${machine.chromium}`,
+    `- Conditions: ${conditionsLine(conditions)}`,
     '',
   ].join('\n');
 }
@@ -149,4 +152,14 @@ export function formatReport({ command, commit, date, machine, inputs, results, 
 export function belowLine(below, keys, threshold) {
   if (below === 0) return 'Every key had an Event Timing entry.';
   return `${below} of ${keys} keys had no Event Timing entry, so took under ${threshold} ms; each counts at ${threshold} ms.`;
+}
+
+/**
+ * The conditions behind the numbers, as one line: the load average at the start and the end, headless or not, and
+ * the window’s size at its device scale. @param {Conditions} c
+ */
+export function conditionsLine(c) {
+  const load = `load average ${c.load.start.toFixed(2)} at the start and ${c.load.end.toFixed(2)} at the end`;
+  const mode = c.headless ? 'headless' : 'not headless';
+  return `${load}; ${mode}; window ${c.window.width}×${c.window.height} at device scale ${c.scale}`;
 }

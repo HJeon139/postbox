@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { belowLine, budgetRows, formatReport, shownPath } from '../tools/key-frame-report.mjs';
+import { belowLine, budgetRows, conditionsLine, formatReport, shownPath } from '../tools/key-frame-report.mjs';
 
 const sum = (p95) => ({ n: 200, p50: p95 / 2, p95, max: p95 * 2 });
 const results = [
@@ -16,6 +16,7 @@ const reportInputs = {
   commit: 'abc1234',
   date: '2026-11-04T10:00:00.000Z',
   machine: { os: 'Linux 6.12', arch: 'x64', cpu: 'Test CPU', node: 'v24.0.0', chromium: '140.0.1' },
+  conditions: { load: { start: 1.5, end: 2.25 }, headless: true, window: { width: 1280, height: 900 }, scale: 1 },
   inputs: { sizes: [1000, 4000, 10000], keys: 200, warmup: 20, runs: 3, intervalMs: 50 },
 };
 const report = () => formatReport({ ...reportInputs, results });
@@ -115,4 +116,10 @@ test('a room that measured no key is not measured, and PF-1 with it', () => {
 
 test('belowLine: a size with most of its keys under one frame says each counts at the threshold, and nothing more', () => {
   assert.equal(belowLine(49, 100, 16), '49 of 100 keys had no Event Timing entry, so took under 16 ms; each counts at 16 ms.');
+});
+
+test('the report records the conditions behind its numbers: the load at the start and the end, headless, the window and its scale', () => {
+  assert.match(report(), /- Conditions: load average 1\.50 at the start and 2\.25 at the end; headless; window 1280×900 at device scale 1/);
+  const shown = { load: { start: 23.4, end: 19 }, headless: false, window: { width: 375, height: 812 }, scale: 3 };
+  assert.equal(conditionsLine(shown), 'load average 23.40 at the start and 19.00 at the end; not headless; window 375×812 at device scale 3');
 });

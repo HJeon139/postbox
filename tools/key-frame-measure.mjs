@@ -7,7 +7,7 @@
 // It drives the page tools/browser.mjs opens, so the bench (tools/bench-key-frame.mjs) and the UAT runner share it.
 
 import { execFileSync } from 'node:child_process';
-import { arch, cpus, release, type } from 'node:os';
+import { arch, cpus, loadavg, release, type } from 'node:os';
 import { sleep } from './browser.mjs';
 import { calibrated, keyDurations, outsideWindow } from './key-frame-stats.mjs';
 import { heldStill } from './page-still.mjs';
@@ -153,5 +153,20 @@ export async function machineOf(page) {
     cpu: cpus()[0]?.model ?? 'unknown',
     node: process.version,
     chromium: String(product).replace(/^[^/]*\//, ''),
+  };
+}
+
+/**
+ * The conditions a run measured under, which its numbers depend on: the one-minute load average when it started and
+ * when it ended, whether Chromium ran headless, the window’s size and the device scale.
+ * @param {Page} page  @param {number} loadAtStart  loadavg()[0] when the run started
+ */
+export async function conditionsOf(page, loadAtStart) {
+  const shown = await page.evaluate('({ agent: navigator.userAgent, scale: devicePixelRatio })');
+  return {
+    load: { start: loadAtStart, end: loadavg()[0] },
+    headless: /HeadlessChrome/.test(shown.agent),
+    window: await windowSize(page),
+    scale: shown.scale,
   };
 }

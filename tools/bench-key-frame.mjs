@@ -14,13 +14,13 @@
 
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
+import { loadavg, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { Store } from '../server/store.mjs';
 import { launch } from './browser.mjs';
-import { commitOf, EVENT_THRESHOLD, machineOf, measureKeys } from './key-frame-measure.mjs';
+import { commitOf, conditionsOf, EVENT_THRESHOLD, machineOf, measureKeys } from './key-frame-measure.mjs';
 import { formatReport, shownPath } from './key-frame-report.mjs';
 import { summarize } from './key-frame-stats.mjs';
 import { seedBigRoomData } from './uat/big-room.mjs';
@@ -166,6 +166,7 @@ async function main() {
   live.page = page;
   try {
     await page.size(1280, 900, { theme: 'dark' });
+    const loadAtStart = loadavg()[0];
     const results = [];
     for (const items of o.sizes) {
       if (live.stopping) return;
@@ -178,6 +179,7 @@ async function main() {
       commit: commitOf(ROOT),
       date: new Date().toISOString(),
       machine: await machineOf(page),
+      conditions: await conditionsOf(page, loadAtStart),
       inputs: { sizes: o.sizes, keys: o.keys, warmup: o.warmup, runs: o.runs, intervalMs: o.intervalMs },
       results,
       threshold: EVENT_THRESHOLD,
