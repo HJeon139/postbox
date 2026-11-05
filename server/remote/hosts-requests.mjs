@@ -52,7 +52,7 @@ export function removeFromHost(m, hostId) {
   // An install under way runs to its end first, so Remove removes what it installed, version and token with it,
   // through the new version’s daemon (the integrator’s review at dc600a59).
   const installing = m.updating.get(hostId)?.done ?? Promise.resolve();
-  const p = installing.then(() => runRemove(m, hostId)).finally(() => m.removals.delete(hostId));
+  const p = installing.then(() => afterInstall(m, hostId)).finally(() => m.removals.delete(hostId));
   m.removals.set(hostId, p);
   return p;
 }
@@ -106,6 +106,17 @@ function checked(m, l, name) {
     );
     if (!l.send(message('postbox-to-daemon', 'check', {}))) done(reject, lost());
   });
+}
+
+/**
+ * Remove, once the install it waited for has ended: nothing, once Postbox has closed meanwhile (close()), which
+ * leaves the host as it is for the next Postbox to remove. Up to the install’s 5 minutes and its token step’s 2
+ * (install.mjs), plus one welcome. @param {Manager} m @param {string} id @returns {Promise<void>}
+ */
+function afterInstall(m, id) {
+  if (!m.closed) return runRemove(m, id);
+  const name = hostOf(m, id).name;
+  return Promise.reject(new SshFailure('failed', `Postbox closed before it could remove Postbox from ${name}.`, 'Remove it again once Postbox is running.'));
 }
 
 /** @param {Manager} m @param {string} id @returns {Promise<void>} */
