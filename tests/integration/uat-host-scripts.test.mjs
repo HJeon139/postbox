@@ -7,10 +7,11 @@
 
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import * as fs from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { removeAll } from '../../tools/gate-tmp.mjs';
 import {
   cleanUpScript,
   hostListeners,
@@ -24,13 +25,17 @@ import {
   turnTrees,
   workScript,
 } from '../../tools/uat/hosts-ssh.mjs';
+import { tempDir } from '../temp-dirs.mjs';
 
 const TOOLS = ['id', 'sed', 'head', 'ls', 'rm', 'mkdir', 'rmdir', 'basename', 'dirname', 'cat', 'chmod', 'readlink', 'ps', 'pgrep', 'pkill', 'ss'];
 const where = (cmd) => spawnSync('/bin/sh', ['-c', `command -v ${cmd}`], { encoding: 'utf8' }).stdout.trim();
 
-/** A host’s home and the only programs on its PATH: this computer’s, less omit, with fakes in place of some. */
+/**
+ * A host’s home and the only programs on its PATH: this computer’s, less omit, with fakes in place of some. done removes
+ * it, as the file’s end does if a test throws first, both even where a test left a folder read-only (#797).
+ */
 function host({ omit = /** @type {string[]} */ ([]), fakes = /** @type {Record<string, string>} */ ({}) } = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'pb-uat-host-'));
+  const root = tempDir('pb-uat-host-');
   const home = join(root, 'home');
   const bin = join(root, 'bin');
   mkdirSync(home);
@@ -46,11 +51,11 @@ function host({ omit = /** @type {string[]} */ ([]), fakes = /** @type {Record<s
     home,
     run: (script) => onHost('host.example.com', script, { spawn: sh }),
     measure: (script) => measureOn('host.example.com', script, { spawn: sh }),
-    done: () => rmSync(root, { recursive: true, force: true }),
+    done: () => removeAll(fs, root),
   };
 }
 
-test('#120 UAT host scripts: the run’s own folder is made once, refused when it’s there, and removed alone', async () => {
+test('#120 UAT host scripts: the run’s own folder is made once, refused when it’s there, and removed alone', async (t) => {
   const h = host();
   try {
     // Another run’s folder, and something of the person’s, under a ~/postbox-uat the run didn’t make.
@@ -74,9 +79,11 @@ test('#120 UAT host scripts: the run’s own folder is made once, refused when i
     const locked = join(h.home, 'postbox-uat', 'r1', 'work', 'locked');
     mkdirSync(locked);
     writeFileSync(join(locked, 'out.log'), 'x');
+    // Writable again even if the run throws (#797); the cleanup below removes it when the test passes.
+    t.after(() => existsSync(locked) && chmodSync(locked, 0o700));
     chmodSync(locked, 0o500);
     const stuck = await h.run(cleanUpScript('r1'));
-    chmodSync(locked, 0o700);
+    chmodSync(locked, 0o700); // so the cleanup below can remove the run’s folder
     assert.equal(stuck.code, 1);
     assert.match(stuck.stderr, /~\/postbox-uat\/r1 is still there\./);
     assert.doesNotMatch(stuck.stdout, /removed/);

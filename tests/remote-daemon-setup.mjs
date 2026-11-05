@@ -3,14 +3,13 @@
 // turn folders as a runner leaves them; and `host attach` over a fake socket.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { Duplex, PassThrough } from 'node:stream';
 import { createDaemon, main } from '../server/remote/host/daemon.mjs';
 import { hostVersion } from '../server/remote/host/paths.mjs';
 import { encode, hostPaths, MESSAGE_FILE, message, PROTOCOL_VERSION, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { readMessages } from './fake-daemon.mjs';
+import { hostHome } from './socket-base.mjs';
 
 export const TOKEN = 'a'.repeat(64);
 export const BOOT = '0f1e2d3c-4b5a-4968-8776-655443322110';
@@ -65,7 +64,7 @@ export function fakeClock(t0 = 1_760_000_000_000) {
  */
 export function setup({ token = TOKEN, same = true, clock, onIdle, uid, spawn, broker, env } = {}) {
   // A short folder name: a turn’s socket path must fit Linux’s 108 bytes, and macOS’s tmpdir is long.
-  const home = mkdtempSync(join(tmpdir(), 'pbd-'));
+  const home = hostHome('pbd-');
   const p = hostPaths(home, VERSION);
   if (token) {
     mkdirSync(p.root, { recursive: true, mode: 0o700 });

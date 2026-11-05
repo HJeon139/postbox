@@ -3,12 +3,12 @@
 // shared/remote-protocol.mjs’s shim-to-daemon and daemon-to-shim lines, and a fake clock.
 
 import assert from 'node:assert/strict';
-import { promises as fsp, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { promises as fsp, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { appendFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createBroker } from '../server/remote/host/broker.mjs';
 import { encode, hostPaths, message, parseLine, TURN_FILES, validateMessage } from '../shared/remote-protocol.mjs';
+import { hostHome } from './socket-base.mjs';
 
 export const TOKEN = 'b'.repeat(64);
 export const VERSION = '0.10.0';
@@ -61,7 +61,7 @@ export const turnToken = (turn) => `${TOKEN}-${turn}`;
 
 /** A temp home with turn folders written as the daemon writes them. */
 export function makeHome() {
-  const home = mkdtempSync(join(tmpdir(), 'pbb-'));
+  const home = hostHome('pbb-');
   const p = hostPaths(home, VERSION);
   mkdirSync(p.turns, { recursive: true, mode: 0o700 });
   const work = join(home, 'work');

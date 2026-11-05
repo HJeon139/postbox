@@ -2,13 +2,13 @@
 // a room of two agents whose turns stream Claude Code lines through the adapters’ shared recorder, a data folder of its
 // own for the recordings, and a stub classifier that records what it was sent.
 
-import { mkdirSync, mkdtempSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { recorderFor } from '../server/adapters/setup.mjs';
 import { startRecording, watchTelemetry } from '../server/telemetry.mjs';
 import { makeReport, readDraft } from '../server/telemetry-report.mjs';
 import { setup as base, settle } from './side-threads-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 /** Canaries no model or word list knows, so one in a report can only have come from the room. */
 export const CANARIES = {
@@ -71,12 +71,12 @@ export const labelEach =
  */
 export function setup({ record = false, answer = () => ({ labels: [] }) } = {}) {
   const b = base();
-  const folder = mkdtempSync(join(tmpdir(), 'pb-telemetry-project-'));
+  const folder = tempDir('pb-telemetry-project-');
   mkdirSync(join(folder, 'src', 'zorvex_cfg'), { recursive: true });
   writeFileSync(join(folder, CANARIES.path), `def ${CANARIES.fn}():\n    return {}\n`);
   writeFileSync(join(folder, '.env'), `AWS_ACCESS_KEY_ID=${CANARIES.key}\nOWNER=${CANARIES.email}\nREMOTE=${CANARIES.repo}\n`);
   b.store.emit('project', { id: 'p1', name: 'P', folder });
-  const data = mkdtempSync(join(tmpdir(), 'pb-telemetry-data-'));
+  const data = tempDir('pb-telemetry-data-');
   b.rt.config.telemetryRoot = join(data, 'telemetry');
   b.rt.config.build = { version: '0.21.0', commit: 'abc1234' };
   const prompts = [];

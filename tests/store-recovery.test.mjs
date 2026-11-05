@@ -3,14 +3,15 @@
 // gap in the sequence starts, warns and is recorded; the hand-built fixture with an array line loads whole on the new
 // loader; a snapshot.json that is a folder fails the load and changes nothing; the snapshot is written in pieces.
 import assert from 'node:assert/strict';
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { cp, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { disk, handleWith } from './store-jsonl-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
-const tmp = () => mkdtemp(join(tmpdir(), 'pb-recovery-'));
+/** A store’s folder, removed when the test file ends, so a failing test leaves nothing behind (#797). */
+const tmp = async () => tempDir('pb-recovery-');
 const ev = (seq, id, extra = {}) => ({ seq, type: 'thread', data: { id, members: [] }, ...extra });
 const lines = (...values) => `${values.map((v) => JSON.stringify(v)).join('\n')}\n`;
 
@@ -24,7 +25,6 @@ async function refuses(text, n, why) {
     return true;
   });
   assert.deepEqual((await readdir(dir)).sort(), ['events-1.jsonl'], 'the refusal changes nothing on disk');
-  await rm(dir, { recursive: true });
 }
 
 test('T-25: an empty commit, a non-event, or non-consecutive seqs in one line refuse to start, naming the line', async () => {
@@ -42,7 +42,6 @@ test('T-25: a commit straddling the snapshot’s seq is refused, never applied i
   await a.close();
   await writeFile(join(dir, 'events-3.jsonl'), lines([ev(2, 't2'), ev(3, 't3')]));
   await assert.rejects(new Store(dir).load(), /seqs 2 to 3, across the snapshot’s 2/);
-  await rm(dir, { recursive: true });
 });
 
 test('T-9: a gap in seq against the applied seq starts, warns, and is recorded as lost', async () => {
@@ -66,7 +65,6 @@ test('T-9: a gap in seq against the applied seq starts, warns, and is recorded a
   await s.flush();
   assert.equal(s.state.seq, 11, 'the store goes on numbering after the gap');
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('T-27: the hand-built fixture with a plain line, an array line and a plain line with op loads whole', async () => {
@@ -79,7 +77,6 @@ test('T-27: the hand-built fixture with a plain line, an array line and a plain 
   assert.deepEqual(await s.commit([{ type: 'thread', data: { id: 'again', members: [] } }], { opId: 'single-1' }), { seq: 4, duplicate: true });
   assert.equal(s.lost, null);
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('Q7: a snapshot.json that is a folder fails the load naming EISDIR, and nothing on disk changes', async () => {
@@ -91,7 +88,6 @@ test('Q7: a snapshot.json that is a folder fails the load naming EISDIR, and not
   await assert.rejects(new Store(dir).load(), /snapshot\.json.*EISDIR/);
   assert.deepEqual((await readdir(dir)).sort(), before);
   assert.equal(await readFile(join(dir, 'events-2.jsonl'), 'utf8'), lines(ev(2, 't2')));
-  await rm(dir, { recursive: true });
 });
 
 test('T-29: the snapshot’s text goes to the disk in pieces, not one write', async () => {
@@ -118,5 +114,4 @@ test('T-29: the snapshot’s text goes to the disk in pieces, not one write', as
   const b = await new Store(dir).load();
   assert.equal(b.state.items.t1[0].text.length, 2_500_000, 'the pieces make the whole text');
   await b.close();
-  await rm(dir, { recursive: true });
 });

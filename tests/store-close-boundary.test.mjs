@@ -5,7 +5,6 @@
 // cancel I/O already handed to the disk; the process’s exit releases the lock, and the next start takes it over.
 import assert from 'node:assert/strict';
 import * as realFs from 'node:fs/promises';
-import { rm } from 'node:fs/promises';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { LOCK } from '../server/store-lock.mjs';
@@ -65,7 +64,6 @@ test('a failed store with no descriptor: close() then reload() at once; the Retr
   const c = await new Store(dir).load();
   assert.deepEqual(Object.keys(c.state.threads).sort(), ['acknowledged-by-b', 'before'], 'the restart loads cleanly');
   await c.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a Retry whose barrier never resolves: close() rejects within the bound, keeps the lock, and a second store is refused', async () => {
@@ -94,7 +92,6 @@ test('a Retry whose barrier never resolves: close() rejects within the bound, ke
   assert.equal(await retried, 'ECLOSED');
   assert.equal(a.writable, false);
   assert.ok(a.lock, 'still held: only the process’s exit releases it');
-  await rm(dir, { recursive: true });
 });
 
 test('a plain emit then close(): the final flush syncs the log once, savedThrough reaches seq, and the lock is released', async () => {
@@ -115,7 +112,6 @@ test('a plain emit then close(): the final flush syncs the log once, savedThroug
   const b = await new Store(dir).load();
   assert.ok(b.state.threads.t1);
   await b.close();
-  await rm(dir, { recursive: true });
 });
 
 test('the final sync fails: close() rejects with the cause and keeps the lock, since the log may not be durable', async () => {
@@ -130,7 +126,6 @@ test('the final sync fails: close() rejects with the cause and keeps the lock, s
   assert.ok(a.lock, 'the lock is kept');
   assert.ok((await realFs.readdir(dir)).includes(LOCK));
   await assert.rejects(new Store(dir).load(), /Another Postbox store/);
-  await rm(dir, { recursive: true });
 });
 
 test('close() begun before a reconciliation times out waits for the listener the Retry then detaches: it rejects with the lock kept while the listener runs, and a later close releases', async () => {
@@ -162,5 +157,4 @@ test('close() begun before a reconciliation times out waits for the listener the
   const b = await new Store(dir).load();
   assert.ok(b.state.threads.t1);
   await b.close();
-  await rm(dir, { recursive: true });
 });

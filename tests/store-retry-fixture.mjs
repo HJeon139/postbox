@@ -1,12 +1,11 @@
 // Shared by the 1b store specs (tests/store-retry.test.mjs, tests/store-failure-policy.test.mjs): a disk whose event-log
 // handles answer to injected faults, and the small builders they use.
 import * as realFs from 'node:fs/promises';
-import { mkdtemp } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { disk, handleWith } from './store-jsonl-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
-export const tmp = () => mkdtemp(join(tmpdir(), 'pb-retry-'));
+/** A store’s folder, removed when the test file ends, so a failing test leaves nothing behind (#797). */
+export const tmp = async () => tempDir('pb-retry-');
 export const thread = (id) => ({ type: 'thread', data: { id, members: [] } });
 export const eio = (what) => Object.assign(new Error(what), { code: 'EIO' });
 

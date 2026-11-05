@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import { check, STAGES } from '../tools/check.mjs';
+import { SLOT_DIR } from '../tools/heavy-lock.mjs';
 
 /** A run whose stages take the given ms each and exit with the given codes, on a clock that only it moves. */
 function fake(/** @type {Record<string, [number, number]>} */ stages) {
@@ -45,4 +47,114 @@ test('a failing stage stops the check with its exit code, and the summary names 
   assert.equal(code, 3);
   assert.deepEqual(f.ran, ['lint', 'test'], 'nothing ran after the failure');
   assert.deepEqual(f.log.slice(1), ['✖ test failed (exit 3) in 4.3 s', 'npm run check failed at test after 5.2 s: lint 0.9 s, test 4.3 s.']);
+});
+
+/** A gate run folder that records whether it was closed. */
+function fakeRunDir() {
+  const r = { opened: 0, closed: 0, path: '/tmp/pb-gate-1-AbC123' };
+  const open = () => {
+    r.opened++;
+    return { path: r.path, close: () => void r.closed++ };
+  };
+  return { r, runDir: { open } };
+}
+
+test('the test stages run with TMPDIR set to the run’s own folder, and the others with the environment unchanged', async () => {
+  /** @type {Record<string, Record<string, string> | undefined>} */
+  const envs = {};
+  const { runDir } = fakeRunDir();
+  const run = async (/** @type {string} */ s, /** @type {Record<string, string> | undefined} */ env) => {
+    envs[s] = env;
+    return 0;
+  };
+  await check({ run, runDir, now: () => 0, log: () => {} });
+  for (const s of ['test', 'test:integration', 'test:process'])
+    assert.deepEqual(envs[s], { TMPDIR: '/tmp/pb-gate-1-AbC123', POSTBOX_HEAVY_DIR: SLOT_DIR }, `${s}: its heavy-lock slots stay shared`);
+  for (const s of ['lint', 'typecheck', 'lint:project', 'check:contrast']) assert.equal(envs[s], undefined, s);
+});
+
+test('the run’s folder is removed at the end of a passing check, and of a failing one', async () => {
+  const pass = fakeRunDir();
+  await check({ stages: ['test'], run: async () => 0, runDir: pass.runDir, now: () => 0, log: () => {} });
+  const fail = fakeRunDir();
+  await check({ stages: ['test', 'test:process'], run: async () => 1, runDir: fail.runDir, now: () => 0, log: () => {} });
+  assert.deepEqual(
+    [pass.r, fail.r].map(({ opened, closed }) => ({ opened, closed })),
+    [
+      { opened: 1, closed: 1 },
+      { opened: 1, closed: 1 },
+    ],
+  );
+});
+
+test('the run’s folder is removed when a stage throws', async () => {
+  const { r, runDir } = fakeRunDir();
+  const run = async () => {
+    throw new Error('spawn failed');
+  };
+  await assert.rejects(check({ stages: ['test'], run, runDir, now: () => 0, log: () => {} }), /spawn failed/);
+  assert.equal(r.closed, 1);
+});
+
+/**
+ * A stage that hands check its child, which exits once it’s sent a signal, and a process that check listens on for
+ * Ctrl-C and SIGTERM.
+ */
+function signalled() {
+  const proc = new EventEmitter();
+  /** @type {string[]} */
+  const sent = [];
+  /** @type {string[]} */
+  const ran = [];
+  /** @type {() => void} */
+  let started = () => {};
+  const running = new Promise((ok) => (started = () => ok(undefined)));
+  const run = (/** @type {string} */ s, /** @type {unknown} */ _env, /** @type {(c: { kill: (sig: string) => void }) => void} */ spawned) => {
+    ran.push(s);
+    return new Promise((ok) => {
+      spawned({
+        kill: (sig) => {
+          sent.push(sig);
+          ok(1);
+        },
+      });
+      started();
+    });
+  };
+  return { proc, sent, ran, run, running };
+}
+
+for (const [sig, exit] of /** @type {const} */ ([
+  ['SIGINT', 130],
+  ['SIGTERM', 143],
+])) {
+  test(`${sig} is passed to the running stage, the run’s folder removed once it exits, and check exits ${exit}`, { timeout: 5000 }, async () => {
+    const s = signalled();
+    const { r, runDir } = fakeRunDir();
+    const done = check({ stages: ['test', 'test:process'], run: s.run, runDir, signals: s.proc, now: () => 0, log: () => {} });
+    await s.running;
+    assert.equal(r.closed, 0, 'the folder stays while the stage runs');
+    s.proc.emit(sig);
+    assert.equal(await done, exit);
+    assert.deepEqual(s.sent, [sig]);
+    assert.deepEqual(s.ran, ['test'], 'no stage starts after the signal');
+    assert.equal(r.closed, 1);
+    assert.equal(s.proc.listenerCount(sig), 0, 'check stops listening once it ends');
+  });
+}
+
+test('a run folder that can’t be removed is a warning, and a passing check still exits 0', async () => {
+  /** @type {string[]} */
+  const log = [];
+  const runDir = {
+    open: () => ({
+      path: '/tmp/pb-gate-1-AbC123',
+      close: () => {
+        throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+      },
+    }),
+  };
+  const code = await check({ stages: ['test'], run: async () => 0, runDir, now: () => 0, log: (m) => log.push(m) });
+  assert.equal(code, 0);
+  assert.match(log.at(-1) ?? '', /couldn’t remove its temp folder \/tmp\/pb-gate-1-AbC123: EACCES/);
 });

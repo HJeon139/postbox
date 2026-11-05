@@ -175,20 +175,21 @@ test('acceptance 11: a 🚩 is recorded on the item it was put on, with its time
   f.stop();
 });
 
-test('review 1: a recording write that fails drops the line and marks a gap; Postbox and the room carry on', async () => {
+test('review 1: a recording write that fails drops the line and marks a gap; Postbox and the room carry on', async (t) => {
   const f = setup({ record: true });
   const rec = join(f.data, 'telemetry', f.t.id, 'recording');
-  chmodSync(join(rec, 'streams'), 0o500);
-  chmodSync(rec, 0o500);
-  try {
-    f.adapter.next.push(turn('Still here.'));
-    f.rt.sendMessage(f.t.id, { text: '@alpha go' });
-    await settle(f.rt);
-    assert.ok(f.store.items(f.t.id).some((x) => x.kind === 'agent' && x.text === 'Still here.'));
-  } finally {
+  const writable = () => {
     chmodSync(rec, 0o700);
     chmodSync(join(rec, 'streams'), 0o700);
-  }
+  };
+  t.after(writable); // before the chmod, so a failure anywhere below still leaves the folder removable
+  chmodSync(join(rec, 'streams'), 0o500);
+  chmodSync(rec, 0o500);
+  f.adapter.next.push(turn('Still here.'));
+  f.rt.sendMessage(f.t.id, { text: '@alpha go' });
+  await settle(f.rt);
+  assert.ok(f.store.items(f.t.id).some((x) => x.kind === 'agent' && x.text === 'Still here.'));
+  writable();
   const { draft } = await report(f);
   assert.ok(draft.report.gaps.some((g) => g.kind === 'events' && g.reason === 'write-failed'));
   f.stop();

@@ -2,18 +2,16 @@
 // thread’s opener, and read_message and read_conversation. Only the turn a message is sent to was given a path
 // (server/adapters/guide.mjs’s formatBody); the rest had only the names.
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { test } from 'node:test';
 import { Blobs } from '../server/blobs.mjs';
 import { setup } from './remote-runtime-helpers.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const SHA = 'ab'.repeat(32);
 
 function room() {
   const { rt, store } = setup();
-  rt.blobs = new Blobs(mkdtempSync(join(tmpdir(), 'pb-blobs-')));
+  rt.blobs = new Blobs(tempDir('pb-blobs-'));
   store.emit('file', { id: 'f1', name: 'Pasted text.txt', type: 'text/plain', size: 12, sha256: SHA });
   const h = rt.addHost({ name: 'host.example.com' });
   const near = rt.createPersona({ handle: 'near', backend: 'claude-code' });

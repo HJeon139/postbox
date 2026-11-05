@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { basename, dirname, join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { hostSocketBase } from '../socket-base.mjs';
 import { childrenOf, chromiumMissing, free, freePort, isChromium, running } from './chrome.mjs';
 
 const skip = await chromiumMissing();
@@ -38,8 +39,9 @@ const tail = () => out.slice(-15).join('\n');
 
 /** The host’s home, the run’s folders, another run’s folder to leave alone, and ssh’s stand-in first on PATH. */
 function makeHost() {
-  // Short, for the daemon’s sockets under the host’s home.
-  root = mkdtempSync('/tmp/pbs-');
+  // Where the daemon’s sockets under the host’s home fit. The after below removes it once the run’s processes are
+  // gone; tempDir’s after would run first, while they still write to it.
+  root = mkdtempSync(join(hostSocketBase('pbs-', '/h'), 'pbs-'));
   home = join(root, 'h');
   const bin = join(root, 'bin');
   const hostBin = join(root, 'hbin');

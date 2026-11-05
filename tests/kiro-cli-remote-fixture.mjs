@@ -4,12 +4,12 @@
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtempSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
 import { createMessageReader, encode, message, PROTOCOL_VERSION } from '../shared/remote-protocol.mjs';
 import { createFakeDaemon, FAKE_TOKEN } from './fake-daemon.mjs';
+import { tempDir } from './temp-dirs.mjs';
 export const VERSION = '0.10.0';
 export const HOME = '/home/user';
 export const FOLDER = '/home/user/postbox-work/kiro';
@@ -94,7 +94,7 @@ export function fakeAdapter(root, calls) {
 }
 
 export async function setup({ persona = {}, state = {}, remote = {} } = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'pb-kiro-remote-'));
+  const root = tempDir('pb-kiro-remote-');
   const d = createFakeDaemon({ lines: [], autoEnd: false, home: HOME });
   const link = connectTo(d);
   await until(() => link.welcome, 'the welcome');

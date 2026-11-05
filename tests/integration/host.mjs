@@ -4,7 +4,7 @@
 // These tests start real processes and bind local Unix sockets, never the network; tests/guard.mjs isn’t loaded.
 
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,8 @@ import { createDaemon } from '../../server/remote/host/daemon.mjs';
 import { hostVersion, PROGRAMS } from '../../server/remote/host/paths.mjs';
 import { encode, hostPaths, message, PROTOCOL_VERSION } from '../../shared/remote-protocol.mjs';
 import { readMessages } from '../fake-daemon.mjs';
+import { hostSocketBase } from '../socket-base.mjs';
+import { tempDir } from '../temp-dirs.mjs';
 
 export const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'remote');
 export const HARNESS = join(FIXTURES, 'harness.mjs');
@@ -31,9 +33,9 @@ export function orAfter(p, ms, value) {
 export const UNIX = process.platform === 'linux' || process.platform === 'darwin';
 export const NO_UNIX = !UNIX && 'needs Unix sockets and process groups, which this platform doesn’t have';
 
-/** /tmp, not os.tmpdir(): macOS’s is deep enough to push a socket path past sun_path. */
+/** Under the gate run’s TMPDIR where its sockets’ paths fit, else /tmp: macOS’s temp folder is too deep for sun_path. */
 export function makeHost({ token = true } = {}) {
-  const home = mkdtempSync('/tmp/pbr-');
+  const home = tempDir('pbr-', hostSocketBase('pbr-', ''));
   const p = hostPaths(home, hostVersion());
   mkdirSync(p.turns, { recursive: true, mode: 0o700 });
   if (token) writeFileSync(p.token, `${TOKEN}\n`, { mode: 0o600 });

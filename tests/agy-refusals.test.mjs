@@ -3,8 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
@@ -13,6 +12,7 @@ import { makeReadOnly } from '../server/adapters/agy-plugin.mjs';
 import { refusalFollowUp, refusalOf } from '../server/adapters/agy-refusals.mjs';
 import { AntigravityCliAdapter, agyArgs, createAgyMapper, modeArgs, PLUGIN_DIR } from '../server/adapters/antigravity-cli.mjs';
 import { CARD_WAIT_MS } from '../server/permission-cards.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const fixture = (name) =>
   readFileSync(new URL(`fixtures/antigravity-cli/${name}.jsonl`, import.meta.url), 'utf8')
@@ -77,7 +77,7 @@ test('#370 condition 1: --dangerously-skip-permissions is passed for ask, auto a
     const args = agyArgs({ persona: { permissionMode: m }, model: 'gemini-3.8-flash-high', effort: null, prompt: 'hi', hookConfirmed: true });
     assert.ok(args.includes('--dangerously-skip-permissions'), m);
   }
-  const dir = mkdtempSync(join(tmpdir(), 'pb-agy-confirm-'));
+  const dir = tempDir('pb-agy-confirm-');
   writeFileSync(join(dir, 'hooks.json'), `${JSON.stringify(agyHooksJson(HOOK_SCRIPT, HOOK_TIMEOUT_S), null, 2)}\n`);
   assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir }), true);
   assert.equal(await confirmAgyHook({ version: '1.4.4', pluginDir: dir }), false);
@@ -88,7 +88,7 @@ test('#370 condition 1: --dangerously-skip-permissions is passed for ask, auto a
 });
 
 async function runDeliverTurn(permissionMode, opts = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-turn-'));
+  const root = tempDir('pb-agy-turn-');
   /** @type {any[]} */
   const seen = [];
   const spawnImpl = (_bin, args, spOpts) => {

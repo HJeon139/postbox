@@ -4,13 +4,13 @@
 // meeting its own late work is in store-close.test.mjs.
 import assert from 'node:assert/strict';
 import * as realFs from 'node:fs/promises';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { disk } from './store-jsonl-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
-const tmp = () => mkdtemp(join(tmpdir(), 'pb-lock-race-'));
+const tmp = () => tempDir('pb-lock-race-');
 
 test('two starters over one stale lock, the second’s rename slow: exactly one holds the folder (gpt’s interleaving)', async () => {
   const { LOCK, lockStore } = await import('../server/store-lock.mjs');
@@ -30,7 +30,6 @@ test('two starters over one stale lock, the second’s rename slow: exactly one 
   const holder = JSON.parse(await readFile(join(dir, LOCK), 'utf8'));
   assert.equal(holder.token, won[0].value.token, 'the lock on disk is the winner’s');
   assert.deepEqual((await readdir(dir)).sort(), [LOCK], 'no mutex or stale file is left behind');
-  await rm(dir, { recursive: true });
 });
 
 test('a takeover mutex whose maker is gone is never removed: both starters refuse, naming the file to remove', async () => {
@@ -46,7 +45,6 @@ test('a takeover mutex whose maker is gone is never removed: both starters refus
   );
   for (const r of results) assert.match(r.reason.message, /stopped while taking over.*remove .*store\.lock\.taking/);
   assert.deepEqual((await readdir(dir)).sort(), [LOCK, `${LOCK}.taking`], 'nothing was removed for Postbox’s guess');
-  await rm(dir, { recursive: true });
 });
 
 test('a starter paused inside its takeover keeps the mutex however long it takes: the other waits, then meets its live lock (gpt’s repro)', async () => {
@@ -85,7 +83,6 @@ test('a starter paused inside its takeover keeps the mutex however long it takes
   const holder = JSON.parse(await readFile(join(dir, LOCK), 'utf8'));
   assert.equal(holder.token, results[0].value.token, 'the lock on disk is A’s');
   assert.deepEqual((await readdir(dir)).sort(), [LOCK], 'the mutex is gone with its maker’s takeover');
-  await rm(dir, { recursive: true });
 });
 
 test('a starter paused between creating its lock and filling it can’t be taken for a dead holder: the lock appears whole or not at all (gpt’s repro)', async () => {
@@ -119,7 +116,6 @@ test('a starter paused between creating its lock and filling it can’t be taken
   await assert.rejects(a, /Another Postbox store \(process \d+\) holds/, 'A, late, meets B’s live lock');
   assert.equal(JSON.parse(await readFile(join(dir, LOCK), 'utf8')).token, b.token);
   assert.deepEqual((await readdir(dir)).sort(), [LOCK], 'A’s draft is gone');
-  await rm(dir, { recursive: true });
 });
 
 test('a lock whose contents are empty or cut short is ambiguous: the start waits, then refuses naming the file, and removes nothing', async () => {
@@ -130,7 +126,6 @@ test('a lock whose contents are empty or cut short is ambiguous: the start waits
     await assert.rejects(lockStore(realFs, dir), /unreadable.*remove the file/);
     assert.equal(await readFile(join(dir, LOCK), 'utf8'), contents);
     assert.deepEqual(await readdir(dir), [LOCK]);
-    await rm(dir, { recursive: true });
   }
 });
 
@@ -144,5 +139,4 @@ test('a draft left beside the lock by a start that died is swept at the next sta
   const lock = await lockStore(realFs, dir);
   assert.deepEqual((await readdir(dir)).sort(), [LOCK, `${LOCK}.2.cafef00d.new`]);
   await unlockStore(realFs, lock);
-  await rm(dir, { recursive: true });
 });

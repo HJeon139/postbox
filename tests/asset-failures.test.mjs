@@ -15,6 +15,7 @@ import { Store } from '../server/store.mjs';
 import { eraseThreads } from '../server/thread-erase.mjs';
 import { ASSETS } from '../shared/limits.mjs';
 import { eio, logDisk } from './store-retry-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const text = (s) => Buffer.from(s, 'utf8');
 const req = (over) => ({ kind: 'write', room: 'c1', type: 'text/markdown', author: 'dev', ...over });
@@ -25,13 +26,15 @@ function withRooms(store) {
   return store;
 }
 
-/** A data folder of its own, removed after the test, with the stores opened on it closed first. */
+/**
+ * A data folder of its own, its stores closed after the test, and removed when the file ends, even where a test left a
+ * folder in it read-only (#797).
+ */
 async function folder(t) {
-  const dir = await mkdtemp(join(tmpdir(), 'pb-assetf-'));
+  const dir = tempDir('pb-assetf-');
   const open = [];
   t.after(async () => {
     for (const s of open) await s.close().catch(() => {});
-    await rm(dir, { recursive: true, force: true });
   });
   const warned = [];
   /** Opens the folder as Postbox’s start does; the last store opened is closed before the next opens. */
@@ -242,14 +245,12 @@ test('F8: a released file that can’t be deleted stays released, so the next lo
   await store.flush();
   const sha = a.version.sha256;
   const folderOf = join(f.dir, 'assets', sha.slice(0, 2));
+  // Writable again even if the sweep throws (#797).
+  t.after(() => existsSync(folderOf) && chmodSync(folderOf, 0o700));
   chmodSync(folderOf, 0o500); // its folder can’t be written, so unlink fails with EACCES
   const warned = [];
-  let swept;
-  try {
-    swept = await sweepAssets(store, f.blobs, { warn: (l) => warned.push(l) });
-  } finally {
-    chmodSync(folderOf, 0o700);
-  }
+  const swept = await sweepAssets(store, f.blobs, { warn: (l) => warned.push(l) });
+  chmodSync(folderOf, 0o700); // so the next pass can delete it
   assert.deepEqual(swept.deleted, []);
   assert.ok(store.state.assetReleases[sha], 'still released');
   assert.ok(f.files().includes(sha));

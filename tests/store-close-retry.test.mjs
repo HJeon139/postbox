@@ -3,7 +3,6 @@
 // snapshot in flight. close() waits for each, so the lock is released only once nothing can install, reopen or prune.
 import assert from 'node:assert/strict';
 import * as realFs from 'node:fs/promises';
-import { rm } from 'node:fs/promises';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { disk } from './store-jsonl-fixture.mjs';
@@ -52,7 +51,6 @@ test('close() during a Retry held at its barrier waits for it, so the lock is re
   const c = await new Store(dir).load();
   assert.deepEqual(Object.keys(c.state.threads).sort(), ['b1', 't1', 'x'], 'B’s line and the landed one, nothing from A after the close');
   await c.close();
-  await rm(dir, { recursive: true });
 });
 
 /**
@@ -106,7 +104,6 @@ test('close() during a Retry held at its candidate load waits, and the Retry end
   const b = await new Store(dir).load();
   assert.deepEqual(Object.keys(b.state.threads).sort(), ['t1', 'x']);
   await b.close();
-  await rm(dir, { recursive: true });
 });
 
 test('close() during a Retry held in reconciliation waits, and the Retry ends without reopening', async () => {
@@ -150,7 +147,6 @@ test('close() during a Retry held in reconciliation waits, and the Retry ends wi
   const b = await new Store(dir).load();
   assert.deepEqual(Object.keys(b.state.threads).sort(), ['reconciled', 't1', 'x'], 'the reconciled line landed before the close, nothing after');
   await b.close();
-  await rm(dir, { recursive: true });
 });
 
 test('close() during a snapshot in flight: the snapshot is abandoned, nothing pruned or renamed, and the next store loads the log whole', async () => {
@@ -186,7 +182,6 @@ test('close() during a snapshot in flight: the snapshot is abandoned, nothing pr
   const b = await new Store(dir).load();
   assert.equal(b.state.seq, 3, 'the next store loads the whole log');
   await b.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a Retry started right after close() begins is refused at once, and the next owner’s partial line is never trimmed (gpt’s repro)', async () => {
@@ -234,5 +229,4 @@ test('a Retry started right after close() begins is refused at once, and the nex
   const c = await new Store(dir).load();
   assert.deepEqual(Object.keys(c.state.threads).sort(), ['b1', 't1', 'x'], 'the restart loads cleanly');
   await c.close();
-  await rm(dir, { recursive: true });
 });

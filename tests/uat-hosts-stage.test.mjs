@@ -3,8 +3,7 @@
 // staging ended, the not-installed status the run then records, and the trigger that reads it.
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { defaultHostSettings } from '../shared/remote-settings.mjs';
@@ -17,6 +16,7 @@ import { selectPhases } from '../tools/uat/phases.mjs';
 import { runScenario } from '../tools/uat/run-scenario.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { HOST_TRIGGERS } from '../tools/uat/triggers-host.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const DEST = 'host-a.example.com';
 const remotehosts = () => parseScenario(readFileSync(new URL('uat/e2e/scenarios/remotehosts.md', import.meta.url), 'utf8'));
@@ -96,9 +96,9 @@ test('#464 the checkout’s tags: a tag that isn’t a commit here has no versio
   assert.equal(calls.length, 3, 'no git show for a tag that isn’t there');
 });
 
-/** A host run on host1 with an older Postbox to stage, its data folder in a temp run folder of its own. */
+/** A host run on host1 with an older Postbox to stage, its data folder in a temp run folder of its own, removed when the file ends (#797). */
 function stagedRun() {
-  const dir = mkdtempSync(join(tmpdir(), 'pb-stage-'));
+  const dir = tempDir('pb-stage-');
   const lines = [];
   const hr = createHostRun({
     hosts: [{ label: 'host1', destination: DEST, settings: { idleTimeout: 60_000 }, stage: { tag: 'v1.16.1', version: '1.16.1' } }],
@@ -109,11 +109,11 @@ function stagedRun() {
     data: join(dir, 'data'),
     log: (l) => lines.push(l),
   });
-  return { hr, dir, lines, done: () => rmSync(dir, { recursive: true, force: true }) };
+  return { hr, dir, lines };
 }
 
 test('#464 setting up a host with an older Postbox to stage stages it in place of Install, and records only the version', async () => {
-  const { hr, lines, done } = stagedRun();
+  const { hr, lines } = stagedRun();
   const staged = [];
   const ui = {
     addHost: async () => 'ho_1',
@@ -128,7 +128,6 @@ test('#464 setting up a host with an older Postbox to stage stages it in place o
     },
   };
   await setUpHost(hr, hr.hosts[0], 'pr_1', ui);
-  done();
   assert.equal(staged.length, 1);
   assert.deepEqual(staged[0].host, { id: 'ho_1', name: DEST, settings: { ...defaultHostSettings(), idleTimeout: 60_000 } });
   assert.equal(staged[0].version, '1.16.1');
@@ -147,7 +146,7 @@ const fakeGit =
   };
 
 test('#464 staging installs with the tag’s own install.mjs from a worktree in the run’s folder, which it removes after', async () => {
-  const { hr, dir, done } = stagedRun();
+  const { hr, dir } = stagedRun();
   const calls = [];
   const got = [];
   const load = async (file) => ({
@@ -166,11 +165,10 @@ test('#464 staging installs with the tag’s own install.mjs from a worktree in 
   assert.deepEqual(got[0].o, { host, version: '1.16.1', dataDir: hr.record.laptopData });
   assert.deepEqual(calls[2], ['worktree', 'remove', '--force', tree]);
   assert.deepEqual(readdirSync(dir), [], 'the temporary folder is gone');
-  done();
 });
 
 test('#464 staging that fails still removes its worktree, and its error names the host’s label, not its destination', async () => {
-  const { hr, dir, done } = stagedRun();
+  const { hr, dir } = stagedRun();
   const calls = [];
   const load = async () => ({
     installHost: async () => {
@@ -189,11 +187,10 @@ test('#464 staging that fails still removes its worktree, and its error names th
   await assert.rejects(stageOlder(o, { run: fakeGit(failedAdd, 128), load }), /git couldn’t check v1\.16\.1 out to stage it on host1/);
   assert.deepEqual(failedAdd.at(-1)[1], 'remove', 'a worktree half made is removed too');
   assert.deepEqual(readdirSync(dir), []);
-  done();
 });
 
 test('#464 a staging error that quotes only the host part of user@host still names the label', async () => {
-  const { hr, done } = stagedRun();
+  const { hr } = stagedRun();
   const load = async () => ({
     installHost: async () => {
       throw new Error('ssh: connect to host host-a.example.com port 22: Connection refused');
@@ -202,7 +199,6 @@ test('#464 a staging error that quotes only the host part of user@host still nam
   const host = { id: 'ho_1', name: `user@${DEST}`, settings: {} };
   const o = { root: '/repo', tag: 'v1.16.1', version: '1.16.1', data: hr.record.laptopData, label: 'host1', host };
   await assert.rejects(stageOlder(o, { run: fakeGit([]), load }), (e) => e.message.includes('connect to host host1') && !/example\.com/.test(e.message));
-  done();
 });
 
 test('#464 --stage-host-version refuses --replace-host-install, since the run deletes what it staged', () => {
@@ -212,8 +208,7 @@ test('#464 --stage-host-version refuses --replace-host-install, since the run de
 
 /** A staged host1 whose setup is recorded, and the status Postbox shows for it. */
 function upRun(states = []) {
-  const { hr, done } = stagedRun();
-  done();
+  const { hr } = stagedRun();
   hr.hosts[0].id = 'ho_1';
   hr.record.setup.push({ label: 'host1', staged: '1.16.1', stagedAt: 1000, launcher: null });
   hr.hostStates = () => states;

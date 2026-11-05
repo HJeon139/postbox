@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
@@ -26,6 +25,7 @@ import {
   refusalFollowUp,
 } from '../server/adapters/antigravity-cli.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 // Streams recorded from real Antigravity CLI turns (agy 1.4.5, gemini-3.8-flash), with local paths replaced. The
 // MCP server they called listed Postbox’s own tools (shared/mcp-tools.mjs, TOOL_DEFS).
@@ -327,7 +327,7 @@ test('the plugin: named postbox, this conversation’s MCP URL, the rules', () =
 });
 
 test('the allow rule: added once to your agy settings, keeping the rest; a file that isn’t JSON is left alone', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pb-agy-'));
+  const dir = tempDir('pb-agy-');
   const file = join(dir, 'antigravity-cli', 'settings.json');
   assert.equal(await allowPostbox(file), 'added');
   assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')), { permissions: { allow: [ALLOW_POSTBOX] } });
@@ -368,7 +368,7 @@ test('one turn at a time per folder; different folders run together', async () =
 });
 
 test('in a git repository, the plugin folder is excluded, once; elsewhere nothing is written', async () => {
-  const repo = mkdtempSync(join(tmpdir(), 'pb-agy-git-'));
+  const repo = tempDir('pb-agy-git-');
   mkdirSync(join(repo, '.git', 'info'), { recursive: true });
   writeFileSync(join(repo, '.git', 'info', 'exclude'), '# git ls-files --others --exclude-from=.git/info/exclude');
   mkdirSync(join(repo, 'src', 'agent'), { recursive: true });
@@ -378,11 +378,11 @@ test('in a git repository, the plugin folder is excluded, once; elsewhere nothin
   const exclude = readFileSync(join(repo, '.git', 'info', 'exclude'), 'utf8');
   assert.equal(exclude.split('\n').filter((l) => l === '.agents/plugins/postbox/').length, 1);
   assert.ok(exclude.startsWith('# git ls-files'), 'what was there stays');
-  assert.equal(await excludeFile(mkdtempSync(join(tmpdir(), 'pb-agy-plain-'))), null);
+  assert.equal(await excludeFile(tempDir('pb-agy-plain-')), null);
 });
 
 test('a worktree’s plugin is excluded in its main repository’s exclude file', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-wt-'));
+  const root = tempDir('pb-agy-wt-');
   mkdirSync(join(root, 'main', '.git', 'worktrees', 'wt'), { recursive: true });
   writeFileSync(join(root, 'main', '.git', 'worktrees', 'wt', 'commondir'), '../..\n');
   mkdirSync(join(root, 'wt'));
@@ -424,7 +424,7 @@ const adapterFor = (root, streams, seen) =>
   });
 
 test('a turn: the allow rule, the plugin there while agy runs and gone after, the conversation saved', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-'));
+  const root = tempDir('pb-agy-');
   const seen = [];
   const adapter = adapterFor(root, [{ lines: fixture('block'), code: 0 }], seen);
   const ctx = fakeCtx();
@@ -443,7 +443,7 @@ test('a turn: the allow rule, the plugin there while agy runs and gone after, th
 });
 
 test('a folder’s own .agents folder stays; only Postbox’s plugin is removed', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-'));
+  const root = tempDir('pb-agy-');
   const folder = join(root, 'project');
   mkdirSync(join(folder, '.agents', 'rules'), { recursive: true });
   writeFileSync(join(folder, '.agents', 'rules', 'style.md'), 'Be brief.');
@@ -456,7 +456,7 @@ test('a folder’s own .agents folder stays; only Postbox’s plugin is removed'
 const inConversation = (id, lines) => JSON.parse(JSON.stringify(lines).replace(/"conversation_id":"[^"]*"/g, `"conversation_id":"${id}"`));
 
 test('a turn agy ended at a refusal goes on once, in the same conversation, for the agent to say what was refused', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-'));
+  const root = tempDir('pb-agy-');
   const seen = [];
   const adapter = adapterFor(
     root,
@@ -479,7 +479,7 @@ test('a turn agy ended at a refusal goes on once, in the same conversation, for 
   // A refusal in the follow-up isn’t followed up again, and a turn that ended well isn’t followed up at all.
   const again = [];
   await adapterFor(
-    mkdtempSync(join(tmpdir(), 'pb-agy-')),
+    tempDir('pb-agy-'),
     [
       { lines: fixture('refused'), code: 0 },
       { lines: fixture('refused'), code: 0 },
@@ -488,12 +488,12 @@ test('a turn agy ended at a refusal goes on once, in the same conversation, for 
   ).deliver({}, { kind: 'user', text: 'Run it.' }, fakeCtx());
   assert.equal(again.length, 2);
   const once = [];
-  await adapterFor(mkdtempSync(join(tmpdir(), 'pb-agy-')), [{ lines: fixture('block'), code: 0 }], once).deliver({}, { kind: 'user', text: 'hi' }, fakeCtx());
+  await adapterFor(tempDir('pb-agy-'), [{ lines: fixture('block'), code: 0 }], once).deliver({}, { kind: 'user', text: 'hi' }, fakeCtx());
   assert.equal(once.length, 1);
 });
 
 test('a conversation agy no longer has: that run is stopped, and the turn starts over once, saying so', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-'));
+  const root = tempDir('pb-agy-');
   const seen = [];
   const adapter = adapterFor(
     root,
@@ -515,7 +515,7 @@ test('a conversation agy no longer has: that run is stopped, and the turn starts
 });
 
 test('a failed turn rejects with what agy said, and still removes the plugin', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-'));
+  const root = tempDir('pb-agy-');
   const adapter = adapterFor(root, [{ lines: fixture('bad-model'), code: 1 }], []);
   await assert.rejects(adapter.deliver({}, { kind: 'user', text: 'hi' }, fakeCtx()), /--effort is not supported for model/);
   assert.deepEqual(readdirSync(join(root, 'work', 'gem')), []);
@@ -523,7 +523,7 @@ test('a failed turn rejects with what agy said, and still removes the plugin', a
 });
 
 test('Stop: agy gets SIGINT, and the turn ends without an error; a turn stopped while it waits never starts', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-'));
+  const root = tempDir('pb-agy-');
   const seen = [];
   const ctx = fakeCtx();
   const play = fakeSpawn([{ lines: fixture('first').slice(0, 2), code: 130 }], seen);
@@ -549,7 +549,7 @@ test('Stop: agy gets SIGINT, and the turn ends without an error; a turn stopped 
 });
 
 test('Stop signals agy’s whole process group, and the turn ends once the group is gone (#126)', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-'));
+  const root = tempDir('pb-agy-');
   const seen = [];
   const ctx = fakeCtx();
   const play = fakeSpawn([{ lines: fixture('first').slice(0, 2), code: 130 }], seen);

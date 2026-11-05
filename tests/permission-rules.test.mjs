@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { addAllowRule, chains, cleanRule, rulesFor, takeBackRule } from '../server/permission-rules.mjs';
 import { splitCommand } from '../shared/command-chains.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 test('a refused command is allowed once exactly, and always by its command (or exactly, if it has shell syntax)', () => {
   assert.deepEqual(rulesFor('Bash', { command: 'rm copy.txt' }), {
@@ -264,7 +264,7 @@ test('#309 [[ opens a test only where a command starts, and in one only && and |
 });
 
 test('#281 taking back an expired card’s rule leaves it when someone asked for it since', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'pb-rules-'));
+  const dir = tempDir('pb-rules-');
   const first = await addAllowRule(dir, 'Bash(ls:*)');
   assert.equal(first.added, true);
   await addAllowRule(dir, 'Bash(ls:*)'); // another card, or the panel, asks for it while the first card expires
@@ -282,7 +282,7 @@ test('fetches are allowed by domain, files by path, anything else by tool', () =
 });
 
 test('Always allow adds the rule to .claude/settings.local.json once, and keeps what else is there', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'pb-rules-'));
+  const dir = tempDir('pb-rules-');
   await addAllowRule(dir, 'Bash(rm:*)');
   const file = join(dir, '.claude', 'settings.local.json');
   await writeFile(file, JSON.stringify({ env: { A: '1' }, permissions: { allow: ['Bash(rm:*)'], deny: ['Bash(sudo:*)'] } }));

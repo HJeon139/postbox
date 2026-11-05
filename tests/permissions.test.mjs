@@ -2,8 +2,7 @@
 // permissions panel (its rules with their sources, rules for this conversation, folders, the mode).
 
 import assert from 'node:assert/strict';
-import { lstat, mkdir, mkdtemp, readdir, readFile, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { lstat, mkdir, readdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -11,6 +10,7 @@ import { handleMcp } from '../server/mcp.mjs';
 import { alwaysAllow, changeRule, cleanRule, readRules, settingsFiles } from '../server/permission-rules.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -33,7 +33,7 @@ class ScriptedClaude {
 }
 
 async function setup({ usesHostSetup = true } = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'pb-perm-'));
+  const root = tempDir('pb-perm-');
   const folder = join(root, 'work');
   const home = join(root, 'home');
   await mkdir(folder);
@@ -342,7 +342,7 @@ test('#66: the mode changes the persona, and a running turn too where the backen
 });
 
 test('#66: rules files are changed atomically, and one that isn’t JSON is never overwritten', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'pb-rules-'));
+  const dir = tempDir('pb-rules-');
   const file = join(dir, 'settings.json');
   await writeFile(file, JSON.stringify({ env: { A: '1' }, permissions: { ask: ['Bash'] } }));
   assert.deepEqual(await changeRule(file, { behavior: 'ask', rule: 'Bash' }), { file, changed: false });
@@ -433,7 +433,7 @@ test('#66: a mode suggested for a settings file isn’t offered; one for the ses
 });
 
 test('#66: two rules saved at once both land, and nothing is left behind', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'pb-rules-'));
+  const dir = tempDir('pb-rules-');
   const file = join(dir, 'settings.local.json');
   await writeFile(file, '{}');
   const rules = Array.from({ length: 8 }, (_, i) => `Bash(make t${i}:*)`);
@@ -452,7 +452,7 @@ test('#66: two rules saved at once both land, and nothing is left behind', async
 });
 
 test('#66: a settings file that’s a link stays a link, and its target gets the rule', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'pb-rules-'));
+  const dir = tempDir('pb-rules-');
   await mkdir(join(dir, 'dotfiles'));
   await mkdir(join(dir, 'home', '.claude'), { recursive: true });
   const target = join(dir, 'dotfiles', 'claude-settings.json');

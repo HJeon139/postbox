@@ -4,15 +4,14 @@
 // so the next store’s lines survive. A commit or emit that arrives during the close’s flush is refused as closed, not
 // written to a closed descriptor. Nothing the store starts can run after `closed`.
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { readdir } from 'node:fs/promises';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { run } from '../server/store-commit.mjs';
 import { disk, logDisk } from './store-jsonl-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
-const tmp = () => mkdtemp(join(tmpdir(), 'pb-close-'));
+const tmp = () => tempDir('pb-close-');
 const thread = (id) => ({ type: 'thread', data: { id, members: [] } });
 const held = () => {
   let release = () => {};
@@ -59,7 +58,6 @@ test('a snapshot due during close()’s flush never lands after the lock is rele
   const names = (await readdir(dir)).filter((n) => /^events-|snapshot/.test(n));
   assert.ok(names.includes('events-1.jsonl') && !names.includes('snapshot.json'), `no late snapshot or pruning: ${names.join()}`);
   await c.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a commit or emit that arrives during close()’s flush is refused as closed, and nothing reaches the closed descriptor', async () => {
@@ -83,7 +81,6 @@ test('a commit or emit that arrives during close()’s flush is refused as close
   const b = await new Store(dir).load();
   assert.deepEqual(Object.keys(b.state.threads), ['a1']);
   await b.close();
-  await rm(dir, { recursive: true });
 });
 
 test('nothing the store starts runs after `closed`: emit, commit, flush, snapshot and the writer’s loop itself change no file', async () => {
@@ -102,7 +99,6 @@ test('nothing the store starts runs after `closed`: emit, commit, flush, snapsho
   await new Promise((r) => setTimeout(r, 50));
   assert.deepEqual((await readdir(dir)).sort(), before, 'no file was added, renamed or removed');
   assert.equal(a.fh, null, 'no descriptor was opened');
-  await rm(dir, { recursive: true });
 });
 
 test('a descriptor that fails to close doesn’t leave the lock behind', async () => {
@@ -125,5 +121,4 @@ test('a descriptor that fails to close doesn’t leave the lock behind', async (
   const b = await new Store(dir).load(); // not refused
   assert.ok(b.state.threads.a1);
   await b.close();
-  await rm(dir, { recursive: true });
 });

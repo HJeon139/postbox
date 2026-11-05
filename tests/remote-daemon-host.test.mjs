@@ -3,8 +3,7 @@
 // tests/remote-daemon-setup.mjs.
 
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { Duplex, PassThrough } from 'node:stream';
 import { test } from 'node:test';
@@ -13,6 +12,7 @@ import { findPrograms, parseVersion } from '../server/remote/host/programs.mjs';
 import { encode, hostPaths, message, PROTOCOL_VERSION, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { readMessages } from './fake-daemon.mjs';
 import { attachOnce, fakeClock, hello, makeTurn, setup, TOKEN, VERSION, waitFor } from './remote-daemon-setup.mjs';
+import { hostHome } from './socket-base.mjs';
 
 test('idle: exits after idleTimeout with nobody attached and no turn running, and not before', async () => {
   const clock = fakeClock();
@@ -113,7 +113,7 @@ test('host attach on a Node older than 22 says no-node, so Postbox can say what 
 });
 
 test('host token makes the token with umask 077 if it’s missing and prints it, and prints the same one after', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'pbt-'));
+  const home = hostHome('pbt-');
   try {
     const masks = [];
     const run = async () => {
@@ -150,7 +150,7 @@ test('host token makes the token with umask 077 if it’s missing and prints it,
 });
 
 test('host attach starts the daemon when none answers, then relays its stdio to the socket', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'pba-'));
+  const home = hostHome('pba-');
   try {
     const { code, spawned, toDaemon, out } = await attachOnce(home, async () => {});
     assert.equal(code, EXIT.ok);
@@ -169,7 +169,7 @@ test('host attach starts the daemon when none answers, then relays its stdio to 
 });
 
 test('host attach waits while an install holds the start lock, making nothing in the version’s folder until it’s dropped', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'pba-'));
+  const home = hostHome('pba-');
   try {
     const p = hostPaths(home, VERSION);
     // The install’s lock, outside the version’s folder, which the install may be renaming.
@@ -190,7 +190,7 @@ test('host attach waits while an install holds the start lock, making nothing in
 });
 
 test('findPrograms: configured paths, then the PATH and install folders; versions from --version; problems named', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'pbf-'));
+  const home = hostHome('pbf-');
   try {
     mkdirSync(join(home, '.local', 'bin'), { recursive: true });
     const claude = join(home, '.local', 'bin', 'claude');

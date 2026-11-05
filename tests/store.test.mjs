@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
-import { appendFile, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { appendFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { Blobs } from '../server/blobs.mjs';
 import { Store } from '../server/store.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
-const tmp = () => mkdtemp(join(tmpdir(), 'pb-store-'));
+const tmp = () => tempDir('pb-store-');
 
 test('events are appended to the log and replayed after a restart', async () => {
   const dir = await tmp();
@@ -19,7 +19,6 @@ test('events are appended to the log and replayed after a restart', async () => 
   const b = await new Store(dir).load();
   assert.equal(b.state.seq, 3);
   assert.equal(b.state.items.t1[0].text, 'Hello');
-  await rm(dir, { recursive: true });
 });
 
 test('a torn last line from a crash is dropped, and earlier events survive', async () => {
@@ -37,7 +36,6 @@ test('a torn last line from a crash is dropped, and earlier events survive', asy
   await b.close();
   const c = await new Store(dir).load();
   assert.ok(c.state.threads.t3, 'new events append cleanly after the dropped line');
-  await rm(dir, { recursive: true });
 });
 
 test('a snapshot starts a new segment and deletes the ones it covers', async () => {
@@ -54,7 +52,6 @@ test('a snapshot starts a new segment and deletes the ones it covers', async () 
   const b = await new Store(dir).load();
   assert.equal(b.state.seq, 12);
   assert.equal(Object.keys(b.state.threads).length, 12);
-  await rm(dir, { recursive: true });
 });
 
 test('Stage 2’s store.json is read once as the first snapshot', async () => {
@@ -66,7 +63,6 @@ test('Stage 2’s store.json is read once as the first snapshot', async () => {
   const files = await readdir(dir);
   assert.ok(files.includes('store.json.migrated'));
   assert.ok(files.includes('snapshot.json'));
-  await rm(dir, { recursive: true });
 });
 
 test('since() gives the backlog for a reconnecting browser, or null when it’s gone', async () => {
@@ -105,5 +101,4 @@ test('blobs are stored by content, kept once, and checked on read', async () => 
   await writeFile(a.path, 'tampered');
   await assert.rejects(blobs.get(a.sha256), /damaged/);
   assert.throws(() => blobs.pathOf('../etc/passwd'), /Not a SHA-256/);
-  await rm(dir, { recursive: true });
 });

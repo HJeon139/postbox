@@ -2,11 +2,12 @@
 // review of #557 to reach the judge under the blocklist that came before; each must now get the card.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, symlink, writeFile } from 'node:fs/promises';
+import { symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { offRequest, shellWords } from '../server/request-floor.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const scope = {
   named: 'open the pr for #508 on hjeon139/postbox, and push it to origin.',
@@ -174,7 +175,7 @@ test('#557’s re-review: reads stay in the project, and rg is out', () => {
 });
 
 test('#557’s third review: a title, a body or a message never publishes a variable, a dotfile or a file a link leads out to', async () => {
-  const folder = await mkdtemp(join(tmpdir(), 'pb-floor-'));
+  const folder = tempDir('pb-floor-');
   await writeFile(join(folder, 'notes.md'), 'notes');
   await symlink(join(tmpdir()), join(folder, 'out'));
   const at = (command) => offRequest('Bash', { command }, { ...scope, folder });

@@ -4,12 +4,12 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { PROGRAMS, paths } from '../../server/remote/host/paths.mjs';
 import { createMessageReader, DIR_MODE, encode, FILE_MODE, message, TURN_FILES } from '../../shared/remote-protocol.mjs';
+import { hostSocketBase } from '../socket-base.mjs';
+import { tempDir } from '../temp-dirs.mjs';
 
 const TOKEN = 'shim-test-token-0123456789abcdefghijklmn';
 const TURN_TOKEN = 'shim-test-turn-token-0123456789abcdefghij';
@@ -18,8 +18,8 @@ const MINUTE = 60_000;
 
 /** A temporary home with the daemon’s folders and the token, as L2’s install leaves them. */
 function makeHome() {
-  // macOS limits a socket path to 104 bytes, and its per-user temp folder is long, so prefer /tmp.
-  const home = mkdtempSync(join(existsSync('/tmp') ? '/tmp' : tmpdir(), 'pb-shim-'));
+  // Where its sockets’ paths fit: macOS limits them to 104 bytes, and its per-user temp folder is long.
+  const home = tempDir('pb-shim-', hostSocketBase('pb-shim-', ''));
   const P = paths({ home });
   mkdirSync(P.code, { recursive: true, mode: DIR_MODE });
   chmodSync(P.root, DIR_MODE);

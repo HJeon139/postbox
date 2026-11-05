@@ -2,14 +2,14 @@
 // process check, turn folders as the daemon and a runner leave them, and an in-process daemon with fake runners over
 // PassThrough streams, as tests/remote-daemon.test.mjs drives it.
 
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { createCleanup } from '../server/remote/host/cleanup.mjs';
 import { createDaemon } from '../server/remote/host/daemon.mjs';
 import { encode, hostPaths, MESSAGE_FILE, message, PROTOCOL_VERSION, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { readMessages } from './fake-daemon.mjs';
+import { hostHome } from './socket-base.mjs';
 
 export const VERSION = '0.10.0';
 export const BOOT = '0f1e2d3c-4b5a-4968-8776-655443322110';
@@ -19,7 +19,7 @@ export const RETENTION = 7 * DAY;
 
 /** A temp home, and cleanup over it whose process check says yes for the PIDs in `alive`. */
 export function setup({ version = VERSION, logMaxBytes = 1 << 20, clock = 0 } = {}) {
-  const home = mkdtempSync(join(tmpdir(), 'pbc-'));
+  const home = hostHome('pbc-');
   const p = hostPaths(home, version);
   mkdirSync(p.turns, { recursive: true, mode: 0o700 });
   writeFileSync(p.token, TOKEN, { mode: 0o600 });
@@ -94,7 +94,7 @@ async function connectTo(daemon) {
   return { msgs, send, welcome, output };
 }
 
-export function daemonSetup({ home = mkdtempSync(join(tmpdir(), 'pbd-')), onRemoved = () => {}, env = {}, stuck = new Set(), launching = null } = {}) {
+export function daemonSetup({ home = hostHome('pbd-'), onRemoved = () => {}, env = {}, stuck = new Set(), launching = null } = {}) {
   const p = hostPaths(home, VERSION);
   mkdirSync(p.root, { recursive: true, mode: 0o700 });
   writeFileSync(p.token, TOKEN, { mode: 0o600 });

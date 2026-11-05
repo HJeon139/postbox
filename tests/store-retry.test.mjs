@@ -2,7 +2,6 @@
 // page and the runtime read; Retry as a reload, one at a time, refusing while a write is still in flight; what install
 // resets and what a held reference sees; a torn tail trimmed before the new writer appends.
 import assert from 'node:assert/strict';
-import { rm } from 'node:fs/promises';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { eio, logDisk, thread, tmp } from './store-retry-fixture.mjs';
@@ -20,7 +19,6 @@ test('the status says writable, the cause, what was lost, a warning, whether a R
   const heard = [];
   s.onStatus((st) => heard.push(st.writable));
   await s.close();
-  await rm(dir, { recursive: true });
   assert.deepEqual(heard, [], 'a store that never fails tells its status listeners nothing');
 });
 
@@ -46,7 +44,6 @@ test('Retry reloads: a landed line is kept, the epoch changes, listeners hear th
   assert.deepEqual(await s.commit([thread('landed')], { opId: 'landed' }), { seq: 2, duplicate: true });
   assert.deepEqual(statuses, ['closed', 'closed retrying', 'open']);
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a second Retry while one runs joins it: one install, one epoch, the same result to both', async () => {
@@ -73,7 +70,6 @@ test('a second Retry while one runs joins it: one install, one epoch, the same r
   assert.equal(s.status.retrying, false);
   assert.equal(s.writable, true);
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a write still in flight on the old descriptor past the bound makes Retry refuse and stay closed (I3c)', async () => {
@@ -102,7 +98,6 @@ test('a write still in flight on the old descriptor past the bound makes Retry r
   finish();
   await hanging.catch(() => {});
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a torn tail left by the failed write is trimmed by Retry before the new writer appends, so the next load starts', async () => {
@@ -123,7 +118,6 @@ test('a torn tail left by the failed write is trimmed by Retry before the new wr
   const b = await new Store(dir).load();
   assert.deepEqual(Object.keys(b.state.threads).sort(), ['after', 't1']);
   await b.close();
-  await rm(dir, { recursive: true });
 });
 
 test('install keeps store.state’s identity, a held sub-object goes stale, and the backlog, ops and counters reset (I3a)', async () => {
@@ -149,7 +143,6 @@ test('install keeps store.state’s identity, a held sub-object goes stale, and 
   assert.equal(s.held, 0);
   assert.equal(s.waitingCommits, 0);
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a reload listener that never settles makes Retry reject within the bound and clears `retrying`; while it still runs a second Retry is refused, so reconciliations never overlap; once it settles the next Retry runs', async () => {
@@ -186,7 +179,6 @@ test('a reload listener that never settles makes Retry reject within the bound a
   assert.equal(s.state.threads.late, undefined, 'the late listener’s commit was refused: nothing of the old reconciliation lands');
   assert.ok(['ECLOSED', 'EIO', 'ETIMEDOUT', 'EBUSY'].includes(await late), `refused with the cause, not landed: ${await late}`);
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a reload listener that rejects at once doesn’t hide a sibling still running: the next Retry is refused until it settles, and its late commit is refused', async () => {
@@ -222,7 +214,6 @@ test('a reload listener that rejects at once doesn’t hide a sibling still runn
   assert.equal(s.state.threads.late, undefined, 'B’s late commit never landed');
   assert.notEqual(await late, 'landed');
   await s.close();
-  await rm(dir, { recursive: true });
 });
 
 test('a reconcile a listener kept from an earlier phase is refused in a later one, even while that later one is reconciling', async () => {
@@ -260,5 +251,4 @@ test('a reconcile a listener kept from an earlier phase is refused in a later on
   await second;
   assert.equal(s.state.threads.stale, undefined);
   await s.close();
-  await rm(dir, { recursive: true });
 });

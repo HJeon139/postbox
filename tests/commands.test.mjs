@@ -230,10 +230,11 @@ test('#67: only loopback addresses count as this computer', () => {
   for (const a of ['0.0.0.0', '::', '192.168.1.5', '10.0.0.2', '', undefined]) assert.ok(!isLoopback(a), String(a));
 });
 
-test('#67: the ! route refuses unless Postbox listens on 127.0.0.1 and the request came from this computer', async () => {
+test('#67: the ! route refuses unless Postbox listens on 127.0.0.1 and the request came from this computer', async (t) => {
   process.env.POSTBOX_BACKENDS = 'mock';
   const { start } = await import('../server/index.mjs');
   const dir = await mkdtemp(join(tmpdir(), 'pb-shell-'));
+  t.after(() => rm(dir, { recursive: true, force: true })); // a failing assertion leaves nothing either (#797)
   const { spawn, children } = fakeSpawn();
   for (const host of ['127.0.0.1', '0.0.0.0']) {
     const app = await start({ port: 4438, dataDir: dir, fresh: true, demo: true, quiet: true, claudeHome: dir, listen: false, host, spawnShell: spawn });
@@ -260,7 +261,6 @@ test('#67: the ! route refuses unless Postbox listens on 127.0.0.1 and the reque
       await app.close();
     }
   }
-  await rm(dir, { recursive: true, force: true });
 });
 
 // ── / ───────────────────────────────────────────────────────────────────────────────────
