@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { test } from 'node:test';
 import { check, STAGES } from '../tools/check.mjs';
 import { SLOT_DIR } from '../tools/heavy-lock.mjs';
@@ -94,3 +95,50 @@ test('the run’s folder is removed when a stage throws', async () => {
   await assert.rejects(check({ stages: ['test'], run, runDir, now: () => 0, log: () => {} }), /spawn failed/);
   assert.equal(r.closed, 1);
 });
+
+/**
+ * A stage that hands check its child, which exits once it’s sent a signal, and a process that check listens on for
+ * Ctrl-C and SIGTERM.
+ */
+function signalled() {
+  const proc = new EventEmitter();
+  /** @type {string[]} */
+  const sent = [];
+  /** @type {string[]} */
+  const ran = [];
+  /** @type {() => void} */
+  let started = () => {};
+  const running = new Promise((ok) => (started = () => ok(undefined)));
+  const run = (/** @type {string} */ s, /** @type {unknown} */ _env, /** @type {(c: { kill: (sig: string) => void }) => void} */ spawned) => {
+    ran.push(s);
+    return new Promise((ok) => {
+      spawned({
+        kill: (sig) => {
+          sent.push(sig);
+          ok(1);
+        },
+      });
+      started();
+    });
+  };
+  return { proc, sent, ran, run, running };
+}
+
+for (const [sig, exit] of /** @type {const} */ ([
+  ['SIGINT', 130],
+  ['SIGTERM', 143],
+])) {
+  test(`${sig} is passed to the running stage, the run’s folder removed once it exits, and check exits ${exit}`, { timeout: 5000 }, async () => {
+    const s = signalled();
+    const { r, runDir } = fakeRunDir();
+    const done = check({ stages: ['test', 'test:process'], run: s.run, runDir, signals: s.proc, now: () => 0, log: () => {} });
+    await s.running;
+    assert.equal(r.closed, 0, 'the folder stays while the stage runs');
+    s.proc.emit(sig);
+    assert.equal(await done, exit);
+    assert.deepEqual(s.sent, [sig]);
+    assert.deepEqual(s.ran, ['test'], 'no stage starts after the signal');
+    assert.equal(r.closed, 1);
+    assert.equal(s.proc.listenerCount(sig), 0, 'check stops listening once it ends');
+  });
+}
