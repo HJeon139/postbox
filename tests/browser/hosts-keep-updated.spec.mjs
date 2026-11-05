@@ -110,6 +110,16 @@ async function refused(page) {
 
   fake.set(id, { state: 'disconnected', keepUpdated: false });
   await expect.soft(box, 'a change to the status elsewhere moves the open toggle').toHaveAttribute('aria-checked', 'false');
+
+  // The toggle reads its state from the page, not from what it held when drawn: after a change elsewhere, a click
+  // turns it on again (checkField, hosts-parts.mjs).
+  await box.click();
+  await expect.poll(keepCalls, { message: 'a click after a change elsewhere asks for on, the opposite of what it shows' }).toEqual([
+    ['setKeepUpdated', id, true],
+    ['setKeepUpdated', id, true],
+    ['setKeepUpdated', id, true],
+  ]);
+  await expect.soft(box, 'and it shows on').toHaveAttribute('aria-checked', 'true');
 }
 
 /** What a step’s card says must never hold a token or a path. @param {import('@playwright/test').Locator} c */
