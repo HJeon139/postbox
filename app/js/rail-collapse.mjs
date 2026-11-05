@@ -12,10 +12,12 @@ export function railHidden() {
 }
 
 /** Whether the rail shows: the person’s choice, unless the right pane hid it for now. */
-export const railShown = () => !railHidden() && !document.querySelector('.app.rail-auto');
+// The shell's root, from a live list rather than a selector, which would walk the whole page when nothing matches (#564-b1).
+const appRoot = () => document.getElementsByClassName('app')[0];
+export const railShown = () => !railHidden() && !appRoot()?.classList.contains('rail-auto');
 
 /** Whether the rail can’t show at all: the right pane is open and has no room beside it. */
-const noRoom = () => !railShown() && !!document.querySelector('.app[data-rail-no-room]');
+const noRoom = () => !railShown() && !!appRoot()?.hasAttribute('data-rail-no-room');
 
 function paintToggle() {
   const b = document.getElementById('rail-toggle');

@@ -303,10 +303,9 @@ export function mountRail(threadId, { projectId: pid = null, view = 'thread' } =
       if (ch.type === 'session') {
         // A topic thread’s agent changed: the Threads count may have.
         let structural = S().threads[ch.data.threadId]?.kind === 'topic';
-        for (const r of document.querySelectorAll(
-          `.rail pb-ring[data-session="${CSS.escape(ch.data.id)}"], .ringstrip pb-ring[data-session="${CSS.escape(ch.data.id)}"]`,
-        ))
-          ringFor(ch.data, r.getAttribute('size'), r);
+        // Its rings in this rail and its strip only: a query over the whole page walks every item (#564-b1).
+        const sel = `pb-ring[data-session="${CSS.escape(ch.data.id)}"]`;
+        for (const r of [...el.querySelectorAll(sel), ...strip.querySelectorAll(sel)]) ringFor(ch.data, r.getAttribute('size'), r);
         // The row text (state word, unread) is cheap to refresh.
         for (const n of el.querySelectorAll('a.row[data-thread]')) {
           const t = S().threads[n.dataset.thread];
