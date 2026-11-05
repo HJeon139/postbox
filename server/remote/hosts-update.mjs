@@ -22,7 +22,7 @@ import { SshFailure } from './ssh-failures.mjs';
 
 /**
  * @typedef {import('./hosts-status.mjs').Manager} Manager
- * @typedef {Awaited<ReturnType<typeof installHost>>} InstallResult
+ * @typedef {Awaited<ReturnType<typeof installHost>> & { tokenChanged: boolean }} InstallResult
  * @typedef {{ ok: true, result: InstallResult } | { ok: false, failure: any }} InstallOutcome
  * @typedef {{ done: Promise<InstallOutcome>, abort: AbortController }} Updating
  * @typedef {import('./install-record.mjs').InstallEntry} InstallEntry
@@ -65,6 +65,8 @@ export function track(m, id, job) {
  */
 export async function installNow(m, id, signal) {
   const host = hostOf(m, id);
+  // Read before the install, which writes the new token in its place (#464-b3, D4).
+  const before = tokenOf(m, id);
   const r = await installHost({
     host,
     version: m.version,
@@ -74,13 +76,24 @@ export async function installNow(m, id, signal) {
     clearTimer: m.clearTimer,
     ...(signal ? { signal } : {}),
   });
-  if (!m.getHost(id)) return r;
+  const done = { ...r, tokenChanged: tokenChangedFrom(before, r.token) };
+  if (!m.getHost(id)) return done;
   m.tokens.set(id, r.token);
   const e = m.links.get(id);
   if (e && !sameToken(e.token, r.token)) dropLink(m, id);
   update(m, id);
   connectNow(m, id).catch(() => {});
-  return r;
+  return done;
+}
+
+/**
+ * Whether the install made a new token where this computer had another: Postbox wasn’t there any more, so turns that
+ * ran there before are gone (#464-b3, D4). No token here before is a first install, not a change.
+ * @param {string | null} before @param {string} after
+ */
+function tokenChangedFrom(before, after) {
+  if (!before) return false;
+  return !sameToken(before, after);
 }
 
 /**
@@ -138,8 +151,14 @@ async function autoInstall(m, id, signal) {
     if (!signal.aborted && !m.closed) await noteFailed(m, id, tried, e);
     throw e;
   }
-  await noteEnd(m, id, tried, result.installed ? 'installed' : 'present');
+  await noteEnd(m, id, tried, outcomeOf(result));
   return result;
+}
+
+/** How an install that worked ended, for the record. @param {InstallResult} result */
+function outcomeOf(result) {
+  if (result.tokenChanged) return 'reinstalled';
+  return result.installed ? 'installed' : 'present';
 }
 
 /**
