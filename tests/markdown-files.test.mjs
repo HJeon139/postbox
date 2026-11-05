@@ -35,3 +35,15 @@ for (const target of ['../x.png', '/etc/x.png', 'figs/other.png', './figs/today.
 test('#780 an https image still renders, and a key never shadows a full address', () => {
   assert.match(renderMarkdown('![x](https://example.com/a.png)', { pageOrigin, files }), /src="https:\/\/example\.com\/a\.png"/);
 });
+
+test('#780 a target named like an object’s own property never resolves through its prototype', () => {
+  for (const target of ['constructor', '__proto__', 'toString', 'hasOwnProperty'])
+    assert.doesNotMatch(renderMarkdown(`![x](${target})`, { pageOrigin, files }), /<img/, target);
+});
+
+test('#780 the URL and the size come only from the attached record, escaped', () => {
+  const evil = { 'a.png': { url: '/x"onerror="alert(1)', width: '9" onload="x', height: 2 } };
+  const html = renderMarkdown('![x](a.png)', { pageOrigin, files: evil });
+  assert.doesNotMatch(html, /"onerror=|onload=/);
+  assert.match(html, /width="0" height="2"/);
+});
