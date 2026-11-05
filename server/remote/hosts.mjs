@@ -44,7 +44,7 @@ import { EventEmitter } from 'node:events';
 import { connectNow, disconnected, dropLink, dropRenamed, ensureWelcome, isRenamed, linkOf, need, release } from './hosts-links.mjs';
 import { removeFromHost, signInCheck } from './hosts-requests.mjs';
 import { hostOf, statusOf, tokenOf, update } from './hosts-status.mjs';
-import { installNow, maybeUpdate, setKeepUpdated, track, WITHDRAWN } from './hosts-update.mjs';
+import { installNow, maybeUpdate, setKeepUpdated, supersedeTry, track, WITHDRAWN } from './hosts-update.mjs';
 import { describeInstall, forgetToken } from './install.mjs';
 import { removeRecord } from './install-record.mjs';
 import { SshFailure } from './ssh.mjs';
@@ -228,6 +228,7 @@ async function install(m, hostId) {
   const outcome = await installing(m, hostId).done;
   if (!outcome.ok && outcome.failure?.message === WITHDRAWN) return install(m, hostId);
   if (!outcome.ok) throw outcome.failure;
+  await supersedeTry(m, hostId, outcome.result);
   return outcome.result;
 }
 
