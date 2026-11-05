@@ -60,7 +60,7 @@ export function agentWake(
   // A mention is already the waker’s message there, so the wake’s number in the chain (#114, telemetry) goes on the
   // turn’s first item: it marks the turn, not necessarily the paragraph with the mention. One message can wake several
   // agents, so each wake’s number is kept (wakes); hop stays the first. wake_agent’s message is posted as the waker’s.
-  const said = itemId ? rt.store.pending.items(at).find((x) => x.id === itemId) : null;
+  const said = itemId ? rt.store.pending.item(at, itemId) : null;
   if (said) rt.patchItem(at, said.id, { hop: said.hop ?? hop, wakes: [...(said.wakes ?? (said.hop ? [said.hop] : [])), hop] });
   const it =
     said ??

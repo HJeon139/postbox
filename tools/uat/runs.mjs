@@ -182,6 +182,7 @@ export function readRun(dir, { scenarios } = {}) {
     dir,
     run: basename(dir),
     scenario: name,
+    title: saved.title ?? null,
     kind: kind ?? 'exploratory',
     branch: saved.branch ?? null,
     commit: saved.commit ?? null,
@@ -191,6 +192,11 @@ export function readRun(dir, { scenarios } = {}) {
     },
     testerModel: saved.testerModel ?? null,
     steps: saved.steps ?? rep.steps ?? (Array.isArray(findings.timeline) ? findings.timeline.length : 0),
+    // What the run played (--phases, --phase, its step cap): a recheck checks only those, and rewrites run.json from
+    // this record, so a field left out here would be lost from the run too.
+    stepCap: saved.stepCap ?? null,
+    startPhase: saved.startPhase ?? null,
+    phases: saved.phases ?? null,
     minutes: saved.minutes ?? rep.minutes ?? null,
     cost: { agents: agentsUsd, tester: testerUsd, kiroCredits: saved.cost?.kiroCredits ?? rep.kiroCredits ?? null },
     coverage: saved.coverage ?? findings.coverage ?? null,

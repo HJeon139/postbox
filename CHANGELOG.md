@@ -2,6 +2,35 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.20.4 (2026-11-05)
+
+### Fixes
+
+- **state:** read items by id through the index on the server and in the page
+- **state:** find an item by id through one index kept outside the state
+
+## 1.20.3 (2026-11-05)
+
+### Fixes
+
+- **tools:** the diff parser fails a hunk with no file, and both tools ask git for one diff shape
+- **tools:** the commit scan runs through a folder reached by a symlink
+- **tests:** the commit scan checks the privacy checker's own files like any other
+- **tests:** the commit scan refuses git older than 2.36, naming both versions
+- **tests:** scan merges, commit messages and -diff files, whatever git config says
+
+## 1.20.2 (2026-11-05)
+
+### Fixes
+
+- **uat:** a recheck reads the phases a run played, and keeps them in run.json
+
+## 1.20.1 (2026-11-05)
+
+### Fixes
+
+- **store:** newId always returns 8 letters or digits
+
 ## 1.20.0 (2026-11-04)
 
 ### Features

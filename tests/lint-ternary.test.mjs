@@ -1,60 +1,10 @@
-// The pure parts of tools/lint-ternary.mjs (#685): the lines a diff adds, the nested ternaries in Biome’s report,
-// which of them sit on an added line, and which files have more than at the base. Its runs against real git and Biome are in tests/process/lint-ternary.test.mjs.
+// The pure parts of tools/lint-ternary.mjs (#685): the nested ternaries in Biome’s report, which of them sit on an added
+// line, and which files have more than at the base. The lines a diff adds are read by tools/diff-added-lines.mjs, tested
+// in tests/diff-added-lines.test.mjs. Its runs against real git and Biome are in tests/process/lint-ternary.test.mjs.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addedRanges, changedFiles, countByPath, nestedTernaries, newHits, overlapsAdded, risenCounts } from '../tools/lint-ternary.mjs';
-
-test('lint-ternary: a hunk’s added lines come from its +start,count header, with a missing count meaning one', () => {
-  const diff = `diff --git a/x.mjs b/x.mjs
---- a/x.mjs
-+++ b/x.mjs
-@@ -3 +3 @@ x
--old
-+new
-@@ -9,0 +10,3 @@
-+a
-+b
-+c
-`;
-  assert.deepEqual(
-    addedRanges(diff),
-    new Map([
-      [
-        'x.mjs',
-        [
-          { start: 3, end: 3 },
-          { start: 10, end: 12 },
-        ],
-      ],
-    ]),
-  );
-});
-
-test('lint-ternary: a hunk that only removes lines adds none, and a file with no added lines is left out', () => {
-  const diff = ['--- a/x.mjs', '+++ b/x.mjs', '@@ -4,2 +3,0 @@', '-gone', '-gone too', ''].join('\n');
-  assert.deepEqual(addedRanges(diff), new Map());
-});
-
-test('lint-ternary: a path with a space loses the tab git appends, and a quoted one is unquoted', () => {
-  const diff = `--- /dev/null
-+++ b/dir é/a b.mjs\t
-@@ -0,0 +1 @@
-+x
---- a/q.mjs
-+++ "b/q\\"t\\303\\251.mjs"
-@@ -1 +1,2 @@
--was
-+y
-+z
-`;
-  assert.deepEqual([...addedRanges(diff).keys()], ['dir é/a b.mjs', 'q"té.mjs']);
-});
-
-test('lint-ternary: a +++ line that names no new file fails, rather than dropping that file’s lines', () => {
-  const diff = ['--- a/gone.mjs', '+++ /dev/null', '@@ -1 +0,0 @@', '-x', ''].join('\n');
-  assert.throws(() => addedRanges(diff), /\+\+\+ \/dev\/null/);
-});
+import { changedFiles, changedRanges, countByPath, nestedTernaries, newHits, overlapsAdded, risenCounts } from '../tools/lint-ternary.mjs';
 
 test('lint-ternary: a hit counts when any line of its span is an added line, and not when it only borders one', () => {
   const added = [
@@ -98,33 +48,6 @@ test('lint-ternary: only hits on an added line of their own file are new', () =>
   assert.deepEqual(newHits(hits, added), [{ path: 'a.mjs', start: 4, end: 4 }]);
 });
 
-test('lint-ternary: a removed line that reads “-- a/…” and an added one that reads “++ b/…” stay in their hunk', () => {
-  // With -U0 they show as “--- a/other.mjs” and “+++ b/other.mjs”, which a parser that doesn’t count a hunk’s lines
-  // takes for a new file’s header, moving the rest of x.mjs’s hunks to other.mjs.
-  const diff = ['--- a/x.mjs', '+++ b/x.mjs', '@@ -2 +2 @@', '--- a/other.mjs', '+++ b/other.mjs', '@@ -24,0 +24 @@', '+late', ''].join('\n');
-  assert.deepEqual(
-    addedRanges(diff),
-    new Map([
-      [
-        'x.mjs',
-        [
-          { start: 2, end: 2 },
-          { start: 24, end: 24 },
-        ],
-      ],
-    ]),
-  );
-});
-
-test('lint-ternary: a hunk that says it has more lines than the diff holds fails, rather than reading on', () => {
-  const diff = ['--- a/x.mjs', '+++ b/x.mjs', '@@ -1 +1,2 @@', '+only one', ''].join('\n');
-  assert.throws(() => addedRanges(diff), /ends inside a hunk/);
-});
-
-test('lint-ternary: a diff cut off inside a hunk that only removes lines fails, rather than passing as no added lines', () => {
-  assert.throws(() => addedRanges('--- a/x.mjs\n+++ b/x.mjs\n@@ -1,3 +0,0 @@\n-x'), /ends inside a hunk/);
-});
-
 test('lint-ternary: git’s -z name-status gives each file’s path now and at the base, with none for an added one', () => {
   const listed = ['M', 'a b.mjs', 'A', 'new.mjs', 'R087', 'old.mjs', 'moved/new.mjs', ''].join('\0');
   assert.deepEqual(changedFiles(listed), [
@@ -138,4 +61,8 @@ test('lint-ternary: a file fails when it has more hits than at the base, where a
   const before = countByPath([{ path: 'same.mjs' }, { path: 'same.mjs' }, { path: 'fewer.mjs' }]);
   const after = countByPath([{ path: 'same.mjs' }, { path: 'same.mjs' }, { path: 'more.mjs' }]);
   assert.deepEqual(risenCounts(['same.mjs', 'fewer.mjs', 'more.mjs'], before, after), [{ path: 'more.mjs', before: 0, after: 1 }]);
+});
+
+test('lint-ternary: a diff the shared parser can’t read fails under lint-ternary’s name', () => {
+  assert.throws(() => changedRanges('--- a/x.mjs\n+++ x.mjs\n'), /^Error: lint-ternary: can’t read git’s diff at line 2: the new file’s name has no “b\/”$/);
 });
