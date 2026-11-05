@@ -61,6 +61,11 @@ export const HOST_OPTIONS = {
 
 /** The trigger a phase played with an older Postbox staged names, and only such a phase. */
 export const STAGED_TRIGGER = 'host-staged-older';
+/** The trigger of the phase that removes Postbox from host1 by hand and expects it back (remotehosts.md, #464-b3). */
+export const REINSTALL_TRIGGER = 'host-reinstalled';
+
+/** Whether any phase of the scenario names this trigger. @param {any} scenario @param {string} trigger */
+const playsTrigger = (scenario, trigger) => scenario.phases.some((p) => (p.triggers ?? []).includes(trigger));
 
 /**
  * The older Postbox --stage-host-version stages, or null without it: a release tag of this checkout’s, whose package
@@ -219,6 +224,8 @@ export function hostMode(opt, name, scenario, repo = NO_TAGS) {
   const refused = refusal(name, scenario) ?? stageRefusal(scenario, Boolean(stage));
   if (refused) throw new Error(refused);
   if (stage) Object.assign(hosts[0], { stage });
+  // A phase that removes Postbox from host1 by hand (#464-b3) needs host1’s consent to put it back by itself.
+  if (playsTrigger(scenario, REINSTALL_TRIGGER)) Object.assign(hosts[0], { keepUpdated: true });
   const placement = placementOf(scenario, opt.place ?? [], hosts.length);
   return { hosts, placement, scenario: forHosts(scenario, placement, hosts) };
 }

@@ -17,8 +17,9 @@ import { stageOlder, tagRepo } from './hosts-stage.mjs';
 
 /**
  * @typedef {{ label: string, destination: string, settings: Record<string, any>, id: string|null, home: string|null,
- *   made: { parent: boolean } | null, stage?: { tag: string, version: string } }} RunHost  made: the run made its
- *   folder there (and ~/postbox-uat too, if parent); stage: the older Postbox staged there (tools/uat/hosts-stage.mjs)
+ *   made: { parent: boolean } | null, stage?: { tag: string, version: string }, keepUpdated?: boolean }} RunHost  made:
+ *   the run made its folder there (and ~/postbox-uat too, if parent); stage: the older Postbox staged there
+ *   (tools/uat/hosts-stage.mjs); keepUpdated: its consent turned on after the install (consentOn)
  * @typedef {{ hosts: RunHost[], placement: Record<string, string>, launcher: string|null, root: string, stamp: string,
  *   log: (line: string) => void, record: any, postbox: any, kit: any, api: (p: string) => Promise<any>, samples: Map<string, any>,
  *   trees: Map<string, Map<string, import('./hosts-ssh.mjs').HostProc>>, cleaning?: Promise<void>, ending?: Promise<void>,
@@ -191,6 +192,18 @@ async function stageOn(hr, h, ui) {
 }
 
 /**
+ * #464-b3: turns the host’s consent to keep Postbox up to date on through the page’s own request, as its toggle in
+ * Settings › Hosts does, for a phase that removes Postbox there (remotehosts.md phase 5, hostMode).
+ * @param {HostRun} hr @param {RunHost} h @param {typeof SETUP} ui
+ */
+async function consentOn(hr, h, ui) {
+  if (!(await ui.keepUpdated(hr.kit, /** @type {string} */ (h.id))))
+    throw new Error(`${h.label}’s consent to keep Postbox up to date wasn’t kept: the page’s request to turn it on failed. See run.log.`);
+  hr.log(`${h.label}: its consent to keep Postbox up to date is on.`);
+  return { consent: true };
+}
+
+/**
  * Sets one host up through the UI, and records what it showed. It connects with its first turn: an installed host
  * that nothing needs offers no Connect, and the manager connects only for a turn or a prompt (afterStep fails the
  * run with the host’s own message if it doesn’t). A host with an older Postbox to stage gets that instead of Install.
@@ -206,6 +219,7 @@ export async function setUpHost(hr, h, projectId, o = {}) {
   const shown = h.stage ? await stageOn(hr, h, ui) : await ui.install(hr.kit, h.id);
   if (!h.stage)
     hr.log(`${h.label}: ${shown.installOffered ? 'Install…' : 'no Install… on its card, so the runner opened the confirm'}; it said: ${shown.confirm}`);
+  if (h.keepUpdated) Object.assign(shown, await consentOn(hr, h, ui));
   const placed = Object.values(hr.placement).includes(h.label);
   const launcher = hr.launcher && placed ? await putLauncher(hr, h) : null;
   hr.record.setup.push({ label: h.label, ...shown, launcher, card: shown.card });
