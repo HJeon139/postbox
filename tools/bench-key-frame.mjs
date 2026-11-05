@@ -8,7 +8,7 @@
 //
 // Each size gets a fresh Postbox on a free port and a temp data folder of its own, on mock agents, removed after,
 // on Ctrl-C and SIGTERM too.
-// Each run reloads the room, clicks the composer, waits for the page to hold still, and types --warmup keys and then
+// Each run opens the room in a new document, clicks the composer, waits for the page to hold still, and types --warmup keys and then
 // --keys keys, one every --interval ms (tools/key-frame-measure.mjs). The report (tools/key-frame-report.mjs) pools
 // every run’s keys for each size.
 
@@ -105,6 +105,16 @@ export function commandLine(o, root) {
   return ['node tools/bench-key-frame.mjs', ...args, `--out ${shownPath(o.out, root)}`].join(' ');
 }
 
+/**
+ * Opens url in a document of its own. Going to the same URL again changes only its hash, which keeps the document and
+ * an earlier run’s listener and observer in it, so the page goes to about:blank first.
+ * @param {{ goto: (url: string) => Promise<void> }} page  @param {string} url
+ */
+export async function openFresh(page, url) {
+  await page.goto('about:blank');
+  await page.goto(url);
+}
+
 /** The room as the page would have started it: a project, its three agents, and a room with their sessions. */
 async function startRoom(data) {
   const store = await new Store(data).load();
@@ -133,7 +143,7 @@ export async function measureSize(page, items, o, log, { start = startPostbox, p
       },
     });
     for (let run = 1; run <= o.runs; run++) {
-      await page.goto(`${postbox.origin}/#/t/${THREAD}`);
+      await openFresh(page, `${postbox.origin}/#/t/${THREAD}`);
       const r = await measureKeys(page, { keys: o.keys, warmup: o.warmup, intervalMs: o.intervalMs });
       pooled.eventTiming.push(...r.eventTiming);
       pooled.nextFrame.push(...r.nextFrame);

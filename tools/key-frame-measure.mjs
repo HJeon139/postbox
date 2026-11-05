@@ -23,6 +23,8 @@ const TEXT = 'the release train leaves on time and the changelog says what shipp
 
 /** Starts recording in the page: each composer keydown’s time and next frame, and its Event Timing entries. */
 function record(threshold) {
+  // An earlier run’s listener and observer would still be recording into this document, so its keys would count twice.
+  if ('__keyFrame' in window) throw new Error('This document is already recording: open the room afresh for each run.');
   const rec = { keys: [], frames: [], entries: [] };
   /** @type {any} */ (window).__keyFrame = rec;
   const composer = () => document.getElementById('composer-input');
@@ -108,6 +110,10 @@ export async function measureKeys(page, { keys = 200, warmup = 20, intervalMs = 
   await sleep(500);
   const rec = await page.evaluate('window.__keyFrame');
   if (rec.keys.length !== total) throw new Error(`The composer heard ${rec.keys.length} of ${total} keys; is it focused?`);
+  // A key the page stops from typing draws nothing, so it would read as a fast one.
+  const typed = Array.from({ length: total }, (_, i) => TEXT[i % TEXT.length]).join('');
+  const draft = await page.evaluate(`document.getElementById('composer-input').value`);
+  if (draft !== typed) throw new Error(`The composer holds ${String(draft ?? '').length} of the ${total} characters typed.`);
   const measured = rec.keys.slice(warmup);
   const { values, below } = keyDurations(measured, rec.entries, threshold);
   return { eventTiming: values, nextFrame: rec.frames.slice(warmup), below };
