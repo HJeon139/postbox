@@ -3,17 +3,17 @@
 // still asks, and Ask me and Accept edits are unchanged.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, symlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { publicFetch, words } from '../server/adapters/agy-auto.mjs';
 import { decideAgyTool, runAgyHook } from '../server/adapters/agy-hook.mjs';
 import { agyArgs, modeArgs } from '../server/adapters/antigravity-cli.mjs';
 import { modeHelp, PERMISSIONS } from '../shared/agent-facts.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 function workspace() {
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-auto-'));
+  const root = tempDir('pb-agy-auto-');
   const ws = join(root, 'ws');
   const home = join(root, 'home');
   mkdirSync(join(ws, 'src'), { recursive: true });

@@ -2,8 +2,7 @@
 // permission_prompt over MCP, and fail-closed output under every error path.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, symlinkSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -13,11 +12,12 @@ import { handleMcp } from '../server/mcp.mjs';
 import { expireWait } from '../server/permission-cards.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 test('#370 condition 3: self-edit protection denies writes and edits to .agents/plugins, agy-hook.mjs and ~/.gemini/antigravity-cli', () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-prot-'));
+  const root = tempDir('pb-agy-prot-');
   const ws = join(root, 'ws');
   const home = join(root, 'home');
   mkdirSync(join(ws, '.agents', 'plugins', 'postbox'), { recursive: true });
@@ -48,7 +48,7 @@ test('#370 condition 3: self-edit protection denies writes and edits to .agents/
 });
 
 test('#370 conditions 2 & 3: decideAgyTool classifies file, command, web, MCP and subagent tools across ask, auto and acceptEdits', () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-decide-'));
+  const root = tempDir('pb-agy-decide-');
   const ws = join(root, 'ws');
   const out = join(root, 'outside');
   const home = join(root, 'home');
@@ -106,7 +106,7 @@ test('#370 conditions 2 & 3: decideAgyTool classifies file, command, web, MCP an
 });
 
 function setupHookRuntime() {
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-rpc-'));
+  const root = tempDir('pb-agy-rpc-');
   const store = new Store(null);
   const adapter = {
     name: 'antigravity-cli',
@@ -212,7 +212,7 @@ test('#370 condition 4: disconnecting permission_prompt expires only that reques
 });
 
 test('#370 condition 2: runAgyHook fails closed to deny on every error path and never outputs ask, force_ask or empty stdout', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-fail-'));
+  const root = tempDir('pb-agy-fail-');
   const env = { POSTBOX_MCP_URL: 'http://127.0.0.1:1/mcp', POSTBOX_AGY_MODE: 'auto', POSTBOX_AGY_FOLDERS: JSON.stringify([root]) };
   const cmdEvent = JSON.stringify({ toolCall: { name: 'run_command', args: { CommandLine: 'ls /' } } });
   const rpcReply = (id, text) => ({ ok: true, status: 200, json: async () => ({ jsonrpc: '2.0', id, result: { content: [{ text }] } }) });
@@ -281,7 +281,7 @@ test('#370 condition 4: mcpPost uses node:http with HOOK_TIMEOUT_S instead of un
       },
     };
   };
-  const root = mkdtempSync(join(tmpdir(), 'pb-agy-http-'));
+  const root = tempDir('pb-agy-http-');
   const env = { POSTBOX_MCP_URL: 'http://127.0.0.1:1/mcp', POSTBOX_AGY_MODE: 'auto', POSTBOX_AGY_FOLDERS: JSON.stringify([root]) };
   const out = await runAgyHook(JSON.stringify({ toolCall: { name: 'run_command', args: { CommandLine: 'ls /' } } }), {
     cwd: root,
