@@ -1,9 +1,8 @@
-// One session event costs the same in a long room as in a short one (#564-b1). Each one ran three queries over the
-// whole document: the rail's for its rings (shell.mjs), the open asks' for their buttons (open-asks.mjs), and the
-// reply rings' for every transcript (reply-rings.mjs). With 10,000 items on the page a session event cost 8.8 ms,
-// against 1.3 ms at 1,000. Each now looks only in its own containers. The page counts the queries over the whole
-// document while session events arrive, and the rail's rings, the strip's, the open-asks button and the speaker
-// lines still follow the session.
+// A session event runs no query over the whole document (#564-b1). Each one ran three: the rail's for its rings
+// (shell.mjs), the open asks' for their buttons (open-asks.mjs), and the reply rings' for every transcript
+// (reply-rings.mjs), so its cost grew with the page. Each now looks only at what it kept. The page counts the
+// querySelector and querySelectorAll calls on the document while session events arrive, and the rail's rings, the
+// strip's, the open-asks button and the speaker lines still follow the session (session-event-follow.spec.mjs too).
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
