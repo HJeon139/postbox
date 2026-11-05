@@ -58,3 +58,19 @@ test('#464-b2b: the person’s Install… leaves another version’s try in the 
     t.done();
   }
 });
+
+test('#464-b2b: the person’s Install… leaves this version’s try as it was once it installed, reinstalled or found it there', async () => {
+  for (const outcome of ['installed', 'reinstalled', 'present']) {
+    const t = rig();
+    try {
+      const tried = [{ version: VERSION, at: 1, outcome }];
+      writeRecord(t.dataDir, { keepUpdated: true, installs: tried });
+      t.attach = 'daemon';
+      await t.mgr.install('h1');
+      await settle();
+      assert.deepEqual(readRecord(t.dataDir).installs, tried, `a ${outcome} try stays ${outcome}`);
+    } finally {
+      t.done();
+    }
+  }
+});
