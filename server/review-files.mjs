@@ -28,7 +28,7 @@ export function keptRef(path) {
  * the revision’s total. read(path, max, what) gives a file’s bytes: the agent’s folder here, or a host’s base64.
  * @param {any} rt  the Runtime @param {unknown} wanted  [{ name?, path }]
  * @param {(f: any, max: number, what: string) => Promise<Buffer>} read
- * @returns {Promise<ReviewFile[]>}
+ * @returns {Promise<{ files: ReviewFile[], settle: (keep: boolean) => Promise<void> }>}
  */
 export async function storeReviewFiles(rt, wanted, read) {
   if (!Array.isArray(wanted)) throw new AgentFileError('files is a list: [{ name?, path }].');
@@ -50,11 +50,15 @@ export async function storeReviewFiles(rt, wanted, read) {
   }
   /** @type {ReviewFile[]} */
   const stored = [];
+  // Staged: the call that carries them settles them once it’s known whether the block was shown (keptIfShown).
+  /** @type {{ sha256: string, fresh: boolean }[]} */
+  const puts = [];
   for (const { name, path, buf, info } of checked) {
-    const { sha256, size } = await rt.blobs.put(buf);
+    const { sha256, size, fresh } = await rt.blobs.put(buf, { staged: true });
+    puts.push({ sha256, fresh });
     stored.push({ name, ref: keptRef(path), sha256, size, ...info });
   }
-  return stored;
+  return { files: stored, settle: (keep) => rt.blobs.settle(puts, keep) };
 }
 
 /** An image’s type and size by its bytes (imageInfo), refused in the agent’s words with its name. @param {string} name @param {Buffer} buf */
@@ -79,14 +83,33 @@ const fromFolders = (rt, sessionId) => (f, max, what) => rt.agentFile(sessionId,
  * for a remote turn (server/remote/turns-tools.mjs), which only that path passes.
  * @param {any} rt @param {string} sessionId @param {string} name  the tool @param {any} args
  * @param {(f: any, max: number, what: string) => Promise<Buffer>} [read]
- * @returns {Promise<{ args: any, files?: ReviewFile[] }>}
+ * @returns {Promise<{ args: any, files?: ReviewFile[], settle?: (keep: boolean) => Promise<void> }>}
  */
 export async function blockFiles(rt, sessionId, name, args, read = fromFolders(rt, sessionId)) {
   const block = args?.block;
   if ((name !== 'show_block' && name !== 'update_block') || !block || typeof block !== 'object' || block.files === undefined) return { args };
   if (block.type !== 'review') throw new AgentFileError('Only a review block carries files: images its Markdown shows. Send this block without files.');
   const { files: wanted, ...rest } = block;
-  return { args: { ...args, block: rest }, files: await storeReviewFiles(rt, wanted, read) };
+  const { files, settle } = await storeReviewFiles(rt, wanted, read);
+  return { args: { ...args, block: rest }, files, settle };
+}
+
+/**
+ * Runs the tool a call’s review images go with, and settles them (#780): kept when it showed or updated the block,
+ * removed from the blob store when it refused or threw, so a refused call leaves no blob behind. ok: false always
+ * means the files weren’t kept: an invalid show_block’s item carries none (server/block-show.mjs).
+ * @param {{ args: any, settle?: (keep: boolean) => Promise<void> }} app  what blockFiles gave, or an app’s files (no settle) @param {() => any} call
+ */
+export async function keptIfShown(app, call) {
+  let r;
+  try {
+    r = await call();
+  } catch (e) {
+    await app.settle?.(false);
+    throw e;
+  }
+  await app.settle?.(r?.ok !== false);
+  return r;
 }
 
 /**

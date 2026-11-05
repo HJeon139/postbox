@@ -23,7 +23,7 @@ import { noteAnswer } from './empty-reply.mjs';
 import { sameToken } from './helpers.mjs';
 import { asksByPrompt, NOT_YOUR_PROMPT, permission } from './permission-prompt.mjs';
 import { reactTool } from './reactions.mjs';
-import { blockFiles } from './review-files.mjs';
+import { blockFiles, keptIfShown } from './review-files.mjs';
 import { AgentFileError } from './runtime.mjs';
 import { recordedTools } from './scheduled-wakes.mjs';
 import { withUrgent } from './subagent-end.mjs';
@@ -92,7 +92,7 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
       try {
         // An app’s files (#54) and a review’s images (#780) may come from the agent’s folder, which Postbox reads itself.
         const app = name === 'show_app' || name === 'update_app' ? await rt.appFiles(sessionId, args) : await blockFiles(rt, sessionId, name, args);
-        const r = await tools[name](app.args, app.files ? { files: app.files } : {});
+        const r = await keptIfShown(app, () => tools[name](app.args, app.files ? { files: app.files } : {}));
         noteAnswer(rt.turns.get(sessionId) ?? null, name, r);
         // An urgent note for the agent comes first (#229): this is how it hears one mid-turn.
         const text = withUrgent(rt, sessionId, r.results ? JSON.stringify(r.results) : r.message, turn);

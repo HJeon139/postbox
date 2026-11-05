@@ -10,7 +10,7 @@ import { AgentFileError } from '../agent-files.mjs';
 import { assetTools } from '../asset-tools.mjs';
 import { noteAnswer } from '../empty-reply.mjs';
 import { reactTool } from '../reactions.mjs';
-import { blockFiles } from '../review-files.mjs';
+import { blockFiles, keptIfShown } from '../review-files.mjs';
 import { recordedTools } from '../scheduled-wakes.mjs';
 import { withUrgent } from '../subagent-end.mjs';
 import { closedTo, READ_TOOLS } from '../tool-gate.mjs';
@@ -92,7 +92,7 @@ async function applyTool(rts, live, m) {
     // show_app’s and update_app’s files, and a review block’s (#780), were read on the host (the broker), and come as base64.
     const app =
       m.name === 'show_app' || m.name === 'update_app' ? await appFiles(rts, m.args) : await blockFiles(rts.rt, live.sessionId, m.name, m.args, hostFile);
-    const r = await tools[m.name](app.args, app.files ? { files: app.files } : {});
+    const r = await keptIfShown(app, () => tools[m.name](app.args, app.files ? { files: app.files } : {}));
     noteAnswer(live.rt, m.name, r);
     return { ok: !(r.ok === false && !r.waiting), text: r.results ? JSON.stringify(r.results) : String(r.message ?? '') };
   } catch (e) {
