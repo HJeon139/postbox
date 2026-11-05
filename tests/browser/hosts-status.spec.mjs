@@ -157,6 +157,8 @@ async function removeWaitsForInstall(page) {
     state: 'not-installed',
     update: { version: '0.10.0', at: 1, outcome: 'started', error: 'Postbox stopped during its install of 0.10.0 here.' },
   });
+  // The page as it loads with that status: a click straight after the server’s change could still read the old one.
+  await openHosts(page, app);
   await card(page, NAME)
     .getByRole('button', { name: `Remove ${NAME}` })
     .click();
