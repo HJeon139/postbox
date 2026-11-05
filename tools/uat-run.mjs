@@ -45,7 +45,7 @@ import { createHostRun, followStatuses, startHosts } from './uat/hosts-run.mjs';
 import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
 import { portFree, startPostbox } from './uat/postbox.mjs';
-import { newProbes } from './uat/probes.mjs';
+import { newProbes, recordInput } from './uat/probes.mjs';
 import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
@@ -196,7 +196,7 @@ async function main() {
     await page.goto(`${origin}/`);
     const state0 = (await api('/api/state')).state;
     facts.startPersonas = Object.values(state0.personas).filter((p) => !p.retired);
-    const d = driver(page, { beforeStop: () => beforeStop(hr) });
+    const d = driver(page, { beforeStop: () => beforeStop(hr), input: recordInput(facts.probes, () => timeline.length, log) });
     await d.newProject(scenario.project, paths.workspace);
     if (hr) await startHosts(hr, { postbox, api, kit: d.kit, dir, project: scenario.project });
     const hash = await d.newConversation(scenario.project, scenario.conversation, scenario.agents);
@@ -205,7 +205,7 @@ async function main() {
     log(`Conversation ${mainThread} started with @${scenario.agents.join(', @')}.`);
     // `- seed: big-room` (#508): the conversation fills with about 1,000 generated items before the tester arrives.
     if (scenario.seed === 'big-room') scenario.summary += `\n\n${await openBigRoom({ postbox, data: paths.data, threadId: mainThread, scenario, page, log })}`;
-    const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log });
+    const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log, input: d.input });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
     budget.track({ streams: streamResults(paths.streams), tester, log });
@@ -251,7 +251,7 @@ async function main() {
       return `Answered ${it.item}${now?.revision ? ` (at revision ${now.revision} when you answered)` : ''} while the agent worked.`;
     };
     // What the tester breaks on purpose in a host run (tools/uat/hosts-watch.mjs).
-    const hostFault = (spec) => (hr ? fault(hr, spec, page) : localRestart({ postbox, page, log }, spec));
+    const hostFault = (spec) => (hr ? fault(hr, spec, page, d.input) : localRestart({ postbox, page, log, input: d.input }, spec));
     let lastAction = null;
     let actionError = null;
     let actionResult = null; // what an action measured, when it worked

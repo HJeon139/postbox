@@ -7,6 +7,9 @@
 // - jumps: where going to what an agent needs landed (#285, tools/uat/driver-needs.mjs)
 // - diagrams, once the conversation has one: which diagram frames had loaded, and which were in view (#701,
 //   tools/uat/diagram-probe.mjs); a run with none has no such probe, so its trigger can’t tell
+// - inputs: every input the run made that can move the person’s view, by step (#531): the tester’s scroll, and the
+//   runner’s clicks, which scroll what they click into view; and, as the runner’s (cause: 'runner'), a shot that didn’t
+//   leave the view as it was (tools/uat/driver-shots.mjs, keepView). A run saved before these were recorded has none.
 
 export const newProbes = () => ({
   fullScreen: [],
@@ -19,4 +22,15 @@ export const newProbes = () => ({
   drafts: [],
   jumps: [],
   conversation: [],
+  inputs: [],
 });
+
+/**
+ * Records an input into probes.inputs, stamped with the step it’s in and when; a shot that moved the person’s view is
+ * logged too.
+ * @param {{ inputs: any[] }} probes  @param {() => number} stepNow  @param {(line: string) => void} log
+ */
+export const recordInput = (probes, stepNow, log) => (/** @type {any} */ entry) => {
+  probes.inputs.push({ step: stepNow(), at: Date.now(), ...entry });
+  if (entry.cause === 'runner') log(`the runner moved the ${entry.where} view: ${JSON.stringify(entry.before)} → ${JSON.stringify(entry.after)}`);
+};

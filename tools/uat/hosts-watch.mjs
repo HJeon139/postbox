@@ -244,9 +244,10 @@ function killSsh(hr, h) {
 /**
  * Does one fault, and records what Postbox showed after. Returns what to tell the tester.
  * @param {HostRun} hr @param {{ fault: string, target?: string }} spec @param {{ reload: () => Promise<void> }} page
+ * @param {(e: any) => void} [input]  hears a reload before it moves the view (facts.probes.inputs, #531)
  */
-export async function fault(hr, { fault: kind, target }, page) {
-  if (kind === 'restart-postbox') return restart(hr, page);
+export async function fault(hr, { fault: kind, target }, page, input = () => {}) {
+  if (kind === 'restart-postbox') return restart(hr, page, input);
   const h = hr.hosts.find((x) => x.label === target);
   if (!h) throw new Error(`${kind} needs a target: ${hr.hosts.map((x) => x.label).join(' or ')}.`);
   const at = Date.now();
@@ -271,12 +272,16 @@ export async function fault(hr, { fault: kind, target }, page) {
   return `Killed ${what}. ${shown}`;
 }
 
-/** Stops Postbox and starts it on the same data, reloads the page, and follows each host that was connected. */
-async function restart(hr, page) {
+/**
+ * Stops Postbox and starts it on the same data, reloads the page, and follows each host that was connected. A reload
+ * brings a reading view back following, so `input` hears it first (facts.probes.inputs, #531).
+ */
+async function restart(hr, page, input) {
   const at = Date.now();
   const before = (await hr.api('/api/state')).state?.hostStatus ?? {};
   const was = hr.hosts.filter((h) => before[/** @type {string} */ (h.id)]?.state === 'connected');
   const downMs = await hr.postbox.restart();
+  input({ kind: 'reload' });
   await page.reload();
   const results = [];
   for (const h of was) results.push([h, await recovery(hr, h, Date.now())]);

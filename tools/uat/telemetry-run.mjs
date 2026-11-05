@@ -64,10 +64,11 @@ export function seedCanaries(workspace, dir) {
 /**
  * The page’s telemetry driver and what the run keeps of what it showed; and, unless the scenario records itself,
  * Record this room from the ⋯ menu before step 1 (U4).
- * @param {any} page @param {{ scenario: any, opt: any, log: (l: string) => void }} o
+ * @param {any} page @param {{ scenario: any, opt: any, log: (l: string) => void, input?: (e: any) => void }} o  input:
+ *   hears each click before it moves the view (facts.probes.inputs)
  */
-export async function startTelemetry(page, { scenario, opt, log }) {
-  const td = telemetryDriver(page);
+export async function startTelemetry(page, { scenario, opt, log, input }) {
+  const td = telemetryDriver(page, { input });
   const tel = { flags: [], shown: { views: [], saved: [], issues: [], copied: [], opened: [] } };
   if (runnerRecords(scenario, opt)) await td.menu('Record this room').then(() => log('Telemetry: recording this room.'));
   return { td, tel };

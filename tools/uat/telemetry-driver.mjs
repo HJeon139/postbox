@@ -6,11 +6,15 @@
 
 import { js, sleep } from '../browser.mjs';
 
-/** The page’s helpers: evaluate, click what an expression finds, find by text, and wait for an expression. */
-function helpers(page) {
+/**
+ * The page’s helpers: evaluate, click what an expression finds, find by text, and wait for an expression.
+ * @param {any} page  @param {(e: any) => void} input
+ */
+function helpers(page, input) {
   const ev = (expr) => page.evaluate(expr);
-  /** Clicks the first visible element the expression finds, or says what it couldn’t find. */
+  /** Clicks the first visible element the expression finds, or says what it couldn’t find; recorded first, as it scrolls. */
   const click = async (findExpr, what) => {
+    input({ kind: 'runner-click' });
     const ok = await ev(`(() => { const el = ${findExpr}; if (!el) return false; el.scrollIntoView({ block: 'center' }); el.click(); return true; })()`);
     if (!ok) throw new Error(`Couldn’t find ${what} on screen.`);
     await sleep(300);
@@ -111,9 +115,13 @@ function viewActions({ ev, click, byText, until }) {
   };
 }
 
-/** @param {any} page  from tools/browser.mjs launch() */
-export function telemetryDriver(page) {
-  const h = helpers(page);
+/**
+ * @param {any} page  from tools/browser.mjs launch()
+ * @param {{ input?: (e: any) => void }} [o]  input: hears each click before it scrolls what it clicks into view
+ *   (facts.probes.inputs, tools/uat/probes.mjs; #531)
+ */
+export function telemetryDriver(page, { input = () => {} } = {}) {
+  const h = helpers(page, input);
   const d = { ...roomActions(h), ...viewActions(h) };
   return d;
 }

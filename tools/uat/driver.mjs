@@ -7,6 +7,7 @@ import { writeFile } from 'node:fs/promises';
 import { js, sleep } from '../browser.mjs';
 import { targetScript } from './app-target.mjs';
 import { review } from './driver-review.mjs';
+import { keeper, shots } from './driver-shots.mjs';
 import { pressKey } from './keys.mjs';
 import { byText, ITEM } from './selectors.mjs';
 
@@ -22,18 +23,28 @@ const JOBS_BOX = (b) =>
 
 /**
  * @param {any} page  from tools/browser.mjs launch()
- * @param {{ beforeStop?: () => Promise<void> }} [hooks]  beforeStop: runs just before every press of Stop (a host-mode
- *   run looks at what runs under each turn on its hosts then, tools/uat/hosts-watch.mjs)
+ * @param {{ beforeStop?: () => Promise<void>, input?: (e: any) => void }} [hooks]  beforeStop: runs just before every
+ *   press of Stop (a host-mode run looks at what runs under each turn on its hosts then, tools/uat/hosts-watch.mjs);
+ *   input: hears each input the driver makes that can move the person’s view, before it does (facts.probes.inputs,
+ *   tools/uat/probes.mjs): a runner click, which scrolls what it clicks into view, and a shot or a read inside an app
+ *   that didn’t put the view back
  */
 export function driver(page, hooks = {}) {
   const ev = (expr) => page.evaluate(expr);
+  const runnerClick = () => hooks.input?.({ kind: 'runner-click' });
+  const keep = keeper(ev, hooks.input);
 
-  /** Clicks the centre of the first element that matches, after scrolling it into view. */
+  /**
+   * Clicks the centre of the first element that matches. As a person does, it scrolls only when it can’t reach that
+   * centre where it is, off screen or under the top bar or the composer, and then to the middle, clear of both (#531).
+   */
   async function clickAt(findExpr, what) {
+    runnerClick();
     const r = await ev(`(() => {
       const el = ${findExpr};
       if (!el) return null;
-      el.scrollIntoView({ block: 'center' });
+      const at = el.getBoundingClientRect();
+      if (!el.contains(document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2))) el.scrollIntoView({ block: 'center' });
       const b = el.getBoundingClientRect();
       return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
     })()`);
@@ -51,7 +62,10 @@ export function driver(page, hooks = {}) {
     await sleep(150);
   };
 
-  /** An agent app’s frame and where it sits on the page, so its content can be read and clicked. */
+  /**
+   * An agent app’s frame and where it sits on the page, so its content can be read and clicked. It scrolls: a click
+   * records itself first, and a read puts the view back after.
+   */
   async function appContext(key) {
     // Apps far off screen are unloaded: bring it into view, and give its frame a moment to load.
     await ev(`${ITEM(key)}?.scrollIntoView({ block: 'center' })`);
@@ -69,6 +83,8 @@ export function driver(page, hooks = {}) {
   const inApp = (ctx, expression) => ctx.frame.evaluate(expression).catch(() => undefined);
 
   return {
+    // What records the runner’s inputs, for its other drivers: telemetry’s clicks, and a reload.
+    input: (/** @type {any} */ e) => hooks.input?.(e),
     clickAt,
     press,
     // What tools/uat/driver-hosts.mjs drives the Hosts tab and a persona’s Runs on with (#120).
@@ -220,6 +236,7 @@ export function driver(page, hooks = {}) {
 
     /** Clicks something inside an agent app by its visible text, with a real mouse event. */
     async appClick(key, text) {
+      runnerClick();
       const ctx = await appContext(key);
       if (!ctx) throw new Error('Couldn’t reach inside that app.');
       await ev(`${ITEM(key)}.scrollIntoView({ block: 'center' })`);
@@ -238,20 +255,24 @@ export function driver(page, hooks = {}) {
       await sleep(400);
     },
 
-    /** What’s inside an app: its text, and the size of its SVG marks and text (for the legibility check). */
-    async appInside(key) {
-      const ctx = await appContext(key);
-      if (!ctx) return null;
-      return inApp(
-        ctx,
-        `(() => {
+    /**
+     * What’s inside an app: its text, and the size of its SVG marks and text (for the legibility check). The runner’s
+     * own read, so the view is put back after (R1, #531).
+     */
+    appInside: (key) =>
+      keep(async () => {
+        const ctx = await appContext(key);
+        if (!ctx) return null;
+        return inApp(
+          ctx,
+          `(() => {
           const marks = [...document.querySelectorAll('svg circle, svg rect, svg path, svg line, svg ellipse')].map((m) => { const b = m.getBoundingClientRect(); return Math.max(b.width, b.height); }).filter((s) => s > 0);
           const texts = [...document.querySelectorAll('svg text')].map((t) => parseFloat(getComputedStyle(t).fontSize) * (t.getScreenCTM?.()?.a ?? 1));
           const fonts = [...new Set([...document.querySelectorAll('body, body *')].slice(0, 400).map((e) => getComputedStyle(e).fontFamily))];
           return { text: document.body.innerText.slice(0, 2000), marks: marks.length, tinyMarks: marks.filter((s) => s < 4).length, svgText: texts.length, tinyText: texts.filter((s) => s < 9).length, fonts: fonts.slice(0, 6) };
         })()`,
-      );
-    },
+        );
+      }),
 
     /** Everything visible in the conversation (and the thread panel, if open), by item. */
     async items() {
@@ -283,31 +304,7 @@ export function driver(page, hooks = {}) {
     /** The working row: which agents it shows, and their glimpse. */
     working: () => ev(`[...document.querySelectorAll('.working .work-row')].map((r) => r.innerText.replace(/\\s+/g, ' ').trim())`),
 
-    /**
-     * What a person sees of an item: scrolled to just below the top bar, and only what fits in the window.
-     * (Capturing beyond the window paints the sticky top bar mid-item, and leaves sandboxed frames blank.)
-     */
-    async shotItem(key, file) {
-      const ok = await ev(
-        `(() => { const n = ${ITEM(key)}; if (!n) return false; n.scrollIntoView({ block: 'start' }); scrollBy(0, -((document.querySelector('header.topbar')?.offsetHeight ?? 0) + 8)); return true; })()`,
-      );
-      if (!ok) return null;
-      // Apps far off screen are unloaded; give them a moment to load again and draw. (The clip is in page
-      // coordinates, so the scroll offset is added below.)
-      await sleep((await ev(`!!${ITEM(key)}.querySelector('iframe')`)) ? 2500 : 300);
-      const r = await ev(
-        `(() => { const b = ${ITEM(key)}.getBoundingClientRect(); const top = Math.max(b.top - 6, 0); return { x: Math.max(0, b.left - 6) + scrollX, y: top + scrollY, width: Math.min(b.width + 12, innerWidth), height: Math.max(1, Math.min(b.bottom + 6, innerHeight) - top) }; })()`,
-      );
-      const { data } = await page.send('Page.captureScreenshot', { format: 'png', clip: { ...r, scale: 1 } });
-      await writeFile(file, Buffer.from(data, 'base64'));
-      return file;
-    },
-
-    async shotScreen(file) {
-      const { data } = await page.send('Page.captureScreenshot', { format: 'png' });
-      await writeFile(file, Buffer.from(data, 'base64'));
-      return file;
-    },
+    ...shots({ ev, page, sleep, input: hooks.input }),
 
     /** Presses an app’s Expand (full screen) button and reports whether anything visibly changed. */
     /**
