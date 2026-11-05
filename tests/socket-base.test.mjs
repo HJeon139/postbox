@@ -24,6 +24,12 @@ test('the limit is 104 bytes with the terminating NUL on macOS and 108 on Linux'
   assert.equal(socketBase('pbr-', longest, { env: env(108), platform: 'linux' }), '/tmp', '108 don’t');
 });
 
+test('on another platform the limit is macOS’s smaller one, so a path that fits only on Linux goes under /tmp', () => {
+  const at = (/** @type {number} */ bytes) => `/${'t'.repeat(bytes - 1 - '/pbr-XXXXXX/'.length - 59)}`;
+  assert.equal(socketBase('pbr-', longest, { env: { TMPDIR: at(103) }, platform: 'freebsd' }), at(103));
+  assert.equal(socketBase('pbr-', longest, { env: { TMPDIR: at(105) }, platform: 'freebsd' }), '/tmp');
+});
+
 test('a fixture’s folder goes under /tmp when TMPDIR is unset, empty or relative', () => {
   for (const TMPDIR of [undefined, '', 'tmp']) assert.equal(socketBase('pbr-', longest, { env: { TMPDIR }, platform: 'linux' }), '/tmp', String(TMPDIR));
 });
