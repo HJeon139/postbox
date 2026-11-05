@@ -280,8 +280,8 @@
       "includes": ["server/index.mjs"],
       "linter": {
         "rules": {
-          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 599 } } },
-          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 374 } } }
+          "style": { "noExcessiveLinesPerFile": { "level": "error", "options": { "maxLines": 590 } } },
+          "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 364 } } }
         }
       }
     },
