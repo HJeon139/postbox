@@ -389,7 +389,7 @@ Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.
 | `npm run test:coverage` | Runs the tests with coverage for `shared/`, `server/` and the lint rules |
 | `npm run release [-- --dry-run]` | Releases the next semantic version from the commits since the last tag: package.json, CHANGELOG.md, a release commit and a tag. CI runs it after each merge to main (`.github/workflows/release.yml`) |
 | `npm run lint:commits [range]` | Checks commit messages against Conventional Commits |
-| `npm run hooks` | Checks each commit message as you write it (`.githooks/commit-msg`) |
+| `npm run hooks` | Turns on the git hooks in `.githooks/`: `commit-msg` checks each commit message as you write it, and `pre-commit` runs `npm run lint:project` and stops a commit it fails (only the person skips them, with `git commit --no-verify`, in an emergency; an agent fixes the failure and commits again) |
 
 The demo’s screenshots go to `screenshots/latest/`, which git ignores, and aren’t committed. For the current ones, open the `screenshots` artifact of the latest `check` run on `main`, or run `node tools/shoot-app.mjs`.
 

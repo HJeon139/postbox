@@ -139,7 +139,7 @@ The root `AGENTS.md` carries these rules, short, for any agent working in the re
 - Never reformat code you didn’t change. (Wave 1 also never moved code between files. From wave 5, a move is how you make room: “Length limits”, above.)
 
 **Branches.**
-- Branch from `main` at the start, and stay based on it.
+- Branch from `main` at the start, and stay based on it. Run `npm run hooks` in your worktree before your first commit, so each commit runs the project lints (#508).
 - Don’t rebase onto another session’s branch.
 - One commit per issue, as a Conventional Commit (`feat(scope): …`, `fix(scope): …`, `type!: …` for a breaking change; see engineering-practices.md, “Commits and versions”), with `Fixes #n` on its own line, ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. CI releases each merge to main (`.github/workflows/release.yml`).
 
