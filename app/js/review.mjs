@@ -2,12 +2,13 @@
 // shares with the other renderers come in as kit: draft, seen, renderBlock, head, staleNote, submit, errLine and
 // outcomeLine.
 
-import { LIST_ITEM, renderMarkdown, toPlainText } from '/shared/markdown.mjs';
+import { renderMarkdown } from '/shared/markdown.mjs';
 import { diffLines, followLines, splitLines } from '/shared/review-diff.mjs';
 import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { enhanceMarkdown, mountApp } from './apps.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { newReviewDraft, startComment, stopComment } from './review-draft.mjs';
+import { inlineMd, itemWords, words } from './review-inline.mjs';
 import { focusQuote, renderPreview } from './review-preview.mjs';
 import { reviewersOf, threadBox as threadsFor } from './review-threads.mjs';
 import { fullScreen, revisionOf, seg, setView, viewOf } from './review-view.mjs';
@@ -200,9 +201,6 @@ export function renderReview(b, item, ctx, kit) {
     // change is visible; an unchanged one shows only its threads.
     const hiddenRows = (rs, depth) =>
       rs.map((r) => (r.kind === 'same' ? (r.n === undefined ? [] : threadBox(r.n)) : lineRow(rowUnit(r), depth, { raw: true })));
-    // Text to tell one list item from another: what renders, without Markdown or punctuation.
-    const words = (s) => s.replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
-    const itemWords = (u) => words(toPlainText(u.rows[0].t.replace(/^(\s*>)+/, '').match(LIST_ITEM)?.[3] ?? '')).slice(0, 12);
     // A table or list renders whole. Each row or item gets its own gutter, positioned in the gutter
     // column, and its threads right after it. If the rendered rows or items don't match the targets,
     // the block is drawn line by line, as before.
@@ -330,11 +328,4 @@ export function renderReview(b, item, ctx, kit) {
     if (note) box.lastElementChild?.before(note);
   }
   return node;
-}
-
-/** Bold, italic and code inside a review line, without block structure. A fold shows as its source. */
-function inlineMd(t) {
-  return renderMarkdown(t || ' ', { folds: false, pageOrigin: location.origin })
-    .replace(/^<p>|<\/p>$/g, '')
-    .replace(/^<h\d>|<\/h\d>$/g, '');
 }
