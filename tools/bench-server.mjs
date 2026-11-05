@@ -102,18 +102,35 @@ export async function writeLog(data, events = LOG_EVENTS) {
   await store.close();
 }
 
+/** The startup’s load: a Store of the folder, loaded. @param {string} dir */
+const loadStore = (dir) => new Store(dir).load();
+
 /**
  * One run of the in-process numbers: a snapshot pass, a streamed reply on a copy of the state, a load of the log.
- * snapshotPass is measureSnapshotPass(), or a test’s stand-in.
+ * snapshotPass is measureSnapshotPass(), or a test’s stand-in; openStore loads a Store, or a test’s stand-in.
  */
-async function inProcessRun(state, boot, scratch, chunks, snapshotPass) {
+async function inProcessRun(state, boot, scratch, chunks, snapshotPass, openStore) {
   const pass = await snapshotPass(state, scratch);
   const chunk = streamChunks(structuredClone(state), THREAD, chunks);
   const t0 = performance.now();
-  const store = await new Store(boot).load();
+  const store = await openStore(boot);
   const startup = performance.now() - t0;
+  // What the load did, read before close: the events it replayed after the snapshot, and the room it holds.
+  const replayed = store.sinceSnapshot;
+  const loadedItems = store.state.items[THREAD]?.length ?? 0;
   await store.close();
-  return { stall: [stallOf(pass)], stringify: [pass.stringifyMs], chunk, startup: [startup], bytes: pass.bytes };
+  const run = { stall: [stallOf(pass)], stringify: [pass.stringifyMs], chunk, startup: [startup], bytes: pass.bytes };
+  return { ...run, replayed, loadedItems };
+}
+
+/**
+ * Refuses a startup that didn’t replay the log it was given, or didn’t load the room: a load of the wrong folder, or of
+ * a missing log, is fast, and would read as a fast startup (the integrator’s review of #783).
+ * @param {{ replayed: number, loadedItems: number }} run  @param {number} logEvents  @param {number} items
+ */
+export function checkReplay(run, logEvents, items) {
+  if (run.replayed !== logEvents) throw new Error(`The startup replayed ${run.replayed} of the log’s ${logEvents} events.`);
+  if (run.loadedItems < items) throw new Error(`The startup loaded ${run.loadedItems} of the room’s ${items} items.`);
 }
 
 /**
@@ -146,11 +163,11 @@ async function apiRuns(room, items, total, { start, port, get }) {
 /**
  * One size: the room seeded into a temp folder, and a copy of it with the log for the startup; the in-process numbers
  * a run at a time, after one warm-up snapshot; then `/api/state`. The folder is removed however it ends. start, port,
- * tmp, get and snapshotPass are for tests; logEvents too.
+ * tmp, get, snapshotPass and openStore are for tests; logEvents too.
  * @param {number} items  @param {{ runs: number, requests: number, chunks: number, logEvents?: number }} o
  */
 export async function measureSize(items, o, deps = {}) {
-  const { start = startPostbox, port = freePort, tmp = tmpdir(), get = fetch, snapshotPass = measureSnapshotPass } = deps;
+  const { start = startPostbox, port = freePort, tmp = tmpdir(), get = fetch, snapshotPass = measureSnapshotPass, openStore = loadStore } = deps;
   const dir = await mkdtemp(join(tmp, `pb-bench-server-${items}-`));
   const room = join(dir, 'room');
   const boot = join(dir, 'boot');
@@ -164,7 +181,11 @@ export async function measureSize(items, o, deps = {}) {
     const state = await loadState(room);
     await snapshotPass(state, scratch);
     const runs = [];
-    for (let run = 0; run < o.runs; run++) runs.push(await inProcessRun(state, boot, scratch, o.chunks, snapshotPass));
+    for (let run = 0; run < o.runs; run++) {
+      const one = await inProcessRun(state, boot, scratch, o.chunks, snapshotPass, openStore);
+      checkReplay(one, logEvents, items);
+      runs.push(one);
+    }
     const api = await apiRuns(room, items, o.runs * o.requests, { start, port, get });
     return {
       items,
@@ -175,7 +196,8 @@ export async function measureSize(items, o, deps = {}) {
       apiBytes: api.bytes,
       chunk: pooled(runs, 'chunk'),
       startup: pooled(runs, 'startup'),
-      logEvents,
+      logEvents: runs[0].replayed,
+      replayed: runs.map((r) => r.replayed),
     };
   } finally {
     await rm(dir, { recursive: true, force: true });
