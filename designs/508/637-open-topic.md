@@ -12,7 +12,7 @@
 3. **One write gate for every tool, local and on a host.** The gate moves out of `server/mcp.mjs` (it was `storeClosedTo`) into `closedTo` in `server/tool-gate.mjs`, which both `mcp.mjs` and `applyTool` in `server/remote/turns-tools.mjs` call. Today a host's tool call reaches `toolsFor` with no gate, so a host's write tool during ST-3 changes memory that the next load doesn't have. That's every write tool on a host, not just this one, so the fix is the class.
 4. **`store.pending` covers threads.** `threads` joins `ENTITIES` in `server/store-held.mjs` (`thread` puts one whole, `remove` of kind `thread` deletes it), with `store.pending.thread(id)`, placed in the held-read guard.
 
-No new event type or state key, and one field on an item: the open's first message keeps the handles it named as `opened`, which I6 compares and A1b's record carries as the message's addressees. `startTopic`, `putThread`, `addItem`, `agentWake` and `deliverWake` are the path the page and `wake_agent` use today, which is the path A1b and A2 turn into records and deliveries.
+No new event type or state key, and one field on an item: the open's first message keeps the handles it named as `opened`, which I6 compares and A2's record carries as the message's addressees. `startTopic`, `putThread`, `addItem`, `agentWake` and `deliverWake` are the path the page and `wake_agent` use today, which is the path A2 turns into records and deliveries (A1b adds none: `a1b-asks.md`).
 
 ## Invariants
 
@@ -37,9 +37,9 @@ No new event type or state key, and one field on an item: the open's first messa
 | A reader looks between the topic's creation and its first message | Every write is in one synchronous call, so no turn reads in between. The page can draw the thread's link one event before the message | the link, then the message |
 | A mentioned agent is busy, archived or not in the conversation, or the opener's turn is a summary | `agentWake`'s rules: queued, refused, or a card asks you to add it; a summary's turn wakes no one (#225), checked in `agentWake` for every tool | as for `wake_agent`; the message still posts, and the reply says why each mention was refused |
 
-## What A1b and A2 change later
+## What A2 changes later
 
-- **A1b:** the first message becomes a record, the same way every agent message does. The tool keeps calling the same functions, so nothing about it migrates.
+- **A2** (planned as A1b’s before A1b was rescoped to a tie rule, `a1b-asks.md`): the first message becomes a record, the same way every agent message does. The tool keeps calling the same functions, so nothing about it migrates.
 - **A2:** the wake becomes a delivery, as `wake_agent`'s does. A2's step gains one line saying the open's wake is a delivery like any other.
 - **The design gains:** requirement MD-9 ("an agent can open a topic thread from any message in its conversation, locally and on a host, and the first message reaches whom MD-6 says"), with its acceptance row, and one line in `design.md`'s "Who a message reaches". Room rule 20 drops "from when #507 merges".
 

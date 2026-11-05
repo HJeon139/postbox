@@ -53,8 +53,8 @@ export function startTopic(rt, threadId, itemId) {
 /**
  * open_topic (#637): an agent opens the topic thread of a message in its own conversation, or finds the one it has,
  * through startTopic, the page's own path. Its first message, if any, posts there as wake_agent's does, waking each
- * agent it names; one message serves every mention. Nothing is stored that the page's open doesn't store, so A1b and A2
- * convert it with everything else (designs/508/637-open-topic.md).
+ * agent it names; one message serves every mention. Nothing is stored that the page's open doesn't store, so A2
+ * converts it with everything else (designs/508/637-open-topic.md).
  * @param {import('./runtime.mjs').Runtime} rt @param {string} sessionId
  * @param {{ itemId?: string, message?: string, mentions?: string[] }} args
  */
@@ -115,7 +115,7 @@ function repeated(rt, se, threadId, text, handles, created) {
  * mentions reuse its message (agentWake's `itemId`). Posting first means the ask is never lost when every wake is
  * refused (a self-mention, a mistyped handle), and a card keeps the message's id, so Allow wakes from it rather than
  * posting it again; the reply carries each wake's result. It keeps the handles it named (`opened`), which I6 compares;
- * A1b's records carry the same as the message's addressees.
+ * A2's records carry the same as the message's addressees.
  */
 function post(rt, se, threadId, text, handles) {
   const fromTurnId = rt.turns.get(se.id)?.id;
