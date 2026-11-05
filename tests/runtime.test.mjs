@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -9,6 +8,7 @@ import { DEFAULT_MODEL as ADAPTERS_DEFAULT_MODEL } from '../server/adapters/setu
 import { handleMcp } from '../server/mcp.mjs';
 import { DEFAULT_MODEL, HOP_LIMIT, Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -439,7 +439,7 @@ test('#38: Don’t allow drops the waiting sends; the browser can ask for a hold
 });
 
 test('#38: an app’s waiting sends survive a restart, and Allow still sends them', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'pb-appsend-'));
+  const dir = tempDir('pb-appsend-');
   const first = withApp(await new Store(dir).load());
   for (let i = 0; i <= LIMIT; i++) first.rt.appEvent('spam', 'ok', { summary: `#${i}` }, { now: 10 + i });
   await settle(first.rt);
@@ -2130,7 +2130,7 @@ test('Allow once lets the next turn run the exact call, tells the agent, and cle
 
 test('Always allow saves the rule in the agent’s folder, where Claude Code reads it', async () => {
   const { rt, store, t, adapter } = setup();
-  adapter.folder = await mkdtemp(join(tmpdir(), 'pb-always-'));
+  adapter.folder = tempDir('pb-always-');
   adapter.next.push(async (c) =>
     c.denied({ toolUseId: 'tu2', tool: 'WebFetch', input: { url: 'https://example.com' }, label: 'Fetched example.com', who: 'general-purpose' }),
   );

@@ -2,8 +2,7 @@
 // agent’s own folders, under the same limits, and /mcp runs tool calls only from a turn Postbox started.
 
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -12,6 +11,7 @@ import { handleMcp } from '../server/mcp.mjs';
 import { Runtime, readCapped } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { LIMITS } from '../shared/limits.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -31,7 +31,7 @@ class InFolder {
 }
 
 async function setup() {
-  const root = await mkdtemp(join(tmpdir(), 'pb-app-files-'));
+  const root = tempDir('pb-app-files-');
   const folder = join(root, 'work');
   const outside = join(root, 'outside');
   await mkdir(folder);
@@ -143,7 +143,7 @@ test('#54: a call can’t attach a file Postbox stored for someone else, or more
 });
 
 test('#54: a read stops one byte past its limit, so a file that grew after its size was checked is refused', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'pb-capped-'));
+  const dir = tempDir('pb-capped-');
   const f = join(dir, 'f');
   await writeFile(f, 'x'.repeat(10));
   assert.equal(await readCapped(f, 9), null);

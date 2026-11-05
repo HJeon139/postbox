@@ -2,14 +2,14 @@
 // only when a search names them, and loaded again after a restart.
 
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Corpus, parseDataset } from '../server/corpus.mjs';
 import { hostTool, Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const BOOK = `CHAPTER I\n\n${'The whale swam past the ship in the morning light, and the crew watched it go. '.repeat(8)}\n\nCHAPTER II\n\n${'Another day at sea, with no whale. '.repeat(12)}\n\nCHAPTER III\n\n${'The end of the voyage came at last, and the whale was not seen again. '.repeat(8)}`;
 const jsonl = (rows) => rows.map((r) => JSON.stringify(r)).join('\n');
@@ -62,7 +62,7 @@ test('#47: a dataset is searched only when a search names it, and reads by recor
 
 /** A runtime whose project lives in a temp folder, with a real corpus. */
 async function setup(dir) {
-  const root = dir ?? (await mkdtemp(join(tmpdir(), 'pb-datasets-')));
+  const root = dir ?? tempDir('pb-datasets-');
   const store = new Store(null);
   const corpus = new Corpus();
   corpus.addBook('moby', BOOK, { title: 'Moby', author: 'H', year: 1851 });
@@ -127,8 +127,8 @@ test('#47: add_dataset reads only from .postbox/datasets/, by path or link, and 
 
 test('#351: add_dataset refuses a .postbox or datasets folder that links out of the project', async () => {
   for (const linked of ['.postbox', join('.postbox', 'datasets')]) {
-    const root = await mkdtemp(join(tmpdir(), 'pb-datasets-'));
-    const outside = await mkdtemp(join(tmpdir(), 'pb-outside-'));
+    const root = tempDir('pb-datasets-');
+    const outside = tempDir('pb-outside-');
     await mkdir(join(outside, 'datasets'));
     await writeFile(join(outside, 'datasets', 'x.jsonl'), jsonl([{ text: 'not the project’s' }]));
     await writeFile(join(outside, 'x.jsonl'), jsonl([{ text: 'not the project’s' }]));

@@ -2,8 +2,7 @@
 // outside, unless the person already settled it (Always allow for that tool, or “Can publish” for publishing tools).
 
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -14,6 +13,7 @@ import { Store } from '../server/store.mjs';
 import { draftOf, isWriteCall, whereOf } from '../server/write-guard.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { decide } from '../shared/permission-match.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -158,7 +158,7 @@ test('the panel’s effective view: a write asks, unless an Always allow names t
 
 /** A Claude Code agent whose turns the test scripts, working in a temp folder. */
 async function setup(persona = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'pb-writes-'));
+  const root = tempDir('pb-writes-');
   const folder = join(root, 'work');
   await mkdir(join(folder, '.claude'), { recursive: true });
   const store = new Store(null);

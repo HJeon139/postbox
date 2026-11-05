@@ -5,15 +5,15 @@
 // tests/state-reject-contract.test.mjs). The held store is tests/stop-reply-fixture.mjs's.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { liveStreams } from '../server/live-streams.mjs';
 import { Store } from '../server/store.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
-const folder = () => mkdtemp(join(tmpdir(), 'pb-reject-'));
+const folder = () => tempDir('pb-reject-');
 const rejected = (e) => e?.code === 'EREJECTED';
 /** The event log's lines, parsed. @param {string} dir */
 const logLines = async (dir) =>

@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtemp } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { test } from 'node:test';
 import { Blobs } from '../server/blobs.mjs';
 import { Narrator } from '../server/narration/narrator.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 /** A stand-in for the Kokoro worker: answers each request with a tiny WAV-shaped clip. */
 function fakeFork({ fail = false } = {}) {
@@ -33,7 +31,7 @@ function fakeFork({ fail = false } = {}) {
 
 const setup = async (opts) => {
   const { forkImpl, runs } = fakeFork(opts);
-  const blobs = new Blobs(await mkdtemp(join(tmpdir(), 'pb-narr-')));
+  const blobs = new Blobs(tempDir('pb-narr-'));
   return { n: new Narrator({ modelsDir: '/tmp/models', blobs, forkImpl }), runs };
 };
 

@@ -15,6 +15,7 @@ import { formatMessage } from '../server/adapters/guide.mjs';
 import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
 import { deniedTools, OUTSIDE_TOOLS, PUBLISHING_TOOLS, REAL_BACKEND_TOOLS, TOOL_RULES, WRITE_TOOLS } from '../server/adapters/setup.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 // Streams recorded from real Claude Code turns (claude 2.1.296, claude-opus-5-5), with local paths removed.
 const fixture = (name) =>
@@ -404,13 +405,12 @@ const result = (id, is_error = false) => ({
 });
 
 async function attachSetup() {
-  const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
-  const { tmpdir } = await import('node:os');
+  const { mkdir, writeFile } = await import('node:fs/promises');
   const { join } = await import('node:path');
   const { Store } = await import('../server/store.mjs');
   const { Runtime } = await import('../server/runtime.mjs');
   const { AdapterRegistry } = await import('../server/adapters/adapter.mjs');
-  const root = await mkdtemp(join(tmpdir(), 'pb-cc-'));
+  const root = tempDir('pb-cc-');
   await mkdir(join(root, '-work-site'));
   const id = '11111111-2222-3333-4444-555555555555';
   const file = join(root, '-work-site', `${id}.jsonl`);

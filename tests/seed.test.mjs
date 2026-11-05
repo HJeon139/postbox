@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -8,6 +7,7 @@ import { deniedTools, OUTSIDE_TOOLS } from '../server/adapters/setup.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { BOILERPLATES, DEMO_PERSONAS, freshInstall, seed, toBoilerplate } from '../server/seed.mjs';
 import { Store } from '../server/store.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 async function seeded({ demo = false, agents = null } = {}) {
   const store = new Store(null);
@@ -19,7 +19,7 @@ async function seeded({ demo = false, agents = null } = {}) {
     corpus,
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [] },
   });
-  const dataDir = await mkdtemp(join(tmpdir(), 'pb-seed-'));
+  const dataDir = tempDir('pb-seed-');
   if (agents) await writeFile(join(dataDir, 'agents.json'), JSON.stringify(agents));
   await seed(rt, { dataDir, booksDir: join(dataDir, 'books'), backend: 'claude-code', demo });
   const s = store.state;
@@ -84,7 +84,7 @@ test('an existing install without bp-gemini gets the built-in boilerplates in fr
   rt.createPersona({ handle: 'researcher', backend: 'claude-code', description: 'Reads.' });
   for (const b of BOILERPLATES.filter((x) => x.id !== 'bp-gemini')) store.emit('boilerplate', b);
   store.emit('boilerplate', { id: 'bp-custom', name: '@custom', description: 'Saved', instructions: '', tools: [] });
-  const dataDir = await mkdtemp(join(tmpdir(), 'pb-seed-upgrade-'));
+  const dataDir = tempDir('pb-seed-upgrade-');
   assert.equal(await seed(rt, { dataDir, booksDir: join(dataDir, 'books'), backend: 'claude-code' }), false);
   assert.deepEqual(Object.keys(store.state.boilerplates), [...BOILERPLATES.map((b) => b.id), 'bp-custom']);
   const seq = store.state.seq;
