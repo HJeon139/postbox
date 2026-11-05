@@ -8,7 +8,7 @@ import { LIMITS, limitText } from '../shared/limits.mjs';
 import { readCappedFrom } from './read-capped.mjs';
 
 /** A data file of an app’s version, stored by its hash (#54). @typedef {{ name: string, sha256: string, size: number }} AppFile */
-const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
+export const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 /** A file an agent named that Postbox can’t use; its message goes back to the agent. */
 export class AgentFileError extends Error {}
 

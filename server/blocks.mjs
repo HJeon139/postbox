@@ -10,6 +10,7 @@ import { releaseNeed } from './card-needs.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { REACT, toggleReaction } from './reactions.mjs';
 import { keepReviewThreads } from './review-comments.mjs';
+import { revisedFiles } from './review-files.mjs';
 import { resolveToolAsk } from './tool-ask.mjs';
 import { stopRequested } from './write-intent.mjs';
 
@@ -108,7 +109,8 @@ export function unreadAnswer(rt, sessionId, threadId, it, outcome = false) {
  * update_block { block }, for the session’s turn. Its closure in Runtime.toolsFor read turn, se(), threadId() and
  * endSegment(), so they come as parameters.
  */
-export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endSegment }) {
+/** @param {{ files?: import('./review-files.mjs').ReviewFile[] }} [given]  a review’s images, read for this update (#780) */
+export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endSegment }, given = {}) {
   if (block && typeof block === 'object' && Object.hasOwn(block, 'withdraw')) return withdraw(rt, sessionId, block, { se, threadId });
   if (block && typeof block === 'object' && typeof block.outcome === 'string') return recordOutcome(rt, sessionId, block, { se, threadId });
   const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
@@ -128,7 +130,8 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   }
   // One that changes only what the person can’t see (its fallback) asks nothing new, so an answered block stays
   // answered, and an outcome can follow (#286).
-  if (existing.answered) {
+  const { files, newFiles } = reviewImages(v.block, existing, given.files);
+  if (existing.answered && !newFiles) {
     const differ = changedKeys(v.block, existing.block).filter((k) => k !== 'outcome');
     if (differ.length > 0 && !existing.closed && differ.every((k) => UNSEEN.has(k))) {
       if (differ.length) rt.patchItem(where, existing.id, { block: { ...v.block, outcome: existing.block.outcome }, updatedAt: now });
@@ -139,7 +142,7 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
     }
   }
   /** @type {Record<string, any>} */
-  const patch = { block: v.block, answered: false, answer: null, closed: null, revision: (existing.revision ?? 1) + 1, updatedAt: now };
+  const patch = { block: v.block, answered: false, answer: null, closed: null, revision: (existing.revision ?? 1) + 1, updatedAt: now, ...files };
   if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
   // Asking again belongs to this turn, so its end shows the person this agent needs them (#69).
   if (ASKING.has(v.block.type) && turn) patch.turnId = turn.id;
@@ -152,6 +155,17 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   if (where === threadId()) endSegment();
   const moved = rt.bringForward(where, existing.id, { what: 'block', title: blockTitle(v.block) }, patch);
   return { ok: true, message: `Updated block ${v.block.id}${moved ? '; it asks again at the newest point in the conversation' : ''}.` };
+}
+
+/**
+ * A review’s images on an update (#780): the update’s list, or the last revision’s, with what it replaces kept for
+ * the diff, and whether the person sees a different list. Not a review: nothing to keep.
+ * @param {any} block @param {any} existing @param {import('./review-files.mjs').ReviewFile[] | undefined} given
+ */
+function reviewImages(block, existing, given) {
+  if (block.type !== 'review') return { files: null, newFiles: false };
+  const files = revisedFiles(existing, given);
+  return { files, newFiles: JSON.stringify(files.files) !== JSON.stringify(existing.files ?? []) };
 }
 
 // What a block holds that the person never sees: changing it alone doesn’t ask again (#286).

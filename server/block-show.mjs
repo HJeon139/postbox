@@ -37,7 +37,9 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
   const again = v.ok && v.block.type !== 'app' ? shownAgain(rt, sessionId, threadId(), v.block.id) : null;
   if (again) return again;
   endSegment();
-  const it = rt.addItem(threadId(), blockItem(sessionId, se, turn, block, v));
+  // A review’s images (#780), read and checked before the call reached here, stay with the item.
+  const files = v.ok && v.block.type === 'review' && given.files ? { files: given.files } : {};
+  const it = rt.addItem(threadId(), { ...blockItem(sessionId, se, turn, block, v), ...files });
   if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id, threadId(), given.files ?? []);
   return v.ok
     ? v.block.type === 'app'
