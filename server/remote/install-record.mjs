@@ -224,6 +224,16 @@ export function isTried(record, version) {
 export function updateOf(record) {
   const newest = record.installs[0];
   if (!newest && !record.error) return null;
-  const said = { version: newest?.version ?? null, at: newest?.at ?? null, outcome: newest?.outcome ?? null };
-  return record.error ? { ...said, error: record.error } : said;
+  return updateFields({ ...newest, error: record.error });
+}
+
+/**
+ * An automatic install as the host’s status carries it, field by field, for updateOf here and for the page’s copy
+ * (host-status.mjs). Never a token or a path. @param {any} u
+ * @returns {{ version: string | null, at: number | null, outcome: string | null, error?: string } | null}
+ */
+export function updateFields(u) {
+  if (!u) return null;
+  const said = { version: u.version ?? null, at: u.at ?? null, outcome: u.outcome ?? null };
+  return typeof u.error === 'string' ? { ...said, error: u.error } : said;
 }

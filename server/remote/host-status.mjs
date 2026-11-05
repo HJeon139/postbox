@@ -4,6 +4,7 @@
 
 import { httpError } from '../helpers.mjs';
 import { host } from './host-admin.mjs';
+import { updateFields } from './install-record.mjs';
 
 /** The host manager, or a refusal that says remote hosts aren’t available. @param {any} rt */
 function hostManager(rt) {
@@ -31,15 +32,8 @@ export function hostStatus(rt, id) {
     welcome: w && { version: w.version, home: w.home, node: w.node, harnesses: w.harnesses ?? [], problems: w.problems ?? [] },
     lastHeard: st.lastHeard ?? null,
     keepUpdated: st.keepUpdated === true,
-    update: updateOf(st.update),
+    update: updateFields(st.update),
   };
-}
-
-/** The status’s automatic install, field by field. @param {any} u */
-function updateOf(u) {
-  if (!u) return null;
-  const said = { version: u.version ?? null, at: u.at ?? null, outcome: u.outcome ?? null };
-  return typeof u.error === 'string' ? { ...said, error: u.error } : said;
 }
 
 /**
