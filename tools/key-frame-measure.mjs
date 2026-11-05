@@ -9,11 +9,16 @@
 import { execFileSync } from 'node:child_process';
 import { arch, cpus, release, type } from 'node:os';
 import { sleep } from './browser.mjs';
-import { keyDurations, outsideWindow } from './key-frame-stats.mjs';
+import { calibrated, keyDurations, outsideWindow } from './key-frame-stats.mjs';
 import { heldStill } from './page-still.mjs';
 
 /** The smallest durationThreshold Chromium allows, and the one PF-1 measures at. */
 export const EVENT_THRESHOLD = 16;
+/**
+ * How long the first warm-up key, the calibration key, waits in its keydown on purpose: well over one frame, so
+ * Event Timing must report it if the observer measures this composer.
+ */
+export const CALIBRATION_MS = 40;
 const TEXT = 'the release train leaves on time and the changelog says what shipped ';
 
 /**
@@ -21,8 +26,11 @@ const TEXT = 'the release train leaves on time and the changelog says what shipp
  *   waitFor: (expr: string, o?: { timeout?: number, label?: string }) => Promise<boolean> }} Page
  */
 
-/** Starts recording in the page: each composer keydown’s time and next frame, and its Event Timing entries. */
-function record(threshold) {
+/**
+ * Starts recording in the page: each composer keydown’s time and next frame, and its Event Timing entries. The first
+ * keydown waits calibrationMs, so the run can prove the observer sees this composer (calibrated()).
+ */
+function record(threshold, calibrationMs) {
   // An earlier run’s listener and observer would still be recording into this document, so its keys would count twice.
   if ('__keyFrame' in window) throw new Error('This document is already recording: open the room afresh for each run.');
   const rec = { keys: [], frames: [], entries: [] };
@@ -34,6 +42,12 @@ function record(threshold) {
       if (e.target !== composer()) return;
       const at = e.timeStamp;
       rec.keys.push(at);
+      if (rec.keys.length === 1) {
+        const until = performance.now() + calibrationMs;
+        while (performance.now() < until) {
+          // The calibration key’s wait: a busy loop, as a slow handler would be.
+        }
+      }
       requestAnimationFrame(() => requestAnimationFrame(() => rec.frames.push(performance.now() - at)));
     },
     true,
@@ -90,6 +104,7 @@ const frames = (page) => page.evaluate('new Promise((r) => requestAnimationFrame
  * @param {Page} page  @param {{ keys?: number, warmup?: number, intervalMs?: number, threshold?: number }} [o]
  */
 export async function measureKeys(page, { keys = 200, warmup = 20, intervalMs = 50, threshold = EVENT_THRESHOLD } = {}) {
+  if (warmup < 1) throw new Error('A run needs at least one warm-up key: the first is the calibration key.');
   await clickComposer(page);
   const shown = await page.evaluate(
     `(() => { const b = document.getElementById('composer-input').getBoundingClientRect(); return { rect: { top: b.top, bottom: b.bottom, left: b.left, right: b.right } }; })()`,
@@ -98,7 +113,7 @@ export async function measureKeys(page, { keys = 200, warmup = 20, intervalMs = 
   if (hidden) throw new Error(`${hidden} Size the window with page.size() before measuring.`);
   await page.evaluate(`(${clearDraft})()`);
   await page.waitFor(`(${heldStill})()`, { timeout: 30_000, label: 'the page to hold still for two frames' });
-  await page.evaluate(`(${record})(${Number(threshold)})`);
+  await page.evaluate(`(${record})(${Number(threshold)}, ${CALIBRATION_MS})`);
   const total = warmup + keys;
   const start = Date.now();
   for (let i = 0; i < total; i++) {
@@ -114,6 +129,9 @@ export async function measureKeys(page, { keys = 200, warmup = 20, intervalMs = 
   const typed = Array.from({ length: total }, (_, i) => TEXT[i % TEXT.length]).join('');
   const draft = await page.evaluate(`document.getElementById('composer-input').value`);
   if (draft !== typed) throw new Error(`The composer holds ${String(draft ?? '').length} of the ${total} characters typed.`);
+  if (!calibrated(rec.keys, rec.entries, CALIBRATION_MS)) {
+    throw new Error('Event Timing recorded no entry for the calibration key; the observer isn’t measuring this composer.');
+  }
   const measured = rec.keys.slice(warmup);
   const { values, below } = keyDurations(measured, rec.entries, threshold);
   return { eventTiming: values, nextFrame: rec.frames.slice(warmup), below };

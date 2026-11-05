@@ -31,7 +31,7 @@ function emulatedPage() {
 
 test('a composer below the window Chromium reports is refused, even when the emulated outerHeight would hold it', async () => {
   const page = emulatedPage();
-  await assert.rejects(measureKeys(page, { keys: 1, warmup: 0, intervalMs: 1 }), /ends at 900 px, below the window’s 800 px/);
+  await assert.rejects(measureKeys(page, { keys: 1, warmup: 1, intervalMs: 1 }), /ends at 900 px, below the window’s 800 px/);
   assert.equal(page.sent.includes('Input.dispatchKeyEvent'), false, 'no key was typed');
 });
 
@@ -60,7 +60,13 @@ function shownPage() {
 test('Event Timing is observed at 16 ms, the smallest threshold Chromium allows, so a fast key isn’t left out', async () => {
   assert.equal(EVENT_THRESHOLD, 16);
   const page = shownPage();
-  await assert.rejects(measureKeys(page, { keys: 1, warmup: 0, intervalMs: 1 }), /Target closed/);
+  await assert.rejects(measureKeys(page, { keys: 1, warmup: 1, intervalMs: 1 }), /Target closed/);
   const recording = page.ran.find((e) => e.includes('__keyFrame ='));
-  assert.ok(recording?.endsWith(')(16)'), 'the observer’s durationThreshold is 16');
+  assert.ok(recording?.endsWith(')(16, 40)'), 'the observer’s durationThreshold is 16, and the calibration key waits 40 ms');
+});
+
+test('a run with no warm-up key is refused before anything is typed: the first key is the calibration key', async () => {
+  const page = shownPage();
+  await assert.rejects(measureKeys(page, { keys: 5, warmup: 0, intervalMs: 1 }), /at least one warm-up key/);
+  assert.equal(page.ran.length, 0, 'nothing ran in the page');
 });

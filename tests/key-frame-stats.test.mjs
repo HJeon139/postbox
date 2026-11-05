@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { keyDurations, outsideWindow, percentile, summarize, underOneFrame, withinBudget } from '../tools/key-frame-stats.mjs';
+import { calibrated, keyDurations, outsideWindow, percentile, summarize, underOneFrame, withinBudget } from '../tools/key-frame-stats.mjs';
 
 const hundred = Array.from({ length: 100 }, (_, i) => i + 1);
 
@@ -89,4 +89,14 @@ test('a 1× room under one frame lets a larger room pass at up to 16 ms × 1.1, 
   assert.equal(withinBudget(16, 16).pass, true);
   assert.equal(withinBudget(16, 17.6).pass, true);
   assert.equal(withinBudget(16, 24).pass, false);
+});
+
+test('the calibration key proves the observer measures this composer: an entry of its own, at least as long as the wait', () => {
+  const keys = [100, 200, 300];
+  assert.equal(calibrated(keys, [{ name: 'keydown', startTime: 100, duration: 48 }], 40), true);
+  assert.equal(calibrated(keys, [{ name: 'keydown', startTime: 100, duration: 40 }], 40), true, 'Event Timing’s 8 ms step can round it to the wait');
+  assert.equal(calibrated(keys, [], 40), false, 'no entry at all, as an observer that sees nothing gives');
+  assert.equal(calibrated(keys, [{ name: 'keydown', startTime: 100, duration: 16 }], 40), false, 'an entry too short to be the wait');
+  assert.equal(calibrated(keys, [{ name: 'keydown', startTime: 200, duration: 48 }], 40), false, 'the next key’s entry, not its own');
+  assert.equal(calibrated([], [{ name: 'keydown', startTime: 0, duration: 48 }], 40), false, 'no key typed');
 });

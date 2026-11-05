@@ -15,6 +15,19 @@ export const PF1_BUDGET = 0.1;
 export const underOneFrame = (value, threshold) => value !== null && value <= threshold;
 
 /**
+ * Whether the calibration key, the first one typed, has an Event Timing entry of its own at least minMs long. The
+ * page makes that key wait minMs on purpose (tools/key-frame-measure.mjs), so an observer measuring this composer
+ * must see it. Without the check, an observer that sees nothing reads as a room whose every key is under one frame.
+ * @param {number[]} keys  each key’s keydown timeStamp, in order, the calibration key first
+ * @param {{ startTime: number, duration: number }[]} entries  @param {number} minMs
+ */
+export function calibrated(keys, entries, minMs) {
+  if (keys.length === 0) return false;
+  const [start, end = Infinity] = keys;
+  return entries.some((e) => e.startTime >= start && e.startTime < end && e.duration >= minMs);
+}
+
+/**
  * The p-th percentile by nearest rank: the smallest value that at least p% of the values are at or under. Null for
  * no values, so an empty run can’t read as a fast one.
  * @param {number[]} values  @param {number} p  from 0 to 100
