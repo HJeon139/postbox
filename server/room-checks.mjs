@@ -37,7 +37,8 @@ import { DELIVERY_CHECKS } from './room-checks-delivery.mjs';
 import { NEEDS_CHECKS } from './room-checks-needs.mjs';
 import { TELEMETRY_CHECKS } from './room-checks-telemetry.mjs';
 import { THREAD_CHECKS } from './room-checks-threads.mjs';
-import { toolCalls } from './room-checks-tools.mjs';
+import { claudeSessionOf, toolCalls } from './room-checks-tools.mjs';
+import { keptStreams, WORK_CHECKS } from './room-checks-work.mjs';
 
 export { agyTokens, kiroCredits } from './room-checks-backends.mjs';
 
@@ -68,8 +69,6 @@ const clip200 = (s) => {
   return t.length > 200 ? `${t.slice(0, 199)}…` : t;
 };
 const clock = (ms) => `${new Date(ms).toISOString().slice(11, 19)} UTC`;
-/** The Claude Code session a turn’s stream ran in, from its init. */
-const claudeSessionOf = (events) => events.find((e) => e?.type === 'system' && e.subtype === 'init')?.session_id ?? null;
 /**
  * When a turn’s process started (its stream file is named for it), and the last time it did anything: its newest
  * message, or the file’s last write when no message carries a time.
@@ -299,14 +298,46 @@ export const MID_TURN = ['background-step-closed', 'two-processes-one-session'];
 
 // ── The Agents section, the Work ledger and the right pane (#105, #132, #146) ──────────────────────────────
 
-const ledgerEntries = (f) => Object.values(f.state?.work ?? {}).flat();
-const EDIT_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 /** A model as the panel names it (“Opus 5.5”) and as a stream names it (“claude-opus-5-5”), reduced to compare. */
 const modelKey = (m) =>
   String(m ?? '')
     .toLowerCase()
     .replace(/^claude-/, '')
     .replace(/[^a-z0-9]/g, '');
+
+/** How many refusal cards each agent has in the conversations: one pass over their items. */
+function countDenialCardsByHandle(items) {
+  const counts = new Map();
+  for (const it of items) {
+    if (it.kind !== 'denial') continue;
+    counts.set(it.handle, (counts.get(it.handle) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** Whether a tool result is the person declining a call in Postbox, which a card already answered. */
+const isDeclinedResult = (b) =>
+  b.type === 'tool_result' && /The person didn’t allow/.test(typeof b.content === 'string' ? b.content : JSON.stringify(b.content));
+
+/** Each agent’s refused calls (a result’s `permission_denials`) the person didn’t decline: one pass over the streams. */
+function uncardedRefusalsByHandle(streams) {
+  const byHandle = new Map();
+  for (const { handle, events } of streams) {
+    const declined = new Set(
+      events
+        .filter((e) => e.type === 'user')
+        .flatMap((e) => contentBlocks(e.message?.content))
+        .filter(isDeclinedResult)
+        .map((b) => b.tool_use_id),
+    );
+    const listed = events.filter((e) => e.type === 'result').flatMap((e) => e.permission_denials ?? []);
+    const refusals = listed.filter((d) => !declined.has(d.tool_use_id));
+    if (!refusals.length) continue;
+    if (!byHandle.has(handle)) byHandle.set(handle, []);
+    byHandle.get(handle).push(...refusals);
+  }
+  return byHandle;
+}
 
 export const CHECKS = [
   {
@@ -383,19 +414,16 @@ export const CHECKS = [
     inputs: ['state', 'threads', 'streams'],
     issue: 65,
     run: (f) => {
-      const cards = itemsOf(f).filter((it) => it.kind === 'denial').length;
-      const refused = f.streams.flatMap(({ handle, events }) => {
-        const listed = events.filter((e) => e.type === 'result').flatMap((e) => e.permission_denials ?? []);
-        const declined = new Set(
-          events
-            .filter((e) => e.type === 'user')
-            .flatMap((e) => contentBlocks(e.message?.content))
-            .filter((b) => b.type === 'tool_result' && /The person didn’t allow/.test(typeof b.content === 'string' ? b.content : JSON.stringify(b.content)))
-            .map((b) => b.tool_use_id),
-        );
-        return listed.filter((d) => !declined.has(d.tool_use_id)).map((d) => ({ handle, d }));
-      });
-      return refused.length > cards
+      // Per agent: a removed agent’s cards stay in its conversation while its streams are left out (#729), and one
+      // agent’s cards never stand for another’s refusals.
+      const cardsByHandle = countDenialCardsByHandle(itemsOf(f));
+      const refusalsByHandle = uncardedRefusalsByHandle(keptStreams(f));
+      const cardsOf = (handle) => cardsByHandle.get(handle) ?? 0;
+      const isShort = ([handle, refusals]) => refusals.length > cardsOf(handle);
+      const short = [...refusalsByHandle].filter(isShort).map(([handle]) => handle);
+      const refused = short.flatMap((handle) => refusalsByHandle.get(handle).map((d) => ({ handle, d })));
+      const cards = short.reduce((n, handle) => n + cardsOf(handle), 0);
+      return short.length
         ? [
             {
               title: 'Claude Code refused calls, and Postbox showed no card',
@@ -1033,57 +1061,7 @@ export const CHECKS = [
           ]
         : [],
   },
-  {
-    id: 'work-files-match-stream',
-    inputs: ['state', 'streams'],
-    issue: 132,
-    run: (f) => {
-      // A file changed on a host is in Work as an edit step there, with no diff (server/ledger-remote.mjs, #120).
-      const ledger = new Set(ledgerEntries(f).flatMap((e) => (e.kind === 'file' || e.kind === 'edit' ? [e.path] : [])));
-      const edited = new Set(
-        (f.streams ?? []).flatMap((s) =>
-          toolCalls(s.events)
-            .filter((c) => EDIT_TOOLS.has(c.name) && !c.denied && c.result && !c.result.is_error)
-            .map((c) => c.input.file_path ?? c.input.notebook_path),
-        ),
-      );
-      const missing = [...edited].filter((p) => p && !ledger.has(p));
-      return missing.length
-        ? [
-            {
-              title: 'A file an agent changed isn’t in the Work view',
-              evidence: `Changed by an Edit or Write call, but not in the ledger: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ` and ${missing.length - 5} more` : ''}.`,
-            },
-          ]
-        : [];
-    },
-  },
-  {
-    id: 'work-commands-match-stream',
-    inputs: ['state', 'streams'],
-    issue: 132,
-    run: (f) => {
-      const ledger = new Set(
-        ledgerEntries(f)
-          .filter((e) => e.kind === 'command')
-          .map((e) => e.toolUseId),
-      );
-      const ran = (f.streams ?? []).flatMap((s) =>
-        toolCalls(s.events)
-          .filter((c) => c.name === 'Bash')
-          .map((c) => ({ ...c, handle: s.handle })),
-      );
-      const missing = ran.filter((c) => !ledger.has(c.id));
-      return missing.length
-        ? [
-            {
-              title: 'A command an agent ran isn’t in the Work view',
-              evidence: `${missing.length} of ${ran.length} Bash calls aren’t in the ledger, such as @${missing[0].handle}’s \`${String(missing[0].input.command ?? '').slice(0, 80)}\`.`,
-            },
-          ]
-        : [];
-    },
-  },
+  ...WORK_CHECKS,
   {
     id: 'quick-panel-takes-effect',
     inputs: ['probes', 'streams'],
@@ -1109,7 +1087,7 @@ export const CHECKS = [
     run: (f) =>
       (f.probes?.panels ?? []).flatMap((p) => {
         if (p.set?.shell !== false) return [];
-        const after = (f.streams ?? []).filter((s) => s.handle === p.handle && (s.started ?? 0) > p.at);
+        const after = keptStreams(f).filter((s) => s.handle === p.handle && (s.started ?? 0) > p.at);
         const refused = after.flatMap((s) => toolCalls(s.events).filter((c) => c.name === 'Bash' && (c.denied || c.result?.is_error)));
         if (!refused.length) return [];
         const shown = itemsOf(f).some((it) => it.kind === 'denial' && it.handle === p.handle && it.at > p.at);
