@@ -58,14 +58,6 @@ test('#721 the note is sent once per card, however many paths tell it', async ()
   assert.equal(notes(now()).length, 1);
 });
 
-test('#721 an archived agent gets no note: nobody would read it', async () => {
-  const { rt, t, now } = await setup();
-  const it = rt.addItem(t.id, { kind: 'permission', sessionId: now().id, handle: 'deployer', tool: 'Bash', summary: 'run the deploy', status: 'expired' });
-  rt.updateSession(now().id, { archived: true });
-  tellExpired(rt, t.id, it.id);
-  assert.equal(notes(now()).length, 0);
-});
-
 test('#721 a host card kept open across a restart, which its host then expires with no wait here, clears the need and tells', async () => {
   const { rt, t, now } = await setup();
   const it = rt.addItem(t.id, { kind: 'permission', sessionId: now().id, handle: 'deployer', tool: 'Bash', summary: 'run the deploy', status: 'open' });

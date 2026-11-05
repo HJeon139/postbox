@@ -47,10 +47,10 @@ test('#721 a host card with no wait here, left open when the person stops the tu
   await until(() => r.store.items(r.t.id).some((i) => i.remote?.prompt === a), 'the card');
   const card = r.store.items(r.t.id).find((i) => i.remote?.prompt === a);
   r.rt.permissionWaits.delete(card.id); // as after a restart: the card is kept, nothing here waits on it
-  askStop(r.rt.remote, r.se().id, r.host.id, r.se().remoteTurn.turn); // the person’s Stop
+  askStop(r.rt.remote, r.se().id, r.host.id, r.se().remoteTurn.turn, { byPerson: true }); // the person’s Stop
   r.d.end(turn);
   await settled(r);
   assert.equal(r.store.item(r.t.id, card.id).status, 'expired');
-  assert.equal(r.store.item(r.t.id, card.id).stoppedBy, 'person');
+  assert.equal(r.store.item(r.t.id, card.id).stoppedBy, 'you');
   assert.equal(notes(r.se()).length, 0, JSON.stringify(r.se().context));
 });
