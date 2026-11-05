@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.20.4 (2026-11-05)
+
+### Fixes
+
+- **state:** read items by id through the index on the server and in the page
+- **state:** find an item by id through one index kept outside the state
+
 ## 1.20.3 (2026-11-05)
 
 ### Fixes
