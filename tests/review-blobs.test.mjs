@@ -3,13 +3,12 @@
 // the same bytes keeps or still has in flight.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, open } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { open } from 'node:fs/promises';
 import { test } from 'node:test';
 import { Blobs } from '../server/blobs.mjs';
 import { keptIfShown } from '../server/review-files.mjs';
 import { png, setup } from './review-files-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 test('#780 two calls with the same bytes at once: the refused one leaves the kept one’s blob', async () => {
   const f = await setup();
@@ -62,7 +61,7 @@ test('#780 a refusal that settles while an ordinary put of the same bytes is mid
   // The ordinary put finds the staged put's file, so it doesn't write it again; it's paused at its folder sync,
   // after that check and before it returns, which is when the refused call settles.
   let pause = null;
-  const blobs = new Blobs(await mkdtemp(join(tmpdir(), 'pb-review-blobs-')), {
+  const blobs = new Blobs(tempDir('pb-review-blobs-'), {
     open: async (path, flags, mode) => {
       if (flags === 'r' && pause) await pause.gate;
       return open(path, flags, mode);

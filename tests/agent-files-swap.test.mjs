@@ -3,8 +3,7 @@
 // swaps a file or a folder for a link at one step, through agentFile’s test hooks, so the race is deterministic.
 
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rename, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, rename, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -13,13 +12,14 @@ import { Blobs } from '../server/blobs.mjs';
 import { handleMcp } from '../server/mcp.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX = 1024;
 
 /** A folder the agent works in, with a file, and a folder outside it with a secret of the same name. */
 async function folders() {
-  const root = await mkdtemp(join(tmpdir(), 'pb-agent-file-swap-'));
+  const root = tempDir('pb-agent-file-swap-');
   const folder = join(root, 'work');
   const outside = join(root, 'outside');
   await mkdir(join(folder, 'sub'), { recursive: true });
