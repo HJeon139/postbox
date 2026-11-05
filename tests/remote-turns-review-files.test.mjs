@@ -98,10 +98,19 @@ test('#780 a host’s base64 one block over an image’s limit is refused before
   assert.equal(just.text, 'The image “just.png” (up to 5 MiB) is over its limit as it came from the host, so Postbox didn’t read it.');
 });
 
-test('#780 a host’s base64 with a character outside the alphabet, or a length not a multiple of 4, is refused', async () => {
+test('#780 a host’s base64 with a character outside the alphabet, an = anywhere but its last one or two, or a length not a multiple of 4, is refused', async () => {
   const f = await setup();
   const good = png(4, 3).toString('base64');
-  for (const [i, base64] of [`${good.slice(0, -4)}AA!A`, `${good.slice(0, -4)}AAA`, `${good.slice(0, 4)}=${good.slice(5)}`, 7].entries()) {
+  for (const [i, base64] of [
+    `${good.slice(0, -4)}AA!A`,
+    `${good.slice(0, -4)}AAA`,
+    `${good.slice(0, 4)}=${good.slice(5)}`,
+    'ab=c',
+    '=AAA',
+    'A===',
+    `${good.slice(0, -4)}AA==AAAA`,
+    7,
+  ].entries()) {
     const r = await fromHost(f, 'show_block', reviewBlock(`bad${i}`, [{ name: 'a.png', path: 'a.png', base64 }]));
     assert.equal(r.ok, false, String(base64).slice(0, 20));
     assert.equal(r.text, 'The image “a.png” (up to 5 MiB) didn’t arrive whole from the host, so Postbox didn’t read it.');
