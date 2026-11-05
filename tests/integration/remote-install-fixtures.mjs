@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { main } from '../../server/remote/host/daemon.mjs';
@@ -13,6 +13,7 @@ import { hostVersion } from '../../server/remote/host/paths.mjs';
 import { bootId, listProcesses, startTime } from '../../server/remote/host/proc.mjs';
 import { installCommand } from '../../server/remote/install.mjs';
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
+import { tempDir } from '../temp-dirs.mjs';
 
 // This checkout’s version, which the daemon’s main() takes from package.json (paths.mjs), so the tests follow each release.
 export const VERSION = hostVersion();
@@ -23,7 +24,7 @@ export const HOST = { id: 'ho_test0001', name: 'host.example.com', settings: def
 export const SKIP = process.platform === 'win32' && 'needs a POSIX sh and tar';
 
 /** A temp folder under /tmp, short enough for the daemon’s socket path. */
-export const temp = (prefix) => mkdtempSync(`/tmp/${prefix}`);
+export const temp = (prefix) => tempDir(prefix, '/tmp');
 
 /** A spawn that runs ssh’s remote command with /bin/sh -c, as sshd hands it to the login shell, with this environment. */
 export const localShell = (env) => (_program, args, options) => spawn('/bin/sh', ['-c', args.at(-1)], { ...options, env });
