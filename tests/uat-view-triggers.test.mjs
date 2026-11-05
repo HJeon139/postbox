@@ -73,13 +73,17 @@ test('diagram-deferred skips a sample whose timing buffer was full, and can’t 
   assert.equal(VIEW_TRIGGERS['diagram-deferred'].recorded({ probes: { diagrams: [] } }), true);
 });
 
-test('observe records the diagram probe before any screenshot scrolls the page', async () => {
+test('observe records the diagram and document-query probes before any screenshot scrolls the page', async () => {
   const { observe } = await import('../tools/uat/observe.mjs');
   const calls = [];
   const item = { key: 'it_a', where: 'conversation', text: 'A diagram', block: null, app: false, diagram: true, math: false, buttons: [], fields: [] };
   const d = {
     kit: {
-      ev: async () => {
+      ev: async (/** @type {string} */ expr) => {
+        if (expr.includes('/app/js/client.mjs')) {
+          calls.push('queries');
+          return { origin: 1, sessionEvents: 0, scanCount: 0, scans: [], byId: 0, items: 1 };
+        }
         calls.push('probe');
         return { sinceLoad: 9000, requested: 0, full: false, frames: [{ key: 'it_a', loaded: false, inView: false }] };
       },
@@ -92,7 +96,11 @@ test('observe records the diagram probe before any screenshot scrolls the page',
   };
   const facts = { probes: {}, state: { threads: {}, sessions: {} }, threads: [] };
   await observe({ d, labels: new Map(), keys: new Map(), seen: new Map(), paths: { shots: '/nowhere' }, timeline: [1, 2], dir: '/', facts });
-  assert.deepEqual(calls, ['probe', 'shot']);
+  assert.deepEqual(calls, ['probe', 'queries', 'shot']);
+  assert.deepEqual(
+    facts.probes.docQueries.map((x) => x.step),
+    [2],
+  );
   assert.deepEqual(facts.probes.diagrams, [
     { step: 2, at: facts.probes.diagrams[0].at, sinceLoad: 9000, requested: 0, full: false, frames: [{ key: 'it_a', loaded: false, inView: false }] },
   ]);

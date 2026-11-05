@@ -1,0 +1,87 @@
+[
+  {
+    "step": 1,
+    "at": 1793913329961,
+    "origin": 1793913329431,
+    "sessionEvents": 0,
+    "scanCount": 0,
+    "scans": [],
+    "byId": 0,
+    "items": 1000
+  },
+  {
+    "step": 2,
+    "at": 1793913330081,
+    "origin": 1793913329431,
+    "sessionEvents": 2,
+    "scanCount": 8,
+    "scans": [
+      "querySelectorAll [data-open-asks]",
+      "querySelectorAll .transcript[data-thread]",
+      "querySelector .app.rail-auto",
+      "querySelector .app.rail-auto",
+      "querySelectorAll .rail pb-ring[data-session=\"se_aGUrtGb6\"], .ringstrip pb-ring[data-session=\"se_a",
+      "querySelectorAll [data-open-asks]",
+      "querySelectorAll .transcript[data-thread]",
+      "querySelectorAll .rail pb-ring[data-session=\"se_aGUrtGb6\"], .ringstrip pb-ring[data-session=\"se_a"
+    ],
+    "byId": 0,
+    "items": 1000
+  },
+  {
+    "step": 3,
+    "at": 1793913330197,
+    "origin": 1793913329431,
+    "sessionEvents": 4,
+    "scanCount": 14,
+    "scans": [
+      "querySelectorAll [data-open-asks]",
+      "querySelectorAll .transcript[data-thread]",
+      "querySelector .app.rail-auto",
+      "querySelector .app.rail-auto",
+      "querySelectorAll .rail pb-ring[data-session=\"se_aGUrtGb6\"], .ringstrip pb-ring[data-session=\"se_a",
+      "querySelectorAll [data-open-asks]",
+      "querySelectorAll .transcript[data-thread]",
+      "querySelectorAll .rail pb-ring[data-session=\"se_aGUrtGb6\"], .ringstrip pb-ring[data-session=\"se_a",
+      "querySelectorAll [data-open-asks]",
+      "querySelectorAll .transcript[data-thread]",
+      "querySelectorAll .rail pb-ring[data-session=\"se_aGUrtGb6\"], .ringstrip pb-ring[data-session=\"se_a",
+      "querySelectorAll [data-open-asks]",
+      "querySelectorAll .transcript[data-thread]",
+      "querySelectorAll .rail pb-ring[data-session=\"se_aGUrtGb6\"], .ringstrip pb-ring[data-session=\"se_a"
+    ],
+    "byId": 0,
+    "items": 1001
+  },
+  {
+    "step": 4,
+    "at": 1793913330314,
+    "origin": 1793913329431,
+    "sessionEvents": 6,
+    "scanCount": 20,
+    "scans": [
+      "querySelectorAll [data-open-asks]",
+      "querySelectorAll .transcript[data-thread]",
+      "querySelector .app.rail-auto",
+      "querySelector .app.rail-auto",
+      "querySelectorAll .rail pb-ring[data-session=\"se_aGUrtGb6\"], .ringstrip pb-ring[data-session=\"se_a",
+      "querySelectorAll [data-open-asks]",
+      "querySelectorAll .transcript[data-thread]",
+      "querySelectorAll .rail pb-ring[data-session=\"se_aGUrtGb6\"], .ringstrip pb-ring[data-session=\"se_a",
+      "querySelectorAll [data-open-asks]",
+      "querySelectorAll .transcript[data-thread]",
+      "querySelectorAll .rail pb-ring[data-session=\"se_aGUrtGb6\"], .ringstrip pb-ring[data-session=\"se_a",
+      "querySelectorAll [data-open-asks]",
+      "querySelectorAll .transcript[data-thread]",
+      "querySelectorAll .rail pb-ring[data-session=\"se_aGUrtGb6\"], .ringstrip pb-ring[data-session=\"se_a",
+      "querySelectorAll [data-open-asks]",
+      "querySelectorAll .transcript[data-thread]",
+      "querySelectorAll .rail pb-ring[data-session=\"se_aGUrtGb6\"], .ringstrip pb-ring[data-session=\"se_a",
+      "querySelectorAll [data-open-asks]",
+      "querySelectorAll .transcript[data-thread]",
+      "querySelectorAll .rail pb-ring[data-session=\"se_aGUrtGb6\"], .ringstrip pb-ring[data-session=\"se_a"
+    ],
+    "byId": 0,
+    "items": 1001
+  }
+]

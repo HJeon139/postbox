@@ -6,6 +6,7 @@
 // It counts the lookups a scan could switch to as well, getElementsByClassName and getElementsByTagName.
 
 import { expect, test } from '@playwright/test';
+import { SCANS } from '../../tools/uat/doc-query-probe.mjs';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 // No trace: its snapshots walk the whole page around each action, which a 10,000-item room makes slow.
@@ -40,12 +41,9 @@ async function seeded(page, n, width = 1280) {
   return { t, se };
 }
 
-/** The lookups that walk the document: the query pair, and the collections a scan could switch to. */
-const SCANS = ['querySelector', 'querySelectorAll', 'getElementsByClassName', 'getElementsByTagName'];
-
 /**
  * Counts the lookups that walk the document, called on the document itself, from here on: the query pair, and the
- * collections a scan could switch to.
+ * collections a scan could switch to (tools/uat/doc-query-probe.mjs, SCANS).
  */
 const countDocQueries = (page) =>
   page.evaluate((names) => {

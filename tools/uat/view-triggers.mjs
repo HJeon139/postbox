@@ -1,6 +1,6 @@
 // The long room’s view triggers (#508 lane, tests/uat/e2e/scenarios/bigroom.md): what the page draws far from the view.
 // tools/uat/triggers.mjs adds them to TRIGGERS. Each reads the probes the runner records from the page
-// (tools/uat/diagram-probe.mjs), not the state, since what’s drawn isn’t in it.
+// (tools/uat/diagram-probe.mjs, tools/uat/doc-query-probe.mjs), not the state, since what’s drawn isn’t in it.
 
 /**
  * The page had asked for fewer diagram pages than it had diagram frames, with one out of view and not drawn, and a later
@@ -33,11 +33,42 @@ function diagramDeferred(f) {
   return [];
 }
 
+/** At least this many session events in one page load before a count of no scans means anything. */
+export const SESSION_FLOOR = 5;
+/** A room this big, as bigroom’s is, where a scan over the whole document costs what #564-b1 removed. */
+export const ROOM_FLOOR = 1000;
+
+/**
+ * The page handled session events in a room of ROOM_FLOOR items or more with no lookup over the whole document: a
+ * sample of a page load that had heard SESSION_FLOOR session events or more, with no scan among them (#564-b1). Before
+ * #564-b1 each session event ran three, so this stays silent. A page load that heard fewer session events can't fire,
+ * so a probe that heard nothing can't pass for one that heard events and saw no scans. O(samples).
+ * @param {{ probes?: { docQueries?: any[] } }} f
+ */
+function sessionScoped(f) {
+  const samples = f.probes?.docQueries ?? [];
+  const heard = samples.filter((s) => s.sessionEvents >= SESSION_FLOOR && s.items >= ROOM_FLOOR);
+  if (!heard.length || heard.some((s) => s.scanCount > 0)) return [];
+  const s = heard[heard.length - 1];
+  return [
+    {
+      at: s.at,
+      evidence: `By step ${s.step} the page had handled ${s.sessionEvents} session events in a conversation of ${s.items} items with no lookup over the whole document (${s.byId} by id).`,
+    },
+  ];
+}
+
 export const VIEW_TRIGGERS = {
   'diagram-deferred': {
     issue: 695,
     says: 'the page asked for fewer diagram pages than it had diagrams, and a diagram out of view loaded and drew later',
     recorded: (f) => Array.isArray(f.probes?.diagrams),
     run: diagramDeferred,
+  },
+  'session-scoped': {
+    issue: 564,
+    says: 'the page handled session events in a room of 1,000 items or more without a lookup over the whole document',
+    recorded: (f) => Array.isArray(f.probes?.docQueries),
+    run: sessionScoped,
   },
 };

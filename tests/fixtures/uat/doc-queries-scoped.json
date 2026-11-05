@@ -1,0 +1,42 @@
+[
+  {
+    "step": 1,
+    "at": 1793913294480,
+    "origin": 1793913293914,
+    "sessionEvents": 0,
+    "scanCount": 0,
+    "scans": [],
+    "byId": 0,
+    "items": 1000
+  },
+  {
+    "step": 2,
+    "at": 1793913294582,
+    "origin": 1793913293914,
+    "sessionEvents": 2,
+    "scanCount": 0,
+    "scans": [],
+    "byId": 2,
+    "items": 1000
+  },
+  {
+    "step": 3,
+    "at": 1793913294699,
+    "origin": 1793913293914,
+    "sessionEvents": 4,
+    "scanCount": 0,
+    "scans": [],
+    "byId": 2,
+    "items": 1001
+  },
+  {
+    "step": 4,
+    "at": 1793913294816,
+    "origin": 1793913293914,
+    "sessionEvents": 6,
+    "scanCount": 0,
+    "scans": [],
+    "byId": 2,
+    "items": 1001
+  }
+]
