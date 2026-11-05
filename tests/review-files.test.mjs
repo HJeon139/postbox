@@ -284,3 +284,17 @@ test('#780 a withdraw or an outcome can’t carry files, since no revision would
   assert.deepEqual(await blobsIn(f), [], 'nothing stored');
   assert.equal(f.review('fig').closed ?? null, null, 'and the withdraw wasn’t applied');
 });
+
+test('#780 a review can’t become another type, so its figures never outlive it: the update is refused, and they stay', async () => {
+  const f = await setup();
+  await writeFile(join(f.folder, 'figs/today.png'), png(4, 3));
+  await f.call('show_block', reviewBlock('fig', [{ path: 'figs/today.png' }]));
+  const it = f.review('fig');
+  const sha = it.files[0].sha256;
+  const asCode = await f.call('update_block', { block: { id: 'fig', type: 'code', version: 1, fallback: 'x', code: 'x' } });
+  assert.equal(asCode.isError, true);
+  assert.match(asCode.text, /can’t change a block’s type/);
+  assert.equal(f.review('fig').block.type, 'review');
+  assert.deepEqual(await reviewFile(f.rt, f.t.id, it.id, 'today.png', sha), png(4, 3), 'still a review, still served');
+  assert.equal((await blobsIn(f)).length, 1);
+});
