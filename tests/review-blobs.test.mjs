@@ -3,7 +3,11 @@
 // the same bytes keeps or still has in flight.
 
 import assert from 'node:assert/strict';
+import { mkdtemp, open } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
+import { Blobs } from '../server/blobs.mjs';
 import { keptIfShown } from '../server/review-files.mjs';
 import { png, setup } from './review-files-fixture.mjs';
 
@@ -52,4 +56,29 @@ test('#780 a refused review call never removes bytes an ordinary put of them had
   const [, s] = await Promise.all([plain, staged]);
   await f.rt.blobs.settle([{ sha256: s.sha256, fresh: s.fresh }], false);
   assert.deepEqual(await f.rt.blobs.get(s.sha256), bytes, 'the ordinary put’s bytes are still there');
+});
+
+test('#780 a refusal that settles while an ordinary put of the same bytes is mid-way leaves them', async () => {
+  // The ordinary put finds the staged put's file, so it doesn't write it again; it's paused at its folder sync,
+  // after that check and before it returns, which is when the refused call settles.
+  let pause = null;
+  const blobs = new Blobs(await mkdtemp(join(tmpdir(), 'pb-review-blobs-')), {
+    open: async (path, flags, mode) => {
+      if (flags === 'r' && pause) await pause.gate;
+      return open(path, flags, mode);
+    },
+  });
+  const bytes = png(7, 3);
+  const s = await blobs.put(bytes, { staged: true });
+  let release = () => {};
+  pause = { gate: new Promise((r) => (release = r)) };
+  const plain = blobs.put(bytes);
+  // Bounded, so a build that never counts it fails here rather than hanging the gate.
+  for (let i = 0; i < 200 && !blobs.writing?.size; i++) await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setTimeout(r, 20)); // its stat has found the file; it waits at the folder sync
+  await blobs.settle([{ sha256: s.sha256, fresh: s.fresh }], false);
+  pause = null;
+  release();
+  await plain;
+  assert.deepEqual(await blobs.get(s.sha256), bytes, 'the ordinary put returned, so its bytes must be there');
 });
