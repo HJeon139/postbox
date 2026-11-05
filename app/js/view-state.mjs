@@ -1,7 +1,7 @@
-// The transcript's view (#508's design, "Browser"): following the newest message, or reading at an anchor, a message
+// The transcript’s view (#508’s design, “Browser”): following the newest message, or reading at an anchor, a message
 // and how far down the view it starts. Only your own scrolling changes which; every change in size re-applies it.
-// Moved from thread.mjs's mountTranscript: its closure's variables are the fields of `v`, and its inner functions take
-// `v` first; the logic is unchanged.
+// It owns that state for one transcript, holds the anchor through changes in size (#88, #297, #341), and publishes what
+// it is on the transcript as data-view-* (publish). Moved from thread.mjs’s mountTranscript (#531).
 
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
@@ -43,7 +43,7 @@ function findAnchor(v) {
     if (kids[m].getBoundingClientRect().bottom > mid) hi = m;
     else lo = m + 1;
   }
-  // Back to the reply before the first one across the middle (one that takes no room doesn't count), then on as before.
+  // Back to the reply before the first one across the middle (one that takes no room doesn’t count), then on as before.
   let from = 0;
   for (let i = lo - 1; i >= 0; i--) {
     const n = kids[i];
@@ -75,8 +75,8 @@ function holdAnchor(v) {
   v.lastTop = s.scrollTop;
 }
 /**
- * What the view is, on the transcript for anyone to read (the UAT's probe, #531): data-view-mode is following or
- * reading, and while reading, data-view-anchor and data-view-offset are the anchor's key and how far down the view it
+ * What the view is, on the transcript for anyone to read (the UAT’s probe, #531): data-view-mode is following or
+ * reading, and while reading, data-view-anchor and data-view-offset are the anchor’s key and how far down the view it
  * starts, to 0.1 px. Written after each entry point, and only what changed.
  * @param {View} v
  */
@@ -132,7 +132,7 @@ function follow(v) {
   if (v.stuck && s.scrollTop < v.lastTop - 1 && !atEnd(s)) {
     v.stuck = false;
     v.anchor = findAnchor(v);
-    // The anchor is taken where the view now is, so that scroll is heard: heard() below mustn't take it in again.
+    // The anchor is taken where the view now is, so that scroll is heard: heard() below mustn’t take it in again.
     v.lastTop = s.scrollTop;
   }
   if (v.stuck) {
@@ -151,7 +151,7 @@ function follow(v) {
 /** The scroll box’s size, to tell a scroll from the browser keeping the view in a box that changed size. @param {Element} s */
 const sizeOf = (s) => `${s.clientWidth}x${s.clientHeight}`;
 /**
- * A scroll the transcript hasn't heard of yet: its event comes in the next frame, after this resize (#341). It moved
+ * A scroll the transcript hasn’t heard of yet: its event comes in the next frame, after this resize (#341). It moved
  * the anchor by that much, so the place to hold is there, not where the last scroll event left it. A box that changed
  * size (the window, the panel) moves the view itself, and that isn’t you: the anchor holds as before (#88).
  * @param {View} v @param {Element} s
@@ -224,8 +224,8 @@ function settle(v, scrolled, resized) {
   if (s) v.size = sizeOf(s);
 }
 /**
- * After the transcript is drawn again from new state (a load, after a restart or a Retry): an anchor that's no longer
- * there is taken again where the view is, so what's published names an item on the page.
+ * After the transcript is drawn again from new state (a load, after a restart or a Retry): an anchor that’s no longer
+ * there is taken again where the view is, so what’s published names an item on the page.
  * @param {View} v
  */
 function rebuilt(v) {
@@ -244,7 +244,7 @@ function grew(v) {
 }
 
 /**
- * A view's state as it starts: following, unless it comes back from a rebuild while reading (was). Its observers are
+ * A view’s state as it starts: following, unless it comes back from a rebuild while reading (was). Its observers are
  * added by mountView.
  * @param {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, was?: { anchor: any, unseen: number } }} o
  * @returns {View}
