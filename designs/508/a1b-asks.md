@@ -46,7 +46,7 @@
 
 A host that forgot the prompt sends neither before it sends its older prompts again. Without R8, the person would be shown the dead card as the need while the live, older permission wasn’t flagged. With it, the older card takes the need, as `nextNeed` would choose, since `nextNeed` doesn’t count the dead one. If the newer card is only not yet waited on again, the host sends it next, `waitOn` offers it, and it takes the need back as the newer card.
 
-**Cost:** an offer reads two cards from pending, as `keptOrNext` already does: O(items in the two cards’ threads), once per new card. A per-thread item index (#712b, PR #769, not merged) would make it O(1).
+**Cost:** an offer reads two cards from pending by id, through `rt.store.pending.item`, which #712b’s index (#769, merged) makes O(1) per card, so an offer stays O(1). `keptOrNext`’s `cardOf` still scans the thread with `find`; the code PR can move it to `pending.item` too.
 
 ## 4. Invariants and the failure table
 
