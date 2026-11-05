@@ -11,6 +11,7 @@ import { LOCK_FRESH_MS } from '../server/remote/host/cleanup.mjs';
 import { dropLock, EXIT, LOCK_STALE_MS, SERVE_START_MS, takeDaemonLock, takeLock } from '../server/remote/host/daemon.mjs';
 import { hostPaths } from '../shared/remote-protocol.mjs';
 import { attachOnce, BOOT, VERSION, waitFor } from './remote-daemon-setup.mjs';
+import { hostHome } from './socket-base.mjs';
 
 test('takeDaemonLock: daemon.pid is taken once; a live holder’s is kept, and a dead one’s or a garbled one is replaced', () => {
   const dir = mkdtempSync(join(tmpdir(), 'pbl-'));
@@ -99,7 +100,7 @@ test('takeDaemonLock: a serve paused while it removes a dead daemon’s daemon.p
 });
 
 test('host attach judges the start lock by its owner: a live one is waited for however old, a dead or garbled one or one long without a record is broken', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'pba-'));
+  const home = hostHome('pba-');
   try {
     const p = hostPaths(home, VERSION);
     // Every lock looks long past LOCK_STALE_MS to this clock; only PID 4242 is alive, as its record says.

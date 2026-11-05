@@ -4,8 +4,7 @@
 // tests/integration/remote-broker.test.mjs.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
@@ -13,11 +12,12 @@ import { encode, hostPaths, MESSAGE_FILE, message, PROTOCOL_VERSION, TURN_FILES 
 import { readMessages } from './fake-daemon.mjs';
 import { inProcessDaemon, socketShim } from './remote-broker-daemon-setup.mjs';
 import { BLOCK, sleep, TOKEN, until, VERSION } from './remote-broker-fixtures.mjs';
+import { hostHome } from './socket-base.mjs';
 
 // ── Through the daemon ──
 
 test('the daemon: a shim on its socket reaches the broker, Stop refuses the turn’s calls, and a held-stdin write still goes', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'pbbd-'));
+  const home = hostHome('pbbd-');
   const p = hostPaths(home, VERSION);
   mkdirSync(p.root, { recursive: true, mode: 0o700 });
   writeFileSync(p.token, TOKEN, { mode: 0o600 });

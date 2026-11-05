@@ -4,8 +4,7 @@
 // shim on its socket (tests/remote-broker-daemon-setup.mjs).
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
@@ -13,6 +12,7 @@ import { encode, hostPaths, MESSAGE_FILE, message, PROTOCOL_VERSION, TURN_FILES 
 import { readMessages } from './fake-daemon.mjs';
 import { inProcessDaemon, socketShim } from './remote-broker-daemon-setup.mjs';
 import { BLOCK, TOKEN, until, VERSION } from './remote-broker-fixtures.mjs';
+import { hostHome } from './socket-base.mjs';
 
 const ME = 'a'.repeat(32);
 const OTHER = 'b'.repeat(32);
@@ -43,7 +43,7 @@ function watchBroker(daemon) {
 
 /** A daemon with turn t1 started and a snapshot sent, and Postbox connections to it. */
 async function room() {
-  const home = mkdtempSync(join(tmpdir(), 'pblink-'));
+  const home = hostHome('pblink-');
   const p = hostPaths(home, VERSION);
   mkdirSync(p.root, { recursive: true, mode: 0o700 });
   writeFileSync(p.token, TOKEN, { mode: 0o600 });

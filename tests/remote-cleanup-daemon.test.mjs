@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { MESSAGE_FILE, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { daemonSetup, startMsg, until } from './remote-cleanup-setup.mjs';
+import { hostHome } from './socket-base.mjs';
 
 test('daemon: an ack survives a restart; once the turn has ended and is acked whole its logs go, and welcome and read still answer', async () => {
   const s = daemonSetup();
@@ -202,7 +203,7 @@ test('daemon: remove waits for a start under way on another connection, then sto
 
 test('daemon: remove refuses a ~/.postbox-remote that resolves outside the home folder, and deletes nothing', async () => {
   const outside = mkdtempSync(join(tmpdir(), 'pbo-'));
-  const home = mkdtempSync(join(tmpdir(), 'pbd-'));
+  const home = hostHome('pbd-');
   try {
     symlinkSync(outside, join(home, '.postbox-remote'));
     const s = daemonSetup({ home });

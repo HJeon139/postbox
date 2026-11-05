@@ -3,13 +3,13 @@
 // alone. Over a temp home with a fake process check (tests/remote-cleanup-setup.mjs), as tests/remote-cleanup.test.mjs.
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { compareVersions, createCleanup, LOCK_FRESH_MS } from '../server/remote/host/cleanup.mjs';
 import { hostPaths, MESSAGE_FILE, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { BOOT, DAY, ls, makeTurn, setup, VERSION } from './remote-cleanup-setup.mjs';
+import { hostHome } from './socket-base.mjs';
 
 test('retirement: the newest daemon deletes an old version’s folder unless a turn, its daemon or an attach still uses it', async () => {
   const s = setup();
@@ -91,7 +91,7 @@ test('removeAll deletes ~/.postbox-remote and the turns’ agent files, and sign
 });
 
 test('a ~/.postbox-remote that’s a link is refused: removeAll and the sweep delete nothing, inside or outside it', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'pbc-'));
+  const home = hostHome('pbc-');
   try {
     const elsewhere = join(home, 'elsewhere');
     const p = hostPaths(home, VERSION);

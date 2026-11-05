@@ -4,6 +4,7 @@
 
 import { hostVersion } from '../server/remote/host/paths.mjs';
 import { hostPaths, TURN_FILES } from '../shared/remote-protocol.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 /** sun_path’s size, with its terminating NUL: a socket’s path must be shorter. */
 export const SUN_PATH_BYTES = { darwin: 104, linux: 108 };
@@ -33,3 +34,10 @@ export function longestHostSocket(home) {
  * @param {{ env?: Record<string, string | undefined>, platform?: string }} [o]
  */
 export const hostSocketBase = (prefix, sub, o) => socketBase(prefix, (dir) => longestHostSocket(`${dir}${sub}`), o);
+
+/**
+ * A unit fixture’s host home (#802): a temp folder removed when the test file ends, under TMPDIR when the home’s
+ * sockets fit there, else under /tmp. The gate’s run folder under macOS’s temp folder is too deep for them.
+ * @param {string} prefix
+ */
+export const hostHome = (prefix) => tempDir(prefix, hostSocketBase(prefix, ''));
