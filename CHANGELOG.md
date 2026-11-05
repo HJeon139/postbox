@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.22.0 (2026-11-05)
+
+### Features
+
+- **transcript:** the view publishes what it is on the transcript, as data-view-* (#531, B1b-a)
+
+### Fixes
+
+- **transcript:** heard() keeps its box-size check again, so a resize leaves what you read (#88)
+- **transcript:** a view that unsticks on an unheard scroll takes that scroll in once (#341)
+- **transcript:** a redraw takes a vanished anchor again; the panel publishes too (#531, B1b-a)
+- **transcript:** a scroll the transcript hasn't heard of yet isn't taken back by a resize (#341)
+
 ## 1.21.1 (2026-11-05)
 
 ### Fixes
