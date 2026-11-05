@@ -10,6 +10,8 @@ import { gated } from './store-outage.mjs';
 import { draftOf, isWriteCall, whereOf } from './write-guard.mjs';
 import { settledCall } from './write-intent.mjs';
 
+export { expireStalePermissions } from './permission-expiry.mjs';
+
 // ── Permission prompts ─────────────────────────────────────────────────────────────
 // A real agent in “ask” mode stops before anything risky, such as running a command. Postbox shows a card
 // in the thread, the agent needs you, and the tool call waits for your answer. Ending the turn, or Stop,
@@ -293,16 +295,6 @@ export async function resolveDenial(rt, threadId, itemId, action) {
   releaseNeed(rt, se, itemId);
   if (note && se && !se.archived) rt.deliver(se.id, { kind: 'notice', text: note }, { threadId });
   return { ok: true };
-}
-
-/**
- * After a restart, no tool call is waiting any more, so open cards can’t be answered. A card of a turn still on a
- * remote host stays open: the host sends its prompt again, or says it expired (#120).
- */
-export function expireStalePermissions(rt) {
-  for (const [threadId, items] of Object.entries(rt.s.items))
-    for (const it of items)
-      if (it.kind === 'permission' && it.status === 'open' && !rt.remote.keepsCard(it)) rt.patchItem(threadId, it.id, { status: 'expired' });
 }
 
 /**
