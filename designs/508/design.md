@@ -524,6 +524,8 @@ It needs no state, so it runs the same on a copy, and its counts don’t change 
 
 **Budget (PF-1, decided):** key-to-frame p95 within 10% of a small room’s, and Safari’s idle painting no higher, on copies of real rooms.
 
+Under one frame, the 10% can’t be measured: Chromium’s Event Timing leaves out keys under its 16 ms threshold and reports the rest in 8 ms steps. So when the small room’s p95 is under one frame, a larger room passes at up to 17.6 ms, 16 ms plus 10% (`underOneFrame` in `tools/key-frame-stats.mjs`).
+
 ## 12. Failure modes
 
 | Failure | What happens | Requirement |
