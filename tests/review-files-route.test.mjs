@@ -40,10 +40,12 @@ async function reviewWithImage() {
   const other = rt.addItem(t.id, { kind: 'block', valid: true, block: block('other') });
   // Not a review, though it carries a file record: only a review’s files are served.
   const message = rt.addItem(t.id, { kind: 'message', text: 'x', files: [file] });
+  // A block that isn’t a review, though it carries a file record: only a review’s files are served.
+  const code = rt.addItem(t.id, { kind: 'block', valid: true, block: { id: 'code', type: 'code', version: 1, code: 'x', fallback: 'x' }, files: [file] });
   // A record whose name would break the header, as no call can make (FILE_NAME refuses it).
   const quoted = rt.addItem(t.id, { kind: 'block', valid: true, block: block('quoted'), files: [{ ...file, name: 'a"b.png' }] });
   await rt.store.flush();
-  return { t, it, other, message, quoted, bytes, sha256 };
+  return { t, it, other, message, code, quoted, bytes, sha256 };
 }
 
 const url = (t, it, name, sha) => `/api/threads/${t.id}/items/${it.id}/files/${name}?sha=${sha}`;
@@ -64,8 +66,9 @@ test('#780 a review’s image is served by its name and SHA-256, with the exact 
 });
 
 test('#780 anything but the item’s own file is the same 404: another name, item, thread or SHA-256', async () => {
-  const { t, it, other, message, sha256 } = await reviewWithImage();
+  const { t, it, other, message, code, sha256 } = await reviewWithImage();
   const misses = [
+    url(t, code, 'today.png', sha256),
     url(t, message, 'today.png', sha256),
     url(t, it, 'nope.png', sha256),
     url(t, other, 'today.png', sha256),
