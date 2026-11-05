@@ -17,6 +17,8 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { isEntry } from './lint-lib.mjs';
+import { baseRef, mergeBase, noBase } from './merge-base.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const LENGTH = /** @type {const} */ ({ style: ['file', 'noExcessiveLinesPerFile'], complexity: ['function', 'noExcessiveLinesPerFunction'] });
@@ -196,17 +198,6 @@ export function addedLines(base, head) {
   });
 }
 
-/**
- * What a run with no base to compare with does: in CI it fails, since that is a broken checkout and must not pass as a
- * clean guard; elsewhere it skips.
- * @param {string} ref @param {Record<string, string | undefined>} env
- */
-export function noBase(ref, env) {
-  return env.CI
-    ? { code: 1, message: `lint-caps: failed, there is no ${ref} to compare with.` }
-    : { code: 0, message: `lint-caps: skipped, there is no ${ref} to compare with.` };
-}
-
 const git = (/** @type {string[]} */ args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 const SKIP = [':!tools/lint-caps.mjs', ':!tests/lint-caps.test.mjs'];
 
@@ -243,13 +234,11 @@ function configs(rev) {
   return new Map(paths.map((p) => [p, git(['hash-object', p]).trim()]));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const ref = process.argv[2] ?? `origin/${process.env.BASE_REF || 'main'}`;
-  let at = '';
-  try {
-    at = git(['merge-base', ref, 'HEAD']).trim();
-  } catch {
-    const r = noBase(ref, process.env);
+if (isEntry(import.meta.url, process.argv[1])) {
+  const ref = baseRef(process.argv[2], process.env);
+  const at = mergeBase(git, ref);
+  if (!at) {
+    const r = noBase('lint-caps', ref, process.env);
     console.log(r.message);
     process.exit(r.code);
   }

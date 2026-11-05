@@ -1,6 +1,6 @@
-# #633: which card an agent needs you for, until A1b
+# #633: which card an agent needs you for
 
-**Status:** revision 5: revision 3, which the person approved, plus the pre-review packet’s fixes (revision 4) and critic’s and researcher’s reads at `2d967ecb` (I1’s fifth write, functions cited instead of lines). A stopgap: A1b derives needs from open ask records and replaces `nextNeed` (`design.md:607`; `execution-plan.md:41`). #508 actions 4 and 9 ask every stopgap note for a restart matrix and `main`’s behavior as a table; both are below.
+**Status:** revision 5: revision 3, which the person approved, plus the pre-review packet’s fixes (revision 4) and critic’s and researcher’s reads at `2d967ecb` (I1’s fifth write, functions cited instead of lines). Written as a stopgap until A1b’s ask records; `a1b-asks.md` now keeps `nextNeed`, with one tie rule, and A1’s records move to A2 (`design.md`, “Rollout”; `execution-plan.md`, “A1 is split”). #508 actions 4 and 9 ask every stopgap note for a restart matrix and `main`’s behavior as a table; both are below.
 
 ## Decisions
 
@@ -47,7 +47,7 @@ Which comes first: `RANK` (permission, failed, block, refusal, tool request, the
 | 10× (10,001 items) | 2,001 | 0.933 ms | 1.449 ms |
 
   So 2,000 threads add about 0.5 ms, and 10× the items about 0.4 ms. Both stay well under a frame.
-- **No index of a thread’s children on this head** (critic’s ruling): it would turn T into the agent’s own threads, but it would be a second structure kept in step with the store, for a function A1b replaces with a read of the agent’s open ask records. At 2,000 threads the walk costs about 0.5 ms per call (above), and the sweep makes one call per running session.
+- **No index of a thread’s children on this head** (critic’s ruling): it would turn T into the agent’s own threads, but it would be a second structure kept in step with the store, for a function A1b was to replace with a read of open ask records; `a1b-asks.md` now keeps it, with one tie rule. At 2,000 threads the walk costs about 0.5 ms per call (above), and the sweep makes one call per running session.
 
 ## Restart matrix
 
@@ -99,7 +99,7 @@ The sweep (`server/restart-sweep.mjs`, `settleInterrupted`) runs at startup befo
 ## Not covered
 
 - **A host card nobody waits on during a running turn** (`endCard`’s `'tool'` state, `server/remote/turns-prompts.mjs`): no rig drives it. Unchanged from `e776d4b0`.
-- **`keptId` and `keptTurnIds` overlap:** a kept block is a turn-tied card of a kept turn, so `keptTurnIds` could absorb `keptId`. Left as is to keep this head small; A1b removes both.
+- **`keptId` and `keptTurnIds` overlap:** a kept block is a turn-tied card of a kept turn, so `keptTurnIds` could absorb `keptId`. Left as is to keep this head small; `a1b-asks.md` keeps both, so A2 decides.
 - **Privacy of the run’s history:** a recorded room’s events now keep each session’s handle, and its need’s kind and card id (`server/room-events.mjs`, `keepEvent`), never the need’s text. These are public session fields, and #508 action 8’s scan reads the same file.
 - **Size:** Biome counts `server/card-needs.mjs` at between 110 and 119 lines against its 300-line cap, and `server/room-events.mjs` under 50 against 300. No ceiling changed (`lint-caps` exit 0).
 - **Backends:** the decider runs on the server, the same for every backend. UAT runs on Claude Code only (Q6); a host’s permission path is covered by specs, not by UAT.

@@ -4,7 +4,7 @@
 //   node tools/lint-tokens.mjs
 
 import { fileURLToPath } from 'node:url';
-import { allowed, files, read, report, scan } from './lint-lib.mjs';
+import { allowed, files, isEntry, read, report, scan } from './lint-lib.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const COLOR = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|oklch|oklab|lab|lch|hwb)\(/;
@@ -77,7 +77,7 @@ export function checkHtml(text, file) {
   return findings;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isEntry(import.meta.url, process.argv[1])) {
   const findings = [];
   for (const f of files(ROOT, ['app'], ['.css'], ['app/kit/vendor'])) findings.push(...checkCss(read(ROOT, f), f));
   for (const f of files(ROOT, ['app/index.html'], ['.html'])) findings.push(...checkHtml(read(ROOT, f), f));

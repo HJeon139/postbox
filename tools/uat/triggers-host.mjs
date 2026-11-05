@@ -58,6 +58,18 @@ const recovered = (fault) => (f) =>
     .filter((x) => x.recovered)
     .map((x) => ({ at: x.at ?? null, evidence: `${fault}${x.label ? ` on ${x.label}` : ''}: ${x.shown ?? 'Postbox read Connected again.'}` }));
 
+/**
+ * A host with an older Postbox staged on it (#464) that read not installed before this run’s version ever connected
+ * there: the setup’s record (tools/uat/hosts-run.mjs, stageOn; tools/uat/hosts-watch.mjs, hostsUp).
+ */
+const stagedOlder = (f) =>
+  (f.hosts?.setup ?? [])
+    .filter((x) => x.staged && Number.isFinite(x.notInstalled) && !(Number.isFinite(x.connected?.at) && x.connected.at <= x.notInstalled))
+    .map((x) => ({
+      at: x.notInstalled,
+      evidence: `${x.label}, with Postbox ${x.staged} staged on it, read not installed before this run’s version ran there.`,
+    }));
+
 /** @type {Record<string, { issue: number, says: string, recorded: (f: any) => boolean, run: (f: any) => { at: number|null, evidence: string }[] }>} */
 export const HOST_TRIGGERS = {
   'turn-on-each-place': {
@@ -160,6 +172,12 @@ export const HOST_TRIGGERS = {
               evidence: `@${it.handle}’s card “${it.summary}” was open when ${x.label}’s ssh was killed, and was answered ${it.status}.`,
             })),
         ),
+  },
+  'host-staged-older': {
+    issue: 464,
+    says: 'a host with an older Postbox on it read not installed, before this run’s version was installed there',
+    recorded: hostRun,
+    run: stagedOlder,
   },
   // A hand-off between machines while a wake card waits (tests/uat/e2e/scenarios/hostwakes.md).
   ...HOSTWAKE_TRIGGERS,

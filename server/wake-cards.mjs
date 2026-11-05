@@ -31,11 +31,16 @@ export function askToWake(rt, from, parent, p, wake) {
 /**
  * An agent wakes a persona the conversation doesn’t have (#228): only the person adds one, so a card asks them. Allow
  * adds it, with a note, and delivers the wake; Decline tells the agent (resolveHop). One whose session here is
- * archived needs the person to restore it.
+ * archived needs the person to restore it. After the person declines adding it here, a prose mention asks no more
+ * (#693): wake_agent still does, since it’s a deliberate ask.
+ * @param {any} rt @param {any} from @param {any} parent @param {any} p @param {any} wake
+ * @param {{ prose?: boolean }} [opts]  prose: the wake is an @-mention in a turn’s reply
  */
-export function askToAdd(rt, from, parent, p, wake) {
+export function askToAdd(rt, from, parent, p, wake, { prose = false } = {}) {
   if (rt.sessionsIn(parent.id).some((x) => x.personaId === p.id))
     return { ok: false, message: `@${p.handle}’s session in this conversation is archived, so it can’t be woken. Ask the person to restore it.` };
+  if (prose && declinedAdd(rt, parent.id, p.handle))
+    return { ok: false, message: `the person chose not to add @${p.handle} to this conversation. Carry on without it, or ask the person.` };
   const open = openCard(rt, parent);
   if (open) return holdOnCard(rt, open, parent, from, p, wake);
   const it = rt.addItem(parent.id, {
@@ -55,6 +60,17 @@ export function askToAdd(rt, from, parent, p, wake) {
     waiting: true,
     message: `@${p.handle} isn’t in this conversation, so the person was asked to add it. If they do, it gets your message; if not, you’ll be told.`,
   };
+}
+
+/**
+ * Whether the person’s last answer to adding `handle` to the conversation was no (#693), read from its cards, so a
+ * restart keeps it: a later Add lifts it. A card retiring forks declined (side-threads.mjs, archiveForks, before #693)
+ * isn’t the person’s answer. O(items in the conversation), once per mention of an agent it doesn’t have.
+ */
+function declinedAdd(rt, conv, handle) {
+  const answered = (x) => x.kind === 'hop' && x.join && x.to === handle && (x.status === 'allowed' || x.status === 'declined');
+  const last = rt.store.pending.items(conv).findLast(answered);
+  return last?.status === 'declined' && !rt.s.sessions[last.fromSessionId]?.retiredFork;
 }
 
 /** One request at a time: the card waiting for the person, if there is one. */
@@ -91,6 +107,7 @@ function needsCard(rt, from, parent, it, text) {
 
 export function resolveHop(rt, threadId, itemId, allow) {
   const it = rt.store.item(threadId, itemId);
+  if (it?.kind === 'hop' && it.status === 'closed') throw httpError(409, `That request was closed: ${it.closedWhy}.`);
   if (it?.kind !== 'hop' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
   // Added while its session here is being removed, Undo would leave two of it: wait for the removal to finish (#228).
   const removing = (rt.s.threads[threadId]?.members ?? []).map((id) => rt.s.sessions[id]).find((x) => x?.deleting && x.handle === it.to);
@@ -209,4 +226,70 @@ export function dropHeld(rt, se, how) {
         w.fromSessionId,
         `@${se.handle} was ${how} before your message held for it (“${clip(w.text, 120)}”) went, so it won’t go. Wake it again if you still need it.`,
       );
+}
+
+/**
+ * A card that closes with no answer from the person (#693): the agent that asked was archived, removed or retired, so
+ * nothing can answer for it. It closes, its agent stops needing the person, and nothing it held goes. Its agent and
+ * each agent whose wake was held on it are told at their next turn, as dropHeld tells, archived or being removed
+ * included: a Restore or an Undo finds the note, and the card stays closed. The one way every such close goes.
+ * @param {any} rt @param {string} conv @param {any} card @param {string} how  what happened to the agent that asked
+ */
+export function closeHop(rt, conv, card, how) {
+  const why = `@${card.from} was ${how}`;
+  rt.patchItem(conv, card.id, { status: 'closed', closedWhy: why, closedAt: Date.now() });
+  const asker = rt.s.sessions[card.fromSessionId];
+  releaseNeed(rt, asker, card.id);
+  if (asker)
+    rt.tellAgent(asker.id, `${cardName(card).replace(`@${card.from}’s request`, 'Your request')} was closed: you were ${how}. Ask again if you still need it.`);
+  for (const w of card.held ?? []) {
+    // The agent that asked has its note above, which covers its own wakes held here.
+    if (!rt.s.sessions[w.fromSessionId] || w.fromSessionId === card.fromSessionId) continue;
+    rt.tellAgent(
+      w.fromSessionId,
+      `Your message to @${w.to} (“${clip(w.text, 120)}”), held on ${cardName(card)}, didn’t go: ${why}. Send it again if you still need it.`,
+    );
+  }
+}
+
+/** The agent that asked is archived or removed (#693): its open card closes. O(items in its conversation). */
+export function closeOwnCard(rt, se, how) {
+  const conv = rt.lineage(se.threadId).at(-1);
+  const card = openCard(rt, { id: conv });
+  if (card?.fromSessionId === se.id) closeHop(rt, conv, card, how);
+}
+
+/**
+ * At startup, an open card whose agent is archived, being removed or gone closes (#693): a room from before the fix,
+ * or one whose removal a restart cut short, would hold every wake on it. O(items), once per start.
+ */
+export function closeOrphanCards(rt) {
+  for (const t of Object.values(rt.s.threads)) {
+    const card = openCard(rt, t);
+    const from = card && rt.s.sessions[card.fromSessionId];
+    if (card && (!from || from.archived || from.deleting)) closeHop(rt, t.id, card, 'archived or removed');
+  }
+}
+
+/** How many held messages a catch-up names, one line each; the rest are counted (#693). */
+const HELD_NAMED = 3;
+
+/**
+ * The messages waiting for an agent on its conversation’s open card, for its catch-up (#693): a wake-limit card’s own
+ * wake, and each wake held on the card, so it learns a message is coming, and from whom, while the person hasn’t
+ * answered. Up to HELD_NAMED lines, then a count. O(items in the conversation), once per turn.
+ * @param {any} rt @param {any} se  the agent the messages are for @returns {string[]}
+ */
+export function heldFor(rt, se) {
+  // Published, not pending: the catch-up says what the person can see (designs/508/601-held-view.md), and it decides no
+  // write, so a card still held behind a commit isn’t named yet.
+  const card = rt.store.items(rt.lineage(se.threadId).at(-1)).find((x) => x.kind === 'hop' && x.status === 'open');
+  if (!card) return [];
+  const own = !card.join && card.to === se.handle ? [{ from: card.from, text: card.text ?? card.reason ?? '' }] : [];
+  const mine = [...own, ...(card.held ?? []).filter((w) => w.to === se.handle)];
+  const lines = mine
+    .slice(0, HELD_NAMED)
+    .map((w) => `@${w.from}’s message to you (“${clip(w.text, 120)}”) is held on ${cardName(card)}, waiting for the person.`);
+  const more = mine.length - lines.length;
+  return more > 0 ? [...lines, `And ${more} more messages for you are held on it.`] : lines;
 }

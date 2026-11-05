@@ -32,6 +32,9 @@ export const SCRIPTS = {
   listeners: `{ ss -ltnp 2>/dev/null || ss -ltn; } || exit 4; echo '--ps--'; ps -u "$(id -u)" -o pid=,sid=,args= || exit 5; echo '${END}'`,
   turns: `ls -1 "$HOME/.postbox-remote/turns" 2>/dev/null || true`,
   removed: `if [ -e "$HOME/.postbox-remote" ]; then echo present; else echo absent; fi`,
+  // A host the run staged an older Postbox on (#464, --stage-host-version), when Remove couldn’t clear it: baseline()
+  // found no Postbox there before the run, so what’s there is the run’s own. Stops it, then removes it.
+  removeStaged: `pkill -KILL -u "$(id -u)" -f '${ONE}/[^ ]*/host'; rm -rf -- "$HOME/.postbox-remote"; if [ -e "$HOME/.postbox-remote" ]; then exit 1; fi; echo removed`,
   killDaemon: `pkill -KILL -u "$(id -u)" -f '${ONE}/[^ ]*/host[.]mjs serve'; s=$?; if [ "$s" -eq 0 ]; then echo killed; elif [ "$s" -eq 1 ]; then echo none; else exit "$s"; fi`,
   // Each turn’s runner (its PID, from runner.json), then this user’s processes with their parents, groups, sessions
   // and start times: what turnTrees and stillRunning read.

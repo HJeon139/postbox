@@ -46,6 +46,7 @@ import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
 import { sendLint } from './lint-delivery.mjs';
+import { wakeMentions } from './mention-wakes.mjs';
 import * as queue from './message-queue.mjs';
 import {
   allowAlways,
@@ -112,7 +113,7 @@ import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
-import { retireStale } from './wake-cards.mjs';
+import { closeOrphanCards, retireStale } from './wake-cards.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { hostTool } from './apps.mjs';
@@ -192,6 +193,8 @@ export class Runtime {
     archiveForks(this);
     // Nothing archives a conversation by itself any more (#320): what idle archiving hid comes back, once.
     restoreArchives(this);
+    // After the restore, so a card it brings back stays the person’s to answer (#693).
+    closeOrphanCards(this);
   }
 
   get s() {
@@ -1071,27 +1074,9 @@ export class Runtime {
     this.takePending(se, turn, true);
   }
 
-  /**
-   * An agent that @-mentions another agent wakes it, there, except in a summary sent back, which wakes no one (#225).
-   * A reply doesn’t go back to the agent that woke this one by itself (#372): it’s in the conversation, read at that
-   * agent’s next turn, and it wakes it only by @-mentioning it, as a hand-off does. The chain limit stops a runaway one.
-   * Each wake after the first reuses the message the first went out as: a turn in an old side thread posts it once.
-   * One the failed reply a retry answers already woke isn’t woken again (#485).
-   * @param {any} se @param {any} turn @param {string} text  what the woken agents are sent
-   * @returns {string[]} the handles it woke, or that wait to be
-   */
+  /** The wakes a turn's @-mentions make once it ends (server/mention-wakes.mjs). */
   wakeMentions(se, turn, text) {
-    let said = turn.first;
-    const woke = [];
-    for (const h of turn.summarizeTo ? [] : parseMentions(turn.said, this.handles())) {
-      if (h.toLowerCase() === se.handle.toLowerCase() || turn.woken.includes(h)) continue;
-      // Its turn has ended, so where it spoke comes from the turn: a topic thread it spoke in, else the conversation.
-      const r = this.agentWake(se.id, h, text, { replyIn: turn.threadId !== se.threadId ? turn.threadId : null, fromTurnId: turn.id, itemId: said });
-      if (r.itemId) said = r.itemId;
-      if (r.ok || r.waiting) woke.push(h);
-      else this.tellAgent(se.id, `Your mention of @${h} woke no one: ${r.message}`);
-    }
-    return woke;
+    return wakeMentions(this, se, turn, text);
   }
 
   /**
@@ -1398,7 +1383,7 @@ export class Runtime {
   setJobStep(job, patch) {
     const live = this.turns.get(job.sessionId);
     const turn = live?.id === job.turnId ? live : null;
-    const steps = turn ? turn.steps : this.store.pending.items(job.threadId).find((x) => x.id === job.itemId)?.activity?.steps;
+    const steps = turn ? turn.steps : this.store.pending.item(job.threadId, job.itemId)?.activity?.steps;
     if (!Array.isArray(steps)) return;
     const next = steps.map((st) => (st.id === job.toolUseId ? { ...st, ...patch } : st));
     if (turn) turn.steps = next;
@@ -2095,7 +2080,7 @@ export class Runtime {
     const flush = ({ final = false } = {}) => {
       if (timer) clearTimeout(timer);
       timer = null;
-      if (!this.store.pending.items(threadId).some((x) => x.id === it.id)) return;
+      if (!this.store.pending.item(threadId, it.id)) return;
       if (!cut && out.length <= MAX_COMMAND_OUTPUT) {
         // Only the new text, as the reply of an agent streams.
         if (out.length > sent) this.store.emit('item.text', { threadId, id: it.id, text: out.slice(sent) });
@@ -2134,7 +2119,7 @@ export class Runtime {
         // How it ended is written once writes are open: the output chunks are memory-only while closed (I1), but a
         // status left “running” in the recovered state would never end.
         whenWritable(this, () => {
-          if (!this.store.pending.items(threadId).some((x) => x.id === it.id)) return;
+          if (!this.store.pending.item(threadId, it.id)) return;
           this.patchItem(threadId, it.id, {
             status: run.stopped ? 'stopped' : error ? 'failed' : code === 0 ? 'done' : 'failed',
             exitCode: typeof code === 'number' ? code : null,
@@ -2372,7 +2357,7 @@ export class Runtime {
       if (e.type === 'assistant') {
         for (const b of contentBlocks(e.message?.content)) {
           if (b.type === 'text' && b.text?.trim()) {
-            const it = m.agentItem && this.store.pending.items(se.threadId).find((x) => x.id === m.agentItem);
+            const it = m.agentItem && this.store.pending.item(se.threadId, m.agentItem);
             if (it) this.patchItem(se.threadId, it.id, { text: it.text ? `${it.text}\n\n${b.text}` : b.text });
             else m.agentItem = this.mirrorAgentItem(se, b.text);
             this.updateSession(sessionId, { state: 'gen', currentStep: 'Writing in a terminal' });

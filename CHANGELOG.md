@@ -2,6 +2,109 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.21.1 (2026-11-05)
+
+### Fixes
+
+- **catch-up:** heldFor reads the open card from published items (#693)
+- **wakes:** a closed card's held message is due from its close, and its asker gets one note (#693)
+- **wakes:** close cards after the restore, tell everyone, keep the person's latest decline (#693)
+- **catch-up:** name a message held for an agent on a card that waits for the person (#693)
+- **wakes:** a card whose agent is archived, removed or retired closes, and held agents hear (#693)
+- **wakes:** after the person declines adding an agent, a prose mention asks no more (#693)
+
+## 1.21.0 (2026-11-05)
+
+### Features
+
+- **uat:** add the erased-conversation-commands trigger to assets-delete
+
+### Fixes
+
+- **uat:** leave out a Bash call Claude Code never ran from work-commands-match-stream
+- **uat:** split the turns' streams when only never-run sessions are left
+- **uat:** refusal-without-card counts cards and refusals by agent once
+- **uat:** pin how erased-session checks read the Undo window, removals and topics
+- **uat:** keep every stream when no session in the state has an id
+- **uat:** refusal-without-card compares each agent's refusals with its cards
+- **uat:** the host half of work-files-match-stream skips erased sessions
+- **uat:** checks that compare streams with the state skip erased sessions
+
+## 1.20.5 (2026-11-05)
+
+### Fixes
+
+- **antigravity:** a filesystem that refuses chmod still starts the turn
+- **antigravity:** hooks.json is read-only on every umask
+
+## 1.20.4 (2026-11-05)
+
+### Fixes
+
+- **state:** read items by id through the index on the server and in the page
+- **state:** find an item by id through one index kept outside the state
+
+## 1.20.3 (2026-11-05)
+
+### Fixes
+
+- **tools:** the diff parser fails a hunk with no file, and both tools ask git for one diff shape
+- **tools:** the commit scan runs through a folder reached by a symlink
+- **tests:** the commit scan checks the privacy checker's own files like any other
+- **tests:** the commit scan refuses git older than 2.36, naming both versions
+- **tests:** scan merges, commit messages and -diff files, whatever git config says
+
+## 1.20.2 (2026-11-05)
+
+### Fixes
+
+- **uat:** a recheck reads the phases a run played, and keeps them in run.json
+
+## 1.20.1 (2026-11-05)
+
+### Fixes
+
+- **store:** newId always returns 8 letters or digits
+
+## 1.20.0 (2026-11-04)
+
+### Features
+
+- **uat:** stage an older Postbox on a test host (#464)
+
+### Fixes
+
+- **uat:** record a staged host cleared at the end of the run as gone (#464)
+- **uat:** test the refused-host guard, read a plain run’s phases in the recheck (#464)
+- **uat:** keep --phase working on remotehosts, record the phases played, refuse a newer tag (#464)
+- **uat:** refuse staging with --replace-host-install, and narrow its cleanup (#464)
+- **uat:** give the staged installer the host’s full settings (#464)
+- **uat:** skip the staged phase in a plain run, and clear a staged host (#464)
+
+## 1.19.1 (2026-11-04)
+
+### Fixes
+
+- **tests:** the privacy check joins each stream's deltas, and scrubs denials.jsonl's split slug
+- **tests:** the privacy check's case-blind home folders load on Node 22
+- **tests:** the privacy check reads its own files, any case, in linear time
+- **tests:** git ignores check-logs/, and the committed check log is untracked
+- **tests:** close the privacy check's gaps the review found
+- **tests:** scrub account usage and home paths from committed files
+
+## 1.19.0 (2026-11-04)
+
+### Features
+
+- **tools:** fail a nested ternary on a line the change adds
+
+### Fixes
+
+- **tools:** lint-ternary fails a file with more nested ternaries than at the base
+- **tools:** the lints run from a folder reached through a symlink
+- **tools:** lint-ternary counts each hunk's lines, and fails cleanly outside a checkout
+- **tools:** the lints run from a folder whose path has a space
+
 ## 1.18.2 (2026-11-04)
 
 ### Fixes

@@ -47,12 +47,13 @@
 // Stop sends SIGINT, then SIGKILL if the CLI doesn’t exit. POSTBOX_AGY_RECORD=<folder> saves each turn’s raw stream.
 
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { mkdir, rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
-import { agyHookCommand, agyHooksJson, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT, HOOK_TIMEOUT_S } from './agy-hook.mjs';
+import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
+import { agyPlugin, excludeFile, excludePlugin, makeReadOnly, PLUGIN_DIR } from './agy-plugin.mjs';
 import { clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
 import { toolOf } from './agy-tools.mjs';
@@ -61,7 +62,7 @@ import { agyContextPercent, agyWindowFor } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
-import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
+import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 import { agyResult } from './work-calls.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117, #370). The adapter adds the models it found. */
@@ -240,20 +241,7 @@ export function agyRules({ persona, guide, schemas = null, hooked = false }) {
   return `${[guide, schemas ? toolsNote(schemas) : '', approval, limits].filter(Boolean).join('\n\n')}\n`;
 }
 
-export { refusalFollowUp, refusalOf };
-
-/**
- * The plugin’s files, by path under its folder. Pure, so the tests can check them.
- * @param {{ mcpUrl: string, rules: string, hookCommand?: string|null, hookTimeout?: number }} opts
- */
-export const agyPlugin = ({ mcpUrl, rules, hookCommand = null, hookTimeout = HOOK_TIMEOUT_S }) => ({
-  'plugin.json': `${JSON.stringify({ name: POSTBOX_SERVER })}\n`,
-  'mcp_config.json': `${JSON.stringify({ mcpServers: { [POSTBOX_SERVER]: { serverUrl: mcpUrl } } }, null, 2)}\n`,
-  'rules/AGENTS.md': rules,
-  ...(hookCommand ? { 'hooks.json': `${JSON.stringify(agyHooksJson(hookCommand, hookTimeout), null, 2)}\n` } : {}),
-});
-/** Where the plugin goes in the agent’s folder. */
-export const PLUGIN_DIR = join('.agents', 'plugins', POSTBOX_SERVER);
+export { agyPlugin, excludeFile, excludePlugin, PLUGIN_DIR, refusalFollowUp, refusalOf };
 
 const firstSentence = (s, n = 300) => clip(/^[\s\S]*?[.!?](?=\s|$)/.exec(String(s ?? '').trim())?.[0] ?? s, n);
 
@@ -548,41 +536,6 @@ export class FolderQueue {
   }
 }
 
-/**
- * The repository’s exclude file for a folder, or null outside a git repository. Read from the files, without git:
- * the nearest .git above the folder is the repository’s folder, or, in a worktree or a submodule, a file that names
- * it (“gitdir: …”). A worktree shares its main repository’s exclude file, which its commondir names.
- */
-export async function excludeFile(cwd) {
-  for (let dir = resolve(cwd); ; dir = dirname(dir)) {
-    const git = join(dir, '.git');
-    const pointer = await readFile(git, 'utf8').catch((e) => (e?.code === 'EISDIR' ? '' : null));
-    if (pointer === '') return join(git, 'info', 'exclude');
-    const gitdir = pointer === null ? null : /^gitdir:\s*(.+)$/m.exec(pointer)?.[1]?.trim();
-    if (gitdir) {
-      const own = resolve(dir, gitdir);
-      const common = (await readFile(join(own, 'commondir'), 'utf8').catch(() => '')).trim();
-      return join(common ? resolve(own, common) : own, 'info', 'exclude');
-    }
-    if (dirname(dir) === dir) return null;
-  }
-}
-
-/** Adds the plugin folder to the repository’s exclude file, once, so it never shows in git status. */
-export async function excludePlugin(cwd) {
-  const file = await excludeFile(cwd);
-  if (!file) return false;
-  const text = await readFile(file, 'utf8').catch(() => '');
-  const line = `${PLUGIN_DIR.split('\\').join('/')}/`;
-  if (text.split('\n').includes(line)) return true;
-  await mkdir(dirname(file), { recursive: true });
-  // Written beside it and renamed, so git never reads half a file.
-  const tmp = `${file}.postbox-${process.pid}`;
-  await writeFile(tmp, `${text}${text && !text.endsWith('\n') ? '\n' : ''}# Postbox’s plugin for an Antigravity turn, there only while it runs\n${line}\n`);
-  await rename(tmp, file);
-  return true;
-}
-
 export class AntigravityCliAdapter {
   name = 'antigravity-cli';
 
@@ -659,6 +612,8 @@ export class AntigravityCliAdapter {
         await mkdir(dirname(file), { recursive: true });
         if (path === 'hooks.json') await rm(file, { force: true }).catch(() => {});
         await writeFile(file, text, path === 'hooks.json' ? { mode: 0o444 } : undefined);
+        // The umask masks writeFile’s mode (077 leaves 0o400), so hooks.json is set to 0o444 after it’s written (#730).
+        if (path === 'hooks.json') await makeReadOnly(file);
       }
       const hookConfirmed = Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript })));
       // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.

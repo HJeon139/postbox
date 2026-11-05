@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { agyHookCommand, agyHooksJson, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT, HOOK_TIMEOUT_S } from '../server/adapters/agy-hook.mjs';
+import { makeReadOnly } from '../server/adapters/agy-plugin.mjs';
 import { refusalFollowUp, refusalOf } from '../server/adapters/agy-refusals.mjs';
 import { AntigravityCliAdapter, agyArgs, createAgyMapper, modeArgs, PLUGIN_DIR } from '../server/adapters/antigravity-cli.mjs';
 import { CARD_WAIT_MS } from '../server/permission-cards.mjs';
@@ -162,4 +163,24 @@ test('#370 condition 1: AntigravityCliAdapter writes read-only hooks.json and fa
   assert.match(missingScript.rules, /## Refused tool calls/);
   assert.doesNotMatch(missingScript.rules, /## Calls that need approval/);
   assert.deepEqual(missingScript.args.slice(missingScript.args.indexOf('--mode'), missingScript.args.indexOf('--mode') + 2), ['--mode', 'accept-edits']);
+});
+
+test('#730: hooks.json is read-only at mode 0o444 whatever the umask', async () => {
+  for (const mask of [0o022, 0o077]) {
+    const old = process.umask(mask);
+    try {
+      const turn = await runDeliverTurn('auto', { version: '1.4.7' });
+      assert.equal(turn.hooksMode, 0o444, `umask ${mask.toString(8).padStart(3, '0')}`);
+    } finally {
+      process.umask(old);
+    }
+  }
+});
+
+test('#730: a filesystem that refuses chmod leaves hooks.json as written, and the turn still starts', async () => {
+  const refuse = async () => {
+    throw Object.assign(new Error('chmod refused'), { code: 'EPERM' });
+  };
+  assert.equal(await makeReadOnly('/no/such/hooks.json', refuse), false);
+  assert.equal(await makeReadOnly('/no/such/hooks.json', async () => {}), true);
 });

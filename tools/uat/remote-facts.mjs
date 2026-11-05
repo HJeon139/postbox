@@ -5,7 +5,9 @@
 //     hosts:      [{ label: 'host1', id, destination }]  each --host, in order, and the host Postbox made for it
 //     placement:  { researcher: 'host1', critic: 'local' }  where the runner put each scenario agent
 //     laptopData: the run’s Postbox data folder, whose paths an agent on a host can’t read
-//     setup:      [{ label, installOffered, confirm, connected }]  what setting each host up through the UI showed
+//     setup:      [{ label, installOffered, confirm, connected }]  what setting each host up through the UI showed;
+//                 for an older Postbox staged instead (#464), { label, staged, stagedAt, notInstalled }: its version,
+//                 when, and when the host first read not installed after
 //     listeners:  { baseline: { local, host1… }, samples: [{ where, at, added, run }] }  TCP listeners (hosts-probe.mjs)
 //     stops:      [{ handle, label, turn, at, note, jobs, left }]  a Stop on a placed agent, and what was left on its host
 //     faults:     [{ fault, label, at, states, recovered, shown }]  what the tester broke on purpose, and what Postbox showed

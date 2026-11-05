@@ -110,14 +110,33 @@ export async function beforeStop(hr, { measure = measureOn } = {}) {
 }
 
 /**
+ * When a host with an older Postbox staged on it (#464) first read not installed because it couldn’t run this
+ * Postbox’s version there, from the status events as they came, else from the state now: the time, which the setup’s
+ * record keeps as notInstalled. A host just added reads not installed too, with no token yet and no failure, so only
+ * a not-installed failure after the staging counts.
+ * @param {HostRun} hr @param {import('./hosts-run.mjs').RunHost} h @param {any} s  its status now @param {number} after
+ */
+function stagedNotInstalled(hr, h, s, after) {
+  const seen = (hr.hostStates?.() ?? []).find((e) => e.id === h.id && e.state === 'not-installed' && e.failure === 'not-installed' && e.at > after);
+  if (seen) return seen.at;
+  const now = s?.state === 'not-installed' && s.failure?.kind === 'not-installed';
+  return now ? Date.now() : null;
+}
+
+/**
  * Each host’s first Connected, with what its daemon found there, and a host that failed before it ever connected: the
- * run stops there, with the host’s own message. An installed host first connects with its first turn.
+ * run stops there, with the host’s own message. An installed host first connects with its first turn. A host with an
+ * older Postbox staged on it is expected to read not installed first: that’s recorded, and the run goes on.
  * @param {HostRun} hr @param {any} st
  */
-function hostsUp(hr, st) {
+export function hostsUp(hr, st) {
   for (const h of hr.hosts) {
     const s = st?.hostStatus?.[/** @type {string} */ (h.id)];
     const setup = hr.record.setup.find((x) => x.label === h.label);
+    if (setup?.staged && !setup.notInstalled && !setup.connected) {
+      const at = stagedNotInstalled(hr, h, s, setup.stagedAt ?? 0);
+      if (at) setup.notInstalled = at;
+    }
     if (s?.state === 'connected' && s.welcome && setup && !setup.connected) {
       const claude = (s.welcome.harnesses ?? []).find((x) => x.name === 'claude-code');
       setup.connected = {
@@ -129,7 +148,7 @@ function hostsUp(hr, st) {
       hr.log(`${h.label}: Connected; Node ${s.welcome.node?.version ?? '?'}, Claude Code ${claude?.version ?? 'not found'} at ${claude?.path ?? '?'}.`);
     }
     // Once a host has connected, a failure is what a check or a fault records, and the run goes on.
-    if ((s?.state === 'failed' || s?.state === 'not-installed') && !setup?.connected)
+    if ((s?.state === 'failed' || (s?.state === 'not-installed' && !setup?.staged)) && !setup?.connected)
       throw new Error(
         `${h.label} (${h.destination}) ${s.state === 'failed' ? 'failed' : 'reads not installed'}: ${[s.failure?.message, s.failure?.next].filter(Boolean).join(' ') || 'no message'}`,
       );

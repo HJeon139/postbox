@@ -1,6 +1,7 @@
 // Topic threads (#228, #637): a topic opens from one message of a conversation, from the page or from an agent's
 // open_topic. Moved from server/runtime.mjs, whose Runtime keeps a method that delegates to it.
 
+import { positionOf } from '../shared/item-index.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
 
@@ -15,7 +16,7 @@ export function startTopic(rt, threadId, itemId) {
   const parent = rt.thread(threadId);
   if (parent.kind === 'topic' || parent.kind === 'side') throw httpError(409, 'A topic thread can’t start another one. Reply in this one instead.');
   const items = rt.store.pending.items(threadId);
-  const idx = items.findIndex((x) => x.id === itemId);
+  const idx = positionOf(items, itemId);
   const root = items[idx];
   if (!root || !['user', 'agent', 'block', 'shared'].includes(root.kind)) throw httpError(404, 'That message can’t start a thread.');
   if (root.topicId && rt.store.pending.thread(root.topicId)) return { threadId: root.topicId, created: false };
@@ -52,8 +53,8 @@ export function startTopic(rt, threadId, itemId) {
 /**
  * open_topic (#637): an agent opens the topic thread of a message in its own conversation, or finds the one it has,
  * through startTopic, the page's own path. Its first message, if any, posts there as wake_agent's does, waking each
- * agent it names; one message serves every mention. Nothing is stored that the page's open doesn't store, so A1b and A2
- * convert it with everything else (designs/508/637-open-topic.md).
+ * agent it names; one message serves every mention. Nothing is stored that the page's open doesn't store, so A2
+ * converts it with everything else (designs/508/637-open-topic.md).
  * @param {import('./runtime.mjs').Runtime} rt @param {string} sessionId
  * @param {{ itemId?: string, message?: string, mentions?: string[] }} args
  */
@@ -114,7 +115,7 @@ function repeated(rt, se, threadId, text, handles, created) {
  * mentions reuse its message (agentWake's `itemId`). Posting first means the ask is never lost when every wake is
  * refused (a self-mention, a mistyped handle), and a card keeps the message's id, so Allow wakes from it rather than
  * posting it again; the reply carries each wake's result. It keeps the handles it named (`opened`), which I6 compares;
- * A1b's records carry the same as the message's addressees.
+ * A2's records carry the same as the message's addressees.
  */
 function post(rt, se, threadId, text, handles) {
   const fromTurnId = rt.turns.get(se.id)?.id;

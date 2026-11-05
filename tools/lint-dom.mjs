@@ -5,7 +5,7 @@
 //   node tools/lint-dom.mjs
 
 import { fileURLToPath } from 'node:url';
-import { allowed, codeOnly, files, read, report, scan } from './lint-lib.mjs';
+import { allowed, codeOnly, files, isEntry, read, report, scan } from './lint-lib.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -53,7 +53,7 @@ export function checkJs(text, file) {
   return findings;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isEntry(import.meta.url, process.argv[1])) {
   const findings = [];
   for (const f of files(ROOT, ['app', 'shared'], ['.js', '.mjs'], ['app/kit/vendor'])) findings.push(...checkJs(read(ROOT, f), f));
   report('lint-dom', findings);

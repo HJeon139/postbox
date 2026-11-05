@@ -10,16 +10,26 @@ import { keepEvent } from '../../server/room-events.mjs';
 export { keepEvent };
 
 /**
+ * A host.status event’s data as the run keeps it: the host, its state and its failure’s kind, or null for one that
+ * names no host. @param {any} d @returns {{ id: string, state: string|null, failure: string|null } | null}
+ */
+export function hostStateOf(d) {
+  if (typeof d?.id !== 'string') return null;
+  return { id: d.id, state: d.status?.state ?? null, failure: d.status?.failure?.kind ?? null };
+}
+
+/**
  * Follows a Postbox server’s event stream (/api/stream) from its first event, keeping the events the checks read,
  * and, apart from them, each host’s status as it changed, with when it arrived (#120): a host-mode fault is judged
- * by these, since a drop and its reconnect can both come between two reads of the state.
+ * by these, since a drop and its reconnect can both come between two reads of the state. Each keeps its failure’s
+ * kind, so a host that couldn’t run its version (not installed) reads apart from one with no token yet (#464).
  * @param {string} origin
- * @returns {{ events: () => any[], hostStates: () => { at: number, id: string, state: string|null }[], close: () => void }}
+ * @returns {{ events: () => any[], hostStates: () => { at: number, id: string, state: string|null, failure: string|null }[], close: () => void }}
  */
 export function followEvents(origin) {
   /** @type {any[]} */
   const kept = [];
-  /** @type {{ at: number, id: string, state: string|null }[]} */
+  /** @type {{ at: number, id: string, state: string|null, failure: string|null }[]} */
   const hostStates = [];
   let last = 0;
   // Each session as the events so far left it, so a session.patch is kept as a whole session (keepEvent).
@@ -39,7 +49,8 @@ export function followEvents(origin) {
     if (type === 'host.status') {
       try {
         const d = JSON.parse(data);
-        if (typeof d?.id === 'string') hostStates.push({ at: Date.now(), id: d.id, state: d.status?.state ?? null });
+        const h = hostStateOf(d);
+        if (h) hostStates.push({ at: Date.now(), ...h });
       } catch {}
       return;
     }

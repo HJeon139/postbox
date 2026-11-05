@@ -51,6 +51,7 @@ POSTBOX_STREAM_LAG=300 npx playwright test   # with the server’s events 300 ms
 - Conventional Commits: `type(scope): what changed`, lowercase, the header within 100 characters. The body says why. `Fixes #n` goes on its own line, one per issue. `feat` bumps the minor version, `fix` the patch, and `type!` the major (designs/engineering-practices.md, “Commits and versions”). CI checks the messages and releases each merge to `main`.
 - One commit per fix, so each can be reviewed and reverted alone. A move of code is its own commit.
 - Branch from `main` and stay based on it. Don’t push to `main`.
+- Run `npm run hooks` when you set up a clone or a worktree. It turns on `.githooks/commit-msg`, which checks each message, and `.githooks/pre-commit`, which runs `npm run lint:project` and stops a commit it fails. See designs/developing.md, “Running the gate”.
 - A pull request’s body says why, what changed, how it was verified, and what’s not done (designs/developing.md, “The pull request’s body”).
 - When you take an issue for a pull request, claim it as CONTRIBUTING.md says: assign yourself (`gh issue edit <n> --add-assignee @me`) and comment, or comment and ask the maintainer to assign you.
 
@@ -66,4 +67,4 @@ A change to any of these is reviewed as a security change (designs/developing.md
 - Postbox listens on 127.0.0.1 only, and answers only requests addressed to `127.0.0.1` or `localhost` on its port. It refuses other `Host` headers and cross-site `Origin`s, and every write needs the page’s token (designs/architecture.md, “Writes need the page’s token”).
 - Agent and app content is data. It reaches the DOM as text through `h()`, and as HTML only from `renderMarkdown()` wrapped in `trusted()`. Agent apps run only in CSP-sandboxed pages that load nothing (designs/architecture.md, “Sandboxed pages that load nothing”).
 - Spawn processes with an argument array, never a shell string.
-- What reaches the browser is decided by the `public` flag in `EVENTS` and the state-key lists in `shared/state.mjs`. `/api/state` and the event stream (the live and backlog frames) go through `server/public-state.mjs`. Every other route that answers with state may carry only data of public keys: review holds that until A1b adds a check with the first private key (designs/architecture.md, “What reaches the browser”).
+- What reaches the browser is decided by the `public` flag in `EVENTS` and the state-key lists in `shared/state.mjs`. `/api/state` and the event stream (the live and backlog frames) go through `server/public-state.mjs`. Every other route that answers with state may carry only data of public keys: review holds that until A2 adds the first private data, with a check that holds it (designs/architecture.md, “What reaches the browser”).

@@ -182,7 +182,8 @@ function heldUntil(f, items) {
     for (const h of [c.own, ...c.held.values()]) if (!h.removedOpen) note(h.w, open ? null : c.settled);
   }
   for (const card of items.filter((it) => it.kind === 'hop')) {
-    const settled = card.status === 'open' ? null : (card.retiredAt ?? settledAt(f, card.id) ?? card.at);
+    // Retired or closed (#693), a card says when; answered, the history’s next item does.
+    const settled = card.status === 'open' ? null : (card.retiredAt ?? card.closedAt ?? settledAt(f, card.id) ?? card.at);
     for (const w of [card, ...(card.held ?? [])]) note(w, settled);
   }
   return until;

@@ -29,3 +29,10 @@ Attach a screenshot of @researcher’s draft and send it to @critic, asking what
 - steps: 12
 
 Ask @critic to run `sleep 20; date >> card-check.txt` and then show the file’s lines. When its permission card appears, kill its ssh connection first (fault kill-ssh, target host2), and only then allow the card: Postbox should show host2 reconnecting and then Connected again on its own, and the command should run once, after your answer, adding one line. Then ask @researcher to run `for i in 1 2 3 4 5 6; do echo $i; sleep 10; done` and summarize what it printed, and about 15 seconds into that turn restart Postbox (an interrupt with fault restart-postbox): the reply should come back from the start once Postbox is up, with each number once, and end done. Last, ask @researcher for the same loop again, and about 15 seconds in kill Postbox’s daemon on host1 (an interrupt with fault kill-daemon, target host1): the host should reconnect on its own, and the reply should finish with each number once.
+
+## Phase 4: An older Postbox on the host
+
+- triggers: host-staged-older
+- steps: 4
+
+Play this phase on its own, with `--phases 4 --stage-host-version <tag>`, an older release tag such as v1.16.1, beside the same two `--host`s: before the run, the runner installs that older Postbox on host1 instead of this one, as someone who updated Postbox on their laptop but not on the host has (#464). A run with that option plays no other phase, and one without it doesn’t play this one. Send @researcher, on host1, one message asking it to run `uname -n` and tell you what it printed. Today, before Postbox installs its own version by itself, the turn should fail saying Postbox isn’t installed on host1, and host1’s card in Settings › Hosts should offer Install…. Don’t press it: the phase is there to show what an older Postbox on a host looks like. A turn that runs anyway, a failure that says something other than not installed, or a card with no Install… is a finding.

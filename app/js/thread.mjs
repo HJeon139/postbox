@@ -13,7 +13,7 @@ import { subagentNow } from './agents.mjs';
 import { allowedCallLine } from './allowed-call.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { renderBlock } from './blocks.mjs';
-import { api, busy, client, hrefOf, itemsOf, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
+import { api, busy, client, hrefOf, itemsOf, placeIn, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
 import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint } from './composer-to.mjs';
@@ -101,7 +101,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   };
   const rerender = (id) => {
     const list = itemsOf(threadId);
-    const i = list.findIndex((x) => x.id === id);
+    const i = placeIn(threadId, id);
     if (i < 0) return;
     const old = nodes.get(id);
     // Keep focus inside a block that’s being edited.
@@ -150,7 +150,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       // An update brought an app or a block to the newest point (#49, #92). Its stub takes its old place, the same
       // height a line takes, and what you were reading stays put: if that was the item, the stub holds its place.
       const list = itemsOf(threadId);
-      const at = list.findIndex((x) => x.id === d.stub.id);
+      const at = placeIn(threadId, d.stub.id);
       const stub = render(d.stub, list[at - 1]);
       nodes.get(d.id)?.replaceWith(stub);
       nodes.set(d.stub.id, stub);
@@ -165,7 +165,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       view.grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
       // A step changes only the reply’s activity list (#573); anything else draws the reply again.
-      const it = stepsOnly(d) ? itemsOf(threadId).find((x) => x.id === d.id) : null;
+      const it = stepsOnly(d) ? itemsOf(threadId)[placeIn(threadId, d.id)] : null;
       if (!d.reaction && !(it && paintActivity(nodes.get(d.id), it))) rerender(d.id);
     } else if (ch.type === 'item.text' && d.threadId === threadId) {
       pending.add(d.id);
@@ -206,7 +206,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   });
 
   const updateText = (id, force = false) => {
-    const it = itemsOf(threadId).find((x) => x.id === id);
+    const it = itemsOf(threadId)[placeIn(threadId, id)]; // undefined when it's gone, as find() gave
     const node = nodes.get(id);
     if (!it || !node) return;
     const box = node.querySelector(':scope > .md');
@@ -525,7 +525,7 @@ function attChip(a) {
  * There’s one live copy, below; this only says it moved.
  */
 function movedLine(it, ctx) {
-  const live = itemsOf(ctx.threadId).some((x) => x.id === it.itemId);
+  const live = placeIn(ctx.threadId, it.itemId) >= 0;
   const line = h(
     'div.col.sys-line.moved',
     icon('down', 'i-sm'),

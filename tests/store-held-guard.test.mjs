@@ -1,5 +1,5 @@
 // Where server code reads items, work and apps, and which of the two reads it uses (#601, designs/508/601-held-view.md).
-// The published reads (store.items(), item(), findItem(), and store.state directly) show only what was applied. The
+// The published reads (store.items(), item(), and store.state directly) show only what was applied. The
 // pending reads (store.pending, and the ledger's entries(), which uses it) show what is held behind a commit too. The
 // rule: a reader whose result decides a write the turn or a sweep makes reads pending; a reader whose result leaves
 // the process (the page, a read tool, a prompt, an HTTP answer), or a write the person aims at one item they can see,
@@ -8,7 +8,7 @@
 // Production commits are placed too: a commit in front of held emits that touches these lists makes a pending read
 // inexact (§5). Lines the formatter split (`rt.store\n  .items(`) are joined before matching. Forms it can't follow
 // fail outright: destructuring `pending`, `items`, `work` or `apps` out of the store or the state, reaching them by a
-// string key, binding the store, its pending reads or the ledger to a local, and calling items(), item(), findItem()
+// string key, binding the store, its pending reads or the ledger to a local, and calling items(), item()
 // or work() on anything but the store or its pending reads (the integrator's second review of #611: `const st =
 // rt.store; st.items(t)` passed), or through call, apply or bind. Optional chaining is read as a plain member. The guard
 // reads source text, not the program, so a form it doesn't match passes, and review reads for it: an optional call
@@ -19,7 +19,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-/** store.items(), item() and findItem(): published reads. */
+/** store.items() and item(): published reads. */
 const PUBLISHED = {
   'apps.mjs': ['appEvent', 'resolveAppSend'], // the page’s app events and an app send it answers: what the person sees
   'blocks.mjs': ['act', 'answerDelivered'], // the person’s answer to a block they see
@@ -39,7 +39,7 @@ const PUBLISHED = {
   'thread-summary.mjs': ['lineOf', 'lineOf', 'threadCatchUp', 'threadLines', 'readUpTo', 'summarizeThread', 'summarizeThread', 'reactionLines'], // prompts and summaries for a later turn
   'tool-ask.mjs': ['resolveToolAsk'], // the person’s answer to an ask they see
   'turn-marks.mjs': ['askedAgain', 'askedAgain'], // the person’s Retry of a reply they see
-  'wake-cards.mjs': ['resolveHop'], // the person’s answer to a hop card they see
+  'wake-cards.mjs': ['resolveHop', 'heldFor'], // the person’s answer to a hop card they see; the catch-up’s held lines, what the person sees (#693)
   'write-intent.mjs': ['requestOf', 'stopRequested', 'stopRequested'], // the request the person made, and their Stop on a line they see
 };
 
@@ -55,9 +55,11 @@ const DIRECT = {
   'room-checks-agy.mjs': ['deniedSteps'], // facts from a recorded run, offline
   'room-checks-backends.mjs': ['BACKEND_CHECKS'], // the same
   'room-checks-asks.mjs': ['droppedAsks', 'needsMismatches'], // the same
+  'room-checks-needs.mjs': ['declinedThenMentioned'], // the same
   'room-checks-telemetry.mjs': ['fiveWordRuns', 'secretsOf', 'CHECKS'], // the same
   'room-checks-threads.mjs': ['missingThreadTasks'], // the same
-  'room-checks.mjs': ['itemsOf', 'ledgerEntries', 'CHECKS', 'CHECKS', 'CHECKS', 'CHECKS', 'CHECKS'], // the same
+  'room-checks-work.mjs': ['ledgerEntries'], // the same
+  'room-checks.mjs': ['itemsOf', 'CHECKS', 'CHECKS', 'CHECKS', 'CHECKS', 'CHECKS'], // the same
   'room-delivery.mjs': ['itemsOf'], // the same
   'room-unverified.mjs': ['uncheckedThreads'], // the same
   'runtime.mjs': ['expireStaleCommands'], // at startup
@@ -107,7 +109,7 @@ const PENDING = {
   'thread-erase.mjs': ['eraseThreads'], // a thread’s apps, removed in a sweep
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'topic-open.mjs': ['startTopic', 'startTopic', 'openTopic', 'conversationOf', 'conversationOf', 'repeated'], // one topic per message, the opener's woke, the item's thread and I6's check, each maybe held behind a commit (#637)
-  'wake-cards.mjs': ['openCard'], // another wake’s held hop card, so a second isn’t made
+  'wake-cards.mjs': ['declinedAdd', 'openCard'], // a declined add, so a mention asks no more (#693); another wake’s held hop card, so a second isn’t made
   'write-intent.mjs': ['stillOpen'], // the turn’s own lines, and the person’s held Stop on one
 };
 
@@ -177,7 +179,7 @@ const placed = (re, table, what) =>
   );
 
 test('every published read of items, work and apps in server/ is placed, by file and function', () => {
-  placed(/\bstore\.(items|item|findItem)\(/, PUBLISHED, 'the published reads');
+  placed(/\bstore\.(items|item)\(/, PUBLISHED, 'the published reads');
   placed(/\.s\.(items|work|apps)\b|state\.(items|work|apps)\b|\.(items|work|apps)\[/, DIRECT, 'the direct reads of state');
 });
 
@@ -204,8 +206,8 @@ test('no server file reaches the store’s reads through a form the guard can’
 /** Lines of server code that reach a list read through a local the guard can't follow. @param {string[]} [extra] */
 export function unfollowed(extra = []) {
   const BOUND = /\b(?:const|let|var)\s+[\w$]+\s*=\s*[\w$.]*\b(?:store(?:\.pending)?|ledger)\s*[;,)]/;
-  const CALL = /([\w$\])]+)\s*\.\s*(?:items|item|findItem|work)\s*\(/g;
-  const INDIRECT = /\.\s*(?:items|item|findItem|work)\s*\.\s*(?:call|apply|bind)\b/;
+  const CALL = /([\w$\])]+)\s*\.\s*(?:items|item|work)\s*\(/g;
+  const INDIRECT = /\.\s*(?:items|item|work)\s*\.\s*(?:call|apply|bind)\b/;
   return [...sources(), ...extra.map((text, i) => [`extra-${i}.mjs`, normalized(text)])].flatMap(([path, text]) =>
     text
       .split('\n')
@@ -236,6 +238,6 @@ test('no server file binds the store or the ledger to a local, or calls a list r
     ['extra-0.mjs', 'extra-1.mjs', 'extra-2.mjs', 'extra-3.mjs', 'extra-4.mjs', 'extra-5.mjs'],
   );
   // Optional chaining is a store call like any other, so the tables above place it: read as a plain member, it matches.
-  assert.match(normalized('return rt.store?.items(t);'), /\bstore\.(items|item|findItem)\(/);
+  assert.match(normalized('return rt.store?.items(t);'), /\bstore\.(items|item)\(/);
   assert.match(normalized('return rt.store?.pending?.items(t);'), /\bstore\.pending\b/);
 });

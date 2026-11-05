@@ -2,10 +2,12 @@
 // the person and the other agents, within a cap, and its marker moved to the end. Moved from server/runtime.mjs.
 // Functions take the Runtime first (architecture.md, “What a move may change”).
 
+import { positionOf } from '../shared/item-index.mjs';
 import { READING } from '../shared/limits.mjs';
 import { keepFor, leftOut, mentions } from './catch-up-keep.mjs';
 import { clip } from './helpers.mjs';
 import { reactionLines, threadLines } from './thread-summary.mjs';
+import { heldFor } from './wake-cards.mjs';
 
 export { CATCH_UP_ITEMS } from './catch-up-keep.mjs';
 
@@ -14,7 +16,7 @@ export function catchUp(rt, se, excludeId = null) {
   if (!se) return null;
   const items = rt.store.items(se.threadId);
   const t = rt.s.threads[se.threadId];
-  const at = se.seenItem ? items.findIndex((i) => i.id === se.seenItem) : -1;
+  const at = se.seenItem ? positionOf(items, se.seenItem) : -1;
   rt.updateSession(se.id, { seenItem: items.at(-1)?.id ?? null });
   // A session from before markers were kept, alone in its conversation, already saw everything addressed to it.
   if (se.seenItem === undefined && (t?.members?.length ?? 0) <= 1 && se.startedAt < (items.at(-1)?.at ?? 0)) return null;
@@ -25,8 +27,9 @@ export function catchUp(rt, se, excludeId = null) {
     // A message addressed to the agent comes whole, up to a bound of its own (#499).
     .map((item) => ({ item, line: rt.describeItem(item, se, mentions(item, se.handle) ? READING.mention : READING.item) }))
     .filter((e) => e.line)
-    // Its topic and side threads with something new, each a line it may read (#228); the person’s new reactions (#251).
-    .concat([...threadLines(rt, se, items[at]?.at ?? 0), ...reactionLines(rt, se, se.threadId)].map((line) => ({ item: null, line })));
+    // Its topic and side threads with something new, each a line it may read (#228); the person’s new reactions (#251);
+    // the messages held for it on a card that waits for the person (#693).
+    .concat([...threadLines(rt, se, items[at]?.at ?? 0), ...reactionLines(rt, se, se.threadId), ...heldFor(rt, se)].map((line) => ({ item: null, line })));
   if (!entries.length) return root && `[Postbox] ${root}`;
   const kept = keepFor(entries, se.handle);
   const left = entries.filter((e) => !kept.includes(e));
@@ -43,7 +46,7 @@ export function catchUp(rt, se, excludeId = null) {
  */
 export function pointerIfSeen(rt, se, message) {
   if (message?.kind !== 'agent' || !message.itemId || !se?.seenItem) return message;
-  const at = rt.store.items(se.threadId).findIndex((i) => i.id === message.itemId);
+  const at = positionOf(rt.store.items(se.threadId), message.itemId);
   // Only a mention the last summary kept was given: a wake_agent message that names no one, or a mention past the
   // mentions’ cap, may have been left out, so it comes in full.
   if (at < 0 || !(se.givenMentions ?? []).includes(message.itemId)) return message;

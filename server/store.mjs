@@ -6,10 +6,11 @@
 // commit per line, shared/log-lines.mjs; a new segment at each snapshot), <dir>/store.lock (server/store-lock.mjs).
 // Every file access goes through this.io (node:fs/promises unless a test gives one), so a test can fail one operation.
 
-import { randomBytes } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
+import { itemOf } from '../shared/item-index.mjs';
 import { emptyState } from '../shared/state.mjs';
+import { newId } from './ids.mjs';
 import { commit, run } from './store-commit.mjs';
 import { pendingReads } from './store-held.mjs';
 import { close, load } from './store-recover.mjs';
@@ -22,7 +23,7 @@ const KEEP_EVENTS = 20000; // events kept in memory for reconnecting browsers
 const SNAPSHOT_EVERY = 5000; // events between snapshots
 const RETRY_BOUND_MS = 3000; // how long Retry waits for a write still in flight
 
-export const newId = (prefix) => `${prefix}_${randomBytes(6).toString('base64url').replace(/[-_]/g, '').slice(0, 8) || Date.now().toString(36)}`;
+export { newId }; // server/ids.mjs; its callers import it from here
 
 export class Store {
   /**
@@ -303,13 +304,6 @@ export class Store {
     return this.state.items[threadId] ?? [];
   }
   item(threadId, id) {
-    return this.items(threadId).find((i) => i.id === id);
-  }
-  findItem(id) {
-    for (const [threadId, list] of Object.entries(this.state.items)) {
-      const it = list.find((i) => i.id === id);
-      if (it) return { threadId, item: it };
-    }
-    return null;
+    return itemOf(this.items(threadId), id);
   }
 }
