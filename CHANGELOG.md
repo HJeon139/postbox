@@ -2,6 +2,28 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.23.0 (2026-11-05)
+
+### Features
+
+- **app:** the Remove confirm says it waits for an install under way, and how long (#464)
+- **uat:** add the host-auto-installed trigger and the auto-install-repeated check (#464)
+- **uat:** turn a staged host’s consent on through the page, and keep install tries (#464)
+- **remote:** install this Postbox’s version on a host by itself, with the person’s consent (#464)
+
+### Fixes
+
+- **remote:** Install… refuses a host being removed, and runs its own after a withdrawn one (#464)
+- **remote:** Remove waiting on an install removes nothing once Postbox has closed (#464)
+- **remote:** an install a crash or close() cut off says so on the host's status (#464)
+- **remote:** no install after the consent is turned off, and Remove waits for one under way (#464)
+- **types:** keep nextNeed's best typed after its refusal count, for TypeScript 7 (#464)
+- **remote:** refuse a linked records folder, and critic’s three smaller points (#464)
+- **remote:** read the install record through one open that can’t follow a link or wait (#464)
+- **remote:** refuse an install record far larger than Postbox writes, unread (#464)
+- **remote:** Remove doesn’t install on the host it’s removing (#464)
+- **remote:** turning the consent on reconnects a stopped host once, and no nested ternary (#464)
+
 ## 1.22.0 (2026-11-05)
 
 ### Features
