@@ -138,6 +138,8 @@ test('V1 in the same task: Jump to latest says following at once', async ({ page
   await settled(page);
   say(LONG(50));
   await expect(page.locator('.jump')).toBeVisible();
+  // The click runs in the page, which tests/AGENTS.md otherwise rules out (#307), so the attribute is read in the same
+  // task as the click, before any scroll event could publish it instead.
   const mode = await page.evaluate((threadId) => {
     /** @type {HTMLElement} */ (document.querySelector('.jump button')).click();
     return /** @type {HTMLElement} */ (document.querySelector(`#main.transcript[data-thread="${threadId}"]`)).dataset.viewMode;
