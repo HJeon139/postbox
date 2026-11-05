@@ -135,7 +135,7 @@ test('an image at the side limit, or at the pixel limit, is accepted', () => {
 test('the review image limits are the ones #780 set', () => {
   assert.deepEqual(
     { ...REVIEW_IMAGES },
-    { reviewImageBytes: 5 * 1024 * 1024, reviewImagesBytes: 20 * 1024 * 1024, reviewImagePixels: 32 * 1024 * 1024, reviewImageSide: 8192 },
+    { reviewImageBytes: 5 * 1024 * 1024, reviewImagesBytes: 20 * 1024 * 1024, reviewImagePixels: 32 * 1024 * 1024, reviewPastFiles: 8, reviewImageSide: 8192 },
   );
   assert.ok(Object.isFrozen(REVIEW_IMAGES));
 });

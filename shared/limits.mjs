@@ -101,6 +101,9 @@ export const REVIEW_IMAGES = Object.freeze({
   /** An image’s width times its height, in pixels: what a browser decodes, whatever the file’s size. 32 megapixels,
    * 32 × 2²⁰, which is 8,192 × 4,096 (#780’s note accepts 8,192 × 4,000). */
   reviewImagePixels: 32 * 1024 * 1024,
+  /** Files an item keeps from revisions it replaced (pastFiles), the newest first kept: so an item, and what each
+   * update writes, stays bounded however often it changes its figures. */
+  reviewPastFiles: 8,
   /** An image’s width or height, in pixels. */
   reviewImageSide: 8192,
 });

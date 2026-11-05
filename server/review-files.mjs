@@ -148,7 +148,7 @@ export async function servedReviewFile(rt, threadId, itemId, name, sha256) {
 
 /**
  * The files an update leaves on the item: the given list, or the last revision’s when it names none, with every
- * file it replaces kept in pastFiles, once each by name and SHA-256.
+ * file it replaces kept in pastFiles, once each by name and SHA-256, up to the newest reviewPastFiles.
  * @param {any} existing  the item @param {ReviewFile[] | undefined} given
  */
 export function revisedFiles(existing, given) {
@@ -161,5 +161,6 @@ export function revisedFiles(existing, given) {
     seen.add(k);
     return true;
   });
-  return { files, pastFiles };
+  // The newest replaced files only (REVIEW_IMAGES.reviewPastFiles), so the list stays bounded.
+  return { files, pastFiles: pastFiles.slice(-REVIEW_IMAGES.reviewPastFiles) };
 }
