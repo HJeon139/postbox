@@ -15,10 +15,16 @@ test('#464-b2a: a 127 heard while the consent is being turned off installs nothi
   try {
     await t.mgr.setKeepUpdated('h1', true);
     // In the failure’s own tick, after the rule decided: the person’s off reaches the record before the install’s note.
+    /** @type {Promise<void> | null} */
+    let off = null;
     t.mgr.link('h1').on('failure', () => {
-      t.mgr.setKeepUpdated('h1', false).catch(() => {});
+      off = t.mgr.setKeepUpdated('h1', false);
     });
     await t.mgr.connect('h1').catch(() => {});
+    await until(() => off, 'the consent was turned off in the failure’s tick');
+    // The off write lands, however slow the disk; then the install it stopped would have had its turn.
+    await off;
+    await until(() => !t.mgr.updating.has('h1'), 'the install it stopped ended');
     await settle();
     assert.equal(t.runs.length, 0, 'no install ran');
     const record = readRecord(t.dataDir);
