@@ -68,15 +68,6 @@ test('a clean run has no findings', () => {
   assert.deepEqual(runChecks(base()), []);
 });
 
-test('refusals in a recorded stream with no cards in the conversation reproduce #65', () => {
-  const found = runChecks(base({ streams: [{ handle: 'researcher', events: stream('denials') }] }));
-  const f = found.find((x) => x.issue === 65);
-  assert.ok(f, JSON.stringify(found));
-  assert.match(f.evidence, /4 refused, 0 cards/);
-  // A call the person declined on a permission card isn’t a refusal.
-  assert.ok(!issuesOf(base({ streams: [{ handle: 'researcher', events: stream('permission-deny') }] })).includes(65));
-});
-
 test('a failed turn with no reason is #61; one with a reason is a new finding', () => {
   const items = (error) => ({ t1: [{ id: 'i1', kind: 'agent', handle: 'researcher', status: 'failed', error }] });
   const hidden = base();

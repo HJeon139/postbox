@@ -7,6 +7,7 @@ import { READING } from '../shared/limits.mjs';
 import { keepFor, leftOut, mentions } from './catch-up-keep.mjs';
 import { clip } from './helpers.mjs';
 import { reactionLines, threadLines } from './thread-summary.mjs';
+import { heldFor } from './wake-cards.mjs';
 
 export { CATCH_UP_ITEMS } from './catch-up-keep.mjs';
 
@@ -26,8 +27,9 @@ export function catchUp(rt, se, excludeId = null) {
     // A message addressed to the agent comes whole, up to a bound of its own (#499).
     .map((item) => ({ item, line: rt.describeItem(item, se, mentions(item, se.handle) ? READING.mention : READING.item) }))
     .filter((e) => e.line)
-    // Its topic and side threads with something new, each a line it may read (#228); the person’s new reactions (#251).
-    .concat([...threadLines(rt, se, items[at]?.at ?? 0), ...reactionLines(rt, se, se.threadId)].map((line) => ({ item: null, line })));
+    // Its topic and side threads with something new, each a line it may read (#228); the person’s new reactions (#251);
+    // the messages held for it on a card that waits for the person (#693).
+    .concat([...threadLines(rt, se, items[at]?.at ?? 0), ...reactionLines(rt, se, se.threadId), ...heldFor(rt, se)].map((line) => ({ item: null, line })));
   if (!entries.length) return root && `[Postbox] ${root}`;
   const kept = keepFor(entries, se.handle);
   const left = entries.filter((e) => !kept.includes(e));
