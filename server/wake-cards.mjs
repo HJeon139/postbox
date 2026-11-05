@@ -281,7 +281,9 @@ const HELD_NAMED = 3;
  * @param {any} rt @param {any} se  the agent the messages are for @returns {string[]}
  */
 export function heldFor(rt, se) {
-  const card = openCard(rt, { id: rt.lineage(se.threadId).at(-1) });
+  // Published, not pending: the catch-up says what the person can see (designs/508/601-held-view.md), and it decides no
+  // write, so a card still held behind a commit isn’t named yet.
+  const card = rt.store.items(rt.lineage(se.threadId).at(-1)).find((x) => x.kind === 'hop' && x.status === 'open');
   if (!card) return [];
   const own = !card.join && card.to === se.handle ? [{ from: card.from, text: card.text ?? card.reason ?? '' }] : [];
   const mine = [...own, ...(card.held ?? []).filter((w) => w.to === se.handle)];
