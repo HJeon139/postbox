@@ -72,8 +72,9 @@ async function stream(query, headers = {}) {
 // An epoch is newId’s shape: its prefix and exactly 8 letters or digits (#713).
 const EPOCH = /^ep_[A-Za-z0-9]{8}$/;
 
-test('a store has an epoch, a token new at each load(), so a reload of the same folder runs on another', async () => {
+test('a store has an epoch, a token new at each load(), so a reload of the same folder runs on another', async (t) => {
   const d = await tmp();
+  t.after(() => rm(d, { recursive: true, force: true })); // a failing assertion leaves nothing either (#797)
   const a = await new Store(d).load();
   assert.ok(EPOCH.test(a.epoch), `a random token: ${a.epoch}`);
   await a.close();
@@ -83,7 +84,6 @@ test('a store has an epoch, a token new at each load(), so a reload of the same 
   await b.close();
   const m = new Store(null);
   assert.ok(EPOCH.test(m.epoch), `an in-memory store has one too: ${m.epoch}`);
-  await rm(d, { recursive: true });
 });
 
 test('/api/state gives the page the store’s epoch beside its seq', async () => {

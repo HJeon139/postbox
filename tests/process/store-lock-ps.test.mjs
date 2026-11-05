@@ -34,8 +34,9 @@ test('this process’s own start time comes from the same reader as another’s,
   if (process.platform !== 'linux') assert.equal(own, await psStart(process.pid));
 });
 
-test('a lock held by another live process refuses this one, and is taken over once that process is gone', async () => {
+test('a lock held by another live process refuses this one, and is taken over once that process is gone', async (t) => {
   const dir = await mkdtemp(join(tmpdir(), 'pb-lock-live-'));
+  t.after(() => rm(dir, { recursive: true, force: true })); // a failing assertion leaves nothing either (#797)
   const here = new URL('../../server/store-lock.mjs', import.meta.url).pathname;
   const child = spawn(
     process.execPath,
@@ -60,5 +61,4 @@ test('a lock held by another live process refuses this one, and is taken over on
   assert.ok(lock.token);
   await unlockStore(fs, lock);
   assert.ok(!(await fs.readdir(dir)).includes(LOCK));
-  await rm(dir, { recursive: true, force: true });
 });

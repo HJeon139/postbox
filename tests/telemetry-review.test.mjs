@@ -199,8 +199,9 @@ test('round 4, 3: a room whose turn failed saves and files: the failed-turn row 
   f.stop();
 });
 
-test('ruling: a clone on its own data/ can’t record and says to move its data first; a moved clone records into ~/.postbox', async () => {
+test('ruling: a clone on its own data/ can’t record and says to move its data first; a moved clone records into ~/.postbox', async (t) => {
   const base = mkdtempSync(join(tmpdir(), 'pb-clone-rule-'));
+  t.after(() => rmSync(base, { recursive: true, force: true })); // a failing assertion leaves nothing either (#797)
   const clone = join(base, 'postbox', 'data');
   const home = join(base, 'home', '.postbox');
   mkdirSync(clone, { recursive: true });
@@ -226,5 +227,4 @@ test('ruling: a clone on its own data/ can’t record and says to move its data 
   f.stop();
   // The store appends its log to the folder this test pointed it at; it finishes before the folder goes (#266).
   await f.rt.store.flush();
-  rmSync(base, { recursive: true, force: true });
 });
