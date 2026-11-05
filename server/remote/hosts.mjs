@@ -44,9 +44,10 @@ import { EventEmitter } from 'node:events';
 import { connectNow, disconnected, dropLink, dropRenamed, ensureWelcome, isRenamed, linkOf, need, release } from './hosts-links.mjs';
 import { removeFromHost, signInCheck } from './hosts-requests.mjs';
 import { hostOf, statusOf, tokenOf, update } from './hosts-status.mjs';
-import { installNow, maybeUpdate, setKeepUpdated, track } from './hosts-update.mjs';
+import { installNow, maybeUpdate, setKeepUpdated, track, WITHDRAWN } from './hosts-update.mjs';
 import { describeInstall, forgetToken } from './install.mjs';
 import { removeRecord } from './install-record.mjs';
+import { SshFailure } from './ssh.mjs';
 
 export { IDLE_GRACE_MS } from './hosts-links.mjs';
 export { CHECK_WAIT_MS, REMOVE_CONFIRM_MS } from './hosts-requests.mjs';
@@ -219,11 +220,18 @@ function hostMethods(m) {
 
 /** @param {Manager} m @param {string} hostId */
 async function install(m, hostId) {
-  const running = m.updating.get(hostId) ?? track(m, hostId, (signal) => installNow(m, hostId, signal));
-  const outcome = await running.done;
+  if (m.removals.has(hostId)) {
+    const name = hostOf(m, hostId).name;
+    throw new SshFailure('failed', `Postbox is being removed from ${name}, so it doesn’t install there now.`, 'Add the host again once Remove has finished.');
+  }
+  const outcome = await installing(m, hostId).done;
+  if (!outcome.ok && outcome.failure?.message === WITHDRAWN) return install(m, hostId);
   if (!outcome.ok) throw outcome.failure;
   return outcome.result;
 }
+
+/** The host’s install under way, which the person’s Install… joins, or one of its own. @param {Manager} m @param {string} hostId */
+const installing = (m, hostId) => m.updating.get(hostId) ?? track(m, hostId, (signal) => installNow(m, hostId, signal));
 
 /** @param {Manager} m @param {string} hostId */
 async function forget(m, hostId) {

@@ -28,6 +28,9 @@ import { SshFailure } from './ssh-failures.mjs';
  * @typedef {import('./install-record.mjs').InstallEntry} InstallEntry
  */
 
+/** Why an automatic install the consent withdrew before it started didn’t run (noteStarted). */
+export const WITHDRAWN = 'Keeping Postbox up to date on this host was turned off, so Postbox didn’t install by itself.';
+
 /** The installer’s exit when another attach or install holds this version’s lock (install-script.mjs). */
 const BUSY_EXIT = 75;
 
@@ -160,8 +163,8 @@ async function noteStarted(m, id, tried) {
     noteError(m, id, why);
     throw new SshFailure('failed', why, 'Install it from here.');
   }
-  if (withdrawn)
-    throw new SshFailure('failed', 'Keeping Postbox up to date on this host was turned off, so Postbox didn’t install by itself.', 'Install it from here.');
+  // Known by its words (WITHDRAWN), so the person’s Install… that joined it runs one of its own.
+  if (withdrawn) throw new SshFailure('failed', WITHDRAWN, 'Install it from here.');
   if (!wrote) throw new SshFailure('failed', 'That host doesn’t exist. It may have been removed.', 'Add it again to install there.');
   update(m, id);
 }
