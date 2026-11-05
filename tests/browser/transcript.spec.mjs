@@ -161,7 +161,7 @@ test('#88 at the bottom: an app growing from 200 to 700 px leaves the view at th
   expect(appWho).toBe(colLeft);
 });
 
-test('#88 at the bottom: opening and closing the thread panel leaves the view at the bottom, in both panes', async ({ page }) => {
+test('#88 and #356 (CI’s `late` pass): opening and closing the thread panel leaves the view at the bottom, in both panes', async ({ page }) => {
   const { rt, store } = app;
   const { t, researcher } = room('Panel at the bottom');
   rt.toolsFor(researcher.id).show_app(growingApp('explainer', 'Explainer', 800));

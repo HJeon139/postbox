@@ -1,8 +1,9 @@
 // A scroll the transcript hasn’t heard about yet: the browser fires the scroll event in the next frame’s scroll steps,
 // not when the view moves (#341; the view’s rules are #508’s design, “Browser”). In the frame between:
 // - a reply that lands right after you scroll up is counted as unseen, so Jump to latest shows;
-// - a scroll down while you’re reading back isn’t taken back when something resizes in that frame. This one passes on
-//   main too: #341 saw it about once in 45 to 90 runs, and it doesn’t reproduce here, so it’s a guard only.
+// - a scroll down while you’re reading back isn’t taken back when something resizes in that frame. #341 saw it about once
+//   in 45 to 90 runs. The resize must change the transcript's height: a 1 px padding on a reply doesn't (its margins
+//   absorb it), which is why this spec passed on main before. 40 px grows the transcript every time.
 // Each test has a conversation of its own.
 
 import { expect, test } from '@playwright/test';
@@ -69,21 +70,83 @@ test('#341 a scroll down while reading back isn’t taken back by a resize in th
   await page.mouse.move(640, 400);
   await page.mouse.wheel(0, -1200);
   await settled(page);
-  const before = await page.evaluate(() => Math.round(scrollY));
-  // In an animation frame, as focus-clear.mjs scrolls: scroll down 120 px, then change the size of a reply above the
-  // view. The frame’s scroll steps have run already, so the ResizeObserver runs before the scroll event tells the
-  // transcript the view moved.
-  await page.evaluate(
+  // In an animation frame, as focus-clear.mjs scrolls: scroll down 120 px, then make a reply above the view taller. The
+  // frame's scroll steps have run already, so the ResizeObserver runs before the scroll event tells the transcript the
+  // view moved.
+  const { before, grew } = await page.evaluate(
     () =>
-      new Promise((done) =>
+      new Promise((done) => {
+        const main = /** @type {HTMLElement} */ (document.querySelector('#main'));
+        const h0 = main.getBoundingClientRect().height;
         requestAnimationFrame(() => {
+          const before = scrollY;
           scrollBy(0, 120);
           const first = document.querySelector('#main .item');
-          if (first instanceof HTMLElement) first.style.paddingBottom = '1px';
-          done(null);
-        }),
-      ),
+          if (first instanceof HTMLElement) first.style.paddingBottom = '40px';
+          requestAnimationFrame(() => done({ before, grew: main.getBoundingClientRect().height - h0 }));
+        });
+      }),
   );
+  expect(grew, 'the resize changed the transcript’s height, so the race ran').toBeGreaterThan(0);
   await settled(page);
-  expect(await page.evaluate(() => Math.round(scrollY)), 'the view stays where the scroll put it, plus the 1 px above').toBeGreaterThanOrEqual(before + 119);
+  const end = await page.evaluate(() => scrollY);
+  expect(end, 'the view stays where the scroll put it, plus what grew above').toBeGreaterThanOrEqual(before + 120 + grew - 1);
+});
+
+// #357's review found it (fixed in a0b13bf5): while following, a change to the transcript notes where the view is, so a
+// clamp at the page's new end isn't read as a scroll up (#297). Noting it anywhere else would take a scroll up made in the
+// same frame, before its scroll event, for a clamp, and pull the view back to the end.
+test('#357 a scroll up, then a change in the same frame, isn’t taken for a clamp and pulled back to the end', async ({ page }) => {
+  const { t } = room('Scroll up, then a change');
+  await open(page, t);
+  const end = await page.evaluate(() => scrollY);
+  // In one task, before the scroll event: scroll up 240 px, then restyle the newest reply, which the transcript's
+  // MutationObserver notes (a microtask) and its ResizeObserver then follows.
+  await page.evaluate(() => {
+    scrollBy(0, -240);
+    const items = document.querySelectorAll('#main .item');
+    const last = items[items.length - 1];
+    if (last instanceof HTMLElement) last.style.paddingBottom = '40px';
+  });
+  await settled(page);
+  const at = await page.evaluate(() => scrollY);
+  expect(at, 'the view stays where you scrolled it, not back at the end').toBeLessThan(end - 200);
+});
+
+test('#341 two resizes before the scroll event take an unheard scroll once, not twice', async ({ page }) => {
+  const { t } = room('Two resizes, one unheard scroll');
+  await open(page, t);
+  await page.mouse.move(640, 400);
+  await page.mouse.wheel(0, -900);
+  await settled(page);
+  // Scroll up by 240 px and, before its scroll event, have the transcript hear two resizes: the first takes the unheard
+  // scroll into the anchor, and the second must find nothing left to take.
+  const moved = await page.evaluate(async () => {
+    const s = /** @type {Element} */ (document.scrollingElement);
+    const before = s.scrollTop;
+    s.scrollTop = before - 240;
+    dispatchEvent(new Event('resize'));
+    dispatchEvent(new Event('resize'));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return before - s.scrollTop;
+  });
+  expect(moved, 'the view stays where the scroll put it').toBeGreaterThanOrEqual(239);
+  expect(moved).toBeLessThanOrEqual(241);
+});
+
+test('#341 following, a scroll up the transcript hasn’t heard of, then a resize: the view stays where the scroll put it', async ({ page }) => {
+  const { t } = room('Unheard scroll up from the end');
+  await open(page, t);
+  // At the end, following. Scroll up by 240 px and, before its scroll event, have the transcript hear a resize: it
+  // unsticks there, takes the anchor where the view now is, and must not take the same scroll in again.
+  const moved = await page.evaluate(async () => {
+    const s = /** @type {Element} */ (document.scrollingElement);
+    const before = s.scrollTop;
+    s.scrollTop = before - 240;
+    dispatchEvent(new Event('resize'));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return before - s.scrollTop;
+  });
+  expect(moved, 'the view stays where the scroll put it').toBeGreaterThanOrEqual(239);
+  expect(moved).toBeLessThanOrEqual(241);
 });
