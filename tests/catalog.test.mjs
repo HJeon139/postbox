@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CATALOG, validateBlock } from '../shared/catalog.mjs';
+import { CATALOG, updateKind, validateBlock } from '../shared/catalog.mjs';
 
 const base = (type, extra) => ({ id: 'b1', type, version: 1, fallback: 'Plain text version.', ...extra });
 const ok = (b, opts) => {
@@ -200,4 +200,15 @@ test('#838 a choice’s and a select’s options may carry a description; nothin
   bad(base('choice', { options: [{ id: 'a', label: 'Keep it', description: 'x'.repeat(201) }] }), /description/);
   bad(base('choice', { options: [{ id: 'a', label: 'Keep it', description: '' }] }), /description/);
   bad(base('form', { fields: [{ id: 'f', label: 'Plan', kind: 'select', options: [{ value: 'a', label: 'Keep it' }] }] }), /unknown field “value”/);
+});
+
+test('#854 an update is a withdraw, an outcome or a whole block, in the order Postbox applies them', () => {
+  assert.equal(updateKind({ id: 'b1', withdraw: 'Stale.' }), 'withdraw');
+  // A withdraw wins over an outcome, and any withdraw field counts, even an empty one.
+  assert.equal(updateKind({ id: 'b1', withdraw: '', outcome: 'Filed as #1' }), 'withdraw');
+  assert.equal(updateKind({ id: 'b1', outcome: 'Filed as #1' }), 'outcome');
+  // An outcome that isn’t text is a whole block, which validateBlock then refuses.
+  assert.equal(updateKind({ id: 'b1', outcome: 1 }), 'block');
+  assert.equal(updateKind(base('choice', { options: [{ id: 'a', label: 'A' }] })), 'block');
+  for (const v of [null, undefined, 'x', 3]) assert.equal(updateKind(v), 'block');
 });
