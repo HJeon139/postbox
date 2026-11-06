@@ -3,6 +3,7 @@
 - persona: A high-school civics student studying for a test on how a US federal bill becomes law. Writes short messages, and can’t say what a good picture looks like until they see one.
 - agents: researcher
 - models: persona
+- judge: visual
 - steps: 6
 - project: Visual skill
 - conversation: How a bill becomes law

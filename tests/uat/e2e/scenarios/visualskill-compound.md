@@ -3,6 +3,7 @@
 - persona: Someone opening their first retirement account, who keeps hearing that compound interest is what matters and wants to see why. Writes short messages, and can’t say what a good picture looks like until they see one.
 - agents: researcher
 - models: persona
+- judge: visual
 - seed: visual-skill
 - steps: 6
 - project: Visual skill
