@@ -92,41 +92,88 @@ const NO_INPUTS = Object.freeze({
   unverified: { check: 'view-moved', thread: null },
 });
 
+const plural = (n, one) => `${n} ${one}${n === 1 ? '' : 's'}`;
+
+/** A row saying the check couldn’t vouch for one transcript, with why. */
+function unverifiedRow(t, kind, title, evidence, note) {
+  return {
+    key: `view-moved:unverified:${kind}:${t.where}:${t.thread}`,
+    issue: null,
+    title,
+    evidence,
+    verdict: 'measurement',
+    note,
+    unverified: { check: 'view-moved', thread: t.thread },
+  };
+}
+
+/** Why a transcript had no pair compared, from its tally: no settled sample, one, an input in every pair, or none in a row. */
+function whyNoPair(t) {
+  const counted = `${plural(t.samples, 'sample')}, ${t.settled} settled`;
+  if (t.settled === 0) return `${counted}, so there was nothing to compare.`;
+  if (t.settled === 1) return `${counted}, so there was no pair to compare.`;
+  if (t.withInput > 0) {
+    return `${counted}: all ${plural(t.withInput, 'pair')} of settled samples had an input between them, so only the within-sample rule (the published offset against the anchor) checked those steps.`;
+  }
+  return `${counted}, but no two in a row in one page load.`;
+}
+
+/** The rows a transcript’s tally gives: it compared no pair, or some pairs went unchecked. O(1). */
+function tallyRows(t) {
+  if (t.compared === 0) {
+    const title = `view-moved checked no pair of steps in ${where(t)}`;
+    return [unverifiedRow(t, 'no-pair', title, whyNoPair(t), 'Not a defect: no two settled samples came with no input between.')];
+  }
+  if (!t.skipped) return [];
+  const title = `view-moved couldn’t check every step in ${where(t)}`;
+  const evidence = `${t.skipped} of ${t.compared} pairs of steps with no input between went unchecked: the later step couldn’t measure the earlier step’s anchor (it had left the page, or the conversation changed between them), so where it went is unknown.`;
+  return [unverifiedRow(t, 'skipped', title, evidence, 'Not a defect: an anchor that left the page can’t be measured.')];
+}
+
+/** What the check says of a run whose probe missed the view at some steps: those steps weren’t seen at all. */
+const missedRow = (misses) => ({
+  key: 'view-moved:unverified:misses',
+  issue: null,
+  title: 'view-moved didn’t see every step: the view probe missed some',
+  evidence: `The view probe missed the view at ${plural(misses, 'step')}, so nothing about the view was seen there.`,
+  verdict: 'measurement',
+  note: 'Not a defect in the page: the probe found no transcript at those steps.',
+  unverified: { check: 'view-moved', thread: null },
+});
+
 /** @param {{ probes?: { views?: any[], inputs?: { at: number }[], viewMisses?: number } }} f */
 function viewMoved(f) {
   const views = f.probes?.views;
   const inputs = f.probes?.inputs;
-  if (!Array.isArray(views) || !views.length) return f.probes?.viewMisses ? [NO_VIEWS] : [];
+  const misses = f.probes?.viewMisses ?? 0;
+  if (!Array.isArray(views) || !views.length) return misses ? [NO_VIEWS] : [];
   if (!Array.isArray(inputs)) return [NO_INPUTS]; // a run that recorded views but not inputs can't tell a scroll from a move
   const out = views.filter(usable).map(stale).filter(Boolean);
   const times = inputs.map((x) => x.at).sort((x, y) => x - y);
   const last = new Map(); // the previous sample of each transcript and page load: O(1) per sample, not a scan back
-  const skipped = new Map();
+  const tallies = new Map(); // each transcript’s counts, so a run that compared nothing says so
   for (const b of views) {
-    const page = pageKey(b);
+    const transcript = `${b.where}:${b.thread}`;
+    const t = tallies.get(transcript) ?? { thread: b.thread, where: b.where, samples: 0, settled: 0, withInput: 0, compared: 0, skipped: 0 };
+    tallies.set(transcript, t);
+    t.samples++;
     if (!usable(b)) continue; // passed over, so the next settled sample is compared with the last settled one
+    t.settled++;
+    const page = pageKey(b);
     const a = last.get(page);
     last.set(page, b);
     if (!a) continue;
-    if (inputBetween(times, a.at, b.at)) continue;
+    if (inputBetween(times, a.at, b.at)) {
+      t.withInput++;
+      continue;
+    }
     const r = moved(a, b);
-    const key = `${b.where}:${b.thread}`;
-    const n = skipped.get(key) ?? { thread: b.thread, where: b.where, skipped: 0, pairs: 0 };
-    skipped.set(key, { ...n, pairs: n.pairs + 1, skipped: n.skipped + (r === 'skipped' ? 1 : 0) });
-    if (r && r !== 'skipped') out.push(r);
+    t.compared++;
+    if (r === 'skipped') t.skipped++;
+    else if (r) out.push(r);
   }
-  for (const s of skipped.values()) {
-    if (!s.skipped) continue;
-    out.push({
-      key: `view-moved:unverified:${s.where}:${s.thread}`,
-      issue: null,
-      title: `view-moved couldn’t check every step in ${where(s)}`,
-      evidence: `${s.skipped} of ${s.pairs} pairs of steps with no input between went unchecked: the later step couldn’t measure the earlier step’s anchor (it had left the page, or the conversation changed between them), so where it went is unknown.`,
-      verdict: 'measurement',
-      note: 'Not a defect: an anchor that left the page can’t be measured.',
-      unverified: { check: 'view-moved', thread: s.thread },
-    });
-  }
+  for (const t of tallies.values()) out.push(...tallyRows(t));
+  if (misses) out.push(missedRow(misses));
   return out;
 }
 
