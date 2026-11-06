@@ -103,7 +103,8 @@ async function fixture() {
   });
   await mkdir(join(home, '.claude'), { recursive: true });
   await mkdir(join(work, '.claude'), { recursive: true });
-  await writeFile(join(home, '.claude', 'settings.json'), JSON.stringify({ ...reachModel(), ...settings(markers.user) }));
+  // Readable by the person only, in a 0700 temp folder, and never logged: it holds how they reach the model.
+  await writeFile(join(home, '.claude', 'settings.json'), JSON.stringify({ ...reachModel(), ...settings(markers.user) }), { mode: 0o600 });
   await writeFile(join(work, '.claude', 'settings.json'), JSON.stringify(settings(markers.project)));
   git(root, 'init', '-q', '--bare', bare);
   git(work, 'init', '-q');
