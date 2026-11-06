@@ -87,7 +87,7 @@ const PENDING = {
   'permission-expiry.mjs': ['tellExpired'], // the card a turn’s end just expired, told about once (#721)
   'permission-prompt.mjs': ['permission'], // the card the call waits on
   'remote/turns-end.mjs': ['stoppedHung'], // the hung host turn’s own replies
-  'remote/turns-prompts.mjs': ['cardOf', 'openCards'], // a host turn’s own cards, and the sweep its callers settle
+  'remote/turns-prompts.mjs': ['cardOf', 'permissionCards'], // a host turn’s own cards: the sweep its callers settle, and the calls an attach after a restart holds (#353)
   'remote/turns-resume.mjs': ['reattach'], // the replayed turn’s replies, replaced in a sweep
   'runtime.mjs': [
     'addItem',

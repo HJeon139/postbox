@@ -2,6 +2,7 @@
 // down and sent to the turn’s shims, and a prompt’s end, when its shim gave up, its turn stopped, or no shim waits on
 // it any more. broker.mjs’s header says what’s written down when.
 
+import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { HOST_DEFAULTS, REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
 import { note, record, refusal, unrecorded, written } from './broker-records.mjs';
@@ -15,7 +16,7 @@ import { CANCELED, key, STOPPED_TEXT, toShims } from './broker-state.mjs';
  */
 
 /** @param {Prompt} q */
-export const promptBody = (q) => ({ id: q.id, turn: q.turn, request: q.request });
+export const promptBody = (q) => ({ id: q.id, turn: q.turn, entry: q.entry, request: q.request });
 /** Sends an expiry if Postbox is attached; it waits for the next hello if not. @param {Broker} b @param {Expiry} x */
 export function sendExpiry(b, x) {
   const k = key(x.turn, x.id);
@@ -102,11 +103,13 @@ export async function permission(b, c, turn, m) {
     return;
   }
   if (b.unrecordedEnds.has(k)) return deny(`Permission request ${m.id} has ended already, so it can’t be shown again.`);
+  // The entry is the daemon’s own name for this record, never the shim’s or the request’s: Postbox tells a resend from
+  // another prompt by it (#353), and a shim can pick any id.
   /** @type {Prompt} */
-  const q = { turn, id: m.id, request: m.request, answer: null, over: false, at: b.now() };
+  const q = { turn, id: m.id, entry: randomUUID(), request: m.request, answer: null, over: false, at: b.now() };
   b.prompts.set(k, q);
   // Shown only once it’s on disk, as a queued call is acknowledged only then (call).
-  q.saved = record(b, turn, 'prompts', { op: 'prompt', id: q.id, request: q.request, at: q.at }).then(
+  q.saved = record(b, turn, 'prompts', { op: 'prompt', id: q.id, entry: q.entry, request: q.request, at: q.at }).then(
     () => '',
     (e) => unrecorded('this permission request', e),
   );

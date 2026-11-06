@@ -24,9 +24,10 @@ export const key = (turn, id) => `${turn} ${id}`;
  *   result?: { ok: boolean, text: string }, saved?: Promise<string>, replying?: Promise<string>, offline?: boolean, bytes?: number, arrived?: number, timer?: any }} Tool
  *   saved: settles once the call is written down, with '' or why it couldn’t be (a prompt’s likewise); replying: a
  *   reply being written down, likewise (a prompt’s answering); bytes: its tool message’s encoded size, while it waits
- * @typedef {{ turn: string, id: string, request: Record<string, any>, answer: Record<string, any> | null, over: boolean,
- *   at: number, replayed?: boolean, saved?: Promise<string>, answering?: Promise<string> }} Prompt
- *   at: when it was asked; replayed: read back from prompts.jsonl at start, and no shim has sent it again since
+ * @typedef {{ turn: string, id: string, entry: string, request: Record<string, any>, answer: Record<string, any> | null,
+ *   over: boolean, at: number, replayed?: boolean, saved?: Promise<string>, answering?: Promise<string> }} Prompt
+ *   entry: the daemon’s own ID for the prompt’s record (broker-prompts.mjs); at: when it was asked; replayed: read back
+ *   from prompts.jsonl at start, and no shim has sent it again since
  * @typedef {{ turn: string, id: string, at: number, reason: 'expired' | typeof CANCELED }} Expiry
  * @typedef {{ turn: string | null, closed: boolean, send: (type: string, body: Record<string, unknown>) => void }} ShimConn
  * @typedef {{ pos: number, rest: Buffer, skipping: boolean }} LogPos

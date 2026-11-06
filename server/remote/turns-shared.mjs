@@ -38,10 +38,14 @@ export const clock = (at) => new Date(at).toLocaleTimeString('en-US', { hour: '2
  * @typedef {{ sessionId: string, hostId: string, rt: any, link: any, hostTurns: Set<string>, current: string | null,
  *   work: string, signInError: Record<string, unknown> | null, lastEvent: number, signIn: boolean,
  *   exit: { code: number | null, signal: string | null } | null | undefined, hung: { at: number, text: string } | null,
- *   offset: number, offsetSaved: number, attach: boolean, started: boolean, startSent: boolean, origin: any }} Live
+ *   offset: number, offsetSaved: number, attach: boolean, started: boolean, startSent: boolean, origin: any,
+ *   replay: { done: Promise<unknown>, end: () => void } | null,
+ *   ceilings: Map<unknown, { at: Promise<unknown>, timer: any, holds: number }> }} Live
  *   exit: the current host turn’s, from `ended` (null: interrupted), undefined until then; started: the daemon said
  *   `started` (or turn-exists) for it, or it’s attached; startSent: its `start` was written to a connected link;
- *   origin: what it was asked, as se.remoteTurn.origin keeps it (turns-origin.mjs), once prepare has it
+ *   origin: what it was asked, as se.remoteTurn.origin keeps it (turns-origin.mjs), once prepare has it; replay: its
+ *   stream is being read up to where the host has it (turns-replay.mjs); ceilings: the most each prompt waiting for
+ *   that read waits, by its claim (turns-replay.mjs, replayCeiling)
  */
 
 /**

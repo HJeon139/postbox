@@ -57,7 +57,9 @@ function seeCall(turn, u) {
   const seen = seenOf(turn);
   if (seen.has(u.id)) return;
   const parent = typeof u.parent === 'string' && u.parent ? u.parent : null;
-  seen.set(u.id, { name: u.name, input: u.input ?? {}, parent, state: 'open' });
+  const ahead = turn.claimedAhead;
+  const claim = ahead?.has(u.id) ? { state: /** @type {const} */ ('claimed'), by: ahead.get(u.id) } : { state: /** @type {const} */ ('open') };
+  seen.set(u.id, { name: u.name, input: u.input ?? {}, parent, ...claim });
   const watchers = watchersOf(turn).get(u.id);
   watchersOf(turn).delete(u.id);
   for (const wake of watchers ?? []) wake();
@@ -72,31 +74,59 @@ function answerCall(turn, id) {
 /** The call the stream showed with this id, if it did. @param {any} turn @param {string} id */
 export const seenCall = (turn, id) => seenOf(turn).get(id) ?? null;
 
+/**
+ * A call a card shown before a restart already asks about (a host’s, server/remote/turns-prompts.mjs): it counts as
+ * claimed by that card’s prompt, `by`, now or once the replayed stream shows it, so a copy raises no second card.
+ * @param {any} turn @param {string} id @param {unknown} by
+ */
+export function claimAhead(turn, id, by) {
+  const call = seenCall(turn, id);
+  if (!call) (turn.claimedAhead ??= new Map()).set(id, by);
+  else if (call.state === 'open') Object.assign(call, { state: 'claimed', by });
+}
+
 /** How many prompts of this turn wait for their call’s line now, each in whenSeen. @param {any} turn */
 export const heldPrompts = (turn) => [...watchersOf(turn).values()].reduce((n, set) => n + set.size, 0);
 
 /**
  * Waits up to `ms` for the stream to show the call with this id, or until `signal` aborts. Resolves to the call, or
- * null. The watchers wake in the order they started, so the prompt that came first is the first to claim it.
- * @param {any} turn @param {string} id @param {number} ms @param {AbortSignal|null} [signal]
+ * null. The watchers wake in the order they started, so the prompt that came first is the first to claim it. With
+ * `ready`, the `ms` start only once it settles: the stream is still being read up to where it is. If `readyEnd` settles
+ * first, the wait ends then, as the bound would: it’s the most the wait for `ready` may take.
+ * @param {any} turn @param {string} id @param {number} ms @param {AbortSignal|null} [signal] @param {Promise<unknown>|null} [ready]
+ * @param {Promise<unknown>|null} [readyEnd]
  * @returns {Promise<SeenCall | null>}
  */
-export function whenSeen(turn, id, ms, signal = null) {
+export function whenSeen(turn, id, ms, signal = null, ready = null, readyEnd = null) {
   const now = seenCall(turn, id);
   if (now || signal?.aborted) return Promise.resolve(now);
   return new Promise((resolve) => {
     const watchers = watchersOf(turn);
     const set = watchers.get(id) ?? new Set();
     watchers.set(id, set);
+    /** @type {any} the bound’s timer, once it has started */
+    let timer;
+    let over = false;
     const done = () => {
+      over = true;
       clearTimeout(timer);
       signal?.removeEventListener('abort', done);
       set.delete(done);
       if (!set.size && watchers.get(id) === set) watchers.delete(id);
       resolve(seenCall(turn, id));
     };
-    const timer = setTimeout(done, ms);
-    timer.unref?.();
+    const bound = () => {
+      if (over || timer) return;
+      timer = setTimeout(done, ms);
+      timer.unref?.();
+    };
+    if (ready) {
+      void ready.then(bound, bound);
+      const cut = () => {
+        if (!timer) done();
+      };
+      void readyEnd?.then(cut, cut);
+    } else bound();
     signal?.addEventListener('abort', done, { once: true });
     set.add(done);
   });

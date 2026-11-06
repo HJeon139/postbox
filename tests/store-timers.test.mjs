@@ -50,6 +50,7 @@ const PLACED = {
   'remote/process.mjs': 1, // a nextTick that starts or reads a host turn’s process after spawn returns: messages to a host, no store
   'remote/ssh-connection.mjs': 6, // a reconnect timer, and the kill, welcome and exit timers of an ssh child: no store
   'remote/ssh-reconnect.mjs': 4, // reconnect timers: no store
+  'remote/turns-replay.mjs': 1, // a host prompt’s ceiling on its wait for the read (#353): ends that wait as turn-work.mjs’s does, memory only
   'remote/turns-resume.mjs': 1, // a microtask resumes turns waiting on a host: a start, held by heldTurn while closed
   'remote/turns-snapshot.mjs': 1, // flushes conversation snapshots to hosts: reads
   'remote/turns.mjs': 5, // tick: stops a hung host turn (the outage’s stop ended the turns); a sign-in resume’s start is held

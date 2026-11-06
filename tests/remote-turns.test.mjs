@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { STOPPED_TEXT } from '../server/remote/turns.mjs';
 import { NOT_YOUR_PROMPT } from '../shared/mcp-tools.mjs';
-import { FIXTURE_PROMPT } from './fake-daemon.mjs';
+import { FIXTURE_PROMPT, FIXTURE_PROMPTS } from './fake-daemon.mjs';
 import { rig, running, settled, sleep, starts, until } from './remote-turns-helpers.mjs';
 
 // ── 1. Delivery: welcome, turn ID, snapshot ───────────────────────────────────────────
@@ -134,10 +134,10 @@ test('#120 L5: react from the host reaches the laptop’s reactTool, as server/m
 test('#120 L5: a prompt from the host is the laptop’s permission card, and the person’s answer goes back as answer', async () => {
   const r = rig();
   const turn = await running(r);
-  const id = r.d.prompt(turn);
+  const id = r.d.prompt(turn, FIXTURE_PROMPT, undefined, 'entry-of-the-daemon');
   await until(() => r.store.items(r.t.id).some((i) => i.kind === 'permission'), 'the card');
   const card = r.store.items(r.t.id).find((i) => i.kind === 'permission');
-  assert.deepEqual(card.remote, { hostId: r.host.id, turn, prompt: id });
+  assert.deepEqual(card.remote, { hostId: r.host.id, turn, prompt: id, entry: 'entry-of-the-daemon' });
   assert.equal(card.tool, FIXTURE_PROMPT.tool_name);
   assert.equal(r.se().remoteTurn.state, 'waiting');
   r.rt.resolvePermission(r.t.id, card.id, 'allow');
@@ -183,7 +183,7 @@ test('#120 L5: a prompt the host expired or the harness canceled marks its card 
   await until(() => r.store.items(r.t.id).some((i) => i.remote?.prompt === a), 'the first card');
   r.d.expire(turn, a);
   await until(() => r.store.items(r.t.id).find((i) => i.remote?.prompt === a).status === 'expired', 'the card expired');
-  const b = r.d.prompt(turn);
+  const b = r.d.prompt(turn, FIXTURE_PROMPTS[1]);
   await until(() => r.store.items(r.t.id).some((i) => i.remote?.prompt === b), 'the second card');
   r.link.hear({ type: 'prompt-expired', turn, id: b, at: 1_760_000_000_000, reason: 'canceled' });
   assert.equal(r.store.items(r.t.id).find((i) => i.remote?.prompt === b).status, 'canceled');
@@ -215,8 +215,8 @@ test('#120 L5 invariant: a prompt-expired for a prompt the person already answer
   assert.equal(after.reason, 'not now');
   assert.equal(after.answeredAt, before.answeredAt);
   assert.equal(r.link.sent.filter((m) => m.type === 'answer').length, 1);
-  // A repeat of the prompt (after a hello) gets the same answer again, with no second card.
-  r.link.hear({ type: 'prompt', id, turn, request: FIXTURE_PROMPT });
+  // A repeat of the prompt (after a hello, with the daemon’s same entry) gets the same answer again, with no second card.
+  r.link.hear({ type: 'prompt', id, turn, entry: card.remote.entry, request: FIXTURE_PROMPT });
   assert.equal(r.link.sent.filter((m) => m.type === 'answer').length, 2);
   assert.deepEqual(r.link.sent.filter((m) => m.type === 'answer')[1].result, r.link.sent.filter((m) => m.type === 'answer')[0].result);
   assert.equal(r.store.items(r.t.id).filter((i) => i.kind === 'permission').length, 1);
@@ -260,14 +260,14 @@ test('#120 L5: an expiry the daemon couldn’t record names its prompt, so exact
   const r = rig();
   const turn = await running(r);
   const a = r.d.prompt(turn);
-  const b = r.d.prompt(turn);
+  const b = r.d.prompt(turn, FIXTURE_PROMPTS[1]);
   await until(() => r.store.items(r.t.id).filter((i) => i.kind === 'permission').length === 2, 'two cards');
   r.d.expireUnrecorded(turn, b);
   const card = (id) => r.store.items(r.t.id).find((i) => i.remote?.prompt === id);
   await until(() => card(b).status === 'ended', 'the named card to end');
   assert.equal(card(a).status, 'open', 'the other card still waits');
   // The ended one’s repeat (a hello) shows nothing again; the open one is still answered.
-  r.link.hear({ type: 'prompt', id: b, turn, request: FIXTURE_PROMPT });
+  r.link.hear({ type: 'prompt', id: b, turn, request: FIXTURE_PROMPTS[1] });
   assert.equal(r.store.items(r.t.id).filter((i) => i.kind === 'permission').length, 2);
   r.rt.resolvePermission(r.t.id, card(a).id, 'allow');
   await until(() => r.d.answers.length === 1, 'the answer');

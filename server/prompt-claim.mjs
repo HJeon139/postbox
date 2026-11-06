@@ -3,7 +3,8 @@
 // /mcp too, with any tool_name and input. A prompt counts only when it’s for a call the turn’s stream showed, the
 // agent’s own or a subagent’s, still waiting for its result, with that call’s name and input, and only once per call.
 // Anything else is refused here, before a rule, the write judge or its budget (server/write-intent.mjs) sees it, and
-// before any card. The laptop’s prompts land here (server/permission-prompt.mjs).
+// before any card. Every prompt lands here: the laptop’s (server/permission-prompt.mjs) and a host’s
+// (server/remote/turns-prompts.mjs), whose stream the laptop reads too.
 
 import { isDeepStrictEqual } from 'node:util';
 import { PROMPT_CALL_WAIT_MS, PROMPT_HOLDS_MAX, PROMPT_REFUSAL_LINES } from '../shared/limits.mjs';
@@ -33,10 +34,13 @@ export const REFUSED = Object.freeze({
  * (agentId: the stream’s, never the prompt’s agent_id, null for the agent’s own); to a refusal with what to answer; or
  * to a repeat, which the first of its kind answers.
  * @param {any} rt @param {string} sessionId @param {any} args  permission_prompt’s arguments
- * @param {{ by?: unknown, signal?: AbortSignal | null }} [o]
+ * `ready`: what the wait for the call’s line waits on before its bound starts, a host stream’s replay
+ * (server/remote/turns-replay.mjs), and `readyEnd` the most it waits on it: if that settles first, the prompt is
+ * refused as `unseen`. The line still ends the wait at once.
+ * @param {{ by?: unknown, signal?: AbortSignal | null, ready?: Promise<unknown> | null, readyEnd?: Promise<unknown> | null }} [o]
  * @returns {Promise<{ ok: true, tool: string, input: any, agentId?: string | null } | { ok: false, why: Refusal, message: string } | { ok: false, why: 'repeat' }>}
  */
-export async function claimPrompt(rt, sessionId, args, { by = Symbol('prompt'), signal = null } = {}) {
+export async function claimPrompt(rt, sessionId, args, { by = Symbol('prompt'), signal = null, ready = null, readyEnd = null } = {}) {
   const turn = rt.turns.get(sessionId);
   if (!turn) return refusal('ended');
   if (!asksForOwnCalls(rt, turn)) {
@@ -48,7 +52,7 @@ export async function claimPrompt(rt, sessionId, args, { by = Symbol('prompt'), 
   // once, as it would be at the bound.
   if (typeof id === 'string' && id && !seenCall(turn, id) && heldPrompts(turn) >= PROMPT_HOLDS_MAX) return refused(rt, turn, 'unseen', id);
   // The prompt can come before the stream’s line for its call: it waits for it, a short while.
-  const call = typeof id === 'string' && id ? await whenSeen(turn, id, PROMPT_CALL_WAIT_MS, signal) : null;
+  const call = typeof id === 'string' && id ? await whenSeen(turn, id, PROMPT_CALL_WAIT_MS, signal, ready, readyEnd) : null;
   if (signal?.aborted) return refusal('closed');
   if (rt.turns.get(sessionId) !== turn) return refusal('ended');
   if (!call) return refused(rt, turn, 'unseen', id);

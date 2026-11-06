@@ -64,10 +64,11 @@ async function loadTurn(b, turn) {
   for (const r of await lines(b.p.turn(turn, TURN_FILES.prompts))) {
     const k = key(turn, r.id);
     if (r.op === 'prompt' && !b.prompts.has(k)) {
-      if (validateMessage('daemon-to-postbox', { type: 'prompt', id: r.id, turn, request: r.request }).ok) {
-        const at = Number.isSafeInteger(r.at) && r.at >= 0 ? r.at : b.now();
-        b.prompts.set(k, { turn, id: r.id, request: r.request, answer: null, over: false, at, replayed: true });
-      }
+      const at = Number.isSafeInteger(r.at) && r.at >= 0 ? r.at : b.now();
+      // A record an older daemon wrote has no entry: it gets one from its own `at`, the same at every start.
+      const entry = r.entry ?? `at-${at}`;
+      if (validateMessage('daemon-to-postbox', { type: 'prompt', id: r.id, turn, entry, request: r.request }).ok)
+        b.prompts.set(k, { turn, id: r.id, entry, request: r.request, answer: null, over: false, at, replayed: true });
     } else if (r.op === 'answer') {
       const q = b.prompts.get(k);
       if (q && validateMessage('daemon-to-shim', { type: 'permission-answer', id: r.id, result: r.result }).ok) q.answer = r.result;
