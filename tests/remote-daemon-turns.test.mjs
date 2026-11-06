@@ -180,7 +180,8 @@ test('a line over the stream limit is sent cut, with its offsets, and the stream
 });
 
 test('a turn with no exit.json and no live runner reads as interrupted: ended with exit null', async () => {
-  const s = setup();
+  // runner.json’s process is gone too: a silent runner whose process lives is still running (#738).
+  const s = setup({ same: false });
   try {
     makeTurn(s.p, 't1', { out: '{"n":1}\n' });
     const c = await hello(s);
@@ -195,7 +196,8 @@ test('a turn with no exit.json and no live runner reads as interrupted: ended wi
 });
 
 test('scan classifies turn folders: a live runner is running, exit.json is ended, neither is interrupted', async () => {
-  const s = setup();
+  // Without a live runner, runner.json’s process is gone too: one whose process lives is still running (#738).
+  const s = setup({ same: false });
   try {
     makeTurn(s.p, 'run', { out: '{"a":1}\n' });
     makeTurn(s.p, 'done', { out: '{"a":1}\n{"b":2}\n', exit: { code: 1, signal: null, at: 3 }, harness: 'codex' });
