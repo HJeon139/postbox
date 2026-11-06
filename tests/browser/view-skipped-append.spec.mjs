@@ -92,6 +92,9 @@ test('#712a: a reply appended while reading higher up stays skipped, and the vie
   const node = page.locator(`[data-key="${reply.id}"]`);
   await expect(node).toHaveCount(1);
   await still(page);
+  // Never drawn, it still lays out at its estimate: drawing it once (the newest-item draw, view-state.mjs grew(), which
+  // is only while following) would have it keep its painted height of several hundred pixels.
+  expect(await node.evaluate((n) => n.getBoundingClientRect().height), 'the reply below was never drawn').toBeLessThan(100);
   expect(await page.evaluate(() => scrollY), 'what you read stays where it was').toBe(before);
   expect(await node.evaluate((n) => !n.firstElementChild?.checkVisibility({ contentVisibilityAuto: true })), 'the reply below is skipped').toBe(true);
 });
