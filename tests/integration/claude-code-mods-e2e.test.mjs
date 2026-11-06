@@ -2,7 +2,8 @@
 // `disableAllHooks: false` in both, doesn’t run in a Postbox turn in Auto, so a push waits on the permission card. One
 // real turn through each real adapter (the Claude Code CLI and the Agent SDK) asks for `git push origin
 // HEAD:refs/heads/e2e`; the test answers the card no, and checks the branch never reached the remote and neither hook
-// ran. A control turn in Run everything, where Postbox keeps the person’s hooks, shows the fixture’s hooks do run.
+// ran. A control turn through each adapter in Run everything, where Postbox keeps the person’s hooks, shows the
+// fixture’s hooks do run.
 //
 // It runs real model turns, which cost money, so it runs only with POSTBOX_E2E_CLAUDE=1 and a `claude` on PATH. It
 // lives in tests/integration/, which `npm run check` runs (its test:integration stage): there every test here is
@@ -197,11 +198,20 @@ for (const [backend, skip] of [
   });
 }
 
-test('#817 control: in Run everything, Postbox keeps the person’s hooks, so the fixture’s hooks run', { skip: why, timeout: TURN_MS + 60_000 }, async (t) => {
-  const r = await pushTurn(t, 'claude-code', 'bypass');
-  assert.equal(existsSync(r.markers.user), true, `the user settings’ hook should run; the agent said: ${r.said.slice(0, 500)}`);
-  assert.equal(existsSync(r.markers.project), true, 'the project settings’ hook should run');
-});
+// One control per adapter, so neither adapter's “the hooks don't run” can pass because the fixture's hooks never load.
+for (const [backend, skip] of [
+  ['claude-code', why],
+  ['agent-sdk', sdkWhy],
+]) {
+  test(`#817 control: ${backend} in Run everything, Postbox keeps the person’s hooks, so the fixture’s hooks run`, {
+    skip,
+    timeout: TURN_MS + 60_000,
+  }, async (t) => {
+    const r = await pushTurn(t, backend, 'bypass');
+    assert.equal(existsSync(r.markers.user), true, `the user settings’ hook should run; the agent said: ${r.said.slice(0, 500)}`);
+    assert.equal(existsSync(r.markers.project), true, 'the project settings’ hook should run');
+  });
+}
 
 test('#817 the fixture copies only the allowlisted model settings from the person’s user settings', () => {
   const mine = {
