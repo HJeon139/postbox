@@ -10,7 +10,10 @@
  * - a home written as “~” and a user name, and root’s home under “/root”;
  * - a leak after a zero byte early in a file, which is then counted as binary and not read;
  * - a real account named “me” or “you” in a slug, which reads as the placeholder;
- * - UTF-16 text, read as UTF-8 with a zero byte after each ASCII character.
+ * - UTF-16 text, read as UTF-8 with a zero byte after each ASCII character;
+ * - a Bearer token shorter than 20 characters, and a token under another scheme, such as Basic;
+ * - a uid under another key, such as “user_id”, and account data under keys other than the six account fields;
+ * - a connector a person named after one of claude.ai’s directory connectors.
  */
 
 import { joinedDeltas } from './joined-deltas.mjs';
@@ -63,8 +66,16 @@ const ALL_ZEROS = /^0+(?:-0+)*$/;
 // escaped inside another string, so the value stops at a “\” too.
 const INSTALLATION_ID = /\\?"installation(?:Id|_id)\\?"\s*:\s*\\?"([^"\\]+)\\?"/g;
 
-// Account metadata keys (camelCase and snake_case), with or without a “\” before each quote.
-const ACCOUNT_FIELD = /\\?"(planType|authMode|usedPercent|plan_type|auth_mode|used_percent)\\?"/g;
+// Account metadata keys, camelCase and snake_case.
+const ACCOUNT_KEYS = 'planType|authMode|usedPercent|plan_type|auth_mode|used_percent';
+
+// An account key in quotes, with or without a “\” before each, or bare before a “:” or an “=”, as YAML, a JavaScript
+// object and TOML (Codex’s config.toml) write one (#696). A bare key after a name character is part of a longer name,
+// and one before “==” is a comparison, not a value.
+const ACCOUNT_FIELD = new RegExp(`\\\\?"(${ACCOUNT_KEYS})\\\\?"|(?<![A-Za-z0-9_$])(${ACCOUNT_KEYS})(?=\\s*(?::|=(?!=)))`, 'g');
+
+// A “uid” field and its number, quoted or not, with or without a “\” before each quote (#696).
+const UID_FIELD = /\\?"uid\\?"\s*:\s*\\?"?(\d+)/g;
 
 // A claude.ai connector in an init’s mcp_servers, by its “name”, with or without a “\” before each quote.
 const CLAUDE_AI_CONNECTOR = /\\?"name\\?"\s*:\s*\\?"claude\.ai ([^"\\]+)\\?"/g;
@@ -77,8 +88,9 @@ const CLAUDE_AI_CONNECTOR = /\\?"name\\?"\s*:\s*\\?"claude\.ai ([^"\\]+)\\?"/g;
 const DIRECTORY_CONNECTORS = new Set(['Claude Docs', 'Gmail', 'Google Calendar', 'Google Drive']);
 
 // Anthropic API keys and GitHub tokens, at the lengths server/telemetry-secrets.mjs matches, so a placeholder such as
-// “sk-ant-...” or “ghp_xxxx” in prose isn’t one.
-const API_TOKEN = /\bsk-ant-[A-Za-z0-9_-]{20,}|\bgh[pousr]_[A-Za-z0-9]{30,}\b|\bgithub_pat_[A-Za-z0-9_]{30,}/g;
+// “sk-ant-...” or “ghp_xxxx” in prose isn’t one. A Bearer token (RFC 6750’s characters, the scheme in either case) is
+// 20 characters or more, so “Bearer token” in prose, “<token>” and a shell’s “$TOKEN” aren’t one (#696).
+const API_TOKEN = /\bsk-ant-[A-Za-z0-9_-]{20,}|\bgh[pousr]_[A-Za-z0-9]{30,}\b|\bgithub_pat_[A-Za-z0-9_]{30,}|\b[Bb]earer[ \t]+[A-Za-z0-9._~+/-]{20,}=*/g;
 
 // A rate limit’s “utilization”, how much of the account’s limit it used, and its value, with or without a “\” before
 // each quote. Only 0 says nothing.
@@ -150,11 +162,20 @@ function installationIds(content) {
   return found;
 }
 
-/** Account metadata keys. @param {string} content */
+/** Account metadata keys, quoted or bare. @param {string} content */
 function accountFields(content) {
-  const keys = [...content.matchAll(ACCOUNT_FIELD)].map(([key]) => key);
+  const keys = [...content.matchAll(ACCOUNT_FIELD)].map(([, quoted, bare]) => quoted ?? bare);
   if (keys.length === 0) return [];
   return [`account field: ${keys.join(', ')}`];
+}
+
+/** uid fields that aren’t all zeros. @param {string} content */
+function uidFields(content) {
+  const found = [];
+  for (const [, uid] of content.matchAll(UID_FIELD)) {
+    if (!ALL_ZEROS.test(uid)) found.push(`uid: ${uid}`);
+  }
+  return found;
 }
 
 /** claude.ai connectors that aren’t the directory’s. @param {string} content */
@@ -191,8 +212,8 @@ function emails(content) {
 
 /**
  * Checks text for leaked personal data or un-sanitized environment paths: home paths with a real user name, temp
- * folders and Claude Code uids, a real Codex installation id, account metadata, a claude.ai connector a person named,
- * API keys and tokens, a utilization other than 0, and real email addresses.
+ * folders, Claude Code uids and uid fields, a real Codex installation id, account metadata, a claude.ai connector a
+ * person named, API keys and tokens, a utilization other than 0, and real email addresses.
  *
  * @param {string} content
  * @returns {string[]} list of violations found
@@ -201,6 +222,7 @@ export function checkContentPrivacy(content) {
   return [
     ...homePaths(content),
     ...tempPaths(content),
+    ...uidFields(content),
     ...installationIds(content),
     ...accountFields(content),
     ...connectorNames(content),
