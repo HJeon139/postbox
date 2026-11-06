@@ -59,6 +59,11 @@ test.beforeAll(async () => {
     const persona = rt.createPersona({ handle, backend: 'claude-code', ...setup });
     threads[handle] = rt.createThread({ projectId: 'pr_hooks', title: handle, personaIds: [persona.id] }).id;
   }
+  // An agent on a host (#120): the panel reads this computer’s files, not the host’s.
+  const host = rt.addHost({ name: 'build.example.com' });
+  const remote = rt.createPersona({ handle: 'remote', backend: 'claude-code', permissionMode: 'auto' });
+  store.emit('persona', { ...store.state.personas[remote.id], remote: { hostId: host.id } });
+  threads.remote = rt.createThread({ projectId: 'pr_hooks', title: 'remote', personaIds: [remote.id] }).id;
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -109,4 +114,12 @@ test('#817 a file with more than 50 hooks lists 50, and says how many more are i
   await expect.soft(rows.first()).toHaveText('Bash hook 0 from the project’s shared settings');
   await expect.soft(rows.nth(49)).toHaveText('Bash hook 49 from the project’s shared settings');
   await expect.soft(rows.last()).toHaveText(`and 5 more in ${manyFile}`);
+});
+
+test('#817 for an agent on a host, the panel says the hooks listed are this computer’s, not that they won’t run', async ({ page }) => {
+  const hooks = await openHooks(page, 'remote');
+  await expect.soft(hooks.locator('li')).toHaveText([USER_ROW, PROJECT_ROW]);
+  await expect
+    .soft(hooks.locator('p.help'))
+    .toHaveText(['@remote runs on build.example.com. These are the hooks in this computer’s settings files; the host’s own settings aren’t shown here.', OFF]);
 });
