@@ -24,20 +24,33 @@ test('timeOf and dayOf read as the toLocale*String calls they replaced (#866)', 
 
 test('timeOf and dayOf make no formatter per call: a switch into a long room calls each once an item (#866)', (t) => {
   const Real = Intl.DateTimeFormat;
+  const { toLocaleTimeString, toLocaleDateString } = Date.prototype;
   let made = 0;
-  // Counts a formatter made the usual way, as the code would have to make one.
+  let localeCalls = 0;
+  // Counts a formatter made with the constructor, and the toLocale*String calls, which make theirs inside the engine
+  // where the constructor never sees it.
   Intl.DateTimeFormat = /** @type {any} */ (
     function DateTimeFormat(/** @type {any[]} */ ...args) {
       made++;
       return new Real(...args);
     }
   );
+  Date.prototype.toLocaleTimeString = function (/** @type {any[]} */ ...args) {
+    localeCalls++;
+    return toLocaleTimeString.apply(this, args);
+  };
+  Date.prototype.toLocaleDateString = function (/** @type {any[]} */ ...args) {
+    localeCalls++;
+    return toLocaleDateString.apply(this, args);
+  };
   t.after(() => {
     Intl.DateTimeFormat = Real;
+    Object.assign(Date.prototype, { toLocaleTimeString, toLocaleDateString });
   });
   for (const ms of TIMES) {
     timeOf(ms);
     dayOf(ms);
   }
-  assert.equal(made, 0);
+  assert.equal(made, 0, 'no formatter built per call');
+  assert.equal(localeCalls, 0, 'no toLocale*String per call');
 });

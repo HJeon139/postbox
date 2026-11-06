@@ -60,7 +60,8 @@ export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
 // One formatter each, made once: a toLocale*String call builds its formatter every time, which cost about 1.2 s of a
-// switch into a 10,000-item room (#866). Each gives the same text as the toLocale*String call it replaces.
+// switch into a 10,000-item room (#866). Each gives the same text as the toLocale*String call it replaces. They keep
+// the time zone the page loaded with, until it reloads.
 const TIME = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 const DAY = new Intl.DateTimeFormat('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
 
