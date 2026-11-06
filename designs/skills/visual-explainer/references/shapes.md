@@ -23,7 +23,7 @@ When two shapes fit, the brief has two ideas. Make one visual per idea, or pick 
 
 From the maintainer’s blind verdicts on 20 agent-made visuals (November 6, 2026), the visuals that landed had these in common, and the ones that missed lacked them:
 - **Drawn, not boxed.** Infographics and textbook illustrations, not labeled boxes (VE10). References the maintainer pointed to: an illustrated “How a bill becomes law” poster by Quarterhouse (an [Etsy listing](https://www.etsy.com/listing/1425377994/quarterhouse-illustrated-how-a-bill), which may not last: the point is an illustrated poster of the process rather than a flowchart), a [Krebs cycle infographic](https://praxilabs.com/en/blog/2023/01/02/krebs-cycle/), and an engineering teardown, where every part is drawn in place with a short label.
-- **Relationships you can move.** Where the idea is how one thing depends on another, one control for a variable the idea turns on, with every view that depends on it moving together, and a question to predict before playing (VE11).
+- **Relationships you can move.** Where the idea is how one thing depends on another, one control for a variable the idea turns on, with every view that depends on it moving together, and, where it helps, a question to predict that sits beside the picture and never hides it (VE11).
 - **Values carried by the marks.** Size, position and change over time encode the numbers; text only names them.
 - **One idea, cleanly.** “Mostly there” meant too much at once: cut to the one idea and fit the screen (VE7, VE8).
 - **Readable.** Low contrast, overlapping labels or raw TeX turned an otherwise good visual into a miss (VE12).
