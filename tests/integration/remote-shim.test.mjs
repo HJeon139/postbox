@@ -255,6 +255,25 @@ test('after a daemon restart, the waiting prompt is sent again with the same ID,
   assert.equal(daemon.errors.length, 0);
 });
 
+test('#353 a prompt’s ID is random, and each hello carries this shim’s own key, the same after a reconnect', async (t) => {
+  const { shim, daemon } = await setup(t, { timings: { backoff: 20, backoffMax: 50 } });
+  shim.tool('permission_prompt', REQUEST);
+  shim.tool('permission_prompt', REQUEST);
+  const ids = [(await daemon.next('permission')).id, (await daemon.next('permission', 1)).id];
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  assert.ok(
+    ids.every((id) => UUID.test(id)),
+    `random IDs, not a counter: ${ids.join(', ')}`,
+  );
+  assert.notEqual(ids[0], ids[1]);
+  await daemon.stop();
+  await sleep(60);
+  await daemon.start();
+  const hellos = [await daemon.next('hello'), await daemon.next('hello', 1)];
+  assert.match(hellos[0].shim, /^[A-Za-z0-9_-]{32,128}$/, 'its own key');
+  assert.equal(hellos[1].shim, hellos[0].shim, 'the same key after the reconnect');
+});
+
 test('stdin ending closes the daemon link and exits 0', async (t) => {
   const { shim, daemon } = await setup(t);
   await daemon.connected();

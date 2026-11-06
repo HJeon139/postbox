@@ -1,6 +1,7 @@
 // The host’s shim’s state (#120): what waits for the daemon, the daemon link and its timings. shim.mjs makes it, and
 // the shim-*.mjs modules take it first, as `sh`. shim.mjs’s header says how each kind of call waits.
 
+import { randomBytes, randomUUID } from 'node:crypto';
 import { encode, HOST_DEFAULTS } from '../../../shared/remote-protocol.mjs';
 
 const SECOND = 1000;
@@ -47,6 +48,12 @@ export function shimState(turn, P, { asksByPrompt = true } = {}) {
     /** @type {WeakMap<Pending, ReturnType<typeof setTimeout>>} each prompt’s deadline */
     expiries: new WeakMap(),
     nextId: () => `${prefix}-${++counter}`,
+    /**
+     * A prompt’s ID, random, so no other client of the turn can guess it (#353); and this process’s own key, sent in
+     * each hello, which the daemon answers a prompt only to.
+     */
+    promptId: () => randomUUID(),
+    key: randomBytes(24).toString('base64url'),
     /** @type {import('node:net').Socket | null} */
     sock: null,
     /** Whether the daemon has welcomed this connection, so messages may go. */
