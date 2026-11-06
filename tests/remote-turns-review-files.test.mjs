@@ -143,3 +143,13 @@ test('#780 a host’s refused review call is answered to the agent that waits fo
     'it waited for this answer (toolRoute), so no note follows',
   );
 });
+
+test('#825 a host app’s data file is kept as a local one is: its name, SHA-256 and size, nothing more', async () => {
+  const f = await setup();
+  const app = { id: 'chart', title: 'Chart', code: '<p>x</p>', files: [{ name: 'data.csv', base64: b64('a,b\n1,2\n') }] };
+  const r = await fromHost(f, 'show_app', app);
+  assert.equal(r.ok, true, r.text);
+  const [kept] = f.rt.store.pending.app('chart').versions[0].files;
+  assert.deepEqual(Object.keys(kept).sort(), ['name', 'sha256', 'size']);
+  assert.equal(kept.size, 8);
+});
