@@ -19,7 +19,7 @@ Every agent in the [#206](https://github.com/HJeon139/postbox/issues/206) field 
 flowchart LR
   subgraph build["Building it right the first time"]
     brief["Brief: one idea, its facts"] --> shape["Shape decides the form"]
-    shape --> forms["Three forms, one picked"]
+    shape --> forms["Three thumbnails, one picked"]
   end
   subgraph review["Judging it"]
     floor["Floor: verify and refuse"]
@@ -55,9 +55,10 @@ The principles behind the rules: [Larkin & Simon 1987](https://mechanism.ucsd.ed
   - These are development numbers, not results: one run per condition, and VE8, VE9 and the shape table’s poles row came from runs on these same briefs. Random recent papers and the everyday briefs, with the skill frozen, are the held-out test.
 - **Calibrated, on November 6, 2026:** the maintainer judged 20 of those first visuals blind against their briefs, then saw the takeaway test’s grades. They agreed exactly on 8 and within one step on 15 (quadratic weighted κ 0.27). The test was more lenient on 9: it passed visuals whose words stated the idea, and missed text in boxes, missing relationships and unreadable labels. The maintainer rated the with-skill visuals 1.7 on a 0 to 3 scale against 0.9 for the others; the test, 1.9 against 1.5. Their notes became VE10 to VE12 and the shape table’s “What good looks like”, and the 20 verdicts, with their pictures, became [references/examples.md](references/examples.md): a judge anchored on them agreed with the maintainer at weighted κ 0.44 to 0.62, against 0.34 with the rules alone ([#206’s retrospective](https://github.com/HJeon139/postbox/issues/206#issuecomment-6698888352)).
 - **The examples spend the development set.** `- seed: visual-skill` copies `references/` into the agent’s folder, so an agent with the skill now sees the maintainer’s verdict on a visual made from its own brief: compound interest, the bill, Spore and its disguise, and the three papers (Sontag, Madeddu, Jia). From here on, the `visualskill-*` scenarios and the `visualpaper-*-skill` ones measure regressions only, not whether the skill works, and a comparison with their baselines is no longer fair. The held-out test set is the everyday briefs, which no example comes from ([briefs/README.md](briefs/README.md)), and new papers.
+- **Three thumbnails, on November 6, 2026:** step 3 now draws three small sketches side by side and has the person pick, or picks the one where position carries the most and keeps the others in the app’s history. Before, the agent named three forms in a line each and picked alone. The maintainer’s notes on design say to see the options together before going into one ([#206](https://github.com/HJeon139/postbox/issues/206#issuecomment-6674901743)), and the [retrospective](https://github.com/HJeon139/postbox/issues/206#issuecomment-6698888352) found the agent picking alone among forms it had only named.
 - **Not done:**
   - The takeaway test, now on a text-hidden screenshot with the floor’s new lines, hasn’t been rerun against the maintainer’s verdicts. Until it agrees about as well as people agree with each other (κ about 0.45 to 0.6), it informs a person’s judgment and doesn’t replace it.
-  - No run has used VE10 to VE12 yet.
+  - No run has used VE10 to VE12, the examples or the three thumbnails yet.
   - The vaccine-trial brief’s case counts are unchecked (the brief says so).
   - The countable floor lines aren’t in Postbox’s app check yet: agents shipped visuals with labels the check had flagged as overlapping or too small.
 - **Next:**
