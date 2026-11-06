@@ -194,7 +194,7 @@ const HANDLERS = {
       const chosen = m.event.values?.selected ?? [];
       await a.think(600);
       return a.say(
-        `Good choice. I’ll start with ${chosen.length > 1 ? `**${chosen.length} papers**` : 'that paper'} and keep each walkthrough short, with an exercise at the end. Ask me to “explain ReAct” whenever you’re ready.`,
+        `Good choice. I’ll start with ${chosen.length > 1 ? `**${chosen.length} papers**` : 'that paper'} and keep each walkthrough short, with a picture you can change. Ask me to “explain ReAct” whenever you’re ready.`,
       );
     }
     if (m.kind === 'agent') return researcherReply(m, a, mem);
@@ -211,7 +211,7 @@ const HANDLERS = {
     if (has(text, /explain|react|reason/)) return explainer(a, mem);
     if (has(text, /paper|memory|read/)) return paperChoice(a);
     await a.think(500);
-    await a.say('I read papers and turn them into step-by-step explainers with exercises. Try “Explain ReAct with something I can try”.');
+    await a.say('I read papers and explain them with diagrams and pictures you can change. Try “Explain ReAct with something I can try”.');
   },
 
   async indexer(m, a, mem, _se) {
