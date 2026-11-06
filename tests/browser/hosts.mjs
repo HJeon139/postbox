@@ -42,6 +42,8 @@ export class FakeHosts extends EventEmitter {
     this.noToken = new Set();
     /** What removeFromHost rejects with, in place of the daemon’s `removed`. @type {Error | null} */
     this.removeError = null;
+    /** What setKeepUpdated rejects with. @type {Error | null} */
+    this.keepUpdatedError = null;
   }
   host(id) {
     return this.app.store.state.hosts[id];
@@ -78,6 +80,12 @@ export class FakeHosts extends EventEmitter {
     this.calls.push(['removeFromHost', id]);
     if (this.noToken.has(id)) throw Object.assign(failure('not-installed', this.host(id).name), { code: 'not-installed' });
     if (this.removeError) throw this.removeError;
+  }
+  /** The person’s standing consent to install by itself (#464-b2b): kept in the host’s status, as the manager does. */
+  async setKeepUpdated(id, on) {
+    this.calls.push(['setKeepUpdated', id, on]);
+    if (this.keepUpdatedError) throw this.keepUpdatedError;
+    this.set(id, { ...this.statuses.get(id), keepUpdated: on });
   }
   async refresh() {
     return false;

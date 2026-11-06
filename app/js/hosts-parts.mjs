@@ -51,8 +51,14 @@ export const command = (cmd) =>
     copyButton(cmd),
   );
 
-/** A labeled checkbox with help text under it, as the persona sheet’s (sheets.mjs). */
-export function checkField({ id, label, help, on, onToggle }) {
+/**
+ * A labeled checkbox with help text under it, as the persona sheet’s (sheets.mjs). Each click turns it to the
+ * opposite of what it shows, so one set back from outside (a save that failed) toggles from there. With err, a string,
+ * it has an error under it (showError sets it), as the editor’s other fields do.
+ * @param {{ id: string, label: string, help: string, on: boolean, onToggle: (on: boolean) => void, err?: string }} o
+ */
+export function checkField({ id, label, help, on, onToggle, err }) {
+  const withErr = typeof err === 'string';
   return h(
     'div.field.span',
     h(
@@ -62,12 +68,14 @@ export function checkField({ id, label, help, on, onToggle }) {
         role: 'checkbox',
         tabindex: '0',
         'aria-checked': String(on),
-        'aria-describedby': `${id}-help`,
+        'aria-describedby': withErr ? `${id}-help ${id}-err` : `${id}-help`,
+        'aria-errormessage': withErr ? `${id}-err` : null,
+        'aria-invalid': err ? 'true' : null,
         style: { alignSelf: 'flex-start' },
         onclick: (e) => {
-          on = !on;
-          e.currentTarget.setAttribute('aria-checked', String(on));
-          onToggle(on);
+          const next = e.currentTarget.getAttribute('aria-checked') !== 'true';
+          e.currentTarget.setAttribute('aria-checked', String(next));
+          onToggle(next);
         },
         onkeydown: (e) => {
           if (e.key === ' ' || e.key === 'Enter') {
@@ -80,6 +88,7 @@ export function checkField({ id, label, help, on, onToggle }) {
       h('span', label),
     ),
     h('span.help', { id: `${id}-help` }, help),
+    withErr ? h('span.err', { id: `${id}-err`, role: 'alert', hidden: !err }, err) : null,
   );
 }
 

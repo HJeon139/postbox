@@ -51,6 +51,7 @@ test('#464-b2a: an install that exits 75 records busy and connects once more', a
     await settle();
     assert.equal(t.dials.length, 2, 'the 127, then one connectNow after busy');
     assert.equal(t.runs.length, 1, 'the second 127 finds this version tried');
+    assert.equal(t.mgr.status('h1').update.error, undefined, 'busy isn’t a failure to explain on the card (#464-b2b)');
   } finally {
     t.done();
   }

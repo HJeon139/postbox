@@ -183,3 +183,42 @@ test('#464 auto-install-repeated stays silent for one try, however often its sta
   assert.deepEqual(repeated([...once(), status(8000, 'failed', { tried: 7900 })]), [], 'a status with only a failed try shows no install started');
   assert.deepEqual(runChecks(facts(), { only: ['auto-install-repeated'] }), [], 'a run with no statuses kept');
 });
+
+const waited = HOST_TRIGGERS['host-turn-waited-install'];
+/**
+ * As installed(), with host1’s first turn, @researcher’s, asked for at 4500 while the install ran, and its item, at
+ * 6200 once it started there after the install, finished rather than failed (#464-b2b).
+ */
+const waitedRun = (over = {}) => {
+  const f = installed(over);
+  const first = f.state.items.t1[0];
+  Object.assign(first, { status: 'done', at: 6200 });
+  f.state.items.t1.unshift({ id: 'i0', kind: 'user', text: '@researcher run uname -n', at: 4500 });
+  return f;
+};
+
+test('#464-b2b host-turn-waited-install fires when a staged host’s first turn started before the install ended, and finished', () => {
+  const hits = waited.run(waitedRun());
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].at, 6200);
+  assert.match(hits[0].evidence, /host1’s first turn, @researcher’s, waited while Postbox installed 1\.17\.0 there by itself, then finished/);
+  assert.equal(waited.issue, 464);
+});
+
+test('#464-b2b host-turn-waited-install stays silent when the first turn failed, as in b2a', () => {
+  assert.deepEqual(waited.run(installed()), [], 'the first turn failed as not installed');
+});
+
+test('#464-b2b host-turn-waited-install stays silent when the first turn there was asked for after the install ended', () => {
+  const f = waitedRun();
+  f.state.items.t1[0].at = 6100;
+  assert.deepEqual(waited.run(f), []);
+  f.state.items.t1.shift();
+  assert.deepEqual(waited.run(f), [], 'no message before it');
+});
+
+test('#464-b2b host-turn-waited-install stays silent without one install of this run’s version, or a staged host', () => {
+  assert.deepEqual(waited.run(waitedRun({ statuses: [status(5001, 'started'), status(6000, 'failed')] })), []);
+  assert.deepEqual(waited.run(waitedRun({ setup: { staged: undefined } })), []);
+  assert.deepEqual(waited.run({}), [], 'a run without hosts');
+});

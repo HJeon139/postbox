@@ -118,6 +118,16 @@ function readInstance(file) {
 }
 
 /**
+ * Only this Postbox’s version’s try: one of another version (before an update here) says nothing on the card, as
+ * the integrator’s review of #770 asked. A note that the record couldn’t be read or written stays.
+ * @param {Manager} m @param {ReturnType<typeof updateOf>} update
+ */
+function thisVersion(m, update) {
+  if (!update?.version || update.version === m.version) return update;
+  return update.error ? { version: null, at: null, outcome: null, error: update.error } : null;
+}
+
+/**
  * An install the record says started, with none under way here: a crash or close() cut it off, and this version
  * counts as tried, so nothing installs it by itself. The status says so, with Install…, rather than look under way.
  * @param {Manager} m @param {string} id @param {ReturnType<typeof updateOf>} update
@@ -133,7 +143,7 @@ export function statusOf(m, id) {
   const lastHeard = m.heard.get(id) ?? null;
   if (!m.getHost(id)) return { state: 'disconnected', failure: null, welcome: null, lastHeard, keepUpdated: false, update: null };
   const record = recordOf(m, id);
-  const installs = { keepUpdated: record.keepUpdated, update: cutOff(m, id, updateOf(record)) };
+  const installs = { keepUpdated: record.keepUpdated, update: cutOff(m, id, thisVersion(m, updateOf(record))) };
   const e = m.links.get(id);
   if (!e) return { state: tokenOf(m, id) ? 'disconnected' : 'not-installed', failure: null, welcome: null, lastHeard, ...installs };
   const l = e.link;

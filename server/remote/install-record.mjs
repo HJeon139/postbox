@@ -32,7 +32,8 @@ export const UNREADABLE = 'Postbox couldn’t read its note of installs on this 
  * @typedef {{ keepUpdated: boolean, installs: InstallEntry[] }} InstallRecord  as it is on disk
  * @typedef {InstallRecord & { refused?: boolean, error?: string }} KeptRecord
  *   as m.installRecords keeps it. refused: the file couldn’t be read, so this version counts as tried. error: why,
- *   or why the last write failed, for the host’s status; never a path.
+ *   or why the last write failed, or why an automatic install failed, for the host’s status; never a token. An
+ *   installer’s error can name a path on this computer, as Install… already shows it.
  * @typedef {{ dataDir: string, installRecords: Map<string, KeptRecord>, recordWrites: Map<string, Promise<unknown>> }} RecordState
  */
 
@@ -217,7 +218,7 @@ export function isTried(record, version) {
 
 /**
  * What the host’s status says of its automatic installs: the newest entry, and why the record couldn’t be read or
- * written. null with neither. Never a token or a path.
+ * written. null with neither. Never a token; the error can name a path on this computer (noteFailed).
  * @param {KeptRecord} record
  * @returns {{ version: string | null, at: number | null, outcome: string | null, error?: string } | null}
  */
@@ -229,7 +230,7 @@ export function updateOf(record) {
 
 /**
  * An automatic install as the host’s status carries it, field by field, for updateOf here and for the page’s copy
- * (host-status.mjs). Never a token or a path. @param {any} u
+ * (host-status.mjs). Never a token; the error can name a path on this computer. @param {any} u
  * @returns {{ version: string | null, at: number | null, outcome: string | null, error?: string } | null}
  */
 export function updateFields(u) {

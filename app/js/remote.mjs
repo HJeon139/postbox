@@ -10,6 +10,7 @@
 
 import { busy, client } from './client.mjs';
 import { ago } from './dom.mjs';
+import { installingVersion } from './keep-updated.mjs';
 
 const S = () => client.state;
 /** Remote-turn states in which the turn is still on its host as far as Postbox knows (server/remote/turns.mjs, ON_HOST, and stopping). */
@@ -64,11 +65,14 @@ export function ringWhere(se) {
 }
 
 /**
- * How the session’s turn on its host stands, when that needs saying beside its name: stopping there, lost, or
- * stopped and waiting to be resumed. Null otherwise (running and waiting show as the ring does).
+ * How the session’s turn on its host stands, when that needs saying beside its name: waiting while Postbox installs
+ * its version there, stopping there, lost, or stopped and waiting to be resumed. Null otherwise (running and waiting
+ * show as the ring does).
  * @param {any} se @returns {string | null}
  */
 export function turnLine(se) {
+  const installing = installingLine(se);
+  if (installing) return installing;
   const r = se?.remoteTurn;
   if (!r) return null;
   const name = S().hosts?.[r.hostId]?.name ?? 'its host';
@@ -78,6 +82,17 @@ export function turnLine(se) {
   if (r.state === 'signin' && r.resume) return `Sign-in needed on ${name}`;
   if (r.state === 'interrupted' && r.resume) return `Interrupted on ${name}`;
   return null;
+}
+
+/**
+ * “Installing Postbox 0.18.0 on host.example.com…”, for a turn at work that waits on its host while Postbox installs
+ * its version there by itself (#464-b2b). Null otherwise. @param {any} se @returns {string | null}
+ */
+function installingLine(se) {
+  if (!busy(se)) return null;
+  const host = hostOf(se);
+  const version = installingVersion(host?.status);
+  return version ? `Installing Postbox ${version} on ${host?.name}…` : null;
 }
 
 /** Whether a reply’s turn ran on a host: its session’s remote turn is that turn. @param {any} se @param {string | null | undefined} turnId */

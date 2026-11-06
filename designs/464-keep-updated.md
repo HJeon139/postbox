@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Revision 4, approved by the reviewers (“go for b2a”), with the later conditions listed under “Where things stand”. Slice b1 is built (#736); slice b2a is built on its branch and described here as it is; b2b and b3 are designed and not built. Every citation was read at the b2a branch’s head, `541fdb60`. |
+| **Status** | Revision 4, approved by the reviewers (“go for b2a”), with the later conditions listed under “Where things stand”. Slice b1 is built (#736); slice b2a is built (#755); b2b is built on its branch and described here as it is; b3 is designed and not built. Every citation was read at the b2a branch’s head, `541fdb60`. |
 | **Issue** | #464, “Updating Postbox should not strand agents on remote hosts” |
 
 ## What it’s for
@@ -20,7 +20,7 @@ Postbox runs agents on remote hosts over ssh, and each Postbox version installs 
   - the record is read through one `O_NOFOLLOW | O_NONBLOCK` open, checked with `fstat`, and read up to that bound (`install-record.mjs:106-122`);
   - a records folder that’s a symbolic link is refused on read and on write (`install-record.mjs:84`, `:142`);
   - turning the consent on connects a stopped host once (`hosts-update.mjs:204-206`).
-- **b2b, next:** the waiting caller, the card’s states and the host editor’s toggle (see “What b2b adds”).
+- **b2b, built on its branch:** the waiting caller, the card’s states, the turn’s line and the host editor’s toggle (see “What b2b adds”).
 - **b3, after b2b:** the reinstall with a new token, and its card (see “What b3 adds”).
 - **D6,** turns started under the old version, is to be filed as its own issue (see “Turns started under the old version”).
 
@@ -107,11 +107,14 @@ It never throws: the body is in a `try`, and any error becomes the host’s `upd
 
 ## What b2b adds: the waiting caller, the card and the toggle
 
-In b2a, the caller that heard the 127 still fails as it does today (`ensureWelcome` is unchanged, `hosts-links.mjs:194-208`), and the host connects again after the install (`hosts-update.mjs:79`). So the first turn fails and the next one runs. b2b changes that:
+In b2a, the caller that heard the 127 still fails as it does today (`ensureWelcome` is unchanged there), and the host connects again after the install (`hosts-update.mjs:79`). So the first turn fails and the next one runs. b2b changes that, in `ensureWelcome` (`hosts-links.mjs`), which every caller in the class table goes through; Retry, Reconnect and Install…’s own connect use `connectNow` instead:
 
 - **The waiting caller.** At both of `ensureWelcome`’s failure exits (a stopped link on entry, and an attempt that rejects), if `m.updating` has the host, it awaits that install’s `done`. On `ok`, it calls itself again from the top, at most once per call: `linkOf` again, so it gets a new link after a dropped one; `connected` is checked first, so it can’t miss a welcome that arrived meanwhile; and on a stopped link it calls `retry()` itself rather than count on `installNow`’s `connectNow`. On a failure, it throws the installer’s failure, with its next step, not the 127.
 - **Its bound:** at most the install’s timeout plus the token step’s (5 and 2 minutes, `install.mjs:56`, `:58`), plus one welcome. Meanwhile the turn’s status line says “Installing Postbox <version> on <host>…”.
-- **Removing a turn from the host doesn’t wait** for an install: that caller passes `{ waitForInstall: false }`, and goes ahead on the current link or fails with the install’s failure or the 127. Removing the host itself still waits (see “Closing Postbox, and removing a host”).
+- **Removing Postbox from the host waits** for an install under way, then removes what it installed through the new version’s daemon (`removeFromHost`, `hosts-requests.mjs`; the integrator’s review of #755). `m.removals` is set at once, so no other install starts meanwhile.
+- **The card after something else fixed the host.** The person’s own Install… that works rewrites a failed, busy or cut-off automatic try of this version, the newest in the record, as `present`, so the card stops offering Install… for a host that has this version and says nothing of an install Postbox didn’t do by itself; it stays this version’s try, so it stays tried. A try of another version than this Postbox’s says nothing on the host’s status (the integrator’s review of #770).
+- **A busy install** (exit 75) doesn’t fail the waiter: the host connects once more after it (`afterBusy`), and the waiter tries once more with it.
+- **Why it failed, on the status.** A failed install’s own reason and next step go on the host’s status as `update.error`, in the words Install… would show, kept in memory only and cleared by the record’s next write. An error that isn’t the installer’s `SshFailure` (an error keeping the token, say) may name a path on this computer, so it puts nothing there, and the card says to install by hand to see why.
 - **The card** shows “Installing Postbox <version>…”, then “Postbox installed <version> here by itself”, or the installer’s failure with Install… beside it. The host is named by its display name only.
 - **The toggle** in the host editor: “Keep Postbox up to date on this host: install this Postbox’s version here when it’s missing, once per version.” It calls the route b2a adds.
 
@@ -174,7 +177,7 @@ Three gaps predate this change:
 | A caller after the link stopped (`hosts-links.mjs:197`) | throws at once | throws at once | waits for the install under way | b2b |
 | A reattach after a restart (`turns-resume.mjs:111`) | rejects; tries again at the host’s next status | as today, then reattaches once connected | waits, then reattaches | b2b |
 | A stop, the sign-in check and its second welcome, `refresh()` (`turns-stops.mjs:104`, `hosts-requests.mjs:62`, `:68`, `hosts.mjs:255`) | through `ensureWelcome` | starts or joins the install | waits: each needs the new version’s daemon | one test for the shared path, b2b |
-| Removing a turn from the host (`hosts-requests.mjs:116`) | through `ensureWelcome` | starts or joins the install | doesn’t wait (`waitForInstall: false`) | b2b |
+| Removing Postbox from the host (`removeFromHost`) | through `ensureWelcome` | waits for the install under way, then removes through the new version (#755’s review) | the same | b2a: “Remove during an automatic install waits for it…” |
 | Removing the host (Remove, then `forget()`) | — | doesn’t install first (`hosts-update.mjs:95`); `forget()` waits for an install under way | the same | “removing a host whose version is missing doesn’t install on it first, consent or not”; “forget() during an automatic install waits for it…” |
 | The computer waking (`hosts.mjs:260-278`) | tries hosts not stopped | a fresh start after an upgrade installs where the link isn’t stopped | the same | none yet; b2b adds one |
 | The consent turned on while stopped | — | one connect (`hosts-update.mjs:206`) | the same | “turning the consent on for a host already stopped on a 127 connects once, and that installs” |
@@ -207,7 +210,7 @@ b2a’s tests failed first on the branch (`2603222a`), and each guard has a test
 - **Running it:** one ssh install for concurrent callers; exit 75 records `busy` and connects once; a failed install with nobody waiting rejects nothing unhandled; `close()` kills the child; the installer’s signal kills its child, and one fired first spawns nothing.
 - **The route:** it needs the page’s token, takes only `{ on: boolean }` (422 for a null, number or array body), is a 404 for a host that isn’t there, and never reaches the host’s settings or its hello.
 
-b2b adds tests for the waiting caller (a slowed record read, a welcome before the last record write, a dropped link, a no-op `connectNow`, a removed turn that doesn’t wait), and browser specs for the toggle and the card’s states at 375 and 1280 px. b3 adds `tokenChanged` both ways, with a mutation that compares the tokens after they were overwritten.
+b2b adds tests for the waiting caller (a slowed record write, a welcome before the last record write, a replaced link, an install whose own connect already failed, a busy install, a failure other than the 127 while the person’s Install… runs, at most one re-entry, the consent off), for the failure’s reason on the status, and browser specs for the toggle, the card’s states and the turn’s line at 375 and 1280 px. A reattach after a restart, the computer waking and two hosts at once have no test yet; the fixture shares one fake daemon between its hosts, so the last needs that changed first. b3 adds `tokenChanged` both ways, with a mutation that compares the tokens after they were overwritten.
 
 ## UAT
 
