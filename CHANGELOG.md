@@ -2,6 +2,22 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.33.0 (2026-11-06)
+
+### Features
+
+- **security:** the permissions panel names the PreToolUse hooks Postbox turns off (#817)
+
+### Fixes
+
+- **security:** the hook list hides values named like credentials, and bearer tokens (#817)
+- **security:** an Agent SDK turn started in bypass keeps it until it ends or is stopped (#817)
+- **security:** the hook list marks every format character, filler, tag and variation selector (#817)
+- **security:** the hooks panel doesn’t say there are none when no file could be read (#817)
+- **security:** the hooks panel says a host agent’s list is this computer’s settings (#817)
+- **security:** the hook list marks bidi and zero-width characters like control characters (#817)
+- **security:** Postbox’s own settings turn off hooks and mods in every mode but bypass (#817)
+
 ## 1.32.1 (2026-11-06)
 
 ### Fixes
