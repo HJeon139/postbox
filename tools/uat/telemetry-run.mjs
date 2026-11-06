@@ -153,10 +153,25 @@ function readJsonLines(file) {
 
 /**
  * After the last step, when no agent takes another turn (U4): a 🚩 on each noted item through the page, then one report
- * with the history, saved unchanged, and copied into the run folder as telemetry/report.json.
- * @param {{ td: ReturnType<typeof import('./telemetry-driver.mjs').telemetryDriver>, flags: any[], dir: string, shown: any, log: (l: string) => void }} o
+ * with the history, saved unchanged, and copied into the run folder as telemetry/report.json. A failure here is a
+ * finding of the run’s, never the run’s end: it still writes its report and findings (#833).
+ * @param {{ td: ReturnType<typeof import('./telemetry-driver.mjs').telemetryDriver>, flags: any[], dir: string, shown: any, log: (l: string) => void, findings: Map<string, any> }} o
  */
-export async function finishTelemetry({ td, flags, dir, data, main, shown, log }) {
+export async function finishTelemetry({ findings, ...o }) {
+  return saveTelemetry(o).catch((e) => {
+    o.log(`Telemetry: couldn’t finish: ${e.message}`);
+    findings.set('telemetry-failed', {
+      source: 'run',
+      check: 'telemetry',
+      issue: null,
+      title: 'The run couldn’t finish its telemetry report',
+      evidence: e.message,
+    });
+    return null;
+  });
+}
+
+async function saveTelemetry({ td, flags, dir, data, main, shown, log }) {
   // One 🚩 per item: a second on the same item would take the first back.
   const reacted = new Set();
   for (const f of flags) {

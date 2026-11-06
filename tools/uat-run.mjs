@@ -516,7 +516,7 @@ async function main() {
     await settle();
     unwatch();
     // After the last step, no agent takes another turn: the runner’s 🚩s and its report (U4).
-    if (tm.runnerRecords(scenario, opt)) await tm.finishTelemetry({ td, flags: tel.flags, dir, data: paths.data, main: mainThread, shown: tel.shown, log });
+    if (tm.runnerRecords(scenario, opt)) await tm.finishTelemetry({ ...tel, td, dir, data: paths.data, main: mainThread, log, findings });
     await refreshFacts();
     if (hr) await endHosts(hr, dir);
     newFindings();
