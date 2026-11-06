@@ -13,6 +13,8 @@ let app;
 /** Each state’s conversation, by its agent’s handle. @type {Record<string, string>} */
 const threads = {};
 let manyFile = '';
+/** @type {(name: string) => string} */
+let brokenFile = (name) => name;
 
 const MARKUP = 'echo "<b id=hook-markup>allow</b>" && exit 0';
 const USER_ROW = 'Bash ~/bin/audit-bash from your user settings';
@@ -32,7 +34,12 @@ test.beforeAll(async () => {
         JSON.stringify({ hooks: { PreToolUse: commands.map((command) => ({ matcher: 'Bash', hooks: [{ type: 'command', command }] })) } });
       folders.work = join(root, 'work');
       folders.many = join(root, 'many');
-      for (const dir of [join(root, '.claude'), join(folders.work, '.claude'), join(folders.many, '.claude')]) await mkdir(dir, { recursive: true });
+      folders.broken = join(root, 'broken');
+      for (const dir of [join(root, '.claude'), join(folders.work, '.claude'), join(folders.many, '.claude'), join(folders.broken, '.claude')])
+        await mkdir(dir, { recursive: true });
+      // Neither file an Isolated agent reads there is JSON.
+      for (const name of ['settings.json', 'settings.local.json']) await writeFile(join(folders.broken, '.claude', name), '{');
+      brokenFile = (name) => join(folders.broken, '.claude', name);
       await writeFile(join(root, '.claude', 'settings.json'), hooks('~/bin/audit-bash'));
       await writeFile(join(folders.work, '.claude', 'settings.json'), hooks(MARKUP));
       manyFile = join(folders.many, '.claude', 'settings.json');
@@ -55,6 +62,7 @@ test.beforeAll(async () => {
     ['runner', { permissionMode: 'bypass' }],
     ['loner', { permissionMode: 'auto', usesHostSetup: false }],
     ['many', { permissionMode: 'auto', usesHostSetup: false }],
+    ['broken', { permissionMode: 'auto', usesHostSetup: false }],
   ]) {
     const persona = rt.createPersona({ handle, backend: 'claude-code', ...setup });
     threads[handle] = rt.createThread({ projectId: 'pr_hooks', title: handle, personaIds: [persona.id] }).id;
@@ -122,4 +130,17 @@ test('#817 for an agent on a host, the panel says the hooks listed are this comp
   await expect
     .soft(hooks.locator('p.help'))
     .toHaveText(['@remote runs on build.example.com. These are the hooks in this computer’s settings files; the host’s own settings aren’t shown here.', OFF]);
+});
+
+test('#817 when no settings file can be listed, the panel says why for each, and not that there are no hooks', async ({ page }) => {
+  const hooks = await openHooks(page, 'broken');
+  await expect
+    .soft(hooks.locator('p.err'))
+    .toHaveText([
+      `${brokenFile('settings.json')} isn’t valid JSON, so Postbox can’t list its hooks.`,
+      `${brokenFile('settings.local.json')} isn’t valid JSON, so Postbox can’t list its hooks.`,
+    ]);
+  await expect.soft(hooks.locator('li')).toHaveCount(0);
+  await expect.soft(hooks.getByText('No PreToolUse hooks'), 'no “none” beside the errors').toHaveCount(0);
+  await expect.soft(hooks.locator('p.help')).toHaveText([ISOLATED, OFF]);
 });

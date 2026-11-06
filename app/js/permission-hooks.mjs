@@ -18,6 +18,18 @@ function runsNote(p) {
 }
 
 /**
+ * The line shown when no hook is listed: none when every file it reads failed (each says why), and “the other files”
+ * when only some did.
+ * @param {any[]} hooks  permissionsView’s
+ */
+function noneNote(hooks) {
+  const failed = hooks.filter((f) => f.error).length;
+  if (failed && failed === hooks.length) return null;
+  if (failed) return h('span.help', {}, 'No PreToolUse hooks in the other settings files it reads.');
+  return h('span.help', {}, 'No PreToolUse hooks in the settings files it reads.');
+}
+
+/**
  * The hooks section, from permissionsView’s hooks.
  * @param {{ persona: { handle: string, permissionMode: string, usesHostSetup: boolean, host?: string|null }, hooks: any[] }} view
  * @param {Record<string, string>} sources  the panel’s words for each settings source (“your user settings”)
@@ -47,7 +59,7 @@ export function hooksSection({ persona: p, hooks }, sources) {
     'section.perm-sec',
     { id: 'perm-hooks' },
     h('h3.label', {}, 'Hooks before tool calls'),
-    found ? h('ul.list-rows', {}, rows) : h('span.help', {}, 'No PreToolUse hooks in the settings files it reads.'),
+    found ? h('ul.list-rows', {}, rows) : noneNote(hooks),
     found || p.host ? h('p.help', {}, runsNote(p)) : null,
     ...errors,
     p.usesHostSetup ? null : h('p.help', {}, 'It’s isolated, so it doesn’t read the hooks in your user settings.'),
