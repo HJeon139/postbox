@@ -6,6 +6,8 @@ The room: `scrum-master`, `critic` and `researcher` on the person’s computer, 
 
 ## Start here
 
+The retrospective as filed is #842. The rest of the records start here:
+
 1. `state-at-close.md`: the open PRs, the work carried into sprint 4, and the decisions waiting on the person.
 2. `action-items.md`: the actions approved for sprint 4, with owners, measures, and the issue drafts for the build items.
 3. `continue-sprint4.md`: the prompt to paste as the first message of the sprint 4 room.

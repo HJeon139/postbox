@@ -98,11 +98,11 @@ function figHost(host,cap,ctl){
  for(const[m,l]of [['missing','Host missing the version'],['has','Host has it']]){const b=el('button',{class:'btn sm ghost','aria-pressed':m===mode},l);b.onclick=()=>{mode=m;[...ctl.children].forEach(x=>x.setAttribute('aria-pressed',x===b));draw()};ctl.append(b)}draw();
 }
 function figSpeed(host,cap){
- const R=[['Item lookup p95','#769','152.8 µs','0.3 µs',152.8/0.3,1],['Startup','#769','662 ms','19 ms',662/19,1],['Session event, 10× room','#826','28 ms','2.7 ms',28/2.7,3]];
- const W=600,H=40+R.length*46,x0=190,x1=W-60,lx=v=>x0+(Math.log10(v)/3)*(x1-x0),s=svg(W,H,'Speedup factors on a log scale: 509, 35 and 10 times faster');
+ const R=[['Chunk p95 at 10×','#769','136.2 µs','0.2 µs',136.2/0.2,1],['Startup at 10×','#769','628.3 ms','27.1 ms',628.3/27.1,1],['Session event, 10× room','#826','28 ms','2.7 ms',28/2.7,3]];
+ const W=600,H=40+R.length*46,x0=190,x1=W-60,lx=v=>x0+(Math.log10(v)/3)*(x1-x0),s=svg(W,H,'Speedup factors on a log scale: 681, 23 and 10 times faster');
  for(const v of [1,10,100,1000]){s.append(sv('line',{x1:lx(v),x2:lx(v),y1:14,y2:H-22,stroke:'var(--line)'}));s.append(txt(lx(v),H-6,v+'×',{'text-anchor':'middle',class:'dm-dim'}))}
  R.forEach(([n,pr,b,a,f,k],i)=>{const y=36+i*46;s.append(txt(x0-12,y,n,{'text-anchor':'end'}));s.append(txt(x0-12,y+15,`${pr}: ${b} → ${a}`,{'text-anchor':'end',class:'dm-dim',style:'font-size:11px'}));s.append(sv('line',{x1:lx(1),x2:lx(f),y1:y,y2:y,stroke:C(k),'stroke-width':4}));s.append(sv('circle',{cx:lx(f),cy:y,r:7,fill:C(k)}));s.append(txt(lx(f)+12,y+4,Math.round(f)+'× faster'))});
- host.append(s);cap.textContent='How many times faster, on a log scale. Each row is measured in its own unit, so the bars compare speedups, not raw times. #826 is approved but not merged. PF-1, key press to next frame, is measured now (#777) but not yet met.';
+ host.append(s);cap.textContent='How many times faster, on a log scale. #769’s numbers are from #783’s rerun on reachable commits. Each row is measured in its own unit, so the bars compare speedups, not raw times. #826 is approved but not merged. PF-1, key press to next frame, is measured now (#777) but not yet met.';
 }
 function figView(host,cap,ctl){
  let extra=0;const draw=()=>{host.replaceChildren();const W=520,H=270,s=svg(W,H,`Two transcripts with ${extra} new items: held view stays put, following view moves to the end`);
