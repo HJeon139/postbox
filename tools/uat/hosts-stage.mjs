@@ -8,9 +8,9 @@
 // deletes it itself (tools/uat/hosts-end.mjs, removeStaged); baseline() refused the host if Postbox was there before.
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 /** A tag the option takes: a release’s, v<major>.<minor>.<patch>. */
@@ -48,6 +48,28 @@ export function tagRepo(root, run = git) {
   };
 }
 
+/** A staging worktree’s folder, as mkdtemp names it in a run’s folder. */
+const STAGED_RE = /^staged-[A-Za-z0-9]{6}$/;
+
+/**
+ * Forgets the staging worktrees a runner killed mid-install left registered (#766): only a staged-XXXXXX folder of a
+ * run under `runsRoot`, and only once its folder is gone. `git worktree prune` would forget every worktree of the
+ * checkout whose folder is missing, such as one on a drive that isn’t mounted. A list that fails forgets nothing.
+ * @param {string} root the checkout @param {string} runsRoot the folder the runs’ folders are in @param {typeof git} [run]
+ */
+export function forgetStaleStaged(root, runsRoot, run = git) {
+  const list = run(['worktree', 'list', '--porcelain', '-z'], root);
+  if (list.code !== 0) return;
+  const paths = list.stdout
+    .split('\0')
+    .filter((f) => f.startsWith('worktree '))
+    .map((f) => f.slice('worktree '.length));
+  for (const path of paths) {
+    if (!STAGED_RE.test(basename(path)) || dirname(dirname(path)) !== runsRoot || existsSync(path)) continue;
+    run(['worktree', 'remove', '--force', path], root);
+  }
+}
+
 /**
  * Installs a tag’s host code on a host with that tag’s own server/remote/install.mjs, from a detached worktree of
  * the tag made in the run’s own folder (beside its data folder) and removed after, however the install ended. An
@@ -62,8 +84,7 @@ export async function stageOlder({ root, tag, version, data, label, host }, { ru
   const bare = host.name.includes('@') ? host.name.slice(host.name.lastIndexOf('@') + 1) : host.name;
   const hide = (/** @type {string} */ s) => String(s).replaceAll(host.name, label).replaceAll(bare, label);
   try {
-    // A runner killed mid-install leaves its worktree registered here; prune forgets any whose folder is gone.
-    run(['worktree', 'prune'], root);
+    forgetStaleStaged(root, dirname(dirname(data)), run);
     const add = run(['worktree', 'add', '--detach', tree, tag], root);
     if (add.code !== 0) throw new Error(`git couldn’t check ${tag} out to stage it on ${label}: ${add.stderr.trim().slice(-300)}`);
     const { installHost } = await load(join(tree, 'server', 'remote', 'install.mjs'));
