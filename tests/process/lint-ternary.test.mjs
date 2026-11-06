@@ -72,7 +72,7 @@ test('lint-ternary: an old nested ternary on a line the change doesn’t touch p
   git('commit', '-q', '-m', 'other');
   const r = run(dir);
   assert.equal(r.status, 0, r.out);
-  assert.match(r.out, /^lint-ternary: no nested ternary on a line changed since \w{8}, and no file has more than there\.$/m);
+  assert.match(r.out, /^lint-ternary: no nested ternary added since \w{8}: each one here matches one there, moved or not\.$/m);
 });
 
 test('lint-ternary: a file git doesn’t track passes, and the pass message says such files aren’t checked', () => {
@@ -223,4 +223,58 @@ test('lint-ternary: taking the lint-allow off an old nested ternary fails, since
   const r = run(dir);
   assert.equal(r.status, 1, r.out);
   assert.match(r.out, /^kept\.mjs: 1 nested ternary, up from 0 not allowed at the base$/m);
+});
+
+// A pure move keeps its old nested ternary (#752): a hit counts as moved when its trimmed text matches one the same
+// change deletes, so moving, reindenting or splitting a file passes, and a copy still fails.
+const PICK = 'export function pick(a, b) {\n  return a ? 1 : b ? 2 : 3;\n}\n';
+const commitAll = (/** @type {(...args: string[]) => string} */ git, /** @type {string} */ message) => {
+  git('add', '-A');
+  git('commit', '-q', '-m', message);
+};
+
+const FIVE = ['one', 'two', 'three', 'four', 'five'].map((n) => `export const ${n} = '${n}';\n`).join('');
+
+test('lint-ternary: moving a function with an old nested ternary down its own file, past more lines than it has, passes', () => {
+  const { dir, git } = repo({ files: { 'long.mjs': `${PICK}${FIVE}` } });
+  write(dir, 'long.mjs', `${FIVE}${PICK}`);
+  commitAll(git, 'move down');
+  const r = run(dir);
+  assert.equal(r.status, 0, r.out);
+});
+
+test('lint-ternary: moving a function with an old nested ternary into a new file passes', () => {
+  const { dir, git } = repo();
+  write(dir, 'old.mjs', 'export const before = 1;\n');
+  write(dir, 'split/pick.mjs', PICK);
+  commitAll(git, 'split');
+  const r = run(dir);
+  assert.equal(r.status, 0, r.out);
+});
+
+test('lint-ternary: reindenting the line of an old nested ternary passes', () => {
+  const { dir, git } = repo();
+  write(dir, 'old.mjs', OLD.replace('  return', '    return'));
+  commitAll(git, 'reindent');
+  const r = run(dir);
+  assert.equal(r.status, 0, r.out);
+});
+
+test('lint-ternary: moving an old nested ternary out of a file the change deletes passes', () => {
+  const { dir, git } = repo();
+  git('rm', '-q', 'old.mjs');
+  write(dir, 'other.mjs', `${FIVE}${PICK}`);
+  commitAll(git, 'move into other');
+  assert.match(git('diff', '--name-status', '-M', 'origin/main'), /^D\told\.mjs$/m, 'git sees a delete and an add, not a rename');
+  const r = run(dir);
+  assert.equal(r.status, 0, r.out);
+});
+
+test('lint-ternary: copying the line of an old nested ternary fails, and names the copy', () => {
+  const { dir, git } = repo();
+  write(dir, 'old.mjs', `${OLD}${PICK.replace('pick', 'pickAgain')}`);
+  commitAll(git, 'copy');
+  const r = run(dir);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /^old\.mjs:6: nested ternary on a changed line$/m);
 });
