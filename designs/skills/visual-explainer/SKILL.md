@@ -1,11 +1,12 @@
 ---
 name: visual-explainer
 description: >-
-  Explain an idea with a picture the reader gets at a glance: a concept, a process, a structure, a
-  comparison or a finding from a paper. Use it when the person asks to explain, visualize, diagram or
-  show something, or when a reply would otherwise be paragraphs about how parts relate. It plans from a
-  one-idea brief, picks the form from the content’s shape, draws from the real facts, and checks that
-  a reader who sees only the picture takes away the intended idea.
+  Load this first, before reading files to answer, when the person asks how something works or what their data
+  shows: how their code handles a request, what is in a collection or dataset, where their money or time went, which
+  items are worth it, or how an idea, a process or a paper works, even when they don’t say “visual” or “chart”. Also
+  before you show any chart, diagram, table of numbers or app. It picks the form from the content’s shape (a
+  scatter, a network, a route, a cutaway, not a default bar chart or labeled boxes), draws from the real facts, and
+  checks that a reader who sees only the picture gets the idea.
 ---
 
 # Visual explainer
