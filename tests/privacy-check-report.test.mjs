@@ -84,3 +84,13 @@ test('a finding in a commit names the line in the file, not its place among the 
   const git = { commits: () => ['fefefe0123456789'], show: () => diff(hunk), message: () => 'x\n' };
   assert.deepEqual(scanCommits('main..HEAD', git).findings.map(formatFinding), ['fefefe0 n.md: email at line 11']);
 });
+
+test('a value split across a stream’s deltas names the stream’s first line in the file, in a commit too (#784)', () => {
+  const slug = ['', 'Users', 'janedoe', 'postbox'].join('-');
+  const delta = (part) =>
+    JSON.stringify({ type: 'stream_event', event: { index: 1, delta: { type: 'input_json_delta', partial_json: part } }, api_message_id: 'm' });
+  const hunk = ['diff --git a/r.jsonl b/r.jsonl', 'index 814f4a4..e69de29 100644', '--- a/r.jsonl', '+++ b/r.jsonl', '@@ -4,0 +5,2 @@'];
+  const lines = [slug.slice(0, 6), slug.slice(6)].map((part) => `+${delta(part)}`);
+  const git = { commits: () => ['fefefe0123456789'], show: () => diff([...hunk, ...lines]), message: () => 'x\n' };
+  assert.deepEqual(scanCommits('main..HEAD', git).findings.map(formatFinding), ['fefefe0 r.jsonl: home path in the deltas joined from line 5']);
+});

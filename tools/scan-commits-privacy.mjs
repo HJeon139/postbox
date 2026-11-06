@@ -25,7 +25,7 @@
 import { execFileSync } from 'node:child_process';
 import { DIFF_OPTIONS, parseAddedLines } from './diff-added-lines.mjs';
 import { isEntry } from './lint-lib.mjs';
-import { checkContentPrivacy, checkFilePrivacy, checkPathPrivacy, isBinary } from './privacy-check.mjs';
+import { checkContentPrivacy, checkFilePrivacy, checkPathPrivacy, inFileName, isBinary } from './privacy-check.mjs';
 
 /**
  * A private string, and where it was added: a commit’s file, or its message when the path is null.
@@ -61,15 +61,34 @@ export function scanCommits(range, git) {
       }
       result.files++;
       result.lines += added.length;
-      for (const violation of checkFilePrivacy(path, added.join('\n'))) result.findings.push({ sha, path, violation });
+      const lineOf = newFileLine(parsed.ranges.get(path) ?? []);
+      for (const violation of checkFilePrivacy(path, added.join('\n'), lineOf)) result.findings.push({ sha, path, violation });
     }
   }
   return result;
 }
 
-/** One finding as the tool reports it: “<short sha> <path>: <violation>”, or “<short sha> message: …”. @param {Finding} finding */
+/**
+ * The line in the new file of each line a commit adds, counted from 1 in the order the diff adds them, so a finding
+ * names the file’s own line. A line past the ranges, which a diff git wrote can’t have, is named as it is.
+ * @param {{ start: number, end: number }[]} ranges
+ * @returns {(line: number) => number}
+ */
+function newFileLine(ranges) {
+  const lines = ranges.flatMap(({ start, end }) => Array.from({ length: end - start + 1 }, (_, i) => start + i));
+  return (line) => lines[line - 1] ?? line;
+}
+
+/**
+ * One finding as the tool reports it: “<short sha> <path>: <violation>”, or “<short sha> message: …”. A finding in a
+ * file’s name prints “a file’s name” in place of the path, as the name may be what’s private (#784); `git show --stat`
+ * on the commit lists its files.
+ * @param {Finding} finding
+ */
 export function formatFinding({ sha, path, violation }) {
-  return `${sha.slice(0, 7)} ${path ?? 'message'}: ${violation}`;
+  let where = path ?? 'message';
+  if (inFileName(violation)) where = 'a file’s name';
+  return `${sha.slice(0, 7)} ${where}: ${violation}`;
 }
 
 /** A count and its noun, plural unless the count is one. @param {number} n @param {string} noun */

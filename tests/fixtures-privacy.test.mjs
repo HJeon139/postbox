@@ -275,7 +275,7 @@ test('a value split across a stream’s deltas is found once the deltas are join
   assert.deepEqual(checkContentPrivacy(stream), [], 'no single line holds the slug, so a line-by-line scan misses it');
   const violations = checkFilePrivacy('tests/fixtures/x.jsonl', stream);
   assert.equal(violations.length, 1);
-  assert.match(violations[0], /^home path: .*\(joined deltas from line 1\)$/);
+  assert.equal(violations[0], 'home path in the deltas joined from line 1');
 });
 
 test('joined deltas are checked only in JSONL files, and each stream is joined on its own', () => {

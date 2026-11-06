@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { checkFilesPrivacy } from '../../tools/privacy-check.mjs';
+import { checkFilesPrivacy, inFileName } from '../../tools/privacy-check.mjs';
 import { isSyntheticLabel, missingSyntheticFixtures, syntheticFixturePaths } from '../../tools/synthetic-fixtures.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -22,8 +22,11 @@ function trackedFiles() {
 test('every committed file’s name, and every text file’s text, is free of home paths, uids, account data, tokens and real addresses', () => {
   // A file deleted in the working tree but not yet in the index has nothing left to leak.
   const read = (path) => (existsSync(join(ROOT, path)) ? readFileSync(join(ROOT, path)) : null);
-  const { checked, findings } = checkFilesPrivacy(trackedFiles(), read);
-  const failures = findings.map(({ path, violations }) => `  - ${path}: ${violations.join('; ')}`);
+  const tracked = trackedFiles();
+  const { checked, findings } = checkFilesPrivacy(tracked, read);
+  // A file whose name is private is named by its place in `git ls-files`, so CI’s public log doesn’t repeat it (#784).
+  const named = (path, violations) => (violations.some(inFileName) ? `file ${tracked.indexOf(path) + 1} of git ls-files` : path);
+  const failures = findings.map(({ path, violations }) => `  - ${named(path, violations)}: ${violations.join('; ')}`);
   assert.ok(checked > 100, `only ${checked} text files were checked, so the list of files is wrong`);
   assert.equal(failures.length, 0, `Found private data in ${failures.length} committed file(s):\n${failures.join('\n')}`);
 });

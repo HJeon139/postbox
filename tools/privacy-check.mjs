@@ -102,7 +102,7 @@ const ZERO = /^0(?:\.0+)?$/;
 // An email address. It stops at the first character an address can’t hold, so an address with “_” and a name run on
 // after it is still the address. It starts where no address character comes before, so a long run of them with no “@”
 // is tried once, not once from each of its characters.
-const EMAIL = /(?<![a-zA-Z0-9._%+-])[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+const EMAIL = /(?<![a-zA-Z0-9._%+-])([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
 
 // A placeholder address: at a domain reserved for examples (example.com, .org or .net, or a subdomain of one), or under
 // a top-level domain reserved for examples and tests (RFC 2606).
@@ -122,7 +122,13 @@ const BOT_EMAILS = new Set(['noreply@anthropic.com', 'noreply@openai.com', 'git@
  */
 const NOT_EMAILS = new Set(['plugins.sample@test.mcp']);
 
-/** Home paths, slashed or in a slug, whose user name isn’t a placeholder. @param {string} content */
+/**
+ * A private string a rule found: its kind, the string, kept only to match a placeholder and never printed, and where in
+ * the text it starts.
+ * @typedef {{ kind: string, value: string, index: number }} Found
+ */
+
+/** Home paths, slashed or in a slug, whose user name isn’t a placeholder. @param {string} content @returns {Found[]} */
 function homePaths(content) {
   const found = [];
   const urls = [...content.matchAll(WEB_URL)].map((url) => [url.index, url.index + url[0].length]);
@@ -132,105 +138,108 @@ function homePaths(content) {
     const inUrl = urls.some(([start, end]) => match.index >= start && match.index < end);
     if (inUrl && folder !== 'Users' && folder !== 'home') continue;
     const user = name.split(/[/\\]/)[0];
-    if (!ALLOWED_USERNAMES.has(user.toLowerCase()) && !SYSTEM_HOMES.has(user)) found.push(`home path: ${path}`);
+    if (!ALLOWED_USERNAMES.has(user.toLowerCase()) && !SYSTEM_HOMES.has(user)) found.push({ kind: 'home path', value: path, index: match.index });
   }
-  for (const [slug] of content.matchAll(SLUG)) {
-    for (const [path, name] of slug.matchAll(SLUG_HOME)) {
-      if (!ALLOWED_SLUG_USERNAMES.has(name.toLowerCase())) found.push(`home path: ${path}`);
+  for (const slug of content.matchAll(SLUG)) {
+    for (const home of slug[0].matchAll(SLUG_HOME)) {
+      if (!ALLOWED_SLUG_USERNAMES.has(home[1].toLowerCase())) found.push({ kind: 'home path', value: home[0], index: slug.index + home.index });
     }
   }
   return found;
 }
 
-/** Temp folders, and Claude Code uids that aren’t all zeros. @param {string} content */
+/** Temp folders, and Claude Code uids that aren’t all zeros. @param {string} content @returns {Found[]} */
 function tempPaths(content) {
   const found = [];
-  for (const [path] of content.matchAll(TEMP_FOLDER)) found.push(`temp folder path: ${path}`);
-  for (const [name, uid] of content.matchAll(CLAUDE_UID)) {
-    if (!ALL_ZEROS.test(uid)) found.push(`claude uid: ${name}`);
+  for (const match of content.matchAll(TEMP_FOLDER)) found.push({ kind: 'temp folder path', value: match[0], index: match.index });
+  for (const match of content.matchAll(CLAUDE_UID)) {
+    if (!ALL_ZEROS.test(match[1])) found.push({ kind: 'claude uid', value: match[0], index: match.index });
   }
   return found;
 }
 
-/** Installation ids that aren’t all zeros. @param {string} content */
-function installationIds(content) {
+/**
+ * Each match of a pattern whose first group doesn’t pass as harmless.
+ * @param {string} content @param {RegExp} pattern @param {string} kind @param {(value: string) => boolean} harmless
+ * @returns {Found[]}
+ */
+function valuesOf(content, pattern, kind, harmless) {
   const found = [];
-  for (const [, id] of content.matchAll(INSTALLATION_ID)) {
-    const bare = id.replace(/\s/g, '');
-    if (!ALL_ZEROS.test(bare)) found.push(`installationId: ${bare}`);
+  for (const match of content.matchAll(pattern)) {
+    if (!harmless(match[1])) found.push({ kind, value: match[1], index: match.index });
   }
   return found;
 }
 
-/** Account metadata keys, quoted or bare. @param {string} content */
-function accountFields(content) {
-  const keys = [...content.matchAll(ACCOUNT_FIELD)].map(([, quoted, bare]) => quoted ?? bare);
-  if (keys.length === 0) return [];
-  return [`account field: ${keys.join(', ')}`];
+/** Every match of a pattern, of one kind. @param {string} content @param {RegExp} pattern @param {string} kind @returns {Found[]} */
+function matchesOf(content, pattern, kind) {
+  return [...content.matchAll(pattern)].map((match) => ({ kind, value: match[0], index: match.index }));
 }
 
-/** uid fields that aren’t all zeros. @param {string} content */
-function uidFields(content) {
-  const found = [];
-  for (const [, uid] of content.matchAll(UID_FIELD)) {
-    if (!ALL_ZEROS.test(uid)) found.push(`uid: ${uid}`);
-  }
-  return found;
+/** Whether an address is a placeholder or no person’s. @param {string} email */
+function placeholderEmail(email) {
+  return EXAMPLE_EMAIL.test(email) || BOT_EMAILS.has(email) || NOT_EMAILS.has(email);
 }
 
-/** claude.ai connectors that aren’t the directory’s. @param {string} content */
-function connectorNames(content) {
-  const found = [];
-  for (const [, name] of content.matchAll(CLAUDE_AI_CONNECTOR)) {
-    if (!DIRECTORY_CONNECTORS.has(name)) found.push(`connector name: claude.ai ${name}`);
-  }
-  return found;
+/** What every rule finds in a text. @param {string} content @returns {Found[]} */
+function privateStrings(content) {
+  return [
+    ...homePaths(content),
+    ...tempPaths(content),
+    ...valuesOf(content, UID_FIELD, 'uid', (uid) => ALL_ZEROS.test(uid)),
+    ...valuesOf(content, INSTALLATION_ID, 'installationId', (id) => ALL_ZEROS.test(id.replace(/\s/g, ''))),
+    ...matchesOf(content, ACCOUNT_FIELD, 'account field'),
+    ...valuesOf(content, CLAUDE_AI_CONNECTOR, 'connector name', (name) => DIRECTORY_CONNECTORS.has(name)),
+    ...matchesOf(content, API_TOKEN, 'token'),
+    ...valuesOf(content, UTILIZATION, 'utilization', (value) => ZERO.test(value)),
+    ...valuesOf(content, EMAIL, 'email', placeholderEmail),
+  ];
 }
 
-/** API keys and tokens, named by their first characters so a report doesn’t repeat the secret. @param {string} content */
-function tokens(content) {
-  return [...content.matchAll(API_TOKEN)].map(([token]) => `token: ${token.slice(0, 12)}…`);
+/**
+ * The line each offset of a text is on, from 1, by a binary search of its line breaks, so a text with many findings is
+ * read once.
+ * @param {string} content
+ * @returns {(index: number) => number}
+ */
+function lineFinder(content) {
+  const breaks = [];
+  for (let at = content.indexOf('\n'); at !== -1; at = content.indexOf('\n', at + 1)) breaks.push(at);
+  return (index) => {
+    let low = 0;
+    let high = breaks.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (breaks[middle] < index) low = middle + 1;
+      else high = middle;
+    }
+    return low + 1;
+  };
 }
 
-/** Utilization values other than 0. @param {string} content */
-function utilizations(content) {
-  const found = [];
-  for (const [, value] of content.matchAll(UTILIZATION)) {
-    if (!ZERO.test(value)) found.push(`utilization: ${value}`);
-  }
-  return found;
-}
-
-/** Email addresses that aren’t placeholders. @param {string} content */
-function emails(content) {
-  const found = [];
-  for (const [email] of content.matchAll(EMAIL)) {
-    if (!EXAMPLE_EMAIL.test(email) && !BOT_EMAILS.has(email) && !NOT_EMAILS.has(email)) found.push(`email: ${email}`);
-  }
-  return found;
-}
+/** A line number as it is. @param {number} line */
+const sameLine = (line) => line;
 
 /**
  * Checks text for leaked personal data or un-sanitized environment paths: home paths with a real user name, temp
  * folders, Claude Code uids and uid fields, a real Codex installation id, account metadata, a claude.ai connector a
  * person named, API keys and tokens, a utilization other than 0, and real email addresses.
  *
+ * Each violation names its kind and its line, “email at line 3”, and never any part of what it found: CI prints them to
+ * its log, which is public and kept for 90 days, so a masked address or a token’s first characters would outlast the
+ * commit that held them (#784).
+ *
  * @param {string} content
+ * @param {(line: number) => number} [lineOf] the line to report for a line of content, when content is part of a file
  * @returns {string[]} list of violations found
  */
-export function checkContentPrivacy(content) {
-  return [
-    ...homePaths(content),
-    ...tempPaths(content),
-    ...uidFields(content),
-    ...installationIds(content),
-    ...accountFields(content),
-    ...connectorNames(content),
-    ...tokens(content),
-    ...utilizations(content),
-    ...emails(content),
-  ];
+export function checkContentPrivacy(content, lineOf = sameLine) {
+  const lineAt = lineFinder(content);
+  return privateStrings(content).map(({ kind, index }) => `${kind} at line ${lineOf(lineAt(index))}`);
 }
+
+/** Where a violation in a file’s name says it is. */
+const IN_FILE_NAME = 'in the file name';
 
 /**
  * Checks a committed file’s name, by its path from the repository’s root: a name is published as surely as what the
@@ -240,7 +249,14 @@ export function checkContentPrivacy(content) {
  * @returns {string[]} list of violations found
  */
 export function checkPathPrivacy(path) {
-  return checkContentPrivacy(path).map((violation) => `${violation} (file name)`);
+  return privateStrings(path).map(({ kind }) => `${kind} ${IN_FILE_NAME}`);
+}
+
+/**
+ * Whether a violation is in a file’s name, so that a report mustn’t print the name. @param {string} violation
+ */
+export function inFileName(violation) {
+  return violation.endsWith(IN_FILE_NAME);
 }
 
 /**
@@ -248,25 +264,28 @@ export function checkPathPrivacy(path) {
  *
  * @param {string} path
  * @param {string} content
+ * @param {(line: number) => number} [lineOf] the line to report for a line of content, when content is part of a file
  * @returns {string[]} list of violations found
  */
-export function checkFilePrivacy(path, content) {
-  const violations = checkContentPrivacy(content);
+export function checkFilePrivacy(path, content, lineOf = sameLine) {
+  const violations = checkContentPrivacy(content, lineOf);
   if (!path.endsWith('.jsonl')) return violations;
   const allowed = ALLOWED_JOINED.get(path) ?? [];
   for (const stream of joinedDeltas(content)) {
-    const found = checkContentPrivacy(stream.text).filter((violation) => !allowed.includes(violation));
-    violations.push(...found.map((violation) => `${violation} (joined deltas from line ${stream.firstLine})`));
+    const leaks = privateStrings(stream.text).filter(
+      ({ kind, value }) => !allowed.some((placeholder) => placeholder.kind === kind && placeholder.value === value),
+    );
+    violations.push(...leaks.map(({ kind }) => `${kind} in the deltas joined from line ${lineOf(stream.firstLine)}`));
   }
   return violations;
 }
 
 /**
  * Placeholders a recorded stream’s joined deltas hold, by file: the prompt in permission-allow.jsonl names a made-up
- * project folder, “postbox”, where a home’s user name goes. Each entry is the exact violation it allows.
+ * project folder, “postbox”, where a home’s user name goes. Each entry is the kind and the exact string it allows.
  */
 const MADE_UP_HOME = ['Users', 'postbox'].join('/'); // joined at run time, so this file doesn’t hold the path itself
-const ALLOWED_JOINED = new Map([['tests/fixtures/claude-code/permission-allow.jsonl', [`home path: ${MADE_UP_HOME}`]]]);
+const ALLOWED_JOINED = new Map([['tests/fixtures/claude-code/permission-allow.jsonl', [{ kind: 'home path', value: MADE_UP_HOME }]]]);
 
 /** Whether a file is binary, as git decides it: a zero byte in its first 8,000. @param {Buffer} bytes */
 export function isBinary(bytes) {

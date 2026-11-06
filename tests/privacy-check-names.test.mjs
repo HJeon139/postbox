@@ -9,9 +9,8 @@ import { checkFilesPrivacy } from '../tools/privacy-check.mjs';
 /** A made-up address at a domain that isn’t reserved for examples. */
 const ADDRESS = ['jdoe', 'corp.com'].join('@');
 
-/** A made-up home, in a Claude Code project slug, as the checker reports it, and a slug of a project in it. */
-const SLUG_HOME = ['', 'Users', 'alice'].join('-');
-const HOME_SLUG = `${SLUG_HOME}-postbox`;
+/** A Claude Code project slug of a made-up home. */
+const HOME_SLUG = ['', 'Users', 'alice', 'postbox'].join('-');
 
 test('the tree scan flags a private file name, though what the file holds is clean (#785)', () => {
   const files = new Map([
@@ -21,8 +20,8 @@ test('the tree scan flags a private file name, though what the file holds is cle
   ]);
   const scan = checkFilesPrivacy([...files.keys()], (path) => files.get(path) ?? null);
   assert.deepEqual(scan.findings, [
-    { path: `notes/${ADDRESS}.txt`, violations: [`email: ${ADDRESS}.txt (file name)`] },
-    { path: `tests/fixtures/${HOME_SLUG}.jsonl`, violations: [`home path: ${SLUG_HOME} (file name)`] },
+    { path: `notes/${ADDRESS}.txt`, violations: ['email in the file name'] },
+    { path: `tests/fixtures/${HOME_SLUG}.jsonl`, violations: ['home path in the file name'] },
   ]);
   assert.equal(scan.checked, 3, 'each file’s text is checked too');
 });
@@ -30,7 +29,7 @@ test('the tree scan flags a private file name, though what the file holds is cle
 test('the tree scan flags a binary file’s private name, though it doesn’t read the file (#785)', () => {
   const png = Buffer.from([0x89, 0x50, 0x00, 0x2f]);
   const scan = checkFilesPrivacy([`screenshots/${ADDRESS}.png`], () => png);
-  assert.deepEqual(scan.findings, [{ path: `screenshots/${ADDRESS}.png`, violations: [`email: ${ADDRESS}.png (file name)`] }]);
+  assert.deepEqual(scan.findings, [{ path: `screenshots/${ADDRESS}.png`, violations: ['email in the file name'] }]);
   assert.equal(scan.checked, 0, 'a binary file’s bytes aren’t counted as checked');
 });
 

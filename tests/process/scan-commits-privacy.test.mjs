@@ -15,8 +15,6 @@ const TOOL = fileURLToPath(new URL('../../tools/scan-commits-privacy.mjs', impor
 // A made-up home path, built here so this file doesn’t hold one for the tree’s own privacy check to flag.
 const HOME = ['', 'Users', 'alice'].join('/');
 const HOME_PATH = `${HOME}/x`;
-// The home as the checker reports it: from the folder name on, without the slash before it.
-const REPORTED_HOME = HOME.slice(1);
 
 const home = await mkdtemp(join(tmpdir(), 'pb-test-scan-commits-'));
 after(() => rm(home, { recursive: true, force: true }));
@@ -73,7 +71,7 @@ test('a commit that adds a home path fails, naming its commit and file', async (
   const sha = await commit(dir, 'notes.md', `see ${HOME_PATH}\n`);
   const { status, err } = scan(dir, 'main..HEAD');
   assert.equal(status, 1);
-  assert.match(err, new RegExp(`^${sha} notes\\.md: home path: ${REPORTED_HOME}$`, 'm'));
+  assert.match(err, new RegExp(`^${sha} notes\\.md: home path at line 1$`, 'm'));
 });
 
 test('the tool run through a symlink to the checkout’s folder still scans, and fails on a home path', async () => {
@@ -89,7 +87,17 @@ test('the tool run through a symlink to the checkout’s folder still scans, and
     timeout: 20_000,
   });
   assert.equal(run.status, 1, run.stdout + run.stderr);
-  assert.match(run.stderr, new RegExp(`^${sha} notes\\.md: home path: ${REPORTED_HOME}$`, 'm'));
+  assert.match(run.stderr, new RegExp(`^${sha} notes\\.md: home path at line 1$`, 'm'));
+});
+
+test('a commit that adds a file named after an address fails, and its log holds no part of the address (#784, #785)', async () => {
+  const dir = await repo();
+  const address = ['jdoe', 'corp.com'].join('@');
+  const sha = await commit(dir, `${address}.txt`, 'nothing private\n', 'add a note');
+  const { status, err } = scan(dir, 'main..HEAD');
+  assert.equal(status, 1);
+  assert.match(err, new RegExp(`^${sha} a file’s name: email in the file name$`, 'm'));
+  for (const part of ['jdoe', 'corp']) assert.ok(!err.includes(part), `the log holds “${part}”`);
 });
 
 test('a home path added in one commit and removed in a later one still fails', async () => {
@@ -153,7 +161,7 @@ test('a merge whose conflict resolution adds a home path fails, naming the merge
   const sha = await commit(dir, 'c.txt', `${HOME_PATH}\n`, 'merge side');
   const { status, err } = scan(dir, 'main..HEAD');
   assert.equal(status, 1);
-  assert.match(err, new RegExp(`^${sha} c\\.txt: home path: ${REPORTED_HOME}$`, 'm'));
+  assert.match(err, new RegExp(`^${sha} c\\.txt: home path at line 1$`, 'm'));
 });
 
 test('a merge with no conflict that adds a file of its own fails, naming the merge', async () => {
@@ -166,7 +174,7 @@ test('a merge with no conflict that adds a file of its own fails, naming the mer
   const sha = await commit(dir, 'evil.txt', `${HOME_PATH}\n`, 'merge side');
   const { status, err } = scan(dir, 'main..HEAD');
   assert.equal(status, 1);
-  assert.match(err, new RegExp(`^${sha} evil\\.txt: home path: ${REPORTED_HOME}$`, 'm'));
+  assert.match(err, new RegExp(`^${sha} evil\\.txt: home path at line 1$`, 'm'));
 });
 
 test('a merge that adds nothing of its own passes, and is counted, as the merge CI checks out is', async () => {
@@ -186,7 +194,7 @@ test('a commit message whose trailer holds a home path fails, naming the commit�
   const sha = await commit(dir, 'notes.md', 'one\n', `change notes\n\nSeen-at: ${HOME_PATH}`);
   const { status, err } = scan(dir, 'main..HEAD');
   assert.equal(status, 1);
-  assert.match(err, new RegExp(`^${sha} message: home path: ${REPORTED_HOME}$`, 'm'));
+  assert.match(err, new RegExp(`^${sha} message: home path at line 3$`, 'm'));
 });
 
 test('a commit message with the Co-Authored-By trailer this repository asks for passes', async () => {
@@ -202,7 +210,7 @@ test('a text file that .gitattributes marks “-diff” is still checked', async
   await commit(dir, 'notes.md', 'see nothing\n');
   const { status, err } = scan(dir, 'main..HEAD');
   assert.equal(status, 1);
-  assert.match(err, new RegExp(`^${sha} notes\\.md: home path: ${REPORTED_HOME}$`, 'm'));
+  assert.match(err, new RegExp(`^${sha} notes\\.md: home path at line 1$`, 'm'));
 });
 
 test('a file outside the folder the tool runs in is checked, whatever diff.relative says', async () => {
@@ -212,7 +220,7 @@ test('a file outside the folder the tool runs in is checked, whatever diff.relat
   const sha = await commit(dir, 'top.md', `see ${HOME_PATH}\n`);
   const { status, err } = scan(join(dir, 'sub'), 'main..HEAD', { 'diff.relative': 'true' });
   assert.equal(status, 1);
-  assert.match(err, new RegExp(`^${sha} top\\.md: home path: ${REPORTED_HOME}$`, 'm'));
+  assert.match(err, new RegExp(`^${sha} top\\.md: home path at line 1$`, 'm'));
 });
 
 test('two changes a few lines apart are read as two hunks, whatever diff.interHunkContext says', async () => {
@@ -224,7 +232,7 @@ test('two changes a few lines apart are read as two hunks, whatever diff.interHu
   const sha = await commit(dir, 'a.txt', eightLines({ 1: HOME_PATH, 6: 'X' }));
   const { status, err } = scan(dir, 'main..HEAD', { 'diff.interHunkContext': '5' });
   assert.equal(status, 1);
-  assert.match(err, new RegExp(`^${sha} a\\.txt: home path: ${REPORTED_HOME}$`, 'm'));
+  assert.match(err, new RegExp(`^${sha} a\\.txt: home path at line 2$`, 'm'));
 });
 
 test('the findings are reported oldest commit first', async () => {
@@ -246,7 +254,7 @@ test('colors, prefixes and an external diff in a person’s own config don’t c
   const config = { 'color.ui': 'always', 'diff.noprefix': 'true', 'diff.external': 'false' };
   const { status, err } = scan(dir, 'main..HEAD', config);
   assert.equal(status, 1);
-  assert.match(err, new RegExp(`^${sha} notes\\.md: home path: ${REPORTED_HOME}$`, 'm'));
+  assert.match(err, new RegExp(`^${sha} notes\\.md: home path at line 1$`, 'm'));
 });
 
 test('a range that starts with “-” is read as a range, not as one of git’s options', async () => {
