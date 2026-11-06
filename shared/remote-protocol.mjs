@@ -84,6 +84,7 @@
 import { utf8Bytes } from './remote-protocol-checks.mjs';
 import {
   ATTACHMENTS_DIR,
+  carriesBlockFiles,
   DIR_MODE,
   ERROR_CODES,
   FILE_MODE,
@@ -99,6 +100,7 @@ import {
   STDIN_KINDS,
   TOOL_ROUTES,
   TURN_FILES,
+  toolRoute,
 } from './remote-protocol-constants.mjs';
 import { hostPaths, socketPathFits, validateExitRecord, validateRunnerRecord, validateStartRecord } from './remote-protocol-files.mjs';
 import { createLineReader, createMessageReader } from './remote-protocol-framing.mjs';
@@ -107,6 +109,7 @@ import { CHANNEL_NAMES, encode, encodedBytes, message, messageTypes, parseLine, 
 export {
   ATTACHMENTS_DIR,
   CHANNEL_NAMES,
+  carriesBlockFiles,
   createLineReader,
   createMessageReader,
   DIR_MODE,
@@ -131,6 +134,7 @@ export {
   socketPathFits,
   TOOL_ROUTES,
   TURN_FILES,
+  toolRoute,
   utf8Bytes,
   VALIDATORS,
   validateExitRecord,

@@ -7,7 +7,7 @@ import { Readable } from 'node:stream';
  * @param {(req: any, res: any) => any} handle
  * @param {{ method?: string, path: string, body?: any, cookie?: string, origin?: string, host: string, remoteAddress?: string,
  *           headers?: Record<string, string> }} r
- * @returns {Promise<{ status: number, headers: Record<string, string>, text: string, json: any }>}
+ * @returns {Promise<{ status: number, headers: Record<string, string>, text: string, json: any, bytes: Buffer }>}
  */
 export function fakeRequest(handle, { method = 'GET', path, body, cookie, origin, host, remoteAddress = '127.0.0.1', headers = {} }) {
   const req = Readable.from(body === undefined ? [] : [Buffer.from(JSON.stringify(body))]);
@@ -33,12 +33,13 @@ export function fakeRequest(handle, { method = 'GET', path, body, cookie, origin
       },
       end(c) {
         if (c) chunks.push(Buffer.from(c));
-        const text = Buffer.concat(chunks).toString('utf8');
+        const bytes = Buffer.concat(chunks);
+        const text = bytes.toString('utf8');
         let json = null;
         try {
           json = JSON.parse(text);
         } catch {}
-        resolve({ status: this.status, headers: this.headers, text, json });
+        resolve({ status: this.status, headers: this.headers, text, json, bytes });
       },
       destroy() {},
     };

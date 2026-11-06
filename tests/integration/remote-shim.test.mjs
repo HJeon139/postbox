@@ -113,6 +113,24 @@ test('a queued tool returns at once with no daemon, and is sent with the same ID
   assert.equal(daemon.received.filter((m) => m.type === 'call').length, 2, 'an answered call isn’t sent again');
 });
 
+test('#780 a review block that carries files waits for the daemon’s answer, so a refused file reaches the agent', async (t) => {
+  const { shim, daemon } = await setup(t);
+  await daemon.connected();
+  const files = [{ name: 'figs/today.png', path: 'figs/today.png' }];
+  const id = shim.tool('show_block', { block: { id: 'fig', type: 'review', version: 1, format: 'markdown', content: 'x', fallback: 'x', files } });
+  const call = await daemon.next('call');
+  await sleep(50);
+  assert.equal(
+    shim.out.find((m) => m.id === id),
+    undefined,
+    'not “sent” before the daemon answers',
+  );
+  daemon.send('result', { id: call.id, ok: false, text: '“figs/today.png” can’t name a file: use letters, digits and - _ . (up to 64).' });
+  const res = await shim.response(id);
+  assert.equal(res.result.isError, true);
+  assert.match(textOf(res), /can’t name a file/);
+});
+
 test('an asked tool waits for the daemon’s result, and an error result is isError', async (t) => {
   const { shim, daemon } = await setup(t);
   const id = shim.tool('corpus_search', { query: 'remote hosts' });
