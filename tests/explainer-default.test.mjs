@@ -16,7 +16,7 @@ test('the guide’s explainer recipe is one picture with a control, with practic
   const lines = guideText().split('\n');
   assert.equal(
     lines.find((line) => line.startsWith('- Explainer')),
-    '- Explainer: one picture that carries the idea, with one control that changes it. A predict-first question is fine; practice only when asked.',
+    '- Explainer: one picture that carries the idea, with one control that changes it. A predict-first question never hides the picture; practice only when asked.',
   );
   const examples = lines.find((line) => line.startsWith('When a tool explains better than prose'))?.match(/\(([^)]*)\)/)?.[1];
   assert.equal(examples, 'an explorer, a simulator');
@@ -38,7 +38,7 @@ test('the demo and UAT researcher explain with a picture when they explain visua
     assert.equal(p.description, 'Reads papers and explains them with a picture you can change.');
     assert.equal(
       p.instructions,
-      'Cite sources. When you explain visually, use one picture that carries the idea and one control that visibly changes it; a predict-first question is fine. Add practice or a quiz only when the person asks for it.',
+      'Cite sources. When you explain visually, use one picture that carries the idea and one control that visibly changes it; a predict-first question is fine if the picture shows first. Add practice or a quiz only when the person asks for it.',
     );
   }
 });
