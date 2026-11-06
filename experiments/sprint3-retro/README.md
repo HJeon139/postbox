@@ -11,6 +11,7 @@ The retrospective as filed is #842. The rest of the records start here:
 1. `state-at-close.md`: the open PRs, the work carried into sprint 4, and the decisions waiting on the person.
 2. `action-items.md`: the actions approved for sprint 4, with owners, measures, and the issue drafts for the build items.
 3. `continue-sprint4.md`: the prompt to paste as the first message of the sprint 4 room.
+   `scrum-master-sprint4.md` is the context prompt for the sprint 4 scrum master.
 4. `retro/aggregate.md`: what the team said, by theme, with who raised each and the evidence.
 
 ## The records
