@@ -83,10 +83,19 @@ export function openTopic(rt, sessionId, { itemId, message, mentions }) {
   const { threadId, created } = opened;
   // The opener answers there first (I4), only when this call made the topic.
   if (created) rt.putThread({ ...rt.store.pending.thread(threadId), woke: se.handle });
-  const woke = text && !repeated(rt, se, threadId, text, handles, created) ? post(rt, se, threadId, text, handles) : [];
   const where = `${created ? 'Opened a topic thread' : 'That message already has a topic thread'}, ${threadId}, beside it in the page. read_conversation { thread: "${threadId}" } reads it.`;
-  return { ok: true, threadId, created, message: [where, ...woke].join(' ') };
+  if (!text) return { ok: true, threadId, created, posted: false, itemId: null, message: where };
+  // The reply says what happened to the message (#651): posted, here or in the topic it had, or already there (I6). It
+  // names the message by its id, never by its text, which is the agent’s own.
+  const there = repeatOf(rt, se, threadId, text, handles, created);
+  if (there) return { ok: true, threadId, created, posted: false, itemId: there.id, message: `${where} ${alreadyThere(there.id)}` };
+  const { id, woke } = post(rt, se, threadId, text, handles);
+  return { ok: true, threadId, created, posted: true, itemId: id, message: [where, `Posted your message there as \`${id}\`.`, ...woke].join(' ') };
 }
+
+/** What a repeat’s reply says of its message (I6, #651). @param {string} id */
+const alreadyThere = (id) =>
+  `Your message is already there, as your newest in this topic thread (\`${id}\`), so it wasn’t posted again and no one was woken again. To post it a second time, change its text.`;
 
 /**
  * The thread a message is in, for the agent's own conversation only (I3): the conversation itself, or one of its topic
@@ -106,13 +115,14 @@ function conversationOf(rt, se, itemId) {
 const named = (handles) => [...handles].sort().join(' ');
 
 /**
- * Whether this open's message is already there (I6): the topic existed, and the opener's newest message in it is an
+ * This open's message, when it's already there (I6): the topic existed, and the opener's newest message in it is an
  * open's with the same text and the same handles, as a call run again after its kept reply was lost would leave it.
+ * Else null.
  */
-function repeated(rt, se, threadId, text, handles, created) {
-  if (created) return false;
+function repeatOf(rt, se, threadId, text, handles, created) {
+  if (created) return null;
   const mine = rt.store.pending.items(threadId).findLast((/** @type {any} */ x) => x.kind === 'agent' && x.sessionId === se.id);
-  return Boolean(mine && mine.text === text && mine.opened === named(handles));
+  return mine && mine.text === text && mine.opened === named(handles) ? mine : null;
 }
 
 /**
@@ -120,11 +130,11 @@ function repeated(rt, se, threadId, text, handles, created) {
  * mentions reuse its message (agentWake's `itemId`). Posting first means the ask is never lost when every wake is
  * refused (a self-mention, a mistyped handle), and a card keeps the message's id, so Allow wakes from it rather than
  * posting it again; the reply carries each wake's result. It keeps the handles it named (`opened`), which I6 compares;
- * A2's records carry the same as the message's addressees.
+ * A2's records carry the same as the message's addressees. Returns the message's id and the wakes' replies.
  */
 function post(rt, se, threadId, text, handles) {
   const fromTurnId = rt.turns.get(se.id)?.id;
   const opened = named(handles);
   const it = rt.addItem(threadId, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text, status: 'done', opened, fromTurnId });
-  return handles.map((h) => rt.agentWake(se.id, h, text, { replyIn: threadId, itemId: it.id, fromTurnId }).message);
+  return { id: it.id, woke: handles.map((h) => rt.agentWake(se.id, h, text, { replyIn: threadId, itemId: it.id, fromTurnId }).message) };
 }

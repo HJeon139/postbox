@@ -147,7 +147,7 @@ export const TOOL_DEFS = [
   {
     name: 'open_topic',
     // lint-allow thread: read_conversation's parameter of that name.
-    description: `Open a topic thread from a message in your conversation, by its item id, or find the topic thread it has, and optionally post a first message there, up to ${count(SENDING.message)} characters. Each agent in mentions is woken in the topic thread, as wake_agent wakes it, and answers there; one message serves them all. The topic thread opens beside the message in the page. A message in a topic thread can’t start another one: reply in that topic thread. The reply gives the topic thread’s id, which read_conversation { thread } reads.`,
+    description: `Open a topic thread from a message in your conversation, by its item id, or find the topic thread it has, and optionally post a first message there, up to ${count(SENDING.message)} characters. Each agent in mentions is woken in the topic thread, as wake_agent wakes it, and answers there; one message serves them all. The topic thread opens beside the message in the page. A message in a topic thread can’t start another one: reply in that topic thread. The reply gives the topic thread’s id, which read_conversation { thread } reads, and says whether your message was posted, by its id.`,
     inputSchema: {
       type: 'object',
       properties: {
