@@ -189,3 +189,15 @@ test('a type named after an Object property is unknown, not a crash', () => {
     assert.equal(r.reason, 'unknown-type');
   }
 });
+
+test('#838 a choice’s and a select’s options may carry a description; nothing else past id and label', () => {
+  const described = [
+    { id: 'a', label: 'Keep it', description: 'Leaves the index as it is.' },
+    { id: 'b', label: 'Rebuild', description: 'Takes about ten minutes.' },
+  ];
+  ok(base('choice', { options: described }));
+  ok(base('form', { fields: [{ id: 'f', label: 'Plan', kind: 'select', options: described }] }));
+  bad(base('choice', { options: [{ id: 'a', label: 'Keep it', description: 'x'.repeat(201) }] }), /description/);
+  bad(base('choice', { options: [{ id: 'a', label: 'Keep it', description: '' }] }), /description/);
+  bad(base('form', { fields: [{ id: 'f', label: 'Plan', kind: 'select', options: [{ value: 'a', label: 'Keep it' }] }] }), /unknown field “value”/);
+});

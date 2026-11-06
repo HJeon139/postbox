@@ -13,6 +13,7 @@ import { codeBox, copyControls, showFilename } from './code-block.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { startProgressClock, tickProgress } from './progress-clock.mjs';
 import { renderReview } from './review.mjs';
+import { fmtCell } from './table-cells.mjs';
 
 const drafts = new Map(); // item id → local, unsent input
 const draft = (id, init) => {
@@ -178,7 +179,7 @@ const RENDER = {
             },
           },
           on ? icon('check') : null,
-          o.label,
+          o.description ? h('span.chip-text', h('span', o.label), h('span.chip-desc', o.description)) : o.label,
         ),
       );
     });
@@ -307,7 +308,7 @@ const RENDER = {
               },
             },
             h('option', { value: '' }, 'Choose…'),
-            f.options.map((o) => h('option', { value: o.id, selected: v === o.id }, o.label)),
+            f.options.map((o) => h('option', { value: o.id, selected: v === o.id }, o.description ? `${o.label} — ${o.description}` : o.label)),
           ),
           icon('down'),
         );
@@ -645,13 +646,6 @@ const RENDER = {
     return h('div', h('div.block-body', h('p.dim', 'Apps appear in their own frame.')));
   },
 };
-
-function fmtCell(v, _col) {
-  if (v === null || v === undefined) return '';
-  if (typeof v === 'number') return v.toLocaleString('en-US');
-  if (typeof v === 'boolean') return v ? 'Yes' : 'No';
-  return String(v);
-}
 
 // ── Progress blocks: times that move ─────────────────────────────────────────────────────
 

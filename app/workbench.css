@@ -443,6 +443,9 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .chip[aria-pressed="true"], .chip[aria-checked="true"], .chip.on { color: var(--accent); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 600; }
 .chip.sm { height: 24px; padding: 0 9px; font-size: 12px; }
 .chip .i-check { width: 12px; height: 12px; }
+/* An option’s description, under its label in a panel (#838). */
+.chip-text { display: flex; flex-direction: column; gap: 2px; }
+.chip-desc { font-size: 12px; font-weight: 400; color: var(--dim); }
 .pill { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 999px; background: var(--chip);
   border: 1px solid var(--line); font-size: 11.5px; color: var(--dim); white-space: nowrap; }
 .pill b { color: var(--text); font-weight: 500; }

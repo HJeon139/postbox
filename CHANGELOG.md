@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.28.0 (2026-11-06)
+
+### Features
+
+- **blocks:** an option may carry a description, under its label
+
+### Fixes
+
+- **guide:** show a form option's shape, and that an option takes only id and label
+- **blocks:** a table's year or id column shows its numbers as written
+- **tools:** the UAT screenshot tool gives scenes the demo's UI, and skips missing views
+- **uat:** a run whose telemetry fails still writes its report and findings
+
 ## 1.27.0 (2026-11-06)
 
 ### Features

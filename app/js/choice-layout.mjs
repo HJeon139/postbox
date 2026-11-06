@@ -13,7 +13,8 @@ function fit(options, observer) {
   options.classList.remove('panels');
   options.classList.add('measuring');
   const width = options.clientWidth;
-  const wraps = [...options.querySelectorAll('.chip')].some((option) => option.getBoundingClientRect().width > width);
+  // An option with a description under its label is a panel too (#838).
+  const wraps = !!options.querySelector('.chip-desc') || [...options.querySelectorAll('.chip')].some((option) => option.getBoundingClientRect().width > width);
   options.classList.remove('measuring');
   options.classList.toggle('panels', wraps);
 }
