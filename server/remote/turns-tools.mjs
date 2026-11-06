@@ -122,7 +122,8 @@ async function appFiles(rts, args) {
     if (typeof f.base64 !== 'string' || f.base64.length % 4 || !BASE64.test(f.base64)) throw fail(`The file “${name}” didn’t arrive whole from the host.`);
     const buf = Buffer.from(f.base64, 'base64');
     if (buf.length > LIMITS.appFileBytes) throw fail(`The file “${name}” is over the limit for an app’s data file.`);
-    stored.push({ name, ...(await rts.rt.blobs.put(buf)) });
+    const { sha256, size } = await rts.rt.blobs.put(buf);
+    stored.push({ name, sha256, size });
   }
   return { args: rest, files: stored };
 }
