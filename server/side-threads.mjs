@@ -3,7 +3,7 @@
 // add an agent the conversation doesn’t have, and the lines of side threads from before #372. Functions take the
 // Runtime first (architecture.md, “What a move may change”).
 
-import { HOP_LIMIT } from '../shared/limits.mjs';
+import { HANDLE, HANDLE_SHAPE, HOP_LIMIT } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
 import { askToAdd, askToWake, closeHop, closeOwnCard, dropHeld, retireStale } from './wake-cards.mjs';
@@ -148,7 +148,14 @@ export function dropWakes(rt, se, how = 'stopped') {
 /** wake_agent { handle, message }, the tool, for the session rt.toolsFor made it for. A summary’s turn wakes no one (#225, agentWake). */
 export function wakeAgent(rt, sessionId, { handle, message }) {
   const text = String(message ?? '');
-  return tooLongToSend('A message to another agent', text) ?? rt.agentWake(sessionId, String(handle).replace(/^@/, ''), text);
+  const to = String(handle ?? '')
+    .trim()
+    .replace(/^@/, '');
+  const tooLong = tooLongToSend('A message to another agent', text);
+  if (tooLong) return tooLong;
+  // Checked before the lookup, whose refusal names the handle: it never echoes what isn’t one (#650).
+  if (!HANDLE.test(to)) return { ok: false, message: `That isn’t an agent’s handle: ${HANDLE_SHAPE}.` };
+  return rt.agentWake(sessionId, to, text);
 }
 
 /**

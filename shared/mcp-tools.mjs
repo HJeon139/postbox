@@ -153,7 +153,11 @@ export const TOOL_DEFS = [
       properties: {
         itemId: { type: 'string', description: 'The id (it_…) of the message the topic thread is about, in your conversation.' },
         message: { type: 'string', description: 'A first message to post in the topic thread, in Markdown.' },
-        mentions: { type: 'array', items: { type: 'string' }, description: 'The handles of agents to wake there with that message.' },
+        mentions: {
+          type: 'array',
+          items: { type: 'string' },
+          description: `The handles of agents to wake there with that message, up to ${SENDING.mentions}.`,
+        },
       },
       required: ['itemId'],
     },

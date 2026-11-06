@@ -2,6 +2,7 @@
 // open_topic. Moved from server/runtime.mjs, whose Runtime keeps a method that delegates to it.
 
 import { positionOf } from '../shared/item-index.mjs';
+import { HANDLE, HANDLE_SHAPE, SENDING } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
 
@@ -65,7 +66,11 @@ export function openTopic(rt, sessionId, { itemId, message, mentions }) {
   if (tooLong) return tooLong;
   if (mentions !== undefined && !(Array.isArray(mentions) && mentions.every((h) => typeof h === 'string')))
     return { ok: false, message: 'mentions is a list of handles, such as ["critic"].' };
+  if (mentions && mentions.length > SENDING.mentions)
+    return { ok: false, message: `mentions names up to ${SENDING.mentions} handles: one message wakes at most that many.` };
   const handles = [...new Set((mentions ?? []).map((h) => h.trim().replace(/^@/, '')).filter(Boolean))];
+  // The whole call is refused, before anything is written, and never echoes what was sent: it’s an agent’s text.
+  if (!handles.every((h) => HANDLE.test(h))) return { ok: false, message: `mentions has something that isn’t a handle: ${HANDLE_SHAPE}.` };
   if (mentions?.length && !handles.length) return { ok: false, message: 'mentions names no handle: give each as a handle, such as ["critic"].' };
   // Checked before anything opens: a mention is woken by the message, so with none there's nothing to wake them with.
   if (handles.length && !text) return { ok: false, message: 'mentions need a message: they’re woken by it, in the topic thread.' };
