@@ -74,7 +74,18 @@ import { readCapped } from './read-capped.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
-import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere, runsHere } from './remote/placement.mjs';
+import {
+  hereFolder,
+  localBackends,
+  notHere,
+  placedPatch,
+  placement,
+  refuseHere,
+  refuseUnregistered,
+  refuseUnregisteredSend,
+  registeredAdapter,
+  runsHere,
+} from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
@@ -430,6 +441,8 @@ export class Runtime {
     // @-mention there, or the one you reply to, answers from its one session in the conversation, and the reply shows here.
     // Side threads from before #372 are history: agents talk in the conversation now.
     if (t.kind === 'side') throw httpError(409, 'Side threads are read-only now. Write in the conversation, where the agents talk.');
+    // Refuse before anything is posted or joined: a turn for an agent whose backend isn’t registered couldn’t start (#874).
+    refuseUnregisteredSend(this, mentioned);
     const away = t.kind === 'topic';
     if (away) {
       for (const p of mentioned) targets.push({ se: this.sideSession(t, p.id, 'you') });
@@ -454,6 +467,9 @@ export class Runtime {
       if (!last) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
       targets.push({ se: last });
     }
+    // And the agent you reply to, as the mentioned ones above.
+    const woken = targets.map(({ se }) => this.persona(se.personaId));
+    refuseUnregisteredSend(this, woken);
     // Messages to a busy agent wait in the queue unless you choose Send now.
     const busy = targets.filter(({ se }) => this.turns.has(se.id));
     const q = busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now() } : null;
@@ -577,7 +593,7 @@ export class Runtime {
     // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
     message = turnContext(this, this.s.sessions[sessionId], where, message, slash);
     const persona = this.persona(se.personaId);
-    const adapter = this.adapters.get(persona?.backend ?? 'mock');
+    const adapter = registeredAdapter(this, persona);
     const abort = new AbortController();
     const turn = {
       id: newId('turn'),
@@ -620,7 +636,7 @@ export class Runtime {
     };
     this.turns.set(sessionId, turn);
     // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
-    const hostId = this.remote.hostOf(persona);
+    const hostId = adapter ? this.remote.hostOf(persona) : null;
     if (hostId) this.remote.begin(turn, hostId, adapter);
     // The work ledger (#132) follows the turn’s tool calls. A change outside the project’s folder and the agent’s is
     // flagged; the adapter knows the agent’s folder. A remote agent’s folder is on its host, never made here.
@@ -661,6 +677,7 @@ export class Runtime {
     const ctx = Object.assign(this.turnContext(se, turn), { rawTail: turn.rawTail });
     // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
     const run = Promise.resolve().then(async () => {
+      if (!adapter) refuseUnregistered(se, persona);
       if (!hostId) refuseHere(this, se, persona);
       return adapter.deliver(this.s.sessions[sessionId], hostId ? await this.remote.prepare(turn, ctx, message) : message, ctx);
     });
