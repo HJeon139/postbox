@@ -211,6 +211,8 @@ sequenceDiagram
   - A flood that keeps 8 prompts waiting can get a genuine prompt that came before its own line refused at once, visibly.
   - Antigravity’s hook keeps the old path, so #665’s attack still works there until its follow-up.
   - A host on an older Postbox names no entry and sends each answer to every connection of a turn, until it’s installed again with this version.
+  - A shim from before this version sends no key, so on a new daemon every keyless shim of a turn counts as the same one, and any of them can take another’s prompt, until the shim is installed again too.
+  - A tool’s `result` still goes to every shim of its turn, so another connection sees it too, and any connection to a turn can end one of its prompts as expired or canceled by its ID, which denies it. Neither allows anything; a follow-up gives both the routing answers have.
 
 **What it rests on**
 - **The mode is always passed.** Left out, Claude Code would take `permissions.defaultMode` from your own settings, or `auto`, and an agent you set to ask could stop asking.

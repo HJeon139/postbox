@@ -1,6 +1,6 @@
 // The broker’s permission prompts (#120): a shim’s prompt written down and sent to Postbox, Postbox’s answer written
-// down and sent to the turn’s shims, and a prompt’s end, when its shim gave up, its turn stopped, or no shim waits on
-// it any more. broker.mjs’s header says what’s written down when.
+// down and sent to the connections of the shim that asked it, and a prompt’s end, when its shim gave up, its turn
+// stopped, or no shim waits on it any more. broker.mjs’s header says what’s written down when.
 
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
