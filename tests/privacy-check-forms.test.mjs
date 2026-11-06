@@ -32,11 +32,47 @@ test('privacy checker flags a claude.ai connector a person named, but not one fr
 /** The recorded Claude Code turns whose init once listed a person’s own connector and synced plugin paths (#661). */
 const CLEARED_INITS = ['denials', 'fail-before-output', 'resume-after-failure', 'thinking-subagent'];
 
+/** The init a recorded Claude Code turn starts with. @param {string} name */
+const recordedInit = (name) => JSON.parse(committed(`tests/fixtures/claude-code/${name}.jsonl`).split('\n', 1)[0]);
+
 test('the recorded Claude Code inits list no MCP servers and no plugins (#661)', () => {
   for (const name of CLEARED_INITS) {
-    const init = JSON.parse(committed(`tests/fixtures/claude-code/${name}.jsonl`).split('\n', 1)[0]);
+    const init = recordedInit(name);
     assert.equal(init.subtype, 'init', `${name} starts with its init`);
     assert.deepEqual({ mcp_servers: init.mcp_servers, plugins: init.plugins }, { mcp_servers: [], plugins: [] }, name);
+  }
+});
+
+/**
+ * The skills and slash commands Claude Code itself lists in an init, as the recorded inits name them. Any other name is
+ * a plugin’s (“<plugin>:<skill>”) or a skill of a person’s own, and says what they installed (#661).
+ */
+const BUILT_IN_COMMANDS = new Set(
+  [
+    'deep-research design slides design-sync dataviz artifact-diagramming artifact-capabilities update-config verify',
+    'debug code-review simplify batch fewer-permission-prompts doctor loop schedule claude-api workflow-authoring run',
+    'run-skill-generator plugin-authoring advisor agents auto-mode-setup autocompact clear color compact config',
+    'output-style context effort fast focus heapdump init mcp import model __remote-workflow workflow-launch-exec',
+    'reload-plugins reload-skills rename ultrareview security-review usage-credits extra-usage usage insights recap',
+    'skill-doctor goal design-consent design-revoke list-agents team-onboarding',
+  ].flatMap((line) => line.split(' ')),
+);
+
+/** The agents Claude Code itself lists in an init. */
+const BUILT_IN_AGENTS = new Set(['claude', 'claude-code-guide', 'Explore', 'general-purpose', 'Plan', 'statusline-setup']);
+
+/** A tool id that names no one’s plugin: Claude Code’s own, Postbox’s, or a claude.ai directory connector’s. */
+const GENERIC_TOOL = /^(?:[A-Z][A-Za-z]+|mcp__(?:postbox|claude_ai_Claude_Docs|claude_ai_Google_Drive)__[a-z_]+)$/;
+
+test('the recorded Claude Code inits name no plugin, no skill of a person’s own and no plugin’s tool (#661)', () => {
+  for (const name of CLEARED_INITS) {
+    const init = recordedInit(name);
+    const named = {
+      commands: [...init.skills, ...init.slash_commands].filter((command) => !BUILT_IN_COMMANDS.has(command)),
+      agents: init.agents.filter((agent) => !BUILT_IN_AGENTS.has(agent)),
+      tools: init.tools.filter((tool) => !GENERIC_TOOL.test(tool)),
+    };
+    assert.deepEqual(named, { commands: [], agents: [], tools: [] }, name);
   }
 });
 
