@@ -207,3 +207,42 @@ test('#701: `- seed-diagrams: n` asks the big room for n diagrams; absent, none;
   for (const bad of ['six', '0', '-2', '1.5']) assert.throws(() => parseScenario(head(`- seed-diagrams: ${bad}\n`)), /seed-diagrams/, bad);
   assert.throws(() => parseScenario('# Plain\n\n- seed-diagrams: 6\n- steps: 4\n\nRead back.\n'), /needs `- seed: big-room`/);
 });
+
+// PF-1’s key-to-frame tool (#508, tools/bench-key-frame.mjs) seeds rooms of 4,000 and 10,000 items, and more.
+test('a room past 10,000 items keeps its ids in the order of its items, and a 1,000-item room’s ids are unchanged', () => {
+  const { items } = bigRoomItems({ count: 10_001 });
+  const ids = items.map((it) => it.id);
+  assert.deepEqual([...ids].sort(), ids);
+  assert.equal(new Set(ids).size, 10_001);
+  assert.equal(bigRoomItems().items[0].id, 'it_big0000');
+  assert.equal(bigRoomItems().items[999].id, 'it_big0999');
+});
+
+test('a room of 9,999 or 10,000 items keeps four-digit ids in the order of its items, and one of 10,001 goes to five', () => {
+  for (const count of [9_999, 10_000]) {
+    const ids = bigRoomItems({ count }).items.map((it) => it.id);
+    assert.deepEqual([...ids].sort(), ids, `${count} items`);
+    assert.equal(ids[0], 'it_big0000', `${count} items`);
+    assert.equal(ids.at(-1), `it_big${count - 1}`, `${count} items`);
+  }
+  assert.equal(bigRoomItems({ count: 10_001 }).items.at(-1).id, 'it_big10000');
+  assert.equal(bigRoomItems({ count: 10_001 }).items[0].id, 'it_big00000');
+});
+
+test('seeding a run’s data folder with another count writes that many items, and its note says how many', async () => {
+  const data = mkdtempSync(join(tmpdir(), 'pb-big-room-count-'));
+  try {
+    const before = await new Store(data).load();
+    startRoom(before);
+    await before.close();
+    const seeded = await seedBigRoomData(data, 'th_big', ['researcher', 'critic'], { count: 4000 });
+    const after = await new Store(data).load();
+    assert.equal(after.items('th_big').length, 4000);
+    await after.close();
+    const note = seeded.note('http://127.0.0.1:4310');
+    assert.match(note, /4,000 generated items/);
+    assert.doesNotMatch(note, /about 1,000/);
+  } finally {
+    rmSync(data, { recursive: true, force: true });
+  }
+});

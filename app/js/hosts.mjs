@@ -12,7 +12,7 @@ import { checkDestination } from '/shared/remote-settings.mjs';
 import { api, client } from './client.mjs';
 import { fill, h, icon } from './dom.mjs';
 import { confirmRemove } from './hosts-confirm.mjs';
-import { editor, openEditor } from './hosts-editor.mjs';
+import { editor, openEditor, syncKeepUpdated } from './hosts-editor.mjs';
 import { paintStatus, statusView } from './hosts-status.mjs';
 import { keepFocus, toast } from './ui.mjs';
 
@@ -59,8 +59,10 @@ function listen(p) {
       return;
     }
     seen = true;
-    if (ch.type === 'host.status') paintStatus(p, ch.data?.id);
-    else if (['host', 'project', 'persona', 'load'].includes(ch.type)) p.paint();
+    if (ch.type === 'host.status') {
+      paintStatus(p, ch.data?.id);
+      syncKeepUpdated(p, ch.data?.id);
+    } else if (['host', 'project', 'persona', 'load'].includes(ch.type)) p.paint();
     focusAdded(p);
   });
   // “Last heard from” moves on with the clock.

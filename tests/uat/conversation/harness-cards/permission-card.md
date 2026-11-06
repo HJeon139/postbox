@@ -21,12 +21,13 @@ In ask mode (and when auto mode can’t decide) you approve exactly what will ru
 - **Don’t allow…:** asks why, optionally; Enter refuses. The agent reads your reason.
 - Once answered, the card says how (“Always allowed (Bash(npm test:*))”, “Allowed with your edit”, with what ran, or “Not allowed”, with your reason), and a line in your voice says the same.
 - The agent needs you until you answer; Stop answers no and marks the card expired. A card nobody answers for 25 hours (a minute short of the time Claude Code waits for the call, so the no still reaches it) expires too, and says “Expired: nobody answered within 25 hours” ([#220](https://github.com/HJeon139/postbox/issues/220)).
+- An expired card no longer counts toward “needs you”, and the agent that asked reads in its next turn that its request expired, naming it, and that it can ask again. A declined card sends no such note: the agent already read your no. If a closed card is still what its agent needs you for, it offers **Dismiss**, which clears that; a closed card nothing needs you for offers no button ([#721](https://github.com/HJeon139/postbox/issues/721)).
 - Only a Claude Code agent asks this way. An Agent SDK, Kiro, Codex or Antigravity agent isn’t offered Postbox’s permission_prompt tool, and one that calls it anyway is told at once that it isn’t for it, with no card.
 - Every control works by keyboard; after an answer, focus goes back to the composer.
 
 ## Steps to reproduce
 
-1. Run `npx playwright test permissions` (`tests/browser/permissions.spec.mjs`). It answers a card each way with real clicks and key presses, including a subagent’s prompt, a Codex MCP tool call, and a write outside Postbox with its draft. Every test should pass. `npx playwright test permission-cards` checks how an expired card reads.
+1. Run `npx playwright test permissions` (`tests/browser/permissions.spec.mjs`). It answers a card each way with real clicks and key presses, including a subagent’s prompt, a Codex MCP tool call, and a write outside Postbox with its draft. Every test should pass. `npx playwright test permission-cards` checks how an expired card reads, and that Dismiss clears the need an expired card left.
 2. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open. Scene 10 (“Clear the index cache”): answer Allow.
 3. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`, with Claude Code installed and signed in) and open <http://127.0.0.1:4181/>. In a project whose folder you can lose, set an agent to Ask me and send: “Run `echo hi > note.txt` yourself, then have a general-purpose subagent run `echo bye > note2.txt`.”
 4. On the first card, choose Edit…, change the command to `echo edited > note.txt`, and allow it. On the subagent’s card, choose Always allow.

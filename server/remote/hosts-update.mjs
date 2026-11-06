@@ -135,11 +135,26 @@ async function autoInstall(m, id, signal) {
     if (signal.aborted) throw new SshFailure('failed', 'Postbox closed before the install started.', 'Install it from here once Postbox is running again.');
     result = await installNow(m, id, signal);
   } catch (e) {
-    if (!signal.aborted && !m.closed) await noteEnd(m, id, tried, e?.detail?.code === BUSY_EXIT ? 'busy' : 'failed');
+    if (!signal.aborted && !m.closed) await noteFailed(m, id, tried, e);
     throw e;
   }
   await noteEnd(m, id, tried, result.installed ? 'installed' : 'present');
   return result;
+}
+
+/**
+ * Rewrites the try as busy or failed. An installer’s SshFailure goes on the host’s status, its reason and next step,
+ * kept in memory only, so the card can say why (#464-b2b); the next write of the record clears them. It’s the text
+ * Install… already shows the person, which can name the ssh destination, or a path here when ssh couldn’t start
+ * (install.mjs’s run). Anything else installHost throws (a TypeError, or an error keeping the token) isn’t worded for
+ * the person, so it puts nothing on the status, and the card says it couldn’t install.
+ * @param {Manager} m @param {string} id @param {{ version: string, at: number, outcome: string }} tried @param {any} e
+ */
+async function noteFailed(m, id, tried, e) {
+  const busy = e?.detail?.code === BUSY_EXIT;
+  await noteEnd(m, id, tried, busy ? 'busy' : 'failed');
+  if (busy || e?.name !== 'SshFailure') return;
+  noteError(m, id, `${e.message} ${e.next}`);
 }
 
 /**
@@ -185,6 +200,34 @@ async function noteEnd(m, id, tried, outcome) {
     return;
   }
   update(m, id);
+}
+
+/** A try of this version that ended without it installed there: the card would offer Install… for it. */
+const UNFIXED = new Set(['failed', 'busy', 'started']);
+
+/**
+ * The person’s own Install… worked (hosts.mjs, install): a failed, busy or cut-off automatic try of this version, the
+ * newest in the record, is rewritten as present, so the card stops offering Install… for a host that has this version
+ * and says nothing of an install Postbox didn’t do by itself (the integrator’s reviews of #770). Not installed: the
+ * card would say Postbox installed it by itself, and UAT’s host-auto-installed would count it. Not an outcome of its
+ * own: an older Postbox reads the record strictly, and would read a new one as no record. The try stays this
+ * version’s, so it stays tried. Nothing else is written: the record is the automatic installs’. Never throws.
+ * @param {Manager} m @param {string} id
+ */
+export async function supersedeTry(m, id) {
+  let wrote = false;
+  try {
+    await changeRecord(m, id, (was) => {
+      const newest = was.installs[0];
+      if (!m.getHost(id) || newest?.version !== m.version || !UNFIXED.has(newest.outcome)) return null;
+      wrote = true;
+      return { keepUpdated: was.keepUpdated, installs: [{ ...newest, outcome: 'present' }, ...was.installs.slice(1)] };
+    });
+  } catch (e) {
+    noteError(m, id, `Postbox couldn’t note your install in its data folder (${e?.code ?? 'error'}).`);
+    return;
+  }
+  if (wrote) update(m, id);
 }
 
 /**

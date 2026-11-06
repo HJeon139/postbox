@@ -3,6 +3,7 @@
 // function takes the manager’s state first (hosts-status.mjs’s Manager).
 
 import { hostOf, instanceOf, tokenOf, update } from './hosts-status.mjs';
+import { WITHDRAWN } from './hosts-update.mjs';
 import { createHostLink } from './link.mjs';
 import { failure as sshFailure } from './ssh.mjs';
 
@@ -190,21 +191,86 @@ export function release(m, id, why) {
   reconsider(m, id);
 }
 
-/** @param {Manager} m @param {string} id @returns {Promise<any>} */
-export async function ensureWelcome(m, id) {
+/**
+ * The host’s welcome, connecting first if need be. A failure while an install of this Postbox runs there (m.updating,
+ * hosts-update.mjs) waits for that install, then tries once more from the top; an install that fails throws its own
+ * failure, with its next step, unless it was busy (#464-b2b; designs/464-keep-updated.md, “What b2b adds”).
+ * Removing Postbox from the host waits for the install before it gets here (removeFromHost). signal: the caller’s
+ * Stop, which ends its wait at once, with signal.reason; the install goes on.
+ * @param {Manager} m @param {string} id @param {{ signal?: AbortSignal }} [o]
+ * @returns {Promise<any>}
+ */
+export async function ensureWelcome(m, id, { signal } = {}) {
   const l = linkOf(m, id);
   if (l.connected) return l.welcome;
-  if (l.state === 'stopped') throw l.failure;
+  try {
+    return await attempt(m, id, l, { afterInstall: false });
+  } catch (failure) {
+    const install = m.updating.get(id);
+    if (!install) throw failure;
+    const outcome = await untilAborted(install.done, signal);
+    // An install the consent withdrew before it started ran nothing: the caller gets the host’s own failure.
+    if (!outcome.ok && outcome.failure?.message === WITHDRAWN) throw failure;
+    if (!outcome.ok && !busyInstall(outcome.failure)) throw outcome.failure;
+    return await welcomeAfterInstall(m, id);
+  }
+}
+
+/**
+ * The install’s outcome, or signal.reason as soon as the signal fires, whichever comes first. The listener goes either
+ * way. @param {Promise<any>} done @param {AbortSignal} [signal] @returns {Promise<any>}
+ */
+function untilAborted(done, signal) {
+  if (!signal) return done;
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const stop = () => reject(signal.reason);
+    signal.addEventListener('abort', stop, { once: true });
+    done.then(resolve).finally(() => signal.removeEventListener('abort', stop));
+  });
+}
+
+/**
+ * An install that found another of this version running or starting there (exit 75, install.mjs’s exit codes): the
+ * host connects once more by itself after it (hosts-update.mjs, afterBusy), since that one may be this Postbox’s.
+ * @param {any} failure
+ */
+const busyInstall = (failure) => failure?.detail?.code === 75;
+
+/**
+ * Once more from the top, after an install, and never waiting for another: the link again, since the install may
+ * have replaced it, and a welcome that arrived meanwhile.
+ * @param {Manager} m @param {string} id @returns {Promise<any>}
+ */
+async function welcomeAfterInstall(m, id) {
+  const l = linkOf(m, id);
+  if (l.connected) return l.welcome;
+  return await attempt(m, id, l, { afterInstall: true });
+}
+
+/**
+ * One attempt of the link, needed until it settles. A stopped link throws its failure, except after an install: the
+ * install’s own connect may have failed already, so it’s retried here.
+ * @param {Manager} m @param {string} id @param {HostLink} l @param {{ afterInstall: boolean }} o @returns {Promise<any>}
+ */
+async function attempt(m, id, l, { afterInstall }) {
+  if (l.state === 'stopped' && !afterInstall) throw l.failure;
   const why = Symbol('welcome');
   need(m, id, why);
   try {
     const welcome = nextWelcome(l);
-    if (l.state === 'waiting') l.wake();
-    else l.need();
+    start(l);
     return await welcome;
   } finally {
     release(m, id, why);
   }
+}
+
+/** Starts the link’s next attempt now: after its backoff, from a stop, or from idle. @param {HostLink} l */
+function start(l) {
+  if (l.state === 'waiting') l.wake();
+  else if (l.state === 'stopped') l.retry();
+  else l.need();
 }
 
 /**

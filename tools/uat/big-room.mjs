@@ -1,5 +1,5 @@
 // `- seed: big-room` (#508, designs/508/testing-strategy.md, “Seeds and runner changes”): a generated room of about
-// 1,000 items, so catch-up has to leave things out and the page holds only a window of it. It’s generated, not copied
+// 1,000 items (PF-1’s key-to-frame tool asks for 4,000 and 10,000 too), so catch-up has to leave things out and the page holds only a window of it. It’s generated, not copied
 // from a real room, so no project’s content reaches the tester model, and the same seed gives the same room. It holds
 // three landmarks the scenarios name: a mention of @researcher as its oldest addressed item (delivery.md, phase 2), a
 // review block from @researcher near its start (bigroom.md, phase 3), and a decision whose id the run links to
@@ -26,13 +26,13 @@ function random(seed) {
 }
 
 /** One filler message: the person’s or an agent’s, about a release topic, naming no one. */
-function filler(rnd, i, at, handles, firstDay) {
+function filler(rnd, i, at, handles, firstDay, count) {
   const pick = (xs) => xs[Math.floor(rnd() * xs.length)];
   const by = rnd() < 0.3 ? null : pick(handles);
   const said = `${pick(VERBS)} ${pick(TOPICS)}${firstDay ? ` for the ${FIRST_DAY_WORD} milestone` : ''}; item ${i} of the release log.`;
   return by
-    ? { id: idOf(i), at, kind: 'agent', handle: by, text: `I ${said} Nothing here needs anyone yet.` }
-    : { id: idOf(i), at, kind: 'user', text: `Note: ${said}` };
+    ? { id: idOf(i, count), at, kind: 'agent', handle: by, text: `I ${said} Nothing here needs anyone yet.` }
+    : { id: idOf(i, count), at, kind: 'user', text: `Note: ${said}` };
 }
 
 /**
@@ -48,7 +48,15 @@ function approvedOnce(block, at) {
   return { item: { answered: true, answer: { action: 'submit', values: r.event.values, voice: r.voice, at, revision: 1, read: true } }, voice: r.voice };
 }
 
-const idOf = (i) => `it_big${String(i).padStart(4, '0')}`;
+/**
+ * Item i’s id, padded to the digits the room’s last index needs, and never fewer than four, so ids sort in the order of
+ * their items in a room of any size and a 1,000-item room’s ids stay the ones the scenarios and tests name.
+ * @param {number} i  @param {number} count
+ */
+function idOf(i, count) {
+  const width = Math.max(4, String(count - 1).length);
+  return `it_big${String(i).padStart(width, '0')}`;
+}
 
 /**
  * The room’s items, oldest first, and its landmarks’ ids. handles: the agents in it; the mention is of the first.
@@ -66,7 +74,7 @@ export function bigRoomItems({
   const rnd = random(seed);
   const step = Math.floor((5 * DAY_MS) / count);
   const at = (i) => start + i * step;
-  const landmarks = { mention: idOf(0), review: idOf(2), decision: idOf(5) };
+  const landmarks = { mention: idOf(0, count), review: idOf(2, count), decision: idOf(5, count) };
   const review = {
     id: landmarks.review,
     at: at(2),
@@ -91,13 +99,14 @@ export function bigRoomItems({
       kind: 'user',
       text: `@${handles[0]} what did the 1.9 retro decide about the release train, and who owns the ${FIRST_DAY_WORD} checklist?`,
     },
-    filler(rnd, 1, at(1), handles, true),
+    filler(rnd, 1, at(1), handles, true, count),
     { ...review, ...answered.item },
-    { id: idOf(3), at: at(3), kind: 'voice', text: answered.voice, blockItemId: landmarks.review },
-    filler(rnd, 4, at(4), handles, true),
+    { id: idOf(3, count), at: at(3), kind: 'voice', text: answered.voice, blockItemId: landmarks.review },
+    filler(rnd, 4, at(4), handles, true, count),
     { id: landmarks.decision, at: at(5), kind: 'user', text: 'Decision: 2.0 ships on the release train, not on a fixed date.' },
   ];
-  for (let i = items.length; i < count; i++) items.push(filler(rnd, i, at(i), handles.slice(1).length ? handles.slice(1) : handles, at(i) < start + DAY_MS));
+  const others = handles.length > 1 ? handles.slice(1) : handles;
+  for (let i = items.length; i < count; i++) items.push(filler(rnd, i, at(i), others, at(i) < start + DAY_MS, count));
   addDiagrams(items, diagrams);
   return { items, landmarks };
 }
@@ -136,25 +145,32 @@ export function seedBigRoom(store, threadId, opts, sessions = {}) {
   return room.landmarks;
 }
 
+/** How the note names the room’s size: “about 1,000” for the scenarios’ room, else its count. @param {number} count */
+function roomSize(count) {
+  if (count === 1000) return 'about 1,000';
+  return count.toLocaleString('en-US');
+}
+
 /**
  * Seeds the room into a conversation in a run’s data folder while its Postbox is down, with the agents’ sessions the
  * page made there, and says where its decision is, for the tester (bigroom.md’s phase 2: “the run gives it to you”).
  * @param {string} data  @param {string} threadId  @param {string[]} agents  the scenario’s; the mention is of the first
- * @param {{ diagrams?: number }} [opts]  diagrams: as bigRoomItems takes it
+ * @param {{ count?: number, diagrams?: number }} [opts]  count: how many items, 1,000 unless a measurement asks for more;
+ *   diagrams: as bigRoomItems takes it
  */
-export async function seedBigRoomData(data, threadId, agents, { diagrams = 0 } = {}) {
+export async function seedBigRoomData(data, threadId, agents, { count = 1000, diagrams = 0 } = {}) {
   const store = await new Store(data).load();
   /** @type {Record<string, { sessionId: string, personaId?: string }>} */
   const sessions = {};
   for (const se of Object.values(store.state.sessions ?? {}))
     if (se?.threadId === threadId && !se.archived && !sessions[se.handle]) sessions[se.handle] = { sessionId: se.id, personaId: se.personaId };
-  const landmarks = seedBigRoom(store, threadId, { handles: agents, diagrams }, sessions);
+  const landmarks = seedBigRoom(store, threadId, { count, handles: agents, diagrams }, sessions);
   await store.close(); // and release the folder for the Postbox that starts next
   return {
     landmarks,
     /** @param {string} origin */
     note: (origin) =>
-      `The room was seeded with about 1,000 generated items before you arrived. Its first decision is at ${origin}/#/t/${threadId}?at=${landmarks.decision}.`,
+      `The room was seeded with ${roomSize(count)} generated items before you arrived. Its first decision is at ${origin}/#/t/${threadId}?at=${landmarks.decision}.`,
   };
 }
 
@@ -164,15 +180,15 @@ export async function seedBigRoomData(data, threadId, agents, { diagrams = 0 } =
  * scenario gives the room its agents and, with `- seed-diagrams:`, its diagrams (#701).
  * @param {{ postbox: { origin: string, restart: (o?: { whileDown?: () => Promise<void> }) => Promise<number> }, data: string,
  *   threadId: string, scenario: { agents: string[], seedDiagrams?: number }, page: { goto: (url: string) => Promise<any> },
- *   log: (line: string) => void }} o
+ *   log: (line: string) => void, count?: number }} o  count: how many items, as seedBigRoomData takes it
  */
-export async function openBigRoom({ postbox, data, threadId, scenario, page, log }) {
+export async function openBigRoom({ postbox, data, threadId, scenario, page, log, count }) {
   const { agents, seedDiagrams: diagrams = 0 } = scenario;
   /** @type {Awaited<ReturnType<typeof seedBigRoomData>> | null} */
   let seeded = null;
   await postbox.restart({
     whileDown: async () => {
-      seeded = await seedBigRoomData(data, threadId, agents, { diagrams });
+      seeded = await seedBigRoomData(data, threadId, agents, { count, diagrams });
     },
   });
   if (!seeded) throw new Error('Postbox restarted without seeding the big room.');

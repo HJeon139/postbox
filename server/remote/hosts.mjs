@@ -44,7 +44,7 @@ import { EventEmitter } from 'node:events';
 import { connectNow, disconnected, dropLink, dropRenamed, ensureWelcome, isRenamed, linkOf, need, release } from './hosts-links.mjs';
 import { removeFromHost, signInCheck } from './hosts-requests.mjs';
 import { hostOf, statusOf, tokenOf, update } from './hosts-status.mjs';
-import { installNow, maybeUpdate, setKeepUpdated, track, WITHDRAWN } from './hosts-update.mjs';
+import { installNow, maybeUpdate, setKeepUpdated, supersedeTry, track, WITHDRAWN } from './hosts-update.mjs';
 import { describeInstall, forgetToken } from './install.mjs';
 import { removeRecord } from './install-record.mjs';
 import { SshFailure } from './ssh.mjs';
@@ -126,10 +126,11 @@ function linkMethods(m) {
     link: (hostId) => linkOf(m, hostId),
     /**
      * The host’s latest welcome, connecting first if it isn’t connected. Rejects with the link’s SshFailure when the
-     * attempt fails, or at once when a failure only the person can fix has stopped it.
-     * @param {string} hostId @returns {Promise<any>}
+     * attempt fails, or when a failure only the person can fix has stopped it; after an install under way there, if any,
+     * or with that install’s own failure. o.signal: the caller’s Stop, which ends a wait for an install at once.
+     * @param {string} hostId @param {{ signal?: AbortSignal }} [o] @returns {Promise<any>}
      */
-    ensureWelcome: (hostId) => ensureWelcome(m, hostId),
+    ensureWelcome: (hostId, o) => ensureWelcome(m, hostId, o),
     /**
      * The person asked to connect (Retry, Reconnect, Take over): now, whatever stopped it and though nothing needs
      * it, for one welcome; then it may idle. Resolves with the welcome; rejects as link() throws, or with the failure.
@@ -227,6 +228,7 @@ async function install(m, hostId) {
   const outcome = await installing(m, hostId).done;
   if (!outcome.ok && outcome.failure?.message === WITHDRAWN) return install(m, hostId);
   if (!outcome.ok) throw outcome.failure;
+  await supersedeTry(m, hostId);
   return outcome.result;
 }
 

@@ -1,16 +1,19 @@
-// A host’s settings editor, on its card in the Hosts tab (app/js/hosts.mjs): its ssh destination, its settings in
-// the design’s groups (hosts-settings.mjs, hosts-fields.mjs) and each project’s folder there. Save checks
-// everything as the server does, says which fields need a change, and then saves the host and each changed folder.
+// A host’s settings editor, on its card in the Hosts tab (app/js/hosts.mjs): its ssh destination, whether Postbox
+// keeps itself up to date there (#464-b2b), its settings in the design’s groups (hosts-settings.mjs,
+// hosts-fields.mjs) and each project’s folder there. Save checks everything as the server does, says which fields
+// need a change, and then saves the host and each changed folder. The keep-up-to-date toggle saves at once instead.
 
 import { checkDestination, checkHostPath, checkHostSettings } from '/shared/remote-settings.mjs';
 import { api, client } from './client.mjs';
 import { h, plural } from './dom.mjs';
 import { errEl, field } from './hosts-fields.mjs';
-import { showError } from './hosts-parts.mjs';
+import { checkField, showError } from './hosts-parts.mjs';
 import { FIELDS, GROUPS, PROGRAMS_HELP, parse, shown } from './hosts-settings.mjs';
 import { toast } from './ui.mjs';
 
 const S = () => client.state;
+/** The toggle’s key, in its id and in the editor’s errors. */
+const KEEP_UPDATED = 'keepUpdated';
 
 /** @typedef {import('./hosts.mjs').Panel} Panel @typedef {import('./hosts-fields.mjs').Ed} Ed */
 
@@ -43,6 +46,7 @@ export const editor = (p, host) => {
     'div.ho-editor',
     { style: { display: 'flex', flexDirection: 'column', gap: '14px', borderTop: '1px solid var(--line)', paddingTop: '12px' } },
     nameField(ed),
+    keepUpdatedField(ed),
     GROUPS.map(([group, fields]) =>
       h(
         'section',
@@ -91,6 +95,50 @@ const nameField = (ed) => {
     errEl(ed, 'name'),
     h('span.help', { id: `${fid('name')}-help` }, 'Renaming it points it at another machine, so it can’t be renamed while turns run there.'),
   );
+};
+
+/**
+ * The person’s standing consent to install this Postbox’s version on the host by itself (#464-b2b), as the host’s
+ * status has it. It’s kept on this computer, not in the host’s settings, so it saves at once rather than with Save.
+ * @param {Ed} ed
+ */
+const keepUpdatedField = (ed) =>
+  checkField({
+    id: ed.fid(KEEP_UPDATED),
+    label: 'Keep Postbox up to date on this host',
+    help: 'Install this Postbox’s version here when it’s missing, once per version.',
+    on: S().hostStatus?.[ed.host.id]?.keepUpdated === true,
+    onToggle: (on) => saveKeepUpdated(ed, on),
+    err: ed.p.errors[KEEP_UPDATED] ?? '',
+  });
+
+/**
+ * Saves the consent through PUT /api/hosts/:id/keep-updated. When that fails, the toggle goes back and says why under
+ * it, as the editor’s other fields do.
+ * @param {Ed} ed @param {boolean} on
+ */
+const saveKeepUpdated = (ed, on) => {
+  const { p, host, fid } = ed;
+  const said = (/** @type {string} */ text) => {
+    p.errors[KEEP_UPDATED] = text;
+    showError(document.getElementById(`${fid(KEEP_UPDATED)}-err`), text);
+  };
+  said('');
+  api(`/api/hosts/${host.id}/keep-updated`, { on }, 'PUT').catch((e) => {
+    document.getElementById(fid(KEEP_UPDATED))?.setAttribute('aria-checked', String(!on));
+    said([e.message, e.next].filter(Boolean).join(' '));
+  });
+};
+
+/**
+ * Sets the open editor’s toggle as the host’s status now has it, when the consent changed elsewhere: another page, or
+ * the save it’s waiting on.
+ * @param {Panel} p @param {string} id
+ */
+export const syncKeepUpdated = (p, id) => {
+  if (p.editing !== id) return;
+  const on = S().hostStatus?.[id]?.keepUpdated === true;
+  document.getElementById(`ho-${id}-${KEEP_UPDATED}`)?.setAttribute('aria-checked', String(on));
 };
 
 /** Each project’s folder on the host. @param {Ed} ed */

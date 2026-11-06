@@ -26,6 +26,7 @@ const PUBLISHED = {
   'item-lines.mjs': ['topicRootLine', 'describeItem'], // a read tool and a prompt
   'catch-up.mjs': ['catchUp', 'pointerIfSeen'], // the prompt for a later turn
   'permission-cards.mjs': ['resolvePermission', 'resolveDenial'], // the person’s answer to a card they see
+  'permission-expiry.mjs': ['dismissPermission'], // the person’s Dismiss on a card they see (#721)
   'queue-batch.mjs': ['latestMessage'], // the person’s queued messages
   'reactions.mjs': ['toggleReaction', 'reactTool'], // a reaction aimed at an item the person or the agent sees
   'read-message.mjs': ['readMessage', 'readMessage'], // a read tool (T-31)
@@ -51,7 +52,7 @@ const DIRECT = {
   'ledger-git.mjs': ['gitState'], // the Work view’s git state: an answer to the page
   'ledger-answers.mjs': ['published'], // the Work view’s diff and output, answers to the page
   'ledger.mjs': ['expireStale'], // at startup
-  'permission-cards.mjs': ['expireStalePermissions'], // at startup
+  'permission-expiry.mjs': ['expireStalePermissions'], // at startup
   'room-checks-agy.mjs': ['deniedSteps'], // facts from a recorded run, offline
   'room-checks-backends.mjs': ['BACKEND_CHECKS'], // the same
   'room-checks-asks.mjs': ['droppedAsks', 'needsMismatches'], // the same
@@ -82,6 +83,7 @@ const PENDING = {
   'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
   'permission-cards.mjs': ['recordDenial'], // the same refused call, once
+  'permission-expiry.mjs': ['tellExpired'], // the card a turn’s end just expired, told about once (#721)
   'permission-prompt.mjs': ['permission'], // the card the call waits on
   'remote/turns-end.mjs': ['stoppedHung'], // the hung host turn’s own replies
   'remote/turns-prompts.mjs': ['cardOf', 'openCards'], // a host turn’s own cards, and the sweep its callers settle

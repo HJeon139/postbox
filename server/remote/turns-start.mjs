@@ -75,9 +75,11 @@ export async function prepare(rts, turn, ctx, message) {
   let welcome;
   let link;
   try {
-    welcome = await hosts.ensureWelcome(live.hostId);
+    // Stop ends a wait for an install of this version there at once (#464-b2b); the install goes on.
+    welcome = await hosts.ensureWelcome(live.hostId, { signal: ctx.signal });
     link = hosts.link(live.hostId);
   } catch (e) {
+    if (ctx.signal.aborted) throw abortError();
     throw renamedBusy(rts, e, live.hostId, se) ?? e;
   }
   if (ctx.signal.aborted) throw abortError();

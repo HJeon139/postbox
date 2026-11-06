@@ -2,7 +2,7 @@
 // refused, and an agent asking for a tool that’s turned off for it.
 
 import { renderMarkdown } from '/shared/markdown.mjs';
-import { api } from './client.mjs';
+import { api, client } from './client.mjs';
 import { h, icon, trusted } from './dom.mjs';
 import { focusComposer } from './hop-card.mjs';
 import { toast } from './ui.mjs';
@@ -209,7 +209,23 @@ export function permissionBlock(it, ctx) {
       !open && it.edited ? h('pre.md-code.perm-detail', { 'aria-label': 'What ran instead' }, h('code', it.edited)) : null,
       !open && it.reason ? h('p.small', h('b', 'Your reason: '), it.reason) : null,
     ),
-    open ? foot : null,
+    open ? foot : dismissFoot(it, act),
+  );
+}
+
+/**
+ * Dismiss, on a closed card its agent still needs you for (#721): nobody can answer it any more, so this is the way to
+ * stop it counting as waiting for you. A closed card the agent doesn’t need you for offers nothing.
+ * @param {any} it @param {(action: string) => Promise<unknown>} act
+ */
+function dismissFoot(it, act) {
+  const se = client.state.sessions?.[it.sessionId];
+  if (se?.needs?.itemId !== it.id) return null;
+  return h(
+    'div.block-foot',
+    // act’s toast says what went wrong, and the button stays to try again.
+    h('button.btn', { type: 'button', onclick: () => act('dismiss').catch(() => null) }, 'Dismiss'),
+    h('span.small.dim', `This can’t be answered any more, but @${it.handle} still shows as waiting for you on it.`),
   );
 }
 

@@ -78,19 +78,77 @@ const stagedOlder = (f) =>
  */
 function autoInstalled(f) {
   const recs = remoteTurns(f);
+  return installedOnce(f).flatMap(({ x, id, installedAt }) => {
+    const t = agentTurns(f).find((t) => t.status === 'done' && recs.get(t.turnId)?.hostId === id && (t.at ?? 0) > installedAt);
+    if (!t) return [];
+    return [
+      { at: t.at, evidence: `${x.label}, staged with Postbox ${x.staged}, installed ${x.runVersion} by itself, then @${t.handle} finished a turn there.` },
+    ];
+  });
+}
+
+/**
+ * Each staged host where this run’s version was installed by itself exactly once, with when it was.
+ * @param {any} f @returns {{ x: any, id: string, installedAt: number }[]}
+ */
+function installedOnce(f) {
   return (f.hosts?.setup ?? [])
     .filter((x) => x.staged && typeof x.runVersion === 'string')
     .flatMap((x) => {
       const id = hostIdOf(f, x.label);
       const done = triesWith(triesOf(f, id).get(x.runVersion), new Set(['installed']));
       if (done.length !== 1) return [];
-      const installedAt = /** @type {number} */ (done[0].get('installed'));
-      const t = agentTurns(f).find((t) => t.status === 'done' && recs.get(t.turnId)?.hostId === id && (t.at ?? 0) > installedAt);
-      if (!t) return [];
-      return [
-        { at: t.at, evidence: `${x.label}, staged with Postbox ${x.staged}, installed ${x.runVersion} by itself, then @${t.handle} finished a turn there.` },
-      ];
+      return [{ x, id, installedAt: /** @type {number} */ (done[0].get('installed')) }];
     });
+}
+
+/** The statuses an unanswered card ends in: it expired, or its host ended it (the agent is told for both). */
+const ENDED = new Set(['expired', 'ended']);
+
+/**
+ * A permission card that expired unanswered, whose agent was told so (`agentTold`, server/permission-expiry.mjs) and
+ * whose ring no longer points at it (#721). The note is what main never wrote, so the trigger can’t fire on main.
+ */
+function expiredNoNeed(f) {
+  const sessions = f.state?.sessions ?? {};
+  const told = (it) => it.kind === 'permission' && ENDED.has(it.status) && it.agentTold === true;
+  return itemsUnderTest(f)
+    .filter((it) => told(it) && sessions[it.sessionId]?.needs?.itemId !== it.id)
+    .map((it) => ({
+      at: Number.isFinite(it.answeredAt) ? it.answeredAt : null,
+      evidence: `@${it.handle}’s card ${it.id} “${String(it.summary ?? '').slice(0, 60)}” expired, and @${it.handle} doesn’t need you for it.`,
+    }));
+}
+
+/**
+ * #464-b2b: the first turn on a staged host, which found the older Postbox there, waited while Postbox installed its
+ * own version, and then finished there. The turn’s own item appears only once it starts on the host, after the
+ * install, so it’s the message that asked for it that came before the install ended.
+ * @param {any} f
+ */
+function waitedForInstall(f) {
+  const recs = remoteTurns(f);
+  return installedOnce(f).flatMap(({ x, id, installedAt }) => {
+    const there = agentTurns(f).filter((t) => recs.get(t.turnId)?.hostId === id);
+    const first = there.sort((a, b) => (a.at ?? 0) - (b.at ?? 0))[0];
+    if (first?.status !== 'done') return [];
+    const asked = askedAt(f, first);
+    if (asked === null || asked >= installedAt) return [];
+    return [
+      { at: first.at, evidence: `${x.label}’s first turn, @${first.handle}’s, waited while Postbox installed ${x.runVersion} there by itself, then finished.` },
+    ];
+  });
+}
+
+/**
+ * When the person’s message just before a turn’s item, in its thread, was sent; null with none.
+ * @param {any} f @param {{ turnId: string, threadId: string }} t @returns {number | null}
+ */
+function askedAt(f, t) {
+  const items = f.state?.items?.[t.threadId] ?? [];
+  const at = items.findIndex((it) => it?.kind === 'agent' && it.turnId === t.turnId);
+  const asked = items.slice(0, Math.max(at, 0)).findLast((it) => it?.kind === 'user');
+  return Number.isFinite(asked?.at) ? asked.at : null;
 }
 
 /** @type {Record<string, { issue: number, says: string, recorded: (f: any) => boolean, run: (f: any) => { at: number|null, evidence: string }[] }>} */
@@ -207,6 +265,18 @@ export const HOST_TRIGGERS = {
     says: 'Postbox installed its own version by itself, once, on a host with an older one, and a turn then ran there',
     recorded: hostRun,
     run: autoInstalled,
+  },
+  'expired-card-no-need': {
+    issue: 721,
+    says: 'a permission card expired before you answered it, and its agent no longer said it needed you for it',
+    recorded: hostRun,
+    run: (f) => (hostRun(f) ? expiredNoNeed(f) : []),
+  },
+  'host-turn-waited-install': {
+    issue: 464,
+    says: 'the first turn on a host with an older Postbox waited while Postbox installed its own version there, then finished',
+    recorded: hostRun,
+    run: waitedForInstall,
   },
   // A hand-off between machines while a wake card waits (tests/uat/e2e/scenarios/hostwakes.md).
   ...HOSTWAKE_TRIGGERS,
