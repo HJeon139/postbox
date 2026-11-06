@@ -4,6 +4,7 @@
   "files": {
     "includes": [
       "app/js/**",
+      "app/kit/charts.js",
       "app/kit/check-controls.js",
       "app/kit/check-layout.js",
       "app/kit/check.js",

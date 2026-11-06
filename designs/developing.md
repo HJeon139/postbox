@@ -62,7 +62,7 @@ A comment like `// refuses here (see wave 2 prompt, step 4)` fails correctness: 
 
 | Rule | Checked by |
 |---|---|
-| Lint and formatting in `app/js`, `app/kit/kit.js`, `app/kit/check.js`, `app/kit/check-layout.js`, `app/kit/diagram.js`, `app/theme.js`, `server`, `shared`, `tools` and `tests` | Biome, with warnings as errors. `app/workbench.css`, `app/index.html` and `mockups/` aren’t in its `includes` |
+| Lint and formatting in `app/js`, `app/kit/kit.js`, `app/kit/charts.js`, `app/kit/check.js`, `app/kit/check-layout.js`, `app/kit/diagram.js`, `app/theme.js`, `server`, `shared`, `tools` and `tests` | Biome, with warnings as errors. `app/workbench.css`, `app/index.html` and `mockups/` aren’t in its `includes` |
 | No new nested ternary on a line a change adds (#685) | `tools/lint-ternary.mjs`, which runs Biome’s `style/noNestedTernary` on the changed files and keeps the hits on added lines. The rule isn’t on in `biome.json` yet, since `main` still has hits; those stay until they’re fixed |
 | The length of each file and function, with a ceiling for each file that was already past it | Biome, and `tools/lint-caps.mjs` for a ceiling raised in `biome.json` (architecture.md, “Module and function size”). Lowering a ceiling after a file shrinks is a review finding |
 | Types in `shared/` and `server/` | `tsc -p jsconfig.json`. `app/js/`, `tools/` and `tests/` aren’t type-checked at all, and `noImplicitAny` is off, so an untyped parameter is silently `any` |
