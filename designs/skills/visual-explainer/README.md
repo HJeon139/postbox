@@ -8,6 +8,7 @@ A draft of the skill [#207](https://github.com/HJeon139/postbox/issues/207) prop
 | [references/brief.md](references/brief.md) | The one-idea brief an agent writes before drawing |
 | [references/shapes.md](references/shapes.md) | Content shapes, the forms each allows and refuses, and what position means in each |
 | [references/critique.md](references/critique.md) | The floor (verify and refuse), the takeaway test and the report |
+| [references/examples.md](references/examples.md) | The maintainer’s verdicts on 20 agent visuals, by shape, with the pictures in `references/examples/` |
 | [briefs/](briefs/README.md) | Seven starter briefs, one per shape plus a hard one, and three paper briefs ([briefs/papers/](briefs/papers/README.md)) |
 
 ## Why it looks like this
@@ -51,8 +52,9 @@ The principles behind the rules: [Larkin & Simon 1987](https://mechanism.ucsd.ed
   - The agent loaded the skill without being told to in every run that had it, and in none that didn’t.
   - Starter briefs: the baselines landed on compound interest, partly on the bill, and missed the disguised archetypes. With the skill and VE8 and VE9, all three landed or mostly landed.
   - Paper briefs: on two of three papers the agent chose a different idea from the brief’s, and the reader recovered the agent’s idea. A paper has no single idea, so the paper scenarios should ask a specific question.
-  - These are development numbers, not results: one run per condition, and VE8, VE9 and the shape table’s poles row came from runs on these same briefs. Random recent papers, with the skill frozen, are the held-out test.
-- **Calibrated, on November 6, 2026:** the maintainer judged 20 of those first visuals blind against their briefs, then saw the takeaway test’s grades. They agreed exactly on 8 and within one step on 15 (quadratic weighted κ 0.27). The test was more lenient on 9: it passed visuals whose words stated the idea, and missed text in boxes, missing relationships and unreadable labels. The maintainer rated the with-skill visuals 1.7 on a 0 to 3 scale against 0.9 for the others; the test, 1.9 against 1.5. Their notes became VE10 to VE12 and the shape table’s “What good looks like”.
+  - These are development numbers, not results: one run per condition, and VE8, VE9 and the shape table’s poles row came from runs on these same briefs. Random recent papers and the everyday briefs, with the skill frozen, are the held-out test.
+- **Calibrated, on November 6, 2026:** the maintainer judged 20 of those first visuals blind against their briefs, then saw the takeaway test’s grades. They agreed exactly on 8 and within one step on 15 (quadratic weighted κ 0.27). The test was more lenient on 9: it passed visuals whose words stated the idea, and missed text in boxes, missing relationships and unreadable labels. The maintainer rated the with-skill visuals 1.7 on a 0 to 3 scale against 0.9 for the others; the test, 1.9 against 1.5. Their notes became VE10 to VE12 and the shape table’s “What good looks like”, and the 20 verdicts, with their pictures, became [references/examples.md](references/examples.md): a judge anchored on them agreed with the maintainer at weighted κ 0.44 to 0.62, against 0.34 with the rules alone ([#206’s retrospective](https://github.com/HJeon139/postbox/issues/206#issuecomment-6698888352)).
+- **The examples spend the development set.** `- seed: visual-skill` copies `references/` into the agent’s folder, so an agent with the skill now sees the maintainer’s verdict on a visual made from its own brief: compound interest, the bill, Spore and its disguise, and the three papers (Sontag, Madeddu, Jia). From here on, the `visualskill-*` scenarios and the `visualpaper-*-skill` ones measure regressions only, not whether the skill works, and a comparison with their baselines is no longer fair. The held-out test set is the everyday briefs, which no example comes from ([briefs/README.md](briefs/README.md)), and new papers.
 - **Not done:**
   - The takeaway test, now on a text-hidden screenshot with the floor’s new lines, hasn’t been rerun against the maintainer’s verdicts. Until it agrees about as well as people agree with each other (κ about 0.45 to 0.6), it informs a person’s judgment and doesn’t replace it.
   - No run has used VE10 to VE12 yet.
@@ -61,6 +63,6 @@ The principles behind the rules: [Larkin & Simon 1987](https://mechanism.ucsd.ed
 - **Next:**
   1. Rerun the takeaway test, text-hidden, on the same 20 visuals and compare it with the maintainer’s verdicts again.
   2. The countable floor lines (text in boxes, overlap, size, contrast, first-view fit) as checks in Postbox’s pre-display app check that block a version, measured from the page, with the offending elements returned to the author ([#95](https://github.com/HJeon139/postbox/issues/95)).
-  3. Rerun the development set with VE10 to VE12.
+  3. Run the everyday briefs with VE10 to VE12 and the examples, against their baselines: the development set can’t measure them now.
   4. The held-out test: random recent papers through the `visualpaper` scenario, each with a specific question, the skill unchanged, three runs per condition.
   5. A spec-driven diagram kit for the shapes, so agents fill in labels instead of drawing boxes ([#211](https://github.com/HJeon139/postbox/issues/211)).
