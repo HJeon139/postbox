@@ -12,9 +12,9 @@
 // commits that added them. A file whose added lines hold a zero byte is binary, as git decides it, and isn’t checked;
 // .gitattributes can’t hide a text file, as the diff is asked for as text. The checker’s own files are checked too.
 //
-// Each file a commit adds lines to is checked by its name as well, a binary file’s too, as a name is published as
-// surely as what the file holds (#785). A file added empty, or renamed with no line changed, adds no line, so its name
-// is left to the tree’s privacy test (tests/process/privacy-tree.test.mjs), which reads every tracked file’s name.
+// Each path a commit adds, copies or renames is checked by its name as well, as a name is published as surely as what
+// the file holds (#785): a binary file’s, and a file added empty or renamed with no line changed, which adds no line.
+// The names come from `git show --name-only -z`, which writes each one whole and unquoted, ended by a zero byte.
 //
 // Each commit’s message, subject, body and trailers, is checked with the same checker. Its author and committer names
 // and emails aren’t: each commit’s author is a real person’s GitHub identity, by design.
@@ -30,12 +30,14 @@ import { checkContentPrivacy, checkFilePrivacy, checkPathPrivacy, isBinary } fro
 /**
  * A private string, and where it was added: a commit’s file, or its message when the path is null.
  * @typedef {{ sha: string, path: string | null, violation: string }} Finding
- * @typedef {{ commits: (range: string) => string[], show: (sha: string) => string, message: (sha: string) => string }} GitReader
+ * @typedef {{ commits: (range: string) => string[], show: (sha: string) => string, message: (sha: string) => string,
+ *   names: (sha: string) => string[] }} GitReader
  */
 
 /**
- * Checks each commit of a range, oldest first: its message, and the lines it adds. A commit’s lines are checked as that
- * commit added them, so a later commit that removes them doesn’t clear them.
+ * Checks each commit of a range, oldest first: its message, the names of the paths it adds, copies or renames, and the
+ * lines it adds. A commit’s lines are checked as that commit added them, so a later commit that removes them doesn’t
+ * clear them.
  *
  * @param {string} range
  * @param {GitReader} git
@@ -53,8 +55,10 @@ export function scanCommits(range, git) {
       throw new Error(`commit ${sha.slice(0, 7)}: ${/** @type {Error} */ (error).message}`);
     }
     result.binary += parsed.binary;
-    for (const [path, added] of parsed.files) {
+    for (const path of new Set([...git.names(sha), ...parsed.files.keys()])) {
       for (const violation of checkPathPrivacy(path)) result.findings.push({ sha, path, violation });
+    }
+    for (const [path, added] of parsed.files) {
       if (isBinary(Buffer.from(added.join('\n')))) {
         result.binary++;
         continue;
@@ -113,6 +117,10 @@ function commitMessage(raw) {
 // automatic merge.
 const SHOW_OPTIONS = ['--format=', ...DIFF_OPTIONS, '--text', '--remerge-diff'];
 
+// For `git show`, the paths a commit adds, copies or renames, by their new names, with the same renames, root and
+// merges as SHOW_OPTIONS: one name per zero byte, with no quoting.
+const NAME_OPTIONS = ['--format=', '--name-only', '-z', '--diff-filter=ACR', '-M', '--no-relative', '--remerge-diff'];
+
 // The oldest git whose `git show` has --remerge-diff (git 2.36’s release notes).
 const MIN_GIT = [2, 36, 0];
 
@@ -160,6 +168,10 @@ function realGit() {
       return out.split('\n').filter(Boolean);
     },
     show: (sha) => execFileSync('git', ['show', ...SHOW_OPTIONS, sha], atTop),
+    names: (sha) =>
+      execFileSync('git', ['show', ...NAME_OPTIONS, sha], atTop)
+        .split('\0')
+        .filter(Boolean),
     message: (sha) => commitMessage(execFileSync('git', ['cat-file', 'commit', sha], atTop)),
   };
 }
