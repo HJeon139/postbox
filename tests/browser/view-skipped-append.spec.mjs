@@ -98,3 +98,41 @@ test('#712a: a reply appended while reading higher up stays skipped, and the vie
   expect(await page.evaluate(() => scrollY), 'what you read stays where it was').toBe(before);
   expect(await node.evaluate((n) => !n.firstElementChild?.checkVisibility({ contentVisibilityAuto: true })), 'the reply below is skipped').toBe(true);
 });
+
+test('#712a: a burst of replies appended while following draws one at a time, not every one so far', async ({ page }) => {
+  const { rt, store } = app;
+  const t = bigRoom(app, 'A burst lands while following', 60);
+  const [se] = rt.sessionsIn(t.id);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await expect(page.locator(`.transcript[data-thread="${t.id}"] > .item`)).toHaveCount(store.items(t.id).length);
+  await still(page);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Performance.enable');
+  const metric = async (name) => (await cdp.send('Performance.getMetrics')).metrics.find((m) => m.name === name)?.value ?? 0;
+  // How many items are drawn by force at once (style content-visibility: visible), at most, through the burst.
+  await page.evaluate((threadId) => {
+    const tr = document.querySelector(`.transcript[data-thread="${threadId}"]`);
+    const state = { most: 0 };
+    /** @type {any} */ (window).__forced = state;
+    new MutationObserver(() => {
+      const n = [...tr.children].filter((c) => /** @type {HTMLElement} */ (c).style.contentVisibility === 'visible').length;
+      state.most = Math.max(state.most, n);
+    }).observe(tr, { subtree: true, childList: true, attributes: true, attributeFilter: ['style'] });
+  }, t.id);
+  const BURST = 300;
+  const [count0, time0] = [await metric('LayoutCount'), await metric('LayoutDuration')];
+  for (let i = 0; i < BURST; i++)
+    rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: `Burst reply ${i}.`, status: 'done' });
+  await synced(page, app);
+  await still(page);
+  const most = await page.evaluate(() => /** @type {any} */ (window).__forced.most);
+  const layouts = (await metric('LayoutCount')) - count0;
+  const seconds = (await metric('LayoutDuration')) - time0;
+  // One drawn at a time: 300 appends take about one layout each (305 measured), where every reply staying drawn took
+  // two (602) and five times the layout time (0983c096).
+  const seen = `${most} drawn at once, ${layouts} layouts, ${seconds.toFixed(3)} s of layout`;
+  expect(most, `replies drawn by force at once: ${seen}`).toBeLessThanOrEqual(1);
+  expect(layouts, `Chromium’s LayoutCount for the burst: ${seen}`).toBeLessThan(BURST * 1.5);
+});
