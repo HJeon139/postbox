@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkFilesPrivacy } from '../tools/privacy-check.mjs';
+import { checkFilesPrivacy, treeFailures } from '../tools/privacy-check.mjs';
 
 /** A made-up address at a domain that isn’t reserved for examples. */
 const ADDRESS = ['jdoe', 'corp.com'].join('@');
@@ -38,4 +38,17 @@ test('the tree scan skips the name of a file that’s gone from the working tree
     checkFilesPrivacy([`notes/${ADDRESS}.txt`], () => null),
     { checked: 0, findings: [] },
   );
+});
+
+test('the tree test names a file whose name is private by its place in the list, and no part of the name (#784)', () => {
+  const home = ['', 'Users', 'alice', 'x'].join('/');
+  const files = new Map([
+    ['docs/clean.md', Buffer.from('nothing private\n')],
+    [`notes/${ADDRESS}.txt`, Buffer.from(`see ${home}\n`)],
+    ['docs/notes.md', Buffer.from(`see ${home}\n`)],
+  ]);
+  const paths = [...files.keys()];
+  const printed = treeFailures(paths, checkFilesPrivacy(paths, (path) => files.get(path) ?? null).findings);
+  assert.deepEqual(printed, ['  - file 2 of git ls-files: email in the file name; home path at line 1', '  - docs/notes.md: home path at line 1']);
+  for (const part of ['jdoe', 'corp', 'alice', 'Users']) assert.ok(!printed.join('\n').includes(part), `the lines hold “${part}”`);
 });
