@@ -6,7 +6,8 @@
 import { NOT_YOUR_PROMPT } from '../../shared/mcp-tools.mjs';
 import { message as protocolMessage, REMOTE_LIMITS } from '../../shared/remote-protocol.mjs';
 import { describePermission } from '../adapters/claude-stream.mjs';
-import { offerNeed, releaseNeed } from '../card-needs.mjs';
+import { offerNeed } from '../card-needs.mjs';
+import { closeCard, tellExpired } from '../permission-expiry.mjs';
 import { asksByPrompt } from '../permission-prompt.mjs';
 import { linkOf } from './turns-need.mjs';
 import { ENDED_TEXT, key, ON_HOST, send, sessionOfTurn, updateRemote } from './turns-shared.mjs';
@@ -150,8 +151,11 @@ export function onError(rts, m) {
   // Allowed, says it expired, and why.
   if (m.re === 'answer' && m.code === 'no-prompt' && typeof m.turn === 'string' && typeof m.id === 'string') {
     const card = cardOf(rts, m.turn, m.id);
-    if (card && String(card.it.status).startsWith('allowed'))
+    if (card && String(card.it.status).startsWith('allowed')) {
       rts.rt.patchItem(card.threadId, card.it.id, { status: 'expired', lateAnswer: true, endedAt: rts.now() });
+      // The call never ran, so the agent hears it expired, as from every other path (#721).
+      tellExpired(rts.rt, card.threadId, card.it.id);
+    }
     return;
   }
   // The daemon couldn’t write down that a prompt of this turn ended: it can’t be answered any more. The error names
@@ -184,9 +188,8 @@ export function endCard(rts, card, status, message, at, extra = {}) {
   const rt = rts.rt;
   if (rt.permissionWaits.has(card.it.id)) rt.settlePermission(card.it.id, status, message, {}, { endedAt: at, ...extra });
   else {
-    rt.patchItem(card.threadId, card.it.id, { status, answeredAt: rts.now(), endedAt: at, ...extra });
-    const se = rt.s.sessions[card.it.sessionId];
-    releaseNeed(rt, se, card.it.id, 'tool');
+    // A card kept open across a restart has no wait to settle: it closes here, and an expiry tells the agent (#721).
+    closeCard(rt, card.threadId, card.it.id, card.it.sessionId, { status, answeredAt: rts.now(), endedAt: at, ...extra });
   }
 }
 

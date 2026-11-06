@@ -219,3 +219,25 @@ test('needs-mismatch fires for a ring left on a choice already answered', () => 
     ['needs-mismatch:se_critic:it_choice'],
   );
 });
+
+/** @critic’s permission card, open or expired, with its session needing you for it (#721). */
+function permissionRoom(status) {
+  const r = room();
+  r.agent('critic');
+  r.add({ id: 'it_perm', at: s(1), kind: 'permission', sessionId: 'se_critic', handle: 'critic', tool: 'Bash', summary: 'run git push', status });
+  r.f.state.sessions.se_critic.needs = { kind: 'permission', itemId: 'it_perm', text: '@critic asks to run git push' };
+  return r.f;
+}
+
+test('#721 needs-mismatch fires for a ring left on a permission card that expired', () => {
+  const out = found(permissionRoom('expired'), 'needs-mismatch');
+  assert.deepEqual(
+    out.map((x) => x.key),
+    ['needs-mismatch:se_critic:it_perm'],
+  );
+  assert.match(out[0].evidence, /@critic needs you for permission it_perm, which is expired\./);
+});
+
+test('#721 needs-mismatch stays silent while the permission card it needs you for is open', () => {
+  assert.deepEqual(found(permissionRoom('open'), 'needs-mismatch'), []);
+});

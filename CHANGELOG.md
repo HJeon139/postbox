@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.24.1 (2026-11-06)
+
+### Fixes
+
+- **permissions:** a store outage stops a host turn as the store, not as the person (#721)
+- **permissions:** only the person's Stop holds back an expiry note, here and on a host (#721)
+- **permissions:** an expired card stops needing you, and its agent is told to ask again (#721)
+
 ## 1.24.0 (2026-11-05)
 
 ### Features

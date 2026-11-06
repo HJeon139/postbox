@@ -86,7 +86,7 @@ export function stopped(rts, turn, { by, why } = {}) {
       live.current &&
       live.exit === undefined &&
       mayBeOnHost(live) &&
-      askStop(rts, se.id, live.hostId, live.current, { send: false, unconfirmed: unconfirmed(live) }),
+      askStop(rts, se.id, live.hostId, live.current, { send: false, unconfirmed: unconfirmed(live), byPerson: by === 'you' }),
   );
   // Its process ends through the adapter (its child hears `ended`), but the turn is over here: what comes for it now
   // is refused, as a stopped turn’s calls are on the laptop (#126).
