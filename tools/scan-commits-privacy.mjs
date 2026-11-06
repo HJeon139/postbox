@@ -25,7 +25,7 @@
 import { execFileSync } from 'node:child_process';
 import { DIFF_OPTIONS, parseAddedLines } from './diff-added-lines.mjs';
 import { isEntry } from './lint-lib.mjs';
-import { checkContentPrivacy, checkFilePrivacy, checkPathPrivacy, inFileName, isBinary } from './privacy-check.mjs';
+import { checkContentPrivacy, checkFilePrivacy, checkPathPrivacy, isBinary } from './privacy-check.mjs';
 
 /**
  * A private string, and where it was added: a commit’s file, or its message when the path is null.
@@ -80,14 +80,14 @@ function newFileLine(ranges) {
 }
 
 /**
- * One finding as the tool reports it: “<short sha> <path>: <violation>”, or “<short sha> message: …”. A finding in a
- * file’s name prints “a file’s name” in place of the path, as the name may be what’s private (#784); `git show --stat`
- * on the commit lists its files.
+ * One finding as the tool reports it: “<short sha> <path>: <violation>”, or “<short sha> message: …”. Every finding in a
+ * file whose name is private, its text’s as well as its name’s, prints “a file’s name” in place of the path, as the name
+ * is what’s private (#784); `git show --stat` on the commit lists its files.
  * @param {Finding} finding
  */
 export function formatFinding({ sha, path, violation }) {
   let where = path ?? 'message';
-  if (inFileName(violation)) where = 'a file’s name';
+  if (path !== null && checkPathPrivacy(path).length > 0) where = 'a file’s name';
   return `${sha.slice(0, 7)} ${where}: ${violation}`;
 }
 
