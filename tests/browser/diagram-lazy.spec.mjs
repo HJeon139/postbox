@@ -52,7 +52,11 @@ test('#695: diagrams out of view don’t load, and one scrolled to draws', async
   const before = await sampleDiagrams((e) => page.evaluate(e));
   expect([before.requested, before.frames.length, before.full]).toEqual([1, 4, false]);
   const first = page.locator(`[data-key="${ids[0]}"] figure.diagram iframe`);
-  await first.scrollIntoViewIfNeeded();
+  // Through the page’s own jump: Playwright’s scrollIntoViewIfNeeded scrolls to a skipped item’s estimate (#712a).
+  await page.evaluate(async (key) => {
+    const figure = document.querySelector(`.transcript > [data-key="${key}"] figure.diagram`);
+    await (await import('/app/js/view-jump.mjs')).jumpTo(figure, 'center');
+  }, ids[0]);
   await expect(first, 'the first diagram draws once scrolled to').toHaveAttribute('data-sized', '1');
   expect(loads, 'scrolling to it loaded its page, and no other').toBe(2);
   const after = await sampleDiagrams((e) => page.evaluate(e));
