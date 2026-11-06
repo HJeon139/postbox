@@ -42,6 +42,7 @@ export function createDaemon(opts) {
     ids: 0,
     acked: new Map(),
     dead: new Set(),
+    silentSince: new Map(),
     killTimers: new Map(),
     shells: new Map(),
     stoppedFirst: new Set(),
