@@ -38,7 +38,7 @@ Check each line on a screenshot at the size the visual is read (1000 × 680 by d
 
 The test the whole skill serves: does a reader who sees only the picture get the idea?
 
-1. Take two screenshots of the visual as the person will first see it: one as it is, and one with every run of text longer than three words hidden (the title, captions, paragraphs and summary boxes), leaving labels. The second is the one that counts: a headline that states the idea lets a reader repeat it while the picture carries nothing.
+1. Take two screenshots of the visual as the person will first see it: one as it is, and one with every run of text longer than three words hidden (the title, captions, paragraphs and summary boxes), leaving labels. Hide them in the page before the screenshot, for example by setting `visibility: hidden` on each text element of more than three words, so the layout doesn’t move. The second is the one that counts: a headline that states the idea lets a reader repeat it while the picture carries nothing.
 2. Give each to a different reader who hasn’t seen the brief or the conversation: a subagent in a fresh context when your harness has one, with only that screenshot and this prompt:
 
    > Here is a picture someone made to explain something. In one or two sentences, what does it tell you? Then: what did you look at first, and what, if anything, was hard to read?
