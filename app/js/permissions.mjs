@@ -13,8 +13,9 @@ import { decide } from '/shared/permission-match.mjs';
 import { api, client, sessionsOf } from './client.mjs';
 import { fill, h, icon } from './dom.mjs';
 import { checkField } from './hosts-parts.mjs';
+import { mcpSection } from './permission-mcp.mjs';
 import { MODES } from './run-choice.mjs';
-import { capsOf, MCP_SCOPE, MCP_STATUS, modeHelp, openFolderPicker } from './sheets.mjs';
+import { capsOf, modeHelp, openFolderPicker } from './sheets.mjs';
 import { keepFocus, openDialog, say, toast } from './ui.mjs';
 
 export { MODES, openRunChoice } from './run-choice.mjs';
@@ -157,7 +158,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
       view.real ? modeSection(p) : null,
       view.readsRules ? rulesSection() : null,
       view.real ? folderSection() : null,
-      view.real && view.readsRules ? mcpSection(p) : null,
+      view.real && view.readsRules ? mcpSection(p, mcp, change) : null,
       view.real && view.readsRules ? effectiveSection(p) : null,
     ];
   }
@@ -474,55 +475,6 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
         se ? 'Folders you add here are for this conversation, from the agent’s next turn.' : 'Open the panel from a conversation to add a folder for it.',
       ),
     );
-  }
-
-  function mcpSection(p) {
-    const off = new Set(S().personas[p.id]?.mcpOff ?? []);
-    const body2 = !p.usesHostSetup
-      ? h('span.help', 'It’s isolated, so only Postbox’s own server loads.')
-      : mcp === null
-        ? h('span.help', 'Looking for your MCP servers…')
-        : !Array.isArray(mcp)
-          ? h('p.err', icon('warn'), `Couldn’t list your MCP servers: ${mcp.error}`)
-          : !mcp.length
-            ? h('span.help', 'None found in your Claude Code setup. Postbox’s own server always loads.')
-            : h(
-                'ul.list-rows',
-                mcp.map((m, i) =>
-                  h(
-                    'li',
-                    h(
-                      'span.check',
-                      {
-                        id: `perm-mcp-${i}`,
-                        role: 'checkbox',
-                        tabindex: '0',
-                        'aria-checked': String(!off.has(m.name)),
-                        'data-server': m.name,
-                        onclick: () => {
-                          const next = new Set(off);
-                          if (next.has(m.name)) next.delete(m.name);
-                          else next.add(m.name);
-                          void change(
-                            () => api(`/api/personas/${p.id}`, { mcpOff: [...next] }, 'PATCH'),
-                            `${m.name} is ${next.has(m.name) ? 'off' : 'on'} for @${p.handle} from its next turn.`,
-                          );
-                        },
-                        onkeydown: (e) => {
-                          if (e.key === ' ' || e.key === 'Enter') {
-                            e.preventDefault();
-                            e.currentTarget.click();
-                          }
-                        },
-                      },
-                      h('span.box'),
-                      h('span.mono', m.name),
-                    ),
-                    h('span.small.dim.grow', [MCP_STATUS[m.status] ?? m.status, MCP_SCOPE[m.scope]].filter(Boolean).join(' · ')),
-                  ),
-                ),
-              );
-    return h('section.perm-sec', { id: 'perm-mcp' }, h('h3.label', 'MCP servers'), body2);
   }
 
   function effectiveSection(p) {
