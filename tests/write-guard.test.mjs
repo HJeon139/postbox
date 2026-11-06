@@ -117,6 +117,20 @@ test('#296 a git push is a write outside: it asks in every mode but Run everythi
     assert.ok(isWriteCall('Bash', { command }), command);
   for (const command of ['git status', 'git commit -m "push the fix"', 'git log origin/main..HEAD', 'echo git push'])
     assert.ok(!isWriteCall('Bash', { command }), command);
+  // #830: an agent ran git -C <folder> push, which Bash(git push:*) never matched, so auto mode decided it.
+  for (const command of [
+    'git -C /work push -u origin feat/try',
+    'git -C . push',
+    'git --git-dir=.git --work-tree=. push origin main',
+    'git --no-pager push',
+    'git -c alias.p=push p -f',
+    'git -c core.sshCommand=x push',
+    'git --config-env=alias.p=P p',
+    'npm test && git -C sub push',
+  ])
+    assert.ok(isWriteCall('Bash', { command }), command);
+  for (const command of ['git -C /work status', 'git -C . log --oneline', 'git --no-pager diff']) assert.ok(!isWriteCall('Bash', { command }), command);
+  assert.deepEqual(whereOf('Bash', { command: 'git -C /work push -u origin feat/try' }), { server: 'git', target: { what: 'remote', name: 'origin' } });
   const ask = WRITE_TOOLS.map((rule) => ({ rule, source: 'writes', unless: [] }));
   const where = { mode: 'auto', cwd: '/w', home: '/h' };
   assert.equal(decide({ call: 'Bash(git push -u origin feat/now)', rules: { deny: [], ask, allow: [] }, ...where }).decision, 'ask');

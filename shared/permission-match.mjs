@@ -69,9 +69,10 @@ function bashMatches(spec, cmd) {
     return cmd === prefix || cmd.startsWith(`${prefix} `);
   }
   if (!spec.includes('*')) return cmd === spec;
-  // `ls *` also matches `ls` on its own; `ls*` matches lsof too.
+  // `ls *` also matches `ls` on its own; `ls*` matches lsof too. Only when that trailing * is the rule’s one wildcard,
+  // as Claude Code matches it (permissions, “Wildcard patterns”): `* --help *` doesn’t match a bare `npm --help`.
   let src = escapeRe(spec).replace(/\*/g, '.*');
-  if (src.endsWith(' .*')) src = `${src.slice(0, -3)}(?: .*)?`;
+  if (src.endsWith(' .*') && spec.indexOf('*') === spec.length - 1) src = `${src.slice(0, -3)}(?: .*)?`;
   // lint-allow regex: src is the rule through escapeRe(), with * as its one wildcard.
   return new RegExp(`^${src}$`, 's').test(cmd);
 }

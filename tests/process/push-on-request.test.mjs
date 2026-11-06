@@ -49,6 +49,8 @@ test('only a lone push to origin is one Postbox makes: no chain, other remote, r
     'git push origin ../x',
     'git push origin -x',
     'GIT_DIR=x git push',
+    'git -C . push',
+    'git -c alias.p=push p',
   ])
     assert.equal(pushOf(command), null, command);
 });

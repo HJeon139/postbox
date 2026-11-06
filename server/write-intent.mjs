@@ -39,7 +39,19 @@ const FILLER = new Set(
 );
 
 // Words that turn a request around anywhere in the sentence that holds the quote: “Open the PR, but not yet”.
-const NOT = /\b(?:\w+n't|dont|didnt|do not|never|no|not|without|stop|cancel|hold off|wait)\b/;
+const NOT = /\b(?:\w+n't|dont|didnt|do not|never|not|stop|cancel|hold off|wait)\b/;
+// “No” and “without” turn around only the words after them (#831): “no push today” is no push, but “right away, no
+// draft” and “without a review” still ask for the call.
+const NO = /\b(?:no|without)\s+((?:[\p{L}\p{N}'-]+\s+){0,2}[\p{L}\p{N}'-]+)/gu;
+
+/**
+ * Whether a sentence asks for the opposite: a “not” anywhere in it, or a “no” or “without” before a word of the call
+ * or of the quote. @param {string} sentence @param {Set<string>} tied  the call’s and the quote’s words
+ */
+function turnedAround(sentence, tied) {
+  if (NOT.test(sentence)) return true;
+  return [...sentence.matchAll(NO)].some((m) => wordsOf(m[1]).some((w) => !FILLER.has(w) && tied.has(w)));
+}
 
 /** The sentence a place in a text is in. @param {string} s @param {number} at @param {number} length */
 function sentenceAt(s, at, length) {
@@ -129,7 +141,8 @@ export function judgeOf(rt) {
 
 /**
  * The judge’s answer: allow, with words the person typed that ask for this call. The quote counts only when it’s two
- * or more whole words of what they typed, with no “don’t”, “never” or “not” in its sentence, and shares a word
+ * or more whole words of what they typed, with no “don’t”, “never” or “not” in its sentence, nor a “no” or “without”
+ * before a word of the call or the quote (“no push”, but not “no draft”), and shares a word
  * that isn’t filler with the call’s own words (request-floor.mjs, actionWords: not a title or a body the agent wrote).
  * @param {string} text  what the model said @param {string[]} said  what the person typed @param {string} call
  * @returns {string|null} the quote, or null for the card
@@ -149,12 +162,15 @@ export function allowedQuote(text, said, call) {
   if (a?.decision !== 'allow' || words.length < 2) return null;
   // lint-allow regex: the quote is escaped.
   const whole = new RegExp(`(?:^|[^\\p{L}\\p{N}])${escapeRegExp(norm(quote))}(?:$|[^\\p{L}\\p{N}])`, 'gu');
-  // Each place they typed it, with the sentence it’s in: “don’t open the PR yet” and “open the PR, but not yet” ask for
-  // the opposite, and “Not the README. Please open the PR” doesn’t.
-  const meant = (s) => [...norm(s).matchAll(whole)].some((m) => !NOT.test(sentenceAt(norm(s), m.index, m[0].length)));
-  if (!said.some(meant)) return null;
   // A call’s words, whole and split at _ . / and -, so “create” is in mcp__tally__create_ticket.
   const inCall = new Set([...wordsOf(call), ...wordsOf(call.replace(/[_./-]+/g, ' '))]);
+  const tied = new Set([...inCall, ...words]);
+  // Each place they typed it, with the sentence it’s in: “don’t open the PR yet” and “open the PR, but not yet” ask for
+  // the opposite, and “Not the README. Please open the PR” doesn’t.
+  // The match holds a boundary character on each side; the sentence is measured from the quote itself.
+  const at = (m) => m.index + m[0].indexOf(norm(quote));
+  const meant = (s) => [...norm(s).matchAll(whole)].some((m) => !turnedAround(sentenceAt(norm(s), at(m), norm(quote).length), tied));
+  if (!said.some(meant)) return null;
   return words.some((w) => !FILLER.has(w) && inCall.has(w)) ? quote : null;
 }
 
