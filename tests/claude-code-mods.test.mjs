@@ -27,7 +27,7 @@ test('a Claude Code turn’s --settings turns off hooks and mods in every mode b
       const args = claudeArgs({ ...cliBase, persona: { model: 'mock', permissionMode, usesHostSetup }, rules: conversationRules });
       assert.equal(cliSettings(args).disableAllHooks, true, label);
       // The fix sits beside what reaches a card, and takes none of it away.
-      assert.ok(args.includes('--permission-prompt-tool'), label);
+      assert.equal(after(args, '--permission-prompt-tool'), 'mcp__postbox__permission_prompt', label);
       assert.equal(after(args, '--setting-sources'), usesHostSetup === false ? 'project,local' : 'user,project,local', label);
     }
   }
