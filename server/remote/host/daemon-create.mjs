@@ -166,6 +166,8 @@ function daemonApi(d) {
     scan: () => scan(d),
     /** How far Postbox has applied each turn’s out.jsonl, in this daemon’s life; `.ack` keeps it on disk. */
     acked: d.acked,
+    /** Turns whose runner is silent while its process runs, and since when (daemon-running.mjs), in this daemon’s life. */
+    silentSince: d.silentSince,
     cleanup: d.cleanup,
     /** A Postbox channel over a pair of streams, such as an ssh child’s, or PassThroughs in a test. @param {Parameters<typeof connectStreams>[1]} io */
     connect: (io) => connectStreams(d, io),

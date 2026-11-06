@@ -201,11 +201,12 @@ test('#738 row 12: after a daemon restart, a stall counts from the new daemon’
   }
 });
 
-test('#738 row 13: a socket that doesn’t answer for this turn is a miss, the process decides, and it’s logged once', async () => {
+test('#738 row 13: a runner that doesn’t answer as its runner is a miss, the process decides, and it’s logged once', async () => {
   const s = silentSetup();
   try {
     const c = await startReading(s);
-    // askRunner is false for an answer naming another turn or a wrong token (runner-client.mjs), as for none.
+    // The daemon can’t tell no answer from one for another turn or a refused token: runner-client.mjs’s askRunner is
+    // false for each (tests/integration/remote-runner.test.mjs), as the fake one is here.
     s.alive.delete('t1');
     await s.looks(6, c);
     await s.daemon.scan();
