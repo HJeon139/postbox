@@ -37,8 +37,20 @@ test('#464 a note of installs that couldn’t be read or written reads as failed
   assert.equal(updateShown(status('failed', { version: '0.18.0', at, outcome: 'started', error })), 'failed');
 });
 
-test('#464 busy, present and reinstalled say nothing on the card', () => {
-  for (const outcome of ['busy', 'present', 'reinstalled']) assert.equal(updateShown(status('failed', { version: '0.18.0', at, outcome })), null, outcome);
+test('#464 busy and present say nothing on the card', () => {
+  for (const outcome of ['busy', 'present']) assert.equal(updateShown(status('failed', { version: '0.18.0', at, outcome })), null, outcome);
+});
+
+test('#464-b3 an install that made a new token reads as reinstalled while the host is connected, and as nothing after', () => {
+  const soon = at + 60_000;
+  assert.equal(updateShown(status('connected', { version: '0.18.0', at, outcome: 'reinstalled' }), soon), 'reinstalled');
+  assert.equal(updateShown(status('not-installed', { version: '0.18.0', at, outcome: 'reinstalled' }), soon), null, 'its folder gone again');
+});
+
+test('#464-b3 “reinstalled” says so for a day, then nothing: by then it’s old news, not a warning', () => {
+  const u = { version: '0.18.0', at, outcome: 'reinstalled' };
+  assert.equal(updateShown(status('connected', u), at + 23 * 3_600_000), 'reinstalled');
+  assert.equal(updateShown(status('connected', u), at + 25 * 3_600_000), null);
 });
 
 test('#464 a host with no automatic install, or no status, says nothing', () => {
