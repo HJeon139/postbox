@@ -16,7 +16,7 @@ export const VISUAL_SCHEMA = {
     item: { type: 'string', description: 'The item label of the visual, such as I7.' },
     takeaway: { type: 'string', description: 'In one or two sentences, what the picture alone tells you.' },
     drawn: { type: 'boolean', description: 'Its parts are drawn as what they are, not boxes holding their names.' },
-    relationship: { type: 'boolean', description: 'You can see how the things relate, and what changes when one changes.' },
+    relationship: { type: 'boolean', description: 'You can see how the things relate, and, where the idea is a dependence, what changes when one changes.' },
     one_idea: { type: 'boolean', description: 'One idea, without noise, on the first screen.' },
     readable: { type: 'boolean', description: 'All its text is readable: contrast, size, nothing overlapping or cut off, no raw TeX.' },
     verdict: { enum: VERDICTS },
@@ -36,7 +36,7 @@ ${JUDGING}`;
 /** The judging instructions, shared by the tester’s prompt and the calibration against a person’s verdicts. */
 export const JUDGING = `- takeaway: in one or two sentences, what the picture alone tells you. Not the reply’s words, and not a headline on the visual that states a conclusion: if the drawing doesn’t carry it, it doesn’t count.
 - drawn: are its parts drawn as what they are or do (icons, small drawings, a cutaway, marks whose size or position carries the values)? A diagram of labeled boxes and arrows is no, however tidy, a Mermaid flowchart included.
-- relationship: can you see how the things it’s about relate, and what changes when one of them changes? A chart of one fixed answer, where you needed to see how the variables relate, is no.
+- relationship: can you see how the things it’s about relate? Where the idea is how one thing depends on another, can you also see what changes when one of them changes? A chart of one fixed answer, where you needed to see how the variables relate, is no. A tree, a map, a cycle or a cutaway with no variable to change is yes if its parts’ relations are clear.
 - one_idea: does it show one idea, without marks that add nothing, on the first screen?
 - readable: is all its text readable? Low contrast, text that overlaps or is cut off, tiny labels or raw TeX is no.
 - verdict, as yourself, the person who asked: landed (what you needed to understand comes through from the picture), mostly (the core does; one part doesn’t), partly (the subject or some of the relations, not the idea), or missed (you’d only describe its parts). Text in boxes, a missing relationship and unreadable text each count heavily against it; unreadable text alone can make it a miss.`;
