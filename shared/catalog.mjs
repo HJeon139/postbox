@@ -58,6 +58,20 @@ const LANG = /^[A-Za-z0-9_+#.-]{1,32}$/;
 
 // An option may say more under its label (#838): agents gave options a description, and the whole block was refused.
 const option = () => obj({ id: id(), label: str({ min: 1, max: 120 }), description: str({ min: 1, max: LIMITS.optionDescription }) }, ['id', 'label']);
+/**
+ * A choice’s or a select’s options. Options that are all strings, an easy guess, get one error that shows an option’s
+ * shape, from the first, rather than one for each (#455). @param {number} max @returns {import('./schema.mjs').Rule}
+ */
+const options = (max) => (v, path, errs) => {
+  if (!Array.isArray(v) || !v.length || !v.every((o) => typeof o === 'string')) return list(option(), { min: 1, max, unique: 'id' })(v, path, errs);
+  const label = v[0].slice(0, 40);
+  const slug = label
+    .toLowerCase()
+    .replace(/[^a-z0-9_.:-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  // lint-allow quotes: the JSON an agent writes, whose quotes are JSON’s.
+  errs.push(`${path} must be objects like { "id": ${JSON.stringify(slug || 'one')}, "label": ${JSON.stringify(label)} }, not strings.`);
+};
 // A result reported on an answered block (#94), or an approved review (#106), shown under the answer. Markdown.
 const outcome = () => str({ min: 1, max: LIMITS.outcome });
 
@@ -72,7 +86,7 @@ const SCHEMAS = {
   choice: {
     fields: {
       prompt: str({ max: LIMITS.prompt }),
-      options: list(option(), { min: 1, max: LIMITS.choiceOptions, unique: 'id' }),
+      options: options(LIMITS.choiceOptions),
       multiple: bool(),
       max: int({ min: 1, max: LIMITS.choiceOptions }),
       other: obj({ label: str({ min: 1, max: 80 }), placeholder: str({ max: 120 }) }, ['label']),
@@ -88,7 +102,7 @@ const SCHEMAS = {
         obj(
           {
             id: id(),
-            label: str({ min: 1, max: 120 }),
+            label: str({ min: 1, max: LIMITS.fieldLabel }),
             kind: oneOf('text', 'longtext', 'number', 'select', 'toggle', 'date'),
             required: bool(),
             placeholder: str({ max: 120 }),
@@ -97,7 +111,7 @@ const SCHEMAS = {
             max: num(),
             step: num(),
             maxLength: int({ min: 1, max: 20000 }),
-            options: list(option(), { min: 1, max: LIMITS.selectOptions, unique: 'id' }),
+            options: options(LIMITS.selectOptions),
             default: scalar(),
           },
           ['id', 'label', 'kind'],
