@@ -210,6 +210,7 @@ function comesFirst(need, at, best) {
  */
 export function dismissFailed(rt, threadId, itemId) {
   const it = rt.store.item(threadId, itemId);
+  if (it?.kind === 'agent' && it.status === 'retried') throw httpError(409, 'It was already retried; reload to see it.');
   if (it?.kind !== 'agent' || it.status !== 'failed') throw httpError(409, 'Only a failed reply can be dismissed.');
   if (it.dismissed) return { ok: true };
   rt.patchItem(threadId, itemId, { dismissed: true });

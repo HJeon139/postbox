@@ -29,7 +29,7 @@ export function sideLine(it, ctx) {
       at ? [' · ', h('b', `@${at.handle}`), ` ${doing(at)}`] : null,
       ` · ${plural(it.count ?? 0, 'message')} · Open`,
     ),
-    failed ? failedActions(it.sideThreadId, failed, { name: `@${at.handle}’s turn in the side thread` }) : null,
+    failed ? failedActions(it.sideThreadId, failed, { name: `@${at.handle}’s turn in the side thread`, focusAfter: 'a.pill' }) : null,
   );
 }
 
