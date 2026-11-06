@@ -13,7 +13,8 @@
 // rt.store; st.items(t)` passed), or through call, apply or bind. Optional chaining is read as a plain member. The guard
 // reads source text, not the program, so a form it doesn't match passes, and review reads for it: an optional call
 // (`rt.store?.items?.(t)`), an optional bracket (`rt.store?.["items"](t)`) and `Reflect.apply(rt.store.items, …)` are three. It reads every .mjs, .js and .cjs file under server/ except the store's own and server/remote/host/,
-// the host daemon, which has no store. Sessions, schedules and the rest have no pending read (§ Not in this change).
+// the host daemon, which has no store. Sessions have a pending read by id, for their writes and a delivery's wait
+// (#796's class); schedules and the rest have none (§ Not in this change).
 // Threads follow the same rule for their writes (#796): tests/thread-write-guard.test.mjs places them.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -85,6 +86,7 @@ const PENDING = {
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
   'blocks.mjs': ['shownBy'], // update_block of a block the turn just showed
+  'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
   'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
   // The queue a drain takes from and the queued messages a deleted session's release posts: a wake or a message
@@ -103,6 +105,10 @@ const PENDING = {
     'bringForward',
     'sendMessage',
     'deliver',
+    'deliver',
+    'deliver',
+    'text',
+    'compaction',
     'endWork',
     'endTurn',
     'endTurn',
@@ -119,9 +125,18 @@ const PENDING = {
     'runShellCommand',
     'pollMirror',
     'purgeSession',
-  ], // the turn’s own items and apps, a move after a pending read, sweeps that write back, and the thread a message, a delivery or a topic reply count goes to, maybe opened or deleting behind a held commit (#796)
+    'purgeSession',
+    'purgeSession',
+  ], // the turn’s own items and apps, a move after a pending read, sweeps that write back, the thread a message, a delivery or a topic reply count goes to, maybe opened or deleting behind a held commit, and the members a purge keeps its room for, maybe joined behind one (#796)
   // The reply with the mention, a side line right after its add, and sweeps of hop cards; the conversation's hop count,
   // the topic the wake answers in, and endChain's hops and queued wakes, each maybe held behind a commit (#796).
+  // A session's change and notice diff against the session a held change left (#796's class in sessions).
+  // A streamed chunk's state check, a compaction's number and a tool result's urgent notes read the session a held write
+  // left, so a stream holds one patch, not one per chunk, a held compaction counts, and a held note is given. A delivery reads its session pending too (runtime.mjs
+  // deliver, twice): the last summary's givenMentions and seenItem, and a notice, held, are seen, not given again or lost (#506). Whether a thread has a persona's session already
+  // reads its pending members and sessions, so a second mention behind a held commit finds the session the first made.
+  'session-write.mjs': ['updateSession', 'pendingSessionsIn', 'pendingSessionsIn'],
+  'subagent-end.mjs': ['withUrgent'],
   'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'],
   // A thread’s apps, removed in a sweep; and whether a delivery's conversation is being deleted, as sendMessage reads it (#796).
   'thread-erase.mjs': ['conversationDeleting', 'eraseThreads'],

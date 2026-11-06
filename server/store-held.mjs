@@ -11,12 +11,13 @@
 // items or work is placed in the guard beside these readers. A pending item has no position yet (B1 assigns n at the
 // release), so no pending reader may depend on one.
 //
-// A view is kept per list and grows as emits are held: while a commit is stuck in its fsync, a streaming reply holds
-// an item.text per chunk and readers run per chunk, so each held event is applied once, not once per read. It is
+// A view is kept per list, and per collection, and grows as emits are held: while a commit is stuck in its fsync, a
+// streaming reply holds an item.text per chunk and readers run per chunk, so each held event is applied once, not once
+// per read. It is
 // rebuilt when the state changes (record()), and dropped when nothing is held.
 
 import { itemOf, positionOf } from '../shared/item-index.mjs';
-import { apply } from '../shared/state.mjs';
+import { apply, patchSession } from '../shared/state.mjs';
 
 /** The lists a pending read covers: the events that change one, the key they name it by, and how an add names its entry. */
 const LISTS = /** @type {const} */ ({
@@ -25,13 +26,17 @@ const LISTS = /** @type {const} */ ({
 });
 /**
  * The collections of whole entities a pending read covers, keyed by id: the event that puts one whole (the reducer
- * replaces it), and the `remove` kind that deletes it. An app is read back by the turn that shows, updates or retires it.
+ * replaces it), the event that patches one if it has one, and the `remove` kind that deletes it. An app is read back by
+ * the turn that shows, updates or retires it.
  */
 const ENTITIES = /** @type {const} */ ({
-  apps: { event: 'app', removed: 'app' },
+  apps: { event: 'app', removed: 'app', patched: null },
   // A topic the turn or the page may have just opened (#637): startTopic reads it to make one topic per message. Every
   // write of a thread starts from it (#796, server/thread-write.mjs).
-  threads: { event: 'thread', removed: 'thread' },
+  threads: { event: 'thread', removed: 'thread', patched: null },
+  // A session just made, or changed, behind a held commit: its writes diff against it, and its turn waits for it to be
+  // published (#796's class in sessions, server/session-write.mjs).
+  sessions: { event: 'session', removed: 'session', patched: 'session.patch' },
 });
 /** @typedef {keyof typeof LISTS} PendingList */
 /** @typedef {keyof typeof ENTITIES} PendingCollection */
@@ -43,12 +48,13 @@ const ENTITIES = /** @type {const} */ ({
  *   apps: () => Readonly<Record<string, Entry>>,
  *   thread: (id: string) => Entry | undefined,
  *   threads: () => Readonly<Record<string, Entry>>,
+ *   session: (id: string) => Entry | undefined,
  * }} PendingReads
  */
 
 /**
- * The pending reads of a store: one per list in LISTS; and for apps and threads, one entity by id and the whole
- * collection.
+ * The pending reads of a store: one per list in LISTS; for apps and threads, one entity by id and the whole
+ * collection; and one session by id.
  * @param {import('./store.mjs').Store} store @returns {PendingReads}
  */
 export function pendingReads(store) {
@@ -56,36 +62,69 @@ export function pendingReads(store) {
   for (const list of /** @type {PendingList[]} */ (Object.keys(LISTS))) reads[list] = (/** @type {string} */ key) => pendingList(store, list, key);
   reads.item = (/** @type {string} */ threadId, /** @type {string} */ id) => pendingItem(store, threadId, id);
   reads.apps = () => pendingCollection(store, 'apps');
-  reads.app = (/** @type {string} */ id) => pendingCollection(store, 'apps')[id];
-  reads.thread = (/** @type {string} */ id) => pendingCollection(store, 'threads')[id];
+  reads.app = (/** @type {string} */ id) => pendingEntity(store, 'apps', id);
+  reads.thread = (/** @type {string} */ id) => pendingEntity(store, 'threads', id);
   reads.threads = () => pendingCollection(store, 'threads');
+  reads.session = (/** @type {string} */ id) => pendingEntity(store, 'sessions', id);
   return /** @type {PendingReads} */ (reads);
 }
 
 /**
  * A collection of whole entities as memory will hold it once what is held is released: the published map itself when
- * nothing held touches it, else a copy with each held put or removal applied in order, from the JSON release() will
- * apply. Entities are replaced whole, so none is ever mutated. @param {import('./store.mjs').Store} store
+ * nothing held touches it, else a frozen copy with each held put, patch or removal applied in order, from the JSON
+ * release() will apply, shared by every read until the next held event that touches it. @param {import('./store.mjs').Store} store
  * @param {PendingCollection} coll @returns {Readonly<Record<string, Entry>>}
  */
 function pendingCollection(store, coll) {
   const published = store.state[coll] ?? {};
   if (!store.held) return published;
-  const { event, removed } = ENTITIES[coll];
-  /** @type {Record<string, Entry> | null} */
-  let out = null;
-  for (const { held, json } of store.heldLog) {
-    if (held.type !== event && !(held.type === 'remove' && held.data?.kind === removed)) continue;
-    out ??= { ...published };
+  const v = collectionView(store, coll);
+  if (!v.entries) return published;
+  if (v.copiedAt !== v.changes) {
+    v.copy = Object.freeze({ ...v.entries });
+    v.copiedAt = v.changes;
+  }
+  return v.copy;
+}
+
+/** One entity of a collection as memory will hold it once what is held is released, with no copy of the collection. @param {import('./store.mjs').Store} store @param {PendingCollection} coll @param {string} id */
+function pendingEntity(store, coll, id) {
+  if (!store.held) return store.state[coll]?.[id];
+  const v = collectionView(store, coll);
+  return (v.entries ?? store.state[coll])?.[id];
+}
+
+/**
+ * A collection's view, as a list's is kept (pendingList): each held event is applied once, not once per read, so a
+ * session written per streamed chunk behind a stuck fsync costs each write the new events, not all of them. Entities
+ * are replaced whole, and a patch makes a new one as the reducer's does, so none is ever mutated.
+ * @param {import('./store.mjs').Store} store @param {PendingCollection} coll
+ */
+function collectionView(store, coll) {
+  const name = `entities:${coll}`;
+  let v = store.views.get(name);
+  if (!v || v.version !== store.version || v.state !== store.state) {
+    v = { version: store.version, state: store.state, seen: 0, entries: null, changes: 0, copy: null, copiedAt: -1 };
+    store.views.set(name, v);
+  }
+  const { event, removed, patched } = ENTITIES[coll];
+  for (; v.seen < store.heldLog.length; v.seen++) {
+    const { held, json } = store.heldLog[v.seen];
+    if (held.type !== event && held.type !== patched && !(held.type === 'remove' && held.data?.kind === removed)) continue;
+    v.entries ??= { ...(store.state[coll] ?? {}) };
+    v.changes++;
     const { type, data } = JSON.parse(json);
     try {
-      if (type === event) out[data.id] = data;
-      else delete out[data.id];
+      if (type === event) v.entries[data.id] = data;
+      // As the reducer applies it: a patch for a session that's gone changes nothing.
+      else if (type === patched) {
+        if (v.entries[data.id]) v.entries[data.id] = patchSession(v.entries[data.id], data);
+      } else delete v.entries[data.id];
     } catch {
       // the reducer rejects it the same way (missing data), and the release holds it as rejected (#609): skipped
     }
   }
-  return out ?? published;
+  return v;
 }
 
 /**

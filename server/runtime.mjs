@@ -28,6 +28,7 @@ import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessag
 import { addDataset, reloadDatasets } from './datasets.mjs';
 import { DELETE_UNDO_MS } from './delete-undo.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
+import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
@@ -90,7 +91,7 @@ import {
   settleScheduledWake,
 } from './scheduled-wakes.mjs';
 import { setSessionRun } from './session-run.mjs';
-import { tellAgent, updateSession } from './session-write.mjs';
+import { pendingSessionsIn, tellAgent, updateSession } from './session-write.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import {
@@ -373,7 +374,7 @@ export class Runtime {
    */
   ensureSession(threadId, personaId, { brief, joined = null } = {}) {
     this.thread(threadId);
-    const existing = this.sessionsIn(threadId).find((x) => x.personaId === personaId);
+    const existing = pendingSessionsIn(this, threadId).find((x) => x.personaId === personaId);
     if (existing) return existing;
     const p = this.persona(personaId);
     if (!p) throw httpError(404, 'That agent doesn’t exist.');
@@ -532,7 +533,9 @@ export class Runtime {
    * @param {{ summarizeTo?: string|null, threadId?: string|null }} [opts]
    */
   deliver(sessionId, message, { summarizeTo = null, threadId = null } = {}) {
-    const se = this.session(sessionId);
+    // A session just made behind a held commit: its turn starts once it's published (#796's class in sessions).
+    if (heldSession(this, sessionId, () => this.deliver(sessionId, message, { summarizeTo, threadId }))) return;
+    const se = this.store.pending.session(sessionId) ?? this.session(sessionId); // a summary's or a notice's write held (#506)
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
     // An agent being deleted, or in a conversation being deleted (#725), starts no turn in its Undo window: every path
     // that delivers comes through here, so one check covers them all (#597 review). What arrives is held, not dropped:
@@ -574,13 +577,13 @@ export class Runtime {
     if (se.context?.length && !slash) {
       // Not an urgent note to stop a subagent (#229): its turn ended, and the subagent with it.
       message = { ...message, context: [...notUrgent(se.context), ...(message.context ?? [])] };
-      this.updateSession(sessionId, { context: [] });
+      this.updateSession(sessionId, (now) => ({ context: (now.context ?? []).filter((/** @type {string} */ x) => !se.context.includes(x)) })); // only what it read
     }
     // Problems the checks found in its last reply, still waiting to go as a lint turn, come with this turn instead, as
     // message.lint: fixes it owes, placed with the request rather than in the background.
     if (message.kind !== 'lint' && !slash) message = this.foldLint(sessionId, message);
     // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
-    message = turnContext(this, this.s.sessions[sessionId], where, message, slash);
+    message = turnContext(this, this.store.pending.session(sessionId) ?? this.s.sessions[sessionId], where, message, slash);
     const persona = this.persona(se.personaId);
     const adapter = registeredAdapter(this, persona);
     const abort = new AbortController();
@@ -763,7 +766,7 @@ export class Runtime {
         const id = wordsSegment(rt, turn, se0);
         turn.said += delta;
         rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
-        if (se().state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
+        if (rt.store.pending.session(turn.sessionId)?.state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
       },
       // who: the subagent that took the step; parent nests it under its starting step; detail holds an error,
       // thought, narration or subagent result; kind names non-tool work; job names its background job (#73, #129).
@@ -797,19 +800,18 @@ export class Runtime {
         if (i >= 0) turn.steps[i] = { ...turn.steps[i], ...step };
         else turn.steps.push(step);
         if (turn.first) rt.store.emit('item.patch', { threadId: turn.threadId, id: turn.first, activityStep: step });
-        const s = se();
         // A thought or a subagent’s narration is in the list, but it isn’t a tool call.
         if (kind === 'thought' || kind === 'said') return;
         if (state === 'running' && !who) recordScheduledTool(rt, turn, { id, name: label }, false);
-        const calls = [{ name: step.label, state: step.state, ms: step.ms }, ...s.toolCalls.filter((c) => c.name !== step.label)].slice(0, 5);
         // A subagent’s step is its own: it moves its arc, not the agent’s state or step (#189).
         const own = state === 'running' && !(i >= 0 ? turn.steps[i] : step).who;
-        rt.updateSession(turn.sessionId, {
+        // From the pending session: behind a held commit each call still counts, and the list keeps each (#796's class).
+        rt.updateSession(turn.sessionId, (s) => ({
           state: own ? 'tool' : s.state,
-          toolCalls: calls,
+          toolCalls: [{ name: step.label, state: step.state, ms: step.ms }, ...s.toolCalls.filter((c) => c.name !== step.label)].slice(0, 5),
           toolCount: s.toolCount + (i >= 0 ? 0 : 1),
           currentStep: own ? step.label : s.currentStep,
-        });
+        }));
       },
       status(patch) {
         if (!live()) return;
@@ -838,7 +840,7 @@ export class Runtime {
       },
       compaction({ kept, total, summary }) {
         if (!live()) return;
-        const n = se().compactions + 1;
+        const n = (rt.store.pending.session(turn.sessionId) ?? se()).compactions + 1; // one held behind a commit counts too
         turn.segment = null;
         rt.addItem(turn.threadId, {
           kind: 'system',
@@ -1016,7 +1018,7 @@ export class Runtime {
     // among them), and the cards that wait until answered.
     const needs = nextNeed(this, se, { turnIds: [turn.id, ...(se.keptTurnIds ?? [])], keep: waiting?.id ?? null });
     const mentionsYou = /(^|\W)@you\b/i.test(turn.said);
-    this.updateSession(se.id, {
+    this.updateSession(se.id, (se) => ({
       state: stateFor(needs),
       needs,
       sideTurn: null,
@@ -1025,10 +1027,11 @@ export class Runtime {
       currentStep: needs ? 'Waiting for you' : `Idle since ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}`,
       lastMessage: last ? clip(last.text) : se.lastMessage,
       finishedAt: Date.now(),
-      // A reply in a topic thread counts on the thread, not the conversation it answers from (#228).
+      // A reply in a topic thread counts on the thread, not the conversation it answers from (#228). The count is the
+      // pending session's (se, here): behind a held commit, the published one lost the increment of a turn before.
       unread: topic ? se.unread : viewing ? 0 : se.unread + (turn.said || open.length ? 1 : 0),
       stopAsk: null,
-    });
+    }));
     noticeNeed(this, se, needs);
     if (needs && (needs.kind === 'block' || needs.kind === 'denial' || needs.kind === 'toolask'))
       this.notify('blocking', se, `@${se.handle} needs you`, needs.text, needs.threadId);
@@ -2680,8 +2683,8 @@ export class Runtime {
     queue.releaseQueued(this, sessionId);
     // Background jobs Postbox kept running for it would run on with no record (#129).
     this.stopKeptJobs([sessionId], 'Its session was deleted.').catch((e) => console.error(`Couldn’t stop a deleted session’s jobs: ${e.message}`));
-    const t = this.s.threads[se.threadId];
-    const others = (t?.members ?? []).filter((id) => id !== sessionId && this.s.sessions[id]);
+    const t = this.store.pending.thread(se.threadId); // a member that joined behind a held commit keeps its room (#796)
+    const others = (t?.members ?? []).filter((id) => id !== sessionId && this.store.pending.session(id));
     if (t && !others.length) {
       // Its own conversation goes with it, as deleting the conversation does: every thread under it, with its sessions
       // and apps (#320).

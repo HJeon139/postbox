@@ -160,6 +160,21 @@ test('archiving one agent leaves its conversation open, and archiving the last a
   assert.equal(f.store.state.threads[f.t.id].archived, true);
 });
 
+test('a sweep over every pending thread sees each held write of a thread, read after read', async () => {
+  const f = await heldRoom();
+  const b = await busyBeta(f);
+  const release = await f.hold();
+  const queued = () => (f.store.pending.threads()[f.t.id].queue ?? []).map((q) => q.text);
+  f.rt.agentWake(f.alpha.id, 'beta', 'First.');
+  assert.deepEqual(queued(), ['First.']);
+  f.rt.agentWake(f.gamma.id, 'beta', 'Second.');
+  assert.deepEqual(queued(), ['First.', 'Second.']);
+  await release();
+  b.release();
+  await settle(f.rt);
+  await f.store.close();
+});
+
 test('a turn in an old side thread counts unread on its agent, not on the side thread', async () => {
   const f = setup();
   const side = oldSide(f);
