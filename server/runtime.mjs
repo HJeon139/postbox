@@ -1568,8 +1568,8 @@ export class Runtime {
   // gets the recent history the same way. read_conversation reads further back.
 
   /** The catch-up text for a session, or null, and moves its marker to the end of the conversation (server/catch-up.mjs). */
-  catchUp(se, excludeId = null) {
-    return catchUp(this, se, excludeId);
+  catchUp(se, exclude = []) {
+    return catchUp(this, se, exclude);
   }
 
   /** The message a topic thread started from, for an agent’s first turn there (item-lines.mjs). */

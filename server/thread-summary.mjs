@@ -30,8 +30,10 @@ export function firstPromptSection(message, inThread) {
 
 export function turnContext(rt, se, where, message, slash) {
   if (slash) return message;
-  const thread = where === se.threadId ? null : (threadCatchUp(rt, se, where, message.itemId) ?? threadHeader(rt, where));
-  const room = rt.catchUp(se, message.itemId);
+  // Every message the turn delivers, each of a batch, is read in full there, so no summary gives it again (#506).
+  const given = (message.messages ?? [message]).map((/** @type {any} */ m) => m.itemId).filter(Boolean);
+  const thread = where === se.threadId ? null : (threadCatchUp(rt, se, where, given) ?? threadHeader(rt, where));
+  const room = rt.catchUp(se, given);
   const prior = [room, ...(message.context ?? [])].filter(Boolean);
   const direct = message.kind === 'user' || message.kind === 'agent' || message.kind === 'event';
   if (!thread || !direct) return prior.length || thread ? { ...message, context: [...prior, thread].filter(Boolean) } : message;
@@ -53,9 +55,9 @@ const THREAD_ITEMS = 20;
 /**
  * What a turn in a topic or side thread catches up on there: the message a topic thread is on, the first time, and
  * what was said in the thread since this agent last took part in it. null when there’s nothing.
- * @param {any} rt @param {any} se @param {string} threadId  where the turn speaks @param {string|null} excludeId  the message it answers
+ * @param {any} rt @param {any} se @param {string} threadId  where the turn speaks @param {string[]} [exclude]  the messages it answers
  */
-export function threadCatchUp(rt, se, threadId, excludeId) {
+export function threadCatchUp(rt, se, threadId, exclude = []) {
   // The thread as deliver chose it, maybe a topic just opened, held (#796); what was said there is what was published.
   const t = rt.store.pending.thread(threadId);
   if (t?.kind !== 'topic' && t?.kind !== 'side') return null;
@@ -68,7 +70,7 @@ export function threadCatchUp(rt, se, threadId, excludeId) {
   // THREAD_ITEMS and CATCH_UP_CHARS, and a line saying what was left out and how to read it in this thread.
   const entries = items
     .slice(at + 1)
-    .filter((i) => i.id !== excludeId && i.sessionId !== se.id)
+    .filter((i) => !exclude.includes(i.id) && i.sessionId !== se.id)
     .map((item) => ({ item, line: rt.describeItem(item, se, mentions(item, se.handle) ? READING.mention : READING.item) }))
     .filter((e) => e.line);
   const kept = keepFor(entries, se.handle, THREAD_ITEMS);

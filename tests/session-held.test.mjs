@@ -106,7 +106,10 @@ test('your follow-up to a new agent, sent after the release but before its flush
   f.rt.sendMessage(f.t.id, { text: '@gamma Second.' });
   await flush;
   await settle(f.rt);
-  assert.deepEqual(asked(f, 'gamma'), [['@gamma First.'], ['@gamma Second.']]);
+  const [first, second, ...more] = asked(f, 'gamma');
+  assert.deepEqual([first, more], [['@gamma First.'], []]);
+  // Its first turn's summary gave the follow-up, so it comes after it as a pointer (#506), never ahead of it.
+  assert.match(second[0], /^The person’s message above, which your last summary gave you in full: “@gamma Second\.”/);
   await f.store.close();
 });
 

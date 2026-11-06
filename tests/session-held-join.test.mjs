@@ -37,11 +37,16 @@ test('two @-mentions of the same new agent behind a held commit make one session
   const gammas = sessionsOfPersona(f.store, f.c.id);
   assert.equal(gammas.length, 1, 'one session for gamma');
   assert.deepEqual(f.store.state.threads[f.t.id].members, [f.alpha.id, f.beta.id, gammas[0].id]);
+  const second = f.store.items(f.t.id).find((x) => x.kind === 'user' && x.text === '@gamma Second.');
+  // Its first turn's summary gave the second, so it comes after the first as #506's pointer, from the same session.
   assert.deepEqual(
     f.adapter.calls.filter((c) => c.handle === 'gamma').map((c) => [c.sessionId, c.message.text]),
     [
       [gammas[0].id, '@gamma First.'],
-      [gammas[0].id, '@gamma Second.'],
+      [
+        gammas[0].id,
+        `The person’s message above, which your last summary gave you in full: “@gamma Second.”. It’s addressed to you: act on it now if you haven’t. read_message { id: "${second?.id}" } has it whole.`,
+      ],
     ],
   );
   await f.store.close();
