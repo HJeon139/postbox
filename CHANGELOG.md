@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.34.1 (2026-11-06)
+
+### Fixes
+
+- **skills:** a chart whose marks carry the values counts as drawn
+- **agents:** a predict-first question sits beside the picture, never in front of it
+
 ## 1.34.0 (2026-11-06)
 
 ### Features
