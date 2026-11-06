@@ -14,6 +14,7 @@ import { PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/se
 import { httpError } from './helpers.mjs';
 import { readHooks } from './permission-hooks.mjs';
 import { BEHAVIORS, changeRule, cleanRule, readRules, settingsFiles } from './permission-rules.mjs';
+import { requestAdapter } from './remote/placement.mjs';
 
 /**
  * What a persona may do without asking. auto (the default): Claude Code’s safety classifier approves routine
@@ -34,7 +35,7 @@ export async function panelTarget(rt, { sessionId = null, personaId = null, proj
   const persona = se ? rt.personaFor(se) : personaId ? rt.persona(personaId) : null;
   if (!persona) throw httpError(404, 'That agent doesn’t exist.');
   const project = rt.s.projects[se ? rt.s.threads[se.threadId]?.projectId : (projectId ?? '')] ?? rt.latestProject(persona.id) ?? null;
-  const adapter = rt.adapters.get(persona.backend);
+  const adapter = requestAdapter(rt, persona.handle, persona);
   const folder = adapter?.folderFor ? await adapter.folderFor(persona, project) : persona.folder || project?.folder || null;
   return { se, persona, project, folder };
 }

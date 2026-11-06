@@ -111,6 +111,17 @@ export function registeredAdapter(rt, persona) {
 }
 
 /**
+ * A persona’s adapter for a request about it, such as its permissions panel or a `!` command’s folder (#874): refused
+ * with a 422 and the reason when its backend isn’t registered, where the registry would give a 500.
+ * @param {any} rt @param {string} handle @param {any} persona
+ */
+export function requestAdapter(rt, handle, persona) {
+  const adapter = registeredAdapter(rt, persona);
+  if (!adapter) throw httpError(422, unregisteredReason(handle, backendOf(persona), { turn: false }));
+  return adapter;
+}
+
+/**
  * Fails a turn whose backend isn’t registered, as refuseHere does (#874): the turn ends with a failed reply and
  * Retry. Its error has no `code`, so a scheduled wake it ran for ends rather than waiting for the network.
  * @param {any} se @param {any} persona

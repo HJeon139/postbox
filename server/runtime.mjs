@@ -84,6 +84,7 @@ import {
   refuseUnregistered,
   refuseUnregisteredSend,
   registeredAdapter,
+  requestAdapter,
   runsHere,
 } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
@@ -2021,7 +2022,7 @@ export class Runtime {
     const se = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
     const persona = se ? this.personaFor(se) : null;
     const project = this.s.projects[t.projectId] ?? null;
-    const adapter = persona ? this.adapters.get(persona.backend) : null;
+    const adapter = persona ? requestAdapter(this, se.handle, persona) : null;
     if (persona?.remote?.hostId) return hereFolder(this, persona, project, adapter);
     if (adapter?.folderFor) return { folder: await adapter.folderFor(persona, project), host: null };
     return { folder: persona?.folder || project?.folder || null, host: null };
