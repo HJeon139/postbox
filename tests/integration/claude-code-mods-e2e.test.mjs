@@ -8,14 +8,15 @@
 // lives in tests/integration/, outside `npm test`’s tests/*.test.mjs. HOME is a temp folder for the turns, so the
 // person’s own settings never load: the model must be reachable without them, through ANTHROPIC_API_KEY or Bedrock
 // (AWS_CONFIG_FILE and AWS_SHARED_CREDENTIALS_FILE are pointed at the person’s own files when unset; the test never
-// reads them). A sign-in kept in ~/.claude doesn’t carry over.
+// reads them), plus the model keys of the person’s user settings (reachModel). A sign-in kept in ~/.claude doesn’t
+// carry over.
 //
 // The push names a refspec, so request-floor.mjs refuses it before the write judge: no Haiku call, whatever the
 // message says (write-intent.mjs, requestedCall).
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
@@ -43,6 +44,19 @@ const sdkWhy = why || ((await loadAgentSdk()) ? false : '@anthropic-ai/claude-ag
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=Postbox e2e', '-c', 'user.email=e2e@example.com', ...args], { cwd, stdio: 'pipe' });
 
+// How the person's Claude Code reaches the model, and nothing else, copied from their user settings: the Agent SDK's
+// own bundled Claude Code doesn't get the setup a wrapper on PATH adds, so without these its turn on Bedrock never
+// answers (two runs on 6 Nov waited out the 240 s with nothing in the room). Their hooks and rules aren't copied.
+const MODEL_KEYS = ['env', 'awsCredentialExport', 'awsAuthRefresh', 'modelOverrides', 'apiKeyHelper'];
+function reachModel() {
+  try {
+    const mine = JSON.parse(readFileSync(join(homedir(), '.claude', 'settings.json'), 'utf8'));
+    return Object.fromEntries(MODEL_KEYS.filter((k) => mine[k] !== undefined).map((k) => [k, mine[k]]));
+  } catch {
+    return {};
+  }
+}
+
 /**
  * A temp HOME and a project with the same approving hook in its user and project settings, each touching a marker of
  * its own; the project is a git repository whose origin is a local bare repository.
@@ -60,7 +74,7 @@ async function fixture() {
   });
   await mkdir(join(home, '.claude'), { recursive: true });
   await mkdir(join(work, '.claude'), { recursive: true });
-  await writeFile(join(home, '.claude', 'settings.json'), JSON.stringify(settings(markers.user)));
+  await writeFile(join(home, '.claude', 'settings.json'), JSON.stringify({ ...reachModel(), ...settings(markers.user) }));
   await writeFile(join(work, '.claude', 'settings.json'), JSON.stringify(settings(markers.project)));
   git(root, 'init', '-q', '--bare', bare);
   git(work, 'init', '-q');
