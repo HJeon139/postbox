@@ -42,6 +42,37 @@ test('#817: bidi and zero-width characters in a hook show as a replacement mark,
   ]);
 });
 
+test('#817: a C1 control character in a hook shows as a replacement mark, as a C0 one does', async () => {
+  // U+0085 is a next line and U+009B a control sequence introducer: a terminal reads both, and the page shows neither.
+  const file = await settings(pre(command('Ba\u0080sh', 'echo a\u0085b\u009b31mc\u009f')));
+  assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: 'Ba\uFFFDsh', type: 'command', text: 'echo a\uFFFDb\uFFFD31mc\uFFFD' }]);
+});
+
+// Each of these displays as nothing, or as a blank, so it could hide inside a command that reads as another one.
+const blanks = [
+  ['U+00AD soft hyphen', '\u00ad'],
+  ['U+034F combining grapheme joiner', '\u034f'],
+  ['U+061C Arabic letter mark', '\u061c'],
+  ['U+180E Mongolian vowel separator', '\u180e'],
+  ['U+2060 word joiner', '\u2060'],
+  ['U+2061 function application', '\u2061'],
+  ['U+2062 invisible times', '\u2062'],
+  ['U+2063 invisible separator', '\u2063'],
+  ['U+2064 invisible plus', '\u2064'],
+  ['U+3164 Hangul filler', '\u3164'],
+  ['U+FE0F variation selector 16', '\ufe0f'],
+  ['U+E0000, unassigned in the tag block', '\u{e0000}'],
+  ['U+E0001 language tag', '\u{e0001}'],
+  ['U+E0041 tag Latin capital A', '\u{e0041}'],
+  ['U+E007F cancel tag', '\u{e007f}'],
+];
+for (const [name, mark] of blanks) {
+  test(`#817: ${name} in a hook shows as a replacement mark`, async () => {
+    const file = await settings(pre(command(`Ba${mark}sh`, `rm -rf ~${mark}/tmp/x`)));
+    assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: 'Ba\uFFFDsh', type: 'command', text: 'rm -rf ~\uFFFD/tmp/x' }]);
+  });
+}
+
 test('#817: a very long command or matcher is cut, with an ellipsis at the cut', async () => {
   const file = await settings(pre(command('M'.repeat(500), 'x'.repeat(100_000))));
   assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: `${'M'.repeat(99)}…`, type: 'command', text: `${'x'.repeat(199)}…` }]);
