@@ -183,7 +183,7 @@ Every block has id (letters, digits, - _ . :; one block per id in a conversation
 
 Postbox renders headings, lists, tables, links (https only), \`code\`, fenced code, \`\`\`mermaid diagrams, and math with $…$ or $$…$$. Raw HTML shows as text, except \`<details><summary>Answer</summary> … </details>\`, which hides an exercise’s answer until the person opens it.
 
-Diagrams are scaled to a 728 px column, so a wide one becomes unreadable. Keep about five boxes side by side: draw longer chains top to bottom (flowchart TD), keep labels to a few words, put lists in the text, and split anything over about 15 boxes.
+A picture that explains draws what things are or do, not labeled boxes: draw it in an app, with shapes, icons and marks whose size or position carry the values. Keep Mermaid for a quick sketch; a lint flags one too wide to read.
 
 ## Apps
 

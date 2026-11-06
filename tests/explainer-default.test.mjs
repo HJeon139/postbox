@@ -22,6 +22,17 @@ test('the guide’s explainer recipe is one picture with a control, with practic
   assert.equal(examples, 'an explorer, a simulator');
 });
 
+// The maintainer’s blind verdicts on 20 agent-made visuals (#206, 6 November 2026) failed every diagram of labeled boxes,
+// a well-made Mermaid flowchart included, and the guide was telling agents to draw diagrams as chains of boxes.
+test('the guide says a picture that explains draws the things, not labeled boxes, and no recipe asks for a Mermaid diagram', () => {
+  const g = guideText();
+  assert.doesNotMatch(g, /boxes side by side|flowchart TD|anything over about 15 boxes/);
+  assert.match(g, /A picture that explains draws what things are or do, not labeled boxes/);
+  const recipes = readFileSync(new URL('../designs/recipes.md', import.meta.url), 'utf8');
+  const explainer = recipes.split('\n').find((line) => line.startsWith('| Explainer'));
+  assert.ok(explainer && !/Mermaid/.test(explainer), explainer);
+});
+
 test('the demo and UAT researcher explain with a picture when they explain visually, and add practice only on request', () => {
   for (const p of [researcher(DEMO_PERSONAS), researcher(uatPersonas)]) {
     assert.equal(p.description, 'Reads papers and explains them with a picture you can change.');
