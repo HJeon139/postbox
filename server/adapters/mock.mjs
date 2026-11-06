@@ -6,7 +6,8 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { brokenMapApp, dashboardApp, explorerApp, layoutApp, practiceApp, walkthroughApp } from '../mock/apps.mjs';
+import { brokenMapApp, dashboardApp, explorerApp, layoutApp, walkthroughApp } from '../mock/apps.mjs';
+import { explainer } from './mock-explainer.mjs';
 import { citationFix, fasterParser } from './mock-ledger.mjs';
 
 // POSTBOX_MOCK_SPEED scales every pause: 1 is a natural pace, 0.2 is fast. It’s read on each pause, so a demo can change it.
@@ -194,7 +195,7 @@ const HANDLERS = {
       const chosen = m.event.values?.selected ?? [];
       await a.think(600);
       return a.say(
-        `Good choice. I’ll start with ${chosen.length > 1 ? `**${chosen.length} papers**` : 'that paper'} and keep each walkthrough short, with an exercise at the end. Ask me to “explain ReAct” whenever you’re ready.`,
+        `Good choice. I’ll start with ${chosen.length > 1 ? `**${chosen.length} papers**` : 'that paper'} and keep each walkthrough short, with a picture you can change. Ask me to “explain ReAct” whenever you’re ready.`,
       );
     }
     if (m.kind === 'agent') return researcherReply(m, a, mem);
@@ -208,10 +209,10 @@ const HANDLERS = {
     if (has(text, /citation script/)) return citationFix(a);
     if (has(text, /faster parser/)) return fasterParser(a);
     if (has(text, /walk me through|out loud|narrat/)) return walkthrough(a);
-    if (has(text, /explain|react|reason/)) return explainer(a, mem);
+    if (has(text, /explain|react|reason/)) return explainer(a, text);
     if (has(text, /paper|memory|read/)) return paperChoice(a);
     await a.think(500);
-    await a.say('I read papers and turn them into step-by-step explainers with exercises. Try “Explain ReAct with something I can try”.');
+    await a.say('I read papers and explain them with a picture you can change. Try “Explain ReAct with something I can try”.');
   },
 
   async indexer(m, a, mem, _se) {
@@ -513,74 +514,6 @@ async function catalogTour(a) {
 }
 
 // ── @researcher ──────────────────────────────────────────────────────────────────────────
-
-async function explainer(a, _mem) {
-  a.status({ subagents: [{ name: 'reader', state: 'tool', ctx: 18, doing: 'reading 3 papers' }] });
-  await a.tool('arxiv.fetch 2210.03629', 600);
-  await a.tool('arxiv.fetch 2303.11366', 500);
-  await a.tool('arxiv.fetch 2307.03172', 500);
-  a.status({ subagents: [] });
-  a.sources([
-    {
-      title: 'ReAct: Synergizing Reasoning and Acting in Language Models',
-      authors: 'Yao, Zhao, Yu, Du, Shafran, Narasimhan, Cao',
-      year: 2022,
-      url: 'https://arxiv.org/abs/2210.03629',
-      note: 'Introduces the thought → action → observation loop this step describes.',
-    },
-    {
-      title: 'Reflexion: Language Agents with Verbal Reinforcement Learning',
-      authors: 'Shinn, Cassano, Berman, Gopinath, Narasimhan, Yao',
-      year: 2023,
-      url: 'https://arxiv.org/abs/2303.11366',
-      note: 'Adds written self-reflection after a failed attempt.',
-    },
-    {
-      title: 'Lost in the Middle: How Language Models Use Long Contexts',
-      authors: 'Liu, Lin, Hewitt, Paranjape, Bevilacqua, Petroni, Liang',
-      year: 2023,
-      url: 'https://arxiv.org/abs/2307.03172',
-      note: 'Shows models use the middle of a long context less reliably.',
-    },
-  ]);
-  a.t.define_term({
-    term: 'context compaction',
-    key: 'context-compaction',
-    definition: 'Summarizing an agent’s older context so a long run fits its context window. Postbox shows each compaction as a divider you can expand.',
-  });
-  await a.say(`### Step 1 · The loop
-ReAct [1] interleaves **thoughts** (free-text reasoning) with **actions** (tool calls) and **observations** (what the tool returned). Each observation feeds the next thought, so the plan can change halfway through.
-
-\`\`\`mermaid
-flowchart LR
-  Q[Question] --> T[Thought]
-  T --> A[Action]
-  A --> O[Observation]
-  O -->|feeds the next thought| T
-  T -->|when done| Ans[Answer]
-\`\`\`
-
-Reasoning alone can’t check facts, and acting alone can’t plan. Interleaving the two lets the model notice a wrong turn and correct it. Reflexion [2] adds a step after a failed attempt: the agent writes down what went wrong and reads it on the next try.
-
-### Step 2 · What it costs
-Every pass through the loop resends the growing transcript, so input cost rises with each step $t$:
-
-$$
-C = \\sum_{t=1}^{T} \\left( c_{in} \\cdot n_t + c_{out} \\cdot m_t \\right)
-$$
-
-Here $n_t$ is the tokens in context at step $t$ and $m_t$ the tokens written. Long contexts cost quality too: models use the middle of a long context less reliably [3]. That’s why long agent runs use context compaction, and why the [observation budget](term:observation-budget) matters.
-
-### Step 3 · Try it
-`);
-  a.t.show_app({
-    id: 'react-practice',
-    title: 'Practice: what should the agent do next?',
-    code: practiceApp(),
-    permissions: [],
-    fallback: 'Practice: a ReAct trace asks which step comes next. Open Postbox to try it.',
-  });
-}
 
 async function paperChoice(a) {
   await a.tool('arxiv.search “agent memory”', 800);
