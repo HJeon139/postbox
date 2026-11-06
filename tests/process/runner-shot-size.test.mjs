@@ -20,13 +20,16 @@ const sleep = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms)
 // device as Postbox’s page is.
 const PAGE =
   '<meta name="viewport" content="width=device-width"><body style="margin:0"><div style="height:3000px"></div><div data-key="far" style="height:200px">Far</div><div style="height:3000px"></div></body>';
-// A shot scrolls through the page’s own jumpTo (#712a), so the page is served beside the real app/js/view-jump.mjs.
-const JUMP_MODULE = readFileSync(new URL('../../app/js/view-jump.mjs', import.meta.url));
+// A shot scrolls through the page’s own jumpTo (#712a), so the page is served beside the real modules it imports.
+const MODULES = Object.fromEntries(
+  ['view-jump.mjs', 'view-skip.mjs'].map((name) => [`/app/js/${name}`, readFileSync(new URL(`../../app/js/${name}`, import.meta.url))]),
+);
 
-/** Serves PAGE at / and view-jump.mjs at its path on a free port; resolves to its origin and a close(). */
+/** Serves PAGE at / and the modules at their paths on a free port; resolves to its origin and a close(). */
 function servePage() {
   const server = createServer((req, res) => {
-    if (req.url === '/app/js/view-jump.mjs') return res.writeHead(200, { 'content-type': 'text/javascript' }).end(JUMP_MODULE);
+    const module = MODULES[req.url ?? ''];
+    if (module) return res.writeHead(200, { 'content-type': 'text/javascript' }).end(module);
     res.writeHead(200, { 'content-type': 'text/html' }).end(PAGE);
   });
   return new Promise((ok) =>
