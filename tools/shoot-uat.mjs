@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { start } from '../server/index.mjs';
 import { js, launch, sleep } from './browser.mjs';
 import { play } from './demo.mjs';
+import { demoUI } from './demo-ui.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const OUT = join(ROOT, 'tests', 'uat', 'screenshots');
@@ -237,7 +238,8 @@ try {
       const due = DURING.filter(([s]) => s === scene);
       for (const [, name, finder, prep] of due) {
         await goto(hash);
-        if (prepare) await prepare(page);
+        // The scene’s prepare step gets the demo’s UI (tools/demo.mjs), as in tools/shoot-app.mjs, not the raw page (#832).
+        if (prepare) await prepare(demoUI(page));
         await capture(name, finder, prep);
       }
     },
@@ -248,21 +250,27 @@ try {
   const topic = Object.values(st.state.threads).find((x) => x.kind === 'topic');
   const side = Object.values(st.state.threads).find((x) => x.kind === 'side');
   const project = Object.values(st.state.projects)[0];
-  const hashFor = (where) =>
-    where.startsWith('#')
-      ? where
-      : where.startsWith('work:')
-        ? `#/t/${byTitle(where.slice(5))?.id}?work`
-        : where === 'threads'
-          ? `#/p/${topic?.projectId ?? project.id}/threads`
-          : where === 'topic'
-            ? `#/t/${topic.parentId}/side/${topic.id}`
-            : where === 'side'
-              ? `#/t/${side.parentId}/side/${side.id}`
-              : `#/t/${byTitle(where)?.id}`;
+  /** The hash a view after the demo opens at, or null when the demo made no such thread. @param {string} where */
+  const hashFor = (where) => {
+    if (where.startsWith('#')) return where;
+    if (where.startsWith('work:')) return `#/t/${byTitle(where.slice(5))?.id}?work`;
+    if (where === 'threads') return `#/p/${topic?.projectId ?? project.id}/threads`;
+    if (where === 'topic' || where === 'side') {
+      const t = where === 'topic' ? topic : side;
+      return t ? `#/t/${t.parentId}/side/${t.id}` : null;
+    }
+    return `#/t/${byTitle(where)?.id}`;
+  };
   for (const [name, where, finder, prep] of AFTER) {
     if (ONLY && !ONLY.has(name)) continue;
-    await goto(hashFor(where));
+    // A view the demo no longer makes, such as a side thread (#832), is a shot not captured, never the tool’s end.
+    const at = hashFor(where);
+    if (!at) {
+      console.log(`  missing: ${name} (the demo made no ${where} thread)`);
+      missing.push(name);
+      continue;
+    }
+    await goto(at);
     await capture(name, finder, prep);
   }
 } finally {
