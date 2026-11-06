@@ -103,7 +103,7 @@ export function parseScenario(md) {
     // fake-env` plants the allow-once scenario’s fake .env, and `- seed: visual-skill` the draft visual-explainer skill
     // as a project skill (tools/uat/workspace.mjs).
     seed: meta.seed ?? null,
-    // `- files: subscriptions` (#206): a folder of tests/uat/e2e/fixtures/ copied into the workspace (tools/uat/fixtures.mjs).
+    // `- files: running` (#206): a folder of tests/uat/e2e/fixtures/ copied into the workspace (tools/uat/fixtures.mjs).
     files: filesOf(meta.files),
     // `- judge: visual` (#206): the tester judges the first visual that answers its question (tools/uat/visual-judge.mjs).
     judge: judgeOf(meta.judge),
