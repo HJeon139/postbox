@@ -1,0 +1,3 @@
+[
+  { "item": "Persistence design note", "card": 8, "driver": "RR 13 note for a durable storage change: one-copy items, per-conversation segments and snapshots, an item-id index, a windowed /api/state; invariants, crash-point table, migration and downgrade, reconciling storage-design.md, design.md and #708, with the four server numbers as its evidence" }
+]

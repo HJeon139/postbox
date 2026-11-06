@@ -1,0 +1,5 @@
+# Round S3-4: #821a-d (lead-measure's split, 5 Nov), opened 2026-11-05T21:01:24Z; scale 1/2/3/5/8/13; split above 8
+lead-measure 86adc9aabd70cc555c8b2eacbf4a388a3bab982d80a0f8282f57800541c80738 #821a-d
+critic 4431c484e47d60eaeb1f513ef7a79528b0ee2f24c78a77fc595988131cfdff86 #821a-d
+researcher f00b69403731988246cc82723106d38dfa80fbd3826bafd0f0f8d50618c0721d #821a-d
+reveal 2026-11-05T21:09:27Z: a 5/5/8, b 8/8/8, c 5/5/5, d 5/3/5; verified. Settled a=8 (5,5,8: the conservative card, as in S3-2c), b=8, c=5, d=5 (majority). Total 26 for sprint 4.

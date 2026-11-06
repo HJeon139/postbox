@@ -1,0 +1,15 @@
+[
+{"item":"#464-b","card":8,"driver":"security change: consent setting, 0600 install record, runner option staging an older Postbox, reinstall token rotation, old-turn reattach still unknown"},
+{"item":"#633","card":5,"driver":"branch exists at e776d4b0; review answers, gap-1 restart spec, trigger, restart matrix in the stopgap note"},
+{"item":"#721","card":5,"driver":"client Dismiss on expired card, [Postbox] notice in next turn, needs-mismatch for permission needs, trigger; rebases after #633"},
+{"item":"#693","card":3,"driver":"close an archived requester's cards, archiveForks tells senders via settleHeld, trigger and a declining phase"},
+{"item":"#694","card":3,"driver":"one helper in withUrgent, per-turn Set, local and remote twins, two mutations, trigger on Phase 4"},
+{"item":"#708","card":1,"driver":"docs only; one line-3 edit left, then label"},
+{"item":"A1b design","card":5,"driver":"nine settled points plus the first private key's route check design, equivalence spec against #633, budget at 4,096 records"},
+{"item":"B1b","card":5,"driver":"170 commits behind; explicit view read, PF-3 fix, window-paged-back trigger and view-moved check, phase 1 UAT"},
+{"item":"#712","card":3,"driver":"content-visibility first is small CSS, plus design note and 1x/4x/10x numbers; unmount only if it misses"},
+{"item":"#701","card":3,"driver":"near done: two review fixes, off-by-default diagram seed option, trigger keyed on the item's diagram report"},
+{"item":"Key-to-frame tool","card":8,"driver":"new tool: generated rooms at 1x/4x/10x, Event Timing method, report with provenance, smoke trigger, big-room id fix, triggers.mjs move commit"},
+{"item":"Measurement","card":5,"driver":"bench switched to writeSnapshot with a drift test, stall runs on seeded and real stores, before and after numbers recorded"},
+{"item":"Small items","card":8,"driver":"five items: newId, chmod with umask tests, keptStreams helper, privacy scan of the tree plus scrubbing 19 fixtures plus CI step, pre-commit hook"}
+]

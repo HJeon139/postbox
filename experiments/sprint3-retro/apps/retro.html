@@ -1,0 +1,87 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;font:14px/1.5 system-ui,sans-serif;color:var(--text);background:var(--bg)}
+.rt-wrap{max-width:900px;margin:0 auto;padding:12px;display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.rt-sec{min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+.rt-sec h2{margin:0 0 4px;font-size:17px}
+.rt-fig{overflow-x:auto;max-width:100%;margin-top:8px}
+.rt-fig svg{display:block}
+.rt-fig svg text{fill:var(--text);font-size:12px}
+.rt-fig svg .rt-dim{fill:var(--dim)}
+.rt-hit{cursor:pointer}
+.rt-hit:focus{outline:none}
+.rt-hit:focus .rt-ring{stroke:var(--accent);stroke-width:2}
+.rt-cap{font-size:13px;margin-top:8px;min-height:3em}
+.rt-cap b{font-weight:600}
+.rt-panels{display:flex;flex-wrap:wrap;gap:18px}
+p{margin:4px 0}
+</style></head><body><div class="rt-wrap">
+<div class="rt-sec"><h2>1. What moved since sprint 1</h2><p class="dim small">Each panel has its own scale. Sprint 3 shipped more, but each PR took longer and more came back from your review.</p><div class="rt-fig rt-panels" id="figs"></div></div>
+<div class="rt-sec"><h2>2. What the seven agents raised</h2><p class="dim small">One column per agent, one row per theme. A dot means that agent raised it, with evidence. Click a row to read the evidence.</p><div class="rt-fig" id="matrix"></div><div class="rt-cap" id="mcap"></div></div>
+<div class="rt-sec"><h2>3. Candidate actions, and what each would fix</h2><p class="dim small">Lines join each action to the themes it addresses. Filled dots are working-agreement rules; hollow dots need Postbox or repo work first. Click an action for details.</p><div class="rt-fig" id="links"></div><div class="rt-cap" id="acap"></div>
+<p><button class="btn" id="ready">I’ve read it: ask me which to adopt</button> <span class="dim small" id="sent"></span></p></div>
+<p class="dim small">Source: the seven blind answers and the retro aggregate (asset retro/sprint3/aggregate.md). Theme counts are the scrum master’s reading; critic checked the figures.</p>
+</div><script>
+const NS='http://www.w3.org/2000/svg';
+const sv=(t,a={},...c)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);for(const x of c)e.append(typeof x==='string'?document.createTextNode(x):x);return e};
+const C=k=>`var(--s${k})`;
+// ---- 1. slope panels
+const M=[['PRs merged',17,25,'',1,'Up: 25, plus 2 chores'],['Median hours to merge',6.2,11.9,' h',2,'Up: slower. Range 4.7–57.8 h'],['PRs you sent back',7,12,'',3,'Up: 15 change requests in all']];
+const figs=document.getElementById('figs');
+for(const[n,a,b,u,k,note]of M){const W=240,H=170,s=sv('svg',{width:W,height:H,role:'img','aria-label':`${n}: sprint 1 ${a}${u}, sprint 3 ${b}${u}`});const max=Math.max(a,b)*1.15,y=v=>H-36-(v/max)*(H-70);
+ s.append(sv('text',{x:0,y:14,style:'font-weight:600'},n));
+ s.append(sv('line',{x1:50,x2:50,y1:28,y2:H-30,stroke:'var(--line)'}),sv('line',{x1:190,x2:190,y1:28,y2:H-30,stroke:'var(--line)'}));
+ s.append(sv('line',{x1:50,y1:y(a),x2:190,y2:y(b),stroke:C(k),'stroke-width':3}));
+ s.append(sv('circle',{cx:50,cy:y(a),r:6,fill:'var(--bg)',stroke:C(k),'stroke-width':3}),sv('circle',{cx:190,cy:y(b),r:6,fill:C(k)}));
+ s.append(sv('text',{x:40,y:y(a)+4,'text-anchor':'end'},a+u),sv('text',{x:200,y:y(b)+4},b+u));
+ s.append(sv('text',{x:50,y:H-14,'text-anchor':'middle',class:'rt-dim'},'Sprint 1'),sv('text',{x:190,y:H-14,'text-anchor':'middle',class:'rt-dim'},'Sprint 3'));
+ const d=document.createElement('div');d.append(s);const p=document.createElement('div');p.className='dim small';p.textContent=note;d.append(p);figs.append(d)}
+// ---- 2. matrix
+const AG=['critic','researcher','host-install','cards','delivery','transcript','measure'];
+const T=[
+ ['UTC clock','1111111','“PDT” after daylight time ended moved the freeze by an hour; #826 was nearly punted (s3-826-after-freeze), and two pushes at 01:13 UTC were reported late when they were 47 minutes early.'],
+ ['Silent-turn stops','1111111','A turn with 15 silent minutes is stopped, and its background runs die with it: #775’s lagged run cut at 493 of 566; lead-delivery stopped three times.'],
+ ['Permission cards','1111111','A card for every git and gh call, reads included: 48 cards in one evening, 44 of them git or gh, 39 from host turns.'],
+ ['Stacked PRs','1011111','Every change below a stack meant restack, regate and a UAT rerun: #808 restacked 7 times, #773 rebuilt 4 times, #825 rebased 3 times in an hour. Retargeting to main doesn’t start CodeQL, and close and reopen didn’t either (#783).'],
+ ['Host load','0111111','Gates waited on loads of 20–76 or started too high; one test host meant UATs queued (#760’s UAT waited 00:29 → 01:14 UTC).'],
+ ['Missed readers','1011101','Your send-backs shared one shape: a writer, reader or caller not re-grepped (#760 store-outage.mjs, #770 “installed”), a failure row untested (#755 consent race), an absent outcome checked instead of the exact one, an instrument never proved (#777 empty observer), hostile input untested (#825 alt).'],
+ ['Stale hand-backs','1001101','Hand-back facts went stale between draft, approval and post (s3-777-handback-r2 rev 2); #780 “four items done” at a head without the P1 fix; each GitHub write went critic then you, in series; #773’s hand-back was still waiting on you at close.'],
+ ['Late messages','0101011','Held wakes and messages to a busy agent arrive after the work they ask for, so replies cross: researcher resent #775 results twice; #803; #827.'],
+ ['macOS-only bugs','0100011','The build host can’t show macOS defects; #802 (TMPDIR depth), #777 (fast machine) and #775 (DevTools viewport) came back from you for them.'],
+ ['Unpushed SHAs','0000111','Notes and bodies cited commits not on GitHub: #783 99c15ffa, #826 ba196c81.'],
+ ['Gate script','1000110','Hand-rolled gate scripts failed quietly: critic’s sign-off posted over a merge-tree conflict on #770; a gate exited 69 inside a job that reported 0; a zsh word split ran no tests.'],
+ ['Big items','0101000','#780 became 44 commits and five security parts as one item; #564-b1 was carded 8, then 5 after measuring.'],
+ ['Unowned questions','0100000','The allow-list draft and #671-b waited all sprint on another agent’s answers that nobody tracked.']];
+(()=>{const x0=150,dx=40,y0=96,dy=26,W=x0+AG.length*dx+60,H=y0+T.length*dy+10,s=sv('svg',{width:W,height:H,role:'img','aria-label':'Matrix of 13 themes by 7 agents'});
+ AG.forEach((a,j)=>s.append(sv('text',{x:x0+j*dx+4,y:y0-22,transform:`rotate(-45 ${x0+j*dx+4} ${y0-22})`,class:'rt-dim'},a)));
+ const cap=document.getElementById('mcap');
+ T.forEach(([n,bits,ev],i)=>{const y=y0+i*dy,g=sv('g',{class:'rt-hit',tabindex:0,role:'button','aria-label':`${n}: ${[...bits].filter(b=>b==='1').length} of 7`});
+  g.append(sv('rect',{class:'rt-ring',x:2,y:y-dy/2+2,width:W-4,height:dy-4,rx:4,fill:'transparent',stroke:'none'}));
+  g.append(sv('text',{x:x0-30,y:y+4,'text-anchor':'end'},n));
+  [...bits].forEach((b,j)=>g.append(b==='1'?sv('circle',{cx:x0+j*dx,cy:y,r:7,fill:C(1)}):sv('circle',{cx:x0+j*dx,cy:y,r:2,fill:'var(--line)'})));
+  const c=[...bits].filter(b=>b==='1').length;g.append(sv('text',{x:x0+AG.length*dx-10,y:y+4,class:'rt-dim'},c+' of 7'));
+  const show=()=>{cap.replaceChildren();const b=document.createElement('b');b.textContent=n+': ';cap.append(b,ev)};g.onclick=g.onfocus=show;s.append(g)});
+ document.getElementById('matrix').append(s);cap.textContent='Click a theme to read its evidence.'})();
+// ---- 3. action → theme links
+const A=[
+ ['UTC everywhere','rule',[0],'All 7','Every time in messages, blocks and notes in UTC (PST alongside only if useful). Cost: none. Aims at: the freeze mix-up.'],
+ ['Review allow list','work',[2],'critic, researcher, lead-cards','Let read-only review commands (gh pr checks/view/diff, git fetch/merge-tree/archive) run without a card. Needs the generic allow list, after #817 (a mod can approve past the card). Aims at: wait time.'],
+ ['Talking gate script','work',[10,1,4],'critic, lead-transcript, lead-delivery','One script in the repo: waits for load under 20 inside the lock, prints a line every minute, checks the toolchain, per-commit Biome, merge-tree on fresh main, gh pr checks with CodeQL, non-zero on any failure, one summary line to quote. Aims at: send-backs and stopped turns.'],
+ ['One-deep stacks','rule',[3],'lead-host-install, lead-transcript, critic, lead-delivery','Never stack more than one PR deep on an unmerged branch; rebase once, right before the final gate; first find what starts CodeQL on a retargeted PR. Aims at: time to merge.'],
+ ['Test-design rule','rule',[5],'lead-host-install, lead-cards, lead-measure, critic','In the pre-review packet: failure-table rows tested first (including “something else fixed it”), grep every reader, writer and caller, hostile-input specs for agent text, assert the exact outcome, prove each instrument. Aims at: send-backs, directly.'],
+ ['Mac check','rule',[8],'lead-measure, lead-transcript','Anything touching temp folders, sockets, browser specs or timing gets researcher’s Mac run before sign-off. Aims at: send-backs.'],
+ ['SHA check','work',[9,6],'lead-delivery, lead-measure, lead-transcript','A script checks every cited SHA is on a remote ref; a hand-back’s facts are refreshed when posted, not drafted. Aims at: send-backs and re-asks.'],
+ ['Day-sized slices','rule',[11],'lead-cards, researcher','Split an item into slices that can each land in a day before its branch exists; measure before carding. Aims at: time to merge.'],
+ ['Question owners','rule',[12,7],'researcher','A question waiting on another agent goes on the board with an owner and a deadline. Aims at: work that waited all sprint.'],
+ ['Survive turn stop','work',[1],'lead-transcript','A Postbox change: background runs outlive a stopped turn, or a printing job keeps its turn. A Postbox issue, not a rule.']];
+(()=>{const W=640,dy=26,y0=20,H=y0+Math.max(A.length,T.length)*dy,xa=150,xt=430,s=sv('svg',{width:W,height:H,role:'img','aria-label':'Ten actions linked to the themes they address'});
+ const ty=i=>y0+i*dy,ay=i=>y0+i*dy*(T.length-1)/(A.length-1);const cap=document.getElementById('acap'),lines=sv('g');s.append(lines);
+ T.forEach(([n],i)=>{s.append(sv('circle',{cx:xt,cy:ty(i),r:4,fill:'var(--dim)'}),sv('text',{x:xt+10,y:ty(i)+4,class:'rt-dim'},n))});
+ const paint=sel=>{lines.replaceChildren();A.forEach(([,,ts],i)=>ts.forEach(t=>lines.append(sv('path',{d:`M${xa},${ay(i)}C${(xa+xt)/2},${ay(i)} ${(xa+xt)/2},${ty(t)} ${xt},${ty(t)}`,fill:'none',stroke:sel===i?C(2):'var(--line)','stroke-width':sel===i?3:1.5}))))};
+ A.forEach(([n,kind,ts,who,d],i)=>{const g=sv('g',{class:'rt-hit',tabindex:0,role:'button','aria-label':`${i+1}. ${n}`});
+  g.append(sv('rect',{class:'rt-ring',x:0,y:ay(i)-11,width:xa+10,height:22,rx:4,fill:'transparent',stroke:'none'}));
+  g.append(sv('text',{x:xa-14,y:ay(i)+4,'text-anchor':'end'},`${i+1}. ${n}`));
+  g.append(kind==='rule'?sv('circle',{cx:xa,cy:ay(i),r:6,fill:C(2)}):sv('circle',{cx:xa,cy:ay(i),r:5,fill:'var(--bg)',stroke:C(2),'stroke-width':2}));
+  const show=()=>{paint(i);cap.replaceChildren();const b=document.createElement('b');b.textContent=`${i+1}. ${n} (${kind==='rule'?'a rule':'needs building first'}; asked by ${who}): `;cap.append(b,d)};g.onclick=g.onfocus=show;s.append(g)});
+ paint(-1);document.getElementById('links').append(s);cap.textContent='Click an action to see what it changes and who asked for it.'})();
+document.getElementById('ready').onclick=()=>{postbox.send('ready',{},'The person has read the retro findings and is ready to pick actions.');document.getElementById('sent').textContent='Sent. The scrum master will ask next.'};
+</script></body></html>

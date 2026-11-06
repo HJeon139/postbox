@@ -1,0 +1,8 @@
+[
+  { "item": "#713", "card": "1", "driver": "One function in server/store.mjs draws until 8 letters or digits; a seeded randomBytes test that fails first, one mutant, one line in storage-design.md" },
+  { "item": "#730", "card": "1", "driver": "One chmod after the write at antigravity-cli.mjs:661; the test runs under 022 and 077 and restores the umask; Antigravity named unverified" },
+  { "item": "Action 11", "card": "1", "driver": "A new opt-in .githooks/pre-commit running lint:project, a test that runs it on bad copy, and npm run hooks in the start-of-room check" },
+  { "item": "#729", "card": "3", "driver": "keptStreams helper read by four checks, inline fixtures that fire and stay silent, a Claude id reset pin, a new trigger module and an assets-delete phase line, room-checks.mjs headroom checked first" },
+  { "item": "Action 8a", "card": "3", "driver": "Five new patterns each with a mutant, scrub 19 fixtures, widen the scan to every committed text file (old hits filed if many), README list of synthetic fixtures enforced" },
+  { "item": "Action 8b", "card": "2", "driver": "A small tool reusing checkContentPrivacy on each PR commit's added lines, a CI step beside lint-commits, tests on a planted commit" }
+]

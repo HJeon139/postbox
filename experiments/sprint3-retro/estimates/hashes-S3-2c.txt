@@ -1,0 +1,5 @@
+# Round S3-2c: #564-b1 (measure, then coalesce session events per frame), opened 2026-11-05T06:52:11Z; b2-b5 carded only if b1's numbers need them; scale 1/2/3/5/8/13
+lead-transcript 030394345a63bd737e873479eafd5b639b47e96c20a07837a87b5b186fc85035 #564-b1
+researcher d02711d53275ed055b6d9a748f566f6edc847aac293cb99902910eadabef7974 #564-b1
+critic c47386e18ed14de0399e8e3425ff6d6cf78a384468f86a8809057844b0577fcc #564-b1
+reveal 2026-11-05T07:02:43Z: lead-transcript 5, critic 5, researcher 8; verified. Adjacent cards: settled 8 (conservative, per the person's preference).

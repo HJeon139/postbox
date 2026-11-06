@@ -1,0 +1,6 @@
+# Round S3-2b: #564-b re-scoped (one session event's cost doesn't grow with the room), opened 2026-11-05T05:56:39Z after critic's peer read; scale 1/2/3/5/8/13; split above 8
+opened 2026-11-05T06:28:37Z on as_YaQcFIP v2
+lead-transcript 10bee276f9869c218c070d6797859724782cf73b2bc5662b7c4c6faff67a49b6 #564-b
+critic 3829b5d60b6fc0405f7323b16e25144efc2feaa58088c9f172bc7be926c2e3cf #564-b
+researcher 5fe790fec870d90fb49cb9ada48135c566a6f1fefd26442db026f5e91091b15a #564-b
+reveal 2026-11-05T06:42:44Z: lead-transcript 8, critic 8, researcher 13; all verified. 13 > 8: split per S3 rule 2.

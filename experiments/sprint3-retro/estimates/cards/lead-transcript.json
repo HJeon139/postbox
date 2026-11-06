@@ -1,0 +1,5 @@
+[
+  {"item": "B1b", "card": 5, "driver": "Branch has the move and #341 fix; left: explicit view read as data- attributes, window-paged-back and view-moved in own modules with recorded-room tests, PF-3 list fix, rebase, phase 1 UAT"},
+  {"item": "#712", "card": 8, "driver": "Design note first, content-visibility with intrinsic sizes kept stable for B1b's anchor, O(n) per-event scans in thread.mjs to an id index, PF-3 specs normal and lagged, 1x/4x/10x numbers, a new trigger; unmount fallback not counted"},
+  {"item": "#701", "card": 3, "driver": "Fix is done; left: exact toBe(1)/toBe(2) guards, the stated #573 delay, a seed option for diagrams, its trigger module, rebase and a UAT run"}
+]

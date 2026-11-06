@@ -1,0 +1,5 @@
+# Round S3-3: #797 (scope as_bS2j0U2A v2), opened 2026-11-05T07:03:56Z; scale 1/2/3/5/8/13; split above 8
+lead-measure f4277a3da48f1eca7aa30b2d950aaba44e352b8f7898cd3650a9871922982fa8 #797
+researcher 10ad4851823daa43c21dd55e1434e9366186cd30ac18bca63279d560d5dace83 #797
+critic 7c3b857e2990f22f0ba629b24366b13b65a3cb35a5d015593ec57a1af960bed9 #797
+reveal 2026-11-05T07:07:59Z: lead-measure 8, researcher 8, critic 5; verified. Settled 8.

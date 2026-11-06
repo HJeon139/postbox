@@ -1,0 +1,15 @@
+[
+ {"item":"#464-b","card":"13","driver":"security change with an RR 13 note first, a new install path, the integration test from an older version folder, plus the runner's staging option and a host trigger on the test host"},
+ {"item":"#633","card":"5","driver":"an existing PR: keptTurnId, one tie rule, four surviving mutants, the stopgap note, the gap-1 restart spec and a needsnav phase 3 trigger"},
+ {"item":"#721","card":"5","driver":"Dismiss with a browser spec, the [Postbox] notice, needs-mismatch, a new trigger, and a rebase onto #633's releaseNeed"},
+ {"item":"#693","card":"8","driver":"a decline memory, archived requesters, archiveForks, catch-up lines, and rebuilding hostwakes phase 1 for the trigger"},
+ {"item":"#694","card":"3","driver":"one helper in withUrgent with a per-turn set, a remote twin test, and a delivery-phase trigger"},
+ {"item":"#708","card":"1","driver":"docs only, one push and critic's sign-off left"},
+ {"item":"A1b design","card":"5","driver":"an RR 13 note with ten open choices, the first private key as a security read, and #608's findings carried"},
+ {"item":"B1b","card":"5","driver":"rebase, the explicit view state, data- probe, window-paged-back and view-moved in a new module, PF-3 specs, phase 1 run"},
+ {"item":"#712","card":"5","driver":"content-visibility is small, but the O(n) per-event scans, the RR 13 note, 10x numbers and a trigger add up"},
+ {"item":"#701","card":"3","driver":"two review fixes plus a diagram seed option and a new trigger"},
+ {"item":"Key-to-frame tool","card":"5","driver":"a new Event Timing tool, the 10,000-item seed fix, a report format and a smoke trigger"},
+ {"item":"Measurement","card":"3","driver":"the bench switched to writeSnapshot with a test, runs on four stores, a report and a recorded decision"},
+ {"item":"Small items","card":"8","driver":"five separate fixes; #729 needs recorded runs and action 8 needs a CI commit scan"}
+]

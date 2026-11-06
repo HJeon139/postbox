@@ -1,0 +1,152 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;font:14px/1.5 system-ui,sans-serif;color:var(--text);background:var(--bg)}
+.dm-wrap{max-width:900px;margin:0 auto;padding:12px}
+.dm-nav{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.dm-nav button[aria-current="true"]{outline:2px solid var(--accent)}
+.dm-slide{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+.dm-slide h2{margin:0 0 4px;font-size:18px}
+.dm-fig{margin-top:10px;overflow-x:auto;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px}
+.dm-fig svg{display:block;margin:0 auto}
+.dm-fig svg text{fill:var(--text);font-size:12px}
+.dm-fig svg .dm-dim{fill:var(--dim)}
+.dm-ctl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
+.dm-ctl button[aria-pressed="true"]{outline:2px solid var(--accent)}
+.dm-cap{font-size:13px;color:var(--dim);margin:6px 0 0}
+.dm-cap ol{margin:4px 0;padding-left:20px}
+.dm-shots{display:grid;gap:10px;margin-top:10px}
+.dm-shots figure{margin:0;border:1px solid var(--line);border-radius:6px;padding:6px;background:var(--bg)}
+.dm-shots img{max-width:100%;display:block}
+.dm-shots figcaption{font-size:12px;color:var(--dim);margin-top:4px}
+.dm-foot{display:flex;justify-content:space-between;margin-top:10px;gap:8px}
+.dm-hit{cursor:pointer}
+ul{margin:6px 0;padding-left:20px}
+</style></head><body><div class="dm-wrap">
+<div class="dm-nav" id="nav" aria-label="Demo slides"></div>
+<div class="dm-slide" id="slide" aria-live="polite"></div>
+<div class="dm-foot"><button class="btn ghost" id="prev">Previous</button><span class="dim small" id="pos"></span><button class="btn" id="next">Next</button></div>
+<p class="dim small">Screenshots are frames from real UAT runs on the test host (5–6 Nov UTC). They show local paths, so they stay in this room and never go to GitHub.</p>
+</div><script>
+const NS='http://www.w3.org/2000/svg';
+const el=(t,a={},...c)=>{const e=document.createElement(t);for(const k in a)e.setAttribute(k,a[k]);e.append(...c);return e};
+const sv=(t,a={},...c)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);for(const x of c)e.append(typeof x==='string'?document.createTextNode(x):x);return e};
+const svg=(w,h,label)=>sv('svg',{width:w,height:h,role:'img','aria-label':label});
+const txt=(x,y,s,a={})=>sv('text',{x,y,...a},s);
+const C=k=>`var(--s${k})`;
+// Arrowhead marker per color
+function defs(root,cols){const d=sv('defs');for(const[k,c]of cols){d.append(sv('marker',{id:'ah'+k,viewBox:'0 0 10 10',refX:9,refY:5,markerWidth:7,markerHeight:7,orient:'auto-start-reverse'},sv('path',{d:'M0,0L10,5L0,10z',fill:c})))}root.append(d)}
+const arrow=(x1,y1,x2,y2,k,dash)=>sv('path',{d:`M${x1},${y1}L${x2},${y2}`,stroke:k==='dim'?'var(--dim)':C(k),'stroke-width':2,fill:'none','marker-end':`url(#ah${k})`,...(dash?{'stroke-dasharray':'5 4'}:{})});
+// Glyphs: drawn, no text inside
+const G={
+ person:(x,y,c)=>sv('g',{transform:`translate(${x},${y})`},sv('circle',{cx:0,cy:-9,r:6,fill:c}),sv('path',{d:'M-11,12a11,11 0 0 1 22,0z',fill:c})),
+ agent:(x,y,c)=>sv('g',{transform:`translate(${x},${y})`},sv('rect',{x:-11,y:-12,width:22,height:18,rx:5,fill:c}),sv('circle',{cx:-4,cy:-3,r:2.4,fill:'var(--bg)'}),sv('circle',{cx:4,cy:-3,r:2.4,fill:'var(--bg)'}),sv('path',{d:'M0,-12v-5',stroke:c,'stroke-width':2}),sv('circle',{cx:0,cy:-18,r:2.5,fill:c}),sv('rect',{x:-7,y:8,width:14,height:5,rx:2,fill:c})),
+ hub:(x,y,c)=>sv('g',{transform:`translate(${x},${y})`},sv('path',{d:'M-14,-6l14,-9l14,9v15h-28z',fill:c}),sv('rect',{x:-5,y:0,width:10,height:9,fill:'var(--bg)'})),
+ card:(x,y,c,state)=>{const g=sv('g',{transform:`translate(${x},${y})`});g.append(sv('rect',{x:-12,y:-9,width:24,height:18,rx:3,fill:state==='expired'?'none':c,stroke:c,'stroke-width':2,...(state==='expired'?{'stroke-dasharray':'3 2'}:{})}));if(state==='ok')g.append(sv('path',{d:'M-5,0l4,4l7,-8',stroke:'var(--bg)','stroke-width':2.5,fill:'none'}));if(state==='expired')g.append(sv('path',{d:'M-5,-5l10,10M5,-5l-10,10',stroke:c,'stroke-width':2}));return g},
+ clock:(x,y,c)=>sv('g',{transform:`translate(${x},${y})`},sv('circle',{r:10,fill:'none',stroke:c,'stroke-width':2}),sv('path',{d:'M0,0v-6M0,0h5',stroke:c,'stroke-width':2})),
+ hourglass:(x,y,c)=>sv('g',{transform:`translate(${x},${y})`},sv('path',{d:'M-7,-10h14l-7,10l7,10h-14l7,-10z',fill:'none',stroke:c,'stroke-width':2}),sv('path',{d:'M-3,7h6l-3,-4z',fill:c})),
+ laptop:(x,y,c)=>sv('g',{transform:`translate(${x},${y})`},sv('rect',{x:-22,y:-18,width:44,height:28,rx:3,fill:'none',stroke:c,'stroke-width':2.5}),sv('path',{d:'M-30,14h60l-5,6h-50z',fill:c})),
+ server:(x,y,c,ghost)=>{const g=sv('g',{transform:`translate(${x},${y})`});for(let i=0;i<3;i++){g.append(sv('rect',{x:-20,y:-22+i*15,width:40,height:12,rx:2,fill:'none',stroke:c,'stroke-width':2}));g.append(sv('circle',{cx:13,cy:-16+i*15,r:2,fill:c}))}return g},
+ box:(x,y,c,dashed)=>sv('g',{transform:`translate(${x},${y})`},sv('rect',{x:-10,y:-10,width:20,height:20,rx:2,fill:dashed?'none':c,stroke:c,'stroke-width':2,...(dashed?{'stroke-dasharray':'3 2'}:{})}),dashed?sv('g'):sv('path',{d:'M0,-10v20M-10,0h20',stroke:'var(--bg)','stroke-width':2})),
+ check:(x,y,c)=>sv('path',{d:`M${x-7},${y}l5,5l9,-10`,stroke:c,'stroke-width':3,fill:'none'}),
+ num:(x,y,n)=>sv('g',{},sv('circle',{cx:x,cy:y,r:8,fill:'var(--panel)',stroke:'var(--dim)'}),txt(x,y+4,String(n),{'text-anchor':'middle',style:'font-size:11px'}))
+};
+// ---------- Figures ----------
+const MERGED=[
+ ['Permissions',1,[[633,'An agent needs you until its last waiting card is answered'],[760,'An expired card stops needing you, and its agent is told to ask again'],[776,'A declined add stops asking, and a card no one can answer closes']]],
+ ['Remote hosts',2,[[736,'Stage an older Postbox on a test host'],[755,'Install this Postbox’s version on a host by itself, with consent'],[770,'A turn on a host without this version waits for the install']]],
+ ['Speed',3,[[769,'Find an item by id in O(1), through one index outside the state'],[701,'A diagram frame loads only as it nears the view']]],
+ ['View state',4,[[758,'The view state, explicit and published on the transcript'],[775,'The UAT runner keeps the person’s view and records what moves it']]],
+ ['Gate',5,[[772,'The pre-commit hook runs the project lints'],[761,'Scan what each PR commit adds for private data'],[742,'Check every committed file for private data'],[740,'Fail a new nested ternary on an added line'],[802,'The gate leaves nothing in the temp folder']]],
+ ['Fixes',6,[[735,'Move postboxCalls into its own module'],[741,'Name a newer waiting message on the next tool result'],[743,'Room checks skip a deleted conversation’s streams'],[762,'newId always returns 8 letters or digits'],[771,'hooks.json is read-only on every umask'],[774,'A recheck reads the phases a run played']]],
+ ['Designs, tools',7,[[708,'Delivery routes design for A1 and A2'],[781,'A1b’s design: asks derived from the cards'],[777,'Measure key-to-frame p95 by room size (PF-1)']]]];
+const OPEN=[[826,'Session event runs no whole-document lookup (approved, waiting merge)'],[825,'Review block shows agent images (changes requested)'],[783,'Server bench by room size (changes requested)'],[773,'View probe, B1b (hand-back r2)'],[808,'Put Postbox back on a host (no review yet)']];
+function figOverview(host,cap){
+ const W=560,rowH=30,top=10,H=top+(MERGED.length+1)*rowH+10,s=svg(W,H,'Dot chart of sprint 3 PRs by theme: 24 merged, 5 open');
+ const say=(n,t,open)=>{cap.textContent=`#${n}: ${t}${open?'':' (merged)'}`};
+ MERGED.forEach(([name,k,prs],r)=>{const y=top+r*rowH+15;s.append(txt(118,y+4,name,{'text-anchor':'end'}));
+  prs.forEach(([n,t],i)=>{const g=sv('g',{class:'dm-hit',tabindex:0,role:'button','aria-label':`#${n} ${t}`});g.append(sv('circle',{cx:140+i*28,cy:y,r:10,fill:C(k)}));g.append(sv('title',{},`#${n} ${t}`));g.onclick=g.onfocus=()=>say(n,t);s.append(g)})});
+ const y=top+MERGED.length*rowH+15;s.append(txt(118,y+4,'Punted (open)',{'text-anchor':'end',class:'dm-dim'}));
+ OPEN.forEach(([n,t],i)=>{const g=sv('g',{class:'dm-hit',tabindex:0,role:'button','aria-label':`#${n} ${t}`});g.append(sv('circle',{cx:140+i*28,cy:y,r:9,fill:'none',stroke:'var(--dim)','stroke-width':2,'stroke-dasharray':'3 2'}));g.append(sv('title',{},`#${n} ${t}`));g.onclick=g.onfocus=()=>say(n,t,1);s.append(g)});
+ s.append(sv('line',{x1:130,x2:130,y1:top,y2:H-8,stroke:'var(--line)'}));
+ host.append(s);cap.textContent='Each dot is one PR. Click or tab to a dot to read it. Hollow dots are open PRs punted to sprint 4.';
+}
+function figExpiry(host,cap,ctl){
+ let mode='after';const draw=()=>{host.replaceChildren();const W=600,H=230,s=svg(W,H,`Storyboard of a permission card that expires, ${mode} the fix`);defs(s,[['1',C(1)],['2',C(2)],['3',C(3)],['dim','var(--dim)']]);
+  const L=[[40,'Agent',G.agent,C(1)],[115,'Postbox',G.hub,C(2)],[190,'You',G.person,C(3)]];
+  for(const[y,n,g,c]of L){s.append(g(26,y,c));s.append(txt(26,y+28,n,{'text-anchor':'middle',class:'dm-dim'}));s.append(sv('line',{x1:55,x2:W-10,y1:y,y2:y,stroke:'var(--line)'}))}
+  s.append(arrow(80,46,80,104,'1'));s.append(G.num(80,75,1));
+  s.append(arrow(130,121,130,174,'2'));s.append(G.card(150,190,C(3)));s.append(G.num(130,150,2));
+  s.append(G.clock(215,115,C(2)));s.append(G.num(215,145,3));
+  if(mode==='before'){s.append(sv('path',{d:`M165,190H${W-20}`,stroke:'var(--alert)','stroke-width':3,'stroke-dasharray':'6 5'}));s.append(G.hourglass(330,40,'var(--alert)'));s.append(sv('path',{d:`M345,40H${W-20}`,stroke:'var(--alert)','stroke-width':3,'stroke-dasharray':'6 5'}));s.append(txt(W-20,212,'needs you forever',{'text-anchor':'end'}));s.append(txt(W-20,26,'still waiting',{'text-anchor':'end'}));
+   cap.innerHTML='<ol><li>The agent asks to use a tool.</li><li>Postbox shows you a permission card.</li><li>The request times out. Before the fix, the card kept “needing you”, the agent kept waiting, and answering did nothing.</li></ol>'}
+  else{s.append(G.card(270,190,C(3),'expired'));s.append(G.num(270,165,4));s.append(arrow(300,104,300,50,'2'));s.append(G.num(300,75,5));s.append(arrow(390,46,390,104,'1'));s.append(G.num(390,75,6));s.append(arrow(430,121,430,174,'2'));s.append(G.card(470,190,C(3),'ok'));s.append(G.num(510,190,7));
+   cap.innerHTML='<ol><li>The agent asks to use a tool.</li><li>Postbox shows you a permission card.</li><li>The request times out.</li><li>The card shows as expired and stops needing you.</li><li>Postbox tells the agent to ask again.</li><li>The agent asks again.</li><li>You answer the fresh card, and the turn goes on.</li></ol>'}
+  host.append(s)};
+ for(const m of ['before','after']){const b=el('button',{class:'btn sm ghost','aria-pressed':m===mode},m==='before'?'Before #760':'After #760');b.onclick=()=>{mode=m;[...ctl.children].forEach(x=>x.setAttribute('aria-pressed',x===b));draw()};ctl.append(b)}draw();
+}
+function figHost(host,cap,ctl){
+ let mode='missing';const draw=()=>{host.replaceChildren();const W=600,H=200,s=svg(W,H,`Your computer sends a turn to a host that ${mode==='has'?'already has':'is missing'} this Postbox version`);defs(s,[['1',C(1)],['2',C(2)],['3',C(3)],['dim','var(--dim)']]);
+  s.append(G.laptop(70,100,C(2)));s.append(txt(70,140,'your computer',{'text-anchor':'middle',class:'dm-dim'}));
+  s.append(G.server(520,100,C(4)));s.append(txt(520,140,'remote host',{'text-anchor':'middle',class:'dm-dim'}));
+  s.append(G.agent(520,40,C(1)));
+  if(mode==='has'){s.append(G.box(560,100,C(2)));s.append(arrow(110,95,480,95,'2'));s.append(G.num(300,80,1));s.append(G.check(560,60,'var(--good)'));
+   cap.innerHTML='<ol><li>The host already runs this version, so the turn goes straight to the agent.</li></ol>'}
+  else{s.append(G.box(560,100,C(2),1));s.append(G.person(130,175,C(3)));s.append(G.check(150,170,'var(--good)'));s.append(G.num(105,175,1));
+   s.append(sv('path',{d:'M110,110C250,170 380,170 480,112',stroke:C(2),'stroke-width':2,fill:'none','marker-end':'url(#ah2)'}));s.append(G.box(300,153,C(2)));s.append(G.num(300,182,2));
+   s.append(arrow(110,85,480,85,'1',1));s.append(G.hourglass(300,60,C(1)));s.append(G.num(325,60,3));s.append(G.check(560,60,'var(--good)'));s.append(G.num(580,40,4));
+   cap.innerHTML='<ol><li>Postbox asks you once to install its version on the host (#755).</li><li>It copies and installs its own version there.</li><li>A turn that arrives meanwhile waits, with its card, instead of failing (#770).</li><li>Once the install finishes, the turn runs. Putting it back after a manual removal (#808) is punted.</li></ol>'}
+  host.append(s)};
+ for(const[m,l]of [['missing','Host missing the version'],['has','Host has it']]){const b=el('button',{class:'btn sm ghost','aria-pressed':m===mode},l);b.onclick=()=>{mode=m;[...ctl.children].forEach(x=>x.setAttribute('aria-pressed',x===b));draw()};ctl.append(b)}draw();
+}
+function figSpeed(host,cap){
+ const R=[['Item lookup p95','#769','152.8 µs','0.3 µs',152.8/0.3,1],['Startup','#769','662 ms','19 ms',662/19,1],['Session event, 10× room','#826','28 ms','2.7 ms',28/2.7,3]];
+ const W=600,H=40+R.length*46,x0=190,x1=W-60,lx=v=>x0+(Math.log10(v)/3)*(x1-x0),s=svg(W,H,'Speedup factors on a log scale: 509, 35 and 10 times faster');
+ for(const v of [1,10,100,1000]){s.append(sv('line',{x1:lx(v),x2:lx(v),y1:14,y2:H-22,stroke:'var(--line)'}));s.append(txt(lx(v),H-6,v+'×',{'text-anchor':'middle',class:'dm-dim'}))}
+ R.forEach(([n,pr,b,a,f,k],i)=>{const y=36+i*46;s.append(txt(x0-12,y,n,{'text-anchor':'end'}));s.append(txt(x0-12,y+15,`${pr}: ${b} → ${a}`,{'text-anchor':'end',class:'dm-dim',style:'font-size:11px'}));s.append(sv('line',{x1:lx(1),x2:lx(f),y1:y,y2:y,stroke:C(k),'stroke-width':4}));s.append(sv('circle',{cx:lx(f),cy:y,r:7,fill:C(k)}));s.append(txt(lx(f)+12,y+4,Math.round(f)+'× faster'))});
+ host.append(s);cap.textContent='How many times faster, on a log scale. Each row is measured in its own unit, so the bars compare speedups, not raw times. #826 is approved but not merged. PF-1, key press to next frame, is measured now (#777) but not yet met.';
+}
+function figView(host,cap,ctl){
+ let extra=0;const draw=()=>{host.replaceChildren();const W=520,H=270,s=svg(W,H,`Two transcripts with ${extra} new items: held view stays put, following view moves to the end`);
+  const strip=(cx,held)=>{const n=12+extra,step=15,top=12,vh=6*step;const g=sv('g');
+   for(let i=0;i<n;i++)g.append(sv('rect',{x:cx-50,y:top+i*step,width:i%3?80:100,height:10,rx:3,fill:i>=12?C(2):'var(--line)'}));
+   const vy=held?top+3*step-3:top+(n-6)*step-3;g.append(sv('rect',{x:cx-58,y:vy,width:116,height:vh,rx:4,fill:'none',stroke:C(1),'stroke-width':3}));
+   if(held&&extra)g.append(sv('path',{d:`M${cx+70},${vy+vh-20}v18`,stroke:C(2),'stroke-width':3,'marker-end':'url(#ah2)'}));
+   g.append(txt(cx,H-6,held?'held where you scrolled':'following the end',{'text-anchor':'middle',class:'dm-dim'}));return g};
+  defs(s,[['2',C(2)]]);
+  s.append(strip(130,true));s.append(strip(390,false));host.append(s)};
+ const b=el('button',{class:'btn sm'},'Add a new item');b.onclick=()=>{extra=Math.min(3,extra+1);draw()};const r=el('button',{class:'btn sm ghost'},'Reset');r.onclick=()=>{extra=0;draw()};ctl.append(b,r);
+ cap.textContent='The outlined frame is what you see. New items are colored. When you’ve scrolled up, new items arrive below and the frame stays put, with an arrow that more is below. When you’re at the end, the frame follows. #758 makes this state explicit; #775 keeps it during UAT runs. The UAT probe for it (#773) is punted.';draw();
+}
+function figGate(host,cap){
+ const L=[['lints','#772','A lint error stops at the pre-commit hook.'],['commit scan','#761','A private path in a PR commit is caught by the per-commit scan.'],['file scan','#742','Private data anywhere in a committed file is caught by the wider all-files scan.'],['ternaries','#740','A new nested ternary on an added line fails CI.'],['temp files','#802','A gate run that leaves files in /tmp fails.']];
+ const W=620,H=230,s=svg(W,H,'Five layered checks; each catches one kind of defect, and a clean commit passes all five');defs(s,[['1',C(1)],['5',C(5)],['dim','var(--dim)']]);
+ const sx=i=>130+i*85;let sel=-1;const layer=[];
+ L.forEach(([n,pr,t],i)=>{const x=sx(i),g=sv('g',{class:'dm-hit',tabindex:0,role:'button','aria-label':`${n} ${pr}: ${t}`});g.append(sv('path',{d:`M${x-8},40l16,-12v150l-16,12z`,fill:C(5),opacity:.55}));
+  for(const hy of [60+i*9%40,120-i*7%30])g.append(sv('ellipse',{cx:x,cy:hy,rx:4,ry:8,fill:'var(--bg)'}));
+  g.append(txt(x,206,n,{'text-anchor':'middle'}));g.append(txt(x,221,pr,{'text-anchor':'middle',class:'dm-dim'}));g.onclick=g.onfocus=()=>{sel=i;paint();cap.textContent=`${n} (${pr}): ${t}`};layer.push(g);s.append(g)});
+ const defects=sv('g');s.append(defects);
+ const paint=()=>{defects.replaceChildren();L.forEach((_,i)=>{const y=52+i*26,hit=sel===-1||sel===i;defects.append(sv('path',{d:`M40,${y}H${sx(i)-12}`,stroke:'var(--alert)','stroke-width':hit?3:1.5,opacity:hit?1:.35}));defects.append(sv('circle',{cx:sx(i)-12,cy:y,r:hit?5:3,fill:'var(--alert)',opacity:hit?1:.35}))});
+  defects.append(sv('path',{d:`M40,190H${W-60}`,stroke:C(1),'stroke-width':3,'marker-end':'url(#ah1)'}));defects.append(G.check(W-35,190,'var(--good)'))};
+ s.append(txt(36,20,'defects in',{class:'dm-dim'}));s.append(txt(W-40,172,'ready',{'text-anchor':'middle',class:'dm-dim'}));
+ paint();host.append(s);cap.textContent='Each slice is one check added this sprint. Red lines are defects, each stopped by the check that catches it; the blue line is a clean commit that passes all five. Click a slice to see what it catches.';
+}
+const S=[
+{t:'Sprint 3 at a glance',md:'<p><b>24 PRs merged</b>, plus integrator chores #756 and #801, on two lanes: hotfix and #508 close-out. Five PRs are open and punted; #826 only needs your merge.</p>',fig:figOverview},
+{t:'#760: an expired permission card stops needing you',md:'<p>UAT run <span class="mono">hostexpiry</span>, 6 Nov 01:14 UTC, passed. Switch between before and after.</p>',fig:figExpiry,shots:[['he/03-I4','From the run: critic asks to Read, and the room shows that critic is waiting for you.'],['he/04-I4','The fresh card, allowed.'],['he/07-I9','The follow-up command, allowed, and the turn finishes.']]},
+{t:'#755 + #770: a host gets this Postbox’s version by itself',md:'<p>The <span class="mono">remotehosts</span> UAT runs record trigger results, not screenshots, so this slide is a drawing of the flow.</p>',fig:figHost},
+{t:'#769 + #826: speed in big rooms',md:'<p>Measured on the bench. UAT run <span class="mono">bigroom</span> phase 5 filled a room to 832 items.</p>',fig:figSpeed,shots:[['br/00-I337','Item 337: blocks still render.'],['br/00-I832','Item 832: a diagram at the end of the room, loaded as it neared the view (#701).']]},
+{t:'#758 + #775: the view stays where you put it',md:'',fig:figView},
+{t:'The gate got stricter',md:'',fig:figGate},
+{t:'Not shipped: review figures (#780, PR #825)',md:'<p>A review block shows images from the agent’s folder. UAT run <span class="mono">reviewfigures</span> passed, but you requested changes: the alt-text escape has no test. Punted to sprint 4.</p>',shots:[['rf/04-I9','A review block in Preview with two figures.'],['rf/05-I9','The review waiting on you, with Comment, Approve and Request changes.']]}
+];
+let i=0,shots={};
+const nav=document.getElementById('nav'),slide=document.getElementById('slide');
+S.forEach((s,k)=>{const b=el('button',{class:'btn sm ghost'},String(k+1)+'. '+s.t.split(':')[0]);b.onclick=()=>show(k);nav.append(b)});
+function show(k){i=k;postbox.saveState({i});[...nav.children].forEach((b,j)=>b.setAttribute('aria-current',j===k));
+ const s=S[k];slide.replaceChildren(el('h2',{},s.t));if(s.md){const d=el('div');d.innerHTML=s.md;slide.append(d)}
+ if(s.fig){const ctl=el('div',{class:'dm-ctl'}),host=el('div',{class:'dm-fig'}),cap=el('div',{class:'dm-cap'});slide.append(ctl,host,cap);s.fig(host,cap,ctl);if(!ctl.children.length)ctl.remove()}
+ if(s.shots){const w=el('div',{class:'dm-shots'});for(const[key,c]of s.shots){const img=el('img',{alt:c});if(shots[key])img.src='data:image/png;base64,'+shots[key];w.append(el('figure',{},img,el('figcaption',{},c)))}slide.append(w)}
+ document.getElementById('pos').textContent=(k+1)+' of '+S.length}
+document.getElementById('prev').onclick=()=>show((i+S.length-1)%S.length);
+document.getElementById('next').onclick=()=>show((i+1)%S.length);
+(async()=>{await postbox.ready;try{shots=JSON.parse(await postbox.file('shots.json'))}catch(e){}const st=await postbox.restoreState();show(st&&st.i||0)})();
+</script></body></html>

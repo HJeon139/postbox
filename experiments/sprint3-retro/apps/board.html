@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sprint 3 board</title>
+<style>
+  body { margin: 0; font: 14px/1.4 system-ui, sans-serif; color: var(--text); background: var(--bg); }
+  .sb-wrap { padding: 12px; }
+  .sb-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+  .sb-head h1 { font-size: 16px; margin: 0; }
+  .sb-facts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sb-lane { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 14px; background: var(--panel); }
+  .sb-lane-title { padding: 8px 10px; font-weight: 600; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .sb-cols { display: grid; grid-template-columns: repeat(6, minmax(130px, 1fr)); gap: 8px; padding: 8px; overflow-x: auto; }
+  .sb-col h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); margin: 0 0 6px; }
+  .sb-card { display: block; width: 100%; text-align: left; border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 6px; background: var(--bg); color: var(--text); padding: 6px 8px; margin-bottom: 6px; font: inherit; cursor: pointer; }
+  .sb-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .sb-card[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent); }
+  .sb-card .sb-id { font-weight: 600; }
+  .sb-card .sb-meta { color: var(--dim); font-size: 12px; margin-top: 2px; }
+  .sb-flag { font-size: 11px; border: 1px solid var(--line); border-radius: 10px; padding: 0 6px; margin-left: 4px; }
+  .sb-flag-alert { border-color: var(--alert); color: var(--alert); }
+  .sb-detail { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--panel); }
+  .sb-detail h3 { margin: 0 0 6px; font-size: 15px; }
+  .sb-detail dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 8px 0; }
+  .sb-detail dt { color: var(--dim); }
+  .sb-detail dd { margin: 0; }
+  .sb-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .sb-note { color: var(--dim); font-size: 12px; margin-top: 6px; }
+  .sb-col, .sb-card, .sb-detail, .sb-detail dd, .sb-lane-title span { min-width: 0; overflow-wrap: anywhere; }
+  .sb-wrap, .sb-lane, .sb-detail { max-width: 100%; box-sizing: border-box; }
+  .sb-card { box-sizing: border-box; }
+  @media (max-width: 700px) {
+    .sb-cols { grid-template-columns: minmax(0, 1fr); overflow-x: visible; }
+    .sb-detail dl { grid-template-columns: minmax(0, 1fr); }
+    .sb-detail dt { margin-top: 4px; }
+  }
+</style>
+</head>
+<body>
+<div class="sb-wrap">
+  <div class="sb-head">
+    <h1>Sprint 3 board: two lanes</h1>
+    <div class="sb-facts" id="facts"></div>
+  </div>
+  <div id="lanes"></div>
+  <section class="sb-detail" id="detail" aria-live="polite">
+    <p class="dim">Pick a card to see its scope, owner, what it depends on and what’s next.</p>
+  </section>
+</div>
+<script>
+const COLUMNS = [
+  { id: 'groomed', label: 'To do (groomed)' },
+  { id: 'progress', label: 'In progress' },
+  { id: 'review', label: 'Review owed (critic)' },
+    { id: 'stacked', label: 'Waiting on a merge below' },
+  { id: 'ready', label: 'Ready for you (labeled)' },
+  { id: 'merged', label: 'Merged' },
+];
+const LANES = [
+  { id: 'hotfix', label: 'Hotfix lane and the quality gate', goal: 'Each P0 fixed, passed agentic UAT on its exact head, merged.' },
+  { id: 'r508', label: '#508 close-out lane', goal: 'A long room performs like a small one: key to frame within 10% at p95, at 1×, 4×, 10×.' },
+];
+// As of 4 Nov, 10:05 PST, from gh pr view (exit 0) and rounds S3-1, S3-1b, S3-1c, from the room's grooming notes and gh (exit 0). No item has points yet.
+const ITEMS = [
+  { id: '#464-b1', lane: 'hotfix', col: 'merged', lead: 'lead-host-install', pts: '3', title: 'Runner option: stage an older Postbox on the test host', scope: '--stage-host-version <tag>, remotehosts.md phase 4, trigger host-staged-older. Test tooling only.', next: 'Merged as #736 (b27f062a), 4 Nov 19:56 UTC.', depends: '—', shared: 'tools/uat/triggers.mjs', flags: [], last: 'S3-1c: researcher 3, critic 3.' },
+  { id: '#464-b2a', lane: 'hotfix', col: 'merged', lead: 'lead-host-install', pts: '5', title: 'Install by itself, with standing consent', scope: 'Consent record and its route behind the page’s token (D7); maybeUpdate in the failure’s tick, never throws; record rules; in-flight guard shared with Install…; one reconnect on exit 75; removing a host waits. Off by default. Trigger host-auto-installed; the real two-version UAT run.', next: 'Merged as #755, 5 Nov 18:13 UTC.', depends: '#464-b1', shared: '—', flags: ['security'], last: 'S3-1d: 5, 5, 5.' },
+  { id: '#464-b2b', lane: 'hotfix', col: 'merged', lead: 'lead-host-install', pts: '3', title: 'The waiting turn survives the install', scope: 'ensureWelcome waits and starts again from the top, with a bound; “Installing…” on the turn; the card’s three states and the toggle, with a browser spec. Trigger turn-waited-for-install.', next: 'PR #770 at 467e5625 conflicts with main after #760 (triggers-host.mjs). critic’s sign-off withdrawn. Rebase only if pushed by 02:00 UTC; else “needs a rebase after #760” at 8 PM.', depends: '#464-b2a', shared: '—', flags: ['security'], last: 'S3-1d: researcher 5, critic 3, lead 3; median 3.' },
+  { id: '#464-b3', lane: 'hotfix', col: 'groomed', lead: 'lead-host-install', pts: '3', title: 'Reinstall with a new host token (D4)', scope: 'Read the old token before the install, tokenChanged, the card’s line; trigger host-reinstalled in phase 5.', next: 'PR #808 at 9fffb64f waits on #770; sprint 4.', depends: '#464-b2a', shared: '—', flags: ['security'], last: 'S3-1c: researcher 3, critic 3.' },
+  { id: '#774', lane: 'hotfix', col: 'merged', lead: 'lead-host-install', pts: 'found', title: 'A recheck reads the phases a run played (readRun)', scope: 'readRun keeps phases, startPhase, stepCap and title; a class test that every key runRecord writes reads back.', next: 'Merged, 5 Nov 06:00 UTC.', depends: '—', shared: 'tools/uat/runs.mjs', flags: [], last: '' },
+  { id: '#615', lane: 'r508', col: 'groomed', lead: '—', pts: 'parked', title: 'Archive older turns out of live state (#305), design only, draft 7', scope: 'A draft design PR from 2 Nov, before sprint 3. Not in sprint 3’s scope.', next: 'Draft PR at 70be51b8 (#305 design), the person’s, untouched since 3 Nov; CI green. Parked unless you give it an owner (s3-615-owner).', depends: '—', shared: '—', flags: ['parked'], last: '' },
+  { id: '#821', lane: 'r508', col: 'groomed', lead: 'lead-measure', pts: '26', title: 'Log every response over 500 ms, in the page and the server', scope: 'Filed 5 Nov at P0 as a slice of #508 (as_JxlxPgBJ v5): lag events (interaction or action span ≥ 500 ms) with a fixed action list, the requests behind each, page and server matched by an action header kept only from the list, idle-time batches, on by default with a switch, self turn-off over 2 ms per entry.', next: 'Sprint 4. Round S3-4: #821a 8, #821b 8, #821c 5, #821d 5. Design note designs/821-lag-log.md first, to critic and the person; then a, b, c, d in order, with #818 alongside. #508 link posted.', depends: '—', shared: 'app/, server/ (new modules)', flags: ['P0', 'sprint 4'], last: '' },
+  { id: '#797', lane: 'hotfix', col: 'merged', lead: 'lead-measure', pts: '8', title: 'Tests leave temp folders that filled the build host', scope: 'Remove every mkdtemp folder in an after or finally registered at creation; npm run check runs with its own TMPDIR and sweeps leftovers older than an hour (restoring read-only modes); the integration fixtures use the same place; a test that fails on main if anything is left.', next: 'Merged as #802, 5 Nov 21:50 UTC.', depends: '—', shared: 'tests/, tests/integration/', flags: ['High'], last: '' },
+  { id: '#780', lane: 'hotfix', col: 'review', lead: 'lead-cards', pts: '?', title: 'A review block can’t show an image the agent made', scope: 'Show agent-made figures (a path in its folder) in the review preview. Serves files from an agent folder to the page, so a security design note first (RR 13), read by critic.', next: 'PR #825 at f5bf06d4; CI green; hand-back approved, critic to read; #827 filed.', depends: '—', shared: '—', flags: ['added 4 Nov evening'], last: '' },
+  { id: '#564-a', lane: 'r508', col: 'groomed', lead: 'lead-transcript', pts: '8', title: 'A streaming reply parses only its open block', scope: 'blocks() reports a safe cut; a cache keyed on the glossary and handles; line-mark offsets; a property test with generators for eight cut hazards; markTerms folded in; a probe and trigger on recorded data.', next: 'Round S3-2 settled at 8 (5, 8, 8). Builds after B1b’s retargets.', depends: '—', shared: 'shared/markdown.mjs, app/js/thread.mjs', flags: ['added 4 Nov evening'], last: '' },
+  { id: '#564-b1', lane: 'r508', col: 'merged', lead: 'lead-transcript', pts: '5', title: 'Scope the three whole-document session queries (rail, open asks, reply rings)', scope: 'Low-load measurement per listener at 1×, 4×, 10× and the event rate; an audit of side effects; drawn listeners once per frame, transitions kept per event; two coalescing specs with mutants; the three live-line specs as guards; the shared probe. Done when session work per frame at 10× is within 2× of 1×.', next: 'PR #826 at 12236b60; UAT passed; CI running; hand-back to critic.', depends: '—', shared: 'app/js/thread.mjs, app/js/shell.mjs', flags: ['added 4 Nov evening'], last: '' },
+  { id: '#670', lane: 'hotfix', col: 'groomed', lead: 'lead-measure', pts: '?', title: 'Browser specs run only on Chromium', scope: 'Add Firefox and WebKit projects. Its three “to decide” points go to the person as one batched form.', next: 'Groom: try the suite on both engines read-only, count failures, then the form and a blind estimate (round S3-2).', depends: '—', shared: '—', flags: ['added 4 Nov evening'], last: '' },
+  { id: '#671-b', lane: 'hotfix', col: 'groomed', lead: 'lead-delivery', pts: '?', title: 'Every agent can open an attachment it wasn’t sent', scope: 'The read path #671-a left out, local and remote. Depends on whether it can stand without #516.', next: 'Groom: decide with critic whether it stands without #516; split if over 8 (round S3-2).', depends: '—', shared: '—', flags: ['added 4 Nov evening'], last: '' },
+  { id: '#633', lane: 'hotfix', col: 'merged', lead: 'lead-cards', pts: '5', title: 'The needs stopgap (#366)', scope: 'keptTurnIds list (differs from your single keptTurnId: your call in round 1), tie rule, Retry settles like a restart, gap-1 restart spec, trigger app-need-fallback, stopgap note.', next: '8057ed85 is pushed (ls-remote) with critic’s conditions fixed; critic re-reads after the pause, then UAT (needsnav phase 3).', depends: '—', shared: 'tests/store-held-guard.test.mjs', flags: ['PR #633 @ 05e5e3e1', 'labeled ready', 'remove old changes requested'], last: '' },
+  { id: '#721', lane: 'hotfix', col: 'merged', lead: 'lead-cards', pts: '5', title: 'An expired permission card keeps “needs you”', scope: 'Dismiss as a backstop, a [Postbox] notice, needs-mismatch for permissions, a trigger. Gap 1 moved into #633.', next: 'Merged as #760, 6 Nov 01:16 UTC (4942b3f2).', depends: '#633 (rebase)', shared: '—', flags: [], last: '' },
+  { id: '#693', lane: 'hotfix', col: 'merged', lead: 'lead-cards', pts: '8', title: 'A declined add-agent card keeps holding @-mentions', scope: 'No re-raise after a decline, archived requester, archiveForks notice, held messages in catch-up, a trigger, hostwakes.md rebuilt.', next: 'Merged as #776, 5 Nov 08:13 UTC.', depends: '#633, #721', shared: '—', flags: ['Medium'], last: 'Revote: researcher 8, critic 5, lead-cards 8; median 8. The catch-up line can be its own 2-point slice (then 5).' },
+  { id: '#694', lane: 'hotfix', col: 'merged', lead: 'lead-delivery', pts: '3', title: 'A newer message from the same sender is waiting', scope: 'withUrgent names it once per turn; 7 tests, 4 fail on main; trigger newer-waiting-named.', next: 'Adversarial subagent review, then PR body to critic, then UAT.', depends: '#735', shared: 'tools/uat/triggers.mjs', flags: ['PR #741 @ aa24397b', 'labeled ready', 'UAT passed $0.44'], last: '' },
+  { id: '#735', lane: 'r508', col: 'merged', lead: 'lead-measure', pts: 'in tool', title: 'Move postboxCalls out of triggers.mjs', scope: 'Move only: frees room for every lead’s trigger (365 → 332 lines).', next: 'Your review, tonight’s slot.', depends: '—', shared: 'tools/uat/triggers.mjs (owner)', flags: ['PR #735 @ 3d359b58'], last: 'Counted inside the key-to-frame tool’s 8.' },
+  { id: '#708', lane: 'r508', col: 'merged', lead: 'lead-delivery', pts: '1', title: 'The delivery-routes design, merged', scope: 'Line-3 fix in 6c0d965e, local.', next: 'Your push confirm s3-708-push-3; then critic labels it.', depends: '—', shared: '—', flags: ['PR #708 @ 6c0d965e', 'labeled ready'], last: '' },
+  { id: 'A1b design', lane: 'r508', col: 'merged', lead: 'lead-delivery', pts: '5', title: 'The ask-only reducer’s design note (#711)', scope: 'Needs from open cards; the first private key with a check for every route and a leak test.', next: 'Merged as #781, 5 Nov 08:25 UTC. #711’s acceptance to be rewritten on the issue.', depends: '#708', shared: 'shared/state.mjs (owner)', flags: ['security'], last: '' },
+  { id: 'B1b-a', lane: 'r508', col: 'merged', lead: 'lead-transcript', pts: '3', title: 'B1b-a: the view read (#531)', scope: 'data-view-mode, -anchor and -offset published from one point per entry point; spec V1 at 375 and 1280 px.', next: 'Merged as #758, 5 Nov 08:36 UTC.', depends: '—', shared: '—', flags: ['branch @ f4ab714f'], last: 'S3-1g: 3, 3, 3. Done only once B1b-c’s phase 1 run passes.' },
+  { id: 'B1b-b', lane: 'r508', col: 'merged', lead: 'lead-transcript', pts: '5', title: 'B1b-b: the runner keeps the view; the tester can scroll', scope: 'keepView over shotItem and the click paths without undoing a click (critic’s P1); the tester’s scroll action recorded as an input.', next: 'Merged as #775, 5 Nov 22:08 UTC.', depends: 'B1b-a', shared: 'tools/uat/driver.mjs', flags: [], last: 'S3-1g: 5, 5, 5.' },
+  { id: 'B1b-c', lane: 'r508', col: 'review', lead: 'lead-delivery', pts: '5', title: 'B1b-c: probe, view-moved, window-paged-back, phase 1 UAT', scope: 'View probe, view-moved compared across samples, window-paged-back, recorded-room tests, phase 1 UAT.', next: 'PR #773 at 62b0c7b6 on main; CI green; hand-back waiting on you.', depends: 'B1b-b', shared: 'server/room-checks.mjs, tools/uat/view-triggers.mjs', flags: [], last: 'S3-1g: 5, 5, 5.' },
+  { id: '#712a', lane: 'r508', col: 'groomed', lead: 'lead-transcript', pts: '5', title: 'Draw only messages near the view', scope: 'content-visibility first, the jumpTo addendum, a trigger; measured at 1×, 4×, 10×.', next: 'Moved to sprint 4 (s3-712a-scope): packet found 3 P1s (Tab 3.2 s, skipped text missing from the accessibility tree, clipped focus rings) and slower 10× scrolling. Design revisit first; tonight’s fixes kept on a sprint branch, no PR.', depends: 'B1b-a, #712b', shared: 'app/thread.mjs, shared/state.mjs (after #712b)', flags: ['sprint 4'], last: 'Round S3-1h: settled at 5.' },
+  { id: '#712b', lane: 'r508', col: 'merged', lead: 'lead-delivery', pts: '5', title: 'An id index for the O(n) scans', scope: 'The reducer’s id index and the reader switch, with tests; shell output flush and page rerender use the index.', next: 'Merged as #769, 5 Nov 06:35 UTC.', depends: '—', shared: 'app/thread.mjs, shared/state.mjs (before #712a)', flags: ['High'], last: 'Round S3-1h: cards 5, 5, 5 and lead-delivery 3 (played after the build); settled at 5, the conservative card. Packet: five points raised, all fixed.' },
+  { id: '#701', lane: 'r508', col: 'merged', lead: 'lead-transcript', pts: '3', title: 'Diagram frames load as they near the view (#695)', scope: 'Two review fixes, seed option, diagram probe, trigger diagram-deferred, bigroom phase 5.', next: 'Push of 4866bbe7 (you confirmed; GitHub still shows 5b911e1f), critic’s UAT-plan check, UAT run.', depends: '#735', shared: 'tools/uat/big-room.mjs', flags: ['PR #701 @ c328ed9d', 'labeled ready', 'UAT passed $0.29'], last: '' },
+  { id: 'Key-to-frame tool', lane: 'r508', col: 'merged', lead: 'lead-measure', pts: '8', title: 'Measure key press to next frame (PF-1)', scope: '1,000/4,000/10,000-item rooms, Event Timing, report by hand, smoke trigger.', next: 'PR #777 at d1644da0: hand-back approved by you; critic signs off once CI is fully green (4 browser jobs running). Live under-one-frame run becomes a follow-up.', depends: '#735', shared: 'tools/uat/big-room.mjs', flags: [], last: '' },
+  { id: 'Measurement', lane: 'r508', col: 'stacked', lead: 'lead-measure', pts: '8', title: 'Before and after numbers', scope: 'PF-1 before and after #712, plus four server numbers at 1×, 4×, 10×: snapshot stall, /api/state time and size, per streamed chunk on the longest thread, startup.', next: 'PR #783 at 974c9ad4: critic signed off; label waits for #777 to merge, then retarget to main and CodeQL green.', depends: 'Key-to-frame tool, #712', shared: '—', flags: [], last: '' },
+  { id: 'Persistence note', lane: 'r508', col: 'groomed', lead: 'lead-delivery', pts: '8', title: 'One-copy persistence design note', scope: 'The item is the only copy of a message; delivery and ask state as fields or an index; storage and snapshots per conversation with an item-id index; a window for the page.', next: 'Draft 2 approved by you (s3-persistence-note-r2); input for sprint 4 grooming. §2 question (a or b) open for you or grooming.', depends: 'Measurement’s server numbers', shared: '—', flags: ['sprint 4 input'], last: 'S3-1e: researcher 8, critic 8, lead-delivery 8.' },
+  { id: '#713', lane: 'r508', col: 'merged', lead: 'lead-measure', pts: '1', title: 'newId always returns 8 characters', scope: 'Draw until 8 letters or digits; seeded randomBytes test; a line in storage-design.md.', next: 'Merged as #762, 5 Nov 05:46 UTC.', depends: '—', shared: '—', flags: [], last: 'S3-1c: 1, 1, 1.' },
+  { id: '#730', lane: 'r508', col: 'merged', lead: 'lead-measure', pts: '1', title: 'The Antigravity hooks file mode under any umask', scope: 'chmod 0o444 after the write; tests under 022 and 077; Antigravity unverified.', next: 'Merged as #771, 5 Nov 06:46 UTC.', depends: '—', shared: '—', flags: [], last: 'S3-1c: 1, 1, 1.' },
+  { id: 'Action 11', lane: 'r508', col: 'merged', lead: 'lead-measure', pts: '1', title: 'Opt-in pre-commit hook running lint:project', scope: '.githooks/pre-commit, a hook test, npm run hooks in the start-of-room check.', next: 'Merged as #772, 5 Nov 06:12 UTC.', depends: '—', shared: '—', flags: [], last: 'S3-1c: 1, 1, 1.' },
+  { id: '#729', lane: 'r508', col: 'merged', lead: 'lead-measure', pts: '3', title: 'work-commands-match-stream flags a deleted conversation', scope: 'keptStreams helper for four checks, Claude id reset test, trigger erased-conversation-commands.', next: 'Merged as #743, 5 Nov 08:02 UTC.', depends: '#735', shared: 'tools/uat/triggers.mjs', flags: [], last: 'S3-1c: 3, 3, 3.' },
+  { id: '#685', lane: 'hotfix', col: 'merged', lead: 'lead-measure', pts: '3', title: 'Nested-ternary ratchet on changed lines', scope: 'No new nested ternary on a line a PR changes (Biome noNestedTernary on changed files, kept to added lines); the 288 existing hits stay for a later slice.', next: 'High, gate item.', depends: '—', shared: 'package.json (lint:project)', flags: ['High', 'gate', 'PR #740 @ 1c4cd88c', 'integrator approved'], last: 'S3-1f: 3, 3, 3.' },
+  { id: 'Action 8a', lane: 'hotfix', col: 'merged', lead: 'lead-measure', pts: '5', title: 'Fixture privacy: patterns, scrub, every text file', scope: 'Value-level patterns with mutants; scrub 19 fixtures; scan every committed text file; README list of synthetic fixtures enforced.', next: 'Merged as #742 (cbfcbedf), 4 Nov 19:30 UTC.', depends: '—', shared: '—', flags: [], last: 'S3-1c: lead 3, researcher 5, critic 5; median 5.' },
+  { id: 'Action 8b', lane: 'hotfix', col: 'merged', lead: 'lead-measure', pts: '2', title: 'CI scans each PR commit’s added lines', scope: 'A tool reusing 8a’s check; a CI step beside lint-commits; a test on a planted commit.', next: 'Merged as #761, 5 Nov 06:23 UTC.', depends: 'Action 8a', shared: '—', flags: [], last: 'S3-1c: 2, 2, 2.' },
+];
+
+const byId = new Map(ITEMS.map(i => [i.id, i]));
+let picked = null;
+
+function el(tag, props, ...kids) {
+  const n = document.createElement(tag);
+  Object.assign(n, props || {});
+  for (const k of kids) n.append(k);
+  return n;
+}
+
+function renderFacts() {
+  const facts = document.getElementById('facts');
+  const waiting = ITEMS.filter(i => i.flags.includes('waiting on you')).length;
+  for (const text of [`${ITEMS.length} cards`, `${ITEMS.filter(i => /^\d+$/.test(i.pts)).reduce((a, i) => a + Number(i.pts), 0)} points settled`, 'Sprint closed 6 Nov: 25 merged (+2 chores); 4 open PRs punted to sprint 4', 'findings after label: 1 (#742)', `${ITEMS.filter(i => i.col === 'progress').length} in progress`, `${waiting} waiting on you`, '#826 merged 03:09 UTC']) {
+    facts.append(el('span', { className: 'pill', textContent: text }));
+  }
+}
+
+function renderCard(item) {
+  const card = el('button', { className: 'sb-card', type: 'button' });
+  card.setAttribute('aria-pressed', String(picked === item.id));
+  card.append(el('div', { className: 'sb-id', textContent: item.id }));
+  card.append(el('div', { textContent: item.title }));
+  const pts = item.pts === '?' ? 'points: card round open' : item.pts === 'in tool' ? 'inside the key-to-frame tool’s 8' : `${item.pts} pts`;
+  const meta = el('div', { className: 'sb-meta', textContent: `${item.lead} · ${pts}` });
+  for (const f of item.flags) {
+    const alert = f === 'waiting on you';
+    meta.append(el('span', { className: alert ? 'sb-flag sb-flag-alert' : 'sb-flag', textContent: f }));
+  }
+  card.append(meta);
+  card.addEventListener('click', () => pick(item.id));
+  return card;
+}
+
+function renderLanes() {
+  const root = document.getElementById('lanes');
+  root.replaceChildren();
+  for (const lane of LANES) {
+    const items = ITEMS.filter(i => i.lane === lane.id);
+    const box = el('section', { className: 'sb-lane' });
+    box.setAttribute('aria-label', lane.label);
+    const title = el('div', { className: 'sb-lane-title' }, el('span', { textContent: lane.label }), el('span', { className: 'dim small', textContent: lane.goal }));
+    const cols = el('div', { className: 'sb-cols' });
+    for (const col of COLUMNS) {
+      const c = el('div', { className: 'sb-col' }, el('h2', { textContent: col.label }));
+      const inCol = items.filter(i => i.col === col.id);
+      for (const item of inCol) c.append(renderCard(item));
+      if (!inCol.length && col.id === 'progress') c.append(el('p', { className: 'dim small', textContent: 'Nothing yet: work starts once round 1’s plan is approved.' }));
+      cols.append(c);
+    }
+    box.append(title, cols);
+    root.append(box);
+  }
+}
+
+function row(dl, label, value) {
+  if (!value) return;
+  dl.append(el('dt', { textContent: label }), el('dd', { textContent: value }));
+}
+
+function renderDetail() {
+  const box = document.getElementById('detail');
+  box.replaceChildren();
+  const item = byId.get(picked);
+  if (!item) {
+    box.append(el('p', { className: 'dim', textContent: 'Pick a card to see its scope, owner, what it depends on and what’s next.' }));
+    return;
+  }
+  box.append(el('h3', { textContent: `${item.id}: ${item.title}` }));
+  const dl = el('dl');
+  row(dl, 'Lead', item.lead);
+  row(dl, 'Column', COLUMNS.find(c => c.id === item.col).label);
+  row(dl, 'Scope', item.scope);
+  row(dl, 'Next', item.next);
+  row(dl, 'Depends on', item.depends);
+  row(dl, 'Shared files', item.shared);
+  row(dl, 'Points', item.pts === '?' ? 'card round open' : item.pts);
+  row(dl, 'Note', item.last);
+  box.append(dl);
+  const ask = el('button', { className: 'btn sm', type: 'button', textContent: 'Ask scrum-master about this card' });
+  ask.addEventListener('click', () => send('ask-card', item, `The person asked about ${item.id} on the sprint board.`));
+  const cut = el('button', { className: 'btn sm ghost', type: 'button', textContent: 'Propose cutting this card' });
+  cut.addEventListener('click', () => send('propose-cut', item, `The person proposed cutting ${item.id} from sprint 3.`));
+  box.append(el('div', { className: 'sb-actions' }, ask, cut));
+  box.append(el('p', { className: 'sb-note', id: 'sent' }));
+}
+
+async function send(action, item, summary) {
+  const note = document.getElementById('sent');
+  try {
+    await postbox.send(action, { item: item.id, lane: item.lane }, summary);
+    note.textContent = 'Sent to scrum-master.';
+  } catch (err) {
+    note.textContent = `Couldn’t send: ${err && err.message ? err.message : err}. Try again in a minute.`;
+  }
+}
+
+function pick(id) {
+  picked = picked === id ? null : id;
+  postbox.saveState({ picked });
+  renderLanes();
+  renderDetail();
+}
+
+(async () => {
+  await postbox.ready;
+  const saved = await postbox.restoreState();
+  if (saved && byId.has(saved.picked)) picked = saved.picked;
+  renderFacts();
+  renderLanes();
+  renderDetail();
+})();
+</script>
+</body>
+</html>

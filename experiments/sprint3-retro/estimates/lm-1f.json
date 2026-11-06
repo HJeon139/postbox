@@ -1,0 +1,3 @@
+[
+  { "item": "#685", "card": "3", "driver": "One new lint script in lint:project: Biome's noNestedTernary on the files a PR changes, kept only where a hit overlaps an added line from git diff against the merge base (CI's base ref, origin/main locally); tests with planted ternaries in new and old lines, a mutant on the overlap check, no UAT; the 288 old hits stay" }
+]

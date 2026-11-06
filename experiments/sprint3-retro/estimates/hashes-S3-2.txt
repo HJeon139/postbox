@@ -1,0 +1,6 @@
+# Round S3-2: #564-a, #564-b (opened 2026-11-05T05:36:10Z); scale 1/2/3/5/8/13; split above 8
+critic (withdrawn, old JSON format) 158902f93a0d08ad80236ebb6f3d15ed3e674e1752562263192a040b2af2eac6
+critic 2c687719bc49455725bceb71e308f60825a01a7035f5de58cf8f4f92e5b8aa8b #564-a,#564-b
+lead-transcript 6aac99a4d3f541d27b13157da34554e215f531c8594717421d1df8008882dd35 #564-a,#564-b
+researcher e22dc41639dd36a1bcaa8484041c75805926f5ad897ccad218b24b5811c648dd #564-a,#564-b
+reveal 2026-11-05T05:41:40Z: critic 564a=5 564b=2; lead-transcript 564a=8 564b=2; researcher 564a=8 564b=2; all hashes verified (shasum -a 256, no newline). Settled: #564-a 8 (adjacent cards, majority and conservative), #564-b 2.

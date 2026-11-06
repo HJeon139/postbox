@@ -1,0 +1,5 @@
+# Round S3-2d: #564-b1 re-scoped (scope the three whole-document session queries: rail, open asks, reply rings), opened 2026-11-05T16:10:57Z; coalescing becomes a follow-up; scale 1/2/3/5/8/13
+lead-transcript e236565797e606e288caeb78c7e828726020028841cc41bafb033bc789f86990 #564-b1
+critic cee517c377b0e2e3a4b8b3a15eb71f64996dfc9c3e4e39eaecdc471c90bc766b #564-b1
+researcher 258470b758986e6f6ab9e24cd9d6294af6888a08b9f5ec68db62af9b7bb3934d #564-b1
+reveal 2026-11-05T16:24:42Z: lead-transcript 5, critic 3, researcher 5; verified. Settled 5 (majority; cards one step apart).

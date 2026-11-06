@@ -1,0 +1,5 @@
+[
+  { "item": "#633", "card": "8", "driver": "keptTurnId through turnOf, the sweep and the turn start, plus the gap-1 restart spec, four live mutants, one tie rule, the stopgap note with its restart matrix, a needsnav phase 3 trigger, and a 148-commit rebase on a PR that has taken five review rounds" },
+  { "item": "#721", "card": "5", "driver": "server and client: expired cards fall back and offer Dismiss (browser spec), a notice to the agent, needs-mismatch for permissions, a remotehosts trigger, then a second rebase onto #633's releaseNeed" },
+  { "item": "#693", "card": "8", "driver": "four fixes in wake-cards and side-threads (no re-raise after a decline, archived requester, archiveForks notice, held messages in catch-up), plus a trigger and a rebuilt hostwakes.md phases 1-3 for the UAT run" }
+]

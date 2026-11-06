@@ -1,0 +1,5 @@
+[
+  { "item": "Key-to-frame tool", "card": "8", "driver": "New Playwright tool (Event Timing p95 plus rAF check) on 1,000/4,000/10,000-item rooms, big-room id-padding and size fix, the move-only triggers.mjs commit plus smoke trigger module, PF-1 requirement reword, unit tests" },
+  { "item": "Measurement", "card": "5", "driver": "Bench switched to the server's writeSnapshot with a pin test, stall on three seeded stores plus one real copy, PF-1 before on main and after on #712 (branch head if unmerged), report in designs/508 through critic" },
+  { "item": "Small items", "card": "13", "driver": "Five independent PRs: #713 (1), #730 (1), action 11 (1), #729 helper across four checks plus trigger (3), action 8 patterns, 19-file scrub, commit scan and synthetic marker in replay helpers (5)" }
+]

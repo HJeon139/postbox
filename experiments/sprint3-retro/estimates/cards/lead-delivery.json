@@ -1,0 +1,5 @@
+[
+  { "item": "#694", "card": 3, "driver": "One helper in withUrgent plus a per-turn named set; local and remote tests that fail first, two mutations, a new delivery trigger checked on a recorded Phase 4 run" },
+  { "item": "#708", "card": 1, "driver": "Docs only and already fixed twice; left are one fast-forward push, critic's sign-off and the merge" },
+  { "item": "A1b design", "card": 5, "driver": "RR 13 note with crash table and 18 #608 findings, plus the first private key: a check across every state route and its leak test, reconciling design.md and #708" }
+]
