@@ -20,6 +20,7 @@ export function formatReport({ command, commit, date, machine, conditions, input
       }),
     ),
   );
+  const counts = elementRows(results);
   return [
     '# Switching into a long conversation, by room size (#508)',
     '',
@@ -35,6 +36,7 @@ export function formatReport({ command, commit, date, machine, conditions, input
     '| Items | Switch | Measure | Runs | p50 | p95 | Max |',
     '| ---: | --- | --- | ---: | ---: | ---: | ---: |',
     ...rows,
+    ...counts,
     '',
     '## Provenance',
     '',
@@ -46,4 +48,32 @@ export function formatReport({ command, commit, date, machine, conditions, input
     `- Conditions: ${conditionsLine(conditions)}`,
     '',
   ].join('\n');
+}
+
+/**
+ * The element counts after each switch settles (the median run): on the whole page, and in the long room’s
+ * transcript, with the transcript’s count as a multiple of the smallest size’s. #508’s window keeps that multiple near
+ * 1 however long the room is; building every item makes it grow with the room.
+ * @param {any[]} results
+ */
+function elementRows(results) {
+  if (!results.length || !results[0][SWITCHES[0].name].elements) return [];
+  const n = (v) => v.toLocaleString('en-US');
+  const rows = results.flatMap((r) =>
+    SWITCHES.map((s) => {
+      const base = results[0][s.name].elements.transcript;
+      const { page, transcript } = r[s.name].elements;
+      return `| ${n(r.items)} | ${s.label} | ${n(page)} | ${n(transcript)} | ${(transcript / base).toFixed(2)} |`;
+    }),
+  );
+  return [
+    '',
+    '## Elements after the switch',
+    '',
+    "Counted once the page holds still after each run (`querySelectorAll('*')`), the median run. The ratio is the transcript’s count over the smallest size’s for the same switch.",
+    '',
+    '| Items | Switch | On the page | In the transcript | Transcript, × the smallest size |',
+    '| ---: | --- | ---: | ---: | ---: |',
+    ...rows,
+  ];
 }

@@ -47,6 +47,23 @@ export function proveRun(read, expected) {
 }
 
 /**
+ * Throws unless a run's element counts measured something: the long room's transcript has elements, and the page has at
+ * least as many as its transcript. A count of 0 is an instrument that counted nothing, not a constant DOM.
+ * @param {{ page: number, transcript: number }} counts
+ */
+export function proveCounts({ page, transcript }) {
+  if (!(transcript > 0)) throw new Error('The run counted no elements in the long room’s transcript.');
+  if (page < transcript)
+    throw new Error(`The run counted ${page.toLocaleString('en-US')} elements on the page but ${transcript.toLocaleString('en-US')} in its transcript.`);
+}
+
+/** The elements on the page, and in the long room's transcript, once the switch has settled. Runs in the page. */
+function countElements(target) {
+  const tr = document.querySelector(`#main.transcript[data-thread="${CSS.escape(target)}"]`);
+  return { page: document.querySelectorAll('*').length, transcript: tr ? tr.querySelectorAll('*').length : 0 };
+}
+
+/**
  * Arms the page, before the click: the click’s pointerdown starts the timer and a frame loop that watches for the
  * target’s last item drawn in its transcript’s visible box; the composer’s first keydown records its next frame; and
  * __switchMounted resolves as soon as the target’s transcript and composer are on the page. Runs in the page.
@@ -182,8 +199,11 @@ export async function timeSwitch(page, origin, sw, expected) {
   });
   const rec = await page.evaluate('window.__switch');
   proveRun(await page.evaluate(`(${readBack})(${js([IDS.long, IDS.shortA, IDS.shortB])})`), expected);
+  await page.waitFor(`(${heldStill})()`, { timeout: 30_000, label: 'the page to hold still after the switch' });
+  const elements = await page.evaluate(`(${countElements})(${js(sw.to)})`);
+  proveCounts(elements);
   await page.evaluate(`(${clearDraft})()`);
-  return { drawn: rec.drawn - rec.t0, key: rec.keyFrame - rec.t0 };
+  return { drawn: rec.drawn - rec.t0, key: rec.keyFrame - rec.t0, elements };
 }
 
 const TRACE_CATEGORIES =

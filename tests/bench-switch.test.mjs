@@ -7,7 +7,19 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { BENCH_ROOT, commandLine, formatReport, IDS, measureSize, options, provenance, proveRun, SWITCHES, shortItems } from '../tools/bench-switch.mjs';
+import {
+  BENCH_ROOT,
+  commandLine,
+  formatReport,
+  IDS,
+  measureSize,
+  options,
+  proveCounts,
+  provenance,
+  proveRun,
+  SWITCHES,
+  shortItems,
+} from '../tools/bench-switch.mjs';
 
 const ROOT = '/local/home/user/postbox';
 
@@ -147,4 +159,31 @@ test('the report has a row per switch and measure for each size, and its provena
   assert.match(report, /- Commit: aaaa1111 \(Postbox measured\); bbbb2222 \(the bench and its seed\)/);
   assert.match(report, /- Command: `node tools\/bench-switch\.mjs --sizes 1000 --runs 5 --out r\.md`/);
   assert.match(report, /load average 1\.00 at the start and 2\.00 at the end/);
+});
+
+test('a run’s element counts are proved: the transcript has elements, and the page has at least as many', () => {
+  assert.doesNotThrow(() => proveCounts({ page: 30_000, transcript: 25_000 }));
+  assert.throws(() => proveCounts({ page: 30_000, transcript: 0 }), /counted no elements in the long room’s transcript/);
+  assert.throws(() => proveCounts({ page: 100, transcript: 200 }), /counted 100 elements on the page but 200 in its transcript/);
+});
+
+test('the report has an element count per size and switch, with the transcript’s ratio to the smallest size', () => {
+  const s = (v) => ({ n: 5, p50: v, p95: v + 1, max: v + 2 });
+  const size = (items, page, transcript) => ({
+    items,
+    project: { drawn: s(100), key: s(200), elements: { page, transcript } },
+    conversation: { drawn: s(50), key: s(80), elements: { page: page + 10, transcript: transcript + 10 } },
+  });
+  const report = formatReport({
+    command: 'node tools/bench-switch.mjs --sizes 1000,10000 --runs 5 --out r.md',
+    commit: 'aaaa1111',
+    date: '2026-11-06T00:00:00.000Z',
+    machine: { os: 'Linux 6', arch: 'x64', cpu: 'CPU', node: 'v24', chromium: '150' },
+    conditions: { load: { start: 1, end: 2 }, headless: true, window: { width: 1280, height: 900 }, scale: 1 },
+    inputs: { sizes: [1000, 10000], runs: 5 },
+    results: [size(1000, 30_000, 24_000), size(10000, 270_000, 240_000)],
+  });
+  assert.match(report, /\| 1,000 \| Project switch \| 30,000 \| 24,000 \| 1\.00 \|/);
+  assert.match(report, /\| 10,000 \| Project switch \| 270,000 \| 240,000 \| 10\.00 \|/);
+  assert.match(report, /\| 10,000 \| Conversation switch \| 270,010 \| 240,010 \| 10\.00 \|/);
 });

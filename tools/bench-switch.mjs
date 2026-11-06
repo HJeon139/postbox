@@ -39,9 +39,9 @@ import { formatReport } from './switch-report.mjs';
 import { seedBigRoomData } from './uat/big-room.mjs';
 import { startPostbox } from './uat/postbox.mjs';
 
-export { BENCH_ROOT, formatReport, IDS, proveRun, SWITCHES };
+export { BENCH_ROOT, formatReport, IDS, proveCounts, proveRun, SWITCHES };
 
-import { proveRun } from './switch-measure.mjs';
+import { proveCounts, proveRun } from './switch-measure.mjs';
 
 const AGENTS = ['researcher', 'critic', 'developer'];
 /** What a Ctrl-C or a SIGTERM must undo, as in tools/bench-key-frame.mjs. */
@@ -134,6 +134,9 @@ async function seedRooms(data, items) {
   return { thread: IDS.long, count: items, last: lastIdOf(items) };
 }
 
+/** The middle of a list of counts (the lower middle of an even one). @param {number[]} xs */
+export const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor((xs.length - 1) / 2)];
+
 /** The big-room seed’s last item’s id at a size, as tools/uat/big-room.mjs pads it. @param {number} items */
 const lastIdOf = (items) => `it_big${String(items - 1).padStart(Math.max(4, String(items - 1).length), '0')}`;
 
@@ -143,7 +146,7 @@ const lastIdOf = (items) => `it_big${String(items - 1).padStart(Math.max(4, Stri
  */
 export async function measureSize(page, items, o, log, { start = startPostbox, port = freePort, tmp = tmpdir(), trace = null } = {}) {
   const data = await mkdtemp(join(tmp, `pb-switch-${items}-`));
-  const times = Object.fromEntries(SWITCHES.map((s) => [s.name, { drawn: [], key: [] }]));
+  const times = Object.fromEntries(SWITCHES.map((s) => [s.name, { drawn: [], key: [], page: [], transcript: [] }]));
   let postbox = null;
   try {
     postbox = await start({ root: o.app ?? BENCH_ROOT, port: await port(), data, env: { POSTBOX_BACKENDS: 'mock' }, log: () => {} });
@@ -159,6 +162,8 @@ export async function measureSize(page, items, o, log, { start = startPostbox, p
         const t = await timeSwitch(page, postbox.origin, sw, expected);
         times[sw.name].drawn.push(t.drawn);
         times[sw.name].key.push(t.key);
+        times[sw.name].page.push(t.elements.page);
+        times[sw.name].transcript.push(t.elements.transcript);
         log(
           `${items.toLocaleString('en-US')} items, run ${run} of ${o.runs}, ${sw.name} switch: last item drawn ${t.drawn.toFixed(1)} ms, key’s frame ${t.key.toFixed(1)} ms.`,
         );
@@ -169,7 +174,10 @@ export async function measureSize(page, items, o, log, { start = startPostbox, p
     await rm(data, { recursive: true, force: true });
   }
   const out = { items };
-  for (const s of SWITCHES) out[s.name] = { drawn: summarize(times[s.name].drawn), key: summarize(times[s.name].key) };
+  for (const s of SWITCHES) {
+    const t = times[s.name];
+    out[s.name] = { drawn: summarize(t.drawn), key: summarize(t.key), elements: { page: median(t.page), transcript: median(t.transcript) } };
+  }
   return out;
 }
 
