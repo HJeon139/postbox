@@ -34,7 +34,7 @@ const THREAD = 'th_keyframe';
 const AGENTS = ['researcher', 'critic', 'developer'];
 
 /** A port nothing listens on, from the system. @returns {Promise<number>} */
-const freePort = () =>
+export const freePort = () =>
   new Promise((ok) => {
     const s = createServer().listen(0, '127.0.0.1', () => {
       const { port } = /** @type {import('node:net').AddressInfo} */ (s.address());
@@ -69,7 +69,7 @@ async function stopOn(signal) {
  * “1e3” and “0x10”, and an empty value as 0.
  * @param {string} name  @param {string} raw
  */
-function count(name, raw) {
+export function count(name, raw) {
   if (!/^[1-9]\d*$/.test(raw)) throw new Error(`--${name} takes a whole number of at least 1, not “${raw}”.`);
   return Number(raw);
 }
@@ -105,7 +105,7 @@ export function options(argv) {
  * one checkout keeps the instrument and the seeded rooms the same on every side of a comparison.
  * @param {string | undefined} raw
  */
-function appOption(raw) {
+export function appOption(raw) {
   if (raw === undefined) return null;
   const app = resolve(raw);
   if (!existsSync(join(app, 'server', 'index.mjs'))) throw new Error(`--app takes a Postbox checkout, with server/index.mjs; ${raw} has none.`);
