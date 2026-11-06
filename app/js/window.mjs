@@ -1,22 +1,20 @@
 // The transcript window, slice W1 (#866; the sprint 4 window note, r2): a long conversation mounts only the items
 // around where you are, with a spacer above and below standing in for the rest at about their height
-// (window-heights.mjs), so opening it builds a bounded number of items however long it is. In W1 the range only
-// grows, as you scroll toward a spacer; it never unmounts (W2). It’s behind a flag until search (W4) and
-// screen-reader support (W5) land, since find-in-page can’t see items that aren’t on the page.
+// (window-heights.mjs), so opening it builds a bounded number of items however long it is. It grows toward a spacer
+// as you scroll (W1), and past its ceiling unmounts what’s furthest from the view (W2). An item with focus stays
+// mounted where it is, between spacers of its own, until focus leaves it; an item’s open
+// details come back when it’s mounted again. It’s behind a flag until search (W4) and screen-reader support (W5)
+// land, since find-in-page can’t see items that aren’t on the page.
 //
 //   localStorage.setItem('pb-window', 'on')    turns it on in this browser
 
 import { h } from './dom.mjs';
+import { restoreDetails } from './rerender-state.mjs';
 import { createHeights } from './window-heights.mjs';
+import { CEILING, CHUNK, FLOOR, MARGIN } from './window-limits.mjs';
+import { drop, dropBottom, dropTop, fill, gapBefore, paintSpacers, pinned, rejoin, release, shrink } from './window-shrink.mjs';
 
 const FLAG = 'pb-window';
-/** The fewest and most items a conversation mounts when it opens. The most is what bounds the page’s size. */
-export const FLOOR = 40;
-export const CEILING = 240;
-/** How far past the view, in view heights, the range reaches on each side. */
-const MARGIN = 2;
-/** The fewest items a growth mounts at once. */
-const CHUNK = 10;
 // Rough first estimates by kind, in px, from prep-712’s 1,000-item room at 1280 px (median 71 px); a kind’s own
 // measurements replace them.
 const SEEDS = { user: 48, agent: 96, sys: 28 };
@@ -55,7 +53,7 @@ function heightsFor(key, list) {
  * A window over one transcript, or null when it’s off or the conversation is short enough to mount whole.
  * mount(i) renders item i, keeps its node in the transcript’s map, and returns it.
  * @param {{ el: HTMLElement, key: string, list: any[], anchorKey: string | null, inPanel: boolean,
- *   mount: (i: number) => HTMLElement }} o
+ *   mount: (i: number) => HTMLElement, nodes: Map<string, HTMLElement> }} o
  */
 export function createWindow(o) {
   if (!windowOn() || o.list.length <= CEILING) return null;
@@ -64,8 +62,15 @@ export function createWindow(o) {
 
 class TranscriptWindow {
   /** @param {Parameters<typeof createWindow>[0]} o */
-  constructor({ el, key, list, anchorKey, inPanel, mount }) {
+  constructor({ el, key, list, anchorKey, inPanel, mount, nodes }) {
     this.el = el;
+    this.nodes = nodes;
+    /** Items kept on the page outside the range, by index, and the spacer before each. @type {Map<number, HTMLElement>} */
+    this.islands = new Map();
+    /** @type {Map<number, HTMLElement>} */
+    this.gaps = new Map();
+    /** Each unmounted item’s open details, by id, until it’s mounted again. @type {Map<string, Map<string, boolean>>} */
+    this.saved = new Map();
     this.inPanel = inPanel;
     this.mount = mount;
     this.anchorKey = anchorKey;
@@ -76,6 +81,7 @@ class TranscriptWindow {
     this.above = h('div.win-spacer', { 'aria-hidden': 'true', dataset: { spacer: 'above' } });
     this.below = h('div.win-spacer', { 'aria-hidden': 'true', dataset: { spacer: 'below' } });
     this.gap = 0;
+    this.width = 0;
     this.from = 0;
     this.to = 0;
     this.raf = 0;
@@ -97,14 +103,17 @@ class TranscriptWindow {
   spanOf(a, b) {
     return b > a ? this.heights.span(a, b) + (b - a - 1) * this.gap : 0;
   }
+  fill(spacer, a, b) {
+    return fill(this, spacer, a, b);
+  }
+  gapBefore(i) {
+    return gapBefore(this, i);
+  }
   paintSpacers() {
-    this.above.hidden = this.from === 0;
-    this.above.style.height = `${this.spanOf(0, this.from)}px`;
-    this.paintBelow();
+    return paintSpacers(this);
   }
   paintBelow() {
-    this.below.hidden = this.to === this.total;
-    this.below.style.height = `${this.spanOf(this.to, this.total)}px`;
+    paintSpacers(this, false);
   }
   /**
    * Each mounted item’s height as laid out; its first measurement sets its kind’s estimate. Only the spacer below
@@ -112,6 +121,11 @@ class TranscriptWindow {
    * @param {ResizeObserverEntry[]} entries
    */
   measured(entries) {
+    // A new width rewraps every item, so what was measured at the old one is stale; the estimates stay (the note’s
+    // “Heights”). The items on the page are measured again below.
+    const width = this.el.clientWidth;
+    if (this.width && width !== this.width) this.heights.forget();
+    this.width = width;
     for (const e of entries) {
       const i = this.indexOf.get(/** @type {HTMLElement} */ (e.target).dataset.key ?? '');
       if (i !== undefined) this.heights.measure(i, e.borderBoxSize?.[0]?.blockSize ?? e.contentRect.height);
@@ -134,12 +148,25 @@ class TranscriptWindow {
   /** Mounts items [a, b) before `before`, in order. @param {number} a @param {number} b @param {Node} before */
   mountRun(a, b, before) {
     const frag = document.createDocumentFragment();
-    for (let i = a; i < b; i++) {
-      const node = this.mount(i);
-      this.sizes.observe(node);
-      frag.append(node);
-    }
+    for (let i = a; i < b; i++) frag.append(this.islands.has(i) ? this.rejoin(i) : this.fresh(i));
     this.el.insertBefore(frag, before);
+  }
+  /** Item i, rendered from the state, with the details it had open when it left. @param {number} i */
+  fresh(i) {
+    const node = this.mount(i);
+    this.sizes.observe(node);
+    restoreDetails(node, this.saved.get(this.entry.ids[i]));
+    this.saved.delete(this.entry.ids[i]);
+    return node;
+  }
+  rejoin(i) {
+    return rejoin(this, i);
+  }
+  pinned(node) {
+    return pinned(node);
+  }
+  drop(i) {
+    return drop(this, i);
   }
   /** How many items to mount past an edge, going by step: the margin by estimate, at least CHUNK. @param {number} edge @param {number} step */
   runLength(edge, step) {
@@ -156,6 +183,7 @@ class TranscriptWindow {
   grow() {
     this.raf = 0;
     if (!this.el.isConnected) return;
+    this.release();
     const reach = this.viewH() * MARGIN;
     if (this.from > 0 && this.above.getBoundingClientRect().bottom > -reach) this.growUp();
     if (this.to < this.total && this.below.getBoundingClientRect().top < this.viewH() + reach) {
@@ -164,6 +192,19 @@ class TranscriptWindow {
       this.to = b;
       this.paintBelow();
     }
+    this.shrink();
+  }
+  release() {
+    return release(this);
+  }
+  shrink() {
+    return shrink(this);
+  }
+  dropTop(px) {
+    return dropTop(this, px);
+  }
+  dropBottom(px) {
+    return dropBottom(this, px);
   }
   /** Mounts a run above the range; the item that was first keeps its place on screen. */
   growUp() {
@@ -197,6 +238,7 @@ class TranscriptWindow {
     this.entry.ids.push(it.id);
     if (atEnd) this.to++;
     else this.paintBelow();
+    this.scrolled();
     return atEnd;
   }
   /** An item moved to the end, its stub in its old place (item.move). @param {any} stub @param {any} it */
