@@ -46,3 +46,10 @@ test('the judge counts a chart whose marks carry the values as drawn, and labele
   assert.match(drawn, /A chart whose marks carry the values is yes/);
   assert.match(drawn, /labeled boxes and arrows is no/);
 });
+
+// The maintainer read a cost-per-use lollipop and columns of dots as bar charts in disguise (#206): a ranking of one
+// number doesn’t show how two quantities relate.
+test('the judge counts a ranked list of one number as no relationship when the idea is how two things relate', () => {
+  const relationship = JUDGING.split('\n').find((line) => line.startsWith('- relationship:'));
+  assert.match(relationship, /ranked list of one number \(bars, a lollipop, a dot per row, a ratio sorted\)/);
+});
