@@ -1,19 +1,24 @@
-# Releases what each merge to main brings (designs/engineering-practices.md, “Commits and versions”): npm run release
-# writes the release commit and its tag, and this pushes both to main with the repository’s `release` deploy key. Its
-# private half is the secret RELEASE_DEPLOY_KEY in the `release` environment, which only main may use, so a pull
-# request’s workflow can’t read it. Deploy keys go on the protect-main ruleset’s bypass list, so once main requires pull
-# requests and checks, the release commit is still the one change that reaches main without them.
+# Releases what each merge to main brings, once main’s checks pass on it (designs/engineering-practices.md, “Commits
+# and versions”): npm run release writes the release commit and its tag, and this pushes both to main with the
+# repository’s `release` deploy key. Its private half is the secret RELEASE_DEPLOY_KEY in the `release` environment,
+# which only main may use, so a pull request’s workflow can’t read it. Deploy keys go on the protect-main ruleset’s
+# bypass list, so once main requires pull requests and checks, the release commit is still the one change that reaches
+# main without them.
 name: release
 
+# After check.yml finishes on main, not on the push itself: a merge that breaks main is never released. That lets a
+# pull request merge without first taking in every merge before it, since main’s own run is the gate for what ships.
 on:
-  push:
+  workflow_run:
+    workflows: [check]
+    types: [completed]
     branches: [main]
 
 # The deploy key pushes; the workflow’s own token only reads.
 permissions:
   contents: read
 
-# One release at a time. A merge that lands while one runs is released by the next run, which starts from main’s tip.
+# One release at a time. A merge that lands while one runs is released by the run its own check starts.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -24,31 +29,50 @@ jobs:
     runs-on: ubuntu-latest
     # Where RELEASE_DEPLOY_KEY lives: an environment limited to main.
     environment: release
+    # Only a passing run of check.yml on a push to this repository’s main. workflow_run’s branch filter reads the head
+    # branch’s name, which a fork’s pull request can also call main, so the event and the repository are checked too.
     # A push with the deploy key starts workflows, so this skips the release commit it pushed itself.
-    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      !startsWith(github.event.workflow_run.head_commit.message, 'chore(release):')
     steps:
       - uses: actions/checkout@v4
         with:
-          # main’s tip, not the commit that started this run: a later merge may have landed meanwhile.
+          # main’s tip, so the release commit goes on top of it.
           ref: main
           # The whole history and its tags: the next version comes from the commits since the last tag.
           fetch-depth: 0
           # Checked out over SSH with the deploy key, so the push below uses it too.
           ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
-      - uses: actions/setup-node@v4
+      # Only the commit the checks passed on: if main has moved past it, the newer commit isn’t checked yet, and its
+      # own run releases both.
+      - name: Main is still the commit its checks passed on
+        id: tip
+        run: |
+          if [ "$(git rev-parse HEAD)" = "$CHECKED" ]; then echo 'same=true' >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "main is at $(git rev-parse --short HEAD), past ${CHECKED:0:8}: the newer commit’s checks release it."
+        env:
+          CHECKED: ${{ github.event.workflow_run.head_sha }}
+      - if: steps.tip.outputs.same == 'true'
+        uses: actions/setup-node@v4
         with:
           node-version: 22
       # tools/release.mjs uses only Node’s own modules, so nothing is installed.
       - name: Make the release commit and its tag
+        if: steps.tip.outputs.same == 'true'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           node tools/release.mjs
       # --atomic: the commit and the tag go up together, or neither does.
       - name: Push them to main
+        if: steps.tip.outputs.same == 'true'
         run: |
           tag="$(git tag --points-at HEAD --list 'v[0-9]*.[0-9]*.[0-9]*')"
           if [ -z "$tag" ]; then echo 'Nothing to release.'; exit 0; fi
           git push --atomic origin HEAD:main "$tag"
       - name: Every change on main is released
+        if: steps.tip.outputs.same == 'true'
         run: node tools/release.mjs --check
