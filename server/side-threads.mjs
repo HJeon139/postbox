@@ -15,14 +15,15 @@ export { HOP_LIMIT };
 
 // ── Agents waking agents ───────────────────────────────────────────────────────────
 
+/** What a wake from a summary's turn is told (#225): one text, whichever tool it came through. */
+export const SUMMARY_WAKES_NO_ONE = 'A summary for the conversation wakes no one: finish it, and the person decides the rest.';
+
 /**
  * An agent wakes another (#110, #228, #372): by an @-mention in what it said (itemId, that message) or by wake_agent. It
  * reaches the persona’s one session in the conversation, which answers there; a busy one takes the wake when its turn
  * ends, as any message to a busy agent waits. A persona the conversation doesn’t have needs the
  * person: a card asks to add it. After HOP_LIMIT wakes in a row without you, the next one waits for your confirm.
  */
-/** What a wake from a summary's turn is told (#225): one text, whichever tool it came through. */
-export const SUMMARY_WAKES_NO_ONE = 'A summary for the conversation wakes no one: finish it, and the person decides the rest.';
 
 export function agentWake(
   rt,
