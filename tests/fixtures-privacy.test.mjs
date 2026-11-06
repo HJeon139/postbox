@@ -27,6 +27,8 @@ const json = (value) => JSON.stringify(value);
 /** That JSON escaped inside another JSON string, as a recorded line holds it. @param {object} value */
 const escaped = (value) => JSON.stringify({ line: JSON.stringify(value) });
 
+const PLAN_TYPE = ['plan', 'Type'].join(''); // an account key, built here, as one written bare before a “:” is flagged
+
 /** A made-up installation id that isn’t all zeros. */
 const ID = dashed('12345678', 'abcd', '1234', 'abcd', '123456789abc');
 
@@ -159,14 +161,20 @@ test('privacy checker allows the placeholders, system homes and example addresse
   assert.ok(checkContentPrivacy(email('b', 'indexer.com')).length > 0, 'flags another address at a mention test’s domain');
 });
 
-test('privacy checker checks its own files, and exempts only account fields in the #660 fixture', () => {
+/** The recorded Codex turn that once held account fields, under an exemption (#660). */
+const CODEX_RESUME = 'tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl';
+
+test('privacy checker checks its own files, and the recorded Codex resume turn has no exemption (#660)', () => {
   const leak = slashed('', 'Users', 'melissa');
-  for (const path of ['tools/privacy-check.mjs', 'tests/fixtures-privacy.test.mjs', 'docs/privacy-notes.md']) {
+  for (const path of ['tools/privacy-check.mjs', 'tests/fixtures-privacy.test.mjs', 'docs/privacy-notes.md', CODEX_RESUME]) {
     assert.ok(checkFilePrivacy(path, leak).length > 0, `${path} is checked`);
   }
-  const fixture = 'tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl';
-  assert.deepEqual(checkFilePrivacy(fixture, json({ planType: 'pro' })), []);
-  assert.ok(checkFilePrivacy(fixture, leak).length > 0, 'the #660 fixture still has its paths checked');
+  assert.ok(checkFilePrivacy(CODEX_RESUME, json({ [PLAN_TYPE]: 'pro' })).length > 0, 'an account field there is flagged as anywhere');
+});
+
+test('the recorded Codex resume turn holds no account metadata (#660)', () => {
+  const recorded = readFileSync(new URL(`../${CODEX_RESUME}`, import.meta.url), 'utf8');
+  assert.deepEqual(checkContentPrivacy(recorded), []);
 });
 
 test('a home path pasted into this file’s own text is flagged, though its examples are not', () => {
