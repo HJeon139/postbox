@@ -209,10 +209,10 @@ const HANDLERS = {
     if (has(text, /citation script/)) return citationFix(a);
     if (has(text, /faster parser/)) return fasterParser(a);
     if (has(text, /walk me through|out loud|narrat/)) return walkthrough(a);
-    if (has(text, /explain|react|reason/)) return explainer(a, mem);
+    if (has(text, /explain|react|reason/)) return explainer(a, text);
     if (has(text, /paper|memory|read/)) return paperChoice(a);
     await a.think(500);
-    await a.say('I read papers and explain them with diagrams and pictures you can change. Try “Explain ReAct with something I can try”.');
+    await a.say('I read papers and explain them with a picture you can change. Try “Explain ReAct with something I can try”.');
   },
 
   async indexer(m, a, mem, _se) {
