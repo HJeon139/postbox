@@ -57,6 +57,12 @@ test('scroll presses PageDown, End or Home for down, end and start, and refuses 
     const facts = { probes: newProbes() };
     const { calls, page } = notingPage(facts);
     await STEPS.scroll({ page, facts, step: 1 }, { by });
+    // Home and End take the same path as the pages: the input first, then the focus without scrolling, then the key.
+    assert.ok(
+      calls.every((c) => c.inputs === 1),
+      `${by}: recorded before anything reached the page`,
+    );
+    assert.match(calls[0].evaluate, /focus\(\{ preventScroll: true \}\)/, by);
     assert.deepEqual(
       calls.filter((c) => c.method).map((c) => [c.key, c.windowsVirtualKeyCode]),
       [

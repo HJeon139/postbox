@@ -10,6 +10,13 @@ export class Blobs {
   constructor(dir, { open: openFile = open } = {}) {
     this.dir = dir;
     this.open = openFile;
+    // Bytes a call stores before it knows it keeps them (#780, a review’s images), by SHA-256: how many staged puts
+    // hold each, which of those a call or any other put kept, and the ones being removed, which a put waits out.
+    /** @type {Map<string, number>} */ this.held = new Map();
+    /** @type {Set<string>} */ this.kept = new Set();
+    /** @type {Map<string, Promise<void>>} */ this.dropping = new Map();
+    // Ordinary puts in flight, by SHA-256: a refused staged call never removes bytes one of them is writing or wrote.
+    /** @type {Map<string, number>} */ this.writing = new Map();
   }
 
   pathOf(sha256) {
@@ -22,9 +29,35 @@ export class Blobs {
    * whole or not at all: written to a draft beside it, synced, then renamed over its name, and the folder synced, so a
    * crash or a reader mid-write never finds a short file under the hash (a truncated one left by an older build is
    * replaced). Blobs can hold command lines and output, so they are the owner’s alone: files 0600, folders 0700 (#305).
+   * A staged put (#780) is settled once its call is known to keep it or not (settle); fresh says this put wrote it.
+   * @param {Buffer} buffer @param {{ staged?: boolean }} [opts]
    */
-  async put(buffer) {
+  async put(buffer, { staged = false } = {}) {
     const sha256 = createHash('sha256').update(buffer).digest('hex');
+    // Before any await, so a staged put of the same bytes that’s refused meanwhile can’t remove what this one keeps.
+    if (staged) this.held.set(sha256, (this.held.get(sha256) ?? 0) + 1);
+    else this.writing.set(sha256, (this.writing.get(sha256) ?? 0) + 1);
+    try {
+      return await this.write(sha256, buffer);
+    } catch (e) {
+      if (staged) await this.settle([{ sha256, fresh: false }], false);
+      throw e;
+    } finally {
+      if (!staged) this.wrote(sha256);
+    }
+  }
+
+  /** An ordinary put is done: a staged call holding the same bytes now keeps them whatever it settles. @param {string} sha256 */
+  wrote(sha256) {
+    const left = (this.writing.get(sha256) ?? 1) - 1;
+    if (left > 0) this.writing.set(sha256, left);
+    else this.writing.delete(sha256);
+    if (this.held.has(sha256)) this.kept.add(sha256);
+  }
+
+  /** put’s write, once the bytes are hashed. @param {string} sha256 @param {Buffer} buffer */
+  async write(sha256, buffer) {
+    await this.dropping.get(sha256);
     const path = this.pathOf(sha256);
     const folder = join(this.dir, sha256.slice(0, 2));
     const have = await stat(path).catch(() => null);
@@ -32,7 +65,7 @@ export class Blobs {
     // name may not be durable yet: sync the folder before saying it is here.
     if (have?.size === buffer.length) {
       await this.syncFolder(folder);
-      return { sha256, size: buffer.length, path };
+      return { sha256, size: buffer.length, path, fresh: false };
     }
     await mkdir(folder, { recursive: true, mode: 0o700 });
     const draft = `${path}.${process.pid}.${randomBytes(4).toString('hex')}.draft`;
@@ -52,7 +85,36 @@ export class Blobs {
       throw e;
     }
     await this.syncFolder(folder);
-    return { sha256, size: buffer.length, path };
+    return { sha256, size: buffer.length, path, fresh: true };
+  }
+
+  /**
+   * Settles a call’s staged puts (#780): kept, they stay; refused, each blob one of them wrote is removed, unless
+   * another put still holds it or kept it. O(the call’s puts).
+   * @param {{ sha256: string, fresh: boolean }[]} puts @param {boolean} keep
+   */
+  async settle(puts, keep) {
+    /** @type {Map<string, { n: number, fresh: boolean }>} */
+    const bySha = new Map();
+    for (const { sha256, fresh } of puts) {
+      const seen = bySha.get(sha256) ?? { n: 0, fresh: false };
+      bySha.set(sha256, { n: seen.n + 1, fresh: seen.fresh || fresh });
+    }
+    for (const [sha256, { n, fresh }] of bySha) {
+      if (keep) this.kept.add(sha256);
+      const left = (this.held.get(sha256) ?? n) - n;
+      if (left > 0) {
+        this.held.set(sha256, left);
+        continue;
+      }
+      this.held.delete(sha256);
+      const keptBySomeone = this.kept.delete(sha256);
+      if (keptBySomeone || !fresh || this.writing.has(sha256)) continue;
+      const gone = unlink(this.pathOf(sha256)).catch(() => {});
+      this.dropping.set(sha256, gone);
+      await gone;
+      this.dropping.delete(sha256);
+    }
   }
 
   /** Syncs a folder so a rename in it is durable. A platform that can’t says so with one of these codes; any other is a failed sync. @param {string} folder */

@@ -1,6 +1,9 @@
 // The long room’s view triggers (#508 lane, tests/uat/e2e/scenarios/bigroom.md): what the page draws far from the view.
 // tools/uat/triggers.mjs adds them to TRIGGERS. Each reads the probes the runner records from the page
-// (tools/uat/diagram-probe.mjs, tools/uat/doc-query-probe.mjs), not the state, since what’s drawn isn’t in it.
+// (tools/uat/diagram-probe.mjs, tools/uat/doc-query-probe.mjs, tools/uat/view-probe.mjs), not the state, since what’s
+// drawn isn’t in it.
+
+import { onBigRoomFirstDay } from './big-room.mjs';
 
 /**
  * The page had asked for fewer diagram pages than it had diagram frames, with one out of view and not drawn, and a later
@@ -58,7 +61,25 @@ function sessionScoped(f) {
   ];
 }
 
+/**
+ * You paged back through the big room to its first day (bigroom.md, phase 1; #531): a settled sample of the view,
+ * reading, anchored at one of the seeded room’s first-day items. The first such sample is the evidence.
+ * @param {{ probes?: { views?: any[] } }} f
+ */
+function windowPagedBack(f) {
+  const s = (f.probes?.views ?? []).find((x) => x.settled === true && x.mode === 'reading' && onBigRoomFirstDay(x.anchorId));
+  if (!s) return [];
+  const where = s.where === 'panel' ? 'the side panel' : 'the conversation';
+  return [{ at: s.at, evidence: `At step ${s.step}, ${where} was reading at ${s.anchorId}, one of the seeded room’s first-day items.` }];
+}
+
 export const VIEW_TRIGGERS = {
+  'window-paged-back': {
+    issue: 531,
+    says: 'you read at one of the big room’s first-day items, having paged back to its start',
+    recorded: (f) => Array.isArray(f.probes?.views),
+    run: windowPagedBack,
+  },
   'diagram-deferred': {
     issue: 695,
     says: 'the page asked for fewer diagram pages than it had diagrams, and a diagram out of view loaded and drew later',

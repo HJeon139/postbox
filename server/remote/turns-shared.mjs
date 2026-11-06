@@ -1,7 +1,7 @@
 // What the modules of a remote turn’s life on the laptop share (#120, server/remote/turns.mjs): its timings and
 // limits, the shapes of a live turn and of a stop Postbox waits on, and the small helpers each of them uses.
 
-import { message as protocolMessage, TOOL_ROUTES } from '../../shared/remote-protocol.mjs';
+import { message as protocolMessage } from '../../shared/remote-protocol.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 
@@ -49,9 +49,6 @@ export const clock = (at) => new Date(at).toLocaleTimeString('en-US', { hour: '2
  * it may have come before the start reached the daemon (server/remote/turns.mjs, the header).
  * @typedef {{ sessionId: string, hostId: string, waiters: (() => void)[], unconfirmed: boolean }} Stop
  */
-
-/** The tools that return at once on the host (TOOL_ROUTES’ queue). */
-export const TOOL_QUEUED = new Set(Object.keys(TOOL_ROUTES).filter((k) => TOOL_ROUTES[/** @type {keyof typeof TOOL_ROUTES} */ (k)] === 'queue'));
 
 /** The line a resumed turn starts with (the design, “Resuming says why”). @param {string} why @param {string} host */
 export function whyLine(why, host) {

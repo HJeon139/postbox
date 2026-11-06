@@ -160,15 +160,23 @@ function bracket(s, i, ctx, closes) {
 
 /**
  * An image (#218): https, or plain http for Postbox’s own media on this computer, moved to the page’s origin as an
- * image block’s is (#180). The page’s Content-Security-Policy decides which origins load. Any other address is said
- * in its place, with the alt text.
- * @param {string} alt @param {string} target  the address, and any title after it @param {{ pageOrigin?: string }} ctx
+ * image block’s is (#180). The page’s Content-Security-Policy decides which origins load. A review block’s own
+ * attached file (#780) resolves when the target equals one of its keys byte for byte, its name or its kept ref,
+ * with no decoding or tidying: its URL is the item’s route, built by the page from the stored record, never from
+ * the text. Any other address is said in its place, with the alt text.
+ * @param {string} alt @param {string} target  the address, and any title after it
+ * @param {{ pageOrigin?: string, files?: Record<string, { url: string, width: number, height: number }> }} ctx
  */
 function img(alt, target, ctx) {
   const src = target.split(/\s+/)[0];
+  const file = ctx.files && Object.hasOwn(ctx.files, src) ? ctx.files[src] : null;
+  if (file)
+    return `<img class="md-img" src="${escapeHtml(file.url)}" alt="${escapeHtml(alt)}" width="${Number(file.width) | 0}" height="${Number(file.height) | 0}" loading="lazy" referrerpolicy="no-referrer">`;
   const local = LOCAL_HTTP.test(src);
-  if (!isSafeUrl(src, { schemes: local ? ['http:'] : ['https:'] }))
-    return `<span class="md-img-failed">This image couldn’t load: its address isn’t a full https address.${alt ? ` It shows: ${escapeHtml(alt)}` : ''}</span>`;
+  if (!isSafeUrl(src, { schemes: local ? ['http:'] : ['https:'] })) {
+    const rule = ctx.files ? 'isn’t a full https address or a file attached to this block' : 'isn’t a full https address';
+    return `<span class="md-img-failed">This image couldn’t load: its address ${rule}.${alt ? ` It shows: ${escapeHtml(alt)}` : ''}</span>`;
+  }
   const at = local && ctx.pageOrigin ? onPageOrigin(src, ctx.pageOrigin) : src;
   return `<img class="md-img" src="${escapeHtml(at)}" alt="${escapeHtml(alt)}" loading="lazy" referrerpolicy="no-referrer">`;
 }
