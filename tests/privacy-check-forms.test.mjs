@@ -112,6 +112,15 @@ test('privacy checker flags an account field written bare, in YAML, JavaScript o
   }
 });
 
+test('privacy checker flags a bare account key before “=” only where TOML puts a key, not in a code declaration (#696)', () => {
+  assert.deepEqual(checkContentPrivacy(`[account]\n  ${AUTH_MODE} = "chatgpt"`), ['account field at line 2'], 'an indented TOML key');
+  assert.deepEqual(checkContentPrivacy(`account = { ${AUTH_MODE} = "chatgpt" }`), ['account field at line 1'], 'a TOML inline table');
+  assert.deepEqual(checkContentPrivacy(`account = { x = 1, ${AUTH_MODE} = "chatgpt" }`), ['account field at line 1'], 'after a comma');
+  for (const text of [`const ${PLAN_TYPE} = account.plan;`, `let ${AUTH_MODE} = 'x';`, `this.${PLAN_TYPE} = value;`]) {
+    assert.deepEqual(checkContentPrivacy(text), [], text);
+  }
+});
+
 test('a recording’s placeholder home is allowed only in its own joined deltas, and only that home (#784)', () => {
   const delta = (part) => JSON.stringify({ type: 'stream_event', event: { index: 1, delta: { type: 'text_delta', text: part } }, api_message_id: 'm' });
   const split = (path) => [path.slice(0, 4), path.slice(4)].map(delta).join('\n');
