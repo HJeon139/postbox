@@ -2,6 +2,24 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.26.0 (2026-11-06)
+
+### Features
+
+- **uat:** trigger host-turn-waited-install, and phase 4's first turn waits (#464)
+- **app:** show a host’s automatic install on its card and a turn’s line, with its toggle (#464)
+- **remote:** put a failed automatic install's reason on the host's status for its card (#464)
+- **remote:** a caller that hears a 127 waits for the install it started (#464)
+
+### Fixes
+
+- **remote:** Install… supersedes a failed try as present, so the card says nothing (#464)
+- **remote:** Install… supersedes a failed automatic try; other versions' tries say nothing (#464)
+- **remote:** a waiter on a withdrawn install throws the host's own failure, with Install… (#464)
+- **remote:** Stop ends a turn's wait for the automatic install at once (#464)
+- **uat:** host-turn-waited-install dates a waited turn by the message that asked for it (#464)
+- **remote:** a caller waiting on a busy install goes on when the host connects (#464)
+
 ## 1.25.0 (2026-11-06)
 
 ### Features
