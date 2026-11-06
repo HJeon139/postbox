@@ -4,8 +4,8 @@
 // the person knows which of theirs won’t run in Postbox turns. Org-managed hooks aren’t read here: they still run.
 //
 // A hook’s matcher and command are the person’s data. They reach the page as text through h(), cut to a length and
-// with control, bidi and zero-width characters marked, and a file that isn’t JSON, or holds hooks in a shape this
-// doesn’t know, says so.
+// with control characters and characters that show as nothing marked, and a file that isn’t JSON, or holds hooks in a
+// shape this doesn’t know, says so.
 
 import { readFile } from 'node:fs/promises';
 import { settingsFiles } from './permission-rules.mjs';
@@ -15,15 +15,19 @@ const MAX_TEXT = 200;
 const MAX_MATCHER = 100;
 const MAX_TYPE = 20;
 
-// Characters that change how text around them displays without showing themselves: zero-width ones (U+200B to
-// U+200D, U+FEFF) and bidi marks, embeddings, overrides and isolates (U+200E, U+200F, U+202A to U+202E, U+2066 to
-// U+2069). A right-to-left override can make a command read as another one.
-const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
+// Characters that change how text around them displays, or that display as nothing: every format character (Cf:
+// zero-width ones, soft hyphens, word joiners, invisible operators, tag characters, U+FEFF), the bidi marks,
+// embeddings, overrides and isolates, the Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), the combining grapheme
+// joiner (U+034F) and the variation selectors (U+FE00 to U+FE0F), which are marks rather than format characters, and the
+// whole tag block (U+E0000 to U+E007F), whose unassigned code points aren’t Cf. A right-to-left override can make a
+// command read as another one.
+// The two marks are alternatives of their own: in one class with other characters, Biome reads them as combining.
+const INVISIBLE = /[\p{Cf}\p{Bidi_Control}\u115f\u1160\u3164\uffa0\u{e0000}-\u{e007f}]|\u034f|[\ufe00-\ufe0f]/gu;
 
 /**
  * A string as one line of text at most `max` long: a tab or line break (U+2028 and U+2029 too) is a space, another
- * control character, a bidi mark or a zero-width character the replacement mark, and text past the limit is cut with
- * an ellipsis.
+ * control character or a character that shows as nothing (INVISIBLE) the replacement mark, and text past the limit
+ * is cut with an ellipsis.
  * @param {unknown} v @param {number} max
  */
 function shown(v, max) {
