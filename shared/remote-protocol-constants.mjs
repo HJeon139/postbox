@@ -144,10 +144,19 @@ export const TOOL_ROUTES = Object.freeze({
  * @param {string} name @param {any} args @returns {string | undefined}
  */
 export function toolRoute(name, args) {
-  const block = args?.block;
-  const carriesFiles = block !== null && typeof block === 'object' && block.files !== undefined;
-  if ((name === 'show_block' || name === 'update_block') && carriesFiles) return 'ask';
+  if (carriesBlockFiles(name, args)) return 'ask';
   return TOOL_ROUTES[/** @type {keyof typeof TOOL_ROUTES} */ (name)];
+}
+
+/**
+ * Whether a call is show_block or update_block with a block that names files (#780): the one test the shim’s route,
+ * the host’s broker and Postbox’s blockFiles all use, so they can’t disagree about which calls carry a review’s files.
+ * @param {string} name @param {any} args
+ */
+export function carriesBlockFiles(name, args) {
+  if (name !== 'show_block' && name !== 'update_block') return false;
+  const block = args?.block;
+  return block !== null && typeof block === 'object' && block.files !== undefined;
 }
 
 /** Codes an `error` carries. Peers branch on these, never on the message. */

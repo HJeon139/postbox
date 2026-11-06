@@ -5,6 +5,7 @@
 
 import { basename } from 'node:path';
 import { LIMITS, REVIEW_IMAGES } from '../shared/limits.mjs';
+import { carriesBlockFiles } from '../shared/remote-protocol.mjs';
 import { AgentFileError, FILE_NAME } from './agent-files.mjs';
 import { imageInfo } from './image-check.mjs';
 
@@ -92,8 +93,8 @@ const fromFolders = (rt, sessionId) => (f, max, what) => rt.agentFile(sessionId,
  * @returns {Promise<{ args: any, files?: ReviewFile[], settle?: (keep: boolean) => Promise<void> }>}
  */
 export async function blockFiles(rt, sessionId, name, args, read = fromFolders(rt, sessionId)) {
-  const block = args?.block;
-  if ((name !== 'show_block' && name !== 'update_block') || !block || typeof block !== 'object' || block.files === undefined) return { args };
+  if (!carriesBlockFiles(name, args)) return { args };
+  const block = args.block;
   // A withdraw or an outcome applies no revision, so files it carried would be kept with nothing to show them.
   if (Object.hasOwn(block, 'withdraw') || Object.hasOwn(block, 'outcome'))
     throw new AgentFileError('A review’s files go with a revision, not with a withdraw or an outcome. Send it without files.');

@@ -84,6 +84,7 @@
 import { utf8Bytes } from './remote-protocol-checks.mjs';
 import {
   ATTACHMENTS_DIR,
+  carriesBlockFiles,
   DIR_MODE,
   ERROR_CODES,
   FILE_MODE,
@@ -108,6 +109,7 @@ import { CHANNEL_NAMES, encode, encodedBytes, message, messageTypes, parseLine, 
 export {
   ATTACHMENTS_DIR,
   CHANNEL_NAMES,
+  carriesBlockFiles,
   createLineReader,
   createMessageReader,
   DIR_MODE,

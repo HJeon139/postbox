@@ -3,8 +3,8 @@
 // broker.mjs’s header says what’s written down when.
 
 import { validateBlock } from '../../../shared/catalog.mjs';
-import { encodedBytes, REMOTE_LIMITS, TURN_FILES, toolRoute } from '../../../shared/remote-protocol.mjs';
-import { filesReader, namesBlockFiles, withoutFiles } from './broker-files.mjs';
+import { carriesBlockFiles, encodedBytes, REMOTE_LIMITS, TURN_FILES, toolRoute } from '../../../shared/remote-protocol.mjs';
+import { filesReader, withoutFiles } from './broker-files.mjs';
 import { armReadTimer, claim, detached, readLocal, settled, settleOffline } from './broker-offline.mjs';
 import { record, refusal, startOf, unrecorded, written } from './broker-records.mjs';
 import { key, QUEUED_TEXT, toShims } from './broker-state.mjs';
@@ -43,7 +43,7 @@ export async function prepare(b, turn, name, args) {
   // the laptop shows its fallback text (server/runtime.mjs’s show_block).
   if (name === 'update_block') {
     // A review’s files aren’t the catalog’s: Postbox takes them off the block before it validates it.
-    const v = validateBlock(namesBlockFiles(name, out) ? withoutFiles(out.block) : out.block);
+    const v = validateBlock(carriesBlockFiles(name, out) ? withoutFiles(out.block) : out.block);
     if (!v.ok) return { ok: false, text: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
   }
   if (name === 'update_app' && typeof out.code === 'string') {

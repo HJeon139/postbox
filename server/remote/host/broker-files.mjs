@@ -5,6 +5,7 @@
 import { constants as fsConstants, promises as fsp } from 'node:fs';
 import { basename, resolve, sep } from 'node:path';
 import { LIMITS, limitText, REVIEW_IMAGES } from '../../../shared/limits.mjs';
+import { carriesBlockFiles } from '../../../shared/remote-protocol.mjs';
 import { count } from './broker-state.mjs';
 
 const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
@@ -118,10 +119,6 @@ export async function inlineAppFiles(folder, args, hooks = {}) {
   return { ok: true, args: out };
 }
 
-/** Whether a call is show_block or update_block with a block that names files (#780). @param {string} name @param {any} args */
-export const namesBlockFiles = (name, args) =>
-  (name === 'show_block' || name === 'update_block') && !!args?.block && typeof args.block === 'object' && args.block.files !== undefined;
-
 /** A block without its files, as the catalog validates it. @param {Record<string, any>} block */
 export function withoutFiles(block) {
   const { files: _files, ...rest } = block;
@@ -161,6 +158,6 @@ export async function inlineReviewFiles(folder, args, hooks = {}) {
  */
 export function filesReader(name, args) {
   if (name === 'show_app' || name === 'update_app') return inlineAppFiles;
-  if (namesBlockFiles(name, args)) return inlineReviewFiles;
+  if (carriesBlockFiles(name, args)) return inlineReviewFiles;
   return null;
 }
