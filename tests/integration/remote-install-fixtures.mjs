@@ -8,6 +8,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
+import { after } from 'node:test';
 import { main } from '../../server/remote/host/daemon.mjs';
 import { hostVersion } from '../../server/remote/host/paths.mjs';
 import { bootId, listProcesses, startTime } from '../../server/remote/host/proc.mjs';
@@ -23,6 +24,14 @@ export const V = VERSION.replaceAll('.', '\\.');
 export const NODE_DIR = dirname(process.execPath);
 export const HOST = { id: 'ho_test0001', name: 'host.example.com', settings: defaultHostSettings() };
 export const SKIP = process.platform === 'win32' && 'needs a POSIX sh and tar';
+/**
+ * The user id the in-process attaches see. The daemon refuses root (daemon-main.mjs), so a run as root would leave an
+ * attach that never takes the lock and a test waiting on it (#824); these tests are about the lock, not the user.
+ */
+const ownUser = () => {
+  const uid = process.getuid?.() ?? -1;
+  return uid === 0 ? 1000 : uid;
+};
 
 /** A temp folder short enough for the sockets of a host home in it (`h` or `home`): under TMPDIR where they fit, else /tmp. */
 export const temp = (prefix) => tempDir(prefix, hostSocketBase(prefix, '/home'));
@@ -62,6 +71,18 @@ export function top(root) {
   return readdirSync(root).sort();
 }
 
+/** The process groups of paused installs still running: a test that ends early, a timeout say, leaves none behind (#824). */
+const paused = new Set();
+after(() => {
+  for (const pid of paused) killGroup(pid);
+});
+/** Ends a process group, if it’s still there. @param {number} pid */
+function killGroup(pid) {
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch {}
+}
+
 /**
  * Starts the install script on `tar` in the background, with one of its test-only pauses: WAIT (POSTBOX_INSTALL_TEST_WAIT),
  * past its first check and before it takes the start lock; HOLD (POSTBOX_INSTALL_TEST_HOLD), just after it has taken
@@ -70,7 +91,9 @@ export function top(root) {
  * @param {ReturnType<typeof machines>} m @param {Buffer} tar @param {string} go @param {'WAIT' | 'HOLD' | 'BREAK'} [at]
  */
 export async function installPaused(m, tar, go, at = 'WAIT') {
-  const child = spawn('/bin/sh', ['-c', installCommand(VERSION)], { env: { ...m.env, [`POSTBOX_INSTALL_TEST_${at}`]: go }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const env = { ...m.env, [`POSTBOX_INSTALL_TEST_${at}`]: go };
+  const child = spawn('/bin/sh', ['-c', installCommand(VERSION)], { env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
+  paused.add(child.pid);
   const mark = `${go}.${{ WAIT: 'paused', HOLD: 'held', BREAK: 'breaking' }[at]}`;
   let stdout = '';
   let stderr = '';
@@ -78,7 +101,12 @@ export async function installPaused(m, tar, go, at = 'WAIT') {
   child.stderr.setEncoding('utf8').on('data', (d) => (stderr += d));
   child.stdin.end(tar);
   /** @type {Promise<{ status: number | null, stdout: string, stderr: string }>} */
-  const done = new Promise((resolve) => child.on('close', (status) => resolve({ status, stdout, stderr })));
+  const done = new Promise((resolve) =>
+    child.on('close', (status) => {
+      paused.delete(child.pid);
+      resolve({ status, stdout, stderr });
+    }),
+  );
   for (let i = 0; i < 500 && !existsSync(mark); i++) await new Promise((r) => setTimeout(r, 20));
   assert.ok(existsSync(mark), `the install paused (${stderr})`);
   return { done, pid: child.pid };
@@ -99,6 +127,7 @@ export async function attachStarting(home) {
   const running = main({
     argv: ['attach'],
     home,
+    getuid: ownUser,
     stdin: new PassThrough(),
     stdout: new PassThrough().resume(),
     stderr: { write: () => true },
@@ -134,6 +163,7 @@ export function attachCounting(home, /** @type {Partial<import('../../server/rem
   const state = { waits: 0, spawned: 0, waitsBefore: 0, hold: /** @type {Promise<void> | null} */ (null) };
   const serve = Object.assign(new EventEmitter(), { unref() {} });
   const running = main({
+    getuid: ownUser,
     ...opts,
     argv: ['attach'],
     home,
