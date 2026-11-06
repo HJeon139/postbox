@@ -1,0 +1,156 @@
+// #817 end to end: a PreToolUse hook that approves every call, in the person’s user settings and the project’s, with
+// `disableAllHooks: false` in both, doesn’t run in a Postbox turn in Auto, so a push waits on the permission card. One
+// real turn through each real adapter (the Claude Code CLI and the Agent SDK) asks for `git push origin
+// HEAD:refs/heads/e2e`; the test answers the card no, and checks the branch never reached the remote and neither hook
+// ran. A control turn in Run everything, where Postbox keeps the person’s hooks, shows the fixture’s hooks do run.
+//
+// It runs real model turns, which cost money, so it runs only with POSTBOX_E2E_CLAUDE=1 and a `claude` on PATH. It
+// lives in tests/integration/, outside `npm test`’s tests/*.test.mjs. HOME is a temp folder for the turns, so the
+// person’s own settings never load: the model must be reachable without them, through ANTHROPIC_API_KEY or Bedrock
+// (AWS_CONFIG_FILE and AWS_SHARED_CREDENTIALS_FILE are pointed at the person’s own files when unset; the test never
+// reads them). A sign-in kept in ~/.claude doesn’t carry over.
+//
+// The push names a refspec, so request-floor.mjs refuses it before the write judge: no Haiku call, whatever the
+// message says (write-intent.mjs, requestedCall).
+
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { delimiter, join } from 'node:path';
+import { test } from 'node:test';
+import { loadAgentSdk } from '../../server/adapters/agent-sdk.mjs';
+import { findClaude } from '../../server/adapters/claude-code.mjs';
+import { start } from '../../server/index.mjs';
+import { freePort } from '../process/chrome.mjs';
+import { tempDir } from '../temp-dirs.mjs';
+
+const MODEL = 'claude-haiku-5-5';
+const TURN_MS = 240_000;
+const PROMPT = 'Run this exact command with your Bash tool, once, and then tell me what it printed: git push origin HEAD:refs/heads/e2e';
+
+const onPath = (bin) => (process.env.PATH ?? '').split(delimiter).some((dir) => dir && existsSync(join(dir, bin)));
+/** Why the tests skip, or false when they run. */
+function skipReason() {
+  if (process.env.POSTBOX_E2E_CLAUDE !== '1') return 'set POSTBOX_E2E_CLAUDE=1 to run it: it runs real model turns, which cost money';
+  if (!onPath('claude')) return 'no `claude` on PATH';
+  return false;
+}
+const why = skipReason();
+const sdkWhy = why || ((await loadAgentSdk()) ? false : '@anthropic-ai/claude-agent-sdk isn’t installed');
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=Postbox e2e', '-c', 'user.email=e2e@example.com', ...args], { cwd, stdio: 'pipe' });
+
+/**
+ * A temp HOME and a project with the same approving hook in its user and project settings, each touching a marker of
+ * its own; the project is a git repository whose origin is a local bare repository.
+ */
+async function fixture() {
+  const root = tempDir('pb-e2e-817-');
+  const home = join(root, 'home');
+  const work = join(root, 'work');
+  const bare = join(root, 'bare.git');
+  const markers = { user: join(root, 'user-hook-ran'), project: join(root, 'project-hook-ran') };
+  const allow = JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } });
+  const settings = (marker) => ({
+    disableAllHooks: false,
+    hooks: { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: `touch '${marker}' && printf '%s\\n' '${allow}'` }] }] },
+  });
+  await mkdir(join(home, '.claude'), { recursive: true });
+  await mkdir(join(work, '.claude'), { recursive: true });
+  await writeFile(join(home, '.claude', 'settings.json'), JSON.stringify(settings(markers.user)));
+  await writeFile(join(work, '.claude', 'settings.json'), JSON.stringify(settings(markers.project)));
+  git(root, 'init', '-q', '--bare', bare);
+  git(work, 'init', '-q');
+  await writeFile(join(work, 'README.md'), 'e2e\n');
+  git(work, 'add', 'README.md', '.claude/settings.json');
+  git(work, 'commit', '-q', '-m', 'init');
+  git(work, 'remote', 'add', 'origin', bare);
+  return { root, home, work, bare, markers };
+}
+
+/** HOME set to the fixture’s for this test, with the person’s AWS files kept, put back when the test ends. */
+function useHome(t, home) {
+  const saved = Object.fromEntries(['HOME', 'AWS_CONFIG_FILE', 'AWS_SHARED_CREDENTIALS_FILE', 'POSTBOX_CLAUDE_BIN'].map((k) => [k, process.env[k]]));
+  const real = homedir();
+  process.env.POSTBOX_CLAUDE_BIN ??= findClaude();
+  process.env.AWS_CONFIG_FILE ??= join(real, '.aws', 'config');
+  process.env.AWS_SHARED_CREDENTIALS_FILE ??= join(real, '.aws', 'credentials');
+  process.env.HOME = home;
+  t.after(() => {
+    for (const [k, v] of Object.entries(saved))
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+  });
+}
+
+/**
+ * One real turn of `backend` in `mode` that asks for the push. Every card it shows is answered no. Returns the cards.
+ * @param {import('node:test').TestContext} t @param {'claude-code'|'agent-sdk'} backend @param {string} mode
+ */
+async function pushTurn(t, backend, mode) {
+  const f = await fixture();
+  useHome(t, f.home);
+  const app = await start({ port: await freePort(), dataDir: join(f.root, 'data'), fresh: true, quiet: true, claudeHome: f.home });
+  t.after(() => app.close());
+  const { rt, store } = app;
+  assert.ok(rt.adapters.runsHere(backend), `${backend} should run here`);
+  store.emit('project', { id: 'p_e2e', name: 'E2E', folder: f.work });
+  const p = rt.createPersona({ handle: 'pusher', backend, model: MODEL, permissionMode: mode, usesHostSetup: true, tools: ['shell'] });
+  const thread = rt.createThread({ projectId: 'p_e2e', title: 'E2E', personaIds: [p.id] });
+  const se = rt.sessionsIn(thread.id)[0];
+  const running = () => rt.turns.has(se.id);
+  rt.sendMessage(thread.id, { text: PROMPT });
+  for (let i = 0; i < 120 && !running(); i++) await sleep(250);
+  assert.ok(running(), 'the turn should start');
+  const answered = [];
+  const until = Date.now() + TURN_MS;
+  while (running() && Date.now() < until) {
+    for (const card of store.items(thread.id).filter((i) => i.kind === 'permission' && i.status === 'open')) {
+      answered.push(card);
+      await rt.act(thread.id, card.id, 'deny', {});
+    }
+    await sleep(250);
+  }
+  assert.equal(running(), false, `the turn should end within ${TURN_MS / 1000} s`);
+  const said = store
+    .items(thread.id)
+    .filter((i) => i.kind === 'agent')
+    .map((i) => i.text)
+    .join('\n');
+  return { ...f, answered, said };
+}
+
+const landed = (bare) => {
+  try {
+    git(bare, 'rev-parse', '--verify', '-q', 'refs/heads/e2e');
+    return true;
+  } catch {
+    return false; // rev-parse --verify exits 1 when the branch isn’t there
+  }
+};
+const pushCard = (cards) => cards.find((c) => c.tool === 'Bash' && /git push origin HEAD:refs\/heads\/e2e/.test(c.input?.command ?? ''));
+
+for (const [backend, skip] of [
+  ['claude-code', why],
+  ['agent-sdk', sdkWhy],
+]) {
+  test(`#817 ${backend} in Auto: the approving hooks don’t run, the push waits on a card, and no answers no`, {
+    skip,
+    timeout: TURN_MS + 60_000,
+  }, async (t) => {
+    const r = await pushTurn(t, backend, 'auto');
+    assert.ok(pushCard(r.answered), `a permission card for the push should show; the agent said: ${r.said.slice(0, 500)}`);
+    assert.equal(landed(r.bare), false, 'refs/heads/e2e should not be on the remote');
+    assert.equal(existsSync(r.markers.user), false, 'the user settings’ hook should not run');
+    assert.equal(existsSync(r.markers.project), false, 'the project settings’ hook should not run');
+  });
+}
+
+test('#817 control: in Run everything, Postbox keeps the person’s hooks, so the fixture’s hooks run', { skip: why, timeout: TURN_MS + 60_000 }, async (t) => {
+  const r = await pushTurn(t, 'claude-code', 'bypass');
+  assert.equal(existsSync(r.markers.user), true, `the user settings’ hook should run; the agent said: ${r.said.slice(0, 500)}`);
+  assert.equal(existsSync(r.markers.project), true, 'the project settings’ hook should run');
+});
