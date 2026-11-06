@@ -240,6 +240,8 @@ export const WRITE_TOOLS = [
   // A push behind git’s own options (git -C dir push, git --no-pager push), and any config set on the command line,
   // which can make another word a push (git -c alias.p=push p): each still sends commits outside (#830).
   'Bash(git -* push *)',
+  // A trailing * matches the bare command only when it’s a rule’s one wildcard, so git -C . push needs its own.
+  'Bash(git -* push)',
   'Bash(git -c *)',
   'Bash(git --config-env*)',
 ];
