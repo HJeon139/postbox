@@ -3,9 +3,9 @@
 // skips the ask rules for writes outside Postbox and the permission card. The panel names each hook it finds there, so
 // the person knows which of theirs won’t run in Postbox turns. Org-managed hooks aren’t read here: they still run.
 //
-// A hook’s matcher and command are the person’s data. They reach the page as text through h(), cut to a length and
-// with control characters and characters that show as nothing marked, and a file that isn’t JSON, or holds hooks in a
-// shape this doesn’t know, says so.
+// A hook’s matcher and command are the person’s data. They reach the page as text through h(), cut to a length, with
+// control characters and characters that show as nothing marked, and with the credentials found in a command hidden,
+// as best it can. A file that isn’t JSON, or holds hooks in a shape this doesn’t know, says so.
 
 import { readFile } from 'node:fs/promises';
 import { HOST_SOURCES, ISOLATED_SOURCES } from './adapters/setup.mjs';
@@ -41,16 +41,40 @@ function shown(v, max) {
   return one.length > max ? `${one.slice(0, max - 1)}…` : one;
 }
 
+// Credentials in a hook’s text, hidden before it leaves the server (#817): GET /api/permissions carries it to the page.
+// Best effort only: it reads a command as a shell would split words, and a credential under another name, in JSON, or
+// passed some other way still shows. The values it finds become an ellipsis:
+// - a name with key, token, secret or password in it, then = (NAME=v, --api-key=v, ?token=v in an address),
+// - a flag named so, then its value after a space (--token v), unless the next word is a flag,
+// - Bearer and the token after it.
+// A value is a quoted string (to the end of the text when its quote never closes) or a word ending at a space, a quote
+// or one of & ; | < > ( ) `.
+const VALUE = String.raw`(?:"(?:[^"\\]|\\.)*"?|'[^']*'?|[^\s'"&;|<>()\x60]+)`;
+const NAMED = String.raw`[\w-]*(?:key|token|secret|password)[\w-]*`;
+// lint-allow regex: built from VALUE and NAMED, the constants just above.
+const ASSIGNED = new RegExp(String.raw`(?<![\w-])(${NAMED}=)${VALUE}`, 'gi');
+// lint-allow regex: built from VALUE and NAMED, the constants just above.
+const FLAGGED = new RegExp(String.raw`(?<![\w-])(--?${NAMED}\s+)(?!-)${VALUE}`, 'gi');
+const BEARER = /\b(bearer\s+)[^\s'"&;|<>()`]+/gi;
+
+// How much of a text is searched, well past what the panel shows: the name patterns backtrack on a long run of letters,
+// so this bounds the work a hostile settings file can make.
+const MAX_SCAN = 2000;
+
+/** `text`, cut to MAX_SCAN, with the credentials found in it replaced by an ellipsis. @param {string} text */
+const redacted = (text) => text.slice(0, MAX_SCAN).replace(ASSIGNED, '$1…').replace(FLAGGED, '$1…').replace(BEARER, '$1…');
+
 const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 
 /**
- * One hook as the panel shows it. A command hook shows its command; a prompt or an http hook, its prompt or address.
+ * One hook as the panel shows it. A command hook shows its command; a prompt or an http hook, its prompt or address,
+ * with the credentials found in it hidden.
  * @param {string} matcher @param {any} hook
  */
 function entry(matcher, hook) {
   const type = shown(isObject(hook) && typeof hook.type === 'string' ? hook.type : 'command', MAX_TYPE);
   const text = isObject(hook) ? (hook.command ?? hook.prompt ?? hook.url) : '';
-  return { matcher, type, text: shown(text, MAX_TEXT) };
+  return { matcher, type, text: shown(typeof text === 'string' ? redacted(text) : text, MAX_TEXT) };
 }
 
 /**
