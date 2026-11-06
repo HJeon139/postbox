@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after } from 'node:test';
 import { removeAll } from '../tools/gate-tmp.mjs';
+import { allowHelperPrefix } from './guard-tmp.mjs';
 
 const made = [];
 
@@ -23,6 +24,7 @@ after(removeTempDirs);
  * @param {string} [root] the folder to make it in, the system temp folder by default
  */
 export function tempDir(prefix, root = tmpdir()) {
+  allowHelperPrefix(join(root, prefix));
   const dir = mkdtempSync(join(root, prefix));
   made.push(dir);
   return dir;

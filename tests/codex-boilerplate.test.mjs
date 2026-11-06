@@ -10,6 +10,10 @@ import { Runtime } from '../server/runtime.mjs';
 import { BOILERPLATES } from '../server/seed.mjs';
 import { Store } from '../server/store.mjs';
 import { applyBoilerplate, modelName, runsWith, shortModel } from '../shared/agent-facts.mjs';
+import { tempDir } from './temp-dirs.mjs';
+
+// Fixed paths under /tmp outlive the run and collide between users (#823); each is a temp folder of this file’s.
+const GPT_DIR = tempDir('pb-gpt-regression-');
 
 function recordedServer(seen) {
   const child = new EventEmitter();
@@ -45,12 +49,12 @@ for (const [models, inherited] of [
   test(`${inherited ?? 'GPT'} uses ${models?.length ? 'the reported Codex model' : `the Codex default with ${models ? 'an empty' : 'no'} catalog`}`, async () => {
     const seen = [];
     const reported = [];
-    const adapter = new CodexAdapter({ workRoot: '/tmp/pb-gpt-regression', models, spawnImpl: () => recordedServer(seen) });
+    const adapter = new CodexAdapter({ workRoot: GPT_DIR, models, spawnImpl: () => recordedServer(seen) });
     const rt = new Runtime({
       store: new Store(null),
       adapters: new AdapterRegistry().register(adapter),
       corpus: {},
-      config: { home: '/tmp/pb-gpt-regression' },
+      config: { home: GPT_DIR },
     });
     const draft = { handle: 'helper' };
     applyBoilerplate(
@@ -59,7 +63,7 @@ for (const [models, inherited] of [
       { adapters: ['codex'], backends: { codex: { models } } },
     );
     const persona = rt.createPersona({ ...draft, model: inherited ?? draft.model, tools: [...draft.tools] });
-    rt.store.emit('project', { id: 'project', name: 'Project', folder: '/tmp/pb-gpt-regression' });
+    rt.store.emit('project', { id: 'project', name: 'Project', folder: GPT_DIR });
     const thread = rt.createThread({ projectId: 'project', title: 'GPT', personaIds: [persona.id] });
     const session = rt.ensureSession(thread.id, persona.id);
     const snapshot = rt.personaFor(session);
@@ -68,7 +72,7 @@ for (const [models, inherited] of [
       { kind: 'user', text: 'Say hello.' },
       {
         persona: snapshot,
-        project: { folder: '/tmp/pb-gpt-regression' },
+        project: { folder: GPT_DIR },
         handles: ['helper'],
         state: {},
         signal: new AbortController().signal,

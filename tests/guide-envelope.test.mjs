@@ -14,6 +14,10 @@ import { test } from 'node:test';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { agentGuide, formatMessage, turnFacts } from '../server/adapters/guide.mjs';
 import { formatLint, lintMessage } from '../server/checks.mjs';
+import { tempDir } from './temp-dirs.mjs';
+
+// Fixed paths under /tmp outlive the run and collide between users (#823); each is a temp folder of this file’s.
+const CODER_DIR = tempDir('pb-test-coder-');
 
 const block = readFileSync(new URL('fixtures/claude-code/block.jsonl', import.meta.url), 'utf8')
   .trim()
@@ -172,7 +176,7 @@ const turnCtx = (persona, state) => ({
 test('CX-3: a tool turned off mid-session shows as off in a resumed Claude Code session’s next turn', async () => {
   const { spawnImpl, runs } = fakeClaude();
   const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot: '/tmp/pb-test-work', spawnImpl });
-  const persona = { handle: 'coder', model: 'claude-opus-5-5', permissionMode: 'ask', folder: '/tmp/pb-test-coder', tools: ALL_ON };
+  const persona = { handle: 'coder', model: 'claude-opus-5-5', permissionMode: 'ask', folder: CODER_DIR, tools: ALL_ON };
   const state = {};
   await adapter.deliver({}, { kind: 'user', text: 'Run the tests.' }, turnCtx(persona, state));
   // The person turns shell off; the next turn resumes the same Claude Code session.

@@ -5,7 +5,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
-import { fakeAppServer } from './codex-fixture.mjs';
+import { CODEX_ROOT, fakeAppServer } from './codex-fixture.mjs';
 
 async function deliver(rt, threadId, sessionId) {
   rt.sendMessage(threadId, { text: 'Report the result.' });
@@ -26,7 +26,7 @@ test('editing a persona between Codex turns preserves the existing session’s p
     corpus: { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) },
     config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 },
   });
-  store.emit('project', { id: 'project', name: 'Test', folder: '/tmp' });
+  store.emit('project', { id: 'project', name: 'Test', folder: CODEX_ROOT });
   const persona = rt.createPersona({ handle: 'coder', backend: 'codex', instructions: 'Original pinned instruction.' });
   const thread = rt.createThread({ projectId: 'project', title: 'Pinned', personaIds: [persona.id] });
   const session = rt.sessionsIn(thread.id)[0];

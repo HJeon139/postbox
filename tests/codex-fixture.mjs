@@ -3,6 +3,10 @@
 
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
+import { tempDir } from './temp-dirs.mjs';
+
+/** The Codex tests’ work root, a temp folder of the test file’s: the adapter makes folders in it (#823). */
+export const CODEX_ROOT = tempDir('postbox-codex-test-');
 
 export function fakeAppServer(seen, { hold = false, error = null, then = 'complete', mcpServers = [], threadError = (_req) => null } = {}) {
   const child = new EventEmitter();

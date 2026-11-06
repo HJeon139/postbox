@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { CODEX_CAPABILITIES, CodexAdapter, codexApproval, codexConfigArgs, createCodexMapper } from '../server/adapters/codex.mjs';
-import { fakeAppServer } from './codex-fixture.mjs';
+import { CODEX_ROOT, fakeAppServer } from './codex-fixture.mjs';
 
 test('Codex reports the capabilities its app-server implements', () => {
   assert.deepEqual(CODEX_CAPABILITIES, {
@@ -182,7 +182,7 @@ test('a turn starts and saves a Codex thread and supplies Postbox instructions',
   const seen = [];
   const calls = { text: '', saved: {}, checkpoints: [] };
   const adapter = new CodexAdapter({
-    workRoot: '/tmp/postbox-codex-test',
+    workRoot: CODEX_ROOT,
     spawnImpl: (_bin, args) => {
       assert.deepEqual(args.slice(0, 3), ['app-server', '--listen', 'stdio://']);
       return fakeAppServer(seen);
@@ -190,7 +190,7 @@ test('a turn starts and saves a Codex thread and supplies Postbox instructions',
   });
   const ctx = {
     persona: { handle: 'critic', model: 'gpt-5.6-terra', effort: 'medium', permissionMode: 'acceptEdits' },
-    project: { folder: '/tmp/postbox-codex-test/project' },
+    project: { folder: `${CODEX_ROOT}/project` },
     handles: ['critic'],
     state: {},
     signal: new AbortController().signal,
@@ -222,12 +222,12 @@ test('a turn starts and saves a Codex thread and supplies Postbox instructions',
 test('a topic thread forks Codex history at the saved completed-turn checkpoint', async () => {
   const seen = [];
   const adapter = new CodexAdapter({
-    workRoot: '/tmp/postbox-codex-test',
+    workRoot: CODEX_ROOT,
     spawnImpl: () => fakeAppServer(seen),
   });
   const ctx = {
     persona: { handle: 'critic', model: 'gpt-5.6-terra', effort: 'medium' },
-    project: { folder: '/tmp/postbox-codex-test/project' },
+    project: { folder: `${CODEX_ROOT}/project` },
     handles: ['critic'],
     state: { codexThreadId: 'thr_source', fork: { threadId: 'thr_source', turnId: 'turn_source' } },
     signal: new AbortController().signal,
@@ -256,11 +256,11 @@ test('a stopped Codex turn ends only once its app-server has exited, so the next
     setTimeout(() => child.emit('close', 0), 30);
     return true;
   };
-  const adapter = new CodexAdapter({ workRoot: '/tmp/postbox-codex-test', spawnImpl: () => child });
+  const adapter = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: () => child });
   const abort = new AbortController();
   const ctx = {
     persona: { handle: 'critic', model: 'gpt-5.6-terra' },
-    project: { folder: '/tmp/postbox-codex-test/project' },
+    project: { folder: `${CODEX_ROOT}/project` },
     handles: ['critic'],
     state: {},
     signal: abort.signal,
@@ -292,12 +292,12 @@ test('a stopped Codex turn ends only once its app-server has exited, so the next
 test('a failed Codex turn says why, from the error Codex reported, whether the turn ends as failed or the app-server exits (#61)', async () => {
   for (const then of ['complete', 'exit']) {
     const adapter = new CodexAdapter({
-      workRoot: '/tmp/postbox-codex-test',
+      workRoot: CODEX_ROOT,
       spawnImpl: () => fakeAppServer([], { error: 'The model gpt-nope does not exist.', then }),
     });
     const ctx = {
       persona: { handle: 'critic', model: 'gpt-nope' },
-      project: { folder: '/tmp/postbox-codex-test/project' },
+      project: { folder: `${CODEX_ROOT}/project` },
       handles: ['critic'],
       state: {},
       signal: new AbortController().signal,

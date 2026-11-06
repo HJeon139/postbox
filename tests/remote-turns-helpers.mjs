@@ -10,6 +10,10 @@ import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { createMessageReader, encode, MESSAGE_FILE, message, PROTOCOL_VERSION, validateMessage } from '../shared/remote-protocol.mjs';
 import { createFakeDaemon, FAKE_TOKEN, FIXTURE_PROMPT } from './fake-daemon.mjs';
+import { tempDir } from './temp-dirs.mjs';
+
+// The project’s folder, a temp folder of the test file’s: the adapters make agent folders in it (#823).
+const PROJECT_DIR = tempDir('pb-project-');
 
 export const VERSION = '0.10.0';
 export const HOST = 'host.example.com';
@@ -163,7 +167,7 @@ export function rig({ daemon = {}, signIn = null, store = new Store(null), setti
   store.subscribe((ev) => ev.type === 'notify' && notes.push(ev.data));
   let host = Object.values(store.state.hosts)[0];
   if (!host) {
-    store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
+    store.emit('project', { id: 'p1', name: 'P', folder: PROJECT_DIR });
     host = rt.addHost({ name: HOST, settings });
     const p = rt.createPersona({ handle: 'coder', backend: 'claude-code' });
     store.emit('persona', { ...rt.persona(p.id), permissionMode: 'ask', remote: { hostId: host.id } });
