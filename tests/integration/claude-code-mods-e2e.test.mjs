@@ -114,7 +114,13 @@ async function pushTurn(t, backend, mode) {
     }
     await sleep(250);
   }
-  assert.equal(running(), false, `the turn should end within ${TURN_MS / 1000} s`);
+  // On a timeout, say what the room shows, so one paid run is enough to see where the turn stuck.
+  const seen = () =>
+    store
+      .items(thread.id)
+      .map((i) => `${i.kind}${i.status ? `:${i.status}` : ''}${i.text ? ` ${String(i.text).slice(0, 160)}` : ''}`)
+      .join(' | ');
+  assert.equal(running(), false, `the turn should end within ${TURN_MS / 1000} s; the room shows: ${seen()}`);
   const said = store
     .items(thread.id)
     .filter((i) => i.kind === 'agent')
