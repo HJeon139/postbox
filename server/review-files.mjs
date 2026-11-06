@@ -53,10 +53,16 @@ export async function storeReviewFiles(rt, wanted, read) {
   // Staged: the call that carries them settles them once it’s known whether the block was shown (keptIfShown).
   /** @type {{ sha256: string, fresh: boolean }[]} */
   const puts = [];
-  for (const { name, path, buf, info } of checked) {
-    const { sha256, size, fresh } = await rt.blobs.put(buf, { staged: true });
-    puts.push({ sha256, fresh });
-    stored.push({ name, ref: keptRef(path), sha256, size, ...info });
+  try {
+    for (const { name, path, buf, info } of checked) {
+      const { sha256, size, fresh } = await rt.blobs.put(buf, { staged: true });
+      puts.push({ sha256, fresh });
+      stored.push({ name, ref: keptRef(path), sha256, size, ...info });
+    }
+  } catch (e) {
+    // A put that failed settled its own hold (Blobs.put); the ones before it are released here, so none is left.
+    await rt.blobs.settle(puts, false);
+    throw e;
   }
   return { files: stored, settle: (keep) => rt.blobs.settle(puts, keep) };
 }
@@ -147,7 +153,12 @@ export async function servedReviewFile(rt, threadId, itemId, name, sha256) {
     'cache-control': 'private, max-age=31536000, immutable',
     'cross-origin-resource-policy': 'same-origin',
   };
-  return { bytes: await rt.blobs.get(found.sha256), headers };
+  const bytes = await rt.blobs.get(found.sha256).catch((e) => {
+    if (e?.code === 'ENOENT') return null;
+    throw e;
+  });
+  // A blob gone from the store is the same miss as any other (§4): the route’s 404, never a path in a 500.
+  return bytes ? { bytes, headers } : null;
 }
 
 /**
