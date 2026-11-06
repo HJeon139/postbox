@@ -39,3 +39,39 @@ test('the recorded Claude Code inits list no MCP servers and no plugins (#661)',
     assert.deepEqual({ mcp_servers: init.mcp_servers, plugins: init.plugins }, { mcp_servers: [], plugins: [] }, name);
   }
 });
+
+test('privacy checker flags a Bearer token, but not the word in prose or a placeholder (#696)', () => {
+  const tail = 'Ab3'.repeat(10);
+  assert.deepEqual(checkContentPrivacy(`Authorization: Bearer ${tail}`), ['token: Bearer Ab3Ab…']);
+  assert.deepEqual(checkContentPrivacy(json({ headers: { authorization: `bearer ${tail}` } })), ['token: bearer Ab3Ab…'], 'in any case');
+  assert.equal(checkContentPrivacy(`Bearer ${'a'.repeat(20)}`).length, 1, 'a token at the shortest length');
+  assert.equal(checkContentPrivacy(`Bearer ${'a'.repeat(19)}`).length, 0, 'one just short of it');
+  assert.equal(checkContentPrivacy(`Bearer ${['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxIn0', 'c2ln'].join('.')}`).length, 1, 'a JWT');
+  for (const text of ['send a Bearer token in the header', 'Authorization: Bearer <token>', 'curl -H "Authorization: Bearer $TOKEN"']) {
+    assert.deepEqual(checkContentPrivacy(text), [], text);
+  }
+});
+
+test('privacy checker flags a uid field that isn’t all zeros, quoted or not, but not a uuid (#696)', () => {
+  assert.deepEqual(checkContentPrivacy(json({ uid: 501 })), ['uid: 501']);
+  assert.deepEqual(checkContentPrivacy(json({ uid: '1000' })), ['uid: 1000'], 'a uid written as a string');
+  assert.deepEqual(checkContentPrivacy(escaped({ uid: 501 })), ['uid: 501'], 'escaped inside a line');
+  assert.deepEqual(checkContentPrivacy(json({ uid: 0 })), [], 'root, or a scrubbed uid');
+  assert.deepEqual(checkContentPrivacy(json({ uid: -1 })), [], 'no user ids on this system');
+  assert.deepEqual(checkContentPrivacy(json({ uuid: '501' })), [], 'another key that ends in uid');
+});
+
+/** Account keys, built here, as each written bare before a “:” or “=” is itself flagged. */
+const PLAN_TYPE = ['plan', 'Type'].join('');
+const AUTH_MODE = ['auth', 'mode'].join('_');
+
+test('privacy checker flags an account field written bare, in YAML, JavaScript or TOML (#696)', () => {
+  assert.deepEqual(checkContentPrivacy(`${PLAN_TYPE}: pro`), [`account field: ${PLAN_TYPE}`], 'YAML');
+  assert.deepEqual(checkContentPrivacy(`{${PLAN_TYPE}:"pro"}`), [`account field: ${PLAN_TYPE}`], 'a JavaScript object');
+  assert.deepEqual(checkContentPrivacy(`${['plan', 'type'].join('_')} = "pro"`), ['account field: plan_type'], 'TOML');
+  assert.deepEqual(checkContentPrivacy(`[account]\n${AUTH_MODE}="chatgpt"`), [`account field: ${AUTH_MODE}`], 'TOML with no spaces');
+  assert.deepEqual(checkContentPrivacy(json({ [PLAN_TYPE]: 'pro' })), [`account field: ${PLAN_TYPE}`], 'quoted, as before');
+  for (const text of [`the ${PLAN_TYPE} field`, `if (event.${PLAN_TYPE} === 'pro')`, `keys: ['${PLAN_TYPE}', 'x']`, `my${PLAN_TYPE}: 1`]) {
+    assert.deepEqual(checkContentPrivacy(text), [], text);
+  }
+});

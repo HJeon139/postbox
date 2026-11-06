@@ -139,7 +139,7 @@ test('privacy checker flags a rate limit’s utilization unless it is 0', () => 
 
 test('privacy checker flags keys JSON-escaped inside another string', () => {
   assert.ok(checkContentPrivacy(escaped({ utilization: 0.13 })).length > 0, 'flags an escaped utilization');
-  assert.ok(checkContentPrivacy(escaped({ planType: 'pro' })).length > 0, 'flags an escaped account field');
+  assert.ok(checkContentPrivacy(escaped({ [PLAN_TYPE]: 'pro' })).length > 0, 'flags an escaped account field');
   assert.ok(checkContentPrivacy(escaped({ installationId: ID })).length > 0, 'flags an escaped installationId');
   assert.equal(checkContentPrivacy('{"line":"{\\"utilization\\":0}"}').length, 0);
   assert.equal(checkContentPrivacy('{"line":"{\\"installationId\\":\\"00000000-0000\\"}"}').length, 0);
