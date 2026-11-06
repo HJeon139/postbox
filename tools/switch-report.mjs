@@ -4,6 +4,11 @@
 import { conditionsLine } from './key-frame-report.mjs';
 import { MEASURES, SHORT_ITEMS, SWITCHES } from './switch-measure.mjs';
 
+/** Where the long rooms came from. @param {string | undefined} seed */
+const seedName = (seed) =>
+  seed === 'real'
+    ? 'the real-shape seed (tools/uat/real-room.mjs, after #305’s measured room: its mix of kinds, a 1.5 KB median, an 87 KB largest)'
+    : 'the big-room seed (tools/uat/big-room.mjs)';
 const ms = (v) => (v === null ? 'none' : `${v.toFixed(1)} ms`);
 
 /**
@@ -41,7 +46,7 @@ export function formatReport({ command, commit, date, machine, conditions, input
     '## Provenance',
     '',
     `- Command: \`${command}\``,
-    `- Inputs: long rooms of ${inputs.sizes.map((n) => n.toLocaleString('en-US')).join(', ')} items from the big-room seed (tools/uat/big-room.mjs); short rooms of ${SHORT_ITEMS} items; ${inputs.runs} run${inputs.runs === 1 ? '' : 's'} a switch, each in a fresh document`,
+    `- Inputs: long rooms of ${inputs.sizes.map((n) => n.toLocaleString('en-US')).join(', ')} items from ${seedName(inputs.seed)}; short rooms of ${SHORT_ITEMS} items; ${inputs.runs} run${inputs.runs === 1 ? '' : 's'} a switch, each in a fresh document`,
     `- Commit: ${commit}`,
     `- Date: ${date}`,
     `- Machine: ${machine.os}, ${machine.arch}, ${machine.cpu}; Node ${machine.node}; Chromium ${machine.chromium}`,

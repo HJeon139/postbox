@@ -38,6 +38,7 @@ import { IDS, LONG_PROJECT, SHORT_ITEMS, SWITCHES, timeSwitch, traceSwitch } fro
 import { formatReport } from './switch-report.mjs';
 import { seedBigRoomData } from './uat/big-room.mjs';
 import { startPostbox } from './uat/postbox.mjs';
+import { realIdOf, seedRealRoomData } from './uat/real-room.mjs';
 
 export { BENCH_ROOT, formatReport, IDS, proveCounts, proveRun, SWITCHES };
 
@@ -66,6 +67,7 @@ export function options(argv) {
       out: { type: 'string', default: 'designs/508/switch-report.md' },
       app: { type: 'string' },
       trace: { type: 'string' },
+      seed: { type: 'string', default: 'uniform' },
     },
   });
   return {
@@ -74,7 +76,14 @@ export function options(argv) {
     out: resolve(values.out),
     app: appOption(values.app),
     trace: values.trace === undefined ? null : resolve(values.trace),
+    seed: seedOption(values.seed),
   };
+}
+
+/** The long room’s seed: the uniform big-room seed, or the real-shape one (#305’s measured room). @param {string} raw */
+function seedOption(raw) {
+  if (raw !== 'uniform' && raw !== 'real') throw new Error(`--seed takes uniform or real, not “${raw}”.`);
+  return raw;
 }
 
 /** The command as the report shows it, every option spelled out, no absolute path. @param {ReturnType<typeof options>} o  @param {string} root */
@@ -82,6 +91,7 @@ export function commandLine(o, root) {
   const args = [`--sizes ${o.sizes.join(',')}`, `--runs ${o.runs}`];
   if (o.app) args.push(`--app ${shownPath(o.app, root)}`);
   if (o.trace) args.push(`--trace ${shownPath(o.trace, root)}`);
+  if (o.seed === 'real') args.push('--seed real');
   return ['node tools/bench-switch.mjs', ...args, `--out ${shownPath(o.out, root)}`].join(' ');
 }
 
@@ -110,7 +120,7 @@ export function shortItems(threadId, handles, at) {
  * which the big-room seed fills. The short rooms’ items are older than the long room’s, so its project opens on it.
  * @param {string} data  @param {number} items
  */
-async function seedRooms(data, items) {
+async function seedRooms(data, items, seed) {
   for (const sub of ['a', 'b']) await mkdir(join(data, sub), { recursive: true });
   const store = await new Store(data).load();
   store.emit('project', { id: IDS.projectA, name: 'Short project', folder: join(data, 'a') });
@@ -130,15 +140,17 @@ async function seedRooms(data, items) {
     for (const item of shortItems(id, AGENTS, Date.UTC(2026, 7, 1, 9)))
       store.emit('item.add', { threadId: id, item: item.handle ? { ...item, sessionId: `se_${id}_${item.handle}`, personaId: `pe_${item.handle}` } : item });
   await store.close();
-  await seedBigRoomData(data, IDS.long, AGENTS, { count: items });
-  return { thread: IDS.long, count: items, last: lastIdOf(items) };
+  if (seed === 'real') await seedRealRoomData(data, IDS.long, AGENTS, { count: items });
+  else await seedBigRoomData(data, IDS.long, AGENTS, { count: items });
+  return { thread: IDS.long, count: items, last: lastIdOf(seed, items) };
 }
 
 /** The middle of a list of counts (the lower middle of an even one). @param {number[]} xs */
 export const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor((xs.length - 1) / 2)];
 
 /** The big-room seed’s last item’s id at a size, as tools/uat/big-room.mjs pads it. @param {number} items */
-const lastIdOf = (items) => `it_big${String(items - 1).padStart(Math.max(4, String(items - 1).length), '0')}`;
+export const lastIdOf = (seed, items) =>
+  seed === 'real' ? realIdOf(items - 1, items) : `it_big${String(items - 1).padStart(Math.max(4, String(items - 1).length), '0')}`;
 
 /**
  * One size: a fresh Postbox with the rooms seeded, each switch timed runs times. Its data folder is removed however
@@ -154,7 +166,7 @@ export async function measureSize(page, items, o, log, { start = startPostbox, p
     let expected = null;
     await postbox.restart({
       whileDown: async () => {
-        expected = await seedRooms(data, items);
+        expected = await seedRooms(data, items, o.seed);
       },
     });
     for (let run = 1; run <= o.runs; run++)
@@ -202,7 +214,7 @@ async function main() {
       date: new Date().toISOString(),
       machine: await machineOf(page),
       conditions: await conditionsOf(page, loadAtStart),
-      inputs: { sizes: o.sizes, runs: o.runs },
+      inputs: { sizes: o.sizes, runs: o.runs, seed: o.seed },
       results,
     });
     await writeFile(o.out, report);

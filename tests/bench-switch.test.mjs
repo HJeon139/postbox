@@ -12,6 +12,7 @@ import {
   commandLine,
   formatReport,
   IDS,
+  lastIdOf,
   measureSize,
   options,
   proveCounts,
@@ -186,4 +187,30 @@ test('the report has an element count per size and switch, with the transcript�
   assert.match(report, /\| 1,000 \| Project switch \| 30,000 \| 24,000 \| 1\.00 \|/);
   assert.match(report, /\| 10,000 \| Project switch \| 270,000 \| 240,000 \| 10\.00 \|/);
   assert.match(report, /\| 10,000 \| Conversation switch \| 270,010 \| 240,010 \| 10\.00 \|/);
+});
+
+test('--seed picks the uniform big-room seed by default, or the real-shape one, and the command and report say which', () => {
+  assert.equal(options([]).seed, 'uniform');
+  assert.equal(options(['--seed', 'real']).seed, 'real');
+  assert.throws(() => options(['--seed', 'odd']), /^Error: --seed takes uniform or real, not “odd”\.$/);
+  assert.match(commandLine(options(['--seed', 'real']), ROOT), / --seed real --out /);
+  assert.doesNotMatch(commandLine(options([]), ROOT), /--seed/);
+  const s = (v) => ({ n: 1, p50: v, p95: v, max: v });
+  const report = (seed) =>
+    formatReport({
+      command: 'c',
+      commit: 'aaaa1111',
+      date: 'd',
+      machine: { os: 'L', arch: 'x', cpu: 'C', node: 'n', chromium: 'c' },
+      conditions: { load: { start: 1, end: 2 }, headless: true, window: { width: 1280, height: 900 }, scale: 1 },
+      inputs: { sizes: [1000], runs: 1, seed },
+      results: [{ items: 1000, project: { drawn: s(1), key: s(2) }, conversation: { drawn: s(1), key: s(2) } }],
+    });
+  assert.match(report('real'), /items from the real-shape seed \(tools\/uat\/real-room\.mjs/);
+  assert.match(report('uniform'), /items from the big-room seed \(tools\/uat\/big-room\.mjs\)/);
+});
+
+test('the long room’s last item is the seed’s own: it_big… for the uniform seed, it_real… for the real one', () => {
+  assert.equal(lastIdOf('uniform', 1000), 'it_big0999');
+  assert.equal(lastIdOf('real', 2000), 'it_real1999');
 });
