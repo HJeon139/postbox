@@ -92,3 +92,19 @@ test('#780 the header’s filename is kept whole even if a record’s name held 
   assert.equal(r.status, 200);
   assert.equal(r.headers['content-disposition'], 'inline; filename="a_b.png"');
 });
+
+test('#825 an item whose blob is gone from the store is the same 404, not a 500 naming its path', async () => {
+  const { rt } = app;
+  const { t, it, sha256 } = await reviewWithImage();
+  const gone = await rt.blobs.put(png(9, 7));
+  const file = { name: 'gone.png', ref: null, sha256: gone.sha256, size: gone.size, type: 'image/png', width: 9, height: 7 };
+  const block = { id: 'gone', type: 'review', version: 1, format: 'markdown', content: 'x', fallback: 'x' };
+  const item = rt.addItem(t.id, { kind: 'block', valid: true, block, files: [file] });
+  await rt.store.flush();
+  await rm(rt.blobs.pathOf(gone.sha256));
+  const r = await get(url(t, item, 'gone.png', gone.sha256));
+  const miss = await get(url(t, it, 'nope.png', sha256));
+  assert.equal(r.status, 404);
+  assert.equal(r.text, miss.text, 'the same words as any other miss');
+  assert.doesNotMatch(r.text, /blobs|ENOENT/);
+});
