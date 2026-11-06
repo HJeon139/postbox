@@ -5,7 +5,7 @@
 
 import { inSight, measure } from './view-box.mjs';
 import { register, unregister } from './view-jump.mjs';
-import { DRAWN, skipOffscreen } from './view-skip.mjs';
+import { DRAWN, drawNewest, skipOffscreen } from './view-skip.mjs';
 
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
@@ -226,6 +226,8 @@ function changed(v, records) {
 // scrolled up in this frame, before its scroll event told the transcript (#341).
 /** @param {View} v */
 function grew(v) {
+  // Following, the new message is drawn at its real size at once, so the view goes to the end once (#712a).
+  if (v.stuck) drawNewest(v.el);
   if (v.stuck) follow(v);
   if (!v.stuck) {
     v.unseen++;
