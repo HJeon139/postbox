@@ -11,7 +11,9 @@
 // doesn’t run it. HOME is a temp folder for the turns, so the person’s own settings never load: the model must be
 // reachable without them, through ANTHROPIC_API_KEY or Bedrock (AWS_CONFIG_FILE and AWS_SHARED_CREDENTIALS_FILE are
 // pointed at the person’s own files when unset; the test never reads them), plus an allowlist of the person’s user
-// settings (reachModel). A sign-in kept in ~/.claude doesn’t carry over.
+// settings (reachModel). A sign-in kept in ~/.claude doesn’t carry over. Of those, `apiKeyHelper`, `awsCredentialExport`
+// and `awsAuthRefresh` are the person’s own commands, which the Agent SDK’s bundled Claude Code runs as it would in their
+// own sessions; the test logs the names of the keys it copied, never their values.
 //
 // The fixture’s folder is removed when the file ends (tempDir), and on Ctrl-C or SIGTERM (onKill). A run killed with
 // SIGKILL leaves it in the temp folder; under `npm run check` that’s the run’s own folder, which the next run sweeps
@@ -104,7 +106,8 @@ async function fixture() {
   await mkdir(join(home, '.claude'), { recursive: true });
   await mkdir(join(work, '.claude'), { recursive: true });
   // Readable by the person only, in a 0700 temp folder, and never logged: it holds how they reach the model.
-  await writeFile(join(home, '.claude', 'settings.json'), JSON.stringify({ ...reachModel(), ...settings(markers.user) }), { mode: 0o600 });
+  const model = reachModel();
+  await writeFile(join(home, '.claude', 'settings.json'), JSON.stringify({ ...model, ...settings(markers.user) }), { mode: 0o600 });
   await writeFile(join(work, '.claude', 'settings.json'), JSON.stringify(settings(markers.project)));
   git(root, 'init', '-q', '--bare', bare);
   git(work, 'init', '-q');
@@ -112,7 +115,7 @@ async function fixture() {
   git(work, 'add', 'README.md', '.claude/settings.json');
   git(work, 'commit', '-q', '-m', 'init');
   git(work, 'remote', 'add', 'origin', bare);
-  return { root, home, work, bare, markers };
+  return { root, home, work, bare, markers, copied: Object.keys(model).concat(Object.keys(model.env ?? {}).map((k) => `env.${k}`)) };
 }
 
 /** HOME set to the fixture’s for this test, with the person’s AWS files kept, put back when the test ends. */
@@ -136,6 +139,7 @@ function useHome(t, home) {
  */
 async function pushTurn(t, backend, mode) {
   const f = await fixture();
+  t.diagnostic(`model settings copied (names only): ${f.copied.join(', ') || 'none'}`);
   useHome(t, f.home);
   const app = await start({ port: await freePort(), dataDir: join(f.root, 'data'), fresh: true, quiet: true, claudeHome: f.home });
   t.after(() => app.close());
@@ -228,12 +232,15 @@ test('#817 the fixture copies only the allowlisted model settings from the perso
       AWS_SECRET_ACCESS_KEY: 's',
       AWS_SESSION_TOKEN: 't',
       GITHUB_TOKEN: 'g',
+      X_TOKEN: 'x',
       CLAUDE_CONFIG_DIR: '/elsewhere',
     },
     awsAuthRefresh: 'refresh',
     apiKeyHelper: 'helper',
     hooks: { PreToolUse: [] },
     permissions: { allow: ['Bash'] },
+    mcpServers: { s: { command: 'x' } },
+    enabledPlugins: { p: true },
     model: 'opus',
   };
   assert.deepEqual(modelSettings(mine), {
