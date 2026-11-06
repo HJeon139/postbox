@@ -185,3 +185,27 @@ test('#817: the panel’s view lists the hooks of each settings file the agent r
     ['local', []],
   ]);
 });
+
+test('#817: the panel’s view lists no hooks, and doesn’t throw, for a persona with no folder, a backend that doesn’t read rules, or the mock', async () => {
+  const root = tempDir('pb-hooks-');
+  const folder = join(root, 'work');
+  const home = join(root, 'home');
+  await mkdir(join(folder, '.claude'), { recursive: true });
+  await mkdir(join(home, '.claude'), { recursive: true });
+  await writeFile(join(home, '.claude', 'settings.json'), JSON.stringify(pre(command('Bash', 'user-check'))));
+  await writeFile(join(folder, '.claude', 'settings.json'), JSON.stringify(pre(command('Bash', 'project-check'))));
+  const store = new Store(null);
+  const deliver = async () => {};
+  const adapters = new AdapterRegistry()
+    .register({ name: 'claude-code', folderFor: async () => null, deliver })
+    .register({ name: 'kiro', capabilities: { permissions: 'none' }, folderFor: async () => folder, deliver })
+    .register({ name: 'mock', folderFor: async () => folder, deliver });
+  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
+  const rt = new Runtime({ store, adapters, corpus, config: { origin: 'http://x', imageOrigins: [], lintSettleMs: 0, home } });
+  store.emit('project', { id: 'p1', name: 'P', folder });
+  for (const backend of ['claude-code', 'kiro', 'mock']) {
+    const p = rt.createPersona({ handle: `a-${backend}`, backend, permissionMode: 'auto' });
+    const se = rt.sessionsIn(rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] }).id)[0];
+    assert.deepEqual((await rt.permissionsView({ sessionId: se.id })).hooks, [], backend);
+  }
+});
