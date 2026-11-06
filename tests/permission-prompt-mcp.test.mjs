@@ -1,9 +1,9 @@
-// MCP permission_prompt, as the Claude Code CLI calls it (--permission-prompt-tool): the shape of its answer, and the
-// suggestions, agent id, edit and Always allow it carries (#66). Moved out of tests/runtime.test.mjs and
-// tests/permissions.test.mjs, which are at their length limits.
+// MCP permission_prompt, as the Claude Code CLI calls it (--permission-prompt-tool): the shape of its answer, and who
+// asks, the edit and Always allow (#66). Moved out of tests/runtime.test.mjs and tests/permissions.test.mjs, which are
+// at their length limits.
 
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -64,6 +64,8 @@ test('MCP permission_prompt answers in the shape Claude Code expects', async () 
   let reply = null;
   adapter.next.push(async (c) => {
     const se = rt.sessionsIn(t.id)[0];
+    // The stream showed the call the prompt is for (#353).
+    c.toolUse({ id: 'tu1', name: 'Bash', input: { command: 'ls', description: 'List files' } });
     const pending = handleMcp(
       rt,
       se.id,
@@ -71,7 +73,7 @@ test('MCP permission_prompt answers in the shape Claude Code expects', async () 
         jsonrpc: '2.0',
         id: 9,
         method: 'tools/call',
-        params: { name: 'permission_prompt', arguments: { tool_name: 'Bash', input: { command: 'ls', description: 'List files' } } },
+        params: { name: 'permission_prompt', arguments: { tool_name: 'Bash', input: { command: 'ls', description: 'List files' }, tool_use_id: 'tu1' } },
       },
       new URL(c.mcpUrl).searchParams.get('turn'),
     );
@@ -87,20 +89,27 @@ test('MCP permission_prompt answers in the shape Claude Code expects', async () 
   assert.deepEqual(JSON.parse(reply.result.content[0].text), { behavior: 'allow', updatedInput: { command: 'ls', description: 'List files' } });
 });
 
-test('#66: MCP permission_prompt passes suggestions and the agent id, and answers with your edit or Always allow', async () => {
-  const { rt, store, t, adapter, se } = await setup();
+test('#66: MCP permission_prompt names the stream’s subagent, and answers with your edit or Always allow, by Postbox’s own rule', async () => {
+  const { rt, store, t, adapter, se, folder } = await setup();
   const replies = [];
   // The turn’s own token, as Claude Code sends it (#54).
   const token = () => rt.turns.get(se.id)?.token ?? null;
   const ask = (args) => handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'permission_prompt', arguments: args } }, token());
+  // The prompt’s own suggestions never reach the card (#353): the CLI sends none, and a copy of its prompt could.
   const suggestions = [{ type: 'addRules', rules: [{ toolName: 'Read', ruleContent: '//data/**' }], behavior: 'allow', destination: 'localSettings' }];
+  let always = null;
   adapter.next.push(async (c) => {
-    c.subagentNames(({ agentId }) => (agentId === 'task-1' ? 'Explore' : null));
+    c.subagentNames(({ agentId }) => (agentId === 'tu-explore' ? 'Explore' : null));
+    // The stream showed both calls the prompts are for (#353), the first under a subagent’s Agent call. Who asks is the
+    // stream’s, not the prompt’s agent_id.
+    c.toolUse({ id: 'tu1', name: 'Read', input: { file_path: '/data/a' }, who: 'Explore', parent: 'tu-explore' });
+    c.toolUse({ id: 'tu2', name: 'Bash', input: { command: 'ls' } });
     const one = ask({ tool_name: 'Read', input: { file_path: '/data/a' }, tool_use_id: 'tu1', permission_suggestions: suggestions, agent_id: 'task-1' });
     await sleep(10);
     const card = openCard(store, t);
     assert.equal(card.who, 'Explore');
-    rt.act(t.id, card.id, 'always', {});
+    always = card.always;
+    await rt.act(t.id, card.id, 'always', {});
     replies.push(await one);
     const two = ask({ tool_name: 'Bash', input: { command: 'ls' }, tool_use_id: 'tu2' });
     await sleep(10);
@@ -110,6 +119,9 @@ test('#66: MCP permission_prompt passes suggestions and the agent id, and answer
   rt.sendMessage(t.id, { text: 'go' });
   await settle(rt);
   const [a, b] = replies.map((r) => JSON.parse(r.result.content[0].text));
-  assert.deepEqual(a, { behavior: 'allow', updatedInput: { file_path: '/data/a' }, updatedPermissions: suggestions });
+  assert.deepEqual(a, { behavior: 'allow', updatedInput: { file_path: '/data/a' } }, 'no updatedPermissions from the prompt');
+  assert.equal(always.updates, null);
+  const saved = JSON.parse(await readFile(join(folder, '.claude', 'settings.local.json'), 'utf8'));
+  assert.deepEqual(saved.permissions.allow, [always.saves], 'Postbox saved its own rule for the stream’s call');
   assert.deepEqual(b, { behavior: 'allow', updatedInput: { command: 'ls -la' } });
 });

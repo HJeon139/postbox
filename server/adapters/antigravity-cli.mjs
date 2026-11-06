@@ -52,7 +52,7 @@ import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
-import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
+import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_PROMPTS, HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyPlugin, excludeFile, excludePlugin, makeReadOnly, PLUGIN_DIR } from './agy-plugin.mjs';
 import { clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
@@ -66,7 +66,7 @@ import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, recorderFor, setupOf, 
 import { agyResult } from './work-calls.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117, #370). The adapter adds the models it found. */
-export const AGY_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false, promptTool: true });
+export const AGY_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false, ...HOOK_PROMPTS });
 
 /** The agy binary: POSTBOX_AGY_BIN, then the PATH. */
 export const findAgy = (env = process.env) => env.POSTBOX_AGY_BIN || 'agy';

@@ -1,6 +1,7 @@
 // Permission cards and refusal cards: a call that waits for your answer, and a call Claude Code refused without asking.
 // Runtime keeps a one-line method for each, so its callers and tests don’t change.
 
+import { adapterOf } from './adapters/adapter.mjs';
 import { POSTBOX_TIMEOUT_MS } from './adapters/setup.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { httpError } from './helpers.mjs';
@@ -119,7 +120,7 @@ export function alwaysFor(rt, se, { tool, input, suggestions, suppressAlways }) 
  * @param {string|undefined} backend
  */
 export function readsRules(rt, backend) {
-  const adapter = backend && rt.adapters.names().includes(backend) ? rt.adapters.get(backend) : null;
+  const adapter = adapterOf(rt, backend);
   return Boolean(adapter?.folderFor) && adapter?.capabilities?.permissions !== 'none';
 }
 

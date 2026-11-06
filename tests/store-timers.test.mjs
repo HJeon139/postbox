@@ -60,6 +60,7 @@ const PLACED = {
   'shell.mjs': 1, // SIGKILL after a Stop’s grace: Stop is allowed while closed
   'telemetry.mjs': 1, // sweeps its own folder: no store
   'thread-summary.mjs': 2, // an abort; settleThread skips while closed
+  'turn-work.mjs': 1, // a permission prompt’s wait for its call’s line (#353): memory only, no store
   'write-intent.mjs': 1, // an abort: no store
 };
 
