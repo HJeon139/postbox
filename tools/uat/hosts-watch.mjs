@@ -241,11 +241,11 @@ function killSsh(hr, h) {
   return ssh.map((m) => `${m?.[1]} ${String(m?.[2]).slice(0, 160)}`);
 }
 
-/** What each fault on a host breaks, in the words the tester reads. */
+/** What each fault on a host breaks, in the words the tester reads, and what the fault did to it. */
 const FAULT_WHAT = {
-  'kill-ssh': (/** @type {string} */ label) => `Postbox’s ssh to ${label}`,
-  'kill-daemon': (/** @type {string} */ label) => `Postbox’s daemon on ${label}`,
-  'remove-postbox': (/** @type {string} */ label) => `Postbox’s folder on ${label}`,
+  'kill-ssh': { what: (/** @type {string} */ label) => `Postbox’s ssh to ${label}`, did: 'Killed', none: 'kill' },
+  'kill-daemon': { what: (/** @type {string} */ label) => `Postbox’s daemon on ${label}`, did: 'Killed', none: 'kill' },
+  'remove-postbox': { what: (/** @type {string} */ label) => `Postbox’s folder on ${label}`, did: 'Removed', none: 'remove' },
 };
 
 /**
@@ -266,8 +266,9 @@ export async function removePostbox(h, run = onHost) {
  * Does one fault, and records what Postbox showed after. Returns what to tell the tester.
  * @param {HostRun} hr @param {{ fault: string, target?: string }} spec @param {{ reload: () => Promise<void> }} page
  * @param {(e: any) => void} [input]  hears a reload before it moves the view (facts.probes.inputs, #531)
+ * @param {typeof onHost} [run]  runs a script on the host; a test’s stands in for ssh
  */
-export async function fault(hr, { fault: kind, target }, page, input = () => {}) {
+export async function fault(hr, { fault: kind, target }, page, input = () => {}, run = onHost) {
   if (kind === 'restart-postbox') return restart(hr, page, input);
   const h = hr.hosts.find((x) => x.label === target);
   if (!h) throw new Error(`${kind} needs a target: ${hr.hosts.map((x) => x.label).join(' or ')}.`);
@@ -277,21 +278,22 @@ export async function fault(hr, { fault: kind, target }, page, input = () => {})
   let killed = [];
   if (kind === 'kill-ssh') hit = (killed = killSsh(hr, h)).length;
   else if (kind === 'kill-daemon') {
-    const r = await onHost(h.destination, SCRIPTS.killDaemon);
+    const r = await run(h.destination, SCRIPTS.killDaemon);
     if (r.code !== 0) throw new Error(`Couldn’t kill Postbox’s daemon on ${h.label}: ${r.stderr || `pkill exited ${r.code}`}`);
     hit = r.stdout.trim() === 'killed' ? 1 : 0;
-  } else if (kind === 'remove-postbox') hit = await removePostbox(h);
+  } else if (kind === 'remove-postbox') hit = await removePostbox(h, run);
   else throw new Error(`A fault is kill-ssh, kill-daemon, remove-postbox or restart-postbox, not “${kind}”.`);
-  const what = FAULT_WHAT[kind](h.label);
+  const words = FAULT_WHAT[kind];
+  const what = words.what(h.label);
   if (!hit) {
-    hr.record.faults.push({ fault: kind, label: h.label, at, states: [], recovered: null, shown: `There was no ${what} to kill.` });
-    return `There was no ${what} to kill, so nothing happened.`;
+    hr.record.faults.push({ fault: kind, label: h.label, at, states: [], recovered: null, shown: `There was no ${what} to ${words.none}.` });
+    return `There was no ${what} to ${words.none}, so nothing happened.`;
   }
   const r = await recovery(hr, h, at);
   const shown = says(h.label, r, await rowsOf(hr, [h.label]));
   hr.record.faults.push({ fault: kind, label: h.label, at, ...r, shown, ...(killed.length ? { killed } : {}) });
   hr.log(`fault ${kind} on ${h.label}: ${shown}`);
-  return `${kind === 'remove-postbox' ? 'Removed' : 'Killed'} ${what}. ${shown}`;
+  return `${words.did} ${what}. ${shown}`;
 }
 
 /**

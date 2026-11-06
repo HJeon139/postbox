@@ -15,7 +15,8 @@ const REINSTALLED_SHOWN_MS = 24 * 60 * 60 * 1000;
  *   days later it would only alarm. One that isn’t connected has the link’s own failure to show.
  * - 'installing': it’s under way, while the host isn’t connected.
  * busy and present say nothing: the host connects again by itself, and its status says how that went.
- * @param {any} st  the host’s status, or null before Postbox knows of it @param {number} [now]
+ * @param {any} st  the host’s status, or null before Postbox knows of it
+ * @param {number} [now]
  * @returns {'failed' | 'installed' | 'reinstalled' | 'installing' | null}
  */
 export function updateShown(st, now = Date.now()) {
