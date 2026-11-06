@@ -1,0 +1,142 @@
+// A review block shows images from the agent’s folder (#780, note as_BkHPLMds v3): #780’s example, a draft with two
+// figures, one named by its path and one by its name. In Preview both load from the item’s route, at 127.0.0.1 and at
+// localhost, with their sizes set; each response carries Cross-Origin-Resource-Policy: same-origin, which doesn’t
+// block the page’s own load. Lines draws them too, by the same keys, and an image the block doesn’t carry is refused.
+
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { expect, test } from '@playwright/test';
+import { blockFiles } from '../../server/review-files.mjs';
+import { png } from '../png.mjs';
+import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { viewRadio } from './review.mjs';
+
+const CONTENT = '# Today’s numbers\n\n![Today](figs/today.png)\n\nAnd the trend:\n\n![Trend](trend.png)';
+
+/** @type {Awaited<ReturnType<typeof startPostbox>>} */
+let app;
+let projectId;
+test.beforeAll(async () => {
+  app = await startPostbox('review-images');
+  const { rt, store } = app;
+  const folder = join(app.root, 'agent-folder');
+  await mkdir(join(folder, 'figs'), { recursive: true });
+  projectId = Object.values(rt.s.projects)[0].id;
+  store.emit('project', { ...rt.s.projects[projectId], folder });
+  await writeFile(join(folder, 'figs/today.png'), png(120, 80, 0, 0x30));
+  await writeFile(join(folder, 'figs/trend.png'), png(60, 40, 0, 0xc0));
+});
+test.afterAll(async () => {
+  await app?.stop();
+});
+failOnPageErrors(test);
+test.use({ viewport: { width: 1280, height: 900 }, colorScheme: 'light' });
+
+/** The librarian shows #780’s draft, with its two figures, as a tool call over MCP would (blockFiles, then show_block). */
+async function showFigures(title, content = CONTENT) {
+  const { rt } = app;
+  const t = rt.createThread({ projectId, title, personaIds: [rt.personaByHandle('librarian').id] });
+  const [se] = rt.sessionsIn(t.id);
+  const block = { id: 'figures', type: 'review', version: 1, format: 'markdown', fallback: 'A draft with two figures', content };
+  const { args, files } = await blockFiles(rt, se.id, 'show_block', { block: { ...block, files: [{ path: 'figs/today.png' }, { path: 'figs/trend.png' }] } });
+  const shown = rt.toolsFor(se.id).show_block(args, { files });
+  expect(shown.ok, shown.message).toBe(true);
+  const item = rt.store.items(t.id).find((i) => i.kind === 'block' && i.block.id === 'figures');
+  return { t, item };
+}
+
+for (const host of ['127.0.0.1', 'localhost'])
+  test(`#780 at ${host}, a review’s two figures load in Preview from the item’s route, with CORP that doesn’t block them`, async ({ page }) => {
+    const { t, item } = await showFigures(`Figures at ${host}`);
+    /** @type {{ url: string, status: number, corp: string | undefined }[]} */
+    const answers = [];
+    page.on('response', (r) => {
+      if (r.url().includes(`/items/${item.id}/files/`)) answers.push({ url: r.url(), status: r.status(), corp: r.headers()['cross-origin-resource-policy'] });
+    });
+    await page.goto(`${app.origin.replace('127.0.0.1', host)}/#/t/${t.id}`);
+    await synced(page, app);
+    const block = page.locator(`[data-block-item="${item.id}"]`);
+    const imgs = block.locator('img.md-img');
+    await expect(imgs).toHaveCount(2);
+    const drawn = () =>
+      imgs.evaluateAll((els) =>
+        els.map((i) => {
+          const img = /** @type {HTMLImageElement} */ (i);
+          return { alt: img.alt, natural: img.complete ? `${img.naturalWidth}×${img.naturalHeight}` : 'loading', set: `${img.width}×${img.height}` };
+        }),
+      );
+    await block.scrollIntoViewIfNeeded();
+    await expect.poll(drawn, { message: 'both figures load, at the sizes the item keeps' }).toEqual([
+      { alt: 'Today', natural: '120×80', set: '120×80' },
+      { alt: 'Trend', natural: '60×40', set: '60×40' },
+    ]);
+    const src = await imgs.evaluateAll((els) => els.map((i) => i.getAttribute('src')));
+    expect(
+      src.every((s) => s?.startsWith(`/api/threads/${t.id}/items/${item.id}/files/`)),
+      'same-origin paths, not absolute URLs',
+    ).toBe(true);
+    expect(answers.length, 'each figure came from the route').toBeGreaterThanOrEqual(2);
+    expect(
+      answers.every((a) => a.status === 200 && a.corp === 'same-origin'),
+      JSON.stringify(answers),
+    ).toBe(true);
+    await expect(block.locator('.img-failed')).toHaveCount(0);
+  });
+
+test('#780 Lines draws a review’s figures from the item’s route too, and refuses an image the block doesn’t carry', async ({ page }) => {
+  // figs/other.png is in the folder’s name space but not attached: it must not resolve in either view.
+  const { t, item } = await showFigures('Figures in Lines', `${CONTENT}\n\n![Other](figs/other.png)`);
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  const block = page.locator(`[data-block-item="${item.id}"]`);
+  await viewRadio(block, 'Lines').click();
+  const imgs = block.locator('.rv-line img.md-img');
+  await expect(imgs).toHaveCount(2);
+  const loaded = () =>
+    imgs.evaluateAll((els) =>
+      els.map((i) => {
+        const img = /** @type {HTMLImageElement} */ (i);
+        return { alt: img.alt, src: img.getAttribute('src')?.split('?')[0], natural: img.complete ? img.naturalWidth : 0 };
+      }),
+    );
+  const route = `/api/threads/${t.id}/items/${item.id}/files`;
+  await expect.poll(loaded, { message: 'both figures load in Lines, from the route' }).toEqual([
+    { alt: 'Today', src: `${route}/today.png`, natural: 120 },
+    { alt: 'Trend', src: `${route}/trend.png`, natural: 60 },
+  ]);
+  await expect(block.locator('.rv-line').filter({ hasText: 'This image couldn’t load' })).toHaveCount(1);
+  await expect(block.locator('.rv-line').filter({ hasText: 'isn’t a full https address or a file attached to this block' })).toHaveCount(1);
+});
+
+test.describe('at 375 px', () => {
+  test.use({ viewport: { width: 375, height: 800 } });
+
+  test('#828 a figure wider than the block scales down to fit it, keeping its aspect', async ({ page }) => {
+    const { rt } = app;
+    const folder = join(app.root, 'agent-folder');
+    await writeFile(join(folder, 'figs/wide.png'), png(1600, 400, 0, 0x60));
+    const t = rt.createThread({ projectId, title: 'A wide figure', personaIds: [rt.personaByHandle('librarian').id] });
+    const [se] = rt.sessionsIn(t.id);
+    const block = { id: 'wide', type: 'review', version: 1, format: 'markdown', fallback: 'A wide figure', content: '![Wide](figs/wide.png)' };
+    const { args, files } = await blockFiles(rt, se.id, 'show_block', { block: { ...block, files: [{ path: 'figs/wide.png' }] } });
+    expect(rt.toolsFor(se.id).show_block(args, { files }).ok).toBe(true);
+    const item = rt.store.items(t.id).find((i) => i.kind === 'block' && i.block.id === 'wide');
+    await page.goto(`${app.origin}/#/t/${t.id}`);
+    await synced(page, app);
+    const img = page.locator(`[data-block-item="${item.id}"] img.md-img`);
+    await img.scrollIntoViewIfNeeded();
+    const fit = () =>
+      img.evaluate((el) => {
+        const i = /** @type {HTMLImageElement} */ (el);
+        const box = i.getBoundingClientRect();
+        const room = /** @type {HTMLElement} */ (i.closest('.md') ?? i.parentElement).getBoundingClientRect();
+        return {
+          loaded: i.complete && i.naturalWidth === 1600,
+          fits: box.width <= room.width + 0.5 && box.width < 375,
+          ratio: Math.round((box.width / box.height) * 10) / 10,
+        };
+      });
+    await expect.poll(fit, { message: 'it loads, fits the block, and stays 4:1' }).toEqual({ loaded: true, fits: true, ratio: 4 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'the page doesn’t scroll sideways').toBe(true);
+  });
+});

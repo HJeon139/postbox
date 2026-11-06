@@ -3,8 +3,8 @@
 // broker.mjs’s header says what’s written down when.
 
 import { validateBlock } from '../../../shared/catalog.mjs';
-import { encodedBytes, REMOTE_LIMITS, TOOL_ROUTES, TURN_FILES } from '../../../shared/remote-protocol.mjs';
-import { inlineAppFiles } from './broker-files.mjs';
+import { carriesBlockFiles, encodedBytes, REMOTE_LIMITS, TURN_FILES, toolRoute } from '../../../shared/remote-protocol.mjs';
+import { filesReader, withoutFiles } from './broker-files.mjs';
 import { armReadTimer, claim, detached, readLocal, settled, settleOffline } from './broker-offline.mjs';
 import { record, refusal, startOf, unrecorded, written } from './broker-records.mjs';
 import { key, QUEUED_TEXT, toShims } from './broker-state.mjs';
@@ -30,17 +30,20 @@ export async function prepare(b, turn, name, args) {
       text: 'Loading a dataset isn’t supported yet for an agent on a remote host: add_dataset reads a file on Postbox’s own computer, which this host can’t reach, so nothing was loaded.',
     };
   let out = args;
-  if (name === 'show_app' || name === 'update_app') {
+  // An app’s files, and a review block’s images (#780), are in the agent’s folder here, which Postbox can’t read.
+  const inline = filesReader(name, args);
+  if (inline) {
     const start = await startOf(b, turn);
     if (!start) return { ok: false, text: `There’s no turn ${turn} on this host.` };
-    const r = await inlineAppFiles(start.folder, args);
+    const r = await inline(start.folder, args);
     if (!r.ok) return r;
     out = r.args;
   }
   // Only what the laptop would refuse outright is refused here; an invalid show_block or show_app still goes, since
   // the laptop shows its fallback text (server/runtime.mjs’s show_block).
   if (name === 'update_block') {
-    const v = validateBlock(out.block);
+    // A review’s files aren’t the catalog’s: Postbox takes them off the block before it validates it.
+    const v = validateBlock(carriesBlockFiles(name, out) ? withoutFiles(out.block) : out.block);
     if (!v.ok) return { ok: false, text: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
   }
   if (name === 'update_app' && typeof out.code === 'string') {
@@ -169,7 +172,7 @@ export async function call(b, c, turn, m) {
     result(false, no.text);
     return c.send('error', { code: no.code, message: no.text });
   }
-  const route = TOOL_ROUTES[/** @type {keyof typeof TOOL_ROUTES} */ (m.name)];
+  const route = toolRoute(m.name, m.args);
   if (route === 'host') {
     const r = await readLocal(b, turn, m.name, m.args, false);
     return result(r.ok, r.text);
