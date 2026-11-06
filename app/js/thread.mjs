@@ -40,6 +40,7 @@ import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
 import { viewAskBlock } from './view-ask-card.mjs';
 import { mountView } from './view-state.mjs';
 import { welcome } from './welcome.mjs';
+import { createWindow } from './window.mjs';
 import { workList } from './work-list.mjs';
 
 export { focusComposer } from './hop-card.mjs';
@@ -110,7 +111,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const rerender = (id) => {
     const list = itemsOf(threadId);
     const i = placeIn(threadId, id);
-    if (i < 0) return;
+    // An item outside the window isn’t on the page; it draws from the state when it’s mounted.
+    if (i < 0 || (win && !nodes.has(id))) return;
     const old = nodes.get(id);
     // Keep focus, and the caret, inside a block that’s being edited.
     const back = holdFocus();
@@ -119,19 +121,30 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     nodes.set(id, n);
     back();
   };
+  const mountAt = (/** @type {any[]} */ list, /** @type {number} */ i) => {
+    const n = render(list[i], list[i - 1]);
+    nodes.set(list[i].id, n);
+    return n;
+  };
+  const appendNew = (/** @type {any[]} */ list, /** @type {number} */ i) => {
+    const n = el.appendChild(mountAt(list, i));
+    win?.observe(n);
+  };
+  /** @type {ReturnType<typeof createWindow>} */
+  let win = null;
   const all = () => {
     el.replaceChildren();
     nodes.clear();
+    win?.destroy();
     const list = itemsOf(threadId);
     if (!list.length && !inPanel) {
       el.append(welcome(threadId, sendMessage));
       return;
     }
-    list.forEach((it, i) => {
-      const n = render(it, list[i - 1]);
-      nodes.set(it.id, n);
-      el.append(n);
-    });
+    // A long conversation mounts only what’s around you, behind its flag (window.mjs, #866); else every item.
+    win = createWindow({ el, key: `${inPanel}:${threadId}`, list, anchorKey: was?.anchor?.key ?? null, inPanel, mount: (i) => mountAt(list, i) });
+    if (win) win.build();
+    else for (let i = 0; i < list.length; i++) el.append(mountAt(list, i));
     hostTurns.paint();
     paintWorking();
   };
@@ -152,9 +165,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       // A new message takes the place of any height held below the last one.
       view.release();
       const list = itemsOf(threadId);
-      const n = render(d.item, list[list.length - 2]);
-      nodes.set(d.item.id, n);
-      el.append(n);
+      if (!win || win.added(d.item)) appendNew(list, list.length - 1);
       paintWorking();
       view.grew();
     } else if (ch.type === 'item.move' && d.threadId === threadId) {
@@ -162,17 +173,18 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       // height a line takes, and what you were reading stays put: if that was the item, the stub holds its place.
       const list = itemsOf(threadId);
       const at = placeIn(threadId, d.stub.id);
-      const stub = render(d.stub, list[at - 1]);
       const back = holdFocus();
-      nodes.get(d.id)?.replaceWith(stub);
-      nodes.set(d.stub.id, stub);
+      if (!win || nodes.has(d.id)) {
+        const stub = render(d.stub, list[at - 1]);
+        nodes.get(d.id)?.replaceWith(stub);
+        nodes.set(d.stub.id, stub);
+      }
+      nodes.delete(d.id);
       view.moved(d.id, d.stub.id);
       // The message after it now follows the stub, so whether it names its speaker can change.
       if (list[at + 1] && list[at + 1].id !== d.id) rerender(list[at + 1].id);
       view.release();
-      const n = render(list[list.length - 1], list[list.length - 2]);
-      nodes.set(d.id, n);
-      el.append(n);
+      if (!win || win.moved(d.stub, list[list.length - 1])) appendNew(list, list.length - 1);
       back();
       paintWorking();
       view.grew();
@@ -239,6 +251,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     setJump: view.setJump,
     destroy() {
       off();
+      win?.destroy();
       const where = view.keep();
       view.destroy();
       // Once its elements have left the page, its apps are let go (#930). Every view with apps, the side panel’s and
