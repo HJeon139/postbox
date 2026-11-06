@@ -8,12 +8,12 @@ import './focus-clear.mjs';
 import { hoverContent } from './hover-content.mjs';
 import './keys.mjs';
 import { goHome, lastIn, latestIn, remember } from './last-place.mjs';
+import { notify } from './notify-toast.mjs';
 import { mountPane } from './pane.mjs';
 import { canonical } from './pane-route.mjs';
-import { ringFor } from './ring.mjs';
 import { liveMembers, mountEmptyProject, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';
-import { initHoverCards, navigate, refind, route, say, setAttention, toast } from './ui.mjs';
+import { initHoverCards, navigate, refind, route, say, setAttention } from './ui.mjs';
 
 const root = $('#root');
 let mounted = [];
@@ -187,25 +187,6 @@ function refreshTop() {
   const back = document.activeElement && old.contains(document.activeElement) ? refind(document.activeElement) : null;
   old.replaceWith(next);
   back?.()?.focus();
-}
-
-function notify(d) {
-  if (d.level !== 'blocking') return; // informational events are still badges, not toasts
-  // In view: its conversation, or the side thread it’s in, open in the panel (#121).
-  const r = route();
-  if ((r.threadId === d.threadId || r.sideId === d.threadId) && document.visibilityState === 'visible') {
-    say(`${d.title}. ${d.text}`);
-    return;
-  }
-  const se = client.state.sessions[d.sessionId];
-  toast({
-    title: d.title,
-    text: d.text,
-    level: 'blocking',
-    ring: se ? ringFor(se, 'sm') : null,
-    action: { label: 'Go', run: () => navigate(hrefOf(d.threadId)) },
-    timeout: 12000,
-  });
 }
 
 // ── Hover cards: citations and glossary terms ───────────────────────────────────────────
