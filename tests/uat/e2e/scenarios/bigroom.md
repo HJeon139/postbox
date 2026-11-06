@@ -17,7 +17,7 @@ The room is seeded with about 1,000 items, so the page holds only a window of it
 
 Ask @researcher and @critic each for a long write-up, one after the other. Once both have replied, press Home to go to the room’s first day, then page down slowly, and say whether what you were reading ever moved without your scrolling. Then press End.
 
-What this phase tests: `window-paged-back` only shows that you reached the first day. The goals are that `view-moved` stays silent across Home and the pages down, while the room holds the two new replies, and that End brings the view back to following as a change of mode with your input before it. A run that fires `window-paged-back` alone isn’t a pass.
+What this phase tests: `window-paged-back` only shows that you reached the first day. The goal is that `view-moved` stays silent across Home and the pages down, while the room holds the two new replies. Each of your pages is an input, so the pair rule excuses every step it comes between; those steps are checked only by the rule within one sample, the published offset against where the anchor is. A run whose report says `view-moved` checked no pair of steps has checked only that. No check asserts that End brings the view back to following. A run that fires `window-paged-back` alone isn’t a pass.
 
 What it can’t test: paging while a reply streams. The run waits for every agent to finish before each of your steps (`settle` in `tools/uat-run.mjs`), and no step scrolls while a turn runs. `tests/browser/view-moved-stream.spec.mjs` checks the nearest case on a real page: a view that is following, or reading after a scroll up, held still while a reply streams. Paging during a stream is checked by neither until the runner can scroll mid-turn (#805).
 
