@@ -834,10 +834,10 @@ test('every combination of the setup choices reaches both backends', () => {
       const args = claudeArgs({ ...base, persona });
       const sources = usesHostSetup === false ? 'project,local' : 'user,project,local';
       assert.equal(after(args, '--setting-sources'), sources, label);
-      assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default', permissions: { ask: WRITE_TOOLS } }, label);
+      assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default', disableAllHooks: true, permissions: { ask: WRITE_TOOLS } }, label);
       const o = sdkOptions({ ...sdkBase, persona });
       assert.deepEqual(o.settingSources, sources.split(','), label);
-      assert.deepEqual(o.settings, { outputStyle: 'default', permissions: { ask: WRITE_TOOLS } }, label);
+      assert.deepEqual(o.settings, { outputStyle: 'default', disableAllHooks: true, permissions: { ask: WRITE_TOOLS } }, label);
       if (canPublish === true) {
         assert.ok(!args.includes('--disallowedTools'), label);
         assert.equal(o.disallowedTools, undefined, label);
