@@ -5,6 +5,7 @@
 // Run by hand, not a CI gate. Safari isn’t measured this sprint, and the report says so.
 //
 //   node tools/bench-key-frame.mjs --sizes 1000,4000,10000 --keys 200 --runs 3 --out designs/508/key-frame.md
+//   node tools/bench-key-frame.mjs --app ../other-checkout …   (that checkout’s Postbox, this one’s instrument and seed)
 //
 // Each size gets a fresh Postbox on a free port and a temp data folder of its own, on mock agents, removed after,
 // on Ctrl-C and SIGTERM too.
@@ -12,6 +13,7 @@
 // --keys keys, one every --interval ms (tools/key-frame-measure.mjs). The report (tools/key-frame-report.mjs) pools
 // every run’s keys for each size.
 
+import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { loadavg, tmpdir } from 'node:os';
@@ -26,7 +28,8 @@ import { summarize } from './key-frame-stats.mjs';
 import { seedBigRoomData } from './uat/big-room.mjs';
 import { startPostbox } from './uat/postbox.mjs';
 
-const ROOT = fileURLToPath(new URL('..', import.meta.url));
+/** The bench’s own checkout: its instrument and its seed. --app may name another checkout to measure. */
+export const BENCH_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const THREAD = 'th_keyframe';
 const AGENTS = ['researcher', 'critic', 'developer'];
 
@@ -82,6 +85,7 @@ export function options(argv) {
       runs: { type: 'string', default: '3' },
       interval: { type: 'string', default: '50' },
       out: { type: 'string', default: 'designs/508/key-frame-report.md' },
+      app: { type: 'string' },
     },
   });
   const sizes = values.sizes.split(',').map((s) => count('sizes', s.trim()));
@@ -92,7 +96,29 @@ export function options(argv) {
     runs: count('runs', values.runs),
     intervalMs: count('interval', values.interval),
     out: resolve(values.out),
+    app: appOption(values.app),
   };
+}
+
+/**
+ * The checkout whose Postbox is measured, from --app, or null for the bench’s own. Measuring other commits through
+ * one checkout keeps the instrument and the seeded rooms the same on every side of a comparison.
+ * @param {string | undefined} raw
+ */
+function appOption(raw) {
+  if (raw === undefined) return null;
+  const app = resolve(raw);
+  if (!existsSync(join(app, 'server', 'index.mjs'))) throw new Error(`--app takes a Postbox checkout, with server/index.mjs; ${raw} has none.`);
+  return app;
+}
+
+/**
+ * The report’s commit line: the measured Postbox’s commit, and the bench’s too when --app names another checkout.
+ * @param {string} app  @param {string} bench  @param {(root: string) => string} [commit]
+ */
+export function commitLine(app, bench, commit = commitOf) {
+  if (app === bench) return commit(bench);
+  return `${commit(app)} (Postbox measured); ${commit(bench)} (the bench and its seed)`;
 }
 
 /**
@@ -102,7 +128,16 @@ export function options(argv) {
  */
 export function commandLine(o, root) {
   const args = [`--sizes ${o.sizes.join(',')}`, `--keys ${o.keys}`, `--warmup ${o.warmup}`, `--runs ${o.runs}`, `--interval ${o.intervalMs}`];
+  if (o.app) args.push(`--app ${shownPath(o.app, root)}`);
   return ['node tools/bench-key-frame.mjs', ...args, `--out ${shownPath(o.out, root)}`].join(' ');
+}
+
+/**
+ * The report’s command and commit lines, for the checkout measured and the bench that measured it.
+ * @param {ReturnType<typeof options>} o  @param {(root: string) => string} [commit]
+ */
+export function provenance(o, commit = commitOf) {
+  return { command: commandLine(o, BENCH_ROOT), commit: commitLine(o.app ?? BENCH_ROOT, BENCH_ROOT, commit) };
 }
 
 /**
@@ -135,7 +170,7 @@ export async function measureSize(page, items, o, log, { start = startPostbox, p
   const pooled = { eventTiming: [], nextFrame: [], below: 0 };
   let postbox = null;
   try {
-    postbox = await start({ root: ROOT, port: await port(), data, env: { POSTBOX_BACKENDS: 'mock' }, log: () => {} });
+    postbox = await start({ root: o.app ?? BENCH_ROOT, port: await port(), data, env: { POSTBOX_BACKENDS: 'mock' }, log: () => {} });
     await postbox.restart({
       whileDown: async () => {
         await startRoom(data);
@@ -175,8 +210,7 @@ async function main() {
     }
     if (page.logs.length) log(`The page logged ${page.logs.length} errors; the first: ${page.logs[0]}`);
     const report = formatReport({
-      command: commandLine(o, ROOT),
-      commit: commitOf(ROOT),
+      ...provenance(o),
       date: new Date().toISOString(),
       machine: await machineOf(page),
       conditions: await conditionsOf(page, loadAtStart),
@@ -185,7 +219,7 @@ async function main() {
       threshold: EVENT_THRESHOLD,
     });
     await writeFile(o.out, report);
-    log(`Wrote ${shownPath(o.out, ROOT)}.`);
+    log(`Wrote ${shownPath(o.out, BENCH_ROOT)}.`);
   } finally {
     await page.close();
   }
