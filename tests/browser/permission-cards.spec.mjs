@@ -6,6 +6,8 @@
 // - #281: one for a command with a * offers neither, and says a * is a wildcard; so does one with a ) that would end
 //   its rule early, saying so; one for env or bash -c offers only its exact text, never Bash(env:*).
 // - #220: a permission card nobody answered for CARD_WAIT_MS says it expired and how long it waited.
+// - #721: an expired card the room still needs you for offers Dismiss, which clears the need; a closed card it doesn’t
+//   need you for offers nothing.
 // With a scripted Claude Code agent (no real turns), a persona and conversation of its own for each test. Moved from
 // tools/checks/permission-cards.mjs (#303).
 
@@ -167,3 +169,49 @@ test('#220 a permission card nobody answered for 25 hours says it expired, and h
   await idle();
   expect(answers[0].allow).toBe(false);
 });
+
+test('#721 an expired card that still needs you offers Dismiss, which clears the need; one that doesn’t offers nothing', async ({ page }) => {
+  const { rt, store } = app;
+  const { thread, se } = await agent(page, 'stale');
+  const base = { kind: 'permission', sessionId: se.id, handle: 'stale', tool: 'Bash', status: 'expired' };
+  rt.addItem(thread.id, { ...base, summary: 'run git status', detail: 'git status' });
+  const stuck = rt.addItem(thread.id, { ...base, summary: 'run git push', detail: 'git push' });
+  // The need a restart leaves on the card it expired (#633 fixes that path; Dismiss is the backstop).
+  rt.updateSession(se.id, { state: 'needs', needs: { kind: 'permission', itemId: stuck.id, text: '@stale asks to run git push' } });
+  await page.reload();
+  await synced(page, app);
+  const ring = page.getByRole('button', { name: /Go to what @stale needs/ });
+  await expect(ring, 'the room says @stale needs you').not.toHaveCount(0);
+  const pushCard = page.locator(`[data-key="${stuck.id}"]`);
+  await expect(card(page, 'run git status?').getByRole('button'), 'a closed card it doesn’t need you for offers nothing').toHaveCount(0);
+  await pushCard.getByRole('button', { name: 'Dismiss' }).click();
+  await expect.poll(() => store.state.sessions[se.id].needs, { message: 'the need cleared' }).toBe(null);
+  await expect(ring, 'the room no longer says @stale needs you').toHaveCount(0);
+  await expect(pushCard.getByRole('button'), 'nothing is left to press').toHaveCount(0);
+  await expect(pushCard.locator('.answered-note')).toContainText('Expired');
+});
+
+for (const [label, button] of [
+  ['decline', 'Don’t allow…'],
+  ['allow', 'Allow'],
+]) {
+  test(`#721 a card you ${label} while the agent waits offers no Dismiss afterwards, without a reload`, async ({ page }) => {
+    const { rt, store } = app;
+    const { thread, se, script, idle } = await agent(page, `live${label}`);
+    const answers = [];
+    script(async (ctx) => {
+      answers.push(await ctx.askPermission({ tool: 'Bash', summary: `run the ${label} check`, input: { command: 'npm run check' } }));
+    });
+    rt.sendMessage(thread.id, { text: 'Go.' });
+    const ask = card(page, `run the ${label} check?`);
+    await expect(ask.locator('.block-foot')).toBeVisible();
+    await expect.poll(() => store.state.sessions[se.id].needs?.kind).toBe('permission');
+    await ask.getByRole('button', { name: button, exact: true }).first().click();
+    const send = ask.getByRole('button', { name: 'Don’t allow', exact: true });
+    if (label === 'decline' && (await send.count())) await send.last().click();
+    await expect.poll(() => answers.length).toBe(1);
+    await idle();
+    await expect.poll(() => store.state.sessions[se.id].needs).toBe(null);
+    await expect(ask.getByRole('button', { name: 'Dismiss' }), 'an answered card has nothing to dismiss').toHaveCount(0);
+  });
+}
