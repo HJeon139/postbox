@@ -546,6 +546,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .callout { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--alert); border-radius: 6px; background: var(--panel); }
 .callout .i, .callout .g { margin-top: 2px; color: var(--alert-ink); }
 .callout.warn { border-left-color: var(--accent); }
+/* A failed reply the person dismissed (#883): its error stays readable, without the alert’s weight. */
+.callout.quiet { border-left-color: var(--line-strong); }
+.callout.quiet .g { color: var(--dim); }
 .callout.warn .i { color: var(--accent); }
 
 /* ───────── Agent apps ───────── */
