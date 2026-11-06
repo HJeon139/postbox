@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.35.0 (2026-11-06)
+
+### Features
+
+- **uat:** a scenario can put the person’s own files in the workspace
+
+### Fixes
+
+- **app:** choices are fitted in one pass, so a room's choices cost one layout, not one each
+- **app:** timeOf and dayOf format with one Intl.DateTimeFormat each, made once
+
 ## 1.34.1 (2026-11-06)
 
 ### Fixes
