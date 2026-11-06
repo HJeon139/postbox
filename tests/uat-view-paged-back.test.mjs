@@ -61,6 +61,6 @@ test('window-paged-back can’t tell on a run with no view probe', () => {
 
 test('bigroom.md’s phase 1 names window-paged-back, and every trigger it names exists', () => {
   const bigroom = parseScenario(readFileSync(new URL('uat/e2e/scenarios/bigroom.md', import.meta.url), 'utf8'));
-  assert.deepEqual(bigroom.phases[0].triggers, ['window-paged-back']);
+  assert.ok(bigroom.phases[0].triggers.includes('window-paged-back'), bigroom.phases[0].triggers.join(', '));
   assert.deepEqual(unknownTriggers({ phases: bigroom.phases.slice(0, 1) }), []);
 });

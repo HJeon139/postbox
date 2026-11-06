@@ -139,6 +139,10 @@ test('observe records the view probe before any screenshot scrolls the page', as
   const d = {
     kit: {
       ev: async (expr) => {
+        if (expr.includes('/app/js/client.mjs')) {
+          calls.push('queries');
+          return { origin: ORIGIN, sessionEvents: 0, scanCount: 0, scans: [], byId: 0, items: 1 };
+        }
         calls.push(/data-view-mode/.test(expr) ? 'views' : 'diagrams');
         return /data-view-mode/.test(expr)
           ? [{ where: 'main', thread: 't', mode: 'following', anchorId: '', expected: null, actual: null, gap: 0, origin: ORIGIN, prev: null, settled: true }]
@@ -153,7 +157,7 @@ test('observe records the view probe before any screenshot scrolls the page', as
   };
   const facts = { probes: {}, state: { threads: {}, sessions: {} }, threads: [] };
   await observe({ d, labels: new Map(), keys: new Map(), seen: new Map(), paths: { shots: '/nowhere' }, timeline: [1, 2], dir: '/', facts });
-  assert.deepEqual(calls, ['diagrams', 'views', 'shot']);
+  assert.deepEqual(calls, ['diagrams', 'queries', 'views', 'shot']);
   assert.equal(facts.probes.views.length, 1);
 });
 
