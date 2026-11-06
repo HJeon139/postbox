@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.34.0 (2026-11-06)
+
+### Features
+
+- **uat:** the customer judges the visual, with `- judge: visual`
+
+### Fixes
+
+- **agents:** a picture that explains draws the things, not labeled boxes
+- **uat:** the customer's relationship check applies where the idea is a dependence
+- **skills:** VE11 applies only where the idea is a relationship between variables
+
 ## 1.33.0 (2026-11-06)
 
 ### Features
