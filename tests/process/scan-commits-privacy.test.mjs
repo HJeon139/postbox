@@ -4,64 +4,10 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { after, test } from 'node:test';
-import { fileURLToPath } from 'node:url';
-
-const TOOL = fileURLToPath(new URL('../../tools/scan-commits-privacy.mjs', import.meta.url));
-
-// A made-up home path, built here so this file doesn’t hold one for the tree’s own privacy check to flag.
-const HOME = ['', 'Users', 'alice'].join('/');
-const HOME_PATH = `${HOME}/x`;
-
-const home = await mkdtemp(join(tmpdir(), 'pb-test-scan-commits-'));
-after(() => rm(home, { recursive: true, force: true }));
-// Git as a fresh install would be, whoever runs this: no hooks, signing or templates from the person’s own config.
-await writeFile(join(home, 'gitconfig'), '[user]\n\tname = Agent\n\temail = agent@example.com\n[init]\n\tdefaultBranch = main\n');
-const env = { ...process.env, GIT_CONFIG_GLOBAL: join(home, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1' };
-
-/** Runs git in a repository, and fails the test if git does. */
-function git(cwd, ...args) {
-  const run = spawnSync('git', args, { cwd, env, encoding: 'utf8', timeout: 10_000 });
-  assert.equal(run.status, 0, `git ${args.join(' ')}: ${run.stderr}`);
-  return run.stdout.trim();
-}
-
-/**
- * The tool over a range in a repository: its exit code and what it printed. Each of config is set as `git -c` sets it,
- * for every git the tool starts, as a person’s own config would be.
- */
-function scan(cwd, range, config = {}) {
-  const pairs = Object.entries(config);
-  const settings = { GIT_CONFIG_COUNT: String(pairs.length) };
-  pairs.forEach(([key, value], i) => {
-    settings[`GIT_CONFIG_KEY_${i}`] = key;
-    settings[`GIT_CONFIG_VALUE_${i}`] = value;
-  });
-  const run = spawnSync(process.execPath, [TOOL, range], { cwd, env: { ...env, ...settings }, encoding: 'utf8', timeout: 20_000 });
-  return { status: run.status, out: run.stdout, err: run.stderr };
-}
-
-/** A fresh repository with one commit on main, and a branch “work” from it. */
-async function repo() {
-  const dir = await mkdtemp(join(home, 'repo-'));
-  git(dir, 'init', '-q', '.');
-  await writeFile(join(dir, 'a.txt'), 'one\n');
-  git(dir, 'add', '.');
-  git(dir, 'commit', '-q', '-m', 'start');
-  git(dir, 'switch', '-q', '-c', 'work');
-  return dir;
-}
-
-/** Writes a file and commits it, with a message of its own or one that names the file. */
-async function commit(dir, path, content, message = `change ${path}`) {
-  await writeFile(join(dir, path), content);
-  git(dir, 'add', '-A');
-  git(dir, 'commit', '-q', '-m', message);
-  return git(dir, 'rev-parse', '--short=7', 'HEAD');
-}
+import { test } from 'node:test';
+import { commit, env, git, HOME_PATH, home, repo, scan, TOOL } from './scan-commits-git.mjs';
 
 /** Lines one to eight of a file, with the given lines replaced. */
 const eightLines = (changed = {}) => `${['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((line, i) => changed[i] ?? line).join('\n')}\n`;
@@ -88,28 +34,6 @@ test('the tool run through a symlink to the checkout’s folder still scans, and
   });
   assert.equal(run.status, 1, run.stdout + run.stderr);
   assert.match(run.stderr, new RegExp(`^${sha} notes\\.md: home path at line 1$`, 'm'));
-});
-
-test('a commit that adds a file named after an address fails, and its log holds no part of the address (#784, #785)', async () => {
-  const dir = await repo();
-  const address = ['jdoe', 'corp.com'].join('@');
-  const sha = await commit(dir, `${address}.txt`, 'nothing private\n', 'add a note');
-  const { status, err } = scan(dir, 'main..HEAD');
-  assert.equal(status, 1);
-  assert.match(err, new RegExp(`^${sha} a file’s name: email in the file name$`, 'm'));
-  for (const part of ['jdoe', 'corp']) assert.ok(!err.includes(part), `the log holds “${part}”`);
-});
-
-test('a file named after an address that holds private text too prints no part of the name or the text (#784, #785)', async () => {
-  const dir = await repo();
-  const address = ['jdoe', 'corp.com'].join('@');
-  const sha = await commit(dir, `n-${address}.md`, `mail ${address}\n${HOME_PATH}\n`, 'add a note');
-  const { status, err } = scan(dir, 'main..HEAD');
-  assert.equal(status, 1);
-  const findings = err.split('\n').filter((line) => line.startsWith(sha));
-  const where = `${sha} a file’s name`;
-  assert.deepEqual(findings, [`${where}: email in the file name`, `${where}: home path at line 2`, `${where}: email at line 1`]);
-  for (const part of ['jdoe', 'corp', 'alice', 'Users', 'n-']) assert.ok(!err.includes(part), `the log holds “${part}”`);
 });
 
 test('a home path added in one commit and removed in a later one still fails', async () => {
@@ -146,42 +70,6 @@ test('a rename that changes no lines passes', async () => {
   const { status, out } = scan(dir, 'main..HEAD');
   assert.equal(status, 0);
   assert.match(out, /1 commit added 0 lines in 0 files/);
-});
-
-test('a commit that adds an empty file named after an address fails, though it adds no line (#785)', async () => {
-  const dir = await repo();
-  const address = ['jdoe', 'corp.com'].join('@');
-  const sha = await commit(dir, `${address}.txt`, '', 'add an empty note');
-  const { status, err } = scan(dir, 'main..HEAD');
-  assert.equal(status, 1, err);
-  assert.match(err, new RegExp(`^${sha} a file’s name: email in the file name$`, 'm'));
-  for (const part of ['jdoe', 'corp']) assert.ok(!err.includes(part), `the log holds “${part}”`);
-});
-
-test('a rename to a name that holds a home slug fails, though it changes no line (#785)', async () => {
-  const dir = await repo();
-  const named = `notes/${['', 'Users', 'alice', 'x'].join('-')}.txt`;
-  await mkdir(join(dir, 'notes'));
-  git(dir, 'mv', 'a.txt', named);
-  git(dir, 'commit', '-q', '-m', 'rename');
-  const sha = git(dir, 'rev-parse', '--short=7', 'HEAD');
-  const { status, err } = scan(dir, 'main..HEAD');
-  assert.equal(status, 1, err);
-  assert.match(err, new RegExp(`^${sha} a file’s name: home path in the file name$`, 'm'));
-  for (const part of ['alice', 'Users']) assert.ok(!err.includes(part), `the log holds “${part}”`);
-});
-
-test('a commit that deletes a file whose name is private passes, as the name was added before the range (#785)', async () => {
-  const dir = await repo();
-  const named = `${['jdoe', 'corp.com'].join('@')}.txt`;
-  git(dir, 'switch', '-q', 'main');
-  await commit(dir, named, '');
-  git(dir, 'switch', '-q', '-C', 'work');
-  git(dir, 'rm', '-q', named);
-  git(dir, 'commit', '-q', '-m', 'remove a note');
-  const { status, out, err } = scan(dir, 'main..HEAD');
-  assert.equal(status, 0, err);
-  assert.match(out, /1 commit added 0 lines in 0 files, none of them private/);
 });
 
 test('an empty range passes, and says it had no commits', async () => {
