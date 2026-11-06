@@ -85,9 +85,19 @@ test('#557’s re-review: a quote after a no asks for the opposite, and a body t
     'I didn’t ask you to open the PR.',
   ])
     assert.equal(quoted('open the PR', said, 'Bash', create), null, said);
+  // #831: a “no” or a “without” turns around only what follows it: the UAT’s “right away, no draft” asks for the call.
+  const ticket = ['mcp__tally__create_ticket', { title: 'Search misses plurals', body: 'One line.' }];
+  for (const said of [
+    'Create a tally ticket titled ‘Search misses plurals’ with a one-line body, right away, no draft.',
+    'Create a tally ticket for it without a review, no need to check with me.',
+  ])
+    assert.equal(quoted('create a tally ticket', said, ...ticket), 'create a tally ticket', said);
+  for (const said of ['No tally ticket yet, just a draft.', 'Draft it, but no tally ticket for now.', 'Make the draft without creating a tally ticket.'])
+    assert.equal(quoted('a tally ticket', said, ...ticket), null, said);
   // The same words, asked for, still count, wherever else the person said no.
   assert.equal(quoted('open the PR', 'Not the README. Please open the PR now.', 'Bash', create), 'open the PR');
   assert.equal(quoted('push it', 'Commit and push it.', 'Bash', { command: 'git push' }), 'push it');
+  assert.equal(quoted('push it', 'Push it? Don’t ask me again.', 'Bash', { command: 'git push' }), 'push it', 'the sentence ends at its own ?');
 });
 
 test('the judge’s no, an error, a timeout and an answer it can’t read all get the card', async () => {
