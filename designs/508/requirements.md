@@ -79,7 +79,7 @@ flowchart TD
 
 | Id | Requirement | Check | Sources |
 |---|---|---|---|
-| PF-1 | A large room is as responsive as a small one: typing and painting cost about the same whatever the room’s size. | Key-to-frame p95 within 10% of a small room’s; Safari’s idle painting no higher, on copies of real rooms. | #305; D508 Why and “Decided” (budget is parity, the person’s choice) |
+| PF-1 | A large room is as responsive as a small one: typing and painting cost about the same whatever the room’s size. | Key-to-frame p95 within 10% of a small room’s, in rooms the big-room seed generates at 1× (1,000 items), 4× and 10×; Safari’s idle painting no higher (not measured in sprint 3, which measures Chromium only). | #305; D508 Why and “Decided” (budget is parity, the person’s choice) |
 | PF-2 | Animations don’t keep the page repainting: an agent working doesn’t cost the whole transcript a repaint. | Safari’s painting share with one agent working is near idle. | INT principle 3 (“eases in, eases out, then rests”); #463 |
 | PF-3 | Reading history stays put: nothing moves what you’re reading unless you scroll, and following the newest message keeps following. | The 13 scroll issues D508 change 3 lists each pass as a regression check. | INT Conversation (“Jump to latest”); #88, #91, #92, #232, #285, #297, #341, #356, #357, #360, #410, #422, #478 |
 | PF-4 | Any message can be opened by link, ask or “Next needs you”, wherever it is in history. | An `m=` link to a message far back opens at it. | #168; INT Attention (ring goes to its ask) |
@@ -204,7 +204,7 @@ flowchart TD
 | SW-1 | Spec | #458: an agent cancels its own wake by id, including after a host replay (#498’s test) | *wake-scheduled*, *wake-canceled* | none | Covered |
 | SW-2 | Spec | #466: a wake lost to a network drop is retried, labeled “check what ran” | *wake-after-drop* | *unlabeled-repeat* | Covered |
 | SW-3 | Spec | Archiving a conversation expires its wakes and posts the line | none | none | Covered |
-| PF-1 | Playwright spec only | Key-to-frame p95 within 10% of a small room’s on copies of three rooms | seed *big-room* (spec input, no agentic UAT) | none | Covered |
+| PF-1 | Hand-run report (`tools/bench-key-frame.mjs`), not a CI gate | Key-to-frame p95 (Event Timing) at 4× and 10× within 10% of 1×’s, or up to 17.6 ms when 1×’s is under one frame, Event Timing’s 16 ms threshold (`underOneFrame`, `tools/key-frame-stats.mjs`), in rooms the big-room seed generates at 1× (1,000 items), 4× and 10×; Chromium only, Safari’s idle painting unmeasured this sprint | seed *big-room*; *key-frame-measured* in `bigroom.md`’s phase 1, whose header’s `- measure-key-frame: on` measures the seeded room and writes the report to the run’s folder (`--measure-key-frame <path>` on any big-room run); a smoke check that the tool ran | none | Covered |
 | PF-2 | Playwright spec only | With one agent working, the transcript isn’t repainted each frame (paint count over 5 s) | none | none | **Not in rev 6** |
 | PF-3 | Playwright spec | The 13 scroll issues, one regression each | *window-paged-back* | *view-moved* | Covered |
 | PF-4 | Playwright spec | An `m=` link, ⌃J and an open ask far back each load the page around the target | *jump-outside-window*, *needs-far-back* | `needs-jump-missed` | Covered |

@@ -2,6 +2,35 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.25.0 (2026-11-06)
+
+### Features
+
+- **tools:** the key-to-frame report records the conditions behind its numbers
+- **uat:** key-frame-measured, a smoke check that a run measured its room
+- **tools:** measure key-to-frame p95 by room size for PF-1
+
+### Fixes
+
+- **tools:** a calibration key proves Event Timing measures this composer
+- **tools:** each run opens the room in a new document, and a key the page doesn't type is refused
+- **tools:** judge a 1x room under one frame at 16 ms, and leave the verdict to the report
+- **tools:** a key-to-frame room with a null count of missing keys is not measured
+- **tools:** a key-to-frame room with too many keys missing an entry is not measured
+- **tools:** the key-to-frame report says why it shows the next-frame timer
+- **tools:** the key-to-frame run reads the window’s size from Chromium, and checks every edge
+- **uat:** the big-room scenario measures its room, and its first phase waits for key-frame-measured
+- **uat:** key-frame-measured can’t tell on a run that didn’t have --measure-key-frame on
+- **uat:** a run’s key-to-frame measurement empties the composer even when it fails
+- **tools:** the key-to-frame bench takes only positive whole numbers for its counts
+- **tools:** Ctrl-C or SIGTERM stops the key-to-frame bench without leaving a size’s data folder
+- **tools:** the key-to-frame bench removes a size’s data folder when its Postbox doesn’t start
+- **tools:** the key-to-frame report shows paths relative to the repo, never absolute
+- **tools:** the key-to-frame run refuses a composer outside the window
+- **tools:** page.size() sizes the window too, so a key typed below 600 px is presented
+- **tools:** the key-to-frame report says "1 run a size", and the p95 rounds up
+- **uat:** big-room ids sort past 10,000 items, and its seed takes a count
+
 ## 1.24.1 (2026-11-06)
 
 ### Fixes

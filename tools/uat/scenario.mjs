@@ -109,6 +109,9 @@ export function parseScenario(md) {
     // `- chain-limit: 3` (#508): the chain limit the run’s Postbox enforces (POSTBOX_CHAIN_LIMIT, shared/limits.mjs), so a
     // phase reaches the wake card in a few wakes rather than the backstop’s 50. Mistyped, it’s refused, not run as 50.
     chainLimit: chainLimitOf(meta['chain-limit']),
+    // `- measure-key-frame: on` (#508, PF-1): with `- seed: big-room`, the run measures the room’s key-to-frame times and
+    // writes the report to its folder, as --measure-key-frame does to the path it names (tools/uat/key-frame-run.mjs).
+    measureKeyFrame: meta['measure-key-frame'] === 'on',
     phases: phases.map(phaseOf),
   };
 }
