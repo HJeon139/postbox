@@ -4,6 +4,11 @@
 // reports the inner ternary’s span: an outer “a ? 1 :” added on its own line above an unchanged “b ? 2 : 3” puts no hit
 // on an added line. The ones already on main stay until they’re fixed.
 //
+// A real exception carries `lint-allow ternary: <reason>` on the line this names or the line above, and such a hit is
+// left out both now and at the base (#753). Only that line-level form counts: `lint-allow-file ternary` excuses nothing,
+// so a whole file can’t opt out, and a failure in a file that has one says so. A `biome-ignore` for the rule would pass
+// here but fails `npm run lint` as an unused suppression, since the rule isn’t on in biome.json.
+//
 // The change is the diff from the merge base with main (tools/merge-base.mjs) to the working tree, so edits not yet
 // committed count too; files git doesn’t track yet don’t, and CI sees only committed files. Only added, modified and
 // renamed .mjs, .js and .cjs files are read, with the repo’s biome.json, so a file Biome doesn’t lint is skipped. Biome
@@ -21,12 +26,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addedRanges, DIFF_OPTIONS } from './diff-added-lines.mjs';
-import { isEntry } from './lint-lib.mjs';
+import { allowedOnLine, isEntry } from './lint-lib.mjs';
 import { baseRef, mergeBase, noBase } from './merge-base.mjs';
 
 const BIOME = fileURLToPath(new URL('../node_modules/@biomejs/biome/bin/biome', import.meta.url));
 const RULE = 'lint/style/noNestedTernary';
 const LINTED = /\.(mjs|js|cjs)$/;
+const FILE_ALLOW = /lint-allow-file ternary\b/;
 
 /**
  * Whether a span, from line start to line end, holds any of the added lines.
@@ -110,6 +116,20 @@ export function risenCounts(paths, before, after) {
   return risen.filter((file) => file.after > file.before);
 }
 
+/**
+ * The hits that no `lint-allow ternary: <reason>` on their line or the line above excuses (#753), with each file read
+ * from dir once.
+ * @param {string} dir @param {{ path: string, start: number, end: number }[]} hits
+ */
+function unexcused(dir, hits) {
+  /** @type {Map<string, string[]>} */
+  const lines = new Map();
+  return hits.filter((hit) => {
+    if (!lines.has(hit.path)) lines.set(hit.path, readFileSync(join(dir, hit.path), 'utf8').split('\n'));
+    return !allowedOnLine(lines.get(hit.path) ?? [], hit.start, 'ternary');
+  });
+}
+
 /** A count of nested ternaries, in words. @param {number} n */
 export const ternaries = (n) => (n === 1 ? '1 nested ternary' : `${n} nested ternaries`);
 
@@ -150,7 +170,7 @@ function baseHits(top, git, at, files) {
       writeFileSync(join(dir, file.path), git(['show', `${at}:${file.oldPath}`]));
     }
     const paths = old.map((file) => file.path);
-    return nestedTernaries(biomeReport(dir, paths));
+    return unexcused(dir, nestedTernaries(biomeReport(dir, paths)));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -167,6 +187,26 @@ export function changedRanges(diff) {
   } catch (error) {
     throw new Error(`lint-ternary: ${/** @type {Error} */ (error).message}`);
   }
+}
+
+/**
+ * Prints what a failing run found, and a line for each failing file whose lint-allow-file ternary excused nothing, and
+ * returns the exit code.
+ * @param {string} top @param {string} at @param {{ path: string, start: number }[]} hits @param {{ path: string, before: number, after: number }[]} risen
+ */
+function failed(top, at, hits, risen) {
+  for (const hit of hits) console.log(`${hit.path}:${hit.start}: nested ternary on a changed line`);
+  for (const file of risen) console.log(`${file.path}: ${ternaries(file.after)}, up from ${file.before} not allowed at the base`);
+  for (const path of new Set([...hits, ...risen].map((found) => found.path))) {
+    if (!FILE_ALLOW.test(readFileSync(join(top, path), 'utf8'))) continue;
+    console.log(`${path}: lint-allow-file ternary isn’t accepted, since lint-ternary takes only a line-level lint-allow ternary: <reason>.`);
+  }
+  const found = [];
+  if (hits.length) found.push(`${ternaries(hits.length)} on a changed line`);
+  if (risen.length) found.push(`${risen.length === 1 ? '1 file' : `${risen.length} files`} with more than at ${at.slice(0, 8)}`);
+  const how = 'Use an if, or a small named helper with early returns; a real exception carries lint-allow ternary: <reason>.';
+  console.log(`\nlint-ternary: ${found.join(', and ')}. ${how}`);
+  return 1;
 }
 
 /** Runs the lint against the base in argv, from the checkout’s top folder, prints what it found, and returns the exit code. */
@@ -192,18 +232,10 @@ function main() {
   const changed = changedFiles(git([...diffArgs, '-z', '--name-status', at, ...globs]));
   const linted = changed.filter((file) => added.has(file.path) && LINTED.test(file.path));
   const files = linted.map((file) => file.path);
-  const hitsNow = files.length ? nestedTernaries(biomeReport(top, files)) : [];
+  const hitsNow = files.length ? unexcused(top, nestedTernaries(biomeReport(top, files))) : [];
   const hits = newHits(hitsNow, added);
   const risen = risenCounts(files, countByPath(baseHits(top, git, at, linted)), countByPath(hitsNow));
-  for (const hit of hits) console.log(`${hit.path}:${hit.start}: nested ternary on a changed line`);
-  for (const file of risen) console.log(`${file.path}: ${ternaries(file.after)}, up from ${file.before} at the base`);
-  if (hits.length || risen.length) {
-    const found = [];
-    if (hits.length) found.push(`${ternaries(hits.length)} on a changed line`);
-    if (risen.length) found.push(`${risen.length === 1 ? '1 file' : `${risen.length} files`} with more than at ${at.slice(0, 8)}`);
-    console.log(`\nlint-ternary: ${found.join(', and ')}. Use an if, or a small named helper with early returns.`);
-    return 1;
-  }
+  if (hits.length || risen.length) return failed(top, at, hits, risen);
   console.log(`lint-ternary: no nested ternary on a line changed since ${at.slice(0, 8)}, and no file has more than there.`);
   console.log('Files git doesn’t track aren’t checked: CI sees only committed files.');
   return 0;

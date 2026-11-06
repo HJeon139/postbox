@@ -133,7 +133,7 @@ flowchart LR
 - Every user-facing string follows the writing rules in [intent.md](intent.md).
 - No runtime dependencies without a decision recorded here.
 
-**Exceptions.** A deliberate exception to a project rule carries `lint-allow <rule>: <reason>` on its line or the line above, and a whole file can opt out of one rule with `lint-allow-file <rule>: <reason>` near its top. A reason is required, so every exception says why.
+**Exceptions.** A deliberate exception to a project rule carries `lint-allow <rule>: <reason>` on its line or the line above, and a whole file can opt out of one rule with `lint-allow-file <rule>: <reason>` near its top. A reason is required, so every exception says why. `lint-ternary` is the one lint that takes only the line-level form: `lint-allow ternary: <reason>` on the line it names or the line above. It refuses `lint-allow-file ternary`, so a file past its ceiling can’t opt out of the rule as a whole, and its failure says so (#753).
 
 **Where it stands (Stage 3).** Everything in the table runs, locally and in CI:
 - TypeScript runs in strict mode over `shared/` and `server/`; the client comes next.

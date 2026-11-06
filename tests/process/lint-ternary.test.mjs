@@ -89,7 +89,7 @@ test('lint-ternary: a new outer ternary added above an old plain one fails, thou
   git('commit', '-q', '-am', 'nest');
   const r = run(dir);
   assert.equal(r.status, 1, r.out);
-  assert.match(r.out, /^plain\.mjs: 1 nested ternary, up from 0 at the base$/m);
+  assert.match(r.out, /^plain\.mjs: 1 nested ternary, up from 0 not allowed at the base$/m);
 });
 
 test('lint-ternary: removing an old nested ternary doesn’t pay for adding a new one in the same file', () => {
@@ -180,4 +180,47 @@ test('lint-ternary: diff.noprefix in a person’s own git config doesn’t chang
   });
   assert.equal(r.status, 1, r.out);
   assert.match(r.out, /^old\.mjs:5: nested ternary on a changed line$/m);
+});
+
+// A real exception (#753): lint-allow ternary with a reason, on the line lint-ternary names or the line above, as the
+// other lints take it. Only that line-level form: a whole file can’t opt out of this rule.
+const ALLOWED = `// lint-allow ternary: the table reads best as one expression\n${NEW_TERNARY}`;
+
+test('lint-ternary: a new nested ternary with lint-allow ternary and a reason on the line above passes', () => {
+  const { dir, git } = repo();
+  write(dir, 'allowed.mjs', ALLOWED);
+  git('add', '.');
+  git('commit', '-q', '-m', 'allow');
+  const r = run(dir);
+  assert.equal(r.status, 0, r.out);
+});
+
+test('lint-ternary: a lint-allow ternary with no reason doesn’t excuse a new nested ternary', () => {
+  const { dir, git } = repo();
+  write(dir, 'allowed.mjs', `// lint-allow ternary:\n${NEW_TERNARY}`);
+  git('add', '.');
+  git('commit', '-q', '-m', 'allow');
+  const r = run(dir);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /^allowed\.mjs:2: nested ternary on a changed line$/m);
+});
+
+test('lint-ternary: lint-allow-file ternary doesn’t excuse a file, and the failure says file-level allows aren’t accepted', () => {
+  const { dir, git } = repo();
+  write(dir, 'whole.mjs', `// lint-allow-file ternary: every table here reads best as one expression\n${NEW_TERNARY}`);
+  git('add', '.');
+  git('commit', '-q', '-m', 'allow the file');
+  const r = run(dir);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /^whole\.mjs:2: nested ternary on a changed line$/m);
+  assert.match(r.out, /^whole\.mjs: lint-allow-file ternary isn’t accepted, since lint-ternary takes only a line-level lint-allow ternary: <reason>\.$/m);
+});
+
+test('lint-ternary: taking the lint-allow off an old nested ternary fails, since the base doesn’t count an allowed one', () => {
+  const { dir, git } = repo({ files: { 'kept.mjs': ALLOWED } });
+  write(dir, 'kept.mjs', `// fresh picks one of three.\n${NEW_TERNARY}`);
+  git('commit', '-q', '-am', 'drop the allow');
+  const r = run(dir);
+  assert.equal(r.status, 1, r.out);
+  assert.match(r.out, /^kept\.mjs: 1 nested ternary, up from 0 not allowed at the base$/m);
 });
