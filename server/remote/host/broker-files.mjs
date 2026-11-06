@@ -1,10 +1,11 @@
-// Files in the agent’s folder on the host (#120): show_app’s and update_app’s codePath and files, which Postbox can’t
-// read, read by the daemon’s broker before the call crosses. broker.mjs’s header says why each file is checked
+// Files in the agent’s folder on the host (#120): show_app’s and update_app’s codePath and files, and a review block’s
+// images (#780), which Postbox can’t read, read by the daemon’s broker before the call crosses. broker.mjs’s header says why each file is checked
 // twice.
 
 import { constants as fsConstants, promises as fsp } from 'node:fs';
 import { basename, resolve, sep } from 'node:path';
-import { LIMITS, limitText } from '../../../shared/limits.mjs';
+import { LIMITS, limitText, REVIEW_IMAGES } from '../../../shared/limits.mjs';
+import { carriesBlockFiles } from '../../../shared/remote-protocol.mjs';
 import { count } from './broker-state.mjs';
 
 const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
@@ -116,4 +117,47 @@ export async function inlineAppFiles(folder, args, hooks = {}) {
   }
   out.files = files;
   return { ok: true, args: out };
+}
+
+/** A block without its files, as the catalog validates it. @param {Record<string, any>} block */
+export function withoutFiles(block) {
+  const { files: _files, ...rest } = block;
+  return rest;
+}
+
+/**
+ * A review block’s files (#780), read from the agent’s folder as an app’s are, and sent as { name, path, base64 }:
+ * the path as the agent gave it, so Postbox keeps the same ref it keeps for a local agent (server/review-files.mjs).
+ * Postbox checks them again by their bytes; what’s refused here is what it would refuse without reading them.
+ * @param {string} folder @param {Record<string, any>} args @param {{ beforeOpen?: (real: string) => unknown }} [hooks]  for tests
+ * @returns {Promise<Prepared>}
+ */
+export async function inlineReviewFiles(folder, args, hooks = {}) {
+  const { files: wanted, ...block } = args.block;
+  if (block.type !== 'review') return { ok: false, text: 'Only a review block carries files: images its Markdown shows. Send this block without files.' };
+  if (!Array.isArray(wanted)) return { ok: false, text: 'files is a list: [{ name?, path }].' };
+  if (wanted.length > LIMITS.appFiles) return { ok: false, text: `A review carries up to ${LIMITS.appFiles} files.` };
+  const mib = REVIEW_IMAGES.reviewImageBytes / 1024 / 1024;
+  /** @type {{ name: string, path: string, base64: string }[]} */
+  const files = [];
+  for (const f of wanted) {
+    const path = typeof f === 'string' ? f : f?.path;
+    const name = String((typeof f === 'object' && f?.name) || basename(String(path ?? '')));
+    if (!FILE_NAME.test(name)) return { ok: false, text: `“${name}” can’t name a file: use letters, digits and - _ . (up to 64).` };
+    if (files.some((x) => x.name === name)) return { ok: false, text: `Two files are named “${name}”.` };
+    const r = await folderFile(folder, path, REVIEW_IMAGES.reviewImageBytes, `the image “${name}” (up to ${mib} MiB)`, hooks);
+    if (!r.ok) return r;
+    files.push({ name, path, base64: r.buf.toString('base64') });
+  }
+  return { ok: true, args: { ...args, block: { ...block, files } } };
+}
+
+/**
+ * How a call’s files in the agent’s folder are read on the host: an app’s, a review block’s (#780), or none.
+ * @param {string} name @param {Record<string, any>} args
+ */
+export function filesReader(name, args) {
+  if (name === 'show_app' || name === 'update_app') return inlineAppFiles;
+  if (carriesBlockFiles(name, args)) return inlineReviewFiles;
+  return null;
 }

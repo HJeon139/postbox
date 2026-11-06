@@ -7,6 +7,7 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { anchorOf, toSource, toText } from '/shared/review-comments.mjs';
 import { splitLines } from '/shared/review-diff.mjs';
+import { reviewFileKeys } from '/shared/review-files.mjs';
 import { enhanceMarkdown } from './apps.mjs';
 import { h, icon, trusted } from './dom.mjs';
 
@@ -15,14 +16,15 @@ const sources = new WeakMap();
 
 /**
  * @param {string} src  the draft
- * @param {{ id: string, done: boolean, keys: number[], composing: any, ranged: any[], threadBox: (key: any) => HTMLElement[],
+ * @param {{ item: any, threadId: string, done: boolean, keys: number[], composing: any, ranged: any[], threadBox: (key: any) => HTMLElement[],
  *   comment: (anchor: any) => void, pick: (line: number) => void }} env
- *   keys: the lines with threads or draft comments; composing: the selection being commented on, if any; ranged: the
+ *   item: the review’s item, whose attached files its images show (#780); keys: the lines with threads or draft comments; composing: the selection being commented on, if any; ranged: the
  *   threads and drafts on selections, to mark; comment: a Comment button was pressed; pick: a click chose a line
  */
 export function renderPreview(src, env) {
   const lines = splitLines(src);
-  const md = h('div.md', { html: trusted(renderMarkdown(src, { folds: false, positions: true, pageOrigin: location.origin })) });
+  const files = reviewFileKeys(env.threadId, env.item);
+  const md = h('div.md', { html: trusted(renderMarkdown(src, { folds: false, positions: true, pageOrigin: location.origin, files })) });
   // A diagram is drawn into a new element (enhanceMarkdown), so its lines go on a box around it first.
   for (const fig of md.querySelectorAll('figure.md-mermaid')) {
     const box = h('div.rv-fig', { dataset: { sl: fig.getAttribute('data-sl'), el: fig.getAttribute('data-el') } });
@@ -34,7 +36,7 @@ export function renderPreview(src, env) {
   placeThreads(md, env);
   if (!env.done) selecting(root, md, lines, env);
   mark(
-    env.id,
+    env.item.id,
     env.ranged.map((a) => rangeOf(md, lines, a)).filter((r) => r !== null),
   );
   queueMicrotask(() => enhanceMarkdown(md));

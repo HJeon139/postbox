@@ -3,7 +3,8 @@
 // from a real room, so no project’s content reaches the tester model, and the same seed gives the same room. It holds
 // three landmarks the scenarios name: a mention of @researcher as its oldest addressed item (delivery.md, phase 2), a
 // review block from @researcher near its start (bigroom.md, phase 3), and a decision whose id the run links to
-// (bigroom.md, phase 2). Its first day uses a word no later day does, for the search phase (bigroom.md, phase 4).
+// (bigroom.md, phase 2). Its first day uses a word no later day does, for the search phase (bigroom.md, phase 4), and
+// its last item is a landmark too, for paging back to the start (bigroom.md, phase 1).
 
 import { Store } from '../../server/store.mjs';
 import { buildEvent } from '../../shared/events.mjs';
@@ -108,7 +109,24 @@ export function bigRoomItems({
   const others = handles.length > 1 ? handles.slice(1) : handles;
   for (let i = items.length; i < count; i++) items.push(filler(rnd, i, at(i), others, at(i) < start + DAY_MS, count));
   addDiagrams(items, diagrams);
+  // The first day's last item, for bigroom.md phase 1's window-paged-back (#531): reading at it or above, you paged
+  // back to the room's start.
+  landmarks.firstDayLast = items.findLast((it) => it.at < start + DAY_MS).id;
   return { items, landmarks };
+}
+
+/** @type {Set<string> | null} */
+let firstDay = null;
+/**
+ * Whether an item is one of the first day's, in the room `- seed: big-room` seeds (the defaults: diagrams don't change
+ * ids or times). @param {string} id
+ */
+export function onBigRoomFirstDay(id) {
+  if (!firstDay) {
+    const { items, landmarks } = bigRoomItems();
+    firstDay = new Set(items.slice(0, items.findIndex((it) => it.id === landmarks.firstDayLast) + 1).map((it) => it.id));
+  }
+  return firstDay.has(id);
 }
 
 /**

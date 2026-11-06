@@ -20,7 +20,7 @@ import { fail, reload } from './store-retry.mjs';
 export { emptyState };
 
 const KEEP_EVENTS = 20000; // events kept in memory for reconnecting browsers
-const SNAPSHOT_EVERY = 5000; // events between snapshots
+export const SNAPSHOT_EVERY = 5000; // events between snapshots
 const RETRY_BOUND_MS = 3000; // how long Retry waits for a write still in flight
 
 export { newId }; // server/ids.mjs; its callers import it from here
