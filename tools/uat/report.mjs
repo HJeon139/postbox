@@ -122,16 +122,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
           `| ${f.severity ?? '—'} | ${f.category ?? '—'} | ${esc(f.component ?? f.check)} | ${esc(f.title)} | ${esc(String(f.evidence ?? '').slice(0, 260))} | ${f.source} (step ${f.step}) | ${f.filed ? `filed #${f.filed}` : f.duplicateOf ? `duplicate of #${f.duplicateOf}` : esc(f.verdict ?? 'not reviewed')}${f.verdictBy ? ` (${f.verdictBy})` : ''}${f.note ? `: ${esc(f.note)}` : ''} |`,
       ),
     '',
-    ...(findings.some((f) => f.verdict === 'harness')
-      ? [
-          '### The harness’s own problems',
-          '',
-          'Findings a review traced to the UAT harness, not to Postbox.',
-          '',
-          ...findings.filter((f) => f.verdict === 'harness').map((f) => `- **${esc(f.title)}.** ${esc(f.note ?? '')}`),
-          '',
-        ]
-      : []),
+    ...harnessSection(findings),
     '## Timeline',
     '',
     ...timeline.map((t) => `${t.step}. **${t.phase}.** ${t.assessment} Next: \`${JSON.stringify(t.action)}\``),
@@ -159,6 +150,20 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
   console.log(
     `\nReport: ${join(dir, 'report.md')} · ${caught.size} known issues caught again · ${findings.filter(isNew).length} new findings${findings.some((f) => f.unverified) ? ` · ${findings.filter((f) => f.unverified).length} checks not verified` : ''}`,
   );
+}
+
+/** The findings a review traced to the UAT harness, not to Postbox, as a report section, or nothing. @param {any[]} findings */
+function harnessSection(findings) {
+  const harness = findings.filter((f) => f.verdict === 'harness');
+  if (!harness.length) return [];
+  return [
+    '### The harness’s own problems',
+    '',
+    'Findings a review traced to the UAT harness, not to Postbox.',
+    '',
+    ...harness.map((f) => `- **${esc(f.title)}.** ${esc(f.note ?? '')}`),
+    '',
+  ];
 }
 
 /**
