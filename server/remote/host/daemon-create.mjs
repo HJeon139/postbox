@@ -27,7 +27,8 @@ import { askRunner as defaultAskRunner, launchRunner as defaultLaunchRunner, log
  *   logind: runner.mjs’s logindFacts, asked at each hello for the lingering warning and passed to launchRunner.
  *   uid: this user’s, which the token file must be owned by (-1 where there are no user IDs). onRemoved: `remove` has
  *   deleted ~/.postbox-remote and said `removed`, so the daemon exits. env: the daemon’s environment, which each runner
- *   inherits (read at each start, for KIRO_HOME).
+ *   inherits (read at each start, for KIRO_HOME). mono: a monotonic clock, which setting the time doesn’t move, for how
+ *   long a runner has been silent (daemon-running.mjs); now is the wall clock, for everything else.
  */
 export function createDaemon(opts) {
   const { broker, shim, ...o } = withDefaults(opts);
@@ -70,6 +71,7 @@ function withDefaults({
   home,
   version = hostVersion(),
   now = Date.now,
+  mono = () => performance.now(),
   timers = { setTimeout: (fn, ms) => setTimeout(fn, ms).unref(), clearTimeout: (t) => clearTimeout(t) },
   spawn = nodeSpawn,
   logind = logindFacts,
@@ -96,6 +98,7 @@ function withDefaults({
     home,
     version,
     now,
+    mono,
     timers,
     spawn,
     logind,

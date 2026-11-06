@@ -65,7 +65,7 @@ export const READ_CHUNK = 64 * 1024;
  *   instance: the Postbox its hello named, once it’s the driver (daemon-hello.mjs)
  * @typedef {{ stop: () => void, poke: () => void }} Follower
  * @typedef {{ since: number, pid: number, over: boolean }} Silence
- *   a runner’s silence: since its first miss, on the daemon’s clock; over once it has lasted RUNNER_SILENT_MAX_MS
+ *   a runner’s silence: since its first miss, on the daemon’s monotonic clock (mono); over once it has lasted RUNNER_SILENT_MAX_MS
  * @typedef {{ turn: string, harness: string, state: 'running' | 'ended' | 'interrupted', size: number,
  *   exit: import('../../../shared/remote-protocol.mjs').ExitRecord | null }} TurnFound
  * @typedef {{ hello?: (send: (type: string, body: Record<string, unknown>) => void) => void | Promise<void>,
@@ -82,7 +82,7 @@ export const READ_CHUNK = 64 * 1024;
 
 /**
  * createDaemon’s options (its JSDoc says what each is for).
- * @typedef {{ home: string, version?: string, now?: () => number, timers?: Timers, spawn?: any, logind?: () => import('./runner.mjs').LogindFacts,
+ * @typedef {{ home: string, version?: string, now?: () => number, mono?: () => number, timers?: Timers, spawn?: any, logind?: () => import('./runner.mjs').LogindFacts,
  *   launchRunner?: LaunchRunner, askRunner?: AskRunner, proc?: Proc, writeRunner?: WriteRunner,
  *   findPrograms?: (o: { home: string, settings: Record<string, any> }) => Promise<import('./programs.mjs').Programs>,
  *   kill?: (pid: number, signal: NodeJS.Signals) => void, log?: (line: string) => void, onIdle?: () => void,

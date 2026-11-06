@@ -2,7 +2,8 @@
 // (daemon-scan.mjs) alike. Its runner answering `who` is the first look. A runner can miss that answer while it’s still
 // at work (stopped for a moment, its event loop held up), so a miss alone doesn’t end the turn: while runner.json still
 // names a live process of this boot (proc.mjs’s sameProcess, as cleanup and Stop judge it), the turn runs on, until it
-// has been silent for RUNNER_SILENT_MAX_MS. The silence is kept per turn on the daemon’s clock, shared by every look.
+// has been silent for RUNNER_SILENT_MAX_MS. The silence is kept per turn, shared by every look, and timed on the daemon’s
+// monotonic clock (d.mono), so setting the wall clock neither stretches the ceiling nor cuts it short.
 
 import { TURN_FILES, validateRunnerRecord } from '../../../shared/remote-protocol.mjs';
 import { RUNNER_SILENT_MAX_MS } from './daemon-constants.mjs';
@@ -44,7 +45,7 @@ function answered(d, turn) {
   const silence = d.silentSince.get(turn);
   if (!silence) return;
   d.silentSince.delete(turn);
-  d.log(`Turn ${turn}’s runner (process ${silence.pid}) answered again after ${seconds(d.now() - silence.since)} s of silence.`);
+  d.log(`Turn ${turn}’s runner (process ${silence.pid}) answered again after ${seconds(d.mono() - silence.since)} s of silence.`);
 }
 
 /** The runner’s process is gone: a silence it was in ends, and so does the turn. @param {Daemon} d @param {string} turn */
@@ -52,7 +53,7 @@ function processGone(d, turn) {
   const silence = d.silentSince.get(turn);
   if (!silence) return;
   d.silentSince.delete(turn);
-  d.log(`Turn ${turn}’s runner (process ${silence.pid}) is gone after ${seconds(d.now() - silence.since)} s of silence.`);
+  d.log(`Turn ${turn}’s runner (process ${silence.pid}) is gone after ${seconds(d.mono() - silence.since)} s of silence.`);
 }
 
 /**
@@ -62,7 +63,7 @@ function processGone(d, turn) {
  */
 function withinCeiling(d, turn, pid) {
   const silence = d.silentSince.get(turn) ?? startSilence(d, turn, pid);
-  if (d.now() - silence.since < RUNNER_SILENT_MAX_MS) return true;
+  if (d.mono() - silence.since < RUNNER_SILENT_MAX_MS) return true;
   if (!silence.over) {
     silence.over = true;
     d.log(`Turn ${turn}’s runner (process ${pid}) hasn’t answered for ${seconds(RUNNER_SILENT_MAX_MS)} s; the turn is ended as interrupted.`);
@@ -73,7 +74,7 @@ function withinCeiling(d, turn, pid) {
 /** @param {Daemon} d @param {string} turn @param {number} pid @returns {Silence} */
 function startSilence(d, turn, pid) {
   /** @type {Silence} */
-  const silence = { since: d.now(), pid, over: false };
+  const silence = { since: d.mono(), pid, over: false };
   d.silentSince.set(turn, silence);
   d.log(
     `Turn ${turn}’s runner (process ${pid}) didn’t answer, but its process is still running; it’s kept running for up to ${seconds(RUNNER_SILENT_MAX_MS)} s.`,
