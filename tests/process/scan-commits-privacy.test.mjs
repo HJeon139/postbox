@@ -171,6 +171,19 @@ test('a rename to a name that holds a home slug fails, though it changes no line
   for (const part of ['alice', 'Users']) assert.ok(!err.includes(part), `the log holds “${part}”`);
 });
 
+test('a commit that deletes a file whose name is private passes, as the name was added before the range (#785)', async () => {
+  const dir = await repo();
+  const named = `${['jdoe', 'corp.com'].join('@')}.txt`;
+  git(dir, 'switch', '-q', 'main');
+  await commit(dir, named, '');
+  git(dir, 'switch', '-q', '-C', 'work');
+  git(dir, 'rm', '-q', named);
+  git(dir, 'commit', '-q', '-m', 'remove a note');
+  const { status, out, err } = scan(dir, 'main..HEAD');
+  assert.equal(status, 0, err);
+  assert.match(out, /1 commit added 0 lines in 0 files, none of them private/);
+});
+
 test('an empty range passes, and says it had no commits', async () => {
   const dir = await repo();
   const { status, out } = scan(dir, 'main..HEAD');

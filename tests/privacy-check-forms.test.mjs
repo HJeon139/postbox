@@ -116,7 +116,7 @@ test('privacy checker flags a bare account key before “=” only where TOML pu
   assert.deepEqual(checkContentPrivacy(`[account]\n  ${AUTH_MODE} = "chatgpt"`), ['account field at line 2'], 'an indented TOML key');
   assert.deepEqual(checkContentPrivacy(`account = { ${AUTH_MODE} = "chatgpt" }`), ['account field at line 1'], 'a TOML inline table');
   assert.deepEqual(checkContentPrivacy(`account = { x = 1, ${AUTH_MODE} = "chatgpt" }`), ['account field at line 1'], 'after a comma');
-  for (const text of [`const ${PLAN_TYPE} = account.plan;`, `let ${AUTH_MODE} = 'x';`, `this.${PLAN_TYPE} = value;`]) {
+  for (const text of [`const ${PLAN_TYPE} = account.plan;`, `let ${AUTH_MODE} = 'x';`, `this.${PLAN_TYPE} = value;`, `${PLAN_TYPE} == 'pro'`]) {
     assert.deepEqual(checkContentPrivacy(text), [], text);
   }
 });
