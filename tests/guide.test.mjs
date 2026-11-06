@@ -177,3 +177,9 @@ test('a Codex agent’s guide says its turn ends when it replies, to finish a ch
   for (const backend of ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli'])
     assert.doesNotMatch(agentGuide({ persona: { handle: 'x', backend }, handles: ['x'] }), /When your turn ends/, backend);
 });
+
+test('#838 the guide shows an option’s shape for a choice and a form’s select, and that it takes only id and label', () => {
+  const g = guideText();
+  assert.match(g, /- choice: options \[\{ id, label \}\] \(1–\d+; only id and label: put an explanation in the label or the prompt\)/);
+  assert.match(g, /options\? \[\{ id, label \}\] \(select only, up to \d+\)/);
+});
