@@ -121,6 +121,14 @@ test('a recording’s placeholder home is allowed only in its own joined deltas,
   assert.deepEqual(checkFilePrivacy('tests/fixtures/x.jsonl', split(['', 'Users', 'postbox', 'x'].join('/'))), ['home path in the deltas joined from line 1']);
 });
 
+test('a recording’s placeholder home is allowed in its joined deltas only as a home, not as another kind (#784)', () => {
+  const delta = (part) => JSON.stringify({ type: 'stream_event', event: { index: 1, delta: { type: 'text_delta', text: part } }, api_message_id: 'm' });
+  const named = json({ name: `claude.ai ${['Users', 'postbox'].join('/')}` }).slice(1, -1);
+  const parts = [named.slice(0, 11), named.slice(11, 21), named.slice(21)];
+  const allowedIn = 'tests/fixtures/claude-code/permission-allow.jsonl';
+  assert.deepEqual(checkFilePrivacy(allowedIn, parts.map(delta).join('\n')), ['connector name in the deltas joined from line 1']);
+});
+
 test('an installation id of zeros with white space in it is the scrubbed placeholder', () => {
   assert.deepEqual(checkContentPrivacy(json({ installationId: '0000 0000' })), []);
   assert.deepEqual(checkContentPrivacy(json({ installationId: '0000 0001' })), ['installationId at line 1']);
