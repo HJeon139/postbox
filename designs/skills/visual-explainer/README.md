@@ -4,7 +4,7 @@ A draft of the skill [#207](https://github.com/HJeon139/postbox/issues/207) prop
 
 | File | What it holds |
 |---|---|
-| [SKILL.md](SKILL.md) | The house rules (VE1 to VE9) and the run, from brief to report |
+| [SKILL.md](SKILL.md) | The house rules (VE1 to VE12) and the run, from brief to report |
 | [references/brief.md](references/brief.md) | The one-idea brief an agent writes before drawing |
 | [references/shapes.md](references/shapes.md) | Content shapes, the forms each allows and refuses, and what position means in each |
 | [references/critique.md](references/critique.md) | The floor (verify and refuse), the takeaway test and the report |
@@ -35,7 +35,7 @@ It adapts the structure of two open-source design skills. No text is copied from
 | A context file every command reads | [impeccable](https://github.com/pbakaus/impeccable) (Apache 2.0), `PRODUCT.md` | The brief |
 | A floor of “verify” and “refuse” lines, each with a rule id | impeccable, `craft-floor.md` | The floor in the critique |
 | Two isolated assessments that don’t see each other, then a report ranked P0 to P3 and one question | impeccable, `critique.md` | The floor and the takeaway test, kept apart |
-| A short list of house rules that win over the long references | [taste-skill](https://github.com/leonxlnx/taste-skill) (MIT), `SKILL.md` | VE1 to VE9 |
+| A short list of house rules that win over the long references | [taste-skill](https://github.com/leonxlnx/taste-skill) (MIT), `SKILL.md` | VE1 to VE12 |
 | Classify first; the class decides what’s allowed | taste-skill, the kind-of-business table | The shape table |
 | Write the words before the picture | taste-skill, “Write all the copy first” | Title and labels before marks |
 | Diagrams from a small spec, with one-to-three-word labels and a node limit (“crowded means it should be a list”) | taste-skill, `references/diagrams.md` | VE3, VE7; a spec-driven kit is next |
@@ -52,12 +52,15 @@ The principles behind the rules: [Larkin & Simon 1987](https://mechanism.ucsd.ed
   - Starter briefs: the baselines landed on compound interest, partly on the bill, and missed the disguised archetypes. With the skill and VE8 and VE9, all three landed or mostly landed.
   - Paper briefs: on two of three papers the agent chose a different idea from the brief’s, and the reader recovered the agent’s idea. A paper has no single idea, so the paper scenarios should ask a specific question.
   - These are development numbers, not results: one run per condition, and VE8, VE9 and the shape table’s poles row came from runs on these same briefs. Random recent papers, with the skill frozen, are the held-out test.
+- **Calibrated, on November 6, 2026:** the maintainer judged 20 of those first visuals blind against their briefs, then saw the takeaway test’s grades. They agreed exactly on 8 and within one step on 15 (quadratic weighted κ 0.27). The test was more lenient on 9: it passed visuals whose words stated the idea, and missed text in boxes, missing relationships and unreadable labels. The maintainer rated the with-skill visuals 1.7 on a 0 to 3 scale against 0.9 for the others; the test, 1.9 against 1.5. Their notes became VE10 to VE12 and the shape table’s “What good looks like”.
 - **Not done:**
-  - The critique hasn’t been compared with a person’s verdicts.
+  - The takeaway test, now on a text-hidden screenshot with the floor’s new lines, hasn’t been rerun against the maintainer’s verdicts. Until it agrees about as well as people agree with each other (κ about 0.45 to 0.6), it informs a person’s judgment and doesn’t replace it.
+  - No run has used VE10 to VE12 yet.
   - The vaccine-trial brief’s case counts are unchecked (the brief says so).
   - The countable floor lines aren’t in Postbox’s app check yet: agents shipped visuals with labels the check had flagged as overlapping or too small.
 - **Next:**
-  1. Compare the takeaway test with the person’s own verdicts on the runs so far. The critique is ready when they agree.
-  2. The held-out test: random recent papers through the `visualpaper` scenario, with the skill unchanged.
-  3. A spec-driven diagram kit for the shapes, so agents fill in labels instead of drawing boxes ([#211](https://github.com/HJeon139/postbox/issues/211)).
-  4. The countable floor lines as checks in Postbox’s pre-display app check.
+  1. Rerun the takeaway test, text-hidden, on the same 20 visuals and compare it with the maintainer’s verdicts again.
+  2. The countable floor lines (text in boxes, overlap, size, contrast, first-view fit) as checks in Postbox’s pre-display app check that block a version, measured from the page, with the offending elements returned to the author ([#95](https://github.com/HJeon139/postbox/issues/95)).
+  3. Rerun the development set with VE10 to VE12.
+  4. The held-out test: random recent papers through the `visualpaper` scenario, each with a specific question, the skill unchanged, three runs per condition.
+  5. A spec-driven diagram kit for the shapes, so agents fill in labels instead of drawing boxes ([#211](https://github.com/HJeon139/postbox/issues/211)).

@@ -14,7 +14,7 @@ A visual is good when a reader who sees only the picture comes away with the ide
 
 ## House rules
 
-These win over everything else here, and over your own habits. Each has an id that a check or a critique can cite. VE8 and VE9 came from the first UAT runs (November 6, 2026): every app the skill produced cut its idea off below the first screen, and none drew how a step moves the outcome.
+These win over everything else here, and over your own habits. Each has an id that a check or a critique can cite. VE8 and VE9 came from the first UAT runs (November 6, 2026): every app the skill produced cut its idea off below the first screen, and none drew how a step moves the outcome. VE10 to VE12 came from the maintainer’s blind verdicts on 20 of those visuals the same day: every diagram of labeled boxes failed, charts of a fixed answer only partly landed, and unreadable text failed whatever else was good.
 
 - **VE1. One visual, one idea, and the title says it.** The title is the finding (“Two checks, run by two teams”), never the topic (“Book flow”).
 - **VE2. Name the content’s shape before you pick a form.** Use a form that [references/shapes.md](references/shapes.md) allows for that shape, and none it refuses.
@@ -22,9 +22,12 @@ These win over everything else here, and over your own habits. Each has an id th
 - **VE4. Draw from the real facts, and mark what you invented.** Every number and every part comes from the brief’s facts. A toy model, an example value or your own reading is labeled as such where the reader looks.
 - **VE5. The table test.** If the visual would lose nothing as a table or a list, it isn’t a visual yet: redraw it, or use the table.
 - **VE6. Motion only for change.** Animate only something that changes over time in the subject itself, and give the reader a way to pause or step it.
-- **VE7. Crowded means it should be a list.** About 12 parts at most in one view. More than that is a sign to split the idea, or to show an overview with detail on demand.
+- **VE7. Crowded means it should be a list.** About 12 parts at most in one view. More than that is a sign to split the idea, or to show an overview with detail on demand. Cut every mark that doesn’t serve the one idea: one idea at a time beats everything at once.
 - **VE8. The whole idea fits the first view.** At 1000 × 680, without scrolling, the reader sees the title and every part the idea depends on: all the poles, all the branches, both ends of the comparison. The picture comes first; controls, rule lists and practice go beside it or below it. If the idea doesn’t fit, the picture is too detailed: show less, not smaller (labels stay at 12 px or more).
 - **VE9. Draw the mechanism, not only the outcome.** When outcomes come from steps that add up (choices, rounds, forces, years), draw one step and how steps combine, not only where they end: an arrow per step, a path from start to end, a before and after. A map of end points answers “where”, and the reader asked “how”.
+- **VE10. Draw the things, not boxes with their names.** A diagram of labeled boxes and arrows fails, however tidy, and a Mermaid flowchart is one: readers now skip them. Draw what the things are or do: an icon or a small drawing for each part, a cutaway or teardown of a mechanism, a route on a map, marks whose size, position and color carry the values. A box may group parts, never stand in for one. Reach for the look of an infographic or a textbook illustration ([references/shapes.md](references/shapes.md), “What good looks like”).
+- **VE11. When the idea is how one thing depends on another, let the reader change it.** Give the visual one control for a variable the idea turns on (the rate, the starting amount, the bias), and make the picture show what moves with it. A tree, a map, a cycle or a cutaway with no such variable needs no control (VE6 still limits motion to what changes). A chart of one fixed answer shows the answer, not the relationship. Where it helps, ask the reader to predict before they press Play.
+- **VE12. Unreadable is a miss.** Text with contrast under 4.5:1, labels that overlap or are cut off, text under 12 px, and raw TeX each fail the visual, whatever else is good. Fix them before the person sees it; if you can’t, say so, and don’t call it done.
 
 ## The run
 

@@ -30,4 +30,4 @@ The library flow from the [#206 field notes, Nov 4](https://github.com/HJeon139/
 - **Must show:** the two checks as separate; both paths reaching the shelf; the reader’s path starting there.
 - **Traps:** merging the two checks into one “checks” step, though different teams run them.
 
-The first try at this ([the field notes’ round 1](https://github.com/HJeon139/postbox/issues/206#issuecomment-6644256875)) wrote each fact as a sentence in a box. The accepted version drew each thing as an icon with a two-word name, gave each path its own line, and put the prose in the caption.
+The first try at this ([the field notes’ round 1](https://github.com/HJeon139/postbox/issues/206#issuecomment-6644256875)) wrote each fact as a sentence in a box. The version accepted then drew each thing as an icon with a two-word name, gave each path its own line, and put the prose in the caption. It was still boxes with labels, so it would fail VE10 today: a drawing of the two routes, the cart from the publisher and the box from a donor reaching the shelf, would carry the same brief.
