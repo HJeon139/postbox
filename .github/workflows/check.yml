@@ -113,15 +113,7 @@ jobs:
     needs: [check, changes]
     if: needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
-    # Playwright’s own image, with its Chromium and the system libraries it needs already in it, at the version
-    # package.json pins: keep the two the same, or the specs can’t find their browser. `npx playwright install
-    # --with-deps` fetched those libraries from Ubuntu’s mirror on every job, and on 6 November that took 578 to 1,113 s
-    # in a third of the shards, one past the 20-minute limit before a spec ran. As user 1001, the runner’s, not root,
-    # so a spec that a file’s permissions should refuse isn’t let through.
-    container:
-      image: mcr.microsoft.com/playwright:v1.64.1-noble
-      options: --user 1001
-    # A third of a pass is about four minutes of specs, after about one of setup.
+    # A third of a pass is about four minutes of specs, after about two of setup.
     timeout-minutes: 20
     strategy:
       # A failing shard doesn’t cancel the others, so one run reports every failure.
@@ -136,6 +128,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
+      - name: Install Playwright’s Chromium
+        run: npx playwright install --with-deps chromium
       - name: Browser specs
         # Half the demo’s groups, or a third of the other specs.
         run: |
@@ -191,10 +185,6 @@ jobs:
     name: Play the demo and screenshot every scene
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    # The same image as the browser specs, for the same reason.
-    container:
-      image: mcr.microsoft.com/playwright:v1.64.1-noble
-      options: --user 1001
     needs: check
     timeout-minutes: 20
     continue-on-error: true
@@ -205,6 +195,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
+      - name: Install Playwright’s Chromium
+        run: npx playwright install --with-deps chromium
       - name: Play the demo and screenshot every scene
         run: node tools/shoot-app.mjs
       # About 40 MB a run, kept 5 days. A run that broke partway uploads what it took.
