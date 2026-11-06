@@ -13,7 +13,8 @@
  * - UTF-16 text, read as UTF-8 with a zero byte after each ASCII character;
  * - a Bearer token shorter than 20 characters, and a token under another scheme, such as Basic;
  * - a uid under another key, such as “user_id”, and account data under keys other than the six account fields;
- * - a connector a person named after one of claude.ai’s directory connectors.
+ * - a connector a person named after one of claude.ai’s directory connectors;
+ * - a connector’s tool ids, “mcp__claude_ai_<name>__<tool>”, where its name shows as surely as in mcp_servers.
  */
 
 import { joinedDeltas } from './joined-deltas.mjs';
