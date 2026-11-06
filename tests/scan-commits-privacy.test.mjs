@@ -29,6 +29,24 @@ test('a home path a commit adds is reported with its commit and file', () => {
   assert.equal(formatFinding(result.findings[0]), `abcdef1 notes.md: home path: ${REPORTED_HOME}`);
 });
 
+/** A made-up address at a domain that isn’t reserved for examples, for a file’s name. */
+const ADDRESS = ['jdoe', 'corp.com'].join('@');
+
+test('a private name of a file a commit adds is reported, though what the file holds is clean (#785)', () => {
+  const sha = 'abcdef1234567890';
+  const result = scanCommits('main..HEAD', fakeGit({ [sha]: diff(newFile(`x/${ADDRESS}.txt`, ['nothing private'])) }));
+  assert.deepEqual(result.findings, [{ sha, path: `x/${ADDRESS}.txt`, violation: `email: ${ADDRESS}.txt (file name)` }]);
+  const named = `${REPORTED_HOME}/notes.md`;
+  const home = scanCommits('main..HEAD', fakeGit({ [sha]: diff(newFile(named, ['nothing private'])) }));
+  assert.deepEqual(home.findings, [{ sha, path: named, violation: `home path: ${REPORTED_HOME} (file name)` }]);
+});
+
+test('a binary file’s private name is reported, though its bytes are skipped (#785)', () => {
+  const result = scanCommits('main..HEAD', fakeGit({ aaaaaaa1: diff(newFile(`${ADDRESS}.png`, ['\0PNG'])) }));
+  assert.deepEqual(result.findings, [{ sha: 'aaaaaaa1', path: `${ADDRESS}.png`, violation: `email: ${ADDRESS}.png (file name)` }]);
+  assert.equal(result.binary, 1);
+});
+
 test('a private string added in one commit and removed in a later one is still reported', () => {
   const history = {
     aaaaaaa1: diff(newFile('notes.md', [HOME_PATH])),
