@@ -192,7 +192,8 @@ export const isPublishingTool = (name) => RULES.some((r) => r.test(String(name))
  *   match: ask beats the allow rule for mcp__postbox.
  * - gh commands that file or change issues, pull requests and releases;
  * - git push, which sends commits outside. Without it, auto mode’s classifier judged each push, and refused one the
- *   person had just approved (#296); with it, each comes to Postbox, where their request can let it through.
+ *   person had just approved (#296); with it, each comes to Postbox, where their request can let it through. A push
+ *   behind git’s options before the subcommand, or after config set on the command line, comes too (#830).
  * tests/claude-code.test.mjs checks that none matches a Postbox tool, and which real tool names they catch.
  */
 const WRITE_VERBS = ['write', 'create', 'edit', 'upload', 'append', 'insert', 'delete', 'remove', 'patch', 'move', 'rename', 'copy', 'add', 'put', 'set'];
@@ -236,6 +237,11 @@ export const WRITE_TOOLS = [
   ...UPDATE_TARGETS.flatMap((t) => [`mcp__*__update_${t}`, `mcp__*__update${t.split('_').map(word).join('')}`]),
   ...['issue create', 'issue comment', 'issue edit', 'pr create', 'pr comment', 'pr edit', 'pr review', 'release create'].map((c) => `Bash(gh ${c}:*)`),
   'Bash(git push:*)',
+  // A push behind git’s own options (git -C dir push, git --no-pager push), and any config set on the command line,
+  // which can make another word a push (git -c alias.p=push p): each still sends commits outside (#830).
+  'Bash(git -* push *)',
+  'Bash(git -c *)',
+  'Bash(git --config-env*)',
 ];
 
 /** The ask rules for writes outside Postbox, for a persona’s turn: none in bypass, which runs everything. */
