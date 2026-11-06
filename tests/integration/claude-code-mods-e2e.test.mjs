@@ -17,7 +17,10 @@
 //
 // The fixture’s folder is removed when the file ends (tempDir), and on Ctrl-C or SIGTERM (onKill). A run killed with
 // SIGKILL leaves it in the temp folder; under `npm run check` that’s the run’s own folder, which the next run sweeps
-// (tools/gate-tmp.mjs). It holds no secret either way: reachModel copies none.
+// (tools/gate-tmp.mjs). It can hold a secret: reachModel copies `apiKeyHelper` and `awsCredentialExport` word for word,
+// and either can name a key inline. The copy is mode 0600 in a 0700 temp folder, readable by the person only, and
+// removed with it. That’s acceptable for a test the person opts into on their own computer, whose settings already hold
+// the same commands at the same permissions or looser.
 //
 // The push names a refspec, so request-floor.mjs refuses it before the write judge: no Haiku call, whatever the
 // message says (write-intent.mjs, requestedCall).
@@ -54,11 +57,12 @@ const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=Postbox e2e'
 
 // How the person's Claude Code reaches the model, and nothing else, copied from their user settings: the Agent SDK's
 // own bundled Claude Code doesn't get the setup a wrapper on PATH adds, so without these its turn on Bedrock never
-// answers (two runs on 6 Nov waited out the 240 s with nothing in the room). Only an allowlist is copied, so no secret
-// lands in the fixture, and nothing that changes what's tested (CLAUDE_CONFIG_DIR would move the user settings away
-// from the fixture's HOME, so the user hook would never load and its check would pass on no evidence). The top-level
-// keys name commands (a credential export, an auth refresh, a key helper) that the person's own claude already runs;
-// the turn runs them the same way. Hooks, permissions and anything named like a key, secret or token never are.
+// answers (two runs on 6 Nov waited out the 240 s with nothing in the room). Only an allowlist is copied, so no env
+// value named like a secret lands in the fixture, and nothing that changes what's tested (CLAUDE_CONFIG_DIR would move
+// the user settings away from the fixture's HOME, so the user hook would never load and its check would pass on no
+// evidence). The top-level keys name commands (a credential export, an auth refresh, a key helper) that the person's
+// own claude already runs; the turn runs them the same way. Hooks, permissions and anything named like a key, secret or
+// token never are.
 const MODEL_ENV =
   /^(AWS_REGION|AWS_PROFILE|AWS_DEFAULT_REGION|CLAUDE_CODE_USE_BEDROCK|ANTHROPIC_MODEL|ANTHROPIC_SMALL_FAST_MODEL|ANTHROPIC_DEFAULT_[A-Z0-9_]+_MODEL|ANTHROPIC_BEDROCK_BASE_URL)$/;
 const MODEL_KEYS = ['awsCredentialExport', 'awsAuthRefresh', 'modelOverrides', 'apiKeyHelper'];
