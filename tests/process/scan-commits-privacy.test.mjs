@@ -148,6 +148,29 @@ test('a rename that changes no lines passes', async () => {
   assert.match(out, /1 commit added 0 lines in 0 files/);
 });
 
+test('a commit that adds an empty file named after an address fails, though it adds no line (#785)', async () => {
+  const dir = await repo();
+  const address = ['jdoe', 'corp.com'].join('@');
+  const sha = await commit(dir, `${address}.txt`, '', 'add an empty note');
+  const { status, err } = scan(dir, 'main..HEAD');
+  assert.equal(status, 1, err);
+  assert.match(err, new RegExp(`^${sha} a file’s name: email in the file name$`, 'm'));
+  for (const part of ['jdoe', 'corp']) assert.ok(!err.includes(part), `the log holds “${part}”`);
+});
+
+test('a rename to a name that holds a home slug fails, though it changes no line (#785)', async () => {
+  const dir = await repo();
+  const named = `notes/${['', 'Users', 'alice', 'x'].join('-')}.txt`;
+  await mkdir(join(dir, 'notes'));
+  git(dir, 'mv', 'a.txt', named);
+  git(dir, 'commit', '-q', '-m', 'rename');
+  const sha = git(dir, 'rev-parse', '--short=7', 'HEAD');
+  const { status, err } = scan(dir, 'main..HEAD');
+  assert.equal(status, 1, err);
+  assert.match(err, new RegExp(`^${sha} a file’s name: home path in the file name$`, 'm'));
+  for (const part of ['alice', 'Users']) assert.ok(!err.includes(part), `the log holds “${part}”`);
+});
+
 test('an empty range passes, and says it had no commits', async () => {
   const dir = await repo();
   const { status, out } = scan(dir, 'main..HEAD');

@@ -46,6 +46,7 @@ test('a finding in a file names its kind and line, and prints no part of the val
       commits: () => ['fefefe0123456789'],
       show: () => diff(newFile('notes.md', ['clean', `see ${text}`])),
       message: () => 'x\n',
+      names: () => [],
     });
     assert.equal(result.findings.length > 0, true, `${kind} is found`);
     for (const finding of result.findings) {
@@ -57,7 +58,12 @@ test('a finding in a file names its kind and line, and prints no part of the val
 
 test('a finding in a commit’s message, or in a file’s name, prints no part of the value either (#784)', () => {
   const value = SECRETS.email.text;
-  const git = { commits: () => ['fefefe0123456789'], show: () => diff(newFile(`x/${value}.txt`, ['clean'])), message: () => `x\n\nSeen-by: ${value}\n` };
+  const git = {
+    commits: () => ['fefefe0123456789'],
+    show: () => diff(newFile(`x/${value}.txt`, ['clean'])),
+    message: () => `x\n\nSeen-by: ${value}\n`,
+    names: () => [],
+  };
   const printed = scanCommits('main..HEAD', git).findings.map(formatFinding);
   assert.equal(printed.length, 2);
   for (const line of printed) holdsNone(line, value, 'email');
@@ -81,7 +87,7 @@ test('a finding in a commit names the line in the file, not its place among the 
     '+clean',
     `+${SECRETS.email.text}`,
   ];
-  const git = { commits: () => ['fefefe0123456789'], show: () => diff(hunk), message: () => 'x\n' };
+  const git = { commits: () => ['fefefe0123456789'], show: () => diff(hunk), message: () => 'x\n', names: () => [] };
   assert.deepEqual(scanCommits('main..HEAD', git).findings.map(formatFinding), ['fefefe0 n.md: email at line 11']);
 });
 
@@ -91,7 +97,7 @@ test('a value split across a stream’s deltas names the stream’s first line i
     JSON.stringify({ type: 'stream_event', event: { index: 1, delta: { type: 'input_json_delta', partial_json: part } }, api_message_id: 'm' });
   const hunk = ['diff --git a/r.jsonl b/r.jsonl', 'index 814f4a4..e69de29 100644', '--- a/r.jsonl', '+++ b/r.jsonl', '@@ -4,0 +5,2 @@'];
   const lines = [slug.slice(0, 6), slug.slice(6)].map((part) => `+${delta(part)}`);
-  const git = { commits: () => ['fefefe0123456789'], show: () => diff([...hunk, ...lines]), message: () => 'x\n' };
+  const git = { commits: () => ['fefefe0123456789'], show: () => diff([...hunk, ...lines]), message: () => 'x\n', names: () => [] };
   assert.deepEqual(scanCommits('main..HEAD', git).findings.map(formatFinding), ['fefefe0 r.jsonl: home path in the deltas joined from line 5']);
 });
 
@@ -99,7 +105,7 @@ test('a file whose name is private prints no part of its name in any of its find
   const name = `n-${SECRETS.email.text}.md`;
   const home = SECRETS['home path'].text;
   const lines = [`mail ${SECRETS.email.text}`, home];
-  const git = { commits: () => ['fefefe0123456789'], show: () => diff(newFile(name, lines)), message: () => 'x\n' };
+  const git = { commits: () => ['fefefe0123456789'], show: () => diff(newFile(name, lines)), message: () => 'x\n', names: () => [] };
   const printed = scanCommits('main..HEAD', git).findings.map(formatFinding);
   const where = 'fefefe0 a file’s name';
   assert.deepEqual(printed, [`${where}: email in the file name`, `${where}: home path at line 2`, `${where}: email at line 1`]);

@@ -11,12 +11,16 @@ import { diff, newBinary, newFile, removedLine } from './diff-fixture.mjs';
 const HOME = ['', 'Users', 'alice'].join('/');
 const HOME_PATH = `${HOME}/x`;
 
-/** A git reader over commits given as { sha: diff text }, oldest first, with messages given as { sha: message }. */
-function fakeGit(history, messages = {}) {
+/**
+ * A git reader over commits given as { sha: diff text }, oldest first, with messages given as { sha: message }, and the
+ * paths each adds, copies or renames given as { sha: paths }.
+ */
+function fakeGit(history, messages = {}, names = {}) {
   return {
     commits: () => Object.keys(history),
     show: (sha) => history[sha],
     message: (sha) => messages[sha] ?? `change ${sha}\n`,
+    names: (sha) => names[sha] ?? [],
   };
 }
 
@@ -38,6 +42,14 @@ test('a private name of a file a commit adds is reported, though what the file h
   const named = `${HOME.slice(1)}/notes.md`;
   const home = scanCommits('main..HEAD', fakeGit({ [sha]: diff(newFile(named, ['nothing private'])) }));
   assert.deepEqual(home.findings, [{ sha, path: named, violation: 'home path in the file name' }]);
+});
+
+test('a private name of a file a commit adds empty, or renames, is reported, though it adds no line (#785)', () => {
+  const sha = 'abcdef1234567890';
+  const names = { [sha]: [`x/${ADDRESS}.txt`, 'clean.txt'] };
+  const result = scanCommits('main..HEAD', fakeGit({ [sha]: '' }, {}, names));
+  assert.deepEqual(result.findings, [{ sha, path: `x/${ADDRESS}.txt`, violation: 'email in the file name' }]);
+  assert.deepEqual([result.files, result.lines], [0, 0], 'no file’s text was read');
 });
 
 test('a binary file’s private name is reported, though its bytes are skipped (#785)', () => {
