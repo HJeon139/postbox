@@ -153,6 +153,11 @@ When a defect is filed from a run, add a check for it here if it can be caught d
   - How a bill becomes law: [with the skill](scenarios/visualskill-bill.md), [baseline](scenarios/visualskill-bill-base.md).
   - Spore archetypes, the hard brief (rules whose true shape is hidden): [with the skill](scenarios/visualskill-spore.md), [baseline](scenarios/visualskill-spore-base.md).
   - The same brief disguised, with every name drawn at random and neutral scenario, project and conversation names, so the agent can’t recall the answer: [with the skill](scenarios/trial-c1.md), [baseline](scenarios/trial-c2.md).
+- **Everyday visuals** ([#206](https://github.com/HJeon139/postbox/issues/206)): the same judging, on what people bring to Postbox rather than an idea in the message: their own data and their own code. `- files: <name>` copies a folder of [fixtures/](fixtures/) into the project folder before Postbox starts (`tools/uat/fixtures.mjs`). Each brief (`designs/skills/visual-explainer/briefs/`) runs with the skill and as a baseline. The data briefs check that a plain chart still lands where the facts are numbers; the code brief is the hardest test of drawing what happens rather than a box per file.
+  - A home budget, two years of spending by category: [with the skill](scenarios/everyday-budget.md), [baseline](scenarios/everyday-budget-base.md).
+  - CI test times that got slow: [with the skill](scenarios/everyday-ci.md), [baseline](scenarios/everyday-ci-base.md).
+  - A book collection about to be indexed for search: [with the skill](scenarios/everyday-shelf.md), [baseline](scenarios/everyday-shelf-base.md).
+  - How a small API saves an item: [with the skill](scenarios/everyday-pantry.md), [baseline](scenarios/everyday-pantry-base.md).
 - M1’s exit check ([#64](https://github.com/HJeon139/postbox/issues/64)), below:
   - [Wiki search: picking an approach](scenarios/wikisearch.md): a question with several reasonable answers
   - [Launch announcement: a draft to approve](scenarios/announcement.md)
