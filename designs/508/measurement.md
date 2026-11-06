@@ -29,12 +29,12 @@ Each size had 200 keys × 3 runs, 600 keys in all. In every run below, every key
 | Pass | Commit | Load average at start | 1× p95 | 4× p95 (ratio) | 10× p95 (ratio) | PF-1 |
 |---|---|---|---|---|---|---|
 | First before run, 17:55 UTC | `ee5fa4d5` | 3.95 | 40.0 ms | 136.0 ms (3.40) | 336.0 ms (8.40) | fail |
-| Before, 5 Nov 19:50 UTC | `a5d2a0f7` | 10.90 | 32.0 ms | 136.0 ms (4.25) | 344.0 ms (10.75) | fail |
-| After #712b, 5 Nov 19:57 UTC | `2b6d6358` | 5.12 | 32.0 ms | 136.0 ms (4.25) | 376.0 ms (11.75) | fail |
+| Before, 6 Nov 00:10 UTC | `a5d2a0f7` | 17.43 | 56.0 ms | 176.0 ms (3.14) | 352.0 ms (6.29) | fail |
+| After #712b, 6 Nov 00:21 UTC | `2b6d6358` | 16.76 | 32.0 ms | 128.0 ms (4.00) | 344.0 ms (10.75) | fail |
 
-The p95 figures are Event Timing’s. The tool’s own next-frame timer agrees with Event Timing within 4% at every size: 346.5 ms before and 378.4 ms after at 10×.
+The p95 figures are Event Timing’s. These two passes ran with the tool’s calibration key, so each run first proved that Event Timing measured this composer, and each pass recorded its conditions: headless, a 1280×900 window at device scale 1, and the load at its start and end (3.91 and 3.60 at the end). The tool’s own next-frame timer agrees with Event Timing within 4% at every size: 357.0 ms before and 346.7 ms after at 10×.
 
-**#712b doesn’t change PF-1, as expected.** The time to the next frame in a long room goes on the page’s style and layout over every item it draws, which is #712a’s part. Event Timing reports in 8 ms steps. At 10× this pair differs by four steps, 344 ms against 376 ms, and the next-frame timer agrees; the earlier pair differed by one step. Two pairs don’t settle whether #712b costs the page anything at 10×, and PF-1 fails either way. The 1× p95 moved between 40 ms and 32 ms with the host’s load, so each ratio has to be read against the 1× figure from the same pass.
+**#712b doesn’t change PF-1, as expected.** The time to the next frame in a long room goes on the page’s style and layout over every item it draws, which is #712a’s part. Event Timing reports in 8 ms steps. The before pass started as the host’s load was falling from 17, and its 1× p95 came out at 56 ms against the after pass’s 32 ms, so its ratios read low and only the absolute figures compare: at 10×, 352 ms against 344 ms, one step. A pair run the same way before the calibration key was added differed by four steps at 10× (344 ms against 376 ms). So whether #712b costs the page anything at 10× isn’t settled, and PF-1 fails either way. The 1× p95 moved between 40 ms and 32 ms with the host’s load, so each ratio has to be read against the 1× figure from the same pass.
 
 ## The server
 
