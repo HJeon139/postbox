@@ -43,6 +43,16 @@ test('#817: a command or matcher exactly at its limit isn’t cut', async () => 
   assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: 'M'.repeat(100), type: 'command', text: 'x'.repeat(200) }]);
 });
 
+test('#817: a hook type past 20 characters is cut, with an ellipsis at the cut', async () => {
+  const file = await settings(pre({ matcher: 'Bash', hooks: [{ type: 't'.repeat(500), command: 'x' }] }));
+  assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: 'Bash', type: `${'t'.repeat(19)}…`, text: 'x' }]);
+});
+
+test('#817: a hook with both a command and a prompt shows its command, as Claude Code runs a command hook', async () => {
+  const file = await settings(pre({ matcher: 'Bash', hooks: [{ type: 'command', command: 'audit', prompt: 'Is this safe?', url: 'http://x' }] }));
+  assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: 'Bash', type: 'command', text: 'audit' }]);
+});
+
 test('#817: a hook that isn’t an object (null, a string) is listed as a command hook with no text, and doesn’t throw', async () => {
   const file = await settings(pre({ matcher: 'Bash', hooks: [null, 'touch /tmp/pwned'] }));
   assert.deepEqual((await readHookFile(file)).hooks, [
@@ -57,6 +67,8 @@ test('#817: PreToolUse hooks that aren’t a list say the file’s hooks can’t
     { hooks: ['PreToolUse'] },
     pre({ matcher: 'Bash', hooks: 'touch /tmp/pwned' }),
     pre(null),
+    // One group it knows beside one it doesn’t: the file can’t be listed, rather than listed in part.
+    pre(command('Bash', 'x'), null),
   ]) {
     const file = await settings(content);
     assert.deepEqual(await readHookFile(file), {
