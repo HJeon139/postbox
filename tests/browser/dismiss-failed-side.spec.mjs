@@ -61,8 +61,12 @@ for (const width of [375, 1280])
       const line = page.locator('#main [data-side-sig]').filter({ has: page.locator('.pill', { hasText: '@researcher failed' }) });
       await expect(line.getByRole('button')).toHaveText(['Retry', 'Dismiss']);
       const before = held.turns.length;
-      await line.getByRole('button', { name: /Dismiss/ }).click();
+      // By keyboard: Enter on Dismiss, and focus lands on the line’s Open once its buttons go.
+      await line.getByRole('button', { name: /Dismiss/ }).focus();
+      await page.keyboard.press('Enter');
       await expect.poll(() => store.state.sessions[r.researcher.id].needs, { message: 'the need is released' }).toBe(null);
+      const link = store.items(r.room.id).find((x) => x.kind === 'sidelink' && x.sideThreadId === side.id);
+      await expect(page.locator(`#main [data-key="${link.id}"] a.pill`)).toBeFocused();
       expect(held.turns.length, 'nothing ran again').toBe(before);
     });
   });

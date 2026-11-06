@@ -170,3 +170,12 @@ test('#883 after a restart, a need left pointing at a dismissed reply isn’t ke
   settleInterrupted(r.rt);
   assert.notEqual(r.store.state.sessions[r.alpha.id].needs?.itemId, r.failed.id, 'not the dismissed failure');
 });
+
+test('#883 Dismiss on a reply another tab already retried says so, and what to do', async () => {
+  const r = await failedTurn();
+  r.rt.patchItem(r.t.id, r.failed.id, { status: 'retried' });
+  assert.throws(
+    () => dismissFailed(r.rt, r.t.id, r.failed.id),
+    (e) => e.status === 409 && e.message === 'It was already retried; reload to see it.',
+  );
+});

@@ -5,13 +5,15 @@
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { heldBackend } from './side-threads.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
-let persona;
+/** @type {ReturnType<typeof heldBackend>} */
+let held;
 test.beforeAll(async () => {
   app = await startPostbox('dismiss-failed');
-  persona = app.rt.createPersona({ handle: 'analyst' });
+  held = heldBackend(app);
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -20,13 +22,18 @@ failOnPageErrors(test);
 
 const ERROR = 'API Error: Request rejected (429). Too many tokens, please wait before trying again.';
 
-/** A room whose agent's last reply failed and is its need, as a failed turn leaves it. */
-function failedRoom(title) {
-  const { rt } = app;
-  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [persona.id] });
+/** A room whose agent's turn really failed, so its reply is the need and Retry can run it again. */
+async function failedRoom(title) {
+  const { rt, store } = app;
+  const researcher = Object.values(store.state.personas).find((p) => p.handle === 'researcher');
+  const t = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title, personaIds: [researcher.id] });
   const [se] = rt.sessionsIn(t.id);
-  const it = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, handle: 'analyst', turnId: 'turn_f', status: 'failed', error: ERROR, text: '' });
-  rt.updateSession(se.id, { lastTurnId: 'turn_f', needs: { kind: 'failed', itemId: it.id, text: ERROR }, state: 'failed' });
+  held.scripts.set(se.id, async () => {
+    throw new Error(ERROR);
+  });
+  rt.sendMessage(t.id, { text: '@researcher which dates are riskiest?' });
+  await expect.poll(() => store.state.sessions[se.id].state, { message: 'the failed turn' }).toBe('failed');
+  const it = store.items(t.id).find((x) => x.kind === 'agent' && x.status === 'failed');
   return { t, se, it };
 }
 
@@ -35,7 +42,7 @@ for (const width of [375, 1280])
     test.use({ viewport: { width, height: 900 } });
 
     test(`#883 Dismiss quiets a failed reply, keeps its error and Retry, and the agent stops asking (${width} px)`, async ({ page }) => {
-      const { t, se, it } = failedRoom(`Dismiss ${width}`);
+      const { t, se, it } = await failedRoom(`Dismiss ${width}`);
       await page.goto(`${app.origin}/#/t/${t.id}`);
       await synced(page, app);
       const reply = page.locator(`#main [data-key="${it.id}"]`);
@@ -56,16 +63,30 @@ for (const width of [375, 1280])
       expect(await page.locator('#main [role="alert"]').count(), 'no alert left in the room').toBe(0);
     });
 
-    test(`#883 Retry after Dismiss shows “Retried below”, not “Dismissed” (${width} px)`, async ({ page }) => {
-      const { t, it } = failedRoom(`Retry after dismiss ${width}`);
+    test(`#883 Enter on Dismiss leaves focus on the reply’s Retry, not the page (${width} px)`, async ({ page }) => {
+      const { t, it } = await failedRoom(`Dismiss by keyboard ${width}`);
+      await page.goto(`${app.origin}/#/t/${t.id}`);
+      await synced(page, app);
+      const reply = page.locator(`#main [data-key="${it.id}"]`);
+      await reply.locator('.callout').getByRole('button', { name: 'Dismiss' }).focus();
+      await page.keyboard.press('Enter');
+      await expect(reply).toContainText('Dismissed');
+      await expect(reply.locator('.callout').getByRole('button', { name: 'Retry' })).toBeFocused();
+    });
+
+    test(`#883 Retry after Dismiss runs the turn again and shows “Retried below”, not “Dismissed” (${width} px)`, async ({ page }) => {
+      const { t, se, it } = await failedRoom(`Retry after dismiss ${width}`);
       await page.goto(`${app.origin}/#/t/${t.id}`);
       await synced(page, app);
       const reply = page.locator(`#main [data-key="${it.id}"]`);
       await reply.locator('.callout').getByRole('button', { name: 'Dismiss' }).click();
       await expect(reply).toContainText('Dismissed');
-      app.rt.patchItem(t.id, it.id, { status: 'retried' });
-      await synced(page, app);
+      const before = held.turns.length;
+      await reply.locator('.callout').getByRole('button', { name: 'Retry' }).click();
+      await expect.poll(() => app.store.items(t.id).find((x) => x.id === it.id)?.status, { message: 'the reply is retried' }).toBe('retried');
+      expect(held.turns.length, 'the turn ran again').toBeGreaterThan(before);
       await expect(reply).toContainText('Retried below');
       await expect(reply).not.toContainText('Dismissed');
+      held.release(se.id);
     });
   });
