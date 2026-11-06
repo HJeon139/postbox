@@ -2,6 +2,23 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.30.0 (2026-11-06)
+
+### Features
+
+- **tools:** a server bench measures the snapshot stall, /api/state, streaming and startup by size
+- **tools:** the snapshot-stall bench writes through the server's writeSnapshot and seeds --items
+
+### Fixes
+
+- **tools:** the server bench checks its streamed reply landed, and the stall bench its seeded room
+- **tools:** the server bench checks each startup replayed its log, and reports the measured count
+- **tools:** the server bench writes its report whole, and a stop waits for the write
+- **tools:** the snapshot stall bench refuses --items with --snapshot or --data
+- **tools:** the snapshot stall bench refuses a missing or unparsable --snapshot or --data
+- **tools:** the server report no longer says the reducer finds a streamed item by a scan
+- **tools:** the server bench stops on SIGINT or SIGTERM after the size in progress cleans up
+
 ## 1.29.0 (2026-11-06)
 
 ### Features
