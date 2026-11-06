@@ -111,6 +111,19 @@ test('a streamed reply that didn’t land in the room’s thread, whole, is refu
   assert.throws(() => checkStream({ replyChars: 270, threadItems: 30 }, 10, 30), /thread held 30 items with the reply, not 31/);
 });
 
+test('measureSize refuses a startup that replayed its log but loaded no room', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'pb-bench-size-'));
+  const { start } = fakePostbox();
+  const get = async () => ({ arrayBuffer: async () => stateBody(30) });
+  const openStore = async () => ({ sinceSnapshot: 10, state: { items: { [THREAD]: [] } }, close: async () => {} });
+  try {
+    const o = { runs: 1, requests: 1, chunks: 1, logEvents: 10 };
+    await assert.rejects(measureSize(30, o, { start, port: async () => 1, tmp, get, openStore }), /loaded 0 of the room’s 30 items/);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('measureSize refuses chunks streamed into another thread, and still removes its folder', async () => {
   const tmp = mkdtempSync(join(tmpdir(), 'pb-bench-size-'));
   const { start } = fakePostbox();
