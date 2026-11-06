@@ -21,10 +21,45 @@ export const PROFILE = [
   { kind: 'system', per: 53, bytes: 470 },
 ];
 const MEASURED = 1210;
+
+/**
+ * The rooms a seed can take the shape of: each one’s measured size, its items by kind per that size with the mean
+ * bytes of one, and the steps of its largest agent reply.
+ * - real: #305’s burndown room, as above;
+ * - this-room: sprint 4’s room as researcher counted it on 6 Nov 2026 (880 items, 11% blocks, the largest reply
+ *   19.7 K characters), with #305’s bytes for the kinds it gave no size for.
+ */
+export const PROFILES = {
+  real: { measured: MEASURED, kinds: PROFILE, largestSteps: 270 },
+  'this-room': {
+    measured: 880,
+    kinds: [
+      { kind: 'agent', per: 588, bytes: 3745 },
+      { kind: 'voice', per: 80, bytes: 150 },
+      { kind: 'permission', per: 59, bytes: 3300 },
+      { kind: 'review', per: 29, bytes: 7000, max: 16700 },
+      { kind: 'confirm', per: 27, bytes: 870, max: 1600 },
+      { kind: 'progress', per: 16, bytes: 600, max: 1200 },
+      { kind: 'choice', per: 15, bytes: 660, max: 1100 },
+      { kind: 'form', per: 9, bytes: 1230, max: 2100 },
+      { kind: 'table', per: 1, bytes: 600 },
+      { kind: 'user', per: 19, bytes: 230 },
+      // max: the largest of a kind the room had, where researcher measured it.
+      // Wake lines, agents added, proposals, other answers and the one app, as system lines.
+      { kind: 'system', per: 37, bytes: 300 },
+    ],
+    largestSteps: 57,
+  },
+};
+
+/** A profile by its name, or an error that names the ones there are. @param {string} name */
+function profileOf(name) {
+  const p = PROFILES[name];
+  if (!p) throw new Error(`No room profile “${name}”: ${Object.keys(PROFILES).join(' or ')}.`);
+  return p;
+}
 /** About what one step of an agent reply takes in the store (#305: 1.56 MB over 4,608 steps). */
 const STEP_BYTES = 340;
-/** The measured room’s largest item: an agent reply of about 87 KB, mostly steps. One per 1,210 items. */
-const LARGEST_STEPS = 270;
 const WORDS = ['release', 'changelog', 'runner', 'gate', 'branch', 'review', 'fixture', 'spec', 'migration', 'note', 'host', 'merge'];
 
 /** mulberry32, as big-room.mjs uses. @param {number} seed */
@@ -51,16 +86,16 @@ function words(rnd, n) {
 }
 
 /** A size near mean, spread as a log-normal is (most below the mean, a few well above). @param {() => number} rnd */
-function spread(rnd, mean) {
+function spread(rnd, mean, max = mean * 8) {
   const z = Math.sqrt(-2 * Math.log(1 - rnd())) * Math.cos(2 * Math.PI * rnd());
   const sigma = 1;
-  // Capped at 8 times the mean, so the room’s largest item is the agent reply placed as the measured room’s was.
-  return Math.max(40, Math.min(mean * 8, Math.round(mean * Math.exp(sigma * z - (sigma * sigma) / 2))));
+  // Capped at the kind’s largest (8 times its mean unless the profile measured it), so the room’s largest item is the agent reply placed as the measured room’s was.
+  return Math.max(40, Math.min(max, Math.round(mean * Math.exp(sigma * z - (sigma * sigma) / 2))));
 }
 
 /** The kinds of n items, in the profile’s proportions, shuffled by rnd so the mix is even through the room. */
-function kindsFor(n, rnd) {
-  const kinds = PROFILE.flatMap(({ kind, per }) => Array(Math.round((per * n) / MEASURED)).fill(kind));
+function kindsFor(n, rnd, profile) {
+  const kinds = profile.kinds.flatMap(({ kind, per }) => Array(Math.round((per * n) / profile.measured)).fill(kind));
   while (kinds.length < n) kinds.push('agent');
   kinds.length = n;
   for (let i = kinds.length - 1; i > 0; i--) {
@@ -116,6 +151,19 @@ function itemOf(kind, base, bytes, rnd, i, steps) {
     const list = Array.from({ length: n }, (_, k) => ({ id: `s${k}`, label: text(40), state: 'done', detail: text(40) }));
     return blockItem(base, { ...head, type: 'progress', steps: list }, null, null);
   }
+  if (kind === 'form') {
+    const fields = Array.from({ length: 4 }, (_, k) => ({ id: `f${k}`, label: text(30), kind: 'text', help: text(Math.min(190, bytes / 6)) }));
+    const values = Object.fromEntries(fields.map((f) => [f.id, text(20)]));
+    return blockItem(base, { ...head, type: 'form', prompt: text(Math.min(1900, bytes / 4)), fields }, 'submit', values);
+  }
+  if (kind === 'table') {
+    const columns = [
+      { id: 'a', label: 'Item' },
+      { id: 'b', label: 'Note' },
+    ];
+    const rows = Array.from({ length: 8 }, (_, k) => ({ id: `r${k}`, cells: { a: text(12), b: text(Math.max(20, bytes / 16)) } }));
+    return blockItem(base, { ...head, type: 'table', columns, rows }, null, null);
+  }
   return blockItem(base, { ...head, type: 'confirm', statement: text(Math.min(1900, bytes - 200)), confirmLabel: 'Go ahead' }, 'confirm', {});
 }
 
@@ -135,16 +183,24 @@ function largestAt(kinds, n) {
  * handles, over 26 hours scaled by count, with one 87 KB agent reply per 1,210 items.
  * @param {{ count?: number, start?: number, seed?: number, handles?: string[] }} [opts]
  */
-export function realRoomItems({ count = MEASURED, start = Date.UTC(2026, 8, 1, 9), seed = 305, handles = ['researcher', 'critic', 'developer'] } = {}) {
+export function realRoomItems({
+  count = MEASURED,
+  start = Date.UTC(2026, 8, 1, 9),
+  seed = 305,
+  handles = ['researcher', 'critic', 'developer'],
+  profile: name = 'real',
+} = {}) {
+  const profile = profileOf(name);
   const rnd = random(seed);
-  const kinds = kindsFor(count, rnd);
-  const step = Math.floor((26 * 3600 * 1000 * (count / MEASURED)) / count);
-  const largest = largestAt(kinds, Math.max(1, Math.round(count / MEASURED)));
-  const mean = Object.fromEntries(PROFILE.map((p) => [p.kind, p.bytes]));
+  const kinds = kindsFor(count, rnd, profile);
+  const step = Math.floor((26 * 3600 * 1000) / profile.measured);
+  const largest = largestAt(kinds, Math.max(1, Math.round(count / profile.measured)));
+  const mean = Object.fromEntries(profile.kinds.map((p) => [p.kind, p.bytes]));
+  const max = Object.fromEntries(profile.kinds.map((p) => [p.kind, p.max]));
   return kinds.map((kind, i) => {
     const base = { id: realIdOf(i, count), at: start + i * step, handle: kind === 'user' || kind === 'system' ? undefined : handles[i % handles.length] };
     const big = kind === 'agent' && largest.has(i);
-    return itemOf(kind, base, spread(rnd, mean[kind]), rnd, i, big ? LARGEST_STEPS : undefined);
+    return itemOf(kind, base, spread(rnd, mean[kind], max[kind]), rnd, i, big ? profile.largestSteps : undefined);
   });
 }
 
@@ -153,12 +209,12 @@ export function realRoomItems({ count = MEASURED, start = Date.UTC(2026, 8, 1, 9
  * there, as seedBigRoomData does. Returns the last item’s id.
  * @param {string} data  @param {string} threadId  @param {string[]} agents  @param {{ count?: number }} [opts]
  */
-export async function seedRealRoomData(data, threadId, agents, { count = MEASURED } = {}) {
+export async function seedRealRoomData(data, threadId, agents, { count = MEASURED, profile = 'real' } = {}) {
   const store = await new Store(data).load();
   const sessions = {};
   for (const se of Object.values(store.state.sessions ?? {}))
     if (se?.threadId === threadId && !se.archived && !sessions[se.handle]) sessions[se.handle] = { sessionId: se.id, personaId: se.personaId };
-  const items = realRoomItems({ count, handles: agents });
+  const items = realRoomItems({ count, handles: agents, profile });
   for (const item of items) {
     const se = item.handle ? sessions[item.handle] : null;
     const { handle, ...rest } = item;

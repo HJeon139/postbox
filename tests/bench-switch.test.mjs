@@ -197,7 +197,9 @@ test('the report has an element count per size and switch, with the transcript�
 test('--seed picks the uniform big-room seed by default, or the real-shape one, and the command and report say which', () => {
   assert.equal(options([]).seed, 'uniform');
   assert.equal(options(['--seed', 'real']).seed, 'real');
-  assert.throws(() => options(['--seed', 'odd']), /^Error: --seed takes uniform or real, not “odd”\.$/);
+  assert.equal(options(['--seed', 'this-room']).seed, 'this-room');
+  assert.throws(() => options(['--seed', 'odd']), /^Error: --seed takes uniform, real or this-room, not “odd”\.$/);
+  assert.match(commandLine(options(['--seed', 'this-room']), ROOT), / --seed this-room --out /);
   assert.match(commandLine(options(['--seed', 'real']), ROOT), / --seed real --out /);
   assert.doesNotMatch(commandLine(options([]), ROOT), /--seed/);
   const s = (v) => ({ n: 1, p50: v, p95: v, max: v });
@@ -213,11 +215,13 @@ test('--seed picks the uniform big-room seed by default, or the real-shape one, 
     });
   assert.match(report('real'), /items from the real-shape seed \(tools\/uat\/real-room\.mjs/);
   assert.match(report('uniform'), /items from the big-room seed \(tools\/uat\/big-room\.mjs\)/);
+  assert.match(report('this-room'), /items from the this-room seed \(tools\/uat\/real-room\.mjs, after sprint 4’s room/);
 });
 
 test('the long room’s last item is the seed’s own: it_big… for the uniform seed, it_real… for the real one', () => {
   assert.equal(lastIdOf('uniform', 1000), 'it_big0999');
   assert.equal(lastIdOf('real', 2000), 'it_real1999');
+  assert.equal(lastIdOf('this-room', 880), 'it_real0879');
 });
 
 test('--needs adds the ⌃J switch, from one long room to a second in another project, and the command says so', () => {

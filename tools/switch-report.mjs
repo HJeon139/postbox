@@ -8,10 +8,12 @@ import { MEASURES, NEEDS_SWITCH, SHORT_ITEMS, SWITCHES } from './switch-measure.
 const timedIn = (results) => [...SWITCHES, NEEDS_SWITCH].filter((s) => results[0]?.[s.name]);
 
 /** Where the long rooms came from. @param {string | undefined} seed */
-const seedName = (seed) =>
-  seed === 'real'
-    ? 'the real-shape seed (tools/uat/real-room.mjs, after #305’s measured room: its mix of kinds, a 1.5 KB median, an 87 KB largest)'
-    : 'the big-room seed (tools/uat/big-room.mjs)';
+const SEED_NAMES = {
+  uniform: 'the big-room seed (tools/uat/big-room.mjs)',
+  real: 'the real-shape seed (tools/uat/real-room.mjs, after #305’s measured room: its mix of kinds, a 1.5 KB median, an 87 KB largest)',
+  'this-room': 'the this-room seed (tools/uat/real-room.mjs, after sprint 4’s room as counted on 6 Nov: 11% blocks, 1.7% choices)',
+};
+const seedName = (seed) => SEED_NAMES[seed ?? 'uniform'];
 const ms = (v) => (v === null ? 'none' : `${v.toFixed(1)} ms`);
 
 /**

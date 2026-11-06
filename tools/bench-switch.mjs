@@ -82,9 +82,12 @@ export function options(argv) {
   };
 }
 
+/** The long room’s seeds: the uniform big-room seed, and the two room shapes of tools/uat/real-room.mjs. */
+const SEEDS = ['uniform', 'real', 'this-room'];
+
 /** The long room’s seed: the uniform big-room seed, or the real-shape one (#305’s measured room). @param {string} raw */
 function seedOption(raw) {
-  if (raw !== 'uniform' && raw !== 'real') throw new Error(`--seed takes uniform or real, not “${raw}”.`);
+  if (!SEEDS.includes(raw)) throw new Error(`--seed takes uniform, real or this-room, not “${raw}”.`);
   return raw;
 }
 
@@ -93,7 +96,7 @@ export function commandLine(o, root) {
   const args = [`--sizes ${o.sizes.join(',')}`, `--runs ${o.runs}`];
   if (o.app) args.push(`--app ${shownPath(o.app, root)}`);
   if (o.trace) args.push(`--trace ${shownPath(o.trace, root)}`);
-  if (o.seed === 'real') args.push('--seed real');
+  if (o.seed !== 'uniform') args.push(`--seed ${o.seed}`);
   if (o.needs) args.push('--needs');
   return ['node tools/bench-switch.mjs', ...args, `--out ${shownPath(o.out, root)}`].join(' ');
 }
@@ -161,7 +164,7 @@ export function expectedRooms({ items, seed, needs }) {
 
 /** Seeds one long room at its size, by --seed. */
 async function seedLong(data, threadId, items, seed) {
-  if (seed === 'real') await seedRealRoomData(data, threadId, AGENTS, { count: items });
+  if (seed !== 'uniform') await seedRealRoomData(data, threadId, AGENTS, { count: items, profile: seed });
   else await seedBigRoomData(data, threadId, AGENTS, { count: items });
 }
 
@@ -216,7 +219,7 @@ export const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor((xs.lengt
 
 /** The big-room seed’s last item’s id at a size, as tools/uat/big-room.mjs pads it. @param {number} items */
 export const lastIdOf = (seed, items) =>
-  seed === 'real' ? realIdOf(items - 1, items) : `it_big${String(items - 1).padStart(Math.max(4, String(items - 1).length), '0')}`;
+  seed !== 'uniform' ? realIdOf(items - 1, items) : `it_big${String(items - 1).padStart(Math.max(4, String(items - 1).length), '0')}`;
 
 /**
  * One size: a fresh Postbox with the rooms seeded, each switch timed runs times. Its data folder is removed however

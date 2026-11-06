@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { validateBlock } from '../shared/catalog.mjs';
-import { PROFILE, realIdOf, realRoomItems } from '../tools/uat/real-room.mjs';
+import { PROFILE, PROFILES, realIdOf, realRoomItems } from '../tools/uat/real-room.mjs';
 
 const bytes = (it) => Buffer.byteLength(JSON.stringify(it));
 const kindOf = (it) => (it.kind === 'block' ? it.block.type : it.kind);
@@ -50,4 +50,20 @@ test('every block it seeds is a valid block, and every answered one carries its 
     assert.ok(r.ok, `${it.block.type}: ${r.error}`);
     if (it.block.type !== 'progress') assert.equal(it.answered, true, it.block.type);
   }
+});
+
+test('the this-room profile, at its measured 880 items, has this room’s kinds, and its blocks are valid', () => {
+  const items = realRoomItems({ count: 880, profile: 'this-room' });
+  const counts = {};
+  for (const it of items) counts[kindOf(it)] = (counts[kindOf(it)] ?? 0) + 1;
+  assert.deepEqual(counts, Object.fromEntries(PROFILES['this-room'].kinds.map((p) => [p.kind, p.per])));
+  assert.deepEqual([counts.agent, counts.review, counts.confirm, counts.progress, counts.choice, counts.form, counts.table], [588, 29, 27, 16, 15, 9, 1]);
+  for (const it of items.filter((x) => x.kind === 'block')) assert.ok(validateBlock(it.block).ok, it.block.type);
+  const largest = items.reduce((a, b) => (bytes(b) > bytes(a) ? b : a));
+  assert.equal(largest.kind, 'agent');
+  assert.ok(bytes(largest) > 15_000 && bytes(largest) < 30_000, `largest ${bytes(largest)}`);
+});
+
+test('a profile that isn’t known is refused, naming it', () => {
+  assert.throws(() => realRoomItems({ count: 10, profile: 'odd' }), /^Error: No room profile “odd”: real or this-room\.$/);
 });
