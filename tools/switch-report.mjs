@@ -2,7 +2,10 @@
 // reader needs to rerun it. Pure, so tests feed it results.
 
 import { conditionsLine } from './key-frame-report.mjs';
-import { MEASURES, SHORT_ITEMS, SWITCHES } from './switch-measure.mjs';
+import { MEASURES, NEEDS_SWITCH, SHORT_ITEMS, SWITCHES } from './switch-measure.mjs';
+
+/** The switches a run timed, in order: the two by click, and ⌃J when it had --needs. @param {any[]} results */
+const timedIn = (results) => [...SWITCHES, NEEDS_SWITCH].filter((s) => results[0]?.[s.name]);
 
 /** Where the long rooms came from. @param {string | undefined} seed */
 const seedName = (seed) =>
@@ -18,7 +21,7 @@ const ms = (v) => (v === null ? 'none' : `${v.toFixed(1)} ms`);
  */
 export function formatReport({ command, commit, date, machine, conditions, inputs, results }) {
   const rows = results.flatMap((r) =>
-    SWITCHES.flatMap((s) =>
+    timedIn(results).flatMap((s) =>
       MEASURES.map(([key, label]) => {
         const v = r[s.name][key];
         return `| ${r.items.toLocaleString('en-US')} | ${s.label} | ${label} | ${v.n} | ${ms(v.p50)} | ${ms(v.p95)} | ${ms(v.max)} |`;
@@ -65,7 +68,7 @@ function elementRows(results) {
   if (!results.length || !results[0][SWITCHES[0].name].elements) return [];
   const n = (v) => v.toLocaleString('en-US');
   const rows = results.flatMap((r) =>
-    SWITCHES.map((s) => {
+    timedIn(results).map((s) => {
       const base = results[0][s.name].elements.transcript;
       const { page, transcript } = r[s.name].elements;
       return `| ${n(r.items)} | ${s.label} | ${n(page)} | ${n(transcript)} | ${(transcript / base).toFixed(2)} |`;

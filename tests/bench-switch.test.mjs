@@ -8,18 +8,23 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import {
+  askId,
   BENCH_ROOT,
   commandLine,
+  expectedRooms,
   formatReport,
   IDS,
   lastIdOf,
   measureSize,
+  NEEDS_SWITCH,
+  openAsk,
   options,
   proveCounts,
   provenance,
   proveRun,
   SWITCHES,
   shortItems,
+  switchesFor,
 } from '../tools/bench-switch.mjs';
 
 const ROOT = '/local/home/user/postbox';
@@ -213,4 +218,43 @@ test('--seed picks the uniform big-room seed by default, or the real-shape one, 
 test('the long room’s last item is the seed’s own: it_big… for the uniform seed, it_real… for the real one', () => {
   assert.equal(lastIdOf('uniform', 1000), 'it_big0999');
   assert.equal(lastIdOf('real', 2000), 'it_real1999');
+});
+
+test('--needs adds the ⌃J switch, from one long room to a second in another project, and the command says so', () => {
+  assert.equal(options([]).needs, false);
+  assert.equal(options(['--needs']).needs, true);
+  assert.match(commandLine(options(['--needs']), ROOT), / --needs --out /);
+  assert.deepEqual(switchesFor(options([])), SWITCHES);
+  const all = switchesFor(options(['--needs']));
+  assert.deepEqual(all.at(-1), NEEDS_SWITCH);
+  assert.deepEqual([NEEDS_SWITCH.from, NEEDS_SWITCH.to], [IDS.long, IDS.long2]);
+});
+
+test('with --needs, each long room ends on an open ask its agent needs you for, and that ask is the item a run ends on', () => {
+  const rooms = expectedRooms({ items: 1000, seed: 'uniform', needs: true });
+  assert.deepEqual(rooms[IDS.long], { thread: IDS.long, count: 1001, last: askId(IDS.long) });
+  assert.deepEqual(rooms[IDS.long2], { thread: IDS.long2, count: 1001, last: askId(IDS.long2) });
+  assert.deepEqual(expectedRooms({ items: 1000, seed: 'uniform', needs: false }), {
+    [IDS.long]: { thread: IDS.long, count: 1000, last: 'it_big0999' },
+  });
+  const ask = openAsk(IDS.long2, 'researcher', 5);
+  assert.equal(ask.item.id, askId(IDS.long2));
+  assert.equal(ask.item.answered, undefined, 'the ask is open');
+  assert.deepEqual(ask.need, { kind: 'block', itemId: askId(IDS.long2), threadId: IDS.long2, text: '@researcher asks you to confirm the release' });
+});
+
+test('the report shows the ⌃J switch’s rows when a run had it', () => {
+  const s = (v) => ({ n: 1, p50: v, p95: v, max: v });
+  const one = { drawn: s(1), key: s(2), elements: { page: 10, transcript: 5 } };
+  const report = formatReport({
+    command: 'c',
+    commit: 'aaaa1111',
+    date: 'd',
+    machine: { os: 'L', arch: 'x', cpu: 'C', node: 'n', chromium: 'c' },
+    conditions: { load: { start: 1, end: 2 }, headless: true, window: { width: 1280, height: 900 }, scale: 1 },
+    inputs: { sizes: [1000], runs: 1 },
+    results: [{ items: 1000, project: one, conversation: one, needs: one }],
+  });
+  assert.match(report, /\| 1,000 \| Next needs you \(⌃J\) \| Last item drawn \|/);
+  assert.match(report, /\| 1,000 \| Next needs you \(⌃J\) \| 10 \| 5 \| 1\.00 \|/);
 });

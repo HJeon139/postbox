@@ -15,8 +15,11 @@ export const IDS = {
   shortA: 'th_sw_short_a',
   shortB: 'th_sw_short_b',
   long: 'th_sw_long',
+  projectC: 'pr_sw_long2',
+  long2: 'th_sw_long2',
 };
 export const LONG_PROJECT = 'Long project';
+export const LONG_PROJECT_2 = 'Second long project';
 export const SHORT_ITEMS = 20;
 /** How long one switch may take before the run fails, in ms. */
 const SWITCH_TIMEOUT = 120_000;
@@ -26,6 +29,8 @@ export const SWITCHES = [
   { name: 'project', label: 'Project switch', from: IDS.shortA, to: IDS.long },
   { name: 'conversation', label: 'Conversation switch', from: IDS.shortB, to: IDS.long },
 ];
+/** ⌃J from one long room to the open ask at the end of a second, in another project: the person’s “Next needs you”. */
+export const NEEDS_SWITCH = { name: 'needs', label: 'Next needs you (⌃J)', from: IDS.long, to: IDS.long2 };
 export const MEASURES = [
   ['drawn', 'Last item drawn'],
   ['key', 'Key’s next frame'],
@@ -68,7 +73,7 @@ function countElements(target) {
  * target’s last item drawn in its transcript’s visible box; the composer’s first keydown records its next frame; and
  * __switchMounted resolves as soon as the target’s transcript and composer are on the page. Runs in the page.
  */
-function arm(target, lastKey) {
+function arm(target, lastKey, startOnKey) {
   if ('__switch' in window) throw new Error('This document has already timed a switch: open it afresh for each run.');
   const rec = { t0: null, present: null, drawn: null, keyAt: null, keyFrame: null, timed: null };
   /** @type {any} */ (window).__switch = rec;
@@ -98,15 +103,13 @@ function arm(target, lastKey) {
     }
     requestAnimationFrame(check);
   };
-  addEventListener(
-    'pointerdown',
-    () => {
-      if (rec.t0 !== null) return;
-      rec.t0 = performance.now();
-      requestAnimationFrame(check);
-    },
-    true,
-  );
+  const start = () => {
+    if (rec.t0 !== null) return;
+    rec.t0 = performance.now();
+    requestAnimationFrame(check);
+  };
+  if (startOnKey) addEventListener('keydown', (e) => e.ctrlKey && e.key.toLowerCase() === 'j' && start(), true);
+  else addEventListener('pointerdown', start, true);
   addEventListener(
     'keydown',
     (e) => {
@@ -152,6 +155,12 @@ async function middleOf(page, expr, label) {
   return { x: at.x, y: at.y };
 }
 
+/** ⌃J through Chromium’s input. */
+async function ctrlJ(page) {
+  for (const type of ['rawKeyDown', 'keyUp'])
+    await page.send('Input.dispatchKeyEvent', { type, key: 'j', code: 'KeyJ', modifiers: 2, windowsVirtualKeyCode: 74 });
+}
+
 /** A left click through Chromium’s input. */
 async function click(page, { x, y }) {
   for (const type of ['mousePressed', 'mouseReleased']) await page.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: 1 });
@@ -170,7 +179,13 @@ async function prepare(page, origin, sw) {
   // Where the long room’s project opens is its latest conversation, not wherever an earlier run left it.
   await page.evaluate(`localStorage.removeItem('pb-last-${IDS.projectB}')`);
   let target;
-  if (sw.name === 'project') {
+  if (sw.name === 'needs') {
+    // The person is in the first long room, at its own ask: ⌃J there goes to its agent’s ask first, and the next ⌃J,
+    // the one timed, moves on to the other long room’s.
+    await page.waitFor(`(${heldStill})()`, { timeout: 120_000, label: 'the first long room to hold still' });
+    await ctrlJ(page);
+    target = null;
+  } else if (sw.name === 'project') {
     await click(page, await middleOf(page, `document.getElementById('places-button')`, 'the places menu button'));
     target = await middleOf(page, menuItem, `the ${LONG_PROJECT} item in the places menu`);
   } else {
@@ -186,9 +201,16 @@ async function prepare(page, origin, sw) {
  */
 export async function timeSwitch(page, origin, sw, expected) {
   const at = await prepare(page, origin, sw);
-  await page.evaluate(`(${arm})(${js(sw.to)}, ${js(expected.last)})`);
-  await click(page, at);
+  await page.evaluate(`(${arm})(${js(sw.to)}, ${js(expected.last)}, ${sw.name === 'needs'})`);
+  if (at) await click(page, at);
+  else await ctrlJ(page);
   await page.evaluate(`Promise.race([window.__switchMounted, new Promise((r) => setTimeout(() => r(false), ${SWITCH_TIMEOUT}))])`);
+  // ⌃J focuses the ask once it’s drawn; a key typed before that would land on the ask, not in the composer.
+  if (sw.name === 'needs')
+    await page.waitFor(`document.activeElement?.closest('[data-key]')?.dataset.key === ${js(expected.last)}`, {
+      timeout: SWITCH_TIMEOUT,
+      label: 'the ask ⌃J went to, focused',
+    });
   const composer = await middleOf(page, `document.getElementById('composer-input')`, 'the long room’s composer');
   await click(page, composer);
   await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'x', code: 'KeyX', text: 'x', unmodifiedText: 'x', windowsVirtualKeyCode: 88 });
@@ -198,7 +220,7 @@ export async function timeSwitch(page, origin, sw, expected) {
     label: 'the last item drawn and the key’s frame',
   });
   const rec = await page.evaluate('window.__switch');
-  proveRun(await page.evaluate(`(${readBack})(${js([IDS.long, IDS.shortA, IDS.shortB])})`), expected);
+  proveRun(await page.evaluate(`(${readBack})(${js([IDS.long, IDS.long2, IDS.shortA, IDS.shortB])})`), expected);
   await page.waitFor(`(${heldStill})()`, { timeout: 30_000, label: 'the page to hold still after the switch' });
   const elements = await page.evaluate(`(${countElements})(${js(sw.to)})`);
   proveCounts(elements);
@@ -231,7 +253,7 @@ export async function traceSwitch(page, origin, expected, file, log) {
   page.on('Network.loadingFinished', (p) => Object.assign(requests.get(p.requestId) ?? {}, { bytes: p.encodedDataLength, finished: p.timestamp }));
   await page.send('Network.enable');
   await page.send('Tracing.start', { categories: TRACE_CATEGORIES, transferMode: 'ReportEvents' });
-  await page.evaluate(`(${arm})(${js(sw.to)}, ${js(expected.last)})`);
+  await page.evaluate(`(${arm})(${js(sw.to)}, ${js(expected.last)}, false)`);
   await page.evaluate(`performance.mark('switch-click')`);
   await click(page, at);
   await page.waitFor(`window.__switch.drawn !== null`, { timeout: SWITCH_TIMEOUT, label: 'the last item drawn, traced' });

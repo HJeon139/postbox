@@ -34,13 +34,13 @@ import { launch } from './browser.mjs';
 import { commitOf, conditionsOf, machineOf } from './key-frame-measure.mjs';
 import { shownPath } from './key-frame-report.mjs';
 import { summarize } from './key-frame-stats.mjs';
-import { IDS, LONG_PROJECT, SHORT_ITEMS, SWITCHES, timeSwitch, traceSwitch } from './switch-measure.mjs';
+import { IDS, LONG_PROJECT, LONG_PROJECT_2, NEEDS_SWITCH, SHORT_ITEMS, SWITCHES, timeSwitch, traceSwitch } from './switch-measure.mjs';
 import { formatReport } from './switch-report.mjs';
 import { seedBigRoomData } from './uat/big-room.mjs';
 import { startPostbox } from './uat/postbox.mjs';
 import { realIdOf, seedRealRoomData } from './uat/real-room.mjs';
 
-export { BENCH_ROOT, formatReport, IDS, proveCounts, proveRun, SWITCHES };
+export { BENCH_ROOT, formatReport, IDS, NEEDS_SWITCH, proveCounts, proveRun, SWITCHES };
 
 import { proveCounts, proveRun } from './switch-measure.mjs';
 
@@ -68,6 +68,7 @@ export function options(argv) {
       app: { type: 'string' },
       trace: { type: 'string' },
       seed: { type: 'string', default: 'uniform' },
+      needs: { type: 'boolean', default: false },
     },
   });
   return {
@@ -77,6 +78,7 @@ export function options(argv) {
     app: appOption(values.app),
     trace: values.trace === undefined ? null : resolve(values.trace),
     seed: seedOption(values.seed),
+    needs: values.needs,
   };
 }
 
@@ -92,6 +94,7 @@ export function commandLine(o, root) {
   if (o.app) args.push(`--app ${shownPath(o.app, root)}`);
   if (o.trace) args.push(`--trace ${shownPath(o.trace, root)}`);
   if (o.seed === 'real') args.push('--seed real');
+  if (o.needs) args.push('--needs');
   return ['node tools/bench-switch.mjs', ...args, `--out ${shownPath(o.out, root)}`].join(' ');
 }
 
@@ -120,16 +123,76 @@ export function shortItems(threadId, handles, at) {
  * which the big-room seed fills. The short rooms’ items are older than the long room’s, so its project opens on it.
  * @param {string} data  @param {number} items
  */
-async function seedRooms(data, items, seed) {
-  for (const sub of ['a', 'b']) await mkdir(join(data, sub), { recursive: true });
+/** The switches a run times: the two by click, and with --needs the ⌃J one too. @param {{ needs: boolean }} o */
+export const switchesFor = (o) => (o.needs ? [...SWITCHES, NEEDS_SWITCH] : SWITCHES);
+
+/** The open ask at the end of a long room, by --needs. @param {string} threadId */
+export const askId = (threadId) => `it_ask_${threadId}`;
+
+/**
+ * A long room’s open ask, from handle’s session, posted at, and the need it gives that session: the item ⌃J goes to.
+ * @param {string} threadId  @param {string} handle  @param {number} at
+ */
+export function openAsk(threadId, handle, at) {
+  const id = askId(threadId);
+  const block = {
+    id: `ask-${threadId}`,
+    type: 'confirm',
+    version: 1,
+    fallback: 'Confirm the release?',
+    statement: 'Confirm the release?',
+    confirmLabel: 'Release',
+  };
+  return {
+    item: { id, at, kind: 'block', handle, valid: true, block },
+    need: { kind: 'block', itemId: id, threadId, text: `@${handle} asks you to confirm the release` },
+  };
+}
+
+/**
+ * What a run that lands on each long room must find there: its thread, how many items, and its last. With --needs,
+ * each long room ends on its open ask.
+ * @param {{ items: number, seed: string, needs: boolean }} o
+ */
+export function expectedRooms({ items, seed, needs }) {
+  const room = (thread) => (needs ? { thread, count: items + 1, last: askId(thread) } : { thread, count: items, last: lastIdOf(seed, items) });
+  return needs ? { [IDS.long]: room(IDS.long), [IDS.long2]: room(IDS.long2) } : { [IDS.long]: room(IDS.long) };
+}
+
+/** Seeds one long room at its size, by --seed. */
+async function seedLong(data, threadId, items, seed) {
+  if (seed === 'real') await seedRealRoomData(data, threadId, AGENTS, { count: items });
+  else await seedBigRoomData(data, threadId, AGENTS, { count: items });
+}
+
+/**
+ * Gives each long room an open ask at its end, from its first agent, and that agent’s session the need. The second
+ * room’s ask is the older, so ⌃J from the first room’s goes there next.
+ */
+async function seedAsks(data, rooms) {
+  const store = await new Store(data).load();
+  rooms.forEach((threadId, k) => {
+    const se = Object.values(store.state.sessions).find((x) => x.threadId === threadId && x.handle === AGENTS[0]);
+    const at = Date.now() - (rooms.length - k) * 60_000;
+    const { item, need } = openAsk(threadId, AGENTS[0], at - (k === 1 ? 3_600_000 : 0));
+    store.emit('item.add', { threadId, item: { ...item, sessionId: se.id, personaId: se.personaId } });
+    store.emit('session', { ...se, needs: need, state: 'waiting' });
+  });
+  await store.close();
+}
+
+export async function seedRooms(data, items, seed, needs) {
+  for (const sub of ['a', 'b', 'c']) await mkdir(join(data, sub), { recursive: true });
   const store = await new Store(data).load();
   store.emit('project', { id: IDS.projectA, name: 'Short project', folder: join(data, 'a') });
   store.emit('project', { id: IDS.projectB, name: LONG_PROJECT, folder: join(data, 'b') });
+  if (needs) store.emit('project', { id: IDS.projectC, name: LONG_PROJECT_2, folder: join(data, 'c') });
   for (const handle of AGENTS) store.emit('persona', { id: `pe_${handle}`, handle, backend: 'mock', model: 'mock' });
   const rooms = [
     [IDS.shortA, IDS.projectA, 'A short room'],
     [IDS.shortB, IDS.projectB, 'Another short room'],
     [IDS.long, IDS.projectB, 'The release, in a long room'],
+    ...(needs ? [[IDS.long2, IDS.projectC, 'The next release, in another long room']] : []),
   ];
   for (const [id, projectId, title] of rooms) {
     const members = AGENTS.map((handle) => `se_${id}_${handle}`);
@@ -140,9 +203,12 @@ async function seedRooms(data, items, seed) {
     for (const item of shortItems(id, AGENTS, Date.UTC(2026, 7, 1, 9)))
       store.emit('item.add', { threadId: id, item: item.handle ? { ...item, sessionId: `se_${id}_${item.handle}`, personaId: `pe_${item.handle}` } : item });
   await store.close();
-  if (seed === 'real') await seedRealRoomData(data, IDS.long, AGENTS, { count: items });
-  else await seedBigRoomData(data, IDS.long, AGENTS, { count: items });
-  return { thread: IDS.long, count: items, last: lastIdOf(seed, items) };
+  await seedLong(data, IDS.long, items, seed);
+  if (needs) {
+    await seedLong(data, IDS.long2, items, seed);
+    await seedAsks(data, [IDS.long, IDS.long2]);
+  }
+  return expectedRooms({ items, seed, needs });
 }
 
 /** The middle of a list of counts (the lower middle of an even one). @param {number[]} xs */
@@ -158,7 +224,8 @@ export const lastIdOf = (seed, items) =>
  */
 export async function measureSize(page, items, o, log, { start = startPostbox, port = freePort, tmp = tmpdir(), trace = null } = {}) {
   const data = await mkdtemp(join(tmp, `pb-switch-${items}-`));
-  const times = Object.fromEntries(SWITCHES.map((s) => [s.name, { drawn: [], key: [], page: [], transcript: [] }]));
+  const switches = switchesFor(o);
+  const times = Object.fromEntries(switches.map((s) => [s.name, { drawn: [], key: [], page: [], transcript: [] }]));
   let postbox = null;
   try {
     postbox = await start({ root: o.app ?? BENCH_ROOT, port: await port(), data, env: { POSTBOX_BACKENDS: 'mock' }, log: () => {} });
@@ -166,12 +233,12 @@ export async function measureSize(page, items, o, log, { start = startPostbox, p
     let expected = null;
     await postbox.restart({
       whileDown: async () => {
-        expected = await seedRooms(data, items, o.seed);
+        expected = await seedRooms(data, items, o.seed, o.needs);
       },
     });
     for (let run = 1; run <= o.runs; run++)
-      for (const sw of SWITCHES) {
-        const t = await timeSwitch(page, postbox.origin, sw, expected);
+      for (const sw of switches) {
+        const t = await timeSwitch(page, postbox.origin, sw, expected[sw.to]);
         times[sw.name].drawn.push(t.drawn);
         times[sw.name].key.push(t.key);
         times[sw.name].page.push(t.elements.page);
@@ -180,13 +247,13 @@ export async function measureSize(page, items, o, log, { start = startPostbox, p
           `${items.toLocaleString('en-US')} items, run ${run} of ${o.runs}, ${sw.name} switch: last item drawn ${t.drawn.toFixed(1)} ms, key’s frame ${t.key.toFixed(1)} ms.`,
         );
       }
-    if (trace) await traceSwitch(page, postbox.origin, expected, trace, log);
+    if (trace) await traceSwitch(page, postbox.origin, expected[IDS.long], trace, log);
   } finally {
     await postbox?.kill();
     await rm(data, { recursive: true, force: true });
   }
   const out = { items };
-  for (const s of SWITCHES) {
+  for (const s of switches) {
     const t = times[s.name];
     out[s.name] = { drawn: summarize(t.drawn), key: summarize(t.key), elements: { page: median(t.page), transcript: median(t.transcript) } };
   }
