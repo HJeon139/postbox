@@ -13,6 +13,9 @@
  * - UTF-16 text, read as UTF-8 with a zero byte after each ASCII character;
  * - a Bearer token shorter than 20 characters, and a token under another scheme, such as Basic;
  * - a uid under another key, such as “user_id”, and account data under keys other than the six account fields;
+ * - a uid with no quotes on its key, as YAML (“uid: 501”) and TOML (“uid = 501”) write it, since code and tests name
+ *   uids so (a “uid: 1000” option to a function);
+ * - an account key before an “=” after anything but a line’s start, white space, “{” or “,”, such as “;”;
  * - a connector a person named after one of claude.ai’s directory connectors;
  * - a connector’s tool ids, “mcp__claude_ai_<name>__<tool>”, where its name shows as surely as in mcp_servers.
  */
@@ -70,10 +73,14 @@ const INSTALLATION_ID = /\\?"installation(?:Id|_id)\\?"\s*:\s*\\?"([^"\\]+)\\?"/
 // Account metadata keys, camelCase and snake_case.
 const ACCOUNT_KEYS = 'planType|authMode|usedPercent|plan_type|auth_mode|used_percent';
 
-// An account key in quotes, with or without a “\” before each, or bare before a “:” or an “=”, as YAML, a JavaScript
-// object and TOML (Codex’s config.toml) write one (#696). A bare key after a name character is part of a longer name,
-// and one before “==” is a comparison, not a value.
-const ACCOUNT_FIELD = new RegExp(`\\\\?"(${ACCOUNT_KEYS})\\\\?"|(?<![A-Za-z0-9_$])(${ACCOUNT_KEYS})(?=\\s*(?::|=(?!=)))`, 'g');
+// An account key in quotes, with or without a “\” before each, or bare before a “:”, as YAML and a JavaScript object
+// write one, or bare before an “=” where TOML (Codex’s config.toml) puts a key: at a line’s start or after an inline
+// table’s “{” or “,”, so a code declaration such as “const x = …” isn’t one (#696). A bare key after a name character
+// is part of a longer name, and one before “==” is a comparison, not a value.
+const ACCOUNT_FIELD = new RegExp(
+  `\\\\?"(${ACCOUNT_KEYS})\\\\?"|(?<![A-Za-z0-9_$])(${ACCOUNT_KEYS})(?=\\s*:)|(?<=(?:^|[{,])[ \\t]*)(${ACCOUNT_KEYS})(?=[ \\t]*=(?!=))`,
+  'gm',
+);
 
 // A “uid” field and its number, quoted or not, with or without a “\” before each quote (#696).
 const UID_FIELD = /\\?"uid\\?"\s*:\s*\\?"?(\d+)/g;
