@@ -64,3 +64,33 @@ test('#780 a name wins over another file’s ref, and a file named __proto__ is 
   assert.ok(Object.hasOwn(keys, '__proto__'));
   assert.match(renderMarkdown('![x](__proto__)', { pageOrigin, files: keys }), /sha=cc/);
 });
+
+// #825 review: the alt text is agent content on the line where it becomes Postbox’s HTML, so every branch escapes it.
+// Each hostile alt must come out as text: no raw quote, angle bracket or ampersand survives into the tag.
+const hostileAlts = [
+  ['a quote that ends the attribute', 'x" onerror="alert(1)', 'x&quot; onerror=&quot;alert(1)'],
+  ['a tag', '<script>alert(1)</script>', '&lt;script&gt;alert(1)&lt;/script&gt;'],
+  ['an entity', 'a &amp; b &#34;', 'a &amp;amp; b &amp;#34;'],
+  ['a single quote', "x' onload='y", 'x&#39; onload=&#39;y'],
+  ['non-ASCII and a long run', `“图” ${'é'.repeat(500)}`, `“图” ${'é'.repeat(500)}`],
+];
+
+for (const [what, alt, escaped] of hostileAlts) {
+  test(`#825 an attached file’s alt with ${what} comes out escaped`, () => {
+    const html = renderMarkdown(`![${alt}](a.png)`, { pageOrigin, files: { 'a.png': fig } });
+    assert.ok(html.includes(`alt="${escaped}" width="640"`), html.slice(0, 300));
+    assert.doesNotMatch(html, /onerror="|onload='|<script/);
+  });
+
+  test(`#825 a refused relative image’s alt with ${what} comes out escaped`, () => {
+    const html = renderMarkdown(`![${alt}](b.png)`, { pageOrigin, files: { 'a.png': fig } });
+    assert.ok(html.includes(`It shows: ${escaped}</span>`), html.slice(0, 300));
+    assert.doesNotMatch(html, /<img|onerror="|onload='|<script/);
+  });
+}
+
+test('#825 a hostile alt past the label limit stays text, escaped, with no image', () => {
+  const html = renderMarkdown(`![${'x'.repeat(1200)}" onerror="alert(1)<b>](a.png)`, { pageOrigin, files: { 'a.png': fig } });
+  assert.doesNotMatch(html, /<img|onerror="|<b>/);
+  assert.match(html, /&quot; onerror=&quot;alert\(1\)&lt;b&gt;/);
+});
