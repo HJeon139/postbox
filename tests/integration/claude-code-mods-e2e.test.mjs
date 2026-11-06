@@ -234,6 +234,9 @@ test('#817 the fixture copies only the allowlisted model settings from the perso
       GITHUB_TOKEN: 'g',
       X_TOKEN: 'x',
       CLAUDE_CONFIG_DIR: '/elsewhere',
+      // Headers can carry a credential under a name that says nothing of one.
+      ANTHROPIC_CUSTOM_HEADERS: 'Authorization: Bearer x',
+      OTEL_EXPORTER_OTLP_HEADERS: 'Authorization=Bearer x',
     },
     awsAuthRefresh: 'refresh',
     apiKeyHelper: 'helper',
