@@ -3,6 +3,7 @@
 - persona: A software engineer who reads outside their field on weekends and wants to understand one new paper well enough to explain it to a friend. Curious, short on patience for walls of text, and can’t say what a good diagram looks like until they see one. Writes short messages and never says how an answer should look.
 - agents: researcher
 - models: persona
+- judge: visual
 - steps: 12
 - project: Paper explainers
 - conversation: Jia

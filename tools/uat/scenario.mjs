@@ -28,6 +28,7 @@
 // `### On a host` heading replaces the phase’s text then (tools/uat/hosts-scenario.mjs).
 
 import { DEFAULT_HOP_LIMIT } from '../../shared/limits.mjs';
+import { judgeOf } from './visual-judge.mjs';
 
 /** The backends that run Claude. Every other one makes a scenario a compatibility run. */
 export const CLAUDE_BACKENDS = new Set(['claude-code', 'agent-sdk']);
@@ -101,6 +102,8 @@ export function parseScenario(md) {
     // fake-env` plants the allow-once scenario’s fake .env, and `- seed: visual-skill` the draft visual-explainer skill
     // as a project skill (tools/uat/workspace.mjs).
     seed: meta.seed ?? null,
+    // `- judge: visual` (#206): the tester judges the first visual that answers its question (tools/uat/visual-judge.mjs).
+    judge: judgeOf(meta.judge),
     // `- seed-diagrams: 6` (#701): with `- seed: big-room`, that many of its agent replies end in a Mermaid diagram.
     seedDiagrams: seedDiagramsOf(meta['seed-diagrams'], meta.seed),
     gh: meta.gh === 'none' ? 'none' : 'yes',
