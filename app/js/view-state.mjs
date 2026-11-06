@@ -173,7 +173,12 @@ function onScroll(v) {
   // after what’s above has moved again: hold it in place again before taking the anchor there, or you lose your place
   // (#297).
   const moved = s.scrollTop !== v.lastTop;
-  if (atEnd(s)) {
+  // A box that changed size since the last scroll event (full screen and back, the window) can clamp the view to its
+  // new end. That isn’t you scrolling: the view doesn’t start following, and keeps the place you were reading, as
+  // heard() doesn’t take it in, so it’s there again when the box grows back (#837). A clamp only ever moves the view
+  // up; reaching the end by moving down, after any resize, is you.
+  const clamped = sizeOf(s) !== v.size && s.scrollTop < v.lastTop;
+  if (atEnd(s) && (v.stuck || !clamped)) {
     if (!v.stuck) v.held = measure(v, s);
     v.stuck = true;
   } else if (s.scrollTop < v.lastTop) v.stuck = false;
@@ -181,7 +186,7 @@ function onScroll(v) {
   if (gapOf(s) <= PILL_ROOM) seen(v);
   v.lastTop = s.scrollTop;
   v.size = sizeOf(s);
-  if (v.stuck) return;
+  if (v.stuck || (clamped && atEnd(s))) return;
   if (!moved) holdAnchor(v);
   v.anchor = findAnchor(v);
 }
