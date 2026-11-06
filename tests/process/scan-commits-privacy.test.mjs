@@ -100,6 +100,18 @@ test('a commit that adds a file named after an address fails, and its log holds 
   for (const part of ['jdoe', 'corp']) assert.ok(!err.includes(part), `the log holds “${part}”`);
 });
 
+test('a file named after an address that holds private text too prints no part of the name or the text (#784, #785)', async () => {
+  const dir = await repo();
+  const address = ['jdoe', 'corp.com'].join('@');
+  const sha = await commit(dir, `n-${address}.md`, `mail ${address}\n${HOME_PATH}\n`, 'add a note');
+  const { status, err } = scan(dir, 'main..HEAD');
+  assert.equal(status, 1);
+  const findings = err.split('\n').filter((line) => line.startsWith(sha));
+  const where = `${sha} a file’s name`;
+  assert.deepEqual(findings, [`${where}: email in the file name`, `${where}: home path at line 2`, `${where}: email at line 1`]);
+  for (const part of ['jdoe', 'corp', 'alice', 'Users', 'n-']) assert.ok(!err.includes(part), `the log holds “${part}”`);
+});
+
 test('a home path added in one commit and removed in a later one still fails', async () => {
   const dir = await repo();
   const sha = await commit(dir, 'notes.md', `see ${HOME_PATH}\n`);

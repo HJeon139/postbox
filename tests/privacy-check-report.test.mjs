@@ -94,3 +94,14 @@ test('a value split across a stream’s deltas names the stream’s first line i
   const git = { commits: () => ['fefefe0123456789'], show: () => diff([...hunk, ...lines]), message: () => 'x\n' };
   assert.deepEqual(scanCommits('main..HEAD', git).findings.map(formatFinding), ['fefefe0 r.jsonl: home path in the deltas joined from line 5']);
 });
+
+test('a file whose name is private prints no part of its name in any of its findings, its text’s too (#784, #785)', () => {
+  const name = `n-${SECRETS.email.text}.md`;
+  const home = SECRETS['home path'].text;
+  const lines = [`mail ${SECRETS.email.text}`, home];
+  const git = { commits: () => ['fefefe0123456789'], show: () => diff(newFile(name, lines)), message: () => 'x\n' };
+  const printed = scanCommits('main..HEAD', git).findings.map(formatFinding);
+  const where = 'fefefe0 a file’s name';
+  assert.deepEqual(printed, [`${where}: email in the file name`, `${where}: home path at line 2`, `${where}: email at line 1`]);
+  for (const line of printed) for (const value of [name, home]) holdsNone(line, value, 'a private name with private text');
+});
