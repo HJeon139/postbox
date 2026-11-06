@@ -256,7 +256,7 @@ export function checkPathPrivacy(path) {
 /**
  * Whether a violation is in a file’s name, so that a report mustn’t print the name. @param {string} violation
  */
-export function inFileName(violation) {
+function inFileName(violation) {
   return violation.endsWith(IN_FILE_NAME);
 }
 
@@ -315,4 +315,18 @@ export function checkFilesPrivacy(paths, read) {
     if (violations.length > 0) findings.push({ path, violations });
   }
   return { checked, findings };
+}
+
+/**
+ * The lines the tree’s privacy test (tests/process/privacy-tree.test.mjs) prints for checkFilesPrivacy’s findings, one
+ * per file. A file whose name is private is named by its place in the list of paths, from 1, so CI’s public log doesn’t
+ * repeat the name (#784).
+ *
+ * @param {string[]} paths the paths checked, in the order `git ls-files` lists them
+ * @param {{ path: string, violations: string[] }[]} findings
+ * @returns {string[]}
+ */
+export function treeFailures(paths, findings) {
+  const named = (path, violations) => (violations.some(inFileName) ? `file ${paths.indexOf(path) + 1} of git ls-files` : path);
+  return findings.map(({ path, violations }) => `  - ${named(path, violations)}: ${violations.join('; ')}`);
 }
