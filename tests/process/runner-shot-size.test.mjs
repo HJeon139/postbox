@@ -5,6 +5,8 @@
 // shrink on macOS (tests/browser/uat-view.spec.mjs, runnerPage).
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../../tools/browser.mjs';
@@ -16,12 +18,28 @@ const skip = await chromiumMissing();
 const sleep = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
 // A tall page with an item far below the top, as a long room’s first items are far above its end, sized to the
 // device as Postbox’s page is.
-const PAGE = `data:text/html,${encodeURIComponent(
-  '<meta name="viewport" content="width=device-width"><body style="margin:0"><div style="height:3000px"></div><div data-key="far" style="height:200px">Far</div><div style="height:3000px"></div></body>',
-)}`;
+const PAGE =
+  '<meta name="viewport" content="width=device-width"><body style="margin:0"><div style="height:3000px"></div><div data-key="far" style="height:200px">Far</div><div style="height:3000px"></div></body>';
+// A shot scrolls through the page’s own jumpTo (#712a), so the page is served beside the real app/js/view-jump.mjs.
+const JUMP_MODULE = readFileSync(new URL('../../app/js/view-jump.mjs', import.meta.url));
+
+/** Serves PAGE at / and view-jump.mjs at its path on a free port; resolves to its origin and a close(). */
+function servePage() {
+  const server = createServer((req, res) => {
+    if (req.url === '/app/js/view-jump.mjs') return res.writeHead(200, { 'content-type': 'text/javascript' }).end(JUMP_MODULE);
+    res.writeHead(200, { 'content-type': 'text/html' }).end(PAGE);
+  });
+  return new Promise((ok) =>
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = /** @type {import('node:net').AddressInfo} */ (server.address());
+      ok({ origin: `http://127.0.0.1:${port}`, close: () => new Promise((r) => server.close(r)) });
+    }),
+  );
+}
 
 test('an item shot and a window shot leave the runner’s window the size it set, at 1280 and 375 wide', { skip }, async () => {
   const dir = tempDir('runner-shot-');
+  const site = await servePage();
   const page = await launch();
   try {
     for (const [width, height] of [
@@ -29,7 +47,7 @@ test('an item shot and a window shot leave the runner’s window the size it set
       [375, 812],
     ]) {
       await page.size(width, height);
-      await page.goto(PAGE);
+      await page.goto(`${site.origin}/`);
       await page.evaluate('scrollTo(0, document.scrollingElement.scrollHeight)');
       const size = () => page.evaluate('[innerWidth, innerHeight]');
       assert.deepEqual(await size(), [width, height], 'size() set the window');
@@ -41,5 +59,6 @@ test('an item shot and a window shot leave the runner’s window the size it set
     }
   } finally {
     await page.close();
+    await site.close();
   }
 });
