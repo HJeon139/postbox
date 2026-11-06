@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { launch, sleep } from './browser.mjs';
 import { parseMaxCost, runBudget } from './uat/budget.mjs';
-import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
+import { lastCheckPass, MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
@@ -519,7 +519,7 @@ async function main() {
     if (tm.runnerRecords(scenario, opt)) await tm.finishTelemetry({ ...tel, td, dir, data: paths.data, main: mainThread, log, findings });
     await refreshFacts();
     if (hr) await endHosts(hr, dir);
-    newFindings();
+    lastCheckPass(findings, newFindings);
     // What the last action caused counts, and every phase with triggers that didn’t all happen is a coverage gap.
     await noteStale();
     goals.observe(facts, timeline.length);
