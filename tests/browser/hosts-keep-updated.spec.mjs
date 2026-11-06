@@ -152,6 +152,15 @@ async function cardStates(page) {
     await audit(page, 'installed by itself');
   });
 
+  await test.step('reinstalled with a new token (#464-b3)', async () => {
+    fake.set(id, withUpdate('connected', { outcome: 'reinstalled' }));
+    await expect(line, 'Postbox put back with a new token').toHaveText(
+      `Postbox wasn’t on ${NAME} any more, so it installed ${VERSION} there again and made a new token. Turns that ran there before are gone.`,
+    );
+    await noSecrets(c);
+    await audit(page, 'reinstalled');
+  });
+
   await test.step('failed, with Install… beside it', async () => {
     fake.set(id, withUpdate('failed', { outcome: 'failed' }));
     await expect(line, 'a failed install').toContainText(`Postbox couldn’t install ${VERSION} here by itself.`);
@@ -195,6 +204,6 @@ for (const { width, use } of SIZES)
     test.use(use);
     test('#464 the toggle saves on and off at once, as the host’s status has it', ({ page }) => toggle(page));
     test('#464 a toggle the server refuses goes back, says why, and follows the status', ({ page }) => refused(page));
-    test('#464 the card says installing, installed by itself, or failed with Install…, never a token or a path', ({ page }) => cardStates(page));
+    test('#464 the card says installing, installed by itself, reinstalled, or failed with Install…, never a token or a path', ({ page }) => cardStates(page));
     test('#464 busy and present say nothing on the card', ({ page }) => quietStates(page));
   });
