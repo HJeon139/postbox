@@ -212,3 +212,17 @@ test('#854 an update is a withdraw, an outcome or a whole block, in the order Po
   assert.equal(updateKind(base('choice', { options: [{ id: 'a', label: 'A' }] })), 'block');
   for (const v of [null, undefined, 'x', 3]) assert.equal(updateKind(v), 'block');
 });
+
+test('#455 options that are all strings get one error that shows an option’s shape', () => {
+  const sizes = base('form', {
+    fields: [
+      { id: 'n', label: 'Name', kind: 'text' },
+      { id: 'size', label: 'Size', kind: 'select', options: ['Small', 'Medium', 'Large'] },
+    ],
+  });
+  assert.deepEqual(bad(sizes).errors, ['fields[1].options must be objects like { "id": "small", "label": "Small" }, not strings.']);
+  // A choice’s options are the same shape, and get the same one error.
+  assert.deepEqual(bad(base('choice', { options: ['Yes', 'No'] })).errors, ['options must be objects like { "id": "yes", "label": "Yes" }, not strings.']);
+  // One string among objects is that option’s own error, as before.
+  bad(base('choice', { options: [{ id: 'a', label: 'A' }, 'B'] }), /^options\[1\] must be an object, not a string\.$/);
+});
