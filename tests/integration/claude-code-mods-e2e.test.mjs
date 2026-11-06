@@ -166,11 +166,12 @@ async function pushTurn(t, backend, mode) {
     }
     await sleep(250);
   }
-  // On a timeout, say what the room shows, so one paid run is enough to see where the turn stuck.
+  // On a timeout, say what the room shows, so one paid run is enough to see where the turn stuck: each item's kind,
+  // status and id only, since its text can quote what a model setting or a command printed.
   const seen = () =>
     store
       .items(thread.id)
-      .map((i) => `${i.kind}${i.status ? `:${i.status}` : ''}${i.text ? ` ${String(i.text).slice(0, 160)}` : ''}`)
+      .map((i) => `${i.kind}${i.status ? `:${i.status}` : ''} ${i.id}`)
       .join(' | ');
   assert.equal(running(), false, `the turn should end within ${TURN_MS / 1000} s; the room shows: ${seen()}`);
   const said = store
