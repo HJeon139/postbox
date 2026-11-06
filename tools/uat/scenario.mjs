@@ -28,6 +28,7 @@
 // `### On a host` heading replaces the phase’s text then (tools/uat/hosts-scenario.mjs).
 
 import { DEFAULT_HOP_LIMIT } from '../../shared/limits.mjs';
+import { filesOf } from './fixtures.mjs';
 import { judgeOf } from './visual-judge.mjs';
 
 /** The backends that run Claude. Every other one makes a scenario a compatibility run. */
@@ -102,6 +103,8 @@ export function parseScenario(md) {
     // fake-env` plants the allow-once scenario’s fake .env, and `- seed: visual-skill` the draft visual-explainer skill
     // as a project skill (tools/uat/workspace.mjs).
     seed: meta.seed ?? null,
+    // `- files: home-budget` (#206): a folder of tests/uat/e2e/fixtures/ copied into the workspace (tools/uat/fixtures.mjs).
+    files: filesOf(meta.files),
     // `- judge: visual` (#206): the tester judges the first visual that answers its question (tools/uat/visual-judge.mjs).
     judge: judgeOf(meta.judge),
     // `- seed-diagrams: 6` (#701): with `- seed: big-room`, that many of its agent replies end in a Mermaid diagram.
