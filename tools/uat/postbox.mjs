@@ -7,7 +7,7 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
-import { sleep } from '../browser.mjs';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { untilGone } from './until-gone.mjs';
 
 /** Whether nothing listens on this port here. @param {number} port */
