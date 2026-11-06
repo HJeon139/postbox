@@ -34,6 +34,12 @@ test('Bash rules: exact, a prefix with :*, and globs where a space before * need
   assert.ok(m('Bash(ls *)', 'Bash(ls)'));
   assert.ok(!m('Bash(ls *)', 'Bash(lsof)'));
   assert.ok(m('Bash(ls*)', 'Bash(lsof)'));
+  // #840’s review: a trailing * matches the bare command only when it’s the rule’s one wildcard, as in Claude Code’s
+  // docs (“Wildcard patterns”), where Bash(* --help *) matches npm --help x but not npm --help.
+  assert.ok(m('Bash(* --help *)', 'Bash(npm --help x)'));
+  assert.ok(!m('Bash(* --help *)', 'Bash(npm --help)'));
+  assert.ok(!m('Bash(git -* push *)', 'Bash(git -C . push)'));
+  assert.ok(m('Bash(git -* push)', 'Bash(git -C . push)'));
 });
 
 test('a command that chains is split outside quotes', () => {
