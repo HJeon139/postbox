@@ -80,9 +80,9 @@ test('privacy checker flags a Bearer token, but not the word in prose or a place
   const tail = 'Ab3'.repeat(10);
   assert.deepEqual(checkContentPrivacy(`Authorization: Bearer ${tail}`), ['token at line 1']);
   assert.deepEqual(checkContentPrivacy(json({ headers: { authorization: `bearer ${tail}` } })), ['token at line 1'], 'in any case');
-  assert.equal(checkContentPrivacy(`Bearer ${'a'.repeat(20)}`).length, 1, 'a token at the shortest length');
+  assert.deepEqual(checkContentPrivacy(`Bearer ${'a'.repeat(20)}`), ['token at line 1'], 'a token at the shortest length');
   assert.equal(checkContentPrivacy(`Bearer ${'a'.repeat(19)}`).length, 0, 'one just short of it');
-  assert.equal(checkContentPrivacy(`Bearer ${['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxIn0', 'c2ln'].join('.')}`).length, 1, 'a JWT');
+  assert.deepEqual(checkContentPrivacy(`Bearer ${['eyJhbGciOiJIUzI1NiJ9', 'eyJzdWIiOiIxIn0', 'c2ln'].join('.')}`), ['token at line 1'], 'a JWT');
   for (const text of ['send a Bearer token in the header', 'Authorization: Bearer <token>', 'curl -H "Authorization: Bearer $TOKEN"']) {
     assert.deepEqual(checkContentPrivacy(text), [], text);
   }

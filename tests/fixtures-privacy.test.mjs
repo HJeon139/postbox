@@ -167,9 +167,9 @@ const CODEX_RESUME = 'tests/fixtures/codex-app-server/resume-turn-after-failure.
 test('privacy checker checks its own files, and the recorded Codex resume turn has no exemption (#660)', () => {
   const leak = slashed('', 'Users', 'melissa');
   for (const path of ['tools/privacy-check.mjs', 'tests/fixtures-privacy.test.mjs', 'docs/privacy-notes.md', CODEX_RESUME]) {
-    assert.ok(checkFilePrivacy(path, leak).length > 0, `${path} is checked`);
+    assert.deepEqual(checkFilePrivacy(path, leak), ['home path at line 1'], `${path} is checked`);
   }
-  assert.ok(checkFilePrivacy(CODEX_RESUME, json({ [PLAN_TYPE]: 'pro' })).length > 0, 'an account field there is flagged as anywhere');
+  assert.deepEqual(checkFilePrivacy(CODEX_RESUME, json({ [PLAN_TYPE]: 'pro' })), ['account field at line 1'], 'flagged as anywhere');
 });
 
 test('the recorded Codex resume turn holds no account metadata (#660)', () => {

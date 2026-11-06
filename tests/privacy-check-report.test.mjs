@@ -12,19 +12,19 @@ import { diff, newFile } from './diff-fixture.mjs';
 /** A made-up installation id that isn’t all zeros. */
 const ID = ['12345678', 'abcd', '1234', 'abcd', '123456789abc'].join('-');
 
-/** Made-up private strings of each kind the checker finds, by kind: the text a file holds, and its private part, which
- * shares no three characters with the commit “fefefe0” or the file “notes.md”. */
+/** Made-up private strings of each kind the checker finds, by kind: the text a file holds, the kind its finding names,
+ * and its private part, which shares no three characters with the commit “fefefe0” or the file “notes.md”. */
 const SECRETS = {
-  email: { text: ['jdoe', 'corp.com'].join('@') },
-  'home path': { text: ['', 'Users', 'alice', 'x'].join('/') },
-  'home slug': { text: ['', 'Users', 'alice', 'x'].join('-') },
-  'GitHub token': { text: `ghp_${'Ab3'.repeat(14)}` },
-  'Anthropic key': { text: `sk-ant-api03-${'Ab3'.repeat(14)}` },
-  'Bearer token': { text: `Bearer ${'Xy7'.repeat(10)}` },
-  installationId: { text: JSON.stringify({ installationId: ID }), secret: ID },
-  uid: { text: JSON.stringify({ uid: 501 }), secret: '501' },
-  utilization: { text: JSON.stringify({ utilization: 0.13 }), secret: '0.13' },
-  connector: { text: JSON.stringify({ name: 'claude.ai Alice Trip Diary' }), secret: 'Alice Trip Diary' },
+  email: { text: ['jdoe', 'corp.com'].join('@'), found: 'email' },
+  'home path': { text: ['', 'Users', 'alice', 'x'].join('/'), found: 'home path' },
+  'home slug': { text: ['', 'Users', 'alice', 'x'].join('-'), found: 'home path' },
+  'GitHub token': { text: `ghp_${'Ab3'.repeat(14)}`, found: 'token' },
+  'Anthropic key': { text: `sk-ant-api03-${'Ab3'.repeat(14)}`, found: 'token' },
+  'Bearer token': { text: `Bearer ${'Xy7'.repeat(10)}`, found: 'token' },
+  installationId: { text: JSON.stringify({ installationId: ID }), found: 'installationId', secret: ID },
+  uid: { text: JSON.stringify({ uid: 501 }), found: 'uid', secret: '501' },
+  utilization: { text: JSON.stringify({ utilization: 0.13 }), found: 'utilization', secret: '0.13' },
+  connector: { text: JSON.stringify({ name: 'claude.ai Alice Trip Diary' }), found: 'connector name', secret: 'Alice Trip Diary' },
 };
 
 /** The parts of a value a printed line must not hold: each run of three characters in it. @param {string} value */
@@ -41,18 +41,17 @@ function holdsNone(line, value, kind) {
 }
 
 test('a finding in a file names its kind and line, and prints no part of the value (#784)', () => {
-  for (const [kind, { text, secret = text }] of Object.entries(SECRETS)) {
+  for (const [kind, { text, found, secret = text }] of Object.entries(SECRETS)) {
     const result = scanCommits('main..HEAD', {
       commits: () => ['fefefe0123456789'],
       show: () => diff(newFile('notes.md', ['clean', `see ${text}`])),
       message: () => 'x\n',
       names: () => [],
     });
-    assert.equal(result.findings.length > 0, true, `${kind} is found`);
-    for (const finding of result.findings) {
-      holdsNone(formatFinding(finding), secret, kind);
-      assert.match(formatFinding(finding), /^fefefe0 notes\.md: [a-zA-Z ]+ at line 2$/, kind);
-    }
+    assert.equal(result.findings.length, 1, `${kind} is found once`);
+    const printed = formatFinding(result.findings[0]);
+    holdsNone(printed, secret, kind);
+    assert.equal(printed, `fefefe0 notes.md: ${found} at line 2`, kind);
   }
 });
 
