@@ -219,10 +219,16 @@ const SCHEMAS = {
     check(b, errs, opts) {
       if (typeof b.src !== 'string') return;
       // https from an allowed origin; plain http only for Postbox itself on this machine.
-      const local = LOCAL_HTTP.test(b.src);
-      if (!isSafeUrl(b.src, { schemes: local ? ['http:'] : ['https:'], origins: opts.imageOrigins })) {
-        errs.push(`src must be an https address from an allowed origin (${(opts.imageOrigins ?? []).join(', ') || 'none configured'}).`);
+      const schemes = LOCAL_HTTP.test(b.src) ? ['http:'] : ['https:'];
+      // A host doesn’t know Postbox’s list of origins, so it checks the scheme, and Postbox the origin (#854).
+      if (opts.origins === 'later') {
+        if (!isSafeUrl(b.src, { schemes })) errs.push('src must be an https address.');
+        return;
       }
+      // No list allows no origin: a caller that forgets the list refuses an image rather than passing any.
+      const origins = opts.imageOrigins ?? [];
+      if (!isSafeUrl(b.src, { schemes, origins }))
+        errs.push(`src must be an https address from an allowed origin (${origins.join(', ') || 'none configured'}).`);
     },
   },
   code: {
@@ -276,7 +282,8 @@ const SCHEMAS = {
 /**
  * Validates one block against the catalog.
  * @param {any} raw  the block as the agent sent it
- * @param {{ imageOrigins?: string[] }} [opts]
+ * @param {{ imageOrigins?: string[], origins?: 'later' }} [opts]  origins: 'later' checks an image’s scheme and leaves its
+ *   origin to Postbox, for a host, which doesn’t have imageOrigins
  * @returns {{ ok: true, block: Block } | { ok: false, errors: string[], fallback: string, reason: 'unknown-type'|'newer-version'|'invalid' }}
  */
 export function validateBlock(raw, opts = {}) {

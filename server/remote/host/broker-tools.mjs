@@ -44,7 +44,7 @@ export async function prepare(b, turn, name, args) {
   // Postbox checks it against the block it names (server/blocks.mjs, #854).
   if (name === 'update_block' && updateKind(out.block) === 'block') {
     // A review’s files aren’t the catalog’s: Postbox takes them off the block before it validates it.
-    const v = validateBlock(carriesBlockFiles(name, out) ? withoutFiles(out.block) : out.block);
+    const v = validateBlock(carriesBlockFiles(name, out) ? withoutFiles(out.block) : out.block, { origins: 'later' });
     if (!v.ok) return { ok: false, text: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
   }
   if (name === 'update_app' && typeof out.code === 'string') {
