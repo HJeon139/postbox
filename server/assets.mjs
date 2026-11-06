@@ -131,16 +131,27 @@ function holderOf(look, name, except = null) {
 }
 
 /**
+ * The hash of the bytes a write’s version would hold, from its base: the write’s, the restored version’s, the base’s
+ * for a rename, which keeps them, and null for a delete. A rename or delete request carries no sha256 (#703).
+ */
+function bytesFrom(asset, req) {
+  if (req.kind === 'restore') return versionAt(asset, req.version)?.sha256;
+  if (req.kind === 'rename') return versionAt(asset, req.base)?.sha256;
+  return req.kind === 'delete' ? null : req.sha256;
+}
+
+/**
  * The version that is already this write, or null (I5): one with the write’s op and author, or a head with the same
- * base, bytes and author (and name, for a rename). Durable, unlike the store’s op ids, which a snapshot drops.
+ * base, bytes and author (and name, for a rename). Durable, unlike the store’s op ids, which a snapshot drops. A
+ * retry sends the same name, so a rename compares it exactly, as stored (NFC): one that changes only its case is a
+ * new rename, not a repeat.
  */
 function repeatOf(look, asset, req) {
   const byOp = req.op && own(look.index.ops, opKey(asset.id, req.author, req.op));
   if (byOp) return versionAt(asset, byOp);
   const head = headOf(asset);
-  const bytes = req.kind === 'restore' ? versionAt(asset, req.version)?.sha256 : req.sha256;
-  if (!head || head.author !== req.author || head.base !== (req.base ?? null) || head.sha256 !== bytes) return null;
-  return req.kind !== 'rename' || nameKey(asset.name) === nameKey(req.name) ? head : null;
+  if (!head || head.author !== req.author || head.base !== (req.base ?? null) || head.sha256 !== bytesFrom(asset, req)) return null;
+  return req.kind !== 'rename' || asset.name === req.name.normalize('NFC') ? head : null;
 }
 
 /**

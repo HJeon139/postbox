@@ -127,6 +127,23 @@ test('#516 S3b: rename, delete and restore each make a version; a deleted one re
   assert.match((await A.read_asset({ id, from: 99 })).message, /Nothing after character 4 of v4: that’s the end of it\./);
 });
 
+test('I5: a rename_asset or delete_asset retried without an op answers that it repeated, quoting the stored name', async (ctx) => {
+  const { A, B } = await assetRoom(ctx);
+  const { id } = await A.write_asset({ name: 'old.md', text: 'body' });
+  // Sent decomposed (NFD), stored and quoted NFC: the answer quotes the asset’s name, not the string sent.
+  const name = 'q"<&amp;>e\u0301.md';
+  const stored = 'q"<&amp;>\u00e9.md';
+  const repeated = (/** @type {number} */ v) =>
+    `Already published as v${v} of asset ${id}, “${stored}”; this write repeated it, so nothing new was made. To change it, write from base: ${v}.`;
+  assert.match((await A.rename_asset({ id, base: 1, name })).message, /^Renamed it as v2/);
+  assert.equal((await A.rename_asset({ id, base: 1, name })).message, repeated(2));
+  const other = await B.rename_asset({ id, base: 1, name });
+  assert.equal(other.message, `@alpha wrote version 2 of ${id} since version 1. Read version 2, then write again from it.`);
+  assert.equal((await A.rename_asset({ id, base: 1, name: 'nul\u0000.md' })).message, 'An asset’s name has no backslash or control characters.');
+  assert.equal((await A.delete_asset({ id, base: 2 })).ok, true);
+  assert.equal((await A.delete_asset({ id, base: 2 })).message, repeated(3));
+});
+
 test('#516 S3b: a binary version gives its metadata, and a pruned one says it was pruned and can’t be restored', async (ctx) => {
   const { A, folder } = await assetRoom(ctx);
   const big = (/** @type {number} */ n) => {
