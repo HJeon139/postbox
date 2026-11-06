@@ -2,6 +2,21 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.27.0 (2026-11-06)
+
+### Features
+
+- **uat:** session-scoped, #564-b1's trigger, from a probe of whole-page lookups per session event
+
+### Fixes
+
+- **rail:** find the shell's root from the rail's toggle, not by a lookup over the page (#564-b1)
+- **transcript:** a replaced latest reply hands its line on; lines off the page wait (#564-b1)
+- **open-asks:** any item change or a removal clears the kept blocks; off-page buttons wait (#564-b1)
+- **transcript:** a session event paints the lines that follow it, kept as they're drawn (#564-b1)
+- **open-asks:** repaint the session’s own buttons, from blocks kept per session (#564-b1)
+- **rail:** a session event looks for its rings in the rail and strip, not the whole page (#564-b1)
+
 ## 1.26.0 (2026-11-06)
 
 ### Features
