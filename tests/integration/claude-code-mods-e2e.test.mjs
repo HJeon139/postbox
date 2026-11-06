@@ -5,11 +5,16 @@
 // ran. A control turn in Run everything, where Postbox keeps the person’s hooks, shows the fixture’s hooks do run.
 //
 // It runs real model turns, which cost money, so it runs only with POSTBOX_E2E_CLAUDE=1 and a `claude` on PATH. It
-// lives in tests/integration/, outside `npm test`’s tests/*.test.mjs. HOME is a temp folder for the turns, so the
-// person’s own settings never load: the model must be reachable without them, through ANTHROPIC_API_KEY or Bedrock
-// (AWS_CONFIG_FILE and AWS_SHARED_CREDENTIALS_FILE are pointed at the person’s own files when unset; the test never
-// reads them), plus the model keys of the person’s user settings (reachModel). A sign-in kept in ~/.claude doesn’t
-// carry over.
+// lives in tests/integration/, which `npm run check` runs (its test:integration stage): there every test here is
+// skipped unless POSTBOX_E2E_CLAUDE=1 is set, and with it set, every `npm run check` pays for these turns. `npm test`
+// doesn’t run it. HOME is a temp folder for the turns, so the person’s own settings never load: the model must be
+// reachable without them, through ANTHROPIC_API_KEY or Bedrock (AWS_CONFIG_FILE and AWS_SHARED_CREDENTIALS_FILE are
+// pointed at the person’s own files when unset; the test never reads them), plus an allowlist of the person’s user
+// settings (reachModel). A sign-in kept in ~/.claude doesn’t carry over.
+//
+// The fixture’s folder is removed when the file ends (tempDir), and on Ctrl-C or SIGTERM (onKill). A run killed with
+// SIGKILL leaves it in the temp folder; under `npm run check` that’s the run’s own folder, which the next run sweeps
+// (tools/gate-tmp.mjs). It holds no secret either way: reachModel copies none.
 //
 // The push names a refspec, so request-floor.mjs refuses it before the write judge: no Haiku call, whatever the
 // message says (write-intent.mjs, requestedCall).
@@ -25,7 +30,7 @@ import { loadAgentSdk } from '../../server/adapters/agent-sdk.mjs';
 import { findClaude } from '../../server/adapters/claude-code.mjs';
 import { start } from '../../server/index.mjs';
 import { freePort } from '../process/chrome.mjs';
-import { tempDir } from '../temp-dirs.mjs';
+import { removeTempDirs, tempDir } from '../temp-dirs.mjs';
 
 const MODEL = 'claude-haiku-5-5';
 const TURN_MS = 240_000;
@@ -46,16 +51,39 @@ const git = (cwd, ...args) => execFileSync('git', ['-c', 'user.name=Postbox e2e'
 
 // How the person's Claude Code reaches the model, and nothing else, copied from their user settings: the Agent SDK's
 // own bundled Claude Code doesn't get the setup a wrapper on PATH adds, so without these its turn on Bedrock never
-// answers (two runs on 6 Nov waited out the 240 s with nothing in the room). Their hooks and rules aren't copied.
-const MODEL_KEYS = ['env', 'awsCredentialExport', 'awsAuthRefresh', 'modelOverrides', 'apiKeyHelper'];
+// answers (two runs on 6 Nov waited out the 240 s with nothing in the room). Only an allowlist is copied, so no secret
+// lands in the fixture, and nothing that changes what's tested (CLAUDE_CONFIG_DIR would move the user settings away
+// from the fixture's HOME, so the user hook would never load and its check would pass on no evidence). The top-level
+// keys name commands (a credential export, an auth refresh, a key helper) that the person's own claude already runs;
+// the turn runs them the same way. Hooks, permissions and anything named like a key, secret or token never are.
+const MODEL_ENV =
+  /^(AWS_REGION|AWS_PROFILE|AWS_DEFAULT_REGION|CLAUDE_CODE_USE_BEDROCK|ANTHROPIC_MODEL|ANTHROPIC_SMALL_FAST_MODEL|ANTHROPIC_DEFAULT_[A-Z0-9_]+_MODEL|ANTHROPIC_BEDROCK_BASE_URL)$/;
+const MODEL_KEYS = ['awsCredentialExport', 'awsAuthRefresh', 'modelOverrides', 'apiKeyHelper'];
+// ANTHROPIC_DEFAULT_*_MODEL could still name one (ANTHROPIC_DEFAULT_API_KEY_MODEL), so the name is checked too.
+const secretish = (/** @type {string} */ k) => /KEY|SECRET|TOKEN/i.test(k);
+/** The allowlisted model settings of `mine`, the person's user settings. @param {any} mine */
+function modelSettings(mine) {
+  if (!mine || typeof mine !== 'object') return {};
+  const out = Object.fromEntries(MODEL_KEYS.filter((k) => mine[k] !== undefined).map((k) => [k, mine[k]]));
+  const env =
+    mine.env && typeof mine.env === 'object' ? Object.entries(mine.env).filter(([k, v]) => MODEL_ENV.test(k) && !secretish(k) && typeof v === 'string') : [];
+  if (env.length) out.env = Object.fromEntries(env);
+  return out;
+}
 function reachModel() {
   try {
-    const mine = JSON.parse(readFileSync(join(homedir(), '.claude', 'settings.json'), 'utf8'));
-    return Object.fromEntries(MODEL_KEYS.filter((k) => mine[k] !== undefined).map((k) => [k, mine[k]]));
+    return modelSettings(JSON.parse(readFileSync(join(homedir(), '.claude', 'settings.json'), 'utf8')));
   } catch {
-    return {};
+    return {}; // no user settings, or not JSON: the model must be reachable from the environment alone
   }
 }
+
+// Ctrl-C or SIGTERM mid-turn: remove the fixture folders, then end as the signal would have.
+for (const signal of /** @type {const} */ (['SIGINT', 'SIGTERM']))
+  process.once(signal, () => {
+    removeTempDirs();
+    process.kill(process.pid, signal);
+  });
 
 /**
  * A temp HOME and a project with the same approving hook in its user and project settings, each touching a marker of
@@ -173,4 +201,41 @@ test('#817 control: in Run everything, Postbox keeps the person’s hooks, so th
   const r = await pushTurn(t, 'claude-code', 'bypass');
   assert.equal(existsSync(r.markers.user), true, `the user settings’ hook should run; the agent said: ${r.said.slice(0, 500)}`);
   assert.equal(existsSync(r.markers.project), true, 'the project settings’ hook should run');
+});
+
+test('#817 the fixture copies only the allowlisted model settings from the person’s user settings', () => {
+  const mine = {
+    env: {
+      AWS_REGION: 'us-west-2',
+      AWS_PROFILE: 'p',
+      CLAUDE_CODE_USE_BEDROCK: '1',
+      ANTHROPIC_MODEL: 'm',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'h',
+      ANTHROPIC_BEDROCK_BASE_URL: 'https://b',
+      ANTHROPIC_DEFAULT_API_KEY_MODEL: 'k',
+      ANTHROPIC_API_KEY: 'sk-secret',
+      AWS_SECRET_ACCESS_KEY: 's',
+      AWS_SESSION_TOKEN: 't',
+      GITHUB_TOKEN: 'g',
+      CLAUDE_CONFIG_DIR: '/elsewhere',
+    },
+    awsAuthRefresh: 'refresh',
+    apiKeyHelper: 'helper',
+    hooks: { PreToolUse: [] },
+    permissions: { allow: ['Bash'] },
+    model: 'opus',
+  };
+  assert.deepEqual(modelSettings(mine), {
+    awsAuthRefresh: 'refresh',
+    apiKeyHelper: 'helper',
+    env: {
+      AWS_REGION: 'us-west-2',
+      AWS_PROFILE: 'p',
+      CLAUDE_CODE_USE_BEDROCK: '1',
+      ANTHROPIC_MODEL: 'm',
+      ANTHROPIC_DEFAULT_HAIKU_MODEL: 'h',
+      ANTHROPIC_BEDROCK_BASE_URL: 'https://b',
+    },
+  });
+  assert.deepEqual(modelSettings(null), {});
 });
