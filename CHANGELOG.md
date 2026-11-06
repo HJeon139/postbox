@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.32.1 (2026-11-06)
+
+### Fixes
+
+- **agents:** the researcher's picture is for visual explanations, with predict-first kept
+- **mock:** the demo explainer shows a picture with a control, and practice only on request
+- **skills:** list all twelve content shapes in the visual-explainer run
+- **agents:** an explainer is a picture with a control, and practice only on request
+
 ## 1.32.0 (2026-11-06)
 
 ### Features
