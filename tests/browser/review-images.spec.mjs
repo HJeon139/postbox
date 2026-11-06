@@ -107,3 +107,36 @@ test('#780 Lines draws a review’s figures from the item’s route too, and ref
   await expect(block.locator('.rv-line').filter({ hasText: 'This image couldn’t load' })).toHaveCount(1);
   await expect(block.locator('.rv-line').filter({ hasText: 'isn’t a full https address or a file attached to this block' })).toHaveCount(1);
 });
+
+test.describe('at 375 px', () => {
+  test.use({ viewport: { width: 375, height: 800 } });
+
+  test('#828 a figure wider than the block scales down to fit it, keeping its aspect', async ({ page }) => {
+    const { rt } = app;
+    const folder = join(app.root, 'agent-folder');
+    await writeFile(join(folder, 'figs/wide.png'), png(1600, 400, 0, 0x60));
+    const t = rt.createThread({ projectId, title: 'A wide figure', personaIds: [rt.personaByHandle('librarian').id] });
+    const [se] = rt.sessionsIn(t.id);
+    const block = { id: 'wide', type: 'review', version: 1, format: 'markdown', fallback: 'A wide figure', content: '![Wide](figs/wide.png)' };
+    const { args, files } = await blockFiles(rt, se.id, 'show_block', { block: { ...block, files: [{ path: 'figs/wide.png' }] } });
+    expect(rt.toolsFor(se.id).show_block(args, { files }).ok).toBe(true);
+    const item = rt.store.items(t.id).find((i) => i.kind === 'block' && i.block.id === 'wide');
+    await page.goto(`${app.origin}/#/t/${t.id}`);
+    await synced(page, app);
+    const img = page.locator(`[data-block-item="${item.id}"] img.md-img`);
+    await img.scrollIntoViewIfNeeded();
+    const fit = () =>
+      img.evaluate((el) => {
+        const i = /** @type {HTMLImageElement} */ (el);
+        const box = i.getBoundingClientRect();
+        const room = /** @type {HTMLElement} */ (i.closest('.md') ?? i.parentElement).getBoundingClientRect();
+        return {
+          loaded: i.complete && i.naturalWidth === 1600,
+          fits: box.width <= room.width + 0.5 && box.width < 375,
+          ratio: Math.round((box.width / box.height) * 10) / 10,
+        };
+      });
+    await expect.poll(fit, { message: 'it loads, fits the block, and stays 4:1' }).toEqual({ loaded: true, fits: true, ratio: 4 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'the page doesn’t scroll sideways').toBe(true);
+  });
+});
