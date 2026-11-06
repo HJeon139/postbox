@@ -2,7 +2,8 @@
 // agent has read it (answerDelivered, #123), update_block, and its refusal over an answer the agent hasn’t read
 // (unreadAnswer). Moved out of server/runtime.mjs; Runtime keeps one-line methods that call these.
 
-import { ASKING, followsConversation, updateKind, validateBlock } from '../shared/catalog.mjs';
+import { updateKind } from '../shared/block-updates.mjs';
+import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { LIMITS } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';

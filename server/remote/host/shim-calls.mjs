@@ -1,7 +1,8 @@
 // The host’s shim’s tool calls (#120): a tool call sent to the daemon, queued or waited on, and permission_prompt,
 // which waits for the person’s answer or denies at permissionWaitMax. shim.mjs’s header says how each waits.
 
-import { updateKind, validateBlock } from '../../../shared/catalog.mjs';
+import { updateKind } from '../../../shared/block-updates.mjs';
+import { validateBlock } from '../../../shared/catalog.mjs';
 import { NOT_YOUR_PROMPT, TOOL_DEFS } from '../../../shared/mcp-tools.mjs';
 import { encode, message, TOOL_ROUTES, toolRoute } from '../../../shared/remote-protocol.mjs';
 import { fail, minutes, queuedText, respond, send, textResult } from './shim-harness.mjs';

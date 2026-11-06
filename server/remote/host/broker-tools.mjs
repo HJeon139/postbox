@@ -2,7 +2,8 @@
 // down and sent to Postbox once it’s checked and its files are read as the laptop would; and Postbox’s reply to it.
 // broker.mjs’s header says what’s written down when.
 
-import { updateKind, validateBlock } from '../../../shared/catalog.mjs';
+import { updateKind } from '../../../shared/block-updates.mjs';
+import { validateBlock } from '../../../shared/catalog.mjs';
 import { carriesBlockFiles, encodedBytes, REMOTE_LIMITS, TURN_FILES, toolRoute } from '../../../shared/remote-protocol.mjs';
 import { filesReader, withoutFiles } from './broker-files.mjs';
 import { armReadTimer, claim, detached, readLocal, settled, settleOffline } from './broker-offline.mjs';

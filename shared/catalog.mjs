@@ -38,18 +38,6 @@ export const ASKING = new Set(['choice', 'form', 'confirm', 'review']);
 export const followsConversation = (block) => block.type === 'app' || (ASKING.has(block.type) && typeof block.outcome !== 'string');
 
 /**
- * What an update_block does, in the order Postbox applies it (#854): withdraws the block, records an outcome on it,
- * or replaces it with a whole block, which validateBlock checks. Postbox and a host’s daemon and shim read it alike.
- * @param {unknown} block  the update as the agent sent it
- * @returns {'withdraw' | 'outcome' | 'block'}
- */
-export function updateKind(block) {
-  if (block === null || typeof block !== 'object') return 'block';
-  if (Object.hasOwn(block, 'withdraw')) return 'withdraw';
-  return typeof (/** @type {{ outcome?: unknown }} */ (block).outcome) === 'string' ? 'outcome' : 'block';
-}
-
-/**
  * A block as the agent sent it, once it has passed validateBlock.
  * @typedef {{ id: string, type: string, version: number, title?: string, fallback: string, [field: string]: any }} Block
  */

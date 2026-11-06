@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CATALOG, updateKind, validateBlock } from '../shared/catalog.mjs';
+import { updateKind } from '../shared/block-updates.mjs';
+import { CATALOG, validateBlock } from '../shared/catalog.mjs';
 
 const base = (type, extra) => ({ id: 'b1', type, version: 1, fallback: 'Plain text version.', ...extra });
 const ok = (b, opts) => {
