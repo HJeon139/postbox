@@ -29,3 +29,15 @@ export function replaceTranscriptItem(old, next) {
   }
   return focusedId;
 }
+
+/** The open details an item holds, to keep while it’s off the page (the window, #866). @param {HTMLElement} node */
+export const saveDetails = (node) => detailsState(node);
+
+/** Opens and closes an item’s details as they were when it left the page. @param {HTMLElement} node @param {Map<string, boolean> | undefined} state */
+export function restoreDetails(node, state) {
+  if (!state?.size) return;
+  for (const details of node.querySelectorAll('details.raw, details.activity, details.step-text')) {
+    const key = detailsKey(/** @type {HTMLElement} */ (details));
+    if (key && state.has(key)) /** @type {HTMLDetailsElement} */ (details).open = state.get(key) === true;
+  }
+}
