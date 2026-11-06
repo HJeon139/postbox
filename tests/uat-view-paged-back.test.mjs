@@ -64,3 +64,10 @@ test('bigroom.md’s phase 1 names window-paged-back, and every trigger it names
   assert.ok(bigroom.phases[0].triggers.includes('window-paged-back'), bigroom.phases[0].triggers.join(', '));
   assert.deepEqual(unknownTriggers({ phases: bigroom.phases.slice(0, 1) }), []);
 });
+
+test('window-paged-back’s evidence is the first first-day sample, not a later one', () => {
+  const hits = run([sample(1, { anchorId: 'it_big0150' }), sample(2, { anchorId: 'it_big0100' })]);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].at, T0 + 1000);
+  assert.match(hits[0].evidence, /step 1[\s\S]*it_big0150/);
+});

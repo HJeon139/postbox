@@ -177,3 +177,11 @@ test('view-moved doesn’t read a move from an earlier sample whose anchor could
   const unmeasured = [sample(1, { actual: null, expected: 120 }), sample(2, { prev: { anchorId: 'it_big0500', actual: 900 } })];
   assert.deepEqual(findings(unmeasured), []);
 });
+
+test('view-moved is silent at exactly a pixel, and fires past it, for a move and for a stale offset', () => {
+  const movedTo = (actual) => findings([sample(1), sample(2, { prev: { anchorId: 'it_big0500', actual } })]);
+  assert.deepEqual(movedTo(121), []);
+  assert.equal(movedTo(121.25).length, 1);
+  assert.deepEqual(findings([sample(1, { actual: 121, expected: 120 })]), []);
+  assert.equal(findings([sample(1, { actual: 121.25, expected: 120 })]).length, 1);
+});

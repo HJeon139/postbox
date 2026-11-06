@@ -149,7 +149,10 @@ test('observe records the view probe before any screenshot scrolls the page', as
           : { frames: [] };
       },
     },
-    items: async () => [item],
+    items: async () => {
+      calls.push('items');
+      return [item];
+    },
     shotItem: async () => {
       calls.push('shot');
       return null;
@@ -157,7 +160,7 @@ test('observe records the view probe before any screenshot scrolls the page', as
   };
   const facts = { probes: {}, state: { threads: {}, sessions: {} }, threads: [] };
   await observe({ d, labels: new Map(), keys: new Map(), seen: new Map(), paths: { shots: '/nowhere' }, timeline: [1, 2], dir: '/', facts });
-  assert.deepEqual(calls, ['diagrams', 'queries', 'views', 'shot']);
+  assert.deepEqual(calls, ['diagrams', 'queries', 'views', 'items', 'shot']);
   assert.equal(facts.probes.views.length, 1);
 });
 
@@ -190,4 +193,18 @@ test('#531: a sample whose earlier anchor is still moving between the two reads 
   const page = pageWith([{ where: 'main', mode: 'reading', anchor: 'it_b', offset: '100', items: { it_a: (frame) => 880 + frame * 3, it_b: 100 } }]);
   const last = { main: { origin: ORIGIN, thread: 't_big', anchorId: 'it_a' } };
   assert.equal((await sampleViews(evIn(page), last))[0].settled, false);
+});
+
+test('#531: the probe settles at exactly half a pixel between reads, and not past it', async () => {
+  const at = (moves) => pageWith([{ where: 'main', mode: 'reading', anchor: 'it_b', offset: '100', items: { it_b: (frame) => 100 + frame * moves } }]);
+  assert.equal((await sampleViews(evIn(at(0.5)), {}))[0].settled, true);
+  assert.equal((await sampleViews(evIn(at(0.625)), {}))[0].settled, false);
+});
+
+test('#531: a sample whose anchor changed between the two reads isn’t settled, though both sit at the same place', async () => {
+  const page = pageWith([{ where: 'main', mode: 'reading', anchor: 'it_a', offset: '100', items: { it_a: 100, it_b: 100 } }]);
+  const [el] = page.document.querySelectorAll();
+  let reads = 0;
+  Object.defineProperty(el.dataset, 'viewAnchor', { get: () => (reads++ === 0 ? 'it_a' : 'it_b') });
+  assert.equal((await sampleViews(evIn(page), {}))[0].settled, false);
 });
