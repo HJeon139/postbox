@@ -26,6 +26,8 @@ export const LIMITS = Object.freeze({
   /** A code block’s code, and a review’s content and previous. */
   longText: 200_000,
   choiceOptions: 24,
+  /** An option’s description, under its label in a choice and after it in a select (#838). */
+  optionDescription: 200,
   formFields: 24,
   /** A select field’s options. */
   selectOptions: 50,

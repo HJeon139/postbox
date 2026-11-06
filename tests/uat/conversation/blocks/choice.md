@@ -11,6 +11,7 @@ Fixed answers are faster and less ambiguous than typing.
 ## Expected functionality
 
 - Single or multiple choice (chips or buttons), optional “other” text, a max.
+- An option may carry a description (#838): it shows in smaller, dimmer text under the option’s label, and the options are laid out as full-width panels.
 - In dark mode, a chosen chip has an amber outline and an amber label, not a solid amber fill (#181). Light mode keeps its fill.
 - Answering sends one event to the agent, shows a line in your voice and turns the block read-only. A long line in your voice wraps inside a box with a card’s corners, not pill ends (#199).
 - A result the agent reports on it shows as a line under your answer, and the block stays answered (as on a [confirm](confirm.md)).

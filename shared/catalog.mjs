@@ -44,7 +44,8 @@ export const followsConversation = (block) => block.type === 'app' || (ASKING.ha
 
 const LANG = /^[A-Za-z0-9_+#.-]{1,32}$/;
 
-const option = () => obj({ id: id(), label: str({ min: 1, max: 120 }) }, ['id', 'label']);
+// An option may say more under its label (#838): agents gave options a description, and the whole block was refused.
+const option = () => obj({ id: id(), label: str({ min: 1, max: 120 }), description: str({ min: 1, max: LIMITS.optionDescription }) }, ['id', 'label']);
 // A result reported on an answered block (#94), or an approved review (#106), shown under the answer. Markdown.
 const outcome = () => str({ min: 1, max: LIMITS.outcome });
 

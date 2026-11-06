@@ -179,7 +179,7 @@ const RENDER = {
             },
           },
           on ? icon('check') : null,
-          o.label,
+          o.description ? h('span.chip-text', h('span', o.label), h('span.chip-desc', o.description)) : o.label,
         ),
       );
     });
@@ -308,7 +308,7 @@ const RENDER = {
               },
             },
             h('option', { value: '' }, 'Choose…'),
-            f.options.map((o) => h('option', { value: o.id, selected: v === o.id }, o.label)),
+            f.options.map((o) => h('option', { value: o.id, selected: v === o.id }, o.description ? `${o.label} — ${o.description}` : o.label)),
           ),
           icon('down'),
         );
