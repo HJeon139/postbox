@@ -6,9 +6,24 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { apply, emptyState, map } from '../shared/state.mjs';
+import { apply, EVENTS, emptyState, map } from '../shared/state.mjs';
 
-/** A state holding what the valid payloads below name: a thread `t` with an item, a work entry and a session. */
+const sha = (/** @type {string} */ c) => c.repeat(64);
+const version = (/** @type {number} */ v, /** @type {string} */ c) => ({
+  v,
+  sha256: sha(c),
+  size: 1,
+  type: 'text/plain',
+  isText: true,
+  author: 'dev',
+  at: v,
+  base: v - 1 || null,
+});
+
+/**
+ * A state holding what the valid payloads below name: a thread `t` with an item, a work entry, a session, and an asset
+ * `as` in its room with version 1, made through the reducer so the room's index is as the store keeps it.
+ */
 function base() {
   const s = emptyState();
   s.threads.t = { id: 't', members: [] };
@@ -17,6 +32,8 @@ function base() {
   s.sessions.se = { id: 'se', threadId: 't', handle: 'dev' };
   s.glossary.t = map({ k: { key: 'k', term: 'K', definition: 'a k' } });
   s.hosts.h = { id: 'h', name: 'host' };
+  apply(s, 'asset', { id: 'as', room: 't', name: 'a.md', created: 1 });
+  apply(s, 'asset.version', { id: 'as', version: version(1, 'a'), prunes: [], released: [] });
   return s;
 }
 
@@ -44,6 +61,10 @@ export const VALID = {
   notify: { text: 'hi' },
   host: { id: 'h2', name: 'host two' },
   'host.status': { id: 'h', status: { state: 'connected' } },
+  asset: { id: 'as', room: 't', name: 'b.md', created: 1 },
+  'asset.version': { id: 'as', version: version(2, 'b'), prunes: [1], released: [sha('a')] },
+  'asset.erase': { room: 't', at: 3 },
+  'asset.released': { hashes: [sha('a')] },
 };
 
 /** Every key path of a payload, as arrays. */
@@ -57,6 +78,10 @@ function without(v, path) {
   else delete o[path.at(-1)];
   return out;
 }
+
+test('VALID has a payload for every EVENTS type, so a new type fails here until it has one (#702)', () => {
+  assert.deepEqual(Object.keys(VALID).sort(), Object.keys(EVENTS).sort());
+});
 
 test('every event type has a valid payload here, which applies without a throw', () => {
   for (const [type, d] of Object.entries(VALID)) assert.doesNotThrow(() => apply(base(), type, structuredClone(d)), type);
