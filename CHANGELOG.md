@@ -2,6 +2,23 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.32.0 (2026-11-06)
+
+### Features
+
+- **uat:** window-paged-back, reading at the big room's first day (#531)
+- **uat:** the view probe, each transcript's view each step before any screenshot (#531)
+- **checks:** view-moved, the view moving or changing mode with no input between (#531)
+
+### Fixes
+
+- **uat:** the runner's last check pass decides the run's unverified rows
+- **checks:** view-moved tallies each transcript's pairs, and says when it compared none
+- **checks:** view-moved reads the runner's moves as inputs, and says when the probe saw nothing
+- **checks:** view-moved spans unsettled samples, keys each finding, says when it checked nothing
+- **uat:** the view probe escapes the last anchor it splices into page code
+- **checks:** view-moved reads each transcript's previous sample from a map
+
 ## 1.31.0 (2026-11-06)
 
 ### Features
