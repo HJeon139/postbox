@@ -4,6 +4,8 @@
 // scroll (view-state.mjs, pin()). Every jump to an item goes through jumpTo; tests/view-jump-sites.test.mjs finds any
 // that doesn't.
 
+import { drawUntilPainted } from './view-skip.mjs';
+
 /**
  * What a view gives a jump: its scroll box; the page's y where what you can see of it starts and ends, below the top
  * bar in the main pane; and pin(), which makes an item its anchor.
@@ -38,15 +40,8 @@ export function wantedTop(top, height, room, block) {
  * @param {HTMLElement} item @param {Element} el
  */
 function drawnRect(item, el) {
-  const was = item.style.contentVisibility;
-  item.style.contentVisibility = 'visible';
-  const r = el.getBoundingClientRect();
-  requestAnimationFrame(() =>
-    requestAnimationFrame(() => {
-      item.style.contentVisibility = was;
-    }),
-  );
-  return r;
+  drawUntilPainted(item);
+  return el.getBoundingClientRect();
 }
 
 /**
