@@ -98,21 +98,22 @@ export async function blockFiles(rt, sessionId, name, args, read = fromFolders(r
 }
 
 /**
- * Runs the tool a call’s review images go with, and settles them (#780): kept when it showed or updated the block,
- * removed from the blob store when it refused or threw, so a refused call leaves no blob behind. ok: false always
- * means the files weren’t kept: an invalid show_block’s item carries none (server/block-show.mjs).
- * @param {{ args: any, settle?: (keep: boolean) => Promise<void> }} app  what blockFiles gave, or an app’s files (no settle) @param {() => any} call
+ * Runs the tool a call’s review images go with, and settles them (#780, #828): kept when an item took them, and
+ * removed from the blob store otherwise, so a call that refused, threw, or answered without showing them leaves no
+ * blob behind. The tool says an item took them by setting given.held where it writes them onto the item
+ * (server/block-show.mjs, server/blocks.mjs); its reply’s ok decides nothing.
+ * @param {{ args: any, files?: any[], settle?: (keep: boolean) => Promise<void> }} app  what blockFiles gave, or an
+ *   app’s files (no settle)
+ * @param {(given: { files?: any[], held?: boolean }) => any} call  the tool, given the files
  */
 export async function keptIfShown(app, call) {
-  let r;
+  /** @type {{ files?: any[], held?: boolean }} */
+  const given = app.files ? { files: app.files, held: false } : {};
   try {
-    r = await call();
-  } catch (e) {
-    await app.settle?.(false);
-    throw e;
+    return await call(given);
+  } finally {
+    await app.settle?.(given.held === true);
   }
-  await app.settle?.(r?.ok !== false);
-  return r;
 }
 
 /**

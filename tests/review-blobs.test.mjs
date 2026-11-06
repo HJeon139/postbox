@@ -38,8 +38,12 @@ test('#780 a plain put of bytes a staged call holds keeps them when that call is
 
 test('#780 keptIfShown keeps the files when the tool shows the block, and drops them when it refuses or throws', async () => {
   const settled = [];
-  const app = { args: {}, settle: async (keep) => settled.push(keep) };
-  await keptIfShown(app, () => ({ ok: true }));
+  const app = { args: {}, files: [{ name: 'a.png' }], settle: async (keep) => settled.push(keep) };
+  // Shown: the tool marks that an item took the files (#828); the reply's ok alone keeps nothing.
+  await keptIfShown(app, (given) => {
+    given.held = true;
+    return { ok: true };
+  });
   await keptIfShown(app, () => ({ ok: false }));
   await assert.rejects(() => keptIfShown(app, () => Promise.reject(new Error('boom'))), /boom/);
   assert.deepEqual(settled, [true, false, false]);

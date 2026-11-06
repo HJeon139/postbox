@@ -94,7 +94,7 @@ async function applyTool(rts, live, m) {
     // show_app’s and update_app’s files, and a review block’s (#780), were read on the host (the broker), and come as base64.
     const app =
       m.name === 'show_app' || m.name === 'update_app' ? await appFiles(rts, m.args) : await blockFiles(rts.rt, live.sessionId, m.name, m.args, hostFile);
-    const r = await keptIfShown(app, () => tools[m.name](app.args, app.files ? { files: app.files } : {}));
+    const r = await keptIfShown(app, (given) => tools[m.name](app.args, given));
     noteAnswer(live.rt, m.name, r);
     return { ok: !(r.ok === false && !r.waiting), text: r.results ? JSON.stringify(r.results) : String(r.message ?? '') };
   } catch (e) {
