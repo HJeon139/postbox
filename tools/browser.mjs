@@ -108,6 +108,8 @@ export async function launch({ detached = false } = {}) {
 
   const page = {
     send,
+    /** Listens to a DevTools protocol event, as a trace’s data or a request’s timing arrives. */
+    on: (event, fn) => cdp.on(event, fn),
     evaluate,
     logs,
     /** The frame of the iframe that expr finds, to read and click inside an agent app, or null. */
