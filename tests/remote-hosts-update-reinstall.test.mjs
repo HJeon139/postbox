@@ -37,7 +37,8 @@ test('#464-b3: an automatic install that made a new token is recorded reinstalle
     }
     await until(() => readRecord(changed.dataDir)?.installs?.[0]?.outcome === 'reinstalled', 'reinstalled');
     await until(() => readRecord(same.dataDir)?.installs?.[0]?.outcome === 'installed', 'installed');
-    assert.equal(changed.mgr.status('h1').update.outcome, 'reinstalled');
+    // The file is renamed into place before the record kept in memory, which status reads, is updated: wait for it.
+    await until(() => changed.mgr.status('h1').update?.outcome === 'reinstalled', 'the status says reinstalled');
   } finally {
     changed.done();
     same.done();
