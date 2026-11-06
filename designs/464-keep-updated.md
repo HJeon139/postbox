@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Revision 4, approved by the reviewers (“go for b2a”), with the later conditions listed under “Where things stand”. Slice b1 is built (#736); slice b2a is built (#755); b2b is built on its branch and described here as it is; b3 is designed and not built. Every citation was read at the b2a branch’s head, `541fdb60`. |
+| **Status** | Revision 4, approved by the reviewers (“go for b2a”), with the later conditions listed under “Where things stand”. Slice b1 is built (#736); slice b2a is built (#755); b2b (#770) and b3 are built on their branches and described here as they are. Every citation was read at the b2a branch’s head, `541fdb60`. |
 | **Issue** | #464, “Updating Postbox should not strand agents on remote hosts” |
 
 ## What it’s for
@@ -31,7 +31,7 @@ Postbox runs agents on remote hosts over ssh, and each Postbox version installs 
 | D1 | Scope: the standing consent only. The fallback with no consent is #732. | scrum-master and critic |
 | D2 | Whether a version was tried is kept in a 0600 file per host, in Postbox’s data folder. | scrum-master and critic |
 | D3 | Downgrades are allowed: an install adds only its own version’s folder. | the person |
-| D4 | A host with no `~/.postbox-remote` but a token on this computer is reinstalled, with a new host token (slice b3). | the person |
+| D4 | A host with no `~/.postbox-remote` but a token on this computer is reinstalled, with a new host token (slice b3), when this version isn’t tried there yet: a host that got this version by itself, or whose last try of it failed or was cut off, isn’t, and its card offers Install…. | the person |
 | D5 | Only exit status 127 (`not-installed`) starts an install. A `version` failure, a 126 and the rest don’t. | scrum-master and critic |
 | D6 | Turns started under the old version stay out of #464-b, as their own issue. | critic, revision 4 |
 | D7 | The consent is kept in the record file, set through its own route, not in the host’s settings. | critic, revision 4 |
@@ -125,7 +125,10 @@ When `~/.postbox-remote` is gone but this computer has a token, the attach exits
 - The installer makes the folder again (`install-script.mjs:112-115`), and `host token` makes a new token, since none is left (`daemon-files.mjs:82-111`).
 - b2a already replaces this computer’s token and drops a link made with a different one (`hosts-update.mjs:75-77`; test “an install whose token differs from the link’s replaces the link made with the old token”). b3 compares the old token with the new one before overwriting it, returns `tokenChanged`, and notes the outcome `reinstalled`.
 - The card then says: “Postbox wasn’t on <host> any more, so it installed <version> there again and made a new token. Turns that ran there before are gone.” A browser spec checks it at 375 and 1280 px, and that it never shows the token.
-- No loop: the version is tried, so if the folder disappears again under the same version, nothing installs by itself.
+- No loop: the version is tried, so if the folder disappears again under the same version, nothing installs by itself. The same holds for a host that got this version by itself in the first place: D4’s reinstall runs only for a version not tried there yet, and otherwise the card offers Install….
+- `reinstalled` needs both a new token and a new install: a version already there (`present`) with a new token isn’t Postbox put back, since its turns there may still be on the host. The card says it only while the host is connected, and for a day after the reinstall: it warns that turns there are gone, and days later, or after the person’s own Install…, it would only alarm.
+- The old token is read before `installHost` writes the new one (`tokenBefore`); one that can’t be read (EACCES) is no token to compare, and Install… still replaces it.
+- **Failure rows (b3):** killed after the host’s token run but before this computer keeps the new token: the host has the new token and this computer the old, so the next attach reads `bad-token`, the record says `started`, and the status says the install was cut off, with Install…, which gets the host’s token back. Killed after the token is kept but before the record says `reinstalled`: it connects, and the record stays `started`, so the card never says turns are gone. The person’s own Install… that puts Postbox back writes no record, or rewrites a failed, busy or cut-off automatic try as `present`, so the card doesn’t say so either: it never reads as Postbox putting itself back.
 
 ## Invariants
 

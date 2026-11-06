@@ -2,6 +2,23 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.29.0 (2026-11-06)
+
+### Features
+
+- **uat:** the runner turns host1's consent on for the phase that removes Postbox there (#464)
+- **uat:** fault remove-postbox, trigger host-reinstalled, and remotehosts phase 5 (#464)
+- **app:** the host's card says when Postbox was installed there again with a new token (#464)
+- **remote:** an install that made a new token says tokenChanged, recorded reinstalled (#464)
+
+### Fixes
+
+- **uat:** a fault's verb sits beside its noun, and fault() takes the host's runner (#464)
+- **app:** the card says reinstalled for a day after it, not on every connect after (#464)
+- **uat:** remove-postbox refuses a pre-existing install, and says why it failed (#464)
+- **app:** the card says reinstalled only while the host is connected (#464)
+- **remote:** Install… repairs an unreadable token here, and reinstalled needs a new install (#464)
+
 ## 1.28.1 (2026-11-06)
 
 ### Fixes
