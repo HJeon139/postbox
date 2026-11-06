@@ -8,7 +8,7 @@ A draft of the skill [#207](https://github.com/HJeon139/postbox/issues/207) prop
 | [references/brief.md](references/brief.md) | The one-idea brief an agent writes before drawing |
 | [references/shapes.md](references/shapes.md) | Content shapes, the forms each allows and refuses, and what position means in each |
 | [references/critique.md](references/critique.md) | The floor (verify and refuse), the takeaway test and the report |
-| [briefs/](briefs/README.md) | Six starter briefs on common subjects, one per shape |
+| [briefs/](briefs/README.md) | Seven starter briefs, one per shape plus a hard one, and three paper briefs ([briefs/papers/](briefs/papers/README.md)) |
 
 ## Why it looks like this
 
@@ -46,13 +46,18 @@ The principles behind the rules: [Larkin & Simon 1987](https://mechanism.ucsd.ed
 
 ## Where it stands
 
-- **Done:** the rules, the brief, the shape table, the critique and six starter briefs, as a draft.
+- **Done:** the rules, the brief, the shape table, the critique, seven starter briefs and three paper briefs, as a draft.
+- **Tried, on November 6, 2026:** 13 UAT runs with Claude Code (Opus 5.5), each first visual scored by a blind reader, a fresh subagent shown only the screenshot ([#333’s results](https://github.com/HJeon139/postbox/issues/333#issuecomment-6692271521)).
+  - The agent loaded the skill without being told to in every run that had it, and in none that didn’t.
+  - Starter briefs: the baselines landed on compound interest, partly on the bill, and missed the disguised archetypes. With the skill and VE8 and VE9, all three landed or mostly landed.
+  - Paper briefs: on two of three papers the agent chose a different idea from the brief’s, and the reader recovered the agent’s idea. A paper has no single idea, so the paper scenarios should ask a specific question.
+  - These are development numbers, not results: one run per condition, and VE8, VE9 and the shape table’s poles row came from runs on these same briefs. Random recent papers, with the skill frozen, are the held-out test.
 - **Not done:**
-  - Not tried: no agent has run it yet, and the critique hasn’t been compared with a person’s verdicts.
+  - The critique hasn’t been compared with a person’s verdicts.
   - The vaccine-trial brief’s case counts are unchecked (the brief says so).
-  - The countable floor lines aren’t in Postbox’s app check yet.
+  - The countable floor lines aren’t in Postbox’s app check yet: agents shipped visuals with labels the check had flagged as overlapping or too small.
 - **Next:**
-  1. Run each starter brief through an agent with and without the skill, and compare the takeaway test with the person’s own verdict. The critique is ready when they agree.
-  2. A spec-driven diagram kit for the shapes, so agents fill in labels instead of drawing boxes ([#211](https://github.com/HJeon139/postbox/issues/211)).
-  3. The countable floor lines as checks in Postbox’s pre-display app check.
-  4. Point it at papers: the visual paper UAT ([#333](https://github.com/HJeon139/postbox/issues/333)).
+  1. Compare the takeaway test with the person’s own verdicts on the runs so far. The critique is ready when they agree.
+  2. The held-out test: random recent papers through the `visualpaper` scenario, with the skill unchanged.
+  3. A spec-driven diagram kit for the shapes, so agents fill in labels instead of drawing boxes ([#211](https://github.com/HJeon139/postbox/issues/211)).
+  4. The countable floor lines as checks in Postbox’s pre-display app check.
