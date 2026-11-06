@@ -66,18 +66,22 @@ function withinCeiling(d, turn, pid) {
   if (d.mono() - silence.since < RUNNER_SILENT_MAX_MS) return true;
   if (!silence.over) {
     silence.over = true;
-    d.log(`Turn ${turn}’s runner (process ${pid}) hasn’t answered for ${seconds(RUNNER_SILENT_MAX_MS)} s; the turn is ended as interrupted.`);
+    d.log(`Turn ${turn}’s runner (process ${pid}) hasn’t answered as its runner for ${seconds(RUNNER_SILENT_MAX_MS)} s; the turn is ended as interrupted.`);
   }
   return false;
 }
 
-/** @param {Daemon} d @param {string} turn @param {number} pid @returns {Silence} */
+/**
+ * “Didn’t answer as its runner”: the daemon can’t tell no answer from one for another turn or a refused token, since
+ * askRunner is false for each (runner-client.mjs).
+ * @param {Daemon} d @param {string} turn @param {number} pid @returns {Silence}
+ */
 function startSilence(d, turn, pid) {
   /** @type {Silence} */
   const silence = { since: d.mono(), pid, over: false };
   d.silentSince.set(turn, silence);
   d.log(
-    `Turn ${turn}’s runner (process ${pid}) didn’t answer, but its process is still running; it’s kept running for up to ${seconds(RUNNER_SILENT_MAX_MS)} s.`,
+    `Turn ${turn}’s runner (process ${pid}) didn’t answer as its runner, but its process is still running; it’s kept running for up to ${seconds(RUNNER_SILENT_MAX_MS)} s.`,
   );
   return silence;
 }

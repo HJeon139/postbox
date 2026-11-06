@@ -72,8 +72,8 @@ test('#738 row 3: a live runner silent for the ceiling ends then, exit null, and
     const ended = await c.msgs.next('ended');
     assert.equal(ended.exit, null);
     assert.equal((await s.daemon.scan())[0].state, 'interrupted', 'the scan agrees once the ceiling is reached');
-    assert.equal(s.logs.filter((l) => /t1.*didn’t answer/.test(l)).length, 1, 'the silence’s start, logged once');
-    assert.equal(s.logs.filter((l) => /t1.*hasn’t answered for 60 s/.test(l)).length, 1, 'the ceiling, logged once');
+    assert.equal(s.logs.filter((l) => /t1.*didn’t answer as its runner/.test(l)).length, 1, 'the silence’s start, logged once');
+    assert.equal(s.logs.filter((l) => /t1.*hasn’t answered as its runner for 60 s/.test(l)).length, 1, 'the ceiling, logged once');
     assert.deepEqual(s.kills, []);
   } finally {
     s.done();
@@ -211,7 +211,7 @@ test('#738 row 13: a runner that doesn’t answer as its runner is a miss, the p
     await s.looks(6, c);
     await s.daemon.scan();
     assert.deepEqual(s.ended(c), []);
-    assert.equal(s.logs.filter((l) => /t1.*didn’t answer/.test(l)).length, 1, 'one line for the silence, not one per look');
+    assert.equal(s.logs.filter((l) => /t1.*didn’t answer as its runner/.test(l)).length, 1, 'one line for the silence, not one per look');
   } finally {
     s.done();
   }
