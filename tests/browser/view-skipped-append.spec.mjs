@@ -50,3 +50,48 @@ test('#712a: a reply appended while following scrolls to the end once, at its re
   const end = await page.evaluate(() => Math.abs(document.scrollingElement.scrollHeight - innerHeight - scrollY));
   expect(end, 'and it ends at the end').toBeLessThan(2);
 });
+
+test('#712a: once painted and skipped again, the appended reply keeps its real height, so a later scroll holds', async ({ page }) => {
+  const { rt, store } = app;
+  const t = bigRoom(app, 'The reply goes off screen', 60);
+  const [se] = rt.sessionsIn(t.id);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await expect(page.locator(`.transcript[data-thread="${t.id}"] > .item`)).toHaveCount(store.items(t.id).length);
+  await still(page);
+  const reply = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: TALL, status: 'done' });
+  const node = page.locator(`[data-key="${reply.id}"]`);
+  await expect(node).toBeInViewport();
+  await still(page);
+  const drawn = await node.evaluate((n) => n.getBoundingClientRect().height);
+  expect(drawn, 'drawn at its real height, well over the estimate').toBeGreaterThan(300);
+  // Off screen: the reply is skipped again (its content is: the item is the box content-visibility applies to, so its
+  // own checkVisibility() stays true, as tools/uat/skip-probe.mjs says), and holds the size it was painted at, not the 71 px estimate.
+  await page.evaluate(() => scrollTo(0, 0));
+  await expect.poll(() => node.evaluate((n) => !n.firstElementChild?.checkVisibility({ contentVisibilityAuto: true }))).toBe(true);
+  expect(await node.evaluate((n) => n.getBoundingClientRect().height)).toBeCloseTo(drawn, 0);
+});
+
+test('#712a: a reply appended while reading higher up stays skipped, and the view doesn’t move', async ({ page }) => {
+  const { rt, store } = app;
+  const t = bigRoom(app, 'Reading as a reply lands', 60);
+  const [se] = rt.sessionsIn(t.id);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await expect(page.locator(`.transcript[data-thread="${t.id}"] > .item`)).toHaveCount(store.items(t.id).length);
+  await still(page);
+  await page.locator('header.topbar').hover();
+  await page.mouse.wheel(0, -2400);
+  await still(page);
+  const tr = page.locator(`.transcript[data-thread="${t.id}"]`);
+  await expect(tr).toHaveAttribute('data-view-mode', 'reading');
+  const before = await page.evaluate(() => scrollY);
+  const reply = rt.addItem(t.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: TALL, status: 'done' });
+  const node = page.locator(`[data-key="${reply.id}"]`);
+  await expect(node).toHaveCount(1);
+  await still(page);
+  expect(await page.evaluate(() => scrollY), 'what you read stays where it was').toBe(before);
+  expect(await node.evaluate((n) => !n.firstElementChild?.checkVisibility({ contentVisibilityAuto: true })), 'the reply below is skipped').toBe(true);
+});
