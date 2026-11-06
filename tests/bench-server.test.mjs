@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import { SNAPSHOT_EVERY, Store } from '../server/store.mjs';
 import { apply, emptyState } from '../shared/state.mjs';
 import { seedRoomFolder, THREAD } from '../tools/bench-room.mjs';
-import { checkReplay, commandLine, LOG_EVENTS, measureSize, options, pooled, streamChunks, writeLog } from '../tools/bench-server.mjs';
+import { checkReplay, checkStream, commandLine, LOG_EVENTS, measureSize, options, pooled, streamChunks, writeLog } from '../tools/bench-server.mjs';
 import { formatServerReport } from '../tools/bench-server-report.mjs';
 
 test('options default to the 1×, 4× and 10× rooms, 3 runs, 20 requests and 200 chunks', () => {
@@ -102,6 +102,27 @@ test('a startup that replayed less than its log, or loaded less than its room, i
   assert.doesNotThrow(() => checkReplay({ replayed: 10, loadedItems: 30 }, 10, 30));
   assert.throws(() => checkReplay({ replayed: 0, loadedItems: 30 }, 10, 30), /replayed 0 of the log’s 10 events/);
   assert.throws(() => checkReplay({ replayed: 10, loadedItems: 0 }, 10, 30), /loaded 0 of the room’s 30 items/);
+});
+
+test('a streamed reply that didn’t land in the room’s thread, whole, is refused', () => {
+  assert.doesNotThrow(() => checkStream({ replyChars: 270, threadItems: 31 }, 10, 30));
+  assert.throws(() => checkStream({ replyChars: 0, threadItems: 31 }, 10, 30), /streamed reply holds 0 of its 270 characters/);
+  assert.throws(() => checkStream({ replyChars: 270, threadItems: 1 }, 10, 30), /thread held 1 items with the reply, not 31/);
+  assert.throws(() => checkStream({ replyChars: 270, threadItems: 30 }, 10, 30), /thread held 30 items with the reply, not 31/);
+});
+
+test('measureSize refuses chunks streamed into another thread, and still removes its folder', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'pb-bench-size-'));
+  const { start } = fakePostbox();
+  const get = async () => ({ arrayBuffer: async () => stateBody(30) });
+  const stream = (/** @type {any} */ state, /** @type {string} */ _thread, /** @type {number} */ chunks) => streamChunks(state, 'th_other', chunks);
+  try {
+    const o = { runs: 1, requests: 1, chunks: 2, logEvents: 10 };
+    await assert.rejects(measureSize(30, o, { start, port: async () => 1, tmp, get, stream }), /streamed reply holds 0 of its/);
+    assert.deepEqual(readdirSync(tmp), [], 'its temp folder is removed');
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('measureSize refuses a startup that replayed nothing, and still removes its folder', async () => {

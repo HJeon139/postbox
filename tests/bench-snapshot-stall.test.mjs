@@ -3,13 +3,15 @@
 // through the server’s own writeSnapshot.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { test } from 'node:test';
+import { seedRoomFolder } from '../tools/bench-room.mjs';
 import {
   benchCli,
+  checkSeeded,
   computeStoreBytes,
   createSyntheticState,
   DEFAULT_STALL_BUDGET_MS,
@@ -17,6 +19,7 @@ import {
   parseNum,
   resolveSnapshotState,
   runBenchmark,
+  seededState,
   stallOf,
 } from '../tools/bench-snapshot-stall.mjs';
 
@@ -224,6 +227,34 @@ test('runBenchmark measures a seeded big-room store with --items', async () => {
   const parsed = JSON.parse(lines.join('\n'));
   assert.equal(parsed.source, 'a seeded big room of 40 items');
   assert.equal(parsed.items, 40);
+});
+
+test('a seeded room holding fewer items than --items asked for is refused', () => {
+  assert.doesNotThrow(() => checkSeeded({ items: { th_keyframe: Array.from({ length: 40 }) } }, 40));
+  assert.throws(() => checkSeeded({ items: { th_keyframe: Array.from({ length: 5 }) } }, 40), /seeded 5 of the 40 items/);
+  assert.throws(() => checkSeeded({ items: {} }, 40), /seeded 0 of the 40 items/);
+});
+
+test('seededState seeds the room it was asked for, and removes its folder', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'pb-bench-seeded-'));
+  try {
+    const { state } = await seededState(40, tmp);
+    assert.equal(state.items.th_keyframe.length, 40);
+    assert.deepEqual(readdirSync(tmp), [], 'its seeded folder is removed');
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('seededState refuses a seed that made fewer items than asked for, and still removes its folder', async () => {
+  const tmp = mkdtempSync(join(tmpdir(), 'pb-bench-seeded-'));
+  const fewer = (/** @type {string} */ data) => seedRoomFolder(data, 5);
+  try {
+    await assert.rejects(seededState(40, tmp, fewer), /seeded [0-9]+ of the 40 items/);
+    assert.deepEqual(readdirSync(tmp), [], 'its seeded folder is removed');
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 });
 
 test('CLI refuses the dropped size budget and a malformed --items', async () => {
