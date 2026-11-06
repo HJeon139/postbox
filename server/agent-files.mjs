@@ -50,6 +50,9 @@ async function stillThere(opened, real, roots) {
  * Reads a file an agent named for an app: a path in one of its folders (relative to its own), followed through
  * links, so a link can’t reach outside them. The file is opened once, checked again, and read from what was opened,
  * so a link swapped in meanwhile isn’t followed (#780). Larger than max bytes is refused before it’s read.
+ * A hard link in the folders to a file outside them is read, as any file there is (#828): it has no path outside to
+ * check, the agent runs as the same user and could copy that file in, and show_app’s files have always read one.
+ * The boundary is the folders’ paths, not where a file’s bytes first came from.
  * @param {any} rt  the Runtime @param {string} sessionId @param {unknown} path @param {number} max @param {string} what  how the error names it
  * @param {{ afterCheck?: () => unknown, afterOpen?: () => unknown, beforeRead?: () => unknown }} [hooks]  for tests:
  *   each runs at its step (after the path’s check, after the open, before the read), so a test can swap a file there

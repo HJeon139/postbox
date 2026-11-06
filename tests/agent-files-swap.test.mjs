@@ -3,7 +3,7 @@
 // swaps a file or a folder for a link at one step, through agentFile’s test hooks, so the race is deterministic.
 
 import assert from 'node:assert/strict';
-import { mkdir, rename, symlink, writeFile } from 'node:fs/promises';
+import { link, mkdir, rename, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -53,6 +53,14 @@ test('#780: a link in the agent’s folder that leads outside it is refused, say
   await assert.rejects(() => agentFile(rt, 's', 'link.txt', MAX, 'codePath'), {
     message: 'link.txt leads outside your folders, so Postbox didn’t read it (codePath).',
   });
+});
+
+test('#828: a hard link in the agent’s folder to a file outside it is read, as any file there is (the design’s choice)', async () => {
+  // It has no outside path to check, and the agent, running as the same user, could copy the file in. If this ever
+  // changes (refusing st.nlink > 1), it changes for show_app’s files too: both read through agentFile.
+  const { rt, folder, outside } = await folders();
+  await link(join(outside, 'secret.txt'), join(folder, 'hard.txt'));
+  assert.equal(String(await agentFile(rt, 's', 'hard.txt', MAX, 'codePath')), 'not yours');
 });
 
 test('#780: a file swapped for a link after its path was checked is refused at the open', async () => {
