@@ -1,6 +1,6 @@
 # Test fixtures
 
-A fixture is a real turn, recorded, with local paths removed, and it’s never edited to make a test pass (designs/developing.md, “A fixture is a real turn, with local paths removed”). Every committed text file, fixtures included, passes the privacy check in `tools/privacy-check.mjs`, which `tests/process/privacy-tree.test.mjs` runs: no real home path or user id, no account data such as a rate limit’s utilization, no claude.ai connector a person named, no token, and no real email address.
+A fixture is a real turn, recorded, with local paths removed, and it’s never edited to make a test pass (designs/developing.md, “A fixture is a real turn, with local paths removed”). Every committed text file, fixtures included, and every committed file’s name, passes the privacy check in `tools/privacy-check.mjs`, which `tests/process/privacy-tree.test.mjs` runs: no real home path or user id, no account data such as a rate limit’s utilization, no claude.ai connector a person named, no token, and no real email address.
 
 ## Synthetic fixtures
 

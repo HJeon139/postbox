@@ -233,6 +233,17 @@ export function checkContentPrivacy(content) {
 }
 
 /**
+ * Checks a committed file’s name, by its path from the repository’s root: a name is published as surely as what the
+ * file holds (#785).
+ *
+ * @param {string} path
+ * @returns {string[]} list of violations found
+ */
+export function checkPathPrivacy(path) {
+  return checkContentPrivacy(path).map((violation) => `${violation} (file name)`);
+}
+
+/**
  * Checks one committed file, by its path from the repository’s root, with the placeholders its joined deltas may hold.
  *
  * @param {string} path
@@ -263,8 +274,8 @@ export function isBinary(bytes) {
 }
 
 /**
- * Checks each file of a tree, read by its path, whatever its size. A binary file, or one the reader can’t find, is
- * skipped and not counted.
+ * Checks each file of a tree, its name and what it holds, read by its path, whatever its size. A binary file’s name is
+ * checked, but not its bytes, and it isn’t counted; a file the reader can’t find is skipped.
  *
  * @param {string[]} paths paths from the repository’s root
  * @param {(path: string) => Buffer | null} read the file’s bytes, or null when it’s gone
@@ -275,9 +286,12 @@ export function checkFilesPrivacy(paths, read) {
   let checked = 0;
   for (const path of paths) {
     const bytes = read(path);
-    if (bytes === null || isBinary(bytes)) continue;
-    checked++;
-    const violations = checkFilePrivacy(path, bytes.toString('utf8'));
+    if (bytes === null) continue;
+    const violations = checkPathPrivacy(path);
+    if (!isBinary(bytes)) {
+      checked++;
+      violations.push(...checkFilePrivacy(path, bytes.toString('utf8')));
+    }
     if (violations.length > 0) findings.push({ path, violations });
   }
   return { checked, findings };

@@ -12,6 +12,10 @@
 // commits that added them. A file whose added lines hold a zero byte is binary, as git decides it, and isn’t checked;
 // .gitattributes can’t hide a text file, as the diff is asked for as text. The checker’s own files are checked too.
 //
+// Each file a commit adds lines to is checked by its name as well, a binary file’s too, as a name is published as
+// surely as what the file holds (#785). A file added empty, or renamed with no line changed, adds no line, so its name
+// is left to the tree’s privacy test (tests/process/privacy-tree.test.mjs), which reads every tracked file’s name.
+//
 // Each commit’s message, subject, body and trailers, is checked with the same checker. Its author and committer names
 // and emails aren’t: each commit’s author is a real person’s GitHub identity, by design.
 //
@@ -21,7 +25,7 @@
 import { execFileSync } from 'node:child_process';
 import { DIFF_OPTIONS, parseAddedLines } from './diff-added-lines.mjs';
 import { isEntry } from './lint-lib.mjs';
-import { checkContentPrivacy, checkFilePrivacy, isBinary } from './privacy-check.mjs';
+import { checkContentPrivacy, checkFilePrivacy, checkPathPrivacy, isBinary } from './privacy-check.mjs';
 
 /**
  * A private string, and where it was added: a commit’s file, or its message when the path is null.
@@ -50,6 +54,7 @@ export function scanCommits(range, git) {
     }
     result.binary += parsed.binary;
     for (const [path, added] of parsed.files) {
+      for (const violation of checkPathPrivacy(path)) result.findings.push({ sha, path, violation });
       if (isBinary(Buffer.from(added.join('\n')))) {
         result.binary++;
         continue;

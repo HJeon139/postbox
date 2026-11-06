@@ -19,7 +19,7 @@ function trackedFiles() {
   return out.split('\0').filter(Boolean);
 }
 
-test('every committed text file is free of home paths, uids, account data, tokens and real addresses', () => {
+test('every committed file’s name, and every text file’s text, is free of home paths, uids, account data, tokens and real addresses', () => {
   // A file deleted in the working tree but not yet in the index has nothing left to leak.
   const read = (path) => (existsSync(join(ROOT, path)) ? readFileSync(join(ROOT, path)) : null);
   const { checked, findings } = checkFilesPrivacy(trackedFiles(), read);
