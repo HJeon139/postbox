@@ -9,8 +9,6 @@ import { keepFor, leftOut, mentions } from './catch-up-keep.mjs';
 import { clipText } from './helpers.mjs';
 import { SUMMARY_MODEL } from './summary-model.mjs';
 
-export { SUMMARY_MODEL };
-
 /** How long a thread stays quiet after a reply before its summary is written. */
 export const SUMMARY_DELAY_MS = 5000;
 const SUMMARY_TIMEOUT_MS = 60000;
