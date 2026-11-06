@@ -8,7 +8,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { checkFilesPrivacy, isSyntheticLabel, missingSyntheticFixtures, syntheticFixturePaths } from '../../tools/privacy-check.mjs';
+import { checkFilesPrivacy } from '../../tools/privacy-check.mjs';
+import { isSyntheticLabel, missingSyntheticFixtures, syntheticFixturePaths } from '../../tools/synthetic-fixtures.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 

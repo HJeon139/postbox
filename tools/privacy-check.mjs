@@ -13,6 +13,8 @@
  * - UTF-16 text, read as UTF-8 with a zero byte after each ASCII character.
  */
 
+import { joinedDeltas } from './joined-deltas.mjs';
+
 /** Placeholder user names a slashed home path may use, compared in lower case. “someone” is the tests’ made-up home. */
 const ALLOWED_USERNAMES = new Set(['me', 'you', 'user', 'someone']);
 
@@ -219,60 +221,6 @@ export function checkFilePrivacy(path, content) {
 const MADE_UP_HOME = ['Users', 'postbox'].join('/'); // joined at run time, so this file doesn’t hold the path itself
 const ALLOWED_JOINED = new Map([['tests/fixtures/claude-code/permission-allow.jsonl', [`home path: ${MADE_UP_HOME}`]]]);
 
-/** The delta fields a recorded stream splits its text across: tool input, reply text and thinking. */
-const DELTA_FIELDS = ['partial_json', 'text', 'thinking'];
-
-/** The text a delta carries, from the first field that holds a string, or null. @param {Record<string, unknown>} delta */
-function deltaText(delta) {
-  const field = DELTA_FIELDS.find((name) => typeof delta[name] === 'string');
-  return field === undefined ? null : delta[field];
-}
-
-/**
- * Each stream of a JSONL recording, its deltas joined in order: a value split across deltas, such as a home path cut
- * in three, is whole again. A stream is one message’s content block of one delta type. One pass over the lines, with a
- * Map from each stream to its parts, so the work is linear in the file’s size.
- *
- * @param {string} content
- * @returns {{ firstLine: number, text: string }[]}
- */
-export function joinedDeltas(content) {
-  const streams = new Map();
-  const lines = content.split('\n');
-  for (let index = 0; index < lines.length; index++) {
-    const event = parsedEvent(lines[index]);
-    const delta = event?.delta;
-    if (!delta || typeof delta !== 'object') continue;
-    const text = deltaText(delta);
-    if (text === null) continue;
-    const key = `${event.messageId}\u0000${event.index}\u0000${delta.type}`;
-    const stream = streams.get(key) ?? { firstLine: index + 1, parts: [] };
-    stream.parts.push(text);
-    streams.set(key, stream);
-  }
-  return [...streams.values()].map(({ firstLine, parts }) => ({ firstLine, text: parts.join('') }));
-}
-
-/**
- * A line’s stream event, with the message it belongs to, or null when the line isn’t one. Claude Code wraps the event
- * as { event: { index, delta }, api_message_id }; a bare event has { index, delta } at the top.
- *
- * @param {string} line
- */
-function parsedEvent(line) {
-  if (!line.includes('delta')) return null;
-  let record;
-  try {
-    record = JSON.parse(line);
-  } catch {
-    return null;
-  }
-  if (!record || typeof record !== 'object') return null;
-  const event = record.event && typeof record.event === 'object' ? record.event : record;
-  const messageId = record.api_message_id ?? record.session_id ?? '';
-  return { delta: event.delta, index: event.index ?? '', messageId };
-}
-
 /** Whether a file is binary, as git decides it: a zero byte in its first 8,000. @param {Buffer} bytes */
 export function isBinary(bytes) {
   return bytes.subarray(0, 8000).includes(0);
@@ -297,42 +245,4 @@ export function checkFilesPrivacy(paths, read) {
     if (violations.length > 0) findings.push({ path, violations });
   }
   return { checked, findings };
-}
-
-// A fixture labelled synthetic says so on its first line, after a “#” or “//” comment marker, as the delivery spike’s
-// baselines do. “SYNTHETIC” later in the line, such as inside a JSON string, isn’t a label.
-const SYNTHETIC_LABEL = /^(?:#|\/\/)\s*SYNTHETIC\b/;
-
-/** Whether a fixture’s first line labels it synthetic. @param {string} firstLine */
-export function isSyntheticLabel(firstLine) {
-  return SYNTHETIC_LABEL.test(firstLine);
-}
-
-// A “## ” heading at the start of a line, where the README’s next section begins.
-const SECTION = /^## /m;
-
-// A listed fixture: a “- ” line that starts with its path in backticks.
-const LISTED_PATH = /^- `([^`]+)`/gm;
-
-/**
- * The paths the fixtures README lists under “Synthetic fixtures”, one per “- `path`” line.
- *
- * @param {string} readme the text of tests/fixtures/README.md
- * @returns {string[]}
- */
-export function syntheticFixturePaths(readme) {
-  const section = readme.split(SECTION).find((part) => part.startsWith('Synthetic fixtures'));
-  if (!section) throw new Error('tests/fixtures/README.md has no “Synthetic fixtures” section');
-  return [...section.matchAll(LISTED_PATH)].map(([, path]) => path);
-}
-
-/**
- * The synthetic fixtures the README lists that the tree doesn’t hold.
- *
- * @param {string} readme the text of tests/fixtures/README.md
- * @param {(path: string) => boolean} exists whether a path from the repository’s root is in the tree
- * @returns {string[]}
- */
-export function missingSyntheticFixtures(readme, exists) {
-  return syntheticFixturePaths(readme).filter((path) => !exists(path));
 }

@@ -2,16 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import {
-  checkContentPrivacy,
-  checkFilePrivacy,
-  checkFilesPrivacy,
-  isBinary,
-  isSyntheticLabel,
-  joinedDeltas,
-  missingSyntheticFixtures,
-  syntheticFixturePaths,
-} from '../tools/privacy-check.mjs';
+import { joinedDeltas } from '../tools/joined-deltas.mjs';
+import { checkContentPrivacy, checkFilePrivacy, checkFilesPrivacy, isBinary } from '../tools/privacy-check.mjs';
+import { isSyntheticLabel, missingSyntheticFixtures, syntheticFixturePaths } from '../tools/synthetic-fixtures.mjs';
 
 // Every example the checker must flag is built from parts here, at run time, so this file’s own text holds none and
 // the tree test checks it like any other file (#508).
