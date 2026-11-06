@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { test } from 'node:test';
+import { followerEnds } from '../server/remote/host/daemon-running.mjs';
 import { TURN_FILES } from '../shared/remote-protocol.mjs';
 import { CEILING_MS, silentSetup, startReading } from './remote-daemon-running-setup.mjs';
 import { hello, startMsg } from './remote-daemon-setup.mjs';
@@ -139,5 +140,34 @@ test('#738 a silence is forgotten each way it ends: an answer, the process gone,
     } finally {
       t.s.done();
     }
+  }
+});
+
+test('#738 the follower ends a turn Stop found dead on that look, and any other at its second miss in a row, not before or after', () => {
+  assert.equal(followerEnds({ dead: true, misses: 1 }), true, 'found dead: this look, not the next');
+  assert.equal(followerEnds({ dead: false, misses: 1 }), false, 'one miss');
+  assert.equal(followerEnds({ dead: false, misses: 2 }), true, 'two in a row');
+  assert.equal(followerEnds({ dead: false, misses: 0 }), false, 'running');
+});
+
+test('#738 two dropped `who` in a row end a turn whose runner.json is invalid', async () => {
+  let drops = 0;
+  const s = silentSetup({
+    answer: (turn) => {
+      if (drops === 0) return s.alive.has(turn);
+      drops--;
+      return false;
+    },
+  });
+  try {
+    const c = await startReading(s);
+    await writeFile(s.p.turn('t1', TURN_FILES.runner), '{"turn":');
+    await s.looks(2, c);
+    drops = 2;
+    await s.looks(4, c);
+    assert.equal(s.ended(c).length, 1, 'ended at the second miss');
+    assert.equal(s.ended(c)[0].exit, null);
+  } finally {
+    s.done();
   }
 });
