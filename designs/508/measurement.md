@@ -17,7 +17,7 @@ researcher read the first before numbers; critic reads this note.
   - `node tools/bench-server.mjs --sizes 1000,4000,10000 --runs 3`
   - `node tools/bench-snapshot-stall.mjs --snapshot <copy> --iterations 10`
 - **Fairness:** the before and after runs of each pass ran one after the other, in one session, holding the gate lock. Each number below gives its pass, commit and load average. The gate lock holds back gates only, not other agents’ browser or UAT runs, so the load average is the best record of how busy the host was.
-- **The two sides:** before is `a5d2a0f7`, `main` just before #712b merged; after is `2b6d6358`, #712b’s merge (#769), whose first parent is `a5d2a0f7`. Between them, the diff is #712b’s 27 files. Both sides ran the bench’s own files, copied unchanged from this PR’s head into each, with `server/store.mjs`’s `SNAPSHOT_EVERY` exported, so the method is the same on both. These passes replace an earlier pair measured on commits that were later rewritten and can’t be reached.
+- **The two sides:** before is `a5d2a0f7`, `main` just before #712b merged; after is `2b6d6358`, #712b’s merge (#769), whose first parent is `a5d2a0f7`. Between them, the diff is #712b’s 27 files. Both sides ran the bench’s own files, copied unchanged from this PR’s head into each, so the method is the same on both. Those are the `tools/` files the three benches import: `bench-key-frame.mjs`, `bench-room.mjs`, `bench-server.mjs`, `bench-server-report.mjs`, `bench-snapshot-stall.mjs`, `browser.mjs`, `key-frame-measure.mjs`, `key-frame-report.mjs`, `key-frame-stats.mjs`, `page-still.mjs`, `uat/big-room.mjs`, `uat/postbox.mjs` and `uat/until-gone.mjs`. The `server/` and `shared/` files are each side’s own, with one edit: `server/store.mjs` exports `SNAPSHOT_EVERY` (`export const SNAPSHOT_EVERY`), as this PR does. These passes replace an earlier pair measured on commits that were later rewritten and can’t be reached.
 - **The real snapshot:** a 2.53 MB copy of one real host’s store snapshot, with top-level keys `turn`, `home` and `threads`. It isn’t filtered. The copy stays on the host, and only its size and the timings are reported.
 
 ## PF-1: a key press to the next frame
@@ -33,7 +33,7 @@ Each size had 200 keys × 3 runs, 600 keys in all. In every run below, every key
 
 The p95 figures are Event Timing’s. These two passes ran with the tool’s calibration key, so each run first proved that Event Timing measured this composer, and each pass recorded its conditions: headless, a 1280×900 window at device scale 1, and the load at its start and end (3.91 and 3.60 at the end). The tool’s own next-frame timer agrees with Event Timing within 4% at every size: 357.0 ms before and 346.7 ms after at 10×.
 
-**#712b doesn’t change PF-1, as expected.** The time to the next frame in a long room goes on the page’s style and layout over every item it draws, which is #712a’s part. Event Timing reports in 8 ms steps. The before pass started as the host’s load was falling from 17, and its 1× p95 came out at 56 ms against the after pass’s 32 ms, so its ratios read low and only the absolute figures compare: at 10×, 352 ms against 344 ms, one step. A pair run the same way before the calibration key was added differed by four steps at 10× (344 ms against 376 ms). So whether #712b costs the page anything at 10× isn’t settled, and PF-1 fails either way. The 1× p95 moved between 56 ms and 32 ms with the host’s load, so each ratio has to be read against the 1× figure from the same pass.
+**#712b doesn’t change PF-1, as expected.** The time to the next frame in a long room goes on the page’s style and layout over every item it draws, which is #712a’s part. Event Timing reports in 8 ms steps. The before pass started as the host’s load was falling from 17, and its 1× p95 came out at 56 ms against the after pass’s 32 ms, so its ratios read low and only the absolute figures compare: at 10×, 352 ms against 344 ms, one step. A pair run the same way before the calibration key was added, on commits that were later rewritten and can’t be reached, differed by four steps at 10× (344 ms against 376 ms). So whether #712b costs the page anything at 10× isn’t settled, and PF-1 fails either way. The 1× p95 moved between 56 ms and 32 ms with the host’s load, so each ratio has to be read against the 1× figure from the same pass.
 
 ## The server
 
@@ -69,7 +69,7 @@ The rows are the worst stall over every run. **The real copy wasn’t rerun:** i
 
 ## Not met, and what comes next
 
-- **PF-1:** at 10× it’s over 10 times the 1× room, both before and after. It waits on #712a in sprint 4, which starts with a design revisit.
+- **PF-1:** at 10× it’s 6.29 times the 1× room before, where the 1× pass read high under load, and 10.75 times after; both fail. It waits on #712a in sprint 4, which starts with a design revisit.
 - **Not measured this sprint:**
   - Safari;
   - copies of real rooms, for PF-1;

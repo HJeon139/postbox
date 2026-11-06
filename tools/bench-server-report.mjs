@@ -33,7 +33,10 @@ function table(head, rows) {
   return [`| ${head.join(' | ')} |`, `|${head.map(() => '---').join('|')}|`, ...rows.map((cells) => `| ${cells.join(' | ')} |`)];
 }
 
-/** Whether a size’s worst stall is under the budget, as the snapshot bench decides it (stallMs >= budget exceeds). */
+/**
+ * Whether a size’s worst stall is under the budget (stall >= budget fails). The snapshot bench decides on its median
+ * pass instead (bench-snapshot-stall.mjs, runBenchmark), so this verdict is the stricter of the two.
+ */
 function stallVerdict(stall) {
   if (stall.max === null) return 'none';
   return stall.max < DEFAULT_STALL_BUDGET_MS ? 'pass' : 'fail';
