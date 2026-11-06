@@ -339,7 +339,7 @@ engineering-practices.md, “Commits and versions”, holds the Conventional Com
 
 **A commit that is itself a record carries its record.** A fix found in review, or a change forced by a measurement, says what changed, what forced it and where that’s written down, as cdc3d4c does. Shortening it to one line deletes the record.
 
-**Branch from `main`, stay based on it, and never push to it.** Every merge to `main` releases (`.github/workflows/release.yml`), so what reaches `main` is what people get.
+**Branch from `main`, stay based on it, and never push to it.** Every merge to `main` releases once `main`’s checks pass on it (`.github/workflows/release.yml`), so what reaches `main` is what people get.
 
 **Answer review on the same branch, with new commits.** A force-push over commits a reviewer has commented on leaves their comments on code that’s no longer there. Fold fixup commits into the commit they fix before review, not after.
 
