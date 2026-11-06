@@ -11,7 +11,7 @@ Check each line on a screenshot at the size the visual is read (1000 × 680 by d
 - The title states the idea from the brief, as a claim [VE1].
 - At 1000 × 680, before any scrolling, the title and every part the idea depends on are on screen, and no label is under 12 px [VE8] *countable: the first viewport’s bounding box and label sizes*.
 - Where the outcome comes from steps that add up, one step is drawn, and how steps combine [VE9].
-- The parts are drawn as what they are or do (icons, small drawings, a cutaway, marks that carry values), not as boxes holding their names [VE10] *countable: share of text sitting inside rectangles*.
+- The parts are drawn as what they are or do (icons, small drawings, a cutaway, or a chart whose marks carry the values), not as boxes holding their names [VE10] *countable: share of text sitting inside rectangles*.
 - Where the idea is a relationship between variables, one control changes a variable it turns on, and the picture shows what moves with it [VE11].
 - Each relation in the brief’s “must show” is something you can point at [brief].
 - Every label sits on or beside the part it names, in three words or fewer [VE3] *countable: words per shape*.
