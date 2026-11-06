@@ -1,14 +1,14 @@
-# Book shelf: what search will miss
+# Book shelf: what to index
 
-- **Idea:** Before indexing, the risk is in the library scans: a quarter of the books but 43% of the pages, and 40% of their pages have poor OCR. Eight EPUBs have no extractable text at all. Project Gutenberg’s half of the pages is clean.
+- **Idea:** The 84 files are 46 works. 24 of them have more than one copy, up to five, including French translations under other titles, so indexing every file would return the same passage several times. Index one copy per work: 39 works have a clean or good copy, and 7 have only a poor scan or a locked EPUB.
 - **For:** Someone about to index their own collection of books for lexical and semantic search, who can’t yet say which to include (designs/intent.md, “Exploring your own data”).
 - **Question:** I’m about to index these books for search, and I can’t yet say which ones are worth it. What have I got?
-- **Facts** (from the run’s `books.csv`, 84 books, 36,069 pages):
-  - Project Gutenberg: 50 books, 17,379 pages (48%), all clean text.
-  - Library scans: 22 books, 15,379 pages (43%), published 1820 to 1925. Of their pages, 3,699 have good OCR, 5,564 fair and 6,116 poor (17% of all pages).
-  - Own EPUBs: 12 books, 3,311 pages (9%), published 1995 to 2024. Eight of them, 2,080 pages, have no extractable text.
-  - 77 books are in English, four in German and three in French.
-- **Shape:** Comparison with parts: sources, sized by pages, split by text quality.
-- **Must show:** each source’s share of the pages; within it, how much text search can use; where the poor and missing text is.
-- **Traps:** counting books instead of pages, which hides that scans are long; a table of 84 rows; a dashboard of every column (years, languages, authors) with no one idea.
-- **An explorer is welcome:** a way to pick the books to index, from the picture, fits the person’s next step. It doesn’t replace the picture.
+- **Facts** (from the run’s `books.csv`: 84 files, each with its source, pages, text quality, and `edition_of`, the id of the first copy of the same work):
+  - 46 works. 22 have one copy, 14 have two, 7 have three, and 3 have four or five.
+  - 38 files are further copies of a work already on the shelf. Nine are French translations, which have other titles and match their work only by `edition_of`.
+  - 39 works have at least one copy with clean (Project Gutenberg, an EPUB with text) or good (a library scan) text.
+  - 7 works have only poor scans or EPUBs with no extractable text.
+- **Shape:** A network: works with their copies, each copy marked by its text quality.
+- **Must show:** each work with its copies around it; which copy is the one to index; the works with no good copy.
+- **Traps:** a bar chart of books per source, which counts files, not works; a table of 84 rows; a dashboard of every column with no one idea.
+- **An explorer is welcome:** a way to pick the copy to index for each work, from the picture, fits the person’s next step.

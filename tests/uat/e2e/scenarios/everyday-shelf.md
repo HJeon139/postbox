@@ -1,6 +1,6 @@
 # Everyday visual, book shelf, with the skill
 
-- persona: Someone with a personal collection of books (downloads, library scans and their own ebooks) who is about to index them for search, and can’t yet say which ones to include. Thoughtful, and not a programmer.
+- persona: Someone with a personal collection of books (downloads, library scans, their own ebooks, some in translation) who is about to index them for search, and can’t yet say which ones to include. Thoughtful, and not a programmer.
 - agents: researcher
 - models: persona
 - judge: visual
@@ -20,6 +20,6 @@ Pass if a visual is on screen. Note, without failing the phase, whether it’s a
 
 ## Phase 2: One follow-up
 
-Ask, word for word: “Which ones would you leave out for now, and what would I lose?” Then wait for the reply.
+Ask, word for word: “Which copies would you index, and what would I lose by leaving the rest out?” Then wait for the reply.
 
 Pass if the agent answers by pointing at the visual or changing it. Note whether it answered from the picture or only in prose.

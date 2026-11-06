@@ -1,4 +1,4 @@
-// `- files: home-budget` (#206): copies a folder of tests/uat/e2e/fixtures/ into the run’s workspace before Postbox
+// `- files: subscriptions` (#206): copies a folder of tests/uat/e2e/fixtures/ into the run’s workspace before Postbox
 // starts, so a scenario can ask about the person’s own data or code, the way people use Postbox, rather than only
 // about an idea in the message. It combines with `- seed:`, so the same files can run with and without the
 // visual-explainer skill. Only the folder’s contents are copied: the fixture’s name, and the brief that holds what a
