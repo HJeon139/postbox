@@ -226,3 +226,16 @@ test('#455 options that are all strings get one error that shows an option’s s
   // One string among objects is that option’s own error, as before.
   bad(base('choice', { options: [{ id: 'a', label: 'A' }, 'B'] }), /^options\[1\] must be an object, not a string\.$/);
 });
+
+test('with origins: “later”, an image’s scheme is checked and its origin is left to Postbox’s list', () => {
+  const image = (src) => base('image', { src, alt: 'x' });
+  const later = { origins: /** @type {const} */ ('later') };
+  ok(image('https://evil.example/x.png'), later);
+  ok(image('http://127.0.0.1:4191/media/x.png'), later);
+  bad(image('http://evil.example/x.png'), /^src must be an https address/, later);
+  bad(image('javascript:alert(1)'), /^src must be an https address/, later);
+  // Without it, the origin is checked as before, and no list allows none.
+  bad(image('https://evil.example/x.png'), /allowed origin/, { imageOrigins: ['https://www.gutenberg.org'] });
+  ok(image('https://www.gutenberg.org/x.png'), { imageOrigins: ['https://www.gutenberg.org'] });
+  bad(image('https://www.gutenberg.org/x.png'), /allowed origin \(none configured\)/);
+});

@@ -29,3 +29,23 @@ test('#854 an outcome or a withdraw update_block from a host is queued for Postb
     await h.done();
   }
 });
+
+test('an image update_block from a host is checked for https, and its origin is left to Postbox’s list', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    const k = makeBroker(h);
+    const s = connectShim(k.b, 't1');
+    await s.next('welcome');
+    const image = { id: 'img', type: 'image', version: 1, fallback: 'A cover', alt: 'A cover' };
+    assert.equal((await s.call('c1', 'update_block', { block: { ...image, src: 'https://upload.wikimedia.org/a.png' } })).ok, true);
+    const plain = await s.call('c2', 'update_block', { block: { ...image, src: 'http://upload.wikimedia.org/a.png' } });
+    assert.match(plain.text, /^The update was invalid and wasn’t applied: src must be an https address/);
+    assert.deepEqual(
+      k.sent.map((m) => m.id),
+      ['c1'],
+    );
+  } finally {
+    await h.done();
+  }
+});

@@ -93,6 +93,28 @@ test('a queued tool returns at once, and the daemon receives its call', async (t
   assert.equal(call.args.block.id, 'pick');
 });
 
+test('#854 an invalid whole-block update_block is refused in the call; an outcome, a withdraw and a valid one are sent', async (t) => {
+  const { shim, daemon } = await setup(t);
+  await daemon.connected();
+  const refused = await shim.response(shim.tool('update_block', { block: { id: 'pick', type: 'choice', version: 1 } }));
+  assert.equal(refused.result.isError, true);
+  assert.match(textOf(refused), /^The update was invalid and wasn’t applied: .*fallback is required/);
+  // An app review is a block like any other: its shape is checked here.
+  const review = await shim.response(shim.tool('update_block', { block: { id: 'rv', type: 'review', version: 1, fallback: 'Review', format: 'app' } }));
+  assert.match(textOf(review), /^The update was invalid and wasn’t applied: An app review needs appId\./);
+  // Postbox checks an outcome or a withdraw against the block it names, and an image’s origin against its own list.
+  const image = { id: 'img', type: 'image', version: 1, fallback: 'A cover', src: 'https://upload.wikimedia.org/a.png', alt: 'A cover' };
+  const sent = [{ id: 'pick', outcome: 'Filed as #1' }, { id: 'pick', withdraw: 'Stale.' }, image];
+  for (const block of sent) assert.equal((await shim.response(shim.tool('update_block', { block }))).result.isError, undefined);
+  const calls = [await daemon.next('call'), await daemon.next('call', 1), await daemon.next('call', 2)];
+  assert.deepEqual(
+    calls.map((c) => c.args.block),
+    sent,
+  );
+  await sleep(50);
+  assert.equal(daemon.received.filter((m) => m.type === 'call').length, 3, 'a refused update never reaches the daemon');
+});
+
 test('a queued tool returns at once with no daemon, and is sent with the same ID when the daemon comes up', async (t) => {
   const { shim, daemon } = await setup(t, { startDaemon: false, timings: { backoff: 20, backoffMax: 50 } });
   const res = await shim.response(shim.tool('define_term', { term: 'shim', definition: 'The host’s MCP server.' }));
