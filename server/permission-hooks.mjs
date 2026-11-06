@@ -8,6 +8,7 @@
 // shape this doesn’t know, says so.
 
 import { readFile } from 'node:fs/promises';
+import { HOST_SOURCES, ISOLATED_SOURCES } from './adapters/setup.mjs';
 import { settingsFiles } from './permission-rules.mjs';
 
 const MAX_HOOKS = 50; // per file, as read: the rest are counted
@@ -81,13 +82,12 @@ export async function readHookFile(file) {
 }
 
 /**
- * The PreToolUse hooks of each settings source an agent reads: the user’s only when the persona loads the person’s
- * setup, as for its rules (permission-rules.mjs, readRules).
+ * The PreToolUse hooks of each settings source an agent reads, the same sources its turns load (HOST_SOURCES or
+ * ISOLATED_SOURCES, server/adapters/setup.mjs): the user’s only when the persona loads the person’s setup.
  * @param {{ folder: string, home: string, configDir?: string|null, usesHostSetup: boolean }} opts
  */
 export async function readHooks({ folder, home, configDir = null, usesHostSetup }) {
   const files = settingsFiles(folder, home, configDir);
-  /** @type {('user'|'project'|'local')[]} */
-  const sources = usesHostSetup ? ['user', 'project', 'local'] : ['project', 'local'];
+  const sources = usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES;
   return Promise.all(sources.map(async (source) => ({ source, ...(await readHookFile(files[source])) })));
 }
