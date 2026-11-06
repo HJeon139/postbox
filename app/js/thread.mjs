@@ -25,7 +25,7 @@ import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
 import { replyLine } from './reply-rings.mjs';
 import { stoppedTag } from './reply-stop.mjs';
-import { replaceTranscriptItem } from './rerender-state.mjs';
+import { holdFocus, replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
@@ -104,11 +104,12 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     const i = placeIn(threadId, id);
     if (i < 0) return;
     const old = nodes.get(id);
-    // Keep focus inside a block that’s being edited.
+    // Keep focus, and the caret, inside a block that’s being edited.
+    const back = holdFocus();
     const n = render(list[i], list[i - 1]);
-    const focusedId = replaceTranscriptItem(old, n);
+    replaceTranscriptItem(old, n);
     nodes.set(id, n);
-    if (focusedId) document.getElementById(focusedId)?.focus();
+    back();
   };
   const all = () => {
     el.replaceChildren();
@@ -131,8 +132,10 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
 
   const off = client.on((ch) => {
     if (ch.type === 'load') {
+      const back = holdFocus();
       all();
       view.rebuilt();
+      back();
       return;
     }
     const d = ch.data;
@@ -152,6 +155,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       const list = itemsOf(threadId);
       const at = placeIn(threadId, d.stub.id);
       const stub = render(d.stub, list[at - 1]);
+      const back = holdFocus();
       nodes.get(d.id)?.replaceWith(stub);
       nodes.set(d.stub.id, stub);
       view.moved(d.id, d.stub.id);
@@ -161,6 +165,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       const n = render(list[list.length - 1], list[list.length - 2]);
       nodes.set(d.id, n);
       el.append(n);
+      back();
       paintWorking();
       view.grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
