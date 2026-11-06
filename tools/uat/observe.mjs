@@ -4,12 +4,14 @@
 
 import { join, relative } from 'node:path';
 import { recordDiagrams } from './diagram-probe.mjs';
+import { recordDocQueries } from './doc-query-probe.mjs';
 
 /** What changed on screen, labeled for the tester, and each agent’s state. */
 export async function observe({ d, labels, keys, seen, paths, timeline, dir, facts }) {
   const out = [];
   // Before any screenshot below scrolls to an item, and so loads its frames (#701).
   await recordDiagrams(d.kit.ev, facts, timeline.length);
+  await recordDocQueries(d.kit.ev, facts, timeline.length);
   const items = await d.items();
   for (const it of items) {
     if (!labels.has(it.key)) {

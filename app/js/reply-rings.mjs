@@ -27,30 +27,81 @@ export function replyLine(it, se, threadId) {
   ring.dataset.session = se.id;
   if (!follows) restRing(ring);
   const word = paintWord(h('span.who-state', { dataset: { session: se.id }, 'aria-live': 'off' }), se, follows);
+  if (follows) followersOf(se.id).add({ ring, word, threadId, itemId: it.id });
   return { ring, word };
 }
 
-/**
- * Paints one session’s speaker lines in a transcript: the latest reply’s follows it, and any other that does rests.
- * It looks up only those that show the session, never one per reply.
- * @param {HTMLElement} root  the transcript @param {any} se  the session
- */
-function paintLines(root, se) {
-  const id = CSS.escape(se.id);
-  const latest = latestReply(root.dataset.thread ?? '', se.id);
-  const line = latest ? root.querySelector(`:scope > [data-key="${CSS.escape(latest)}"] .who`) : null;
-  for (const r of root.querySelectorAll(`.who pb-ring[data-session="${id}"]:not([state="rest"])`)) if (!line?.contains(r)) restRing(r);
-  for (const w of root.querySelectorAll(`.who-state[data-session="${id}"]:not(:empty)`)) if (!line?.contains(w)) paintWord(w, se, false);
-  const ring = line?.querySelector(`pb-ring[data-session="${id}"]`);
-  if (ring) ringFor(se, 'xs', ring);
-  const word = line?.querySelector('.who-state');
-  if (word) paintWord(word, se, true);
+// The lines that follow each session, as drawn: at most one in each transcript showing it. A session event paints these
+// and nothing else, with no query over the page or a transcript (#564-b1). The latest reply changes only when an item
+// does. Then a line that no longer is the latest rests and leaves the list, and the transcript’s new latest line joins:
+// drawn later, as replyLine draws it, or already there, when the latest went back to an earlier reply (one replaced).
+/** @typedef {{ ring: Element, word: Element, threadId: string, itemId: string }} Follower */
+/** @type {Map<string, Set<Follower>>} */
+const followers = new Map();
+/** How many lines a session’s list holds before it lets go of those off the page. */
+const KEEP = 8;
+/** @param {string} sessionId */
+function followersOf(sessionId) {
+  let set = followers.get(sessionId);
+  if (!set) followers.set(sessionId, (set = new Set()));
+  return set;
 }
 
-/** The session whose lines a change can move: its own change, or a new or moved message of its. @param {any} ch */
+/** The speaker line of the transcript’s item `key`, looked for from the end, where the latest replies are. */
+function lineOf(root, key) {
+  for (let n = root.lastElementChild; n; n = n.previousElementSibling) {
+    if (n instanceof HTMLElement && n.dataset.key === key) return n.querySelector('.who');
+  }
+  return null;
+}
+
+/**
+ * The transcript’s latest line for the session, when it’s already drawn, made to follow it and put on the list.
+ * @param {Element | null} root  the transcript @param {string} threadId @param {any} se
+ */
+function promote(root, threadId, se) {
+  const key = latestReply(threadId, se.id);
+  const line = root && key ? lineOf(root, key) : null;
+  const id = CSS.escape(se.id);
+  const ring = line?.querySelector(`pb-ring[data-session="${id}"]`);
+  const word = line?.querySelector(`.who-state[data-session="${id}"]`);
+  if (!ring || !word || !key) return;
+  ringFor(se, 'xs', ring);
+  paintWord(word, se, true);
+  followersOf(se.id).add({ ring, word, threadId, itemId: key });
+}
+
+/**
+ * Paints the lines that follow a session: each that is still its latest reply follows it; one that isn’t any more
+ * rests and leaves the list, and its transcript’s latest line, if drawn, takes its place. O(the lines that follow it)
+ * on a session event.
+ * @param {any} se  the session
+ */
+function paintLines(se) {
+  const set = followers.get(se.id);
+  if (!set) return;
+  // A line off the page is skipped, not painted; it may come back (a transcript kept to show again). Only a long list
+  // lets go of those, so lines from transcripts gone for good don’t pile up.
+  if (set.size > KEEP) for (const f of set) if (!f.ring.isConnected) set.delete(f);
+  for (const f of [...set]) {
+    if (!f.ring.isConnected) continue;
+    if (latestReply(f.threadId, se.id) === f.itemId) {
+      ringFor(se, 'xs', f.ring);
+      paintWord(f.word, se, true);
+    } else {
+      restRing(f.ring);
+      paintWord(f.word, se, false);
+      set.delete(f);
+      promote(f.ring.closest('.transcript'), f.threadId, se);
+    }
+  }
+}
+
+/** The session whose lines a change can move: its own change, or a new, moved or patched message of its. @param {any} ch */
 function sessionOf({ type, data: d }) {
   if (type === 'session') return d;
-  const it = movedOrAdded(type, d);
+  // A patch can change which reply names its speaker (a reply replaced), before the transcript draws it again.
+  const it = type === 'item.patch' ? itemIn(d.threadId, d.id) : movedOrAdded(type, d);
   return it?.sessionId ? client.state.sessions[it.sessionId] : null;
 }
 
@@ -65,5 +116,5 @@ function movedOrAdded(type, d) {
 // can move which of its lines follows it, in every transcript showing it.
 client.on((ch) => {
   const se = sessionOf(ch);
-  if (se) for (const root of document.querySelectorAll('.transcript[data-thread]')) paintLines(/** @type {HTMLElement} */ (root), se);
+  if (se) paintLines(se);
 });
