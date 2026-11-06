@@ -38,6 +38,19 @@ test('#817: a very long command or matcher is cut, with an ellipsis at the cut',
   assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: `${'M'.repeat(99)}…`, type: 'command', text: `${'x'.repeat(199)}…` }]);
 });
 
+test('#817: a command or matcher exactly at its limit isn’t cut', async () => {
+  const file = await settings(pre(command('M'.repeat(100), 'x'.repeat(200))));
+  assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: 'M'.repeat(100), type: 'command', text: 'x'.repeat(200) }]);
+});
+
+test('#817: a hook that isn’t an object (null, a string) is listed as a command hook with no text, and doesn’t throw', async () => {
+  const file = await settings(pre({ matcher: 'Bash', hooks: [null, 'touch /tmp/pwned'] }));
+  assert.deepEqual((await readHookFile(file)).hooks, [
+    { matcher: 'Bash', type: 'command', text: '' },
+    { matcher: 'Bash', type: 'command', text: '' },
+  ]);
+});
+
 test('#817: PreToolUse hooks that aren’t a list say the file’s hooks can’t be listed, and list none', async () => {
   for (const content of [
     { hooks: { PreToolUse: 'touch /tmp/pwned' } },
