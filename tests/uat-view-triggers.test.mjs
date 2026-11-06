@@ -79,7 +79,9 @@ test('observe records the diagram and document-query probes before any screensho
   const item = { key: 'it_a', where: 'conversation', text: 'A diagram', block: null, app: false, diagram: true, math: false, buttons: [], fields: [] };
   const d = {
     kit: {
+      // The view probe (#531) runs here too; this test follows the diagram and document-query probes only.
       ev: async (/** @type {string} */ expr) => {
+        if (/data-view-mode/.test(expr)) return [];
         if (expr.includes('/app/js/client.mjs')) {
           calls.push('queries');
           return { origin: 1, sessionEvents: 0, scanCount: 0, scans: [], byId: 0, items: 1 };

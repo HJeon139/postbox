@@ -38,4 +38,43 @@ Saved searches:
    - `designs/prompts/README.md`: ports, `--data`, length limits, the gate, scope and hand-off
 4. **When it merges,** the issue closes and the claim ends with it. If you stop before then, unassign yourself (`gh issue edit <n> --remove-assignee @me`) and comment where you got to. The maintainer may unassign a stale claim, one with no pull request and no word for a while, and says so in a comment.
 
+## Get your pull request reviewed
+
+Three labels on a pull request say where its review stands. Each one is about the PR’s current head, the commit it ends on, so a new push makes the label out of date.
+
+| Label | Who adds it | What it means |
+|---|---|---|
+| `ready for integrator` | The author | The head is ready for the integrator’s review: it passes the gate (`AGENTS.md`, “The gate”), its body says why, what changed, how it was verified and what’s not done, and you’ve checked it against `designs/review-guide.md`, the guide the integrator reviews by. |
+| `changes requested` | The integrator | The integrator reviewed this head and asked for changes, in a review on the PR. |
+| `integrator approved` | The integrator | The integrator approved this head. The integrator merges it once CI is green. |
+
+```mermaid
+stateDiagram-v2
+    [*] --> Ready: the author adds ready for integrator
+    Ready --> Approved: the integrator approves
+    Ready --> Changes: the integrator asks for changes
+    Changes --> Ready: the author pushes fixes, removes changes requested and adds ready for integrator
+    Ready --> [*]: the author pushes again and removes the label until the new head is ready
+    Approved --> Merged: CI is green
+    Merged --> [*]
+```
+
+1. **Mark it ready.** Add `ready for integrator` only when the head is ready, not while you’re still pushing. A draft pull request isn’t ready.
+   ```bash
+   gh pr edit <n> --add-label "ready for integrator"
+   ```
+2. **Push again, and the label is out of date.** Nothing removes it for you: remove it yourself when you push to a head that’s labeled, and add it again once the new head is ready.
+3. **Answer a review.** The integrator posts the verdict as a GitHub review, with a comment on each line that has to change, and replaces `ready for integrator` with `changes requested` or `integrator approved`. Fix what blocks, push, then swap `changes requested` for `ready for integrator`. Points that don’t block go into new issues, not into this PR.
+   ```bash
+   gh pr edit <n> --remove-label "changes requested" --add-label "ready for integrator"
+   ```
+4. **Leave the merge to the integrator.** An approved pull request is brought up to date with `main` and merged once CI is green. Don’t merge it yourself, and don’t add `integrator approved` to your own PR.
+
+If you can’t add labels (GitHub lets only people with triage access or above change them, and outside contributors often don’t have it), comment on the PR that it’s ready for review, or that you’ve answered one, and the maintainer sets the label.
+
+Saved searches:
+- [Ready for the integrator](https://github.com/HJeon139/postbox/pulls?q=is%3Apr+is%3Aopen+label%3A%22ready+for+integrator%22) uses `is:pr is:open label:"ready for integrator"`.
+- [Changes requested](https://github.com/HJeon139/postbox/pulls?q=is%3Apr+is%3Aopen+label%3A%22changes+requested%22) uses `is:pr is:open label:"changes requested"`.
+- [Approved, waiting on CI](https://github.com/HJeon139/postbox/pulls?q=is%3Apr+is%3Aopen+label%3A%22integrator+approved%22) uses `is:pr is:open label:"integrator approved"`.
+
 The wave plan, with which issues are grouped into which session and in what order, is in `designs/prompts/README.md`. The maintainer's triage comments are on #64.

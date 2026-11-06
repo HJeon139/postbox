@@ -6,8 +6,8 @@
 // - The next frame: the keydown’s timeStamp to the second requestAnimationFrame after it, a cross-check of our own.
 // It drives the page tools/browser.mjs opens, so the bench (tools/bench-key-frame.mjs) and the UAT runner share it.
 
-import { execFileSync } from 'node:child_process';
-import { arch, cpus, loadavg, release, type } from 'node:os';
+import { loadavg } from 'node:os';
+import { hostOf } from './bench-room.mjs';
 import { sleep } from './browser.mjs';
 import { calibrated, keyDurations, outsideWindow } from './key-frame-stats.mjs';
 import { heldStill } from './page-still.mjs';
@@ -137,23 +137,10 @@ export async function measureKeys(page, { keys = 200, warmup = 20, intervalMs = 
   return { eventTiming: values, nextFrame: rec.frames.slice(warmup), below };
 }
 
-/** The commit measured: HEAD’s short hash, with “+changes” when the tree differs from it. @param {string} root */
-export function commitOf(root) {
-  const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
-  const head = git('rev-parse', '--short=8', 'HEAD');
-  return git('status', '--porcelain').length ? `${head}+changes` : head;
-}
-
-/** The machine, without its name or any home path: os, arch, cpu model, Node and Chromium. @param {Page} page */
+/** The machine as hostOf() gives it, and Chromium’s version. @param {Page} page */
 export async function machineOf(page) {
   const { product } = await page.send('Browser.getVersion');
-  return {
-    os: `${type()} ${release()}`,
-    arch: arch(),
-    cpu: cpus()[0]?.model ?? 'unknown',
-    node: process.version,
-    chromium: String(product).replace(/^[^/]*\//, ''),
-  };
+  return { ...hostOf(), chromium: String(product).replace(/^[^/]*\//, '') };
 }
 
 /**
@@ -170,3 +157,5 @@ export async function conditionsOf(page, loadAtStart) {
     scale: shown.scale,
   };
 }
+
+export { commitOf, hostOf } from './bench-room.mjs';

@@ -9,7 +9,7 @@ Use one when:
 | Recipe | Made of | In the demo |
 |---|---|---|
 | Explorer | an app with `postbox.query('corpus.search')`, saved state, and a send-back action | Corpus explorer |
-| Explainer with practice | Markdown with citations, a Mermaid diagram, math, `define_term`, then a practice app | ReAct, step by step |
+| Explainer | one picture that carries the idea, with one control that changes it, around Markdown with citations, a Mermaid diagram, math and `define_term`; a predict-first question is fine, practice only when the person asks for it | ReAct, step by step: “Explain ReAct” shows the picture; “Explain ReAct with something I can try” shows a practice app |
 | Narrated walkthrough | an app with slides and `postbox.narration()` | ReAct, out loud |
 | Slidev export | a `slides.md` file in the agent’s folder, plus a code block | (needs a real agent) |
 | Line-by-line review | a review block, then `update_block` with `previous` to show the diff | Corpus schema spec |
