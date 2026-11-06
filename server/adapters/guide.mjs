@@ -217,7 +217,7 @@ Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before s
 
 Use one when the person asks for what it covers.
 - Explorer: an app that searches with postbox.query("corpus.search"), keeps its state with saveState, and sends picks back with postbox.send.
-- Explainer: one visual that carries the idea, with one control that changes it. A predict-first question is fine; a practice app only when asked.
+- Explainer: one picture that carries the idea, with one control that changes it. A predict-first question is fine; practice only when asked.
 - Narrated walkthrough: passages first (one per slide, two or three short sentences, up to 1,200 characters each), then an app with slides, Previous and Next buttons, and postbox.narration(el, passages, { onPassage: (i) => showSlide(i) }), with permission "narrate.speak".
 - Slidev export: write slides.md (slides split by ---, notes in <!-- --> comments), show it as a code block with filename "slides.md", and say \`npx @slidev/cli export slides.md\` makes a PDF.
 
