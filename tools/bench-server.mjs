@@ -29,6 +29,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** The log the startup replays: as long as the store lets one grow before it snapshots. */
 export const LOG_EVENTS = SNAPSHOT_EVERY;
 const CHUNK = 'part of the streamed reply ';
+const STREAMED_ID = 'it_streamed';
 const REPLY_EVENTS = 50; // each reply in the log: its item.add and then 49 item.text chunks
 
 /** The options, checked. @param {string[]} argv */
@@ -72,7 +73,7 @@ export function pooled(runs, key) {
  * @param {any} state  @param {string} threadId  @param {number} chunks
  */
 export function streamChunks(state, threadId, chunks) {
-  const id = 'it_streamed';
+  const id = STREAMED_ID;
   apply(state, 'item.add', { threadId, item: { id, kind: 'agent', handle: AGENTS[0], text: '' } });
   const times = [];
   for (let i = 0; i < chunks; i++) {
@@ -107,11 +108,16 @@ const loadStore = (dir) => new Store(dir).load();
 
 /**
  * One run of the in-process numbers: a snapshot pass, a streamed reply on a copy of the state, a load of the log.
- * snapshotPass is measureSnapshotPass(), or a test’s stand-in; openStore loads a Store, or a test’s stand-in.
+ * snapshotPass is measureSnapshotPass(), or a test’s stand-in; openStore loads a Store, or a test’s stand-in; stream
+ * is streamChunks(), or a test’s stand-in.
  */
-async function inProcessRun(state, boot, scratch, chunks, snapshotPass, openStore) {
+async function inProcessRun(state, boot, scratch, chunks, { snapshotPass, openStore, stream }) {
   const pass = await snapshotPass(state, scratch);
-  const chunk = streamChunks(structuredClone(state), THREAD, chunks);
+  const copy = structuredClone(state);
+  const chunk = stream(copy, THREAD, chunks);
+  const thread = copy.items[THREAD] ?? [];
+  const reply = thread.find((item) => item.id === STREAMED_ID);
+  const streamed = { replyChars: reply?.text.length ?? 0, threadItems: thread.length };
   const t0 = performance.now();
   const store = await openStore(boot);
   const startup = performance.now() - t0;
@@ -120,7 +126,18 @@ async function inProcessRun(state, boot, scratch, chunks, snapshotPass, openStor
   const loadedItems = store.state.items[THREAD]?.length ?? 0;
   await store.close();
   const run = { stall: [stallOf(pass)], stringify: [pass.stringifyMs], chunk, startup: [startup], bytes: pass.bytes };
-  return { ...run, replayed, loadedItems };
+  return { ...run, replayed, loadedItems, streamed };
+}
+
+/**
+ * Refuses a streamed reply that didn’t land, whole, in the room’s thread: chunks streamed into another thread, or into
+ * an empty state, are as fast, and would read as a fast reducer (critic’s pass on #783). O(1).
+ * @param {{ replyChars: number, threadItems: number }} streamed  @param {number} chunks  @param {number} items
+ */
+export function checkStream(streamed, chunks, items) {
+  const chars = chunks * CHUNK.length;
+  if (streamed.replyChars !== chars) throw new Error(`The streamed reply holds ${streamed.replyChars} of its ${chars} characters.`);
+  if (streamed.threadItems < items + 1) throw new Error(`The thread held ${streamed.threadItems} items with the reply, not ${items + 1}.`);
 }
 
 /**
@@ -167,7 +184,15 @@ async function apiRuns(room, items, total, { start, port, get }) {
  * @param {number} items  @param {{ runs: number, requests: number, chunks: number, logEvents?: number }} o
  */
 export async function measureSize(items, o, deps = {}) {
-  const { start = startPostbox, port = freePort, tmp = tmpdir(), get = fetch, snapshotPass = measureSnapshotPass, openStore = loadStore } = deps;
+  const {
+    start = startPostbox,
+    port = freePort,
+    tmp = tmpdir(),
+    get = fetch,
+    snapshotPass = measureSnapshotPass,
+    openStore = loadStore,
+    stream = streamChunks,
+  } = deps;
   const dir = await mkdtemp(join(tmp, `pb-bench-server-${items}-`));
   const room = join(dir, 'room');
   const boot = join(dir, 'boot');
@@ -182,8 +207,9 @@ export async function measureSize(items, o, deps = {}) {
     await snapshotPass(state, scratch);
     const runs = [];
     for (let run = 0; run < o.runs; run++) {
-      const one = await inProcessRun(state, boot, scratch, o.chunks, snapshotPass, openStore);
+      const one = await inProcessRun(state, boot, scratch, o.chunks, { snapshotPass, openStore, stream });
       checkReplay(one, logEvents, items);
+      checkStream(one.streamed, o.chunks, items);
       runs.push(one);
     }
     const api = await apiRuns(room, items, o.runs * o.requests, { start, port, get });

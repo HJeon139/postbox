@@ -18,7 +18,7 @@ import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { writeSnapshot } from '../server/store-snapshot.mjs';
-import { count, loadState, seedRoomFolder } from './bench-room.mjs';
+import { count, loadState, seedRoomFolder, THREAD } from './bench-room.mjs';
 
 export const DEFAULT_STALL_BUDGET_MS = 50;
 
@@ -113,14 +113,25 @@ function readSnapshotState(snapPath, dataDir) {
 }
 
 /**
- * The big room at `items`, seeded into a temporary data folder and loaded by the server’s Store, as the state to
- * snapshot; the folder is removed after. @param {number} items
+ * Refuses a seeded room that holds fewer items than were asked for: an older seedBigRoomData ignores its count, and a
+ * smaller room would read as a smaller stall (critic’s pass on #783). @param {any} state  @param {number} items
  */
-export async function seededState(items) {
-  const data = await fs.mkdtemp(join(tmpdir(), `pb-bench-items-${items}-`));
+export function checkSeeded(state, items) {
+  const seeded = state.items?.[THREAD]?.length ?? 0;
+  if (seeded < items) throw new Error(`The room seeded ${seeded} of the ${items} items asked for.`);
+}
+
+/**
+ * The big room at `items`, seeded into a temporary data folder and loaded by the server’s Store, as the state to
+ * snapshot; the folder, made under tmp, is removed after. seed is seedRoomFolder(), or a test’s stand-in.
+ * @param {number} items  @param {string} [tmp]  @param {typeof seedRoomFolder} [seed]
+ */
+export async function seededState(items, tmp = tmpdir(), seed = seedRoomFolder) {
+  const data = await fs.mkdtemp(join(tmp, `pb-bench-items-${items}-`));
   try {
-    await seedRoomFolder(data, items);
+    await seed(data, items);
     const state = await loadState(data);
+    checkSeeded(state, items);
     const bytes = Buffer.byteLength(JSON.stringify(state));
     return { state, source: `a seeded big room of ${items} items`, bytes, storeBytes: computeStoreBytes(data, bytes) };
   } finally {
