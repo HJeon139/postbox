@@ -8,7 +8,7 @@ import test from 'node:test';
 import { hostMode } from '../tools/uat/hosts-options.mjs';
 import { createHostRun, setUpHost } from '../tools/uat/hosts-run.mjs';
 import { SCRIPTS } from '../tools/uat/hosts-ssh.mjs';
-import { removePostbox } from '../tools/uat/hosts-watch.mjs';
+import { fault, removePostbox } from '../tools/uat/hosts-watch.mjs';
 import { selectPhases } from '../tools/uat/phases.mjs';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { SCHEMA } from '../tools/uat/tester.mjs';
@@ -121,6 +121,34 @@ test('#464-b3 the remove-postbox fault runs the removal script, and refuses a ho
   await assert.rejects(removePostbox(h, fails), /Couldn’t remove Postbox’s folder on host1: rm: busy/);
   const silent = async () => ({ code: 0, stdout: '', stderr: '' });
   await assert.rejects(removePostbox(h, silent), /Couldn’t remove Postbox’s folder on host1/, 'not said removed');
+});
+
+test('#464-b3 removePostbox throws when the script says removed but exits non-zero', async () => {
+  const h = { label: 'host1', destination: 'host-a.example.com' };
+  const saidButFailed = async () => ({ code: 2, stdout: 'removed\n', stderr: '' });
+  await assert.rejects(removePostbox(h, saidButFailed), /Couldn’t remove Postbox’s folder on host1: exit 2/);
+});
+
+test('#464-b3 the remove-postbox fault runs through fault(), records it, and tells the tester it removed the folder', async () => {
+  const ran = [];
+  const run = async (/** @type {string} */ dest, /** @type {string} */ script) => {
+    ran.push([dest, script]);
+    return { code: 0, stdout: 'removed\n', stderr: '' };
+  };
+  const hr = {
+    api: async () => ({ state: { hostStatus: { ho_1: { state: 'failed' } } } }),
+    hosts: [{ label: 'host1', destination: 'host-a.example.com', id: 'ho_1' }],
+    record: { faults: [] },
+    placement: {},
+    kit: { ev: async () => [] },
+    log: () => {},
+  };
+  const said = await fault(/** @type {any} */ (hr), { fault: 'remove-postbox', target: 'host1' }, { reload: async () => {} }, () => {}, run);
+  assert.deepEqual(ran, [['host-a.example.com', SCRIPTS.removeStaged]]);
+  assert.match(said, /^Removed Postbox’s folder on host1\. /);
+  assert.equal(hr.record.faults.length, 1);
+  assert.equal(hr.record.faults[0].fault, 'remove-postbox');
+  assert.equal(hr.record.faults[0].label, 'host1');
 });
 
 test('#464-b3 host-reinstalled is checkable on a host run, and the tester can ask for remove-postbox', () => {

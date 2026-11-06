@@ -74,6 +74,18 @@ test('#464-b3: once reinstalled, a folder gone again under the same version inst
   }
 });
 
+test('#464-b3: the old token is read before the install, from its file when nothing here has read it yet', async () => {
+  const t = rig({ token: OLD });
+  try {
+    // A fresh manager: the token is only on disk, so a read after the install would find the new one there.
+    const r = await t.mgr.install('h1');
+    assert.equal(r.installed, true);
+    assert.equal(r.tokenChanged, true, 'the old token, read before the install wrote the new one');
+  } finally {
+    t.done();
+  }
+});
+
 test('#464-b3: Install… still repairs a host whose token file here can’t be read, and says no token changed', async () => {
   const t = rig({ token: OLD });
   try {
