@@ -28,7 +28,11 @@ export const jump = (page, at, block) =>
   page.evaluate(
     async ({ at, block }) => {
       const items = [...document.querySelectorAll('#main.transcript > .item')];
-      const i = at === 'diagram' ? items.findIndex((n, k) => k >= 3000 && n.querySelector('figure.diagram')) : at < 0 ? items.length + at : at;
+      const indexOf = () => {
+        if (at === 'diagram') return items.findIndex((n, k) => k >= 3000 && n.querySelector('figure.diagram'));
+        return at < 0 ? items.length + at : at;
+      };
+      const i = indexOf();
       const n = /** @type {HTMLElement} */ (items[i]);
       (await import('/app/js/view-jump.mjs')).jumpTo(n, block);
       return /** @type {string} */ (n.dataset.key);
