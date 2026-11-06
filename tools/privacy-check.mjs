@@ -176,39 +176,33 @@ function emails(content) {
  * other than 0, and real email addresses.
  *
  * @param {string} content
- * @param {object} [options]
- * @param {boolean} [options.exemptAccountFields=false]
  * @returns {string[]} list of violations found
  */
-export function checkContentPrivacy(content, options = {}) {
+export function checkContentPrivacy(content) {
   return [
     ...homePaths(content),
     ...tempPaths(content),
     ...installationIds(content),
-    ...(options.exemptAccountFields ? [] : accountFields(content)),
+    ...accountFields(content),
     ...tokens(content),
     ...utilizations(content),
     ...emails(content),
   ];
 }
 
-/** A recorded Codex turn that still holds account fields, filed as #660. */
-const ACCOUNT_FIELDS_660 = 'tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl';
-
 /**
- * Checks one committed file, by its path from the repository’s root, with the exemptions files have.
+ * Checks one committed file, by its path from the repository’s root, with the placeholders its joined deltas may hold.
  *
  * @param {string} path
  * @param {string} content
  * @returns {string[]} list of violations found
  */
 export function checkFilePrivacy(path, content) {
-  const options = { exemptAccountFields: path === ACCOUNT_FIELDS_660 };
-  const violations = checkContentPrivacy(content, options);
+  const violations = checkContentPrivacy(content);
   if (!path.endsWith('.jsonl')) return violations;
   const allowed = ALLOWED_JOINED.get(path) ?? [];
   for (const stream of joinedDeltas(content)) {
-    const found = checkContentPrivacy(stream.text, options).filter((violation) => !allowed.includes(violation));
+    const found = checkContentPrivacy(stream.text).filter((violation) => !allowed.includes(violation));
     violations.push(...found.map((violation) => `${violation} (joined deltas from line ${stream.firstLine})`));
   }
   return violations;
