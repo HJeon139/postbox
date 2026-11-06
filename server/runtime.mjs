@@ -89,8 +89,8 @@ import {
   scheduleWake,
   settleScheduledWake,
 } from './scheduled-wakes.mjs';
-import { sessionPatch } from './session-patch.mjs';
 import { setSessionRun } from './session-run.mjs';
+import { tellAgent, updateSession } from './session-write.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import {
@@ -336,9 +336,7 @@ export class Runtime {
     return true;
   }
   updateSession(id, patch) {
-    const se = this.s.sessions[id];
-    if (!se) return;
-    this.store.emit('session.patch', sessionPatch(se, { ...patch, updatedAt: Date.now() }));
+    updateSession(this, id, patch);
   }
   /** threadId: where it happened, when that isn’t the session’s own thread (a turn in a side thread, #110). */
   notify(level, se, title, text, threadId = null) {
@@ -1379,8 +1377,7 @@ export class Runtime {
 
   /** Context the agent reads at the start of its next turn, as a Postbox notice. */
   tellAgent(sessionId, text) {
-    const se = this.s.sessions[sessionId];
-    if (se) this.updateSession(sessionId, { context: [...(se.context ?? []), `[Postbox] ${text}`].slice(-20) });
+    tellAgent(this, sessionId, text);
   }
 
   /** The kept jobs, everywhere. */
