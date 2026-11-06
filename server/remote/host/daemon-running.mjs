@@ -88,6 +88,18 @@ function startSilence(d, turn, pid) {
 
 const seconds = (/** @type {number} */ ms) => Math.round(ms / 1000);
 
+/** Misses in a row that end a turn whose runner isn’t running (daemon-follow.mjs): one look can catch a runner mid-start. */
+const MISSES_TO_END = 2;
+
+/**
+ * Whether the follower ends a turn on this look: at once if Stop found it gone (d.dead), else at its second miss in a
+ * row (#738). @param {{ dead: boolean, misses: number }} look @returns {boolean}
+ */
+export function followerEnds({ dead, misses }) {
+  if (dead) return true;
+  return misses >= MISSES_TO_END;
+}
+
 /** The turn has ended with exit.json: its silence, if any, is forgotten. @param {Daemon} d @param {string} turn */
 export function forgetSilence(d, turn) {
   d.silentSince.delete(turn);

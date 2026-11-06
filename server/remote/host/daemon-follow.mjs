@@ -7,7 +7,7 @@ import { encodedBytes, REMOTE_LIMITS, TURN_FILES } from '../../../shared/remote-
 import { READ_CHUNK } from './daemon-constants.mjs';
 import { readExit, sizeOf } from './daemon-files.mjs';
 import { fail, send } from './daemon-reply.mjs';
-import { forgetSilence, turnRunning } from './daemon-running.mjs';
+import { followerEnds, forgetSilence, turnRunning } from './daemon-running.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
 /** @typedef {import('./daemon-constants.mjs').Follower} Follower */
@@ -189,7 +189,7 @@ async function run(fl) {
       // Interrupted: not running (daemon-running.mjs) twice in a row, or found dead.
       if (!(await turnRunning(d, turn))) misses++;
       else misses = 0;
-      if (d.dead.has(turn) || misses >= 2) {
+      if (followerEnds({ dead: d.dead.has(turn), misses })) {
         exit = await readExit(d, turn);
         over = true;
       }
