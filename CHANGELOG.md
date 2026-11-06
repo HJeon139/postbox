@@ -2,6 +2,34 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.31.0 (2026-11-06)
+
+### Features
+
+- **review:** Lines draws a review's attached figures as Preview does (#780)
+- **uat:** triggers and a scenario for a review that shows two figures, here and on a host (#780)
+- **review:** show_block's description says a review can carry images from the agent's folder (#780)
+- **remote:** a review block shown from a remote host carries its images (#780)
+- **review:** Preview shows a review's attached images from the item's route (#780)
+- **server:** the item's route serves a review's image, same-origin only (#780)
+- **review:** show_block and update_block keep a review's images with each revision (#780)
+- **review:** read an attached image's type and size from its header bytes (#780)
+- **review:** an image target resolves to a file attached to the block, by exact key (#780)
+
+### Fixes
+
+- **remote:** a host app's data file record keeps only its name, SHA-256 and size (#780)
+- **review:** release a call's staged blobs when a later put fails, and 404 a gone blob (#780)
+- **review:** a call's review images are kept only when an item took them (#828)
+- **test:** #780's swap and blob specs remove their temp folders, as main now checks (#780)
+- **remote:** a host's review call with files waits for Postbox's answer (#780)
+- **review:** a refused review call never removes bytes an ordinary put has in flight (#780)
+- **review:** refuse files on a review's withdraw or outcome (#780)
+- **review:** keep at most 8 replaced files on a review item (#780)
+- **review:** keep a review's images only when its block is shown or updated (#780)
+- **review:** check every file before storing any, and keep the header's filename whole (#780)
+- **server:** agentFile reads the file it opened and checked, not a link swapped in after (#780)
+
 ## 1.30.0 (2026-11-06)
 
 ### Features
