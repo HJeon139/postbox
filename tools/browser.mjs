@@ -63,6 +63,21 @@ function kill(pid) {
     } catch {}
 }
 
+/**
+ * Sizes the page and its window, and sets its color scheme. The window too, not only the page: headless Chromium starts
+ * at 800×600, and what lies outside the window is never presented, so a key typed there waits for a frame that doesn’t
+ * come (#508, PF-1).
+ * @param {(method: string, params?: object) => Promise<any>} send  @param {import('playwright').Page} pw
+ * @param {number} width  @param {number} height
+ * @param {{ mobile?: boolean, scale?: number, theme?: 'light' | 'dark' }} [options]
+ */
+export async function sizePage(send, pw, width, height, { mobile = width < 768, scale = mobile ? 2 : 1, theme } = {}) {
+  const { windowId } = await send('Browser.getWindowForTarget');
+  await send('Browser.setWindowBounds', { windowId, bounds: { width, height } });
+  await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale, mobile });
+  await pw.emulateMedia({ reducedMotion: 'no-preference', colorScheme: theme ?? null });
+}
+
 /** Starts Playwright’s headless Chromium, as start() says, and opens its page. @param {{ detached?: boolean }} [o] */
 export async function launch({ detached = false } = {}) {
   const { browser, pid } = await start(detached);
@@ -103,10 +118,7 @@ export async function launch({ detached = false } = {}) {
       return frame;
     },
     pending: () => [...inflight.values()].map((r) => `${r.url.replace(/^https?:\/\/[^/]+/, '')} (${Math.round((Date.now() - r.at) / 1000)} s)`),
-    async size(width, height, { mobile = width < 768, scale = mobile ? 2 : 1, theme } = {}) {
-      await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: scale, mobile });
-      await pw.emulateMedia({ reducedMotion: 'no-preference', colorScheme: theme ?? null });
-    },
+    size: (width, height, options) => sizePage(send, pw, width, height, options),
     async goto(url) {
       await pw.goto(url, { waitUntil: 'load', timeout: 15000 }).catch((e) => {
         throw new Error(`The page didn’t load: ${url} (${String(e.message).split('\n')[0]})`);

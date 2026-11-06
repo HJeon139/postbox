@@ -522,7 +522,9 @@ It needs no state, so it runs the same on a copy, and its counts don’t change 
 | Commit round trip: added latency per streamed chunk and per `commit` at dispatch, with its `fsync`, against today’s store | Not set | Turn-start time and streamed-text lag on a copy of this room | Measured in step 1a before anything else moves. 4.2 to 4.6 ms per `fsync` on the developer’s Mac |
 | Stream retention: entries kept in `events` before trimming | Not set | Browsers that needed `resync` after a reconnect | From rooms’ event rates and typical reconnect gaps |
 
-**Budget (PF-1, decided):** key-to-frame p95 within 10% of a small room’s, and Safari’s idle painting no higher, on copies of real rooms.
+**Budget (PF-1, decided):** key-to-frame p95 within 10% of a small room’s, and Safari’s idle painting no higher, in rooms the big-room seed generates at 1× (1,000 items), 4× and 10×, as `requirements.md` says. Copies of real rooms aren’t measured this sprint.
+
+Under one frame, the 10% can’t be measured: Chromium’s Event Timing leaves out keys under its 16 ms threshold and reports the rest in 8 ms steps. So when the small room’s p95 is under one frame, a larger room passes at up to 17.6 ms, 16 ms plus 10% (`underOneFrame` in `tools/key-frame-stats.mjs`).
 
 ## 12. Failure modes
 

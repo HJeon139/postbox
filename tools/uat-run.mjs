@@ -26,13 +26,11 @@
 // A run is 15 steps unless its scenario or --steps says otherwise; a targeted scenario’s phases end on their triggers
 // (tools/uat/triggers.mjs). Every finding gets a verdict: the verifier’s after the run, or yours (tools/uat-verdict.mjs).
 
-import { spawnSync } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { launch, sleep } from './browser.mjs';
-import { openBigRoom } from './uat/big-room.mjs';
 import { parseMaxCost, runBudget } from './uat/budget.mjs';
 import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { streamResults } from './uat/cost.mjs';
@@ -43,7 +41,9 @@ import { endHosts } from './uat/hosts-end.mjs';
 import { HOST_OPTIONS } from './uat/hosts-options.mjs';
 import { createHostRun, followStatuses, startHosts } from './uat/hosts-run.mjs';
 import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
+import { keyFrameOut, seededNote } from './uat/key-frame-run.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
+import { openIssues } from './uat/open-issues.mjs';
 import { portFree, startPostbox } from './uat/postbox.mjs';
 import { newProbes, recordInput } from './uat/probes.mjs';
 import { recheck } from './uat/recheck.mjs';
@@ -101,6 +101,8 @@ const { values: opt } = parseArgs({
     ...HOST_OPTIONS,
     // Every run records itself and saves one telemetry report (designs/telemetry-persona.md, U4); no opts out.
     telemetry: { type: 'string', default: 'yes' },
+    // With `- seed: big-room`, measure the room and write its report here (#508, tools/uat/key-frame-run.mjs).
+    'measure-key-frame': { type: 'string' },
   },
 });
 
@@ -129,9 +131,7 @@ async function main() {
   const timing = runTiming();
   log(`UAT “${scenario.title}” → ${dir}, at most ${steps} steps`);
 
-  // Open issues, so the tester and the report can name the ones a run catches again.
-  const gh = spawnSync('gh', ['issue', 'list', '--state', 'open', '--limit', '200', '--json', 'number,title'], { cwd: ROOT, encoding: 'utf8' });
-  const issues = gh.status === 0 ? JSON.parse(gh.stdout) : [];
+  const issues = openIssues(ROOT); // so the tester and the report can name the ones a run catches again
   log(`${issues.length} open issues to match against.`);
 
   const port = Number(opt.port);
@@ -183,7 +183,7 @@ async function main() {
     transcripts: [],
     console: page.logs,
     apps: {},
-    probes: newProbes(),
+    probes: { ...newProbes(), keyFrameOn: Boolean(keyFrameOut(opt, scenario, dir)) },
     samples: [],
     ui: {},
     ...userSetup(paths.workspace),
@@ -204,7 +204,7 @@ async function main() {
     if (!mainThread) throw new Error(`Starting the conversation didn’t open it (at ${hash}).`);
     log(`Conversation ${mainThread} started with @${scenario.agents.join(', @')}.`);
     // `- seed: big-room` (#508): the conversation fills with about 1,000 generated items before the tester arrives.
-    if (scenario.seed === 'big-room') scenario.summary += `\n\n${await openBigRoom({ postbox, data: paths.data, threadId: mainThread, scenario, page, log })}`;
+    scenario.summary += await seededNote(scenario, { postbox, data: paths.data, threadId: mainThread, page, log, opt, dir, facts });
     const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log, input: d.input });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
