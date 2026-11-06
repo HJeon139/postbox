@@ -14,6 +14,7 @@ import { timingLine } from './timing.mjs';
 import { cell as esc } from './trigger-facts.mjs';
 import { coverageSection } from './triggers.mjs';
 import { mergePeopleVerdicts } from './verdicts.mjs';
+import { visualSection } from './visual-judge.mjs';
 
 /**
  * What the run spent, by whom, and what the agents ran on: the report’s first paragraph ends with it. With a run budget
@@ -123,6 +124,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
       ),
     '',
     ...harnessSection(findings),
+    ...visualSection(timeline),
     '## Timeline',
     '',
     ...timeline.map((t) => `${t.step}. **${t.phase}.** ${t.assessment} Next: \`${JSON.stringify(t.action)}\``),
