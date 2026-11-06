@@ -33,6 +33,15 @@ test('#817: a NUL or another control character in a hook shows as a replacement 
   assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: 'Ba\uFFFDsh', type: 'command', text: 'touch a\uFFFDb next one\uFFFD[31m\uFFFD' }]);
 });
 
+test('#817: bidi and zero-width characters in a hook show as a replacement mark, so they can’t reorder or hide its text', async () => {
+  // A right-to-left override would show `rm -rf ~ #txt.exe` as something else; a zero-width space hides between letters.
+  const marks = '\u200b\u200c\u200d\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\ufeff';
+  const file = await settings(pre(command('Ba\u200bsh', `echo safe\u202e#exe.txt${marks}\u2028next\u2029end`)));
+  assert.deepEqual((await readHookFile(file)).hooks, [
+    { matcher: 'Ba\uFFFDsh', type: 'command', text: `echo safe\uFFFD#exe.txt${'\uFFFD'.repeat(15)} next end` },
+  ]);
+});
+
 test('#817: a very long command or matcher is cut, with an ellipsis at the cut', async () => {
   const file = await settings(pre(command('M'.repeat(500), 'x'.repeat(100_000))));
   assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: `${'M'.repeat(99)}…`, type: 'command', text: `${'x'.repeat(199)}…` }]);

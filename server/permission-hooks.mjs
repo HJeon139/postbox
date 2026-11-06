@@ -4,7 +4,8 @@
 // the person knows which of theirs won’t run in Postbox turns. Org-managed hooks aren’t read here: they still run.
 //
 // A hook’s matcher and command are the person’s data. They reach the page as text through h(), cut to a length and
-// with control characters marked, and a file that isn’t JSON, or holds hooks in a shape this doesn’t know, says so.
+// with control, bidi and zero-width characters marked, and a file that isn’t JSON, or holds hooks in a shape this
+// doesn’t know, says so.
 
 import { readFile } from 'node:fs/promises';
 import { settingsFiles } from './permission-rules.mjs';
@@ -14,15 +15,24 @@ const MAX_TEXT = 200;
 const MAX_MATCHER = 100;
 const MAX_TYPE = 20;
 
+// Characters that change how text around them displays without showing themselves: zero-width ones (U+200B to
+// U+200D, U+FEFF) and bidi marks, embeddings, overrides and isolates (U+200E, U+200F, U+202A to U+202E, U+2066 to
+// U+2069). A right-to-left override can make a command read as another one.
+const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
+
 /**
- * A string as one line of text at most `max` long: a tab or line break is a space, another control character the
- * replacement mark, and text past the limit is cut with an ellipsis.
+ * A string as one line of text at most `max` long: a tab or line break (U+2028 and U+2029 too) is a space, another
+ * control character, a bidi mark or a zero-width character the replacement mark, and text past the limit is cut with
+ * an ellipsis.
  * @param {unknown} v @param {number} max
  */
 function shown(v, max) {
   if (typeof v !== 'string') return '';
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: C0 and C1 control characters are exactly what this marks
-  const one = v.replace(/[\t\n\r]/g, ' ').replace(/[\u0000-\u001f\u007f-\u009f]/g, '\uFFFD');
+  const one = v
+    .replace(/[\t\n\r\u2028\u2029]/g, ' ')
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: C0 and C1 control characters are exactly what this marks
+    .replace(/[\u0000-\u001f\u007f-\u009f]/g, '\uFFFD')
+    .replace(INVISIBLE, '\uFFFD');
   return one.length > max ? `${one.slice(0, max - 1)}…` : one;
 }
 
