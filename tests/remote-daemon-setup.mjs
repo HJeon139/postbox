@@ -25,16 +25,22 @@ export const PROGRAMS_FOUND = {
   problems: [],
 };
 
-/** A fake clock: now() and timers that run only when tick() passes them. */
+/**
+ * A fake clock: now() for the wall clock and mono() for the monotonic one, and timers that run only when tick() passes
+ * them. tick() moves both clocks, as time passing does; stepWall() moves the wall clock alone, as setting it does, and
+ * the timers, which run on the monotonic clock as Node’s do, don’t see it.
+ */
 export function fakeClock(t0 = 1_760_000_000_000) {
   let t = t0;
+  let m = 0;
   /** @type {{ at: number, fn: () => any }[]} */
   const queue = [];
   return {
     now: () => t,
+    mono: () => m,
     timers: {
       setTimeout(fn, ms) {
-        const h = { at: t + ms, fn };
+        const h = { at: m + ms, fn };
         queue.push(h);
         return h;
       },
@@ -46,12 +52,17 @@ export function fakeClock(t0 = 1_760_000_000_000) {
     queue,
     async tick(ms) {
       t += ms;
+      m += ms;
       for (;;) {
-        const due = queue.filter((h) => h.at <= t).sort((a, b) => a.at - b.at)[0];
+        const due = queue.filter((h) => h.at <= m).sort((a, b) => a.at - b.at)[0];
         if (!due) return;
         queue.splice(queue.indexOf(due), 1);
         await due.fn();
       }
+    },
+    /** @param {number} ms  back for a negative one */
+    stepWall(ms) {
+      t += ms;
     },
   };
 }
@@ -99,7 +110,7 @@ export function setup({ token = TOKEN, same = true, clock, onIdle, uid, spawn, b
   const daemon = createDaemon({
     home,
     version: VERSION,
-    ...(clock ? { now: clock.now, timers: clock.timers } : {}),
+    ...(clock ? { now: clock.now, mono: clock.mono, timers: clock.timers } : {}),
     ...(env ? { env } : {}),
     ...fakeRunners(state, { alive, launches, asks, groupLookups, sameProcess }),
     async writeRunner(o) {
