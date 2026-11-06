@@ -66,6 +66,16 @@ const INSTALLATION_ID = /\\?"installation(?:Id|_id)\\?"\s*:\s*\\?"([^"\\]+)\\?"/
 // Account metadata keys (camelCase and snake_case), with or without a “\” before each quote.
 const ACCOUNT_FIELD = /\\?"(planType|authMode|usedPercent|plan_type|auth_mode|used_percent)\\?"/g;
 
+// A claude.ai connector in an init’s mcp_servers, by its “name”, with or without a “\” before each quote.
+const CLAUDE_AI_CONNECTOR = /\\?"name\\?"\s*:\s*\\?"claude\.ai ([^"\\]+)\\?"/g;
+
+/**
+ * The connectors claude.ai’s directory offers, named alike for every account, as a recorded init lists them
+ * (tests/fixtures/claude-code/host-mcp-init.jsonl). A connector a person adds has the name they give it, which may be
+ * their own (#661), and no shape tells it from the directory’s, so every other name is flagged.
+ */
+const DIRECTORY_CONNECTORS = new Set(['Claude Docs', 'Gmail', 'Google Calendar', 'Google Drive']);
+
 // Anthropic API keys and GitHub tokens, at the lengths server/telemetry-secrets.mjs matches, so a placeholder such as
 // “sk-ant-...” or “ghp_xxxx” in prose isn’t one.
 const API_TOKEN = /\bsk-ant-[A-Za-z0-9_-]{20,}|\bgh[pousr]_[A-Za-z0-9]{30,}\b|\bgithub_pat_[A-Za-z0-9_]{30,}/g;
@@ -147,6 +157,15 @@ function accountFields(content) {
   return [`account field: ${keys.join(', ')}`];
 }
 
+/** claude.ai connectors that aren’t the directory’s. @param {string} content */
+function connectorNames(content) {
+  const found = [];
+  for (const [, name] of content.matchAll(CLAUDE_AI_CONNECTOR)) {
+    if (!DIRECTORY_CONNECTORS.has(name)) found.push(`connector name: claude.ai ${name}`);
+  }
+  return found;
+}
+
 /** API keys and tokens, named by their first characters so a report doesn’t repeat the secret. @param {string} content */
 function tokens(content) {
   return [...content.matchAll(API_TOKEN)].map(([token]) => `token: ${token.slice(0, 12)}…`);
@@ -172,8 +191,8 @@ function emails(content) {
 
 /**
  * Checks text for leaked personal data or un-sanitized environment paths: home paths with a real user name, temp
- * folders and Claude Code uids, a real Codex installation id, account metadata, API keys and tokens, a utilization
- * other than 0, and real email addresses.
+ * folders and Claude Code uids, a real Codex installation id, account metadata, a claude.ai connector a person named,
+ * API keys and tokens, a utilization other than 0, and real email addresses.
  *
  * @param {string} content
  * @returns {string[]} list of violations found
@@ -184,6 +203,7 @@ export function checkContentPrivacy(content) {
     ...tempPaths(content),
     ...installationIds(content),
     ...accountFields(content),
+    ...connectorNames(content),
     ...tokens(content),
     ...utilizations(content),
     ...emails(content),
