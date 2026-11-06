@@ -144,6 +144,21 @@ test('I5: a rename_asset or delete_asset retried without an op answers that it r
   assert.equal((await A.delete_asset({ id, base: 2 })).message, repeated(3));
 });
 
+test('rename_asset of a deleted asset is refused, saying to restore it first, whatever the new name holds (#707)', async (ctx) => {
+  const { A } = await assetRoom(ctx);
+  const { id } = await A.write_asset({ name: 'old.md', text: 'body' });
+  await A.delete_asset({ id, base: 1 });
+  const said = `Asset ${id} is deleted, so it can’t be renamed. Bring a version back with restore_asset first, then rename it.`;
+  // The refusal quotes the id, never the name an agent sent, so quotes, <, & and NUL can't reach it.
+  for (const name of ['new.md', 'q"<&>.md', 'q&amp;.md']) {
+    const r = await A.rename_asset({ id, base: 2, name });
+    assert.deepEqual([r.ok, r.message], [false, said], name);
+  }
+  const nul = await A.rename_asset({ id, base: 2, name: 'nul\u0000.md' });
+  assert.deepEqual([nul.ok, nul.message], [false, 'An asset’s name has no backslash or control characters.']);
+  assert.match((await A.list_assets({})).message, new RegExp(`\\[${id}\\] old\\.md: deleted at v2 by @alpha`));
+});
+
 test('#516 S3b: a binary version gives its metadata, and a pruned one says it was pruned and can’t be restored', async (ctx) => {
   const { A, folder } = await assetRoom(ctx);
   const big = (/** @type {number} */ n) => {

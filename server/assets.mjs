@@ -112,6 +112,7 @@ const SAY = {
   noVersion: (id, v) => `Asset ${id} has no version ${v}.`,
   pruned: (v) => `Version ${v} was pruned under the room’s retention rule, so its bytes are gone.`,
   deleted: (id) => `Asset ${id} is deleted already.`,
+  renameDeleted: (id) => `Asset ${id} is deleted, so it can’t be renamed. Bring a version back with restore_asset first, then rename it.`,
   stale: (asset, head, base) =>
     `@${head?.author} wrote version ${asset.head} of ${asset.id} since version ${base ?? 'none'}. Read version ${asset.head}, then write again from it.`,
   budget: (total) =>
@@ -202,13 +203,16 @@ function bytesOf(asset, req) {
 
 /**
  * Checks an update against its asset, as the commit sees it: the base is the head (I4), the version bound, a delete
- * of a live asset, and a free name when it changes or a deleted asset comes back.
+ * or rename of a live asset (#707: a deleted one comes back by a restore or a write, never a rename), and a free name
+ * when it changes or a deleted asset comes back. Stale comes first: a rename from an old base of an asset another
+ * agent deleted answers who wrote since, as any stale write does.
  */
 function checkUpdate(look, asset, req) {
   const head = headOf(asset);
   if ((req.base ?? null) !== asset.head) refuse('stale', SAY.stale(asset, head, req.base));
   if (asset.versions.length >= ASSETS.assetVersions) refuse('too-many', SAY.tooManyVersions(asset.id));
   if (req.kind === 'delete' && !head?.sha256) refuse('deleted', SAY.deleted(asset.id));
+  if (req.kind === 'rename' && !head?.sha256) refuse('deleted', SAY.renameDeleted(asset.id));
   const name = req.kind === 'rename' ? req.name : asset.name;
   const comesBack = !head?.sha256 && req.kind !== 'delete';
   const holder = req.kind === 'rename' || comesBack ? holderOf(look, name, asset.id) : null;
