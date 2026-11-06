@@ -32,6 +32,7 @@
     "check:contrast": "node tools/contrast.mjs",
     "test:process": "node tools/heavy-lock.mjs test:process -- node --test --test-timeout=120000 tests/process/*.test.mjs",
     "check": "node tools/check.mjs",
+    "signoff:checks": "node tools/signoff-checks.mjs",
     "shoot:mockups": "node tools/shoot.mjs",
     "shoot:app": "node tools/shoot-app.mjs",
     "uat": "node tools/uat-run.mjs",
