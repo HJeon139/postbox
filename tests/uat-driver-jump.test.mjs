@@ -15,6 +15,8 @@ const JUMP = /\(await import\('\/app\/js\/view-jump\.mjs'\)\)\.jumpTo\(/;
 function standIn() {
   const sent = [];
   const answer = (expr) => {
+    // The views a shot reads before and after, to put them back (tools/uat/driver-shots.mjs, keepView): none here.
+    if (expr.includes('viewMode')) return [];
     if (expr.includes('getBoundingClientRect')) return { x: 10, y: 10, width: 100, height: 100 };
     return true;
   };
@@ -69,7 +71,8 @@ test('shotItem puts the item at the top with the page’s jumpTo, which starts b
   const dir = mkdtempSync(join(tmpdir(), 'uat-jump-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   await fast(t, () => driver(page).shotItem('it_a', join(dir, 'a.png')));
-  assert.match(sent[0], /jumpTo\(n, "start"\); return true;/);
-  assert.doesNotMatch(sent[0], /scrollBy/, 'a scroll after the jump would unpin the item');
+  const jump = sent.find((e) => JUMP.test(e));
+  assert.match(jump, /jumpTo\(n, "start"\); return true;/);
+  assert.doesNotMatch(jump, /scrollBy/, 'a scroll after the jump would unpin the item');
   assert.doesNotMatch(sent.join('\n'), /scrollIntoView/);
 });
