@@ -178,10 +178,10 @@ test('personas that use your setup load your MCP servers next to Postbox’s; Is
   const args = claudeArgs({ ...base, persona: isolated });
   assert.ok(args.includes('--strict-mcp-config'));
   // Nothing else loads, so nothing to deny; writes outside Postbox still ask (#112): gh runs in an Isolated persona too.
-  assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default', permissions: { ask: WRITE_TOOLS } });
+  assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default', disableAllHooks: true, permissions: { ask: WRITE_TOOLS } });
   const o = sdkOptions({ ...sdkBase, persona: isolated });
   assert.equal(o.strictMcpConfig, true);
-  assert.deepEqual(o.settings, { outputStyle: 'default', permissions: { ask: WRITE_TOOLS } });
+  assert.deepEqual(o.settings, { outputStyle: 'default', disableAllHooks: true, permissions: { ask: WRITE_TOOLS } });
 });
 
 test('a permission card can wait a day: Postbox’s server is passed with a 25-hour timeout, in both backends (#217)', () => {
@@ -215,6 +215,7 @@ test('servers a persona turned off are denied by name in both backends; Postbox�
   const want = {
     outputStyle: 'default',
     deniedMcpServers: [{ serverName: 'search' }, { serverName: 'claude.ai Google Drive' }],
+    disableAllHooks: true,
     permissions: { ask: WRITE_TOOLS },
   };
   assert.deepEqual(JSON.parse(after(claudeArgs({ ...base, persona }), '--settings')), want);

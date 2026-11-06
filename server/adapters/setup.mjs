@@ -100,6 +100,10 @@ export function settingsFor(persona, memoryDir = null) {
     ...SETTINGS_OVERLAY,
     ...(memoryDir ? { autoMemoryDirectory: memoryDir } : {}),
     ...(usesHostSetup && mcpOff.length ? { deniedMcpServers: mcpOff.map((serverName) => ({ serverName })) } : {}),
+    // A hook or mod that approves a call would skip the ask rules and the permission prompt (#817). In this flag
+    // layer it holds against a `disableAllHooks: false` in user, project or local settings; managed hooks still run.
+    // Bypass keeps the person’s hooks: there, they may be the only check left.
+    ...(persona?.permissionMode === 'bypass' ? {} : { disableAllHooks: true }),
   };
 }
 
