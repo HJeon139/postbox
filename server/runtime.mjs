@@ -110,6 +110,7 @@ import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } f
 import { endSubagent, notUrgent } from './subagent-end.mjs';
 import { conversationDeleting, discardHeld, eraseThreads, releaseHeld } from './thread-erase.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
+import { updateThread } from './thread-write.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
@@ -283,8 +284,8 @@ export class Runtime {
   addItem(threadId, item) {
     const it = { id: item.id ?? newId('it'), at: Date.now(), ...item };
     this.store.emit('item.add', { threadId, item: it });
-    // A reply in a topic thread counts on the message it branched from, as “3 replies”.
-    const t = this.s.threads[threadId];
+    // A reply in a topic thread counts on the message it branched from, as “3 replies”: one maybe just opened, held (#796).
+    const t = this.store.pending.thread(threadId);
     if (t?.kind === 'topic' && (it.kind === 'user' || it.kind === 'agent')) {
       const replies = this.store.pending.items(threadId).filter((x) => x.kind === 'user' || x.kind === 'agent').length;
       this.patchItem(t.parentId, t.rootItemId, { replies, lastReplyAt: it.at });
@@ -373,7 +374,7 @@ export class Runtime {
    *   joined: it joins to answer in a side thread, woken by `by` (a handle, or 'you') in thread `in` (#110)
    */
   ensureSession(threadId, personaId, { brief, joined = null } = {}) {
-    const t = this.thread(threadId);
+    this.thread(threadId);
     const existing = this.sessionsIn(threadId).find((x) => x.personaId === personaId);
     if (existing) return existing;
     const p = this.persona(personaId);
@@ -409,8 +410,7 @@ export class Runtime {
       // Nothing given yet: its first turn starts with the conversation so far (see catchUp).
       seenItem: null,
     });
-    const members = [...t.members, se.id];
-    this.putThread({ ...this.s.threads[threadId], members, kind: t.kind === 'thread' && members.length > 1 ? 'room' : t.kind });
+    updateThread(this, threadId, (x) => ({ members: [...x.members, se.id], kind: x.kind === 'thread' && x.members.length > 0 ? 'room' : x.kind }));
     return se;
   }
 
@@ -419,7 +419,7 @@ export class Runtime {
   /** You send a message: @mentions wake agents (joining them to the thread); otherwise the last speaker replies. */
   sendMessage(threadId, { text = '', attachments = [], sendNow = false } = {}) {
     const t = this.thread(threadId);
-    if (t.deleting) throw httpError(409, 'This conversation is being deleted. Undo it first.');
+    if (this.store.pending.thread(threadId)?.deleting) throw httpError(409, 'This conversation is being deleted. Undo it first.');
     text = String(text).slice(0, 50000);
     if (!text.trim() && !attachments.length) throw httpError(400, 'Write a message or attach a file first.');
     const mentioned = parseMentions(text, this.handles())
@@ -464,7 +464,7 @@ export class Runtime {
     // Messages to a busy agent wait in the queue unless you choose Send now.
     const busy = targets.filter(({ se }) => this.turns.has(se.id));
     const q = busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now() } : null;
-    if (q) this.putThread({ ...this.s.threads[threadId], queue: [...(this.s.threads[threadId].queue ?? []), q] });
+    if (q) updateThread(this, threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
     // Send now is a change of course: background jobs keep running, each with its own Stop (#129).
     else for (const { se } of busy) this.stop(se.id, { silent: true, jobs: 'keep', sendNow: true });
     const sent = q ? { queued: q } : this.postAndDeliver(threadId, { text, attachments }, targets);
@@ -563,7 +563,7 @@ export class Runtime {
     }
     // Shutting down: a new CLI would outlive Postbox. A message you sent waits in the queue (turnExited).
     if (this.closing) return;
-    const where = threadId && threadId !== se.threadId && this.s.threads[threadId] ? threadId : se.threadId;
+    const where = threadId && threadId !== se.threadId && this.store.pending.thread(threadId) ? threadId : se.threadId;
     this.answerDelivered(where, message);
     // A skill or command (#67) is the whole prompt, since Claude Code runs it only when the prompt starts with /name:
     // the context below waits for the agent’s next turn instead. So does a remote turn attached again after a restart
@@ -1013,7 +1013,7 @@ export class Runtime {
     if (!open.length && waiting && !waiting.answered) open.push(waiting);
     const last = [...items].reverse().find((it) => it.kind === 'agent' && it.sessionId === se.id && it.text);
     const viewing = this.isViewing(turn.threadId);
-    const topic = turn.threadId !== se.threadId && this.s.threads[turn.threadId]?.kind === 'topic' ? this.s.threads[turn.threadId] : null;
+    const topic = turn.threadId !== se.threadId && this.store.pending.thread(turn.threadId)?.kind === 'topic' ? turn.threadId : null;
     // The newest card that still waits (card-needs.mjs): this turn's asks, the kept turns' (a failed reply's Retry
     // among them), and the cards that wait until answered.
     const needs = nextNeed(this, se, { turnIds: [turn.id, ...(se.keptTurnIds ?? [])], keep: waiting?.id ?? null });
@@ -1042,7 +1042,7 @@ export class Runtime {
     const stalled = this.stallSteps(turn, se);
     if (turn.kind === 'lint') this.quietLint(turn, se);
     else this.endLint(turn, [...this.checkTurn(turn, se), ...stalled]);
-    if (topic && !viewing && (turn.said || open.length)) this.putThread({ ...this.s.threads[topic.id], unread: (this.s.threads[topic.id].unread ?? 0) + 1 });
+    if (topic && !viewing && (turn.said || open.length)) updateThread(this, topic, (x) => ({ unread: (x.unread ?? 0) + 1 }));
     if (turn.threadId !== se.threadId) settleThread(this, turn.threadId);
 
     this.wakeMentions(se, turn, turn.said);
@@ -1203,9 +1203,8 @@ export class Runtime {
     // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI.
     if (this.closing) {
       for (const h of held.filter((x) => x.message.kind === 'user')) {
-        const t = this.s.threads[h.threadId ?? se.threadId];
         const q = { id: newId('q'), text: h.message.text ?? '', attachments: h.message.attachments ?? [], sessionIds: [se.id], at: Date.now() };
-        if (t) this.putThread({ ...t, queue: [...(t.queue ?? []), q] });
+        updateThread(this, h.threadId ?? se.threadId, (t) => ({ queue: [...(t.queue ?? []), q] }));
       }
       return;
     }
@@ -1638,10 +1637,10 @@ export class Runtime {
     return [...own, ...rest];
   }
 
-  /** A thread, then the conversation it branched from, following parentId (a topic or side thread’s is one level). */
-  lineage(threadId) {
+  /** A thread, then the conversation it branched from, following parentId (a topic or side thread’s is one level), as `thread` reads one. */
+  lineage(threadId, thread = (/** @type {string} */ id) => this.s.threads[id]) {
     const out = [];
-    for (let id = threadId; id && this.s.threads[id] && !out.includes(id) && out.length < 8; id = this.s.threads[id].parentId) out.push(id);
+    for (let id = threadId; id && thread(id) && !out.includes(id) && out.length < 8; id = thread(id).parentId) out.push(id);
     return out;
   }
 
@@ -1954,7 +1953,7 @@ export class Runtime {
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
     if (this.turns.has(se.id)) throw httpError(409, `@${se.handle} is busy. Stop it, or wait for it to finish, then run the command.`);
     const item = this.addItem(threadId, { kind: 'user', text: line, attachments: [], command: { sessionId: se.id, handle: se.handle } });
-    this.putThread({ ...this.s.threads[threadId], hops: 0 });
+    updateThread(this, threadId, { hops: 0 });
     if (this.sessionsIn(threadId).length > 1) this.addItem(threadId, { kind: 'system', variant: 'wake', from: 'you', to: se.handle });
     this.deliver(se.id, { kind: 'user', text: line, attachments: [], itemId: item.id, slash: true });
     return { item };
@@ -2534,16 +2533,14 @@ export class Runtime {
     const se = this.session(sessionId);
     this.updateSession(sessionId, { archived: true, state: 'idle', needs: null, archivedAt: Date.now() });
     dropWakes(this, se, 'archived');
-    const t = this.s.threads[se.threadId];
-    if (t && this.sessionsIn(t.id).every((x) => x.id === sessionId || x.archived)) this.putThread({ ...t, archived: true });
+    if (this.sessionsIn(se.threadId).every((x) => x.id === sessionId || x.archived)) updateThread(this, se.threadId, { archived: true });
   }
 
   restore(sessionId) {
     const se = this.session(sessionId);
     if (se.retiredFork) throw httpError(409, 'A fork from before agents had one session per conversation can’t come back: its agent answers there now.');
     this.updateSession(sessionId, { archived: false, archivedAt: null });
-    const t = this.s.threads[se.threadId];
-    if (t?.archived) this.putThread({ ...t, archived: false });
+    updateThread(this, se.threadId, (t) => (t.archived ? { archived: false } : null));
   }
 
   /**
@@ -2568,7 +2565,7 @@ export class Runtime {
       .filter((se) => !se.archived)
       .map((se) => se.id);
     for (const id of ids) this.archive(id);
-    for (const t of threads) if (!this.s.threads[t.id].archived) this.putThread({ ...this.s.threads[t.id], archived: true });
+    for (const t of threads) updateThread(this, t.id, (x) => (x.archived ? null : { archived: true }));
     // What it archived: every agent here that wasn’t yet.
     return ids;
   }
@@ -2578,7 +2575,7 @@ export class Runtime {
     const threads = this.archiveScope(threadId);
     // A fork retired by #228’s migration stays archived.
     for (const t of threads) for (const se of this.sessionsIn(t.id)) if (se.archived && !se.retiredFork) this.restore(se.id);
-    for (const t of threads) if (this.s.threads[t.id].archived) this.putThread({ ...this.s.threads[t.id], archived: false });
+    for (const t of threads) updateThread(this, t.id, (x) => (x.archived ? { archived: false } : null));
   }
 
   /** Deletes after DELETE_UNDO_MS unless undone. The persona always stays. */
@@ -2613,7 +2610,7 @@ export class Runtime {
         this.stop(se.id, { silent: true });
         this.remote.cancel(se.id);
       }
-    this.putThread({ ...t, deleting: until });
+    updateThread(this, threadId, { deleting: until });
     clearTimeout(this.timers.get(`delt:${threadId}`));
     this.timers.set(`delt:${threadId}`, setTimeout(() => this.purgeThread(threadId), DELETE_UNDO_MS).unref());
     return { until, title: t.title };
@@ -2622,8 +2619,7 @@ export class Runtime {
   undoDeleteThread(threadId) {
     clearTimeout(this.timers.get(`delt:${threadId}`));
     this.timers.delete(`delt:${threadId}`);
-    const t = this.thread(threadId);
-    this.putThread({ ...t, deleting: null });
+    updateThread(this, threadId, { deleting: null }); // a thread that doesn’t exist: archiveScope answers 404
     // Its stopped turns skipped the drain (a silent stop): what its queues held goes now, as after a session’s Undo.
     for (const x of this.archiveScope(threadId)) this.drainQueue(x.id);
     // …and what reached its agents in the window (deliver held it), in the order it came (#725).
@@ -2652,12 +2648,12 @@ export class Runtime {
   }
 
   renameThread(threadId, title) {
-    const t = this.thread(threadId);
+    this.thread(threadId);
     const name = String(title ?? '')
       .trim()
       .slice(0, 120);
     if (!name) throw httpError(422, 'A conversation needs a name.');
-    return this.putThread({ ...t, title: name });
+    return updateThread(this, threadId, { title: name });
   }
 
   undoDelete(sessionId) {
@@ -2695,7 +2691,11 @@ export class Runtime {
       eraseThreads(this, t.kind === 'topic' || t.kind === 'side' ? [t.id] : this.archiveScope(t.id).map((x) => x.id), 'Its session was deleted.', [sessionId]);
     } else if (t) {
       // In a room: it leaves, and its past messages stay, marked deleted.
-      this.putThread({ ...t, members: others, lastSpeaker: t.lastSpeaker === sessionId ? (others[0] ?? null) : t.lastSpeaker });
+      const gone = t.members.filter((id) => !others.includes(id)); // it, and any member whose session is gone; a held join stays
+      updateThread(this, t.id, (x) => ({
+        members: x.members.filter((id) => !gone.includes(id)),
+        lastSpeaker: x.lastSpeaker === sessionId ? (others[0] ?? null) : x.lastSpeaker,
+      }));
       for (const it of this.store.pending.items(t.id)) if (it.sessionId === sessionId) this.patchItem(t.id, it.id, { deletedAgent: true });
       this.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle });
     }
@@ -2774,7 +2774,7 @@ export class Runtime {
     if (!threadId) return;
     this.viewing.set(threadId, Date.now());
     for (const se of this.sessionsIn(threadId)) if (se.unread) this.updateSession(se.id, { unread: 0 });
-    if (this.s.threads[threadId]?.unread) this.putThread({ ...this.s.threads[threadId], unread: 0 });
+    updateThread(this, threadId, (t) => (t.unread ? { unread: 0 } : null));
   }
   isViewing(threadId) {
     return Date.now() - (this.viewing.get(threadId) ?? 0) < 20000;

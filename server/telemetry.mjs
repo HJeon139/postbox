@@ -13,6 +13,7 @@ import { setStreamTap } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
 import { keepEvent } from './room-events.mjs';
 import { sweep } from './telemetry-sweep.mjs';
+import { updateThread } from './thread-write.mjs';
 
 /** How long a recording is kept, at most (R11). */
 export const KEEP_MS = 30 * 864e5;
@@ -104,7 +105,7 @@ export function startRecording(rt, threadId) {
     );
   recFolder(rt, conv.id, 'streams');
   const recording = { on: true, since: conv.recording?.since ?? Date.now(), startedAt: Date.now(), stoppedAt: null };
-  rt.putThread({ ...conv, recording });
+  updateThread(rt, conv.id, { recording });
   return { ok: true, recording };
 }
 
@@ -112,7 +113,7 @@ export function startRecording(rt, threadId) {
 export function stopRecording(rt, threadId) {
   const conv = convOf(rt, threadId);
   if (!conv?.recording?.on) return { ok: true };
-  rt.putThread({ ...conv, recording: { ...conv.recording, on: false, stoppedAt: Date.now() } });
+  updateThread(rt, conv.id, (t) => ({ recording: { ...t.recording, on: false, stoppedAt: Date.now() } }));
   return { ok: true };
 }
 
@@ -123,7 +124,7 @@ export function deleteRecordings(rt, threadId) {
   const root = telemetryRoot(rt);
   if (root) rmSync(join(root, conv.id, 'recording'), { recursive: true, force: true });
   const now = Date.now();
-  rt.putThread({ ...conv, recording: conv.recording?.on ? { on: true, since: now, startedAt: now, stoppedAt: null } : null });
+  updateThread(rt, conv.id, (t) => ({ recording: t.recording?.on ? { on: true, since: now, startedAt: now, stoppedAt: null } : null }));
   if (conv.recording?.on) recFolder(rt, conv.id, 'streams');
   return { ok: true };
 }

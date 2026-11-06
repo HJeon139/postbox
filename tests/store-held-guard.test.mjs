@@ -14,6 +14,7 @@
 // reads source text, not the program, so a form it doesn't match passes, and review reads for it: an optional call
 // (`rt.store?.items?.(t)`), an optional bracket (`rt.store?.["items"](t)`) and `Reflect.apply(rt.store.items, …)` are three. It reads every .mjs, .js and .cjs file under server/ except the store's own and server/remote/host/,
 // the host daemon, which has no store. Sessions, schedules and the rest have no pending read (§ Not in this change).
+// Threads follow the same rule for their writes (#796): tests/thread-write-guard.test.mjs places them.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { normalized, placed, sources } from './server-sources-fixture.mjs';
@@ -86,6 +87,9 @@ const PENDING = {
   'blocks.mjs': ['shownBy'], // update_block of a block the turn just showed
   'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
+  // The queue a drain takes from and the queued messages a deleted session's release posts: a wake or a message
+  // queued behind a held commit is in them (#796).
+  'message-queue.mjs': ['releaseQueued', 'drainQueue', 'takePending'],
   'permission-cards.mjs': ['recordDenial'], // the same refused call, once
   'permission-expiry.mjs': ['tellExpired'], // the card a turn’s end just expired, told about once (#721)
   'permission-prompt.mjs': ['permission'], // the card the call waits on
@@ -95,8 +99,12 @@ const PENDING = {
   'reply-segment.mjs': ['wordsSegment'], // whether the turn’s open part is still its thread’s last decides where its next words go
   'runtime.mjs': [
     'addItem',
+    'addItem',
     'bringForward',
+    'sendMessage',
+    'deliver',
     'endWork',
+    'endTurn',
     'endTurn',
     'endTurn',
     'recordStopped',
@@ -111,12 +119,19 @@ const PENDING = {
     'runShellCommand',
     'pollMirror',
     'purgeSession',
-  ], // the turn’s own items and apps, a move after a pending read, and sweeps that write back
-  'side-threads.mjs': ['agentWake', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'], // the reply with the mention, a side line right after its add, and sweeps of hop cards
-  'thread-erase.mjs': ['eraseThreads'], // a thread’s apps, removed in a sweep
+  ], // the turn’s own items and apps, a move after a pending read, sweeps that write back, and the thread a message, a delivery or a topic reply count goes to, maybe opened or deleting behind a held commit (#796)
+  // The reply with the mention, a side line right after its add, and sweeps of hop cards; the conversation's hop count,
+  // the topic the wake answers in, and endChain's hops and queued wakes, each maybe held behind a commit (#796).
+  'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'],
+  // A thread’s apps, removed in a sweep; and whether a delivery's conversation is being deleted, as sendMessage reads it (#796).
+  'thread-erase.mjs': ['conversationDeleting', 'eraseThreads'],
+  // The thread a turn answers in, as deliver chose it from pending, and the topic a turn's end settles: a topic
+  // open_topic just opened, held (#796).
+  'thread-summary.mjs': ['threadHeader', 'threadCatchUp', 'settleThread'],
+  'thread-write.mjs': ['updateThread', 'pendingThreads'], // every write of a thread that exists starts from it (#796)
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
-  'topic-open.mjs': ['startTopic', 'startTopic', 'openTopic', 'conversationOf', 'conversationOf', 'repeatOf'], // one topic per message, the opener's woke, the item's thread and I6's check, each maybe held behind a commit (#637)
+  'topic-open.mjs': ['startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'], // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637)
   'wake-cards.mjs': ['declinedAdd', 'openCard'], // a declined add, so a mention asks no more (#693); another wake’s held hop card, so a second isn’t made
   'write-intent.mjs': ['stillOpen'], // the turn’s own lines, and the person’s held Stop on one
 };

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const DECL =
+export const DECL =
   /^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)|^\s*(?:async\s+)?(?!if\b|for\b|while\b|switch\b|catch\b)(\w+)\s*\([^)]*\)\s*\{\s*$|^(?:export\s+)?const\s+(\w+)\s*=/;
 /** The function a line is in: the nearest declaration above it. @param {string[]} lines @param {number} i */
 function enclosing(lines, i) {
@@ -25,19 +25,23 @@ export function sources(dir = new URL('../server', import.meta.url).pathname, re
       continue;
     }
     if (!/\.(mjs|js|cjs)$/.test(e.name) || ['store.mjs', 'store-held.mjs'].includes(path)) continue;
-    const text = normalized(readFileSync(join(dir, path), 'utf8'))
-      .replace(/\s*\n\s*(?=\.[A-Za-z_(])/g, '')
-      .replace(/\(\s*\n\s*/g, '(')
-      .replace(/\s*\n\s*(?=\()/g, '');
-    out.push([path, text]);
+    out.push([path, joined(readFileSync(join(dir, path), 'utf8'))]);
   }
   return out;
 }
-/** file → the enclosing function of each line matching `re`, in order. @param {RegExp} re */
-function sites(re) {
+/** Source as the guards read it: optional chaining as a plain member, and the lines the formatter split joined. @param {string} text */
+export const joined = (text) =>
+  normalized(text)
+    .replace(/\s*\n\s*(?=\.[A-Za-z_(])/g, '')
+    .replace(/\(\s*\n\s*/g, '(')
+    .replace(/\s*\n\s*(?=\()/g, '');
+/** The server's sources, and `extra` probe sources named extra-0.mjs, extra-1.mjs…: [path, text]. @param {string[]} [extra] */
+export const withProbes = (extra = []) => [...sources(), ...extra.map((x, i) => [`extra-${i}.mjs`, joined(x)])];
+/** file → the enclosing function of each line matching `re`, in order. @param {RegExp} re @param {string[]} [extra] */
+export function sites(re, extra = []) {
   /** @type {Record<string, string[]>} */
   const out = {};
-  for (const [path, text] of sources()) {
+  for (const [path, text] of withProbes(extra)) {
     const lines = text.split('\n');
     lines.forEach((line, i) => {
       if (re.test(line) && !/^\s*(\/\/|\*)/.test(line)) (out[path] ??= []).push(enclosing(lines, i));
@@ -49,5 +53,5 @@ export const placed = (re, table, what) =>
   assert.deepEqual(
     sites(re),
     table,
-    `${what} changed: place each site, with its reason, by the rule at the top of this file. Found: ${JSON.stringify(sites(re))}`,
+    `${what} changed: place each site, with its reason, by the rule at the top of its guard's file. Found: ${JSON.stringify(sites(re))}`,
   );

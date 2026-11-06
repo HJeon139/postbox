@@ -41,7 +41,7 @@ export function turnContext(rt, se, where, message, slash) {
 
 /** The header that makes a topic or historical side thread the place this turn must answer. */
 export function threadHeader(rt, threadId) {
-  const t = rt.s.threads[threadId];
+  const t = rt.store.pending.thread(threadId); // where the turn answers, as deliver chose it: maybe a topic just opened (#796)
   if (t?.kind !== 'topic' && t?.kind !== 'side') return null;
   const where = `${t.kind === 'topic' ? 'the thread' : 'the side thread'} “${t.title}” (thread ${t.id})`;
   return `[Postbox] You’re answering in ${where}.`;
@@ -56,7 +56,8 @@ const THREAD_ITEMS = 20;
  * @param {any} rt @param {any} se @param {string} threadId  where the turn speaks @param {string|null} excludeId  the message it answers
  */
 export function threadCatchUp(rt, se, threadId, excludeId) {
-  const t = rt.s.threads[threadId];
+  // The thread as deliver chose it, maybe a topic just opened, held (#796); what was said there is what was published.
+  const t = rt.store.pending.thread(threadId);
   if (t?.kind !== 'topic' && t?.kind !== 'side') return null;
   const items = rt.store.items(threadId);
   const seen = se.seenIn?.[threadId];
@@ -153,17 +154,18 @@ const timers = new WeakMap();
 
 /**
  * A turn ended in a topic or side thread: once the thread has been quiet for a while, its summary is written. Each new
- * reply starts the wait again.
+ * reply starts the wait again. The wait is rt.config.setTimer's when a test gives one, as a lint's is (lint-delivery.mjs).
  * @param {any} rt @param {string} threadId
  */
 export function settleThread(rt, threadId) {
-  const t = rt.s.threads[threadId];
+  const t = rt.store.pending.thread(threadId); // a topic opened behind a held commit settles too (#796)
   const summarize = summarizerOf(rt, threadId);
   if ((t?.kind !== 'topic' && t?.kind !== 'side') || !summarize) return;
   if (!timers.has(rt)) timers.set(rt, new Map());
   const map = timers.get(rt);
   clearTimeout(map.get(threadId));
-  const timer = setTimeout(() => {
+  const setTimer = rt.config.setTimer ?? setTimeout;
+  const timer = setTimer(() => {
     map.delete(threadId);
     if (!rt.store.writable) return; // no paid call whose summary couldn’t be saved; the next turn’s end settles again
     summarizeThread(rt, threadId, summarize).catch(() => {});
