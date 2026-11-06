@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.28.1 (2026-11-06)
+
+### Fixes
+
+- **permissions:** Postbox matches a trailing wildcard as Claude Code does
+- **permissions:** a bare push behind git's options gets its own ask rule
+- **permissions:** a push behind git's own options comes to Postbox too
+- **permissions:** a "no" turns a request around only for the words after it
+
 ## 1.28.0 (2026-11-06)
 
 ### Features
