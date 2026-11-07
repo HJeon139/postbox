@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { AGENT_PLUGIN, agentSkillFiles, agentSkills } from '../server/adapters/agent-plugin.mjs';
-import { agyPlugin, PLUGIN_DIR, writeAgyPlugin } from '../server/adapters/agy-plugin.mjs';
+import { agyPlugin, agySkillFiles, PLUGIN_DIR, writeAgyPlugin } from '../server/adapters/agy-plugin.mjs';
 import { AntigravityCliAdapter } from '../server/adapters/antigravity-cli.mjs';
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { addPostboxSkills } from '../server/adapters/codex-thread.mjs';
@@ -24,14 +24,20 @@ const OFF = { POSTBOX_AGENT_SKILLS: 'off' };
 test('the skills folder and its files, and none when POSTBOX_AGENT_SKILLS=off', async () => {
   assert.equal(agentSkills({}), SKILLS);
   assert.equal(agentSkills(OFF), null);
-  const files = await agentSkillFiles({});
+  const files = await agentSkillFiles(['visual-explainer'], {});
   assert.equal(files['visual-explainer/SKILL.md'], readFileSync(join(SKILLS, 'visual-explainer', 'SKILL.md'), 'utf8'));
   assert.ok(files['visual-explainer/references/brief.md'], 'the references come too, since SKILL.md links to them');
-  assert.deepEqual(await agentSkillFiles(OFF), {});
+  assert.deepEqual(await agentSkillFiles(['visual-explainer'], OFF), {});
+  assert.deepEqual(await agentSkillFiles([], {}), {}, 'only the skills named');
+});
+
+test('Antigravity: a persona’s plugin holds only the skills it keeps on (#207)', async () => {
+  assert.ok((await agySkillFiles({}))['visual-explainer/SKILL.md'], 'all on by default');
+  assert.deepEqual(await agySkillFiles({ skillsOff: ['postbox:visual-explainer'] }), {});
 });
 
 test('Antigravity: the skills go in the plugin’s skills folder, as written to disk', async () => {
-  const skills = await agentSkillFiles({});
+  const skills = await agentSkillFiles(['visual-explainer'], {});
   const files = agyPlugin({ mcpUrl: 'http://127.0.0.1:1/mcp', rules: 'R', skills });
   assert.equal(files['skills/visual-explainer/SKILL.md'], skills['visual-explainer/SKILL.md']);
   assert.ok(!Object.keys(agyPlugin({ mcpUrl: 'u', rules: 'R' })).some((p) => p.startsWith('skills/')), 'none when there are none');
@@ -76,9 +82,11 @@ test('Antigravity: the skills are in the plugin while agy runs, and gone with it
 
 test('Kiro: the agent file names the skills as a resource here, and not with a host’s shim or when they’re off', () => {
   const turn = { name: 'x', persona: { handle: 'kiro' }, guide: 'g', folders: [] };
-  assert.deepEqual(kiroAgent({ ...turn, mcpUrl: 'u' }).resources, [`skill://${SKILLS}/*/SKILL.md`]);
+  assert.deepEqual(kiroAgent({ ...turn, mcpUrl: 'u' }).resources, [`skill://${SKILLS}/visual-explainer/SKILL.md`]);
   assert.equal(kiroAgent({ ...turn, shim: { command: 'node', args: [] } }).resources, undefined, 'the folder isn’t on the host');
   assert.equal(kiroAgent({ ...turn, mcpUrl: 'u', skills: agentSkills(OFF) }).resources, undefined);
+  const unticked = { ...turn, persona: { handle: 'kiro', skillsOff: ['postbox:visual-explainer'] }, mcpUrl: 'u' };
+  assert.equal(kiroAgent(unticked).resources, undefined, 'a persona that turned it off (#207)');
 });
 
 test('Kiro: a turn’s agent file loads the skills', async () => {
@@ -87,7 +95,7 @@ test('Kiro: a turn’s agent file loads the skills', async () => {
   const spawnImpl = /** @type {any} */ (fakeSpawn([{ lines: fixture('first'), code: 0 }], seen));
   const adapter = new KiroCliAdapter({ workRoot: join(root, 'work'), isolatedHome: join(root, 'home'), spawnImpl, env: {} });
   await adapter.deliver({}, { kind: 'user', text: 'Hi.' }, fakeCtx());
-  assert.deepEqual(seen[0].agentFile.resources, [`skill://${SKILLS}/*/SKILL.md`]);
+  assert.deepEqual(seen[0].agentFile.resources, [`skill://${SKILLS}/visual-explainer/SKILL.md`]);
 });
 
 test('Codex: the skills root is set here, not on a host or when off, and an older Codex goes on without it', async () => {
@@ -100,6 +108,8 @@ test('Codex: the skills root is set here, not on a host or when off, and an olde
   assert.deepEqual(calls, [{ method: 'skills/extraRoots/set', params: { extraRoots: [SKILLS] } }]);
   assert.equal(await addPostboxSkills(request, { remote: true, env: {} }), false);
   assert.equal(await addPostboxSkills(request, { env: OFF }), false);
+  const unticked = { skillsOff: ['postbox:visual-explainer'] };
+  assert.equal(await addPostboxSkills(request, { env: {}, persona: unticked }), false, 'a persona that turned it off (#207)');
   assert.equal(calls.length, 1);
   const unknown = () => Promise.reject(Object.assign(new Error('unknown method'), { code: -32601 }));
   assert.equal(await addPostboxSkills(unknown, { env: {} }), false);

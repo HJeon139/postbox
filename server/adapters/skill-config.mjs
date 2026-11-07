@@ -94,6 +94,16 @@ export function skillList({ found, seen = [], off = [] }) {
 export const skillsOffOf = (persona) =>
   Array.isArray(persona?.skillsOff) ? persona.skillsOff.filter((n) => typeof n === 'string' && n && n.length <= MAX_NAME) : [];
 
+/**
+ * Postbox’s skills a persona keeps on, by folder name (`visual-explainer`), for the backends that get them by folder:
+ * a Claude agent loads the plugin only when one is on (setup.mjs, fromContext); Antigravity and Kiro get just these;
+ * Codex gets the folder only when none is off, since its extra skills root can’t leave one out (codex-thread.mjs).
+ */
+export const postboxSkillsOn = (persona) => {
+  const off = new Set(skillsOffOf(persona));
+  return POSTBOX_SKILLS.filter((name) => !off.has(name)).map((name) => name.slice('postbox:'.length));
+};
+
 /** A deny rule for each skill the persona turned off: it can’t run, though the agent may still be told of it. */
 export const skillDenies = (persona) => skillsOffOf(persona).map((name) => `Skill(${name})`);
 

@@ -31,6 +31,8 @@ export const CODEX_CAPABILITIES = Object.freeze({
   tools: 'none',
   isolation: false,
   promptTool: false,
+  // Postbox’s skills only, as an extra skills root (codex-thread.mjs): the sheet lists those (#207).
+  skills: 'postbox',
   remote: CODEX_REMOTE,
 });
 

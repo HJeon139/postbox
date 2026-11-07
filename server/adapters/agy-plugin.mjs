@@ -3,8 +3,10 @@
 
 import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { agentSkillFiles } from './agent-plugin.mjs';
 import { agyHooksJson, HOOK_TIMEOUT_S } from './agy-hook.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
+import { postboxSkillsOn } from './skill-config.mjs';
 
 /**
  * The plugin’s files, by path under its folder. Pure, so the tests can check them. `skills`: Postbox’s skills, by path
@@ -35,6 +37,9 @@ export async function writeAgyPlugin(dir, files) {
     if (path === 'hooks.json') await makeReadOnly(file);
   }
 }
+
+/** The files of Postbox’s skills a persona keeps on (#207), for the plugin’s skills/ folder. */
+export const agySkillFiles = (persona) => agentSkillFiles(postboxSkillsOn(persona));
 
 /** Where the plugin goes in the agent’s folder. */
 export const PLUGIN_DIR = join('.agents', 'plugins', POSTBOX_SERVER);

@@ -4,6 +4,7 @@ import { realpathSync } from 'node:fs';
 import { agentSkills } from './agent-plugin.mjs';
 import { SIZE_LIMIT_NOTE } from './kiro-errors.mjs';
 import { POSTBOX_SERVER, setupOf } from './setup.mjs';
+import { postboxSkillsOn } from './skill-config.mjs';
 
 /**
  * MCP tools that publish outside Postbox, as Kiro’s `server/tool` match patterns, where `*` is any text: the verb
@@ -95,6 +96,7 @@ export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders, sk
     // skill’s description and its body only when it’s used. Checked with kiro-cli 2.34.1: visual-explainer was listed
     // among the session’s skills before the model ran, and the defaults an agent with no resources gets (AGENTS.md, the
     // project’s .kiro/steering and .kiro/skills) still loaded beside it.
-    ...(skills ? { resources: [`skill://${skills}/*/SKILL.md`] } : {}),
+    // Only the ones the persona keeps on (#207).
+    ...(skills && postboxSkillsOn(persona).length ? { resources: postboxSkillsOn(persona).map((n) => `skill://${skills}/${n}/SKILL.md`) } : {}),
   };
 }

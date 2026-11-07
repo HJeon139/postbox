@@ -25,14 +25,19 @@ export const agentPlugins = (env = process.env) => (env.POSTBOX_AGENT_SKILLS ===
 export const agentSkills = (env = process.env) => (env.POSTBOX_AGENT_SKILLS === 'off' ? null : join(AGENT_PLUGIN, 'skills'));
 
 /**
- * Every file in the skills folder, by its path there with forward slashes, for a backend that gets a copy
- * (Antigravity); none when POSTBOX_AGENT_SKILLS=off. @param {NodeJS.ProcessEnv} [env] @returns {Promise<Record<string, string>>}
+ * The files of the named skills, by their path in the skills folder with forward slashes, for a backend that gets a
+ * copy (Antigravity); none when POSTBOX_AGENT_SKILLS=off.
+ * @param {string[]} names  the skills’ folders, the ones the persona keeps on (postboxSkillsOn in skill-config.mjs)
+ * @param {NodeJS.ProcessEnv} [env] @returns {Promise<Record<string, string>>}
  */
-export async function agentSkillFiles(env = process.env) {
+export async function agentSkillFiles(names, env = process.env) {
   const dir = agentSkills(env);
   if (!dir) return {};
   const paths = (await readdir(dir, { recursive: true, withFileTypes: true })).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name));
   const files = {};
-  for (const path of paths.sort()) files[relative(dir, path).split(sep).join('/')] = await readFile(path, 'utf8');
+  for (const path of paths.sort()) {
+    const rel = relative(dir, path).split(sep).join('/');
+    if (names.includes(rel.split('/')[0])) files[rel] = await readFile(path, 'utf8');
+  }
   return files;
 }

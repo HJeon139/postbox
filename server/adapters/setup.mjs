@@ -18,7 +18,7 @@
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { agentPlugins } from './agent-plugin.mjs';
-import { POSTBOX_SKILLS, skillDenies, skillOverrides, skillsOffOf } from './skill-config.mjs';
+import { postboxSkillsOn, skillDenies, skillOverrides } from './skill-config.mjs';
 /**
  * Setting sources, as `--setting-sources` and the SDK’s `settingSources` spell them. The permissions panel reads the
  * same ones (permission-rules.mjs, readRules; permission-hooks.mjs, readHooks).
@@ -145,7 +145,7 @@ export const fromContext = (ctx, memoryRoot) => ({
   rules: ctx.rules ?? {},
   memoryDir: memoryFolder(memoryRoot, ctx.persona, ctx.project),
   // Left out when the persona turned off every one of its skills, so the agent isn’t told of them (skill-config.mjs).
-  plugins: ctx.remote || POSTBOX_SKILLS.every((n) => skillsOffOf(ctx.persona).includes(n)) ? [] : agentPlugins(),
+  plugins: ctx.remote || !postboxSkillsOn(ctx.persona).length ? [] : agentPlugins(),
 });
 
 /**
