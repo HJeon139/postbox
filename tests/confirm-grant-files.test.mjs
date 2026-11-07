@@ -154,3 +154,45 @@ test('#852 1a r3: the repository’s own privacy rules guard the body: a home pa
     assert.deepEqual(s.ran, []);
   }
 });
+
+/** settledCall for a confirmed command, with `during` run while the fake gh runs. */
+async function whileGhRuns(during) {
+  const { settledCall } = await import('../server/write-intent.mjs');
+  const s = await ask();
+  await confirmed(s, block([LABEL]), []);
+  const se = s.rt.sessionsIn(s.t.id)[0];
+  s.rt.runGh = async (argv) => {
+    s.ran.push(argv);
+    await during(s, se);
+    return { status: 0, output: 'https://github.com/o/r/pull/1', argv, timedOut: false };
+  };
+  let found;
+  s.next.push(async (c) => {
+    const req = call(LABEL);
+    c.toolUse({ id: req.toolUseId, name: 'Bash', input: req.input });
+    found = await settledCall(s.rt, se.id, req);
+  });
+  s.rt.deliver(se.id, { kind: 'notice', text: 'Go on.' }, { threadId: s.t.id });
+  await until(() => found !== undefined);
+  s.store.writable = true;
+  return { s, found };
+}
+
+test('#852 1a r3: a Stop while Postbox’s gh runs: the post is recorded, and the agent is told it ran', async () => {
+  const { s, found } = await whileGhRuns(async (r, se) => {
+    r.rt.stop(se.id);
+  });
+  assert.equal(s.ran.length, 1);
+  assert.equal(found?.allow, false, 'never the agent’s own call');
+  assert.match(found?.message ?? '', /^Postbox ran this for you/);
+  assert.equal(lines(s).length, 1, 'the line records the post');
+});
+
+test('#852 1a r3: the store closing while Postbox’s gh runs: the agent is told it ran and not to run it again', async () => {
+  const { s, found } = await whileGhRuns(async (r) => {
+    r.store.writable = false;
+  });
+  assert.equal(s.ran.length, 1);
+  assert.equal(found?.allow, false);
+  assert.match(found?.message ?? '', /couldn’t record it .*Don’t run it again/);
+});
