@@ -1,8 +1,8 @@
 // Writes outside Postbox wait for the person (#112). An agent asked to define a use case document created it straight
 // in a shared folder of an external doc tool, with a number already taken and links that went nowhere, and everyone
-// with access saw it before the person did. Now each call that writes outside (WRITE_TOOLS in
-// server/adapters/setup.mjs, passed to Claude Code as ask rules) comes to Postbox’s permission card, which shows the
-// draft as the person will publish it. Calls the person has already settled pass without a card:
+// with access saw it before the person did. Now, in Ask me and Accept edits, each call that writes outside (WRITE_TOOLS
+// in server/adapters/setup.mjs, passed to Claude Code as ask rules) comes to Postbox’s permission card, which shows the
+// draft as the person will publish it; in Auto it comes only when the harness itself asks (harness first). Calls the person has already settled pass without a card:
 // - one the persona may publish (“Can publish outside Postbox”, the publishing tools);
 // - one an allow rule names exactly, as Always allow on the card saves it: the tool itself (mcp__docs__create_document),
 //   not its whole server, which a person may have allowed for its reads; for gh, a rule with a command pattern.
