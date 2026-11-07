@@ -4,10 +4,10 @@ A draft of the skill [#207](https://github.com/HJeon139/postbox/issues/207) prop
 
 | File | What it holds |
 |---|---|
-| [SKILL.md](SKILL.md) | The house rules (VE1 to VE12) and the run, from brief to report |
-| [references/brief.md](references/brief.md) | The one-idea brief an agent writes before drawing |
-| [references/shapes.md](references/shapes.md) | Content shapes, the forms each allows and refuses, and what position means in each |
-| [references/critique.md](references/critique.md) | The floor (verify and refuse), the takeaway test and the report |
+| [SKILL.md](../../../agent-plugin/skills/visual-explainer/SKILL.md) | The house rules (VE1 to VE12) and the run, from brief to report |
+| [references/brief.md](../../../agent-plugin/skills/visual-explainer/references/brief.md) | The one-idea brief an agent writes before drawing |
+| [references/shapes.md](../../../agent-plugin/skills/visual-explainer/references/shapes.md) | Content shapes, the forms each allows and refuses, and what position means in each |
+| [references/critique.md](../../../agent-plugin/skills/visual-explainer/references/critique.md) | The floor (verify and refuse), the takeaway test and the report |
 | [briefs/](briefs/README.md) | Seven starter briefs, one per shape plus a hard one, and three paper briefs ([briefs/papers/](briefs/papers/README.md)) |
 
 ## Why it looks like this

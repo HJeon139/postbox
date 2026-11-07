@@ -6,7 +6,7 @@
 import { cpSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const SOURCE = join(import.meta.dirname, '..', '..', 'designs', 'skills', 'visual-explainer');
+const SOURCE = join(import.meta.dirname, '..', '..', 'agent-plugin', 'skills', 'visual-explainer');
 
 /** Copies the skill into the workspace. @param {string} workspace @param {string} [source] */
 export function seedVisualSkill(workspace, source = SOURCE) {

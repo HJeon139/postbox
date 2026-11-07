@@ -22,7 +22,7 @@ test('the visual-skill seed puts SKILL.md and its references where Claude Code f
 // load (#206): it names the everyday asks, about the person’s own code and data, and stays within the Agent Skills
 // format’s 1,024 characters.
 test('the skill’s description names the everyday asks and fits the format’s limit', () => {
-  const text = readFileSync(join(import.meta.dirname, '..', 'designs', 'skills', 'visual-explainer', 'SKILL.md'), 'utf8');
+  const text = readFileSync(join(import.meta.dirname, '..', 'agent-plugin', 'skills', 'visual-explainer', 'SKILL.md'), 'utf8');
   const description = /description: >-\n([\s\S]*?)\n---/.exec(text)?.[1].split(/\s+/).join(' ').trim() ?? '';
   assert.ok(description.length > 0 && description.length <= 1024, `${description.length} characters`);
   assert.match(description, /code/);
