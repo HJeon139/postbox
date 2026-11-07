@@ -64,3 +64,37 @@ test('with nothing posted meanwhile, the steps and the words share one part', as
   assert.equal(replies[0].text, 'Here’s what I found.');
   assert.equal(replies[0].activity.steps.length, 1);
 });
+
+/** A turn that writes four chunks, each after the test lets it go, so two agents’ chunks interleave. */
+function chunkedTurn(name, gates) {
+  return async (ctx) => {
+    for (let i = 0; i < 4; i++) {
+      await gates[i];
+      ctx.text(`${name}${i} `);
+    }
+  };
+}
+
+test('two agents writing at once each keep their words in one part, however their chunks interleave', async () => {
+  const f = setup();
+  /** @type {(() => void)[]} */
+  const open = [];
+  const gates = Array.from({ length: 4 }, () => new Promise((r) => open.push(() => r(undefined))));
+  f.adapter.next.push(chunkedTurn('A', gates), chunkedTurn('B', gates));
+  f.rt.sendMessage(f.t.id, { text: '@alpha @beta both of you count' });
+  await until(() => f.adapter.calls.length === 2);
+  for (const go of open) {
+    go();
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  await settle(f.rt);
+
+  for (const [se, name] of [
+    [f.alpha, 'A'],
+    [f.beta, 'B'],
+  ]) {
+    const parts = agentItems(f).filter((it) => it.sessionId === se.id && it.text);
+    assert.equal(parts.length, 1, `${name}’s words are one part: ${JSON.stringify(parts.map((p) => p.text))}`);
+    assert.equal(parts[0].text, `${name}0 ${name}1 ${name}2 ${name}3 `, 'with nothing put between its chunks');
+  }
+});

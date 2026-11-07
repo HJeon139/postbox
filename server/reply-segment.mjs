@@ -1,6 +1,7 @@
 // A turn’s reply in parts (segments): the part its words and steps go to now, made when the turn first needs one.
-// A tool call or a block ends a part, so the turn’s next words start another below it. Words also start one when
-// anything was posted below the part they’d go to, so a reply sits where it was written, not where its agent began.
+// A tool call or a block ends a part, so the turn’s next words start another below it. A turn’s first words after its
+// steps also start one when anything was posted below those steps, so a reply sits where it was written, not where
+// its agent began; words already started stay together.
 // replySegment moved from server/runtime.mjs, turnContext.
 
 import { replyMarks } from './turn-marks.mjs';
@@ -34,11 +35,18 @@ export function replySegment(rt, turn, se0) {
 }
 
 /**
- * The part the turn’s next words go to. Once anything was posted below its open part (a person’s message, another
- * agent’s reply), the words start a new part at the end, where they were written; the steps stay on the first part,
- * where the agent began. @param {any} rt @param {any} turn @param {any} se0
+ * The part the turn’s next words go to. A part that has only steps so far, with anything posted below it meanwhile (a
+ * person’s message, another agent’s reply), gets its words in a new part at the end, where they were written; the
+ * steps stay on the first part, where the agent began. Once a part has words, the rest of them go there too, whatever
+ * is posted meanwhile: a split between two chunks would cut the reply’s words, a mention, or a code fence apart, and
+ * two agents writing at once would break each other’s replies into a part per chunk.
+ * @param {any} rt @param {any} turn @param {any} se0
  */
 export function wordsSegment(rt, turn, se0) {
-  if (turn.segment && rt.store.pending.items(turn.threadId).at(-1)?.id !== turn.segment) rt.closeSegment(turn);
-  return replySegment(rt, turn, se0);
+  const open = turn.segment;
+  if (open && turn.wordsIn !== open && rt.store.pending.items(turn.threadId).at(-1)?.id !== open) rt.closeSegment(turn);
+  const id = replySegment(rt, turn, se0);
+  // The part these words went to: its next words follow them there.
+  turn.wordsIn = id;
+  return id;
 }
