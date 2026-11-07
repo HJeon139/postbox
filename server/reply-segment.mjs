@@ -1,6 +1,7 @@
 // A turn’s reply in parts (segments): the part its words and steps go to now, made when the turn first needs one.
-// A tool call or a block ends a part, so the turn’s next words start another below it. Moved from
-// server/runtime.mjs, turnContext.
+// A tool call or a block ends a part, so the turn’s next words start another below it. Words also start one when
+// anything was posted below the part they’d go to, so a reply sits where it was written, not where its agent began.
+// replySegment moved from server/runtime.mjs, turnContext.
 
 import { replyMarks } from './turn-marks.mjs';
 
@@ -30,4 +31,14 @@ export function replySegment(rt, turn, se0) {
     rt.putThread({ ...rt.s.threads[turn.threadId], lastSpeaker: turn.sessionId });
   }
   return turn.segment;
+}
+
+/**
+ * The part the turn’s next words go to. Once anything was posted below its open part (a person’s message, another
+ * agent’s reply), the words start a new part at the end, where they were written; the steps stay on the first part,
+ * where the agent began. @param {any} rt @param {any} turn @param {any} se0
+ */
+export function wordsSegment(rt, turn, se0) {
+  if (turn.segment && rt.store.pending.items(turn.threadId).at(-1)?.id !== turn.segment) rt.closeSegment(turn);
+  return replySegment(rt, turn, se0);
 }

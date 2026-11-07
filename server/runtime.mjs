@@ -76,7 +76,7 @@ import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './r
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere, runsHere } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
-import { replySegment } from './reply-segment.mjs';
+import { replySegment, wordsSegment } from './reply-segment.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
 import {
@@ -767,7 +767,7 @@ export class Runtime {
       },
       text(delta) {
         if (!live() || !delta) return;
-        const id = ensureSegment();
+        const id = wordsSegment(rt, turn, se0);
         turn.said += delta;
         rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
         if (se().state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
