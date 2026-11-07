@@ -6,20 +6,22 @@
 /** The most characters a host’s short name has, so its badge stays compact. */
 export const SHORT_MAX = 8;
 
-const CONTROL = /\p{Cc}/u;
+/** Control characters, and invisible format ones such as U+200B (zero width space) and U+202E (right-to-left override). */
+const UNSEEN = /[\p{Cc}\p{Cf}]/u;
 
 /** The badge of an agent whose host was removed: a fixed word, since there’s no machine to name. */
 export const REMOVED_BADGE = 'removed';
 
 /**
- * A short name the person typed: trimmed, at most SHORT_MAX characters, with no control characters. An empty one
- * clears it, so the badge goes back to the one made from the destination.
+ * A short name the person typed: trimmed, at most SHORT_MAX characters, with no control or invisible format
+ * characters. There’s no least length. An empty one clears it, so the badge goes back to the one made from the
+ * destination.
  * @param {unknown} v @returns {{ ok: true, value: string } | { ok: false, error: string }}
  */
 export function checkShortName(v) {
   if (typeof v !== 'string') return { ok: false, error: 'A host’s short name is text.' };
   const s = v.trim();
-  if (CONTROL.test(s)) return { ok: false, error: 'A short name can’t contain control characters, such as a new line.' };
+  if (UNSEEN.test(s)) return { ok: false, error: 'A short name can’t contain control or invisible characters, such as a new line or a zero width space.' };
   const n = Array.from(s).length;
   if (n > SHORT_MAX) return { ok: false, error: `That short name is ${n} characters; the most is ${SHORT_MAX}.` };
   return { ok: true, value: s };

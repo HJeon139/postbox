@@ -37,6 +37,9 @@ test('a short name is trimmed, at most SHORT_MAX characters, and an empty one cl
   assert.deepEqual(checkShortName(''), { ok: true, value: '' });
   assert.equal(checkShortName('ninechars').ok, false);
   assert.equal(checkShortName('a\nb').ok, false);
+  assert.equal(checkShortName('gpu\u202E').ok, false, 'a right-to-left override');
+  assert.equal(checkShortName('g\u200Bpu').ok, false, 'a zero width space');
+  assert.deepEqual(checkShortName('db'), { ok: true, value: 'db' }, 'no least length');
   assert.equal(checkShortName(8).ok, false);
 });
 
