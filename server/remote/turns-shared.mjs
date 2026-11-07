@@ -36,7 +36,8 @@ export const clock = (at) => new Date(at).toLocaleTimeString('en-US', { hour: '2
 /**
  * One running remote turn: the runtime’s turn (`rt`) and the host turns it ran as.
  * @typedef {{ sessionId: string, hostId: string, rt: any, link: any, hostTurns: Set<string>, current: string | null,
- *   work: string, signInError: Record<string, unknown> | null, lastEvent: number, signIn: boolean,
+ *   work: string, signInError: Record<string, unknown> | null, backgroundTasks: string | null,
+ *   background: { since: number, names: string[] } | null, lastEvent: number, signIn: boolean,
  *   exit: { code: number | null, signal: string | null } | null | undefined, hung: { at: number, text: string } | null,
  *   offset: number, offsetSaved: number, attach: boolean, started: boolean, startSent: boolean, origin: any }} Live
  *   exit: the current host turn’s, from `ended` (null: interrupted), undefined until then; started: the daemon said

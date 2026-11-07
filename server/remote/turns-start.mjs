@@ -38,6 +38,8 @@ export function begin(rts, turn, hostId, adapter) {
     current: null,
     work: caps?.work ?? 'events',
     signInError: caps?.signInError ?? null,
+    backgroundTasks: caps?.backgroundTasks ?? null,
+    background: null,
     lastEvent: rts.now(),
     signIn: false,
     exit: undefined,
