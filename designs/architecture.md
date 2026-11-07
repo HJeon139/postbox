@@ -698,7 +698,7 @@ flowchart TD
 | Waiting on you | A prompt is pending in the shim, or a Codex request has no answer | The permission card, on reconnect if it came while disconnected |
 | Hung | No stdout event for `stallTimeout`, no prompt pending, no tool call open | “Stopped: no output for 15 min”, with the last event’s time |
 | Sign-in needed | The harness’s sign-in error | “Sign-in needed on <host>”, and Resume |
-| Interrupted | Neither a live runner nor `exit.json`, such as after a reboot | “Interrupted on <host>”, and Resume |
+| Interrupted | Neither a live runner nor `exit.json`, such as after a reboot, or a runner silent past 60 s that the daemon killed. If its process was still there 5 s after the kill (`unkilled`), it may still be running | “Interrupted on <host>”, and Resume; after `unkilled`, only the person’s Resume |
 | Done | `exit.json`, and the harness’s end of turn | The reply, as today |
 
 - **Hung, not quiet.** Stdout is the signal, judged by each adapter’s sign of work (the table above). An open tool call counts as work. A Claude Code endpoint that never answers gets an `api_retry` about every 6 minutes, so `stallTimeout` stays well above that. A hung turn is stopped with SIGINT, then SIGKILL.
@@ -772,7 +772,7 @@ Tests that need `/proc` or logind skip on macOS and say why; CI runs them on Lin
 | Question | Status |
 |---|---|
 | 1. **Reconnect on wake?** Should Postbox reconnect on its own when the laptop wakes with nothing running remotely, or wait for the person to open the conversation? | Decided 23 October 2026: it reconnects on its own |
-| 2. **Auto-resume?** After Sign-in needed or Interrupted, should Postbox resume on its own once the host is back, or always wait for the person? `CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1` would make a resumed Claude Code session continue the cut-off turn ([environment variables](https://code.claude.com/docs/en/env-vars)) | Decided 23 October 2026: after Interrupted it resumes on its own once the host is back; after Sign-in needed only when the host’s `signInCheck` passes, and with no `signInCheck` (the default) it waits for the person. A resumed Claude Code turn continues the cut-off turn (`CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1`) |
+| 2. **Auto-resume?** After Sign-in needed or Interrupted, should Postbox resume on its own once the host is back, or always wait for the person? `CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1` would make a resumed Claude Code session continue the cut-off turn ([environment variables](https://code.claude.com/docs/en/env-vars)) | Decided 23 October 2026: after Interrupted it resumes on its own once the host is back, except when the turn ended `unkilled`, whose process may still run, so it waits for the person (#872); after Sign-in needed only when the host’s `signInCheck` passes, and with no `signInCheck` (the default) it waits for the person. A resumed Claude Code turn continues the cut-off turn (`CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1`) |
 | 3. **Unattended runs?** Offer `--permission-prompts none` (Claude Code v2.1.259 or later, [CLI reference](https://code.claude.com/docs/en/cli-reference)), which denies prompts instead of waiting? | Decided 23 October 2026: a per-host setting, `denyPrompts`, off by default |
 
 **Revisit when**
