@@ -3,6 +3,7 @@
 // Diagrams and math in messages are md-enhance.mjs's; the bundled libraries both use are sandbox-libs.mjs's.
 
 import { afterAppChecks, appChecksRunning, installAppChecks, recordAppCheck } from './app-check.mjs';
+import { crashCard } from './app-crash.mjs';
 import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
 import { api, client, placeIn } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
@@ -489,33 +490,12 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
     );
   } else if (crashed || status === 'crashed') {
     const msg = crashed ?? app.check.problems.find((p) => p.code === 'script-error')?.message ?? 'a script error';
-    body.append(
-      placeholder(
-        [
-          h('span.row-flex', { style: { color: 'var(--text)' } }, h('span.g.g-failed', { 'aria-hidden': 'true' }), h('b', `${app.title} stopped working`)),
-          h('span', `It hit a script error and was shut down. Nothing outside the app was affected. Reload it, or ask ${owner} to fix it.`),
-          h('code.mono', { style: { color: 'var(--text)' } }, msg),
-          h(
-            'span.row-flex',
-            h(
-              'button.btn.sm',
-              {
-                type: 'button',
-                onclick: () => {
-                  crashes.delete(key);
-                  reloaded.add(key);
-                  mountApp(container, appId, { review, onPin, onBack });
-                },
-              },
-              icon('retry', 'i-sm'),
-              'Reload app',
-            ),
-            h('button.btn.sm', { type: 'button', onclick: () => askToFix(app, msg) }, `Ask ${owner} to fix it`),
-          ),
-        ],
-        220,
-      ),
-    );
+    const reload = () => {
+      crashes.delete(key);
+      reloaded.add(key);
+      mountApp(container, appId, { review, onPin, onBack });
+    };
+    body.append(crashCard(placeholder, { app, owner, msg, reload }));
   } else if (status === 'pending') {
     body.append(
       placeholder([
@@ -589,14 +569,6 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
       ),
     );
   container.replaceChildren(...notes, body);
-}
-
-function askToFix(app, msg) {
-  const se = client.state.sessions[app.sessionId];
-  if (!se) return;
-  api(`/api/threads/${app.threadId}/messages`, { text: `@${se.handle} the ${app.title} app stopped working: \`${msg}\`. Please fix it.` }).catch((e) =>
-    toast({ title: 'That didn’t send', text: e.message, level: 'blocking' }),
-  );
 }
 
 /** The whole app frame for a transcript item. */
