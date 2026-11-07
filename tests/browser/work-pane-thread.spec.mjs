@@ -176,7 +176,17 @@ async function threadFollows(page) {
   await settled(page);
   const pl = await place(page);
   if (pl.mode !== 'following')
-    console.log('VLOG', JSON.stringify(pl), JSON.stringify(await page.evaluate(() => [window.__vlog, document.querySelector('.topbar')?.outerHTML.length, document.querySelector('.topbar')?.getBoundingClientRect().height])));
+    console.log(
+      'VLOG',
+      JSON.stringify(pl),
+      JSON.stringify(
+        await page.evaluate(() => [
+          window.__vlog,
+          document.querySelector('.topbar')?.outerHTML.length,
+          document.querySelector('.topbar')?.getBoundingClientRect().height,
+        ]),
+      ),
+    );
   expect(pl.mode, 'opened at the end').toBe('following');
   await page.locator('#thread-full').click();
   await expect(page.locator('.sidepanel.pane-full')).toBeVisible();
