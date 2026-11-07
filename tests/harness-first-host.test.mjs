@@ -1,7 +1,8 @@
 // Harness first on a host (#120): a host turn in Auto gets no write ask rules of Postbox’s in its --settings, so the
 // host’s Claude Code decides; a card shows only for the host harness’s own prompt. Ask me keeps Postbox’s write asks
 // there too. The local side is tests/harness-first.test.mjs; the rig is tests/remote-turns-helpers.mjs. Always allow
-// on a host card, which saves the harness’s own rule on the host, is lead-state’s commit on top of this.
+// on a host card is tests/harness-first-host-always.test.mjs: Postbox keeps the rule and sends it in that host turn’s
+// --settings (server/host-rules.mjs), and writes nothing on the host.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
