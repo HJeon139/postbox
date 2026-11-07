@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.35.5 (2026-11-07)
+
+### Fixes
+
+- **thread:** a redraw of the conversation keeps focus and the caret where you were typing
+- **blocks:** an update that changes nothing the person sees leaves a waiting block as it was
+
 ## 1.35.4 (2026-11-07)
 
 ### Fixes
