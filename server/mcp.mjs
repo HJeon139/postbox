@@ -19,6 +19,7 @@
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { assetTools } from './asset-tools.mjs';
 import { offersBring } from './bring.mjs';
+import { confirmBodies } from './confirm-body.mjs';
 import { noteAnswer } from './empty-reply.mjs';
 import { sameToken } from './helpers.mjs';
 import { asksByPrompt, NOT_YOUR_PROMPT, permission } from './permission-prompt.mjs';
@@ -90,9 +91,7 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
       if (name === 'permission_prompt') return reply(asksByPrompt(rt, sessionId) ? await permission(rt, sessionId, args, closeOrSignal) : NOT_YOUR_PROMPT);
       if (!(name in tools) || !TOOL_DEFS.some((t) => t.name === name)) return fail(-32602, `There’s no tool called “${name}”.`);
       try {
-        // An app’s files (#54) and a review’s images (#780) may come from the agent’s folder, which Postbox reads itself.
-        const app = name === 'show_app' || name === 'update_app' ? await rt.appFiles(sessionId, args) : await blockFiles(rt, sessionId, name, args);
-        const r = await keptIfShown(app, (given) => tools[name](app.args, given));
+        const r = await withFiles(rt, sessionId, tools, name, args);
         noteAnswer(rt.turns.get(sessionId) ?? null, name, r);
         // An urgent note for the agent comes first (#229): this is how it hears one mid-turn.
         const text = withUrgent(rt, sessionId, r.results ? JSON.stringify(r.results) : r.message, turn);
@@ -105,6 +104,18 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
     default:
       return fail(-32601, `Method “${msg.method}” isn’t supported.`);
   }
+}
+
+/**
+ * Runs a tool with the files Postbox reads for it from the agent’s folders itself: an app’s files (#54), a review’s
+ * images (#780), and the files a confirm’s gh … --body-file posts (#852), so the person sees what it posts.
+ * @param {any} rt @param {string} sessionId @param {Record<string, Function>} tools @param {string} name @param {any} args
+ */
+async function withFiles(rt, sessionId, tools, name, args) {
+  const app = name === 'show_app' || name === 'update_app' ? await rt.appFiles(sessionId, args) : await blockFiles(rt, sessionId, name, args);
+  const bodies = await confirmBodies(rt, sessionId, name, app.args);
+  if (!bodies.ok) return { ok: false, message: `The block wasn’t shown or changed: ${bodies.why}` };
+  return keptIfShown(app, (given) => tools[name](app.args, Object.assign(given, bodies.bodyFiles ? { bodyFiles: bodies.bodyFiles } : {})));
 }
 
 /**

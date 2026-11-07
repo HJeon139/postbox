@@ -6,6 +6,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test } from 'node:test';
+import { confirmBodies } from '../server/confirm-body.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { cards, lines, setup, until } from './requested-setup.mjs';
 
@@ -44,9 +45,9 @@ function calling(s, reqs, answers, before = () => {}) {
     }
   };
 }
-/** The agent shows the confirm; then the person answers it, and the turn that starts makes the calls. */
+/** The agent shows the confirm, its body files read as an MCP call reads them (#852); then the person answers it. */
 async function confirmed(s, b, reqs = [], answer = 'confirm', { unrevised = false, before } = {}) {
-  s.next.push(async (c) => c.tools.show_block({ block: b }));
+  s.next.push(async (c) => c.tools.show_block({ block: b }, await confirmBodies(s.rt, s.rt.sessionsIn(s.t.id)[0].id, 'show_block', { block: b })));
   s.rt.sendMessage(s.t.id, { text: 'Get it ready.' });
   await until(() => !s.rt.turns.size);
   const answers = [];
@@ -305,7 +306,7 @@ test('#852 1a r3: a file the command names, edited after the click, gets the car
     const s = await ask();
     const body = join(s.folder, 'body.md');
     await writeFile(body, 'The body you read.\n');
-    const command = `cd ${s.folder} && gh pr edit 896 --repo o/r --body-file body.md`;
+    const command = `cd ${s.folder} && gh pr edit 896 --repo o/r --body-file ${body}`;
     await confirmed(s, block([command]), []);
     await until(() => !!theConfirm(s).answer.files);
     if (edit) await writeFile(body, 'Something else.\n');

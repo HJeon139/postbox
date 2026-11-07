@@ -7,6 +7,7 @@ import { buildEvent } from '../shared/events.mjs';
 import { LIMITS } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { releaseNeed } from './card-needs.mjs';
+import { unreadBody } from './confirm-body.mjs';
 import { recordConfirm } from './confirm-grant.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { REACT, toggleReaction } from './reactions.mjs';
@@ -120,8 +121,9 @@ export function unreadAnswer(rt, sessionId, threadId, it, outcome = false) {
  * endSegment(), so they come as parameters.
  */
 /**
- * @param {{ files?: import('./review-files.mjs').ReviewFile[], held?: boolean }} [given]  a review’s images, read for this
- *   update (#780); held is set once the item holds them, so keptIfShown keeps their blobs (#828)
+ * @param {{ files?: import('./review-files.mjs').ReviewFile[], held?: boolean, bodyFiles?: any[] }} [given]  a review’s images, read for this
+ *   update (#780); held is set once the item holds them, so keptIfShown keeps their blobs (#828); bodyFiles, a
+ *   confirm’s body files, read for this update by confirmBodies (#852)
  */
 export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endSegment }, given = {}) {
   if (block && typeof block === 'object' && Object.hasOwn(block, 'withdraw')) return withdraw(rt, sessionId, block, { se, threadId });
@@ -131,6 +133,8 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   const { where, existing } = shownBy(rt, sessionId, v.block.id, threadId(), se());
   if (!existing) return notShown(rt, sessionId, v.block.id);
   if (existing.block.type !== v.block.type) return { ok: false, message: 'An update can’t change a block’s type.' };
+  const unread = unreadBody(v.block, given.bodyFiles);
+  if (unread) return { ok: false, message: `The update wasn’t applied: ${unread}` };
   const now = Date.now();
   // Any other update asks again, so it reopens a block you already answered. Not over an answer the agent hasn’t
   // read (#123): the person would see it vanish, and the agent would never learn what it erased.
@@ -144,7 +148,9 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   // One that changes only what the person can’t see (its fallback) asks nothing new, so an answered block stays
   // answered, and an outcome can follow (#286).
   const { files, newFiles } = reviewImages(v.block, existing, given.files);
-  if (existing.answered && !newFiles) {
+  const bodies = v.block.type === 'confirm' ? { bodyFiles: given.bodyFiles ?? [] } : {};
+  const newBodies = JSON.stringify(bodies.bodyFiles ?? []) !== JSON.stringify(existing.bodyFiles ?? []);
+  if (existing.answered && !newFiles && !newBodies) {
     const differ = changedKeys(v.block, existing.block).filter((k) => k !== 'outcome');
     if (differ.length > 0 && !existing.closed && differ.every((k) => UNSEEN.has(k))) {
       if (differ.length) rt.patchItem(where, existing.id, { block: { ...v.block, outcome: existing.block.outcome }, updatedAt: now });
@@ -162,7 +168,7 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
     return kept;
   }
   /** @type {Record<string, any>} */
-  const patch = { block: v.block, answered: false, answer: null, closed: null, revision: (existing.revision ?? 1) + 1, updatedAt: now, ...files };
+  const patch = { block: v.block, answered: false, answer: null, closed: null, revision: (existing.revision ?? 1) + 1, updatedAt: now, ...files, ...bodies };
   if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
   // Asking again belongs to this turn, so its end shows the person this agent needs them (#69).
   if (ASKING.has(v.block.type) && turn) patch.turnId = turn.id;

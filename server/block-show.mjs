@@ -4,6 +4,7 @@
 import { validateBlock } from '../shared/catalog.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { OUTCOME_LATER } from './blocks.mjs';
+import { unreadBody } from './confirm-body.mjs';
 import { newId } from './store.mjs';
 import { wokeOf } from './turn-marks.mjs';
 
@@ -13,8 +14,9 @@ import { wokeOf } from './turn-marks.mjs';
  * @param {import('./runtime.mjs').Runtime} rt @param {string} sessionId
  * @param {{ turn: any, se: () => any, threadId: () => string, endSegment: () => void, tools: any }} ctx  the turn's
  *   tools as toolsFor made them, for update_app
- * @param {{ block: any }} args @param {{ files?: AppFile[], held?: boolean }} [given]  data files Postbox read for show_app
- *   (#54), or a review’s images (#780); held is set once an item takes the images (keptIfShown)
+ * @param {{ block: any }} args @param {{ files?: AppFile[], held?: boolean, bodyFiles?: any[] }} [given]  data files Postbox
+ *   read for show_app (#54), or a review’s images (#780); held is set once an item takes the images (keptIfShown); a
+ *   confirm’s body files, read by confirmBodies (#852)
  */
 export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools }, { block }, given = {}) {
   // An outcome reports what came of an answer (#94). On a new block it would show under whatever the person
@@ -37,10 +39,13 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
   // into an update: an update can reopen a block the person answered.
   const again = v.ok && v.block.type !== 'app' ? shownAgain(rt, sessionId, threadId(), v.block.id) : null;
   if (again) return again;
+  const unread = v.ok ? unreadBody(v.block, given.bodyFiles) : null;
+  if (unread) return { ok: false, message: `The block wasn’t shown: ${unread}` };
   endSegment();
   // A review’s images (#780), read and checked before the call reached here, stay with the item.
   const files = v.ok && v.block.type === 'review' && given.files ? { files: given.files } : {};
-  const it = rt.addItem(threadId(), { ...blockItem(sessionId, se, turn, block, v), ...files });
+  const bodies = v.ok && given.bodyFiles?.length ? { bodyFiles: given.bodyFiles } : {};
+  const it = rt.addItem(threadId(), { ...blockItem(sessionId, se, turn, block, v), ...files, ...bodies });
   if (files.files) given.held = true; // the item holds them, so keptIfShown keeps their blobs (#828)
   if (v.ok && v.block.type === 'app') rt.registerApp(sessionId, v.block, it.id, threadId(), given.files ?? []);
   return v.ok
