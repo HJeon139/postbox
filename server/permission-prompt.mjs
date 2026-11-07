@@ -31,7 +31,7 @@ export async function permission(rt, sessionId, args, closeOrSignal = null) {
   // permission-prompts.json and permission-edit-prompts.json), and Postbox makes the rule from the stream’s call.
   const { tool_use_id } = args ?? {};
   // The call as the stream showed it, which the prompt matched, and the subagent’s call it’s under.
-  const { tool: tool_name, input, agentId } = claim;
+  const { tool: tool_name, input, agentId, bound } = claim;
   const { summary, detail } = describePermission(String(tool_name ?? 'a tool'), input);
   const useId = tool_use_id ? String(tool_use_id) : null;
   const onAbort = () => {
@@ -48,6 +48,7 @@ export async function permission(rt, sessionId, args, closeOrSignal = null) {
       toolUseId: tool_use_id,
       input,
       agentId: agentId ?? null,
+      bound: bound === true,
     });
     const decision = answer.allow
       ? {

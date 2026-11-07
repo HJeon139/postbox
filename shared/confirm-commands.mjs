@@ -10,6 +10,7 @@ export const COMMANDS = Object.freeze({ max: 3, length: 2000, line: 400 });
 // Each class of character that could hide or reorder what runs, with the reason a refusal gives. The first that
 // matches names the character, so the narrow classes come before the wide ones that hold them (a tag character is
 // also a format character, a variation selector also a combining mark).
+/** @type {[RegExp, string][]} */
 const HIDDEN = [
   [/[^\P{Cc}\t\n]/u, 'a control character (a command may hold tabs and new lines only)'],
   [/[\u{E0000}-\u{E007F}]/u, 'a tag character, which draws as nothing'],

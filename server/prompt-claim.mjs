@@ -38,7 +38,7 @@ export const REFUSED = Object.freeze({
  * (server/remote/turns-replay.mjs), and `readyEnd` the most it waits on it: if that settles first, the prompt is
  * refused as `unseen`. The line still ends the wait at once.
  * @param {{ by?: unknown, signal?: AbortSignal | null, ready?: Promise<unknown> | null, readyEnd?: Promise<unknown> | null }} [o]
- * @returns {Promise<{ ok: true, tool: string, input: any, agentId?: string | null } | { ok: false, why: Refusal, message: string } | { ok: false, why: 'repeat' }>}
+ * @returns {Promise<{ ok: true, tool: string, input: any, agentId?: string | null, bound?: boolean } | { ok: false, why: Refusal, message: string } | { ok: false, why: 'repeat' }>}
  */
 export async function claimPrompt(rt, sessionId, args, { by = Symbol('prompt'), signal = null, ready = null, readyEnd = null } = {}) {
   const turn = rt.turns.get(sessionId);
@@ -61,7 +61,8 @@ export async function claimPrompt(rt, sessionId, args, { by = Symbol('prompt'), 
   if (args.tool_name !== call.name || !isDeepStrictEqual(args.input ?? {}, call.input)) return refused(rt, turn, 'differs', id, call, args);
   call.state = 'claimed';
   call.by = by;
-  return { ok: true, tool: call.name, input: call.input, agentId: call.parent ?? null };
+  // bound: the prompt is the stream’s own call, which a confirmed command needs (#852, confirm-grant.mjs).
+  return { ok: true, tool: call.name, input: call.input, agentId: call.parent ?? null, bound: true };
 }
 
 /**

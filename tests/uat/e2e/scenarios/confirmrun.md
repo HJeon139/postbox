@@ -13,7 +13,7 @@
 - triggers: confirmed-command-ran
 - steps: 5
 
-Ask @researcher to push the current branch to `origin` as a new branch named `uat-confirm`, and to show you a confirm first, with the exact command it will run in one code block. Read the command on the confirm: it should show all of it, with nothing cut off at the edge. Press its confirm button. @researcher should then run that exact command, and no permission card should ask you about it. Say whether one did, and what the line under the push says.
+First, in the project’s settings, set its repository to the `uat-remote.git` folder beside the project, so Postbox can make the push. Then ask @researcher to push the current branch to `origin` as a new branch named `uat-confirm`, and to show you a confirm first, with the exact command it will run in the confirm’s commands field. Read the command under “Runs when you confirm”: it should show all of it, with nothing cut off at the edge. Press its confirm button. @researcher should then run that exact command, and no permission card should ask you about it: Postbox makes the push itself. Say whether a card came, and what the line under the push says.
 
 ## Phase 2: The same command again asks you
 

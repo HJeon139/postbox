@@ -20,6 +20,8 @@ export async function canUseTool(ctx, toolName, input, opts = {}) {
     suggestions: Array.isArray(opts.suggestions) ? opts.suggestions : [],
     suppressAlways: opts.suppressAlwaysAllowRule === true,
     agentId: opts.agentID ?? null,
+    // The SDK asks in-process, for a call it’s about to make: no other process can send this (#852, confirm-grant.mjs).
+    bound: true,
     ...(opts.toolUseID ? { toolUseId: opts.toolUseID } : {}),
   });
   return answer.allow

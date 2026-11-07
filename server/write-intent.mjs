@@ -16,7 +16,7 @@
 import { randomBytes } from 'node:crypto';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { setupOf } from './adapters/setup.mjs';
-import { passConfirmed } from './confirm-grant.mjs';
+import { confirmedFound } from './confirm-grant.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { pushConsequence, pushedMessage, pushOf, runPush } from './push-on-request.mjs';
 import { actionWords, numberOf, offRequest } from './request-floor.mjs';
@@ -260,12 +260,11 @@ export async function settledCall(rt, sessionId, req) {
   // the push already landed: the integrator’s re-review of #598).
   const open = () => rt.store.writable && rt.store.epoch === epoch;
   const current = () => open() && !!turn && rt.turns.get(sessionId) === turn;
-  if (passConfirmed(rt, sessionId, req)) return { allow: true }; // #852: a confirmed command, once, as written
   if (isWriteCall(req.tool, req.input) && (await writePasses(rt, sessionId, req).catch(() => false))) return { allow: true };
-  /** @type {Awaited<ReturnType<typeof requestedCall>>} */
+  /** @type {(Awaited<ReturnType<typeof requestedCall>> & { blockItemId?: string, sha256?: string }) | null} */
   let found = null;
   try {
-    found = await requestedCall(rt, sessionId, req);
+    found = (await confirmedFound(rt, sessionId, req, PUSHES)) ?? (await requestedCall(rt, sessionId, req));
   } catch {
     // A judge that fails, or a check that breaks, gets the card, as before: it fails closed.
   }
@@ -300,6 +299,7 @@ export async function settledCall(rt, sessionId, req) {
     detail: (req.tool === 'Bash' ? String(req.input?.command ?? '') : JSON.stringify(req.input ?? {}, null, 2)).slice(0, MAX_CALL),
     how: found.how,
     ...(found.how === 'confirmed' ? { approved: clip(found.label, 200) } : { quote: clipText(found.quote, 300) }),
+    ...(found.blockItemId ? { blockItemId: found.blockItemId, sha256: found.sha256 } : {}),
     ...(found.push ? { push: { sha: found.push.sha, branch: found.push.branch, url: found.push.url, error: done?.ok ? null : done?.error } } : {}),
     status: done && !done.ok ? 'failed' : 'allowed',
   });

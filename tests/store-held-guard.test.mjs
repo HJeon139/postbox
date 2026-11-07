@@ -26,7 +26,7 @@ const PUBLISHED = {
   'card-needs.mjs': ['dismissFailed'], // the person’s Dismiss on a failed reply they see (#883)
   'item-lines.mjs': ['topicRootLine', 'describeItem'], // a read tool and a prompt
   'catch-up.mjs': ['catchUp', 'pointerIfSeen'], // the prompt for a later turn
-  'confirm-grant.mjs': ['passConfirmed'], // the confirm the person answered, as they saw it (#852)
+  'confirm-grant.mjs': ['recordFiles', 'revoked', 'grants'], // the confirm the person answered, as they saw it, and their messages since (#852)
   'permission-cards.mjs': ['resolvePermission', 'resolveDenial'], // the person’s answer to a card they see
   'permission-expiry.mjs': ['dismissPermission'], // the person’s Dismiss on a card they see (#721)
   'queue-batch.mjs': ['latestMessage'], // the person’s queued messages

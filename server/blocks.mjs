@@ -56,7 +56,15 @@ export function act(rt, threadId, itemId, action, values, revision) {
   if (locks)
     rt.patchItem(threadId, itemId, {
       answered: true,
-      answer: { action, values: r.event.values, voice: r.voice, at: Date.now(), revision: current, read: false, ...recordConfirm(rt, it, threadId, action) },
+      answer: {
+        action,
+        values: r.event.values,
+        voice: r.voice,
+        at: Date.now(),
+        revision: current,
+        read: false,
+        ...recordConfirm(rt, it, threadId, action, revision),
+      },
       ...(dismissed ? { closed: { by: 'person', at: Date.now() } } : {}),
     });
   rt.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
