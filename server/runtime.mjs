@@ -2774,7 +2774,8 @@ export class Runtime {
   view(threadId) {
     if (!threadId) return;
     this.viewing.set(threadId, Date.now());
-    for (const se of this.sessionsIn(threadId)) if (se.unread) this.updateSession(se.id, { unread: 0 });
+    // Each read pending, as the thread's next: an unread a turn's end counted behind a held commit is cleared too (#796).
+    for (const se of pendingSessionsIn(this, threadId)) if (se.unread) this.updateSession(se.id, { unread: 0 });
     updateThread(this, threadId, (t) => (t.unread ? { unread: 0 } : null));
   }
   isViewing(threadId) {

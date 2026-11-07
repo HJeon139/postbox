@@ -9,8 +9,13 @@
 // A count built from a session's own (`unread: se.unread + 1`) is found too: behind a held commit it lost an increment.
 // Every other write of a session, a put or a removal, and updateSession's own patch, is placed by file and function, as
 // the thread writes are (tests/thread-write-guard.test.mjs), so a raw emit or a put built from the published session fails.
+// A write a published read decides is found too: the condition on the write's own line, or on the `if` line just above
+// it, reads a session bound from a published read in that function, or the loop it's in walks published sessions
+// (`for (const se of rt.sessionsIn(t))`). Behind a held commit, that read missed what is held: Stop's “stopping”, so a
+// stopped turn's exit didn't set its session idle, and an unread a turn counted, so viewing didn't clear it.
 // The guard reads source text, so a field reached through a call it doesn't see (`settledNeed(rt, se)`) passes, and
-// review reads for it.
+// so does a decision it doesn't see on the write: an early return (`if (!se.x) return;`), a condition further up, or a
+// result passed in; review reads for those.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DECL, placed, sites, withProbes } from './server-sources-fixture.mjs';
@@ -38,6 +43,18 @@ const FROM_PUBLISHED = {
   'session-run.mjs': ['setSessionRun'], // personaSnapshot: a model or effort set for the session
   'side-threads.mjs': ['recordAgentMessage'], // agentMessages: the last messages between two agents
   'thread-summary.mjs': ['threadCatchUp', 'reactionLines'], // seenIn and reactionsTold: catch-up markers per thread
+};
+
+/**
+ * The writes whose condition still reads a published session, each a follow-up of the same class: behind a held
+ * commit, the read decides on a session that misses what is held.
+ */
+const DECIDED_PUBLISHED = {
+  'permission-cards.mjs': ['resolveDenial'], // allowOnce, also built from the published session (FROM_PUBLISHED)
+  'remote/turns-shared.mjs': ['updateRemote'], // remoteTurn, the same
+  // seenItem: the sessions whose catch-up marker was the moved item; heldSteps: whether a kept job is still running,
+  // read after endJob's own held write of jobs
+  'runtime.mjs': ['bringForward', 'endJob'],
 };
 
 /** A published read of a session: `rt.s.sessions[id]`, `state.sessions`, `rt.session(id)`. */
@@ -179,6 +196,63 @@ test('the guard finds a session field built from a published read, directly or t
     'extra-10.mjs',
     'extra-11.mjs',
   ]);
+});
+
+/** A published read of one session or of a thread's: what a deciding read reads. */
+const PUBLISHED_READ = new RegExp(`${PUBLISHED_SESSION.source}|\\b(?:rt|this)\\.sessionsIn\\(`);
+/** A session write: updateSession, a put, or a raw session emit. */
+const ANY_WRITE = /\bupdateSession\(|\bputSession\(|\bemit\(\s*['"`]session/;
+
+/** file → the function of each session write whose condition reads a published session. @param {string[]} [extra] */
+function decidedByPublished(extra = []) {
+  /** @type {Record<string, string[]>} */
+  const out = {};
+  for (const [path, text] of withProbes(extra)) {
+    const lines = text.split('\n');
+    const getters = [...text.matchAll(GETTER)].filter((m) => PUBLISHED_READ.test(m[2])).map((m) => String.raw`${m[1]}\(\)`);
+    lines.forEach((line, i) => {
+      const at = line.search(ANY_WRITE);
+      if (at < 0 || /^\s*(\/\/|\*)/.test(line)) return;
+      let decl = i;
+      while (decl > 0 && !DECL.test(lines[decl])) decl--;
+      const body = lines.slice(decl, i + 1).join('\n');
+      // Bound from a published read, or from a getter of one, but not from a pending one (`pending.session(id) ?? …`).
+      const bound = [...body.matchAll(BIND)].filter(
+        (m) => (PUBLISHED_READ.test(m[2]) || getters.some((g) => new RegExp(g).test(m[2]))) && !/\bpending\./.test(m[2]),
+      );
+      const walked = [...body.matchAll(/\bfor\s*\(\s*(?:const|let)\s+(\w+)\s+of\s+([^\n]*)/g)].filter((m) => PUBLISHED_READ.test(m[2]));
+      const names = [...bound, ...walked].map((m) => String.raw`${m[1]}\b`);
+      const root = new RegExp(String.raw`(?<![\w$.])(?:${[...names, ...getters].join('|') || '(?!)'})|\.s\.sessions\[`);
+      const before = line.slice(0, at);
+      const above = /^\s*(?:\}\s*)?(?:else\s+)?if\s*\(.*\)\s*\{?\s*$/.test(lines[i - 1] ?? '') ? lines[i - 1] : '';
+      const cond = `${before.match(/\b(?:if|while)\s*\((.*)$/)?.[1] ?? ''} ${before.match(/^(.*)(?:&&|\?)[^&?]*$/)?.[1] ?? ''} ${above}`;
+      if (root.test(cond)) {
+        const m = lines[decl].match(DECL);
+        (out[path] ??= []).push(m ? (m[1] ?? m[2] ?? m[3]) : '(top)');
+      }
+    });
+  }
+  return out;
+}
+
+test('every session write in server/ that a published session read decides is placed', () => {
+  assert.deepEqual(decidedByPublished(), DECIDED_PUBLISHED, 'read the session that decides the write pending: store.pending.session, or pendingSessionsIn');
+});
+
+test('the guard finds a write a published read decides, on its line, the line above, or the loop it is in, and not a pending one', () => {
+  const probes = [
+    // turnExited's published read, and view's loop over the published sessions, as they were: found.
+    "export function zz1(rt, id) {\n  const se = rt.s.sessions[id];\n  if (se.state === 'stopping')\n    rt.updateSession(id, { state: 'idle' });\n}",
+    'export function zz2(rt, t) {\n  for (const se of rt.sessionsIn(t)) if (se.unread) rt.updateSession(se.id, { unread: 0 });\n}',
+    'export function zz3(rt, id) { if (rt.s.sessions[id]?.sideTurn) rt.updateSession(id, { sideTurn: null }); }',
+    "export function zz4(rt, id) {\n  const se = () => rt.s.sessions[id];\n  se().unread && rt.store.emit('session.patch', { id, unread: 0 });\n}",
+    // Read pending, or a published read that doesn't decide the write: not found.
+    "export function zz5(rt, id) {\n  const se = rt.store.pending.session(id) ?? rt.s.sessions[id];\n  if (se.state === 'stopping') rt.updateSession(id, { state: 'idle' });\n}",
+    'export function zz6(rt, t) {\n  for (const se of pendingSessionsIn(rt, t)) if (se.unread) rt.updateSession(se.id, { unread: 0 });\n}',
+    'export function zz7(rt, id, on) {\n  const se = rt.s.sessions[id];\n  if (on) rt.updateSession(id, { currentStep: se.handle });\n}',
+  ];
+  const found = Object.keys(decidedByPublished(probes)).filter((k) => k.startsWith('extra-'));
+  assert.deepEqual(found, ['extra-0.mjs', 'extra-1.mjs', 'extra-2.mjs', 'extra-3.mjs']);
 });
 
 test('every session write in server/ is placed, by file and function, and a raw one is found', () => {

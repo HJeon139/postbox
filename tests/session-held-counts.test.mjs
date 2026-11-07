@@ -74,3 +74,14 @@ test('an urgent note itself held behind a commit is given on the next tool resul
   assert.deepEqual(f.store.state.sessions[f.alpha.id].context, []);
   await f.store.close();
 });
+
+test('viewing a conversation behind a held commit clears the unread its agent’s turn counted behind it, as the thread’s', async () => {
+  const f = await heldRoom();
+  const release = await f.hold();
+  f.rt.deliver(f.alpha.id, { kind: 'user', text: 'First.' });
+  await settle(f.rt);
+  f.rt.view(f.t.id);
+  await release();
+  assert.deepEqual([f.store.state.sessions[f.alpha.id].unread, f.store.state.threads[f.t.id].unread ?? 0], [0, 0]);
+  await f.store.close();
+});
