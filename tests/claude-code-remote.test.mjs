@@ -211,6 +211,8 @@ test('Claude Code says how it runs on a remote host; the Agent SDK and the mock 
       env: ['CLAUDE_CODE_RESUME_INTERRUPTED_TURN'],
       server: 'mcp-config',
       work: 'events',
+      // After its result, a wait on a background task lists it, and prints nothing else (#847).
+      backgroundTasks: 'background_tasks_changed',
       signInError: { type: 'result', is_error: true, error: 'authentication_failed' },
     },
   });

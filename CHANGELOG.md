@@ -2,6 +2,64 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.36.2 (2026-11-07)
+
+### Fixes
+
+- **remote:** only a result holds off the stall stop, and each task keeps its own 2 h (#847)
+- **remote:** a listed background task holds off the stall stop for up to 2 h (#847)
+- **permissions:** name PermissionRequest hooks in the panel, with each hook's event
+- **permissions:** hide credentials in hook matchers, as in their commands
+
+## 1.36.1 (2026-11-07)
+
+### Fixes
+
+- **server:** refuse a topic-thread send to an unavailable agent before it joins
+- **server:** refuse requests about an unregistered backend with a 422
+- **server:** fail a turn for an unregistered backend with a reason and Retry
+
+## 1.36.0 (2026-11-07)
+
+### Features
+
+- **state:** apply turn.archive, a public event nothing emits yet
+- **uat:** the failed-reply-dismissed trigger (#883)
+- **threads:** Dismiss a failed reply without running it again (#883)
+
+### Fixes
+
+- **threads:** after Dismiss, focus stays on the control that's left (#883)
+
+## 1.35.6 (2026-11-07)
+
+### Fixes
+
+- **assets:** a rename of a deleted asset is refused, and says to restore it first
+- **state:** the asset handlers check their payload before changing anything
+- **assets:** a rename or delete retried without an op is a repeat, and another agent's is stale
+
+## 1.35.5 (2026-11-07)
+
+### Fixes
+
+- **thread:** a redraw of the conversation keeps focus and the caret where you were typing
+- **blocks:** an update that changes nothing the person sees leaves a waiting block as it was
+
+## 1.35.4 (2026-11-07)
+
+### Fixes
+
+- **tests:** flag a bare account key before "=" only where toml puts a key
+- **tests:** clear the recording person's plugins and own skills from two claude code inits
+- **tests:** the commit scan checks the name of every path a commit adds, copies or renames
+- **tests:** the commit scan masks a private file name in every finding in that file
+- **tests:** the privacy checks print a finding's kind, file and line, never what they found
+- **tests:** the tree test and the commit scan check the names of the files they read
+- **tests:** the privacy check flags bearer tokens, uid fields and bare or toml account fields
+- **tests:** clear recorded inits' connectors and plugins, and flag a connector a person named
+- **tests:** clear the recorded codex resume turn's account metadata and drop its privacy exemption
+
 ## 1.35.3 (2026-11-07)
 
 ### Fixes

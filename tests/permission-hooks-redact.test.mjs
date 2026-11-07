@@ -61,3 +61,17 @@ test('#817: a command with no credential in it is listed exactly as written', as
   const cmd = 'NODE_ENV=production npm test -- --reporter dot && echo "done: $?"';
   assert.equal(await shownText(cmd), cmd);
 });
+
+test('#871: a credential in a hook’s matcher is hidden too, as in its command, and the rest of the matcher stays', async () => {
+  const file = join(tempDir('pb-hooks-redact-'), 'settings.json');
+  const matcher = 'Bash|mcp__api__.*|api_key=sk-9|Bearer abc.def';
+  await writeFile(file, JSON.stringify({ hooks: { PreToolUse: [{ matcher, hooks: [{ type: 'command', command: 'audit' }] }] } }));
+  assert.equal((await readHookFile(file)).hooks[0].matcher, 'Bash|mcp__api__.*|api_key=…|Bearer …');
+});
+
+test('#871: a matcher with no credential in it, or a tool name with key or token in it, is listed exactly as written', async () => {
+  const file = join(tempDir('pb-hooks-redact-'), 'settings.json');
+  const matcher = 'mcp__keys__get_token|Write|Edit';
+  await writeFile(file, JSON.stringify({ hooks: { PreToolUse: [{ matcher, hooks: [{ type: 'command', command: 'audit' }] }] } }));
+  assert.equal((await readHookFile(file)).hooks[0].matcher, matcher);
+});

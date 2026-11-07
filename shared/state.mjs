@@ -2,6 +2,7 @@
 // event { seq, type, data }; applying the same events in order gives the same state on both sides.
 
 import { itemOf, noteReplaced, positionOf } from './item-index.mjs';
+import { applyTurnArchive } from './state-archive.mjs';
 import { ASSET_EVENTS, ownAssetRooms } from './state-assets.mjs';
 import { putHost, putHostStatus } from './state-hosts.mjs';
 
@@ -153,6 +154,8 @@ export const EVENTS = Object.freeze({
   'item.text': { apply: (s, d) => withItem(s, d, (it) => (it.text = (it.text ?? '') + d.text)), public: true },
   'work.add': { apply: (s, d) => ((s.work ??= map())[d.convId] ??= []).push(d.entry), public: true },
   'work.patch': { apply: patchWork, public: true },
+  // An old turn’s summary in place of its entries, and its replies’ step counts (#305, shared/state-archive.mjs).
+  'turn.archive': { apply: applyTurnArchive, public: true },
   remove: { apply: removeEntity, public: true },
   // Transient: shown as a toast, nothing to store.
   notify: { apply: () => {}, public: true },

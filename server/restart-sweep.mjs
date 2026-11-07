@@ -11,7 +11,8 @@ import { nextNeed, RANK, stateFor } from './card-needs.mjs';
 function stillWaits(rt, se, need) {
   const card = cardOf(rt, se, need);
   if (!card) return false;
-  if (need.kind === 'failed') return card.status === 'failed';
+  // A failed reply the person dismissed (#883) waits for nothing, as needOf says.
+  if (need.kind === 'failed') return card.status === 'failed' && !card.dismissed;
   if (need.kind === 'permission') return card.status === 'open' && rt.remote.keepsCard(card);
   if (need.kind === 'block') return card.valid && ASKING.has(card.block?.type) && !card.answered;
   return card.status === 'open';

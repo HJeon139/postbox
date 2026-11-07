@@ -2,7 +2,7 @@
 // (persona.remote = { hostId }). Which backends run here, which can run on a host, and the checks a persona’s
 // placement passes when it’s made or changed. The runtime (server/runtime.mjs) calls these with itself first.
 
-import { httpError } from '../helpers.mjs';
+import { clipText, httpError } from '../helpers.mjs';
 
 /** A harness’s name for the person, and the host setting that names its path (shared/remote-settings.mjs). */
 const HARNESS_LABELS = /** @type {Record<string, [string, string]>} */ ({
@@ -28,7 +28,7 @@ export function runsHere(rt, backend) {
 
 /** Why a backend can’t run on this computer, and what can. @param {any} rt @param {string} backend */
 export function notHere(rt, backend) {
-  const elsewhere = rt.adapters.names().includes(backend) && rt.adapters.get(backend).capabilities?.remote;
+  const elsewhere = registeredAdapter(rt, { backend })?.capabilities?.remote;
   return `“${backend}” isn’t available on this computer. Available: ${localBackends(rt).join(', ')}.${elsewhere ? ' It can run on one of your hosts: choose one for this agent.' : ''} See README, “Run real agents”.`;
 }
 
@@ -82,6 +82,63 @@ export function refuseHere(rt, se, persona) {
   if (runsHere(rt, persona?.backend ?? 'mock')) return;
   const text = `@${se.handle}’s turn didn’t start: ${notHere(rt, persona?.backend ?? 'mock')}`;
   throw Object.assign(new Error(text), { userMessage: text });
+}
+
+/** The backend a persona’s turn runs on. @param {any} persona @returns {string} */
+const backendOf = (persona) => persona?.backend ?? 'mock';
+
+/**
+ * A name from the data, for the person (#874): control and format characters stripped, at most 40 characters.
+ * @param {unknown} s
+ */
+const clipName = (s) => clipText(String(s).replace(/[\p{Cc}\p{Cf}]/gu, ''), 40);
+
+/**
+ * Why an agent whose backend isn’t registered in this Postbox (#874: `POSTBOX_BACKENDS=mock`, `--demo`, the Agent SDK
+ * or agy missing, or a name this version doesn’t know) can’t run, for its turn or for a request about it. A backend
+ * Postbox knows goes by its harness’s label; any other by its name, in quotes.
+ * @param {string} handle @param {string} backend @param {{ turn: boolean }} o
+ */
+function unregisteredReason(handle, backend, { turn }) {
+  const name = Object.hasOwn(HARNESS_LABELS, backend) ? HARNESS_LABELS[backend][0] : `“${clipName(backend)}”`;
+  const unavailable = `${name} isn’t available on this computer. Install it and restart Postbox, or change this agent’s backend.`;
+  return turn ? `@${clipName(handle)}’s turn didn’t start: ${unavailable}` : `@${clipName(handle)}’s ${unavailable}`;
+}
+
+/** A persona’s adapter, or null when its backend isn’t registered (#874). @param {any} rt @param {any} persona */
+export function registeredAdapter(rt, persona) {
+  return rt.adapters.names().includes(backendOf(persona)) ? rt.adapters.get(backendOf(persona)) : null;
+}
+
+/**
+ * A persona’s adapter for a request about it, such as its permissions panel or a `!` command’s folder (#874): refused
+ * with a 422 and the reason when its backend isn’t registered, where the registry would give a 500.
+ * @param {any} rt @param {string} handle @param {any} persona
+ */
+export function requestAdapter(rt, handle, persona) {
+  const adapter = registeredAdapter(rt, persona);
+  if (!adapter) throw httpError(422, unregisteredReason(handle, backendOf(persona), { turn: false }));
+  return adapter;
+}
+
+/**
+ * Fails a turn whose backend isn’t registered, as refuseHere does (#874): the turn ends with a failed reply and
+ * Retry. Its error has no `code`, so a scheduled wake it ran for ends rather than waiting for the network.
+ * @param {any} se @param {any} persona
+ */
+export function refuseUnregistered(se, persona) {
+  const text = unregisteredReason(se.handle, backendOf(persona), { turn: true });
+  throw Object.assign(new Error(text), { userMessage: text });
+}
+
+/**
+ * Refuses a message you send, before anything is posted (#874), when an agent it would wake has a backend that isn’t
+ * registered: its turn couldn’t start.
+ * @param {any} rt @param {any[]} personas
+ */
+export function refuseUnregisteredSend(rt, personas) {
+  const p = personas.find((x) => !registeredAdapter(rt, x));
+  if (p) throw httpError(422, unregisteredReason(p.handle, backendOf(p), { turn: true }));
 }
 
 /**

@@ -5,6 +5,7 @@
 import { ASKING } from '../shared/catalog.mjs';
 import { clip } from '../shared/text.mjs';
 import { APP_SEND_LIMIT } from './app-send-limits.mjs';
+import { httpError } from './helpers.mjs';
 
 /** The threads whose cards are the agent's: its own, and the side and topic threads off it. */
 const threadsOf = (rt, se) => [
@@ -31,8 +32,9 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
   if (it.kind === 'permission' && it.sessionId === se.id && it.status === 'open' && rt.permissionWaits.has(it.id))
     return { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}`, ...where };
   if (it.sessionId !== se.id || (!turnIds.includes(it.turnId) && it.id !== keep)) return null;
-  // A failed reply waits for its Retry while you haven't moved past its turn, so a wake's release finds it again.
-  if (it.kind === 'agent' && it.status === 'failed') {
+  // A failed reply waits for its Retry while you haven't moved past its turn, so a wake's release finds it again;
+  // one the person dismissed (#883) doesn't.
+  if (it.kind === 'agent' && it.status === 'failed' && !it.dismissed) {
     const text = it.error ?? `@${se.handle}’s turn failed.`;
     return { kind: 'failed', itemId: it.id, text, ...where };
   }
@@ -197,4 +199,21 @@ function comesFirst(need, at, best) {
   if (rank !== bestRank) return rank < bestRank;
   const sameRankNewer = at >= best.at;
   return sameRankNewer;
+}
+
+/**
+ * Dismiss a failed reply (#883): the person won't retry it, so it stops being a need, keeps its error text and its
+ * `failed` status (Retry still works on it), and nothing runs. Its need goes to whatever else waits, as when a card is
+ * answered: the failed turn's own asks count, since no new turn starts to decide them, unlike Retry. A second Dismiss,
+ * from a double click or another tab, changes nothing.
+ * @param {any} rt @param {string} threadId @param {string} itemId
+ */
+export function dismissFailed(rt, threadId, itemId) {
+  const it = rt.store.item(threadId, itemId);
+  if (it?.kind === 'agent' && it.status === 'retried') throw httpError(409, 'It was already retried; reload to see it.');
+  if (it?.kind !== 'agent' || it.status !== 'failed') throw httpError(409, 'Only a failed reply can be dismissed.');
+  if (it.dismissed) return { ok: true };
+  rt.patchItem(threadId, itemId, { dismissed: true });
+  releaseNeed(rt, rt.s.sessions[it.sessionId], itemId);
+  return { ok: true };
 }
