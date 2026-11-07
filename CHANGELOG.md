@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.36.1 (2026-11-07)
+
+### Fixes
+
+- **server:** refuse a topic-thread send to an unavailable agent before it joins
+- **server:** refuse requests about an unregistered backend with a 422
+- **server:** fail a turn for an unregistered backend with a reason and Retry
+
 ## 1.36.0 (2026-11-07)
 
 ### Features
