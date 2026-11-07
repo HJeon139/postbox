@@ -57,8 +57,9 @@ async function open(page, thread) {
   await page.evaluate((id) => {
     location.hash = `#/t/${id}`;
   }, thread.id);
-  const items = app.store.items(thread.id).length;
-  await expect(page.locator(`.transcript[data-thread="${thread.id}"] > [data-key]`)).toHaveCount(items, { timeout: 30_000 });
+  // The store’s count is read each poll: a comment wakes its review’s author, whose reply can land meanwhile.
+  const drawn = page.locator(`.transcript[data-thread="${thread.id}"] > [data-key]`);
+  await expect.poll(async () => (await drawn.count()) === app.store.items(thread.id).length, { message: 'every item drawn', timeout: 30_000 }).toBe(true);
 }
 
 /** The live DOM nodes, after two forced garbage collections. */
@@ -99,3 +100,34 @@ for (const [what, diagrams, review] of /** @type {const} */ ([
     const growth = /** @type {number} */ (atLong.at(-1)) - /** @type {number} */ (atLong[1]);
     expect(growth, `live nodes, visit by visit: ${atLong.join(', ')}`).toBeLessThan(atLong[0] * 0.1);
   });
+
+// From a room to the project’s Threads page (#945): the page let the room’s column go only once another room was
+// drawn (main.mjs, `conversation`), so the Threads page kept the whole long room alive.
+test('#866 the Threads page keeps no copy of the long room you came from', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the node count comes from Chromium’s DevTools protocol');
+  test.setTimeout(120_000);
+  const { long, short } = rooms();
+  const projectId = /** @type {any} */ (Object.values(app.store.state.projects)[0]).id;
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${app.origin}/#/t/${short.id}`);
+  await synced(page, app);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('HeapProfiler.enable');
+  const threadsAfter = async (room) => {
+    await open(page, room);
+    const atRoom = await liveNodes(cdp);
+    await page.evaluate((id) => {
+      location.hash = `#/p/${id}/threads`;
+    }, projectId);
+    await expect(page.locator('#root .main')).toBeVisible();
+    await expect(page.locator('.transcript')).toHaveCount(0);
+    return { atRoom, atThreads: await liveNodes(cdp) };
+  };
+  const fromShort = await threadsAfter(short);
+  const fromLong = await threadsAfter(long);
+  test.info().annotations.push({ type: 'measured', description: JSON.stringify({ fromShort, fromLong }) });
+  // Kept, the Threads page after the long room holds about that room’s nodes more than after the short one.
+  expect(fromLong.atThreads - fromShort.atThreads, `live nodes at Threads: ${JSON.stringify({ fromShort, fromLong })}`).toBeLessThan(
+    (fromLong.atRoom - fromShort.atRoom) * 0.1,
+  );
+});
