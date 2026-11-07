@@ -243,7 +243,7 @@ function newView({ el, inPanel, nodes, was }) {
     inPanel,
     nodes,
     unseen: was?.unseen ?? 0,
-    stuck: ((window.__vlog ||= []).push(['new', inPanel, !!was]), !was),
+    stuck: !was,
     anchor: was?.anchor ?? null,
     dead: false,
     shown: -1,
