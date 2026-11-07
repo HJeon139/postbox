@@ -1,5 +1,5 @@
-// Search the open conversation (#866, W4; the person’s choice of 6 Nov): the top bar’s Search button, or ⌘⇧F
-// (Ctrl+Shift+F elsewhere), opens it. ⌘F stays the browser’s own find. It finds an item by the words it shows
+// Search the open conversation (#866, W4; the person’s choice of 7 Nov): the top bar’s Search button opens it, and
+// there’s no key for it. ⌘F stays the browser’s own find, and ⌘K the palette. It finds an item by the words it shows
 // (shared/search-text.mjs), best first by BM25, and Enter or a click jumps to it as Needs you does (focusItem), which
 // draws it if the page hasn’t. A query runs at most once a frame while you type.
 
@@ -13,9 +13,6 @@ import { openDialog, route } from './ui.mjs';
 
 const HITS = 20;
 const SNIPPET = 160;
-
-/** Whether this key press is the search shortcut. @param {KeyboardEvent} e */
-export const isSearchKey = (e) => (e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f';
 
 /**
  * The part of an item’s text around its first matched word, with each matched word marked. Built from text nodes, so
@@ -48,17 +45,7 @@ function speaker(it) {
 /** The top bar’s Search button, for a conversation (null elsewhere): it finds messages the page hasn’t drawn, which ⌘F can’t. @param {any} t */
 export const searchButton = (t) =>
   t
-    ? h(
-        'button.btn.icon.sm.ghost',
-        {
-          type: 'button',
-          id: 'search-button',
-          'aria-label': 'Search this conversation',
-          'aria-keyshortcuts': 'Meta+Shift+F Control+Shift+F',
-          onclick: openSearch,
-        },
-        icon('search'),
-      )
+    ? h('button.btn.icon.sm.ghost', { type: 'button', id: 'search-button', 'aria-label': 'Search this conversation', onclick: openSearch }, icon('search'))
     : null;
 
 /** One hit in the list. @param {string} threadId @param {{ id: string, terms: string[] }} hit @param {boolean} chosen @param {number} i @param {(id: string) => void} go */
@@ -76,6 +63,12 @@ function found(q, n) {
   if (!q) return '';
   if (!n) return 'Nothing found';
   return n === HITS ? `Top ${n} found` : `${n} found`;
+}
+
+/** A conversation’s top bar with its Search button, first among its actions. @param {HTMLElement} bar @param {any} t */
+export function withSearch(bar, t) {
+  bar.querySelector('.top-actions')?.prepend(searchButton(t) ?? '');
+  return bar;
 }
 
 /** Opens search for the conversation on screen; again while open, goes back to its field. */

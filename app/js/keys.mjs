@@ -1,9 +1,7 @@
-// Keyboard shortcuts: ⌃J to the next that needs you, ⌘\ for the sidebar, ⌘K for the palette, ⌘⇧F to search the
-// conversation (⌘F stays the browser’s find), and Alt+↑/↓ and Alt+End to move through turns and blocks and back to the
-// composer.
+// Keyboard shortcuts: ⌃J to the next that needs you, ⌘\ for the sidebar, ⌘K for the palette, and Alt+↑/↓ and
+// Alt+End to move through turns and blocks and back to the composer.
 
 import { nextNeedsYou } from './needs-nav.mjs';
-import { isSearchKey, openSearch } from './search-dialog.mjs';
 import { openPalette } from './sheets.mjs';
 import { toggleRail } from './shell.mjs';
 import { focusComposer } from './thread.mjs';
@@ -19,11 +17,6 @@ document.addEventListener('keydown', (e) => {
   if (mod && e.key === '\\') {
     e.preventDefault();
     toggleRail();
-    return;
-  }
-  if (isSearchKey(e)) {
-    e.preventDefault();
-    openSearch();
     return;
   }
   if (mod && e.key.toLowerCase() === 'k') {

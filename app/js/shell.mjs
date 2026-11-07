@@ -15,7 +15,6 @@ import { railHidden, railShown, toggleRail } from './rail-collapse.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
 import './store-line.mjs';
-import { searchButton } from './search-dialog.mjs';
 import { recordingBadge, telemetryItems } from './telemetry.mjs';
 import { closeWork, navigate, openMenu, openWork, route, toast, undoToast } from './ui.mjs';
 
@@ -104,8 +103,8 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
     h(
       'div.top-actions',
       demoNote(),
-      searchButton(t),
-      // Work in the right pane (#132), opened and closed here, the first of its side views’ buttons; it says Work by its icon, as Jump to does (#183).
+      // The conversation’s Work in the right pane (#132), opened and closed here: the first of its side views’ buttons.
+      // It says Work in words beside its icon, as Jump to does (#183).
       t
         ? h(
             'button.btn.sm',
