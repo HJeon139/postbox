@@ -22,6 +22,18 @@ export { attachmentPaths } from './remote-turn.mjs';
  */
 export const CODEX_REMOTE = Object.freeze({ stdin: 'held', env: Object.freeze([]), server: 'codex-config', work: 'model-checks', signInError: null });
 
+// Codex always reads your own Codex configuration and MCP servers: there’s no Isolated mode (isolation: false). On a
+// remote host (#120), it runs as CODEX_REMOTE says (above).
+export const CODEX_CAPABILITIES = Object.freeze({
+  resume: true,
+  fork: true,
+  permissions: 'none',
+  tools: 'none',
+  isolation: false,
+  promptTool: false,
+  remote: CODEX_REMOTE,
+});
+
 /**
  * For a turn on a host (#120): Postbox’s server is the stdio shim there, `command` with `args`, never the laptop’s URL.
  * The values are TOML: “The `value` portion is parsed as TOML” (codex-rs/utils/cli/src/config_override.rs, `-c`’s

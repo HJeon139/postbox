@@ -54,7 +54,8 @@ import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
 import { agentSkillFiles } from './agent-plugin.mjs';
-import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_PROMPTS, HOOK_SCRIPT } from './agy-hook.mjs';
+import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
+import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyPlugin, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
 import { clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
@@ -66,9 +67,6 @@ import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 import { agyResult } from './work-calls.mjs';
-
-/** What this backend can do, for the runtime and the UI (#117, #370). The adapter adds the models it found. */
-export const AGY_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false, ...HOOK_PROMPTS });
 
 /** The agy binary: POSTBOX_AGY_BIN, then the PATH. */
 export const findAgy = (env = process.env) => env.POSTBOX_AGY_BIN || 'agy';
@@ -136,7 +134,7 @@ export function modelIds(text) {
   return [...new Set(ids)].slice(0, 60);
 }
 
-export { AGY_DEFAULT_MODEL };
+export { AGY_CAPABILITIES, AGY_DEFAULT_MODEL };
 
 /**
  * The model to pass. A persona that names none gets Postbox’s default, Claude’s, which agy doesn’t offer: that
