@@ -240,3 +240,12 @@ test('with origins: “later”, an image’s scheme is checked and its origin i
   ok(image('https://www.gutenberg.org/x.png'), { imageOrigins: ['https://www.gutenberg.org'] });
   bad(image('https://www.gutenberg.org/x.png'), /allowed origin \(none configured\)/);
 });
+
+test('#455 the shape error’s example is itself a valid option: an empty first string isn’t its label', () => {
+  const form = { id: 'f', type: 'form', version: 1, fallback: 'x', fields: [{ id: 's', label: 'Size', kind: 'select', options: ['', 'Large'] }] };
+  const v = validateBlock(form);
+  assert.equal(v.ok, false);
+  assert.match(v.errors.join(' '), /like \{ "id": "large", "label": "Large" \}/);
+  const blank = validateBlock({ ...form, fields: [{ ...form.fields[0], options: ['', ' '] }] });
+  assert.match(blank.errors.join(' '), /like \{ "id": "one", "label": "One" \}/);
+});

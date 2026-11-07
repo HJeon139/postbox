@@ -46,13 +46,16 @@ const LANG = /^[A-Za-z0-9_+#.-]{1,32}$/;
 
 // An option may say more under its label (#838): agents gave options a description, and the whole block was refused.
 const option = () => obj({ id: id(), label: str({ min: 1, max: 120 }), description: str({ min: 1, max: LIMITS.optionDescription }) }, ['id', 'label']);
+/** Whether every option is a string: a non-empty list of nothing but strings. @param {unknown} v */
+const allStrings = (v) => Array.isArray(v) && v.length > 0 && v.every((o) => typeof o === 'string');
 /**
  * A choice’s or a select’s options. Options that are all strings, an easy guess, get one error that shows an option’s
  * shape, from the first, rather than one for each (#455). @param {number} max @returns {import('./schema.mjs').Rule}
  */
 const options = (max) => (v, path, errs) => {
-  if (!Array.isArray(v) || !v.length || !v.every((o) => typeof o === 'string')) return list(option(), { min: 1, max, unique: 'id' })(v, path, errs);
-  const label = v[0].slice(0, 40);
+  if (!allStrings(v)) return list(option(), { min: 1, max, unique: 'id' })(v, path, errs);
+  // The example has to be a valid option itself: an empty string can’t be its label.
+  const label = (v.find((o) => o.trim() !== '') ?? 'One').slice(0, 40);
   const slug = label
     .toLowerCase()
     .replace(/[^a-z0-9_.:-]+/g, '-')
