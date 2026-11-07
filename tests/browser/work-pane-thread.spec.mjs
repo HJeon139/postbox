@@ -184,6 +184,29 @@ async function threadFollows(page) {
   expect(await place(page)).toEqual({ gap: 0, mode: 'following' });
 }
 
+/**
+ * #837’s guard holds a place you scrolled to, not one the view guessed. The transcript shrinking and growing back in
+ * one frame moves the view up before its scroll event arrives, which reads as your scroll (#341), so the view stops
+ * following. The box growing next clamps it back to the end, and that follows again, as it did before #837’s guard.
+ */
+async function threadGuessedThenClamped(page, { width, height }) {
+  await open(page, `/side/${topic}?work`);
+  const body = page.locator(`${THREAD} .sp-body`);
+  await settled(page);
+  expect((await place(page)).mode, 'opened at the end').toBe('following');
+  await body.evaluate((box) => {
+    const last = /** @type {HTMLElement} */ ([...box.querySelectorAll('.transcript > [data-key]')].at(-1));
+    const was = last.getBoundingClientRect().height;
+    last.style.height = `${Math.max(0, was - 40)}px`;
+    void box.scrollTop; // the layout that clamps the view, before the transcript grows back
+    last.style.height = `${was + 20}px`;
+  });
+  await settled(page);
+  await page.setViewportSize({ width, height: height + 100 });
+  await settled(page);
+  expect(await place(page), 'the box grew, and the clamp to the end follows it').toEqual({ gap: 0, mode: 'following' });
+}
+
 /** a reply streams into the thread full screen and stays when it comes back; the icon and a reload restore it */
 async function threadStreams(page) {
   // The mock’s reply can take most of 30 s on a busy computer.
@@ -239,6 +262,7 @@ const CASES = [
   ['read a little way up from the end, full screen and back keeps the place (#837)', threadNearEnd],
   ['following the end, full screen and back still follows it (#837)', threadFollows],
   ['after the window grows, one wheel to the end follows it (#837)', threadEndAfterGrow],
+  ['a stop of following the view guessed, then the box growing to the end, follows it again (#837)', threadGuessedThenClamped],
   [
     'read a little way up, the clamp’s scroll event late, full screen and back keeps the place (#837)',
     (page, size) => threadNearEnd(page, size, { lateScroll: true }),
