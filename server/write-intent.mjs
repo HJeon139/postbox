@@ -69,15 +69,7 @@ const norm = (s) =>
     .replace(/[“”]/g, '"')
     .replace(/\s+/g, ' ')
     .trim();
-/** Single spaces, for comparing commands as written. */
-const squash = (s) =>
-  String(s ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
 const wordsOf = (s) => norm(s).match(/[\p{L}\p{N}][\p{L}\p{N}'._/#-]*/gu) ?? [];
-
-/** The code in a confirm’s statement: each fenced block and each `inline` span, as written. */
-const codeIn = (statement) => [...String(statement ?? '').matchAll(/```[^\n]*\n([\s\S]*?)```|`([^`\n]+)`/g)].map((m) => m[1] ?? m[2]);
 
 /**
  * What the person asked for in this turn: the messages they typed that started it, and the confirm they confirmed, at
@@ -224,17 +216,14 @@ export async function requestedCall(rt, sessionId, { tool, input, agentId }) {
   if (!isWriteCall(tool, input) || String(tool).startsWith('mcp__postbox__')) return null;
   const request = requestOf(rt, turn);
   if (!request || !stillOpen(rt, request.threadId, turn) || (await personAsks(rt, sessionId, { tool, input }))) return null;
-  const command = tool === 'Bash' ? squash(input?.command) : null;
-  const shown = command ? request.confirmed.find((c) => codeIn(c.statement).some((code) => squash(code) === command)) : null;
-  // What the floor reads as named: what the person typed, and a confirm’s statement only when it shows this exact
-  // command. Another confirm’s words are the agent’s, and widen nothing.
-  const named = norm([...request.said, ...(shown ? [shown.statement] : [])].join('\n'));
+  // What the floor reads as named: only what the person typed. A confirm’s statement is the agent’s words, and since
+  // #852 a command in it grants nothing (the person retired #296’s confirm path): only a confirm’s commands field does.
+  const named = norm(request.said.join('\n'));
   const { folder, project } = await rt.panelTarget({ sessionId });
   const asPush = tool === 'Bash' ? pushOf(input?.command) : null;
   // rt.pushes replaces the push’s reading and running in unit tests, which start no processes.
   const push = asPush ? await (rt.pushes ?? PUSHES).consequence({ folder, url: project?.pushUrl, push: asPush, named }) : null;
   if (asPush ? !push : offRequest(tool, input, { named, made: madeBy(rt, turn, request.threadId), folder })) return null;
-  if (shown) return { threadId: request.threadId, how: 'confirmed', label: shown.label, push };
   const [call, words] = push
     ? [`Postbox would make this push for the agent: ${push.sentence}.`, `git push ${push.branch} ${push.url}`]
     : [callText(tool, input), actionWords(tool, input)];
