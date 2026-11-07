@@ -73,12 +73,13 @@ function smoothEnded(v, stoppedByYou) {
     publish(v);
   }
 }
-// While stuck, what comes after the newest message shrinking (a working row going, a card getting shorter once
-// answered, the composer) would shorten the page and pull everything down, under your pointer, just as a card
-// that needs you arrives. Instead the transcript keeps its height, until the next message or a new width.
+// While stuck, what comes after the newest message shrinking (a working row going, a card answered, the composer)
+// would pull everything down under your pointer. So the transcript keeps that room below its newest message (--held,
+// its bottom padding) until the next message or a new width: not its whole height, which skipped items drawn later
+// would leave as a gap (#712a).
 /** @param {View} v */
 function release(v) {
-  if (v.el.style.minHeight) v.el.style.minHeight = '';
+  if (v.el.style.getPropertyValue('--held')) v.el.style.removeProperty('--held');
 }
 // After anything changes size: back to the bottom while stuck, else keep what you were reading in place.
 /** @param {View} v */
@@ -97,7 +98,7 @@ function follow(v) {
     const now = measure(v, s);
     if (now.width !== v.held.width) release(v);
     else if (now.end < v.held.end && Math.abs(now.last - v.held.last) < 1 && v.held.end > s.clientHeight)
-      v.el.style.minHeight = `${v.el.getBoundingClientRect().height + v.held.end - now.end}px`;
+      v.el.style.setProperty('--held', `${(Number.parseFloat(v.el.style.getPropertyValue('--held')) || 0) + v.held.end - now.end}px`);
     // A smooth jump to the end is on its way there: snapping now would end it in one frame (#712a).
     if (!atEnd(s) && !v.smoothing) s.scrollTop = s.scrollHeight;
     v.held = measure(v, s);
