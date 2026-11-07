@@ -46,6 +46,8 @@ function render({ rebuild = false } = {}) {
   for (const m of mounted) m.destroy?.();
   mounted = [];
   pane = null;
+  // Set again only by a room’s view: kept while the project or Threads page shows, it held the room you left (#945).
+  conversation = null;
   if (r.view === 'thread' && !client.state.threads[r.threadId]) {
     navigate('#/');
     return;
