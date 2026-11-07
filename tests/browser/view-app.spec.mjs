@@ -12,6 +12,7 @@ import { AppBrowser } from '../../server/view-app/browser.mjs';
 import { answerIn } from '../../server/view-app/consent.mjs';
 import { viewApp } from '../../server/view-app/view-app.mjs';
 import { viewOf } from '../../server/view-app/view-of.mjs';
+import { SCANS } from '../../tools/uat/doc-query-probe.mjs';
 import { playwrightBrowsers } from '../fixtures/playwright-browsers.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
@@ -115,6 +116,34 @@ async function recorder(page = () => '') {
   const port = /** @type {import('node:net').AddressInfo} */ (server.address()).port;
   return { got, port, close: () => new Promise((ok) => server.close(ok)) };
 }
+
+test('the tab’s report of its window reads the conversation’s width without a query over the whole document', async ({ page }) => {
+  // The report runs every 10 s while a conversation is open, so its cost mustn’t grow with the page (#564-b1).
+  const { rt } = app;
+  const projectId = await project();
+  const t = rt.createThread({ projectId, title: 'Report check', personaIds: [rt.personaByHandle('researcher').id] });
+  await page.setViewportSize({ width: 1000, height: 680 });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  // The conversation beside the rail at 1000 px: 1000 − 248. The app in it is 704, after the transcript’s padding.
+  await expect.poll(() => viewOf(rt).windowNow().column, { timeout: 15_000 }).toBe(752);
+  viewOf(rt).window = null;
+  const queries = await page.evaluate(async (names) => {
+    const seen = [];
+    const real = names.map((name) => [name, Document.prototype[name]]);
+    for (const [name, fn] of real)
+      Document.prototype[name] = function (sel) {
+        if (this === document) seen.push(`${name} ${String(sel).slice(0, 80)}`);
+        return fn.call(this, sel);
+      };
+    // The tab reports at once when it’s shown again (app/js/main.mjs).
+    document.dispatchEvent(new Event('visibilitychange'));
+    for (const [name, fn] of real) Document.prototype[name] = fn;
+    return seen;
+  }, SCANS);
+  expect.soft(queries, 'whole-document queries in one view report').toEqual([]);
+  await expect.poll(() => viewOf(rt).windowNow().column, { timeout: 15_000 }).toBe(752);
+});
 
 test('a capture shows the app with its check’s note, as the person sees it, and the app itself while its check is pending', async ({ page }) => {
   test.setTimeout(60_000);
