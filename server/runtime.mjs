@@ -74,7 +74,19 @@ import { readCapped } from './read-capped.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
-import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere, runsHere } from './remote/placement.mjs';
+import {
+  hereFolder,
+  localBackends,
+  notHere,
+  placedPatch,
+  placement,
+  refuseHere,
+  refuseUnregistered,
+  refuseUnregisteredSend,
+  registeredAdapter,
+  requestAdapter,
+  runsHere,
+} from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
@@ -90,6 +102,7 @@ import {
   settleScheduledWake,
 } from './scheduled-wakes.mjs';
 import { sessionPatch } from './session-patch.mjs';
+import { setSessionRun } from './session-run.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import {
@@ -429,12 +442,16 @@ export class Runtime {
     // @-mention there, or the one you reply to, answers from its one session in the conversation, and the reply shows here.
     // Side threads from before #372 are history: agents talk in the conversation now.
     if (t.kind === 'side') throw httpError(409, 'Side threads are read-only now. Write in the conversation, where the agents talk.');
+    // Refuse before anything is posted or joined: a turn for an agent whose backend isn’t registered couldn’t start (#874).
+    refuseUnregisteredSend(this, mentioned);
     const away = t.kind === 'topic';
     if (away) {
       for (const p of mentioned) targets.push({ se: this.sideSession(t, p.id, 'you') });
       if (!targets.length) {
         // The last speaker’s agent replies, as in a conversation; before anyone has, the agent it started with.
         const p = threadPersona(this, t);
+        // Refused before sideSession, which would join an agent not yet in the conversation (#874).
+        if (p) refuseUnregisteredSend(this, [p]);
         const se = p && this.sideSession(t, p.id, 'you');
         if (!se) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
         targets.push({ se });
@@ -453,6 +470,9 @@ export class Runtime {
       if (!last) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
       targets.push({ se: last });
     }
+    // And the agent you reply to, as the mentioned ones above.
+    const woken = targets.map(({ se }) => this.persona(se.personaId));
+    refuseUnregisteredSend(this, woken);
     // Messages to a busy agent wait in the queue unless you choose Send now.
     const busy = targets.filter(({ se }) => this.turns.has(se.id));
     const q = busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now() } : null;
@@ -576,7 +596,7 @@ export class Runtime {
     // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
     message = turnContext(this, this.s.sessions[sessionId], where, message, slash);
     const persona = this.persona(se.personaId);
-    const adapter = this.adapters.get(persona?.backend ?? 'mock');
+    const adapter = registeredAdapter(this, persona);
     const abort = new AbortController();
     const turn = {
       id: newId('turn'),
@@ -619,7 +639,7 @@ export class Runtime {
     };
     this.turns.set(sessionId, turn);
     // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
-    const hostId = this.remote.hostOf(persona);
+    const hostId = adapter ? this.remote.hostOf(persona) : null;
     if (hostId) this.remote.begin(turn, hostId, adapter);
     // The work ledger (#132) follows the turn’s tool calls. A change outside the project’s folder and the agent’s is
     // flagged; the adapter knows the agent’s folder. A remote agent’s folder is on its host, never made here.
@@ -660,6 +680,7 @@ export class Runtime {
     const ctx = Object.assign(this.turnContext(se, turn), { rawTail: turn.rawTail });
     // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
     const run = Promise.resolve().then(async () => {
+      if (!adapter) refuseUnregistered(se, persona);
       if (!hostId) refuseHere(this, se, persona);
       return adapter.deliver(this.s.sessions[sessionId], hostId ? await this.remote.prepare(turn, ctx, message) : message, ctx);
     });
@@ -1985,39 +2006,9 @@ export class Runtime {
     return { item };
   }
 
-  /**
-   * Changes the model or the effort a conversation runs with (/model, /effort). Both are fixed in the session’s
-   * snapshot, so this changes the snapshot: from the next turn, and now too where the backend can change a running
-   * turn (the Agent SDK’s setModel and its effort setting, tried and reported).
-   * @param {string} sessionId @param {{ model?: string, effort?: string }} change
-   * @returns {Promise<{ ok: true, now: boolean }>}
-   */
-  async setSessionRun(sessionId, { model, effort }) {
-    const se = this.session(sessionId);
-    if (this.persona(se.personaId)?.backend === 'mock') throw httpError(409, 'A mock agent has no model or effort to change.');
-    /** @type {Record<string, string>} */
-    const patch = {};
-    if (model !== undefined) {
-      const m = String(model).trim();
-      if (!m || m.length > 100 || !/^[\w.:[\]-]+$/.test(m)) throw httpError(422, 'A model is a name such as claude-opus-5-5.');
-      patch.model = m;
-    }
-    if (effort !== undefined) {
-      checkEffort(effort);
-      patch.effort = String(effort);
-    }
-    if (!Object.keys(patch).length) throw httpError(422, 'Say which model or effort to use.');
-    this.updateSession(se.id, { personaSnapshot: { ...(se.personaSnapshot ?? {}), ...patch } });
-    const control = this.turns.get(se.id)?.control;
-    let now = false;
-    if (control) {
-      const results = await Promise.all([
-        patch.model && control.setModel ? control.setModel(patch.model) : null,
-        patch.effort && control.setEffort ? control.setEffort(patch.effort) : null,
-      ]);
-      now = results.filter((r) => r !== null).length > 0 && results.every((r) => r !== false);
-    }
-    return { ok: true, now };
+  /** Changes the model or the effort a conversation runs with (/model, /effort): server/session-run.mjs. */
+  setSessionRun(sessionId, change) {
+    return setSessionRun(this, sessionId, change);
   }
 
   /**
@@ -2033,7 +2024,7 @@ export class Runtime {
     const se = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
     const persona = se ? this.personaFor(se) : null;
     const project = this.s.projects[t.projectId] ?? null;
-    const adapter = persona ? this.adapters.get(persona.backend) : null;
+    const adapter = persona ? requestAdapter(this, se.handle, persona) : null;
     if (persona?.remote?.hostId) return hereFolder(this, persona, project, adapter);
     if (adapter?.folderFor) return { folder: await adapter.folderFor(persona, project), host: null };
     return { folder: persona?.folder || project?.folder || null, host: null };
@@ -2409,7 +2400,7 @@ export class Runtime {
    */
   defaultModelFor(backend) {
     if (backend === 'mock') return 'mock';
-    const offered = this.adapters.names().includes(backend) ? this.adapters.get(backend).capabilities?.models : null;
+    const offered = registeredAdapter(this, { backend })?.capabilities?.models ?? null;
     return offered?.includes(AUTO_MODEL) && !offered.includes(DEFAULT_MODEL) ? AUTO_MODEL : DEFAULT_MODEL;
   }
 

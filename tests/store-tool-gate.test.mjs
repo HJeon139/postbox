@@ -69,6 +69,6 @@ test('every tool is classified for the gate: the read set, or the writers; a new
       `${name} is a tool`,
     );
   const unplaced = TOOL_DEFS.map((t) => t.name).filter((n) => !READ_TOOLS.has(n) && !WRITERS.has(n));
-  assert.deepEqual(unplaced, [], 'place each new tool in READ_TOOLS (server/mcp.mjs) if it never writes, else in WRITERS here');
+  assert.deepEqual(unplaced, [], 'place each new tool in READ_TOOLS (server/tool-gate.mjs) if it never writes, else in WRITERS here');
   for (const name of WRITERS) assert.ok(!READ_TOOLS.has(name), `${name} is not both`);
 });

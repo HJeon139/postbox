@@ -7,14 +7,11 @@
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
  *   anchor: { key: string, at: number } | null, dead: boolean, shown: number, lastTop: number,
  *   held: { end: number, last: number, width: number }, jump: ((n: number) => void) | null, bound: any, size: string,
- *   sizes: ResizeObserver, changes: MutationObserver }} View
+ *   sizes: ResizeObserver, changes: MutationObserver, changed?: boolean, noted?: number }} View
  */
+import { onlyRemoves } from './view-changes.mjs';
+import { atEnd, box, findAnchor, gapOf, viewTop } from './view-geometry.mjs';
 
-const box = (/** @type {View} */ v) => (v.inPanel ? v.el.parentElement : document.scrollingElement);
-const viewTop = (/** @type {View} */ v, /** @type {Element} */ s) => (v.inPanel ? s.getBoundingClientRect().top : 0);
-const gapOf = (/** @type {Element} */ s) => s.scrollHeight - s.scrollTop - s.clientHeight;
-// At the bottom, give or take a pixel of rounding.
-const atEnd = (/** @type {Element} */ s) => gapOf(s) <= 2;
 // The pill floats just above the composer. It shows only while the end is further below than that, so what it
 // floats over is never the working rows or the end of the last message (#91).
 const PILL_ROOM = 48;
@@ -22,47 +19,6 @@ const PILL_ROOM = 48;
 function showJump(v, s) {
   const n = s && gapOf(s) > PILL_ROOM ? v.unseen : 0;
   if (n !== v.shown) v.jump?.((v.shown = n));
-}
-// The anchor is the message across the middle of the view, where you read, not the first one in view: that one
-// usually starts above the view, and when a narrower column (the panel, a smaller window) rewraps it, everything
-// under it moves. A wide font rewraps it where macOS’s doesn’t (#88, seen on Linux in #162).
-// It runs on every scroll event, so it halves its way to the middle rather than reading every reply above it: in a
-// room of 1,000 replies, a dozen rects instead of a thousand (#572).
-const keyed = (/** @type {any} */ n) => n instanceof HTMLElement && !!n.dataset.key;
-/** @param {View} v */
-function findAnchor(v) {
-  const s = box(v);
-  if (!s) return null;
-  const top = viewTop(v, s);
-  const mid = top + s.clientHeight / 2;
-  const kids = v.el.children;
-  let lo = 0;
-  let hi = kids.length;
-  while (lo < hi) {
-    const m = (lo + hi) >> 1;
-    if (kids[m].getBoundingClientRect().bottom > mid) hi = m;
-    else lo = m + 1;
-  }
-  // Back to the reply before the first one across the middle (one that takes no room doesn’t count), then on as before.
-  let from = 0;
-  for (let i = lo - 1; i >= 0; i--) {
-    const n = kids[i];
-    if (!keyed(n)) continue;
-    const r = n.getBoundingClientRect();
-    if (!r.height) continue;
-    from = i;
-    if (r.bottom <= mid) break;
-  }
-  let last = null;
-  for (let i = from; i < kids.length; i++) {
-    const n = /** @type {HTMLElement} */ (kids[i]);
-    if (!keyed(n)) continue;
-    const r = n.getBoundingClientRect();
-    if (r.bottom <= top) continue;
-    last = { key: /** @type {string} */ (n.dataset.key), at: r.top - top };
-    if (r.bottom > mid) return last;
-  }
-  return last;
 }
 /** @param {View} v */
 function holdAnchor(v) {
@@ -126,6 +82,7 @@ function release(v) {
 // After anything changes size: back to the bottom while stuck, else keep what you were reading in place.
 /** @param {View} v */
 function follow(v) {
+  noteEnd(v);
   const s = box(v);
   if (!s || v.dead) return;
   // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back.
@@ -232,6 +189,24 @@ function rebuilt(v) {
   const kept = v.anchor && v.nodes.get(v.anchor.key)?.isConnected;
   if (!v.stuck && !kept) v.anchor = findAnchor(v);
 }
+/** After a change in the transcript, while stuck: where the view is, if it’s at the page’s new end (#297). @param {View} v */
+function noteEnd(v) {
+  const s = v.changed ? box(v) : null;
+  v.changed = false;
+  if (s && v.stuck && !v.dead && atEnd(s)) v.lastTop = Math.min(v.lastTop, s.scrollTop);
+}
+/**
+ * A change in the transcript: the note is taken now, at most once a frame, and else by follow() after the frame’s
+ * layout. One read per batch forced a layout of the whole page per batch: 823 in one 72 s freeze (#866). A batch that
+ * only removes is noted at once whatever the frame (view-changes.mjs).
+ * @param {View} v @param {MutationRecord[]} records
+ */
+function changed(v, records) {
+  v.changed = true;
+  if (v.noted && !onlyRemoves(records)) return;
+  v.noted ||= requestAnimationFrame(() => (v.noted = 0));
+  noteEnd(v);
+}
 // What arrived counts as unseen when the view isn’t on the newest message, including when follow() finds you
 // scrolled up in this frame, before its scroll event told the transcript (#341).
 /** @param {View} v */
@@ -290,11 +265,8 @@ export function mountView({ el, inPanel, nodes, was }) {
   // A change that makes the transcript shorter while stuck (a held height released, an app’s check giving way to its
   // frame) pulls the view up to the page’s new end. That isn’t you, but its scroll event can come after the page grew
   // back, and read as you scrolling up (#297). So note where the view is, if it’s at the new end: a wheel turn moves it
-  // before its scroll event too, and only that one leaves it above the end.
-  v.changes = new MutationObserver(() => {
-    const s = box(v);
-    if (v.stuck && s && !v.dead && atEnd(s)) v.lastTop = Math.min(v.lastTop, s.scrollTop);
-  });
+  // before its scroll event too, and only that one leaves it above the end. At most once a frame (changed()).
+  v.changes = new MutationObserver((records) => changed(v, records));
   v.changes.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
   publish(v);
   return {
@@ -302,6 +274,12 @@ export function mountView({ el, inPanel, nodes, was }) {
     scrollToEnd: thenPublish((/** @type {boolean} */ smooth) => scrollToEnd(v, smooth)),
     grew: thenPublish(() => grew(v)),
     rebuilt: thenPublish(() => rebuilt(v)),
+    // An item drawn again whole, as a finished reply is: it may come out shorter, and the page may grow back before
+    // the frame (#297), so the note is taken now, while it’s short. Once per redraw, not per streamed delta (#903).
+    redrawn: () => {
+      v.changed = true;
+      noteEnd(v);
+    },
     release: () => release(v),
     setJump: (/** @type {(n: number) => void} */ fn) => (v.jump = fn),
     /** An item moved to the end (item.move): if it was the anchor, its stub holds the place. */

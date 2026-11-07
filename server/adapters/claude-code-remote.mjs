@@ -25,7 +25,7 @@ export { attachmentPaths } from './remote-turn.mjs';
 /**
  * What this backend can do, for the runtime and the UI (#117). Left out, it forks, reads rules and offers Claude’s
  * models. On a remote host (#120), the message goes in a file, the one variable it sets is the resume of an interrupted
- * turn (D2), Postbox’s server goes in --mcp-config, a quiet tool call still prints tool_progress, and a sign-in that ran
+ * turn (D2), Postbox’s server goes in --mcp-config, a quiet tool call still prints tool_progress, a wait on a background task lists it (#847), and a sign-in that ran
  * out ends the turn with an authentication_failed result.
  */
 export const CLAUDE_CODE_CAPABILITIES = Object.freeze({
@@ -35,6 +35,7 @@ export const CLAUDE_CODE_CAPABILITIES = Object.freeze({
     env: Object.freeze(['CLAUDE_CODE_RESUME_INTERRUPTED_TURN']),
     server: 'mcp-config',
     work: 'events',
+    backgroundTasks: 'background_tasks_changed',
     signInError: Object.freeze({ type: 'result', is_error: true, error: 'authentication_failed' }),
   }),
 });

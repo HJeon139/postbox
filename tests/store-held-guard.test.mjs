@@ -23,6 +23,7 @@ import { test } from 'node:test';
 const PUBLISHED = {
   'apps.mjs': ['appEvent', 'resolveAppSend'], // the page’s app events and an app send it answers: what the person sees
   'blocks.mjs': ['act', 'answerDelivered'], // the person’s answer to a block they see
+  'card-needs.mjs': ['dismissFailed'], // the person’s Dismiss on a failed reply they see (#883)
   'item-lines.mjs': ['topicRootLine', 'describeItem'], // a read tool and a prompt
   'catch-up.mjs': ['catchUp', 'pointerIfSeen'], // the prompt for a later turn
   'permission-cards.mjs': ['resolvePermission', 'resolveDenial'], // the person’s answer to a card they see
@@ -134,7 +135,7 @@ const LEDGER = {
 /** Production commits, with the lists each touches. */
 const COMMITS = {
   'asset-orphans.mjs': ['sweepAssets'], // the released hashes a load deleted: assetReleases only (#516 S3)
-  'assets.mjs': ['writeAsset'], // an asset version: assets and assetReleases only, none of items, work or apps (#516 S3)
+  'assets.mjs': ['writeAsset'], // an asset version: assets, assetRooms and assetReleases only, none of items, work or apps (#516 S3)
 };
 
 const DECL =

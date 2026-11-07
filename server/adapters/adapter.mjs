@@ -74,6 +74,9 @@
 //                                       for a hung one: events on stdout (Claude Code’s tool_progress), a tool call
 //                                       still in progress (Kiro prints nothing while a command runs), or the
 //                                       model’s checks on a background command (Codex, about every 5 minutes)
+//     backgroundTasks?: subtype          the `system` event that lists its open background tasks (Claude Code’s
+//                                       background_tasks_changed): a turn waiting on one after its result prints
+//                                       nothing, so it isn’t hung until shared/limits.mjs’s QUIET.backgroundMax (#847)
 //     signInError: { field: value } | null  the fields of a stream event that mean the host’s sign-in ran out, so
 //                                       the turn shows Sign-in needed rather than an error; null until one is recorded
 //   Left out, it can’t run on a remote host: the Agent SDK runs in Postbox’s own process, and the Antigravity CLI and
@@ -84,7 +87,7 @@
 
 /**
  * @typedef {{ stdin: 'file' | 'none' | 'held', env: string[], server: 'mcp-config' | 'agent-file' | 'codex-config',
- *   work: 'events' | 'open-tool-call' | 'model-checks', signInError: Record<string, unknown> | null }} RemoteCapabilities
+ *   work: 'events' | 'open-tool-call' | 'model-checks', backgroundTasks?: string, signInError: Record<string, unknown> | null }} RemoteCapabilities
  */
 
 /**
