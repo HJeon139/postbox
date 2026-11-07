@@ -3,7 +3,7 @@
 // Diagrams and math in messages are md-enhance.mjs's; the bundled libraries both use are sandbox-libs.mjs's.
 
 import { afterAppChecks, appChecksRunning, installAppChecks, recordAppCheck } from './app-check.mjs';
-import { crashCard } from './app-crash.mjs';
+import { crashCard, errorStrip } from './app-crash.mjs';
 import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
 import { api, client, placeIn } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
@@ -13,7 +13,7 @@ import { openMenu, toast } from './ui.mjs';
 export { enhanceMarkdown } from './md-enhance.mjs';
 export { renderAppSendCard };
 
-const frames = new Set(); // { appId, version, iframe, check, review, onPin, onAnchors, onCrash }
+const frames = new Set(); // { appId, version, iframe, check, review, onPin, onAnchors, onCrash, onError }
 const crashes = new Map(); // `${appId}:${v}` → message (a script error after the app was shown)
 const reloaded = new Set(); // `${appId}:${v}` you chose Reload for after its check crashed: run it, don’t show the crash again
 const viewing = new Map(); // appId → an older version you’re looking at, read-only
@@ -122,7 +122,9 @@ addEventListener('message', async (e) => {
       rec.onPin?.(m.anchor);
       break;
     case 'error':
-      if (!rec.check && current) {
+      // An app that has drawn keeps running and shows the error under it; one that drew nothing is shut (#964).
+      if (!rec.check && current && m.drawn) rec.onError?.(m.message);
+      else if (!rec.check && current) {
         crashes.set(`${rec.appId}:${rec.version}`, m.message);
         rec.onCrash?.();
       }
@@ -355,7 +357,7 @@ export function onThemeChange() {
   });
 }
 
-function frame(appId, version, { check = false, width = null, review = false, onPin, onAnchors, onCrash } = {}) {
+function frame(appId, version, { check = false, width = null, review = false, onPin, onAnchors, onCrash, onError } = {}) {
   const app = client.state.apps[appId];
   const iframe = h('iframe', {
     class: check ? 'check-frame' : 'app-iframe',
@@ -368,7 +370,7 @@ function frame(appId, version, { check = false, width = null, review = false, on
     style: check ? { width: `${width}px` } : { height: '200px' },
   });
   // Messages are matched to this record by the frame’s window, so the kit’s first hello is never missed.
-  frames.add({ appId, version, iframe, check, review, onPin, onAnchors, onCrash });
+  frames.add({ appId, version, iframe, check, review, onPin, onAnchors, onCrash, onError });
   return iframe;
 }
 const isOnScreen = (iframe) => {
@@ -462,6 +464,8 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
   new ResizeObserver(() => keyboardScroll(body)).observe(body);
   const placeholder = (lines, height = 180, extra = null) => h('div.app-placeholder', { style: { height: `${height}px` } }, h('div.inner', lines, extra));
   const crashed = crashes.get(key);
+  /** @type {ReturnType<typeof errorStrip> | null} */
+  let strip = null;
 
   if (stopped.has(key)) {
     body.append(
@@ -523,7 +527,9 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
       ),
     );
   } else {
-    const mount = () => body.replaceChildren(frame(appId, v, { review, onPin, onCrash: () => mountApp(container, appId, { review, onPin, onBack }) }));
+    const remount = () => mountApp(container, appId, { review, onPin, onBack });
+    strip = errorStrip({ app, owner, reload: remount });
+    const mount = () => body.replaceChildren(frame(appId, v, { review, onPin, onCrash: remount, onError: strip.show }));
     mountAfterChecks(body, mount, placeholder);
     body._unmount = (reason = 'offscreen') => {
       body.replaceChildren(pausedApp(placeholder, reason, body.firstElementChild?.offsetHeight || 200));
@@ -568,7 +574,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
         ),
       ),
     );
-  container.replaceChildren(...notes, body);
+  container.replaceChildren(...notes, body, ...(strip ? [strip.el] : []));
 }
 
 /** The whole app frame for a transcript item. */

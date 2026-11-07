@@ -47,10 +47,14 @@
   }
   /** Words that read as only an error or a missing-data message. */
   const onlyError = (words) => !!words && words.length < 300 && ONLY_ERROR.test(words);
-  /** Whether the page shows something real, not nothing and not only an error. */
+  // Whether the page shows something real, not nothing and not only an error. An app that throws on every frame asks
+  // 60 times a second, so an answer holds for a second.
+  let last = { at: -Infinity, drawn: false };
   function drawn() {
+    if (performance.now() - last.at < 1000) return last.drawn;
     const { content, said: words } = look();
-    return content || (!!words && !onlyError(words));
+    last = { at: performance.now(), drawn: content || (!!words && !onlyError(words)) };
+    return last.drawn;
   }
   window.__pbDrawn = { look, onlyError, drawn };
 })();
