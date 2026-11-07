@@ -16,7 +16,7 @@
 import { randomBytes } from 'node:crypto';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { setupOf } from './adapters/setup.mjs';
-import { confirmedFields, confirmedFound } from './confirm-grant.mjs';
+import { confirmedFields, confirmedFound, runFound, unrecorded } from './confirm-grant.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { pushConsequence, pushedMessage, pushOf, runPush } from './push-on-request.mjs';
 import { actionWords, numberOf, offRequest } from './request-floor.mjs';
@@ -261,7 +261,7 @@ export async function settledCall(rt, sessionId, req) {
   const open = () => rt.store.writable && rt.store.epoch === epoch;
   const current = () => open() && !!turn && rt.turns.get(sessionId) === turn;
   if (isWriteCall(req.tool, req.input) && (await writePasses(rt, sessionId, req).catch(() => false))) return { allow: true };
-  /** @type {(Awaited<ReturnType<typeof requestedCall>> & { blockItemId?: string, sha256?: string, gh?: any }) | null} */
+  /** @type {(Awaited<ReturnType<typeof requestedCall>> & { blockItemId?: string, sha256?: string, gh?: any, ghPlan?: any }) | null} */
   let found = null;
   try {
     found = (await confirmedFound(rt, sessionId, req, PUSHES)) ?? (await requestedCall(rt, sessionId, req));
@@ -269,24 +269,14 @@ export async function settledCall(rt, sessionId, req) {
     // A judge that fails, or a check that breaks, gets the card, as before: it fails closed.
   }
   if (!found || !turn) return null;
-  // No push for a turn that ended, or one the store’s closing stopped, or for another history.
-  if (found.push && !current()) return null;
-  const done = found.push ? await (rt.pushes ?? PUSHES).run(found.push) : null;
+  // What Postbox makes itself (a push, or a gh call a confirm holds, #852): never for a turn that ended, one the
+  // store’s closing stopped, or another history; once made, it’s answered no, so the agent’s own never runs.
+  const makes = !!(found.push || found.ghPlan);
+  if (makes && !current()) return null;
+  const done = await runFound(rt, found, PUSHES);
   const se = rt.s.sessions[sessionId];
-  if (!found.push && !current()) return null;
-  if (found.push && (!open() || !se)) {
-    // The push already ran and can’t be undone; nothing is written into a closed store, another history or a deleted
-    // session, and the agent’s own push still mustn’t run. The log names what happened.
-    const what = done?.ok ? 'pushed' : `failed: ${done?.error}`;
-    console.error(`Postbox made a push it couldn’t record: ${found.push.sha?.slice(0, 7)} on ${found.push.branch} of ${found.push.url} (${what}).`);
-    const why = se ? 'it can’t save changes right now' : 'this session was deleted';
-    return {
-      allow: false,
-      message: done?.ok
-        ? `Postbox made this push, but couldn’t record it because ${why}. Don’t push it again.`
-        : `Postbox’s push failed: ${done?.error}. It couldn’t record that because ${why}.`,
-    };
-  }
+  if (!makes && !current()) return null;
+  if (makes && (!open() || !se)) return unrecorded(found, done, se);
   rt.addItem(found.threadId, {
     kind: 'allowedcall',
     sessionId,

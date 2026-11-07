@@ -213,10 +213,8 @@ export async function confirmedFound(rt, sessionId, req, pushes) {
   const c = await confirmedCall(rt, sessionId, req);
   if (!c) return null;
   const found = { threadId: c.threadId, how: /** @type {const} */ ('confirmed'), label: c.label, blockItemId: c.blockItemId, sha256: c.sha256 };
-  if (c.shape.kind === 'gh' && c.run) {
-    const r = await (rt.runGh ?? runConfirmedGh)(c.run.argv, { input: c.run.input });
-    return { ...found, gh: { argv: r.argv, status: r.status, output: cleanOutput(r.output), message: ranMessage(r) } };
-  }
+  // A gh shape comes back as its checked plan; settledCall runs it after it has checked the turn, as it does a push.
+  if (c.shape.kind === 'gh') return c.run ? { ...found, ghPlan: c.run } : null;
   const { folder, project } = await rt.panelTarget({ sessionId });
   // The branch the push names counts as named, as a request’s words do (push-on-request.mjs, tokensOf).
   const push = await (rt.pushes ?? pushes).consequence({ folder, url: project?.pushUrl, push: pushOf(c.command), named: c.command.toLowerCase() });
@@ -230,3 +228,39 @@ export const confirmedFields = (found) => ({
   ...(found.blockItemId ? { blockItemId: found.blockItemId, sha256: found.sha256 } : {}),
   ...(found.gh ? { gh: { argv: found.gh.argv, status: found.gh.status, output: found.gh.output } } : {}),
 });
+
+/**
+ * Runs what Postbox makes for a found call, once settledCall has checked the turn: the push, or a confirmed gh plan.
+ * For gh it sets `found.gh` with what ran. Null when Postbox makes nothing for it.
+ * @param {any} rt @param {any} found @param {{ run: Function }} pushes  write-intent.mjs’s
+ * @returns {Promise<{ ok: boolean, error?: string } | null>}
+ */
+export async function runFound(rt, found, pushes) {
+  if (found.push) return (rt.pushes ?? pushes).run(found.push);
+  if (!found.ghPlan) return null;
+  const r = await (rt.runGh ?? runConfirmedGh)(found.ghPlan.argv, { input: found.ghPlan.input });
+  found.gh = { argv: r.argv, status: r.status, output: cleanOutput(r.output), message: ranMessage(r) };
+  return r.status === 0 ? { ok: true } : { ok: false, error: `gh exited ${r.status}` };
+}
+
+/**
+ * What a call Postbox already made, but couldn’t record, is answered: it ran and can’t be undone, nothing is written
+ * into a closed store, another history or a deleted session, and the agent’s own call still mustn’t run. The log names
+ * what happened (the integrator’s re-review of #598; critic’s read of #852 slice 1a for gh).
+ * @param {any} found @param {{ ok: boolean, error?: string } | null} done @param {any} se
+ */
+export function unrecorded(found, done, se) {
+  const why = se ? 'it can’t save changes right now' : 'this session was deleted';
+  if (found.gh) {
+    console.error(`Postbox ran a confirmed gh it couldn’t record: gh ${found.gh.argv.slice(0, 2).join(' ')} (exit ${found.gh.status}).`);
+    return { allow: false, message: `Postbox ran this for you, but couldn’t record it because ${why}. Don’t run it again. ${found.gh.message}` };
+  }
+  const what = done?.ok ? 'pushed' : `failed: ${done?.error}`;
+  console.error(`Postbox made a push it couldn’t record: ${found.push.sha?.slice(0, 7)} on ${found.push.branch} of ${found.push.url} (${what}).`);
+  return {
+    allow: false,
+    message: done?.ok
+      ? `Postbox made this push, but couldn’t record it because ${why}. Don’t push it again.`
+      : `Postbox’s push failed: ${done?.error}. It couldn’t record that because ${why}.`,
+  };
+}
