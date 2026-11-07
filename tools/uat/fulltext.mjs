@@ -77,7 +77,7 @@ export function fullView({ key, label, screenText, state, dir, cuts }) {
   const record = recordText(item);
   const n = (x) => x.toLocaleString('en-US');
   if (screenText.length >= SCREEN_CAP && record.length <= screenText.length) {
-    cuts.set(key, { label, shown: screenText.length, total: null, path: null });
+    cuts.set(key, { label, shown: screenText.length, total: null, path: null, full: null });
     return {
       text: `${screenText}…\n(shown ${n(screenText.length)} of more than ${n(SCREEN_CAP)} characters; Postbox’s record doesn’t hold the rest, so ask the agent for it)`,
       log: `full text: ${label} shown ${screenText.length} of more than ${SCREEN_CAP} characters, no record to read`,
@@ -95,7 +95,7 @@ export function fullView({ key, label, screenText, state, dir, cuts }) {
   const path = join(folder, `${label}-r${item?.revision ?? 1}.md`);
   writeFileSync(path, full);
   const shown = Math.min(cap, source.length);
-  cuts.set(key, { label, shown, total: full.length, path });
+  cuts.set(key, { label, shown, total: full.length, path, full });
   return {
     text: `${source.slice(0, shown)}…\n(shown ${n(shown)} of ${n(full.length)} characters; full text: ${relative(dir, path)}; read it with the read_full action on ${label})`,
     log: `full text: ${label} shown ${shown} of ${full.length} characters, ${relative(dir, path)}`,
@@ -131,10 +131,8 @@ function checkItems(line) {
   return items.filter(Boolean);
 }
 
-const refusesPermission = (action) =>
-  action?.type === 'review'
-    ? action.verdict === 'request_changes'
-    : action?.type === 'act' && /^(?:don[’']t allow|deny|reject|cancel)\b/i.test(String(action.button ?? ''));
+const refusesPermission = (action, item) =>
+  item?.kind === 'permission' && action?.type === 'act' && /^(?:don[’']t allow…|don[’']t allow)$/i.test(String(action.button ?? ''));
 
 /**
  * Why an answer must wait, or null.
@@ -146,8 +144,9 @@ const refusesPermission = (action) =>
  * @param {{ action: any, assessment: string, key: string | null, state: any, cuts: Map<string, any> }} o
  */
 export function approvalRefusal({ action, assessment, key, state, cuts }) {
-  if (!key || !['act', 'review'].includes(action?.type) || refusesPermission(action)) return null;
+  if (!key || !['act', 'review'].includes(action?.type)) return null;
   const at = located(state, key);
+  if (refusesPermission(action, at?.item)) return null;
   const since = [];
   if (at) for (let i = at.i; i >= 0 && at.list[i]?.kind !== 'user'; i -= 1) since.push(at.list[i].id);
   const cut = (since.length ? since : [key]).map((k) => cuts.get(k)).find(Boolean);
@@ -176,5 +175,5 @@ export function readFull({ key, cuts, readText }) {
   if (cut.total === null || !cut.path)
     return `Postbox’s record doesn’t hold the rest of ${cut.label}. You can safely deny the permission, or ask the agent to split the command into shorter steps.`;
   cuts.delete(key);
-  return `The full text of ${cut.label} (${cut.total.toLocaleString('en-US')} characters):\n\n${readText(cut.path)}`;
+  return `The full text of ${cut.label} (${cut.total.toLocaleString('en-US')} characters):\n\n${cut.full}`;
 }

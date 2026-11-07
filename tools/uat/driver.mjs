@@ -146,11 +146,11 @@ export function driver(page, hooks = {}) {
       }
       for (const option of choose) await clickAt(byText(ITEM(key), 'button.chip, [role=radio], [role=checkbox], label', option), `the option “${option}”`);
       // A control may be a link, such as a reply’s work line (“2 files +112 −0”), which opens the Work pane.
-      if (button)
-        await clickAt(
-          `(${byExactText(ITEM(key), 'button, a[href], [role=button]', button)}) ?? (${byText(ITEM(key), 'button, a[href], [role=button]', button)})`,
-          `the button “${button}”`,
-        );
+      if (button) {
+        const exact = byExactText(ITEM(key), 'button, a[href], [role=button]', button);
+        const denial = /^(?:don[’']t allow…|don[’']t allow)$/i.test(button);
+        await clickAt(denial ? exact : `(${exact}) ?? (${byText(ITEM(key), 'button, a[href], [role=button]', button)})`, `the button “${button}”`);
+      }
     },
 
     review(key, opts) {

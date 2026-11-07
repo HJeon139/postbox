@@ -3,7 +3,7 @@
 // { kind: 'block', sessionId, revision, answered, block }), and the DESIGN-CHECK lines are the ones a UC03 round 3
 // tester wrote (uat-runs/2026-10-27T22-17-15-uc03-attr3-terra-aiml/run.log, steps 9, 12 and 13).
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -51,7 +51,7 @@ test('a long item not waiting on the tester is cut as before, but says so and na
     new RegExp(`\\(shown 1,800 of ${total.toLocaleString('en-US')} characters; full text: fulltext/I3-r3\\.md; read it with the read_full action on I3\\)$`),
   );
   assert.equal(readFileSync(join(dir, 'fulltext', 'I3-r3.md'), 'utf8'), recordText(state.items.main[1]));
-  assert.deepEqual({ ...cuts.get('b1'), path: undefined }, { label: 'I3', shown: 1800, total, path: undefined });
+  assert.deepEqual({ ...cuts.get('b1'), path: undefined, full: undefined }, { label: 'I3', shown: 1800, total, path: undefined, full: undefined });
 });
 
 test('a short design is shown as the screen shows it, with nothing added', () => {
@@ -203,13 +203,15 @@ test('only a “no” item, or the tester’s own words about its reading, holds
 });
 
 test('a cut permission can always be denied, and read_full explains when no full record exists', () => {
-  const state = roomWith('short');
-  const cuts = new Map([['b1', { label: 'I3', shown: 3000, total: null, path: null }]]);
+  const state = { items: { main: [{ id: 'b1', kind: 'permission', status: 'open' }] } };
+  const cuts = new Map([['b1', { label: 'I3', shown: 3000, total: null, path: null, full: null }]]);
   const deny = { type: 'act', item: 'I3', button: 'Don’t allow' };
   assert.equal(approvalRefusal({ action: deny, assessment: 'I cannot read it, so I am denying it.', key: 'b1', state, cuts }), null);
   const read = readFull({ key: 'b1', cuts, readText: () => assert.fail('no path must not be read') });
   assert.match(read, /doesn’t hold the rest/);
   assert.equal(cuts.has('b1'), true, 'an unread cut remains unread');
+  for (const button of ['Cancel the old jobs and deploy', 'Deny-list update: apply', 'Reject and publish'])
+    assert.match(approvalRefusal({ action: { type: 'act', item: 'I3', button }, assessment: '', key: 'b1', state, cuts }), /shown/);
 });
 
 test('driver prefers the exact denial submit button over the earlier opener', async () => {
@@ -219,4 +221,16 @@ test('driver prefers the exact denial submit button over the earlier opener', as
   assert.doesNotMatch(expr, /\.includes\(/);
   const driver = readFileSync(join(import.meta.dirname, '..', 'tools', 'uat', 'driver.mjs'), 'utf8');
   assert.match(driver, /byExactText[\s\S]*\?\?[^\n]*byText/);
+});
+
+test('read_full uses the in-memory Postbox record, not a builder-writable log file', () => {
+  const state = roomWith(design(70_000));
+  const dir = run();
+  const cuts = new Map();
+  fullView({ key: 'b1', label: 'I3', screenText: screen(state), state, dir, cuts });
+  const cut = cuts.get('b1');
+  writeFileSync(cut.path, 'builder replacement');
+  const read = readFull({ key: 'b1', cuts, readText: (path) => readFileSync(path, 'utf8') });
+  assert.ok(read.endsWith(recordText(state.items.main[1])));
+  assert.doesNotMatch(read, /builder replacement/);
 });

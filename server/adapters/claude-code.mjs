@@ -32,7 +32,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { claudeArgs, settingsFile } from './claude-code-args.mjs';
+import { claudeArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
@@ -198,8 +198,10 @@ export class ClaudeCodeAdapter {
       rules: ctx.rules ?? {},
       ...(remote ? { server: remote.server, denyPrompts: ctx.remote.settings?.denyPrompts === true } : { signIn }),
     });
-    // Settings that carry the person’s sign-in go in a private file, not on a command line the agent can read.
-    const { args, remove: removeSettings } = Object.keys(signIn).length ? settingsFile(built) : { args: built, remove: () => {} };
+    // In the study sandbox the builder and CLI share a uid, so a settings file adds no secrecy and gives a
+    // background builder process a race to rewrite its own deny/ask rules. Keep the immutable JSON in argv.
+    const args = built;
+    const removeSettings = () => {};
     const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(ctx.persona.model), effort: effortOf(ctx.persona) });
     // A subagent’s permission prompt arrives at Postbox’s MCP tool with its id; the stream knows its name.
     ctx.subagentNames?.((ids) => mapper.who(ids));
