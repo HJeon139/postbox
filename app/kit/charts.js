@@ -246,4 +246,6 @@
     },
   };
   window.postbox.charts = charts;
+  // app/kit/graph.js draws its network in the same frame, with the same Table view.
+  Object.assign(window.__pbKit, { mount, esc });
 }

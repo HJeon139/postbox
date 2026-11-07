@@ -10,6 +10,8 @@
       "app/kit/check.js",
       "app/kit/kit.js",
       "app/kit/diagram.js",
+      "app/kit/graph-layout.js",
+      "app/kit/graph.js",
       "app/theme.js",
       "server/**",
       "shared/**",

@@ -18,6 +18,8 @@
 //                                 the chart palettes and the status-only colors, with when to use each, are
 //                                 PALETTES in shared/limits.mjs, which the guide gives agents; these charts use
 //                                 --s1…--s8 for series and --seq-* for heatmaps
+//   postbox.graph(el, { nodes, edges, groups?, highlight? })   → Promise<layout>; a network laid out by d3-force, with
+//                                 groups as soft regions, labels that never overlap and a Table view (app/kit/graph.js)
 //   postbox.narrate(text, { voice, speed })   → Promise<{ url, ms }>, a clip read aloud by Postbox’s local voice
 //   postbox.narration(el, passages, { voice, speed, onPassage })   a player with a transcript that follows along
 // It also reports size changes and script errors to Postbox, and runs the pre-display check.
