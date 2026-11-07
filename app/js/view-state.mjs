@@ -261,10 +261,21 @@ function pin(v, item) {
   showJump(v, s);
   publish(v);
 }
+/**
+ * A jump to an item ends the smooth jump to the end, and says whether one ran: smoothEnded would take the rest of the
+ * way otherwise, since a jump isn’t input that can scroll (view-smooth.mjs). The jump’s own scroll ends the browser’s.
+ * @param {View} v
+ */
+function halt(v) {
+  const ran = v.smoothing;
+  v.smoothing = false;
+  return ran;
+}
 /** What view-jump.mjs needs of a view. @param {View} v */
 const jumpable = (v) => ({
   box: () => box(v),
   seen: () => inSight(v),
+  halt: () => halt(v),
   pin: (/** @type {HTMLElement} */ item) => pin(v, item),
 });
 

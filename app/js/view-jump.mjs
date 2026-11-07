@@ -8,8 +8,10 @@ import { drawUntilPainted } from './view-skip.mjs';
 
 /**
  * What a view gives a jump: its scroll box; the page's y where what you can see of it starts and ends, below the top
- * bar in the main pane; and pin(), which makes an item its anchor.
- * @typedef {{ box: () => Element | null, seen: () => { top: number, bottom: number }, pin: (item: HTMLElement) => void }} Jumpable
+ * bar in the main pane; halt(), which ends a smooth jump to the end and says whether one ran; and pin(), which makes
+ * an item its anchor.
+ * @typedef {{ box: () => Element | null, seen: () => { top: number, bottom: number }, halt: () => boolean,
+ *   pin: (item: HTMLElement) => void }} Jumpable
  */
 
 /** Each mounted transcript's view, so a jump from anywhere on the page finds the one its target is in. */
@@ -56,6 +58,20 @@ export function jumpTo(el, block = 'center') {
     el.scrollIntoView({ block });
     return;
   }
+  // A smooth jump to the end that was running ends at this jump’s scroll, but Chromium still applies one more step of
+  // it a frame later (3,928 px in view-skipped-smooth.spec.mjs’s room), which carried the item off screen: so the item
+  // is put in place again on the next frame.
+  const halted = view.halt();
+  place(view, s, item, el, block);
+  if (halted) requestAnimationFrame(() => place(view, s, item, el, block));
+}
+
+/**
+ * Scrolls s so el is where block says, and pins its item.
+ * @param {Jumpable} view @param {Element} s @param {HTMLElement} item @param {Element} el
+ * @param {'start' | 'center' | 'nearest'} block
+ */
+function place(view, s, item, el, block) {
   const r = drawnRect(item, el);
   const seen = view.seen();
   const top = r.top - seen.top;
