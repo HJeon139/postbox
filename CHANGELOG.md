@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.39.1 (2026-11-07)
+
+### Fixes
+
+- **needs:** rank an offered card against the need as nextNeed does
+
 ## 1.39.0 (2026-11-07)
 
 ### Features
