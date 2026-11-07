@@ -2,6 +2,7 @@
 // agent has read it (answerDelivered, #123), update_block, and its refusal over an answer the agent hasn’t read
 // (unreadAnswer). Moved out of server/runtime.mjs; Runtime keeps one-line methods that call these.
 
+import { updateKind } from '../shared/block-updates.mjs';
 import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { LIMITS } from '../shared/limits.mjs';
@@ -116,8 +117,9 @@ export function unreadAnswer(rt, sessionId, threadId, it, outcome = false) {
  *   update (#780); held is set once the item holds them, so keptIfShown keeps their blobs (#828)
  */
 export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endSegment }, given = {}) {
-  if (block && typeof block === 'object' && Object.hasOwn(block, 'withdraw')) return withdraw(rt, sessionId, block, { se, threadId });
-  if (block && typeof block === 'object' && typeof block.outcome === 'string') return recordOutcome(rt, sessionId, block, { se, threadId });
+  const kind = updateKind(block);
+  if (kind === 'withdraw') return withdraw(rt, sessionId, block, { se, threadId });
+  if (kind === 'outcome') return recordOutcome(rt, sessionId, block, { se, threadId });
   const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
   if (!v.ok) return { ok: false, message: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
   const { where, existing } = shownBy(rt, sessionId, v.block.id, threadId(), se());

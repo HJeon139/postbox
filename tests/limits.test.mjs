@@ -36,6 +36,8 @@ test('the MCP tool descriptions name the limits each tool needs', () => {
   assert.ok(said('add_dataset').includes(limitText('datasetBytes')), 'add_dataset doesn’t name datasetBytes');
   assert.match(said('update_block'), new RegExp(`outcome .*up to ${limitText('outcome')} characters`));
   assert.match(said('show_app'), /64 KB/);
+  // An option is an object (#455): agents guessed strings, and { value, label } (#552).
+  assert.match(said('show_block'), /options are \[\{ id, label, description\? \}\]/);
   const count = (k) => `${k.toLocaleString('en-US')} characters`;
   for (const tool of ['read_conversation', 'read_message']) assert.ok(said(tool).includes(count(READING.item)), `${tool} doesn’t name READING.item`);
   assert.ok(said('read_message').includes(count(READING.part)), 'read_message doesn’t name READING.part');
@@ -54,6 +56,7 @@ test('the catalog enforces the limits from the module', () => {
   const cases = [
     ['choiceOptions', (k) => ({ ...base, type: 'choice', options: opts(k) })],
     ['formFields', (k) => ({ ...base, type: 'form', fields: opts(k).map((o) => ({ ...o, kind: 'text' })) })],
+    ['fieldLabel', (k) => ({ ...base, type: 'form', fields: [{ id: 'f', label: 'x'.repeat(k), kind: 'text' }] })],
     ['tableRows', (k) => ({ ...base, type: 'table', columns: [{ id: 'c', label: 'C' }], rows: opts(k).map((o) => ({ id: o.id, cells: { c: 1 } })) })],
     ['cardActions', (k) => ({ ...base, type: 'card', actions: opts(k) })],
     ['progressSteps', (k) => ({ ...base, type: 'progress', steps: opts(k).map((o) => ({ ...o, state: 'pending' })) })],
