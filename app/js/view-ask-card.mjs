@@ -1,4 +1,4 @@
-// The card that asks the person, once, whether Postbox may download the browser view_app renders with (#95;
+// The card that asks the person whether Postbox may download the browser view_app renders with (#95;
 // designs/architecture.md, “Agents see their app”). It looks and answers like the tool-request card
 // (permission-cards.mjs, toolAskBlock), then says how the download went.
 
@@ -12,7 +12,7 @@ const DONE = Object.freeze({
   downloading: ['clock', 'Downloading Chromium. The agent hears when it’s ready.'],
   ready: ['check', 'Downloaded. Agents can see their apps.'],
   failed: ['x', 'The download failed.'],
-  declined: ['x', 'Not downloaded. Agents can’t see their apps.'],
+  declined: ['x', 'Not downloaded. Agents can’t see their apps. Postbox asks again in a week.'],
 });
 
 /** @param {any} it @param {{ threadId: string }} ctx */
@@ -39,7 +39,7 @@ export function viewAskBlock(it, ctx) {
       open
         ? h(
             'p.small.dim',
-            'Postbox asks once, for every agent. The browser renders apps in their sandbox on this computer, and only reads Postbox. Without it, agents rely on the text check and on you.',
+            'Postbox asks once, for every agent, and again a week after “Not now”. The browser renders apps in their sandbox on this computer, and only reads Postbox. Without it, agents rely on the text check and on you.',
           )
         : h('span.answered-note', icon(done?.[0] ?? 'check', 'i-sm'), done?.[1] ?? 'Answered.', it.reason ? ` ${it.reason}` : ''),
     ),

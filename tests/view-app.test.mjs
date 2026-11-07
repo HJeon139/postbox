@@ -4,14 +4,14 @@
 // fake browser; tests/browser/view-app.spec.mjs renders a real app in the pinned headless shell.
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
-import { answerIn, keepAnswer } from '../server/view-app/consent.mjs';
+import { answerIn, DECLINE_MS, keepAnswer } from '../server/view-app/consent.mjs';
 import { ViewApp, viewApp } from '../server/view-app/view-app.mjs';
 import { attachViewApp, viewOf } from '../server/view-app/view-of.mjs';
 
@@ -149,6 +149,25 @@ test('Not now is kept across a restart, and view_app says the person declined in
     assert.match(r.message, /chose not to download the browser/);
     assert.equal(cards(s.rt, s.t).length, 1, 'no second card');
     assert.equal(s.browser.installs, 0);
+  } finally {
+    s.done();
+  }
+});
+
+test('Not now lasts a week: after that, the next call shows the card again, so the person can change their answer', async () => {
+  const s = setup(fakeBrowser({ status: 'missing' }));
+  try {
+    const dir = viewOf(s.rt).dir;
+    keepAnswer(dir, 'declined');
+    assert.equal(answerIn(dir), 'declined');
+    assert.equal(answerIn(dir, Date.now() + DECLINE_MS - 60_000), 'declined', 'still within the week');
+    writeFileSync(join(dir, 'consent.json'), JSON.stringify({ answer: 'declined', at: Date.now() - DECLINE_MS - 1 }));
+    assert.equal(answerIn(dir), 'unasked');
+    const r = await viewApp(s.rt, s.se.id, { appId: s.appId }, ctx(s.t));
+    assert.equal(r.waiting, true, r.message);
+    assert.equal(cards(s.rt, s.t).length, 1, 'the card is shown again');
+    s.rt.act(s.t.id, cards(s.rt, s.t)[0].id, 'download');
+    assert.equal(answerIn(dir), 'allowed', 'and the new answer replaces the old one');
   } finally {
     s.done();
   }

@@ -76,7 +76,10 @@ export async function viewApp(rt, sessionId, { appId } = {}, ctx) {
     };
   const answer = answerIn(view.dir);
   if (answer === 'declined')
-    return { ok: false, message: 'The person chose not to download the browser that renders apps, so view_app can’t show you this one.' };
+    return {
+      ok: false,
+      message: 'The person chose not to download the browser that renders apps for now, so view_app can’t show you this one. Ask them how it looks.',
+    };
   if (answer === 'unasked' || status === 'missing') {
     if (answer === 'allowed' && view.browser.installing)
       return { ok: true, waiting: true, message: 'The browser is still downloading. End your turn; you’ll hear when it’s ready.' };

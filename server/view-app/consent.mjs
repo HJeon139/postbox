@@ -1,6 +1,6 @@
-// The person’s answer about view_app’s browser (designs/architecture.md, “Agents see their app”): asked once, on a
-// card, the first time an agent calls view_app. The answer is kept in Postbox’s data folder, so a restart keeps it, and
-// a yes starts the download. The card works like ask_for_tool’s (server/tool-ask.mjs): the person answers in the
+// The person’s answer about view_app’s browser (designs/architecture.md, “Agents see their app”): asked on a card, the
+// first time an agent calls view_app. The answer is kept in Postbox’s data folder, so a restart keeps it, and a yes
+// starts the download. “Not now” lasts a week: the next call after that asks again, so the person can change it. The card works like ask_for_tool’s (server/tool-ask.mjs): the person answers in the
 // conversation, and the agent that asked hears the outcome as a notice.
 
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
@@ -11,14 +11,18 @@ import { viewOf } from './view-of.mjs';
 
 /** @typedef {'unasked'|'allowed'|'declined'} Answer */
 
+/** How long “Not now” stands before view_app asks again. */
+export const DECLINE_MS = 7 * 24 * 60 * 60 * 1000;
+
 /** What the card says about the download, which `browser-install` sizes on this computer (about 200 MB on macOS). */
 export const ASK = 'Download Chromium (about 200 MB on disk) so agents can see their apps?';
 
-/** The answer kept in `dir`. @param {string} dir @returns {Answer} */
-export function answerIn(dir) {
+/** The answer kept in `dir`; a “Not now” older than a week counts as no answer. @param {string} dir @returns {Answer} */
+export function answerIn(dir, now = Date.now()) {
   try {
-    const a = JSON.parse(readFileSync(join(dir, 'consent.json'), 'utf8')).answer;
-    return a === 'allowed' || a === 'declined' ? a : 'unasked';
+    const { answer, at } = JSON.parse(readFileSync(join(dir, 'consent.json'), 'utf8'));
+    if (answer === 'allowed') return 'allowed';
+    return answer === 'declined' && now - Number(at) < DECLINE_MS ? 'declined' : 'unasked';
   } catch {
     // No file yet, or one that can’t be read: the person hasn’t answered, so they’re asked.
     return 'unasked';
