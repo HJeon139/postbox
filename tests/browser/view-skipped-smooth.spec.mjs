@@ -101,3 +101,28 @@ test('a wheel up during the jump is you reading: the view stays where you turned
   expect.soft(v.mode, 'it reads where you turned the wheel').toBe('reading');
   expect.soft(v.gap, 'it isn’t at the end').toBeGreaterThan(400);
 });
+
+// A click or a key that can’t scroll the page doesn’t stop the jump, so it isn’t you reading: starting a reply while
+// the jump runs leaves it to go the rest of the way and follow (app/js/view-smooth.mjs). Two cases, so a click and a
+// key are told apart: a click into the composer, and typing into it after a focus that no input made.
+for (const [how, act] of /** @type {const} */ ([
+  ['a click into the composer', (page) => page.locator('#composer-input').click()],
+  [
+    'typing into the composer',
+    async (page) => {
+      await page.locator('#composer-input').evaluate((n) => /** @type {HTMLElement} */ (n).focus({ preventScroll: true }));
+      await page.keyboard.type('a reply, with spaces');
+    },
+  ],
+]))
+  test(`${how} during the jump isn’t you reading: it still ends following at the end`, async ({ page }) => {
+    await readingAtTop(page, `Smooth jump, then ${how}`);
+    await page.locator('.jump').getByRole('button').click();
+    await expect.poll(() => page.evaluate(() => scrollY), { message: 'the jump to be on its way' }).toBeGreaterThan(2000);
+    await act(page);
+    await still(page);
+    const v = { mode: await page.locator('#main.transcript').getAttribute('data-view-mode'), gap: await gap(page) };
+    test.info().annotations.push({ type: 'measured', description: JSON.stringify(v) });
+    expect.soft(v.mode, 'it ends following').toBe('following');
+    expect.soft(v.gap, 'it ends at the end').toBeLessThanOrEqual(2);
+  });
