@@ -5,7 +5,8 @@
 // Gemini model after another, the Gemini boilerplate picks the preferred one (#358; gemini-boilerplate.spec.mjs checks
 // the rest of that boilerplate), and its Auto says Postbox’s hook approves routine actions. “Uses Postbox’s
 // visual-explainer skill” (#207) shows on by default where the backend loads it (capabilities.skills), saves off, and
-// isn’t offered on the Antigravity CLI. Moved from tools/checks/persona-setup.mjs (#303).
+// on the Antigravity CLI, which loads only Postbox’s skills (capabilities.skills: 'postbox'), lists only those. Moved
+// from tools/checks/persona-setup.mjs (#303).
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -149,11 +150,23 @@ test('#207 the persona editor lists Postbox’s skills and yours, all ticked; un
   await expect(skillRow(page, 'postbox:visual-explainer'), 'but loads Postbox’s').toHaveCount(1);
 });
 
-test('#207 the new-agent sheet lists the skills, all ticked, and the Antigravity CLI doesn’t offer them', async ({ page }) => {
+test('#207 the new-agent sheet lists the skills, all ticked, and the Antigravity CLI lists only Postbox’s', async ({ page }) => {
   await personas(page);
   await page.locator('.dialog').getByRole('button', { name: 'New agent', exact: true }).click();
   await expect(skillRow(page, 'postbox:visual-explainer')).toHaveAttribute('aria-checked', 'true');
+  await expect(skillRow(page, 'grill-me'), 'Claude Code loads yours').toHaveCount(1);
   await page.getByRole('dialog', { name: 'New agent' }).getByLabel('Backend').selectOption('antigravity-cli');
   await expect(page.getByRole('dialog', { name: 'New agent' }).getByLabel('Model'), 'its fields repainted').toBeVisible();
-  await expect(skillRow(page, 'postbox:visual-explainer'), 'agy doesn’t load Postbox’s plugin').toHaveCount(0);
+  await expect(skillRow(page, 'postbox:visual-explainer'), 'agy loads Postbox’s skills').toHaveAttribute('aria-checked', 'true');
+  await expect(skillRow(page, 'grill-me'), 'but not Claude Code’s').toHaveCount(0);
+  await expect(page.locator('fieldset').filter({ hasText: 'Skills' })).toContainText('beside the ones its own CLI loads');
+});
+
+test('#207 an Antigravity persona saves Postbox’s skill turned off', async ({ page }) => {
+  const persona = app.rt.createPersona({ handle: 'gemskill', backend: 'antigravity-cli' });
+  await personas(page);
+  await page.getByRole('button', { name: 'Edit gemskill', exact: true }).click();
+  await skillRow(page, 'postbox:visual-explainer').click();
+  await page.locator('.dialog').getByRole('button', { name: 'Save', exact: true }).click();
+  await expect.poll(() => app.store.state.personas[persona.id].skillsOff).toEqual(['postbox:visual-explainer']);
 });

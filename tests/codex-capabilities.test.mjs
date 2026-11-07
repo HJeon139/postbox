@@ -12,6 +12,7 @@ test('Codex reports the capabilities its app-server implements', () => {
     tools: 'none',
     isolation: false,
     promptTool: false,
+    skills: 'postbox',
     remote: { stdin: 'held', env: [], server: 'codex-config', work: 'model-checks', signInError: null },
   });
 });

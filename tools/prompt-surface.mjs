@@ -10,7 +10,7 @@
 //   scan/agy-rules.md        the rules file Antigravity reads, which wraps the guide, with the hook running (#370)
 //   scan/agy-rules-no-hook.md  the same, for agy before 1.4.7, which runs without the hook
 //   scan/mcp-tools.md        every Postbox MCP tool, with its description and its arguments’ descriptions
-//   scan/agent-plugin/       Postbox’s own plugin, which every Claude agent here loads: its skills and their references
+//   scan/agent-plugin/       Postbox’s own plugin, which every agent here loads: its skills and their references
 //   scan/repo/               the instructions for agents working on Postbox itself: AGENTS.md files and session prompts
 // and, for a reviewer’s diff, each persona’s whole guide with its backend’s session facts, without the roster of other
 // agents (which would change every file whenever one is added):
@@ -128,7 +128,7 @@ export function render(out) {
     mkdirSync(dirname(join(out, to)), { recursive: true });
     cpSync(join(ROOT, rel), join(out, to));
   };
-  // The skills every Claude agent here loads, and what they link to (server/adapters/agent-plugin.mjs).
+  // The skills every agent here loads, and what they link to (server/adapters/agent-plugin.mjs).
   for (const rel of markdownUnder(PLUGIN, (n) => n.endsWith('.md')).sort()) copy(rel, join('scan', 'agent-plugin', relative(PLUGIN, rel)));
   const repo = [
     ...markdownUnder('.', (n) => n === 'AGENTS.md' || n === 'CLAUDE.md' || n === 'SKILL.md').filter((rel) => !rel.startsWith(PLUGIN)),

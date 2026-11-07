@@ -7,7 +7,7 @@ import { AGY_CAPABILITIES, AntigravityCliAdapter } from '../server/adapters/anti
 test('the capabilities: resumes, can’t fork, reads no Claude Code rules, can’t deny tools or isolate, asks through permission_prompt from its hook', () => {
   assert.deepEqual(
     { ...AGY_CAPABILITIES },
-    { resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false, promptTool: true, promptHook: true },
+    { resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false, skills: 'postbox', promptTool: true, promptHook: true },
   );
   const a = new AntigravityCliAdapter({ workRoot: '/tmp/x', models: ['gemini-3.8-flash-high'] });
   assert.deepEqual(a.capabilities.models, ['gemini-3.8-flash-high']);

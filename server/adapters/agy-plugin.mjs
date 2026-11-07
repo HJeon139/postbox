@@ -3,18 +3,24 @@
 
 import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
+import { agentSkillFiles } from './agent-plugin.mjs';
 import { agyHooksJson, HOOK_TIMEOUT_S } from './agy-hook.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
+import { postboxSkillDirs } from './skill-config.mjs';
 
 /**
- * The plugin’s files, by path under its folder. Pure, so the tests can check them.
- * @param {{ mcpUrl: string, rules: string, hookCommand?: string|null, hookTimeout?: number }} opts
+ * The plugin’s files, by path under its folder. Pure, so the tests can check them. `skills`: Postbox’s skills, by path
+ * under its skills folder (agySkillFiles), which go in the plugin’s own skills/ folder. Checked
+ * with agy 1.5.3: `/skills` listed `postbox:visual-explainer` from there, with the plugin as its source, before the
+ * model ran, and `agy plugin validate` counted it.
+ * @param {{ mcpUrl: string, rules: string, hookCommand?: string|null, hookTimeout?: number, skills?: Record<string, string> }} opts
  */
-export const agyPlugin = ({ mcpUrl, rules, hookCommand = null, hookTimeout = HOOK_TIMEOUT_S }) => ({
+export const agyPlugin = ({ mcpUrl, rules, hookCommand = null, hookTimeout = HOOK_TIMEOUT_S, skills = {} }) => ({
   'plugin.json': `${JSON.stringify({ name: POSTBOX_SERVER })}\n`,
   'mcp_config.json': `${JSON.stringify({ mcpServers: { [POSTBOX_SERVER]: { serverUrl: mcpUrl } } }, null, 2)}\n`,
   'rules/AGENTS.md': rules,
   ...(hookCommand ? { 'hooks.json': `${JSON.stringify(agyHooksJson(hookCommand, hookTimeout), null, 2)}\n` } : {}),
+  ...Object.fromEntries(Object.entries(skills).map(([path, text]) => [`skills/${path}`, text])),
 });
 /**
  * Writes the plugin’s files (agyPlugin) into its folder, `dir`. hooks.json is removed first, since a turn before left it
@@ -31,6 +37,9 @@ export async function writeAgyPlugin(dir, files) {
     if (path === 'hooks.json') await makeReadOnly(file);
   }
 }
+
+/** The files of the skills a persona left on, for agyPlugin’s `skills`. @param {any} persona @param {NodeJS.ProcessEnv} [env] */
+export const agySkillFiles = (persona, env = process.env) => agentSkillFiles(postboxSkillDirs(persona, env));
 
 /** Where the plugin goes in the agent’s folder. */
 export const PLUGIN_DIR = join('.agents', 'plugins', POSTBOX_SERVER);

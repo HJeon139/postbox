@@ -58,25 +58,33 @@ function skillRow(st, skill, id) {
 
 /**
  * The Skills checklist. An Isolated agent doesn’t load yours or your plugins’, so only Postbox’s and the project’s show.
- * @param {any} st @param {() => void} paint @param {{ idp: string, personaId?: string|null, projectId?: string|null }} opts
+ * A backend that loads only Postbox’s (capabilities.skills: 'postbox', such as Kiro or Codex) lists only those: the
+ * skills on disk are Claude Code’s, which it doesn’t read, and its own aren’t Postbox’s to turn off.
+ * @param {any} st @param {() => void} paint
+ * @param {{ idp: string, personaId?: string|null, projectId?: string|null, loads?: true | 'postbox' }} opts  loads: capabilities.skills
  */
-export function skillsField(st, paint, { idp, personaId = null, projectId = null }) {
+export function skillsField(st, paint, { idp, personaId = null, projectId = null, loads = true }) {
   load(st, paint, personaId, projectId);
   st.skillsOff ??= [];
-  const isolated = st.usesHostSetup === false;
-  const list = Array.isArray(st.skills) ? st.skills.filter((s) => !isolated || s.scope === 'postbox' || s.scope === 'project') : st.skills;
+  const postboxOnly = loads === 'postbox';
+  const isolated = !postboxOnly && st.usesHostSetup === false;
+  const shown = (s) => s.scope === 'postbox' || (!postboxOnly && (!isolated || s.scope === 'project'));
+  const list = Array.isArray(st.skills) ? st.skills.filter(shown) : st.skills;
   return h(
     'fieldset.field.span',
     { style: { border: 0, padding: 0, margin: 0 } },
     h('legend.label', 'Skills'),
     skillsBody(st, list, idp),
-    h(
-      'span.help',
-      isolated
-        ? 'It’s isolated, so only Postbox’s skills and the project’s load. Untick one to keep it from loading for this agent.'
-        : 'They load as in your terminal, with Postbox’s own. Untick one to keep it from loading for this agent.',
-    ),
+    h('span.help', helpFor({ postboxOnly, isolated })),
   );
+}
+
+/** What the list holds, and how to use it. */
+function helpFor({ postboxOnly, isolated }) {
+  const untick = 'Untick one to keep it from loading for this agent.';
+  if (postboxOnly) return `Postbox gives it these skills, beside the ones its own CLI loads. ${untick}`;
+  if (isolated) return `It’s isolated, so only Postbox’s skills and the project’s load. ${untick}`;
+  return `They load as in your terminal, with Postbox’s own. ${untick}`;
 }
 
 /** The list, or why there isn’t one yet. */

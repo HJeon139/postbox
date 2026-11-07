@@ -321,7 +321,7 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
         })
       : null,
     // Its skills (#207): only on a backend that lists them, and only here, since a host has its own.
-    real && capsOf(st.backend).skills && !st.remote ? skillsField(st, paint, { idp, personaId, projectId }) : null,
+    real && capsOf(st.backend).skills && !st.remote ? skillsField(st, paint, { idp, personaId, projectId, loads: capsOf(st.backend).skills }) : null,
     // The list reads Claude Code’s config (server/adapters/mcp-config.mjs): a backend that doesn’t read it (the Kiro
     // CLI) has nothing true to show here.
     real && capsOf(st.backend).permissions !== 'none' ? mcpField(st, paint, { idp, personaId, projectId }) : null,

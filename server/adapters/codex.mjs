@@ -30,6 +30,7 @@ export const CODEX_CAPABILITIES = Object.freeze({
   tools: 'none',
   isolation: false,
   promptTool: false,
+  skills: 'postbox',
   remote: CODEX_REMOTE,
 });
 

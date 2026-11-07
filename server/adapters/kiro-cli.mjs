@@ -61,7 +61,15 @@ export { kiroRemoteEnv } from './kiro-cli-remote.mjs';
 export { kiroExitError as exitError } from './kiro-errors.mjs';
 
 /** What this backend can do, for the runtime and the UI (#117), on a remote host too (KIRO_REMOTE). The adapter adds the models it found. */
-export const KIRO_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'deny-list', promptTool: false, remote: KIRO_REMOTE });
+export const KIRO_CAPABILITIES = Object.freeze({
+  resume: true,
+  fork: false,
+  permissions: 'none',
+  tools: 'deny-list',
+  promptTool: false,
+  skills: 'postbox',
+  remote: KIRO_REMOTE,
+});
 
 const clip = (s, n) => {
   const t = String(s ?? '')

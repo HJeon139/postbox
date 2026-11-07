@@ -3,6 +3,7 @@
 import { realpathSync } from 'node:fs';
 import { SIZE_LIMIT_NOTE } from './kiro-errors.mjs';
 import { POSTBOX_SERVER, setupOf } from './setup.mjs';
+import { postboxSkillDirs } from './skill-config.mjs';
 
 /**
  * MCP tools that publish outside Postbox, as Kiro’s `server/tool` match patterns, where `*` is any text: the verb
@@ -73,11 +74,12 @@ const ISOLATED_NOTE =
 
 /**
  * The custom agent for one turn. Pure, so the tests can check it.
- * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[] }} turn
+ * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[], skills?: string[] }} turn
  *   shim: on a remote host, Postbox’s server is the host’s stdio shim, run as this command, in place of mcpUrl; the
- *   folders are then the host’s
+ *   folders are then the host’s. skills: the folders of Postbox’s skills the persona left on (postboxSkillDirs in
+ *   skill-config.mjs); a turn on a host has none, since the folders are on this computer
  */
-export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders }) {
+export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders, skills = shim ? [] : postboxSkillDirs(persona) }) {
   const { usesHostSetup } = setupOf(persona);
   return {
     name,
@@ -89,5 +91,10 @@ export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders }) 
     // A local server is a command and its arguments (kiro.dev/docs/custom-agents/configuration-reference).
     mcpServers: { [POSTBOX_SERVER]: shim ? { command: shim.command, args: [...shim.args] } : { type: 'http', url: mcpUrl } },
     permissions: { rules: kiroRules({ persona, folders, resolve: !shim }) },
+    // Postbox’s skills, one skill resource each (kiro.dev/docs/custom-agents/configuration-reference), which loads a
+    // skill’s description and its body only when it’s used. Checked with kiro-cli 2.34.1: visual-explainer was listed
+    // among the session’s skills before the model ran, and the defaults an agent with no resources gets (AGENTS.md, the
+    // project’s .kiro/steering and .kiro/skills) still loaded beside it.
+    ...(skills.length ? { resources: skills.map((dir) => `skill://${dir}/SKILL.md`) } : {}),
   };
 }

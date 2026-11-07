@@ -94,6 +94,17 @@ export function skillList({ found, seen = [], off = [] }) {
 export const skillsOffOf = (persona) =>
   Array.isArray(persona?.skillsOff) ? persona.skillsOff.filter((n) => typeof n === 'string' && n && n.length <= MAX_NAME) : [];
 
+/**
+ * The folders of Postbox’s skills a turn here loads on a backend that doesn’t read Claude Code plugins (Antigravity,
+ * Kiro, Codex): each one the persona didn’t turn off, so the agent is never told of one it did. None with
+ * POSTBOX_AGENT_SKILLS=off. @param {any} persona @param {NodeJS.ProcessEnv} [env] @returns {string[]}
+ */
+export function postboxSkillDirs(persona, env = process.env) {
+  if (env.POSTBOX_AGENT_SKILLS === 'off') return [];
+  const off = skillsOffOf(persona);
+  return POSTBOX_SKILLS.filter((name) => !off.includes(name)).map((name) => join(AGENT_PLUGIN, 'skills', name.slice('postbox:'.length)));
+}
+
 /** A deny rule for each skill the persona turned off: it can’t run, though the agent may still be told of it. */
 export const skillDenies = (persona) => skillsOffOf(persona).map((name) => `Skill(${name})`);
 
