@@ -147,13 +147,17 @@ export const TOOL_DEFS = [
   {
     name: 'open_topic',
     // lint-allow thread: read_conversation's parameter of that name.
-    description: `Open a topic thread from a message in your conversation, by its item id, or find the topic thread it has, and optionally post a first message there, up to ${count(SENDING.message)} characters. Each agent in mentions is woken in the topic thread, as wake_agent wakes it, and answers there; one message serves them all. The topic thread opens beside the message in the page. A message in a topic thread can’t start another one: reply in that topic thread. The reply gives the topic thread’s id, which read_conversation { thread } reads.`,
+    description: `Open a topic thread from a message in your conversation, by its item id, or find the topic thread it has, and optionally post a first message there, up to ${count(SENDING.message)} characters. Each agent in mentions is woken in the topic thread, as wake_agent wakes it, and answers there; one message serves them all. The topic thread opens beside the message in the page. A message in a topic thread can’t start another one: reply in that topic thread. The reply gives the topic thread’s id, which read_conversation { thread } reads, and says whether your message was posted, by its id.`,
     inputSchema: {
       type: 'object',
       properties: {
         itemId: { type: 'string', description: 'The id (it_…) of the message the topic thread is about, in your conversation.' },
         message: { type: 'string', description: 'A first message to post in the topic thread, in Markdown.' },
-        mentions: { type: 'array', items: { type: 'string' }, description: 'The handles of agents to wake there with that message.' },
+        mentions: {
+          type: 'array',
+          items: { type: 'string' },
+          description: `The handles of agents to wake there with that message, up to ${SENDING.mentions}.`,
+        },
       },
       required: ['itemId'],
     },

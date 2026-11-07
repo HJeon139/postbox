@@ -9,7 +9,7 @@ import { targetScript } from './app-target.mjs';
 import { review } from './driver-review.mjs';
 import { keeper, shots } from './driver-shots.mjs';
 import { pressKey } from './keys.mjs';
-import { byText, ITEM } from './selectors.mjs';
+import { byText, ITEM, THREAD_LINK } from './selectors.mjs';
 
 // The answers to Stop’s question about background jobs, in the decision’s words (#126), with “Stop them too” for more
 // than one job. Written against fix/p0-stop’s ask row before it merged; if its buttons change, change them here.
@@ -129,10 +129,7 @@ export function driver(page, hooks = {}) {
     /** “Reply in thread” under a message, then a message in the thread panel. */
     async replyInThread(key, text) {
       // “Reply in thread”, or “N replies” once the thread exists: either opens it in the panel.
-      await clickAt(
-        `(${ITEM(key)}?.querySelector('.msg-actions a.replies') ?? ${byText(ITEM(key), '.msg-actions button', 'Reply in thread')})`,
-        'Reply in thread under that message',
-      );
+      await clickAt(THREAD_LINK(key), 'Reply in thread under that message');
       await page.waitFor(`!!document.getElementById('side-input')`, { label: 'the thread panel' });
       await typeInto(`document.getElementById('side-input')`, text, 'the thread reply box');
       await press('Enter');
@@ -353,7 +350,7 @@ export function driver(page, hooks = {}) {
       if (view === 'work') {
         if (!(await ev(`document.getElementById('work-button')?.getAttribute('aria-pressed') === 'true'`)))
           await clickAt(`document.getElementById('work-button')`, 'the Work button');
-      } else if (key) await clickAt(byText(ITEM(key), 'a, button', 'thread'), 'the item’s thread link');
+      } else if (key) await clickAt(THREAD_LINK(key), 'the item’s thread link');
       await sleep(600);
       return ev(`(() => {
         const size = (sel) => { const n = document.querySelector(sel); const b = n?.getBoundingClientRect(); return b && b.height ? { w: Math.round(b.width), h: Math.round(b.height) } : null; };
