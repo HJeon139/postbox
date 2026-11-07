@@ -6,8 +6,14 @@
  * release, numberless, so the events that came after them don’t make the page drop them as already seen.
  * @param {import('@playwright/test').Page} page
  */
-export async function holdTopics(page) {
-  await page.addInitScript(() => {
+export const holdTopics = (page) => holdThreads(page, ['topic']);
+
+/**
+ * The same for threads of any of these kinds: `thread` for a conversation, `topic`, `side`.
+ * @param {import('@playwright/test').Page} page  @param {string[]} kinds
+ */
+export async function holdThreads(page, kinds) {
+  await page.addInitScript((kinds) => {
     const held = [];
     const hold = { on: true, count: () => held.length };
     hold.release = () => {
@@ -19,12 +25,12 @@ export async function holdTopics(page) {
     EventSource.prototype.addEventListener = function (type, fn, options) {
       if (type !== 'thread') return add.call(this, type, fn, options);
       const late = (e) => {
-        if (hold.on && JSON.parse(e.data).kind === 'topic') held.push(() => fn({ data: e.data, lastEventId: '' }));
+        if (hold.on && kinds.includes(JSON.parse(e.data).kind)) held.push(() => fn({ data: e.data, lastEventId: '' }));
         else fn(e);
       };
       return add.call(this, type, late, options);
     };
-  });
+  }, kinds);
 }
 /** How many events the page holds. @param {import('@playwright/test').Page} page */
 export const heldCount = (page) => page.evaluate(() => /** @type {any} */ (window).heldTopics.count());
