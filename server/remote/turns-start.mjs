@@ -40,6 +40,7 @@ export function begin(rts, turn, hostId, adapter) {
     signInError: caps?.signInError ?? null,
     backgroundTasks: caps?.backgroundTasks ?? null,
     background: null,
+    resultSent: false,
     lastEvent: rts.now(),
     signIn: false,
     exit: undefined,
