@@ -586,7 +586,10 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
       dlg.close();
       toast({ title: `Created ${p.handle}` });
       onCreated?.(p);
-      if (st.where === 'new') goWhenThere(() => threadsOf(projectId).find((x) => sessionsOf(x.id).some((se) => se.personaId === p.id))?.id);
+      // The new conversation is the project’s one with this agent in it.
+      const withAgent = (x) => sessionsOf(x.id).some((se) => se.personaId === p.id);
+      const newThreadOf = () => threadsOf(projectId).find(withAgent)?.id;
+      if (st.where === 'new') goWhenThere(newThreadOf);
     } catch (e) {
       st.error = e.message;
       paint();

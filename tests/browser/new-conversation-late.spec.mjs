@@ -62,8 +62,8 @@ async function isOpen(page, threadId) {
 
 test('New conversation opens it, when its event comes first', async ({ page }) => {
   const r = await openRoom(page, 'New first');
-  await startConversation(page, r, 'Cataloguing, first');
-  await isOpen(page, threadTitled('Cataloguing, first'));
+  await startConversation(page, r, 'Cataloging, first');
+  await isOpen(page, threadTitled('Cataloging, first'));
 });
 
 for (const width of [375, 1280]) {
@@ -72,9 +72,9 @@ for (const width of [375, 1280]) {
     await holdThreads(page, ['thread']);
     const r = await openRoom(page, `New late ${width}`);
     const before = await listeners(page);
-    await startConversation(page, r, `Cataloguing, late ${width}`);
+    await startConversation(page, r, `Cataloging, late ${width}`);
     await heard(page);
-    const id = threadTitled(`Cataloguing, late ${width}`);
+    const id = threadTitled(`Cataloging, late ${width}`);
     await expect(page.locator(`.transcript[data-thread="${id}"]`), 'not drawn before its event').toHaveCount(0);
     await release(page);
     await isOpen(page, id);
@@ -86,7 +86,7 @@ test('going to another room first stays there, and leaves no listener', async ({
   await holdThreads(page, ['thread']);
   const other = sideRoom(app, 'New elsewhere');
   const r = await openRoom(page, 'New left');
-  await startConversation(page, r, 'Cataloguing, left');
+  await startConversation(page, r, 'Cataloging, left');
   await heard(page);
   // Closing the sheet left the address alone, so only the person’s move ends the wait.
   await expect(page).toHaveURL(new RegExp(`#/t/${r.room.id}$`));
@@ -103,21 +103,25 @@ test('going to another room first stays there, and leaves no listener', async ({
 test('a conversation that comes with the state loaded again, its own event still held, opens', async ({ page }) => {
   await holdThreads(page, ['thread']);
   const r = await openRoom(page, 'New resync');
-  await startConversation(page, r, 'Cataloguing, resync');
+  await startConversation(page, r, 'Cataloging, resync');
   await heard(page);
   await page.evaluate(() => import('/app/js/client.mjs').then(({ load }) => load()));
-  await isOpen(page, threadTitled('Cataloguing, resync'));
+  await isOpen(page, threadTitled('Cataloging, resync'));
 });
 
 test('two made while both are held each open in turn, and leave no listener', async ({ page }) => {
   await holdThreads(page, ['thread']);
   const r = await openRoom(page, 'New twice');
   const before = await listeners(page);
-  await startConversation(page, r, 'Cataloguing, one');
-  await startConversation(page, r, 'Cataloguing, two');
+  await startConversation(page, r, 'Cataloging, one');
+  await startConversation(page, r, 'Cataloging, two');
   await release(page);
-  // Both wait on the room’s address; the first to land moves it, which ends the other’s wait.
-  await expect(page).toHaveURL(new RegExp(`#/t/(${threadTitled('Cataloguing, one')}|${threadTitled('Cataloguing, two')})$`));
+  // If both events are held, release() hands them over in one loop, before any hashchange, so each wait goes to its
+  // own conversation and the page ends on the second. If the second lands later (the stream lagged), the first one’s
+  // move has ended its wait, and the page stays on the first. Either way it’s on one of the two, with no listener left.
+  const one = threadTitled('Cataloging, one');
+  const two = threadTitled('Cataloging, two');
+  await expect(page).toHaveURL(new RegExp(`#/t/(${one}|${two})$`));
   await expect.poll(() => listeners(page)).toBe(before);
 });
 

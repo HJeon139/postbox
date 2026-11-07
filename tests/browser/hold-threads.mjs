@@ -1,5 +1,5 @@
-// Holding the page’s topic-thread events back (#887): moved from reply-in-thread.spec.mjs, so other specs can make
-// a thread’s event arrive after its address does, on every run.
+// Holding the page’s `thread` events back, for threads of the kinds a spec names (#887, #926): moved from
+// reply-in-thread.spec.mjs, so a spec can make a thread’s event arrive after its address does, on every run.
 
 /**
  * Has the page hold back each `thread` event for a topic thread while holding, then hand them to the page in order on
@@ -10,7 +10,8 @@ export const holdTopics = (page) => holdThreads(page, ['topic']);
 
 /**
  * The same for threads of any of these kinds: `thread` for a conversation, `topic`, `side`.
- * @param {import('@playwright/test').Page} page  @param {string[]} kinds
+ * @param {import('@playwright/test').Page} page
+ * @param {string[]} kinds
  */
 export async function holdThreads(page, kinds) {
   await page.addInitScript((kinds) => {
