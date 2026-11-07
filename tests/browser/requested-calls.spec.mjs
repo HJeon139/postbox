@@ -87,7 +87,7 @@ test('#296 a write the confirm shows word for word runs without a card; Stop bri
     });
     await page.locator('.transcript .block', { hasText: 'Push Now and open its PR' }).getByRole('button', { name: 'Push 2d7c9a65' }).click();
     const line = page.locator('[data-allowed-call]');
-    await expect(line).toHaveText(/Ran gh pr create --title .* for @now without a card: you confirmed “Push 2d7c9a65”/);
+    await expect(line).toHaveText(/Ran gh pr create --title .* for now without a card: you confirmed “Push 2d7c9a65”/);
     expect.soft(replies[0]).toEqual({ allow: true });
     expect.soft(permissionCards(), 'no card').toHaveLength(0);
     await line.getByText('The whole call').click();
@@ -201,7 +201,7 @@ test('#562 a push the person confirmed is Postbox’s own, to the repository the
     await page.locator('.transcript .block', { hasText: 'Push Now:' }).getByRole('button', { name: 'Push feat/now' }).click();
     const line = page.locator('[data-allowed-call]').last();
     await expect(line).toHaveText(
-      /Pushed 2d7c9a6 to feat\/now of https:\/\/github\.com\/HJeon139\/postbox\.git for @now, in place of its own git push: you confirmed “Push feat\/now”/,
+      /Pushed 2d7c9a6 to feat\/now of https:\/\/github\.com\/HJeon139\/postbox\.git for now, in place of its own git push: you confirmed “Push feat\/now”/,
     );
     await expect.poll(() => replies.length, { message: 'the answer to reach the agent' }).toBe(1);
     expect.soft(replies[0].allow, 'the agent’s own push never runs').toBe(false);

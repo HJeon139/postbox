@@ -90,6 +90,7 @@ const PENDING = {
   'remote/turns-end.mjs': ['stoppedHung'], // the hung host turn’s own replies
   'remote/turns-prompts.mjs': ['cardOf', 'openCards'], // a host turn’s own cards, and the sweep its callers settle
   'remote/turns-resume.mjs': ['reattach'], // the replayed turn’s replies, replaced in a sweep
+  'reply-segment.mjs': ['wordsSegment'], // whether the turn’s open part is still its thread’s last decides where its next words go
   'runtime.mjs': [
     'addItem',
     'bringForward',

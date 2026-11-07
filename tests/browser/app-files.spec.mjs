@@ -122,7 +122,7 @@ test('#47 a dataset the agent loads shows a line, and reaches an app with no res
   const loaded = await rt.toolsFor(se.id).add_dataset({ id: 'scifact', path: 'scifact.jsonl', title: 'SciFact claims' });
   expect(loaded.ok, loaded.message).toBe(true);
   await expect(
-    page.locator('.sys-line', { hasText: /@librarian loaded the dataset scifact · 50 records, searched only when named/ }),
+    page.locator('.sys-line', { hasText: /librarian loaded the dataset scifact · 50 records, searched only when named/ }),
     'the conversation says the agent loaded it, and that it’s searched only when named',
   ).toBeVisible();
   rt.toolsFor(se.id).show_app({ id: 'reader', title: 'Reader', code: READER, permissions: ['corpus.read', 'corpus.search'] });

@@ -21,7 +21,7 @@ const S = () => client.state;
 /**
  * The Hosts tab’s state, kept across repaints: the host being edited and the editor’s values (draft), each field’s
  * error, the form’s, whether it’s saving, the Add a host field, and the host just added, whose Install… gets focus.
- * @typedef {{ name: string, v: Record<string, any>, folders: Record<string, string> }} Draft
+ * @typedef {{ name: string, short: string, v: Record<string, any>, folders: Record<string, string> }} Draft
  * @typedef {{ root: HTMLElement, editing: string | null, draft: Draft | null, errors: Record<string, string>, formError: string,
  *   saving: boolean, addName: string, addError: string, added: string | null, paint: () => void }} Panel
  */

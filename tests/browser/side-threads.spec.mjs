@@ -55,7 +55,7 @@ async function open(page, hash) {
   await expect(page.locator('header.topbar')).toBeVisible();
 }
 /** An agent’s row in the sidebar, the li around its button. */
-const row = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^@${handle}$`) }) });
+const row = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^${handle}$`) }) });
 const words = async (locator) => (await locator.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
 const sideLine = (page) => page.locator('#main .pill', { hasText: 'asked' });
 
@@ -65,22 +65,22 @@ test('a turn still running in a side thread from before #372 shows in its conver
   const side = r.oldSide();
   await open(page, `#/t/${r.room.id}`);
   r.runIn(side, r.researcher.id, 'Check the editions on the shelf.');
-  await expect.poll(() => r.busy(r.researcher.id), { message: '@researcher’s turn' }).toBe(true);
+  await expect.poll(() => r.busy(r.researcher.id), { message: 'researcher’s turn' }).toBe(true);
   expect(Object.values(store.state.sessions).filter((x) => x.handle === 'researcher' && x.threadId === r.room.id).length).toBe(1);
   expect(held.turns.at(-1), 'the turn is its own session’s, in the side thread').toMatchObject({ sessionId: r.researcher.id, thread: side.id });
   // The agent tree: under @researcher, one line with its state and who it’s with, and a Stop; the thread and who woke it
   // are on hover and in the link’s name.
-  await expect.poll(() => words(row(page, 'researcher').locator('.agent-sub'))).toEqual(['Calling tools with @indexer Stop']);
+  await expect.poll(() => words(row(page, 'researcher').locator('.agent-sub'))).toEqual(['Calling tools with indexer Stop']);
   const link = row(page, 'researcher').locator('.agent-sub a');
   await expect(link).toHaveAttribute('href', `#/t/${r.room.id}/side/${side.id}`);
-  await expect(link).toHaveAttribute('title', `In the side thread “${side.title}”, woken by @indexer`);
-  await expect(link).toHaveAttribute('aria-label', `Calling tools with @indexer, in the side thread “${side.title}”, woken by @indexer`);
+  await expect(link).toHaveAttribute('title', `In the side thread “${side.title}”, woken by indexer`);
+  await expect(link).toHaveAttribute('aria-label', `Calling tools with indexer, in the side thread “${side.title}”, woken by indexer`);
   // Its words show whole, wrapped if need be: none of it is only in the tooltip.
   expect(await link.locator('.name').evaluate((n) => n.scrollWidth <= n.clientWidth && n.scrollHeight <= n.clientHeight + 1), 'the entry’s text whole').toBe(
     true,
   );
   // The side-thread line, with the ring and state word, and the conversation’s row in the sidebar.
-  await expect(sideLine(page)).toContainText(/@indexer asked @researcher · @researcher is calling tools · 1 message · Open/);
+  await expect(sideLine(page)).toContainText(/indexer asked researcher · researcher is calling tools · 1 message · Open/);
   await expect(sideLine(page).locator('pb-ring')).toHaveCount(1);
   await expect(page.locator(`.rail a.row[data-thread="${r.room.id}"]`)).toContainText('calling tools in a side thread');
 });
@@ -100,10 +100,10 @@ test('a wake while that session is busy waits in the conversation’s queue: no 
   expect(r.sideOf(), 'no side thread').toBeUndefined();
   // It waits in the conversation’s queue, as the agent’s message, and the message itself is in the transcript.
   await open(page, `#/t/${r.room.id}`);
-  const mail = row(page, 'researcher').getByRole('button', { name: '1 message queued for @researcher' });
+  const mail = row(page, 'researcher').getByRole('button', { name: '1 message queued for researcher' });
   await expect(mail).toBeVisible();
   await mail.click();
-  const queued = page.locator('.agent-queue-row', { hasText: 'From @indexer' });
+  const queued = page.locator('.agent-queue-row', { hasText: 'From indexer' });
   await expect(queued).toContainText('One question meanwhile.');
   await expect(queued.getByRole('button', { name: /^Edit message/ }), 'a wake can’t be edited').toHaveCount(0);
   await settled(page);
@@ -172,14 +172,14 @@ test('the composer’s # links a side thread, and the agent that gets the messag
   await page.locator('#composer-input').focus();
   await page.keyboard.insertText('#');
   await expect(page.locator('#mention-list')).toHaveAttribute('aria-label', 'Threads');
-  await expect(page.locator('#mention-list')).toContainText(/Link a thread[\s\S]*@indexer ↔ @researcher/i);
+  await expect(page.locator('#mention-list')).toContainText(/Link a thread[\s\S]*indexer ↔ researcher/i);
   await page.keyboard.insertText('indexer');
   await page.keyboard.press('Enter');
-  await expect(page.locator('#composer-input')).toHaveValue(`[@indexer ↔ @researcher](${app.origin}/#/t/${r.room.id}/side/${side.id}) `);
+  await expect(page.locator('#composer-input')).toHaveValue(`[indexer ↔ researcher](${app.origin}/#/t/${r.room.id}/side/${side.id}) `);
   held.scripts.set(r.indexer.id, (ctx) => ctx.text('Read it.'));
   await page.keyboard.insertText('@indexer read this');
   await page.keyboard.press('Enter');
-  await expect.poll(() => held.turns.some((t) => t.sessionId === r.indexer.id && t.text.includes('read this')), { message: '@indexer’s turn' }).toBe(true);
+  await expect.poll(() => held.turns.some((t) => t.sessionId === r.indexer.id && t.text.includes('read this')), { message: 'indexer’s turn' }).toBe(true);
   const got = held.turns.findLast((t) => t.sessionId === r.indexer.id);
   expect(
     got?.context.some((c) => c.includes(`side thread “${side.title}” (thread ${side.id})`) && c.includes('read_conversation')),
@@ -209,14 +209,14 @@ test('an agent that wakes one from outside the conversation brings a card; Add j
   expect(Object.keys(store.state.sessions).length, 'the wake made no session').toBe(before);
   const card = store.items(r.room.id).find((x) => x.kind === 'hop' && x.join && x.status === 'open');
   const node = page.locator(`#main [data-key="${card.id}"]`);
-  await expect(node).toContainText('Add @critic to this conversation?');
-  await node.getByRole('button', { name: 'Add @critic', exact: true }).click();
-  await expect.poll(() => !!r.sessionIn('critic'), { message: '@critic to join' }).toBe(true);
-  await expect(row(page, 'critic').locator('.agent-btn'), 'the row’s note').toContainText('Joined when @indexer woke it');
+  await expect(node).toContainText('Add critic to this conversation?');
+  await node.getByRole('button', { name: 'Add critic', exact: true }).click();
+  await expect.poll(() => !!r.sessionIn('critic'), { message: 'critic to join' }).toBe(true);
+  await expect(row(page, 'critic').locator('.agent-btn'), 'the row’s note').toContainText('Joined when indexer woke it');
   // The agents the person added say nothing of the kind.
   await expect(row(page, 'indexer')).not.toContainText('Joined when');
   // The mock @critic’s reply can ask something, which would count as needing you after this test.
-  await expect.poll(() => rt.turns.has(r.sessionIn('critic').id), { message: '@critic’s turn to end' }).toBe(false);
+  await expect.poll(() => rt.turns.has(r.sessionIn('critic').id), { message: 'critic’s turn to end' }).toBe(false);
   rt.archive(r.sessionIn('critic').id);
 });
 
@@ -253,7 +253,7 @@ test('a message in a side thread from before #372 still goes to the conversation
     .toBe(true);
   await synced(page, app);
   await expect(page.locator(`.sidepanel [data-key="${reply.id}"]`)).toContainText('Sent to the conversation');
-  expect(await words(page.locator('#main .shared-head'))).toContain(`From the thread “${side.title}” · @researcher Open thread`);
+  expect(await words(page.locator('#main .shared-head'))).toContain(`From the thread “${side.title}” · researcher Open thread`);
 });
 
 test('a failed side-thread turn shows on its line with Retry, and the line’s Open goes to its card (#151)', async ({ page }) => {
@@ -268,7 +268,7 @@ test('a failed side-thread turn shows on its line with Retry, and the line’s O
   const card = store.state.sessions[r.researcher.id].needs;
   expect(card.threadId).toBe(side.id);
   await open(page, `#/t/${r.room.id}`);
-  const line = page.locator('#main [data-side-sig]').filter({ has: page.locator('.pill', { hasText: '@researcher failed' }) });
+  const line = page.locator('#main [data-side-sig]').filter({ has: page.locator('.pill', { hasText: 'researcher failed' }) });
   await expect(line.getByRole('button')).toHaveText(['Retry', 'Dismiss']); // Dismiss since #883
   // It counts as needing you, in the tab title.
   await expect(page).toHaveTitle(/^\(\d+\) /);
@@ -291,7 +291,7 @@ test.describe('at 375 px', () => {
   test('at 375 px, the side-thread line with its agent’s state fits without scrolling sideways', async ({ page }) => {
     const r = room('Narrow');
     r.runIn(r.oldSide(), r.researcher.id, 'Last look.');
-    await expect.poll(() => r.busy(r.researcher.id), { message: '@researcher’s turn' }).toBe(true);
+    await expect.poll(() => r.busy(r.researcher.id), { message: 'researcher’s turn' }).toBe(true);
     await open(page, `#/t/${r.room.id}`);
     await expect(page.locator('#main .pill', { hasText: 'is calling tools' }), 'the state on the line').toBeVisible();
     await settled(page);

@@ -192,7 +192,7 @@ const removeBody = (host, { noToken, placed, forgets }) => [
     ? h(
         'p',
         { style: { margin: 0 } },
-        `${placed.map((p) => `@${p.handle}`).join(', ')} ${placed.length === 1 ? 'runs' : 'run'} there, and can’t start a turn until you pick another place for ${placed.length === 1 ? 'it' : 'them'}.`,
+        `${placed.map((p) => p.handle).join(', ')} ${placed.length === 1 ? 'runs' : 'run'} there, and can’t start a turn until you pick another place for ${placed.length === 1 ? 'it' : 'them'}.`,
       )
     : null,
   noToken

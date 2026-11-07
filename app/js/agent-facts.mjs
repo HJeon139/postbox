@@ -24,6 +24,6 @@ export function isMock(agent) {
  * @param {any} agent a session or a persona
  */
 export function mockMarker(agent) {
-  // The space is text, so the name and the marker read as two words (“@critic mock”), wherever it goes.
+  // The space is text, so the name and the marker read as two words (“critic mock”), wherever it goes.
   return isMock(agent) ? h('span.mock-mark', ' ', h('span.mock-tag', 'mock')) : null;
 }

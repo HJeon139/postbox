@@ -70,7 +70,7 @@ export function sideRoom(app, title) {
     /** @indexer ↔ @researcher, with @indexer’s message in it and its line in the conversation. */
     oldSide(text = 'Which editions differ?') {
       const side = rt.putThread({
-        ...{ id: `th_side${room.id.slice(3)}`, projectId: room.projectId, title: '@indexer ↔ @researcher', kind: 'side', parentId: room.id },
+        ...{ id: `th_side${room.id.slice(3)}`, projectId: room.projectId, title: 'indexer ↔ researcher', kind: 'side', parentId: room.id },
         ...{ pair: 'indexer|researcher', woke: 'researcher', members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now(), archived: false },
       });
       rt.addItem(room.id, { kind: 'sidelink', sideThreadId: side.id, from: 'indexer', to: 'researcher', count: 0 });

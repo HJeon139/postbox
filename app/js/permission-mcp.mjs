@@ -41,7 +41,7 @@ function servers(p, mcp, change) {
               else next.add(m.name);
               void change(
                 () => api(`/api/personas/${p.id}`, { mcpOff: [...next] }, 'PATCH'),
-                `${m.name} is ${next.has(m.name) ? 'off' : 'on'} for @${p.handle} from its next turn.`,
+                `${m.name} is ${next.has(m.name) ? 'off' : 'on'} for ${p.handle} from its next turn.`,
               );
             },
             onkeydown: (e) => {

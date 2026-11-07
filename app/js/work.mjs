@@ -104,7 +104,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
           ? h(
               'p.work-turn',
               icon('clock', 'i-sm'),
-              `One turn: @${turn.handle} at ${timeOf(turn.startedAt)}${turn.ms ? `, ${dur(turn.ms)}` : ''}. `,
+              `One turn: ${turn.handle} at ${timeOf(turn.startedAt)}${turn.ms ? `, ${dur(turn.ms)}` : ''}. `,
               workLink(threadId, { full: true }, 'Show the whole conversation'),
             )
           : null,
@@ -126,7 +126,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
                     paint();
                   },
                 },
-                x ? `@${x}` : 'All agents',
+                x ? x : 'All agents',
               ),
             ),
           )
@@ -262,7 +262,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
                     ? h('span.small.dim', `binary · ${formatBytes(f.before?.size ?? 0)} → ${formatBytes(f.after?.size ?? 0)}`)
                     : signedEl(f.added, f.deleted),
                   tags(f),
-                  h('span.small.dim.work-who', (turnId ? [f.handle] : f.handles).map((x) => `@${x}`).join(', ')),
+                  h('span.small.dim.work-who', (turnId ? [f.handle] : f.handles).join(', ')),
                 ],
                 () => fileBody(f, entries),
               );
@@ -282,7 +282,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
         ? h(
             'p.small.dim',
             'By agent: ',
-            byAgent.map((a, i) => [i ? ' · ' : '', `@${a.handle} `, ...counts(a)]),
+            byAgent.map((a, i) => [i ? ' · ' : '', `${a.handle} `, ...counts(a)]),
             '. A file’s lines count toward the agent that changed it last.',
           )
         : null,
@@ -318,7 +318,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
         turnId
           ? `This turn’s change: ${signed(f.added, f.deleted)}, in ${plural(f.tools ?? 1, 'edit')}.`
           : [
-              `Changed in ${plural(eff.turns, 'turn')} by ${file.handles.map((x) => `@${x}`).join(', ')}`,
+              `Changed in ${plural(eff.turns, 'turn')} by ${file.handles.join(', ')}`,
               eff.ms ? `, ${dur(eff.ms)}` : '',
               eff.priced ? `, ${formatCost(eff.costUsd)}` : '',
               file.written > file.added
@@ -358,7 +358,7 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
   }
 
   function confirmRestore(f) {
-    const by = f.handles.map((x) => `@${x}`).join(', ');
+    const by = f.handles.join(', ');
     const name = f.rel.replace(/^.*\//, '');
     let dlg = null;
     const go = async (button) => {
@@ -634,7 +634,7 @@ export function mountWorkPane(threadId) {
       agents.length > 1
         ? h(
             'p.small.dim',
-            agents.map((a, i) => [i ? ' · ' : '', `@${a.handle} `, e.priced ? formatCost(a.costUsd) : plural(a.turns, 'turn')]),
+            agents.map((a, i) => [i ? ' · ' : '', `${a.handle} `, e.priced ? formatCost(a.costUsd) : plural(a.turns, 'turn')]),
           )
         : null,
       s.idle.turns
@@ -681,7 +681,7 @@ export function mountWorkPane(threadId) {
               'summary',
               { id: `wturn-s-${t.id}` },
               icon('right', 'i-sm'),
-              h('span.wc-turn-who', h('b', `@${t.handle}`), h('span.small.dim', ` · ${timeOf(t.startedAt)}`)),
+              h('span.wc-turn-who', h('b', t.handle), h('span.small.dim', ` · ${timeOf(t.startedAt)}`)),
               h('span.small.wc-turn-line', line),
             ),
             openTurns.has(t.id) ? turnBody(entries, t) : null,

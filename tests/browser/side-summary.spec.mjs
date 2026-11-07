@@ -43,8 +43,8 @@ test('#225 Summarize back in a side thread: pick who writes it, and the summary 
   await expect(button).toBeEnabled();
   await button.focus();
   await page.keyboard.press('Enter');
-  await expect(page.locator('.menu [role=menuitem]')).toHaveText(['@indexer writes itstarted this thread', '@researcher writes it']);
-  await expect.poll(() => focused(page), { message: 'focus on the first agent' }).toBe('menuitem: @indexer writes itstarted this thread');
+  await expect(page.locator('.menu [role=menuitem]')).toHaveText(['indexer writes itstarted this thread', 'researcher writes it']);
+  await expect.poll(() => focused(page), { message: 'focus on the first agent' }).toBe('menuitem: indexer writes itstarted this thread');
   const hops = store.state.threads[room.id].hops;
   const before = held.turns.length;
   held.scripts.set(indexer.id, async (ctx) => ctx.text('@researcher found that the 1908 edition drops two chapters; nothing is open.'));
@@ -53,10 +53,10 @@ test('#225 Summarize back in a side thread: pick who writes it, and the summary 
   await expect.poll(() => held.turns.length, { message: 'the summary’s turn' }).toBeGreaterThan(before);
   await idle();
   const ran = held.turns.slice(before).map((x) => [x.sessionId === indexer.id ? 'indexer' : x.sessionId, x.thread === side.id]);
-  expect(ran, 'one turn, @indexer’s, in the side thread').toEqual([['indexer', true]]);
+  expect(ran, 'one turn, indexer’s, in the side thread').toEqual([['indexer', true]]);
   expect(store.state.threads[room.id].hops, 'the summary didn’t count against the wake limit').toBe(hops);
   await synced(page, app);
-  await expect(page.locator('#main .shared-card', { hasText: '1908' })).toContainText(/^\s*Summary of the thread “@indexer ↔ @researcher” · @indexer/);
+  await expect(page.locator('#main .shared-card', { hasText: '1908' })).toContainText(/^\s*Summary of the thread “indexer ↔ researcher” · indexer/);
 });
 
 test('#225 Summarize back asked while its agent is busy in the side thread waits until the summary is posted', async ({ page }) => {
@@ -64,7 +64,7 @@ test('#225 Summarize back asked while its agent is busy in the side thread waits
   const { room, side, indexer, busy, idle, runIn, button } = await sideThread(page, 'Waits');
   // @indexer has a turn still running in the side thread, which holds, so the summary waits behind it.
   runIn(side, indexer.id, 'One more thing.', 'researcher');
-  await expect.poll(() => busy(indexer.id), { message: '@indexer at work' }).toBe(true);
+  await expect.poll(() => busy(indexer.id), { message: 'indexer at work' }).toBe(true);
   await expect(button).toBeEnabled();
   await button.focus();
   await page.keyboard.press('Enter');

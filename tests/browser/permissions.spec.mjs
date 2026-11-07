@@ -191,7 +191,7 @@ test('#66 a subagent’s prompt names the subagent', async ({ page }) => {
   app.rt.sendMessage(thread.id, { text: 'Look around.' });
   const c = card(page, 'list the files');
   await ready(page, c);
-  await expect(c.locator('.title')).toContainText('Let @coder’s subagent (Explore) list the files?');
+  await expect(c.locator('.title')).toContainText('Let coder’s subagent (Explore) list the files?');
   await footButton(c, 'Allow').click();
   await expect.poll(() => answers[n]?.allow, { message: 'the answer to reach the subagent' }).toBe(true);
   await idle();
@@ -216,7 +216,7 @@ test('#150 a Codex approval for an MCP tool names the tool and shows its argumen
   app.rt.sendMessage(thread.id, { text: 'File the issue.' });
   const c = card(page, 'use github tool create_issue');
   await ready(page, c);
-  expect(await words(c.locator('.title'))).toBe('Let @coder use github tool create_issue?');
+  expect(await words(c.locator('.title'))).toBe('Let coder use github tool create_issue?');
   // The tool’s name keeps its case: the label around it is uppercase.
   expect(await words(c.locator('.kind .tool-name'))).toBe('mcp__github__create_issue');
   const detail = await words(c.locator('.perm-detail'));
@@ -253,7 +253,7 @@ test('#112 a write outside Postbox waits on a card with its draft as it will rea
   await expect(draft).toHaveAttribute('aria-label', 'The draft');
   await expect(write.locator('.perm-detail')).toContainText('"content": "(the draft above)"');
   await expect(write.locator('.perm-always')).toContainText('Always allow mcp__docs__create_document in this folder');
-  await expect(write.locator('.perm-always')).toContainText('From now on @coder can use mcp__docs__create_document without showing you a draft.');
+  await expect(write.locator('.perm-always')).toContainText('From now on coder can use mcp__docs__create_document without showing you a draft.');
   await footButton(write, 'Always allow').click();
   await expect.poll(() => replies.length, { message: 'the answer' }).toBe(1);
   await idle();
@@ -282,14 +282,14 @@ test('#104 an agent asks for a tool that’s off; the card says what turning it 
   try {
     await ready(page, ask);
     expect(asked[0].ok).toBe(true);
-    expect(await words(ask.locator('.title'))).toBe('@coder asks you to turn on “Message, schedule or start agents outside Postbox”');
+    expect(await words(ask.locator('.title'))).toBe('coder asks you to turn on “Message, schedule or start agents outside Postbox”');
     const body = await words(ask.locator('.block-body'));
-    expect(body).toMatch(/It’s turned off for @coder in Postbox, so it can’t use it here\./);
+    expect(body).toMatch(/It’s turned off for coder in Postbox, so it can’t use it here\./);
     // The id is the label beside the title, in its own case.
     expect(await words(ask.locator('.kind .tool-name'))).toBe('agents.outside');
-    expect(body).toMatch(/@coder: To schedule the nightly run with CronCreate\./);
+    expect(body).toMatch(/coder: To schedule the nightly run with CronCreate\./);
     expect(body).toMatch(/in every conversation, from its next turn\. Its permission mode still decides each call\./);
-    await footButton(ask, 'Turn on for @coder').click();
+    await footButton(ask, 'Turn on for coder').click();
     await expect(ask, 'the answered card').toContainText('Turned on.');
     expect(store.state.personas[persona.id].tools, 'the persona has it ticked').toContain('agents.outside');
     await expect(page.locator('#composer-input'), 'focus goes back to the composer').toBeFocused();
@@ -313,7 +313,7 @@ test('#66 the panel opens from ⋯ › Permissions… with the mode, rules with 
   await open(page);
   const dialog = await openPanel(page);
   const all = await words(dialog);
-  expect(all).toMatch(/@coder’s permissions/);
+  expect(all).toMatch(/coder’s permissions/);
   await expect(dialog.locator('[role="radiogroup"][aria-label="Mode"] [aria-checked="true"]')).toContainText('Ask me');
   expect(all).toMatch(/Bash\(rm:\*\) from the project’s shared settings/);
   expect(all).toMatch(/Bash\(git status\) from your user settings/);
@@ -330,7 +330,7 @@ test('#66 the panel opens from ⋯ › Permissions… with the mode, rules with 
     ['Bash(rm -rf build)', /Refused by the deny rule Bash\(rm:\*\) from the project’s shared settings/],
     ['Bash(npm test -- --ci)', /Runs: the allow rule Bash\(npm test:\*\) from this folder’s local settings/],
     ['WebFetch(https://example.com/x)', /Refused by the deny rule WebFetch from the persona’s Tools/],
-    ['Bash(make)', /No rule covers it, so Ask me mode decides: @coder asks you/],
+    ['Bash(make)', /No rule covers it, so Ask me mode decides: coder asks you/],
     ['mcp__github__create_issue', /Asks you: the ask rule mcp__\*__create\* from Postbox’s check on writes outside it/],
   ]) {
     await call.click();
@@ -372,7 +372,7 @@ test('#66 the mode changes from the panel, and says it applies from the next tur
   const dialog = await openPanel(page);
   try {
     await dialog.locator('[aria-label="Mode"] button', { hasText: 'Accept edits' }).click();
-    await expect(dialog.locator('.perm-status')).toContainText('@coder is in Accept edits mode from its next turn');
+    await expect(dialog.locator('.perm-status')).toContainText('coder is in Accept edits mode from its next turn');
     expect(app.store.state.personas[persona.id].permissionMode).toBe('acceptEdits');
   } finally {
     app.rt.updatePersona(persona.id, { permissionMode: 'ask' });
@@ -398,7 +398,7 @@ test('#66 the persona editor opens the same panel', async ({ page }) => {
   await expect(page.locator('.backdrop')).toHaveCount(2);
   const over = page.locator('.backdrop').last();
   await expect(over.locator('.perm-panel #perm-call'), 'the panel over the editor').toBeVisible();
-  await expect(over.locator('.d-head')).toContainText('@coder’s permissions');
+  await expect(over.locator('.d-head')).toContainText('coder’s permissions');
   await page.keyboard.press('Escape');
   await expect(page.locator('.backdrop'), 'Escape closes the panel and keeps the editor').toHaveCount(1);
 });

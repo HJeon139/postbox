@@ -379,7 +379,7 @@ function updateRow(n, t, active, fresh = false) {
   if (t.id === active) n.setAttribute('aria-current', 'page');
   else n.removeAttribute('aria-current');
   const named = t.kind === 'room' ? ses : main ? [main] : [];
-  const who = named.length ? named.flatMap((x, i) => [i ? ', ' : '', `@${x.handle}`, mockMarker(x)]) : '@—';
+  const who = named.length ? named.flatMap((x, i) => [i ? ', ' : '', x.handle, mockMarker(x)]) : '—';
   const word = lead ? ` · ${stateWord(lead.state).toLowerCase()}${away}` : '';
   const sig = JSON.stringify([t.title, named.map((x) => [x.handle, isMock(x)]), word, unread, ses.map((x) => x.id)]);
   if (!fresh && n.dataset.sig === sig) return;
@@ -471,7 +471,7 @@ function conversationMenu(anchor, shown) {
 
 export function afterDelete(se, until) {
   undoToast({
-    text: `Deleted @${se.handle}’s session “${S().threads[se.threadId]?.title ?? ''}”`,
+    text: `Deleted ${se.handle}’s session “${S().threads[se.threadId]?.title ?? ''}”`,
     until,
     onUndo: () => api(`/api/sessions/${se.id}/undo-delete`, {}).catch((e) => toast({ title: 'Too late to undo', text: e.message })),
   });
