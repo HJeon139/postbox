@@ -163,12 +163,15 @@ export function makeBroker(h, over = {}) {
   return { b, sent, logs, writes, state, hello, post };
 }
 
+/** The key a test shim’s hello carries unless it names another: each connection made with it is the same shim (#908). */
+export const SHIM_KEY = 'f'.repeat(32);
+
 /**
  * A shim connected to the broker: its lines, checked as the shim checks them. `key`: the key its hello carries, the
- * same for each connection of one shim process; none by default.
- * @param {ReturnType<typeof createBroker>} b @param {string} turn @param {string} [token] @param {string} [key]
+ * same for each connection of one shim process; SHIM_KEY by default, and null for a hello with none.
+ * @param {ReturnType<typeof createBroker>} b @param {string} turn @param {string} [token] @param {string | null} [key]
  */
-export function connectShim(b, turn, token = turnToken(turn), key = undefined) {
+export function connectShim(b, turn, token = turnToken(turn), key = SHIM_KEY) {
   /** @type {any[]} */
   const got = [];
   const taken = new Set();

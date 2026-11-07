@@ -21,9 +21,12 @@ export const key = (turn, id) => `${turn} ${id}`;
 
 /**
  * @typedef {{ turn: string, id: string, name: string, route: 'queue' | 'ask' | 'read', args: Record<string, any> | null, replied: boolean,
- *   result?: { ok: boolean, text: string }, saved?: Promise<string>, replying?: Promise<string>, offline?: boolean, bytes?: number, arrived?: number, timer?: any }} Tool
- *   saved: settles once the call is written down, with '' or why it couldn’t be (a prompt’s likewise); replying: a
- *   reply being written down, likewise (a prompt’s answering); bytes: its tool message’s encoded size, while it waits
+ *   owner?: string | null, result?: { ok: boolean, text: string }, saved?: Promise<string>, replying?: Promise<string>, offline?: boolean,
+ *   bytes?: number, arrived?: number, timer?: any }} Tool
+ *   owner: the calling shim’s ShimConn owner, the only one its result goes to (#908), undefined for a record an older
+ *   daemon wrote, which the first shim to send it again takes; saved: settles once the call is written down, with ''
+ *   or why it couldn’t be (a prompt’s likewise); replying: a reply being written down, likewise (a prompt’s
+ *   answering); bytes: its tool message’s encoded size, while it waits
  * @typedef {{ turn: string, id: string, entry: string, request: Record<string, any>, answer: Record<string, any> | null,
  *   over: boolean, at: number, owner?: string | null, asked: Set<ShimConn>, replayed?: boolean, saved?: Promise<string>,
  *   answering?: Promise<string> }} Prompt
@@ -124,7 +127,14 @@ export function brokerState({
   };
 }
 
-/** @param {Broker} b @param {string} turn @param {string} type @param {Record<string, unknown>} body */
-export function toShims(b, turn, type, body) {
-  for (const s of b.shims.get(turn) ?? []) s.send(type, body);
+/**
+ * Sends a call’s result to the connections of the shim that made it, by its key, never to every shim of the turn
+ * (#908): any client with a turn’s token can connect as one of its shims. It goes to each live connection of that
+ * shim, so one that reconnected while the call waited gets it without sending it again. A call no shim owns yet (a
+ * record an older daemon wrote) reaches nobody until a shim sends it again and takes it (broker-tools.mjs).
+ * @param {Broker} b @param {Tool} t @param {string} type @param {Record<string, unknown>} body
+ */
+export function toOwner(b, t, type, body) {
+  if (t.owner === undefined) return;
+  for (const s of b.shims.get(t.turn) ?? []) if (s.owner === t.owner) s.send(type, body);
 }

@@ -17,6 +17,8 @@
 //   can’t tell whether a shim that went away read it. The shim’s notice that it expired, or that the harness canceled the call, ends it,
 //   and Postbox hears prompt-expired, now or after its next hello.
 // - A call or prompt is (turn, id): each shim picks its own IDs. A resent one is recognized and never queued twice.
+//   A call’s result, live or answered offline, goes only to the connections of the shim that made it, by its key, and
+//   a resend from another key gets none of it (#908).
 // - Everything waiting for Postbox survives a daemon restart: tools.jsonl and prompts.jsonl are append-only records of
 //   what arrived and what settled, replayed at start, an asked call’s reply with its text, so a shim that sends the
 //   call again after a restart gets it. After each Postbox hello every unreplied tool, unanswered prompt and unsent

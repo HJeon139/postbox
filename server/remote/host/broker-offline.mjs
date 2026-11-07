@@ -7,7 +7,7 @@ import { REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
 import { readConversation, readMessage } from './broker-reading.mjs';
 import { written } from './broker-records.mjs';
 import { snapshotOf } from './broker-snapshot.mjs';
-import { toShims } from './broker-state.mjs';
+import { toOwner } from './broker-state.mjs';
 
 /**
  * @typedef {import('./broker-state.mjs').Broker} Broker
@@ -78,7 +78,7 @@ export async function settleOffline(b, t) {
     t.replied = true;
     t.args = null;
     // The shim hears the answer before any journal write, so a slow or failing disk cannot hold it up.
-    toShims(b, t.turn, 'result', { id: t.id, ok: r.ok, text });
+    toOwner(b, t, 'result', { id: t.id, ok: r.ok, text });
     // A reply record follows a call record, when there is one: a read that was never sent to Postbox wrote none.
     if (t.saved && !(await t.saved)) {
       const why = await written(b, t.turn, 'tools', { op: 'reply', id: t.id, ok: r.ok, text }, true);

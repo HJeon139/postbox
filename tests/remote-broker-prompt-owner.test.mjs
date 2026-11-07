@@ -31,7 +31,7 @@ test('#353 a connection of the turn that only said hello gets no answer to anoth
     const { k, s } = await asked(h);
     const bystander = connectShim(k.b, 't1', turnToken('t1'), OTHER);
     await bystander.next('welcome');
-    const keyless = connectShim(k.b, 't1');
+    const keyless = connectShim(k.b, 't1', turnToken('t1'), null);
     await keyless.next('welcome');
     assert.deepEqual((await k.post('answer', { turn: 't1', prompt: 'p1', result: ALLOW })).errors, []);
     assert.deepEqual(await s.next('permission-answer'), { type: 'permission-answer', id: 'p1', result: ALLOW });
@@ -47,7 +47,7 @@ test('#353 a connection that sends another shim’s prompt again, identical, get
   const h = makeHome();
   try {
     const { k, s } = await asked(h);
-    for (const key of [OTHER, undefined]) {
+    for (const key of [OTHER, null]) {
       const copy = connectShim(k.b, 't1', turnToken('t1'), key);
       await copy.next('welcome');
       copy.send('permission', { id: 'p1', request: structuredClone(REQUEST) });
@@ -146,7 +146,7 @@ test('#353 a prompt from a shim that sent no key isn’t one a shim with a key m
   try {
     h.turn('t1');
     const k = makeBroker(h);
-    const keyless = connectShim(k.b, 't1');
+    const keyless = connectShim(k.b, 't1', turnToken('t1'), null);
     await keyless.next('welcome');
     keyless.send('permission', { id: 'p1', request: REQUEST });
     await until(() => k.sent.length, 'the prompt');
