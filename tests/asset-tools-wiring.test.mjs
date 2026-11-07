@@ -3,7 +3,7 @@
 // These import only what was there before the tools, so each fails without them.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -90,6 +90,52 @@ test('#516 S3b: an agent on a host writes and reads an asset through Postbox, wi
   const path = await answer('write_asset', { name: 'other.md', path: 'notes.md' });
   assert.equal(path.ok, false);
   assert.match(path.text, /On a remote host, write_asset takes text/);
+  r.d.end(turn);
+  await settled(r);
+});
+
+test('#700: on a host, while the store is closed, the asset writes are refused with the cause, store nothing, and the reads answer', async (ctx) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-asset-host-closed-'));
+  const store = await new Store(dir).load();
+  ctx.after(async () => {
+    await store.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  const r = rig({ store });
+  const turn = await running(r);
+  const answer = async (name, args) => {
+    const id = r.d.tool(turn, name, args);
+    await until(() => r.d.replies.some((x) => x.id === id), `${name}’s reply`);
+    return r.d.replies.find((x) => x.id === id);
+  };
+  const made = await answer('write_asset', { name: 'notes.md', text: 'kept' });
+  const id = /asset (as_\w+)/.exec(made.text)?.[1];
+  const files = () => readdirSync(join(dir, 'assets'), { recursive: true }).sort();
+  const before = files();
+  assert.equal(before.length, 2, 'the one file written while open, and its folder');
+  // Closed without telling the status listeners, so the turn keeps running: the state the gate itself guards.
+  const cause = 'Postbox can’t write its event log (EIO): disk sync refused.';
+  store.writable = false;
+  store.cause = Object.assign(new Error(cause), { code: 'EIO' });
+  for (const [name, args] of [
+    ['write_asset', { name: 'new.md', text: 'never stored' }],
+    ['write_asset', { id, base: 1, text: 'never stored either' }],
+    ['rename_asset', { id, base: 1, name: 'renamed.md' }],
+    ['delete_asset', { id, base: 1 }],
+    ['restore_asset', { id, base: 1, version: 1 }],
+  ]) {
+    const refused = await answer(name, args);
+    assert.deepEqual([refused.ok, refused.text], [false, cause], name);
+    assert.doesNotMatch(refused.text, /couldn’t confirm/, `${name}: refused by the gate, not by the commit after a put`);
+  }
+  assert.deepEqual(files(), before, 'no bytes were stored');
+  assert.equal(store.state.assets[id].versions.length, 1);
+  assert.match((await answer('read_asset', { id })).text, /kept/);
+  assert.match((await answer('list_assets', {})).text, /notes\.md/);
+  store.writable = true;
+  store.cause = null;
+  const again = await answer('write_asset', { id, base: 1, text: 'after reopening' });
+  assert.equal(again.ok, true, again.text);
   r.d.end(turn);
   await settled(r);
 });

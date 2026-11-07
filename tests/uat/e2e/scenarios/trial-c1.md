@@ -3,6 +3,7 @@
 - persona: A programmer who just joined a game team and has been handed a 256-row spreadsheet of how players’ choices map to titles. Writes short messages, and can’t say what a good picture looks like until they see one.
 - agents: researcher
 - models: persona
+- judge: visual
 - seed: visual-skill
 - steps: 6
 - project: Team onboarding

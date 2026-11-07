@@ -269,7 +269,7 @@ test('a failed side-thread turn shows on its line with Retry, and the line’s O
   expect(card.threadId).toBe(side.id);
   await open(page, `#/t/${r.room.id}`);
   const line = page.locator('#main [data-side-sig]').filter({ has: page.locator('.pill', { hasText: '@researcher failed' }) });
-  await expect(line.getByRole('button')).toHaveText('Retry');
+  await expect(line.getByRole('button')).toHaveText(['Retry', 'Dismiss']); // Dismiss since #883
   // It counts as needing you, in the tab title.
   await expect(page).toHaveTitle(/^\(\d+\) /);
   // Open goes to the side thread, at the card, with its Retry focused.
