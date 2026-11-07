@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.39.0 (2026-11-07)
+
+### Features
+
+- **adapters:** Antigravity, Kiro and Codex leave out the skills a persona turned off
+- **personas:** choose which skills each agent loads
+- **adapters:** Antigravity, Kiro and Codex agents load the visual-explainer skill too
+- **adapters:** every Claude agent loads Postbox's visual-explainer skill by default
+
 ## 1.38.0 (2026-11-07)
 
 ### Features
