@@ -1,7 +1,6 @@
 // The conversation view: transcript, composer, and the panel beside it for topic threads (yours, forked from a
 // message) and side threads (between agents).
 
-import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
 import { activityParts, paintActivity, stepsOnly } from './activity-paint.mjs';
@@ -12,6 +11,7 @@ import { paintOfflineQueue, paintWaitingLine } from './agent-queue.mjs';
 import { subagentNow } from './agents.mjs';
 import { allowedCallLine } from './allowed-call.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
+import { attChip, fileSize } from './attachment-chip.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, placeIn, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
@@ -492,32 +492,6 @@ function workChip(it, ctx) {
 function failureText(msg = 'This reply didn’t finish.') {
   const m = msg.match(/^(.*?[.!?])\s+([\s\S]*)$/);
   return m ? [h('b', m[1]), ' ', m[2]] : [h('b', msg)];
-}
-
-const fileSize = (size) => (size > 1e6 ? `${(size / 1e6).toFixed(1)} MB` : `${Math.ceil(size / 1000)} KB`);
-
-/**
- * An attachment on a sent message. Images the server shows inline (INLINE_TYPES) get a thumbnail that opens
- * the full image in a new tab; everything else, an SVG included, is a file chip that downloads.
- */
-function attChip(a) {
-  const label = a.kind === 'project-file' ? a.path : a.name;
-  const href = a.fileId ? `/api/files/${encodeURIComponent(a.fileId)}` : null;
-  if (href && INLINE_TYPES.has(a.type)) {
-    // One link: the image’s alt text and the size are its name, so it reads as “photo.png · 318 KB”.
-    return h(
-      'a.att-image',
-      { href, target: '_blank', rel: 'noopener' },
-      h('img', { src: href, alt: a.name, width: '160', height: '120', loading: 'lazy', decoding: 'async' }),
-      h('span.att-cap', h('span.att-name', { 'aria-hidden': 'true' }, a.name), a.size ? h('span.dim', ` · ${fileSize(a.size)}`) : null),
-    );
-  }
-  return h(
-    'span.att',
-    h('span.thumb', icon(a.kind === 'project-file' ? 'folder' : /^image\//.test(a.type ?? '') ? 'image' : 'file', 'i-sm')),
-    href ? h('a', { href, style: { color: 'inherit' } }, label) : label,
-    a.size ? h('span.dim', ` · ${fileSize(a.size)}`) : null,
-  );
 }
 
 /**
