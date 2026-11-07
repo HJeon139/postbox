@@ -12,6 +12,16 @@ const MODES = {
   bypass: ['--permission-mode', 'bypassPermissions'],
 };
 
+/**
+ * Which Claude Code session the turn runs in: a new one with Postbox’s id, the same one resumed, or, for a topic
+ * thread’s first turn, the conversation’s session forked at the message it branched from.
+ * @param {string} sessionId @param {boolean} resume @param {{ claudeSessionId: string, uuid?: string }|null} fork
+ */
+function sessionArgs(sessionId, resume, fork) {
+  if (fork) return ['--resume', fork.claudeSessionId, '--fork-session', ...(fork.uuid ? ['--resume-session-at', fork.uuid] : [])];
+  return resume ? ['--resume', sessionId] : ['--session-id', sessionId];
+}
+
 /** The CLI arguments for one turn. Pure, so the tests can check them. */
 /**
  * @param {{ persona: any, sessionId: string, resume: boolean, mcpUrl?: string, guide: string, addDirs?: string[],
@@ -54,12 +64,7 @@ export function claudeArgs({
     modelOf(persona),
     '--effort',
     effortOf(persona),
-    // A topic thread’s first turn forks the conversation’s session at the message it branched from.
-    ...(fork
-      ? ['--resume', fork.claudeSessionId, '--fork-session', ...(fork.uuid ? ['--resume-session-at', fork.uuid] : [])]
-      : resume
-        ? ['--resume', sessionId]
-        : ['--session-id', sessionId]),
+    ...sessionArgs(sessionId, resume, fork),
     // Postbox’s server, next to your own; an Isolated persona loads Postbox’s only.
     '--mcp-config',
     JSON.stringify({ mcpServers: server ?? postboxServer(mcpUrl) }),
