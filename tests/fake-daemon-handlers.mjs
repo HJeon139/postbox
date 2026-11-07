@@ -227,6 +227,13 @@ function welcome(d) {
         : { name, path: null, version: null, looked: [`${home}/.local/bin`, '/usr/local/bin'] },
     ),
     problems: d.problems,
-    turns: [...d.turns.values()].map((t) => ({ turn: t.turn, harness: t.harness, state: turnState(t), size: size(t.out), exit: t.exit })),
+    turns: [...d.turns.values()].map((t) => ({
+      turn: t.turn,
+      harness: t.harness,
+      state: turnState(t),
+      size: size(t.out),
+      exit: t.exit,
+      ...(t.unkilled && turnState(t) === 'interrupted' ? { unkilled: true } : {}),
+    })),
   };
 }

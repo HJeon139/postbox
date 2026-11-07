@@ -40,6 +40,8 @@ test('#872 a runner silent past the ceiling has its group and tool shells killed
     assert.equal(ended.exit, null);
     assert.equal(Object.hasOwn(ended, 'unkilled'), false, 'it was killed');
     assert.equal(existsSync(s.p.turn('t1', TURN_FILES.exit)), false, 'no exit.json: the laptop resumes it as interrupted');
+    const [found] = await s.daemon.scan();
+    assert.deepEqual([found.state, Object.hasOwn(found, 'unkilled')], ['interrupted', false], 'the scan says it was killed too');
     assert.equal(s.kills.length, 3, 'killed once');
   } finally {
     s.done();
@@ -61,6 +63,10 @@ test('#872 a runner that won’t die at the ceiling’s SIGKILL ends KILL_WAIT_M
     const ended = await c.msgs.next('ended');
     assert.equal(ended.exit, null);
     assert.equal(ended.unkilled, true);
+    // A laptop that wasn't there for that ended learns it from the scan its welcome lists.
+    const [found] = await s.daemon.scan();
+    assert.equal(found.state, 'interrupted');
+    assert.equal(found.unkilled, true);
   } finally {
     s.done();
   }
