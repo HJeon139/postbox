@@ -1,7 +1,6 @@
 // The conversation view: transcript, composer, and the panel beside it for topic threads (yours, forked from a
 // message) and side threads (between agents).
 
-import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
 import { activityParts, paintActivity, stepsOnly } from './activity-paint.mjs';
@@ -12,6 +11,7 @@ import { paintOfflineQueue, paintWaitingLine } from './agent-queue.mjs';
 import { subagentNow } from './agents.mjs';
 import { allowedCallLine } from './allowed-call.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
+import { attChip, fileSize } from './attachment-chip.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, placeIn, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
@@ -25,7 +25,7 @@ import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
 import { replyLine } from './reply-rings.mjs';
 import { stoppedTag } from './reply-stop.mjs';
-import { replaceTranscriptItem } from './rerender-state.mjs';
+import { holdFocus, replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
@@ -104,11 +104,12 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     const i = placeIn(threadId, id);
     if (i < 0) return;
     const old = nodes.get(id);
-    // Keep focus inside a block that’s being edited.
+    // Keep focus, and the caret, inside a block that’s being edited.
+    const back = holdFocus();
     const n = render(list[i], list[i - 1]);
-    const focusedId = replaceTranscriptItem(old, n);
+    replaceTranscriptItem(old, n);
     nodes.set(id, n);
-    if (focusedId) document.getElementById(focusedId)?.focus();
+    back();
   };
   const all = () => {
     el.replaceChildren();
@@ -131,8 +132,10 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
 
   const off = client.on((ch) => {
     if (ch.type === 'load') {
+      const back = holdFocus();
       all();
       view.rebuilt();
+      back();
       return;
     }
     const d = ch.data;
@@ -152,6 +155,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       const list = itemsOf(threadId);
       const at = placeIn(threadId, d.stub.id);
       const stub = render(d.stub, list[at - 1]);
+      const back = holdFocus();
       nodes.get(d.id)?.replaceWith(stub);
       nodes.set(d.stub.id, stub);
       view.moved(d.id, d.stub.id);
@@ -161,6 +165,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       const n = render(list[list.length - 1], list[list.length - 2]);
       nodes.set(d.id, n);
       el.append(n);
+      back();
       paintWorking();
       view.grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
@@ -492,32 +497,6 @@ function workChip(it, ctx) {
 function failureText(msg = 'This reply didn’t finish.') {
   const m = msg.match(/^(.*?[.!?])\s+([\s\S]*)$/);
   return m ? [h('b', m[1]), ' ', m[2]] : [h('b', msg)];
-}
-
-const fileSize = (size) => (size > 1e6 ? `${(size / 1e6).toFixed(1)} MB` : `${Math.ceil(size / 1000)} KB`);
-
-/**
- * An attachment on a sent message. Images the server shows inline (INLINE_TYPES) get a thumbnail that opens
- * the full image in a new tab; everything else, an SVG included, is a file chip that downloads.
- */
-function attChip(a) {
-  const label = a.kind === 'project-file' ? a.path : a.name;
-  const href = a.fileId ? `/api/files/${encodeURIComponent(a.fileId)}` : null;
-  if (href && INLINE_TYPES.has(a.type)) {
-    // One link: the image’s alt text and the size are its name, so it reads as “photo.png · 318 KB”.
-    return h(
-      'a.att-image',
-      { href, target: '_blank', rel: 'noopener' },
-      h('img', { src: href, alt: a.name, width: '160', height: '120', loading: 'lazy', decoding: 'async' }),
-      h('span.att-cap', h('span.att-name', { 'aria-hidden': 'true' }, a.name), a.size ? h('span.dim', ` · ${fileSize(a.size)}`) : null),
-    );
-  }
-  return h(
-    'span.att',
-    h('span.thumb', icon(a.kind === 'project-file' ? 'folder' : /^image\//.test(a.type ?? '') ? 'image' : 'file', 'i-sm')),
-    href ? h('a', { href, style: { color: 'inherit' } }, label) : label,
-    a.size ? h('span.dim', ` · ${fileSize(a.size)}`) : null,
-  );
 }
 
 /**
