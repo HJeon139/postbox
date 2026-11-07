@@ -32,22 +32,31 @@ async function readingAtTop(page, title) {
   await synced(page, app);
   await expect(page.locator(`.transcript[data-thread="${conv.id}"] > .item`)).toHaveCount(1000, { timeout: 15_000 });
   await still(page);
+  // A wheel turn up, so the view reads; then straight to the top, since Firefox moves about 1,500 px a turn. The top is
+  // held for 30 frames before the jump, so no wheel scroll still landing is taken for one during it.
   await page.mouse.move(640, 400);
-  // Chromium takes one big turn at once; Firefox moves about 1,500 px a turn, so turn until the top.
-  await expect
-    .poll(
-      async () => {
-        await page.mouse.wheel(0, -200_000);
-        return page.evaluate(() => scrollY);
-      },
-      { message: 'the wheel to reach the top', timeout: 30_000 },
-    )
-    .toBeLessThan(2000);
+  await page.mouse.wheel(0, -2000);
   await expect(page.locator('#main.transcript')).toHaveAttribute('data-view-mode', 'reading');
+  await page.evaluate(() => scrollTo(0, 0));
+  await expect.poll(() => page.evaluate(heldAtTop), { message: 'the view to hold at the top for 30 frames', timeout: 15_000 }).toBe(true);
   await still(page);
   app.rt.addItem(conv.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: 'A reply since.', status: 'done' });
   // With the server's events late and ten of these rooms at once, the reply took over 5 s to reach the page.
   await expect(page.locator('.jump')).toBeVisible({ timeout: 15_000 });
+}
+
+/** In the page: whether scrollY stays under 2,000 and unchanged for 30 frames. */
+function heldAtTop() {
+  return new Promise((done) => {
+    const y = scrollY;
+    let n = 0;
+    const tick = () => {
+      if (scrollY !== y || y >= 2000) return done(false);
+      if (++n >= 30) return done(true);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
 }
 
 /** Records scrollY every frame from now until it has held for 30 frames, or 10 s. */
