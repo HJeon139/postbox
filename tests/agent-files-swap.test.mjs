@@ -168,7 +168,8 @@ async function showApp(folder, root) {
       out = await handleMcp(rt, se.id, msg, new URL(c.mcpUrl).searchParams.get('turn'));
     });
     rt.sendMessage(t.id, { text: 'go' });
-    for (let i = 0; i < 100 && (out === null || rt.turns.size); i++) await sleep(5);
+    // Up to 5 s, as a loaded CI runner needs: it stops as soon as the turn has ended with the call’s answer.
+    for (let i = 0; i < 1000 && (out === null || rt.turns.size); i++) await sleep(5);
     return { text: out.result?.content?.[0]?.text ?? out.error?.message, isError: out.result?.isError ?? true };
   };
   return { rt, call };

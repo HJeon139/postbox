@@ -57,7 +57,8 @@ export async function setup() {
       out = await step(c);
     });
     rt.sendMessage(t.id, { text: 'go' });
-    for (let i = 0; i < 100 && (out === null || rt.turns.size); i++) await sleep(5);
+    // Up to 5 s, as a loaded CI runner needs: it stops as soon as the turn has ended with the call’s answer.
+    for (let i = 0; i < 1000 && (out === null || rt.turns.size); i++) await sleep(5);
     return out;
   };
   /** Calls a tool over MCP from inside a turn, with that turn’s token. */
