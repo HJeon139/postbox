@@ -24,7 +24,6 @@ const ALLOWED = [
   { file: 'thread.mjs', snippet: "hint.querySelector('.did-you-mean')?.focus()", why: 'the composer’s “Did you mean” hint' },
   { file: 'thread.mjs', snippet: 'asks.querySelector(`[data-key=', why: 'the stop ask above the composer' },
   { file: 'thread.mjs', snippet: '(action.isConnected ? action : ta).focus()', why: 'the stop ask above the composer, or the composer' },
-  { file: 'thread.mjs', snippet: 'document.getElementById(focusedId)?.focus()', why: 'focus kept on the control that had it while its item re-rendered' },
   { file: 'apps.mjs', snippet: 'lastFocus.focus()', why: 'focus taken back from an app’s frame, to where it was' },
   { file: 'apps.mjs', snippet: '.app-retired [aria-haspopup]`)?.focus()', why: 'closing a retired app returns to its own line, where you were' },
   { file: 'apps.mjs', snippet: 'rec.btn.focus()', why: 'the full screen button of the app you just used' },
