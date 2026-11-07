@@ -1,13 +1,13 @@
-# Visual explainer skill (draft)
+# Visual explainer skill
 
-A draft of the skill [#207](https://github.com/HJeon139/postbox/issues/207) proposes bundling with Postbox: how an agent explains an idea with a picture, and how a reviewer judges whether the picture works. It is in the [Agent Skills](https://agentskills.io/specification) format so it can move into the bundle unchanged once #207 decides where bundled skills live. Nothing loads it yet.
+The skill [#207](https://github.com/HJeon139/postbox/issues/207) proposed bundling with Postbox: how an agent explains an idea with a picture, and how a reviewer judges whether the picture works. It is in the [Agent Skills](https://agentskills.io/specification) format. Postbox ships it in its own plugin, [`agent-plugin`](../../../agent-plugin), which every Claude agent on this computer loads by default as `postbox:visual-explainer` ([architecture](../../architecture.md), “Postbox’s own skills”). This folder keeps what agents must not see: the starter briefs, which hold each test’s intended idea and traps.
 
 | File | What it holds |
 |---|---|
-| [SKILL.md](SKILL.md) | The house rules (VE1 to VE12) and the run, from brief to report |
-| [references/brief.md](references/brief.md) | The one-idea brief an agent writes before drawing |
-| [references/shapes.md](references/shapes.md) | Content shapes, the forms each allows and refuses, and what position means in each |
-| [references/critique.md](references/critique.md) | The floor (verify and refuse), the takeaway test and the report |
+| [SKILL.md](../../../agent-plugin/skills/visual-explainer/SKILL.md) | The house rules (VE1 to VE12) and the run, from brief to report |
+| [references/brief.md](../../../agent-plugin/skills/visual-explainer/references/brief.md) | The one-idea brief an agent writes before drawing |
+| [references/shapes.md](../../../agent-plugin/skills/visual-explainer/references/shapes.md) | Content shapes, the forms each allows and refuses, and what position means in each |
+| [references/critique.md](../../../agent-plugin/skills/visual-explainer/references/critique.md) | The floor (verify and refuse), the takeaway test and the report |
 | [briefs/](briefs/README.md) | Seven starter briefs, one per shape plus a hard one, and three paper briefs ([briefs/papers/](briefs/papers/README.md)) |
 
 ## Why it looks like this

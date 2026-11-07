@@ -12,7 +12,7 @@ description: >-
 
 # Visual explainer
 
-A visual is good when a reader who sees only the picture comes away with the idea you meant. Everything below serves that one test. Draft for [#207](https://github.com/HJeon139/postbox/issues/207); the reasons and sources are in [README.md](README.md).
+A visual is good when a reader who sees only the picture comes away with the idea you meant. Everything below serves that one test.
 
 ## House rules
 
