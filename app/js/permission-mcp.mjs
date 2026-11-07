@@ -1,9 +1,9 @@
 // The permissions panel’s MCP servers section (#66), moved out of openPermissions in app/js/permissions.mjs: the
 // servers in the person’s Claude Code setup, each with a checkbox that turns it off for this persona.
 
+import { MCP_SCOPE, MCP_STATUS } from '/shared/agent-facts.mjs';
 import { api, client } from './client.mjs';
 import { h, icon } from './dom.mjs';
-import { MCP_SCOPE, MCP_STATUS } from './sheets.mjs';
 
 /**
  * The section, from the servers the panel listed (null while it looks, { error } when it couldn’t).

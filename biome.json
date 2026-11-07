@@ -60,7 +60,8 @@
         }
       },
       "suspicious": {
-        "noAssignInExpressions": "off"
+        "noAssignInExpressions": "off",
+        "noImportCycles": "error"
       },
       "nursery": {
         "noFloatingPromises": "error",
@@ -474,6 +475,28 @@
           "complexity": { "noExcessiveLinesPerFunction": { "level": "error", "options": { "maxLines": 102 } } }
         }
       }
+    },
+    {
+      "includes": [
+        "app/js/agent-host.mjs",
+        "app/js/agents.mjs",
+        "app/js/last-place.mjs",
+        "app/js/permissions.mjs",
+        "app/js/run-choice.mjs",
+        "app/js/sheets.mjs",
+        "app/js/shell.mjs",
+        "server/index.mjs",
+        "server/persona-delete.mjs",
+        "server/scheduled-wakes.mjs",
+        "server/store-commit.mjs",
+        "server/store-outage.mjs",
+        "server/store-recover.mjs",
+        "server/store-retry.mjs",
+        "server/store-snapshot.mjs",
+        "server/telemetry-sweep.mjs",
+        "server/telemetry.mjs"
+      ],
+      "linter": { "rules": { "suspicious": { "noImportCycles": "off" } } }
     }
   ]
 }

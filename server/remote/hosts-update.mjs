@@ -19,6 +19,7 @@ import { hostOf, tokenOf, update } from './hosts-status.mjs';
 import { installHost } from './install.mjs';
 import { changeRecord, isTried, noteRecordError, recordOf } from './install-record.mjs';
 import { SshFailure } from './ssh-failures.mjs';
+import { WITHDRAWN } from './update-withdrawn.mjs';
 
 /**
  * @typedef {import('./hosts-status.mjs').Manager} Manager
@@ -27,9 +28,6 @@ import { SshFailure } from './ssh-failures.mjs';
  * @typedef {{ done: Promise<InstallOutcome>, abort: AbortController }} Updating
  * @typedef {import('./install-record.mjs').InstallEntry} InstallEntry
  */
-
-/** Why an automatic install the consent withdrew before it started didn’t run (noteStarted). */
-export const WITHDRAWN = 'Keeping Postbox up to date on this host was turned off, so Postbox didn’t install by itself.';
 
 /** The installer’s exit when another attach or install holds this version’s lock (install-script.mjs). */
 const BUSY_EXIT = 75;

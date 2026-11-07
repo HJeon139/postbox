@@ -110,6 +110,10 @@ test('stop: a tool shell the harness leaves behind when SIGINT ends it goes too,
 
 // ── host serve and daemon.pid ──
 
+// How long a `host serve` may take to start, and to exit when another daemon has the lock, on a loaded computer: Node
+// alone took longer than 5 s to start there (#493). It costs time only when a test fails.
+const SERVE_MS = 60_000;
+
 /** `host serve` as attach starts it, with its stderr kept. */
 function serve(h, node = []) {
   const child = spawn(process.execPath, [...node, HOST_ENTRY, 'serve'], { env: h.env, stdio: ['ignore', 'ignore', 'pipe'] });
@@ -163,7 +167,7 @@ test('serve: while daemon.pid names a live process, it exits and leaves the sock
   writeFileSync(h.p.socket, 'not yet a socket');
   const s = serve(h);
   try {
-    assert.equal(await s.within(5000), 0, s.err);
+    assert.equal(await s.within(SERVE_MS), 0, s.err);
     assert.match(s.err, /already serves this version/);
     assert.equal(readFileSync(h.p.socket, 'utf8'), 'not yet a socket', 'the socket file wasn’t removed');
     assert.equal(JSON.parse(readFileSync(lockFile(h), 'utf8')).pid, process.pid, 'nor was the lock');
@@ -180,7 +184,7 @@ test('serve: a connection error other than nothing listening isn’t taken for n
   chmodSync(h.p.socket, 0); // connecting now fails with EACCES, not ECONNREFUSED
   const s = serve(h);
   try {
-    assert.equal(await s.within(5000), 69, s.err);
+    assert.equal(await s.within(SERVE_MS), 69, s.err);
     assert.match(s.err, /Couldn’t tell whether a daemon serves .*EACCES.*left as it is/);
     assert.ok(lstatSync(h.p.socket).isSocket(), 'the socket is still there');
     assert.equal(existsSync(lockFile(h)), false, 'and serve let go of daemon.pid');
@@ -196,7 +200,7 @@ test('serve: a dead daemon’s daemon.pid is replaced; SIGTERM removes it and th
   writeFileSync(lockFile(h), JSON.stringify({ pid: 2 ** 22 + 1, bootId: bootId(), startTime: 1 }));
   const s = serve(h);
   try {
-    await until(() => answers(h.p.socket), 'the daemon to answer', 5000);
+    await until(() => answers(h.p.socket), 'the daemon to answer', SERVE_MS);
     assert.equal(JSON.parse(readFileSync(lockFile(h), 'utf8')).pid, s.child.pid);
     assert.equal(lstatSync(lockFile(h)).mode & 0o777, 0o600);
     s.child.kill('SIGTERM');
@@ -213,7 +217,7 @@ test('serve: four started at once make one daemon, and the others exit 0', { ski
   const h = makeHost();
   const all = [serve(h), serve(h), serve(h), serve(h)];
   try {
-    await until(() => answers(h.p.socket), 'a daemon to answer', 5000);
+    await until(() => answers(h.p.socket), 'a daemon to answer', SERVE_MS);
     const codes = await Promise.all(all.map((s) => s.within(1500)));
     assert.deepEqual([...codes].sort(), [0, 0, 0, 'running'], all.map((s) => s.err).join('\n'));
     const left = all[codes.indexOf('running')];
@@ -238,7 +242,7 @@ test('serve: one paused while it removes a dead daemon’s daemon.pid keeps daem
     // A minute old, far past daemon.pid.break’s age limit.
     const old = new Date(Date.now() - 60_000);
     utimesSync(brk, old, old);
-    const r = spawnSync(process.execPath, [HOST_ENTRY, 'serve'], { env: h.env, encoding: 'utf8', timeout: 5000 });
+    const r = spawnSync(process.execPath, [HOST_ENTRY, 'serve'], { env: h.env, encoding: 'utf8', timeout: SERVE_MS });
     during = { status: r.status, err: r.stderr, pid: read(lockFile(h)), brk: read(`${brk}/owner`) };
   };
   const me = { pid: process.pid, bootId: bootId(), startTime: startTime(process.pid) };
@@ -256,7 +260,7 @@ test('serve: one paused while it removes a dead daemon’s daemon.pid keeps daem
     if (a.held) a.release();
     assert.deepEqual(readdirSync(h.p.code), [], 'it dropped daemon.pid and its break lock');
     s = serve(h);
-    await until(() => answers(h.p.socket), 'the next daemon to answer', 5000);
+    await until(() => answers(h.p.socket), 'the next daemon to answer', SERVE_MS);
   } finally {
     if (a.held) a.release();
     s?.stop();
@@ -269,7 +273,7 @@ test('#510 serve: a rejection nothing handled is logged with its stack, and the 
   // tests/process/reject-on-signal.mjs makes a timer callback reject on SIGUSR2, as in the Postbox server’s own test.
   const s = serve(h, ['--import', fileURLToPath(new URL('../process/reject-on-signal.mjs', import.meta.url))]);
   try {
-    await until(() => answers(h.p.socket), 'the daemon to serve', 5000);
+    await until(() => answers(h.p.socket), 'the daemon to serve', SERVE_MS);
     s.child.kill('SIGUSR2');
     await until(() => s.err.includes('the #510 test’s rejection'), 'the rejection in its log', 5000);
     assert.match(s.err, /reject-on-signal\.mjs:\d+/, 'with its stack');
