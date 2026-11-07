@@ -1,15 +1,19 @@
-// postbox.graph(el, { nodes, edges, groups?, highlight?, width?, height?, label? }), preloaded after app/kit/charts.js
+// postbox.graph(el, { nodes, edges, groups?, highlight?, layout?, width?, height?, label? }), preloaded after app/kit/charts.js
 // and app/kit/graph-layout.js in every agent-app sandbox (#888). The agent says what connects to what; the kit lays it
 // out with d3-force, from the bundled d3, so a question about code structure or dependencies gets a network rather than
 // labeled boxes:
-// - a group’s nodes pull toward the group’s own center and sit inside one soft region, labeled once
+// - the agent gives no positions: the kit places every node, as a model can’t lay out even a small graph blind
+// - layout: "force" (the default) pulls a group’s nodes toward the group’s own center; "layered" puts each node on a
+//   row by how far down the edges it is, a group to a column, for imports, calls and flow; either way a group sits
+//   inside one soft region, labeled once
 // - labels are 13 px, under their node, and nodes with their labels are pushed apart until none overlap
 // - edges are arrows; highlight picks the ones drawn strong: "between-groups", "cycles", or a function of the edge.
 //   Edges in a cycle, and an edge whose reverse is there too, curve the same way round, so a cycle reads as a loop
 // - a node’s value sets its area
 // It draws at the size it’s read, 1000 × 680 unless width and height say otherwise, growing to fit and scrolling
 // sideways in a narrow window rather than shrinking its text, with a Table view of the edges. It resolves to the
-// layout: { nodes: [{ id, x, y, r, label: { x, y, width, height } }], width, height }.
+// layout: { layout, crossings, nodes: [{ id, x, y, r, label: { x, y, width, height } }], width, height }, where crossings
+// counts the pairs of edges that cross, so the app can say how tangled it is or try the other layout.
 // A block, not a function, keeps its names out of the app’s global scope: Biome counts an IIFE as one long function.
 {
   const { mount, esc, graphLayout } = window.__pbKit;
@@ -37,6 +41,7 @@
     if (spec.edges !== undefined && !Array.isArray(spec.edges)) fail('edges must be an array of { source, target } or [source, target].');
     if (spec.highlight !== undefined && typeof spec.highlight !== 'function' && !MODES.includes(spec.highlight))
       fail(`highlight must be “between-groups”, “cycles” or a function of the edge, not ${String(spec.highlight)}.`);
+    if (spec.layout !== undefined && !['force', 'layered'].includes(spec.layout)) fail(`layout must be “force” or “layered”, not ${String(spec.layout)}.`);
     const groups = readGroups(spec);
     const index = new Map();
     const nodes = spec.nodes.map((raw, i) => {
@@ -196,7 +201,7 @@
     const onCycle = cycles(g.nodes.length, g.edges);
     g.rings = onCycle.rings;
     const look = { strong: strongEdges(g, spec.highlight, onCycle.edges), cycles: onCycle.edges };
-    const { sim, groupMarks, size } = graphLayout.layout(d3, g, W, H);
+    const { sim, groupMarks, size, crossings } = graphLayout.layout(d3, g, W, H, spec.layout === 'layered');
     const label = spec.label || `Network of ${g.nodes.length} nodes${g.groups.length ? ` in ${g.groups.length} groups` : ''}`;
     const html = legend(spec, look) + draw(d3, g, sim, groupMarks, look, size, label);
     const rows = g.edges.map((e, i) => {
@@ -208,6 +213,8 @@
     const header = ['From', 'To', ...(g.groups.length ? ['From group', 'To group'] : []), ...(look.strong.size ? [strongName(spec)] : [])];
     mount(el, () => html, [header, ...rows], label);
     return {
+      layout: spec.layout === 'layered' ? 'layered' : 'force',
+      crossings,
       width: size.width,
       height: size.height,
       nodes: sim.map((d) => ({ id: g.nodes[d.i].id, x: d.x, y: d.y, r: d.r, label: { x: d.x - d.w / 2, y: d.y + d.r + 3, width: d.w, height: LINE } })),

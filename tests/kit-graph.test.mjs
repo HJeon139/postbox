@@ -87,6 +87,7 @@ for (const [what, spec, message] of [
   ['a node in a group that isn’t listed', { nodes: [{ id: 'a', group: 'x' }], groups: ['y'] }, /node “a” is in the group “x”, which isn’t in groups/],
   ['a negative value', { nodes: [{ id: 'a', value: -2 }] }, /node “a” has value -2; a value is a number 0 or more/],
   ['more groups than colors', { nodes: Array.from({ length: 9 }, (_, i) => ({ id: i, group: `g${i}` })) }, /9 groups is more than the 8 colors/],
+  ['a layout it doesn’t know', { nodes: ['a'], layout: 'radial' }, /layout must be “force” or “layered”, not radial/],
   ['a highlight it doesn’t know', { nodes: ['a'], highlight: 'hubs' }, /highlight must be “between-groups”, “cycles” or a function of the edge, not hubs/],
 ])
   test(`postbox.graph refuses ${what}, says why, and draws nothing`, async () => {
@@ -173,4 +174,29 @@ test('labels are escaped, never markup', async () => {
   await kit().graph(el, { nodes: [{ id: 'x', label: '<img src=x onerror=alert(1)>' }] });
   assert.doesNotMatch(el.html, /<img/);
   assert.match(el.html, /&lt;img src=x onerror=alert\(1\)&gt;/);
+});
+
+test('layered puts every edge that doesn’t close a cycle pointing down a row, and still overlaps nothing', async () => {
+  const spec = twoPackages();
+  const laid = await kit().graph({}, { ...spec, layout: 'layered' });
+  assert.equal(laid.layout, 'layered');
+  const at = new Map(laid.nodes.map((n) => [n.id, n]));
+  // tax → cart closes the shop’s cycle, so it’s the one edge that may point up.
+  const up = spec.edges.filter((e) => at.get(e.target).y <= at.get(e.source).y).map((e) => `${e.source}→${e.target}`);
+  assert.deepEqual(up, ['shop/tax→shop/cart']);
+  const rows = new Set(laid.nodes.map((n) => Math.round(n.y)));
+  assert.ok(rows.size >= 12, `${rows.size} rows for a chain of 12`);
+  const over = [];
+  for (const a of laid.nodes)
+    for (const b of laid.nodes)
+      if (a.id < b.id && Math.round(a.y) === Math.round(b.y) && Math.abs(a.x - b.x) < (a.label.width + b.label.width) / 2) over.push(`${a.id} and ${b.id}`);
+  assert.deepEqual(over, []);
+});
+
+test('the layout counts the pairs of edges that cross: none in a star, at least one in five nodes all linked', async () => {
+  const star = { nodes: ['hub', 'a', 'b', 'c', 'd'], edges: ['a', 'b', 'c', 'd'].map((n) => ['hub', n]) };
+  assert.equal((await kit().graph({}, star)).crossings, 0);
+  const five = ['a', 'b', 'c', 'd', 'e'];
+  const k5 = { nodes: five, edges: five.flatMap((a, i) => five.slice(i + 1).map((b) => [a, b])) };
+  assert.ok((await kit().graph({}, k5)).crossings >= 1, 'five nodes all linked can’t be drawn flat');
 });

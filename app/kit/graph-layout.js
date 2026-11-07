@@ -1,6 +1,8 @@
-// Where postbox.graph’s nodes go (#888), preloaded before app/kit/graph.js, which reads the spec and draws: d3-force
-// with each group pulled to a center of its own, then every node’s box (its circle and the label under it) pushed
-// apart from every other until none overlap, a soft region around each group, and the whole moved to fit its frame.
+// Where postbox.graph’s nodes go (#888), preloaded before app/kit/graph.js, which reads the spec and draws. Two layouts,
+// both run by d3-force: "force" pulls each group to a center of its own and lays each cycle on a ring; "layered" puts
+// each node on a row by how far down the edges it is (the edges closing a cycle left out), with each group a column,
+// for imports, calls and flow that read top to bottom. Then every node’s box (its circle and the label under it) is
+// pushed apart from every other until none overlap, each group gets a soft region, and the whole moves to fit its frame.
 // A block, not a function, keeps its names out of the app’s global scope: Biome counts an IIFE as one long function.
 {
   const FONT = 13;
@@ -23,8 +25,8 @@
     return { x0: d.x - half, x1: d.x + half, y0: d.y - d.r - GAP / 2, y1: d.y + d.r + 3 + LINE + GAP / 2 };
   };
 
-  /** Pushes every pair of overlapping boxes apart along the axis they overlap least, by share of the overlap. */
-  const separate = (nodes, share) => {
+  /** Pushes every pair of overlapping boxes apart along the axis they overlap least (or only sideways), by share of the overlap. */
+  const separate = (nodes, share, sideways) => {
     let moved = false;
     for (let i = 0; i < nodes.length; i++)
       for (let j = i + 1; j < nodes.length; j++) {
@@ -35,7 +37,7 @@
         if (ox <= 0 || oy <= 0) continue;
         moved = true;
         // Along the axis that overlaps less; a pair centered on the same line moves the first node left or up.
-        const axis = ox < oy ? 'x' : 'y';
+        const axis = sideways || ox < oy ? 'x' : 'y';
         const before = axis === 'x' ? a.x0 + a.x1 <= b.x0 + b.x1 : a.y0 + a.y1 <= b.y0 + b.y1;
         const step = ((Math.min(ox, oy) + 0.5) / 2) * share * (before ? 1 : -1);
         nodes[i][axis] -= step;
@@ -56,21 +58,73 @@
     });
   };
 
-  /** Lays the nodes out: d3-force with each group pulled to its own center, then overlaps pushed apart until none are left. */
-  const place = (d3, g, W, H) => {
-    const max = Math.max(0, ...g.nodes.map((n) => n.value ?? 0));
+  /**
+   * Each node’s row for the layered layout: the longest path down to it from a node nothing points at. A depth-first
+   * search leaves out the edges back to a node still on its path, which close cycles, so what’s left has an order.
+   */
+  const rows = (g) => {
+    const n = g.nodes.length;
+    const out = Array.from({ length: n }, () => []);
+    const into = new Array(n).fill(0);
+    for (const e of g.edges)
+      if (e.source !== e.target) {
+        out[e.source].push(e.target);
+        into[e.target]++;
+      }
+    const state = new Array(n).fill(0);
+    const finished = [];
+    const down = Array.from({ length: n }, () => []);
+    const visit = (v) => {
+      state[v] = 1;
+      for (const w of out[v]) {
+        if (state[w] === 1) continue;
+        down[v].push(w);
+        if (!state[w]) visit(w);
+      }
+      state[v] = 2;
+      finished.push(v);
+    };
+    const starts = [...g.nodes.keys()].sort((a, b) => (into[a] > 0) - (into[b] > 0));
+    for (const v of starts) if (!state[v]) visit(v);
+    const row = new Array(n).fill(0);
+    for (const v of finished.reverse()) for (const w of down[v]) row[w] = Math.max(row[w], row[v] + 1);
+    return row;
+  };
+
+  /** Where each node is pulled to: its group’s center, or in the layered layout its group’s column and its own row. */
+  const anchors = (g, W, H, layered) => {
     const k = g.groups.length;
+    if (layered) {
+      const row = rows(g);
+      const last = Math.max(...row);
+      const step = last ? Math.max(84, (H - 120) / last) : 0;
+      return g.nodes.map((n, i) => [k > 1 && n.group >= 0 ? (W * (n.group + 0.5)) / k : W / 2, H / 2 + (row[i] - last / 2) * step]);
+    }
     const centers = g.groups.map((_, i) => {
       const a = Math.PI + (2 * Math.PI * i) / k;
       return k < 2 ? [W / 2, H / 2] : [W / 2 + Math.cos(a) * W * 0.27, H / 2 + Math.sin(a) * H * 0.24];
     });
+    return g.nodes.map((n) => centers[n.group] ?? [W / 2, H / 2]);
+  };
+
+  // A layered node is held to its row; otherwise groups pull up and down more gently than sideways.
+  const rowPull = (layered, groups) => {
+    if (layered) return 1;
+    return groups > 1 ? 0.07 : 0.04;
+  };
+
+  /** Lays the nodes out with d3-force, toward their anchors, then pushes overlaps apart until none are left. */
+  const place = (d3, g, W, H, layered) => {
+    const max = Math.max(0, ...g.nodes.map((n) => n.value ?? 0));
+    const k = g.groups.length;
+    const at = anchors(g, W, H, layered);
     const sim = g.nodes.map((n, i) => {
-      const [cx, cy] = centers[n.group] ?? [W / 2, H / 2];
+      const [cx, cy] = at[i];
       const r = n.value === undefined || !max ? 7 : 5 + 15 * Math.sqrt(n.value / max);
       return { i, r, w: measure(n.label), cx, cy, x: cx + Math.cos(i * 2.4) * 12 * Math.sqrt(i + 1), y: cy + Math.sin(i * 2.4) * 12 * Math.sqrt(i + 1) };
     });
     const same = (e) => g.nodes[e.source].group === g.nodes[e.target].group;
-    const rings = (g.rings ?? []).map((ring) => ring.map((i) => sim[i]));
+    const rings = layered ? [] : (g.rings ?? []).map((ring) => ring.map((i) => sim[i]));
     const links = g.edges.filter((e) => e.source !== e.target).map((e) => ({ source: e.source, target: e.target, same: same(e) }));
     d3.forceSimulation(sim)
       .force(
@@ -82,14 +136,16 @@
       )
       .force('charge', d3.forceManyBody().strength(-380))
       .force('x', d3.forceX((d) => d.cx).strength(k > 1 ? 0.12 : 0.04))
-      .force('y', d3.forceY((d) => d.cy).strength(k > 1 ? 0.07 : 0.04))
+      .force('y', d3.forceY((d) => d.cy).strength(rowPull(layered, k)))
       .force('rings', (alpha) => {
         for (const ring of rings) pullToRing(ring, alpha);
       })
-      .force('boxes', () => separate(sim, 0.4))
+      .force('boxes', () => separate(sim, 0.4, layered))
       .stop()
       .tick(300);
-    for (let pass = 0; pass < 2000 && separate(sim, 1); pass++);
+    // A layered node sits exactly on its row, and moves only sideways to clear another.
+    if (layered) for (const d of sim) d.y = d.cy;
+    for (let pass = 0; pass < 2000 && separate(sim, 1, layered); pass++);
     return sim;
   };
 
@@ -138,12 +194,27 @@
     return { width, height };
   };
 
-  /** Lays out a graph read by graph.js, at W × H or larger: the nodes, each group’s region and the size it needs. */
-  const layout = (d3, g, W, H) => {
-    const sim = place(d3, g, W, H);
+  /** How many pairs of edges cross, drawn straight between centers; edges that share a node don’t count. */
+  const crossings = (g, sim) => {
+    const turn = (a, b, c) => Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+    const es = g.edges.filter((e) => e.source !== e.target);
+    let count = 0;
+    for (let i = 0; i < es.length; i++)
+      for (let j = i + 1; j < es.length; j++) {
+        const [a, b, c, d] = [es[i].source, es[i].target, es[j].source, es[j].target];
+        if (new Set([a, b, c, d]).size < 4) continue;
+        const [p, q, r, s] = [sim[a], sim[b], sim[c], sim[d]];
+        if (turn(p, q, r) * turn(p, q, s) < 0 && turn(r, s, p) * turn(r, s, q) < 0) count++;
+      }
+    return count;
+  };
+
+  /** Lays out a graph read by graph.js, at W × H or larger: the nodes, each group’s region, the size it needs, and its crossings. */
+  const layout = (d3, g, W, H, layered) => {
+    const sim = place(d3, g, W, H, layered);
     const groupMarks = regions(d3, g, sim);
     const size = frame(sim, groupMarks, W, H);
-    return { sim, groupMarks, size };
+    return { sim, groupMarks, size, crossings: crossings(g, sim) };
   };
   Object.assign(window.__pbKit, { graphLayout: { layout, FONT, LINE } });
 }
