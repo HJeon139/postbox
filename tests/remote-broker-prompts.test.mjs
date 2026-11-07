@@ -163,7 +163,10 @@ async function afterUnrecordedEnd(h, clock, opts, file, wait) {
   const s2 = connectShim(again.b, 't1');
   await s2.next('welcome');
   s2.send('permission', { id: 'p2', request: REQUEST });
-  await sleep(20);
+  // The broker takes p2 back after reading the turn's state, which a loaded machine can take longer than a fixed wait
+  // to do (#843); until then p2 is still only replayed, and the tick would end it too.
+  const p2 = () => again.b.pending.prompts.find((q) => q.id === 'p2');
+  await until(() => p2()?.replayed === false, 'p2’s shim to send it again');
   await clock.tick(wait);
   await until(() => again.sent.length, 'p1’s expiry');
   assert.deepEqual(

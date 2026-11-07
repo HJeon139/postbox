@@ -225,6 +225,7 @@ export class Runtime {
         usesHostSetup: p.usesHostSetup !== false,
         canPublish: p.canPublish === true,
         mcpOff: p.mcpOff ?? [],
+        skillsOff: p.skillsOff ?? [],
         tools: p.tools ?? [],
       }
     );
@@ -2369,6 +2370,7 @@ export class Runtime {
     usesHostSetup = true,
     canPublish = false,
     mcpOff = [],
+    skillsOff = [],
     folder = '',
     tools = [],
     examples = [],
@@ -2384,7 +2386,7 @@ export class Runtime {
     if (!this.adapters.names().includes(backend)) throw httpError(422, notHere(this, backend));
     if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
     checkEffort(effort);
-    checkSetup({ usesHostSetup, canPublish, mcpOff });
+    checkSetup({ usesHostSetup, canPublish, mcpOff, skillsOff });
     const placed = placement(this, remote, backend);
     if (!placed && !runsHere(this, backend)) throw httpError(422, notHere(this, backend));
     const p = {
@@ -2399,6 +2401,7 @@ export class Runtime {
       usesHostSetup,
       canPublish,
       mcpOff: serverNames(mcpOff),
+      skillsOff: skillNames(skillsOff),
       folder: String(folder ?? ''),
       tools: [...new Set(tools)],
       examples,
@@ -2420,6 +2423,7 @@ export class Runtime {
     if (patch.effort !== undefined) checkEffort(patch.effort);
     checkSetup(patch);
     if (patch.mcpOff !== undefined) patch = { ...patch, mcpOff: serverNames(patch.mcpOff) };
+    if (patch.skillsOff !== undefined) patch = { ...patch, skillsOff: skillNames(patch.skillsOff) };
     if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend)) throw httpError(422, notHere(this, patch.backend));
     // Where it runs (#120), and whether its backend runs here when that’s here.
     patch = placedPatch(this, id, p, patch);
@@ -2438,6 +2442,7 @@ export class Runtime {
         'canPublish',
         'allowRequested',
         'mcpOff',
+        'skillsOff',
         'folder',
         'tools',
         'examples',
@@ -2522,6 +2527,8 @@ export class Runtime {
       persona,
       folder,
       seen: seenFolder === folder ? servers : servers.filter((s) => s.source !== 'project' && s.source !== 'local'),
+      // The skills that session listed in its / menu (#207): the sheet takes only plugins’, which load in every folder.
+      skills: (seen?.commands ?? []).filter((c) => c.skill).map((c) => c.name),
     };
   }
 
@@ -2914,6 +2921,7 @@ const COMMAND_REFRESH_MS = 5000;
 const MAX_COMMAND_REFRESHES = 60;
 /** Server names, trimmed and without repeats. Postbox’s own server can’t be turned off, so it’s dropped. */
 const serverNames = (list) => [...new Set(list.map((n) => n.trim()))].filter((n) => n !== POSTBOX_SERVER);
+const skillNames = (list) => [...new Set(list.map((n) => n.trim()))];
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
 
 export { formatDuration };

@@ -12,7 +12,6 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AdapterRegistry } from './adapters/adapter.mjs';
-import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { PROBES, registerBackends } from './backends.mjs';
 import { INLINE_TYPES } from './blobs.mjs';
@@ -38,6 +37,7 @@ import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { seed, toBoilerplate } from './seed.mjs';
 import { decodePath, file, mediaPath, servedFile, TYPES } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
+import { setupRoute } from './setup-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
 import { watchTelemetry } from './telemetry.mjs';
@@ -276,12 +276,9 @@ export async function start({
     }
 
     if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config, corpus }));
-    // The MCP servers a persona would load, with their status (#59): names, scopes and statuses only, never config.
-    if (path === '/api/mcp-servers' && req.method === 'GET') {
-      const { persona, folder, seen } = rt.mcpContext(url.searchParams.get('personaId'), url.searchParams.get('projectId'));
-      const found = await yourMcpServers(folder, { home: claudeHome });
-      return send(res, 200, { folder, servers: mcpServerList({ found, seen, off: persona?.mcpOff ?? [] }) });
-    }
+    // What a persona would load, for its sheet: its MCP servers and skills (server/setup-routes.mjs).
+    const setupDid = await setupRoute(rt, path, req.method, url, claudeHome);
+    if (setupDid) return send(res, setupDid.status, setupDid.body);
     // The permissions panel (#66): one agent’s mode, rules with their sources, folders and tools.
     if (path === '/api/permissions' && req.method === 'GET') {
       const q = (k) => url.searchParams.get(k) || null;

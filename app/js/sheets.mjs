@@ -18,6 +18,7 @@ import {
   selectBackend,
 } from '/shared/agent-facts.mjs';
 import { mockMarker } from './agent-facts.mjs';
+import { checkField } from './check-field.mjs';
 import { api, client, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
 import { goToNew, goWhenThere } from './go-when-there.mjs';
@@ -27,6 +28,7 @@ import { lifeButtons } from './persona-delete.mjs';
 import { projectsTab } from './projects-tab.mjs';
 import { placeField, saveRefused } from './sheets-place.mjs';
 import { appearance, connect } from './sheets-settings.mjs';
+import { skillsField } from './skills-field.mjs';
 import { keepFocus, navigate, openDialog, toast, undoToast } from './ui.mjs';
 
 export { EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, MODELS, modeHelp };
@@ -61,41 +63,6 @@ function seg(label, options, value, onPick) {
         name,
       ),
     ),
-  );
-}
-
-/**
- * A labeled checkbox with help text under it, in the sheet’s .check style. Space or Enter toggles it.
- * @param {{ id: string, label: string, help: string, on: boolean, onToggle: (on: boolean) => void }} opts
- */
-function checkField({ id, label, help, on, onToggle }) {
-  return h(
-    'div.field.span',
-    h(
-      'span.check',
-      {
-        id,
-        role: 'checkbox',
-        tabindex: '0',
-        'aria-checked': String(on),
-        'aria-describedby': `${id}-help`,
-        style: { alignSelf: 'flex-start' },
-        onclick: (e) => {
-          on = !on;
-          e.currentTarget.setAttribute('aria-checked', String(on));
-          onToggle(on);
-        },
-        onkeydown: (e) => {
-          if (e.key === ' ' || e.key === 'Enter') {
-            e.preventDefault();
-            e.currentTarget.click();
-          }
-        },
-      },
-      h('span.box'),
-      h('span', label),
-    ),
-    h('span.help', { id: `${id}-help` }, help),
   );
 }
 
@@ -174,8 +141,8 @@ function mcpField(st, paint, { idp, personaId = null, projectId = null }) {
 }
 
 /**
- * Fields for st.backend, st.model, st.effort, st.permissionMode, st.folder, st.usesHostSetup, st.mcpOff and
- * st.canPublish.
+ * Fields for st.backend, st.model, st.effort, st.permissionMode, st.folder, st.usesHostSetup, st.mcpOff,
+ * st.canPublish and st.skillsOff.
  * idp prefixes element ids; personaId and projectId say whose MCP servers to list.
  */
 function backendFields(st, paint, { idp, fixedBackend = false, personaId = null, projectId = null }) {
@@ -354,6 +321,8 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
           },
         })
       : null,
+    // Its skills (#207): only on a backend that lists them, and only here, since a host has its own.
+    real && capsOf(st.backend).skills && !st.remote ? skillsField(st, paint, { idp, personaId, projectId, only: capsOf(st.backend).skills }) : null,
     // The list reads Claude Code’s config (server/adapters/mcp-config.mjs): a backend that doesn’t read it (the Kiro
     // CLI) has nothing true to show here.
     real && capsOf(st.backend).permissions !== 'none' ? mcpField(st, paint, { idp, personaId, projectId }) : null,
@@ -404,10 +373,11 @@ function boilerplateChips(bps, st, paint) {
   );
 }
 
-export function openNewAgent({ threadId = null, projectId: pid = null, preset = null, onCreated = null } = {}) {
-  const t = threadId ? S().threads[threadId] : null;
-  const projectId = t?.projectId ?? pid ?? Object.keys(S().projects)[0];
-  const bps = Object.values(S().boilerplates);
+/**
+ * What the new agent sheet starts with: the preset’s or the second boilerplate’s words and tools, and the first
+ * backend this computer runs, with a model and effort it takes.
+ */
+function newAgentChoices({ preset, bps, threadId }) {
   const st = {
     bp: preset ? null : (bps[1]?.id ?? bps[0]?.id),
     handle: preset?.handle ?? '',
@@ -422,6 +392,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
     usesHostSetup: true,
     canPublish: false,
     mcpOff: [],
+    skillsOff: [],
     folder: '',
     remote: null,
     placeError: null,
@@ -431,6 +402,14 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
   if ((st.backend === 'codex' || st.backend === 'antigravity-cli') && !modelsFor(st.backend).includes(st.model) && modelsFor(st.backend).length)
     st.model = modelsFor(st.backend)[0];
   st.effort = effortNamedBy(st.backend, st.model) ?? st.effort;
+  return st;
+}
+
+export function openNewAgent({ threadId = null, projectId: pid = null, preset = null, onCreated = null } = {}) {
+  const t = threadId ? S().threads[threadId] : null;
+  const projectId = t?.projectId ?? pid ?? Object.keys(S().projects)[0];
+  const bps = Object.values(S().boilerplates);
+  const st = newAgentChoices({ preset, bps, threadId });
   const have = toolsInProject(projectId);
   const body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
   // Each change repaints the sheet; focus stays on the control you used (#26).
@@ -576,7 +555,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
         model: st.backend === 'mock' ? 'mock' : st.model,
         ...(st.backend === 'mock' ? {} : { effort: st.effort }),
         permissionMode: st.permissionMode,
-        ...(st.backend === 'mock' ? {} : { usesHostSetup: st.usesHostSetup, canPublish: st.canPublish, mcpOff: st.mcpOff }),
+        ...(st.backend === 'mock' ? {} : { usesHostSetup: st.usesHostSetup, canPublish: st.canPublish, mcpOff: st.mcpOff, skillsOff: st.skillsOff }),
         folder: st.folder,
         // Where it runs (#120): null for this computer.
         remote: st.backend !== 'mock' && st.remote ? { hostId: st.remote } : null,
@@ -942,6 +921,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
       usesHostSetup: p.usesHostSetup !== false,
       canPublish: p.canPublish === true,
       mcpOff: [...(p.mcpOff ?? [])],
+      skillsOff: [...(p.skillsOff ?? [])],
     };
     const runBox = h('div.form-grid');
     const paintRun = () => keepFocus(runBox, () => fill(runBox, backendFields(run, paintRun, { idp: 'pe', personaId: p.id })));
@@ -1014,6 +994,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
                         usesHostSetup: run.usesHostSetup,
                         canPublish: run.canPublish,
                         mcpOff: run.mcpOff,
+                        skillsOff: run.skillsOff,
                       }),
                 },
                 'PATCH',
@@ -1027,6 +1008,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
                       run.permissionMode !== (p.permissionMode ?? 'auto') ||
                       run.usesHostSetup !== (p.usesHostSetup !== false) ||
                       run.canPublish !== (p.canPublish === true) ||
+                      String(run.skillsOff) !== String(p.skillsOff ?? []) ||
                       String(run.mcpOff) !== String(p.mcpOff ?? []) ||
                       String([...tools].sort()) !== String([...(p.tools ?? [])].sort())
                         ? 'Where it runs, its permissions and its tools apply to its conversations from their next turn; other changes apply to new sessions.'

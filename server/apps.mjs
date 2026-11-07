@@ -112,7 +112,7 @@ export function needAppSend(rt, app, itemId, waiting) {
   // A later event of a card that isn't the need changes nothing: the card isn't new, so it doesn't offer itself again.
   if (waiting !== 1 && se.needs?.itemId !== itemId) return;
   const text = `${app.title} wants to send ${waiting === 1 ? '1 message' : `${waiting} messages`} for you`;
-  const took = offerNeed(rt, se, { kind: 'appsend', itemId, text }, rt.turns.has(se.id) ? se.state : 'needs');
+  const took = offerNeed(rt, se, { kind: 'appsend', itemId, text, ...rt.awayFrom(se, app.threadId) }, rt.turns.has(se.id) ? se.state : 'needs');
   // Only the first event is noticed: behind another need it isn't yet, and is when it becomes the need (card-needs.mjs).
   if (waiting !== 1) return;
   rt.patchItem(app.threadId, itemId, { notifiedAt: took ? Date.now() : null });
