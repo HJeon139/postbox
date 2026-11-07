@@ -47,20 +47,23 @@
   };
 
   // The SVG shapes that can hold a label: closed, painted, and smaller than a quarter of their drawing (a larger one is
-  // its background or plot area). A path counts only when it’s filled, since an open line encloses nothing.
+  // its background or plot area). A path counts only when it’s filled, since an open line encloses nothing. A box may
+  // group parts, never stand in for one: a shape with other marks drawn inside it (a cluster’s region around its nodes)
+  // is grouping them, and the words in it belong to those marks, so it isn’t one (#889).
   const svgShapes = function (svg) {
     const whole = area(svg.getBoundingClientRect());
-    const out = [];
-    for (const el of svg.querySelectorAll('rect, circle, ellipse, polygon, path')) {
+    const marks = [];
+    for (const el of svg.querySelectorAll('rect, circle, ellipse, polygon, path, line, polyline')) {
       if (el.closest(PARKED) || !shown(el)) continue;
       const cs = getComputedStyle(el);
       const filled = cs.fill !== 'none' && +cs.fillOpacity > 0;
       const stroked = cs.stroke !== 'none' && parseFloat(cs.strokeWidth) > 0;
-      if (!(filled || (stroked && el.tagName !== 'path'))) continue;
-      const b = el.getBoundingClientRect();
-      if (area(b) < whole / 4) out.push({ el, b, n: 0, words: 0 });
+      if (filled || stroked) marks.push({ el, b: el.getBoundingClientRect(), closed: filled || (stroked && !/^(path|line|polyline)$/.test(el.tagName)) });
     }
-    return out;
+    const shapes = marks.filter((m) => m.closed && m.el.tagName !== 'line' && m.el.tagName !== 'polyline' && area(m.b) < whole / 4);
+    return shapes.filter(
+      (s) => !marks.some((m) => m.el !== s.el && area(m.b) < area(s.b) * 0.8 && holds(s, m.b.left + m.b.width / 2, m.b.top + m.b.height / 2)),
+    );
   };
   // Whether a point on screen is inside an SVG shape: its box first, then its geometry, unless it’s a rect.
   const holds = function (s, x, y) {
@@ -73,8 +76,9 @@
   // An HTML element drawn as a box: a border on every side, or a background of its own, and not as wide as the window
   // (a page band or a section isn’t a box in a picture). Inline highlights aren’t boxes.
   const boxMemo = new Map();
-  const htmlBox = function (el) {
-    if (boxMemo.has(el)) return boxMemo.get(el);
+  const drawnMemo = new Map();
+  const boxLike = function (el) {
+    if (drawnMemo.has(el)) return drawnMemo.get(el);
     const cs = getComputedStyle(el);
     const b = el.getBoundingClientRect();
     const sized = b.width >= 24 && b.height >= 16 && b.width <= innerWidth * 0.92 && cs.display !== 'inline';
@@ -83,8 +87,13 @@
     const own = rgb(cs.backgroundColor);
     const filled = opaque(own) && cs.backgroundColor !== behind(el.parentElement);
     const out = sized && (bordered || filled);
-    boxMemo.set(el, out);
+    drawnMemo.set(el, out);
     return out;
+  };
+  // An HTML box that holds a drawing or other boxes groups them (a card of cards), and isn’t one, as in SVG.
+  const htmlBox = function (el) {
+    if (!boxMemo.has(el)) boxMemo.set(el, boxLike(el) && !el.querySelector('svg, img, canvas') && ![...el.querySelectorAll('*')].some(boxLike));
+    return boxMemo.get(el);
   };
   const behind = function (el) {
     for (let e = el; e; e = e.parentElement) {
@@ -113,6 +122,7 @@
   const textInShapes = function (w) {
     hidden.reset();
     boxMemo.clear();
+    drawnMemo.clear();
     const shapes = new Map();
     const shapesOf = (svg) => shapes.get(svg) ?? shapes.set(svg, svgShapes(svg)).get(svg);
     const boxes = new Map();
@@ -130,7 +140,7 @@
     const wordy = held.filter((n) => n > WORDY).length;
     const share = total ? boxed / total : 0;
     if (!(wordy >= 2 || (share >= 0.5 && held.length >= 4 && boxed >= 12))) return [];
-    const most = wordy ? `, and ${wordy} of them hold more than ${WORDY} words` : '';
+    const most = wordy ? `, and ${wordy} of them ${wordy === 1 ? 'holds' : 'hold'} more than ${WORDY} words` : '';
     const top = kept.reduce((a, b) => (b.n > a.n ? b : a));
     return [
       {

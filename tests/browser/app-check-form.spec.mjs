@@ -2,8 +2,9 @@
 // - text-in-shapes: a diagram of labeled boxes, most of its words inside rects and two boxes holding a sentence each.
 // - ranks-one-number: marks that vary along one axis only, as bars from one baseline (in SVG, and as divs), and as a
 //   lollipop sorted by its value.
-// A scatter, which places each mark by two values, and a force-laid network, whose nodes sit where their links put
-// them, get neither. Both are notes: the app is shown with notes, and the agent hears of them in its lint turn, with
+// A box may group parts, never stand in for one: a flowchart’s subgraphs still count as text in boxes, and a network’s
+// group regions around its nodes don’t. A scatter, which places each mark by two values, and a force-laid network,
+// whose nodes sit where their links put them, get neither. Both are notes: the app is shown with notes, and the agent hears of them in its lint turn, with
 // the element each note is about named by its id or class, so it can fix that element rather than redraw the page.
 
 import { expect, test } from '@playwright/test';
@@ -136,6 +137,50 @@ const network = svg(
     at.map((q, i) => `<circle cx="${q.x}" cy="${q.y}" r="7" fill="var(--accent)"/>${text(q.x + 10, q.y + 5, PEOPLE[i])}`).join(''),
 );
 
+// A Mermaid-style flowchart with two subgraphs: each cluster’s rect groups node rects, and each node’s label is its
+// own, set in a foreignObject as Mermaid sets it. The clusters group parts; the nodes stand in for them.
+const CLUSTERS = [
+  ['Ingest', ['Fetch the papers', 'Split every paper into short chunks', 'Drop the duplicate chunks']],
+  ['Serve', ['Embed the question', 'Find the nearest chunks in the index', 'Write the answer']],
+];
+const subgraphs = svg(
+  640,
+  300,
+  'Ingest, then serve',
+  CLUSTERS.map(([title, nodes], c) => {
+    const x = 10 + c * 320;
+    const node = (label, i) =>
+      `<rect x="${x + 20}" y="${50 + i * 80}" width="260" height="50" rx="6" fill="var(--surface)" stroke="var(--line)"/><foreignObject x="${x + 20}" y="${50 + i * 80}" width="260" height="50"><div style="font:13px system-ui,sans-serif;color:var(--text);text-align:center;padding:6px">${label}</div></foreignObject>`;
+    return `<rect x="${x}" y="10" width="300" height="280" fill="var(--panel)" stroke="var(--line)"/>${text(x + 150, 34, title, 'middle')}${nodes.map(node).join('')}`;
+  }).join('') + '<path d="M290,75 L330,75" fill="none" stroke="var(--dim)" stroke-width="2"/>',
+);
+
+// A network drawn as postbox.graph draws one: a soft filled region around each group, labeled, with node circles inside
+// it and each node’s label under its circle. The regions group the nodes, so their words aren’t text in a box.
+const GROUPS = [
+  ['Accounts', ['auth', 'session', 'token', 'user', 'profile', 'billing'], 150],
+  ['Content', ['posts', 'comments', 'media', 'search', 'feeds', 'tags'], 450],
+];
+const grouped = svg(
+  600,
+  300,
+  'Services by group',
+  GROUPS.map(([label, names, cx]) => {
+    const nodes = names.map((n, i) => ({ n, x: cx - 50 + (i % 3) * 50 + (i > 2 ? 15 : 0), y: 110 + Math.floor(i / 3) * 80 + (i % 2) * 12 }));
+    const hull = `<path d="M${cx - 85},90 Q${cx},50 ${cx + 85},90 L${cx + 85},250 Q${cx},290 ${cx - 85},250 Z" fill="var(--accent)" fill-opacity="0.12" stroke="var(--accent)" stroke-opacity="0.35"/>`;
+    return (
+      hull +
+      text(cx, 80, label, 'middle') +
+      nodes
+        .map(
+          ({ n, x, y }) =>
+            `<circle cx="${x}" cy="${y}" r="8" fill="var(--accent)" stroke="var(--bg)" stroke-width="2"><title>${n}</title></circle>${text(x, y + 24, n, 'middle')}`,
+        )
+        .join('')
+    );
+  }).join('') + '<path d="M200,140 C260,120 340,120 400,140" fill="none" stroke="var(--dim)" stroke-width="1.5"/>',
+);
+
 // Bars drawn as divs, each as wide as its share.
 const htmlBars = `<!doctype html><html><body style="margin:0;padding:8px;color:var(--text);font:14px system-ui,sans-serif">
 <h3>Time to first reply</h3>
@@ -145,6 +190,8 @@ ${DAYS.map(([d, v]) => `<span>${d}</span><div style="background:var(--line)"><di
 
 const APPS = {
   boxes: { title: 'Answering a question', code: boxes, want: ['text-in-shapes'] },
+  subgraphs: { title: 'Ingest, then serve', code: subgraphs, want: ['text-in-shapes'] },
+  grouped: { title: 'Services by group', code: grouped, want: [] },
   bars: { title: 'Messages a day', code: bars, want: ['ranks-one-number'] },
   lollipop: { title: 'Tests passing', code: lollipop, want: ['ranks-one-number'] },
   htmlBars: { title: 'First replies', code: htmlBars, want: ['ranks-one-number'] },
