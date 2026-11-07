@@ -66,6 +66,9 @@ export function evaluate(required, runs) {
   // A job that needs others isn’t created until they end, so a name is missing for good only once nothing runs.
   const running = [...latest.values()].some((run) => run.status !== 'completed');
   for (const row of rows) if (row.state === 'missing' && running) row.state = 'not started';
+  // A code-scanning tool’s check run is completed early and updated as each analysis uploads, so while anything still
+  // runs, its conclusion either way isn’t final (#903 at 717fc318 read failure, then success).
+  for (const row of rows) if (row.kind === 'code scanning' && running) row.state = 'pending';
   const failed = rows.filter((r) => r.state === 'fail' || r.state === 'missing');
   const pending = rows.filter((r) => r.state === 'pending' || r.state === 'not started');
   let exit = EXIT.pass;

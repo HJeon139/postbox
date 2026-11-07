@@ -63,6 +63,21 @@ test('a required check still running is pending, not a pass', () => {
   assert.match(report(840, MERGED.head, v).at(-1), /codeql=pending .*-> PENDING$/);
 });
 
+test('CodeQL’s result while an analysis still runs is pending, whichever way it reads: GitHub updates it per upload', () => {
+  // Seen on #903 at 717fc318: CodeQL read as failed at 08:06 while Analyze (javascript-typescript) was still running,
+  // and as success once its upload landed. Neither reading is final until every run has ended.
+  const analysing = (conclusion) =>
+    edited(MERGED, (run) => {
+      if (run.name === 'CodeQL') return { ...run, conclusion };
+      if (run.name.startsWith('Analyze')) return { ...run, status: 'in_progress', conclusion: null };
+    });
+  for (const conclusion of ['failure', 'success']) {
+    const v = evaluate(REQUIRED, analysing(conclusion));
+    assert.equal(v.exit, EXIT.pending, `CodeQL ${conclusion} with an analysis running`);
+    assert.equal(v.rows.find((r) => r.name === 'CodeQL').state, 'pending');
+  }
+});
+
 test('a missing required check is “not started” while other runs go, and missing once none do', () => {
   const demo = 'Demo in Chrome, with accessibility checks';
   const withoutDemo = MERGED.check_runs.filter((r) => r.name !== demo);
