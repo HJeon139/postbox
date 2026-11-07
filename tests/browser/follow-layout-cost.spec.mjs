@@ -44,3 +44,31 @@ test('#866 50 batches of changes to a followed transcript, one microtask each, f
   await settled(page);
   await expect(page.locator('#main')).toHaveAttribute('data-view-mode', 'following');
 });
+
+test('#903 50 batches that each take out a node and put one in, as streaming does, force no layout of their own', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the layout count comes from Chromium’s DevTools protocol');
+  await page.goto(`${app.origin}/#/t/${room}`);
+  await synced(page, app);
+  await settled(page);
+  await expect(page.locator('#main')).toHaveAttribute('data-view-mode', 'following');
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Performance.enable');
+  const layouts = async () => (await cdp.send('Performance.getMetrics')).metrics.find((m) => m.name === 'LayoutCount').value;
+  const before = await layouts();
+  // Each streamed delta takes a span out of the reply and puts new text in, in two records of one batch.
+  await page.evaluate(async (n) => {
+    const last = /** @type {HTMLElement} */ ([...document.querySelectorAll('#main > .item')].at(-1));
+    let span = last.appendChild(document.createElement('span'));
+    for (let i = 0; i < n; i++) {
+      await Promise.resolve();
+      span.remove();
+      span = last.appendChild(document.createElement('span'));
+      span.textContent = ` ${i}`;
+    }
+  }, BATCHES);
+  const during = (await layouts()) - before;
+  test.info().annotations.push({ type: 'measured', description: `layouts during ${BATCHES} remove-and-add batches: ${during}` });
+  expect(during, `layouts forced by ${BATCHES} batches that remove and add`).toBeLessThan(5);
+  await settled(page);
+  await expect(page.locator('#main')).toHaveAttribute('data-view-mode', 'following');
+});
