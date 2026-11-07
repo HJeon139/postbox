@@ -252,9 +252,20 @@ test('a denied cut permission no longer blocks a later readable approval', () =>
   state.items.main[1].status = 'open';
   assert.match(approvalRefusal({ action: approve, assessment: '', key: 'b2', state, cuts }), /I2/);
   state.items.main[1].status = 'expired';
-  assert.match(approvalRefusal({ action: approve, assessment: '', key: 'b2', state, cuts }), /I2/);
+  assert.equal(approvalRefusal({ action: approve, assessment: '', key: 'b2', state, cuts }), null);
+  for (const status of ['canceled', 'ended', 'allowed', 'allowed-always', 'allowed-edited']) {
+    state.items.main[1].status = status;
+    assert.equal(approvalRefusal({ action: approve, assessment: '', key: 'b2', state, cuts }), null, status);
+  }
   state.items.main.splice(1, 0, { id: 'a1', kind: 'agent', text: 'cut agent message' });
   cuts.set('a1', { label: 'I1', shown: 1800, total: 5000, path: '/unused', full: 'x'.repeat(5000) });
   state.items.main[2].status = 'denied';
   assert.match(approvalRefusal({ action: approve, assessment: '', key: 'b2', state, cuts }), /I1/);
+});
+
+test('an opener that leaves a permission open is handed back for its submit action', () => {
+  const source = readFileSync(join(import.meta.dirname, '..', 'tools', 'uat-run.mjs'), 'utf8');
+  assert.match(source, /current\?\.kind === 'permission' && current\.status === 'open'/);
+  assert.match(source, /told\.delete\(key\)/);
+  assert.match(source, /no answer was sent/);
 });

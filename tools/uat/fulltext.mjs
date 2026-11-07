@@ -151,7 +151,7 @@ export function approvalRefusal({ action, assessment, key, state, cuts }) {
   if (at) for (let i = at.i; i >= 0 && at.list[i]?.kind !== 'user'; i -= 1) since.push(at.list[i].id);
   const unresolved = (k) => {
     const item = located(state, k)?.item;
-    return !(item?.kind === 'permission' && item.status === 'denied');
+    return !(item?.kind === 'permission' && item.status !== 'open');
   };
   const cut = (since.length ? since : [key])
     .filter(unresolved)
@@ -162,7 +162,7 @@ export function approvalRefusal({ action, assessment, key, state, cuts }) {
       cut.total === null
         ? `${cut.shown.toLocaleString('en-US')} characters and not the rest`
         : `${cut.shown.toLocaleString('en-US')} of ${cut.total.toLocaleString('en-US')} characters`;
-    return `You were shown ${shown} of ${cut.label}. ${cut.path ? `Read the rest with the read_full action on ${cut.label}` : 'Ask the agent for the rest, or refuse it with Don’t allow'} before you answer.`;
+    return `You were shown ${shown} of ${cut.label}. ${cut.path ? `Read the rest with the read_full action on ${cut.label}` : 'Ask the agent for the rest, or refuse it by pressing Don’t allow… and then Don’t allow'} before you answer.`;
   }
   const check = DESIGN_CHECK.exec(assessment ?? '');
   const approving = action.type === 'review' ? action.verdict === 'approve' : Boolean(check);
@@ -180,7 +180,7 @@ export function readFull({ key, cuts }) {
   const cut = cuts.get(key);
   if (!cut) return 'That item was shown whole; there is nothing more to read.';
   if (cut.total === null || !cut.path)
-    return `Postbox’s record doesn’t hold the rest of ${cut.label}. You can safely deny the permission, or ask the agent to split the command into shorter steps.`;
+    return `Postbox’s record doesn’t hold the rest of ${cut.label}. You can safely deny the permission by pressing Don’t allow… and then Don’t allow, or ask the agent to split the command into shorter steps.`;
   cuts.delete(key);
   return `The full text of ${cut.label} (${cut.total.toLocaleString('en-US')} characters):\n\n${cut.full}`;
 }

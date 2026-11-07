@@ -168,14 +168,17 @@ async function main() {
   const stop = runStop(run);
   // uc04-s06 (claude-ssh, study runner only): a run stopped by a signal still records run.json, with the tester's and
   // agents' cost so far, before it stops; the normal end writes it as before.
-  const signals = onStopSignal(() => {
-    try {
-      run.writeRecord?.();
-    } catch (e) {
-      log(`Couldn’t write run.json on the stop: ${e.message}`);
-    }
-    return stop();
-  }, { log });
+  const signals = onStopSignal(
+    () => {
+      try {
+        run.writeRecord?.();
+      } catch (e) {
+        log(`Couldn’t write run.json on the stop: ${e.message}`);
+      }
+      return stop();
+    },
+    { log },
+  );
   const postbox = await startPostbox({
     root: ROOT,
     port,
@@ -248,7 +251,20 @@ async function main() {
     run.writeRecord = () => {
       facts.streams = streamResults(paths.streams)();
       writeJsonAtomic(join(dir, 'run.json'), {
-        ...runRecord({ root: ROOT, dir, scenario, name, opt, started, steps: timeline.length, cap: steps, startPhase: startPhase + 1, tester, facts, coverage: null }),
+        ...runRecord({
+          root: ROOT,
+          dir,
+          scenario,
+          name,
+          opt,
+          started,
+          steps: timeline.length,
+          cap: steps,
+          startPhase: startPhase + 1,
+          tester,
+          facts,
+          coverage: null,
+        }),
         stoppedBySignal: true,
       });
       log('Wrote run.json on the stop.');
@@ -497,8 +513,14 @@ async function main() {
             throw new Error(refusal);
           }
           if (now) facts.probes.answers.push({ key, revision: now.revision ?? 1, at: Date.now() });
-          if (a.type === 'act') await d.act(key, a);
-          else await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });
+          if (a.type === 'act') {
+            await d.act(key, a);
+            const current = itemIn((await api('/api/state')).state);
+            if (current?.kind === 'permission' && current.status === 'open') {
+              told.delete(key);
+              actionResult = 'The permission form opened, but no answer was sent. Press “Don’t allow” to submit the refusal.';
+            }
+          } else await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });
           await noteStale();
         } else if (a.type === 'jobs') {
           await d.answerJobs(a.answer);
