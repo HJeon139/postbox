@@ -203,6 +203,14 @@ test('a run folder is made under the system temp folder, named for the gate’s 
   assert.equal(fs.lstatSync(run.path).isDirectory(), true);
 });
 
+test('a run folder lists what is in it, for the check’s leftovers (#922)', (t) => {
+  const { deps } = scratch(t);
+  const run = gateRunDir(deps).open();
+  t.after(() => run.close());
+  fs.writeFileSync(join(run.path, 'x'), '');
+  assert.deepEqual(run.list(), ['x']);
+});
+
 test('closing a run removes its folder, a read-only one inside it too', (t) => {
   const { deps } = scratch(t);
   const run = gateRunDir(deps).open();
