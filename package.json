@@ -9,6 +9,7 @@
     "postbox": "bin/postbox.mjs"
   },
   "files": [
+    "agent-plugin/",
     "bin/",
     "app/",
     "server/",
