@@ -53,14 +53,30 @@ The principles behind the rules: [Larkin & Simon 1987](https://mechanism.ucsd.ed
   - Paper briefs: on two of three papers the agent chose a different idea from the brief’s, and the reader recovered the agent’s idea. A paper has no single idea, so the paper scenarios should ask a specific question.
   - These are development numbers, not results: one run per condition, and VE8, VE9 and the shape table’s poles row came from runs on these same briefs. Random recent papers, with the skill frozen, are the held-out test.
 - **Calibrated, on November 6, 2026:** the maintainer judged 20 of those first visuals blind against their briefs, then saw the takeaway test’s grades. They agreed exactly on 8 and within one step on 15 (quadratic weighted κ 0.27). The test was more lenient on 9: it passed visuals whose words stated the idea, and missed text in boxes, missing relationships and unreadable labels. The maintainer rated the with-skill visuals 1.7 on a 0 to 3 scale against 0.9 for the others; the test, 1.9 against 1.5. Their notes became VE10 to VE12 and the shape table’s “What good looks like”.
+- **Tuned, on November 7, 2026:** 75 UAT runs with Claude Code, the skill loaded from Postbox’s plugin, each first visual judged by the tester as the customer (`- judge: visual`), scored landed 3, mostly 2, partly 1, missed 0. Three runs per condition on five briefs: the bill, compound interest, the archetypes (`visualskill-*`), the traffic jam (`heldout-idea`) and sleep and running (`everyday-runs`).
+
+  | Brief | Skill off | VE1 to VE12 | With VE13 | With VE9’s close-up |
+  |---|---|---|---|---|
+  | Bill | 1.33 | 2.00 | 2.00 | 2.00 |
+  | Compound interest | 1.33 | 2.33 | 2.00 | 2.00 |
+  | Archetypes | 1.33 | 1.67 | 1.67 | 2.00 |
+  | Traffic jam | 0.33 | 1.67 | 1.33 | 1.33, then 1.67 with the frame clamp |
+  | Sleep and running | 2.00 | 2.00 | 2.33 | 3.00 |
+
+  - Most short verdicts with VE1 to VE12 showed the idea only after a click or a wait; VE13 came from them. The jam and sleep visuals then opened on the jam and the colored groups.
+  - The jam’s misses with VE13 were crashes: a radius sized from a frame still 0 wide (two of six). The build step’s clamp followed, and none of three runs after it crashed.
+  - Held out, on four everyday briefs not used in tuning (`everyday-pantry`, `-shelf`, `-subs`, `-tests`), two runs each with the tuned skill and one without: 1.75 against 1.25. Both misses with the skill weren’t the drawing: a first version that crashed, and a plain data table posted before the chart.
+  - The tester answered Postbox’s browser card inconsistently, so some agents could see their app and some couldn’t. With the skill, it made no difference (1.80 with the browser, 2.00 without, 15 runs each).
+  - Three runs per condition is noisy: one run moves a mean by up to 1. Only the sleep brief’s rise and the jam’s crashes are clear.
 - **Not done:**
   - The takeaway test, now on a text-hidden screenshot with the floor’s new lines, hasn’t been rerun against the maintainer’s verdicts. Until it agrees about as well as people agree with each other (κ about 0.45 to 0.6), it informs a person’s judgment and doesn’t replace it.
-  - No run has used VE10 to VE12 yet.
+  - The tester judges the first visual, so a data table posted before the picture is scored as the visual. Whether the skill should say “the picture first” is untested.
+  - A first version that crashes is what the reader sees, even when a later version is good. Postbox stops an app on the browser’s harmless “ResizeObserver loop” error, which caused one of the crashes.
   - The vaccine-trial brief’s case counts are unchecked (the brief says so).
   - The countable floor lines aren’t in Postbox’s app check yet: agents shipped visuals with labels the check had flagged as overlapping or too small.
 - **Next:**
   1. Rerun the takeaway test, text-hidden, on the same 20 visuals and compare it with the maintainer’s verdicts again.
   2. The countable floor lines (text in boxes, overlap, size, contrast, first-view fit) as checks in Postbox’s pre-display app check that block a version, measured from the page, with the offending elements returned to the author ([#95](https://github.com/HJeon139/postbox/issues/95)).
-  3. Rerun the development set with VE10 to VE12.
+  3. Fix the app frame’s first-draw failures: the harmless ResizeObserver error, and #819’s check that never resizes.
   4. The held-out test: random recent papers through the `visualpaper` scenario, each with a specific question, the skill unchanged, three runs per condition.
   5. A spec-driven diagram kit for the shapes, so agents fill in labels instead of drawing boxes ([#211](https://github.com/HJeon139/postbox/issues/211)).
