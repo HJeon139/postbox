@@ -21,6 +21,7 @@ import { mockMarker } from './agent-facts.mjs';
 import { checkField } from './check-field.mjs';
 import { api, client, sessionsOf, threadsOf } from './client.mjs';
 import { ago, fill, h, icon, plural } from './dom.mjs';
+import { goToNew, goWhenThere } from './go-when-there.mjs';
 import { hostsPanel } from './hosts.mjs';
 import { openPermissions } from './permissions.mjs';
 import { lifeButtons } from './persona-delete.mjs';
@@ -564,11 +565,10 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
       dlg.close();
       toast({ title: `Created ${p.handle}` });
       onCreated?.(p);
-      if (st.where === 'new')
-        setTimeout(() => {
-          const nt = threadsOf(projectId).find((x) => sessionsOf(x.id).some((se) => se.personaId === p.id));
-          if (nt) navigate(`#/t/${nt.id}`);
-        }, 200);
+      // The new conversation is the project’s one with this agent in it.
+      const withAgent = (x) => sessionsOf(x.id).some((se) => se.personaId === p.id);
+      const newThreadOf = () => threadsOf(projectId).find(withAgent)?.id;
+      if (st.where === 'new') goWhenThere(newThreadOf);
     } catch (e) {
       st.error = e.message;
       paint();
@@ -658,7 +658,7 @@ export function openNewThread(projectId, { room = false } = {}) {
         personaIds: [...picked],
       });
       dlg.close();
-      navigate(`#/t/${t.id}`);
+      goToNew(t.id);
     } catch (e) {
       err.replaceChildren(h('span.err', { role: 'alert' }, icon('warn'), e.message));
     }
@@ -1214,7 +1214,7 @@ export function openAttachSession(projectId) {
       const r = await api('/api/claude-sessions/attach', { claudeSessionId: s.id, projectId });
       dlg.close();
       toast({ title: 'Attached', text: `${s.title} is a conversation now.` });
-      setTimeout(() => navigate(`#/t/${r.threadId}`), 200);
+      goToNew(r.threadId);
     } catch (e) {
       toast({ title: 'Couldn’t attach it', text: e.message, level: 'blocking' });
     }
