@@ -140,7 +140,7 @@ test('going to another conversation first opens nothing there', async ({ page })
   const topicId = await replyInThread(page, r);
   await heard(page);
   // The page’s listeners, but those that remove themselves once their element is gone: the queue button’s
-  // (agent-queue.mjs) never does for a button that was never on the page, which this doesn’t check.
+  // (agent-queue.mjs) never does for a button that was never on the page (#912), which this doesn’t check.
   const listeners = () =>
     page.evaluate(() => import('/app/js/client.mjs').then(({ client }) => [...client.listeners].filter((f) => !String(f).includes('.isConnected')).length));
   const goTo = async (room) => {
@@ -166,4 +166,73 @@ test('closing the thread’s address first opens nothing', async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`#/t/${r.room.id}$`));
   await arrived(page, topicId);
   await expect(page.locator('.sidepanel')).toHaveCount(0);
+});
+
+// When the thread is already on the page.
+
+/**
+ * Has the page count the timers that move focus to the thread’s composer once they’ve run, as Reply in thread’s does,
+ * so a test can wait for that one rather than for a fixed time.
+ * @param {import('@playwright/test').Page} page
+ */
+const countFocusTimers = (page) =>
+  page.evaluate(() => {
+    const w = /** @type {any} */ (window);
+    const set = w.setTimeout;
+    w.focusTimersRun = 0;
+    w.setTimeout = (fn, ms, ...args) => {
+      if (typeof fn !== 'function' || !String(fn).includes('side-input')) return set(fn, ms, ...args);
+      return set(() => {
+        fn(...args);
+        w.focusTimersRun += 1;
+      }, ms);
+    };
+  });
+/** Whether nothing in the page has focus. */
+const focusIsOff = (page) => expect.poll(() => page.evaluate(() => document.activeElement === document.body)).toBe(true);
+
+test('focus the person moves as the address changes stays there, when the thread is already on the page', async ({ page }) => {
+  const r = await openRoom(page, 'Reply quick moved');
+  // The person moves to the conversation’s composer as the address changes: before Reply in thread’s own 150 ms timer.
+  await page.evaluate(() => addEventListener('hashchange', () => document.getElementById('composer-input')?.focus(), { once: true }));
+  await countFocusTimers(page);
+  await replyInThread(page, r);
+  await expect(page.locator('#side-input')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).focusTimersRun), { message: 'that timer, run' }).toBe(1);
+  await focusIsOn(page, 'composer-input');
+});
+
+test('a thread already open that changes doesn’t take focus', async ({ page }) => {
+  const r = await openRoom(page, 'Reply open renamed');
+  const topicId = await replyInThread(page, r);
+  await focusIsOn(page, 'side-input');
+  await page.evaluate(() => /** @type {HTMLElement} */ (document.activeElement).blur());
+  await focusIsOff(page);
+  app.rt.renameThread(topicId, 'The 1908 edition');
+  const renamed = () => page.evaluate((id) => import('/app/js/client.mjs').then(({ client }) => client.state.threads[id]?.title), topicId);
+  await expect.poll(renamed).toBe('The 1908 edition');
+  await focusIsOff(page);
+});
+
+test('a thread’s address opens its panel on a fresh load', async ({ page }) => {
+  const r = sideRoom(app, 'Reply reload');
+  const message = app.rt.addItem(r.room.id, {
+    ...{ kind: 'agent', sessionId: r.indexer.id, personaId: r.indexer.personaId, handle: 'indexer' },
+    ...{ text: 'The 1908 edition drops two chapters.', status: 'done' },
+  });
+  const topicId = app.rt.startTopic(r.room.id, message.id).threadId;
+  await page.goto(`${app.origin}/#/t/${r.room.id}/side/${topicId}`);
+  await synced(page, app);
+  await expect(page.locator(`.sidepanel .transcript[data-thread="${topicId}"]`)).toBeVisible();
+});
+
+test('a thread that comes with the state loaded again, not its own event, opens too', async ({ page }) => {
+  await holdTopics(page);
+  const r = await openRoom(page, 'Reply late resync');
+  const topicId = await replyInThread(page, r);
+  await heard(page);
+  // The page loads its state again, as it does on a resync; the thread’s own event stays held.
+  await page.evaluate(() => import('/app/js/client.mjs').then(({ load }) => load()));
+  await expect(page.locator(`.sidepanel .transcript[data-thread="${topicId}"]`)).toBeVisible();
+  await focusIsOn(page, 'side-input');
 });
