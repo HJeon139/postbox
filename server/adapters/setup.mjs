@@ -136,13 +136,15 @@ const part = (v) => String(v).replace(/[^\w-]/g, '_');
 
 /**
  * What both Claude adapters pass from a turn’s context: the rules the person allowed once or for this conversation
- * (#66), the persona’s own memory folder under `memoryRoot` (#208), and Postbox’s plugin, with its skills, for a turn
+ * (#66), or always for this persona on its host (#120), the persona’s own memory folder under `memoryRoot` (#208), and Postbox’s plugin, with its skills, for a turn
  * on this computer: a host doesn’t have its folder (agent-plugin.mjs).
  * @param {any} ctx @param {string} memoryRoot
  */
 export const fromContext = (ctx, memoryRoot) => ({
   allowOnce: ctx.allowOnce ?? [],
   rules: ctx.rules ?? {},
+  // A host turn’s, which Postbox keeps for that host (#120, server/host-rules.mjs); a turn here has none.
+  hostAllow: ctx.remote?.allow ?? [],
   memoryDir: memoryFolder(memoryRoot, ctx.persona, ctx.project),
   // Left out when the persona turned off every one of its skills, so the agent isn’t told of them (skill-config.mjs).
   plugins: ctx.remote || !postboxSkillsOn(ctx.persona).length ? [] : agentPlugins(),

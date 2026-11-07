@@ -28,6 +28,7 @@ const SOURCE = {
   project: 'the project’s shared settings',
   local: 'this folder’s local settings',
   conversation: 'this conversation',
+  host: 'Postbox, for its host',
   tools: 'the persona’s Tools',
   publishing: '“Can publish outside Postbox” is off',
   writes: 'Postbox’s check on writes outside it',
@@ -80,12 +81,15 @@ function verdictOf(v, part, mode, handle) {
   return ['No rule covers it', part, `, so ${mode} mode decides: `, h('b', outcome ?? ''), '.'];
 }
 
+/** Where a listed rule comes from, in words: a host rule names its host. @param {{ source: string, host?: string }} r */
+const fromOf = (r) => (r.source === 'host' ? `Postbox, for ${r.host}` : SOURCE[r.source]);
+
 function hostNote({ persona: p, readsRules }) {
   if (!readsRules || !p.host) return null;
   const user = p.usesHostSetup ? ', and your ~/.claude/settings.json there' : '';
   return h(
     'p.help',
-    `${p.handle} runs on ${p.host}, where Claude Code reads the agent folder’s settings files there${user}, not the ones listed here from this computer. Its mode, its Tools and this conversation’s rules still apply.`,
+    `${p.handle} runs on ${p.host}, where Claude Code reads the agent folder’s settings files there${user}, not the ones listed here from this computer. Its mode, its Tools, this conversation’s rules and what you always allowed from its cards there still apply.`,
   );
 }
 
@@ -218,9 +222,9 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
     );
   }
 
-  /** Every rule, by behavior, each with its source and whether Postbox may remove it. */
-  function allRules() {
-    /** @type {Record<'deny'|'ask'|'allow', { rule: string, source: string, root?: string, removable: boolean }[]>} */
+  /** Every rule, by behavior, each with its source and whether Postbox may remove it; forDecide: only those that apply. */
+  function allRules(forDecide = false) {
+    /** @type {Record<'deny'|'ask'|'allow', { rule: string, source: string, root?: string, removable: boolean, hostId?: string, host?: string }[]>} */
     const out = { deny: [], ask: [], allow: [] };
     for (const f of view.files)
       for (const b of /** @type {const} */ (['deny', 'ask', 'allow']))
@@ -228,6 +232,10 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
     if (view.conversation)
       for (const b of /** @type {const} */ (['deny', 'ask', 'allow']))
         for (const rule of view.conversation[b]) out[b].push({ rule, source: 'conversation', removable: true });
+    // Always allow on a host’s card (#120): kept by Postbox for that host, and sent with each turn there. Only the current
+    // host’s decide a call; another host’s are listed so they can be removed.
+    for (const r of view.hostRules ?? [])
+      if (r.current || !forDecide) out.allow.push({ rule: r.rule, source: 'host', hostId: r.hostId, host: r.host, removable: true });
     for (const x of view.tools) if (!x.on) for (const rule of x.rules) out.deny.push({ rule, source: 'tools', removable: false });
     for (const rule of view.publishing) out.deny.push({ rule, source: 'publishing', removable: false });
     for (const rule of view.writes?.rules ?? []) out.ask.push({ rule, source: 'writes', unless: view.writes.unless, removable: false });
@@ -246,13 +254,13 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
         h(
           'li',
           h('code.perm-rule', r.rule),
-          h('span.small.dim.grow', `from ${SOURCE[r.source]}`),
+          h('span.small.dim.grow', `from ${fromOf(r)}`),
           r.removable && view.real
             ? h(
                 'button.btn.sm.ghost',
                 {
                   type: 'button',
-                  'aria-label': `Remove the ${b} rule ${r.rule} from ${SOURCE[r.source]}`,
+                  'aria-label': `Remove the ${b} rule ${r.rule} from ${fromOf(r)}`,
                   onclick: () =>
                     change(
                       () =>
@@ -261,9 +269,10 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
                           behavior: b,
                           rule: r.rule,
                           where: r.source === 'conversation' ? 'conversation' : r.source,
+                          ...(r.source === 'host' ? { hostId: r.hostId } : {}),
                           remove: true,
                         }),
-                      `Removed ${r.rule} from ${SOURCE[r.source]}. It applies from ${p.handle}’s next turn.`,
+                      `Removed ${r.rule} from ${fromOf(r)}. It applies from ${p.handle}’s next turn.`,
                     ),
                 },
                 icon('x', 'i-sm'),
@@ -504,7 +513,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
     const show = () => {
       const call = draft.call.trim();
       if (!call) return fill(out, h('span.small.dim', `Try ${EXAMPLES.join(', ')}.`));
-      const v = decide({ call, rules: allRules(), mode: p.permissionMode, cwd: view.folder ?? '/', home: view.home });
+      const v = decide({ call, rules: allRules(true), mode: p.permissionMode, cwd: view.folder ?? '/', home: view.home });
       const part = v.part ? h('span', ' (for ', h('code', v.part), ')') : null;
       const mode = MODES.find(([id]) => id === v.mode)?.[1] ?? v.mode;
       fill(out, h('p', ...verdictOf(v, part, mode, p.handle)));
