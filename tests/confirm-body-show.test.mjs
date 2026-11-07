@@ -116,3 +116,17 @@ test('#852 r3: a confirm whose gh command posts to a repository other than the p
   assert.equal(r.isError, true);
   assert.match(r.text, /project’s repository is o\/r/);
 });
+
+test('#852 r3: an update that changes only the body file’s bytes asks again with the new file, not kept in place', async () => {
+  const f = await github(await setup());
+  const path = join(f.folder, 'body.md');
+  writeFileSync(path, 'first');
+  const command = `gh pr create --repo o/r --head feat/x --title T --body-file ${path}`;
+  assert.equal((await f.call('show_block', confirm('pr', [command]))).isError, false);
+  const before = confirmItem(f, 'pr').revision ?? 1;
+  writeFileSync(path, 'second');
+  const r = await f.call('update_block', confirm('pr', [command]));
+  assert.equal(r.isError, false, r.text);
+  assert.equal(confirmItem(f, 'pr').bodyFiles[0].text, 'second', 'the person sees the new file');
+  assert.equal(confirmItem(f, 'pr').revision, before + 1, 'a new revision, so an answer to the old one grants nothing');
+});
