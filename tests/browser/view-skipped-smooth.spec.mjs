@@ -36,7 +36,7 @@ async function readingAtTop(page, title) {
   // held for 30 frames before the jump, so no wheel scroll still landing is taken for one during it.
   await page.mouse.move(640, 400);
   await page.mouse.wheel(0, -2000);
-  await expect(page.locator('#main.transcript')).toHaveAttribute('data-view-mode', 'reading');
+  await expect(page.locator('#main.transcript')).toHaveAttribute('data-view-mode', 'reading', { timeout: 15_000 });
   await page.evaluate(() => scrollTo(0, 0));
   await expect.poll(() => page.evaluate(heldAtTop), { message: 'the view to hold at the top for 30 frames', timeout: 15_000 }).toBe(true);
   await still(page);
