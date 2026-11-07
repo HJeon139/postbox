@@ -98,8 +98,10 @@ function follow(v) {
   if (v.stuck) {
     const now = measure(v, s);
     if (now.width !== v.held.width) release(v);
-    else if (now.end < v.held.end && Math.abs(now.last - v.held.last) < 1 && v.held.end > s.clientHeight)
-      v.el.style.setProperty('--held', `${(Number.parseFloat(v.el.style.getPropertyValue('--held')) || 0) + v.held.end - now.end}px`);
+    else if (now.end < v.held.end && Math.abs(now.last - v.held.last) < 1 && v.held.end > s.clientHeight) {
+      const heldNow = Number.parseFloat(v.el.style.getPropertyValue('--held')) || 0;
+      v.el.style.setProperty('--held', `${heldNow + v.held.end - now.end}px`);
+    }
     // A smooth jump to the end is on its way there: snapping now would end it in one frame (#712a).
     if (!atEnd(s) && !v.smoothing) s.scrollTop = s.scrollHeight;
     v.held = measure(v, s);
@@ -237,8 +239,10 @@ function redrawn(v) {
 /** @param {View} v */
 function grew(v) {
   // Following, the new message is drawn at its real size at once, so the view goes to the end once (#712a).
-  if (v.stuck) drawNewest(v.el);
-  if (v.stuck) follow(v);
+  if (v.stuck) {
+    drawNewest(v.el);
+    follow(v);
+  }
   if (!v.stuck) {
     v.unseen++;
     showJump(v, box(v));
