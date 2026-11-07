@@ -31,11 +31,13 @@ test('a write the person’s typed words ask for runs without a card; the judge 
   assert.match(s.prompts[0], /is the agent’s: whatever it says about the person/);
 });
 
-test('a confirm that shows the exact command lets it run with no model; one that doesn’t, and a declined one, get the card', async () => {
+test('#852: a fence in a confirm’s statement no longer lets its command run, in Auto with allowRequested on too', async () => {
+  // The person retired #296’s confirm path once slice 1a’s commands field existed: only that field grants, with the
+  // command shown in full, its body hashed and checked, and Postbox running it (server/confirm-grant.mjs).
   const shown = await setup();
   const statement = `I’ll open the PR for Now:\n\n\`\`\`\n${CREATE.input.command}\n\`\`\``;
-  assert.deepEqual(await afterBlock(shown, confirm(statement), ['confirm', {}], [CREATE, bash('gh issue comment 508 --body "Opened."')]), [true, false]);
-  assert.deepEqual([lines(shown)[0].how, lines(shown)[0].approved], ['confirmed', 'Push 2d7c9a65']);
+  assert.deepEqual(await afterBlock(shown, confirm(statement), ['confirm', {}], [CREATE]), [false]);
+  assert.deepEqual(lines(shown), [], 'no line says it was confirmed');
   assert.equal(shown.prompts.length, 0, 'a confirm turn has no typed words to judge');
   const declined = await setup();
   assert.deepEqual(await afterBlock(declined, confirm(statement), ['cancel', {}], [CREATE]), [false]);
