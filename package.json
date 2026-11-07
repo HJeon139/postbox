@@ -36,7 +36,7 @@
     "uat": "node tools/uat-run.mjs",
     "lint:commits": "node tools/lint-commits.mjs",
     "release": "node tools/release.mjs",
-    "hooks": "git config core.hooksPath .githooks",
+    "hooks": "node tools/hooks.mjs",
     "prepack": "node server/build-info.mjs pack",
     "postpack": "node server/build-info.mjs unpack"
   },
