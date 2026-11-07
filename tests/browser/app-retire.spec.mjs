@@ -55,7 +55,7 @@ async function retire({ page, store, t, mine, item }) {
   const line = item('lab').locator('.app-retired');
   await expect(line).toBeVisible();
   await expect.soft(item('lab'), 'the line says who retired it and why').toContainText('Practice lab');
-  await expect.soft(item('lab')).toContainText('Retired by @researcher: The metro map covers the same route.');
+  await expect.soft(item('lab')).toContainText('Retired by researcher: The metro map covers the same route.');
   await expect.soft(item('lab').locator('iframe'), 'a retired app runs no sandbox').toHaveCount(0);
   expect.soft((await line.boundingBox())?.height ?? 0, 'the line is one quiet line, not an app frame').toBeLessThan(40);
 }
@@ -118,7 +118,7 @@ async function early({ page, rt, mine, item }) {
   await page.reload();
   await expect
     .soft(item('early'), 'after a reload, the retired apps are still their lines')
-    .toContainText('Retired by @researcher: Replaced before it was shown.');
+    .toContainText('Retired by researcher: Replaced before it was shown.');
   await expect.soft(item('lab').locator('iframe')).toHaveCount(0);
 }
 

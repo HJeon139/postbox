@@ -53,7 +53,7 @@ export async function sample(hr, st) {
   const busy = (h) => sessionsOf(st, h).some((se) => BUSY.has(se.state));
   for (const [handle, where] of Object.entries(hr.placement)) {
     if (where === 'local' || !busy(handle)) continue;
-    const note = (notes ?? []).find((n) => n.includes(`@${handle}’s`)) ?? null;
+    const note = (notes ?? []).find((n) => n.includes(` ${handle}’s`)) ?? null;
     hr.samples.set(`stop:${handle}`, { at: Date.now(), note, jobs: runningJobs(st, handle) });
   }
   const places = new Set(
@@ -226,7 +226,7 @@ export async function leftBy(hr, h, turn, stoppedAt, { measure = measureOn, wait
 const rowsOf = (hr, labels) =>
   hr.kit
     .ev(`[...document.querySelectorAll('.agent-rows .agent-btn')].map((b) => b.innerText.replace(/\\s+/g, ' ').trim())`)
-    .then((rows) => (rows ?? []).filter((r) => Object.entries(hr.placement).some(([h, w]) => labels.includes(w) && r.includes(`@${h}`))))
+    .then((rows) => (rows ?? []).filter((r) => Object.entries(hr.placement).some(([h, w]) => labels.includes(w) && r.split(/\s/)[0] === h)))
     .catch(() => []);
 
 /** Kills the run’s Postbox’s ssh to a host, and says which processes. @param {HostRun} hr @param {import('./hosts-run.mjs').RunHost} h */

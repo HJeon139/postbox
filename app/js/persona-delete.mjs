@@ -40,7 +40,7 @@ export const lifeButtons = (p, back) => [
 /** @param {any} p  the persona @param {() => void} back  what the sheet does after, as Save and Retire do */
 export function confirmDeletePersona(p, back) {
   const dlg = openDialog({
-    title: `Delete @${p.handle}?`,
+    title: `Delete ${p.handle}?`,
     sub: p.description || undefined,
     role: 'alertdialog',
     body: whatGoes(p),
@@ -58,14 +58,14 @@ export function confirmDeletePersona(p, back) {
                 await heard(() => S().personas[p.id]?.deleting);
                 back();
                 undoToast({
-                  text: `Deleted @${p.handle}`,
+                  text: `Deleted ${p.handle}`,
                   until: r.until,
                   onUndo: () => api(`/api/personas/${p.id}/undo-delete`, {}).catch((e) => toast({ title: 'Too late to undo', text: e.message })),
                 });
               })
               .catch((e) => toast({ title: 'Couldn’t delete it', text: e.message, level: 'blocking' })),
         },
-        `Delete @${p.handle}`,
+        `Delete ${p.handle}`,
       ),
     ],
     initialFocus: () => null,
@@ -84,7 +84,7 @@ function whatGoes(p) {
       h('span.label', 'This erases'),
       h(
         'ul.what-goes',
-        li(false, `@${p.handle}, its instructions and its settings`),
+        li(false, `${p.handle}, its instructions and its settings`),
         li(false, `Its ${plural(sessions.length, 'session')}, as deleting each would: a conversation it’s alone in goes with it`),
         li(false, 'What it remembered: its own memory, in every project'),
       ),

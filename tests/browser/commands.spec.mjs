@@ -86,8 +86,8 @@ test('#67 typing / opens the menu: Postbox’s commands, then each agent’s, gr
   expect(all).toMatch(/POSTBOX.*\/permissions.*\/mode.*\/model.*\/effort.*\/add-dir.*\/mcp.*\/compact.*\/stop.*\/rename/i);
   // A session is archived only with its conversation (#320).
   expect(all).not.toMatch(/\/archive/);
-  expect(all).toMatch(/@alpha’s skills and commands \/review <file> Review a file/i);
-  expect(all).toMatch(/@beta’s skills and commands \/release-notes \[version\] Draft release notes/i);
+  expect(all).toMatch(/alpha’s skills and commands \/review <file> Review a file/i);
+  expect(all).toMatch(/beta’s skills and commands \/release-notes \[version\] Draft release notes/i);
   // compact is Postbox’s here (it runs /compact as the agent’s turn), so it isn’t listed twice.
   expect((all.match(/\/compact/g) ?? []).length).toBe(1);
   await expect(composer(page)).toHaveAttribute('aria-activedescendant', 'slash-0');
@@ -147,7 +147,7 @@ test('#67 an agent’s skill: picking it fills /name and its hint, addresses tha
   await page.keyboard.type('/release');
   await page.keyboard.press('Enter');
   await expect(composer(page)).toHaveValue('/release-notes ');
-  await expect(page.locator('.composer .hint')).toContainText('Enter runs /release-notes [version] as @beta’s turn');
+  await expect(page.locator('.composer .hint')).toContainText('Enter runs /release-notes [version] as beta’s turn');
   await page.keyboard.type('2.1');
   await page.keyboard.press('Enter');
   await expect.poll(() => turns.some((x) => x.sessionId === seB.id && x.message.slash), { message: 'the skill’s turn' }).toBe(true);

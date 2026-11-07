@@ -57,7 +57,7 @@ test('#134 “critic: …” shows “Did you mean @critic?”, and its click ad
   await room(page, 'Did you mean');
   await typeIn(page, 'composer-input', 'critic: what’s your biggest concern?');
   await expect(hint(page, 'composer-input')).toContainText('Did you mean @critic?');
-  await expect(hint(page, 'composer-input'), 'it says who it goes to').toContainText('Replying to @researcher');
+  await expect(hint(page, 'composer-input'), 'it says who it goes to').toContainText('Replying to researcher');
   await hint(page, 'composer-input').locator('.did-you-mean').click();
   await expect(page.locator('#composer-input')).toHaveValue('@critic: what’s your biggest concern?');
   await focusIs(page, /^textarea: /);
@@ -83,7 +83,7 @@ test('#134 “Researcher, …” to the last speaker, and a name later in the dr
     await typeIn(page, 'composer-input', draft);
     // Every key typed: the composer redraws its hint on each key’s input, as the first test’s Did you mean shows.
     await expect(page.locator('#composer-input')).toHaveValue(draft);
-    await expect(hint(page, 'composer-input')).toContainText('Replying to @researcher');
+    await expect(hint(page, 'composer-input')).toContainText('Replying to researcher');
     await expect(hint(page, 'composer-input'), `“${draft}” shows no hint`).not.toContainText('Did you mean');
   }
 });
@@ -91,10 +91,10 @@ test('#134 “Researcher, …” to the last speaker, and a name later in the dr
 test('#107 replying while mentioning another agent says it wakes that one, not the last speaker', async ({ page }) => {
   await room(page, 'Wakes');
   await typeIn(page, 'composer-input', '@critic what do you make of revision 3?');
-  await expect(hint(page, 'composer-input')).toContainText('Wakes @critic, not @researcher (last speaker)');
+  await expect(hint(page, 'composer-input')).toContainText('Wakes critic, not researcher (last speaker)');
   await expect(hint(page, 'composer-input'), 'not that it replies to the last speaker').not.toContainText('Replying to');
   await typeIn(page, 'composer-input', '@critic and @researcher, both of you');
-  await expect(hint(page, 'composer-input')).toContainText('Wakes @critic, @researcher');
+  await expect(hint(page, 'composer-input')).toContainText('Wakes critic, researcher');
   await expect(hint(page, 'composer-input')).not.toContainText(', not ');
 });
 
@@ -105,7 +105,7 @@ test('#134 a topic thread says who an unaddressed message goes to', async ({ pag
   await synced(page, app);
   await page.goto(`${app.origin}/#/t/${t.id}/side/${threadId}`);
   await synced(page, app);
-  await expect(hint(page, 'side-input')).toContainText('Replying to @researcher');
+  await expect(hint(page, 'side-input')).toContainText('Replying to researcher');
   await typeIn(page, 'side-input', 'critic, is this right?');
   await expect(hint(page, 'side-input')).toContainText('Did you mean @critic?');
 });

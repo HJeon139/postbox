@@ -44,5 +44,5 @@ test('an agent the person asked in a topic thread posts in the conversation with
   await synced(page, app);
   const head = page.locator('#main .shared-card', { hasText: 'The editions, for the main chat.' }).locator('.shared-head');
   await expect(head).toBeVisible();
-  expect(await words(head)).toEqual([`From the thread “${store.state.threads[topic].title}” · shared by @researcher in a turn you started Open thread`]);
+  expect(await words(head)).toEqual([`From the thread “${store.state.threads[topic].title}” · shared by researcher in a turn you started Open thread`]);
 });

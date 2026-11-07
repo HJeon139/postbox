@@ -580,10 +580,10 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
         // Where it runs (#120): null for this computer.
         remote: st.backend !== 'mock' && st.remote ? { hostId: st.remote } : null,
         saveAsBoilerplate: st.saveBp,
-        join: st.where === 'join' ? { threadId } : { projectId, title: `With @${st.handle}` },
+        join: st.where === 'join' ? { threadId } : { projectId, title: `With ${st.handle}` },
       });
       dlg.close();
-      toast({ title: `Created @${p.handle}` });
+      toast({ title: `Created ${p.handle}` });
       onCreated?.(p);
       if (st.where === 'new')
         setTimeout(() => {
@@ -618,7 +618,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
     h('span.small', 'Save as a boilerplate'),
   );
   const dlg = openDialog({
-    title: preset ? `Edit @${preset.handle} before creating it` : 'New agent',
+    title: preset ? `Edit ${preset.handle} before creating it` : 'New agent',
     sub: `Starts a new session in ${S().projects[projectId]?.name}. You can edit it later under Personas.`,
     size: 'lg',
     body,
@@ -660,7 +660,7 @@ export function openNewThread(projectId, { room = false } = {}) {
               paint();
             },
           },
-          `@${p.handle}`,
+          p.handle,
         ),
       ),
     );
@@ -714,7 +714,7 @@ export function confirmDeleteThread(threadId) {
         h(
           'ul.what-goes',
           li(false, `${plural(items.length, 'message')}, ${plural(apps, 'app')} and ${plural(topics, 'topic thread')} off it`),
-          li(false, `The ${plural(ses.length, 'session')} in it, and their context: ${ses.map((x) => `@${x.handle}`).join(', ') || 'no agents'}`),
+          li(false, `The ${plural(ses.length, 'session')} in it, and their context: ${ses.map((x) => x.handle).join(', ') || 'no agents'}`),
         ),
       ),
       h(
@@ -779,7 +779,7 @@ export function confirmDelete(se) {
   const li = (ok, text) =>
     h('li', h(`span.i.i-${ok ? 'check' : 'x'}.i-sm`, { style: { color: ok ? 'var(--good)' : 'var(--alert-ink)' }, 'aria-hidden': 'true' }), h('span', text));
   const dlg = openDialog({
-    title: `Delete @${se.handle}’s session?`,
+    title: `Delete ${se.handle}’s session?`,
     sub: `${S().projects[t?.projectId]?.name} · ${t?.title}`,
     role: 'alertdialog',
     body: [
@@ -790,12 +790,12 @@ export function confirmDelete(se) {
           'ul.what-goes',
           room
             ? [
-                li(false, `@${se.handle}’s session and its context, including ${plural(se.compactions ?? 0, 'compaction summary', 'compaction summaries')}`),
+                li(false, `${se.handle}’s session and its context, including ${plural(se.compactions ?? 0, 'compaction summary', 'compaction summaries')}`),
                 li(false, `${plural(apps, 'app')} it wrote`),
               ]
             : [
                 li(false, `The conversation: ${plural(items.length, 'item')}, including ${plural(blocks, 'block')} and ${plural(apps, 'app')}`),
-                li(false, `@${se.handle}’s context for this session`),
+                li(false, `${se.handle}’s context for this session`),
               ],
         ),
       ),
@@ -804,7 +804,7 @@ export function confirmDelete(se) {
         h('span.label', 'This stays'),
         h(
           'ul.what-goes',
-          li(true, `The @${se.handle} persona and its other sessions`),
+          li(true, `The ${se.handle} persona and its other sessions`),
           room ? li(true, `Its past messages in this room, marked “(deleted)”`) : null,
           li(true, `Files in ${S().projects[t?.projectId]?.folder ?? 'the project folder'}`),
         ),
@@ -888,7 +888,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
         list.map((p) =>
           h(
             'li',
-            h('b', `@${p.handle}`),
+            h('b', p.handle),
             mockMarker(p),
             h('span.small.dim.grow', p.retired ? 'Retired' : p.description),
             p.remote?.hostId ? h('span.small.dim', `On ${S().hosts?.[p.remote.hostId]?.name ?? 'a removed host'}`) : null,
@@ -898,7 +898,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
               {
                 type: 'button',
                 id: `pe-edit-${p.id}`,
-                'aria-label': `Edit @${p.handle}`,
+                'aria-label': `Edit ${p.handle}`,
                 onclick: () => {
                   personaId = p.id;
                   paint();
@@ -950,7 +950,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
     const ins = h('textarea.textarea', { id: 'pe-i', style: { minHeight: '100px' } }, p.instructions);
     return [
       h('button.btn.sm.ghost', { type: 'button', onclick: back, style: { alignSelf: 'flex-start' } }, icon('back', 'i-sm'), 'All personas'),
-      h('b', `@${p.handle}`),
+      h('b', p.handle),
       h('div.field', h('label.label', { for: 'pe-d' }, 'What it does'), desc),
       h('div.field', h('label.label', { for: 'pe-i' }, 'Instructions'), ins),
       runBox,
@@ -1020,7 +1020,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
               )
                 .then(() => {
                   toast({
-                    title: `Saved @${p.handle}`,
+                    title: `Saved ${p.handle}`,
                     text:
                       run.backend !== (p.backend ?? 'mock') ||
                       (run.remote ?? null) !== (p.remote?.hostId ?? null) ||
@@ -1069,7 +1069,7 @@ export function openPalette() {
       .map((t) => ({
         label: t.title,
         sub: `${S().projects[t.projectId]?.name} · ${sessionsOf(t.id)
-          .map((s) => '@' + s.handle)
+          .map((s) => s.handle)
           .join(', ')}`,
         icon: 'thread',
         run: () => navigate(`#/t/${t.id}`),

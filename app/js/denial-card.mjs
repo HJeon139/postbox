@@ -37,7 +37,7 @@ export function denialBlock(it, ctx) {
       .then(focusComposer)
       .catch((e) => toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }));
   const titleId = `dn-${it.id}`;
-  const by = it.who ? `@${it.handle}’s subagent (${it.who})` : `@${it.handle}`;
+  const by = it.who ? `${it.handle}’s subagent (${it.who})` : it.handle;
   // A chained command gets no rule: one for the whole line would never match (#238). Nor does one with a *, which a
   // rule reads as a wildcard (#281). server/permission-rules.mjs, rulesFor, says which in why.
   const noRule = !it.rules.once;

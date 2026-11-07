@@ -113,7 +113,7 @@ export function driver(page, hooks = {}) {
         `[...document.querySelectorAll('.dialog button.chip')].map((b) => [b.textContent.trim(), b.getAttribute('aria-pressed') === 'true'])`,
       );
       for (const [label, on] of chips) {
-        const want = handles.some((handle) => label.split(/\s+/).includes(`@${handle}`));
+        const want = handles.some((handle) => label.split(/\s+/).includes(handle));
         if (want !== on) await clickAt(byText('document.querySelector(".dialog")', 'button.chip', label), `${label} in the sheet`);
       }
       await clickAt(byText('document.querySelector(".dialog")', 'button.send', 'Start'), 'the Start button');
@@ -200,7 +200,7 @@ export function driver(page, hooks = {}) {
       try {
         await clickAt(`document.querySelector('[aria-label="Settings"]')`, 'the Settings button');
         await clickAt(byText('document.querySelector(".dialog")', '[role=tab], button', 'Personas'), 'the Personas tab');
-        await clickAt(`document.querySelector(${js(`.dialog [aria-label="Edit @${h}"]`)})`, `Edit @${h}`);
+        await clickAt(`document.querySelector(${js(`.dialog [aria-label="Edit ${h}"]`)})`, `Edit ${h}`);
         await page.waitFor(`!!document.getElementById('pe-d')`, { label: 'the persona editor' });
         await sleep(300);
         const editor = await read();
@@ -311,7 +311,7 @@ export function driver(page, hooks = {}) {
      */
     async agentPanel(handle, set = {}) {
       await clickAt(
-        `[...document.querySelectorAll('.agent-btn')].find((b) => b.offsetParent !== null && b.textContent.includes(${js(`@${handle}`)}))`,
+        `[...document.querySelectorAll('.agent-btn')].find((b) => b.offsetParent !== null && b.querySelector('.name b')?.textContent === ${js(handle)})`,
         `@${handle}’s row in the Agents section`,
       );
       await page.waitFor(`!!document.querySelector('.dialog [role=radiogroup], .dialog [role=switch]')`, { label: 'the quick panel' });

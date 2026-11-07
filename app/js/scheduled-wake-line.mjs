@@ -9,7 +9,7 @@ export function scheduledWakeLine(item) {
   return h(
     'div.col.sys-line',
     icon('clock', 'i-sm'),
-    h('b', `@${item.handle}`),
+    h('b', item.handle),
     item.status === 'canceled'
       ? ' won’t wake itself (canceled)'
       : item.retryStopped

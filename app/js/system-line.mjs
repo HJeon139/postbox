@@ -12,22 +12,22 @@ export function systemLine(it, _ctx) {
       return h(
         'div.col.sys-line',
         icon('link', 'i-sm'),
-        h('b', `@${it.handle}`),
+        h('b', it.handle),
         ' is a Claude Code session from ',
         h('span.mono', it.folder ?? 'a terminal'),
         '. What you type there shows up here too.',
       );
     case 'wake':
-      if (it.scheduled) return h('div.col.sys-line', icon('clock', 'i-sm'), h('b', `@${it.to}`), ' woke itself, as scheduled');
+      if (it.scheduled) return h('div.col.sys-line', icon('clock', 'i-sm'), h('b', it.to), ' woke itself, as scheduled');
       return h(
         'div.col.sys-line',
         icon('agent', 'i-sm'),
         it.from === 'you'
-          ? ['You woke ', h('b', `@${it.to}`)]
+          ? ['You woke ', h('b', it.to)]
           : [
-              h('b', `@${it.from}`),
+              h('b', it.from),
               ' woke ',
-              h('b', `@${it.to}`),
+              h('b', it.to),
               // It had no session here, so it joined the conversation to answer (#110).
               it.joined ? ' · joined the conversation' : '',
               it.n ? ` · agent wake ${it.n} of ${it.limit ?? 3}` : '',
@@ -37,7 +37,7 @@ export function systemLine(it, _ctx) {
       const sum = h(
         'div.block',
         { hidden: true, style: { marginTop: '8px' } },
-        h('div.block-head', h('span.title.grow', `What @${it.handle} kept`), h('span.kind', 'Compaction')),
+        h('div.block-head', h('span.title.grow', `What ${it.handle} kept`), h('span.kind', 'Compaction')),
         h('div.block-body', h('div.md', { html: trusted(renderMarkdown(it.summary || 'No summary was kept.')) })),
       );
       const btn = h(
@@ -61,7 +61,7 @@ export function systemLine(it, _ctx) {
             'span.pill',
             icon('archive', 'i-sm'),
             'Context compacted · ',
-            h('b', `@${it.handle}`),
+            h('b', it.handle),
             ` #${it.n} · kept ${Math.round(it.kept / 1000)}k of ${Math.round(it.total / 1000)}k tokens`,
             btn,
           ),
@@ -76,15 +76,15 @@ export function systemLine(it, _ctx) {
       return h(
         'div.col.sys-line',
         icon('books', 'i-sm'),
-        h('b', `@${it.handle}`),
+        h('b', it.handle),
         ' loaded the dataset ',
         h('span.mono', it.dataset),
         ` · ${plural(it.records, 'record')}, searched only when named`,
       );
     case 'joined':
-      return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', `@${it.to}`), ' joined');
+      return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', it.to), ' joined');
     case 'left':
-      return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', `@${it.to}`), ' left (its session was deleted)');
+      return h('div.col.sys-line', icon('agent', 'i-sm'), h('b', it.to), ' left (its session was deleted)');
     default:
       return h('div.col.sys-line', it.text ?? '');
   }
