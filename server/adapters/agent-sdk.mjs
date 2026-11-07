@@ -13,10 +13,11 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { withAskRules } from '../permission-rules.mjs';
-import { commandsOf, createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
+import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, memoryRootFor } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
+import { listCommands } from './sdk-commands.mjs';
 import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
 import { deniedTools, effortOf, fromContext, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
 
@@ -136,28 +137,6 @@ export function liveControl(q, started = 'auto') {
       }
     },
   };
-}
-
-/**
- * The SDK’s supportedCommands() (name, description, argumentHint), marked as skills where init says so, and without
- * the ones bound to a terminal. It’s a control request, which the SDK documents for streaming input only: if it
- * fails, init’s list stands.
- * @param {any} q @param {any} init @param {any} ctx
- */
-export function listCommands(q, init, ctx) {
-  if (typeof q?.supportedCommands !== 'function' || !ctx.commands) return;
-  const skills = new Set(
-    commandsOf(init)
-      .filter((c) => c.skill)
-      .map((c) => c.name),
-  );
-  const terminal = new Set(Array.isArray(init?.terminal_slash_commands) ? init.terminal_slash_commands : []);
-  Promise.resolve()
-    .then(() => q.supportedCommands())
-    .then(
-      (list) => Array.isArray(list) && ctx.commands(list.filter((c) => !terminal.has(c?.name)).map((c) => (skills.has(c?.name) ? { ...c, skill: true } : c))),
-      () => {},
-    );
 }
 
 /** Where a forked session starts: the branch point’s checkpoint, or the latest point of the session it forks. */
