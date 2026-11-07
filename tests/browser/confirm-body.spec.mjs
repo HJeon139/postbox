@@ -20,6 +20,9 @@ test.beforeAll(async () => {
   app = await startPostbox('confirm-body');
   app.rt.adapters.register({ name: 'mock', async deliver() {} });
   agent = app.rt.createPersona({ handle: 'poster' });
+  // The project’s own repository, which a confirmed gh call must post to (#852 r3).
+  const project = Object.values(app.store.state.projects)[0];
+  app.store.emit('project', { ...project, pushUrl: 'https://github.com/owner/postbox.git' });
   dir = mkdtempSync(join(tmpdir(), 'pb-confirm-body-spec-'));
   path = join(dir, 'body.md');
   writeFileSync(path, `${LINES.join('\n')}\n`);
@@ -70,7 +73,7 @@ for (const width of [375, 1280])
         fallback: 'Open the PR?',
         statement: 'Open the pull request.',
         confirmLabel: 'Open it',
-        commands: [`gh pr create --repo owner/postbox --title "Show the body" --body-file ${path}`],
+        commands: [`gh pr create --repo owner/postbox --head feat/body --title "Show the body" --body-file ${path}`],
       },
     };
     // What the MCP step reads before show_block, as an agent’s call has it.

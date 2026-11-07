@@ -10,7 +10,8 @@ import { test } from 'node:test';
 import { runConfirmedGh } from '../../server/confirm-run.mjs';
 import { tempDir } from '../temp-dirs.mjs';
 
-const ALLOWED = ['PATH', 'HOME', 'GH_TOKEN', 'GITHUB_TOKEN', 'GH_CONFIG_DIR'];
+const ALLOWED = ['PATH', 'HOME', 'GH_TOKEN', 'GITHUB_TOKEN'];
+const GIT = ['GH_CONFIG_DIR', 'GIT_DIR', 'GIT_CEILING_DIRECTORIES', 'GIT_CONFIG_NOSYSTEM', 'GIT_CONFIG_GLOBAL', 'GIT_TERMINAL_PROMPT'];
 const FIXED = ['GH_PROMPT_DISABLED', 'GH_NO_UPDATE_NOTIFIER', 'NO_COLOR', 'GH_PAGER', 'PAGER', 'GH_EDITOR', 'EDITOR', 'VISUAL', 'BROWSER'];
 
 /** Writes an executable fake gh whose body is the given Node code, with a shebang naming this Node by its full path. */
@@ -38,6 +39,13 @@ test('#852 runConfirmedGh passes each argument as it was given, a value with spa
   assert.equal(run.timedOut, false);
 });
 
+test('#852 r3: runConfirmedGh gives gh the checked body on stdin, and nothing more', async () => {
+  const body = 'Fixes #852\n\nThe body the person read.\n';
+  const run = await runConfirmedGh(['pr', 'comment', '1', '--repo', 'o/r', '--body-file', '-'], { bin: fakeGh(REPORT), input: body });
+  assert.equal(run.status, 0, run.output);
+  assert.equal(JSON.parse(run.output).stdin, body);
+});
+
 test('#852 runConfirmedGh runs gh in a new empty folder under the temp folder, and removes it after', async () => {
   const run = await runConfirmedGh(['repo', 'view'], { bin: fakeGh(REPORT) });
   const seen = JSON.parse(run.output);
@@ -57,7 +65,7 @@ test('#852 runConfirmedGh gives gh only the allowed environment, never Postboxâ€
   delete process.env.GH_CONFIG_DIR;
   const run = await runConfirmedGh(['auth', 'status'], { bin: fakeGh(REPORT) });
   const { env, stdin } = JSON.parse(run.output);
-  const expected = [...ALLOWED.filter((key) => process.env[key] !== undefined), ...FIXED];
+  const expected = [...ALLOWED.filter((key) => process.env[key] !== undefined), ...GIT, ...FIXED];
   assert.deepEqual(Object.keys(env).sort(), expected.sort());
   assert.equal(env.GH_TOKEN, 'gho_test');
   assert.equal(env.EDITOR, 'false');

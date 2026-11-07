@@ -12,16 +12,18 @@ test.beforeAll(async () => {
   app = await startPostbox('confirm-commands');
   app.rt.adapters.register({ name: 'mock', async deliver() {} });
   agent = app.rt.createPersona({ handle: 'pusher' });
+  // The project’s own repository, which a confirmed gh call must post to (#852 r3).
+  const project = Object.values(app.store.state.projects)[0];
+  app.store.emit('project', { ...project, pushUrl: 'https://github.com/owner/postbox.git' });
 });
 test.afterAll(async () => {
   await app?.stop();
 });
 failOnPageErrors(test);
 
-// A 300-character tail, with a 245-character run of no spaces that only wrapping anywhere keeps in view.
-const TAIL = `&& gh pr merge 896 --admin --repo owner/postbox --body ${'q'.repeat(245)}`;
-const LONG = `cd /home/me/postbox && gh pr edit 896 --repo owner/postbox --add-label ready ${TAIL}`;
-const PUSH = 'git -C /home/me/postbox push origin wip/852-field';
+// A title with a 245-character run of no spaces, which only wrapping anywhere keeps in view, and a second command.
+const LONG = `gh issue create --repo owner/postbox --title "${'q'.repeat(245)} gh pr merge"`;
+const PUSH = 'gh pr edit 896 --repo owner/postbox --add-label ready';
 
 /**
  * Where a command’s box and its text are.

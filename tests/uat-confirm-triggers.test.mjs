@@ -15,6 +15,8 @@ const fired = (s, id) => TRIGGERS[id].run({ threads: [s.t.id], state: { items: {
 
 test('#852 confirmed-command-ran fires for the confirmed run, and carded-again for the second run’s card', async () => {
   const s = await setup({ permissionMode: 'ask' });
+  // The project’s own repository, which a confirmed gh call must post to (#852 r3).
+  s.store.emit('project', { ...s.store.state.projects.p1, pushUrl: 'https://github.com/o/r.git' });
   s.rt.runGh = async (argv) => ({ status: 0, output: 'ok', argv, timedOut: false });
   assert.deepEqual(fired(s, 'confirmed-command-ran'), []);
   s.next.push(async (c) => c.tools.show_block({ block: { ...confirm('Labels the PR.'), commands: [LABEL] } }));

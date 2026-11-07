@@ -21,6 +21,7 @@ test('#852 1a r3: a confirmed command runs with no card, as written, and its lin
 
 test('#852 1a r3: in Auto with no allowRequested and a judge that refuses, the confirm alone lets it run', async () => {
   const s = await setup({ judged: () => null });
+  s.store.emit('project', { ...s.store.state.projects.p1, pushUrl: 'https://github.com/o/r.git' });
   s.rt.runGh = async (argv) => ({ status: 0, output: '', argv, timedOut: false });
   s.rt.updatePersona(s.p.id, { setup: { ...(s.p.setup ?? {}), allowRequested: false } });
   assert.deepEqual(await confirmed(s, block([LABEL]), [call(LABEL)]), ['ran']);

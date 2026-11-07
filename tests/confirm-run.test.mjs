@@ -3,7 +3,8 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cleanOutput, ghEnv } from '../server/confirm-run.mjs';
+import { cleanOutput, ghConfigProblem, ghEnv } from '../server/confirm-run.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const FIXED = {
   GH_PROMPT_DISABLED: '1',
@@ -15,6 +16,14 @@ const FIXED = {
   EDITOR: 'false',
   VISUAL: 'false',
   BROWSER: 'false',
+};
+
+const GIT = {
+  GIT_DIR: '/tmp/pb-confirm-gh-x/no-repository',
+  GIT_CEILING_DIRECTORIES: '/tmp',
+  GIT_CONFIG_NOSYSTEM: '1',
+  GIT_CONFIG_GLOBAL: '/dev/null',
+  GIT_TERMINAL_PROMPT: '0',
 };
 
 test('#852 ghEnv keeps only PATH, HOME and the gh tokens and config folder, plus the fixed no-prompt settings', () => {
@@ -29,18 +38,20 @@ test('#852 ghEnv keeps only PATH, HOME and the gh tokens and config folder, plus
     GH_CONFIG_DIR: '/home/someone/.config/gh',
     EDITOR: 'vim',
   };
-  assert.deepEqual(ghEnv(env), {
+  assert.deepEqual(ghEnv(env, '/tmp/pb-confirm-gh-x'), {
     PATH: '/usr/bin:/bin',
     HOME: '/home/someone',
     GH_TOKEN: 'gho_abc',
     GITHUB_TOKEN: 'ghp_def',
     GH_CONFIG_DIR: '/home/someone/.config/gh',
+    ...GIT,
     ...FIXED,
   });
 });
 
 test('#852 ghEnv leaves out an allowed key that isn’t set, rather than passing it empty', () => {
-  assert.deepEqual(ghEnv({ PATH: '/bin', HOME: undefined, POSTBOX_GH_BIN: '/x/gh' }), { PATH: '/bin', ...FIXED });
+  const env = ghEnv({ PATH: '/bin', HOME: '/h', XDG_CONFIG_HOME: '/h/xdg', POSTBOX_GH_BIN: '/x/gh' }, '/tmp/pb-confirm-gh-x');
+  assert.deepEqual(env, { PATH: '/bin', HOME: '/h', GH_CONFIG_DIR: '/h/xdg/gh', ...GIT, ...FIXED }, 'the config folder as gh finds it, XDG included');
 });
 
 test('#852 cleanOutput removes CSI color codes', () => {
@@ -64,4 +75,27 @@ test('#852 cleanOutput cuts past 4,000 characters and marks the cut with an elli
 test('#852 cleanOutput cuts after stripping, so color codes don’t use up the 4,000', () => {
   const colored = '\x1b[32mz\x1b[0m'.repeat(4000);
   assert.equal(cleanOutput(colored), 'z'.repeat(4000));
+});
+
+test('#852 r3: gh’s config that could send the call elsewhere refuses it: a socket, another host, an alias for pr or issue', async () => {
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const cases = [
+    ['config.yml', 'git_protocol: https\nhttp_unix_socket: /tmp/agent.sock\n', /socket/],
+    ['config.yml', 'aliases:\n    pr: "!curl x"\n', /alias named pr or issue/],
+    ['config.yml', 'aliases:\n  issue: api x\n', /alias named pr or issue/],
+    ['hosts.yml', 'github.com:\n    user: me\nghe.example.com:\n    user: me\n', /ghe\.example\.com/],
+  ];
+  for (const [file, text, why] of cases) {
+    const dir = tempDir('pb-ghconf-');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, file), text);
+    assert.match((await ghConfigProblem(dir)) ?? '', why, text);
+  }
+  const plain = tempDir('pb-ghconf-');
+  await mkdir(plain, { recursive: true });
+  await writeFile(join(plain, 'config.yml'), 'git_protocol: https\nhttp_unix_socket:\naliases:\n    co: pr checkout\n');
+  await writeFile(join(plain, 'hosts.yml'), 'github.com:\n    user: me\n    git_protocol: https\n');
+  assert.equal(await ghConfigProblem(plain), null);
+  assert.equal(await ghConfigProblem(join(plain, 'none')), null, 'no config at all');
 });

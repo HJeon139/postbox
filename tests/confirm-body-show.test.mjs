@@ -8,6 +8,13 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { setup } from './review-files-fixture.mjs';
+
+/** The fixture’s project, with its own GitHub repository, which a confirmed gh call must post to (#852 r3). */
+function github(f) {
+  for (const p of Object.values(f.rt.s.projects)) f.rt.store.emit('project', { ...p, pushUrl: 'https://github.com/o/r.git' });
+  return f;
+}
+
 import { tempDir } from './temp-dirs.mjs';
 
 const confirm = (id, commands) => ({
@@ -20,20 +27,20 @@ const OUTSIDE = fileURLToPath(import.meta.url);
 const lines = (n) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join('\n');
 
 test('show_block keeps the body file a confirm’s command posts, with its SHA-256 and text', async () => {
-  const f = await setup();
+  const f = await github(await setup());
   const path = join(f.folder, 'body.md');
   writeFileSync(path, 'Fixes #852\n');
-  const r = await f.call('show_block', confirm('pr', ['git push', `gh pr create --repo o/r --head feat/x --title T --body-file ${path}`]));
+  const r = await f.call('show_block', confirm('pr', [`gh pr create --repo o/r --head feat/x --title T --body-file ${path}`]));
   assert.equal(r.isError, false, r.text);
   const it = confirmItem(f, 'pr');
   assert.equal(it.valid, true);
   assert.deepEqual(it.bodyFiles, [
-    { command: 1, path, real: path, sha256: '25cb0f2db5f922cdbe12ff4b39d9f8694405d60c47f6956478f1a50330b66b0f', size: 11, text: 'Fixes #852\n', lines: 1 },
+    { command: 0, path, real: path, sha256: '25cb0f2db5f922cdbe12ff4b39d9f8694405d60c47f6956478f1a50330b66b0f', size: 11, text: 'Fixes #852\n', lines: 1 },
   ]);
 });
 
 test('show_block keeps only the first 40 lines of a longer body file, and how many it has', async () => {
-  const f = await setup();
+  const f = await github(await setup());
   const path = join(f.folder, 'long.md');
   writeFileSync(path, lines(60));
   const r = await f.call('show_block', confirm('long', [`gh issue create --repo o/r --title T --body-file ${path}`]));
@@ -45,7 +52,7 @@ test('show_block keeps only the first 40 lines of a longer body file, and how ma
 });
 
 test('show_block refuses a confirm whose body file is outside the agent’s places, and shows nothing', async () => {
-  const f = await setup();
+  const f = await github(await setup());
   const path = OUTSIDE;
   const r = await f.call('show_block', confirm('pr', [`gh pr create --repo o/r --head feat/x --title T --body-file ${path}`]));
   assert.equal(r.isError, true);
@@ -54,7 +61,7 @@ test('show_block refuses a confirm whose body file is outside the agent’s plac
 });
 
 test('show_block takes a body file in a temp folder of this user’s', async () => {
-  const f = await setup();
+  const f = await github(await setup());
   const dir = tempDir('pb-confirm-body-tmp-');
   const path = join(dir, 'body.md');
   writeFileSync(path, 'from tmp');
@@ -64,7 +71,7 @@ test('show_block takes a body file in a temp folder of this user’s', async () 
 });
 
 test('show_block refuses a confirm whose --body-file names no file', async () => {
-  const f = await setup();
+  const f = await github(await setup());
   const r = await f.call('show_block', confirm('pr', ['gh pr create --repo o/r --head feat/x --title T --body-file']));
   assert.equal(r.isError, true);
   assert.match(r.text, /--body-file/);
@@ -82,7 +89,7 @@ test('show_block called without reading the body files refuses the confirm', () 
 });
 
 test('update_block reads the body file again and keeps the new one', async () => {
-  const f = await setup();
+  const f = await github(await setup());
   const path = join(f.folder, 'body.md');
   writeFileSync(path, 'first');
   assert.equal((await f.call('show_block', confirm('pr', [`gh pr create --repo o/r --head feat/x --title T --body-file ${path}`]))).isError, false);
@@ -93,7 +100,7 @@ test('update_block reads the body file again and keeps the new one', async () =>
 });
 
 test('update_block refuses a body file outside the agent’s places, and keeps the one shown', async () => {
-  const f = await setup();
+  const f = await github(await setup());
   const path = join(f.folder, 'body.md');
   writeFileSync(path, 'first');
   assert.equal((await f.call('show_block', confirm('pr', [`gh pr create --repo o/r --head feat/x --title T --body-file ${path}`]))).isError, false);
@@ -101,4 +108,11 @@ test('update_block refuses a body file outside the agent’s places, and keeps t
   assert.equal(r.isError, true);
   assert.ok(r.text.includes(OUTSIDE), r.text);
   assert.equal(confirmItem(f, 'pr').bodyFiles[0].text, 'first');
+});
+
+test('#852 r3: a confirm whose gh command posts to a repository other than the project’s is refused', async () => {
+  const f = await github(await setup());
+  const r = await f.call('show_block', confirm('pr', ['gh pr edit 1 --repo someone/else --add-label x']));
+  assert.equal(r.isError, true);
+  assert.match(r.text, /project’s repository is o\/r/);
 });

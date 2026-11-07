@@ -37,6 +37,8 @@ const answerOf = (reply) => JSON.parse(reply.result.content[0].text);
 
 test('#852 1a r3: permission_prompt for a confirmed command the stream showed: Postbox runs it, with no card', async () => {
   const s = await setup({ permissionMode: 'ask' });
+  // The project’s own repository, which a confirmed gh call must post to (#852 r3).
+  s.store.emit('project', { ...s.store.state.projects.p1, pushUrl: 'https://github.com/o/r.git' });
   s.rt.runGh = async (argv) => ({ status: 0, output: 'ok', argv, timedOut: false });
   let reply;
   await confirmedThen(s, async (c) => {
@@ -52,6 +54,8 @@ test('#852 1a r3: permission_prompt for a confirmed command the stream showed: P
 
 test('#852 1a: a prompt for the confirmed command that the stream never showed is refused, and spends nothing', async () => {
   const s = await setup({ permissionMode: 'ask' });
+  // The project’s own repository, which a confirmed gh call must post to (#852 r3).
+  s.store.emit('project', { ...s.store.state.projects.p1, pushUrl: 'https://github.com/o/r.git' });
   s.rt.runGh = async (argv) => ({ status: 0, output: 'ok', argv, timedOut: false });
   let forged;
   let real;

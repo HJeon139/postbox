@@ -67,6 +67,8 @@ export function outcome(r) {
 /** A room in Ask mode whose gh runs are recorded, not made: each gives exit 0 and its argv as output. */
 export async function ask() {
   const s = await setup({ permissionMode: 'ask' });
+  // The project’s own repository, which a confirmed gh call must post to (#852 r3).
+  s.store.emit('project', { ...s.store.state.projects.p1, pushUrl: 'https://github.com/o/r.git' });
   s.ran = [];
   s.rt.runGh = async (argv) => {
     s.ran.push(argv);
