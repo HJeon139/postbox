@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.36.2 (2026-11-07)
+
+### Fixes
+
+- **remote:** only a result holds off the stall stop, and each task keeps its own 2 h (#847)
+- **remote:** a listed background task holds off the stall stop for up to 2 h (#847)
+- **permissions:** name PermissionRequest hooks in the panel, with each hook's event
+- **permissions:** hide credentials in hook matchers, as in their commands
+
 ## 1.36.1 (2026-11-07)
 
 ### Fixes
