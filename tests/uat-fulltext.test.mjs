@@ -263,8 +263,11 @@ test('a denied cut permission no longer blocks a later readable approval', () =>
   assert.match(approvalRefusal({ action: approve, assessment: '', key: 'b2', state, cuts }), /I1/);
 });
 
-test('an opener that leaves a permission open is handed back for its submit action', () => {
+test('only the denial opener that remains open is handed back for its submit action', () => {
   const source = readFileSync(join(import.meta.dirname, '..', 'tools', 'uat-run.mjs'), 'utf8');
+  assert.match(source, /a\.button === 'Don’t allow…'/);
+  assert.match(source, /attempt < 4/);
+  assert.match(source, /await sleep\(500\)/);
   assert.match(source, /current\?\.kind === 'permission' && current\.status === 'open'/);
   assert.match(source, /told\.delete\(key\)/);
   assert.match(source, /no answer was sent/);

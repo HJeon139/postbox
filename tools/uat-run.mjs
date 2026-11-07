@@ -515,10 +515,17 @@ async function main() {
           if (now) facts.probes.answers.push({ key, revision: now.revision ?? 1, at: Date.now() });
           if (a.type === 'act') {
             await d.act(key, a);
-            const current = itemIn((await api('/api/state')).state);
-            if (current?.kind === 'permission' && current.status === 'open') {
-              told.delete(key);
-              actionResult = 'The permission form opened, but no answer was sent. Press “Don’t allow” to submit the refusal.';
+            if (a.button === 'Don’t allow…') {
+              let current;
+              for (let attempt = 0; attempt < 4; attempt++) {
+                current = itemIn((await api('/api/state')).state);
+                if (current?.kind !== 'permission' || current.status !== 'open') break;
+                await sleep(500);
+              }
+              if (current?.kind === 'permission' && current.status === 'open') {
+                told.delete(key);
+                actionResult = 'The denial form opened, but no answer was sent. Press “Don’t allow” to submit the refusal.';
+              }
             }
           } else await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });
           await noteStale();
