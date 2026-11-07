@@ -19,6 +19,7 @@ import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
+import { focusUntouched } from './pane-focus.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
@@ -295,7 +296,10 @@ function messageActions(node, it, ctx) {
               api(`/api/threads/${ctx.threadId}/items/${it.id}/topic`, {})
                 .then((r) => {
                   navigate(`#/t/${ctx.threadId}/side/${r.threadId}`);
-                  setTimeout(() => $('#side-input')?.focus(), 150);
+                  // Focus goes to the thread’s composer only if the person hasn’t moved it meanwhile (#887).
+                  setTimeout(() => {
+                    if (focusUntouched(it.id)) $('#side-input')?.focus();
+                  }, 150);
                 })
                 .catch((e) => toast({ title: 'Couldn’t start a thread', text: e.message, level: 'blocking' })),
           },

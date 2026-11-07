@@ -4,6 +4,7 @@
 // its composer only if focus is still where the click left it.
 
 import { client, S } from './client.mjs';
+import { focusUntouched } from './pane-focus.mjs';
 import { route } from './ui.mjs';
 
 /**
@@ -19,20 +20,8 @@ export function openLateThread(convId, pane) {
     const r = route();
     if (r.threadId !== convId || !r.sideId) return;
     if (change.type === 'thread' && change.data.id !== r.sideId) return;
-    const untouched = focusUntouched(r.sideId);
+    const untouched = focusUntouched(S().threads[r.sideId]?.rootItemId);
     pane.set(r);
     if (untouched && pane.mounted()) document.getElementById('side-input')?.focus();
   });
-}
-
-/**
- * Whether focus is where Reply in thread left it: on the page, or on the message the thread starts from. Checked by
- * where it is, not by the button: the message may have been drawn again meanwhile.
- * @param {string} sideId
- */
-function focusUntouched(sideId) {
-  const at = document.activeElement;
-  if (!at || at === document.body) return true;
-  const rootItemId = S().threads[sideId]?.rootItemId;
-  return !!rootItemId && !!at.closest(`[data-key="${CSS.escape(rootItemId)}"]`);
 }
