@@ -161,7 +161,7 @@
   const strongName = (spec) => spec.highlightLabel || { 'between-groups': 'Between groups', cycles: 'In a cycle' }[spec.highlight] || 'Highlighted';
 
   /** The SVG: regions, then edges (strong ones last), then nodes and their labels. */
-  const draw = (d3, g, sim, groupMarks, look, size, label) => {
+  const draw = (d3, g, sim, groupMarks, look, size, label, room) => {
     const curve = d3.line().curve(d3.curveCatmullRomClosed.alpha(0.5));
     const id = `pb-graph-${++drawn}`;
     const head = (name, fill) =>
@@ -184,7 +184,8 @@
       s += `<text class="pb-graph-label" x="${d.x.toFixed(1)}" y="${(d.y + d.r + 3).toFixed(1)}" dominant-baseline="hanging" text-anchor="middle" fill="var(--text)">${esc(n.label)}</text>`;
     }
     const svg = `<svg class="pb-graph" width="${size.width}" height="${size.height}" viewBox="0 0 ${size.width} ${size.height}" role="img" aria-label="${esc(label)}">${s}</svg>`;
-    return `<div class="pb-graph-scroll" tabindex="0" role="group" aria-label="${esc(label)}, scrolls sideways when the window is narrow">${svg}</div>`;
+    const fit = room ? ` style="max-height:${room}px"` : '';
+    return `<div class="pb-graph-scroll"${fit} tabindex="0" role="group" aria-label="${esc(label)}, scrolls when the window is narrow">${svg}</div>`;
   };
 
   /** The legend for strong edges, when there are any; groups are named on the picture. */
@@ -196,14 +197,17 @@
   window.postbox.graph = async (el, spec) => {
     const g = readGraph(spec);
     const W = Math.max(320, Number(spec.width) || 1000);
-    const H = Math.max(240, Number(spec.height) || 680);
+    // An element the app gave a height of its own: draw to fit inside it, less the view switch and legend, and scroll
+    // there rather than spill over what follows it (the shop-split UAT run on #893).
+    const room = el.clientHeight > 0 && !el.children?.length ? Math.max(200, el.clientHeight - 90) : 0;
+    const H = Math.max(240, Number(spec.height) || room || 680);
     const d3 = await window.postbox.load('d3');
     const onCycle = cycles(g.nodes.length, g.edges);
     g.rings = onCycle.rings;
     const look = { strong: strongEdges(g, spec.highlight, onCycle.edges), cycles: onCycle.edges };
     const { sim, groupMarks, size, crossings } = graphLayout.layout(d3, g, W, H, spec.layout === 'layered');
     const label = spec.label || `Network of ${g.nodes.length} nodes${g.groups.length ? ` in ${g.groups.length} groups` : ''}`;
-    const html = legend(spec, look) + draw(d3, g, sim, groupMarks, look, size, label);
+    const html = legend(spec, look) + draw(d3, g, sim, groupMarks, look, size, label, room);
     const rows = g.edges.map((e, i) => {
       const [a, b] = [g.nodes[e.source], g.nodes[e.target]];
       const row = [a.label, b.label];

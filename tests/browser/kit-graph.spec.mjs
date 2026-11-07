@@ -27,12 +27,14 @@ const SPEC = {
   ],
   highlight: 'cycles',
 };
-const APP = (spec) => `<main style="padding:12px"><div id="g"></div></main>
+const APP = (spec, box = '') => `<main style="padding:12px"><div id="g" style="${box}"></div><p>Each arrow is an import.</p></main>
 <script>postbox.graph(document.getElementById('g'), ${JSON.stringify(spec)});</script>`;
 // The same graph in each layout: the app id, its title, and its spec.
 const APPS = [
   ['deps', 'Package imports', SPEC],
   ['layers', 'Package imports in layers', { ...SPEC, layout: 'layered', highlight: 'between-groups' }],
+  // The shop-split UAT run’s app set its graph’s box to 520 px, and the drawing spilled out over its caption.
+  ['boxed', 'Package imports in a set box', { ...SPEC, layout: 'layered', highlight: 'between-groups' }, 'height:420px'],
 ];
 const frameOf = (page, title) => page.frameLocator(`.transcript .appframe iframe[title="${title}"]`);
 
@@ -44,7 +46,7 @@ test.beforeAll(async () => {
   const { rt } = app;
   rt.adapters.register({ name: 'mock', async deliver() {} });
   thread = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: 'Graph', personaIds: [rt.createPersona({ handle: 'drawer' }).id] });
-  for (const [id, title, spec] of APPS) rt.toolsFor(rt.sessionsIn(thread.id)[0].id).show_app({ id, title, code: APP(spec) });
+  for (const [id, title, spec, box] of APPS) rt.toolsFor(rt.sessionsIn(thread.id)[0].id).show_app({ id, title, code: APP(spec, box) });
 });
 test.afterAll(async () => {
   await app?.stop();
@@ -52,10 +54,8 @@ test.afterAll(async () => {
 failOnPageErrors(test);
 test.use({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
 
-for (const [id, title, spec] of APPS)
-  test(`${spec.layout ?? 'force'}: 25 modules in two packages draw with labels of 12 px or more, none over another, and pass the check at both widths`, async ({
-    page,
-  }) => {
+for (const [id, title, , box] of APPS)
+  test(`${title}: 25 modules in two packages draw with labels of 12 px or more, none over another, and pass the check at both widths`, async ({ page }) => {
     await page.goto(`${app.origin}/#/t/${thread.id}`);
     await synced(page, app);
     const frame = frameOf(page, title);
@@ -81,6 +81,10 @@ for (const [id, title, spec] of APPS)
     await expect.poll(() => app.rt.s.apps[id].check.status, { message: 'the pre-display check finished', timeout: 60_000 }).not.toBe('pending');
     expect.soft(app.rt.s.apps[id].check.problems ?? [], 'what the check found').toEqual([]);
     expect.soft(app.rt.s.apps[id].check.status).toBe('passed');
+    if (box) {
+      const [inner, outer] = [await frame.locator('.pb-graph-scroll').boundingBox(), await frame.locator('#g').boundingBox()];
+      expect.soft(inner && outer && inner.y + inner.height <= outer.y + outer.height + 1, 'the drawing stays inside the app’s own box').toBe(true);
+    }
   });
 
 test('the Table view lists every edge, with the ones on a cycle marked', async ({ page }) => {

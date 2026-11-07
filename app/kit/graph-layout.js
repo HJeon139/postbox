@@ -97,7 +97,8 @@
     if (layered) {
       const row = rows(g);
       const last = Math.max(...row);
-      const step = last ? Math.max(84, (H - 120) / last) : 0;
+      // Rows spread to fill the height, up to 140 px apart: a few rows stay together rather than run down the frame.
+      const step = last ? Math.min(140, Math.max(84, (H - 120) / last)) : 0;
       return g.nodes.map((n, i) => [k > 1 && n.group >= 0 ? (W * (n.group + 0.5)) / k : W / 2, H / 2 + (row[i] - last / 2) * step]);
     }
     const centers = g.groups.map((_, i) => {
