@@ -45,6 +45,7 @@ import { createHostRun, readHosts, startHosts } from './uat/hosts-run.mjs';
 import { forHosts } from './uat/hosts-scenario.mjs';
 import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
+import { approvalRefusal, readFull } from './uat/fulltext.mjs';
 import { startPostbox } from './uat/postbox.mjs';
 import { newProbes } from './uat/probes.mjs';
 import { presetFindings } from './uat/regressions.mjs';
@@ -165,7 +166,16 @@ async function main() {
   // Ctrl-C cleans the hosts up through the page before anything stops (tools/uat/stop.mjs), with what’s there by then.
   const run = { log };
   const stop = runStop(run);
-  const signals = onStopSignal(stop, { log });
+  // uc04-s06 (claude-ssh, study runner only): a run stopped by a signal still records run.json, with the tester's and
+  // agents' cost so far, before it stops; the normal end writes it as before.
+  const signals = onStopSignal(() => {
+    try {
+      run.writeRecord?.();
+    } catch (e) {
+      log(`Couldn’t write run.json on the stop: ${e.message}`);
+    }
+    return stop();
+  }, { log });
   const postbox = await startPostbox({
     root: ROOT,
     port,
@@ -235,6 +245,14 @@ async function main() {
     if (phase) log(`Starting at phase ${phase + 1}: ${scenario.phases[phase].title}.`);
     // A targeted phase ends when its triggers have happened, or at its step cap (tools/uat/triggers.mjs).
     const startPhase = phase;
+    run.writeRecord = () => {
+      facts.streams = streamResults(paths.streams)();
+      writeJsonAtomic(join(dir, 'run.json'), {
+        ...runRecord({ root: ROOT, dir, scenario, name, opt, started, steps: timeline.length, cap: steps, startPhase: startPhase + 1, tester, facts, coverage: null }),
+        stoppedBySignal: true,
+      });
+      log('Wrote run.json on the stop.');
+    };
     const goals = phaseGoals(scenario, { cap: phaseCap, start: phase, log });
     const blockById = (st, id) =>
       Object.values(st?.items ?? {})
@@ -271,6 +289,8 @@ async function main() {
     // What the tester breaks on purpose in a host run (tools/uat/hosts-watch.mjs).
     const hostFault = (spec) => (hr ? fault(hr, spec, page) : Promise.reject(new Error('A fault needs a run with --host.')));
     let lastAction = null;
+    // When the tester first sent a message, so every step can say how long the run has gone (a study's time rule).
+    let firstSendAt = null;
     let actionError = null;
     let actionResult = null; // what an action measured, when it worked
     let pushedBack = ''; // the waiting list the tester was last told to answer before moving on
@@ -340,6 +360,7 @@ async function main() {
       if (timedOut)
         findings.set(`stuck:${step}`, { source: 'run', check: 'stuck', issue: null, title: 'An agent turn ran past the time limit', evidence: timedOut, step });
       const obs = await observe();
+      for (const n of obs.notes ?? []) log(n);
       await noteStale();
       // What the last step’s action caused is that step’s.
       goals.observe(facts, timeline.length);
@@ -372,6 +393,7 @@ async function main() {
         timedOut ? `The run itself pressed Stop: ${timedOut} A “Stopped by you” line is from that, not a bug.` : '',
         obs.items.length ? `What changed on screen:\n\n${obs.items.join('\n\n')}` : 'Nothing changed on screen.',
         `Agents: ${obs.states.join('; ') || 'none yet'}`,
+        firstSendAt === null ? '' : `Time since your first message: ${Math.floor((Date.now() - firstSendAt) / 60000)} minutes.`,
         waiting.length ? `Waiting on you:\n${waiting.map((w) => `- ${w}`).join('\n')}` : 'Nothing is waiting on you.',
         jobsAsk ? `Postbox is asking about background jobs: “${jobsAsk}” Answer it with jobs.` : '',
         fresh.length ? `The automatic checks found:\n${fresh.map((f) => `- ${f.title}${f.issue ? ` (#${f.issue})` : ''}: ${f.evidence}`).join('\n')}` : '',
@@ -395,6 +417,7 @@ async function main() {
       }
       const a = answer.action;
       lastAction = a;
+      if (firstSendAt === null && a.type === 'send') firstSendAt = Date.now();
       actionError = null;
       actionResult = null;
       log(`action: ${JSON.stringify(a)}`);
@@ -467,6 +490,12 @@ async function main() {
             throw new Error(
               `That block changed while you were deciding: you read revision ${shown.revision ?? 1}, and it’s now at revision ${now.revision ?? 1}. Read it again before you answer.`,
             );
+          // An approval waits while the tester says an item is unread, or saw only part of the block (fulltext.mjs).
+          const refusal = approvalRefusal({ action: a, assessment: answer.assessment, key, state: facts.state, cuts: (facts.cuts ??= new Map()) });
+          if (refusal) {
+            log(`approval refused: ${keys.get(a.item) ? a.item : key}: ${refusal}`);
+            throw new Error(refusal);
+          }
           if (now) facts.probes.answers.push({ key, revision: now.revision ?? 1, at: Date.now() });
           if (a.type === 'act') await d.act(key, a);
           else await d.review(key, { verdict: a.verdict, comments: a.comments ?? [] });
@@ -513,6 +542,10 @@ async function main() {
           const after = (await d.appInside(key))?.text;
           actionResult =
             before === after ? 'The app’s text didn’t change.' : `The app changed. It now begins: “${(after ?? '').replace(/\s+/g, ' ').slice(0, 300)}”`;
+        } else if (a.type === 'read_full') {
+          if (!key) actionError = 'read_full needs the item label, such as I7.';
+          else actionResult = readFull({ key, cuts: (facts.cuts ??= new Map()), readText: (p) => readFileSync(p, 'utf8') });
+          if (actionResult) log(`read_full ${a.item}`);
         } else if (a.type === 'full_screen') {
           const p = await d.probeFullScreen(key);
           if (p) facts.probes.fullScreen.push({ key, ...p });

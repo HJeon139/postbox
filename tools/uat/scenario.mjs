@@ -97,6 +97,10 @@ export function parseScenario(md) {
     // `- gh: none` starts Postbox with no gh, and `- telemetry: manual` leaves recording to the scenario. `- seed:
     // fake-env` plants the allow-once scenario’s fake .env (tools/uat/workspace.mjs).
     seed: meta.seed ?? null,
+    // `- seed: dir:/abs/path` copies that folder’s contents into the workspace (symlinks kept), for a study that
+    // gives an agent its project files and skills before it starts. `- personas: /abs/path.json` seeds the agents
+    // from that file instead of tests/uat/e2e/personas.json.
+    personas: meta.personas ?? null,
     gh: meta.gh === 'none' ? 'none' : 'yes',
     telemetry: meta.telemetry === 'manual' ? 'manual' : 'runner',
     summary: lines.filter((l) => l && !l.startsWith('#') && !/^- \w+: /.test(l)).join('\n'),

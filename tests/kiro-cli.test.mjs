@@ -242,8 +242,11 @@ test('the rules: Postbox’s tools allowed, reads in its folders, edits only wit
   const isolated = kiroRules({ persona: { tools: ['shell', 'web.fetch'], canPublish: true, usesHostSetup: false, mcpOff: ['slack'] }, folders });
   assert.deepEqual(
     isolated.filter((r) => r.effect === 'deny'),
-    [{ capability: 'mcp', match: ['*/*'], exclude: ['postbox/*'], effect: 'deny' }],
+    // With web.fetch ticked, Kiro's own `remote/web_search` stays allowed; every other server is still denied.
+    [{ capability: 'mcp', match: ['*/*'], exclude: ['postbox/*', 'remote/*'], effect: 'deny' }],
   );
+  const noWeb = kiroRules({ persona: { tools: ['shell'], canPublish: true, usesHostSetup: false }, folders, policy: [] });
+  assert.deepEqual(noWeb.at(-1), { capability: 'mcp', match: ['*/*'], exclude: ['postbox/*'], effect: 'deny' });
 });
 
 test('no publishing rule matches Postbox’s own tools, and they do catch an outward verb', () => {
@@ -268,7 +271,9 @@ test('the agent: the guide and a note on refusals as its prompt, Postbox’s ser
   const isolated = kiroAgent({ name: 'x', persona: { ...persona, usesHostSetup: false }, mcpUrl: '', guide: '', folders: [] });
   assert.equal(isolated.includeMcpJson, false);
   // Kiro lists a denied server’s tools anyway, so an Isolated agent is told not to offer them.
-  assert.match(isolated.prompt, /## Tools you can use\n\nOnly Postbox’s MCP server is allowed/);
+  assert.match(isolated.prompt, /## Tools you can use\n\nOf the MCP servers, only Postbox’s is allowed/);
+  // GPT-5.6 Terra read “Only Postbox’s MCP server is allowed” as no shell at all, and ran nothing (round 3 canary).
+  assert.match(isolated.prompt, /Your built-in tools, such as the shell and reading or writing files, are not MCP tools/);
 });
 
 test('the Kiro home: yours (KIRO_HOME, else ~/.kiro), or Postbox’s own when Isolated', () => {

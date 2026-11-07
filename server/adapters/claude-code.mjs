@@ -32,13 +32,13 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { claudeArgs } from './claude-code-args.mjs';
+import { claudeArgs, settingsFile } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder } from './folder.mjs';
 import { agentGuide, formatMessage } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
-import { effortOf, recorderFor } from './setup.mjs';
+import { agentSignIn, effortOf, recorderFor } from './setup.mjs';
 
 export { claudeArgs } from './claude-code-args.mjs';
 export { CLAUDE_CODE_CAPABILITIES, DENY_PROMPTS_MIN, REMOTE_CLAUDE_MIN, remoteClaudeProblem } from './claude-code-remote.mjs';
@@ -185,7 +185,8 @@ export class ClaudeCodeAdapter {
     const id = sessionId ?? randomUUID();
     // A resume (not a fork, not a fresh start) of a turn the host lost goes on with it (D2).
     const remote = ctx.remote && turn ? remoteTurn(ctx.remote, cwd, turn, Boolean(resume && !fork && ctx.remote.resumeInterrupted), attach) : null;
-    const args = claudeArgs({
+    const signIn = remote ? {} : agentSignIn();
+    const built = claudeArgs({
       persona: ctx.persona,
       sessionId: id,
       resume,
@@ -195,8 +196,10 @@ export class ClaudeCodeAdapter {
       fork,
       allowOnce: ctx.allowOnce ?? [],
       rules: ctx.rules ?? {},
-      ...(remote ? { server: remote.server, denyPrompts: ctx.remote.settings?.denyPrompts === true } : {}),
+      ...(remote ? { server: remote.server, denyPrompts: ctx.remote.settings?.denyPrompts === true } : { signIn }),
     });
+    // Settings that carry the person’s sign-in go in a private file, not on a command line the agent can read.
+    const { args, remove: removeSettings } = Object.keys(signIn).length ? settingsFile(built) : { args: built, remove: () => {} };
     const mapper = createStreamMapper(ctx, { contextWindow: ctx.state.contextWindow ?? windowFor(ctx.persona.model), effort: effortOf(ctx.persona) });
     // A subagent’s permission prompt arrives at Postbox’s MCP tool with its id; the stream knows its name.
     ctx.subagentNames?.((ids) => mapper.who(ids));
@@ -209,6 +212,7 @@ export class ClaudeCodeAdapter {
         // On a host, cwd and env are the remote spawn’s own (remoteTurn): these are ignored there.
         child = (remote ? remote.spawnImpl : this.spawn)(this.bin, args, { cwd, env: process.env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
       } catch (e) {
+        removeSettings();
         reject(new Error(remote ? `Couldn’t start Claude Code on the host: ${e.message}` : `Couldn’t start Claude Code (${this.bin}): ${e.message}`));
         return;
       }
@@ -219,6 +223,7 @@ export class ClaudeCodeAdapter {
         child.once('close', r);
         child.once('error', r);
       });
+      exited.then(removeSettings);
       const procs = { kill: this.kill, list: this.list };
       /** @type {Promise<{ gone: Promise<void> }>|null} */
       let stopping = null;

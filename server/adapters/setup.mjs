@@ -15,7 +15,8 @@
 // A persona set to Isolated (usesHostSetup: false) loads the project’s settings only, not the person’s own, and
 // only Postbox’s MCP server: both adapters pass --strict-mcp-config / strictMcpConfig for it.
 
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 /** Setting sources, as `--setting-sources` and the SDK’s `settingSources` spell them. */
 export const HOST_SOURCES = ['user', 'project', 'local'];
@@ -310,4 +311,105 @@ export function setupOf(persona) {
     canPublish: persona?.canPublish === true,
     mcpOff: Array.isArray(persona?.mcpOff) ? persona.mcpOff.filter((n) => typeof n === 'string' && n && n !== POSTBOX_SERVER) : [],
   };
+}
+
+/**
+ * Deny rules for every Kiro turn, from the file POSTBOX_KIRO_POLICY names: a study that must refuse some commands
+ * (aws cloudtrail, credential export) to its builders. A JSON array of { capability, match, exclude?, effect: "deny" }.
+ * Kiro keeps workspace rules outside the project folder (kiro.dev/docs/cli/v3/permissions), so a seeded .kiro folder
+ * can’t add them; the agent file Postbox writes can. Only denies are taken, so a policy file never widens a persona.
+ */
+export function kiroPolicyRules(path = process.env.POSTBOX_KIRO_POLICY) {
+  if (!path) return [];
+  let rules;
+  try {
+    rules = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (e) {
+    throw new Error(`Couldn’t read the Kiro policy ${path} (POSTBOX_KIRO_POLICY): ${e.message}`, { cause: e });
+  }
+  const strings = (a) => Array.isArray(a) && a.every((m) => typeof m === 'string');
+  const ok = (r) => r && typeof r.capability === 'string' && r.effect === 'deny' && strings(r.match) && (r.exclude === undefined || strings(r.exclude));
+  if (!Array.isArray(rules) || !rules.every(ok))
+    throw new Error(
+      `The Kiro policy ${path} must be a JSON array of deny rules, each with a capability, a match list, an optional exclude list and the effect deny.`,
+    );
+  return rules.map(({ capability, match, exclude, effect }) => ({ capability, match, ...(exclude ? { exclude } : {}), effect }));
+}
+
+/**
+ * Deny rules for every Claude Code turn, from the file POSTBOX_CLAUDE_POLICY names: the Claude Code half of a study’s
+ * policy (kiroPolicyRules is the Kiro half). `{ "permissions": { "deny": [rule, …] } }`, or the bare list. They go in
+ * --settings, from outside the agent’s folder, so the agent can’t read them the way it could a seeded
+ * .claude/settings.local.json; Claude Code applies deny rules in every permission mode. Only denies are taken.
+ */
+export function claudePolicyDeny(path = process.env.POSTBOX_CLAUDE_POLICY) {
+  if (!path) return [];
+  let policy;
+  try {
+    policy = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (e) {
+    throw new Error(`Couldn’t read the Claude Code policy ${path} (POSTBOX_CLAUDE_POLICY): ${e.message}`, { cause: e });
+  }
+  const deny = Array.isArray(policy) ? policy : policy?.permissions?.deny;
+  if (!Array.isArray(deny) || !deny.length || !deny.every((r) => typeof r === 'string' && r))
+    throw new Error(`The Claude Code policy ${path} must hold deny rules: { "permissions": { "deny": ["Bash(…)", …] } }.`);
+  return [...deny];
+}
+
+/**
+ * How the person’s Claude Code signs in, for an Isolated agent, when POSTBOX_CLAUDE_SIGN_IN is set: the sign-in keys of
+ * their user settings (awsCredentialExport, awsAuthRefresh, apiKeyHelper, modelOverrides), as tools/uat/tester.mjs keeps
+ * them for the tester. Without them an Isolated agent on Bedrock signs in with the default AWS credentials, which run
+ * out. `env` is never taken: its variables would reach the agent’s shell, and with them another region or profile.
+ * Empty when the variable is unset or the settings can’t be read.
+ */
+export function agentSignIn({ dir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude'), enabled = process.env.POSTBOX_CLAUDE_SIGN_IN } = {}) {
+  if (!enabled) return {};
+  let user;
+  try {
+    user = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8'));
+  } catch {
+    return {};
+  }
+  if (!user || typeof user !== 'object') return {};
+  return Object.fromEntries(['awsCredentialExport', 'awsAuthRefresh', 'apiKeyHelper', 'modelOverrides'].filter((k) => user[k] !== undefined).map((k) => [k, user[k]]));
+}
+
+/**
+ * A workflow’s own Kiro agent for one persona, from POSTBOX_KIRO_BASE_AGENT (`builder=evalgen,...`): the parsed
+ * `.kiro/agents/<name>.json`, or null when the variable names no agent for this handle. Kiro runs one agent per
+ * turn, so a study that starts a builder under a workflow’s agent (evalgen’s supervisor) would otherwise lose either
+ * Postbox’s server, guide and deny policy or the workflow’s prompt and dispatch rules; kiroAgent merges the two.
+ * With POSTBOX_KIRO_AGENT_SEED, the base is read from that seed folder, not the workspace, and every agent file in the
+ * workspace’s .kiro/agents must equal the seed’s byte for byte: the agent can write its workspace, and a resource it
+ * added there would load into a turn’s context with no tool call, past the deny policy. A named agent that is missing
+ * or doesn’t parse, or a workspace agent file that differs, stops the turn.
+ */
+export function kiroBaseAgent(handle, cwd, spec = process.env.POSTBOX_KIRO_BASE_AGENT, seed = process.env.POSTBOX_KIRO_AGENT_SEED) {
+  const name = (spec ?? '')
+    .split(',')
+    .map((p) => p.trim().split('='))
+    .find(([h]) => h === handle)?.[1];
+  if (!name) return null;
+  if (!/^[A-Za-z0-9_-]+$/.test(name)) throw new Error(`POSTBOX_KIRO_BASE_AGENT names “${name}” for @${handle}, which isn’t an agent name.`);
+  if (seed) sameAgentFiles(join(seed, '.kiro', 'agents'), join(cwd, '.kiro', 'agents'));
+  const path = join(seed || cwd, '.kiro', 'agents', `${name}.json`);
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch (e) {
+    throw new Error(`Couldn’t read ${path}, the Kiro agent POSTBOX_KIRO_BASE_AGENT names for @${handle}: ${e.message}`, { cause: e });
+  }
+}
+
+/** Every agent file in the workspace equals the seed’s, and none is added or missing. */
+function sameAgentFiles(seedDir, workDir) {
+  const list = (d) => (existsSync(d) ? readdirSync(d).filter((f) => f.endsWith('.json')).sort() : []);
+  const seedFiles = list(seedDir);
+  for (const f of list(workDir))
+    if (!seedFiles.includes(f)) throw new Error(`The workspace’s .kiro/agents/${f} is not in the seed (POSTBOX_KIRO_AGENT_SEED), so this turn doesn’t start.`);
+  for (const f of seedFiles) {
+    const work = join(workDir, f);
+    if (!existsSync(work) || !readFileSync(work).equals(readFileSync(join(seedDir, f))))
+      throw new Error(`The workspace’s .kiro/agents/${f} differs from the seed (POSTBOX_KIRO_AGENT_SEED), so this turn doesn’t start.`);
+  }
 }

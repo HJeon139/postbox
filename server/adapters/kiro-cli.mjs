@@ -51,7 +51,7 @@ import { agentGuide, formatMessage } from './guide.mjs';
 import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
 import { attachmentPaths, KIRO_REMOTE, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { listProcesses, stopTurn } from './process-group.mjs';
-import { effortOf, modelOf, POSTBOX_SERVER, recorderFor, setupOf } from './setup.mjs';
+import { effortOf, kiroBaseAgent, kiroPolicyRules, modelOf, POSTBOX_SERVER, recorderFor, setupOf } from './setup.mjs';
 
 export { findKiro, kiroModel, kiroModels, kiroVersion, modelIds, postboxModel } from './kiro-cli-models.mjs';
 export { kiroRemoteEnv } from './kiro-cli-remote.mjs';
@@ -112,7 +112,8 @@ export function kiroRules({ persona, folders, resolve = true }) {
   // CLI starts (seen with a toolbox-installed kiro-cli 2.33.1), and the deny beats that allow. Checked live: a second
   // server’s call was refused by this rule while Postbox’s went through (tests/fixtures/kiro-cli/isolated-deny.jsonl).
   // Kiro still lists the denied server’s tools to the model; it refuses the call.
-  if (!usesHostSetup) rules.push({ capability: 'mcp', match: ['*/*'], exclude: [`${POSTBOX_SERVER}/*`], effect: 'deny' });
+  // Kiro 2.35 serves web search as `remote/web_search`, an MCP tool, so a persona with web.fetch keeps it (round 3 cell 1).
+  if (!usesHostSetup) rules.push({ capability: 'mcp', match: ['*/*'], exclude: [`${POSTBOX_SERVER}/*`, ...(has.has('web.fetch') ? ['remote/*'] : [])], effect: 'deny' });
   return rules;
 }
 
@@ -124,17 +125,18 @@ const HEADLESS_NOTE =
 // Kiro still lists a denied server’s tools to the model; it only refuses the call. In the mixed-room UAT, an Isolated
 // agent offered “Manage scoped AWS credentials” from a server a managed install had added, so it’s told.
 const ISOLATED_NOTE =
-  '## Tools you can use\n\nOnly Postbox’s MCP server is allowed for you here. Tools from any other MCP server you see listed are refused, so don’t offer or use them, and don’t count them among what you can do.';
+  '## Tools you can use\n\nOf the MCP servers, only Postbox’s is allowed for you here. Tools from any other MCP server you see listed are refused, so don’t offer or use them, and don’t count them among what you can do. Your built-in tools, such as the shell and reading or writing files, are not MCP tools: use them as your permissions allow.';
 
 /**
  * The custom agent for one turn. Pure, so the tests can check it.
- * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[] }} turn
+ * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[], base?: any }} turn
  *   shim: on a remote host, Postbox’s server is the host’s stdio shim, run as this command, in place of mcpUrl; the
  *   folders are then the host’s
+ *   base: a workflow’s own agent (setup.mjs kiroBaseAgent), merged in by mergeBaseAgent
  */
-export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders }) {
+export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders, base = null }) {
   const { usesHostSetup } = setupOf(persona);
-  return {
+  const agent = {
     name,
     description: `@${persona.handle} in Postbox`,
     prompt: `${guide}\n\n${HEADLESS_NOTE}${usesHostSetup ? '' : `\n\n${ISOLATED_NOTE}`}`,
@@ -143,7 +145,49 @@ export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders }) 
     includeMcpJson: usesHostSetup,
     // A local server is a command and its arguments (kiro.dev/docs/custom-agents/configuration-reference).
     mcpServers: { [POSTBOX_SERVER]: shim ? { command: shim.command, args: [...shim.args] } : { type: 'http', url: mcpUrl } },
-    permissions: { rules: kiroRules({ persona, folders, resolve: !shim }) },
+    permissions: { rules: [...kiroRules({ persona, folders, resolve: !shim }), ...kiroPolicyRules()] },
+  };
+  return base ? mergeBaseAgent(agent, base, folders[0]) : agent;
+}
+
+/**
+ * Postbox’s agent for a turn with a workflow’s agent merged in, replacing neither. Postbox keeps its name, server and
+ * every rule, and its prompt comes first; the base adds its prompt, resources (resolved against the working folder,
+ * since the agent file lives in Postbox’s Kiro home), tool list and settings, and rules. Kiro applies deny before
+ * allow in any order, so the base’s allows widen nothing Postbox or the study’s policy denies. The base’s own MCP
+ * servers are dropped with their tools and rules, so a turn loads Postbox’s server alone, as an Isolated one does.
+ */
+/**
+ * A base resource as an absolute file:// URL inside the working folder, or the turn stops. Kiro loads a resource into
+ * the turn’s context with no tool call, so one outside the folder would pass the deny policy unseen.
+ */
+function insideResource(resource, cwd) {
+  const relative = typeof resource === 'string' && resource.startsWith('file://') && !resource.startsWith('file:///') ? resource.slice(7) : null;
+  if (relative === null) throw new Error(`The base agent’s resource ${JSON.stringify(resource)} isn’t a file:// path relative to the working folder, so this turn doesn’t start.`);
+  let path;
+  try {
+    path = realpathSync(join(cwd, relative));
+  } catch (e) {
+    throw new Error(`The base agent’s resource ${resource} doesn’t exist in the working folder, so this turn doesn’t start.`, { cause: e });
+  }
+  const root = realpathSync(cwd);
+  if (path !== root && !path.startsWith(`${root}/`)) throw new Error(`The base agent’s resource ${resource} is outside the working folder, so this turn doesn’t start.`);
+  return `file://${path}`;
+}
+
+function mergeBaseAgent(agent, base, cwd) {
+  const own = new Set(Object.keys(base.mcpServers ?? {}));
+  const fromOwnServer = (t) => typeof t === 'string' && t.startsWith('@') && own.has(t.slice(1).split('/')[0]);
+  const keepRule = (r) => !(r.capability === 'mcp' && (r.match ?? []).some((m) => own.has(String(m).split('/')[0])));
+  const tools = [...new Set([...(base.tools ?? ['*']).filter((t) => !fromOwnServer(t)), `@${POSTBOX_SERVER}`])];
+  return {
+    ...agent,
+    prompt: base.prompt ? `${agent.prompt}\n\n${base.prompt}` : agent.prompt,
+    tools,
+    ...(base.allowedTools ? { allowedTools: [...base.allowedTools.filter((t) => !fromOwnServer(t)), `@${POSTBOX_SERVER}`] } : {}),
+    ...(base.resources ? { resources: base.resources.map((r) => insideResource(r, cwd)) } : {}),
+    ...(base.toolsSettings ? { toolsSettings: base.toolsSettings } : {}),
+    permissions: { rules: [...agent.permissions.rules, ...(base.permissions?.rules ?? []).filter(keepRule)] },
   };
 }
 
@@ -498,7 +542,12 @@ export class KiroCliAdapter {
     let file = null;
     let spawnFn = this.spawn;
     let env;
+    const baseSpec = this.env.POSTBOX_KIRO_BASE_AGENT ?? process.env.POSTBOX_KIRO_BASE_AGENT;
+    const baseSeed = this.env.POSTBOX_KIRO_AGENT_SEED ?? process.env.POSTBOX_KIRO_AGENT_SEED;
     if (ctx.remote) {
+      // The base agent is read from this computer's working folder, which a remote host's turn doesn't use.
+      if (kiroBaseAgent(persona.handle, cwd, baseSpec, baseSeed) !== null)
+        throw new Error(`POSTBOX_KIRO_BASE_AGENT names an agent for @${persona.handle}, whose turns run on a remote host; it works only for local turns.`);
       const agentText = (shim) => JSON.stringify(kiroAgent({ name: agent, persona, shim, guide, folders }), null, 2);
       spawnFn = /** @type {any} */ (kiroRemoteSpawn(ctx, { agent, cwd, turn, attach, agentText }));
       env = {};
@@ -506,7 +555,8 @@ export class KiroCliAdapter {
       const home = kiroHomeFor(persona, { isolatedHome: this.isolatedHome, env: this.env });
       file = join(home, 'agents', `${agent}.json`);
       await mkdir(join(home, 'agents'), { recursive: true });
-      await writeFile(file, JSON.stringify(kiroAgent({ name: agent, persona, mcpUrl: ctx.mcpUrl, guide, folders }), null, 2));
+      const base = kiroBaseAgent(persona.handle, cwd, baseSpec, baseSeed);
+      await writeFile(file, JSON.stringify(kiroAgent({ name: agent, persona, mcpUrl: ctx.mcpUrl, guide, folders, base }), null, 2));
       env = { ...this.env, ...(setupOf(persona).usesHostSetup ? {} : { KIRO_HOME: home }) };
     }
     const mapper = createKiroMapper(ctx, { effort: effortOf(persona) });

@@ -3,10 +3,12 @@
 // agent’s state.
 
 import { join, relative } from 'node:path';
+import { fullView } from './fulltext.mjs';
 
 /** What changed on screen, labeled for the tester, and each agent’s state. */
 export async function observe({ d, labels, keys, seen, paths, timeline, dir, facts }) {
   const out = [];
+  const notes = [];
   const items = await d.items();
   for (const it of items) {
     if (!labels.has(it.key)) {
@@ -21,7 +23,11 @@ export async function observe({ d, labels, keys, seen, paths, timeline, dir, fac
     const lines = [
       `[${label}] ${changed ? '(changed) ' : ''}${it.where}${it.block ? ` · ${it.block}` : ''}${it.app ? ' · agent app' : ''}${it.diagram ? ' · diagram' : ''}`,
     ];
-    lines.push(it.text.length > 1800 ? `${it.text.slice(0, 1800)}…` : it.text);
+    // A block waiting on the tester, and its message, come whole from Postbox’s record; any cut is marked (fulltext.mjs).
+    facts.cuts ??= new Map();
+    const view = fullView({ key: it.key, label, screenText: it.text, state: facts.state, dir, cuts: facts.cuts });
+    if (view.log) notes.push(view.log);
+    lines.push(view.text);
     if (it.buttons.length) lines.push(`Buttons: ${it.buttons.join(' | ')}`);
     if (it.fields.length) lines.push(`Fields: ${it.fields.join(' | ')}`);
     if (it.block || it.app || it.diagram || it.math) {
@@ -42,5 +48,5 @@ export async function observe({ d, labels, keys, seen, paths, timeline, dir, fac
     .map((id) => st.sessions[id])
     .filter(Boolean)
     .map((se) => `@${se.handle} in “${st.threads[se.threadId]?.title}”: ${se.state}${se.needs ? ` (needs you: ${se.needs.text})` : ''}`);
-  return { items: out, states };
+  return { items: out, states, notes };
 }

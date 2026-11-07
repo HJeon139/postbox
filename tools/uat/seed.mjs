@@ -80,7 +80,7 @@ async function checkClis(scenario, opt, log) {
 export async function seedAgents({ scenario, opt, root, data, log }) {
   // A fresh install has one generic agent, so the scenario's agents are seeded from agents.json: every
   // persona in personas.json, since scenarios bring more agents (@critic) into topic threads than they start with.
-  const personas = JSON.parse(readFileSync(join(root, 'tests', 'uat', 'e2e', 'personas.json'), 'utf8'));
+  const personas = JSON.parse(readFileSync(scenario.personas ?? join(root, 'tests', 'uat', 'e2e', 'personas.json'), 'utf8'));
   const codexDefaultModel = await codexDefault(scenario, log);
   const agents = [
     ...scenario.agents.map((h) => personas.find((p) => p.handle === h) ?? { handle: h }),

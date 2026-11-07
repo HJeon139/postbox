@@ -1,7 +1,11 @@
 // The claude CLI’s arguments for one turn (server/adapters/claude-code.mjs runs it; the header there lists them).
 
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { withAskRules } from '../permission-rules.mjs';
-import { deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
+import { claudePolicyDeny, deniedTools, effortOf, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
 
 // Every mode is passed explicitly: left out, Claude Code would take permissions.defaultMode from your own
 // settings, or auto, and an agent you set to ask could end up not asking. (manual is the CLI’s name for default.)
@@ -12,11 +16,14 @@ const MODES = {
   bypass: ['--permission-mode', 'bypassPermissions'],
 };
 
+const withPolicy = (settings, deny) =>
+  deny.length ? { ...settings, permissions: { ...(settings.permissions ?? {}), deny: [...(settings.permissions?.deny ?? []), ...deny] } } : settings;
+
 /** The CLI arguments for one turn. Pure, so the tests can check them. */
 /**
  * @param {{ persona: any, sessionId: string, resume: boolean, mcpUrl?: string, guide: string, addDirs?: string[],
  *           fork?: { claudeSessionId: string, uuid?: string }|null, allowOnce?: string[], rules?: { allow?: string[], ask?: string[], deny?: string[] },
- *           server?: Record<string, object>|null, denyPrompts?: boolean }} turn
+ *           server?: Record<string, object>|null, denyPrompts?: boolean, signIn?: Record<string, unknown> }} turn
  *   rules: the ones the person made for this conversation only (#66), passed every turn. server: Postbox’s server in
  *   place of the HTTP one at mcpUrl (a remote turn’s shim, shimServer). denyPrompts: --permission-prompts none in place
  *   of the prompt tool, so what would be asked is denied (a host’s denyPrompts, D2).
@@ -33,6 +40,7 @@ export function claudeArgs({
   rules = {},
   server = null,
   denyPrompts = false,
+  signIn = {},
 }) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   const setup = setupOf(persona);
@@ -77,10 +85,29 @@ export function claudeArgs({
     (setup.usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES).join(','),
     '--settings',
     // With ask rules for writes outside Postbox (#112), so each comes to a card first, and the conversation’s own.
-    JSON.stringify(withAskRules(settingsFor(persona), [...writeRules(persona), ...(rules.ask ?? [])])),
+    // And a study’s deny rules (POSTBOX_CLAUDE_POLICY), which the agent can’t read from its own folder.
+    // An Isolated persona also gets the person’s sign-in when the runner asks for it (setup.mjs agentSignIn).
+    JSON.stringify(withPolicy(withAskRules({ ...settingsFor(persona), ...(setup.usesHostSetup ? {} : signIn) }, [...writeRules(persona), ...(rules.ask ?? [])]), claudePolicyDeny())),
     ...(denied.length ? ['--disallowedTools', ...denied] : []),
     ...MODES[mode],
     ...addDirs.flatMap((d) => ['--add-dir', d]),
     ...(mode === 'bypass' ? [] : denyPrompts ? ['--permission-prompts', 'none'] : ['--permission-prompt-tool', 'mcp__postbox__permission_prompt']),
   ];
+}
+
+/**
+ * The same arguments with `--settings` moved into a file only this user can read, in `<dir>/postbox-agent-settings/`,
+ * and a function that removes it. An agent with a shell can read any process’s command line with ps, so settings that
+ * carry the person’s sign-in (setup.mjs agentSignIn) don’t go inline. The default dir is ~/.claude, which a study’s
+ * Claude Code policy denies the agent.
+ * @param {string[]} args  @param {{ dir?: string }} [opts]
+ */
+export function settingsFile(args, { dir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude') } = {}) {
+  const i = args.indexOf('--settings');
+  if (i < 0) return { args, remove: () => {} };
+  const folder = join(dir, 'postbox-agent-settings');
+  mkdirSync(folder, { recursive: true, mode: 0o700 });
+  const path = join(folder, `${randomUUID()}.json`);
+  writeFileSync(path, args[i + 1], { mode: 0o600 });
+  return { args: [...args.slice(0, i + 1), path, ...args.slice(i + 2)], remove: () => rmSync(path, { force: true }) };
 }

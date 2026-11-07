@@ -133,7 +133,8 @@ export class Store {
     const old = await this.segments();
     this.segment = `events-${this.state.seq + 1}.jsonl`;
     this.sinceSnapshot = 0;
-    for (const seg of old) if (seg.name !== this.segment) await rm(this.at(seg.name), { force: true });
+    // uc04-s06 study runner: keep old segments (as .kept) so a run's full event history, stopReason included, survives.
+    for (const seg of old) if (seg.name !== this.segment) await rename(this.at(seg.name), this.at(`${seg.name}.kept`)).catch(() => rm(this.at(seg.name), { force: true }));
   }
 
   async writeSnapshot() {

@@ -16,6 +16,11 @@ export function makeWorkspace(scenario, paths, dir) {
   spawnSync('git', ['init', '-q', paths.workspace], { stdio: 'ignore' });
   const canaries = scenario.seed === 'canaries' ? tm.seedCanaries(paths.workspace, dir) : null;
   if (scenario.seed === 'fake-env') seedFakeEnv(paths.workspace);
+  if (scenario.seed?.startsWith('dir:')) {
+    const src = scenario.seed.slice(4);
+    const r = spawnSync('cp', ['-R', `${src}/.`, paths.workspace], { encoding: 'utf8' });
+    if (r.status !== 0) throw new Error(`Couldn’t seed the workspace from ${src}: ${r.stderr.trim() || `cp exited ${r.status}`}`);
+  }
   // After the seeds, so the excludes join any settings one planted. The run’s folder is the tester’s.
   hideSteeringAbove(paths.workspace);
   hideSteeringAbove(dir);

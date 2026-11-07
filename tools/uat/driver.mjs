@@ -7,7 +7,7 @@ import { writeFile } from 'node:fs/promises';
 import { js, sleep } from '../browser.mjs';
 import { review } from './driver-review.mjs';
 import { pressKey } from './keys.mjs';
-import { byText, ITEM } from './selectors.mjs';
+import { byExactText, byText, ITEM } from './selectors.mjs';
 
 // The answers to Stop’s question about background jobs, in the decision’s words (#126), with “Stop them too” for more
 // than one job. Written against fix/p0-stop’s ask row before it merged; if its buttons change, change them here.
@@ -146,7 +146,11 @@ export function driver(page, hooks = {}) {
       }
       for (const option of choose) await clickAt(byText(ITEM(key), 'button.chip, [role=radio], [role=checkbox], label', option), `the option “${option}”`);
       // A control may be a link, such as a reply’s work line (“2 files +112 −0”), which opens the Work pane.
-      if (button) await clickAt(byText(ITEM(key), 'button, a[href], [role=button]', button), `the button “${button}”`);
+      if (button)
+        await clickAt(
+          `(${byExactText(ITEM(key), 'button, a[href], [role=button]', button)}) ?? (${byText(ITEM(key), 'button, a[href], [role=button]', button)})`,
+          `the button “${button}”`,
+        );
     },
 
     review(key, opts) {

@@ -103,6 +103,7 @@ export const SCHEMA = {
             'app_click',
             'attach_screenshot',
             'full_screen',
+            'read_full',
             'jobs',
             'wait',
             'stop',
@@ -120,7 +121,7 @@ export const SCHEMA = {
         },
         telemetry: TELEMETRY_ACTION,
         text: { type: 'string', description: 'send, send_then_stop, thread, thread_reply, attach_screenshot: the message to write.' },
-        item: { type: 'string', description: 'thread, act, app_click, attach_screenshot, full_screen: the item label, such as I7.' },
+        item: { type: 'string', description: 'thread, act, app_click, attach_screenshot, full_screen, read_full: the item label, such as I7.' },
         fills: { type: 'array', items: { type: 'object', properties: { field: { type: 'string' }, value: { type: 'string' } }, required: ['field', 'value'] } },
         choose: { type: 'array', items: { type: 'string' } },
         button: { type: 'string' },
@@ -210,6 +211,7 @@ Then choose one action:
 - app_click {item, target}: click something inside that app by its visible text.
 - attach_screenshot {item, text}: attach a screenshot of that item, and send it with your message.
 - full_screen {item}: press that app’s Expand button.
+- read_full {item}: read the whole text of an item marked “shown N of M characters”. An approval waits until you have read it.
 - jobs {answer}: answer Postbox’s question about an agent’s background jobs, when it’s on screen: stop (“Stop it too”) or keep (“Keep running”).
 - wait {seconds}: when an agent is still working (at most ${WAIT_MAX_S}).
 - stop: press Stop on a reply that is currently working, if one is visible.
