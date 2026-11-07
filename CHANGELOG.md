@@ -2,6 +2,62 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.35.6 (2026-11-07)
+
+### Fixes
+
+- **assets:** a rename of a deleted asset is refused, and says to restore it first
+- **state:** the asset handlers check their payload before changing anything
+- **assets:** a rename or delete retried without an op is a repeat, and another agent's is stale
+
+## 1.35.5 (2026-11-07)
+
+### Fixes
+
+- **thread:** a redraw of the conversation keeps focus and the caret where you were typing
+- **blocks:** an update that changes nothing the person sees leaves a waiting block as it was
+
+## 1.35.4 (2026-11-07)
+
+### Fixes
+
+- **tests:** flag a bare account key before "=" only where toml puts a key
+- **tests:** clear the recording person's plugins and own skills from two claude code inits
+- **tests:** the commit scan checks the name of every path a commit adds, copies or renames
+- **tests:** the commit scan masks a private file name in every finding in that file
+- **tests:** the privacy checks print a finding's kind, file and line, never what they found
+- **tests:** the tree test and the commit scan check the names of the files they read
+- **tests:** the privacy check flags bearer tokens, uid fields and bare or toml account fields
+- **tests:** clear recorded inits' connectors and plugins, and flag a connector a person named
+- **tests:** clear the recorded codex resume turn's account metadata and drop its privacy exemption
+
+## 1.35.3 (2026-11-07)
+
+### Fixes
+
+- **blocks:** a chosen option's description reads on its chip in the light theme (#873)
+
+## 1.35.2 (2026-11-07)
+
+### Fixes
+
+- **adapters:** count open_topic among Postbox’s quiet tools
+- **uat:** find a message’s thread link by its class, not by the word “thread”
+- **server:** open_topic says whether it posted its message, and by which id
+- **server:** cap open_topic’s mentions and check each handle’s shape first
+- **server:** import SUMMARY_MODEL from its own module, out of the catch-up cycle
+- **remote:** the follower ends a turn through followerEnds, and the design says so (#738)
+- **remote:** log a silent host runner as not answering as its runner (#738)
+- **remote:** time a silent host runner on a monotonic clock
+- **remote:** keep a silent host runner running while its process lives
+
+## 1.35.1 (2026-11-07)
+
+### Fixes
+
+- **skills:** the visual explainer also loads on questions about how code is put together
+- **skills:** the visual explainer loads on everyday asks about code and data
+
 ## 1.35.0 (2026-11-06)
 
 ### Features

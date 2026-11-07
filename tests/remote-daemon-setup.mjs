@@ -25,16 +25,22 @@ export const PROGRAMS_FOUND = {
   problems: [],
 };
 
-/** A fake clock: now() and timers that run only when tick() passes them. */
+/**
+ * A fake clock: now() for the wall clock and mono() for the monotonic one, and timers that run only when tick() passes
+ * them. tick() moves both clocks, as time passing does; stepWall() moves the wall clock alone, as setting it does, and
+ * the timers, which run on the monotonic clock as Node’s do, don’t see it.
+ */
 export function fakeClock(t0 = 1_760_000_000_000) {
   let t = t0;
+  let m = 0;
   /** @type {{ at: number, fn: () => any }[]} */
   const queue = [];
   return {
     now: () => t,
+    mono: () => m,
     timers: {
       setTimeout(fn, ms) {
-        const h = { at: t + ms, fn };
+        const h = { at: m + ms, fn };
         queue.push(h);
         return h;
       },
@@ -46,23 +52,30 @@ export function fakeClock(t0 = 1_760_000_000_000) {
     queue,
     async tick(ms) {
       t += ms;
+      m += ms;
       for (;;) {
-        const due = queue.filter((h) => h.at <= t).sort((a, b) => a.at - b.at)[0];
+        const due = queue.filter((h) => h.at <= m).sort((a, b) => a.at - b.at)[0];
         if (!due) return;
         queue.splice(queue.indexOf(due), 1);
         await due.fn();
       }
+    },
+    /** @param {number} ms  back for a negative one */
+    stepWall(ms) {
+      t += ms;
     },
   };
 }
 
 /**
  * A daemon over a temp home, with fake runners.
- * @param {{ token?: string | null, same?: boolean, clock?: ReturnType<typeof fakeClock>, onIdle?: () => void, settings?: object, uid?: number, spawn?: any, broker?: any }} [o]
+ * @param {{ token?: string | null, same?: boolean, clock?: ReturnType<typeof fakeClock>, onIdle?: () => void, settings?: object, uid?: number, spawn?: any, broker?: any,
+ *   log?: (line: string) => void, sameProcess?: (r: any) => boolean | Promise<boolean>, answer?: (turn: string) => boolean, pollMs?: number }} [o]
  *   spawn: the daemon’s own spawn, for the sign-in check (the runners are launchRunner’s, faked here). broker: in place
- *   of the daemon’s own.
+ *   of the daemon’s own. sameProcess: in place of the fake one that answers `same`, such as proc.mjs’s own over fake facts.
+ *   answer: whether the fake runner answers a `who`, in place of its turn being in `alive`. pollMs: the followers’ poll.
  */
-export function setup({ token = TOKEN, same = true, clock, onIdle, uid, spawn, broker, env } = {}) {
+export function setup({ token = TOKEN, same = true, clock, onIdle, uid, spawn, broker, env, log = () => {}, sameProcess, answer, pollMs = 10 } = {}) {
   // A short folder name: a turn’s socket path must fit Linux’s 108 bytes, and macOS’s tmpdir is long.
   const home = hostHome('pbd-');
   const p = hostPaths(home, VERSION);
@@ -98,18 +111,18 @@ export function setup({ token = TOKEN, same = true, clock, onIdle, uid, spawn, b
   const daemon = createDaemon({
     home,
     version: VERSION,
-    ...(clock ? { now: clock.now, timers: clock.timers } : {}),
+    ...(clock ? { now: clock.now, mono: clock.mono, timers: clock.timers } : {}),
     ...(env ? { env } : {}),
-    ...fakeRunners(state, { alive, launches, asks, groupLookups }),
+    ...fakeRunners(state, { alive, launches, asks, groupLookups, sameProcess, answer }),
     async writeRunner(o) {
       writes.push(o);
       return 42;
     },
     findPrograms: async () => structuredClone(PROGRAMS_FOUND),
     kill: (pid, signal) => kills.push([pid, signal]),
-    log: () => {},
+    log,
     onIdle,
-    pollMs: 10,
+    pollMs,
     stopGraceMs: 5000,
     ...(uid === undefined ? {} : { uid }),
     ...(spawn ? { spawn } : {}),
@@ -127,7 +140,7 @@ export function setup({ token = TOKEN, same = true, clock, onIdle, uid, spawn, b
  * setup’s fake runners and process checks (launchRunner, askRunner, proc, and logind’s facts), answering from `state`
  * and recording what they were asked.
  */
-function fakeRunners(state, { alive, launches, asks, groupLookups }) {
+function fakeRunners(state, { alive, launches, asks, groupLookups, sameProcess = async () => state.same, answer = (turn) => alive.has(turn) }) {
   let pid = 4000;
   return {
     logind: () => {
@@ -149,10 +162,10 @@ function fakeRunners(state, { alive, launches, asks, groupLookups }) {
     },
     askRunner: async (path, turn, o) => {
       asks.push({ path, turn, ...o });
-      return alive.has(turn);
+      return answer(turn);
     },
     proc: {
-      sameProcess: async () => state.same,
+      sameProcess,
       toolGroups: (pgid) => {
         groupLookups.push(pgid);
         return state.groups === null ? null : (state.groups.shift() ?? []);

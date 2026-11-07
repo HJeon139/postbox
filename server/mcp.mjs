@@ -2,8 +2,8 @@
 // One endpoint serves every backend. A Claude Code session or an Agent SDK agent connects to
 //   POST <origin>/mcp?session=<postbox session id>&turn=<the turn’s token>
 // and gets show_block, update_block, review_block, show_app, update_app, retire_app, define_term, react, propose_agent, schedule_wake,
-// wake_agent, bring_to_conversation (in side and topic threads), ask_for_tool, corpus_search, add_dataset, and the
-// asset tools (server/asset-tools.mjs).
+// cancel_wake, wake_agent, open_topic, bring_to_conversation (in side and topic threads), read_conversation,
+// read_message, ask_for_tool, corpus_search, add_dataset, and the asset tools (server/asset-tools.mjs).
 // Every tool returns at once; when you answer a block, your answer reaches the agent later as a new message
 // carrying { blockId, action, values }. The tools’ definitions are in shared/mcp-tools.mjs, which the shim on a
 // remote host serves too (#120); their handlers are here.

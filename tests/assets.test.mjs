@@ -156,6 +156,52 @@ test('a rename and a delete are versions; a deleted asset’s name is free, and 
   assert.equal((await write({ kind: 'restore', id: a.id, base: 4, version: 9 })).code, 'no-version');
 });
 
+test('a rename of a deleted asset is refused as deleted, even to a taken name, and makes no version (#707)', async () => {
+  const { write, asset } = room();
+  const a = await write({ name: 'a.md', bytes: text('one') });
+  await write({ name: 'taken.md', bytes: text('two') });
+  await write({ kind: 'delete', id: a.id, base: 1 });
+  const said = `Asset ${a.id} is deleted, so it can’t be renamed. Bring a version back with restore_asset first, then rename it.`;
+  for (const name of ['b.md', 'taken.md']) {
+    const r = await write({ kind: 'rename', id: a.id, base: 2, name });
+    assert.deepEqual([r.ok, r.code, r.message], [false, 'deleted', said], name);
+  }
+  assert.deepEqual([asset(a.id).versions.length, asset(a.id).name], [2, 'a.md']);
+  assert.equal((await write({ kind: 'restore', id: a.id, base: 2, version: 1 })).ok, true, 'a restore still brings it back');
+});
+
+test('a rename repeated by its op after the asset was deleted is still the version it made (#707)', async () => {
+  const { write, asset } = room();
+  const a = await write({ name: 'a.md', bytes: text('one') });
+  const renamed = await write({ kind: 'rename', id: a.id, base: 1, name: 'b.md', op: 'r1' });
+  await write({ kind: 'delete', id: a.id, base: 2 });
+  const again = await write({ kind: 'rename', id: a.id, base: 1, name: 'b.md', op: 'r1' });
+  assert.deepEqual([again.ok, again.repeat, again.version], [true, true, renamed.version]);
+  assert.equal(asset(a.id).versions.length, 3);
+});
+
+test('a write to a deleted asset, from its delete, brings it back under its name, and then it can be renamed (#707)', async () => {
+  const { write, asset } = room();
+  const a = await write({ name: 'a.md', bytes: text('one') });
+  await write({ kind: 'delete', id: a.id, base: 1 });
+  const back = await write({ id: a.id, base: 2, bytes: text('three') });
+  assert.deepEqual([back.ok, back.repeat, back.version.v], [true, false, 3], 'a write, not only restore_asset, brings it back');
+  assert.deepEqual([asset(a.id).head, typeof asset(a.id).versions[2].sha256, asset(a.id).name], [3, 'string', 'a.md']);
+  const renamed = await write({ kind: 'rename', id: a.id, base: 3, name: 'b.md' });
+  assert.deepEqual([renamed.ok, asset(a.id).name], [true, 'b.md']);
+});
+
+test('a rename from an old base of an asset another agent deleted answers stale, naming who deleted it (#707)', async () => {
+  const { write, asset } = room();
+  const a = await write({ name: 'a.md', bytes: text('one') });
+  await write({ kind: 'delete', id: a.id, base: 1, author: 'critic' });
+  const late = await write({ kind: 'rename', id: a.id, base: 1, name: 'b.md' });
+  // Stale comes before the deleted refusal: the agent rereads version 2 and learns it’s a delete from there.
+  assert.deepEqual([late.ok, late.code], [false, 'stale']);
+  assert.equal(late.message, `@critic wrote version 2 of ${a.id} since version 1. Read version 2, then write again from it.`);
+  assert.deepEqual([asset(a.id).versions.length, asset(a.id).name], [2, 'a.md']);
+});
+
 test('an id from another room, or none for a rename, is refused as not found', async () => {
   const { write } = room();
   const a = await write({ name: 'a.md', bytes: text('one') });
