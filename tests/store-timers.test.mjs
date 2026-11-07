@@ -24,7 +24,7 @@ import { test } from 'node:test';
 /** file → number of timer mentions (SITE), each file placed in the timers table (the 1b PR body). */
 const PLACED = {
   'adapters/agy-hook.mjs': 1, // a request’s socket timeout: no store
-  'adapters/antigravity-cli.mjs': 2, // kills a CLI probe: no store
+  'adapters/agy-models.mjs': 2, // kills a CLI probe: no store
   'adapters/claude-code.mjs': 1, // kills a CLI probe: no store
   'adapters/codex-models.mjs': 2, // kills a CLI probe: no store
   'adapters/codex-remote.mjs': 1, // an interrupt’s reach: no store
