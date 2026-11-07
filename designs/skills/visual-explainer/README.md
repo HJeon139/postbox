@@ -1,6 +1,6 @@
-# Visual explainer skill (draft)
+# Visual explainer skill
 
-A draft of the skill [#207](https://github.com/HJeon139/postbox/issues/207) proposes bundling with Postbox: how an agent explains an idea with a picture, and how a reviewer judges whether the picture works. It is in the [Agent Skills](https://agentskills.io/specification) format so it can move into the bundle unchanged once #207 decides where bundled skills live. Nothing loads it yet.
+The skill [#207](https://github.com/HJeon139/postbox/issues/207) proposed bundling with Postbox: how an agent explains an idea with a picture, and how a reviewer judges whether the picture works. It is in the [Agent Skills](https://agentskills.io/specification) format. Postbox ships it in its own plugin, [`agent-plugin`](../../../agent-plugin), which every Claude agent on this computer loads by default as `postbox:visual-explainer` ([architecture](../../architecture.md), “Postbox’s own skills”). This folder keeps what agents must not see: the starter briefs, which hold each test’s intended idea and traps.
 
 | File | What it holds |
 |---|---|

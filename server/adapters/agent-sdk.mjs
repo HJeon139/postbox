@@ -38,8 +38,9 @@ export async function loadAgentSdk() {
 /**
  * @param {{ persona: any, cwd: string, addDirs?: string[], sessionId: string, resume: boolean, mcpUrl: string, guide: string,
  *           abortController: AbortController, canUseTool?: Function, fork?: any, allowOnce?: string[],
- *           rules?: { allow?: string[], ask?: string[], deny?: string[] }, memoryDir?: string|null }} turn
+ *           rules?: { allow?: string[], ask?: string[], deny?: string[] }, memoryDir?: string|null, plugins?: string[] }} turn
  *   rules: the ones the person made for this conversation only (#66), passed every turn. memoryDir: the persona’s own (#208).
+ *   plugins: plugin folders to load, Postbox’s own (agent-plugin.mjs).
  */
 export function sdkOptions({
   persona,
@@ -55,6 +56,7 @@ export function sdkOptions({
   allowOnce = [],
   rules = {},
   memoryDir = null,
+  plugins = [],
 }) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   const setup = setupOf(persona);
@@ -90,6 +92,8 @@ export function sdkOptions({
     thinking: { type: 'adaptive', display: 'summarized' },
     forwardSubagentText: true,
     systemPrompt: { type: 'preset', preset: 'claude_code', append: guide },
+    // Postbox’s skills, beside the person’s own.
+    plugins: plugins.map((path) => ({ type: /** @type {const} */ ('local'), path })),
     permissionMode: MODES[mode],
     ...(mode === 'bypass' ? { allowDangerouslySkipPermissions: true } : { canUseTool }),
     abortController,

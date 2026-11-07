@@ -4,12 +4,11 @@
 - agents: researcher
 - models: persona
 - judge: visual
-- seed: visual-skill
 - steps: 6
 - project: Visual skill
 - conversation: How a bill becomes law
 
-This measures the draft visual-explainer skill ([#207](https://github.com/HJeon139/postbox/issues/207)) on one of its starter briefs (designs/skills/visual-explainer/briefs/). **With the skill:** the draft visual-explainer skill (designs/skills/visual-explainer) sits in the project as a Claude Code project skill (`- seed: visual-skill`). The runs are scored afterward, with the takeaway test on the first visual’s screenshot; your job is to ask as this person would. Don’t name a chart type, a library, Postbox’s tools, the word “app” or the skill.
+This measures the draft visual-explainer skill ([#207](https://github.com/HJeon139/postbox/issues/207)) on one of its starter briefs (designs/skills/visual-explainer/briefs/). **With the skill:** Postbox’s visual-explainer skill (agent-plugin/skills/visual-explainer), which every Claude agent on this computer loads by default. The runs are scored afterward, with the takeaway test on the first visual’s screenshot; your job is to ask as this person would. Don’t name a chart type, a library, Postbox’s tools, the word “app” or the skill.
 
 ## Phase 1: Ask
 

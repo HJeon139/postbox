@@ -6,7 +6,6 @@ import { seedFakeEnv } from './allowonce-triggers.mjs';
 import { seedFiles } from './fixtures.mjs';
 import { hideSteeringAbove } from './steering.mjs';
 import * as tm from './telemetry-run.mjs';
-import { seedVisualSkill } from './visual-skill.mjs';
 
 /**
  * Makes the workspace a repository and seeds it. Returns the canaries it planted, or null.
@@ -18,7 +17,6 @@ export function makeWorkspace(scenario, paths, dir) {
   spawnSync('git', ['init', '-q', paths.workspace], { stdio: 'ignore' });
   const canaries = scenario.seed === 'canaries' ? tm.seedCanaries(paths.workspace, dir) : null;
   if (scenario.seed === 'fake-env') seedFakeEnv(paths.workspace);
-  if (scenario.seed === 'visual-skill') seedVisualSkill(paths.workspace);
   if (scenario.files) seedFiles(paths.workspace, scenario.files);
   // After the seeds, so the excludes join any settings one planted. The run’s folder is the tester’s.
   hideSteeringAbove(paths.workspace);
