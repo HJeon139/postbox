@@ -1,8 +1,8 @@
 // A host’s settings editor, on its card in the Hosts tab (app/js/hosts.mjs): its ssh destination, its short name
-// (hosts-short.mjs), whether Postbox
-// keeps itself up to date there (#464-b2b), its settings in the design’s groups (hosts-settings.mjs,
-// hosts-fields.mjs) and each project’s folder there. Save checks everything as the server does, says which fields
-// need a change, and then saves the host and each changed folder. The keep-up-to-date toggle saves at once instead.
+// (hosts-short.mjs), whether Postbox keeps itself up to date there (#464-b2b), its settings in the design’s groups
+// (hosts-settings.mjs, hosts-fields.mjs) and each project’s folder there. Save checks everything as the server does,
+// says which fields need a change, and then saves the host and each changed folder. The keep-up-to-date toggle saves
+// at once instead.
 
 import { checkDestination, checkHostPath, checkHostSettings } from '/shared/remote-settings.mjs';
 import { api, client } from './client.mjs';

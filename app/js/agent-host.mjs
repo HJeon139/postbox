@@ -1,6 +1,7 @@
 // An agent whose turns run on a host (#120), in the agents list and the agent’s panel (app/js/agents.mjs): the
 // host, the connection in words and why Postbox can’t reach it, a turn there that needs saying, and the line that
-// ages as the minutes pass. In the list the host is a short badge, since a whole SSH destination can fill the row. Codex’s default model reads as one choice, `auto`, whatever older setting stands for it.
+// ages as the minutes pass. In the list the host is a short badge, since a whole SSH destination can fill the row.
+// Codex’s default model reads as one choice, `auto`, whatever older setting stands for it.
 
 import { codexDefault, modelName } from '/shared/agent-facts.mjs';
 import { badgeOf } from '/shared/host-badge.mjs';
