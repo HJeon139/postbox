@@ -9,6 +9,7 @@
  *   held: { end: number, last: number, width: number }, jump: ((n: number) => void) | null, bound: any, size: string,
  *   sizes: ResizeObserver, changes: MutationObserver, changed?: boolean, noted?: number }} View
  */
+import { onlyRemoves } from './view-changes.mjs';
 import { atEnd, box, findAnchor, gapOf, viewTop } from './view-geometry.mjs';
 
 // The pill floats just above the composer. It shows only while the end is further below than that, so what it
@@ -196,13 +197,14 @@ function noteEnd(v) {
 }
 /**
  * A change in the transcript: the note is taken now, at most once a frame, and else by follow() after the frame’s
- * layout. One read per batch forced a layout of the whole page per batch: 823 in one 72 s freeze (#866).
- * @param {View} v
+ * layout. One read per batch forced a layout of the whole page per batch: 823 in one 72 s freeze (#866). A batch that
+ * only removes is noted at once whatever the frame (view-changes.mjs).
+ * @param {View} v @param {MutationRecord[]} records
  */
-function changed(v) {
+function changed(v, records) {
   v.changed = true;
-  if (v.noted) return;
-  v.noted = requestAnimationFrame(() => (v.noted = 0));
+  if (v.noted && !onlyRemoves(records)) return;
+  v.noted ||= requestAnimationFrame(() => (v.noted = 0));
   noteEnd(v);
 }
 // What arrived counts as unseen when the view isn’t on the newest message, including when follow() finds you
@@ -264,7 +266,7 @@ export function mountView({ el, inPanel, nodes, was }) {
   // frame) pulls the view up to the page’s new end. That isn’t you, but its scroll event can come after the page grew
   // back, and read as you scrolling up (#297). So note where the view is, if it’s at the new end: a wheel turn moves it
   // before its scroll event too, and only that one leaves it above the end. At most once a frame (changed()).
-  v.changes = new MutationObserver(() => changed(v));
+  v.changes = new MutationObserver((records) => changed(v, records));
   v.changes.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
   publish(v);
   return {
@@ -272,6 +274,12 @@ export function mountView({ el, inPanel, nodes, was }) {
     scrollToEnd: thenPublish((/** @type {boolean} */ smooth) => scrollToEnd(v, smooth)),
     grew: thenPublish(() => grew(v)),
     rebuilt: thenPublish(() => rebuilt(v)),
+    // An item drawn again whole, as a finished reply is: it may come out shorter, and the page may grow back before
+    // the frame (#297), so the note is taken now, while it’s short. Once per redraw, not per streamed delta (#903).
+    redrawn: () => {
+      v.changed = true;
+      noteEnd(v);
+    },
     release: () => release(v),
     setJump: (/** @type {(n: number) => void} */ fn) => (v.jump = fn),
     /** An item moved to the end (item.move): if it was the anchor, its stub holds the place. */

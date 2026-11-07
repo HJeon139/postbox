@@ -108,7 +108,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     // Keep focus, and the caret, inside a block that’s being edited.
     const back = holdFocus();
     const n = render(list[i], list[i - 1]);
-    replaceTranscriptItem(old, n);
+    replaceTranscriptItem(old, n, view);
     nodes.set(id, n);
     back();
   };
