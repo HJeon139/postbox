@@ -17,7 +17,7 @@ import { register, unregister } from './view-jump.mjs';
 import { newView } from './view-new.mjs';
 import { publish } from './view-publish.mjs';
 import { DRAWN, drawNewest, skipOffscreen } from './view-skip.mjs';
-import { whenSmoothEnds } from './view-smooth.mjs';
+import { halt, smoothEnded, whenSmoothEnds } from './view-smooth.mjs';
 
 // The pill floats just above the composer. It shows only while the end is further below than that, so what it
 // floats over is never the working rows or the end of the last message (#91).
@@ -56,23 +56,6 @@ function scrollToEnd(v, smooth = false) {
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
   } else if (s) s.scrollTop = s.scrollHeight;
   seen(v);
-}
-// The smooth jump to the end stopped. The items it passed drew at their real sizes on the way, so the end has moved:
-// unless you did something meanwhile, go the rest of the way. If you did, a wheel turn or a drag ended it (Chromium
-// drops a wheel turn's own scroll), and that's you reading where it stopped (view-smooth.mjs).
-/** @param {View} v @param {boolean} stoppedByYou */
-function smoothEnded(v, stoppedByYou) {
-  const s = box(v);
-  if (!v.smoothing || v.dead || !s) return;
-  v.smoothing = false;
-  if (atEnd(s)) return;
-  if (!stoppedByYou) s.scrollTop = s.scrollHeight;
-  else {
-    v.stuck = false;
-    v.anchor = findAnchor(v);
-    v.lastTop = s.scrollTop;
-    publish(v);
-  }
 }
 // While stuck, what comes after the newest message shrinking (a working row going, a card answered, the composer)
 // would pull everything down under your pointer. So the transcript keeps that room below its newest message (--held,
@@ -264,16 +247,6 @@ function pin(v, item) {
   if (gapOf(s) <= PILL_ROOM) seen(v);
   showJump(v, s);
   publish(v);
-}
-/**
- * A jump to an item ends the smooth jump to the end, and says whether one ran: smoothEnded would take the rest of the
- * way otherwise, since a jump isn’t input that can scroll (view-smooth.mjs). The jump’s own scroll ends the browser’s.
- * @param {View} v
- */
-function halt(v) {
-  const ran = v.smoothing;
-  v.smoothing = false;
-  return ran;
 }
 /** What view-jump.mjs needs of a view. @param {View} v */
 const jumpable = (v) => ({
