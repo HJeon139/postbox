@@ -6,6 +6,7 @@
 // them go (holdTopics, below); POSTBOX_STREAM_LAG makes it happen by itself, some of the time.
 
 import { expect, test } from '@playwright/test';
+import { heldCount, holdTopics, release } from './hold-threads.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 import { sideRoom } from './side-threads.mjs';
 
@@ -21,39 +22,12 @@ failOnPageErrors(test);
 test.use({ colorScheme: 'light', viewport: { width: 1280, height: 800 } });
 
 /**
- * Has the page hold back each `thread` event for a topic thread while holding, then hand them to the page in order on
- * release, numberless, so the events that came after them don’t make the page drop them as already seen.
- * @param {import('@playwright/test').Page} page
- */
-async function holdTopics(page) {
-  await page.addInitScript(() => {
-    const held = [];
-    const hold = { on: true, count: () => held.length };
-    hold.release = () => {
-      hold.on = false;
-      for (const deliver of held.splice(0)) deliver();
-    };
-    Object.assign(window, { heldTopics: hold });
-    const add = EventSource.prototype.addEventListener;
-    EventSource.prototype.addEventListener = function (type, fn, options) {
-      if (type !== 'thread') return add.call(this, type, fn, options);
-      const late = (e) => {
-        if (hold.on && JSON.parse(e.data).kind === 'topic') held.push(() => fn({ data: e.data, lastEventId: '' }));
-        else fn(e);
-      };
-      return add.call(this, type, late, options);
-    };
-  });
-}
-/**
  * Where focus is in the page, by id. Checked through `document.activeElement`, not Playwright’s `toBeFocused`, which
  * also needs the window itself to have focus: on a loaded machine another window can take it, and the page reads
  * inactive though its focus is where it should be.
  * @param {import('@playwright/test').Page} page  @param {string} id
  */
 const focusIsOn = (page, id) => expect.poll(() => page.evaluate(() => document.activeElement?.id ?? null)).toBe(id);
-const heldCount = (page) => page.evaluate(() => /** @type {any} */ (window).heldTopics.count());
-const release = (page) => page.evaluate(() => /** @type {any} */ (window).heldTopics.release());
 
 /** A room of its own with one message from @indexer and no thread on it, open in the page. */
 async function openRoom(page, title) {
@@ -204,8 +178,11 @@ test('focus the person moves as the address changes stays there, when the thread
 
 test('a thread already open that changes doesn’t take focus', async ({ page }) => {
   const r = await openRoom(page, 'Reply open renamed');
+  await countFocusTimers(page);
   const topicId = await replyInThread(page, r);
   await focusIsOn(page, 'side-input');
+  // The thread can land before Reply in thread’s own 150 ms timer, so wait for that timer before moving focus.
+  await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).focusTimersRun), { message: 'that timer, run' }).toBe(1);
   await page.evaluate(() => /** @type {HTMLElement} */ (document.activeElement).blur());
   await focusIsOff(page);
   app.rt.renameThread(topicId, 'The 1908 edition');

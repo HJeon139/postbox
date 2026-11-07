@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { updateKind } from '../shared/block-updates.mjs';
 import { CATALOG, validateBlock } from '../shared/catalog.mjs';
 
 const base = (type, extra) => ({ id: 'b1', type, version: 1, fallback: 'Plain text version.', ...extra });
@@ -200,4 +201,51 @@ test('#838 a choice’s and a select’s options may carry a description; nothin
   bad(base('choice', { options: [{ id: 'a', label: 'Keep it', description: 'x'.repeat(201) }] }), /description/);
   bad(base('choice', { options: [{ id: 'a', label: 'Keep it', description: '' }] }), /description/);
   bad(base('form', { fields: [{ id: 'f', label: 'Plan', kind: 'select', options: [{ value: 'a', label: 'Keep it' }] }] }), /unknown field “value”/);
+});
+
+test('#854 an update is a withdraw, an outcome or a whole block, in the order Postbox applies them', () => {
+  assert.equal(updateKind({ id: 'b1', withdraw: 'Stale.' }), 'withdraw');
+  // A withdraw wins over an outcome, and any withdraw field counts, even an empty one.
+  assert.equal(updateKind({ id: 'b1', withdraw: '', outcome: 'Filed as #1' }), 'withdraw');
+  assert.equal(updateKind({ id: 'b1', outcome: 'Filed as #1' }), 'outcome');
+  // An outcome that isn’t text is a whole block, which validateBlock then refuses.
+  assert.equal(updateKind({ id: 'b1', outcome: 1 }), 'block');
+  assert.equal(updateKind(base('choice', { options: [{ id: 'a', label: 'A' }] })), 'block');
+  for (const v of [null, undefined, 'x', 3]) assert.equal(updateKind(v), 'block');
+});
+
+test('#455 options that are all strings get one error that shows an option’s shape', () => {
+  const sizes = base('form', {
+    fields: [
+      { id: 'n', label: 'Name', kind: 'text' },
+      { id: 'size', label: 'Size', kind: 'select', options: ['Small', 'Medium', 'Large'] },
+    ],
+  });
+  assert.deepEqual(bad(sizes).errors, ['fields[1].options must be objects like { "id": "small", "label": "Small" }, not strings.']);
+  // A choice’s options are the same shape, and get the same one error.
+  assert.deepEqual(bad(base('choice', { options: ['Yes', 'No'] })).errors, ['options must be objects like { "id": "yes", "label": "Yes" }, not strings.']);
+  // One string among objects is that option’s own error, as before.
+  bad(base('choice', { options: [{ id: 'a', label: 'A' }, 'B'] }), /^options\[1\] must be an object, not a string\.$/);
+});
+
+test('with origins: “later”, an image’s scheme is checked and its origin is left to Postbox’s list', () => {
+  const image = (src) => base('image', { src, alt: 'x' });
+  const later = { origins: /** @type {const} */ ('later') };
+  ok(image('https://evil.example/x.png'), later);
+  ok(image('http://127.0.0.1:4191/media/x.png'), later);
+  bad(image('http://evil.example/x.png'), /^src must be an https address/, later);
+  bad(image('javascript:alert(1)'), /^src must be an https address/, later);
+  // Without it, the origin is checked as before, and no list allows none.
+  bad(image('https://evil.example/x.png'), /allowed origin/, { imageOrigins: ['https://www.gutenberg.org'] });
+  ok(image('https://www.gutenberg.org/x.png'), { imageOrigins: ['https://www.gutenberg.org'] });
+  bad(image('https://www.gutenberg.org/x.png'), /allowed origin \(none configured\)/);
+});
+
+test('#455 the shape error’s example is itself a valid option: an empty first string isn’t its label', () => {
+  const form = { id: 'f', type: 'form', version: 1, fallback: 'x', fields: [{ id: 's', label: 'Size', kind: 'select', options: ['', 'Large'] }] };
+  const v = validateBlock(form);
+  assert.equal(v.ok, false);
+  assert.match(v.errors.join(' '), /like \{ "id": "large", "label": "Large" \}/);
+  const blank = validateBlock({ ...form, fields: [{ ...form.fields[0], options: ['', ' '] }] });
+  assert.match(blank.errors.join(' '), /like \{ "id": "one", "label": "One" \}/);
 });
