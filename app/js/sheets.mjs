@@ -369,10 +369,11 @@ function boilerplateChips(bps, st, paint) {
   );
 }
 
-export function openNewAgent({ threadId = null, projectId: pid = null, preset = null, onCreated = null } = {}) {
-  const t = threadId ? S().threads[threadId] : null;
-  const projectId = t?.projectId ?? pid ?? Object.keys(S().projects)[0];
-  const bps = Object.values(S().boilerplates);
+/**
+ * What the new agent sheet starts with: the preset’s or the second boilerplate’s words and tools, and the first
+ * backend this computer runs, with a model and effort it takes.
+ */
+function newAgentChoices({ preset, bps, threadId }) {
   const st = {
     bp: preset ? null : (bps[1]?.id ?? bps[0]?.id),
     handle: preset?.handle ?? '',
@@ -396,6 +397,14 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
   if ((st.backend === 'codex' || st.backend === 'antigravity-cli') && !modelsFor(st.backend).includes(st.model) && modelsFor(st.backend).length)
     st.model = modelsFor(st.backend)[0];
   st.effort = effortNamedBy(st.backend, st.model) ?? st.effort;
+  return st;
+}
+
+export function openNewAgent({ threadId = null, projectId: pid = null, preset = null, onCreated = null } = {}) {
+  const t = threadId ? S().threads[threadId] : null;
+  const projectId = t?.projectId ?? pid ?? Object.keys(S().projects)[0];
+  const bps = Object.values(S().boilerplates);
+  const st = newAgentChoices({ preset, bps, threadId });
   const have = toolsInProject(projectId);
   const body = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
   // Each change repaints the sheet; focus stays on the control you used (#26).
