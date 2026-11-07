@@ -219,7 +219,9 @@ function failed(top, at, hits, risen) {
   if (hits.length) found.push(`${ternaries(hits.length)} on a changed line`);
   if (risen.length) found.push(`${risen.length === 1 ? '1 file' : `${risen.length} files`} with more than at ${at.slice(0, 8)}`);
   const how = 'Use an if, or a small named helper with early returns; a real exception carries lint-allow ternary: <reason>.';
-  console.log(`\nlint-ternary: ${found.join(', and ')}. ${how}`);
+  const n = hits.length + risen.length;
+  // The count after the name is what the pre-commit hook reads to name this lint (#787).
+  console.log(`\nlint-ternary: ${n} problem${n === 1 ? '' : 's'}: ${found.join(', and ')}. ${how}`);
   return 1;
 }
 
