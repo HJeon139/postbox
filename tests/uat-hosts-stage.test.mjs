@@ -157,7 +157,7 @@ test('#464 staging installs with the tag’s own install.mjs from a worktree in 
   });
   const host = { id: 'ho_1', name: DEST, settings: {} };
   await stageOlder({ root: '/repo', tag: 'v1.16.1', version: '1.16.1', data: hr.record.laptopData, label: 'host1', host }, { run: fakeGit(calls), load });
-  assert.deepEqual(calls[0], ['worktree', 'prune'], 'a worktree a killed run left registered is forgotten first');
+  assert.deepEqual(calls[0], ['worktree', 'list', '--porcelain', '-z'], 'a worktree a killed run left registered is looked for first (#766)');
   const tree = calls[1][3];
   assert.deepEqual(calls[1], ['worktree', 'add', '--detach', tree, 'v1.16.1']);
   assert.ok(tree.startsWith(join(dir, 'staged-')), 'in the run’s own folder');
