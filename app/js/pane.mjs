@@ -7,6 +7,7 @@
 
 import { h, icon } from './dom.mjs';
 import { refocusClosed } from './pane-focus.mjs';
+import { openLateThread } from './pane-late-thread.mjs';
 import { mountDivider } from './pane-split.mjs';
 import { mountWidth } from './pane-width.mjs';
 import { mountSidePanel } from './side-panel.mjs';
@@ -187,10 +188,14 @@ export function mountPane(convId) {
     }
   }
 
+  // A thread whose event lands after its address did, as Reply in thread’s can (#887).
+  const stopLate = openLateThread(convId, { mounted: () => thread !== null, set });
+
   return {
     el,
     set,
     destroy() {
+      stopLate();
       leaveFull({ focus: false });
       width.destroy();
       thread?.view.destroy();
