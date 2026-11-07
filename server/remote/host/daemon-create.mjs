@@ -27,7 +27,8 @@ import { askRunner as defaultAskRunner, launchRunner as defaultLaunchRunner, log
  *   logind: runner.mjs’s logindFacts, asked at each hello for the lingering warning and passed to launchRunner.
  *   uid: this user’s, which the token file must be owned by (-1 where there are no user IDs). onRemoved: `remove` has
  *   deleted ~/.postbox-remote and said `removed`, so the daemon exits. env: the daemon’s environment, which each runner
- *   inherits (read at each start, for KIRO_HOME).
+ *   inherits (read at each start, for KIRO_HOME). mono: a monotonic clock, which setting the time doesn’t move, for how
+ *   long a runner has been silent (daemon-running.mjs); now is the wall clock, for everything else.
  */
 export function createDaemon(opts) {
   const { broker, shim, ...o } = withDefaults(opts);
@@ -42,6 +43,7 @@ export function createDaemon(opts) {
     ids: 0,
     acked: new Map(),
     dead: new Set(),
+    silentSince: new Map(),
     killTimers: new Map(),
     shells: new Map(),
     stoppedFirst: new Set(),
@@ -69,6 +71,7 @@ function withDefaults({
   home,
   version = hostVersion(),
   now = Date.now,
+  mono = () => performance.now(),
   timers = { setTimeout: (fn, ms) => setTimeout(fn, ms).unref(), clearTimeout: (t) => clearTimeout(t) },
   spawn = nodeSpawn,
   logind = logindFacts,
@@ -95,6 +98,7 @@ function withDefaults({
     home,
     version,
     now,
+    mono,
     timers,
     spawn,
     logind,
@@ -162,6 +166,8 @@ function daemonApi(d) {
     scan: () => scan(d),
     /** How far Postbox has applied each turn’s out.jsonl, in this daemon’s life; `.ack` keeps it on disk. */
     acked: d.acked,
+    /** Turns whose runner is silent while its process runs, and since when (daemon-running.mjs), in this daemon’s life. */
+    silentSince: d.silentSince,
     cleanup: d.cleanup,
     /** A Postbox channel over a pair of streams, such as an ssh child’s, or PassThroughs in a test. @param {Parameters<typeof connectStreams>[1]} io */
     connect: (io) => connectStreams(d, io),

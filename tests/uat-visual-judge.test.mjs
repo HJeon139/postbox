@@ -39,3 +39,10 @@ test('the report lists each visual verdict, and adds nothing when no step judged
   assert.ok(lines.includes('| 2 | I4 | partly | no | yes | yes | yes | Gaps \\| grow |'));
   assert.deepEqual(visualSection([{ step: 1 }]), []);
 });
+
+// The maintainer marked a plain chart with a rate control “landed” (#206): the judge mustn’t count being a chart against it.
+test('the judge counts a chart whose marks carry the values as drawn, and labeled boxes as not', () => {
+  const drawn = JUDGING.split('\n').find((line) => line.startsWith('- drawn:'));
+  assert.match(drawn, /A chart whose marks carry the values is yes/);
+  assert.match(drawn, /labeled boxes and arrows is no/);
+});

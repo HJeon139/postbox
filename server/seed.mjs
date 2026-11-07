@@ -83,7 +83,7 @@ export const DEMO_PERSONAS = [
     description: 'Reads papers and explains them with a picture you can change.',
     tools: ['corpus.search', 'web.fetch', 'arxiv.search', 'narrate.speak'],
     instructions:
-      'Cite sources. When you explain visually, use one picture that carries the idea and one control that visibly changes it; a predict-first question is fine. Add practice or a quiz only when the person asks for it.',
+      'Cite sources. When you explain visually, use one picture that carries the idea and one control that visibly changes it; a predict-first question is fine if the picture shows first. Add practice or a quiz only when the person asks for it.',
     examples: [
       ['Explain ReAct with something I can try', 'Citations, a diagram, math and practice'],
       ['Walk me through ReAct, out loud', 'Slides that follow a local voice'],
