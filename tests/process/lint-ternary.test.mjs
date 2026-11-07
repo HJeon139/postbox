@@ -63,6 +63,7 @@ test('lint-ternary: a nested ternary on a line the change adds fails, in a new f
   const r = run(dir);
   assert.equal(r.status, 1, r.out);
   assert.match(r.out, /^dir é\/new file\.mjs:2: nested ternary on a changed line$/m);
+  assert.match(r.out, /^Compared with \w{8}, the merge base of HEAD with origin\/main\. If that is behind, run git fetch and try again\.$/m);
 });
 
 test('lint-ternary: an old nested ternary on a line the change doesn’t touch passes', () => {
@@ -161,10 +162,25 @@ test('lint-ternary: with no base to compare with, it fails in CI and skips elsew
   write(dir, 'old.mjs', `${OLD}${NEW_TERNARY}`);
   const inCi = run(dir, { CI: '1' });
   assert.equal(inCi.status, 1, inCi.out);
-  assert.match(inCi.out, /lint-ternary: failed, there is no origin\/main to compare with\./);
+  assert.match(inCi.out, /lint-ternary: failed, there is no origin\/main or upstream\/main to compare with\./);
   const local = run(dir);
   assert.equal(local.status, 0, local.out);
-  assert.match(local.out, /lint-ternary: skipped, there is no origin\/main to compare with\./);
+  assert.match(local.out, /lint-ternary: skipped, there is no origin\/main or upstream\/main to compare with\./);
+});
+
+test('lint-ternary: over an origin/main behind upstream/main, upstream’s own nested ternary doesn’t count (#786)', () => {
+  const { dir, git } = repo();
+  write(dir, 'up.mjs', NEW_TERNARY);
+  git('add', '.');
+  git('commit', '-q', '-m', 'upstream adds one');
+  git('update-ref', 'refs/remotes/upstream/main', 'HEAD');
+  const up = git('rev-parse', 'HEAD').trim();
+  write(dir, 'clean.mjs', 'export const plain = 1;\n');
+  git('add', '.');
+  git('commit', '-q', '-m', 'clean');
+  const r = run(dir);
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.out, new RegExp(`^lint-ternary: no nested ternary added since ${up.slice(0, 8)}: `, 'm'));
 });
 
 test('lint-ternary: diff.noprefix in a person’s own git config doesn’t change what is read', () => {

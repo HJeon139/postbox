@@ -12,15 +12,16 @@
 // so a whole file can’t opt out, and a failure in a file that has one says so. A `biome-ignore` for the rule would pass
 // here but fails `npm run lint` as an unused suppression, since the rule isn’t on in biome.json.
 //
-// The change is the diff from the merge base with main (tools/merge-base.mjs) to the working tree, so edits not yet
-// committed count too; files git doesn’t track yet don’t, and CI sees only committed files. Only added, modified and
-// renamed .mjs, .js and .cjs files are read, with the repo’s biome.json, so a file Biome doesn’t lint is skipped. Biome
-// runs once on those files, and once more on their blobs at the merge base and those of the deleted ones (a renamed
-// one’s under its old path, a new one counting 0), copied into a temp folder: `biome lint --stdin-file-path` prints no
-// diagnostics. Its cost grows with the changed files and their size, one `git show` each, never with the whole tree.
-// With no base, it fails in CI and skips elsewhere. `npm run lint:project` runs it.
+// The change is the diff from the merge base with main, or upstream’s when that is newer (tools/merge-base.mjs), to the
+// working tree, so edits not yet committed count too; files git doesn’t track yet don’t, and CI sees only committed
+// files. Only added, modified and renamed .mjs, .js and .cjs files are read, with the repo’s biome.json, so a file
+// Biome doesn’t lint is skipped. Biome runs once on those files, and once more on their blobs at the merge base and
+// those of the deleted ones (a renamed one’s under its old path, a new one counting 0), copied into a temp folder:
+// `biome lint --stdin-file-path` prints no diagnostics. Its cost grows with the changed files and their size, one
+// `git show` each, never with the whole tree. With no base, it fails in CI and skips elsewhere. `npm run lint:project`
+// runs it.
 //
-//   node tools/lint-ternary.mjs        against origin/main, or origin/$BASE_REF when that is set
+//   node tools/lint-ternary.mjs        against origin/main and upstream/main, or origin/$BASE_REF when that is set
 //   node tools/lint-ternary.mjs REF    against REF
 
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -30,7 +31,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addedRanges, DIFF_OPTIONS } from './diff-added-lines.mjs';
 import { allowedOnLine, isEntry } from './lint-lib.mjs';
-import { baseRef, mergeBase, noBase } from './merge-base.mjs';
+import { baseRefs, comparedWith, mergeBase, noBase } from './merge-base.mjs';
 
 const BIOME = fileURLToPath(new URL('../node_modules/@biomejs/biome/bin/biome', import.meta.url));
 const RULE = 'lint/style/noNestedTernary';
@@ -206,9 +207,10 @@ export function changedRanges(diff) {
 /**
  * Prints what a failing run found, and a line for each failing file whose lint-allow-file ternary excused nothing, and
  * returns the exit code.
- * @param {string} top @param {string} at @param {{ path: string, start: number }[]} hits @param {{ path: string, before: number, after: number }[]} risen
+ * @param {string} top @param {{ at: string, refs: string[] }} base @param {{ path: string, start: number }[]} hits
+ * @param {{ path: string, before: number, after: number }[]} risen
  */
-function failed(top, at, hits, risen) {
+function failed(top, { at, refs }, hits, risen) {
   for (const hit of hits) console.log(`${hit.path}:${hit.start}: nested ternary on a changed line`);
   for (const file of risen) console.log(`${file.path}: ${ternaries(file.after)}, up from ${file.before} not allowed at the base`);
   for (const path of new Set([...hits, ...risen].map((found) => found.path))) {
@@ -222,6 +224,7 @@ function failed(top, at, hits, risen) {
   const n = hits.length + risen.length;
   // The count after the name is what the pre-commit hook reads to name this lint (#787).
   console.log(`\nlint-ternary: ${n} problem${n === 1 ? '' : 's'}: ${found.join(', and ')}. ${how}`);
+  console.log(comparedWith(at, refs, process.env));
   return 1;
 }
 
@@ -235,10 +238,10 @@ function main() {
   }
   const git = (/** @type {string[]} */ args) =>
     execFileSync('git', args, { cwd: top, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 * 1024 * 1024 });
-  const ref = baseRef(process.argv[2], process.env);
-  const at = mergeBase(git, ref);
+  const candidates = baseRefs(process.argv[2], process.env);
+  const { at, refs } = mergeBase(git, candidates);
   if (!at) {
-    const result = noBase('lint-ternary', ref, process.env);
+    const result = noBase('lint-ternary', candidates.join(' or '), process.env);
     console.log(result.message);
     return result.code;
   }
@@ -257,7 +260,7 @@ function main() {
   const count = (/** @type {Hit[]} */ among, /** @type {string} */ path) => among.filter((hit) => hit.path === path).length;
   const unchanged = new Set(excess.filter((hit) => !hit.added).map((hit) => hit.path));
   const risen = [...unchanged].map((path) => ({ path, before: count(base, path), after: count(now, path) }));
-  if (hits.length || risen.length) return failed(top, at, hits, risen);
+  if (hits.length || risen.length) return failed(top, { at, refs }, hits, risen);
   console.log(`lint-ternary: no nested ternary added since ${at.slice(0, 8)}: each one here matches one there, moved or not.`);
   console.log('Files git doesn’t track aren’t checked: CI sees only committed files.');
   return 0;
