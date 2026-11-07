@@ -347,7 +347,7 @@ async function main() {
       timing.at(step);
       const answer = await timing.time('tester', () => tester.step(prompt, system));
       goals.took(phase);
-      timeline.push({ step, phase: ph.title, assessment: answer.assessment, action: answer.action });
+      timeline.push({ step, phase: ph.title, assessment: answer.assessment, action: answer.action, visual: answer.visual });
       log(`step ${step} · ${answer.assessment}`);
       for (const f of answer.findings) {
         const k = `tester:${f.title.toLowerCase().replace(/\W+/g, '-').slice(0, 60)}`;

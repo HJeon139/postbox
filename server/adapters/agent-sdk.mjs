@@ -99,14 +99,15 @@ export function sdkOptions({
  * What the person can change while a turn runs: the permission mode (#66), the model and the effort (#67), with the
  * running query’s setPermissionMode, setModel and applyFlagSettings({ effortLevel }). The SDK documents them for
  * streaming input only, and Postbox sends a turn’s prompt as one string, so each change is tried, and resolves to
- * whether it took effect now; if not, it applies from the next turn, since all three are passed with every turn.
- * @param {any} q  the running query
+ * whether it took effect now; if not, it applies from the next turn, since all three are passed with every turn. A turn
+ * started in bypass keeps it (#817): it loaded the person’s hooks, with no canUseTool or ask rules for writes outside.
+ * @param {any} q  the running query  @param {string} [started]  the Postbox mode the turn started in
  */
-export function liveControl(q) {
+export function liveControl(q, started = 'auto') {
   return {
     /** @param {string} mode  one of Postbox’s modes */
     async setPermissionMode(mode) {
-      if (typeof q?.setPermissionMode !== 'function' || !Object.hasOwn(MODES, mode)) return false;
+      if ((started === 'bypass' && mode !== 'bypass') || typeof q?.setPermissionMode !== 'function' || !Object.hasOwn(MODES, mode)) return false;
       try {
         await q.setPermissionMode(MODES[/** @type {keyof typeof MODES} */ (mode)]);
         return true;
@@ -262,7 +263,7 @@ export class AgentSdkAdapter {
     try {
       const q = this.sdk.query({ prompt, options });
       // A background job’s own Stop, while the CLI waits for it.
-      ctx.control?.({ ...liveControl(q), stopJob: (job) => stopJobUnder(child, job, procs) });
+      ctx.control?.({ ...liveControl(q, persona.permissionMode ?? 'auto'), stopJob: (job) => stopJobUnder(child, job, procs) });
       for await (const m of q) {
         mapper.push(m);
         // The skills and commands with their descriptions and argument hints (#67), once the session is up; init’s

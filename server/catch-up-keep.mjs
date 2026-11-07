@@ -6,16 +6,15 @@ import { parseMentions } from '../shared/text.mjs';
 import { CATCH_UP_CHARS } from './blocks.mjs';
 
 export const CATCH_UP_ITEMS = 40;
-/** How much a summary keeps of the messages that @-mention its agent, which come before the caps above (#484). Read
- * when called: blocks.mjs, which sets CATCH_UP_CHARS, imports this module's importers, so it isn't set at load. */
-const mentionChars = () => 2 * CATCH_UP_CHARS;
+/** How much a summary keeps of the messages that @-mention its agent, which come before the caps above (#484). */
+const MENTION_CHARS = 2 * CATCH_UP_CHARS;
 
 /** Whether an item’s text @-mentions this handle. */
 export const mentions = (item, handle) => typeof item?.text === 'string' && parseMentions(item.text, [handle]).includes(handle);
 
 /**
  * The lines a summary keeps, in order: the messages that @-mention the agent first (#484), the newest within a cap of
- * their own, mentionChars(), past `maxItems` and CATCH_UP_CHARS; then the newest of the rest within those. A thread's
+ * their own, MENTION_CHARS, past `maxItems` and CATCH_UP_CHARS; then the newest of the rest within those. A thread's
  * catch-up keeps them the same way, with its own item cap (#507, server/thread-summary.mjs).
  * @param {{ item: any, line: string }[]} entries @param {string} handle @param {number} [maxItems]
  */
@@ -24,7 +23,7 @@ export function keepFor(entries, handle, maxItems = CATCH_UP_ITEMS) {
   let size = 0;
   for (const e of entries.filter((x) => mentions(x.item, handle)).reverse()) {
     // The newest always goes, however long: its line is clipped already (describeItem).
-    if (kept.size && size + e.line.length > mentionChars()) break;
+    if (kept.size && size + e.line.length > MENTION_CHARS) break;
     kept.add(e);
     size += e.line.length;
   }

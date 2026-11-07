@@ -17,6 +17,7 @@
 // Everything in it is read back from disk, so each part is checked before it’s used, and a record that can’t be read
 // continues as an ordinary turn, as one from before it did.
 
+import { HANDLE } from '../../shared/limits.mjs';
 import { hostOf } from './turns-shared.mjs';
 
 /** The message kinds a turn is asked with (server/adapters/adapter.mjs). */
@@ -29,8 +30,6 @@ export const ORIGIN_MESSAGE_MAX = 32_000;
  * characters each, a 50,000-character message) with room to spare.
  */
 export const ORIGIN_REF_MAX = 16 * 1024 * 1024;
-/** As a persona’s handle is (Runtime.createPersona). */
-const HANDLE = /^[a-z][a-z0-9_-]{1,23}$/i;
 const SHA256 = /^[a-f0-9]{64}$/;
 /** A request that was kept but can’t be sent again exactly. */
 const LOST = Object.freeze({ message: null, lost: true });

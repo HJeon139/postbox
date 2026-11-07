@@ -3,7 +3,7 @@
 // add an agent the conversation doesn’t have, and the lines of side threads from before #372. Functions take the
 // Runtime first (architecture.md, “What a move may change”).
 
-import { HOP_LIMIT } from '../shared/limits.mjs';
+import { HANDLE, HANDLE_SHAPE, HOP_LIMIT } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
 import { askToAdd, askToWake, closeHop, closeOwnCard, dropHeld, retireStale } from './wake-cards.mjs';
@@ -15,14 +15,15 @@ export { HOP_LIMIT };
 
 // ── Agents waking agents ───────────────────────────────────────────────────────────
 
+/** What a wake from a summary's turn is told (#225): one text, whichever tool it came through. */
+export const SUMMARY_WAKES_NO_ONE = 'A summary for the conversation wakes no one: finish it, and the person decides the rest.';
+
 /**
  * An agent wakes another (#110, #228, #372): by an @-mention in what it said (itemId, that message) or by wake_agent. It
  * reaches the persona’s one session in the conversation, which answers there; a busy one takes the wake when its turn
  * ends, as any message to a busy agent waits. A persona the conversation doesn’t have needs the
  * person: a card asks to add it. After HOP_LIMIT wakes in a row without you, the next one waits for your confirm.
  */
-/** What a wake from a summary's turn is told (#225): one text, whichever tool it came through. */
-export const SUMMARY_WAKES_NO_ONE = 'A summary for the conversation wakes no one: finish it, and the person decides the rest.';
 
 export function agentWake(
   rt,
@@ -147,7 +148,14 @@ export function dropWakes(rt, se, how = 'stopped') {
 /** wake_agent { handle, message }, the tool, for the session rt.toolsFor made it for. A summary’s turn wakes no one (#225, agentWake). */
 export function wakeAgent(rt, sessionId, { handle, message }) {
   const text = String(message ?? '');
-  return tooLongToSend('A message to another agent', text) ?? rt.agentWake(sessionId, String(handle).replace(/^@/, ''), text);
+  const to = String(handle ?? '')
+    .trim()
+    .replace(/^@/, '');
+  const tooLong = tooLongToSend('A message to another agent', text);
+  if (tooLong) return tooLong;
+  // Checked before the lookup, whose refusal names the handle: it never echoes what isn’t one (#650).
+  if (!HANDLE.test(to)) return { ok: false, message: `That isn’t an agent’s handle: ${HANDLE_SHAPE}.` };
+  return rt.agentWake(sessionId, to, text);
 }
 
 /**

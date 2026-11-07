@@ -10,15 +10,16 @@
 // rule. A suppression in a file git ignores isn't read, and Biome skips that file too. With no base, it fails in CI
 // and skips elsewhere. `npm run lint:project` runs it.
 //
-//   node tools/lint-caps.mjs            against origin/main, or origin/$BASE_REF when that is set (CI's check job sets
-//                                       neither, so a pull request into another branch is compared with main)
+//   node tools/lint-caps.mjs            against origin/main and upstream/main, whichever is newer (#786), or
+//                                       origin/$BASE_REF when that is set (CI's check job sets neither, and has no
+//                                       upstream, so a pull request into another branch is compared with main)
 //   node tools/lint-caps.mjs REF        against REF
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { isEntry } from './lint-lib.mjs';
-import { baseRef, mergeBase, noBase } from './merge-base.mjs';
+import { baseRefs, comparedWith, mergeBase, noBase } from './merge-base.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const LENGTH = /** @type {const} */ ({ style: ['file', 'noExcessiveLinesPerFile'], complexity: ['function', 'noExcessiveLinesPerFunction'] });
@@ -235,10 +236,10 @@ function configs(rev) {
 }
 
 if (isEntry(import.meta.url, process.argv[1])) {
-  const ref = baseRef(process.argv[2], process.env);
-  const at = mergeBase(git, ref);
+  const candidates = baseRefs(process.argv[2], process.env);
+  const { at, refs } = mergeBase(git, candidates);
   if (!at) {
-    const r = noBase('lint-caps', ref, process.env);
+    const r = noBase('lint-caps', candidates.join(' or '), process.env);
     console.log(r.message);
     process.exit(r.code);
   }
@@ -252,6 +253,7 @@ if (isEntry(import.meta.url, process.argv[1])) {
     console.log(
       `\nlint-caps: ${problems.length} problem${problems.length === 1 ? '' : 's'}. A length limit only comes down: move a concern into a module of its own instead (designs/architecture.md, “Module and function size: a ceiling that only comes down”).`,
     );
+    console.log(comparedWith(at, refs, process.env));
     process.exitCode = 1;
   } else console.log(`lint-caps: no length limit loosened since ${at.slice(0, 8)}.`);
 }

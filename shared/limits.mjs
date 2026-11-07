@@ -61,7 +61,22 @@ export const READING = Object.freeze({
 export const SENDING = Object.freeze({
   /** A message to another agent with wake_agent, and a post to the conversation with bring_to_conversation. */
   message: 50_000,
+  /** The handles one open_topic wakes with its first message (#650). */
+  mentions: 16,
 });
+
+/**
+ * How long a remote turn may wait in silence on a background task before it’s stopped as hung (#847). The longest a
+ * Claude Code background Bash call may run (its timeout’s maximum, 7,200,000 ms), so Postbox never stops one first.
+ */
+export const QUIET = Object.freeze({
+  backgroundMax: 2 * 60 * 60 * 1000,
+});
+
+/** A persona’s handle (Runtime.createPersona), which a handle an agent sends must match before it’s looked up (#650). */
+export const HANDLE = /^[a-z][a-z0-9_-]{1,23}$/i;
+/** What HANDLE allows, for a refusal that can’t echo what it was sent: that’s an agent’s text. */
+export const HANDLE_SHAPE = 'a handle is 2–24 letters, digits, - or _, and starts with a letter, such as “critic”';
 
 /**
  * What a conversation’s asset store holds (#516 S3, designs/architecture.md, “Assets”). A write past one is refused,

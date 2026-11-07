@@ -1,10 +1,15 @@
-# A1b: a new card takes an agent’s need only as `nextNeed` would choose it
+# A1b: `offerNeed` ranks two cards with the comparison `nextNeed` uses
 
 **Status:** the design for #508’s A1b (#711), rescoped after the integrator’s review of #781: the maintainer chose to shrink A1b to one tie rule and move the rest of A1 to A2. Citations are by file and function, read at `main` `23f09f80`; the code PR re-reads each one at its head. Its code is not built yet.
 
-**What A1b is now.** #633 already derives an agent’s need from its cards (`nextNeed`, `server/card-needs.mjs`). Of the places that choose between two of an agent’s cards, two already agree, and the third, `offerNeed`, doesn’t: it lets any card of the same rank take the need, older or newer. A1b makes `offerNeed` choose as `nextNeed` would, and gives `needsOrder` a last tiebreak that doesn’t depend on the runtime’s locale. `card.held` stays as it is, and everything else in A1’s row of `design.md`’s rollout moves to A2 by name (§6).
+**What A1b is now.** #633 already derives an agent’s need from its cards (`nextNeed`, `server/card-needs.mjs`). Of the places that choose between two of an agent’s cards, two already agree, and the third, `offerNeed`, doesn’t: it lets any card of the same rank take the need, older or newer. A1b makes `offerNeed` rank two cards with the comparison `nextNeed` uses, and gives `needsOrder` a last tiebreak that doesn’t depend on the runtime’s locale. `card.held` stays as it is, and everything else in A1’s row of `design.md`’s rollout moves to A2 by name (“What moves to A2”).
 
-**Requirements served:** AT-4 in part: every place that sets an agent’s need picks the card `nextNeed` would. The rest of AT-4, needs-you with a room’s items not loaded, moves to A2. AT-1 and DL-1 stay as on `main`: nothing held moves or is dropped.
+**Requirements served:** AT-4 in part: every place that chooses between two of an agent’s cards ranks two cards it can read the same way, rank then time, through one comparison. That isn’t the same as always picking the card `nextNeed` would, and it doesn’t claim to be. Three cases still differ, each on purpose or out of A1b’s reach:
+- **A tie on `at`:** `offerNeed` gives it to the offered card, the challenger; `nextNeed` gives it to the card it reads later, as the table in “Invariants and the failure table” shows for two threads.
+- **A dead need of a higher rank:** R8 lets an older card past a dead need of the same rank only. A dead permission need (rank 0) still keeps a live hop (rank 5) from taking it, though `nextNeed` wouldn’t count the dead permission.
+- **`keptOrNext`** keeps, on purpose, needs that `nextNeed` doesn’t count: a kept block from an older turn, or a host’s permission not yet waited on after a restart (#633).
+
+The rest of AT-4, needs-you with a room’s items not loaded, moves to A2. AT-1 and DL-1 stay as on `main`: nothing held moves or is dropped.
 
 ## 1. Decisions
 
@@ -14,7 +19,7 @@
 | R2 | Shrink A1b to the tie rule, and move the rest of A1 to A2. | the maintainer |
 | R3 | No `asksOf`: the page’s `openAsks` is out of a server function’s reach without new published state, so nothing would read it. | review |
 | R4 | No item-id tiebreak: ties go to the challenger, as `comesFirst` and `keptOrNext` already decide them, and ids are random. | review, on the code |
-| R5 | One comparison, `challengerWins`, decides rank-then-time for `comesFirst`, `keptOrNext` and `offerNeed`, and `offerNeed` uses it (§3). | review |
+| R5 | One comparison, `challengerWins`, decides rank-then-time for `comesFirst`, `keptOrNext` and `offerNeed`, and `offerNeed` uses it (“The design”). | review |
 | R6 | `needsOrder` breaks its last tie by code unit, not `localeCompare`. | review |
 | R7 | The rule that review holds every route to public data moves its trigger from A1b to A2’s first private data. | review, read as a security change |
 | R8 | On equal rank, an older card still takes the need when the current need’s card no longer waits, by `needOf`’s own test, so a dead need never keeps a live card from being flagged. | review, for the dead-need case after a restart |
@@ -75,7 +80,7 @@ A host that forgot the prompt sends neither before it sends its older prompts ag
 - **The `needAppSend` spec:** the card that is the need is offered again with a new count; its text updates. It passes on `main` and guards the same-card rule.
 - **The permission-stays spec:** a permission is the need, and a hop is offered; the permission stays.
 - **The dead-need spec:** after a restart, a host’s newer permission card is the need, open but not in `rt.permissionWaits` (its host has expired or forgotten it), and no resolver has run. The host sends its older prompt again, and `waitOn` offers that card. The older card takes the need, and `nextNeed` agrees. A second case sends the newer prompt next: it takes the need back. A third has a laptop permission that waits as the need, and an older permission offered: the laptop one stays. The first case fails with the age check and without R8.
-- **The one-comparison spec:** pairs of cards fed to `nextNeed`, `keptOrNext` (through `settledNeed`, since it isn’t exported) and `offerNeed`, in both orders, with fixed `at`s, including equal ones in one thread; all three agree. A mutant that adds an id tiebreak fails it.
+- **The one-comparison spec:** pairs of cards fed to `nextNeed`, `keptOrNext` (through `settledNeed`, since it isn’t exported) and `offerNeed`, in both orders, with fixed `at`s, including equal ones in one thread. “Agree” means each picks the same card once the challenger and the incumbent are fixed by read order: the card `nextNeed` reads later is the challenger, `next` for `keptOrNext`, and the offered card for `offerNeed`. `keptOrNext` returns `nextNeed`’s pick, so it agrees in both orders; only `offerNeed`’s challenger is the offered card. With that fixed, all three agree, ties included. The spec doesn’t ask `offerNeed` to match `nextNeed` when the offered card is the one `nextNeed` reads first, since on a tie they then differ by design. A mutant that adds an id tiebreak fails it.
 - **The locale spec:** two session ids that differ only in case (`se_B`, `se_a`); `needsOrder` orders them by code unit.
 - **Mutants:** dropping the same-card rule fails the `needAppSend` spec; dropping the age check fails the `waitOn` spec; dropping the dead-need rule fails the dead-need spec; reading “waits” with `stillWaits` instead of `needOf` fails the dead-need spec’s third case; dropping `awayFrom` fails the side-thread spec; and inlining the opposite tie direction at any one of the three sites fails the one-comparison spec.
 

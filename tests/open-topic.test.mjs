@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { isQuietTool } from '../server/adapters/claude-stream.mjs';
 import { READ_TOOLS } from '../server/mcp.mjs';
 import { threadCatchUp } from '../server/thread-summary.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
@@ -234,4 +235,10 @@ test('open_topic refuses a mention with a message of only spaces, and mentions t
   assert.equal(r?.[1]?.ok, false, JSON.stringify(r?.[1]));
   assert.match(r[1].message, /names no handle/);
   assert.equal(topics(f.store).length, 0, 'nothing opened');
+});
+
+test('open_topic is quiet, as wake_agent is (#654)', () => {
+  // It shows in the conversation as the topic it opens and the message it posts, not as a step; every backend asks this.
+  assert.equal(isQuietTool('mcp__postbox__wake_agent'), true);
+  assert.equal(isQuietTool('mcp__postbox__open_topic'), true);
 });

@@ -23,6 +23,7 @@ import { test } from 'node:test';
 const PUBLISHED = {
   'apps.mjs': ['appEvent', 'resolveAppSend'], // the page’s app events and an app send it answers: what the person sees
   'blocks.mjs': ['act', 'answerDelivered'], // the person’s answer to a block they see
+  'card-needs.mjs': ['dismissFailed'], // the person’s Dismiss on a failed reply they see (#883)
   'item-lines.mjs': ['topicRootLine', 'describeItem'], // a read tool and a prompt
   'catch-up.mjs': ['catchUp', 'pointerIfSeen'], // the prompt for a later turn
   'permission-cards.mjs': ['resolvePermission', 'resolveDenial'], // the person’s answer to a card they see
@@ -111,7 +112,7 @@ const PENDING = {
   'side-threads.mjs': ['agentWake', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'], // the reply with the mention, a side line right after its add, and sweeps of hop cards
   'thread-erase.mjs': ['eraseThreads'], // a thread’s apps, removed in a sweep
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
-  'topic-open.mjs': ['startTopic', 'startTopic', 'openTopic', 'conversationOf', 'conversationOf', 'repeated'], // one topic per message, the opener's woke, the item's thread and I6's check, each maybe held behind a commit (#637)
+  'topic-open.mjs': ['startTopic', 'startTopic', 'openTopic', 'conversationOf', 'conversationOf', 'repeatOf'], // one topic per message, the opener's woke, the item's thread and I6's check, each maybe held behind a commit (#637)
   'wake-cards.mjs': ['declinedAdd', 'openCard'], // a declined add, so a mention asks no more (#693); another wake’s held hop card, so a second isn’t made
   'write-intent.mjs': ['stillOpen'], // the turn’s own lines, and the person’s held Stop on one
 };
@@ -130,7 +131,7 @@ const LEDGER = {
 /** Production commits, with the lists each touches. */
 const COMMITS = {
   'asset-orphans.mjs': ['sweepAssets'], // the released hashes a load deleted: assetReleases only (#516 S3)
-  'assets.mjs': ['writeAsset'], // an asset version: assets and assetReleases only, none of items, work or apps (#516 S3)
+  'assets.mjs': ['writeAsset'], // an asset version: assets, assetRooms and assetReleases only, none of items, work or apps (#516 S3)
 };
 
 const DECL =

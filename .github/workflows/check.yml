@@ -5,6 +5,11 @@ on:
   pull_request:
   push:
     branches: [main]
+    # Not for a push that changes only these, which is what the release commit changes: the merge before it was
+    # checked already, and every pull request’s next run checks the new version. A full run on each release commit
+    # doubled main’s runs per merge. A merge that changes only these, such as a lock-file fix, isn’t checked on main
+    # either: its pull request was, and the next merge releases it (release.yml).
+    paths-ignore: [package.json, package-lock.json, CHANGELOG.md]
 
 permissions:
   contents: read

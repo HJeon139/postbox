@@ -2,6 +2,164 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.36.4 (2026-11-07)
+
+### Fixes
+
+- **app:** Reply in thread’s own focus timer leaves focus the person moved (#887)
+- **app:** open a topic thread’s panel when its event lands after its address
+
+## 1.36.3 (2026-11-07)
+
+### Fixes
+
+- **app:** the view notes a shrink at once for a removal-only batch and a whole redraw (#903)
+- **app:** the view's change watcher reads the page at most once a frame
+- **lint:** lint-ternary and lint-caps compare with upstream/main when it is newer
+- **hooks:** the hook names lint-ternary, and npm run hooks says what it changes
+- **lint:** lint-ternary lets a pure move of an old nested ternary through
+- **lint:** lint-ternary honors a line-level lint-allow ternary with a reason
+
+## 1.36.2 (2026-11-07)
+
+### Fixes
+
+- **remote:** only a result holds off the stall stop, and each task keeps its own 2 h (#847)
+- **remote:** a listed background task holds off the stall stop for up to 2 h (#847)
+- **permissions:** name PermissionRequest hooks in the panel, with each hook's event
+- **permissions:** hide credentials in hook matchers, as in their commands
+
+## 1.36.1 (2026-11-07)
+
+### Fixes
+
+- **server:** refuse a topic-thread send to an unavailable agent before it joins
+- **server:** refuse requests about an unregistered backend with a 422
+- **server:** fail a turn for an unregistered backend with a reason and Retry
+
+## 1.36.0 (2026-11-07)
+
+### Features
+
+- **state:** apply turn.archive, a public event nothing emits yet
+- **uat:** the failed-reply-dismissed trigger (#883)
+- **threads:** Dismiss a failed reply without running it again (#883)
+
+### Fixes
+
+- **threads:** after Dismiss, focus stays on the control that's left (#883)
+
+## 1.35.6 (2026-11-07)
+
+### Fixes
+
+- **assets:** a rename of a deleted asset is refused, and says to restore it first
+- **state:** the asset handlers check their payload before changing anything
+- **assets:** a rename or delete retried without an op is a repeat, and another agent's is stale
+
+## 1.35.5 (2026-11-07)
+
+### Fixes
+
+- **thread:** a redraw of the conversation keeps focus and the caret where you were typing
+- **blocks:** an update that changes nothing the person sees leaves a waiting block as it was
+
+## 1.35.4 (2026-11-07)
+
+### Fixes
+
+- **tests:** flag a bare account key before "=" only where toml puts a key
+- **tests:** clear the recording person's plugins and own skills from two claude code inits
+- **tests:** the commit scan checks the name of every path a commit adds, copies or renames
+- **tests:** the commit scan masks a private file name in every finding in that file
+- **tests:** the privacy checks print a finding's kind, file and line, never what they found
+- **tests:** the tree test and the commit scan check the names of the files they read
+- **tests:** the privacy check flags bearer tokens, uid fields and bare or toml account fields
+- **tests:** clear recorded inits' connectors and plugins, and flag a connector a person named
+- **tests:** clear the recorded codex resume turn's account metadata and drop its privacy exemption
+
+## 1.35.3 (2026-11-07)
+
+### Fixes
+
+- **blocks:** a chosen option's description reads on its chip in the light theme (#873)
+
+## 1.35.2 (2026-11-07)
+
+### Fixes
+
+- **adapters:** count open_topic among Postbox’s quiet tools
+- **uat:** find a message’s thread link by its class, not by the word “thread”
+- **server:** open_topic says whether it posted its message, and by which id
+- **server:** cap open_topic’s mentions and check each handle’s shape first
+- **server:** import SUMMARY_MODEL from its own module, out of the catch-up cycle
+- **remote:** the follower ends a turn through followerEnds, and the design says so (#738)
+- **remote:** log a silent host runner as not answering as its runner (#738)
+- **remote:** time a silent host runner on a monotonic clock
+- **remote:** keep a silent host runner running while its process lives
+
+## 1.35.1 (2026-11-07)
+
+### Fixes
+
+- **skills:** the visual explainer also loads on questions about how code is put together
+- **skills:** the visual explainer loads on everyday asks about code and data
+
+## 1.35.0 (2026-11-06)
+
+### Features
+
+- **uat:** a scenario can put the person’s own files in the workspace
+
+### Fixes
+
+- **app:** choices are fitted in one pass, so a room's choices cost one layout, not one each
+- **app:** timeOf and dayOf format with one Intl.DateTimeFormat each, made once
+
+## 1.34.1 (2026-11-06)
+
+### Fixes
+
+- **skills:** a chart whose marks carry the values counts as drawn
+- **agents:** a predict-first question sits beside the picture, never in front of it
+
+## 1.34.0 (2026-11-06)
+
+### Features
+
+- **uat:** the customer judges the visual, with `- judge: visual`
+
+### Fixes
+
+- **agents:** a picture that explains draws the things, not labeled boxes
+- **uat:** the customer's relationship check applies where the idea is a dependence
+- **skills:** VE11 applies only where the idea is a relationship between variables
+
+## 1.33.0 (2026-11-06)
+
+### Features
+
+- **security:** the permissions panel names the PreToolUse hooks Postbox turns off (#817)
+
+### Fixes
+
+- **security:** the hook list hides values named like credentials, and bearer tokens (#817)
+- **security:** an Agent SDK turn started in bypass keeps it until it ends or is stopped (#817)
+- **security:** the hook list marks every format character, filler, tag and variation selector (#817)
+- **security:** the hooks panel doesn’t say there are none when no file could be read (#817)
+- **security:** the hooks panel says a host agent’s list is this computer’s settings (#817)
+- **security:** the hook list marks bidi and zero-width characters like control characters (#817)
+- **security:** Postbox’s own settings turn off hooks and mods in every mode but bypass (#817)
+
+## 1.32.1 (2026-11-06)
+
+### Fixes
+
+- **agents:** the researcher's picture is for visual explanations, with predict-first kept
+- **mock:** the demo explainer shows a picture with a control, and practice only on request
+- **skills:** list all twelve content shapes in the visual-explainer run
+- **agents:** an explainer is a picture with a control, and practice only on request
+
 ## 1.32.0 (2026-11-06)
 
 ### Features

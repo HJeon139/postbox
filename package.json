@@ -1,6 +1,6 @@
 {
   "name": "postbox",
-  "version": "1.32.0",
+  "version": "1.36.4",
   "description": "A chat room for directing several AI agents, where agents reply with software they write.",
   "license": "Apache-2.0",
   "type": "module",
@@ -36,7 +36,7 @@
     "uat": "node tools/uat-run.mjs",
     "lint:commits": "node tools/lint-commits.mjs",
     "release": "node tools/release.mjs",
-    "hooks": "git config core.hooksPath .githooks",
+    "hooks": "node tools/hooks.mjs",
     "prepack": "node server/build-info.mjs pack",
     "postpack": "node server/build-info.mjs unpack"
   },

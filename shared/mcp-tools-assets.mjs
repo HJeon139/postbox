@@ -48,7 +48,8 @@ export const ASSET_TOOLS = [
   },
   {
     name: 'rename_asset',
-    description: 'Give an asset a new name, as a new version with the same content.',
+    description:
+      'Give a live asset a new name, as a new version with the same content. To rename a deleted one, bring it back first, with restore_asset or a write_asset to its id and base.',
     inputSchema: write({ id, base, name: { type: 'string' } }, ['id', 'base', 'name']),
   },
   {
