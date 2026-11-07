@@ -1,8 +1,7 @@
 // The host’s shim’s tool calls (#120): a tool call sent to the daemon, queued or waited on, and permission_prompt,
 // which waits for the person’s answer or denies at permissionWaitMax. shim.mjs’s header says how each waits.
 
-import { updateKind } from '../../../shared/block-updates.mjs';
-import { validateBlock } from '../../../shared/catalog.mjs';
+import { hostUpdateRefusal } from '../../../shared/block-updates.mjs';
 import { NOT_YOUR_PROMPT, TOOL_DEFS } from '../../../shared/mcp-tools.mjs';
 import { encode, message, TOOL_ROUTES, toolRoute } from '../../../shared/remote-protocol.mjs';
 import { fail, minutes, queuedText, respond, send, textResult } from './shim-harness.mjs';
@@ -29,10 +28,8 @@ export function toolCall(sh, rpcId, params) {
   // A queued call is answered before the daemon sees it, so an update the daemon would refuse is refused here, in the
   // call, with its words (broker-tools.mjs’s prepare, #854). Postbox checks an outcome or a withdraw. A call that
   // carries files waits for the daemon’s own answer instead.
-  if (route === 'queue' && name === 'update_block' && updateKind(args.block) === 'block') {
-    const v = validateBlock(args.block, { origins: 'later' });
-    if (!v.ok) return respond(rpcId, textResult(`The update was invalid and wasn’t applied: ${v.errors.join(' ')}`, true));
-  }
+  const refused = route === 'queue' && name === 'update_block' ? hostUpdateRefusal(args.block) : null;
+  if (refused) return respond(rpcId, textResult(refused, true));
   // show_app without an id gets one here, so the text can name it and the agent can update it; the laptop would
   // pick one the same way (newId('app')).
   const sent = name === 'show_app' && typeof args.id !== 'string' ? { ...args, id: `app_${sh.nextId()}` } : args;
