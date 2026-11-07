@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.35.6 (2026-11-07)
+
+### Fixes
+
+- **assets:** a rename of a deleted asset is refused, and says to restore it first
+- **state:** the asset handlers check their payload before changing anything
+- **assets:** a rename or delete retried without an op is a repeat, and another agent's is stale
+
 ## 1.35.5 (2026-11-07)
 
 ### Fixes

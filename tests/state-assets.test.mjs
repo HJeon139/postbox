@@ -67,6 +67,8 @@ test('asset.released drops hashes from the releases', () => {
 test('an asset event with missing or out-of-order data throws, and changes nothing', () => {
   for (const [type, data] of [
     ['asset', { id: 'as_9', room: 'r1' }],
+    ['asset', { room: 'r1', name: 'b.md', created: 10 }],
+    ['asset', { id: 'as_9', name: 'b.md', created: 10 }],
     ['asset.version', { id: 'as_none', version: version(1) }],
     ['asset.version', { id: 'as_1' }],
     // Version v is always versions[v - 1], which a write’s checks rely on: the next one is 2, never 3 or 1 again.
@@ -80,4 +82,45 @@ test('an asset event with missing or out-of-order data throws, and changes nothi
     assert.throws(() => apply(s, type, data), Error, type);
     assert.equal(JSON.stringify(s), before, `${type} left the state as it was`);
   }
+});
+
+test('a wrong-typed asset event throws before it changes anything (#702)', () => {
+  const wrong = [];
+  for (const [label, type, data] of [
+    ['prunes: null', 'asset.version', { id: 'as_1', version: version(2), prunes: null, released: [] }],
+    ['released: 5', 'asset.version', { id: 'as_1', version: version(2), prunes: [1], released: 5 }],
+    ['a live asset renamed to 5', 'asset', { id: 'as_1', room: 'r1', name: 5, created: 10 }],
+    ['a new asset named 5, in a new room', 'asset', { id: 'as_9', room: 'r9', name: 5, created: 10 }],
+    ['a new asset with an empty name', 'asset', { id: 'as_9', room: 'r1', name: '', created: 10 }],
+    // Not only the types the issue named: a guard narrowed to them (=== 'number', === null) lets these half-apply.
+    ["prunes: 'x'", 'asset.version', { id: 'as_1', version: version(2), prunes: 'x', released: [] }],
+    ['prunes: {}', 'asset.version', { id: 'as_1', version: version(2), prunes: {}, released: [] }],
+    ['released: {}', 'asset.version', { id: 'as_1', version: version(2), prunes: [1], released: {} }],
+    ["released: 'x'", 'asset.version', { id: 'as_1', version: version(2), prunes: [1], released: 'x' }],
+    ['a live asset renamed to {}', 'asset', { id: 'as_1', room: 'r1', name: {}, created: 10 }],
+    ["a live asset renamed to ['a']", 'asset', { id: 'as_1', room: 'r1', name: ['a'], created: 10 }],
+    ['a live asset renamed to true', 'asset', { id: 'as_1', room: 'r1', name: true, created: 10 }],
+    ['a new asset named {}, in a new room', 'asset', { id: 'as_9', room: 'r9', name: {}, created: 10 }],
+  ]) {
+    const s = made();
+    const before = JSON.stringify(s);
+    let threw = false;
+    try {
+      apply(s, type, data);
+    } catch (e) {
+      threw = e instanceof Error;
+    }
+    if (!threw) wrong.push(`${label}: applied`);
+    else if (JSON.stringify(s) !== before) wrong.push(`${label}: changed the state, then threw`);
+  }
+  assert.deepEqual(wrong, []);
+});
+
+test('a name with quotes, <, & or NUL is an ordinary name in the reducer, kept as its own key', () => {
+  // Agent text: nameProblem refuses a NUL upstream (server/assets.mjs), but the reducer neither throws on it nor escapes it.
+  const s = made();
+  const name = 'a"<&\u0000.md';
+  apply(s, 'asset', { id: 'as_1', room: 'r1', name, created: 10 });
+  assert.equal(s.assets.as_1.name, name);
+  assert.deepEqual(Object.entries(s.assetRooms.r1.names), [[name, 'as_1']]);
 });
