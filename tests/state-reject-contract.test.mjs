@@ -44,6 +44,13 @@ export const VALID = {
   notify: { text: 'hi' },
   host: { id: 'h2', name: 'host two' },
   'host.status': { id: 'h', status: { state: 'connected' } },
+  'turn.archive': {
+    convId: 't',
+    turnId: 'tu',
+    sha256: 'a'.repeat(64),
+    summary: { id: 'wa_tu', kind: 'turn-archive', turnId: 'tu', at: 1, sha256: 'a'.repeat(64), entryIds: ['w'] },
+    items: [{ threadId: 't', id: 'i' }],
+  },
 };
 
 /** Every key path of a payload, as arrays. */
