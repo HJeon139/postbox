@@ -1,7 +1,7 @@
 // The plugin Postbox puts in an Antigravity agent’s folder for a turn: its files, where it goes, and keeping it out of
 // git status.
 
-import { chmod, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { agyHooksJson, HOOK_TIMEOUT_S } from './agy-hook.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
@@ -16,6 +16,22 @@ export const agyPlugin = ({ mcpUrl, rules, hookCommand = null, hookTimeout = HOO
   'rules/AGENTS.md': rules,
   ...(hookCommand ? { 'hooks.json': `${JSON.stringify(agyHooksJson(hookCommand, hookTimeout), null, 2)}\n` } : {}),
 });
+/**
+ * Writes the plugin’s files (agyPlugin) into its folder, `dir`. hooks.json is removed first, since a turn before left it
+ * read-only, and set read-only again once it’s written.
+ * @param {string} dir @param {Record<string, string>} files
+ */
+export async function writeAgyPlugin(dir, files) {
+  for (const [path, text] of Object.entries(files)) {
+    const file = join(dir, path);
+    await mkdir(dirname(file), { recursive: true });
+    if (path === 'hooks.json') await rm(file, { force: true }).catch(() => {});
+    await writeFile(file, text, path === 'hooks.json' ? { mode: 0o444 } : undefined);
+    // The umask masks writeFile’s mode (077 leaves 0o400), so hooks.json is set to 0o444 after it’s written (#730).
+    if (path === 'hooks.json') await makeReadOnly(file);
+  }
+}
+
 /** Where the plugin goes in the agent’s folder. */
 export const PLUGIN_DIR = join('.agents', 'plugins', POSTBOX_SERVER);
 

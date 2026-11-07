@@ -47,13 +47,13 @@
 // Stop sends SIGINT, then SIGKILL if the CLI doesn’t exit. POSTBOX_AGY_RECORD=<folder> saves each turn’s raw stream.
 
 import { spawn } from 'node:child_process';
-import { mkdir, rm, rmdir, writeFile } from 'node:fs/promises';
+import { rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_PROMPTS, HOOK_SCRIPT } from './agy-hook.mjs';
-import { agyPlugin, excludeFile, excludePlugin, makeReadOnly, PLUGIN_DIR } from './agy-plugin.mjs';
+import { agyPlugin, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
 import { clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
 import { toolOf } from './agy-tools.mjs';
@@ -607,14 +607,7 @@ export class AntigravityCliAdapter {
         await excludePlugin(cwd).catch(() => false);
       }
       const hookCommand = useHook ? agyHookCommand(this.hookScript) : null;
-      for (const [path, text] of Object.entries(agyPlugin({ mcpUrl: ctx.mcpUrl, rules, hookCommand }))) {
-        const file = join(plugin, path);
-        await mkdir(dirname(file), { recursive: true });
-        if (path === 'hooks.json') await rm(file, { force: true }).catch(() => {});
-        await writeFile(file, text, path === 'hooks.json' ? { mode: 0o444 } : undefined);
-        // The umask masks writeFile’s mode (077 leaves 0o400), so hooks.json is set to 0o444 after it’s written (#730).
-        if (path === 'hooks.json') await makeReadOnly(file);
-      }
+      await writeAgyPlugin(plugin, agyPlugin({ mcpUrl: ctx.mcpUrl, rules, hookCommand }));
       const hookConfirmed = Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript })));
       // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
       if (useHook && !hookConfirmed) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));
