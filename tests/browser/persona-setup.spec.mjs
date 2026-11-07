@@ -48,7 +48,7 @@ test('#57 the persona editor shows both setup controls, with help, works from th
   const persona = app.rt.createPersona({ handle: 'checker', backend: 'claude-code' });
   expect.soft([persona.usesHostSetup, persona.canPublish], 'a new persona uses your setup and can’t publish').toEqual([true, false]);
   await personas(page);
-  await page.getByRole('button', { name: 'Edit @checker', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit checker', exact: true }).click();
   const setup = await setupBox(page, 'pe-setup', 'Uses your Claude Code setup', /skills, commands, plugins and permission rules/);
   await expect.soft(setup, 'Isolated keeps the folder’s local file').toHaveAccessibleDescription(/folder’s local file, where Always allow saves/);
   await expect.soft(setup, 'on by default').toHaveAttribute('aria-checked', 'true');

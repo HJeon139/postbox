@@ -111,7 +111,7 @@ export function stopNote(se) {
   if (!host || !busy(se)) return null;
   const n = runningJobs(se).length;
   if (!n) return null;
-  return `Stop also stops @${se.handle}’s ${n === 1 ? 'background job' : `${n} background jobs`} on ${host.name}: a job on a host stops with its turn.`;
+  return `Stop also stops ${se.handle}’s ${n === 1 ? 'background job' : `${n} background jobs`} on ${host.name}: a job on a host stops with its turn.`;
 }
 
 /**

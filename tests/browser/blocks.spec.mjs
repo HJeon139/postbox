@@ -83,7 +83,7 @@ async function conversation(page, title, ask, origin = app.origin) {
   const se = rt.sessionsIn(thread.id)[0];
   const itemOf = (id) => rt.store.items(thread.id).find((i) => i.kind === 'block' && i.block.id === id);
   rt.sendMessage(thread.id, { text: ask });
-  await expect.poll(() => rt.turns.size === 0 && rt.store.items(thread.id).some((i) => i.kind === 'block'), { message: `@drafter to show ${ask}` }).toBe(true);
+  await expect.poll(() => rt.turns.size === 0 && rt.store.items(thread.id).some((i) => i.kind === 'block'), { message: `drafter to show ${ask}` }).toBe(true);
   await page.goto(`${origin}/#/t/${thread.id}`);
   await synced(page, app);
   const block = (id) => page.locator(`[data-block-item="${itemOf(id)?.id}"]`);
@@ -129,7 +129,7 @@ test('#106 the agent withdraws a choice it asked: it reads by whom and why, and 
   const r = tools.update_block({ block: { id: 'stale', withdraw: 'You answered in chat.' } });
   expect(r.ok, `the agent withdraws it (${r.message})`).toBe(true);
   expect(store.state.sessions[se.id].needs, 'its agent no longer needs you once it’s withdrawn').toBe(null);
-  await expect(block('stale').locator('.closed-note')).toHaveText(/^Withdrawn by @drafter at \d\d:\d\d: You answered in chat\.$/);
+  await expect(block('stale').locator('.closed-note')).toHaveText(/^Withdrawn by drafter at \d\d:\d\d: You answered in chat\.$/);
   const s = await shown(block('stale'));
   expect([s.dismiss, s.answered, s.enabled], 'it’s closed: no Dismiss, and nothing to answer').toEqual([false, true, 0]);
 });

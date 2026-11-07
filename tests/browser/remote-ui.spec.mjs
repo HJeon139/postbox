@@ -20,7 +20,7 @@ let host;
 let persona;
 let conv;
 const MIN = 60_000;
-const NOTE = 'Files on host.example.com aren’t recorded: Postbox lists the ones @builder edited there, with no diff and no Restore.';
+const NOTE = 'Files on host.example.com aren’t recorded: Postbox lists the ones builder edited there, with no diff and no Restore.';
 
 const fixture = (name) =>
   readFileSync(new URL(`../fixtures/claude-code/${name}.jsonl`, import.meta.url), 'utf8')
@@ -99,13 +99,13 @@ for (const width of [1280, 375]) {
     test(`#120 the agent’s ring says it runs on the host, connected${width > 767 ? ', and so does its row' : ''}`, async ({ page }) => {
       await open(page);
       // Every ring of @builder’s that shows, wherever the page puts it at this width.
-      const rings = page.getByRole('img', { name: /^@builder: / }).filter({ visible: true });
-      await expect(rings, 'a ring for @builder shows').not.toHaveCount(0);
+      const rings = page.getByRole('img', { name: /^builder: / }).filter({ visible: true });
+      await expect(rings, 'a ring for builder shows').not.toHaveCount(0);
       for (const label of await rings.evaluateAll((rs) => rs.map((r) => r.getAttribute('aria-label'))))
         expect.soft(label).toMatch(/; on host\.example\.com, connected, last heard from 2 min ago$/);
       if (width > 767)
         await expect
-          .soft(page.locator('.rail .agent-row').filter({ hasText: '@builder' }))
+          .soft(page.locator('.rail .agent-row').filter({ hasText: 'builder' }))
           .toContainText(/On host\.example\.com · Connected · last heard from 2 min ago/);
       await clean(page, '.agent-row, .ringstrip, header.topbar *', 'in the conversation');
     });

@@ -183,16 +183,16 @@ test('#622: the ring beside an earlier reply says only whose it is, after a redr
   const rings = page.locator(`.transcript .who pb-ring[data-session="${se.id}"]`);
   const label = (r) => r.locator('svg[role=img]');
   const earlierSaysOnlyWhose = async (when) => {
-    await expect(label(rings.last()), when).toHaveAttribute('aria-label', '@earlier: Needs you, 40% of context used');
-    await expect(label(rings.first()), when).toHaveAttribute('aria-label', '@earlier');
+    await expect(label(rings.last()), when).toHaveAttribute('aria-label', 'earlier: Needs you, 40% of context used');
+    await expect(label(rings.first()), when).toHaveAttribute('aria-label', 'earlier');
     await expect(rings.first(), when).not.toHaveAttribute('role', 'button');
   };
   await earlierSaysOnlyWhose('on the first draw');
   app.rt.updateSession(se.id, { ctx: 80 });
   app.store.emit('item.patch', { threadId: t.id, id: first.id, patch: { text: 'Reply 1, edited.' } });
   await synced(page, app);
-  await expect(label(rings.last())).toHaveAttribute('aria-label', '@earlier: Needs you, 80% of context used');
-  await expect(label(rings.first()), 'after the earlier reply is drawn again').toHaveAttribute('aria-label', '@earlier');
+  await expect(label(rings.last())).toHaveAttribute('aria-label', 'earlier: Needs you, 80% of context used');
+  await expect(label(rings.first()), 'after the earlier reply is drawn again').toHaveAttribute('aria-label', 'earlier');
   app.rt.updateSession(se.id, { ctx: 40 });
   await page.reload();
   await synced(page, app);
@@ -249,7 +249,7 @@ test('#622: a session event in a 1,000-item room rebuilds the rings that show it
   await expect.soft(rings.last()).toHaveAttribute('state', 'think');
   await expect.soft(rings.last()).toHaveAttribute('ctx', '33');
   await expect.soft(rings.nth(0)).toHaveAttribute('state', 'rest');
-  await expect.soft(rings.nth(0).locator('svg[role=img]')).toHaveAttribute('aria-label', `@${sa.handle}`);
+  await expect.soft(rings.nth(0).locator('svg[role=img]')).toHaveAttribute('aria-label', `${sa.handle}`);
   expect.soft(await rings.evaluateAll((rs) => rs.filter((r) => r.getAttribute('state') !== 'rest').length), 'rings showing the live state').toBe(1);
   // A ring says where its agent runs, so a change in the host’s status draws the rings that say it, not every reply’s.
   app.store.emit('host', { id: 'ho_live', name: 'box.example.com' });

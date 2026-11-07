@@ -53,7 +53,7 @@ async function open(page, hash) {
 const row = (page, handle) =>
   page
     .locator('.rail .agent-row')
-    .filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^@${handle}$`) }) })
+    .filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^${handle}$`) }) })
     .locator('.agent-btn');
 /** The text a person sees in an element (what’s rendered, not what’s hidden), as one line. */
 const seen = async (locator) => (await locator.allInnerTexts()).join(' ').replace(/\s+/g, ' ').trim();
@@ -79,11 +79,11 @@ async function longTitle(fn) {
 
 test('#60 each agent’s row says its state, the model that answered and the effort, marked in words when the model differs', async ({ page }) => {
   await open(page, `#/t/${room.id}`);
-  await seesText(row(page, 'indexer'), '@indexer · idle Sonnet 5.5, not Opus 5.5 · medium effort');
+  await seesText(row(page, 'indexer'), 'indexer · idle Sonnet 5.5, not Opus 5.5 · medium effort');
   // Before its first turn, the model and effort it’s set to.
-  await seesText(row(page, 'researcher'), '@researcher · idle Opus 5.5 · high effort');
+  await seesText(row(page, 'researcher'), 'researcher · idle Opus 5.5 · high effort');
   // A mock agent has no model or effort.
-  await seesText(row(page, 'critic'), '@critic mock · idle');
+  await seesText(row(page, 'critic'), 'critic mock · idle');
 });
 
 test('#60 a new last model reaches the row without a reload', async ({ page }) => {
@@ -105,10 +105,10 @@ test('#60 the conversation’s menu says it with full model ids', async ({ page 
   await openMenu(page);
   const said = await seen(menu(page));
   for (const line of [
-    '@librarian mock Mock agent · scripted replies, not a model · idle',
-    '@indexer Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle',
-    '@researcher Agent SDK · claude-opus-5-5 · high effort · idle',
-    '@critic mock Mock agent · scripted replies, not a model · idle',
+    'librarian mock Mock agent · scripted replies, not a model · idle',
+    'indexer Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle',
+    'researcher Agent SDK · claude-opus-5-5 · high effort · idle',
+    'critic mock Mock agent · scripted replies, not a model · idle',
   ])
     expect(said, `the menu says “${line}”`).toContain(line);
 });
@@ -129,9 +129,9 @@ test('#12 a mock agent is marked in its agent row, rail row and speaker line, an
   await markedMock(row(page, 'critic'), 'the agent row says “mock”');
   await expect(row(page, 'indexer').locator('.mock-tag'), 'a Claude Code agent’s row doesn’t say “mock”').toHaveCount(0);
   // The room’s rail row names all four, and marks the two on the mock.
-  await seesText(railWho(page), '@librarian mock, @indexer, @researcher, @critic mock · idle');
+  await seesText(railWho(page), 'librarian mock, indexer, researcher, critic mock · idle');
   // Speaker lines.
-  const speaker = (handle) => page.locator('.who').filter({ has: page.locator('b', { hasText: new RegExp(`^@${handle}$`) }) });
+  const speaker = (handle) => page.locator('.who').filter({ has: page.locator('b', { hasText: new RegExp(`^${handle}$`) }) });
   await markedMock(speaker('critic').last(), 'the speaker line says “mock”');
   await expect(speaker('indexer').locator('.mock-tag')).toHaveCount(0);
 });
@@ -143,7 +143,7 @@ test('#12 the marker follows the persona: moved to Claude Code, the agent row an
     // Its session keeps the effort it started with; the model was “mock”, so it runs the default.
     await expect(row(page, 'librarian').locator('.mock-tag'), 'the agent row drops “mock”').toHaveCount(0);
     await expect(row(page, 'librarian')).toContainText('Opus 5.5');
-    await seesText(railWho(page), '@librarian, @indexer, @researcher, @critic mock · idle', 'the rail row drops “mock”');
+    await seesText(railWho(page), 'librarian, indexer, researcher, critic mock · idle', 'the rail row drops “mock”');
   } finally {
     real('librarian', { backend: 'mock', model: 'mock' });
   }
@@ -157,36 +157,36 @@ test('#12 the menus and the Personas list mark mock agents', async ({ page }) =>
     .locator('button.mi')
     .filter({ has: page.locator('.mock-tag') })
     .evaluateAll((bs) => bs.map((b) => b.querySelector('.grow')?.firstChild?.textContent));
-  expect(marked).toEqual(['@librarian', '@critic']);
+  expect(marked).toEqual(['librarian', 'critic']);
   await page.keyboard.press('Escape');
   await expect(menu(page)).toHaveCount(0);
   await page.locator('header.topbar').getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('tab', { name: 'Personas' }).click();
   await expect(page.locator('.list-rows li b').first()).toBeVisible();
   const rows = await page.locator('.list-rows li').evaluateAll((lis) => lis.map((li) => [li.querySelector('b')?.textContent, !!li.querySelector('.mock-tag')]));
-  expect(rows.filter(([n]) => ['@librarian', '@indexer', '@researcher', '@critic'].includes(n ?? ''))).toEqual([
-    ['@librarian', true],
-    ['@indexer', false],
-    ['@researcher', false],
-    ['@critic', true],
+  expect(rows.filter(([n]) => ['librarian', 'indexer', 'researcher', 'critic'].includes(n ?? ''))).toEqual([
+    ['librarian', true],
+    ['indexer', false],
+    ['researcher', false],
+    ['critic', true],
   ]);
 });
 
 test('#12 the composer marks a mock agent in “Replying to” and in the @ menu', async ({ page }) => {
   app.rt.putThread({ ...app.store.state.threads[room.id], lastSpeaker: sessionOf('critic').id });
   await open(page, `#/t/${room.id}`);
-  await expect(page.locator('.composer .hint'), 'the hint marks @critic').toContainText('Replying to @critic mock (last speaker)');
+  await expect(page.locator('.composer .hint'), 'the hint marks critic').toContainText('Replying to critic mock (last speaker)');
   await page.locator('#composer-input').click();
   await page.keyboard.type('@');
   await expect(page.locator('#mention-list')).toBeVisible();
   const rows = await page
     .locator('#mention-list [role=option] .grow')
     .evaluateAll((gs) => gs.map((g) => [g.firstChild?.textContent, !!g.querySelector('.mock-tag')]));
-  expect(rows.filter(([n]) => ['@librarian', '@indexer', '@researcher', '@critic'].includes(n ?? '')).sort()).toEqual([
-    ['@critic', true],
-    ['@indexer', false],
-    ['@librarian', true],
-    ['@researcher', false],
+  expect(rows.filter(([n]) => ['librarian', 'indexer', 'researcher', 'critic'].includes(n ?? '')).sort()).toEqual([
+    ['critic', true],
+    ['indexer', false],
+    ['librarian', true],
+    ['researcher', false],
   ]);
 });
 
@@ -314,8 +314,8 @@ for (const theme of /** @type {const} */ (['light', 'dark']))
         if (width === 1280) expect(m.drop, 'the top bar dropped nothing at 1280 px').toBe('');
         // What it runs with is in the conversation’s menu, as text on screen.
         await openMenu(page);
-        const line = menu(page).locator('button.mi', { hasText: '@indexer' });
-        expect(await seen(line)).toMatch(/^@indexer Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle/);
+        const line = menu(page).locator('button.mi', { hasText: 'indexer' });
+        expect(await seen(line)).toMatch(/^indexer Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle/);
         await expect(line).toBeInViewport({ ratio: 1 });
       });
     });
@@ -328,7 +328,7 @@ test.describe('1280 px', () => {
     const m = await fitted(page, 'one agent, 1280 px');
     expect(m.drop).toBe('');
     expect(m.titleFull && m.projectFull, 'the title and the project are shown in full').toBe(true);
-    await seesText(row(page, 'indexer'), '@indexer · idle Opus 5.5 · medium effort');
+    await seesText(row(page, 'indexer'), 'indexer · idle Opus 5.5 · medium effort');
   });
 
   test('#72 the top bar refits when the window changes, and a state word changing doesn’t move it', async ({ page }) => {
@@ -340,13 +340,13 @@ test.describe('1280 px', () => {
     const all = ['librarian', 'indexer', 'researcher', 'critic'];
     try {
       for (const handle of all) rt.updateSession(sessionOf(handle).id, { state: 'tool', currentStep: 'Working' });
-      await expect(row(page, 'indexer'), 'the row says “calling tools”').toContainText(/^@indexer · calling tools/);
+      await expect(row(page, 'indexer'), 'the row says “calling tools”').toContainText(/^indexer · calling tools/);
       const busy = await fitted(page, 'busy');
       expect([busy.overflow, busy.drop, busy.title]).toEqual([0, '', wide.title]);
     } finally {
       for (const handle of all) rt.updateSession(sessionOf(handle).id, { state: 'idle', currentStep: '' });
     }
-    await expect(row(page, 'indexer')).toContainText(/^@indexer · idle/);
+    await expect(row(page, 'indexer')).toContainText(/^indexer · idle/);
     // Narrow, with a title that needs the room, it drops in order, and wide again, it brings everything back.
     await longTitle(async () => {
       await synced(page, app);

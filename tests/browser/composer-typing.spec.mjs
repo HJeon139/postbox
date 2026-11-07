@@ -80,7 +80,7 @@ test('#641: an empty composer stays one line when its placeholder wraps', async 
   // A 24-letter handle, the longest a name can be, makes the placeholder wrap in a phone’s width. The empty box keeps one
   // line, as it did when script sized it, rather than growing to fit the placeholder.
   const input = await seeded(page, 'librarian-of-long-names1', 375);
-  await expect(input).toHaveAttribute('placeholder', 'Message @librarian-of-long-names1');
+  await expect(input).toHaveAttribute('placeholder', 'Message librarian-of-long-names1');
   const height = () => input.evaluate((el) => Math.round(el.getBoundingClientRect().height));
   const empty = await height();
   await input.pressSequentially('a');

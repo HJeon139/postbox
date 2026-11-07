@@ -17,7 +17,7 @@ export const asDrawn = (item) => (item.answered && !item.answer ? { ...item, ans
 export function closing(node, item, dismiss) {
   const c = item.closed;
   if (c) {
-    const by = c.by === 'person' ? 'Dismissed by you' : `Withdrawn by @${c.handle}`;
+    const by = c.by === 'person' ? 'Dismissed by you' : `Withdrawn by ${c.handle}`;
     const note = h('span.answered-note.closed-note', icon('x', 'i-sm'), `${by} at ${timeOf(c.at)}${c.reason ? `: ${c.reason}` : ''}`);
     const answered = node.querySelector('.answered-note');
     if (c.by === 'agent' && item.answer) answered?.after(note);

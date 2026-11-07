@@ -124,7 +124,7 @@ test('#133 another agent’s comments show on their lines with its name; the bar
   await synced(page, room.app);
   await expect(block.locator('.answered-note')).toHaveCount(0);
   const needed = store.state.sessions[sessionOf('drafter').id].needs;
-  expect(needed?.itemId, '@drafter needs you for revision 2').toBe(itemOf().id);
+  expect(needed?.itemId, 'drafter needs you for revision 2').toBe(itemOf().id);
   const said = rt.toolsFor(sessionOf('reader').id).review_block({
     blockId,
     verdict: 'request_changes',
@@ -133,17 +133,17 @@ test('#133 another agent’s comments show on their lines with its name; the bar
       { line: 10, col: 11, endLine: 10, endCol: 19, quote: 'low price', text: 'Give the number.' },
     ],
   });
-  expect(said.ok, `@reader comments on @drafter’s review (${said.message})`).toBe(true);
+  expect(said.ok, `reader comments on drafter’s review (${said.message})`).toBe(true);
   await room.idle();
   await synced(page, room.app);
   await viewRadio(block, 'Lines').click();
-  const thread1 = block.locator('.rv-thread').filter({ has: page.locator('.meta b', { hasText: /^@reader$/ }) });
+  const thread1 = block.locator('.rv-thread').filter({ has: page.locator('.meta b', { hasText: /^reader$/ }) });
   await expect(thread1.filter({ hasText: 'Give the number.' }).locator('q.rv-quote'), 'its quote').toHaveText('low price');
   const first = await thread1
     .filter({ hasText: 'A clearer title.' })
     .evaluate((x) => /** @type {HTMLElement | null} */ (x.previousElementSibling?.querySelector('.g-mark'))?.dataset.line);
   expect(first, 'its comment on line 1, under it').toBe('1');
-  await expect(block.locator('.review-bar .rv-reviewers')).toHaveText(' · 2 comments from @reader (Request changes)');
+  await expect(block.locator('.review-bar .rv-reviewers')).toHaveText(' · 2 comments from reader (Request changes)');
   await expect(block.getByRole('button', { name: 'Submit review', exact: true }), 'it still waits on you').toBeVisible();
   // Its event is a turn the person didn’t start, so it leaves what @drafter needs from you as it was.
   expect(

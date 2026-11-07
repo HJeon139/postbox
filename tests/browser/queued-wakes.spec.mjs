@@ -56,11 +56,11 @@ const queued = (page, text) => page.locator('.agent-queue-row').filter({ has: pa
 const mail = (page, r) =>
   page
     .locator('.agent-row')
-    .filter({ hasText: `@${r.worker.handle}` })
+    .filter({ hasText: `${r.worker.handle}` })
     .getByRole('button', { name: /queued for/ });
 const openQueue = async (page, r) => {
   await mail(page, r).click();
-  const dialog = page.locator('.dialog').filter({ hasText: `queued for @${r.worker.handle}` });
+  const dialog = page.locator('.dialog').filter({ hasText: `queued for ${r.worker.handle}` });
   await expect(dialog).toBeVisible();
   return dialog;
 };
@@ -71,12 +71,12 @@ test('three individual queued wakes become one reply when the agent finishes', a
   const r = await busyRoom(page);
   for (const [index, sender] of r.senders.entries()) app.rt.agentWake(sender.id, r.worker.handle, `Question ${index + 1}`);
   await synced(page, app);
-  await expect(mail(page, r)).toHaveAccessibleName(`3 messages queued for @${r.worker.handle}`);
+  await expect(mail(page, r)).toHaveAccessibleName(`3 messages queued for ${r.worker.handle}`);
   await expect(page.locator('.composer .queued')).toHaveCount(0);
   await page.setViewportSize({ width: 1280, height: 800 });
   const dialog = await openQueue(page, r);
   await expect(dialog.locator('.agent-queue-row')).toHaveCount(3);
-  for (const sender of r.senders) await expect(dialog.locator('.agent-queue-row').filter({ hasText: `From @${sender.handle}` })).toHaveCount(1);
+  for (const sender of r.senders) await expect(dialog.locator('.agent-queue-row').filter({ hasText: `From ${sender.handle}` })).toHaveCount(1);
   releases.get(r.worker.id)();
   await idle(r);
   await synced(page, app);
@@ -95,7 +95,7 @@ test('Remove and Send now still act on one queued item at a time', async ({ page
   await queued(page, 'Remove only this')
     .getByRole('button', { name: /^Remove queued message \d of 3, “Remove only this”$/ })
     .click();
-  await expect(mail(page, r)).toHaveAccessibleName(`2 messages queued for @${r.worker.handle}`);
+  await expect(mail(page, r)).toHaveAccessibleName(`2 messages queued for ${r.worker.handle}`);
   await queued(page, 'Send only this now')
     .getByRole('button', { name: /^Send now/ })
     .click();
@@ -115,7 +115,7 @@ test('a newer request replaces an older queued wake when the batch starts', asyn
   app.rt.agentWake(r.senders[0].id, r.worker.handle, 'Review the current revision');
   app.rt.agentWake(r.senders[1].id, r.worker.handle, 'Check the tests too');
   await synced(page, app);
-  await expect(mail(page, r)).toHaveAccessibleName(`3 messages queued for @${r.worker.handle}`);
+  await expect(mail(page, r)).toHaveAccessibleName(`3 messages queued for ${r.worker.handle}`);
   releases.get(r.worker.id)();
   await idle(r);
   await synced(page, app);
@@ -136,7 +136,7 @@ test('an unaddressed newer post reaches the waiting target exactly once', async 
     status: 'done',
   });
   await synced(page, app);
-  await expect(mail(page, r)).toHaveAccessibleName(`1 message queued for @${r.worker.handle}`);
+  await expect(mail(page, r)).toHaveAccessibleName(`1 message queued for ${r.worker.handle}`);
   releases.get(r.worker.id)();
   await idle(r);
   await synced(page, app);
@@ -151,7 +151,7 @@ test('#427 ten queued messages stay out of the composer and edit in the agent’
   const r = await busyRoom(page);
   for (let index = 0; index < 10; index++) app.rt.sendMessage(r.thread.id, { text: `@${r.worker.handle} Queued question ${index + 1}` });
   await synced(page, app);
-  await expect(mail(page, r)).toHaveAccessibleName(`10 messages queued for @${r.worker.handle}`);
+  await expect(mail(page, r)).toHaveAccessibleName(`10 messages queued for ${r.worker.handle}`);
   await expect(page.locator('.composer .queued')).toHaveCount(0);
   for (const width of [1280, 375]) {
     await page.setViewportSize({ width, height: 800 });
@@ -159,7 +159,7 @@ test('#427 ten queued messages stay out of the composer and edit in the agent’
     expect(composer.height, `${width} px composer height`).toBeLessThan(150);
   }
   await page.locator('#conversation-actions').click();
-  await page.getByRole('menuitem', { name: `10 messages queued for @${r.worker.handle}` }).click();
+  await page.getByRole('menuitem', { name: `10 messages queued for ${r.worker.handle}` }).click();
   await expect(page.locator('.agent-queue-dialog .agent-queue-row')).toHaveCount(10);
   await page.keyboard.press('Escape');
   await expect(page.locator('#conversation-actions')).toBeFocused();
@@ -176,10 +176,10 @@ test('#427 ten queued messages stay out of the composer and edit in the agent’
   app.rt.sendMessage(r.thread.id, { text: `@${r.worker.handle} Queued question 11` });
   await synced(page, app);
   await expect(editor).toHaveValue('A longer revised question\nwith its second line.');
-  await expect(mail(page, r)).toHaveAccessibleName(`11 messages queued for @${r.worker.handle}`);
+  await expect(mail(page, r)).toHaveAccessibleName(`11 messages queued for ${r.worker.handle}`);
   await row.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(queued(page, 'A longer revised question\nwith its second line.')).toBeVisible();
-  await expect(mail(page, r)).toHaveAccessibleName(`11 messages queued for @${r.worker.handle}`);
+  await expect(mail(page, r)).toHaveAccessibleName(`11 messages queued for ${r.worker.handle}`);
 });
 
 test('#427 an edit stays visible if its message leaves the queue', async ({ page }) => {

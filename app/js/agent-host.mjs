@@ -32,7 +32,7 @@ export function hostSection(se) {
   const failure = host.status?.failure;
   return h(
     'section.qp-sec.qp-host',
-    { 'aria-label': `Where @${se.handle} runs` },
+    { 'aria-label': `Where ${se.handle} runs` },
     h('p.small', hostLine(se)),
     there ? h('p.small', there) : null,
     failure?.message ? h('p.small.dim', failure.message, failure.next ? ` ${failure.next}` : '') : null,

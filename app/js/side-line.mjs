@@ -23,10 +23,10 @@ export function sideLine(it, ctx) {
         onclick: () => card && goToCard(card),
       },
       at ? ringFor(at, 'xs') : icon('thread', 'i-sm'),
-      h('b', `@${it.from}`),
+      h('b', it.from),
       ' asked ',
-      h('b', `@${it.to}`),
-      at ? [' · ', h('b', `@${at.handle}`), ` ${doing(at)}`] : null,
+      h('b', it.to),
+      at ? [' · ', h('b', at.handle), ` ${doing(at)}`] : null,
       ` · ${plural(it.count ?? 0, 'message')} · Open`,
     ),
     failed
@@ -34,7 +34,7 @@ export function sideLine(it, ctx) {
           'button.btn.sm',
           {
             type: 'button',
-            'aria-label': `Retry @${at.handle}’s turn in the side thread`,
+            'aria-label': `Retry ${at.handle}’s turn in the side thread`,
             onclick: () =>
               api(`/api/threads/${it.sideThreadId}/items/${failed}/retry`, {}).catch((e) =>
                 toast({ title: 'Retry didn’t start', text: e.message, level: 'blocking' }),

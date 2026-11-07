@@ -12,9 +12,9 @@ import { h, icon } from './dom.mjs';
  * @param {{ handle: string, permissionMode: string, host?: string|null }} p
  */
 function runsNote(p) {
-  if (p.host) return `@${p.handle} runs on ${p.host}. These are the hooks in this computer’s settings files; the host’s own settings aren’t shown here.`;
-  if (p.permissionMode === 'bypass') return `In Run everything mode, these run in @${p.handle}’s Postbox turns too.`;
-  return `These don’t run in @${p.handle}’s Postbox turns, except in Run everything mode. They still run when you use Claude Code yourself.`;
+  if (p.host) return `${p.handle} runs on ${p.host}. These are the hooks in this computer’s settings files; the host’s own settings aren’t shown here.`;
+  if (p.permissionMode === 'bypass') return `In Run everything mode, these run in ${p.handle}’s Postbox turns too.`;
+  return `These don’t run in ${p.handle}’s Postbox turns, except in Run everything mode. They still run when you use Claude Code yourself.`;
 }
 
 /**

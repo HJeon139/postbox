@@ -68,11 +68,11 @@ async function atWork(page, { open = false } = {}) {
   app.rt.updateSession(indexer.id, { state: 'tool', subagents: THREE });
   await page.goto(`${app.origin}/#/t/${planning.id}`);
   await synced(page, app);
-  if (open) await page.locator('.rail').getByRole('button', { name: 'Show @indexer’s 3 subagents' }).click();
+  if (open) await page.locator('.rail').getByRole('button', { name: 'Show indexer’s 3 subagents' }).click();
 }
 /** How many subagent rings a ring draws: its `subs` attribute holds one entry each (app/js/ring.mjs, subsAttr). */
 const subRings = (ring) => ring.evaluate((el) => (el.getAttribute('subs') ?? '').split(',').filter(Boolean).length);
-const indexerRow = (page) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: /^@indexer$/ }) });
+const indexerRow = (page) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: /^indexer$/ }) });
 test.afterEach(() => app.rt.updateSession(indexer.id, { state: 'idle', subagents: [] }));
 
 /**
@@ -135,8 +135,8 @@ test('#476: a thinking subagent’s row says “Thinking”, and its thought and
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
   app.rt.sendMessage(t.id, { text: 'Is 0.1 + 0.2 equal to 0.3? Ask a subagent.' });
-  const row = page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: /^@pondering$/ }) });
-  await row.getByRole('button', { name: 'Show @pondering’s 1 subagent' }).click();
+  const row = page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: /^pondering$/ }) });
+  await row.getByRole('button', { name: 'Show pondering’s 1 subagent' }).click();
   await expect(row.locator('.agent-sub.subagent .sub-now')).toHaveText('Thinking');
   await expect(row).not.toContainText('straightforward question');
   go();
@@ -157,7 +157,7 @@ for (const theme of /** @type {const} */ (['light', 'dark']))
         await atWork(page);
         const row = indexerRow(page);
         const ring = row.locator('.agent-line pb-ring');
-        const toggle = row.getByRole('button', { name: 'Show @indexer’s 3 subagents' });
+        const toggle = row.getByRole('button', { name: 'Show indexer’s 3 subagents' });
         // Collapsed: the combined ring, and no rows.
         await expect(toggle, 'a chevron and the count, so the name keeps its room').toHaveText('3');
         await expect(toggle).toHaveAttribute('aria-expanded', 'false');
@@ -166,7 +166,7 @@ for (const theme of /** @type {const} */ (['light', 'dark']))
         // Expanded by keyboard: the rows with End, and a ring without subagent rings.
         await toggle.focus();
         await page.keyboard.press('Enter');
-        const hide = row.getByRole('button', { name: 'Hide @indexer’s subagents' });
+        const hide = row.getByRole('button', { name: 'Hide indexer’s subagents' });
         await expect(hide).toBeFocused();
         await expect(hide).toHaveAttribute('aria-expanded', 'true');
         await expect(row.locator('.agent-sub.subagent')).toHaveCount(3);

@@ -167,7 +167,7 @@ export async function placePersona(kit, handle, hostId) {
   await closeAll(kit);
   await kit.clickAt(`document.querySelector('[aria-label="Settings"]')`, 'the Settings button');
   await kit.clickAt(byText('document.querySelector(".dialog")', '[role=tab], button', 'Personas'), 'the Personas tab');
-  await kit.clickAt(`document.querySelector(${js(`.dialog [aria-label="Edit @${handle}"]`)})`, `Edit @${handle}`);
+  await kit.clickAt(`document.querySelector(${js(`.dialog [aria-label="Edit ${handle}"]`)})`, `Edit ${handle}`);
   await until(kit, `document.getElementById('pe-where')`, `Runs on in @${handle}’s editor`);
   await pick(kit, '#pe-where', hostId ?? '');
   await kit.clickAt(byText(TOP, 'button.send', 'Save'), 'Save');

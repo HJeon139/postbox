@@ -493,7 +493,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
       placeholder(
         [
           h('span.row-flex', { style: { color: 'var(--text)' } }, h('span.g.g-failed', { 'aria-hidden': 'true' }), h('b', `${app.title} stopped working`)),
-          h('span', `It hit a script error and was shut down. Nothing outside the app was affected. Reload it, or ask @${owner} to fix it.`),
+          h('span', `It hit a script error and was shut down. Nothing outside the app was affected. Reload it, or ask ${owner} to fix it.`),
           h('code.mono', { style: { color: 'var(--text)' } }, msg),
           h(
             'span.row-flex',
@@ -510,7 +510,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
               icon('retry', 'i-sm'),
               'Reload app',
             ),
-            h('button.btn.sm', { type: 'button', onclick: () => askToFix(app, msg) }, `Ask @${owner} to fix it`),
+            h('button.btn.sm', { type: 'button', onclick: () => askToFix(app, msg) }, `Ask ${owner} to fix it`),
           ),
         ],
         220,
@@ -534,7 +534,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
           h(
             'span.row-flex',
             h('span.g.g-running', { 'aria-hidden': 'true' }),
-            h('b', { style: { color: 'var(--text)', fontWeight: 500 } }, `@${owner} is fixing a problem the check found`),
+            h('b', { style: { color: 'var(--text)', fontWeight: 500 } }, `${owner} is fixing a problem the check found`),
           ),
           h('span', app.check.problems.map((p) => p.message).join(' ')),
           h('span', 'The fixed version appears here.'),
@@ -584,7 +584,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
         h(
           'span',
           // Warnings only (marks or text too small, say): the app passed and is shown, and @owner was told.
-          `${app.check.notes ? `Shown with notes for @${owner}` : `Shown with problems @${owner} couldn’t fix`}: ${app.check.problems.map((p) => p.message).join(' ')}`,
+          `${app.check.notes ? `Shown with notes for ${owner}` : `Shown with problems ${owner} couldn’t fix`}: ${app.check.problems.map((p) => p.message).join(' ')}`,
         ),
       ),
     );
@@ -692,7 +692,7 @@ function retiredLine(app, versionBtn, ctx) {
     'div.col.sys-line.app-retired',
     { role: 'group', 'aria-label': `${app.title}, retired` },
     icon('archive', 'i-sm'),
-    h('span.grow', h('b', app.title), ` · Retired by @${r.by}: ${r.reason}`),
+    h('span.grow', h('b', app.title), ` · Retired by ${r.by}: ${r.reason}`),
     to ? h('button.btn.sm.ghost', { type: 'button', onclick: goTo }, `Go to ${to.title}`) : null,
     versionBtn,
   );

@@ -28,13 +28,13 @@ const react = (threadId, itemId, emoji) =>
     toast({ title: 'Couldn’t react', text: e.message, level: 'blocking' }),
   );
 
-/** “you”, “@critic”, “you and @critic”, “you, @critic and @dev”. */
+/** “you”, “critic”, “you and critic”, “you, critic and dev”. */
 export const who = (names) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
 /** Who made one reaction on an item: “you” first, then the agents, by handle. */
 export function reactors(it, emoji) {
   const rs = (it?.reactions ?? []).filter((r) => r.emoji === emoji);
-  return [...(rs.some((r) => !r.by) ? ['you'] : []), ...rs.filter((r) => r.by).map((r) => `@${r.handle}`)];
+  return [...(rs.some((r) => !r.by) ? ['you'] : []), ...rs.filter((r) => r.by).map((r) => r.handle)];
 }
 
 /** The five buttons, as an item’s reactions stand now. */

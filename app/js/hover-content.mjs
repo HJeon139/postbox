@@ -62,7 +62,7 @@ export function hoverContent(trigger) {
   return {
     label: `Glossary: ${g.term}`,
     head: [h('span.label', 'Glossary'), h('b', g.term)],
-    body: [definition, h('span.small.dim', `Defined by @${g.by}${g.source ? ` · ${g.source}` : ''}`)],
+    body: [definition, h('span.small.dim', `Defined by ${g.by}${g.source ? ` · ${g.source}` : ''}`)],
   };
 }
 
