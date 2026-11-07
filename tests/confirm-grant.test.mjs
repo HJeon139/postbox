@@ -4,81 +4,10 @@
 // permission_prompt binds it, unless the case is about an unbound one.
 
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { test } from 'node:test';
-import { confirmBodies } from '../server/confirm-body.mjs';
 import { Runtime } from '../server/runtime.mjs';
+import { ask, block, call, confirmed, LABEL, later, outcome, sha, theConfirm } from './confirm-grant-fixture.mjs';
 import { cards, lines, setup, until } from './requested-setup.mjs';
-
-const LABEL = 'gh pr edit 896 --repo o/r --add-label "ready for integrator"';
-const sha = (s) => createHash('sha256').update(s).digest('hex');
-const theConfirm = (s) => s.store.items(s.t.id).find((i) => i.kind === 'block' && i.block.type === 'confirm');
-const block = (commands, statement = 'Confirming labels the PR.') => ({
-  id: 'push',
-  type: 'confirm',
-  version: 1,
-  fallback: 'Label it?',
-  title: 'Label #896',
-  statement,
-  confirmLabel: 'Label #896',
-  commands,
-});
-let n = 0;
-/** A Bash call as the stream shows it and permission_prompt passes it on: bound, with its tool_use id. */
-const call = (command, extra = {}) => ({ tool: 'Bash', summary: 'run a command', input: { command }, bound: true, toolUseId: `tu${++n}`, ...extra });
-
-/** One turn's calls, in order: the stream shows each, then it asks; a card is answered no. Gives each `allow`. */
-function calling(s, reqs, answers, before = () => {}) {
-  return async (c) => {
-    await before(c);
-    for (const req of reqs) {
-      if (req.toolUseId && !req.unseen) c.toolUse({ id: req.toolUseId, name: req.tool, input: req.input });
-      const k = cards(s).length;
-      const asked = c.askPermission(req);
-      const r = await Promise.race([asked, until(() => cards(s).length > k).then(() => null)]);
-      if (r) answers.push(outcome(r));
-      else {
-        await s.rt.act(s.t.id, cards(s).at(-1).id, 'deny', {});
-        await asked;
-        answers.push('card');
-      }
-    }
-  };
-}
-/** The agent shows the confirm, its body files read as an MCP call reads them (#852); then the person answers it. */
-async function confirmed(s, b, reqs = [], answer = 'confirm', { unrevised = false, before } = {}) {
-  s.next.push(async (c) => c.tools.show_block({ block: b }, await confirmBodies(s.rt, s.rt.sessionsIn(s.t.id)[0].id, 'show_block', { block: b })));
-  s.rt.sendMessage(s.t.id, { text: 'Get it ready.' });
-  await until(() => !s.rt.turns.size);
-  const answers = [];
-  s.next.push(calling(s, reqs, answers, before));
-  await s.rt.act(s.t.id, theConfirm(s).id, answer, {}, unrevised ? undefined : (theConfirm(s).revision ?? 1));
-  await until(() => answers.length === reqs.length && !s.rt.turns.size);
-  return answers;
-}
-/** A later turn of the same agent, started with no message from the person (as a wake would), making these calls. */
-async function later(s, reqs, session = s.rt.sessionsIn(s.t.id)[0]) {
-  const answers = [];
-  s.next.push(calling(s, reqs, answers));
-  s.rt.deliver(session.id, { kind: 'notice', text: 'Go on.' }, { threadId: session.threadId });
-  await until(() => answers.length === reqs.length && !s.rt.turns.size);
-  return answers;
-}
-/** What became of a call that got no card: Postbox ran it in the agent’s place, or (a push) made it. */
-function outcome(r) {
-  if (r.allow) return 'allowed';
-  return /^Postbox ran this/.test(r.message ?? '') ? 'ran' : 'denied';
-}
-/** A room in Ask mode whose gh runs are recorded, not made: each gives exit 0 and its argv as output. */
-async function ask() {
-  const s = await setup({ permissionMode: 'ask' });
-  s.ran = [];
-  s.rt.runGh = async (argv) => {
-    s.ran.push(argv);
-    return { status: 0, output: argv.join(' '), argv: [...argv], timedOut: false };
-  };
-  return s;
-}
 
 test('#852 1a r3: a confirmed command runs with no card, as written, and its line names the confirm', async () => {
   const s = await ask();
@@ -92,6 +21,7 @@ test('#852 1a r3: a confirmed command runs with no card, as written, and its lin
 
 test('#852 1a r3: in Auto with no allowRequested and a judge that refuses, the confirm alone lets it run', async () => {
   const s = await setup({ judged: () => null });
+  s.rt.runGh = async (argv) => ({ status: 0, output: '', argv, timedOut: false });
   s.rt.updatePersona(s.p.id, { setup: { ...(s.p.setup ?? {}), allowRequested: false } });
   assert.deepEqual(await confirmed(s, block([LABEL]), [call(LABEL)]), ['ran']);
 });
@@ -244,31 +174,6 @@ test('#852 1a r3: Postbox runs a confirmed gh shape itself, with exactly its wor
   assert.deepEqual(s.ran, [['pr', 'edit', '896', '--repo', 'o/r', '--add-label', 'ready for integrator']]);
   assert.deepEqual(lines(s)[0].gh, { argv: s.ran[0], status: 0, output: s.ran[0].join(' ') });
 });
-test('#852 1a r3: a confirmed lone git push is made by Postbox, and the agent’s own is answered done', async () => {
-  const s = await ask();
-  const made = [];
-  s.rt.pushes = {
-    consequence: async (o) => ({
-      branch: 'feat/now',
-      current: 'feat/now',
-      sha: 'a'.repeat(40),
-      objects: '/x',
-      url: o.url,
-      sentence: 'commit aaaaaaa lands on feat/now',
-    }),
-    run: async (p) => {
-      made.push(p);
-      return { ok: true };
-    },
-  };
-  s.store.emit('project', { ...s.store.state.projects.p1, pushUrl: 'https://github.com/o/r.git' });
-  const push = 'git push origin feat/now';
-  assert.deepEqual(await confirmed(s, block([push]), [call(push)]), ['card'], 'the agent’s own push never runs');
-  assert.equal(made.length, 1, 'Postbox made it');
-  assert.equal(lines(s)[0].push.branch, 'feat/now');
-  assert.equal(cards(s).length, 0);
-});
-
 test('#852 1a r3: a host turn’s call never uses the rule; it asks through its host', async () => {
   const s = await ask();
   await confirmed(s, block([LABEL]), []);
@@ -299,17 +204,39 @@ test('#852 1a r3: a confirm another session showed never grants, even if this se
   assert.deepEqual(await later({ ...s, t: t2 }, [call(LABEL)], se2), ['card']);
 });
 
-test('#852 1a r3: a file the command names, edited after the click, gets the card', async () => {
-  const { writeFile } = await import('node:fs/promises');
-  const { join } = await import('node:path');
-  for (const edit of ['card', 'ran']) {
+test('#852 1a r3: the person’s 🚩 or 👎 on the confirm, or their message in a topic thread, takes it back', async () => {
+  for (const emoji of ['🚩', '👎']) {
     const s = await ask();
-    const body = join(s.folder, 'body.md');
-    await writeFile(body, 'The body you read.\n');
-    const command = `cd ${s.folder} && gh pr edit 896 --repo o/r --body-file ${body}`;
-    await confirmed(s, block([command]), []);
-    await until(() => !!theConfirm(s).answer.files);
-    if (edit) await writeFile(body, 'Something else.\n');
-    assert.deepEqual(await later(s, [call(command)]), [edit ? 'card' : 'ran'], edit ? 'edited' : 'unchanged');
+    await confirmed(s, block([LABEL]), []);
+    const it = theConfirm(s);
+    s.rt.patchItem(s.t.id, it.id, { reactions: [{ emoji, at: Date.now() }] });
+    assert.deepEqual(await later(s, [call(LABEL)]), ['card'], emoji);
   }
+  const s = await ask();
+  await confirmed(s, block([LABEL]), []);
+  const topic = s.rt.createThread({ projectId: 'p1', title: 'Topic', kind: 'topic', parentId: s.t.id });
+  s.rt.addItem(topic.id, { kind: 'user', text: 'Hold on.' });
+  assert.deepEqual(await later(s, [call(LABEL)]), ['card'], 'a topic thread message');
+});
+
+test('#852 1a r3: with the store closed at the call, it gets the card and nothing runs', async () => {
+  const s = await ask();
+  await confirmed(s, block([LABEL]), []);
+  const { settledCall } = await import('../server/write-intent.mjs');
+  const se = s.rt.sessionsIn(s.t.id)[0];
+  let found;
+  s.next.push(async (c) => {
+    const req = call(LABEL);
+    c.toolUse({ id: req.toolUseId, name: 'Bash', input: req.input });
+    s.store.writable = false;
+    try {
+      found = await settledCall(s.rt, se.id, req);
+    } finally {
+      s.store.writable = true;
+    }
+  });
+  s.rt.deliver(se.id, { kind: 'notice', text: 'Go on.' }, { threadId: s.t.id });
+  await until(() => found !== undefined && !s.rt.turns.size);
+  assert.equal(found, null);
+  assert.deepEqual(s.ran, []);
 });

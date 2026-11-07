@@ -35,7 +35,10 @@ const NUMBER = /^\d+$/;
 const REPEATS = new Set(['--label', '--add-label', '--remove-label']);
 /** Flags that take no value. */
 const BARE = new Set(['--draft']);
-/** gh’s six shapes: [noun, verb, takes a number, flags allowed besides --repo, flags required besides --repo]. */
+/**
+ * gh’s six shapes: [noun, verb, takes a number, flags allowed besides --repo, flags required besides --repo].
+ * @type {[string, string, boolean, string[], string[]][]}
+ */
 const GH = [
   ['pr', 'create', false, ['--head', '--title', '--body-file', '--base', '--draft', '--label'], ['--head']],
   ['pr', 'edit', true, ['--title', '--body-file', '--add-label', '--remove-label', '--base'], []],
@@ -63,6 +66,7 @@ export function confirmShape(text) {
   if (!shape) return { kind: 'none', why: `runs gh ${noun ?? ''} ${verb ?? ''}, which a confirm can’t: only gh pr or issue create, edit and comment` };
   const [, , numbered, allowed, required] = shape;
   if (numbered && !NUMBER.test(rest.shift() ?? '')) return { kind: 'none', why: `needs the ${noun}’s number right after gh ${noun} ${verb}` };
+  /** @type {Map<string, string | true>} */
   const seen = new Map();
   for (let i = 0; i < rest.length; i++) {
     const flag = rest[i];
@@ -77,20 +81,22 @@ export function confirmShape(text) {
   for (const flag of required) if (!seen.has(flag)) return { kind: 'none', why: `needs ${flag}` };
   for (const flag of ['--head', '--base']) {
     const branch = seen.get(flag);
-    if (branch !== undefined && (!BRANCH.test(branch) || branch.includes('..')))
+    if (typeof branch === 'string' && (!BRANCH.test(branch) || branch.includes('..')))
       return { kind: 'none', why: `has ${flag} ${branch}, which isn’t a plain branch name` };
   }
-  const bodyFile = seen.get('--body-file') ?? null;
+  const given = seen.get('--body-file');
+  const bodyFile = typeof given === 'string' ? given : null;
   if (bodyFile !== null && !bodyFile.startsWith('/')) return { kind: 'none', why: 'has a --body-file that isn’t an absolute path' };
   return { kind: 'gh', argv: w.slice(1), repo, bodyFile };
 }
 
 /** A lone `git push [origin] [<branch>]`, which push-on-request.mjs’s pushOf reads the same way. */
+/** @param {string[]} w @returns {{ kind: 'push' } | { kind: 'none', why: string }} */
 function gitPush(w) {
   const [, sub, ...rest] = w;
   const plain = rest.filter((x) => !GIT_PUSH_FLAGS.has(x));
   const [remote, branch, ...more] = plain;
   const ok = sub === 'push' && !plain.some((x) => x.startsWith('-')) && !more.length && (remote === undefined || remote === 'origin');
   if (!ok || (branch !== undefined && branch !== 'HEAD' && !PUSH_BRANCH.test(branch))) return { kind: 'none', why: 'isn’t a lone git push [origin] [branch]' };
-  return { kind: 'push' };
+  return { kind: /** @type {const} */ ('push') };
 }

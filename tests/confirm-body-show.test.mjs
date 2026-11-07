@@ -23,7 +23,7 @@ test('show_block keeps the body file a confirm’s command posts, with its SHA-2
   const f = await setup();
   const path = join(f.folder, 'body.md');
   writeFileSync(path, 'Fixes #852\n');
-  const r = await f.call('show_block', confirm('pr', ['git status', `gh pr create --title T --body-file ${path}`]));
+  const r = await f.call('show_block', confirm('pr', ['git push', `gh pr create --repo o/r --head feat/x --title T --body-file ${path}`]));
   assert.equal(r.isError, false, r.text);
   const it = confirmItem(f, 'pr');
   assert.equal(it.valid, true);
@@ -36,7 +36,7 @@ test('show_block keeps only the first 40 lines of a longer body file, and how ma
   const f = await setup();
   const path = join(f.folder, 'long.md');
   writeFileSync(path, lines(60));
-  const r = await f.call('show_block', confirm('long', [`gh issue create --title T --body-file ${path}`]));
+  const r = await f.call('show_block', confirm('long', [`gh issue create --repo o/r --title T --body-file ${path}`]));
   assert.equal(r.isError, false, r.text);
   const [kept] = confirmItem(f, 'long').bodyFiles;
   assert.equal(kept.text, lines(40));
@@ -47,7 +47,7 @@ test('show_block keeps only the first 40 lines of a longer body file, and how ma
 test('show_block refuses a confirm whose body file is outside the agent’s places, and shows nothing', async () => {
   const f = await setup();
   const path = OUTSIDE;
-  const r = await f.call('show_block', confirm('pr', [`gh pr create --title T --body-file ${path}`]));
+  const r = await f.call('show_block', confirm('pr', [`gh pr create --repo o/r --head feat/x --title T --body-file ${path}`]));
   assert.equal(r.isError, true);
   assert.ok(r.text.includes(path), r.text);
   assert.equal(confirmItem(f, 'pr'), undefined, 'no item was added');
@@ -58,14 +58,14 @@ test('show_block takes a body file in a temp folder of this user’s', async () 
   const dir = tempDir('pb-confirm-body-tmp-');
   const path = join(dir, 'body.md');
   writeFileSync(path, 'from tmp');
-  const r = await f.call('show_block', confirm('tmp', [`gh pr comment 5 --body-file ${path}`]));
+  const r = await f.call('show_block', confirm('tmp', [`gh pr comment 5 --repo o/r --body-file ${path}`]));
   assert.equal(r.isError, false, r.text);
   assert.equal(confirmItem(f, 'tmp').bodyFiles[0].text, 'from tmp');
 });
 
 test('show_block refuses a confirm whose --body-file names no file', async () => {
   const f = await setup();
-  const r = await f.call('show_block', confirm('pr', ['gh pr create --title T --body-file']));
+  const r = await f.call('show_block', confirm('pr', ['gh pr create --repo o/r --head feat/x --title T --body-file']));
   assert.equal(r.isError, true);
   assert.match(r.text, /--body-file/);
   assert.equal(confirmItem(f, 'pr'), undefined);
@@ -74,7 +74,7 @@ test('show_block refuses a confirm whose --body-file names no file', async () =>
 test('show_block called without reading the body files refuses the confirm', () => {
   // A path that skips the MCP step (a remote turn, a direct call) can’t show what the file posts, so it fails closed.
   return setup().then((f) => {
-    const r = f.rt.toolsFor(f.se.id).show_block(confirm('pr', [`gh pr create --title T --body-file ${join(f.folder, 'b.md')}`]));
+    const r = f.rt.toolsFor(f.se.id).show_block(confirm('pr', [`gh pr create --repo o/r --head feat/x --title T --body-file ${join(f.folder, 'b.md')}`]));
     assert.equal(r.ok, false);
     assert.match(r.message, /body-file/);
     assert.equal(confirmItem(f, 'pr'), undefined);
@@ -85,9 +85,9 @@ test('update_block reads the body file again and keeps the new one', async () =>
   const f = await setup();
   const path = join(f.folder, 'body.md');
   writeFileSync(path, 'first');
-  assert.equal((await f.call('show_block', confirm('pr', [`gh pr create --title T --body-file ${path}`]))).isError, false);
+  assert.equal((await f.call('show_block', confirm('pr', [`gh pr create --repo o/r --head feat/x --title T --body-file ${path}`]))).isError, false);
   writeFileSync(path, 'second');
-  const r = await f.call('update_block', confirm('pr', [`gh pr create --title T2 --body-file ${path}`]));
+  const r = await f.call('update_block', confirm('pr', [`gh pr create --repo o/r --head feat/x --title T2 --body-file ${path}`]));
   assert.equal(r.isError, false, r.text);
   assert.equal(confirmItem(f, 'pr').bodyFiles[0].text, 'second');
 });
@@ -96,8 +96,8 @@ test('update_block refuses a body file outside the agent’s places, and keeps t
   const f = await setup();
   const path = join(f.folder, 'body.md');
   writeFileSync(path, 'first');
-  assert.equal((await f.call('show_block', confirm('pr', [`gh pr create --title T --body-file ${path}`]))).isError, false);
-  const r = await f.call('update_block', confirm('pr', [`gh pr create --title T --body-file ${OUTSIDE}`]));
+  assert.equal((await f.call('show_block', confirm('pr', [`gh pr create --repo o/r --head feat/x --title T --body-file ${path}`]))).isError, false);
+  const r = await f.call('update_block', confirm('pr', [`gh pr create --repo o/r --head feat/x --title T --body-file ${OUTSIDE}`]));
   assert.equal(r.isError, true);
   assert.ok(r.text.includes(OUTSIDE), r.text);
   assert.equal(confirmItem(f, 'pr').bodyFiles[0].text, 'first');

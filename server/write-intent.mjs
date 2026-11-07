@@ -16,7 +16,7 @@
 import { randomBytes } from 'node:crypto';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { setupOf } from './adapters/setup.mjs';
-import { confirmedFound } from './confirm-grant.mjs';
+import { confirmedFields, confirmedFound } from './confirm-grant.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { pushConsequence, pushedMessage, pushOf, runPush } from './push-on-request.mjs';
 import { actionWords, numberOf, offRequest } from './request-floor.mjs';
@@ -299,13 +299,11 @@ export async function settledCall(rt, sessionId, req) {
     detail: (req.tool === 'Bash' ? String(req.input?.command ?? '') : JSON.stringify(req.input ?? {}, null, 2)).slice(0, MAX_CALL),
     how: found.how,
     ...(found.how === 'confirmed' ? { approved: clip(found.label, 200) } : { quote: clipText(found.quote, 300) }),
-    ...(found.blockItemId ? { blockItemId: found.blockItemId, sha256: found.sha256 } : {}),
-    ...(found.gh ? { gh: { argv: found.gh.argv, status: found.gh.status, output: found.gh.output } } : {}),
+    ...confirmedFields(found),
     ...(found.push ? { push: { sha: found.push.sha, branch: found.push.branch, url: found.push.url, error: done?.ok ? null : done?.error } } : {}),
     status: done && !done.ok ? 'failed' : 'allowed',
   });
-  if (found.gh) return { allow: false, message: found.gh.message }; // #852: Postbox ran it; the agent’s own doesn’t
-  if (!found.push) return { allow: true };
+  if (!found.push) return found.gh ? { allow: false, message: found.gh.message } : { allow: true }; // #852: Postbox ran it
   if (!done?.ok) return null;
   recordPush(rt, turn, found.push);
   // The agent’s own push never runs: Postbox made it, and says so.

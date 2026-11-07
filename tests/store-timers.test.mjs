@@ -31,6 +31,7 @@ const PLACED = {
   'adapters/kiro-cli-models.mjs': 2, // kills a CLI probe: no store
   'adapters/mock.mjs': 1, // the mock’s pacing: no store
   'adapters/process-group.mjs': 4, // SIGKILL after a Stop’s grace: Stop is allowed while closed
+  'confirm-grant.mjs': 1, // records a confirm’s files after the click: patches only while the store is writable (#852)
   'kept-jobs.mjs': 1, // pollKept: skips its tick while closed
   'lint-delivery.mjs': 5, // an injected setTimer before a lint turn: a start, held by heldTurn while closed
   'live-streams.mjs': 2, // sends frames: reads

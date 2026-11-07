@@ -20,10 +20,14 @@ import { personAsks } from './write-guard.mjs';
 /** How long a confirmed command stays usable once the agent has the answer (rule 6), and once given (rule 7). */
 export const CONFIRM_RUN_MS = 15 * 60_000;
 export const CONFIRM_ANSWER_MS = 24 * 3_600_000;
+/** Each confirm whose files are still being recorded after its click, by item id. */
+const recording = new Map();
 /** How many recent confirms a session keeps for this, newest last. */
 const RECENT_MAX = 20;
 /** Rule 2: a Bash call’s input may carry only these. */
 const PLAIN_INPUT = new Set(['command', 'description', 'timeout']);
+/** Rule 11: the flags whose values a gh shape posts as text. */
+const TEXT_FLAGS = new Set(['--title', '--label', '--add-label', '--remove-label']);
 /** Rule 8: the person’s reactions that take a confirm back. */
 const REVOKING = new Set(['🚩', '👎']);
 
@@ -44,23 +48,29 @@ export function recordConfirm(rt, it, threadId, action, revision) {
   const now = Date.now();
   const recent = (se.confirms ?? []).filter((c) => now - c.at < CONFIRM_ANSWER_MS && c.itemId !== it.id).slice(1 - RECENT_MAX);
   rt.updateSession(se.id, { confirms: [...recent, { threadId, itemId: it.id, at: now }] });
-  void recordFiles(rt, threadId, it.id, shown, it.block.bodyFiles ?? []);
+  // After act has written the answer this returns into: recordFiles adds to that answer. A call that comes first
+  // waits for it (confirmedCall), rather than finding nothing recorded.
+  const done = new Promise((resolve) => setImmediate(resolve)).then(() => recordFiles(rt, threadId, it.id, entries, it.bodyFiles ?? []));
+  recording.set(it.id, done);
+  done.catch(() => {}).finally(() => recording.delete(it.id));
   return { commands: shown.map(sha256) };
 }
 
 /** The body file a block showed for this command, if it has one. */
-const shownFile = (bodyFiles, command) => bodyFiles.find((f) => f.path === confirmShape(command).bodyFile) ?? null;
+/** The body file a block showed for its entry at `index` (confirm-body.mjs keeps them by the entry’s index). */
+const shownFile = (bodyFiles, index, path) => bodyFiles.find((f) => f.command === index && f.path === path) ?? null;
 
 /**
  * After the click: each command’s body file, as the block showed it, checked unchanged since then; a command whose
  * file changed between showing and the click gets nothing recorded, so it grants nothing.
  */
-async function recordFiles(rt, threadId, itemId, commands, bodyFiles) {
+async function recordFiles(rt, threadId, itemId, entries, bodyFiles) {
   /** @type {Record<string, any[]>} */
   const files = {};
-  for (const command of commands) {
-    const shape = confirmShape(command);
-    const file = shape.kind === 'gh' && shape.bodyFile ? shownFile(bodyFiles, command) : null;
+  for (const [index, command] of entries.entries()) {
+    const shape = typeof command === 'string' && !commandProblem(command) ? confirmShape(command) : null;
+    if (!shape || shape.kind === 'none') continue;
+    const file = shape.kind === 'gh' && shape.bodyFile ? shownFile(bodyFiles, index, shape.bodyFile) : null;
     if (shape.kind === 'gh' && shape.bodyFile && !(file && (await bodyStillSame(file)))) continue;
     files[sha256(command)] = file ? [file] : [];
   }
@@ -102,7 +112,9 @@ function grants(rt, c, sessionId, hash, now) {
 /** Rule 11: the body file is still the bytes and the real path the block showed, and holds no secret Postbox knows. */
 async function bodyHolds(files, argv) {
   for (const file of files) if (!(await bodyStillSame(file)) || trimSecrets(file.text ?? '') !== (file.text ?? '')) return false;
-  return trimSecrets(argv.join(' ')) === argv.join(' ');
+  // The words the call posts besides the file: its title and labels (a path or a branch isn’t posted as text).
+  const posted = argv.filter((_, i) => TEXT_FLAGS.has(argv[i - 1])).join('\n');
+  return trimSecrets(posted) === posted;
 }
 
 /** Calls being let through now, by `${itemId}:${hash}`: rule 13’s reservation, so two at once can’t both pass. */
@@ -123,6 +135,7 @@ export async function confirmedCall(rt, sessionId, req) {
   if (typeof command !== 'string' || !command || Object.keys(input).some((k) => !PLAIN_INPUT.has(k))) return null;
   const shape = confirmShape(command);
   if (shape.kind === 'none') return null;
+  await Promise.all(se.confirms.map((c) => recording.get(c.itemId)).filter(Boolean)).catch(() => {});
   const hash = sha256(command);
   const now = Date.now();
   const at = se.confirms.map((c) => ({ c, it: grants(rt, c, sessionId, hash, now) })).find((x) => x.it);
@@ -169,3 +182,9 @@ export async function confirmedFound(rt, sessionId, req, pushes) {
   const push = await (rt.pushes ?? pushes).consequence({ folder, url: project?.pushUrl, push: pushOf(c.command), named: c.command.toLowerCase() });
   return push ? { ...found, push } : null;
 }
+
+/** The allowed-call line’s fields for a confirmed command: which confirm, and what Postbox ran for it. */
+export const confirmedFields = (found) => ({
+  ...(found.blockItemId ? { blockItemId: found.blockItemId, sha256: found.sha256 } : {}),
+  ...(found.gh ? { gh: { argv: found.gh.argv, status: found.gh.status, output: found.gh.output } } : {}),
+});
