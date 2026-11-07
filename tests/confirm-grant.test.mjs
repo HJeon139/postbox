@@ -200,3 +200,53 @@ async function laterTurnClosed(s) {
   await until(() => found !== undefined && !s.rt.turns.size);
   return found;
 }
+
+/** settledCall's answer for this call, asked from inside a turn of the confirm's agent; `during` runs first. */
+async function settledInTurn(s, req, during = () => {}) {
+  const { settledCall } = await import('../server/write-intent.mjs');
+  const sessionId = s.rt.sessionsIn(s.t.id)[0].id;
+  let found;
+  s.next.push(async () => {
+    const turn = s.rt.turns.get(sessionId);
+    const was = turn.remote;
+    during(turn);
+    found = await settledCall(s.rt, sessionId, req);
+    // The rest of the turn ends as a local one: only the call was asked as a host turn's.
+    turn.remote = was;
+  });
+  s.rt.sendMessage(s.t.id, { text: 'Go on.' });
+  await until(() => found !== undefined && !s.rt.turns.size);
+  return found;
+}
+
+test('#852 1a: a host turn’s call gets its card through its host, never this rule', async () => {
+  const s = await setup({ permissionMode: 'ask' });
+  await afterBlock(s, confirm(fence(LABEL)), ['confirm', {}], []);
+  assert.equal(
+    await settledInTurn(s, bash(LABEL), (turn) => {
+      turn.remote = { hostId: 'h1' };
+    }),
+    null,
+  );
+  assert.equal(lines(s).length, 0);
+});
+
+test('#852 1a: a confirm another session showed never grants, even if this session’s list names it', async () => {
+  const s = await setup({ permissionMode: 'ask' });
+  await afterBlock(s, confirm(fence(LABEL)), ['confirm', {}], []);
+  const it = theConfirm(s);
+  const other = s.rt.createPersona({ handle: 'other', backend: 'claude-code', permissionMode: 'ask', tools: ['shell'] });
+  const t2 = s.rt.createThread({ projectId: 'p1', title: 'Other', personaIds: [other.id] });
+  const [se2] = s.rt.sessionsIn(t2.id);
+  // A list that names the first agent's confirm: the block's own session is still checked.
+  s.rt.updateSession(se2.id, { confirms: [{ threadId: s.t.id, itemId: it.id, at: Date.now() }] });
+  assert.deepEqual(await laterTurn({ ...s, t: t2 }, [bash(LABEL)]), [false]);
+});
+
+test('#852 1a: an answer for an older revision grants nothing, even if it’s still on the item', async () => {
+  const s = await setup({ permissionMode: 'ask' });
+  await afterBlock(s, confirm(fence(LABEL)), ['confirm', {}], []);
+  const it = theConfirm(s);
+  s.rt.patchItem(s.t.id, it.id, { revision: (it.revision ?? 1) + 1 });
+  assert.deepEqual(await laterTurn(s, [bash(LABEL)]), [false]);
+});
