@@ -4,6 +4,7 @@
 // tests/remote-broker-fixtures.mjs, beside tests/remote-broker-prompts.test.mjs, which is at its length limit.
 
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { TURN_FILES } from '../shared/remote-protocol.mjs';
@@ -175,6 +176,40 @@ test('#908 a hello with no key is refused, and the connection hears nothing of t
     await sleep(20);
     assert.deepEqual(keyless.got, [first], 'its call, its prompt and Stop reach it with nothing');
     assert.deepEqual(k.sent, [], 'and Postbox heard nothing of them');
+  } finally {
+    await h.done();
+  }
+});
+
+test('#908 no connection hears a shim’s key, or its hash, in anything the daemon sends, nor does Postbox', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    const k = makeBroker(h);
+    const s = connectShim(k.b, 't1', turnToken('t1'), KEY);
+    const other = connectShim(k.b, 't1', turnToken('t1'), OTHER);
+    await s.next('welcome');
+    await other.next('welcome');
+    // The shim asks and calls; the other sends the same ids again and tries to end the prompt.
+    s.send('permission', { id: 'p1', request: REQUEST });
+    s.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'q' } });
+    await until(() => k.sent.length >= 2, 'the prompt and the call at Postbox');
+    other.send('permission', { id: 'p1', request: REQUEST });
+    other.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'q' } });
+    other.send('permission-canceled', { id: 'p1', at: 1 });
+    await other.next('error', (m) => m.code === 'no-prompt');
+    await k.post('answer', { turn: 't1', prompt: 'p1', result: ALLOW });
+    await k.post('reply', { turn: 't1', id: 'c1', ok: true, text: 'found' });
+    await s.next('result');
+    await k.b.stopping('t1');
+    await sleep(20);
+    const secrets = [KEY, OTHER].flatMap((key) => [key, createHash('sha256').update(key).digest('hex')]);
+    for (const [who, heard] of [
+      ['the shim', s.raw],
+      ['the other', other.raw],
+      ['Postbox', k.sent.map((m) => JSON.stringify(m))],
+    ])
+      assert.ok(heard.length && !secrets.some((x) => heard.join('\n').includes(x)), `${who} heard no key and no key’s hash`);
   } finally {
     await h.done();
   }
