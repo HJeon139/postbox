@@ -183,7 +183,7 @@ Every block has id (letters, digits, - _ . :; one block per id in a conversation
 
 Postbox renders headings, lists, tables, links (https only), \`code\`, fenced code, \`\`\`mermaid diagrams, and math with $…$ or $$…$$. Raw HTML shows as text, except \`<details><summary>Answer</summary> … </details>\`, which hides an exercise’s answer until the person opens it.
 
-A picture that explains draws what things are or do, not labeled boxes: draw it in an app, with shapes, icons and marks whose size or position carry the values, and dependencies with postbox.graph. Keep Mermaid for a quick sketch.
+A picture that explains draws what things are or do, not labeled boxes: draw it in an app, with shapes, icons and marks whose size or position carry the values, and dependencies with postbox.graph.
 
 ## Apps
 
@@ -199,7 +199,7 @@ The global postbox gives you:
 - postbox.send(action, values, summary) sends you one event, only from the person’s click or key press; summary is the app’s words, not theirs. Up to 5 a minute; more wait for the person. An event carries up to ${n('eventBytes')} of JSON (more rejects), so hand over many items by id.
 - postbox.saveState(obj) and postbox.restoreState() keep state over reloads and versions
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library
-- postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts and postbox.graph(el, { nodes: [{ id, group? }], edges, highlight?: "cycles" | "between-groups" }) a network, with Table views
+- postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts and postbox.graph(el, { nodes: [{ id, group? }], edges, highlight?: "cycles" | "between-groups", layout?: "layered" }) a network, with Table views
 - postbox.on("theme", fn) to redraw on a theme change
 
 Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before showing an app, Postbox checks it in a narrow and a wide window (375 and 1280 px) for layout, accessibility and script errors; fix what it reports with update_app. Read the version’s check via read_message.

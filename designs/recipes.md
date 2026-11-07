@@ -81,7 +81,7 @@ The same passages can serve both: the narrated walkthrough for listening now, an
 For a question about how code, services or tasks depend on each other: what imports what, what calls what, what has to finish first. Drawn by hand, these came out as labeled boxes or a Mermaid flowchart every time, because a readable node-link layout is hard to write blind (#206, #888). So decide what connects and let the kit decide where things go.
 
 1. Read the code for the edges: one node per module (or service, or task), one edge per import (or call, or wait), and each node’s package as its group. A size or a line count can be its value.
-2. Pick the edges the answer is about, and highlight them: `"between-groups"` for what crosses a boundary, `"cycles"` for what imports itself round a loop, or a function of the edge for anything else.
+2. Pick a layout: `layout: "layered"` when the question follows the edges one way (what a request passes through, what has to build first), the default when it’s about clusters and cycles. Pick the edges the answer is about, and highlight them: `"between-groups"` for what crosses a boundary, `"cycles"` for what imports itself round a loop, or a function of the edge for anything else.
 3. Show one app:
 
 ```js
@@ -96,7 +96,7 @@ postbox.graph(document.getElementById('map'), {
 
 4. Under it, one line on how to read it (“Bold arrows cross from shop into core”), and the finding in a sentence.
 
-The kit lays it out with d3-force, in [`app/kit/graph-layout.js`](../app/kit/graph-layout.js): each group pulls to a center of its own and is drawn as one soft region, every node and its 13 px label are pushed apart until none overlap, and a cycle of three or more is laid out on a ring. It draws at 1000 × 680 or larger, scrolling sideways in a narrow window rather than shrinking its text, with a Table view of the edges. Past a few hundred nodes, draw an adjacency matrix with `postbox.charts.heatmap` instead.
+The kit lays it out with d3-force, in [`app/kit/graph-layout.js`](../app/kit/graph-layout.js): each group pulls to a center of its own and is drawn as one soft region, every node and its 13 px label are pushed apart until none overlap, and a cycle of three or more is laid out on a ring; the layered layout puts each node on a row instead, with each group a column. It resolves to the positions it chose and to `crossings`, the pairs of edges that cross. It draws at 1000 × 680 or larger, scrolling sideways in a narrow window rather than shrinking its text, with a Table view of the edges. Past a few hundred nodes, draw an adjacency matrix with `postbox.charts.heatmap` instead.
 
 ## Writing your own
 
