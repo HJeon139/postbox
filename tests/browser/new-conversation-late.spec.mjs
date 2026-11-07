@@ -5,7 +5,7 @@
 
 import { expect, test } from '@playwright/test';
 import { heldCount, holdThreads, release } from './hold-threads.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, keptListeners, startPostbox, synced } from './postbox.mjs';
 import { sideRoom } from './side-threads.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -39,9 +39,8 @@ const heard = (page) => expect.poll(() => heldCount(page), { message: 'the conve
 const pastTimers = (page) => page.clock.runFor(1000);
 /** The id of the conversation a title names, on the server. */
 const threadTitled = (title) => Object.values(app.store.state.threads).find((t) => t.title === title)?.id;
-/** The page’s client listeners, but those that remove themselves once their element is gone. */
-const listeners = (page) =>
-  page.evaluate(() => import('/app/js/client.mjs').then(({ client }) => [...client.listeners].filter((f) => !String(f).includes('.isConnected')).length));
+/** The page’s client listeners, but those that remove themselves once their element is gone (postbox.mjs). */
+const listeners = keptListeners;
 /** Starts a conversation with @indexer from the New conversation sheet. */
 async function startConversation(page, r, title) {
   await openSheet(page, 'openNewThread', r.room.projectId);
