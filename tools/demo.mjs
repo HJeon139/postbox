@@ -295,12 +295,12 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   await call(`/api/threads/${tidy.id}/items/${refusal.id}/act`, { action: 'once' });
   await settled(tidy);
 
-  // 11 · A dashboard that fails its check at phone width, gets fixed, then shows
+  // 11 · A dashboard that fails its check at phone width, gets fixed, then shows, its bars with a note (#889)
   const dash = await call('/api/threads', { projectId: index.projectId, title: 'Corpus dashboard', personaIds: [ix.personaId] });
   log('@indexer writes a dashboard; the check finds it too wide for a phone; @indexer fixes it.');
   await view(`#/t/${dash.id}`);
   await send(dash, 'Show me a dashboard');
-  await until((st) => st.apps['corpus-dashboard']?.current === 2 && st.apps['corpus-dashboard'].check.status === 'passed', {
+  await until(({ apps: { 'corpus-dashboard': d } }) => d?.current === 2 && (d.check.status === 'passed' || d.check.notes), {
     label: 'the fixed dashboard',
     timeout: 60000,
   });

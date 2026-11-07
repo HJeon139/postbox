@@ -12,8 +12,11 @@ import { newId } from './store.mjs';
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
-/** App check problems that are warnings: the app is shown, with notes, and the agent is told. */
-const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small', 'dashes-too-fine', 'only-error']);
+/**
+ * App check problems that are warnings: the app is shown, with notes, and the agent is told. The two of a picture’s
+ * form, words in boxes and marks that rank one number, are signals for now, not reasons to hold an app back (#889).
+ */
+const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small', 'dashes-too-fine', 'only-error', 'text-in-shapes', 'ranks-one-number']);
 
 // ── Apps ───────────────────────────────────────────────────────────────────────────
 

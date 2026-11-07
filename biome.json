@@ -5,6 +5,7 @@
     "includes": [
       "app/js/**",
       "app/kit/check-controls.js",
+      "app/kit/check-form.js",
       "app/kit/check-layout.js",
       "app/kit/check.js",
       "app/kit/kit.js",
