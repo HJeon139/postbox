@@ -116,6 +116,25 @@ async function recorder(page = () => '') {
   return { got, port, close: () => new Promise((ok) => server.close(ok)) };
 }
 
+test('a capture shows the app with its check’s note, as the person sees it, and the app itself while its check is pending', async ({ page }) => {
+  test.setTimeout(60_000);
+  const { rt, store } = app;
+  const projectId = await project();
+  const t = rt.createThread({ projectId, title: 'Note check', personaIds: [rt.personaByHandle('researcher').id] });
+  const se = rt.sessionsIn(t.id)[0];
+  const shown = rt.toolsFor(se.id).show_app({ title: 'Noted', code: '<p style="padding:12px">Small print.</p>' });
+  const item = rt.store.items(t.id).find((x) => x.block?.id === shown.appId);
+  const capture = `${app.origin}/?nocheck&capture=${item.id}&thread=${t.id}`;
+  await page.goto(capture);
+  await expect(page.locator('[data-capture="ready"]')).toBeAttached({ timeout: 15_000 });
+  await expect(page.locator('[data-capture-item] iframe.app-iframe'), 'pending: the app, not “Checking the app…”').toBeVisible();
+  const problems = [{ code: 'small-text', message: 'Text under 12 px.' }];
+  store.emit('app', { ...rt.s.apps[shown.appId], check: { status: 'note', attempt: 1, problems, notes: true } });
+  await page.goto(capture);
+  await expect(page.locator('[data-capture="ready"]')).toBeAttached({ timeout: 15_000 });
+  await expect(page.locator('[data-capture-item] .app-note')).toContainText('Shown with notes for @researcher: Text under 12 px.');
+});
+
 test('the picture is as wide as the app the person sees, beside the rail by default and beside an open pane', async ({ page }) => {
   test.setTimeout(120_000);
   const { rt } = app;

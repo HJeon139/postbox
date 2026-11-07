@@ -24,10 +24,11 @@ export function mountCapture(root) {
     root.replaceChildren(h('p', { dataset: { capture: 'missing' } }, 'There’s no such app here.'));
     return;
   }
-  // The app as it is, whatever its check says: the agent asked to see it, and its check may still be pending. This page
-  // has its own copy of the state, with no stream, so this changes nothing for the person.
+  // The app itself while its check is pending or its agent is fixing what the check found: the agent asked to see it,
+  // and the person would see a placeholder. Any other result, a note say, shows as the person sees it. This page has
+  // its own copy of the state, with no stream, so this changes nothing for the person.
   const app = client.state.apps[item.block.id];
-  app.check = { ...(app.check ?? {}), status: 'passed' };
+  if (app.check?.status === 'pending' || app.check?.status === 'fixing') app.check = { ...app.check, status: 'passed' };
   // As thread.mjs wraps an app in the transcript: wider than the text column, as wide as the conversation.
   const holder = h('div.wide.item', { dataset: { key: item.id, captureItem: '' } });
   const paint = () => holder.replaceChildren(renderAppItem(item, { threadId, rerender: paint }));
