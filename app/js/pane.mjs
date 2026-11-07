@@ -6,6 +6,8 @@
 // has no room for the pane beside the conversation, the view opened last opens full screen instead (#197).
 
 import { h, icon } from './dom.mjs';
+import { refocusClosed } from './pane-focus.mjs';
+import { openLateThread } from './pane-late-thread.mjs';
 import { mountDivider } from './pane-split.mjs';
 import { mountWidth } from './pane-width.mjs';
 import { mountSidePanel } from './side-panel.mjs';
@@ -173,14 +175,8 @@ export function mountPane(convId) {
     el.parentElement?.classList.toggle('has-panel', !el.hidden);
     width.update();
 
-    // Focus lost with a view that closed goes to what opens it: Work’s button, a thread’s line, else the conversation.
-    // Focus given back outside the pane, as to the turn’s list row that opened Work full screen (#195), stays there.
-    if (had && (!document.activeElement || document.activeElement === document.body)) {
-      const button = closing.work ? document.getElementById('work-button') : null;
-      const link = closing.thread ? document.querySelector(`#main a[href*="/side/${CSS.escape(closing.thread)}"]`) : null;
-      const to = [button, link].find((x) => x instanceof HTMLElement && x.offsetParent);
-      /** @type {HTMLElement | null} */ (to ?? document.getElementById('main'))?.focus();
-    }
+    // Focus lost with a view that closed goes to what opens it, unless it was given back outside the pane.
+    if (had) refocusClosed(closing);
 
     // Full screen: Work on a turn or at an item, or the thread.
     if (full && viewOf(full)) enterFull(full, r);
@@ -192,10 +188,14 @@ export function mountPane(convId) {
     }
   }
 
+  // A thread whose event lands after its address did, as Reply in thread’s can (#887).
+  const stopLate = openLateThread(convId, { mounted: () => thread !== null, set });
+
   return {
     el,
     set,
     destroy() {
+      stopLate();
       leaveFull({ focus: false });
       width.destroy();
       thread?.view.destroy();

@@ -155,12 +155,17 @@ export function codeOnly(src, tokens = scan(src)) {
 }
 
 /**
- * Whether a finding on this line is allowed by a `lint-allow <rule>: <reason>` comment on it or the line above.
- * The reason is required, so every exception says why.
+ * Whether a finding on this line is allowed by a `lint-allow <rule>: <reason>` comment on it or the line above, and
+ * only there: lint-ternary takes no file-level allow (#753). The reason is required, so every exception says why.
  */
-export function allowed(lines, line, rule) {
+export function allowedOnLine(lines, line, rule) {
   const re = new RegExp(`lint-allow ${rule}:\\s*\\S`);
-  if (re.test(lines[line - 1] ?? '') || re.test(lines[line - 2] ?? '')) return true;
+  return re.test(lines[line - 1] ?? '') || re.test(lines[line - 2] ?? '');
+}
+
+/** Whether a finding on this line is allowed by a `lint-allow` on it or the line above, or a `lint-allow-file` for the rule. */
+export function allowed(lines, line, rule) {
+  if (allowedOnLine(lines, line, rule)) return true;
   // A whole file can opt out of one rule, with a reason, in its first 20 lines.
   const file = new RegExp(`lint-allow-file ${rule}:\\s*\\S`);
   return lines.slice(0, 20).some((l) => file.test(l));
