@@ -9,6 +9,7 @@ import { editedInput, MAX_EDIT_INPUT, MAX_REASON } from './permission-edit.mjs';
 import { closeCard, dismissPermission } from './permission-expiry.mjs';
 import { addAllowRule, alwaysAllow, cleanRule, rulesFor, takeBackRule } from './permission-rules.mjs';
 import { requestAdapter } from './remote/placement.mjs';
+import { allowInRoom, grantOffer } from './room-grants.mjs';
 import { gated } from './store-outage.mjs';
 import { draftOf, isWriteCall, whereOf } from './write-guard.mjs';
 import { settledCall } from './write-intent.mjs';
@@ -71,6 +72,7 @@ export function askPerson(
     // What Edit starts from; an input too large to edit here can still be allowed as it is.
     input: json && json.length <= MAX_EDIT_INPUT ? JSON.parse(json) : null,
     always: hostAlways(rt.alwaysFor(se, { tool, input, suggestions, suppressAlways }), hostPrompt),
+    roomGrant: agentId ? null : grantOffer(rt, se, { tool, input, hostId: hostPrompt?.hostId ?? null }),
     // A subagent’s prompt names it, as its refusals do: by the SDK’s agent id, or by the call the stream saw it make.
     who: whoAsked(turn, agentId, toolUseId),
     ...(hostPrompt
@@ -166,8 +168,9 @@ export function resolvePermission(rt, threadId, itemId, action, values = {}) {
   const it = rt.store.item(threadId, itemId);
   if (it?.kind !== 'permission' || it.status !== 'open' || !rt.permissionWaits.has(itemId))
     throw httpError(409, 'That request was already answered, or the turn that asked has ended.');
-  if (!['allow', 'always', 'edit', 'deny'].includes(action)) throw httpError(400, 'A permission request takes “allow”, “always”, “edit” or “deny”.');
+  if (!['allow', 'always', 'room', 'edit', 'deny'].includes(action)) throw httpError(400, 'A permission request takes “allow”, “always”, “edit” or “deny”.');
   const asked = `${it.who ? `@${it.handle}’s subagent (${it.who})` : `@${it.handle}`} to ${it.summary}`;
+  if (action === 'room') return allowInRoom(rt, threadId, it, asked);
   if (action === 'allow') {
     rt.addItem(threadId, { kind: 'voice', text: `Allowed: ${asked}` });
     rt.settlePermission(itemId, 'allowed');

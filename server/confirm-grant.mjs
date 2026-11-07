@@ -29,7 +29,7 @@ const RECENT_MAX = 20;
 /** Rule 2: a Bash call’s input may carry only these. */
 const PLAIN_INPUT = new Set(['command', 'description', 'timeout']);
 /** Rule 11: the flags whose values a gh shape posts as text. */
-const TEXT_FLAGS = new Set(['--title', '--label', '--add-label', '--remove-label']);
+export const TEXT_FLAGS = new Set(['--title', '--label', '--add-label', '--remove-label']);
 /** Rule 8: the person’s reactions that take a confirm back. */
 const REVOKING = new Set(['🚩', '👎']);
 
@@ -39,7 +39,7 @@ const sha256 = (text) => createHash('sha256').update(text, 'utf8').digest('hex')
  * the guard for a body file (T16; shared/privacy-rules.mjs, as tools/privacy-check.mjs checks commits), and the secret
  * patterns telemetry trims (telemetry-secrets.mjs). Best effort, as the person accepted.
  */
-const clean = (text) => checkContentPrivacy(text).length === 0 && trimSecrets(text) === text;
+export const clean = (text) => checkContentPrivacy(text).length === 0 && trimSecrets(text) === text;
 
 /**
  * At the person’s click on a confirm: what its answer records, and the session’s list of recent confirms. Nothing for

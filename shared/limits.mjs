@@ -5,6 +5,8 @@
 
 /** Sizes an agent can reach. Text lengths are in characters. */
 export const LIMITS = Object.freeze({
+  /** Calls a room rule the person saved may pass in one turn, before the next asks on a card (grant once, #852). */
+  roomGrantsPerTurn: 10,
   /** An app event’s values as JSON (postbox.send), in bytes. */
   eventBytes: 64 * 1024,
   /** An app’s code (show_app, update_app), inline or from codePath. */

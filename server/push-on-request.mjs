@@ -62,7 +62,7 @@ async function readSmall(path, max = 4096) {
 }
 
 /** The repository’s git folders, from .git in the agent’s folder itself: its own (HEAD) and the shared one. */
-async function gitDirs(folder) {
+export async function gitDirs(folder) {
   const dotgit = join(resolve(folder), '.git');
   const st = await lstat(dotgit).catch(() => null);
   if (st?.isDirectory()) return { own: dotgit, common: dotgit };
@@ -163,19 +163,25 @@ export const defaultBranch = (url) =>
 /**
  * Postbox’s own push: <sha> to refs/heads/<branch> of <url>, with no force, from an empty bare repository that
  * borrows the agent’s objects. Then it reads the branch back from the remote.
- * @param {{ url: string, branch: string, sha: string, objects: string }} p
- * @returns {Promise<{ ok: true } | { ok: false, error: string }>}
+ * @param {{ url: string, branch: string, sha: string, objects: string, lease?: string | null }} p  lease: the commit the
+ *   remote’s branch must still be at, for a push that may replace it
+ * @returns {Promise<{ ok: true, replaced?: string } | { ok: false, error: string }>}
  */
-export async function runPush({ url, branch, sha, objects }) {
-  if (!isPushUrl(url) || !BRANCH.test(branch) || !SHA.test(sha)) return { ok: false, error: 'the push wasn’t one Postbox can make' };
+export async function runPush({ url, branch, sha, objects, lease = null }) {
+  if (!isPushUrl(url) || !BRANCH.test(branch) || !SHA.test(sha) || (lease !== null && !SHA.test(lease)))
+    return { ok: false, error: 'the push wasn’t one Postbox can make' };
   try {
     return await inOwnRepo(async (git, repo) => {
       await writeFile(join(repo, 'objects', 'info', 'alternates'), `${objects}\n`);
       await git(['cat-file', '-e', `${sha}^{commit}`]);
-      await git(['push', '--no-verify', '--porcelain', url, `${sha}:refs/heads/${branch}`]);
+      // With a lease (grant once, #852): the remote replaces the branch only while it’s still at the lease’s commit,
+      // checked by the remote itself. What it held just before is kept, so the line can say what the push replaced.
+      const before = lease ? (await git(['ls-remote', url, `refs/heads/${branch}`])).split('\t')[0] || null : null;
+      const force = lease ? [`--force-with-lease=refs/heads/${branch}:${lease}`] : [];
+      await git(['push', '--no-verify', '--porcelain', ...force, url, `${sha}:refs/heads/${branch}`]);
       const there = await git(['ls-remote', url, `refs/heads/${branch}`]);
       if (there.split('\t')[0] !== sha) return { ok: false, error: `the remote’s ${branch} isn’t at ${sha.slice(0, 7)} after the push` };
-      return { ok: true };
+      return before && before !== sha ? { ok: true, replaced: before } : { ok: true };
     });
   } catch (e) {
     const said = String(e.stderr ?? e.message ?? e)

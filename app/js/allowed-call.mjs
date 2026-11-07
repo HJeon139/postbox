@@ -13,11 +13,19 @@ const first = (it) => {
   return line.length > 80 ? `${line.slice(0, 79)}…` : line;
 };
 
+/** Why it ran with no card: the confirm the person confirmed, the rule they saved for the room, or their words. */
+function whyOf(it) {
+  if (it.how === 'confirmed') return `you confirmed “${it.approved}”`;
+  if (it.how === 'granted') return `you allowed ${it.granted} for it in this room`;
+  return `you asked: “${it.quote}”`;
+}
+
 /** A push Postbox made itself: what landed where, or why it couldn’t, so the card asks instead. */
 function pushSaid(it, p, why) {
   const sha = h('code', p.sha.slice(0, 7));
   if (it.status === 'failed') return ['Couldn’t push ', sha, ` to ${p.branch} of ${p.url} for ${it.handle}: ${p.error}. It asks you on a card instead`];
-  return ['Pushed ', sha, ` to ${p.branch} of ${p.url} for ${it.handle}, in place of its own git push: ${why}`];
+  const replaced = p.replaced ? [', replacing ', h('code', p.replaced.slice(0, 7))] : [];
+  return ['Pushed ', sha, ` to ${p.branch} of ${p.url}`, ...replaced, ` for ${it.handle}, in place of its own git push: ${why}`];
 }
 
 /** @param {any} it  the allowedcall item @param {{ threadId: string }} ctx */
@@ -27,7 +35,7 @@ export function allowedCallLine(it, ctx) {
     api(`/api/threads/${ctx.threadId}/items/${it.id}/act`, { action: 'stop' }).catch((e) =>
       toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' }),
     );
-  const why = it.how === 'confirmed' ? `you confirmed “${it.approved}”` : `you asked: “${it.quote}”`;
+  const why = whyOf(it);
   // A push Postbox made itself, in place of the agent’s (server/push-on-request.mjs): what landed where, or why not.
   const p = it.push;
   const said = p ? pushSaid(it, p, why) : ['Ran ', h('code', first(it)), ` for ${it.handle} without a card: ${why}`];
@@ -42,5 +50,7 @@ export function allowedCallLine(it, ctx) {
     ),
     // The whole call, as it ran.
     h('details.small', h('summary', 'The whole call'), h('pre.mono', it.detail)),
+    // What a granted gh call posted, which nobody saw before it went (grant once, #852): its first lines and length.
+    it.body ? h('details.small', h('summary', `What it posted (${it.body.size} bytes)`), h('pre.mono', it.body.head)) : null,
   );
 }

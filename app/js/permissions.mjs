@@ -15,6 +15,7 @@ import { fill, h, icon } from './dom.mjs';
 import { checkField } from './hosts-parts.mjs';
 import { hooksSection } from './permission-hooks.mjs';
 import { mcpSection } from './permission-mcp.mjs';
+import { roomGrantsSection } from './permission-room-grants.mjs';
 import { MODES } from './run-choice.mjs';
 import { capsOf, modeHelp, openFolderPicker } from './sheets.mjs';
 import { keepFocus, openDialog, say, toast } from './ui.mjs';
@@ -182,6 +183,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
       view.real ? modeSection(p) : null,
       view.readsRules ? rulesSection() : null,
       view.real ? folderSection() : null,
+      view.real && view.readsRules ? roomGrantsSection(view, current, change) : null,
       view.real && view.readsRules ? hooksSection(view, SOURCE) : null,
       view.real && view.readsRules ? mcpSection(p, mcp, change) : null,
       view.real && view.readsRules ? effectiveSection(p) : null,

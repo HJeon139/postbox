@@ -42,6 +42,23 @@ const doneText = (it) =>
 const whereWords = (where) =>
   [where, ...(where.also ?? [])].flatMap((w, i) => [i ? ' and ' : '', h('b', w.server), w.target ? ` (${w.target.what} “${w.target.name}”)` : '']);
 
+/** Text with `code` in backticks, as nodes: the code as code, all of it as text, never as HTML. @param {string} text */
+const codeSpans = (text) =>
+  String(text)
+    .split('`')
+    .map((part, i) => (i % 2 ? h('code', part) : part));
+
+/**
+ * Always allow, which saves Claude Code’s rule, and Allow always in this room (grant once, #852), a rule Postbox keeps
+ * for this room and agent and checks at every call.
+ */
+const alwaysButtons = (it, titleId, act) => [
+  it.always ? h('button.btn', { type: 'button', 'aria-describedby': `${titleId}-always`, onclick: () => act('always') }, 'Always allow') : null,
+  it.roomGrant ? h('button.btn', { type: 'button', 'aria-describedby': `${titleId}-room`, onclick: () => act('room') }, 'Allow always in this room') : null,
+];
+/** What Allow always in this room saves, in words, before you click it. */
+const roomNote = (it, titleId) => (it.roomGrant ? h('p.small.perm-always', { id: `${titleId}-room` }, ...codeSpans(it.roomGrant.line)) : null);
+
 /**
  * The answers (#66, #10): Allow; Always allow, with the rule and where it’s saved shown in words first; Edit, which
  * changes the command (or the input’s JSON) and allows that; Don’t allow, with an optional reason the agent reads.
@@ -63,7 +80,7 @@ export function permissionBlock(it, ctx) {
   const foot = h('div.block-foot');
   const buttons = () => [
     h('button.btn', { type: 'button', onclick: () => act('allow') }, 'Allow'),
-    it.always ? h('button.btn', { type: 'button', 'aria-describedby': `${titleId}-always`, onclick: () => act('always') }, 'Always allow') : null,
+    ...alwaysButtons(it, titleId, act),
     // Edit needs the call’s whole input: one too large to keep here can only be allowed as it is.
     it.input ? h('button.btn', { type: 'button', 'aria-expanded': 'false', onclick: (e) => showEdit(e.currentTarget) }, 'Edit…') : null,
     h('button.btn', { type: 'button', 'aria-expanded': 'false', onclick: (e) => showDeny(e.currentTarget) }, 'Don’t allow…'),
@@ -197,7 +214,7 @@ export function permissionBlock(it, ctx) {
             it.outside ? h('p', `From now on ${by} can use `, h('code', it.tool), ' without showing you a draft.') : null,
           )
         : null,
-      open ? form : null,
+      open ? [roomNote(it, titleId), form] : null,
       !open
         ? h(
             'span.answered-note',

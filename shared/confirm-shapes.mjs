@@ -49,7 +49,7 @@ const GH = [
 ];
 // As push-on-request.mjs’s pushOf reads a push: its flags and branch names, so a confirm shows only pushes it makes.
 const GIT_PUSH_FLAGS = new Set(['-u', '--set-upstream', '-q', '--quiet', '-v', '--verbose']);
-const PUSH_BRANCH = /^(?!.*\.\.)(?!.*\/\/)(?!.*@\{)(?!.*\/\.)[A-Za-z0-9_][A-Za-z0-9._/-]*(?<![./])(?<!\.lock)$/;
+export const PUSH_BRANCH = /^(?!.*\.\.)(?!.*\/\/)(?!.*@\{)(?!.*\/\.)[A-Za-z0-9_][A-Za-z0-9._/-]*(?<![./])(?<!\.lock)$/;
 
 /**
  * What a confirm’s command is: a push Postbox makes, a gh call Postbox runs, or why it’s neither.

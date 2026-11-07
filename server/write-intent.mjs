@@ -20,6 +20,7 @@ import { confirmedFields, confirmedFound, runFound, unrecorded } from './confirm
 import { clip, clipText, httpError } from './helpers.mjs';
 import { pushConsequence, pushedMessage, pushOf, runPush } from './push-on-request.mjs';
 import { actionWords, numberOf, offRequest } from './request-floor.mjs';
+import { grantedFields, grantedFound, removeGrant } from './room-grants.mjs';
 import { newId } from './store.mjs';
 import { SUMMARY_MODEL } from './summary-model.mjs';
 import { isWriteCall, personAsks, writePasses } from './write-guard.mjs';
@@ -250,10 +251,11 @@ export async function settledCall(rt, sessionId, req) {
   const open = () => rt.store.writable && rt.store.epoch === epoch;
   const current = () => open() && !!turn && rt.turns.get(sessionId) === turn;
   if (isWriteCall(req.tool, req.input) && (await writePasses(rt, sessionId, req).catch(() => false))) return { allow: true };
-  /** @type {(Awaited<ReturnType<typeof requestedCall>> & { blockItemId?: string, sha256?: string, gh?: any, ghPlan?: any }) | null} */
+  /** @type {any} the confirm’s, the room rule’s or the request’s: { threadId, how, label | quote, push?, ghPlan?, … } */
   let found = null;
   try {
-    found = (await confirmedFound(rt, sessionId, req, PUSHES)) ?? (await requestedCall(rt, sessionId, req));
+    // A confirm first (it runs exactly what it showed), then a room rule the person saved, then a request’s words.
+    found = (await confirmedFound(rt, sessionId, req, PUSHES)) ?? (await grantedFound(rt, sessionId, req)) ?? (await requestedCall(rt, sessionId, req));
   } catch {
     // A judge that fails, or a check that breaks, gets the card, as before: it fails closed.
   }
@@ -277,9 +279,10 @@ export async function settledCall(rt, sessionId, req) {
     // The whole call, which the line shows: that’s what keeps the person in charge here.
     detail: (req.tool === 'Bash' ? String(req.input?.command ?? '') : JSON.stringify(req.input ?? {}, null, 2)).slice(0, MAX_CALL),
     how: found.how,
-    ...(found.how === 'confirmed' ? { approved: clip(found.label, 200) } : { quote: clipText(found.quote, 300) }),
+    ...whyFields(found),
     ...confirmedFields(found),
-    ...(found.push ? { push: { sha: found.push.sha, branch: found.push.branch, url: found.push.url, error: done?.ok ? null : done?.error } } : {}),
+    ...grantedFields(found),
+    ...(found.push ? { push: pushFields(found.push, done) } : {}),
     status: done && !done.ok ? 'failed' : 'allowed',
   });
   if (!found.push) return found.gh ? { allow: false, message: found.gh.message } : { allow: true }; // #852: Postbox ran it
@@ -288,6 +291,22 @@ export async function settledCall(rt, sessionId, req) {
   // The agent’s own push never runs: Postbox made it, and says so.
   return { allow: false, message: pushedMessage(found.push) };
 }
+
+/** Why a call ran with no card, as its line says: the confirm, the room rule, or the words the person typed. */
+function whyFields(found) {
+  if (found.how === 'confirmed') return { approved: clip(found.label, 200) };
+  if (found.how === 'granted') return {};
+  return { quote: clipText(found.quote, 300) };
+}
+
+/** What a push Postbox made landed, for its line: and, for a push with a lease, the commit it replaced. */
+const pushFields = (p, done) => ({
+  sha: p.sha,
+  branch: p.branch,
+  url: p.url,
+  error: done?.ok ? null : done?.error,
+  ...(done?.replaced ? { replaced: done.replaced } : {}),
+});
 
 /** Postbox’s push goes on the work ledger, as an agent’s own push would (#132). */
 function recordPush(rt, turn, p) {
@@ -308,6 +327,8 @@ export function stopRequested(rt, threadId, itemId, action) {
   if (it.status === 'stopped') return { ok: true };
   for (const x of rt.store.items(threadId))
     if (x.kind === 'allowedcall' && x.turnId === it.turnId && x.status !== 'stopped') rt.patchItem(threadId, x.id, { status: 'stopped' });
+  // A line a room rule made: Stop takes the rule away too, so the next call of that shape asks (grant once, #852).
+  if (it.grantId) removeGrant(rt, threadId, it.grantId);
   rt.addItem(threadId, { kind: 'voice', text: `Stopped: @${it.handle}’s next call asks you first` });
   return { ok: true };
 }

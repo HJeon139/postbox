@@ -15,6 +15,7 @@ import { httpError } from './helpers.mjs';
 import { readHooks } from './permission-hooks.mjs';
 import { BEHAVIORS, changeRule, cleanRule, readRules, settingsFiles } from './permission-rules.mjs';
 import { requestAdapter } from './remote/placement.mjs';
+import { grantsIn, removeRoomGrant } from './room-grants.mjs';
 
 /**
  * What a persona may do without asking. auto (the default): Claude Code’s safety classifier approves routine
@@ -90,6 +91,8 @@ export async function permissionsView(rt, who) {
     files,
     hooks,
     conversation,
+    // The rules the person saved for this agent in this room (grant once, #852), each removable.
+    roomGrants: se ? grantsIn(rt, se.threadId).filter((g) => g.personaId === persona.id) : [],
     tools,
     publishing: canPublish ? [] : [...PUBLISHING_TOOLS],
     // Writes outside Postbox ask first (#112), except what the persona may publish, for a backend that reads rules.
@@ -112,7 +115,14 @@ export async function permissionsView(rt, who) {
  * @param {any} rt @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null, behavior: string, rule: string,
  *           where?: string, remove?: boolean }} change
  */
-export async function changePermissionRule(rt, { sessionId = null, personaId = null, projectId = null, behavior, rule, where = 'local', remove = false }) {
+export async function changePermissionRule(rt, change) {
+  // A rule the person saved for the room (grant once, #852) is Postbox’s, not a settings file’s: only Remove reaches it.
+  if (change?.where === 'room') return removeRoomGrant(rt, /** @type {any} */ (change));
+  return changeFileRule(rt, /** @type {any} */ (change));
+}
+
+/** A rule in a settings file or the conversation’s, as changePermissionRule takes it. @param {any} rt @param {any} change */
+async function changeFileRule(rt, { sessionId = null, personaId = null, projectId = null, behavior, rule, where = 'local', remove = false }) {
   if (!BEHAVIORS.includes(/** @type {any} */ (behavior))) throw httpError(422, 'A rule allows, asks or denies.');
   const clean = cleanRule(rule);
   if (!clean)
