@@ -110,8 +110,9 @@ function conversationOf(rt, threadId) {
 }
 
 /**
- * Saves the picture in the agent’s own folder, under .postbox/view, written atomically. Returns its path, or null when
- * the agent has no folder, so the image alone goes back. @param {any} rt @param {string} sessionId @param {string} name
+ * Saves the picture in the agent’s own folder, under .postbox/view, written atomically. The folder ignores itself in
+ * git, so a picture isn’t committed with the person’s work. Returns its path, or null when the agent has no folder, so
+ * the image alone goes back. @param {any} rt @param {string} sessionId @param {string} name
  * @param {Buffer} png
  */
 async function save(rt, sessionId, name, png) {
@@ -119,6 +120,9 @@ async function save(rt, sessionId, name, png) {
   if (!folder) return null;
   const dir = join(folder, '.postbox', 'view');
   await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, '.gitignore'), '# view_app’s pictures (Postbox): not part of the project.\n*\n', { flag: 'wx' }).catch((e) => {
+    if (e.code !== 'EEXIST') throw e;
+  });
   const file = join(dir, name);
   const tmp = `${file}.${process.pid}.tmp`;
   await writeFile(tmp, png);

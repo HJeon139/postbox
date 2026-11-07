@@ -199,6 +199,7 @@ test('with the browser ready, the picture goes to a backend that sees images and
     const saved = join(s.dir, '.postbox', 'view', `${s.appId}-v1.png`);
     assert.ok(existsSync(saved), 'saved in the agent’s folder');
     assert.deepEqual(readFileSync(saved), PNG);
+    assert.match(readFileSync(join(s.dir, '.postbox', 'view', '.gitignore'), 'utf8'), /^\*$/m, 'the pictures stay out of git');
     const [at] = s.browser.captures;
     assert.equal(at.threadId, s.t.id);
     assert.equal(at.itemId, s.rt.store.items(s.t.id).find((x) => x.block?.id === s.appId).id);

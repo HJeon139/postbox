@@ -823,7 +823,7 @@ sequenceDiagram
   - **Theme:** the person’s.
   - **First:** the app at its inline size. **Full screen** comes second, in a later change.
 - **The capture tab can’t act.** Its browser context aborts every request that isn’t a `GET` to Postbox’s own address, and every request to any other host. This is enforced by the driver, so it doesn’t depend on the page’s code. That means it can’t report that a thread was viewed (which clears unread counts), can’t write, and can’t reach the network. Apps load nothing from a URL anyway (§10).
-- **What the agent gets:** the picture as an image in the tool result, for a backend whose adapter declares that it accepts images. Otherwise it’s saved in the agent’s folder, at `.postbox/view/<app id>-v<version>.png`, and the result gives that path, which every backend can read with its file tool.
+- **What the agent gets:** the picture as an image in the tool result, for a backend whose adapter declares that it accepts images. Otherwise it’s saved in the agent’s folder, at `.postbox/view/<app id>-v<version>.png`, in a folder whose own `.gitignore` keeps the pictures out of the project’s commits, and the result gives that path, which every backend can read with its file tool.
 
 **What it rests on**
 - **Agents ship apps they’ve never seen** (#95). Three “I haven’t seen it render” disclaimers came in one room, and a 4 px clipped control (#89) reached the person. In the #206 stage 1 experiment, every hand-drawn app spent thinking turns placing labels by coordinates that it couldn’t check.
