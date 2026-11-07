@@ -5,6 +5,7 @@
 // plain-text fallback. A block that fails validation is never rendered: the app shows its fallback
 // and a collapsed "Show the raw block" instead.
 
+import { COMMANDS, command } from './confirm-commands.mjs';
 import { LIMITS } from './limits.mjs';
 import { ANCHOR, anchorError } from './review-comments.mjs';
 import { bool, id, int, list, num, obj, oneOf, scalar, str, typeName } from './schema.mjs';
@@ -177,6 +178,8 @@ const SCHEMAS = {
       statement: str({ min: 1, max: LIMITS.prompt }),
       confirmLabel: str({ min: 1, max: 48 }),
       cancelLabel: str({ min: 1, max: 48 }),
+      // What runs, with no second card, when the person confirms (#852): each shown whole, outside Markdown.
+      commands: list(command(), { min: 1, max: COMMANDS.max }),
       outcome: outcome(),
     },
     required: ['statement', 'confirmLabel'],

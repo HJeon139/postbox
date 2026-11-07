@@ -10,6 +10,7 @@ import { asDrawn, closing } from './block-close.mjs';
 import { fitChoiceOptions } from './choice-layout.mjs';
 import { client } from './client.mjs';
 import { codeBox, copyControls, showFilename } from './code-block.mjs';
+import { commandsSection } from './confirm-commands.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { startProgressClock, tickProgress } from './progress-clock.mjs';
 import { renderReview } from './review.mjs';
@@ -585,6 +586,7 @@ const RENDER = {
       h(
         'div.block-body',
         md(b.statement),
+        commandsSection(b.commands),
         done
           ? h(
               'span.answered-note',

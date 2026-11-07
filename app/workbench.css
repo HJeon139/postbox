@@ -965,6 +965,12 @@ html.pb-sandbox body { margin: 0; }
 .md pre.md-code code { background: none; border: 0; padding: 0; }
 /* A confirm’s command runs as shown once it’s confirmed (#852), so every byte stays in view: it wraps, never scrolls. */
 .blk-confirm .md pre.md-code { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* What a confirm runs (#852): every byte in view, so it wraps anywhere and is never folded or cut to a height. */
+.confirm-cmds { display: grid; gap: 6px; margin-top: 10px; }
+.confirm-cmds-head { font-size: 12px; font-weight: 600; color: var(--dim); }
+.confirm-cmd { margin: 0; background: var(--sunk); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; line-height: 1.5; }
+.confirm-cmd, .confirm-cmd code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.confirm-cmd code { background: none; border: 0; padding: 0; }
 .md .md-table { overflow-x: auto; }
 .md .md-table table { border-collapse: collapse; font-size: 13px; }
 .md .md-table th, .md .md-table td { border: 1px solid var(--line); padding: 5px 10px; text-align: left; }
