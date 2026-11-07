@@ -234,3 +234,27 @@ test('read_full uses the in-memory Postbox record, not a builder-writable log fi
   assert.ok(read.endsWith(recordText(state.items.main[1])));
   assert.doesNotMatch(read, /builder replacement/);
 });
+
+test('a denied cut permission no longer blocks a later readable approval', () => {
+  const state = {
+    items: {
+      main: [
+        { id: 'u1', kind: 'user', text: 'Proceed safely.' },
+        { id: 'p1', kind: 'permission', status: 'denied' },
+        { id: 'v1', kind: 'voice', text: 'The person did not allow this.' },
+        { id: 'b2', kind: 'block', answered: false, block: { type: 'confirm' } },
+      ],
+    },
+  };
+  const cuts = new Map([['p1', { label: 'I2', shown: 3000, total: null, path: null, full: null }]]);
+  const approve = { type: 'act', item: 'I4', button: 'Confirm' };
+  assert.equal(approvalRefusal({ action: approve, assessment: '', key: 'b2', state, cuts }), null);
+  state.items.main[1].status = 'open';
+  assert.match(approvalRefusal({ action: approve, assessment: '', key: 'b2', state, cuts }), /I2/);
+  state.items.main[1].status = 'expired';
+  assert.match(approvalRefusal({ action: approve, assessment: '', key: 'b2', state, cuts }), /I2/);
+  state.items.main.splice(1, 0, { id: 'a1', kind: 'agent', text: 'cut agent message' });
+  cuts.set('a1', { label: 'I1', shown: 1800, total: 5000, path: '/unused', full: 'x'.repeat(5000) });
+  state.items.main[2].status = 'denied';
+  assert.match(approvalRefusal({ action: approve, assessment: '', key: 'b2', state, cuts }), /I1/);
+});

@@ -149,7 +149,14 @@ export function approvalRefusal({ action, assessment, key, state, cuts }) {
   if (refusesPermission(action, at?.item)) return null;
   const since = [];
   if (at) for (let i = at.i; i >= 0 && at.list[i]?.kind !== 'user'; i -= 1) since.push(at.list[i].id);
-  const cut = (since.length ? since : [key]).map((k) => cuts.get(k)).find(Boolean);
+  const unresolved = (k) => {
+    const item = located(state, k)?.item;
+    return !(item?.kind === 'permission' && item.status === 'denied');
+  };
+  const cut = (since.length ? since : [key])
+    .filter(unresolved)
+    .map((k) => cuts.get(k))
+    .find(Boolean);
   if (cut) {
     const shown =
       cut.total === null
@@ -167,9 +174,9 @@ export function approvalRefusal({ action, assessment, key, state, cuts }) {
 
 /**
  * The read_full action: the whole text of an item that was shown in part, which then counts as read.
- * @param {{ key: string, cuts: Map<string, any>, readText: (path: string) => string }} o
+ * @param {{ key: string, cuts: Map<string, any> }} o
  */
-export function readFull({ key, cuts, readText }) {
+export function readFull({ key, cuts }) {
   const cut = cuts.get(key);
   if (!cut) return 'That item was shown whole; there is nothing more to read.';
   if (cut.total === null || !cut.path)
