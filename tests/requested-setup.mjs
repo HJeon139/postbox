@@ -27,7 +27,7 @@ export const confirm = (statement) => ({
 export const allow = (quote, costUsd = 0.0004) => ({ text: JSON.stringify({ decision: 'allow', quote }), costUsd });
 
 /** A Claude Code agent whose turns the test scripts, and a judge that answers with `judged`. */
-export async function setup({ judged = () => allow('open the PR') } = {}) {
+export async function setup({ judged = () => allow('open the PR'), permissionMode = 'auto' } = {}) {
   const root = tempDir('pb-requested-');
   const folder = join(root, 'work');
   await mkdir(join(folder, '.claude'), { recursive: true });
@@ -53,7 +53,7 @@ export async function setup({ judged = () => allow('open the PR') } = {}) {
     return judged(prompt);
   };
   store.emit('project', { id: 'p1', name: 'P', folder });
-  const p = rt.createPersona({ handle: 'now', backend: 'claude-code', permissionMode: 'auto', tools: ['shell'] });
+  const p = rt.createPersona({ handle: 'now', backend: 'claude-code', permissionMode, tools: ['shell'] });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [p.id] });
   return { rt, store, t, p, next, prompts, folder };
 }
