@@ -147,3 +147,13 @@ test('axe finds nothing wrong with a message’s reactions, made or not', async 
   // A run that passed no rule checked nothing.
   expect(violations.passed, 'rules that ran and passed').toBeGreaterThan(3);
 });
+
+test('the reactions sit left of “Reply in thread”, the side a thread opens on (#378)', async ({ page }) => {
+  const reply = item(page).getByRole('button', { name: 'Reply in thread' });
+  await item(page).hover();
+  await expect(reply).toBeVisible();
+  const row = await item(page).locator('.react-row').boundingBox();
+  const thread = await reply.boundingBox();
+  if (!row || !thread) throw new Error('The reactions and the thread button aren’t both laid out');
+  expect(row.x + row.width, 'the reactions end before the thread button starts').toBeLessThanOrEqual(thread.x);
+});

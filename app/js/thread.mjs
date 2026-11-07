@@ -266,7 +266,7 @@ const who = (it, { you = false, threadId = '' } = {}) => {
 };
 
 // Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a message in a
-// topic or side thread (#128): “Send to conversation”. React, under every one (#251). They appear on hover and focus, and always on touch.
+// topic or side thread (#128): “Send to conversation”. React, under every one (#251), on the left (#378). They appear on hover and focus, and always on touch.
 function messageActions(node, it, ctx) {
   if (!['user', 'agent', 'block', 'shared'].includes(it.kind) || it.status === 'streaming' || it.deletedAgent || (it.kind === 'block' && !it.valid)) return;
   if (it.status === 'replaced') return;

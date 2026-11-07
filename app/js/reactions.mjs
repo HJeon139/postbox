@@ -59,11 +59,14 @@ function buttons(it, threadId) {
 }
 
 /**
- * Adds an item’s reactions to its actions bar, which it returns.
+ * Puts an item’s reactions first in its actions bar, which it returns: the thread button sits on the right, the side
+ * a thread opens on (#378).
  * @param {HTMLElement} bar  the item’s actions @param {HTMLElement} _node  the item @param {any} it @param {{ threadId: string }} ctx
  */
 export function reactTo(bar, _node, it, ctx) {
-  bar.append(h('span.react-row', { role: 'group', 'aria-label': 'Reactions', dataset: { reactions: it.id, thread: ctx.threadId } }, buttons(it, ctx.threadId)));
+  bar.prepend(
+    h('span.react-row', { role: 'group', 'aria-label': 'Reactions', dataset: { reactions: it.id, thread: ctx.threadId } }, buttons(it, ctx.threadId)),
+  );
   return bar;
 }
 
