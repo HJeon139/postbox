@@ -6,8 +6,8 @@
 import { mkdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { AppBrowser, DEFAULT_WINDOW } from './browser.mjs';
-import { answerIn, askToSee } from './consent.mjs';
-import { viewOf } from './view-of.mjs';
+import { answerIn, askToSee, settleDownloads } from './consent.mjs';
+import { attachViewApp, viewOf } from './view-of.mjs';
 
 /** The widths and heights a reported window may have; anything outside is ignored. */
 const WINDOW = Object.freeze({ min: 320, max: 4000 });
@@ -51,6 +51,15 @@ export class ViewApp {
   close() {
     return this.browser.close();
   }
+}
+
+/**
+ * view_app for a Postbox that’s starting (server/index.mjs): its state beside the runtime, and a card a killed Postbox
+ * left downloading says so. @param {any} rt @param {{ dataDir: string, origin: () => string }} opts
+ */
+export function startViewApp(rt, opts) {
+  attachViewApp(rt, new ViewApp(opts));
+  settleDownloads(rt);
 }
 
 /**

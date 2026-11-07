@@ -42,9 +42,8 @@ import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
 import { watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
-import { settleDownloads } from './view-app/consent.mjs';
-import { ViewApp } from './view-app/view-app.mjs';
-import { attachViewApp, viewOf } from './view-app/view-of.mjs';
+import { startViewApp } from './view-app/view-app.mjs';
+import { viewOf } from './view-app/view-of.mjs';
 
 /** The routes that stop an agent’s turn, a background job or a `!` command: allowed while the store is closed, as Stop must be. */
 const STOP_ROUTE = /^\/api\/(sessions\/[^/]+\/(stop|jobs\/[^/]+\/stop)|threads\/[^/]+\/shell\/[^/]+\/stop)$/;
@@ -117,7 +116,7 @@ export async function start({
   const hosts = hostManagerFor(given, () => rt, dataDir, config.build.version);
   const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator, spawnShell, hosts });
   // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture.md, “Agents see their app”).
-  attachViewApp(rt, new ViewApp({ dataDir, origin: () => `http://127.0.0.1:${/** @type {any} */ (server.address())?.port ?? port}` }));
+  startViewApp(rt, { dataDir, origin: () => `http://127.0.0.1:${/** @type {any} */ (server.address())?.port ?? port}` });
   // Recording conversations for telemetry, and its 30-day sweep (designs/telemetry-persona.md, R7, R11).
   watchTelemetry(rt);
   const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
@@ -125,7 +124,6 @@ export async function start({
   settleInterrupted(rt);
   for (const [threadId, list] of Object.entries(store.state.items))
     for (const it of list) if (it.status === 'streaming') rt.patchItem(threadId, it.id, { status: 'stopped' });
-  settleDownloads(rt);
   rt.rearmSchedules();
   rt.rearmDeletions();
   rearmPersonaDeletes(rt);
