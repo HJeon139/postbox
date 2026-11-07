@@ -1,7 +1,8 @@
-// A host’s settings editor, on its card in the Hosts tab (app/js/hosts.mjs): its ssh destination, whether Postbox
-// keeps itself up to date there (#464-b2b), its settings in the design’s groups (hosts-settings.mjs,
-// hosts-fields.mjs) and each project’s folder there. Save checks everything as the server does, says which fields
-// need a change, and then saves the host and each changed folder. The keep-up-to-date toggle saves at once instead.
+// A host’s settings editor, on its card in the Hosts tab (app/js/hosts.mjs): its ssh destination, its short name
+// (hosts-short.mjs), whether Postbox keeps itself up to date there (#464-b2b), its settings in the design’s groups
+// (hosts-settings.mjs, hosts-fields.mjs) and each project’s folder there. Save checks everything as the server does,
+// says which fields need a change, and then saves the host and each changed folder. The keep-up-to-date toggle saves
+// at once instead.
 
 import { checkDestination, checkHostPath, checkHostSettings } from '/shared/remote-settings.mjs';
 import { api, client } from './client.mjs';
@@ -9,6 +10,7 @@ import { h, plural } from './dom.mjs';
 import { errEl, field } from './hosts-fields.mjs';
 import { checkField, showError } from './hosts-parts.mjs';
 import { FIELDS, GROUPS, PROGRAMS_HELP, parse, shown } from './hosts-settings.mjs';
+import { shortField, shortPatch } from './hosts-short.mjs';
 import { toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -22,7 +24,7 @@ export const openEditor = (p, host, focus) => {
   p.editing = host.id;
   p.errors = {};
   p.formError = '';
-  p.draft = { name: host.name, v: {}, folders: {} };
+  p.draft = { name: host.name, short: host.short ?? '', v: {}, folders: {} };
   for (const f of FIELDS) p.draft.v[f.key] = shown(f, host.settings);
   for (const pr of Object.values(S().projects)) p.draft.folders[pr.id] = pr.hostFolders?.[host.id] ?? '';
   p.paint();
@@ -46,6 +48,7 @@ export const editor = (p, host) => {
     'div.ho-editor',
     { style: { display: 'flex', flexDirection: 'column', gap: '14px', borderTop: '1px solid var(--line)', paddingTop: '12px' } },
     nameField(ed),
+    shortField(ed),
     keepUpdatedField(ed),
     GROUPS.map(([group, fields]) =>
       h(
@@ -215,6 +218,8 @@ function collect(p, host) {
   settings.keepAlive = keepAlive;
   const dest = checkDestination(d.name);
   if (!dest.ok) p.errors.name = dest.error;
+  const short = shortPatch(d, host);
+  if (short.error) p.errors.short = short.error;
   const folderLabel = `The project’s folder on ${dest.ok ? dest.value : host.name}`;
   /** @type {[string, string | null][]} */
   const folders = [];
@@ -225,12 +230,12 @@ function collect(p, host) {
     if (!r.ok) p.errors[`pf:${pr.id}`] = /** @type {any} */ (r).error;
     else folders.push([pr.id, v || null]);
   }
-  return { settings, dest, folders };
+  return { settings, dest, short: short.patch, folders };
 }
 
 /** Checks everything, then saves what changed: the host, then each project’s folder. @param {Panel} p @param {any} host */
 const save = async (p, host) => {
-  const { settings, dest, folders } = collect(p, host);
+  const { settings, dest, short, folders } = collect(p, host);
   const { errors } = p;
   const bad = Object.keys(errors).filter((k) => errors[k]);
   if (!bad.length) {
@@ -252,7 +257,7 @@ const save = async (p, host) => {
   p.saving = true;
   p.paint();
   try {
-    await api(`/api/hosts/${host.id}`, { ...(dest.value !== host.name ? { name: dest.value } : {}), settings }, 'PATCH');
+    await api(`/api/hosts/${host.id}`, { ...(dest.value !== host.name ? { name: dest.value } : {}), ...short, settings }, 'PATCH');
     for (const [pid, folder] of folders) await api(`/api/projects/${pid}/hosts/${host.id}/folder`, { folder }, 'PUT');
     p.saving = false;
     toast({ title: `Saved ${dest.value}` });

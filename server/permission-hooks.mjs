@@ -1,11 +1,14 @@
-// The PreToolUse hooks in the settings files an agent reads, for the permissions panel (#817). Postbox’s own settings
-// turn hooks off in every mode but bypass (settingsFor in server/adapters/setup.mjs), since a hook that approves a call
-// skips the ask rules for writes outside Postbox and the permission card. The panel names each hook it finds there, so
-// the person knows which of theirs won’t run in Postbox turns. Org-managed hooks aren’t read here: they still run.
+// The hooks in the settings files an agent reads that can approve a tool call, for the permissions panel (#817, #871).
+// Postbox’s own settings turn hooks off in every mode but bypass (settingsFor in server/adapters/setup.mjs), since a
+// hook that approves a call skips the ask rules for writes outside Postbox and the permission card. The panel names
+// each such hook it finds there, with its event, so the person knows which of theirs won’t run in Postbox turns.
+// Org-managed hooks aren’t read here: they still run. Plugins’ hooks aren’t either: Claude Code documents where a
+// plugin is turned on (enabledPlugins) but not where its hooks are kept, so the panel says it can’t list them.
 //
 // A hook’s matcher and command are the person’s data. They reach the page as text through h(), cut to a length, with
-// control characters and characters that show as nothing marked, and with the credentials found in a command hidden,
-// as best it can. A file that isn’t JSON, or holds hooks in a shape this doesn’t know, says so.
+// control characters and characters that show as nothing marked, and with the credentials found in either hidden, as
+// best it can (a matcher is a pattern the person writes, so it can hold one too, #871). A file that isn’t JSON, or
+// holds hooks in a shape this doesn’t know, says so.
 
 import { readFile } from 'node:fs/promises';
 import { HOST_SOURCES, ISOLATED_SOURCES } from './adapters/setup.mjs';
@@ -15,6 +18,11 @@ const MAX_HOOKS = 50; // per file, as read: the rest are counted
 const MAX_TEXT = 200;
 const MAX_MATCHER = 100;
 const MAX_TYPE = 20;
+
+// The hook events that can approve a tool call or change its input, in the order the panel lists them. A PreToolUse
+// hook answers with permissionDecision and updatedInput; a PermissionRequest hook with decision.behavior allow and
+// updatedInput (PreToolUseHookSpecificOutput and PermissionRequestHookSpecificOutput in the Agent SDK’s sdk.d.ts).
+const APPROVING_EVENTS = /** @type {const} */ (['PreToolUse', 'PermissionRequest']);
 
 // Characters that change how text around them displays, or that display as nothing: every format character (Cf:
 // zero-width ones, soft hyphens, word joiners, invisible operators, tag characters, U+FEFF), the bidi marks,
@@ -64,23 +72,34 @@ const MAX_SCAN = 2000;
 /** `text`, cut to MAX_SCAN, with the credentials found in it replaced by an ellipsis. @param {string} text */
 const redacted = (text) => text.slice(0, MAX_SCAN).replace(ASSIGNED, '$1…').replace(FLAGGED, '$1…').replace(BEARER, '$1…');
 
+/**
+ * A hook group’s matcher as the panel shows it, with the credentials found in it hidden. No matcher, or an empty one,
+ * matches every tool, as Claude Code reads it.
+ * @param {any} group
+ */
+const matcherOf = (group) => shown(typeof group.matcher === 'string' ? redacted(group.matcher) : '', MAX_MATCHER) || '*';
+
 const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 
 /**
- * One hook as the panel shows it. A command hook shows its command; a prompt or an http hook, its prompt or address,
- * with the credentials found in it hidden.
- * @param {string} matcher @param {any} hook
+ * One hook as the panel shows it, with its event. A command hook shows its command; a prompt or an http hook, its
+ * prompt or address, with the credentials found in it hidden.
+ * @param {string} event @param {string} matcher @param {any} hook
  */
-function entry(matcher, hook) {
+function entry(event, matcher, hook) {
   const type = shown(isObject(hook) && typeof hook.type === 'string' ? hook.type : 'command', MAX_TYPE);
   const text = isObject(hook) ? (hook.command ?? hook.prompt ?? hook.url) : '';
-  return { matcher, type, text: shown(typeof text === 'string' ? redacted(text) : text, MAX_TEXT) };
+  return { event, matcher, type, text: shown(typeof text === 'string' ? redacted(text) : text, MAX_TEXT) };
 }
 
+/** Whether an event’s hook groups are in the shape Claude Code reads: a list of objects, each with a list of hooks. */
+const knownShape = (groups) => Array.isArray(groups) && groups.every((g) => isObject(g) && Array.isArray(g.hooks));
+
 /**
- * One settings file’s PreToolUse hooks, or why they can’t be listed. A missing file has none.
+ * One settings file’s hooks on APPROVING_EVENTS, or why they can’t be listed. A missing file has none. One event’s
+ * hooks in a shape this doesn’t know fail the whole file, rather than list it in part.
  * @param {string} file
- * @returns {Promise<{ file: string, exists: boolean, hooks: { matcher: string, type: string, text: string }[], more: number, error?: string }>}
+ * @returns {Promise<{ file: string, exists: boolean, hooks: { event: string, matcher: string, type: string, text: string }[], more: number, error?: string }>}
  */
 export async function readHookFile(file) {
   let settings;
@@ -97,17 +116,17 @@ export async function readHookFile(file) {
   const unknown = { file, exists: true, hooks: [], more: 0, error: `${file} has hooks in a shape Postbox doesn’t know, so it can’t list them.` };
   if (!isObject(settings) || settings.hooks === undefined) return { file, exists: true, hooks: [], more: 0 };
   if (!isObject(settings.hooks)) return unknown;
-  const groups = settings.hooks.PreToolUse;
-  if (groups === undefined) return { file, exists: true, hooks: [], more: 0 };
-  if (!Array.isArray(groups) || !groups.every((g) => isObject(g) && Array.isArray(g.hooks))) return unknown;
-  // No matcher, or an empty one, matches every tool, as Claude Code reads it.
-  const all = groups.flatMap((g) => g.hooks.map((hook) => entry(shown(g.matcher, MAX_MATCHER) || '*', hook)));
+  const byEvent = APPROVING_EVENTS.map((event) => [event, Object.hasOwn(settings.hooks, event) ? settings.hooks[event] : undefined]);
+  const listed = byEvent.filter(([, groups]) => groups !== undefined);
+  if (!listed.every(([, groups]) => knownShape(groups))) return unknown;
+  const all = listed.flatMap(([event, groups]) => groups.flatMap((g) => g.hooks.map((hook) => entry(event, matcherOf(g), hook))));
   return { file, exists: true, hooks: all.slice(0, MAX_HOOKS), more: Math.max(0, all.length - MAX_HOOKS) };
 }
 
 /**
- * The PreToolUse hooks of each settings source an agent reads, the same sources its turns load (HOST_SOURCES or
- * ISOLATED_SOURCES, server/adapters/setup.mjs): the user’s only when the persona loads the person’s setup.
+ * The hooks on APPROVING_EVENTS of each settings source an agent reads, the same sources its turns load
+ * (HOST_SOURCES or ISOLATED_SOURCES, server/adapters/setup.mjs): the user’s only when the persona loads the person’s
+ * setup.
  * @param {{ folder: string, home: string, configDir?: string|null, usesHostSetup: boolean }} opts
  */
 export async function readHooks({ folder, home, configDir = null, usesHostSetup }) {

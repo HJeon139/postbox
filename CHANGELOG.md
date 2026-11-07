@@ -2,6 +2,166 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.39.1 (2026-11-07)
+
+### Fixes
+
+- **needs:** rank an offered card against the need as nextNeed does
+
+## 1.39.0 (2026-11-07)
+
+### Features
+
+- **adapters:** Antigravity, Kiro and Codex leave out the skills a persona turned off
+- **personas:** choose which skills each agent loads
+- **adapters:** Antigravity, Kiro and Codex agents load the visual-explainer skill too
+- **adapters:** every Claude agent loads Postbox's visual-explainer skill by default
+
+## 1.38.0 (2026-11-07)
+
+### Features
+
+- **server:** view_app shows an agent its app as the person first sees it
+
+### Fixes
+
+- **app:** the view report reads the conversation's width without a document query
+- **server:** view_app starts up in one call, keeping start() under its ceiling
+- **app:** view_app shows a check's note as the person sees it
+- **server:** view_app's pictures stay out of the project's commits
+- **server:** view_app's browser can't hang a call or outlive a stop
+- **server:** view_app asks again a week after Not now
+- **app:** view_app's picture is as wide as the app the person sees
+
+## 1.37.1 (2026-11-07)
+
+### Fixes
+
+- **remote:** a host answers a permission prompt only on the connection that sent it
+- **permissions:** a host’s permission prompt counts only for a call its stream showed
+- **permissions:** a permission prompt counts only for a call the stream showed, once
+
+## 1.37.0 (2026-11-07)
+
+### Features
+
+- **hosts:** show each host as a short badge in the agents list
+- **app:** show agent names without the @
+
+### Fixes
+
+- **uat:** staging matches the runs folder by its real path too
+- **tests:** check's first signal goes to the stage's whole process group
+- **runtime:** don’t let a subagent’s step split an agent’s words
+- **runtime:** start a reply’s words anew after a tool call when others spoke
+- **hosts:** refuse invisible characters in a host’s short name
+- **hosts:** name a removed host’s badge, and drop an IPv6 zone
+- **runtime:** keep a reply’s words in one part while others write
+- **runtime:** place a reply’s words where the agent wrote them
+- **threads:** put reactions left of the thread button
+- **tests:** the remote pipeline's machine folder goes through tempdir
+- **tests:** a second ctrl-c or a sighup ends the gate and removes its run folder
+- **tests:** the gate's temp sweep never makes a hard-linked file outside writable
+- **uat:** a postbox that fails to start is stopped before the error reaches its caller
+- **uat:** the run's postbox sleeps with node's timers, not through the browser module
+- **uat:** staging forgets only its own gone worktrees, never prunes the checkout
+
+## 1.36.4 (2026-11-07)
+
+### Fixes
+
+- **app:** Reply in thread’s own focus timer leaves focus the person moved (#887)
+- **app:** open a topic thread’s panel when its event lands after its address
+
+## 1.36.3 (2026-11-07)
+
+### Fixes
+
+- **app:** the view notes a shrink at once for a removal-only batch and a whole redraw (#903)
+- **app:** the view's change watcher reads the page at most once a frame
+- **lint:** lint-ternary and lint-caps compare with upstream/main when it is newer
+- **hooks:** the hook names lint-ternary, and npm run hooks says what it changes
+- **lint:** lint-ternary lets a pure move of an old nested ternary through
+- **lint:** lint-ternary honors a line-level lint-allow ternary with a reason
+
+## 1.36.2 (2026-11-07)
+
+### Fixes
+
+- **remote:** only a result holds off the stall stop, and each task keeps its own 2 h (#847)
+- **remote:** a listed background task holds off the stall stop for up to 2 h (#847)
+- **permissions:** name PermissionRequest hooks in the panel, with each hook's event
+- **permissions:** hide credentials in hook matchers, as in their commands
+
+## 1.36.1 (2026-11-07)
+
+### Fixes
+
+- **server:** refuse a topic-thread send to an unavailable agent before it joins
+- **server:** refuse requests about an unregistered backend with a 422
+- **server:** fail a turn for an unregistered backend with a reason and Retry
+
+## 1.36.0 (2026-11-07)
+
+### Features
+
+- **state:** apply turn.archive, a public event nothing emits yet
+- **uat:** the failed-reply-dismissed trigger (#883)
+- **threads:** Dismiss a failed reply without running it again (#883)
+
+### Fixes
+
+- **threads:** after Dismiss, focus stays on the control that's left (#883)
+
+## 1.35.6 (2026-11-07)
+
+### Fixes
+
+- **assets:** a rename of a deleted asset is refused, and says to restore it first
+- **state:** the asset handlers check their payload before changing anything
+- **assets:** a rename or delete retried without an op is a repeat, and another agent's is stale
+
+## 1.35.5 (2026-11-07)
+
+### Fixes
+
+- **thread:** a redraw of the conversation keeps focus and the caret where you were typing
+- **blocks:** an update that changes nothing the person sees leaves a waiting block as it was
+
+## 1.35.4 (2026-11-07)
+
+### Fixes
+
+- **tests:** flag a bare account key before "=" only where toml puts a key
+- **tests:** clear the recording person's plugins and own skills from two claude code inits
+- **tests:** the commit scan checks the name of every path a commit adds, copies or renames
+- **tests:** the commit scan masks a private file name in every finding in that file
+- **tests:** the privacy checks print a finding's kind, file and line, never what they found
+- **tests:** the tree test and the commit scan check the names of the files they read
+- **tests:** the privacy check flags bearer tokens, uid fields and bare or toml account fields
+- **tests:** clear recorded inits' connectors and plugins, and flag a connector a person named
+- **tests:** clear the recorded codex resume turn's account metadata and drop its privacy exemption
+
+## 1.35.3 (2026-11-07)
+
+### Fixes
+
+- **blocks:** a chosen option's description reads on its chip in the light theme (#873)
+
+## 1.35.2 (2026-11-07)
+
+### Fixes
+
+- **adapters:** count open_topic among Postbox’s quiet tools
+- **uat:** find a message’s thread link by its class, not by the word “thread”
+- **server:** open_topic says whether it posted its message, and by which id
+- **server:** cap open_topic’s mentions and check each handle’s shape first
+- **server:** import SUMMARY_MODEL from its own module, out of the catch-up cycle
+- **remote:** the follower ends a turn through followerEnds, and the design says so (#738)
+- **remote:** log a silent host runner as not answering as its runner (#738)
+- **remote:** time a silent host runner on a monotonic clock
+- **remote:** keep a silent host runner running while its process lives
+
 ## 1.35.1 (2026-11-07)
 
 ### Fixes

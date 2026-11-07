@@ -28,13 +28,13 @@ const react = (threadId, itemId, emoji) =>
     toast({ title: 'Couldn’t react', text: e.message, level: 'blocking' }),
   );
 
-/** “you”, “@critic”, “you and @critic”, “you, @critic and @dev”. */
+/** “you”, “critic”, “you and critic”, “you, critic and dev”. */
 export const who = (names) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
 /** Who made one reaction on an item: “you” first, then the agents, by handle. */
 export function reactors(it, emoji) {
   const rs = (it?.reactions ?? []).filter((r) => r.emoji === emoji);
-  return [...(rs.some((r) => !r.by) ? ['you'] : []), ...rs.filter((r) => r.by).map((r) => `@${r.handle}`)];
+  return [...(rs.some((r) => !r.by) ? ['you'] : []), ...rs.filter((r) => r.by).map((r) => r.handle)];
 }
 
 /** The five buttons, as an item’s reactions stand now. */
@@ -59,11 +59,14 @@ function buttons(it, threadId) {
 }
 
 /**
- * Adds an item’s reactions to its actions bar, which it returns.
+ * Puts an item’s reactions first in its actions bar, which it returns: the thread button sits on the right, the side
+ * a thread opens on (#378).
  * @param {HTMLElement} bar  the item’s actions @param {HTMLElement} _node  the item @param {any} it @param {{ threadId: string }} ctx
  */
 export function reactTo(bar, _node, it, ctx) {
-  bar.append(h('span.react-row', { role: 'group', 'aria-label': 'Reactions', dataset: { reactions: it.id, thread: ctx.threadId } }, buttons(it, ctx.threadId)));
+  bar.prepend(
+    h('span.react-row', { role: 'group', 'aria-label': 'Reactions', dataset: { reactions: it.id, thread: ctx.threadId } }, buttons(it, ctx.threadId)),
+  );
   return bar;
 }
 

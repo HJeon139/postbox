@@ -52,12 +52,40 @@ const EXAMPLES = ['Bash(npm test)', 'WebFetch(https://example.com/x)', 'Read(src
  * For an agent on a host (#120): the rules listed are this computer’s files, and its Claude Code reads the host’s.
  * @param {any} view  permissionsView’s
  */
+/** What a backend that doesn’t read Claude Code’s rules or MCP config honors instead (the Kiro CLI, #117). */
+function backendNote(p) {
+  const intro = `${p.handle} runs on ${BACKEND_NAMES[p.backend] ?? p.backend}, which doesn’t read Claude Code’s rules or MCP servers.`;
+  if (p.backend === 'codex')
+    return `${intro} Ask me uses read-only; Auto and Accept edits share workspace-write with network off; Run everything has full access and no approval prompts. The per-agent Tools checklist is unavailable.`;
+  if (capsOf(p.backend).tools === 'none') return `${intro} Its mode decides what it may do.`;
+  return `${intro} Its mode and its Tools decide what it may do.`;
+}
+
+/** What a change of mode says: now, in its running turn too, or from its next turn, and why. */
+function modeSaid(p, name, now, running) {
+  if (now) return `${p.handle} is in ${name} mode now, in its running turn too.`;
+  if (running) return `${p.handle} is in ${name} mode from its next turn: ${BACKEND_NAMES[p.backend] ?? 'its backend'} can’t change a turn that’s running.`;
+  return `${p.handle} is in ${name} mode from its next turn.`;
+}
+
+/** Which rule decides a call, in words: a deny, ask or allow rule, or, when none covers it, the mode. */
+function verdictOf(v, part, mode, handle) {
+  const rule = h('code', v.rule);
+  if (v.decision === 'deny') return [h('b', 'Refused'), ' by the deny rule ', rule, ` from ${SOURCE[v.source]}`, part, '.'];
+  if (v.decision === 'ask') return [h('b', 'Asks you'), ': the ask rule ', rule, ` from ${SOURCE[v.source]}`, part, '.'];
+  if (v.decision === 'allow') return [h('b', 'Runs'), ': the allow rule ', rule, ` from ${SOURCE[v.source]}.`];
+  const outcome = { outcome: '', runs: 'it runs', asks: `${handle} asks you`, decides: 'auto mode’s safety check decides, and asks you if it can’t' }[
+    v.outcome
+  ];
+  return ['No rule covers it', part, `, so ${mode} mode decides: `, h('b', outcome ?? ''), '.'];
+}
+
 function hostNote({ persona: p, readsRules }) {
   if (!readsRules || !p.host) return null;
   const user = p.usesHostSetup ? ', and your ~/.claude/settings.json there' : '';
   return h(
     'p.help',
-    `@${p.handle} runs on ${p.host}, where Claude Code reads the agent folder’s settings files there${user}, not the ones listed here from this computer. Its mode, its Tools and this conversation’s rules still apply.`,
+    `${p.handle} runs on ${p.host}, where Claude Code reads the agent folder’s settings files there${user}, not the ones listed here from this computer. Its mode, its Tools and this conversation’s rules still apply.`,
   );
 }
 
@@ -141,21 +169,16 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
                       void load();
                     },
                   },
-                  `@${se.handle}`,
+                  se.handle,
                 ),
               ),
             ),
           )
         : null,
       status ? h('p.small.perm-status', { role: 'status' }, status) : null,
-      view.real ? hostNote(view) : h('p.help', `@${p.handle} is a mock agent. Modes, rules and folders apply to Claude Code and Agent SDK agents.`),
+      view.real ? hostNote(view) : h('p.help', `${p.handle} is a mock agent. Modes, rules and folders apply to Claude Code and Agent SDK agents.`),
       // A backend that doesn’t read Claude Code’s rules or MCP config (the Kiro CLI, #117) shows only what it honors.
-      view.real && !view.readsRules
-        ? h(
-            'p.help',
-            `@${p.handle} runs on ${BACKEND_NAMES[p.backend] ?? p.backend}, which doesn’t read Claude Code’s rules or MCP servers. ${p.backend === 'codex' ? 'Ask me uses read-only; Auto and Accept edits share workspace-write with network off; Run everything has full access and no approval prompts. The per-agent Tools checklist is unavailable.' : capsOf(p.backend).tools === 'none' ? 'Its mode decides what it may do.' : 'Its mode and its Tools decide what it may do.'}`,
-          )
-        : null,
+      view.real && !view.readsRules ? h('p.help', backendNote(p)) : null,
       view.real ? modeSection(p) : null,
       view.readsRules ? rulesSection() : null,
       view.real ? folderSection() : null,
@@ -182,12 +205,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
               onclick: () =>
                 change(
                   () => api('/api/permissions/mode', { personaId: p.id, mode: id }),
-                  (r) =>
-                    r.now.length
-                      ? `@${p.handle} is in ${name} mode now, in its running turn too.`
-                      : view.running.length
-                        ? `@${p.handle} is in ${name} mode from its next turn: ${BACKEND_NAMES[p.backend] ?? 'its backend'} can’t change a turn that’s running.`
-                        : `@${p.handle} is in ${name} mode from its next turn.`,
+                  (r) => modeSaid(p, name, r.now.length > 0, view.running.length > 0),
                 ),
             },
             name,
@@ -196,7 +214,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
       ),
       // Some backends read the modes their own way (the Kiro and Antigravity CLIs can’t ask; Codex maps them to its
       // sandbox), so the modes read as the persona sheet says (#117).
-      h('span.help', `${modeHelp(p.backend, mode)} The mode is @${p.handle}’s, in every conversation.`),
+      h('span.help', `${modeHelp(p.backend, mode)} The mode is ${p.handle}’s, in every conversation.`),
     );
   }
 
@@ -245,7 +263,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
                           where: r.source === 'conversation' ? 'conversation' : r.source,
                           remove: true,
                         }),
-                      `Removed ${r.rule} from ${SOURCE[r.source]}. It applies from @${p.handle}’s next turn.`,
+                      `Removed ${r.rule} from ${SOURCE[r.source]}. It applies from ${p.handle}’s next turn.`,
                     ),
                 },
                 icon('x', 'i-sm'),
@@ -270,7 +288,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
                   onclick: () =>
                     change(
                       () => api(`/api/personas/${p.id}`, { tools: [...new Set([...(S().personas[p.id]?.tools ?? []), x.id])] }, 'PATCH'),
-                      `Ticked ${x.id} for @${p.handle}. It applies from its next turn; the mode still decides each call.`,
+                      `Ticked ${x.id} for ${p.handle}. It applies from its next turn; the mode still decides each call.`,
                     ),
                 },
                 `Tick ${x.id}`,
@@ -398,7 +416,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
                   if (!r) return toast({ title: 'Write the rule first', text: 'Name an MCP server or tool, such as mcp__github.' });
                   void change(
                     () => api('/api/permissions/rules', { ...target(), behavior: draft.behavior, rule: r, where: draft.where }),
-                    `Added ${r} to ${SOURCE[draft.where]}. It applies from @${p.handle}’s next turn.`,
+                    `Added ${r} to ${SOURCE[draft.where]}. It applies from ${p.handle}’s next turn.`,
                   ).then(() => {
                     draft.pattern = '';
                     paint();
@@ -426,7 +444,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
     const add = (p) =>
       change(
         () => api('/api/permissions/folders', { sessionId: current, path: p }),
-        (r) => `@${view.persona.handle} may work in ${r.path} from its next turn.`,
+        (r) => `${view.persona.handle} may work in ${r.path} from its next turn.`,
       );
     return section(
       'Folders',
@@ -487,26 +505,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
       const v = decide({ call, rules: allRules(), mode: p.permissionMode, cwd: view.folder ?? '/', home: view.home });
       const part = v.part ? h('span', ' (for ', h('code', v.part), ')') : null;
       const mode = MODES.find(([id]) => id === v.mode)?.[1] ?? v.mode;
-      const verdict =
-        v.decision === 'deny'
-          ? [h('b', 'Refused'), ' by the deny rule ', h('code', v.rule), ` from ${SOURCE[v.source]}`, part, '.']
-          : v.decision === 'ask'
-            ? [h('b', 'Asks you'), ': the ask rule ', h('code', v.rule), ` from ${SOURCE[v.source]}`, part, '.']
-            : v.decision === 'allow'
-              ? [h('b', 'Runs'), ': the allow rule ', h('code', v.rule), ` from ${SOURCE[v.source]}.`]
-              : [
-                  'No rule covers it',
-                  part,
-                  `, so ${mode} mode decides: `,
-                  h(
-                    'b',
-                    { outcome: '', runs: 'it runs', asks: `@${p.handle} asks you`, decides: 'auto mode’s safety check decides, and asks you if it can’t' }[
-                      v.outcome
-                    ] ?? '',
-                  ),
-                  '.',
-                ];
-      fill(out, h('p', ...verdict));
+      fill(out, h('p', ...verdictOf(v, part, mode, p.handle)));
     };
     show();
     return section(
@@ -539,7 +538,8 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
   const section = (title, ...children) => h('section.perm-sec', h('h3.label', title), ...children);
 
   const se0 = current ? S().sessions[current] : null;
-  const title = se0 ? `@${se0.handle}’s permissions` : personaId ? `@${S().personas[personaId]?.handle ?? 'agent'}’s permissions` : 'Permissions';
+  const whose = se0?.handle ?? (personaId ? (S().personas[personaId]?.handle ?? 'agent') : null);
+  const title = whose ? `${whose}’s permissions` : 'Permissions';
   openDialog({
     title,
     sub: t ? `In “${t.title}”` : 'Its rules, in the folder of its latest conversation',
@@ -583,12 +583,12 @@ function requestedRow(p, change) {
     checkField({
       id: 'perm-requested',
       label: 'Writes you asked for run without a card',
-      help: `In Auto mode, a write outside Postbox that you asked @${p.handle} for runs without a card: one a confirm you confirmed shows word for word, or one your message asks for, as a quick check by Claude Haiku finds. That check sends the call and your message to Anthropic. Each such write leaves a line in the conversation with Stop, five at most a turn. Only plain pushes, gh creates, comments and edits, and tools that create or edit can pass; deletes, merges, force pushes, your own ask rules and Ask me mode always ask.`,
+      help: `In Auto mode, a write outside Postbox that you asked ${p.handle} for runs without a card: one a confirm you confirmed shows word for word, or one your message asks for, as a quick check by Claude Haiku finds. That check sends the call and your message to Anthropic. Each such write leaves a line in the conversation with Stop, five at most a turn. Only plain pushes, gh creates, comments and edits, and tools that create or edit can pass; deletes, merges, force pushes, your own ask rules and Ask me mode always ask.`,
       on: p.allowRequested !== false,
       onToggle: (on) =>
         change(
           () => api(`/api/personas/${p.id}`, { allowRequested: on }, 'PATCH'),
-          on ? `Calls you ask @${p.handle} for run without a card.` : `Every call that comes to Postbox asks you first, even one you asked for.`,
+          on ? `Calls you ask ${p.handle} for run without a card.` : `Every call that comes to Postbox asks you first, even one you asked for.`,
         ),
     }),
   );

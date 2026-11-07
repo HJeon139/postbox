@@ -4,6 +4,7 @@
 // host’s welcome lists it.
 
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
+import { backgroundStopText, waitingOnBackground } from './turns-background.mjs';
 import { releaseHost } from './turns-need.mjs';
 import { continuing } from './turns-origin.mjs';
 import { AUTO_RESUMES, clock, hostOf, isBack, ON_HOST, SIGN_IN_RECHECK_MS, updateRemote } from './turns-shared.mjs';
@@ -29,7 +30,9 @@ export function checkStalls(rts) {
     // Waiting on you isn’t hung, and neither is an open tool call for an adapter that prints nothing while one runs.
     if ([...rts.rt.permissionWaits.values()].some((w) => w.sessionId === live.sessionId)) continue;
     if (live.work === 'open-tool-call' && live.rt.steps.some((/** @type {any} */ s) => s.state === 'running')) continue;
-    const text = `Stopped: no output for ${Math.round(stall / 60_000)} min (the last at ${clock(live.lastEvent)})`;
+    // Nor is a result sent with a background task still open, up to its ceiling (#847).
+    if (waitingOnBackground(live, now)) continue;
+    const text = backgroundStopText(live) ?? `Stopped: no output for ${Math.round(stall / 60_000)} min (the last at ${clock(live.lastEvent)})`;
     live.hung = { at: live.lastEvent, text };
     rts.rt.stop(live.sessionId, { by: 'hung', why: text });
   }

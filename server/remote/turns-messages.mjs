@@ -2,7 +2,9 @@
 // snapshot again and asks again the stops Postbox waits on, and each message the daemon sends for a turn goes to the
 // module that handles it.
 
+import { noteBackground } from './turns-background.mjs';
 import { onError, onPrompt, onPromptExpired } from './turns-prompts.mjs';
+import { caughtUp } from './turns-replay.mjs';
 import { EARLY_MESSAGES, sessionOfTurn } from './turns-shared.mjs';
 import { sendSnapshot } from './turns-snapshot.mjs';
 import { offsetAt } from './turns-start.mjs';
@@ -54,6 +56,8 @@ export function onHostMessage(rts, hostId, m) {
       return sawEnded(rts, m);
     case 'started':
       return sawStarted(rts, m.turn);
+    case 'caught-up':
+      return sawCaughtUp(rts, m);
     case 'tool':
       return void onTool(rts, hostId, m);
     case 'prompt':
@@ -94,12 +98,20 @@ function sawStarted(rts, turn) {
   }
 }
 
-/** A stdout line: a sign of life, and maybe the harness’s sign-in error. @param {RemoteTurns} rts @param {any} m */
+/** A stdout line: a sign of life, maybe the harness’s sign-in error, maybe its open background tasks. @param {RemoteTurns} rts @param {any} m */
 function sawLine(rts, m) {
   const live = rts.byTurn.get(m.turn);
   if (!live) return;
   live.lastEvent = rts.now();
-  if (live.signInError && !m.cut && matches(m.text, live.signInError)) live.signIn = true;
+  if (m.cut) return;
+  if (live.signInError && matches(m.text, live.signInError)) live.signIn = true;
+  noteBackground(live, m.text, live.lastEvent);
+}
+
+/** A read of the current host turn’s out.jsonl has sent what the log had. @param {RemoteTurns} rts @param {any} m */
+function sawCaughtUp(rts, m) {
+  const live = rts.byTurn.get(m.turn);
+  if (live && m.turn === live.current && m.log === 'out') caughtUp(live);
 }
 
 /** @param {RemoteTurns} rts @param {any} m */

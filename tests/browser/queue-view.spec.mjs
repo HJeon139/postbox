@@ -46,10 +46,10 @@ async function busyRoom(page, agents = 1) {
 const openMail = async (page, se) => {
   await page
     .locator('.agent-row')
-    .filter({ hasText: `@${se.handle}` })
+    .filter({ hasText: `${se.handle}` })
     .getByRole('button', { name: /queued for/ })
     .click();
-  const dialog = page.getByRole('dialog', { name: new RegExp(`queued for @${se.handle}`) });
+  const dialog = page.getByRole('dialog', { name: new RegExp(`queued for ${se.handle}`) });
   await expect(dialog).toBeVisible();
   return dialog;
 };
@@ -80,8 +80,8 @@ test('V2: a waiting line near the composer counts the queue and opens it', async
   const line = page.locator('.composer').getByRole('button', { name: '3 waiting for 2 agents' });
   await expect(line).toBeVisible();
   await line.click();
-  await page.getByRole('menuitem', { name: `2 messages queued for @${sessions[0].handle}` }).click();
-  await expect(page.getByRole('dialog', { name: `2 queued for @${sessions[0].handle}` })).toBeVisible();
+  await page.getByRole('menuitem', { name: `2 messages queued for ${sessions[0].handle}` }).click();
+  await expect(page.getByRole('dialog', { name: `2 queued for ${sessions[0].handle}` })).toBeVisible();
 });
 
 test('V2: with one agent waiting, the line opens its dialog directly', async ({ page }) => {
@@ -89,7 +89,7 @@ test('V2: with one agent waiting, the line opens its dialog directly', async ({ 
   app.rt.sendMessage(thread.id, { text: `@${sessions[0].handle} only one` });
   await synced(page, app);
   await page.locator('.composer').getByRole('button', { name: '1 waiting for 1 agent' }).click();
-  await expect(page.getByRole('dialog', { name: `1 queued for @${sessions[0].handle}` })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: `1 queued for ${sessions[0].handle}` })).toBeVisible();
 });
 
 test('V5: two identical queued messages have Send now, Edit and Remove buttons with different names', async ({ page }) => {
@@ -137,7 +137,7 @@ test('V6: the dialog keeps Tab inside, closes on Escape, and gives focus back to
   await expect(
     page
       .locator('.agent-row')
-      .filter({ hasText: `@${sessions[0].handle}` })
+      .filter({ hasText: `${sessions[0].handle}` })
       .getByRole('button', { name: /queued for/ }),
   ).toBeFocused();
 });

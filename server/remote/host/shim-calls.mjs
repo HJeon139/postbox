@@ -88,7 +88,7 @@ export function watchDown(sh, p) {
  * @param {Shim} sh @param {any} rpcId @param {Record<string, any>} args @param {unknown} progressToken
  */
 function permission(sh, rpcId, args, progressToken) {
-  const id = sh.nextId();
+  const id = sh.promptId();
   let msg;
   try {
     msg = message('shim-to-daemon', 'permission', { id, request: args });

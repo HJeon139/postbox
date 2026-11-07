@@ -20,7 +20,7 @@ import { clip, clipText, httpError } from './helpers.mjs';
 import { pushConsequence, pushedMessage, pushOf, runPush } from './push-on-request.mjs';
 import { actionWords, numberOf, offRequest } from './request-floor.mjs';
 import { newId } from './store.mjs';
-import { SUMMARY_MODEL } from './thread-summary.mjs';
+import { SUMMARY_MODEL } from './summary-model.mjs';
 import { isWriteCall, personAsks, writePasses } from './write-guard.mjs';
 
 const PUSHES = { consequence: pushConsequence, run: runPush };

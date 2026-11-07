@@ -2,16 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import {
-  checkContentPrivacy,
-  checkFilePrivacy,
-  checkFilesPrivacy,
-  isBinary,
-  isSyntheticLabel,
-  joinedDeltas,
-  missingSyntheticFixtures,
-  syntheticFixturePaths,
-} from '../tools/privacy-check.mjs';
+import { joinedDeltas } from '../tools/joined-deltas.mjs';
+import { checkContentPrivacy, checkFilePrivacy, checkFilesPrivacy, isBinary } from '../tools/privacy-check.mjs';
+import { isSyntheticLabel, missingSyntheticFixtures, syntheticFixturePaths } from '../tools/synthetic-fixtures.mjs';
 
 // Every example the checker must flag is built from parts here, at run time, so this file’s own text holds none and
 // the tree test checks it like any other file (#508).
@@ -33,6 +26,8 @@ const json = (value) => JSON.stringify(value);
 
 /** That JSON escaped inside another JSON string, as a recorded line holds it. @param {object} value */
 const escaped = (value) => JSON.stringify({ line: JSON.stringify(value) });
+
+const PLAN_TYPE = ['plan', 'Type'].join(''); // an account key, built here, as one written bare before a “:” is flagged
 
 /** A made-up installation id that isn’t all zeros. */
 const ID = dashed('12345678', 'abcd', '1234', 'abcd', '123456789abc');
@@ -144,7 +139,7 @@ test('privacy checker flags a rate limit’s utilization unless it is 0', () => 
 
 test('privacy checker flags keys JSON-escaped inside another string', () => {
   assert.ok(checkContentPrivacy(escaped({ utilization: 0.13 })).length > 0, 'flags an escaped utilization');
-  assert.ok(checkContentPrivacy(escaped({ planType: 'pro' })).length > 0, 'flags an escaped account field');
+  assert.ok(checkContentPrivacy(escaped({ [PLAN_TYPE]: 'pro' })).length > 0, 'flags an escaped account field');
   assert.ok(checkContentPrivacy(escaped({ installationId: ID })).length > 0, 'flags an escaped installationId');
   assert.equal(checkContentPrivacy('{"line":"{\\"utilization\\":0}"}').length, 0);
   assert.equal(checkContentPrivacy('{"line":"{\\"installationId\\":\\"00000000-0000\\"}"}').length, 0);
@@ -166,14 +161,20 @@ test('privacy checker allows the placeholders, system homes and example addresse
   assert.ok(checkContentPrivacy(email('b', 'indexer.com')).length > 0, 'flags another address at a mention test’s domain');
 });
 
-test('privacy checker checks its own files, and exempts only account fields in the #660 fixture', () => {
+/** The recorded Codex turn that once held account fields, under an exemption (#660). */
+const CODEX_RESUME = 'tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl';
+
+test('privacy checker checks its own files, and the recorded Codex resume turn has no exemption (#660)', () => {
   const leak = slashed('', 'Users', 'melissa');
-  for (const path of ['tools/privacy-check.mjs', 'tests/fixtures-privacy.test.mjs', 'docs/privacy-notes.md']) {
-    assert.ok(checkFilePrivacy(path, leak).length > 0, `${path} is checked`);
+  for (const path of ['tools/privacy-check.mjs', 'tests/fixtures-privacy.test.mjs', 'docs/privacy-notes.md', CODEX_RESUME]) {
+    assert.deepEqual(checkFilePrivacy(path, leak), ['home path at line 1'], `${path} is checked`);
   }
-  const fixture = 'tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl';
-  assert.deepEqual(checkFilePrivacy(fixture, json({ planType: 'pro' })), []);
-  assert.ok(checkFilePrivacy(fixture, leak).length > 0, 'the #660 fixture still has its paths checked');
+  assert.deepEqual(checkFilePrivacy(CODEX_RESUME, json({ [PLAN_TYPE]: 'pro' })), ['account field at line 1'], 'flagged as anywhere');
+});
+
+test('the recorded Codex resume turn holds no account metadata (#660)', () => {
+  const recorded = readFileSync(new URL(`../${CODEX_RESUME}`, import.meta.url), 'utf8');
+  assert.deepEqual(checkContentPrivacy(recorded), []);
 });
 
 test('a home path pasted into this file’s own text is flagged, though its examples are not', () => {
@@ -274,7 +275,7 @@ test('a value split across a stream’s deltas is found once the deltas are join
   assert.deepEqual(checkContentPrivacy(stream), [], 'no single line holds the slug, so a line-by-line scan misses it');
   const violations = checkFilePrivacy('tests/fixtures/x.jsonl', stream);
   assert.equal(violations.length, 1);
-  assert.match(violations[0], /^home path: .*\(joined deltas from line 1\)$/);
+  assert.equal(violations[0], 'home path in the deltas joined from line 1');
 });
 
 test('joined deltas are checked only in JSONL files, and each stream is joined on its own', () => {

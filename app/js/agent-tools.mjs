@@ -18,7 +18,7 @@ export function toolSwitch(se, p, id, name, off, done, failed) {
         type: 'button',
         role: 'switch',
         'aria-checked': String(on),
-        'aria-label': `${name}, for @${se.handle} everywhere`,
+        'aria-label': `${name}, for ${se.handle} everywhere`,
         'aria-describedby': helpId,
         onclick: () => {
           // From the persona as it is now, not as it was when the panel painted: another switch may have changed it.
@@ -26,7 +26,7 @@ export function toolSwitch(se, p, id, name, off, done, failed) {
           const was = now.includes(id);
           const tools = was ? now.filter((x) => x !== id) : [...now, id];
           api(`/api/personas/${se.personaId}`, { tools }, 'PATCH').then(
-            () => done(`${name}: ${was ? 'off' : 'on'} for @${se.handle} in every conversation, from their next turns.`),
+            () => done(`${name}: ${was ? 'off' : 'on'} for ${se.handle} in every conversation, from their next turns.`),
             failed,
           );
         },

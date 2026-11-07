@@ -7,7 +7,7 @@ import { homedir } from 'node:os';
 import { basename, resolve, sep } from 'node:path';
 import { ASKING } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
-import { READING } from '../shared/limits.mjs';
+import { HANDLE, READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
@@ -16,22 +16,8 @@ import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './ada
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { retireApp } from './app-retire.mjs';
-import {
-  APP_HOLD_MAX,
-  APP_SEND_LIMIT,
-  APP_SEND_WINDOW_MS,
-  appCheck,
-  appEvent,
-  appFile,
-  appQuery,
-  appState,
-  hostTool,
-  needAppSend,
-  registerApp,
-  resolveAppSend,
-  showApp,
-  updateApp,
-} from './apps.mjs';
+import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
+import { appCheck, appEvent, appFile, appQuery, appState, hostTool, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
@@ -40,6 +26,7 @@ import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } fro
 import { catchUp, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
+import { DELETE_UNDO_MS } from './delete-undo.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
@@ -74,8 +61,21 @@ import { readCapped } from './read-capped.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
-import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere, runsHere } from './remote/placement.mjs';
+import {
+  hereFolder,
+  localBackends,
+  notHere,
+  placedPatch,
+  placement,
+  refuseHere,
+  refuseUnregistered,
+  refuseUnregisteredSend,
+  registeredAdapter,
+  requestAdapter,
+  runsHere,
+} from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
+import { replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
 import {
@@ -90,6 +90,7 @@ import {
   settleScheduledWake,
 } from './scheduled-wakes.mjs';
 import { sessionPatch } from './session-patch.mjs';
+import { setSessionRun } from './session-run.mjs';
 import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import {
@@ -113,6 +114,7 @@ import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
+import { workEvents } from './turn-work.mjs';
 import { closeOrphanCards, retireStale } from './wake-cards.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
@@ -123,7 +125,6 @@ export { PERMISSION_MODES, readCapped };
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
-export const DELETE_UNDO_MS = 10000;
 const STEP_STATES = new Set(['running', 'done', 'failed', 'denied', 'stopped']);
 /** What a step is when it isn’t a tool call (#73): a thought, a subagent’s narration, or a subagent’s own step. */
 const STEP_KINDS = /** @type {Set<unknown>} */ (new Set(['thought', 'said', 'agent']));
@@ -224,6 +225,7 @@ export class Runtime {
         usesHostSetup: p.usesHostSetup !== false,
         canPublish: p.canPublish === true,
         mcpOff: p.mcpOff ?? [],
+        skillsOff: p.skillsOff ?? [],
         tools: p.tools ?? [],
       }
     );
@@ -429,12 +431,16 @@ export class Runtime {
     // @-mention there, or the one you reply to, answers from its one session in the conversation, and the reply shows here.
     // Side threads from before #372 are history: agents talk in the conversation now.
     if (t.kind === 'side') throw httpError(409, 'Side threads are read-only now. Write in the conversation, where the agents talk.');
+    // Refuse before anything is posted or joined: a turn for an agent whose backend isn’t registered couldn’t start (#874).
+    refuseUnregisteredSend(this, mentioned);
     const away = t.kind === 'topic';
     if (away) {
       for (const p of mentioned) targets.push({ se: this.sideSession(t, p.id, 'you') });
       if (!targets.length) {
         // The last speaker’s agent replies, as in a conversation; before anyone has, the agent it started with.
         const p = threadPersona(this, t);
+        // Refused before sideSession, which would join an agent not yet in the conversation (#874).
+        if (p) refuseUnregisteredSend(this, [p]);
         const se = p && this.sideSession(t, p.id, 'you');
         if (!se) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
         targets.push({ se });
@@ -453,6 +459,9 @@ export class Runtime {
       if (!last) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
       targets.push({ se: last });
     }
+    // And the agent you reply to, as the mentioned ones above.
+    const woken = targets.map(({ se }) => this.persona(se.personaId));
+    refuseUnregisteredSend(this, woken);
     // Messages to a busy agent wait in the queue unless you choose Send now.
     const busy = targets.filter(({ se }) => this.turns.has(se.id));
     const q = busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now() } : null;
@@ -576,7 +585,7 @@ export class Runtime {
     // A topic or side thread’s request leads; its room catch-up is background. A room turn keeps the existing order.
     message = turnContext(this, this.s.sessions[sessionId], where, message, slash);
     const persona = this.persona(se.personaId);
-    const adapter = this.adapters.get(persona?.backend ?? 'mock');
+    const adapter = registeredAdapter(this, persona);
     const abort = new AbortController();
     const turn = {
       id: newId('turn'),
@@ -619,7 +628,7 @@ export class Runtime {
     };
     this.turns.set(sessionId, turn);
     // A persona on a remote host (#120): the turn is remote from here on (server/remote/turns.mjs).
-    const hostId = this.remote.hostOf(persona);
+    const hostId = adapter ? this.remote.hostOf(persona) : null;
     if (hostId) this.remote.begin(turn, hostId, adapter);
     // The work ledger (#132) follows the turn’s tool calls. A change outside the project’s folder and the agent’s is
     // flagged; the adapter knows the agent’s folder. A remote agent’s folder is on its host, never made here.
@@ -660,6 +669,7 @@ export class Runtime {
     const ctx = Object.assign(this.turnContext(se, turn), { rawTail: turn.rawTail });
     // A remote turn has its host’s welcome, its host turn and the conversation’s snapshot before the adapter starts.
     const run = Promise.resolve().then(async () => {
+      if (!adapter) refuseUnregistered(se, persona);
       if (!hostId) refuseHere(this, se, persona);
       return adapter.deliver(this.s.sessions[sessionId], hostId ? await this.remote.prepare(turn, ctx, message) : message, ctx);
     });
@@ -680,29 +690,7 @@ export class Runtime {
     const rt = this;
     const live = () => !turn.closed;
     const se = () => rt.s.sessions[turn.sessionId];
-    const ensureSegment = () => {
-      if (!turn.segment) {
-        const it = rt.addItem(turn.threadId, {
-          kind: 'agent',
-          sessionId: turn.sessionId,
-          personaId: se0.personaId,
-          handle: se0.handle,
-          turnId: turn.id,
-          text: '',
-          status: 'streaming',
-          activity: turn.first ? null : { steps: [...turn.steps] },
-          ...replyMarks(turn),
-        });
-        // The text before a tool call or a block is finished; only the newest segment shows the caret.
-        if (turn.lastSegment) rt.patchItem(turn.threadId, turn.lastSegment, { status: 'done' });
-        turn.segment = it.id;
-        turn.lastSegment = turn.openSegment = it.id; // openSegment: the one still streaming, by its id (closeSegment)
-        if (!turn.first) turn.first = it.id;
-        if (turn.said) turn.said += '\n\n';
-        rt.putThread({ ...rt.s.threads[turn.threadId], lastSpeaker: turn.sessionId });
-      }
-      return turn.segment;
-    };
+    const ensureSegment = () => replySegment(rt, turn, se0);
     const tools = this.toolsFor(turn.sessionId, turn);
     const thread = rt.s.threads[turn.threadId];
     const persona = rt.personaFor(se0);
@@ -764,21 +752,8 @@ export class Runtime {
         rt.ledger.denied(turn, d.toolUseId);
         rt.recordDenial(turn, d);
       },
-      // For the work ledger (#132): each tool call with its whole input, before it runs ({ id, name, input, who });
-      // what it returned ({ id, isError, text, result: the tool’s own record, vcsCwd }); a background task’s end
-      // ({ toolUseId, status, summary, outputFile }); and the process’s running spend ({ key, costUsd, tokens }).
-      toolUse(u) {
-        if (live()) recordScheduledTool(rt, turn, u);
-      },
-      toolResult(r) {
-        if (live()) rt.ledger.toolResult(turn, r);
-      },
-      taskEnded(t) {
-        if (live()) rt.ledger.taskEnded(turn, t);
-      },
-      usage(u) {
-        if (live()) rt.ledger.usage(turn, u);
-      },
+      // For the work ledger (#132): toolUse, toolResult, taskEnded and usage (turn-work.mjs).
+      ...workEvents(rt, turn, live),
       /**
        * Where this turn ends in the backend’s own transcript, such as { claudeSessionId, uuid }. A topic
        * thread that branches from this turn’s messages forks the agent’s session there.
@@ -788,7 +763,7 @@ export class Runtime {
       },
       text(delta) {
         if (!live() || !delta) return;
-        const id = ensureSegment();
+        const id = wordsSegment(rt, turn, se0);
         turn.said += delta;
         rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
         if (se().state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
@@ -809,6 +784,7 @@ export class Runtime {
         if (!live()) return;
         // A lint turn that only calls tools (define_term, say) is quiet: it ends as a one-line note, not a reply.
         if (!turn.first && turn.kind !== 'lint') ensureSegment();
+        if (!who) stepTaken(turn);
         const i = turn.steps.findIndex((s) => s.id === id);
         const step = {
           id: id ?? newId('st'),
@@ -1985,39 +1961,9 @@ export class Runtime {
     return { item };
   }
 
-  /**
-   * Changes the model or the effort a conversation runs with (/model, /effort). Both are fixed in the session’s
-   * snapshot, so this changes the snapshot: from the next turn, and now too where the backend can change a running
-   * turn (the Agent SDK’s setModel and its effort setting, tried and reported).
-   * @param {string} sessionId @param {{ model?: string, effort?: string }} change
-   * @returns {Promise<{ ok: true, now: boolean }>}
-   */
-  async setSessionRun(sessionId, { model, effort }) {
-    const se = this.session(sessionId);
-    if (this.persona(se.personaId)?.backend === 'mock') throw httpError(409, 'A mock agent has no model or effort to change.');
-    /** @type {Record<string, string>} */
-    const patch = {};
-    if (model !== undefined) {
-      const m = String(model).trim();
-      if (!m || m.length > 100 || !/^[\w.:[\]-]+$/.test(m)) throw httpError(422, 'A model is a name such as claude-opus-5-5.');
-      patch.model = m;
-    }
-    if (effort !== undefined) {
-      checkEffort(effort);
-      patch.effort = String(effort);
-    }
-    if (!Object.keys(patch).length) throw httpError(422, 'Say which model or effort to use.');
-    this.updateSession(se.id, { personaSnapshot: { ...(se.personaSnapshot ?? {}), ...patch } });
-    const control = this.turns.get(se.id)?.control;
-    let now = false;
-    if (control) {
-      const results = await Promise.all([
-        patch.model && control.setModel ? control.setModel(patch.model) : null,
-        patch.effort && control.setEffort ? control.setEffort(patch.effort) : null,
-      ]);
-      now = results.filter((r) => r !== null).length > 0 && results.every((r) => r !== false);
-    }
-    return { ok: true, now };
+  /** Changes the model or the effort a conversation runs with (/model, /effort): server/session-run.mjs. */
+  setSessionRun(sessionId, change) {
+    return setSessionRun(this, sessionId, change);
   }
 
   /**
@@ -2033,7 +1979,7 @@ export class Runtime {
     const se = members.find((x) => x.id === t.lastSpeaker) ?? members[0];
     const persona = se ? this.personaFor(se) : null;
     const project = this.s.projects[t.projectId] ?? null;
-    const adapter = persona ? this.adapters.get(persona.backend) : null;
+    const adapter = persona ? requestAdapter(this, se.handle, persona) : null;
     if (persona?.remote?.hostId) return hereFolder(this, persona, project, adapter);
     if (adapter?.folderFor) return { folder: await adapter.folderFor(persona, project), host: null };
     return { folder: persona?.folder || project?.folder || null, host: null };
@@ -2409,7 +2355,7 @@ export class Runtime {
    */
   defaultModelFor(backend) {
     if (backend === 'mock') return 'mock';
-    const offered = this.adapters.names().includes(backend) ? this.adapters.get(backend).capabilities?.models : null;
+    const offered = registeredAdapter(this, { backend })?.capabilities?.models ?? null;
     return offered?.includes(AUTO_MODEL) && !offered.includes(DEFAULT_MODEL) ? AUTO_MODEL : DEFAULT_MODEL;
   }
 
@@ -2424,6 +2370,7 @@ export class Runtime {
     usesHostSetup = true,
     canPublish = false,
     mcpOff = [],
+    skillsOff = [],
     folder = '',
     tools = [],
     examples = [],
@@ -2433,13 +2380,13 @@ export class Runtime {
     handle = String(handle ?? '')
       .replace(/^@/, '')
       .trim();
-    if (!/^[a-z][a-z0-9_-]{1,23}$/i.test(handle)) throw httpError(422, 'A name uses 2–24 letters, digits, - or _, and starts with a letter.');
+    if (!HANDLE.test(handle)) throw httpError(422, 'A name uses 2–24 letters, digits, - or _, and starts with a letter.');
     if (this.personaByHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
     if (this.deletingHandle(handle)) throw httpError(409, `@${handle} is being deleted. Undo that, or wait 10 seconds for the name to be free.`);
     if (!this.adapters.names().includes(backend)) throw httpError(422, notHere(this, backend));
     if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
     checkEffort(effort);
-    checkSetup({ usesHostSetup, canPublish, mcpOff });
+    checkSetup({ usesHostSetup, canPublish, mcpOff, skillsOff });
     const placed = placement(this, remote, backend);
     if (!placed && !runsHere(this, backend)) throw httpError(422, notHere(this, backend));
     const p = {
@@ -2454,6 +2401,7 @@ export class Runtime {
       usesHostSetup,
       canPublish,
       mcpOff: serverNames(mcpOff),
+      skillsOff: skillNames(skillsOff),
       folder: String(folder ?? ''),
       tools: [...new Set(tools)],
       examples,
@@ -2475,6 +2423,7 @@ export class Runtime {
     if (patch.effort !== undefined) checkEffort(patch.effort);
     checkSetup(patch);
     if (patch.mcpOff !== undefined) patch = { ...patch, mcpOff: serverNames(patch.mcpOff) };
+    if (patch.skillsOff !== undefined) patch = { ...patch, skillsOff: skillNames(patch.skillsOff) };
     if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend)) throw httpError(422, notHere(this, patch.backend));
     // Where it runs (#120), and whether its backend runs here when that’s here.
     patch = placedPatch(this, id, p, patch);
@@ -2493,6 +2442,7 @@ export class Runtime {
         'canPublish',
         'allowRequested',
         'mcpOff',
+        'skillsOff',
         'folder',
         'tools',
         'examples',
@@ -2577,6 +2527,8 @@ export class Runtime {
       persona,
       folder,
       seen: seenFolder === folder ? servers : servers.filter((s) => s.source !== 'project' && s.source !== 'local'),
+      // The skills that session listed in its / menu (#207): the sheet takes only plugins’, which load in every folder.
+      skills: (seen?.commands ?? []).filter((c) => c.skill).map((c) => c.name),
     };
   }
 
@@ -2969,6 +2921,7 @@ const COMMAND_REFRESH_MS = 5000;
 const MAX_COMMAND_REFRESHES = 60;
 /** Server names, trimmed and without repeats. Postbox’s own server can’t be turned off, so it’s dropped. */
 const serverNames = (list) => [...new Set(list.map((n) => n.trim()))].filter((n) => n !== POSTBOX_SERVER);
+const skillNames = (list) => [...new Set(list.map((n) => n.trim()))];
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
 
 export { formatDuration };

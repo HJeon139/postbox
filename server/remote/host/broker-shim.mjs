@@ -1,7 +1,7 @@
 // A shim’s connection to the daemon’s broker (#120): its hello, with its turn and that turn’s own token, then its calls,
 // prompts and the notices that a prompt ended, each handled in the order it came.
 
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { encode, HOST_DEFAULTS, message, parseLine, REMOTE_LIMITS, TURN_FILES } from '../../../shared/remote-protocol.mjs';
 import { endPrompt, permission } from './broker-prompts.mjs';
@@ -23,6 +23,7 @@ export function shimConnection(b, { first, write, end }) {
   /** @type {ShimConn} */
   const c = {
     turn: null,
+    owner: null,
     closed: false,
     send(type, body) {
       if (c.closed) return;
@@ -106,6 +107,8 @@ async function hello(b, c, refuse, m) {
   if (no) return refuse(no.code, no.text);
   if (c.closed) return;
   c.turn = m.turn;
+  // Which shim this is, across its reconnects: its key’s hash, the only form kept or written down (#353).
+  c.owner = typeof m.shim === 'string' ? createHash('sha256').update(m.shim).digest('hex') : null;
   if (!b.shims.has(m.turn)) b.shims.set(m.turn, new Set());
   b.shims.get(m.turn)?.add(c);
   c.send('welcome', { turn: m.turn, permissionWaitMax: b.settings().permissionWaitMax ?? HOST_DEFAULTS.permissionWaitMax });

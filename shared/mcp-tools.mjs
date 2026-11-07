@@ -95,6 +95,16 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: 'view_app',
+    description:
+      'See an app you or another agent showed in this conversation, as the person first sees it: inline in the conversation, at the size of their Postbox window (1000 × 680 when no tab is open), in their theme, at its current version. Returns a picture, and saves it in your folder under .postbox/view. Look before you call an app done: the pre-display check catches what it measures, not a layout that’s simply wrong. The first time, Postbox asks the person whether to download the browser it renders with; end your turn then, and you’ll hear their answer.',
+    inputSchema: {
+      type: 'object',
+      properties: { appId: { type: 'string', description: 'The appId show_app or update_app returned.' } },
+      required: ['appId'],
+    },
+  },
+  {
     name: 'define_term',
     description: 'Add a term to the glossary of this conversation, or of the topic thread you’re in. Every later mention links to its definition.',
     inputSchema: {
@@ -147,13 +157,17 @@ export const TOOL_DEFS = [
   {
     name: 'open_topic',
     // lint-allow thread: read_conversation's parameter of that name.
-    description: `Open a topic thread from a message in your conversation, by its item id, or find the topic thread it has, and optionally post a first message there, up to ${count(SENDING.message)} characters. Each agent in mentions is woken in the topic thread, as wake_agent wakes it, and answers there; one message serves them all. The topic thread opens beside the message in the page. A message in a topic thread can’t start another one: reply in that topic thread. The reply gives the topic thread’s id, which read_conversation { thread } reads.`,
+    description: `Open a topic thread from a message in your conversation, by its item id, or find the topic thread it has, and optionally post a first message there, up to ${count(SENDING.message)} characters. Each agent in mentions is woken in the topic thread, as wake_agent wakes it, and answers there; one message serves them all. The topic thread opens beside the message in the page. A message in a topic thread can’t start another one: reply in that topic thread. The reply gives the topic thread’s id, which read_conversation { thread } reads, and says whether your message was posted, by its id.`,
     inputSchema: {
       type: 'object',
       properties: {
         itemId: { type: 'string', description: 'The id (it_…) of the message the topic thread is about, in your conversation.' },
         message: { type: 'string', description: 'A first message to post in the topic thread, in Markdown.' },
-        mentions: { type: 'array', items: { type: 'string' }, description: 'The handles of agents to wake there with that message.' },
+        mentions: {
+          type: 'array',
+          items: { type: 'string' },
+          description: `The handles of agents to wake there with that message, up to ${SENDING.mentions}.`,
+        },
       },
       required: ['itemId'],
     },
@@ -195,7 +209,8 @@ export const TOOL_DEFS = [
     inputSchema: {
       type: 'object',
       // What Claude Code sends (tests/fixtures/claude-code/permission-prompts.json), and the suggestions and agent id
-      // its prompt types document (PermissionRequestHookInput’s permission_suggestions), should a version send them.
+      // its prompt types document (PermissionRequestHookInput’s permission_suggestions). Postbox takes neither from a
+      // prompt (#353): who asks comes from the stream, and Always allow is Postbox’s own rule for the stream’s call.
       properties: {
         tool_name: { type: 'string' },
         input: { type: 'object' },

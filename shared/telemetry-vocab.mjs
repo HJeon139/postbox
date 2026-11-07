@@ -49,6 +49,7 @@ export const POSTBOX_TOOLS = [
   'show_app',
   'update_app',
   'retire_app',
+  'view_app',
   'define_term',
   'react',
   'propose_agent',

@@ -5,6 +5,8 @@
 // Its turns replay a recorded Claude Code stream: tests/fixtures/claude-code/permission-allow.jsonl by default (claude
 // 2.1.296, a turn that ran a Bash command the person allowed and ended with a result), with the byte offsets the real
 // out.jsonl would have. Its default prompt is the first request in tests/fixtures/claude-code/permission-prompts.json.
+// With callLines, a prompt for one of that file’s calls comes as the CLI sends it: after the recorded line of its call
+// (permission-subagent.jsonl), once a turn, so the runtime’s turn has seen the call it’s for (#353).
 //
 // The API, from a test’s side:
 //   const d = createFakeDaemon({ lines, autoEnd, ... })
@@ -47,8 +49,12 @@ export function fixtureLines(name = 'permission-allow') {
     .slice(0, -1);
 }
 
-/** The permission_prompt arguments Claude Code sent, recorded (permission-prompts.json). */
-export const FIXTURE_PROMPT = JSON.parse(readFileSync(new URL('permission-prompts.json', FIXTURES), 'utf8')).prompts[0];
+/** The permission_prompt arguments Claude Code sent, recorded (permission-prompts.json): its own call’s, then its subagent’s. */
+export const FIXTURE_PROMPTS = JSON.parse(readFileSync(new URL('permission-prompts.json', FIXTURES), 'utf8')).prompts;
+export const FIXTURE_PROMPT = FIXTURE_PROMPTS[0];
+const CALLS = fixtureLines('permission-subagent').filter((l) => l.startsWith('{"type":"assistant"'));
+/** The recorded line of the call a prompt asks about, the assistant message with its whole tool_use, if it’s recorded. */
+export const callLine = (request) => (typeof request?.tool_use_id === 'string' && CALLS.find((l) => l.includes(`"id":"${request.tool_use_id}"`))) || null;
 
 /**
  * @typedef {import('./fake-daemon-handlers.mjs').Line} Line
@@ -62,7 +68,7 @@ export const FIXTURE_PROMPT = JSON.parse(readFileSync(new URL('permission-prompt
  *           stopExit?: { code: number | null, signal: string | null }, home?: string, now?: () => number,
  *           harnesses?: string[], problems?: { code: string, message: string }[], holdCaughtUp?: ('out' | 'in')[],
  *           check?: (argv: string[]) => { code: number | null } | Promise<{ code: number | null }>,
- *           remove?: 'removed' | 'refuse' | 'silent' | 'drop' }} [opts]
+ *           remove?: 'removed' | 'refuse' | 'silent' | 'drop', callLines?: boolean }} [opts]
  *   lines: what each started turn’s out.jsonl holds (the fixture by default). autoEnd: a started turn has already
  *   exited with `exit` (true by default); false keeps it running until end() or a stop. stopExit: how a stopped turn
  *   ends (SIGINT, C5). harnesses: the ones the host has (all three by default). holdCaughtUp: logs whose `caught-up`
@@ -70,6 +76,7 @@ export const FIXTURE_PROMPT = JSON.parse(readFileSync(new URL('permission-prompt
  *   check: how the host’s signInCheck exits, given the argv hello sent (exit 0 by default); a promise holds the answer.
  *   remove: how `remove` goes: removed (the default, as the real daemon’s: turns stopped, `removed`, closed), refuse
  *   (the daemon’s error when it won’t delete the folder), silent (no answer) or drop (the connection ends first).
+ *   callLines: a prompt for a recorded call comes after that call’s line, as the CLI asks (false by default).
  */
 export function createFakeDaemon(opts = {}) {
   const d = fakeState(opts);
@@ -124,8 +131,10 @@ function fakeState({
   holdCaughtUp = [],
   check = () => ({ code: 0 }),
   remove: removing = 'removed',
+  callLines = false,
 } = {}) {
   return {
+    callLines,
     token,
     lines,
     autoEnd,
@@ -255,11 +264,16 @@ function shimMethods(d) {
       toDriver(d, (c) => send(d, c, 'tool', { turn, id, name, args }));
       return id;
     },
-    /** @param {string} turn @param {object} [request] @param {string} [id]  the shim’s ID; a fresh one by default */
-    prompt(turn, request = FIXTURE_PROMPT, id = `prompt-${++d.ids}`) {
+    /**
+     * @param {string} turn @param {object} [request] @param {string} [id]  the shim’s ID; a fresh one by default
+     * @param {string} [entry]  the daemon’s own ID for its record of the prompt; a fresh one by default
+     */
+    prompt(turn, request = FIXTURE_PROMPT, id = `prompt-${++d.ids}`, entry = `entry-${++d.ids}`) {
       if (d.prompts.has(key(turn, id))) throw new Error(`The fake daemon already has prompt ${id} for turn ${turn}.`);
-      d.prompts.set(key(turn, id), { turn, id, request });
-      toDriver(d, (c) => send(d, c, 'prompt', { id, turn, request }));
+      const call = d.callLines ? callLine(request) : null;
+      if (call && d.turns.has(turn) && !d.turns.get(turn).out.some((l) => l.text === call)) this.append(turn, call);
+      d.prompts.set(key(turn, id), { turn, id, entry, request });
+      toDriver(d, (c) => send(d, c, 'prompt', { id, turn, entry, request }));
       return id;
     },
     /** The host denied a waiting prompt at permissionWaitMax. @param {string} turn @param {string} id */

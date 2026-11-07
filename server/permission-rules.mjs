@@ -280,8 +280,9 @@ export function withAskRules(overlay, ask) {
 }
 
 // ── Always allow on a permission card (#66, #10) ─────────────────────────────────────────
-// Every prompt carries Claude Code’s own suggestions (`permission_suggestions` from the CLI’s prompt tool, the SDK’s
-// `suggestions`): the exact changes behind “don’t ask again”. Returning them as `updatedPermissions` applies them.
+// The Agent SDK’s prompts carry Claude Code’s own suggestions (canUseTool’s `suggestions`): the exact changes behind
+// “don’t ask again”. Returning them as `updatedPermissions` applies them. The CLI’s prompt tool sends none, and its
+// `permission_suggestions` are never read (#353): a copy of its prompt could carry any.
 
 const DESTINATIONS = new Set(['userSettings', 'projectSettings', 'localSettings', 'session', 'cliArg']);
 const SDK_MODES = { default: 'ask', acceptEdits: 'accept edits', plan: 'plan', dontAsk: 'don’t ask', auto: 'auto', bypassPermissions: 'run everything' };

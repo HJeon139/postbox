@@ -1,7 +1,9 @@
 // The permission_prompt tool (mcp.mjs): what Claude Code calls (--permission-prompt-tool) before a risky tool call in
 // “ask” mode. It waits for your answer on a card in the conversation. Only that backend asks through it.
 
+import { adapterOf } from './adapters/adapter.mjs';
 import { describePermission } from './adapters/claude-stream.mjs';
+import { claimPrompt, REFUSED } from './prompt-claim.mjs';
 
 function toAbortSignal(closeOrSignal) {
   if (!closeOrSignal) return null;
@@ -19,9 +21,17 @@ function toAbortSignal(closeOrSignal) {
  */
 export async function permission(rt, sessionId, args, closeOrSignal = null) {
   const signal = toAbortSignal(closeOrSignal);
-  if (signal?.aborted)
-    return { content: [{ type: 'text', text: JSON.stringify({ behavior: 'deny', message: 'The permission request closed before anyone answered.' }) }] };
-  const { tool_name, input = {}, tool_use_id, permission_suggestions, agent_id } = args ?? {};
+  const deny = (message) => ({ content: [{ type: 'text', text: JSON.stringify({ behavior: 'deny', message }) }] });
+  if (signal?.aborted) return deny(REFUSED.closed);
+  // Only a prompt for a call the turn’s stream showed counts, once (#353, #665): the rest never reach a card or the judge.
+  const claim = await claimPrompt(rt, sessionId, args, { signal });
+  if (!claim.ok) return deny(claim.why === 'repeat' ? REFUSED.again : claim.message);
+  // Nothing but the call’s id is the prompt’s: a copy that claims first must offer nothing the real call’s card
+  // wouldn’t, so its permission_suggestions never reach Always allow (the CLI sends none, as recorded in
+  // permission-prompts.json and permission-edit-prompts.json), and Postbox makes the rule from the stream’s call.
+  const { tool_use_id } = args ?? {};
+  // The call as the stream showed it, which the prompt matched, and the subagent’s call it’s under.
+  const { tool: tool_name, input, agentId } = claim;
   const { summary, detail } = describePermission(String(tool_name ?? 'a tool'), input);
   const useId = tool_use_id ? String(tool_use_id) : null;
   const onAbort = () => {
@@ -37,8 +47,7 @@ export async function permission(rt, sessionId, args, closeOrSignal = null) {
       detail,
       toolUseId: tool_use_id,
       input,
-      suggestions: permission_suggestions,
-      agentId: typeof agent_id === 'string' ? agent_id : null,
+      agentId: agentId ?? null,
     });
     const decision = answer.allow
       ? {
@@ -63,7 +72,7 @@ export async function permission(rt, sessionId, args, closeOrSignal = null) {
 export function asksByPrompt(rt, sessionId) {
   const se = rt.s.sessions[sessionId];
   const backend = rt.turns.get(sessionId)?.backend ?? (se ? rt.personaFor(se)?.backend : null);
-  const adapter = backend && rt.adapters.names().includes(backend) ? rt.adapters.get(backend) : null;
+  const adapter = adapterOf(rt, backend);
   return Boolean(adapter) && adapter.capabilities?.promptTool !== false;
 }
 

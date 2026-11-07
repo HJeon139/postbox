@@ -32,7 +32,8 @@ test('#120 L5: a turn quiet for the host’s stallTimeout is Hung: stopped throu
   r.rt.remote.checkStalls();
   await until(() => r.d.stops.includes(turn), 'the daemon’s stop');
   await settled(r);
-  const last = new Date(Date.UTC(2026, 9, 23, 9, 0)).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  // The last line is the call the card asked about, which the CLI writes just before it asks (#353).
+  const last = new Date(Date.UTC(2026, 9, 23, 9, 14)).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   const text = `Stopped: no output for 15 min (the last at ${last})`;
   assert.equal(r.se().remoteTurn.state, 'hung');
   assert.equal(r.se().currentStep, text);

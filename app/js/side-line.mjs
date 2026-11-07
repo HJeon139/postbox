@@ -1,9 +1,9 @@
 // The side-thread line in a conversation: who asked whom, the agent at work there, and how many messages it holds.
 
-import { api, liveSessions } from './client.mjs';
+import { liveSessions } from './client.mjs';
 import { h, icon, plural } from './dom.mjs';
+import { failedActions } from './failed-actions.mjs';
 import { ringFor, stateWord } from './ring.mjs';
-import { toast } from './ui.mjs';
 
 export function sideLine(it, ctx) {
   // The agent at work in it, with the ring and state word the sidebar rows use (#121), so the conversation shows
@@ -23,27 +23,13 @@ export function sideLine(it, ctx) {
         onclick: () => card && goToCard(card),
       },
       at ? ringFor(at, 'xs') : icon('thread', 'i-sm'),
-      h('b', `@${it.from}`),
+      h('b', it.from),
       ' asked ',
-      h('b', `@${it.to}`),
-      at ? [' · ', h('b', `@${at.handle}`), ` ${doing(at)}`] : null,
+      h('b', it.to),
+      at ? [' · ', h('b', at.handle), ` ${doing(at)}`] : null,
       ` · ${plural(it.count ?? 0, 'message')} · Open`,
     ),
-    failed
-      ? h(
-          'button.btn.sm',
-          {
-            type: 'button',
-            'aria-label': `Retry @${at.handle}’s turn in the side thread`,
-            onclick: () =>
-              api(`/api/threads/${it.sideThreadId}/items/${failed}/retry`, {}).catch((e) =>
-                toast({ title: 'Retry didn’t start', text: e.message, level: 'blocking' }),
-              ),
-          },
-          icon('retry', 'i-sm'),
-          'Retry',
-        )
-      : null,
+    failed ? failedActions(it.sideThreadId, failed, { name: `${at.handle}’s turn in the side thread`, focusAfter: 'a.pill' }) : null,
   );
 }
 

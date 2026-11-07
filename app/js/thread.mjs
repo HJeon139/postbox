@@ -1,7 +1,6 @@
 // The conversation view: transcript, composer, and the panel beside it for topic threads (yours, forked from a
 // message) and side threads (between agents).
 
-import { INLINE_TYPES } from '/shared/files.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { resolveCommand } from '/shared/slash-line.mjs';
 import { activityParts, paintActivity, stepsOnly } from './activity-paint.mjs';
@@ -12,20 +11,23 @@ import { paintOfflineQueue, paintWaitingLine } from './agent-queue.mjs';
 import { subagentNow } from './agents.mjs';
 import { allowedCallLine } from './allowed-call.mjs';
 import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
+import { attChip, fileSize } from './attachment-chip.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, placeIn, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
 import { fitDraft } from './composer-size.mjs';
-import { addressLine, addressSig, commandHint } from './composer-to.mjs';
+import { addressLine, addressSig, commandHint, placeholderFor } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
+import { failedCallout } from './failed-actions.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
+import { focusUntouched } from './pane-focus.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
 import { reactTo } from './reactions.mjs';
 import { hostOf } from './remote.mjs';
 import { replyLine } from './reply-rings.mjs';
-import { stoppedTag } from './reply-stop.mjs';
-import { replaceTranscriptItem } from './rerender-state.mjs';
+import { stoppedSaid, stoppedTag } from './reply-stop.mjs';
+import { holdFocus, replaceTranscriptItem } from './rerender-state.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { boilerplateDesc, openAttachSession, openFolderPicker, openNewAgent, openRename } from './sheets.mjs';
 import { sideActive, sideLine, sideSig } from './side-line.mjs';
@@ -34,6 +36,7 @@ import { systemLine } from './system-line.mjs';
 import { failedOnHost, hostChanged, hostEnd, hostTurnsList, ranHere, remoteSig } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
+import { viewAskBlock } from './view-ask-card.mjs';
 import { mountView } from './view-state.mjs';
 import { workList } from './work-list.mjs';
 
@@ -41,12 +44,15 @@ export { focusComposer } from './hop-card.mjs';
 
 const S = () => client.state;
 // What woke the turn (#135): “woken by @critic”, “after @researcher replied in a side thread”, or its scheduled wake.
-const wokeText = ({ by, reply, in: at, scheduled }) =>
-  scheduled
-    ? 'woken by a scheduled wake'
-    : reply
-      ? `after @${by} replied${{ side: ' in a side thread', topic: ' in a thread' }[S().threads[at]?.kind] ?? ''}`
-      : `woken by @${by}`;
+/** Where a shell line runs when the conversation has no folder: the agent’s own workspace, unless it’s a mock. */
+const workspaceLine = (se, here) =>
+  se ? ['Runs in ', h('b', se.handle), '’s own workspace', here ?? ',', ' as you, with Enter. '] : 'This conversation has no folder to run commands in. ';
+
+function wokeText({ by, reply, in: at, scheduled }) {
+  if (scheduled) return 'woken by a scheduled wake';
+  if (!reply) return `woken by ${by}`;
+  return `after ${by} replied${{ side: ' in a side thread', topic: ' in a thread' }[S().threads[at]?.kind] ?? ''}`;
+}
 
 // ── Transcript ──────────────────────────────────────────────────────────────────────────
 
@@ -104,11 +110,12 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     const i = placeIn(threadId, id);
     if (i < 0) return;
     const old = nodes.get(id);
-    // Keep focus inside a block that’s being edited.
+    // Keep focus, and the caret, inside a block that’s being edited.
+    const back = holdFocus();
     const n = render(list[i], list[i - 1]);
-    const focusedId = replaceTranscriptItem(old, n);
+    replaceTranscriptItem(old, n, view);
     nodes.set(id, n);
-    if (focusedId) document.getElementById(focusedId)?.focus();
+    back();
   };
   const all = () => {
     el.replaceChildren();
@@ -131,8 +138,10 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
 
   const off = client.on((ch) => {
     if (ch.type === 'load') {
+      const back = holdFocus();
       all();
       view.rebuilt();
+      back();
       return;
     }
     const d = ch.data;
@@ -152,6 +161,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       const list = itemsOf(threadId);
       const at = placeIn(threadId, d.stub.id);
       const stub = render(d.stub, list[at - 1]);
+      const back = holdFocus();
       nodes.get(d.id)?.replaceWith(stub);
       nodes.set(d.stub.id, stub);
       view.moved(d.id, d.stub.id);
@@ -161,6 +171,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       const n = render(list[list.length - 1], list[list.length - 2]);
       nodes.set(d.id, n);
       el.append(n);
+      back();
       paintWorking();
       view.grew();
     } else if (ch.type === 'item.patch' && d.threadId === threadId) {
@@ -216,7 +227,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     }
     paintAgentMarkdown(box, it, threadId);
     if (it.status !== 'streaming') enhanceMarkdown(box);
-    if (!force) announceStreaming(it.id, it.text, it.status !== 'streaming', `@${it.handle}`);
+    if (!force) announceStreaming(it.id, it.text, it.status !== 'streaming', it.handle);
   };
 
   return {
@@ -242,7 +253,7 @@ function fillWorkRow(row, se) {
   const step = se.state === 'tool' && se.currentStep ? `: ${se.currentStep}` : '';
   fill(
     row.querySelector('.work-text'),
-    h('div.work-line', h('b', `@${se.handle}`), h('span.dim', ` · ${stateWord(se.state).toLowerCase()}${step}`)),
+    h('div.work-line', h('b', se.handle), h('span.dim', ` · ${stateWord(se.state).toLowerCase()}${step}`)),
     se.glimpse ? h('div.glimpse', se.glimpse) : null,
     // Each subagent at work, in its own words when it has said something (#73): “reader: Now I’ll read paper 3…”.
     (se.subagents ?? []).map((x) => h('div.work-line.work-sub', h('span', `${x.name}: `), h('span.dim', subagentNow(x)))),
@@ -251,17 +262,17 @@ function fillWorkRow(row, se) {
 
 const who = (it, { you = false, threadId = '' } = {}) => {
   const se = S().sessions[it.sessionId];
-  const ts = h('span.ts', { title: `${dayOf(it.at)} ${timeOf(it.at)}` }, `${timeOf(it.at)}`);
+  const ts = h('span.ts', { title: `${dayOf(it.at)} ${timeOf(it.at)}` }, timeOf(it.at));
   // A turn typed into Claude Code in a terminal, mirrored here, says so.
   const via = it.via === 'terminal' ? h('span.via', 'from terminal') : null;
   if (you) return h('div.who', ts, h('b', 'You'), via);
-  const { ring, word } = se ? replyLine(it, se, threadId) : { ring: h('pb-ring', { name: `@${it.handle}`, state: 'idle', ctx: '0', size: 'xs' }), word: null };
+  const { ring, word } = se ? replyLine(it, se, threadId) : { ring: h('pb-ring', { name: it.handle, state: 'idle', ctx: '0', size: 'xs' }), word: null };
   const woke = it.woke ? h('span.woke', wokeText(it.woke)) : null;
-  return h('div.who', ring, h('b', `@${it.handle}`), mockMarker(se), word, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, woke, ts);
+  return h('div.who', ring, h('b', it.handle), mockMarker(se), word, it.deletedAgent ? h('span.deleted', '(deleted)') : null, via, woke, ts);
 };
 
 // Under a message in a conversation: “Reply in thread”, or once a thread exists, “3 replies”. Under a message in a
-// topic or side thread (#128): “Send to conversation”. React, under every one (#251). They appear on hover and focus, and always on touch.
+// topic or side thread (#128): “Send to conversation”. React, under every one (#251), on the left (#378). They appear on hover and focus, and always on touch.
 function messageActions(node, it, ctx) {
   if (!['user', 'agent', 'block', 'shared'].includes(it.kind) || it.status === 'streaming' || it.deletedAgent || (it.kind === 'block' && !it.valid)) return;
   if (it.status === 'replaced') return;
@@ -290,7 +301,10 @@ function messageActions(node, it, ctx) {
               api(`/api/threads/${ctx.threadId}/items/${it.id}/topic`, {})
                 .then((r) => {
                   navigate(`#/t/${ctx.threadId}/side/${r.threadId}`);
-                  setTimeout(() => $('#side-input')?.focus(), 150);
+                  // Focus goes to the thread’s composer only if the person hasn’t moved it meanwhile (#887).
+                  setTimeout(() => {
+                    if (focusUntouched(it.id)) $('#side-input')?.focus();
+                  }, 150);
                 })
                 .catch((e) => toast({ title: 'Couldn’t start a thread', text: e.message, level: 'blocking' })),
           },
@@ -352,26 +366,7 @@ function renderItem(it, prev, ctx) {
         it.work ? workChip(it, ctx) : null,
         hostEnd(it),
         it.status === 'stopped' && !it.note ? stoppedTag(it) : null,
-        it.status === 'failed' && !failedOnHost(it)
-          ? h(
-              'div.callout',
-              { role: 'alert' },
-              h('span.g.g-failed', { 'aria-hidden': 'true' }),
-              h('div.grow', ...failureText(it.error)),
-              h(
-                'button.btn.sm',
-                {
-                  type: 'button',
-                  onclick: () =>
-                    api(`/api/threads/${ctx.threadId}/items/${it.id}/retry`, {}).catch((e) =>
-                      toast({ title: 'Retry didn’t start', text: e.message, level: 'blocking' }),
-                    ),
-                },
-                icon('retry', 'i-sm'),
-                'Retry',
-              ),
-            )
-          : null,
+        it.status === 'failed' && !failedOnHost(it) ? failedCallout(ctx.threadId, it, failureText(it.error)) : null,
         it.status === 'retried' ? h('span.stopped-tag', 'Retried below') : null,
         it.sources?.length
           ? h(
@@ -442,7 +437,7 @@ function renderItem(it, prev, ctx) {
               'span.grow',
               it.summary ? 'Summary of the thread ' : 'From the thread ',
               h('b', `“${it.fromTitle}”`),
-              it.agent ? ` · shared by @${it.handle} in a turn you started` : it.handle ? ` · @${it.handle}` : ' · you',
+              ` · ${it.agent ? `shared by ${it.handle} in a turn you started` : it.handle || 'you'}`,
             ),
             S().threads[it.fromThreadId] ? h('a.small', { href: hrefOf(it.fromThreadId) }, 'Open thread') : null,
           ),
@@ -468,6 +463,8 @@ function renderItem(it, prev, ctx) {
       return denialBlock(it, ctx);
     case 'toolask':
       return toolAskBlock(it, ctx);
+    case 'viewask':
+      return viewAskBlock(it, ctx);
     case 'allowedcall':
       return allowedCallLine(it, ctx);
     case 'appsend':
@@ -492,32 +489,6 @@ function workChip(it, ctx) {
 function failureText(msg = 'This reply didn’t finish.') {
   const m = msg.match(/^(.*?[.!?])\s+([\s\S]*)$/);
   return m ? [h('b', m[1]), ' ', m[2]] : [h('b', msg)];
-}
-
-const fileSize = (size) => (size > 1e6 ? `${(size / 1e6).toFixed(1)} MB` : `${Math.ceil(size / 1000)} KB`);
-
-/**
- * An attachment on a sent message. Images the server shows inline (INLINE_TYPES) get a thumbnail that opens
- * the full image in a new tab; everything else, an SVG included, is a file chip that downloads.
- */
-function attChip(a) {
-  const label = a.kind === 'project-file' ? a.path : a.name;
-  const href = a.fileId ? `/api/files/${encodeURIComponent(a.fileId)}` : null;
-  if (href && INLINE_TYPES.has(a.type)) {
-    // One link: the image’s alt text and the size are its name, so it reads as “photo.png · 318 KB”.
-    return h(
-      'a.att-image',
-      { href, target: '_blank', rel: 'noopener' },
-      h('img', { src: href, alt: a.name, width: '160', height: '120', loading: 'lazy', decoding: 'async' }),
-      h('span.att-cap', h('span.att-name', { 'aria-hidden': 'true' }, a.name), a.size ? h('span.dim', ` · ${fileSize(a.size)}`) : null),
-    );
-  }
-  return h(
-    'span.att',
-    h('span.thumb', icon(a.kind === 'project-file' ? 'folder' : /^image\//.test(a.type ?? '') ? 'image' : 'file', 'i-sm')),
-    href ? h('a', { href, style: { color: 'inherit' } }, label) : label,
-    a.size ? h('span.dim', ` · ${fileSize(a.size)}`) : null,
-  );
 }
 
 /**
@@ -627,7 +598,7 @@ function proposalBlock(it, ctx, showWho) {
     h(
       'div.block',
       { role: 'group', class: open ? '' : 'answered', style: open ? { borderColor: 'var(--accent)' } : {} },
-      h('div.block-head', icon('spark'), h('span.title.grow', `New teammate: @${p.handle}`), h('span.kind', `Proposed by @${it.handle}`)),
+      h('div.block-head', icon('spark'), h('span.title.grow', `New teammate: ${p.handle}`), h('span.kind', `Proposed by ${it.handle}`)),
       h(
         'div.block-body',
         h('p', String(p.description ?? '')),
@@ -647,19 +618,19 @@ function proposalBlock(it, ctx, showWho) {
                   'span.err',
                   { style: { color: 'var(--accent)' } },
                   icon('warn'),
-                  `${it.extraTools.join(', ')} ${it.extraTools.length === 1 ? 'is' : 'are'} more than @${it.handle} has. Creating @${p.handle} grants ${it.extraTools.length === 1 ? 'it' : 'them'}.`,
+                  `${it.extraTools.join(', ')} ${it.extraTools.length === 1 ? 'is' : 'are'} more than ${it.handle} has. Creating ${p.handle} grants ${it.extraTools.length === 1 ? 'it' : 'them'}.`,
                 )
               : null,
           ),
           h('dt', 'Joins'),
           h('dd', `This ${ctx.kind === 'topic' ? 'topic thread' : ctx.kind === 'side' ? 'side thread' : 'conversation'}, with the recent messages as context`),
         ),
-        !open ? h('span.answered-note', icon('check', 'i-sm'), it.status === 'created' ? `Created @${p.handle}` : 'Dismissed') : null,
+        !open ? h('span.answered-note', icon('check', 'i-sm'), it.status === 'created' ? `Created ${p.handle}` : 'Dismissed') : null,
       ),
       open
         ? h(
             'div.block-foot',
-            h('button.btn', { type: 'button', onclick: () => act('create') }, `Create @${p.handle}`),
+            h('button.btn', { type: 'button', onclick: () => act('create') }, `Create ${p.handle}`),
             h(
               'button.btn',
               { type: 'button', onclick: () => openNewAgent({ threadId: ctx.threadId, preset: p, onCreated: () => act('dismiss') }) },
@@ -681,7 +652,7 @@ function welcome(threadId) {
   return h(
     'section.col',
     { style: { display: 'flex', flexDirection: 'column', gap: '18px', padding: '32px 0' } },
-    h('div.row-flex', { style: { gap: '14px' } }, ring, h('div', h('h1.title', `@${p.handle} is ready`), h('p.dim', String(p.description ?? '')))),
+    h('div.row-flex', { style: { gap: '14px' } }, ring, h('div', h('h1.title', `${p.handle} is ready`), h('p.dim', String(p.description ?? '')))),
     h(
       'div',
       { role: 'list', 'aria-label': 'Example prompts', style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' } },
@@ -929,7 +900,7 @@ export function mountComposer(threadId, { side = false } = {}) {
           ? [
               {
                 label: 'Recommend one',
-                desc: `@${last.handle} drafts a teammate for this conversation`,
+                desc: `${last.handle} drafts a teammate for this conversation`,
                 icon: 'spark',
                 run: () => sendMessage(threadId, `@${last.handle} please recommend a teammate for this conversation.`),
               },
@@ -975,14 +946,14 @@ export function mountComposer(threadId, { side = false } = {}) {
       projectId,
       (path) =>
         api('/api/permissions/folders', { sessionId: se.id, path })
-          .then((r) => toast({ title: `@${se.handle} may work in ${r.path}`, text: 'From its next turn.' }))
+          .then((r) => toast({ title: `${se.handle} may work in ${r.path}`, text: 'From its next turn.' }))
           .catch((e) => toast({ title: 'Couldn’t add the folder', text: e.message, level: 'blocking' })),
       { folders: true },
     );
   }
   function compact(se = target()) {
     if (!se) return;
-    if (isMock(se)) return toast({ title: 'Nothing to compact', text: `@${se.handle} is a mock agent.` });
+    if (isMock(se)) return toast({ title: 'Nothing to compact', text: `${se.handle} is a mock agent.` });
     void runAgentCommand(se, '/compact');
   }
   function stopAll(only = null) {
@@ -991,11 +962,11 @@ export function mountComposer(threadId, { side = false } = {}) {
     const t = thread();
     const go = (se) => (!only || se.id === only.id) && busy(se) && !(t?.kind !== 'topic' && S().threads[se.sideTurn?.threadId]?.kind === 'topic');
     const working = (t?.kind === 'side' || t?.kind === 'topic' ? sessionsAt(threadId) : [...sessionsOf(threadId), ...sideSessionsOf(threadId)]).filter(go);
-    if (!working.length) return say(only ? `@${only.handle} isn’t working.` : 'Nothing is running here.');
+    if (!working.length) return say(only ? `${only.handle} isn’t working.` : 'Nothing is running here.');
     for (const se of working)
       stopSession(se).then(
-        (r) => (r?.ask ? askStop(se, r.ask) : say(`Stopped @${se.handle}.`)),
-        (e) => toast({ title: `Couldn’t stop @${se.handle}`, text: e.message, level: 'blocking' }),
+        (r) => (r?.ask ? askStop(se, r.ask) : say(`Stopped ${se.handle}.`)),
+        (e) => toast({ title: `Couldn’t stop ${se.handle}`, text: e.message, level: 'blocking' }),
       );
   }
   /** An agent’s skills and commands: its session’s, else the latest from another session of its persona. */
@@ -1017,7 +988,7 @@ export function mountComposer(threadId, { side = false } = {}) {
         .filter((c) => !POSTBOX_NAMES.has(c.name) && match(c.name))
         .slice(0, 40)
         .map((c) => ({ name: c.name, desc: c.description ?? (c.skill ? 'Skill' : 'Command'), hint: c.argumentHint ?? '', se }));
-      if (options.length) groups.push({ label: `@${se.handle}’s skills and commands${earlier ? ' · from an earlier session' : ''}`, options });
+      if (options.length) groups.push({ label: `${se.handle}’s skills and commands${earlier ? ' · from an earlier session' : ''}`, options });
     }
     return groups.filter((g) => g.options.length);
   }
@@ -1109,7 +1080,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       await api(`/api/threads/${threadId}/agent-command`, { sessionId: se.id, text: line });
       return true;
     } catch (e) {
-      toast({ title: `@${se.handle} couldn’t run ${line.split(/\s/)[0]}`, text: e.message, level: 'blocking' });
+      toast({ title: `${se.handle} couldn’t run ${line.split(/\s/)[0]}`, text: e.message, level: 'blocking' });
       return false;
     }
   }
@@ -1224,7 +1195,7 @@ export function mountComposer(threadId, { side = false } = {}) {
             { role: 'listbox', id: 'mention-list', 'aria-label': 'Agents' },
             h('div.label', 'Wake an agent'),
             list.map(({ p, se }, i) => {
-              const ring = se ? ringFor(se, 'sm') : h('pb-ring', { name: `@${p.handle}`, state: 'idle', ctx: '0', size: 'sm' });
+              const ring = se ? ringFor(se, 'sm') : h('pb-ring', { name: p.handle, state: 'idle', ctx: '0', size: 'sm' });
               return h(
                 'div.mi',
                 {
@@ -1240,7 +1211,7 @@ export function mountComposer(threadId, { side = false } = {}) {
                 ring,
                 h(
                   'span.grow',
-                  `@${p.handle}`,
+                  p.handle,
                   mockMarker(se ?? p),
                   h(
                     'span.d',
@@ -1420,10 +1391,10 @@ export function mountComposer(threadId, { side = false } = {}) {
     action.onclick = b
       ? () =>
           stopSession(b)
-            .then((r) => (r?.ask ? askStop(b, r.ask) : say(`Stopped @${b.handle}.`)))
+            .then((r) => (r?.ask ? askStop(b, r.ask) : say(`Stopped ${b.handle}.`)))
             .catch((e) => toast({ title: 'Couldn’t stop', text: e.message }))
       : () => submit();
-    action.setAttribute('aria-label', b ? `Stop @${b.handle}’s reply` : 'Send');
+    action.setAttribute('aria-label', b ? `Stop ${b.handle}’s reply` : 'Send');
     const note = describeStop(action, b, threadId);
     const last = S().sessions[t.lastSpeaker];
     const members = sessionsOf(threadId).filter((x) => !x.archived);
@@ -1431,11 +1402,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     const archived = !topic && !side && !members.length ? sessionsOf(threadId) : [];
     ta.disabled = archived.length > 0;
     action.disabled = archived.length > 0;
-    ta.placeholder = topic
-      ? 'Reply in thread'
-      : side
-        ? 'Join this side thread…'
-        : `${members.length > 1 ? 'Reply to' : 'Message'} @${(last ?? members[0])?.handle ?? 'an agent'}`;
+    ta.placeholder = placeholderFor({ topic, side, members, last });
     paintWaitingLine(waiting, threadId);
     paintOfflineQueue(
       queue,
@@ -1506,6 +1473,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     hint.dataset.to = addressSig(threadId, ta.value);
     const folder = mode === 'shell' ? commandFolder() : null;
     const here = mode === 'shell' ? notOnHost(target()) : null;
+    const own = isMock(target()) ? null : target();
     // A repaint while you’re on “Did you mean” keeps you there (#134).
     const onFix = !!document.activeElement?.closest('.did-you-mean') && hint.contains(document.activeElement);
     fill(
@@ -1513,11 +1481,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       mode === 'shell'
         ? h(
             'span',
-            folder
-              ? ['Runs in ', h('span.mono', folder), here, ' as you, with Enter. ']
-              : target() && !isMock(target())
-                ? ['Runs in ', h('b', `@${target().handle}`), '’s own workspace', here ?? ',', ' as you, with Enter. ']
-                : 'This conversation has no folder to run commands in. ',
+            folder ? ['Runs in ', h('span.mono', folder), here, ' as you, with Enter. '] : workspaceLine(own, here),
             'The agents read it and its output on their next turn.',
           )
         : mode === 'no-shell'
@@ -1577,16 +1541,8 @@ export function mountComposer(threadId, { side = false } = {}) {
     const choose = (jobs) => {
       asked.delete(se.id);
       stopSession(se, jobs, ask?.turnId ?? null)
-        .then((r) =>
-          say(
-            r?.ended
-              ? `@${se.handle}’s reply had already ended.`
-              : jobs === 'keep'
-                ? `Stopped @${se.handle}. ${one ? 'Its background job keeps' : 'Its background jobs keep'} running.`
-                : `Stopped @${se.handle} and ${one ? 'its background job' : 'its background jobs'}.`,
-          ),
-        )
-        .catch((e) => toast({ title: `Couldn’t stop @${se.handle}`, text: e.message, level: 'blocking' }))
+        .then((r) => say(stoppedSaid(se, r, jobs, one)))
+        .catch((e) => toast({ title: `Couldn’t stop ${se.handle}`, text: e.message, level: 'blocking' }))
         .finally(done);
     };
     const dismiss = () => {
@@ -1597,7 +1553,7 @@ export function mountComposer(threadId, { side = false } = {}) {
       'div.queued.stop-ask',
       {
         role: 'group',
-        'aria-label': `Stop @${se.handle}`,
+        'aria-label': `Stop ${se.handle}`,
         onkeydown: (e) => {
           if (e.key !== 'Escape') return;
           e.preventDefault();
@@ -1605,10 +1561,10 @@ export function mountComposer(threadId, { side = false } = {}) {
           dismiss();
         },
       },
-      h('span.q-text', ask?.text ?? `@${se.handle} has background jobs running. Stop them too?`),
+      h('span.q-text', ask?.text ?? `${se.handle} has background jobs running. Stop them too?`),
       h('button.btn.sm.send', { type: 'button', onclick: () => choose('stop') }, one ? 'Stop it too' : 'Stop them too'),
       h('button.btn.sm', { type: 'button', onclick: () => choose('keep') }, 'Keep running'),
-      h('button.btn.sm.ghost', { type: 'button', 'aria-label': `Don’t stop @${se.handle}`, onclick: dismiss }, icon('x', 'i-sm')),
+      h('button.btn.sm.ghost', { type: 'button', 'aria-label': `Don’t stop ${se.handle}`, onclick: dismiss }, icon('x', 'i-sm')),
     );
   }
   paint();

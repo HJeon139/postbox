@@ -192,7 +192,7 @@ test('#53 apps too small to read, or showing only an error, are shown with notes
   await synced(page, app);
   expect(lints().length, 'one lint turn for the turn that showed the apps').toBe(1);
   await expect(page.locator('.app-note', { hasText: /marks are under 4 px/ }), 'the person sees the app with notes, not as a failure').toContainText(
-    /^Shown with notes for @drawer/,
+    /^Shown with notes for drawer/,
   );
 });
 

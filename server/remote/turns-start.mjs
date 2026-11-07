@@ -12,6 +12,8 @@ import { wokeOf } from '../turn-marks.mjs';
 import { carryAttachments } from './attachments.mjs';
 import { listen, needHost, releaseHost } from './turns-need.mjs';
 import { continueAs, keepOrigin } from './turns-origin.mjs';
+import { claimShown } from './turns-prompts.mjs';
+import { replaying } from './turns-replay.mjs';
 import { signInCheck } from './turns-resume.mjs';
 import { abortError, OFFSET_SAVE_MS, updateRemote, whyLine } from './turns-shared.mjs';
 import { sendSnapshot } from './turns-snapshot.mjs';
@@ -38,6 +40,9 @@ export function begin(rts, turn, hostId, adapter) {
     current: null,
     work: caps?.work ?? 'events',
     signInError: caps?.signInError ?? null,
+    backgroundTasks: caps?.backgroundTasks ?? null,
+    background: null,
+    resultSent: false,
     lastEvent: rts.now(),
     signIn: false,
     exit: undefined,
@@ -48,6 +53,8 @@ export function begin(rts, turn, hostId, adapter) {
     started: false,
     startSent: false,
     origin: null,
+    replay: null,
+    ceilings: new Map(),
   };
   turn.remote = live;
   rts.live.set(turn.sessionId, live);
@@ -162,9 +169,13 @@ function attachTo(rts, live, se, turn, attach, remote) {
   live.attach = true;
   adopt(rts, live, attach);
   live.started = true;
+  // Read again from the start: the prompts that came meanwhile wait for the replay (turns-replay.mjs).
+  replaying(live);
   remote.attach = { turn: attach };
   if (rts.restoring.delete(attach)) releaseHost(rts, live.hostId);
   updateRemote(rts, se.id, { state: 'running', rtTurn: turn.id, at: rts.now() });
+  // Before the prompts that came meanwhile: a card shown before the restart still holds its call.
+  claimShown(rts, live, attach);
   for (const m of rts.early.get(attach) ?? []) rts.onHostMessage(live.hostId, m);
   rts.early.delete(attach);
 }
@@ -233,6 +244,8 @@ function trackAcks(rts, live, link) {
           if (ok && msg?.type === 'ack' && live.hostTurns.has(msg.turn)) offsetAt(rts, live, msg.turn, msg.upTo);
           // Written to a channel that had its welcome: it may be on the host from now on, confirmed or not.
           if (ok && msg?.type === 'start' && msg.turn === live.current) live.startSent = true;
+          // A read of out.jsonl, after the start or a reconnect: until it has caught up, lines may still be on their way.
+          if (ok && msg?.type === 'read' && msg.log !== 'in' && msg.turn === live.current) replaying(live);
           return ok;
         };
       const v = Reflect.get(target, prop, target);

@@ -4,13 +4,12 @@
 - agents: developer
 - models: persona
 - judge: visual
-- seed: visual-skill
 - files: test-health
 - steps: 6
 - project: Shop
 - conversation: Flaky tests
 
-This measures how an agent explains the person’s own data with a picture, one of the everyday briefs (designs/skills/visual-explainer/briefs/flaky-tests.md). **With the skill:** the draft visual-explainer skill (designs/skills/visual-explainer) sits in the project as a Claude Code project skill (`- seed: visual-skill`). The files are already in the project folder. The runs are scored afterward, with the takeaway test on the first visual’s screenshot; your job is to ask as this person would. Don’t name a chart type, a library, Postbox’s tools, the word “app” or the skill, and don’t point the agent at a file by name.
+This measures how an agent explains the person’s own data with a picture, one of the everyday briefs (designs/skills/visual-explainer/briefs/flaky-tests.md). **With the skill:** Postbox’s visual-explainer skill (agent-plugin/skills/visual-explainer), which every Claude agent on this computer loads by default. The files are already in the project folder. The runs are scored afterward, with the takeaway test on the first visual’s screenshot; your job is to ask as this person would. Don’t name a chart type, a library, Postbox’s tools, the word “app” or the skill, and don’t point the agent at a file by name.
 
 ## Phase 1: Ask
 

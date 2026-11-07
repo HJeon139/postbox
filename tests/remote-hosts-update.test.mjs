@@ -26,6 +26,8 @@ test('#464-b2a: a 127 with the consent on and a token here installs once, and th
     assert.equal(f.kind, 'not-installed');
     assert.equal(f.detail.code, 127);
     await until(() => readRecord(t.dataDir)?.installs?.[0]?.outcome === 'installed', 'the record says installed');
+    // The file is there before its write has finished and the status has it (#843): wait for the install to be done.
+    await until(() => !t.mgr.updating.has('h1'), 'the install to be done');
     await settle();
     assert.equal(t.runs.length, 1, 'the fake ssh saw the install command once');
     const rec = readRecord(t.dataDir);

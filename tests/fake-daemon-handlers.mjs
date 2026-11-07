@@ -17,7 +17,7 @@ import { encode, HARNESSES, message, PROTOCOL_VERSION, utf8Bytes } from '../shar
  * The fake’s state: createFakeDaemon’s options, and what it holds and records.
  * @typedef {{ token: string, lines: string[], autoEnd: boolean, exit: { code: number | null, signal: string | null },
  *   stopExit: { code: number | null, signal: string | null }, home: string, now: () => number, harnesses: string[],
- *   problems: { code: string, message: string }[], holdCaughtUp: string[],
+ *   problems: { code: string, message: string }[], holdCaughtUp: string[], callLines: boolean,
  *   check: (argv: string[]) => { code: number | null } | Promise<{ code: number | null }>, removing: string,
  *   turns: Map<string, FakeTurn>, pending: Map<string, object>,
  *   tools: Map<string, { turn: string, id: string, name: string, args: object }>,
@@ -211,7 +211,7 @@ export function hello(d, c, m) {
   c.settings = m.settings ?? {};
   send(d, c, 'welcome', welcome(d));
   for (const q of d.tools.values()) send(d, c, 'tool', { turn: q.turn, id: q.id, name: q.name, args: q.args });
-  for (const p of d.prompts.values()) send(d, c, 'prompt', { id: p.id, turn: p.turn, request: p.request });
+  for (const p of d.prompts.values()) send(d, c, 'prompt', { id: p.id, turn: p.turn, entry: p.entry, request: p.request });
 }
 
 /** The welcome’s body. @param {FakeState} d */

@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { SUMMARY_WAKES_NO_ONE } from '../server/side-threads.mjs';
 import { held, oldSide, settle, setup, sleep } from './side-threads-fixture.mjs';
 
 /** A side thread from before #372 between alpha, who started it, and beta, who answered. */
@@ -102,6 +103,35 @@ test('#225: nor does a summary’s open_topic: its message posts, and each menti
   assert.match(said?.message ?? '', /wakes no one/, JSON.stringify(said));
   assert.equal(adapter.calls.length, before + 1, 'only the summary’s own turn ran');
   assert.equal(store.state.threads[t.id].hops, hops);
+});
+
+test('#697: a card raised before a summary began still wakes on Allow while the summary runs: only the summary’s own turn wakes no one', async () => {
+  const { store, rt, adapter, t, side, c } = await sideThread();
+  // Turn A: alpha wakes gamma, whom the conversation doesn’t have, so a card asks the person to add it.
+  adapter.next.push(async (ctx) => {
+    ctx.tools.wake_agent({ handle: 'gamma', message: 'Please check the totals.' });
+    ctx.text('Asked gamma.');
+  });
+  rt.sendMessage(t.id, { text: '@alpha get gamma to check' });
+  await settle(rt);
+  const card = store.items(t.id).find((i) => i.kind === 'hop' && i.status === 'open');
+  assert.ok(card?.fromTurnId, 'the card keeps the turn that asked');
+  // Turn B: alpha writes a summary, held open while the person answers the card.
+  const summary = held();
+  adapter.next.push(summary.step);
+  rt.summarizeBack(side.id);
+  for (let i = 0; i < 200 && !/^Summarize/.test(adapter.calls.at(-1)?.message.text ?? ''); i++) await sleep(5);
+  assert.ok(rt.turns.get(card.fromSessionId)?.summarizeTo, 'the summary’s turn is running');
+  adapter.next.push(async (ctx) => ctx.text('Gamma here.'));
+  rt.resolveHop(t.id, card.id, true);
+  summary.release();
+  await settle(rt);
+  const gamma = rt.sessionsIn(t.id).find((x) => x.personaId === c.id);
+  assert.ok(gamma && adapter.calls.some((call) => call.sessionId === gamma.id), 'gamma was woken from turn A’s card');
+  const told = Object.values(store.state.threads)
+    .flatMap((th) => store.items(th.id))
+    .filter((i) => String(i.text ?? '').includes(SUMMARY_WAKES_NO_ONE));
+  assert.deepEqual(told, [], 'and no one was told a summary wakes no one');
 });
 
 /**

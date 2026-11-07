@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { askStop } from '../server/remote/turns-stops.mjs';
+import { FIXTURE_PROMPTS } from './fake-daemon.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 
 const notes = (se) => (se.context ?? []).filter((n) => /expired before the person answered/.test(n));
@@ -16,7 +17,8 @@ test('#721 a host’s card its host expired, or ended, tells the agent once for 
   await until(() => r.store.items(r.t.id).some((i) => i.remote?.prompt === a), 'the first card');
   r.d.expire(turn, a);
   await until(() => r.store.items(r.t.id).find((i) => i.remote?.prompt === a).status === 'expired', 'the card expired');
-  const b = r.d.prompt(turn);
+  // A second call’s prompt: one call gets one card (#353).
+  const b = r.d.prompt(turn, FIXTURE_PROMPTS[1]);
   await until(() => r.store.items(r.t.id).some((i) => i.remote?.prompt === b), 'the second card');
   r.link.hear({ type: 'error', code: 'internal', re: 'prompt-expired', turn, id: b, message: 'Couldn’t write it down.' });
   assert.equal(r.store.items(r.t.id).find((i) => i.remote?.prompt === b).status, 'ended');

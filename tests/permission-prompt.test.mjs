@@ -75,10 +75,12 @@ test('#220 a Claude Code agent is offered permission_prompt and asks through it,
   let listed = null;
   /** @type {Promise<any>|null} */
   let pending = null;
-  adapter.next.push(async () => {
+  adapter.next.push(async (c) => {
     listed = (await rpc(rt, se, 'tools/list')).result.tools.map((x) => x.name);
     // The running CLI was started with --permission-prompt-tool: the move reaches its next turn, not this call.
     rt.updatePersona(se.personaId, { backend: 'agent-sdk' });
+    // Its stream showed the call the prompt is for (#353).
+    c.toolUse({ id: 'tu1', name: 'Bash', input: PROMPT.arguments.input });
     pending = rpc(rt, se, 'tools/call', PROMPT);
     await sleep(10);
     const card = store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');

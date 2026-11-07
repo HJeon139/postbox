@@ -345,7 +345,7 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   /** @param {UI} ui */
   const panel = async (ui) => {
     // At 375 px the sidebar is hidden and nothing else opens an agent’s panel, but the panel is shown there too.
-    await ui.activate('.rail .agent-btn', '@researcher');
+    await ui.activate('.rail .agent-btn', 'researcher');
     await ui.shows('.dialog.quick');
   };
   await shot('12-agent-panel', { prepare: panel });

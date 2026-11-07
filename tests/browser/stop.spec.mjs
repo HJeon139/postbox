@@ -100,7 +100,7 @@ async function withJob(page, title, text = 'Run the UAT job, please.') {
   const idle = () => expect.poll(state, { message: 'the agent’s process to exit' }).toBe('idle');
   return { room, se, state, step, lastTag, idle };
 }
-const stopButton = (page) => page.locator('.composer').getByRole('button', { name: 'Stop @developer’s reply', exact: true });
+const stopButton = (page) => page.locator('.composer').getByRole('button', { name: 'Stop developer’s reply', exact: true });
 const ask = (page) => page.locator('.stop-ask');
 const choice = (page, name) => ask(page).getByRole('button', { name, exact: true });
 const UAT = 'Run the mixed-room UAT scenario live';
@@ -247,7 +247,7 @@ test('#215 a queued message’s Send now: the reply it interrupted says so, and 
   const { rt, store } = app;
   const { room, se, state, lastTag } = await withJob(page, 'Send now');
   rt.sendMessage(room.id, { text: 'A one-line status, please.' });
-  await page.getByRole('button', { name: new RegExp(`message.*queued for @${se.handle}`) }).click(); // its agent's mail
+  await page.getByRole('button', { name: new RegExp(`message.*queued for ${se.handle}`) }).click(); // its agent's mail
   await page.locator('.agent-queue-row').getByRole('button', SEND_NOW).click();
   await expect
     .poll(() => state() === 'idle' && store.state.sessions[se.id].jobs.some((j) => j.kept), { message: 'the next turn, with the job kept' })
@@ -288,7 +288,7 @@ test.describe('at 375 px', () => {
     rt.sendMessage(room.id, { text: 'A one-line status, please.' });
     await synced(page, app);
     await page.locator('#conversation-actions').click();
-    await page.getByRole('menuitem', { name: new RegExp(`message.*queued for @${se.handle}`) }).click();
+    await page.getByRole('menuitem', { name: new RegExp(`message.*queued for ${se.handle}`) }).click();
     await page.locator('.agent-queue-row').getByRole('button', SEND_NOW).click();
     await expect(page.locator('.stopped-tag', { hasText: 'Interrupted by Send now' })).toBeVisible();
     await idle();

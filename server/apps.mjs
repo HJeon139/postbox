@@ -6,6 +6,7 @@ import { followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { notYours } from './app-retire.mjs';
+import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { httpError } from './helpers.mjs';
 import { newId } from './store.mjs';
@@ -59,15 +60,7 @@ export function appCheck(rt, appId, { version, problems = [] }) {
   return { status: 'note' };
 }
 
-// An app writes lines in your voice, and each one starts an agent turn, so its sends are limited (#38). The
-// browser accepts a send only right after a click or key press in that app (app/js/apps.mjs); here, where a
-// script calling the API lands too, an app gets APP_SEND_LIMIT sends per APP_SEND_WINDOW_MS. More wait on
-// a card for you to allow or not, and nothing is dropped silently: the app is told its send is waiting.
-// The browser keeps the same limit (SEND_LIMIT in app/js/app-send-card.mjs), and the agent guide says so.
-export const APP_SEND_LIMIT = 5;
-export const APP_SEND_WINDOW_MS = 60_000;
-/** Sends one card holds; past that, a send is refused with a reason. */
-export const APP_HOLD_MAX = 20;
+// An app’s sends are limited (#38): server/app-send-limits.mjs says how, and why.
 
 /**
  * An event an app sends in your voice. Within the limit, it goes to the agent; past it (or when the browser
@@ -119,7 +112,7 @@ export function needAppSend(rt, app, itemId, waiting) {
   // A later event of a card that isn't the need changes nothing: the card isn't new, so it doesn't offer itself again.
   if (waiting !== 1 && se.needs?.itemId !== itemId) return;
   const text = `${app.title} wants to send ${waiting === 1 ? '1 message' : `${waiting} messages`} for you`;
-  const took = offerNeed(rt, se, { kind: 'appsend', itemId, text }, rt.turns.has(se.id) ? se.state : 'needs');
+  const took = offerNeed(rt, se, { kind: 'appsend', itemId, text, ...rt.awayFrom(se, app.threadId) }, rt.turns.has(se.id) ? se.state : 'needs');
   // Only the first event is noticed: behind another need it isn't yet, and is when it becomes the need (card-needs.mjs).
   if (waiting !== 1) return;
   rt.patchItem(app.threadId, itemId, { notifiedAt: took ? Date.now() : null });

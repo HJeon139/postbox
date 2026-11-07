@@ -7,8 +7,11 @@
 - steps: 12
 - project: Paper explainers
 - conversation: Jia
+- skills: off
 
 The pinned variant of [the visual paper eval](visualpaper.md) for [#206](https://github.com/HJeon139/postbox/issues/206): the same paper every run, so a change in score comes from the agent or its prompt, not the paper. Jia, [arXiv:2610.23310](https://arxiv.org/abs/2610.23310), covers limits on how strong a random oscillation in a cell can be, and what it costs in energy. Its content is a trade-off that moves as one setting changes. The baseline is [`markov-oscillation-efficiency`](https://github.com/HJeon139/postbox/tree/docs/agentic-ux-examples/examples/agentic-apps/markov-oscillation-efficiency), the app a room reached after several rounds of a person’s feedback; scored on the same rubric, it’s the bar a first version should reach.
+
+It runs without Postbox’s skills (`- skills: off`), to compare with [the run that has them](visualpaper-jia-skill.md).
 
 Write as you would to a colleague. Don’t name a chart type, a library, Postbox’s tools or the word “app”: the run measures what the agent chooses. Don’t open the baseline app. Judge every visual from its screenshot, not from what the agent says it drew.
 

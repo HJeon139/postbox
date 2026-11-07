@@ -59,8 +59,14 @@
 //   capabilities.models: [ids]        the models it offers, suggested in the model field instead of Claude’s
 //   capabilities.tools: 'none'        it can’t turn a tool off for one agent, so the Tools help says so (#143)
 //   capabilities.isolation: false     it always loads your own setup, so the sheet has no Isolated switch (#143)
+//   capabilities.images: true         its agent sees an image in a tool’s result, so view_app sends the picture itself;
+//                                     to any other, view_app gives the path of the copy it saved (#95)
+//   capabilities.skills: true         it loads Postbox’s skills and yours, so the persona sheet lists them all to turn
+//                                     off for one agent (#207); 'postbox': it loads only Postbox’s, so only those show
 //   capabilities.promptTool: false    it never asks through Postbox’s permission_prompt (the CLI’s --permission-prompt-tool),
 //                                     so MCP doesn’t list it and refuses a call to it at once (#220)
+//   capabilities.promptHook: true     its prompts come from Postbox’s own hook, by an id of the hook’s (Antigravity’s),
+//                                     so they aren’t matched to a call its stream showed, as the CLI’s are (#353)
 //   capabilities.remote: { ... }      how it runs on a remote host, where the daemon starts its process (#120):
 //     stdin: 'file' | 'none' | 'held'   the turn’s message goes in a file, or nothing goes in, or stdin stays open
 //                                       until the turn ends (Codex’s JSON-RPC)
@@ -72,6 +78,9 @@
 //                                       for a hung one: events on stdout (Claude Code’s tool_progress), a tool call
 //                                       still in progress (Kiro prints nothing while a command runs), or the
 //                                       model’s checks on a background command (Codex, about every 5 minutes)
+//     backgroundTasks?: subtype          the `system` event that lists its open background tasks (Claude Code’s
+//                                       background_tasks_changed): a turn waiting on one after its result prints
+//                                       nothing, so it isn’t hung until shared/limits.mjs’s QUIET.backgroundMax (#847)
 //     signInError: { field: value } | null  the fields of a stream event that mean the host’s sign-in ran out, so
 //                                       the turn shows Sign-in needed rather than an error; null until one is recorded
 //   Left out, it can’t run on a remote host: the Agent SDK runs in Postbox’s own process, and the Antigravity CLI and
@@ -82,11 +91,11 @@
 
 /**
  * @typedef {{ stdin: 'file' | 'none' | 'held', env: string[], server: 'mcp-config' | 'agent-file' | 'codex-config',
- *   work: 'events' | 'open-tool-call' | 'model-checks', signInError: Record<string, unknown> | null }} RemoteCapabilities
+ *   work: 'events' | 'open-tool-call' | 'model-checks', backgroundTasks?: string, signInError: Record<string, unknown> | null }} RemoteCapabilities
  */
 
 /**
- * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', isolation?: boolean, promptTool?: boolean, models?: string[],
+ * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', isolation?: boolean, promptTool?: boolean, promptHook?: boolean, models?: string[],
  *   remote?: RemoteCapabilities },
  *   deliver(session: object, message: object, ctx: object): Promise<void>, dispose?(session: object): void }} Adapter
  */
@@ -120,6 +129,15 @@ export function checkRemoteContext(remote, { attach = false } = {}) {
     throw new Error('A remote turn needs Postbox’s version (ctx.remote.version) to find the shim on the host, so it wasn’t started.');
   if (!attach && typeof remote.nextTurn !== 'function')
     throw new Error('A remote turn needs ctx.remote.nextTurn from the runtime, so it wasn’t started on the host.');
+}
+
+/**
+ * The adapter registered for a backend, or null when none is, or none is named: what a check of its capabilities
+ * reads, so it asks what the adapter can do, never its name.
+ * @param {{ adapters: { names(): string[], get(name: string): any } }} rt @param {unknown} backend
+ */
+export function adapterOf(rt, backend) {
+  return typeof backend === 'string' && backend && rt.adapters.names().includes(backend) ? rt.adapters.get(backend) : null;
 }
 
 export class AdapterRegistry {

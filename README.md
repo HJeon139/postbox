@@ -280,7 +280,10 @@ The two real adapters share a system prompt that teaches the catalog, the kit an
 - `show_app`, `update_app`, and `retire_app`, which leaves an app that’s no longer needed as one line in its place, with a link to what replaced it and its versions (#193)
 - `define_term`
 - `propose_agent`
-- `schedule_wake`, `wake_agent`
+- `schedule_wake`, and `cancel_wake`, which cancels a wake the agent scheduled, once its work is done (#458)
+- `wake_agent`
+- `open_topic`, which opens the topic thread of a message in the agent’s conversation, or finds the one it has, and can post a first message there that wakes up to 16 agents it names; its answer says whether that message was posted, by its id (#637)
+- `bring_to_conversation`, which posts in the main conversation from a topic or side thread, only when you ask for it there (#128)
 - `ask_for_tool`, which asks you on a card to turn on a tool that’s turned off for the agent
 - `corpus_search`, and `add_dataset`, which loads a JSON Lines file from the project’s `.postbox/datasets/` folder into the corpus with no restart. A dataset is searched only when a search names it in `books`, and it’s loaded again after a restart (#47).
 - `read_conversation`, the conversation’s history (each turn already starts with what happened since the agent’s last one). A block comes with what it holds: a review, card or code block’s content, a choice or form’s prompt, options or fields and your answer, an app’s title. Both cut an item at 2,000 characters, saying how much they kept and giving its id.
@@ -391,7 +394,7 @@ Continuous integration ([`.github/workflows/check.yml`](.github/workflows/check.
 | `npm run test:coverage` | Runs the tests with coverage for `shared/`, `server/` and the lint rules |
 | `npm run release [-- --dry-run]` | Releases the next semantic version from the commits since the last tag: package.json, CHANGELOG.md, a release commit and a tag. CI runs it after each merge to main (`.github/workflows/release.yml`) |
 | `npm run lint:commits [range]` | Checks commit messages against Conventional Commits |
-| `npm run hooks` | Turns on the git hooks in `.githooks/`: `commit-msg` checks each commit message as you write it, and `pre-commit` runs `npm run lint:project` and stops a commit it fails (only the person skips them, with `git commit --no-verify`, in an emergency; an agent fixes the failure and commits again) |
+| `npm run hooks` | Turns on the git hooks in `.githooks/`, and names any hook of your own in `.git/hooks`, or other `core.hooksPath`, that git stops running: `commit-msg` checks each commit message as you write it, and `pre-commit` runs `npm run lint:project` and stops a commit it fails (only the person skips them, with `git commit --no-verify`, in an emergency; an agent fixes the failure and commits again) |
 
 The demo’s screenshots go to `screenshots/latest/`, which git ignores, and aren’t committed. For the current ones, open the `screenshots` artifact of the latest `check` run on `main`, or run `node tools/shoot-app.mjs`.
 

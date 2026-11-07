@@ -7,13 +7,11 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Blobs } from '../server/blobs.mjs';
-import { handleMcp } from '../server/mcp.mjs';
 import { Runtime, readCapped } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { LIMITS } from '../shared/limits.mjs';
+import { callTool } from './review-files-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** An adapter that works in a folder, and runs each turn’s step with its context. */
 class InFolder {
@@ -50,20 +48,7 @@ async function setup() {
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id] });
   const se = rt.sessionsIn(t.id)[0];
   /** Calls a tool over MCP from inside a turn, with that turn’s token. */
-  const call = async (name, args) => {
-    let out = null;
-    adapter.next.push(async (c) => {
-      out = await handleMcp(
-        rt,
-        se.id,
-        { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
-        new URL(c.mcpUrl).searchParams.get('turn'),
-      );
-    });
-    rt.sendMessage(t.id, { text: 'go' });
-    for (let i = 0; i < 100 && (out === null || rt.turns.size); i++) await sleep(5);
-    return { text: out.result?.content?.[0]?.text ?? out.error?.message, isError: out.result?.isError ?? true };
-  };
+  const call = (name, args) => callTool(rt, adapter, t.id, se.id, name, args);
   return { rt, store, t, se, folder, outside, call };
 }
 

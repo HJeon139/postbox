@@ -66,7 +66,7 @@ function fillRow(row, entry, at, of, leaving) {
   const set = (el, text) => {
     if (el && el.textContent !== text) el.textContent = text;
   };
-  set(row.querySelector('.agent-queue-meta'), q.kind === 'wake' ? `From @${q.from} · ${thread.title}` : thread.title);
+  set(row.querySelector('.agent-queue-meta'), q.kind === 'wake' ? `From ${q.from} · ${thread.title}` : thread.title);
   set(row.querySelector('.agent-queue-text'), q.text);
   const label = (action, text) => row.querySelector(`[data-action="${action}"]`)?.setAttribute('aria-label', text);
   label('send', `Send now: ${which}`);
@@ -130,7 +130,7 @@ function refocusSlot(list, slot) {
 /** The dialog’s note while its agent is being deleted; whether it is. */
 function paintLeaving(note, se) {
   const leaving = Boolean(se.deleting);
-  const text = leaving ? `@${se.handle} is being deleted. Undo keeps these queued; otherwise they’re posted to the conversation.` : '';
+  const text = leaving ? `${se.handle} is being deleted. Undo keeps these queued; otherwise they’re posted to the conversation.` : '';
   if (note.textContent !== text) note.textContent = text;
   note.hidden = !leaving;
   return leaving;
@@ -153,7 +153,7 @@ export function openQueue(sessionId, anchor = null) {
     const leaving = paintLeaving(leavingNote, now);
     const entries = entriesFor(sessionId);
     const missing = markMissing(list, entries);
-    const heading = `${entries.length} queued for @${session.handle}`;
+    const heading = `${entries.length} queued for ${session.handle}`;
     if (title.textContent !== heading) title.textContent = heading;
     if (!entries.length && !missing.length) {
       dialog?.close();
@@ -203,7 +203,7 @@ export function agentQueueButton(session) {
   const paint = () => {
     const count = entriesFor(session.id).length;
     button.hidden = count === 0;
-    button.setAttribute('aria-label', `${count} message${count === 1 ? '' : 's'} queued for @${session.handle}`);
+    button.setAttribute('aria-label', `${count} message${count === 1 ? '' : 's'} queued for ${session.handle}`);
     // The count changes in place, so the button keeps focus through a repaint (F1).
     if (countEl.textContent !== String(count)) countEl.textContent = String(count);
   };
@@ -291,7 +291,7 @@ export function agentQueueMenuItem(session, anchor) {
   const count = entriesFor(session.id).length;
   return count
     ? {
-        label: `${count} message${count === 1 ? '' : 's'} queued for @${session.handle}`,
+        label: `${count} message${count === 1 ? '' : 's'} queued for ${session.handle}`,
         icon: 'mail',
         run: () => openQueue(session.id, anchor),
       }

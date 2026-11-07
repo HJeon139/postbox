@@ -49,8 +49,8 @@ export function openRunChoice(kind, { threadId, sessionId = null }) {
       const now = kind === 'mode' ? r.now.includes(se.id) : r.now;
       const scope = kind === 'mode' ? ', in every conversation' : ' in this conversation';
       status = now
-        ? `@${se.handle} uses ${name}${scope}, from now: its running turn changed too.`
-        : `@${se.handle} uses ${name}${scope}, from its next turn${busy(se) ? '; Claude Code can’t change a turn that’s running' : ''}.`;
+        ? `${se.handle} uses ${name}${scope}, from now: its running turn changed too.`
+        : `${se.handle} uses ${name}${scope}, from its next turn${busy(se) ? '; Claude Code can’t change a turn that’s running' : ''}.`;
       say(status);
     } catch (e) {
       toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' });
@@ -83,7 +83,7 @@ export function openRunChoice(kind, { threadId, sessionId = null }) {
                         paint();
                       },
                     },
-                    `@${se.handle}`,
+                    se.handle,
                   ),
                 ),
               ),

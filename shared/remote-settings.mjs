@@ -19,7 +19,7 @@ const MIB = 1024 * 1024;
  *   nodePath: string|null, claudePath: string|null, kiroPath: string|null, codexPath: string|null,
  *   detach: 'auto' | 'setsid', signInCheck: string[]|null,
  * }} HostSettings
- * @typedef {{ id: string, name: string, settings: HostSettings, createdAt: number }} Host
+ * @typedef {{ id: string, name: string, short?: string, settings: HostSettings, createdAt: number }} Host
  * @typedef {{ ok: true, value: any } | { ok: false, error: string }} Checked
  */
 

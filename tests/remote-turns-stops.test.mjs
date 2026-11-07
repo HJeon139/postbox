@@ -92,13 +92,19 @@ test('#120 G10: a no-turn answer to the stop of a turn whose start went unconfir
 test('#120 G10: Stop on a turn whose start never reached a connected link is done at once: no stop is kept, and the host can be renamed and removed', async () => {
   const r = rig();
   // The link drops after the welcome, just as the start goes: it’s never written, so nothing can be on the host.
+  // Before its welcome the link isn’t connected either, so the wait is for the start itself (#843): under load, a
+  // stop sent before the welcome ends a turn that never had its host turn.
   const send = r.link.send;
+  let startDropped = false;
   r.link.send = (msg) => {
-    if (msg.type === 'start') r.link.connected = false;
+    if (msg.type === 'start') {
+      r.link.connected = false;
+      startDropped = true;
+    }
     return send(msg);
   };
   r.rt.sendMessage(r.t.id, { text: 'hi' });
-  await until(() => !r.link.connected && r.rt.turns.size === 1, 'the start to find the link down');
+  await until(() => startDropped && r.rt.turns.size === 1, 'the start to find the link down');
   await sleep(5);
   r.rt.stop(r.se().id);
   await settled(r);

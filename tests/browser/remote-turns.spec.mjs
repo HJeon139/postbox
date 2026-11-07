@@ -30,8 +30,8 @@ async function open(page) {
   await expect(item(page, s.items.signin).getByRole('alert'), 'the room’s replies').toBeVisible();
 }
 /** An agent’s row in the sidebar’s Agents, and its ring there. */
-const row = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^@${handle}$`) }) });
-const ring = (page, handle) => row(page, handle).getByRole('img', { name: new RegExp(`^@${handle}: `) });
+const row = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^${handle}$`) }) });
+const ring = (page, handle) => row(page, handle).getByRole('img', { name: new RegExp(`^${handle}: `) });
 /** A transcript item, by the item the seed made. */
 const item = (page, it) => page.locator(`.transcript [data-key="${it.id}"]`);
 
@@ -56,7 +56,7 @@ test('#120 each ring’s label says where its agent runs and the connection, not
       .soft(ring(page, 'builder'))
       .toHaveAttribute(
         'aria-label',
-        /^@builder: Idle, (?:\d+% of context used|context unknown); on build\.example\.com, disconnected \(working\), last heard from 40 min ago$/,
+        /^builder: Idle, (?:\d+% of context used|context unknown); on build\.example\.com, disconnected \(working\), last heard from 40 min ago$/,
       );
     await expect.soft(ring(page, 'coder')).toHaveAttribute('aria-label', /; on host\.example\.com, connected, last heard from 2 min ago$/);
   });
@@ -91,7 +91,7 @@ test('#120 the turn states read in words in the transcript: Sign-in needed and I
   await expect
     .soft(page.locator('.host-turns'))
     .toHaveText(
-      /^@stopper · Stopping on host\.example\.com: Postbox asked it to stop, and waits for the host to confirm\. It may still run there until then\.$/,
+      /^stopper · Stopping on host\.example\.com: Postbox asked it to stop, and waits for the host to confirm\. It may still run there until then\.$/,
     );
 });
 
@@ -101,10 +101,10 @@ test('#120 a replayed reply shows once, with its name, and a Kiro host warning s
   const scouts = page
     .locator('.transcript .item')
     .filter({ visible: true })
-    .filter({ hasText: /I read the README|@scout/ });
-  await expect.soft(scouts, 'one reply from @scout').toHaveCount(1);
+    .filter({ hasText: /I read the README|scout/ });
+  await expect.soft(scouts, 'one reply from scout').toHaveCount(1);
   await expect.soft(item(page, replaced), 'the replaced part doesn’t show').toBeHidden();
-  await expect.soft(item(page, replay).locator('.who'), 'it names its speaker').toContainText('@scout');
+  await expect.soft(item(page, replay).locator('.who'), 'it names its speaker').toContainText('scout');
   await expect.soft(item(page, replay).getByRole('note', { name: 'Other users on the host can read this message' })).toHaveCount(0);
   // The setup warning isn’t folded into the steps, and isn’t counted as a tool.
   await expect.soft(item(page, replay).locator('details.activity summary')).toHaveText('Read 1 file · 0.0 s in tools');
@@ -138,7 +138,7 @@ test('#120 Resume calls the runtime’s resume, which starts with why the last t
   const { rt, store } = s.app;
   await open(page);
   const before = s.delivered.length;
-  const resume = page.getByRole('button', { name: 'Resume @coder on host.example.com', exact: true });
+  const resume = page.getByRole('button', { name: 'Resume coder on host.example.com', exact: true });
   await resume.click();
   await expect.poll(() => s.delivered.length, { message: 'the resumed turn' }).toBeGreaterThan(before);
   const d = /** @type {(typeof s.delivered)[number]} */ (s.delivered.at(-1));

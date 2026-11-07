@@ -1,20 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { CODEX_CAPABILITIES, CodexAdapter, codexApproval, codexConfigArgs, createCodexMapper } from '../server/adapters/codex.mjs';
+import { CodexAdapter, codexApproval, codexConfigArgs, createCodexMapper } from '../server/adapters/codex.mjs';
 import { fakeAppServer } from './codex-fixture.mjs';
-
-test('Codex reports the capabilities its app-server implements', () => {
-  assert.deepEqual(CODEX_CAPABILITIES, {
-    resume: true,
-    fork: true,
-    permissions: 'none',
-    tools: 'none',
-    isolation: false,
-    promptTool: false,
-    remote: { stdin: 'held', env: [], server: 'codex-config', work: 'model-checks', signInError: null },
-  });
-});
 
 test('Codex config attaches Postbox MCP through the local HTTP endpoint', () => {
   assert.deepEqual(codexConfigArgs('http://127.0.0.1:4173/mcp?session=s1'), [

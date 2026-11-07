@@ -56,20 +56,20 @@ test('the card waits after the limit’s wakes, and says the limit the server ke
   expect(HOP_LIMIT, 'raised from 3 (#320), and to 50 as a backstop (#492)').toBe(50);
   await page.goto(`${app.origin}/#/t/${room.id}`);
   await synced(page, app);
-  const card = page.locator('.transcript .block').filter({ hasText: 'Let @waker wake @woken?' });
+  const card = page.locator('.transcript .block').filter({ hasText: 'Let waker wake woken?' });
   await expect(card).toBeVisible();
   await expect(card).toContainText(`That would be agent wake ${HOP_LIMIT + 1} in this chain, past the limit of ${HOP_LIMIT}, so it waits for you.`);
-  await expect(card.getByRole('button', { name: 'Let @waker wake @woken' })).toBeEnabled();
+  await expect(card.getByRole('button', { name: 'Let waker wake woken' })).toBeEnabled();
 });
 
 test('a wake held on the waiting card shows on it until you answer, and goes when you allow it (#439)', async ({ page }) => {
   await page.goto(`${app.origin}/#/t/${heldRoom.id}`);
   await synced(page, app);
-  const card = page.locator('.transcript .block').filter({ hasText: 'Let @waker wake @woken?' });
+  const card = page.locator('.transcript .block').filter({ hasText: 'Let waker wake woken?' });
   const line = card.locator('.hop-held');
-  await expect(line).toContainText('Also waiting on your answer: @other’s message to @waker');
+  await expect(line).toContainText('Also waiting on your answer: other’s message to waker');
   await expect(line).toContainText('Allowing this sends it too.');
-  await card.getByRole('button', { name: 'Let @waker wake @woken' }).click();
+  await card.getByRole('button', { name: 'Let waker wake woken' }).click();
   await expect(card).toContainText('Allowed');
   await expect(line).toHaveCount(0);
   await expect(page.locator('.transcript')).toContainText('count the lines in work/');
@@ -78,15 +78,15 @@ test('a wake held on the waiting card shows on it until you answer, and goes whe
 test('a card whose target you write to closes, and says why (#439)', async ({ page }) => {
   await page.goto(`${app.origin}/#/t/${retiredRoom.id}`);
   await synced(page, app);
-  const card = page.locator('.transcript .block').filter({ hasText: 'Let @waker wake @woken?' });
-  await expect(card).toContainText('Closed: @woken got a turn another way (you wrote to it), so its message went on, or asks again');
-  await expect(card.getByRole('button', { name: 'Let @waker wake @woken' })).toHaveCount(0);
+  const card = page.locator('.transcript .block').filter({ hasText: 'Let waker wake woken?' });
+  await expect(card).toContainText('Closed: woken got a turn another way (you wrote to it), so its message went on, or asks again');
+  await expect(card.getByRole('button', { name: 'Let waker wake woken' })).toHaveCount(0);
 });
 
 test('a card whose agent you archive closes, says why, and has nothing to answer (#693)', async ({ page }) => {
   await page.goto(`${app.origin}/#/t/${closedRoom.id}`);
   await synced(page, app);
-  const card = page.locator('.transcript .block').filter({ hasText: 'Let @waker wake @woken?' });
+  const card = page.locator('.transcript .block').filter({ hasText: 'Let waker wake woken?' });
   await expect(card).toContainText('Closed: @waker was archived, so nothing went');
-  await expect(card.getByRole('button', { name: 'Let @waker wake @woken' })).toHaveCount(0);
+  await expect(card.getByRole('button', { name: 'Let waker wake woken' })).toHaveCount(0);
 });

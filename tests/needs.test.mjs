@@ -37,8 +37,8 @@ const state = {
 };
 const all = Object.values(state.sessions);
 
-test('every kind an agent can need you for counts, a refused step and a tool request too', () => {
-  assert.deepEqual(NEEDS_KINDS, ['block', 'failed', 'hop', 'permission', 'appsend', 'denial', 'toolask']);
+test('every kind an agent can need you for counts, a refused step, a tool request and view_app’s download ask too', () => {
+  assert.deepEqual(NEEDS_KINDS, ['block', 'failed', 'hop', 'permission', 'appsend', 'denial', 'toolask', 'viewask']);
   assert.equal(needsYouNow(state.sessions.c), true);
   assert.equal(needsYouNow(state.sessions.d), true);
   assert.equal(needsYouNow(state.sessions.e), false);
@@ -65,6 +65,21 @@ test('the agents that need you come oldest first by their ask, and the open conv
   assert.deepEqual(
     needsOrder(state, all, 'dm').map((se) => se.handle),
     ['alpha', 'gamma', 'delta', 'beta'],
+  );
+});
+
+test('two agents that waited as long are ordered by session id code unit, whatever the runtime’s locale', () => {
+  const tied = {
+    threads: { room: { id: 'room', kind: 'thread' } },
+    sessions: {},
+    items: { room: [{ id: 'ask', at: 1 }] },
+  };
+  const upper = session('se_B', 'beta', 'room', { kind: 'block', itemId: 'ask' });
+  const lower = session('se_a', 'alpha', 'room', { kind: 'block', itemId: 'ask' });
+  assert.deepEqual(
+    needsOrder(tied, [lower, upper]).map((se) => se.id),
+    ['se_B', 'se_a'],
+    '“B” is U+0042, before “a” at U+0061',
   );
 });
 

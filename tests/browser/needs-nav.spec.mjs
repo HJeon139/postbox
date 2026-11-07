@@ -14,7 +14,7 @@ const choice = (handle) => ({
   id: `ask-${handle}`,
   type: 'choice',
   version: 1,
-  title: `@${handle}: which source first?`,
+  title: `${handle}: which source first?`,
   fallback: `@${handle}: which source first?`,
   options: [
     { id: 'a', label: 'The papers' },
@@ -58,7 +58,7 @@ function conversations() {
   T.alpha = rt.createThread({ projectId: 'pr_needs', title: 'Alpha', personaIds: [alpha, beta] });
   // Since #372 a wake makes no side thread, so Alpha’s is built as one was before it.
   T.side = rt.putThread({
-    ...{ id: 'th_needsside', projectId: 'pr_needs', title: '@alpha ↔ @beta', kind: 'side', parentId: T.alpha.id, pair: 'alpha|beta', woke: 'beta' },
+    ...{ id: 'th_needsside', projectId: 'pr_needs', title: 'alpha ↔ beta', kind: 'side', parentId: T.alpha.id, pair: 'alpha|beta', woke: 'beta' },
     ...{ members: [], lastSpeaker: null, hops: 0, queue: [], createdAt: Date.now(), archived: false },
   });
   rt.addItem(T.alpha.id, { kind: 'sidelink', sideThreadId: T.side.id, from: 'alpha', to: 'beta', count: 0 });
@@ -151,7 +151,7 @@ const landsOn = (page, handle) =>
  * which is when a jump would have focused it (needs-nav.mjs, focusItem).
  */
 async function stayedOffTheAsk(page, h) {
-  await expect(page.locator(`[data-key="${S[h].needs.itemId}"]`), `@${h}’s ask drawn`).toBeAttached();
+  await expect(page.locator(`[data-key="${S[h].needs.itemId}"]`), `${h}’s ask drawn`).toBeAttached();
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r)))));
   expect(await landing(page), 'focus stayed off every ask').toEqual({ handle: null });
   await expect(page.locator('.arrived'), 'nothing outlined').toHaveCount(0);
@@ -163,7 +163,7 @@ async function ctrlJ(page) {
   await page.keyboard.press('Control+j');
 }
 
-const agentRow = (page, h) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn', { hasText: `@${h}` }) });
+const agentRow = (page, h) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn', { hasText: `${h}` }) });
 const railRow = (page, t) => page.locator(`.rail a.row[data-thread="${t.id}"]`);
 const quickPanel = (page) => page.locator('.backdrop .dialog.quick');
 
@@ -242,7 +242,7 @@ test('an agent’s ring in the Agents section goes to its ask, by mouse or by ke
   await landsOn(page, 'delta');
   await open(page, `#/t/${T.room.id}`);
   await agentRow(page, 'gamma')
-    .getByRole('button', { name: /Go to what @gamma needs/ })
+    .getByRole('button', { name: /Go to what gamma needs/ })
     .focus();
   await page.keyboard.press('Enter');
   await landsOn(page, 'gamma');
@@ -258,7 +258,7 @@ test('a side thread’s agent: its ring in the Agents section opens the side pan
   await open(page, `#/t/${T.alpha.id}`);
   await agentRow(page, 'beta').locator('pb-ring').click();
   await landsOn(page, 'beta');
-  await expect(page.locator(`.sp-body [data-key="${S.beta.needs.itemId}"]`), '@beta’s ask is in the side panel').toBeVisible();
+  await expect(page.locator(`.sp-body [data-key="${S.beta.needs.itemId}"]`), 'beta’s ask is in the side panel').toBeVisible();
 });
 
 test('a message’s ring shows its agent needs you as a steady ring, while the sidebar’s ring pulses', async ({ page }) => {

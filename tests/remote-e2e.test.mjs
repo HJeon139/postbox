@@ -2,8 +2,8 @@
 // its links and ssh.mjs’s sessions, and the real Claude Code adapter and remote process, over tests/fake-ssh.mjs’s
 // spawn wired to tests/fake-daemon.mjs. The stream is the recorded Claude Code turn the fake daemon replays
 // (tests/fixtures/claude-code/permission-allow.jsonl, claude 2.1.296 on this computer: no stream recorded on a host
-// exists yet). The host’s token is in a temp data folder, as install.mjs writes it. Nothing starts a process or opens
-// a connection.
+// exists yet); a prompt comes after its call’s recorded line, as the CLI asks (callLines, #353). The host’s token is in
+// a temp data folder, as install.mjs writes it. Nothing starts a process or opens a connection.
 
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -50,7 +50,7 @@ function forbidden() {
  * writes its token, and places a Claude Code persona on it; a later one (a restart) finds them in the store.
  * @param {{ store?: Store, d?: ReturnType<typeof createFakeDaemon>, dataDir?: string }} [o]
  */
-function postbox({ store = new Store(null), d = createFakeDaemon({ autoEnd: false }), dataDir = mkdtempSync(join(tmpdir(), 'pbe-')) } = {}) {
+function postbox({ store = new Store(null), d = createFakeDaemon({ autoEnd: false, callLines: true }), dataDir = mkdtempSync(join(tmpdir(), 'pbe-')) } = {}) {
   const ssh = fakeSsh({ daemon: d });
   const f = forbidden();
   const claude = new ClaudeCodeAdapter({

@@ -52,6 +52,8 @@ const checks = [
   ['accent', 'chip', 4.5],
   ['accent', 'sunk', 4.5],
   ['on-ink', 'on', 4.5],
+  // An option’s description on a chosen chip, which the light theme fills with --on (#873).
+  ['on-dim', 'on', 4.5],
   ['good', 'bg', 4.5],
   ['good', 'panel', 4.5],
   ['alert', 'bg', 3],

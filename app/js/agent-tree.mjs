@@ -82,7 +82,7 @@ export function paintToggle(row, se, count) {
     fill(b, icon(open ? 'down' : 'right', 'i-sm'), h('span', String(count)));
   }
   b.setAttribute('aria-expanded', String(open));
-  b.setAttribute('aria-label', open ? `Hide @${se.handle}’s subagents` : `Show @${se.handle}’s ${plural(count, 'subagent')}`);
+  b.setAttribute('aria-label', open ? `Hide ${se.handle}’s subagents` : `Show ${se.handle}’s ${plural(count, 'subagent')}`);
   return open;
 }
 
@@ -149,12 +149,12 @@ export function paintSubagents(list, after, subs, se) {
     const now = /** @type {HTMLElement} */ (li.querySelector('.sub-now'));
     // Ended by the person: it reads “ending” until it or the turn ends, since only its agent can stop it (#229).
     const ending = !!sub.id && (S().sessions[se.id]?.endingSubagents ?? []).includes(sub.id);
-    const line = ending ? `Ending: @${se.handle} was told to stop it` : subagentStep(sub);
+    const line = ending ? `Ending: ${se.handle} was told to stop it` : subagentStep(sub);
     if (now.textContent !== line) now.textContent = line;
     now.className = `sub-now${!ending && sub.thinking ? ' thinking' : ''}`;
     const end = /** @type {HTMLButtonElement} */ (li.querySelector('.sub-end'));
     end.hidden = !sub.id || ending;
-    end.setAttribute('aria-label', `End @${se.handle}’s subagent ‘${asked ?? sub.name}’`);
+    end.setAttribute('aria-label', `End ${se.handle}’s subagent ‘${asked ?? sub.name}’`);
     li.dataset.subId = sub.id ?? '';
     if (list.children[after + i] !== li) list.insertBefore(li, list.children[after + i] ?? null);
   });
@@ -188,22 +188,22 @@ function endSubagent(sessionId, li) {
 
 /** One nested entry: where it is (a link that opens the side thread), who woke it, its state, and its Stop. */
 export function treeEntry({ se, thread, by }) {
-  const who = by === 'you' ? 'you' : by ? `@${by}` : null;
+  const who = by || null;
   // Who it’s talking with there: the other agent of the side thread’s pair, else who woke it.
   const partner = (thread.pair ?? '').split('|').find((x) => x && x !== se.handle) ?? (by && by !== 'you' ? by : null);
   // One line, state first, so it fits the sidebar: “Calling tools with @indexer”.
-  const line = `${stateWord(se.state)}${partner ? ` with @${partner}` : ''}`;
+  const line = `${stateWord(se.state)}${partner ? ` with ${partner}` : ''}`;
   const where = `in the ${thread.kind === 'topic' ? 'thread' : 'side thread'} “${thread.title}”${who ? `, woken by ${who}` : ''}`;
   const stop = h(
     'button.btn.sm.ghost',
     {
       type: 'button',
       hidden: !busy(se),
-      'aria-label': `Stop @${se.handle} in ${thread.title}`,
+      'aria-label': `Stop ${se.handle} in ${thread.title}`,
       onclick: () =>
         stopSession(se).then(
-          (r) => (r?.ask ? navigate(hrefOf(thread.id)) : say(`Stopping @${se.handle}.`)),
-          (e) => toast({ title: `Couldn’t stop @${se.handle}`, text: e.message, level: 'blocking' }),
+          (r) => (r?.ask ? navigate(hrefOf(thread.id)) : say(`Stopping ${se.handle}.`)),
+          (e) => toast({ title: `Couldn’t stop ${se.handle}`, text: e.message, level: 'blocking' }),
         ),
     },
     'Stop',

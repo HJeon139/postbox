@@ -15,7 +15,7 @@ import { failOnPageErrors, startPostbox, synced, windowWidth } from './postbox.m
 import { SIZES } from './work-pane.mjs';
 
 const AXE = readFileSync(createRequire(import.meta.url).resolve('axe-core/axe.min.js'), 'utf8');
-const NOTE = 'Files on host.example.com aren’t recorded: Postbox lists the ones @builder edited there, with no diff and no Restore.';
+const NOTE = 'Files on host.example.com aren’t recorded: Postbox lists the ones builder edited there, with no diff and no Restore.';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -190,16 +190,16 @@ async function fullScreen(page) {
   await expect(files.getByRole('heading', { name: /^Files/ })).toHaveText(/^Files4$/);
   await expect(full.locator('.work-tile b'), 'the summary’s tiles are still there').toHaveCount(3);
   const vcs = full.locator('#work-vcs');
-  await expect(vcs).toContainText(/Ledger test on master · @builder on host\.example\.com/);
+  await expect(vcs).toContainText(/Ledger test on master · builder on host\.example\.com/);
   await expect(vcs).not.toContainText(/Not pushed|files unknown/);
-  await expect(vcs).toContainText(/Made branch feature · @builder on host\.example\.com/);
-  await expect(vcs).toContainText(/Pushed feature to \/workspace\/remote\.git \(feature → feature\) · @builder on host\.example\.com/);
-  await expect(full.locator('#work-commands')).toContainText(/@builder on host\.example\.com/);
+  await expect(vcs).toContainText(/Made branch feature · builder on host\.example\.com/);
+  await expect(vcs).toContainText(/Pushed feature to \/workspace\/remote\.git \(feature → feature\) · builder on host\.example\.com/);
+  await expect(full.locator('#work-commands')).toContainText(/builder on host\.example\.com/);
   // The edit opens, still without a diff.
   const notes = edits.find((e) => e.rel === 'notes.txt');
   await full.locator(`#wsum-${notes.id}`).click();
   await expect(full.locator(`details[open] > summary#wsum-${notes.id}`), 'notes.txt, opened').toBeVisible();
-  await expect(full.locator(`details:has(> summary#wsum-${notes.id})`)).toContainText(/3 edits in 2 turns by @builder/);
+  await expect(full.locator(`details:has(> summary#wsum-${notes.id})`)).toContainText(/3 edits in 2 turns by builder/);
   await axe(page, 'full screen');
   await noSideways(page, 'full screen');
   expect(asked, 'the page asked for no diff').toEqual([]);

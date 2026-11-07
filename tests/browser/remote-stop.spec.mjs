@@ -23,10 +23,10 @@ test.afterAll(async () => {
 });
 failOnPageErrors(test);
 
-const NOTE = 'Stop also stops @runner’s background job on host.example.com: a job on a host stops with its turn.';
+const NOTE = 'Stop also stops runner’s background job on host.example.com: a job on a host stops with its turn.';
 const words = async (locator) => (await locator.allInnerTexts()).join(' ').replace(/\s+/g, ' ').trim();
 const jobRow = (page) => page.locator('.bg-jobs li');
-const stopButton = (page) => page.locator('.composer').getByRole('button', { name: 'Stop @runner’s reply', exact: true });
+const stopButton = (page) => page.locator('.composer').getByRole('button', { name: 'Stop runner’s reply', exact: true });
 const dialog = (page) => page.locator('.dialog');
 const where = (page) => page.getByLabel('Runs on', { exact: true });
 
@@ -62,7 +62,7 @@ async function refused(page) {
 test('#120 Stop says first that the host’s background jobs stop with the turn, keeps none, and a job has no Stop of its own', async ({ page }) => {
   const { rt, store } = s.app;
   await withJob(page, 'Run the job, please.');
-  expect.soft(await words(jobRow(page))).toBe('Background job · Run the whole test suite A job on a host stops with its turn. Stop @runner to stop it.');
+  expect.soft(await words(jobRow(page))).toBe('Background job · Run the whole test suite A job on a host stops with its turn. Stop runner to stop it.');
   await expect.soft(jobRow(page).getByRole('button'), 'no Stop of its own').toHaveCount(0);
   await expect.soft(page.locator('.stop-note')).toHaveText(NOTE);
   await expect.soft(stopButton(page), 'Stop is described by the note').toHaveAccessibleDescription(NOTE);
@@ -77,10 +77,10 @@ test('#120 Stop says first that the host’s background jobs stop with the turn,
 
 test('#120 the agent’s panel says where it runs, and its Stop says what stops with it', async ({ page }) => {
   await withJob(page, 'Run the job again.');
-  await page.locator('.rail .agent-row .agent-btn').filter({ hasText: '@runner' }).click();
+  await page.locator('.rail .agent-row .agent-btn').filter({ hasText: 'runner' }).click();
   const panel = page.locator('.dialog.quick');
   await expect(panel.locator('.qp-stop-note'), 'the panel’s note').toBeVisible();
-  await expect.soft(panel.getByRole('region', { name: 'Where @runner runs' })).toHaveText(/^On host\.example\.com · Connected · last heard from 2 min ago$/);
+  await expect.soft(panel.getByRole('region', { name: 'Where runner runs' })).toHaveText(/^On host\.example\.com · Connected · last heard from 2 min ago$/);
   await expect.soft(panel.locator('.qp-stop-note')).toHaveText(/a job on a host stops with its turn\.$/);
   expect.soft(await axe(page), 'axe, with the panel open').toEqual([]);
   await panel.locator('.qp-actions').getByRole('button', { name: 'Stop', exact: true }).click();

@@ -105,6 +105,8 @@ export const TOOL_ROUTES = Object.freeze({
   show_app: 'queue',
   update_app: 'queue',
   retire_app: 'queue',
+  // Only Postbox renders apps, and on a host its answer says it can’t show one yet (#95), so it waits for that answer.
+  view_app: 'ask',
   define_term: 'queue',
   // A second call with the same emoji takes it back, so only Postbox’s answer says which it was, and its refusals (no
   // such item, two blocks with that id) name what to fix, as review_block’s do: it waits.
