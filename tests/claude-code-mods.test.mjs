@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { sdkOptions } from '../server/adapters/agent-sdk.mjs';
 import { claudeArgs } from '../server/adapters/claude-code.mjs';
-import { shimServer, WRITE_TOOLS } from '../server/adapters/setup.mjs';
+import { shimServer } from '../server/adapters/setup.mjs';
 
 // Every mode but bypass, as a persona stores it; undefined and an unknown value both run as auto.
 const ASKING_MODES = [undefined, 'auto', 'ask', 'acceptEdits', 'not-a-mode'];
@@ -53,7 +53,8 @@ test('the overlay that turns hooks off still carries the conversation’s ask ru
     autoMemoryDirectory: '/m',
     deniedMcpServers: [{ serverName: 'github' }],
     disableAllHooks: true,
-    permissions: { ask: [...WRITE_TOOLS, 'Bash(npm publish:*)'] },
+    // In Auto, only the conversation’s own ask rules: Postbox adds none of its own (harness first).
+    permissions: { ask: ['Bash(npm publish:*)'] },
   };
   const args = claudeArgs({ ...cliBase, persona, rules: conversationRules, memoryDir: '/m' });
   assert.deepEqual(cliSettings(args), want);

@@ -262,8 +262,16 @@ export const WRITE_TOOLS = [
   'Bash(git --config-env*)',
 ];
 
-/** The ask rules for writes outside Postbox, for a persona’s turn: none in bypass, which runs everything. */
-export const writeRules = (persona) => (persona?.permissionMode === 'bypass' ? [] : [...WRITE_TOOLS]);
+/** The modes in which Postbox adds its own ask rules for writes outside: the ones where the person asked to be asked. */
+const ASKS_FOR_WRITES = new Set(['ask', 'acceptEdits']);
+
+/**
+ * The ask rules for writes outside Postbox, for a persona’s turn. Harness first (the person’s decision, 7 Nov 2026):
+ * in Auto, none, so the harness decides and a card comes only when it asks; in Ask me and Accept edits, all of them;
+ * in bypass, none. Auto is also what an unset or unknown mode runs as. The CLI, the SDK and host turns all build from
+ * this, and the person’s own ask rules are added beside it, in every mode.
+ */
+export const writeRules = (persona) => (ASKS_FOR_WRITES.has(persona?.permissionMode) ? [...WRITE_TOOLS] : []);
 
 /**
  * Tools that act outside Postbox’s record, denied for real backends unless the persona has `agents.outside`. They
