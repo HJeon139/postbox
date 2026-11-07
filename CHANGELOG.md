@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.37.1 (2026-11-07)
+
+### Fixes
+
+- **remote:** a host answers a permission prompt only on the connection that sent it
+- **permissions:** a host’s permission prompt counts only for a call its stream showed
+- **permissions:** a permission prompt counts only for a call the stream showed, once
+
 ## 1.37.0 (2026-11-07)
 
 ### Features
