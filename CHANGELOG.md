@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.36.4 (2026-11-07)
+
+### Fixes
+
+- **app:** Reply in thread’s own focus timer leaves focus the person moved (#887)
+- **app:** open a topic thread’s panel when its event lands after its address
+
 ## 1.36.3 (2026-11-07)
 
 ### Fixes
