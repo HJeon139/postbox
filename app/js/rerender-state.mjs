@@ -19,10 +19,15 @@ function detailsState(root) {
   return state;
 }
 
-/** Replaces an item, restoring matching activity details. @param {HTMLElement | undefined} old @param {HTMLElement} next */
-export function replaceTranscriptItem(old, next) {
+/**
+ * Replaces an item, restoring matching activity details. The view takes its note while the page has the new item’s
+ * height (#903): a finished reply drawn again can be shorter, and the page can grow back before the frame.
+ * @param {HTMLElement | undefined} old @param {HTMLElement} next @param {{ redrawn: () => void }} [view]
+ */
+export function replaceTranscriptItem(old, next, view) {
   const state = detailsState(old);
   old?.replaceWith(next);
+  if (old) view?.redrawn();
   for (const details of next.querySelectorAll('details.raw, details.activity, details.step-text')) {
     const key = detailsKey(/** @type {HTMLElement} */ (details));
     if (key && state.has(key)) /** @type {HTMLDetailsElement} */ (details).open = state.get(key) === true;
