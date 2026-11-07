@@ -43,21 +43,34 @@ async function freePort() {
  */
 export async function startPostbox(name, { demo = true, mockOnly = true, prepare, server } = {}) {
   if (mockOnly) process.env.POSTBOX_BACKENDS = 'mock';
+  // A bare mkdtemp, not tests/temp-dirs.mjs’s tempDir: this runs in a Playwright worker, which serves many spec
+  // files, so a folder removed at its exit would outlive the spec. A start that fails removes it here, and stop()
+  // removes it even when the close throws (#921).
   const root = await mkdtemp(join(tmpdir(), `pb-spec-${name}-`));
-  await prepare?.(root);
-  // Another worker can bind the port between freePort() and start(): start() then closes what it opened and throws,
-  // so try another port (#367).
+  const remove = () => rm(root, { recursive: true, force: true });
   let app;
-  for (let i = 0; !app; i++)
-    app = await start({ ...server, port: await freePort(), dataDir: join(root, 'data'), fresh: true, demo, quiet: true, claudeHome: root }).catch((e) => {
-      if (e?.code !== 'EADDRINUSE' || i >= 4) throw e;
-    });
+  try {
+    await prepare?.(root);
+    // Another worker can bind the port between freePort() and start(): start() then closes what it opened and throws,
+    // so try another port (#367).
+    for (let i = 0; !app; i++)
+      app = await start({ ...server, port: await freePort(), dataDir: join(root, 'data'), fresh: true, demo, quiet: true, claudeHome: root }).catch((e) => {
+        if (e?.code !== 'EADDRINUSE' || i >= 4) throw e;
+      });
+  } catch (e) {
+    await remove();
+    throw e;
+  }
+  const started = app;
   return {
-    ...app,
+    ...started,
     root,
     async stop() {
-      await app.close();
-      await rm(root, { recursive: true, force: true });
+      try {
+        await started.close();
+      } finally {
+        await remove();
+      }
     },
   };
 }
