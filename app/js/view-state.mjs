@@ -7,7 +7,7 @@
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
  *   anchor: { key: string, at: number } | null, dead: boolean, shown: number, lastTop: number,
  *   held: { end: number, last: number, width: number }, jump: ((n: number) => void) | null, bound: any, size: string,
- *   sizes: ResizeObserver, changes: MutationObserver }} View
+ *   sizes: ResizeObserver, changes: MutationObserver, changed?: boolean, noted?: number }} View
  */
 import { atEnd, box, findAnchor, gapOf, viewTop } from './view-geometry.mjs';
 
@@ -81,6 +81,7 @@ function release(v) {
 // After anything changes size: back to the bottom while stuck, else keep what you were reading in place.
 /** @param {View} v */
 function follow(v) {
+  noteEnd(v);
   const s = box(v);
   if (!s || v.dead) return;
   // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back.
@@ -187,6 +188,23 @@ function rebuilt(v) {
   const kept = v.anchor && v.nodes.get(v.anchor.key)?.isConnected;
   if (!v.stuck && !kept) v.anchor = findAnchor(v);
 }
+/** After a change in the transcript, while stuck: where the view is, if it’s at the page’s new end (#297). @param {View} v */
+function noteEnd(v) {
+  const s = v.changed ? box(v) : null;
+  v.changed = false;
+  if (s && v.stuck && !v.dead && atEnd(s)) v.lastTop = Math.min(v.lastTop, s.scrollTop);
+}
+/**
+ * A change in the transcript: the note is taken now, at most once a frame, and else by follow() after the frame’s
+ * layout. One read per batch forced a layout of the whole page per batch: 823 in one 72 s freeze (#866).
+ * @param {View} v
+ */
+function changed(v) {
+  v.changed = true;
+  if (v.noted) return;
+  v.noted = requestAnimationFrame(() => (v.noted = 0));
+  noteEnd(v);
+}
 // What arrived counts as unseen when the view isn’t on the newest message, including when follow() finds you
 // scrolled up in this frame, before its scroll event told the transcript (#341).
 /** @param {View} v */
@@ -245,11 +263,8 @@ export function mountView({ el, inPanel, nodes, was }) {
   // A change that makes the transcript shorter while stuck (a held height released, an app’s check giving way to its
   // frame) pulls the view up to the page’s new end. That isn’t you, but its scroll event can come after the page grew
   // back, and read as you scrolling up (#297). So note where the view is, if it’s at the new end: a wheel turn moves it
-  // before its scroll event too, and only that one leaves it above the end.
-  v.changes = new MutationObserver(() => {
-    const s = box(v);
-    if (v.stuck && s && !v.dead && atEnd(s)) v.lastTop = Math.min(v.lastTop, s.scrollTop);
-  });
+  // before its scroll event too, and only that one leaves it above the end. At most once a frame (changed()).
+  v.changes = new MutationObserver(() => changed(v));
   v.changes.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
   publish(v);
   return {
