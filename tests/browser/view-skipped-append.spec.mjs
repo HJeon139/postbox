@@ -99,7 +99,8 @@ test('#712a: a reply appended while reading higher up stays skipped, and the vie
   expect(await node.evaluate((n) => !n.firstElementChild?.checkVisibility({ contentVisibilityAuto: true })), 'the reply below is skipped').toBe(true);
 });
 
-test('#712a: a burst of replies appended while following draws one at a time, not every one so far', async ({ page }) => {
+test('#712a: a burst of replies appended while following draws one at a time, not every one so far', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the layout count comes from Chromium’s DevTools protocol');
   const { rt, store } = app;
   const t = bigRoom(app, 'A burst lands while following', 60);
   const [se] = rt.sessionsIn(t.id);
