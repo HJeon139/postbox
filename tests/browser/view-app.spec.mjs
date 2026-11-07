@@ -3,11 +3,12 @@
 // doesn’t hide it, and the capture reports nothing to Postbox. The size and theme follow the person’s open tab. A page
 // that tries to write, or to reach another host, during a capture gets nothing through.
 
-import { mkdir, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { AppBrowser } from '../../server/view-app/browser.mjs';
+import { answerIn } from '../../server/view-app/consent.mjs';
 import { viewApp } from '../../server/view-app/view-app.mjs';
 import { viewOf } from '../../server/view-app/view-of.mjs';
 import { playwrightBrowsers } from '../fixtures/playwright-browsers.mjs';
@@ -137,5 +138,31 @@ test('a capture lets through only GETs to its own origin', async () => {
   } finally {
     await b.close();
     await new Promise((ok) => server.close(ok));
+  }
+});
+
+test('a person who hasn’t answered sees the download card, and Not now is kept and shown on it', async ({ page }) => {
+  test.setTimeout(60_000);
+  const { rt } = app;
+  const consent = join(viewOf(rt).dir, 'consent.json');
+  await rm(consent, { force: true });
+  try {
+    const projectId = await project();
+    const t = rt.createThread({ projectId, title: 'Ask check', personaIds: [rt.personaByHandle('researcher').id] });
+    const se = rt.sessionsIn(t.id)[0];
+    const shown = rt.toolsFor(se.id).show_app({ title: 'Asked', code: '<p>Not yet seen.</p>' });
+    const r = await viewApp(rt, se.id, { appId: shown.appId }, { threadId: () => t.id, endSegment() {}, images: true });
+    expect.soft(r.waiting, r.message).toBe(true);
+    await page.goto(`${app.origin}/#/t/${t.id}`);
+    await synced(page, app);
+    const card = page.getByRole('group', { name: '@researcher asks to see its app' });
+    await expect(card).toContainText('Download Chromium (about 200 MB on disk) so agents can see their apps?');
+    await card.getByRole('button', { name: 'Not now' }).click();
+    await expect(card).toContainText('Not downloaded. Agents can’t see their apps.');
+    expect.soft(answerIn(viewOf(rt).dir)).toBe('declined');
+    const again = await viewApp(rt, se.id, { appId: shown.appId }, { threadId: () => t.id, endSegment() {}, images: true });
+    expect.soft(again.message).toMatch(/chose not to download the browser/);
+  } finally {
+    await writeFile(consent, JSON.stringify({ answer: 'allowed', at: Date.now() }));
   }
 });
