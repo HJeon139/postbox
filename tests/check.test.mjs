@@ -97,10 +97,10 @@ test('the run’s folder is removed when a stage throws', async () => {
 });
 
 /**
- * A stage that hands check its child, which exits once it’s sent a signal, and a process that check listens on for
- * Ctrl-C and SIGTERM.
+ * A stage that hands check its child, pid 4242, which exits once it’s sent a signal, or, where it ignores them, only
+ * once its process group is killed; and a process that check listens on for Ctrl-C, SIGTERM and SIGHUP.
  */
-function signalled() {
+function signalled({ ignores = false } = {}) {
   const proc = new EventEmitter();
   /** @type {string[]} */
   const sent = [];
@@ -109,39 +109,70 @@ function signalled() {
   /** @type {() => void} */
   let started = () => {};
   const running = new Promise((ok) => (started = () => ok(undefined)));
-  const run = (/** @type {string} */ s, /** @type {unknown} */ _env, /** @type {(c: { kill: (sig: string) => void }) => void} */ spawned) => {
+  /** @type {(code: number) => void} */
+  let exit = () => {};
+  const run = (/** @type {string} */ s, /** @type {unknown} */ _env, /** @type {(c: { pid: number, kill: (sig: string) => void }) => void} */ spawned) => {
     ran.push(s);
     return new Promise((ok) => {
+      exit = ok;
       spawned({
+        pid: 4242,
         kill: (sig) => {
           sent.push(sig);
-          ok(1);
+          if (!ignores) ok(1);
         },
       });
       started();
     });
   };
-  return { proc, sent, ran, run, running };
+  /** process.kill, for check’s second signal: a negative pid is the process group. */
+  const kill = (/** @type {number} */ pid, /** @type {string} */ sig) => {
+    sent.push(`${pid} ${sig}`);
+    if (pid === -4242 && sig === 'SIGKILL') exit(137);
+  };
+  return { proc, sent, ran, run, running, kill };
 }
 
 for (const [sig, exit] of /** @type {const} */ ([
   ['SIGINT', 130],
   ['SIGTERM', 143],
+  ['SIGHUP', 129],
 ])) {
   test(`${sig} is passed to the running stage, the run’s folder removed once it exits, and check exits ${exit}`, { timeout: 5000 }, async () => {
     const s = signalled();
     const { r, runDir } = fakeRunDir();
-    const done = check({ stages: ['test', 'test:process'], run: s.run, runDir, signals: s.proc, now: () => 0, log: () => {} });
+    const done = check({ stages: ['test', 'test:process'], run: s.run, runDir, signals: s.proc, kill: s.kill, now: () => 0, log: () => {} });
     await s.running;
     assert.equal(r.closed, 0, 'the folder stays while the stage runs');
     s.proc.emit(sig);
-    assert.equal(await done, exit);
     assert.deepEqual(s.sent, [sig]);
+    assert.equal(await done, exit);
     assert.deepEqual(s.ran, ['test'], 'no stage starts after the signal');
     assert.equal(r.closed, 1);
     assert.equal(s.proc.listenerCount(sig), 0, 'check stops listening once it ends');
   });
 }
+
+test('a second signal kills the stage’s whole process group, and check still exits with the first’s code', { timeout: 5000 }, async () => {
+  const s = signalled({ ignores: true });
+  const { r, runDir } = fakeRunDir();
+  const done = check({ stages: ['test', 'test:process'], run: s.run, runDir, signals: s.proc, kill: s.kill, now: () => 0, log: () => {} });
+  await s.running;
+  s.proc.emit('SIGINT');
+  s.proc.emit('SIGTERM');
+  assert.deepEqual(s.sent, ['SIGINT', '-4242 SIGKILL'], 'the first signal goes to the stage, the second kills its group');
+  assert.equal(await done, 130);
+  assert.deepEqual(s.ran, ['test'], 'no stage starts after the signals');
+  assert.equal(r.closed, 1, 'the folder is removed once');
+});
+
+test('the run’s folder is removed before the last line is printed, which a closed terminal may never show', async () => {
+  /** @type {string[]} */
+  const order = [];
+  const runDir = { open: () => ({ path: '/tmp/pb-gate-1-AbC123', close: () => void order.push('closed') }) };
+  await check({ stages: ['test'], run: async () => 1, runDir, now: () => 0, log: (m) => order.push(m) });
+  assert.deepEqual(order, ['closed', '✖ test failed (exit 1) in 0.0 s', 'npm run check failed at test after 0.0 s: test 0.0 s.']);
+});
 
 test('a run folder that can’t be removed is a warning, and a passing check still exits 0', async () => {
   /** @type {string[]} */
@@ -156,5 +187,7 @@ test('a run folder that can’t be removed is a warning, and a passing check sti
   };
   const code = await check({ stages: ['test'], run: async () => 0, runDir, now: () => 0, log: (m) => log.push(m) });
   assert.equal(code, 0);
-  assert.match(log.at(-1) ?? '', /couldn’t remove its temp folder \/tmp\/pb-gate-1-AbC123: EACCES/);
+  assert.equal(log.length, 3);
+  assert.match(log[1] ?? '', /couldn’t remove its temp folder \/tmp\/pb-gate-1-AbC123: EACCES/, 'the warning comes before the last line');
+  assert.match(log[2] ?? '', /^npm run check passed/);
 });
