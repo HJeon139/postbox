@@ -4,7 +4,7 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { encode, HOST_DEFAULTS, message, parseLine, REMOTE_LIMITS, TURN_FILES } from '../../../shared/remote-protocol.mjs';
-import { endPrompt, permission } from './broker-prompts.mjs';
+import { endFromShim, permission } from './broker-prompts.mjs';
 import { refusal } from './broker-records.mjs';
 import { CANCELED, CANCELED_MSG } from './broker-state.mjs';
 import { call } from './broker-tools.mjs';
@@ -79,7 +79,7 @@ async function handle(b, c, refuse, text) {
       return permission(b, c, turn, m);
     case 'permission-expired':
     case CANCELED_MSG:
-      return endPrompt(b, turn, m.id, m.at, m.type === 'permission-expired' ? 'expired' : CANCELED);
+      return endFromShim(b, c, turn, m, m.type === 'permission-expired' ? 'expired' : CANCELED);
   }
 }
 

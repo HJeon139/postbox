@@ -174,12 +174,15 @@ export const SHIM_KEY = 'f'.repeat(32);
 export function connectShim(b, turn, token = turnToken(turn), key = SHIM_KEY) {
   /** @type {any[]} */
   const got = [];
+  /** @type {string[]} each line as the daemon wrote it */
+  const raw = [];
   const taken = new Set();
   let ended = false;
   const h = b.shim({
     first: JSON.stringify({ type: 'hello', token, turn, ...(key ? { shim: key } : {}) }),
     write: (s) => {
       for (const l of s.split('\n').filter(Boolean)) {
+        raw.push(l);
         const r = parseLine('daemon-to-shim', l);
         assert.ok(r.ok, r.ok ? '' : r.error);
         got.push(r.msg);
@@ -192,6 +195,7 @@ export function connectShim(b, turn, token = turnToken(turn), key = SHIM_KEY) {
   });
   const shim = {
     got,
+    raw,
     get ended() {
       return ended;
     },

@@ -15,7 +15,8 @@
 // - A permission prompt is written to prompts.jsonl and crosses as `prompt`. Postbox’s `answer` goes to the turn’s
 //   shims as permission-answer, and again whenever a shim resends the prompt (after a reconnect), since the daemon
 //   can’t tell whether a shim that went away read it. The shim’s notice that it expired, or that the harness canceled the call, ends it,
-//   and Postbox hears prompt-expired, now or after its next hello.
+//   and Postbox hears prompt-expired, now or after its next hello. Only the shim that asked can end it, and not once
+//   it’s answered; another key’s notice is refused as one for an unknown id is (#908).
 // - A call or prompt is (turn, id): each shim picks its own IDs. A resent one is recognized and never queued twice.
 //   A call’s result, live or answered offline, goes only to the connections of the shim that made it, by its key, and
 //   a resend from another key gets none of it (#908).
