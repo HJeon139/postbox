@@ -158,6 +158,10 @@ When a defect is filed from a run, add a check for it here if it can be caught d
   - Flaky tests, time against failures by fixture: [with the skill](scenarios/everyday-tests.md), [baseline](scenarios/everyday-tests-base.md).
   - A book collection about to be indexed for search, 84 files that are 46 works: [with the skill](scenarios/everyday-shelf.md), [baseline](scenarios/everyday-shelf-base.md).
   - How a small API saves an item: [with the skill](scenarios/everyday-pantry.md), [baseline](scenarios/everyday-pantry-base.md).
+- **Held-out experiment** ([#206](https://github.com/HJeon139/postbox/issues/206)): three briefs written apart from the skill’s tuning, so they can test whether the visual mechanisms work on content they weren’t tuned on. Each runs with the skill and as a baseline, with the same judging as the everyday visuals. Their briefs are in `designs/skills/visual-explainer/briefs/heldout/`; whoever runs the experiment doesn’t read them, or these scenarios’ messages, until the runs are scored, so the entries here don’t say what they’re about.
+  - The person’s data (`- files: heldout-data`): [with the skill](scenarios/heldout-data.md), [baseline](scenarios/heldout-data-base.md).
+  - The person’s code (`- files: heldout-code`): [with the skill](scenarios/heldout-code.md), [baseline](scenarios/heldout-code-base.md).
+  - An idea with no files: [with the skill](scenarios/heldout-idea.md), [baseline](scenarios/heldout-idea-base.md).
 - M1’s exit check ([#64](https://github.com/HJeon139/postbox/issues/64)), below:
   - [Wiki search: picking an approach](scenarios/wikisearch.md): a question with several reasonable answers
   - [Launch announcement: a draft to approve](scenarios/announcement.md)

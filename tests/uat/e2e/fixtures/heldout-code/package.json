@@ -1,0 +1,10 @@
+{
+  "name": "reminders",
+  "version": "1.3.0",
+  "private": true,
+  "type": "module",
+  "description": "Texts each grooming customer the day before their booking.",
+  "scripts": {
+    "start": "node src/index.mjs"
+  }
+}

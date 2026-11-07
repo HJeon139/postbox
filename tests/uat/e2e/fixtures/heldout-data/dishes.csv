@@ -1,0 +1,35 @@
+dish,course,price,orders_last_13_weeks
+Herb rice,side,4.00,216
+Hand-cut fries,side,4.50,186
+Garlic bread,side,4.50,164
+Pickled slaw,side,5.50,193
+Side salad,side,6.00,170
+Buttered corn,side,7.00,110
+Roast carrots,side,7.50,118
+Charred greens,side,7.50,106
+Affogato,dessert,8.00,270
+Ginger cake,dessert,8.00,248
+Lemon posset,dessert,8.50,221
+Plum crumble,dessert,9.00,206
+Chocolate pot,dessert,9.00,240
+Burnt honey tart,dessert,10.50,205
+Leek soup,starter,10.00,346
+Chicken livers,starter,10.50,389
+Fried halloumi,starter,11.00,411
+Beet carpaccio,starter,12.00,309
+Lamb skewers,starter,12.00,312
+Crispy squid,starter,12.50,316
+Smoked trout toast,starter,14.00,275
+Burrata plate,starter,15.00,260
+Gnocchi,main,21.00,705
+Mushroom risotto,main,22.00,491
+Fish pie,main,25.50,472
+Juniper roast chicken,main,26.00,545
+Pork chop,main,29.00,480
+Hake and clams,main,29.50,402
+Duck leg,main,30.00,421
+Market fish,main,30.00,412
+Lamb shoulder,main,30.50,297
+Flank steak,main,31.00,384
+Short rib,main,31.00,394
+Ribeye,main,31.50,381

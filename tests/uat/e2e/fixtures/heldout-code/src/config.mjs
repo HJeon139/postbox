@@ -1,0 +1,9 @@
+export const WORKERS = 2;
+export const POLL_MS = 2_000; // an idle worker looks for a job this often
+export const LEASE_MS = 60_000; // a claimed job is the worker’s for this long
+export const SWEEP_MS = 15_000; // how often the sweeper looks for leases that ran out
+export const SEND_TIMEOUT_MS = 90_000; // how long a text may take before it’s given up on
+export const MAX_ATTEMPTS = 5;
+export const BASE_DELAY_MS = 30_000; // the wait after the first failure; it doubles after each one
+export const MAX_DELAY_MS = 3_600_000;
+export const REMIND_BEFORE_MS = 24 * 3_600_000;
