@@ -157,6 +157,31 @@ test('#780 a review block’s files are read from the turn’s folder and sent a
   }
 });
 
+test('#854 a valid review update_block with files is sent to Postbox from a host, not refused: its files come off before the check', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    mkdirSync(join(h.work, 'figs'));
+    writeFileSync(join(h.work, 'figs', 'a.png'), 'png bytes');
+    const k = makeBroker(h);
+    const s = connectShim(k.b, 't1');
+    await s.next('welcome');
+    let refused = null;
+    const got = s.call('c1', 'update_block', review('fig', [{ path: 'figs/a.png' }]));
+    void got.then((r) => {
+      if (!r.ok) refused = r.text;
+    });
+    const sent = () => k.sent.some((m) => m.type === 'tool' && m.id === 'c1');
+    for (let i = 0; i < 2000 && !sent() && refused === null; i++) await new Promise((r) => setImmediate(r));
+    assert.equal(refused, null, 'not refused on the host');
+    assert.ok(sent(), 'sent to Postbox');
+    await k.post('reply', { turn: 't1', id: 'c1', ok: true, text: 'Shown.' });
+    assert.equal((await got).ok, true);
+  } finally {
+    await h.done();
+  }
+});
+
 test('#780 a review block’s file outside the turn’s folder, or a link out of it, isn’t read or sent', async () => {
   const h = makeHome();
   try {
