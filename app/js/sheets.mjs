@@ -27,6 +27,7 @@ import { lifeButtons } from './persona-delete.mjs';
 import { projectsTab } from './projects-tab.mjs';
 import { placeField, saveRefused } from './sheets-place.mjs';
 import { appearance, connect } from './sheets-settings.mjs';
+import { skillsField } from './skills-field.mjs';
 import { keepFocus, navigate, openDialog, toast, undoToast } from './ui.mjs';
 
 export { EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, MODELS, modeHelp };
@@ -139,8 +140,8 @@ function mcpField(st, paint, { idp, personaId = null, projectId = null }) {
 }
 
 /**
- * Fields for st.backend, st.model, st.effort, st.permissionMode, st.folder, st.usesHostSetup, st.mcpOff and
- * st.canPublish.
+ * Fields for st.backend, st.model, st.effort, st.permissionMode, st.folder, st.usesHostSetup, st.mcpOff,
+ * st.canPublish and st.skillsOff.
  * idp prefixes element ids; personaId and projectId say whose MCP servers to list.
  */
 function backendFields(st, paint, { idp, fixedBackend = false, personaId = null, projectId = null }) {
@@ -319,6 +320,8 @@ function backendFields(st, paint, { idp, fixedBackend = false, personaId = null,
           },
         })
       : null,
+    // Its skills (#207): only on a backend that lists them, and only here, since a host has its own.
+    real && capsOf(st.backend).skills && !st.remote ? skillsField(st, paint, { idp, personaId, projectId }) : null,
     // The list reads Claude Code’s config (server/adapters/mcp-config.mjs): a backend that doesn’t read it (the Kiro
     // CLI) has nothing true to show here.
     real && capsOf(st.backend).permissions !== 'none' ? mcpField(st, paint, { idp, personaId, projectId }) : null,
@@ -388,6 +391,7 @@ function newAgentChoices({ preset, bps, threadId }) {
     usesHostSetup: true,
     canPublish: false,
     mcpOff: [],
+    skillsOff: [],
     folder: '',
     remote: null,
     placeError: null,
@@ -550,7 +554,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
         model: st.backend === 'mock' ? 'mock' : st.model,
         ...(st.backend === 'mock' ? {} : { effort: st.effort }),
         permissionMode: st.permissionMode,
-        ...(st.backend === 'mock' ? {} : { usesHostSetup: st.usesHostSetup, canPublish: st.canPublish, mcpOff: st.mcpOff }),
+        ...(st.backend === 'mock' ? {} : { usesHostSetup: st.usesHostSetup, canPublish: st.canPublish, mcpOff: st.mcpOff, skillsOff: st.skillsOff }),
         folder: st.folder,
         // Where it runs (#120): null for this computer.
         remote: st.backend !== 'mock' && st.remote ? { hostId: st.remote } : null,
@@ -917,6 +921,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
       usesHostSetup: p.usesHostSetup !== false,
       canPublish: p.canPublish === true,
       mcpOff: [...(p.mcpOff ?? [])],
+      skillsOff: [...(p.skillsOff ?? [])],
     };
     const runBox = h('div.form-grid');
     const paintRun = () => keepFocus(runBox, () => fill(runBox, backendFields(run, paintRun, { idp: 'pe', personaId: p.id })));
@@ -989,6 +994,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
                         usesHostSetup: run.usesHostSetup,
                         canPublish: run.canPublish,
                         mcpOff: run.mcpOff,
+                        skillsOff: run.skillsOff,
                       }),
                 },
                 'PATCH',
@@ -1002,6 +1008,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
                       run.permissionMode !== (p.permissionMode ?? 'auto') ||
                       run.usesHostSetup !== (p.usesHostSetup !== false) ||
                       run.canPublish !== (p.canPublish === true) ||
+                      String(run.skillsOff) !== String(p.skillsOff ?? []) ||
                       String(run.mcpOff) !== String(p.mcpOff ?? []) ||
                       String([...tools].sort()) !== String([...(p.tools ?? [])].sort())
                         ? 'Where it runs, its permissions and its tools apply to its conversations from their next turn; other changes apply to new sessions.'

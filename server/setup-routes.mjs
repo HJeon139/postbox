@@ -1,7 +1,8 @@
-// What a persona would load, for the persona sheet: the routes server/index.mjs’s route() calls in one line. Reads
+// What a persona would load, for the persona sheet, its MCP servers and its skills: the routes server/index.mjs’s route() calls in one line. Reads
 // only, so none needs the page’s token.
 
 import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
+import { skillList, yourSkills } from './adapters/skill-config.mjs';
 
 const done = (status, body) => ({ status, body });
 
@@ -17,6 +18,12 @@ export async function setupRoute(rt, path, method, url, claudeHome) {
     const { persona, folder, seen } = rt.mcpContext(url.searchParams.get('personaId'), url.searchParams.get('projectId'));
     const found = await yourMcpServers(folder, { home: claudeHome });
     return done(200, { folder, servers: mcpServerList({ found, seen, off: persona?.mcpOff ?? [] }) });
+  }
+  // The skills it would load (#207): names and where each comes from, never a skill’s text.
+  if (path === '/api/skills') {
+    const { persona, folder, skills } = rt.mcpContext(url.searchParams.get('personaId'), url.searchParams.get('projectId'));
+    const found = await yourSkills(folder, { home: claudeHome });
+    return done(200, { folder, skills: skillList({ found, seen: skills, off: persona?.skillsOff ?? [] }) });
   }
   return null;
 }

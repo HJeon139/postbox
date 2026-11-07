@@ -153,7 +153,7 @@ export function sdkForkPoint(state) {
 export class AgentSdkAdapter {
   name = 'agent-sdk';
   // It asks through canUseTool (sdk-permission.mjs), never through permission_prompt (#220).
-  capabilities = { promptTool: false, images: true };
+  capabilities = { promptTool: false, images: true, skills: true };
 
   /**
    * @param {{ sdk: { query: Function }, workRoot: string, spawnImpl?: typeof spawn, kill?: import('./process-group.mjs').KillFn,

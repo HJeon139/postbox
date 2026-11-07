@@ -61,6 +61,8 @@
 //   capabilities.isolation: false     it always loads your own setup, so the sheet has no Isolated switch (#143)
 //   capabilities.images: true         its agent sees an image in a tool’s result, so view_app sends the picture itself;
 //                                     to any other, view_app gives the path of the copy it saved (#95)
+//   capabilities.skills: true         it loads Postbox’s own skills (agent-plugin.mjs), so the persona sheet offers the
+//                                     switch that turns them off for one agent
 //   capabilities.promptTool: false    it never asks through Postbox’s permission_prompt (the CLI’s --permission-prompt-tool),
 //                                     so MCP doesn’t list it and refuses a call to it at once (#220)
 //   capabilities.promptHook: true     its prompts come from Postbox’s own hook, by an id of the hook’s (Antigravity’s),

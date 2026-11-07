@@ -18,6 +18,7 @@
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { agentPlugins } from './agent-plugin.mjs';
+import { POSTBOX_SKILLS, skillDenies, skillOverrides, skillsOffOf } from './skill-config.mjs';
 /**
  * Setting sources, as `--setting-sources` and the SDK’s `settingSources` spell them. The permissions panel reads the
  * same ones (permission-rules.mjs, readRules; permission-hooks.mjs, readHooks).
@@ -106,6 +107,8 @@ export function settingsFor(persona, memoryDir = null) {
     ...SETTINGS_OVERLAY,
     ...(memoryDir ? { autoMemoryDirectory: memoryDir } : {}),
     ...(usesHostSetup && mcpOff.length ? { deniedMcpServers: mcpOff.map((serverName) => ({ serverName })) } : {}),
+    // The user and project skills it turned off (#207).
+    ...skillOverrides(persona),
     // A hook or mod that approves a call would skip the ask rules and the permission prompt (#817). In this flag
     // layer it holds against a `disableAllHooks: false` in user, project or local settings; managed hooks still run.
     // Bypass keeps the person’s hooks: there, they may be the only check left.
@@ -141,7 +144,8 @@ export const fromContext = (ctx, memoryRoot) => ({
   allowOnce: ctx.allowOnce ?? [],
   rules: ctx.rules ?? {},
   memoryDir: memoryFolder(memoryRoot, ctx.persona, ctx.project),
-  plugins: ctx.remote ? [] : agentPlugins(),
+  // Left out when the persona turned off every one of its skills, so the agent isn’t told of them (skill-config.mjs).
+  plugins: ctx.remote || POSTBOX_SKILLS.every((n) => skillsOffOf(ctx.persona).includes(n)) ? [] : agentPlugins(),
 });
 
 /**
@@ -328,11 +332,12 @@ export function toolsOff(persona, rules = TOOL_RULES) {
   return Object.keys(rules).filter((id) => !has.has(id));
 }
 
-/** Every deny rule for a persona’s turn: the publishing tools unless it may publish, then its unticked tools. */
+/** Every deny rule for a persona’s turn: the publishing tools unless it may publish, its unticked tools, and the skills it turned off. */
 export function deniedTools(persona) {
   const { canPublish } = setupOf(persona);
   const has = new Set(Array.isArray(persona?.tools) ? persona.tools : []);
-  return [...new Set([...(canPublish ? [] : PUBLISHING_TOOLS), ...Object.entries(TOOL_RULES).flatMap(([id, rules]) => (has.has(id) ? [] : rules))])];
+  const tools = Object.entries(TOOL_RULES).flatMap(([id, rules]) => (has.has(id) ? [] : rules));
+  return [...new Set([...(canPublish ? [] : PUBLISHING_TOOLS), ...tools, ...skillDenies(persona)])];
 }
 
 // ── Raw streams ─────────────────────────────────────────────────────────────────────────────

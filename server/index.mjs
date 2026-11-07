@@ -276,7 +276,7 @@ export async function start({
     }
 
     if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config, corpus }));
-    // What a persona would load, for its sheet: its MCP servers (server/setup-routes.mjs).
+    // What a persona would load, for its sheet: its MCP servers and skills (server/setup-routes.mjs).
     const setupDid = await setupRoute(rt, path, req.method, url, claudeHome);
     if (setupDid) return send(res, setupDid.status, setupDid.body);
     // The permissions panel (#66): one agent’s mode, rules with their sources, folders and tools.

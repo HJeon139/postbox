@@ -3,18 +3,27 @@
 // persona; the new-agent sheet shows both with their defaults. With a stand-in Claude Code backend, which never runs
 // a turn here: it only makes the real backend’s fields show. With an Antigravity CLI stand-in that reports its preferred
 // Gemini model after another, the Gemini boilerplate picks the preferred one (#358; gemini-boilerplate.spec.mjs checks
-// the rest of that boilerplate), and its Auto says Postbox’s hook approves routine actions. Moved from
-// tools/checks/persona-setup.mjs (#303).
+// the rest of that boilerplate), and its Auto says Postbox’s hook approves routine actions. “Uses Postbox’s
+// visual-explainer skill” (#207) shows on by default where the backend loads it (capabilities.skills), saves off, and
+// isn’t offered on the Antigravity CLI. Moved from tools/checks/persona-setup.mjs (#303).
 
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { AGY_CAPABILITIES } from '../../server/adapters/antigravity-cli.mjs';
+import { CLAUDE_CODE_CAPABILITIES } from '../../server/adapters/claude-code.mjs';
 import { failOnPageErrors, focusIs, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
 test.beforeAll(async () => {
-  app = await startPostbox('persona-setup');
-  app.rt.adapters.register({ name: 'claude-code', deliver: async () => {} });
+  // One skill of yours, in the home Postbox reads Claude Code’s config from.
+  const prepare = async (root) => {
+    await mkdir(join(root, '.claude', 'skills', 'grill'), { recursive: true });
+    await writeFile(join(root, '.claude', 'skills', 'grill', 'SKILL.md'), '---\nname: grill-me\ndescription: Asks hard questions.\n---\n');
+  };
+  app = await startPostbox('persona-setup', { prepare });
+  app.rt.adapters.register({ name: 'claude-code', capabilities: CLAUDE_CODE_CAPABILITIES, deliver: async () => {} });
   app.rt.adapters.register({
     name: 'antigravity-cli',
     capabilities: { ...AGY_CAPABILITIES, models: ['gemini-2.5-pro', 'gemini-3.8-flash-high'] },
@@ -107,4 +116,44 @@ test('the Antigravity CLI’s Auto says Postbox approves routine actions itself,
   );
   await field.getByRole('radio', { name: 'Accept edits', exact: true }).click();
   await expect(field.locator('.help')).not.toContainText('Postbox approves routine actions itself');
+});
+
+/** The Skills checklist’s row for one skill. */
+const skillRow = (page, name) => page.locator('fieldset').filter({ hasText: 'Skills' }).locator(`.check[data-skill="${name}"]`);
+
+test('#207 the persona editor lists Postbox’s skills and yours, all ticked; unticked ones save, and Isolated hides yours', async ({ page }) => {
+  const persona = app.rt.createPersona({ handle: 'drawer', backend: 'claude-code' });
+  await personas(page);
+  await page.getByRole('button', { name: 'Edit drawer', exact: true }).click();
+  const postbox = skillRow(page, 'postbox:visual-explainer');
+  const yours = skillRow(page, 'grill-me');
+  await expect(postbox).toHaveRole('checkbox');
+  await expect.soft(postbox, 'Postbox’s, ticked').toHaveAttribute('aria-checked', 'true');
+  await expect.soft(postbox).toContainText('Postbox’s');
+  await expect.soft(yours, 'yours, from the skills folder, ticked').toHaveAttribute('aria-checked', 'true');
+  await expect.soft(yours).toContainText('Yours');
+  await postbox.focus();
+  await page.keyboard.press('Space');
+  await expect.soft(postbox, 'Space unticks it').toHaveAttribute('aria-checked', 'false');
+  await yours.click();
+  await page.locator('.dialog').getByRole('button', { name: 'Save', exact: true }).click();
+  await expect
+    .poll(() => app.store.state.personas[persona.id].skillsOff, { message: 'Save stores the unticked ones' })
+    .toEqual(['postbox:visual-explainer', 'grill-me']);
+  // The sheet opens from the page’s copy of the persona, which the saved one reaches over the event stream.
+  await synced(page, app);
+  await page.getByRole('button', { name: 'Edit drawer', exact: true }).click();
+  await expect.soft(skillRow(page, 'grill-me'), 'it opens as saved').toHaveAttribute('aria-checked', 'false');
+  await page.locator('#pe-setup').click();
+  await expect(skillRow(page, 'grill-me'), 'Isolated doesn’t load yours').toHaveCount(0);
+  await expect(skillRow(page, 'postbox:visual-explainer'), 'but loads Postbox’s').toHaveCount(1);
+});
+
+test('#207 the new-agent sheet lists the skills, all ticked, and the Antigravity CLI doesn’t offer them', async ({ page }) => {
+  await personas(page);
+  await page.locator('.dialog').getByRole('button', { name: 'New agent', exact: true }).click();
+  await expect(skillRow(page, 'postbox:visual-explainer')).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('dialog', { name: 'New agent' }).getByLabel('Backend').selectOption('antigravity-cli');
+  await expect(page.getByRole('dialog', { name: 'New agent' }).getByLabel('Model'), 'its fields repainted').toBeVisible();
+  await expect(skillRow(page, 'postbox:visual-explainer'), 'agy doesn’t load Postbox’s plugin').toHaveCount(0);
 });
