@@ -1,6 +1,6 @@
 # A1b: `offerNeed` ranks two cards with the comparison `nextNeed` uses
 
-**Status:** the design for #508’s A1b (#711), rescoped after the integrator’s review of #781: the maintainer chose to shrink A1b to one tie rule and move the rest of A1 to A2. Citations are by file and function, read at `main` `23f09f80`; the code PR re-reads each one at its head. Its code is not built yet.
+**Status:** the design for #508’s A1b (#711), rescoped after the integrator’s review of #781: the maintainer chose to shrink A1b to one tie rule and move the rest of A1 to A2. Citations are by file and function, read at `main` `23f09f80`; the code PR re-reads each one at its head. Its code is #711’s PR.
 
 **What A1b is now.** #633 already derives an agent’s need from its cards (`nextNeed`, `server/card-needs.mjs`). Of the places that choose between two of an agent’s cards, two already agree, and the third, `offerNeed`, doesn’t: it lets any card of the same rank take the need, older or newer. A1b makes `offerNeed` rank two cards with the comparison `nextNeed` uses, and gives `needsOrder` a last tiebreak that doesn’t depend on the runtime’s locale. `card.held` stays as it is, and everything else in A1’s row of `design.md`’s rollout moves to A2 by name (“What moves to A2”).
 
@@ -51,7 +51,7 @@ The rest of AT-4, needs-you with a room’s items not loaded, moves to A2. AT-1 
 
 A host that forgot the prompt sends neither before it sends its older prompts again. Without R8, the person would be shown the dead card as the need while the live, older permission wasn’t flagged. With it, the older card takes the need, as `nextNeed` would choose, since `nextNeed` doesn’t count the dead one. If the newer card is only not yet waited on again, the host sends it next, `waitOn` offers it, and it takes the need back as the newer card.
 
-**Cost:** an offer reads two cards from pending by id, through `rt.store.pending.item`, which #712b’s index (#769, merged) makes O(1) per card, so an offer stays O(1). `keptOrNext`’s `cardOf` still scans the thread with `find`; the code PR can move it to `pending.item` too.
+**Cost:** an offer reads two cards from pending by id, through `rt.store.pending.item`, which #712b’s index (#769, merged) makes O(1) per card, so an offer stays O(1). `keptOrNext`’s `cardOf` reads through `pending.item` too, since the code PR.
 
 ## 4. Invariants and the failure table
 
@@ -77,7 +77,7 @@ A host that forgot the prompt sends neither before it sends its older prompts ag
 
 - **The `waitOn` spec:** a newer permission card is the need and its host waits on it again (it’s in `rt.permissionWaits`), and an older one is offered again after a restart; the newer one stays. It fails on `main`.
 - **The side-thread app spec:** an app card in a side thread is offered against a same-rank hop that is older; the app card takes the need, and its need names its thread. It fails on `main`’s missing thread.
-- **The `needAppSend` spec:** the card that is the need is offered again with a new count; its text updates. It passes on `main` and guards the same-card rule.
+- **The `needAppSend` spec:** the card that is the need is offered again with a new count; its text updates. It passes on `main`. It doesn’t guard the same-card rule: dropping that rule fails no test (“Mutants”, below).
 - **The permission-stays spec:** a permission is the need, and a hop is offered; the permission stays.
 - **The dead-need spec:** after a restart, a host’s newer permission card is the need, open but not in `rt.permissionWaits` (its host has expired or forgotten it), and no resolver has run. The host sends its older prompt again, and `waitOn` offers that card. The older card takes the need, and `nextNeed` agrees. A second case sends the newer prompt next: it takes the need back. A third has a laptop permission that waits as the need, and an older permission offered: the laptop one stays. The first case fails with the age check and without R8.
 - **The one-comparison spec:** pairs of cards fed to `nextNeed`, `keptOrNext` (through `settledNeed`, since it isn’t exported) and `offerNeed`, in both orders, with fixed `at`s, including equal ones in one thread. “Agree” means each picks the same card once the challenger and the incumbent are fixed by read order: the card `nextNeed` reads later is the challenger, `next` for `keptOrNext`, and the offered card for `offerNeed`. `keptOrNext` returns `nextNeed`’s pick, so it agrees in both orders; only `offerNeed`’s challenger is the offered card. With that fixed, all three agree, ties included. The spec doesn’t ask `offerNeed` to match `nextNeed` when the offered card is the one `nextNeed` reads first, since on a tie they then differ by design. A mutant that adds an id tiebreak fails it.
@@ -92,7 +92,7 @@ From A1’s row of `design.md`’s rollout, by name: ask records; `card.held` be
 
 ## 7. What’s unverified
 
-- Whether any of #633’s specs pin `offerNeed` taking an older same-rank card: swept in the code PR.
+- Whether any of #633’s specs pin `offerNeed` taking an older same-rank card: swept in the code PR, and none does; none of them changed, apart from `store-held-guard`’s list of pending reads.
 - Agents other than Claude Code: the change is in the server and the page’s shared code, the same for every backend.
 
 ## 8. UAT
