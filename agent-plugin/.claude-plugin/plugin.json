@@ -1,5 +1,5 @@
 {
   "name": "postbox",
-  "description": "Skills Postbox gives every Claude agent it runs: how to explain an idea with a picture (visual-explainer).",
+  "description": "Skills Postbox gives every agent it runs: how to explain an idea with a picture (visual-explainer).",
   "author": { "name": "Postbox" }
 }
