@@ -33,8 +33,10 @@ async function readingAtTop(page, title) {
   await expect(page.locator(`.transcript[data-thread="${conv.id}"] > .item`)).toHaveCount(1000, { timeout: 15_000 });
   await still(page);
   // A wheel turn up, so the view reads; then straight to the top, since Firefox moves about 1,500 px a turn. The top is
-  // held for 30 frames before the jump, so no wheel scroll still landing is taken for one during it.
-  await page.mouse.move(640, 400);
+  // held for 30 frames before the jump, so no wheel scroll still landing is taken for one during it. The turn is over
+  // the top bar, as view-skipped-tab.spec.mjs’s is: over the room, an item that scrolls itself, a code block or a
+  // table, could take all of it, and the view stayed following (CI, 2 of 60).
+  await page.locator('header.topbar').hover();
   await page.mouse.wheel(0, -2000);
   await expect(page.locator('#main.transcript')).toHaveAttribute('data-view-mode', 'reading', { timeout: 15_000 });
   await page.evaluate(() => scrollTo(0, 0));
@@ -45,10 +47,11 @@ async function readingAtTop(page, title) {
   await expect(page.locator('.jump')).toBeVisible({ timeout: 15_000 });
 }
 
-// How far back scrollY may step as the page settles, by browser. Chromium: not at all. Firefox, on the Mac: 2–3 px
-// near the end, with the page’s height settling by as much in the same frame, while the view keeps following. Every
+// How far back scrollY may step as the page settles near the end: a line of text at the usual size. Firefox on a Mac
+// stepped back 2–8 px, and Chromium on CI too, both with the view ending following at the end. What this guards is the
+// view turning back, which was hundreds to thousands of px (a late wheel turn, the jump read as your scroll). Every
 // step back is listed in the measured line (`back`) whatever its size.
-const SETTLES = /** @type {Record<string, number>} */ ({ chromium: 0, firefox: 4, webkit: 0 });
+const SETTLES = 16;
 
 /** In the page: whether scrollY stays under 2,000 and unchanged for 30 frames. */
 function heldAtTop() {
@@ -102,7 +105,7 @@ for (const [sizes, css] of [
   ['shorter than their estimate', '.transcript .item { line-height: 1.05 !important; font-size: 12px !important }'],
   ['far shorter than their estimate', '.transcript .item { line-height: 0.9 !important; font-size: 8px !important }'],
 ])
-  test(`Jump to latest over 1,000 skipped items at ${sizes} scrolls smoothly, and ends following at the end`, async ({ page, browserName }) => {
+  test(`Jump to latest over 1,000 skipped items at ${sizes} scrolls smoothly, and ends following at the end`, async ({ page }) => {
     if (css)
       await page.addInitScript((rule) => {
         addEventListener('DOMContentLoaded', () => document.head.append(Object.assign(document.createElement('style'), { textContent: rule })));
@@ -119,14 +122,14 @@ for (const [sizes, css] of [
       distinct: new Set(ys).size,
       distance,
       biggest: Math.max(...steps),
-      backwards: steps.filter((d) => d < -SETTLES[browserName]).length,
+      backwards: steps.filter((d) => d < -SETTLES).length,
       mode: await page.locator('#main.transcript').getAttribute('data-view-mode'),
       gap: await gap(page),
       back: await backSteps(page),
     };
     test.info().annotations.push({ type: 'measured', description: JSON.stringify(v) });
     expect.soft(v.distinct, 'scrollY takes many values on the way down').toBeGreaterThan(5);
-    expect.soft(v.backwards, `scrollY never goes back up by more than ${SETTLES[browserName]} px`).toBe(0);
+    expect.soft(v.backwards, `scrollY never goes back up by more than ${SETTLES} px`).toBe(0);
     expect.soft(v.biggest, 'no one frame jumps more than 60% of the way').toBeLessThanOrEqual(0.6 * distance);
     expect.soft(v.mode, 'it ends following').toBe('following');
     expect.soft(v.gap, 'it ends at the end').toBeLessThanOrEqual(2);
@@ -174,3 +177,23 @@ for (const [how, act] of /** @type {const} */ ([
     expect.soft(v.mode, 'it ends following').toBe('following');
     expect.soft(v.gap, 'it ends at the end').toBeLessThanOrEqual(2);
   });
+
+// A jump to an item while the smooth jump to the end runs, as Needs you or a thread’s link makes: the item is where
+// you went, and the view reads there. Without the jump ending it, the smooth scroll went on to the end, since a jump
+// isn’t input that can scroll; and Chromium applies one more step of a smooth scroll a frame after it ends.
+test('a jump to an item during the jump to the end lands on that item, reading', async ({ page }) => {
+  await readingAtTop(page, 'Smooth jump, then a jump to an item');
+  await page.locator('.jump').getByRole('button').click();
+  await expect.poll(() => page.evaluate(() => scrollY), { message: 'the jump to be on its way' }).toBeGreaterThan(2000);
+  const key = await page.evaluate(async () => {
+    const { jumpTo } = await import('/app/js/view-jump.mjs');
+    const item = /** @type {HTMLElement} */ (document.querySelectorAll('#main > [data-key]')[700]);
+    jumpTo(item);
+    return item.dataset.key;
+  });
+  await still(page);
+  const v = { mode: await page.locator('#main.transcript').getAttribute('data-view-mode'), gap: await gap(page) };
+  test.info().annotations.push({ type: 'measured', description: JSON.stringify(v) });
+  await expect(page.locator(`#main > [data-key="${key}"]`), 'the item you went to is in view').toBeInViewport();
+  expect.soft(v.mode, 'it reads there').toBe('reading');
+});
