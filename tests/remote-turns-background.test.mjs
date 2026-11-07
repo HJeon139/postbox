@@ -97,7 +97,7 @@ test('#847 an adapter without the capability (Kiro) isn’t excused by the same 
 
 test('#847 the stop text quotes the agent’s description as one clipped line, without control characters', async () => {
   const name = `Wait\u0007 for\nCI\u202e on [a](https://x.example)${'.'.repeat(200)}`;
-  const { r, clock, turn } = await quietTurn([...recorded.slice(0, 19), listed([{ task_id: 'b1', description: name }])]);
+  const { r, clock, turn } = await quietTurn([...waiting, listed([{ task_id: 'b1', description: name }])]);
   clock.now += QUIET.backgroundMax + MIN;
   r.rt.remote.checkStalls();
   await until(() => r.d.stops.includes(turn), 'the stop');
@@ -126,4 +126,62 @@ test('#847 after a Postbox restart, the replayed stream lists the task again, so
   assert.equal(d.stops.length, 0, 'the replayed list holds it');
   d.end('host-turn-1');
   await settled(r);
+});
+
+test('#847 a turn quiet before its result isn’t excused by a listed task: it may be hung mid-turn', async () => {
+  const result = recorded.findIndex((l) => l.includes('"type":"result"'));
+  const midTurn = recorded.slice(0, result);
+  assert.ok(
+    midTurn.some((l) => l.includes('"background_tasks_changed"') && !l.includes('"tasks":[]')),
+    'a task is listed',
+  );
+  const { r, clock, turn } = await quietTurn(midTurn);
+  clock.now += 20 * MIN;
+  r.rt.remote.checkStalls();
+  await until(() => r.d.stops.includes(turn), 'the stop');
+  await settled(r);
+  assert.match(r.se().currentStep, /^Stopped: no output for 15 min/);
+});
+
+test('#847 each task’s 2 h counts from when it was first listed: one that ends doesn’t pass its time to the next', async () => {
+  const { r, clock, turn } = await quietTurn([
+    ...waiting.slice(0, -1).filter((l) => !l.includes('"background_tasks_changed"')),
+    listed([{ task_id: 'a', description: 'Task A' }]),
+    waiting.at(-1),
+  ]);
+  const t0 = clock.now;
+  const say = async (tasks, at) => {
+    clock.now = t0 + at;
+    r.d.append(turn, listed(tasks));
+    await until(() => r.d.turns.get(turn).acked === r.d.turns.get(turn).out.at(-1).next, 'the line to be applied');
+  };
+  await say(
+    [
+      { task_id: 'a', description: 'Task A' },
+      { task_id: 'b', description: 'Task B' },
+    ],
+    60 * MIN,
+  );
+  await say([{ task_id: 'b', description: 'Task B' }], 90 * MIN);
+  // Listed again later: its own time stands, not this event’s.
+  await say([{ task_id: 'b', description: 'Task B' }], 150 * MIN);
+  clock.now = t0 + 170 * MIN;
+  r.rt.remote.checkStalls();
+  assert.equal(r.d.stops.length, 0, 'B has waited 110 min, though A was listed 170 min ago');
+  clock.now = t0 + 181 * MIN;
+  r.rt.remote.checkStalls();
+  await until(() => r.d.stops.includes(turn), 'the stop at B’s own 2 h');
+  await settled(r);
+  assert.match(r.se().currentStep, /\(Task B\) ran past 2 h/);
+});
+
+test('#847 once the model works again after its result, a listed task no longer excuses quiet', async () => {
+  // The model woken again (here by a recorded stream event from its next reply) is mid-turn: quiet then may be hung.
+  const working = recorded.slice(ended + 1).find((l) => l.startsWith('{"type":"stream_event"'));
+  const { r, clock, turn } = await quietTurn([...waiting, working]);
+  clock.now += 20 * MIN;
+  r.rt.remote.checkStalls();
+  await until(() => r.d.stops.includes(turn), 'the stop');
+  await settled(r);
+  assert.match(r.se().currentStep, /^Stopped: no output for 15 min/);
 });
