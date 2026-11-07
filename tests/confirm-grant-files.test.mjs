@@ -138,3 +138,19 @@ test('#852 1a r3: gh’s config that sends calls elsewhere, or a repository othe
   assert.deepEqual(await later(moved, [call(LABEL)]), ['card'], 'the project’s repository changed since the click');
   assert.deepEqual([s.ran, moved.ran], [[], []]);
 });
+
+test('#852 1a r3: the repository’s own privacy rules guard the body: a home path or an email in it gets the card', async () => {
+  const { writeFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  for (const leak of [
+    `See ${['', 'home', 'jdoe', 'notes.md'].join('/')}`,
+    `Mail ${['jdoe', 'corp.example.net'].join('@').replace('example.net', 'acme.io')}`,
+  ]) {
+    const s = await ask();
+    const body = join(s.folder, 'body.md');
+    await writeFile(body, `${leak}\n`);
+    const command = `gh pr comment 896 --repo o/r --body-file ${body}`;
+    assert.deepEqual(await confirmed(s, block([command]), [call(command)]), ['card'], leak);
+    assert.deepEqual(s.ran, []);
+  }
+});

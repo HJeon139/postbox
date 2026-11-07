@@ -12,6 +12,7 @@ import { createHash } from 'node:crypto';
 import { readFile, realpath } from 'node:fs/promises';
 import { commandProblem } from '../shared/confirm-commands.mjs';
 import { confirmShape } from '../shared/confirm-shapes.mjs';
+import { checkContentPrivacy } from '../shared/privacy-rules.mjs';
 import { bodyStillSame, subjectRepo } from './confirm-body.mjs';
 import { cleanOutput, ghConfigDir, ghConfigProblem, runConfirmedGh } from './confirm-run.mjs';
 import { pushOf } from './push-on-request.mjs';
@@ -33,6 +34,12 @@ const TEXT_FLAGS = new Set(['--title', '--label', '--add-label', '--remove-label
 const REVOKING = new Set(['🚩', '👎']);
 
 const sha256 = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
+/**
+ * Whether text Postbox posts for the person is clean: the repository’s own privacy rules, which the person accepted as
+ * the guard for a body file (T16; shared/privacy-rules.mjs, as tools/privacy-check.mjs checks commits), and the secret
+ * patterns telemetry trims (telemetry-secrets.mjs). Best effort, as the person accepted.
+ */
+const clean = (text) => checkContentPrivacy(text).length === 0 && trimSecrets(text) === text;
 
 /**
  * At the person’s click on a confirm: what its answer records, and the session’s list of recent confirms. Nothing for
@@ -125,14 +132,14 @@ function grants(rt, c, sessionId, hash, now) {
  */
 async function checkedCall(files, argv) {
   const posted = argv.filter((_, i) => TEXT_FLAGS.has(argv[i - 1])).join('\n');
-  if (trimSecrets(posted) !== posted) return null;
+  if (!clean(posted)) return null;
   const [file] = files;
   if (!file) return { argv, input: undefined };
   const real = await realpath(file.path).catch(() => null);
   const bytes = real && real === file.real ? await readFile(real).catch(() => null) : null;
   if (!bytes || createHash('sha256').update(bytes).digest('hex') !== file.sha256) return null;
   const text = bytes.toString('utf8');
-  if (trimSecrets(text) !== text) return null;
+  if (!clean(text)) return null;
   const at = argv.indexOf('--body-file');
   return { argv: argv.map((w, i) => (i === at + 1 ? '-' : w)), input: text };
 }
