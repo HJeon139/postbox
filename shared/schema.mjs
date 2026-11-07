@@ -55,7 +55,9 @@ export const list =
     if (unique) {
       const seen = new Set();
       for (const item of v) {
-        const k = item?.[unique];
+        // An item with no such key isn’t a duplicate: its own check says what’s wrong with it (#552).
+        if (item === null || typeof item !== 'object' || item[unique] === undefined) continue;
+        const k = item[unique];
         if (seen.has(k)) errs.push(`${path} has two items with the ${unique} “${k}”.`);
         seen.add(k);
       }

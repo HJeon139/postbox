@@ -30,6 +30,7 @@ export { attachmentPaths } from './remote-turn.mjs';
  */
 export const CLAUDE_CODE_CAPABILITIES = Object.freeze({
   images: true,
+  skills: true,
   remote: Object.freeze({
     stdin: 'file',
     env: Object.freeze(['CLAUDE_CODE_RESUME_INTERRUPTED_TURN']),

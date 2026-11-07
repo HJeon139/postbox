@@ -207,6 +207,8 @@ test('Claude Code says how it runs on a remote host; the Agent SDK and the mock 
   // rules and Claude’s models (adapter.mjs).
   assert.deepEqual(CLAUDE_CODE_CAPABILITIES, {
     images: true,
+    // It loads Postbox’s skills and yours, so the persona sheet lists them (#207).
+    skills: true,
     remote: {
       stdin: 'file',
       // The one variable it sets on a host: a resume after an interrupted turn goes on with it (D2).

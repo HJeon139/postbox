@@ -14,6 +14,7 @@ import { mountPane } from './pane.mjs';
 import { canonical } from './pane-route.mjs';
 import { holdFocus } from './rerender-state.mjs';
 import { theme } from './sandbox-libs.mjs';
+import { threadTopbar } from './search-dialog.mjs';
 import { liveMembers, mountEmptyProject, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';
 import { initHoverCards, navigate, refind, route, say, setAttention } from './ui.mjs';
@@ -103,7 +104,7 @@ function render({ rebuild = false } = {}) {
   pane = mountPane(t.id);
   mounted.push(rail, tr, comp, pane);
   conversation = h('div.main', rail.strip, tr.el, comp.el);
-  const shell = h('div.app', { class: railHidden() ? 'rail-hidden' : '' }, topbar({ title: t.title, threadId: t.id }), rail.el, conversation, pane.el);
+  const shell = h('div.app', { class: railHidden() ? 'rail-hidden' : '' }, threadTopbar(t), rail.el, conversation, pane.el);
   root.replaceChildren(shell);
   pane.set(r);
   requestAnimationFrame(() => tr.settle());
@@ -184,7 +185,7 @@ function refreshTop() {
       back();
       return;
     }
-    next = topbar({ title: t.title, threadId: t.id });
+    next = threadTopbar(t);
   } else if (current.projectId) next = topbar({ title: current.view === 'threads' ? 'Threads' : '', projectId: current.projectId });
   else next = topbar({});
   // The keyboard stays where it was: focus on a control of the old bar moves to the same control in the new one.

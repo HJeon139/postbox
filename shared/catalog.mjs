@@ -46,6 +46,23 @@ const LANG = /^[A-Za-z0-9_+#.-]{1,32}$/;
 
 // An option may say more under its label (#838): agents gave options a description, and the whole block was refused.
 const option = () => obj({ id: id(), label: str({ min: 1, max: 120 }), description: str({ min: 1, max: LIMITS.optionDescription }) }, ['id', 'label']);
+/** Whether every option is a string: a non-empty list of nothing but strings. @param {unknown} v */
+const allStrings = (v) => Array.isArray(v) && v.length > 0 && v.every((o) => typeof o === 'string');
+/**
+ * A choice’s or a select’s options. Options that are all strings, an easy guess, get one error that shows an option’s
+ * shape, from the first, rather than one for each (#455). @param {number} max @returns {import('./schema.mjs').Rule}
+ */
+const options = (max) => (v, path, errs) => {
+  if (!allStrings(v)) return list(option(), { min: 1, max, unique: 'id' })(v, path, errs);
+  // The example has to be a valid option itself: an empty string can’t be its label.
+  const label = (v.find((o) => o.trim() !== '') ?? 'One').slice(0, 40);
+  const slug = label
+    .toLowerCase()
+    .replace(/[^a-z0-9_.:-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  // lint-allow quotes: the JSON an agent writes, whose quotes are JSON’s.
+  errs.push(`${path} must be objects like { "id": ${JSON.stringify(slug || 'one')}, "label": ${JSON.stringify(label)} }, not strings.`);
+};
 // A result reported on an answered block (#94), or an approved review (#106), shown under the answer. Markdown.
 const outcome = () => str({ min: 1, max: LIMITS.outcome });
 
@@ -60,7 +77,7 @@ const SCHEMAS = {
   choice: {
     fields: {
       prompt: str({ max: LIMITS.prompt }),
-      options: list(option(), { min: 1, max: LIMITS.choiceOptions, unique: 'id' }),
+      options: options(LIMITS.choiceOptions),
       multiple: bool(),
       max: int({ min: 1, max: LIMITS.choiceOptions }),
       other: obj({ label: str({ min: 1, max: 80 }), placeholder: str({ max: 120 }) }, ['label']),
@@ -76,7 +93,7 @@ const SCHEMAS = {
         obj(
           {
             id: id(),
-            label: str({ min: 1, max: 120 }),
+            label: str({ min: 1, max: LIMITS.fieldLabel }),
             kind: oneOf('text', 'longtext', 'number', 'select', 'toggle', 'date'),
             required: bool(),
             placeholder: str({ max: 120 }),
@@ -85,7 +102,7 @@ const SCHEMAS = {
             max: num(),
             step: num(),
             maxLength: int({ min: 1, max: 20000 }),
-            options: list(option(), { min: 1, max: LIMITS.selectOptions, unique: 'id' }),
+            options: options(LIMITS.selectOptions),
             default: scalar(),
           },
           ['id', 'label', 'kind'],
@@ -193,10 +210,16 @@ const SCHEMAS = {
     check(b, errs, opts) {
       if (typeof b.src !== 'string') return;
       // https from an allowed origin; plain http only for Postbox itself on this machine.
-      const local = LOCAL_HTTP.test(b.src);
-      if (!isSafeUrl(b.src, { schemes: local ? ['http:'] : ['https:'], origins: opts.imageOrigins })) {
-        errs.push(`src must be an https address from an allowed origin (${(opts.imageOrigins ?? []).join(', ') || 'none configured'}).`);
+      const schemes = LOCAL_HTTP.test(b.src) ? ['http:'] : ['https:'];
+      // A host doesn’t know Postbox’s list of origins, so it checks the scheme, and Postbox the origin (#854).
+      if (opts.origins === 'later') {
+        if (!isSafeUrl(b.src, { schemes })) errs.push('src must be an https address.');
+        return;
       }
+      // No list allows no origin: a caller that forgets the list refuses an image rather than passing any.
+      const origins = opts.imageOrigins ?? [];
+      if (!isSafeUrl(b.src, { schemes, origins }))
+        errs.push(`src must be an https address from an allowed origin (${origins.join(', ') || 'none configured'}).`);
     },
   },
   code: {
@@ -250,7 +273,8 @@ const SCHEMAS = {
 /**
  * Validates one block against the catalog.
  * @param {any} raw  the block as the agent sent it
- * @param {{ imageOrigins?: string[] }} [opts]
+ * @param {{ imageOrigins?: string[], origins?: 'later' }} [opts]  origins: 'later' checks an image’s scheme and leaves its
+ *   origin to Postbox, for a host, which doesn’t have imageOrigins
  * @returns {{ ok: true, block: Block } | { ok: false, errors: string[], fallback: string, reason: 'unknown-type'|'newer-version'|'invalid' }}
  */
 export function validateBlock(raw, opts = {}) {

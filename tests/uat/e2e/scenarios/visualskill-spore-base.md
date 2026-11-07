@@ -7,8 +7,9 @@
 - steps: 6
 - project: Visual skill
 - conversation: Spore archetypes
+- skills: off
 
-This measures the draft visual-explainer skill ([#207](https://github.com/HJeon139/postbox/issues/207)) on its hard brief (designs/skills/visual-explainer/briefs/spore-archetypes.md): a system of rules whose true shape is hidden. **Without the skill:** the baseline for [visualskill-spore](visualskill-spore.md), with the same persona and messages, and no skill in the project. The runs are scored afterward, with the takeaway test on the first visual’s screenshot; your job is to ask as this person would. Don’t name a chart type, a shape, a library, Postbox’s tools, the word “app” or the skill.
+This measures the draft visual-explainer skill ([#207](https://github.com/HJeon139/postbox/issues/207)) on its hard brief (designs/skills/visual-explainer/briefs/spore-archetypes.md): a system of rules whose true shape is hidden. **Without the skill** (`- skills: off`): the baseline for [visualskill-spore](visualskill-spore.md), with the same persona and messages, and no skill in the project. The runs are scored afterward, with the takeaway test on the first visual’s screenshot; your job is to ask as this person would. Don’t name a chart type, a shape, a library, Postbox’s tools, the word “app” or the skill.
 
 ## Phase 1: Ask
 
