@@ -4,8 +4,9 @@
 // the person knows which of theirs won’t run in Postbox turns. Org-managed hooks aren’t read here: they still run.
 //
 // A hook’s matcher and command are the person’s data. They reach the page as text through h(), cut to a length, with
-// control characters and characters that show as nothing marked, and with the credentials found in a command hidden,
-// as best it can. A file that isn’t JSON, or holds hooks in a shape this doesn’t know, says so.
+// control characters and characters that show as nothing marked, and with the credentials found in either hidden, as
+// best it can (a matcher is a pattern the person writes, so it can hold one too, #871). A file that isn’t JSON, or
+// holds hooks in a shape this doesn’t know, says so.
 
 import { readFile } from 'node:fs/promises';
 import { HOST_SOURCES, ISOLATED_SOURCES } from './adapters/setup.mjs';
@@ -64,6 +65,13 @@ const MAX_SCAN = 2000;
 /** `text`, cut to MAX_SCAN, with the credentials found in it replaced by an ellipsis. @param {string} text */
 const redacted = (text) => text.slice(0, MAX_SCAN).replace(ASSIGNED, '$1…').replace(FLAGGED, '$1…').replace(BEARER, '$1…');
 
+/**
+ * A hook group’s matcher as the panel shows it, with the credentials found in it hidden. No matcher, or an empty one,
+ * matches every tool, as Claude Code reads it.
+ * @param {any} group
+ */
+const matcherOf = (group) => shown(typeof group.matcher === 'string' ? redacted(group.matcher) : '', MAX_MATCHER) || '*';
+
 const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 
 /**
@@ -100,8 +108,7 @@ export async function readHookFile(file) {
   const groups = settings.hooks.PreToolUse;
   if (groups === undefined) return { file, exists: true, hooks: [], more: 0 };
   if (!Array.isArray(groups) || !groups.every((g) => isObject(g) && Array.isArray(g.hooks))) return unknown;
-  // No matcher, or an empty one, matches every tool, as Claude Code reads it.
-  const all = groups.flatMap((g) => g.hooks.map((hook) => entry(shown(g.matcher, MAX_MATCHER) || '*', hook)));
+  const all = groups.flatMap((g) => g.hooks.map((hook) => entry(matcherOf(g), hook)));
   return { file, exists: true, hooks: all.slice(0, MAX_HOOKS), more: Math.max(0, all.length - MAX_HOOKS) };
 }
 
