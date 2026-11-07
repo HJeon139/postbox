@@ -1,7 +1,7 @@
 // The customer judges the visual (#206, #333). A scenario with `- judge: visual` asks the tester, who plays the person,
 // to judge the first visual that answers their question from its screenshot, as the person who asked, and record a
 // structured verdict in that step’s answer. The bar is the maintainer’s, from their blind verdicts on 20 agent-made
-// visuals on November 6, 2026 (designs/skills/visual-explainer/references/critique.md, “How far to trust it”): labeled
+// visuals on November 6, 2026 (agent-plugin/skills/visual-explainer/references/critique.md, “How far to trust it”): labeled
 // boxes fail, a chart of one fixed answer isn’t a relationship, and unreadable text is a miss.
 
 import { cell } from './trigger-facts.mjs';

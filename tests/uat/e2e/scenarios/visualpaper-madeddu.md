@@ -7,8 +7,11 @@
 - steps: 12
 - project: Paper explainers
 - conversation: Madeddu
+- skills: off
 
 The pinned variant of [the visual paper eval](visualpaper.md) for [#206](https://github.com/HJeon139/postbox/issues/206): the same paper every run, so a change in score comes from the agent or its prompt, not the paper. Madeddu, [arXiv:2610.24728](https://arxiv.org/abs/2610.24728), covers a model of how high blood sugar damages bone marrow. Its content is a network of parts that push on each other. The baseline is [`marrow-toy`](https://github.com/HJeon139/postbox/tree/docs/agentic-ux-examples/examples/agentic-apps/marrow-toy), the app a room reached after several rounds of a person’s feedback; scored on the same rubric, it’s the bar a first version should reach.
+
+It runs without Postbox’s skills (`- skills: off`), to compare with [the run that has them](visualpaper-madeddu-skill.md).
 
 Write as you would to a colleague. Don’t name a chart type, a library, Postbox’s tools or the word “app”: the run measures what the agent chooses. Don’t open the baseline app. Judge every visual from its screenshot, not from what the agent says it drew.
 

@@ -4,12 +4,11 @@
 - agents: researcher
 - models: persona
 - judge: visual
-- seed: visual-skill
 - steps: 12
 - project: Paper explainers
 - conversation: Sontag
 
-With the draft visual-explainer skill planted as a project skill (`- seed: visual-skill`), on the development set (designs/skills/visual-explainer/briefs/papers/). Otherwise identical to [the run without it](visualpaper-sontag.md). The pinned variant of [the visual paper eval](visualpaper.md) for [#206](https://github.com/HJeon139/postbox/issues/206): the same paper every run, so a change in score comes from the agent or its prompt, not the paper. Sontag, [arXiv:2610.24351](https://arxiv.org/abs/2610.24351), covers a proof that a class of enzyme networks always settles to the same balance. Its content is states that change over time and settle. The baseline is [`sontag_mm_contraction`](https://github.com/HJeon139/postbox/tree/docs/agentic-ux-examples/examples/agentic-apps/sontag_mm_contraction), the app a room reached after several rounds of a person’s feedback; scored on the same rubric, it’s the bar a first version should reach.
+With Postbox’s visual-explainer skill, which every Claude agent on this computer loads by default, on the development set (designs/skills/visual-explainer/briefs/papers/). Otherwise identical to [the run without it](visualpaper-sontag.md). The pinned variant of [the visual paper eval](visualpaper.md) for [#206](https://github.com/HJeon139/postbox/issues/206): the same paper every run, so a change in score comes from the agent or its prompt, not the paper. Sontag, [arXiv:2610.24351](https://arxiv.org/abs/2610.24351), covers a proof that a class of enzyme networks always settles to the same balance. Its content is states that change over time and settle. The baseline is [`sontag_mm_contraction`](https://github.com/HJeon139/postbox/tree/docs/agentic-ux-examples/examples/agentic-apps/sontag_mm_contraction), the app a room reached after several rounds of a person’s feedback; scored on the same rubric, it’s the bar a first version should reach.
 
 Write as you would to a colleague. Don’t name a chart type, a library, Postbox’s tools or the word “app”: the run measures what the agent chooses. Don’t open the baseline app. Judge every visual from its screenshot, not from what the agent says it drew.
 
