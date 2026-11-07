@@ -23,8 +23,10 @@
 //   it sends a progress notification every TIMINGS.progress if the call carried a progress token, with a value that
 //   goes up by one each time, as MCP requires (“Progress”). Claude Code’s per-server `timeout` is what lets the call
 //   last; the progress only backs up its idle window (the plan’s C1).
-// - IDs are a counter with a prefix for this process, so a shim the harness restarts within a turn can’t reuse an
-//   ID the daemon still holds for that turn: a prompt’s or call’s identity is (turn, ID).
+// - A call’s ID is a counter with a prefix for this process, so a shim the harness restarts within a turn can’t reuse
+//   an ID the daemon still holds for that turn: a prompt’s or call’s identity is (turn, ID). A prompt’s ID is random,
+//   so another client of the turn can’t guess it, and each hello carries this process’s own random key: the daemon
+//   sends a prompt’s answer only to the connections of the shim that asked it (#353).
 // - `server/discover` (Kiro CLI tries it first), like any method it doesn’t serve, gets “method not found”, so the
 //   client goes on to `initialize` at once. Batches aren’t accepted: MCP 2025-06-18 removed them.
 // - Shutdown is the client’s: when stdin ends, it closes the daemon link and exits 0 (MCP “Lifecycle”, stdio).

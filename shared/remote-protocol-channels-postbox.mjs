@@ -187,9 +187,15 @@ export const POSTBOX_CHANNELS = {
       id(m.id, 'tool.id') ||
       (Object.hasOwn(TOOL_ROUTES, m.name) && TOOL_ROUTES[m.name] !== 'host' ? '' : `tool.name “${clip(m.name)}” isn’t a tool Postbox answers.`) ||
       obj(m.args, 'tool.args'),
-    /** { id, turn, request }: a permission prompt waiting in the shim; id is the shim’s, unique only within the turn. */
+    /** { id, turn, request, entry? }: a permission prompt waiting in the shim; id is the shim’s, unique only within the
+     * turn. entry is the daemon’s own ID for its record of the prompt, which no shim chooses, the same in every resend:
+     * Postbox knows a resend by it (#353). */
     prompt: (m) =>
-      fields(m, 'prompt', ['id', 'turn', 'request']) || id(m.id, 'prompt.id') || turnId(m.turn, 'prompt.turn') || checkRequest(m.request, 'prompt.request'),
+      fields(m, 'prompt', ['id', 'turn', 'request'], ['entry']) ||
+      id(m.id, 'prompt.id') ||
+      turnId(m.turn, 'prompt.turn') ||
+      opt(m.entry, (v) => id(v, 'prompt.entry')) ||
+      checkRequest(m.request, 'prompt.request'),
     /** { id, turn, at, reason? }: nobody can answer it any more: the host denied it at permissionWaitMax (`expired`,
      * the default), or the harness canceled the call (`canceled`). */
     'prompt-expired': (m) =>

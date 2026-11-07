@@ -139,10 +139,17 @@ export function forbidden() {
 export const corpus = { search: (q) => [{ id: 'b1:1', title: 'Found', text: `about ${q}` }], read: () => null, stats: () => ({ books: [], passages: 0 }) };
 
 /**
- * A runtime with one Claude Code persona on a host, over a fake daemon whose turns run until ended (autoEnd false).
+ * A runtime with one Claude Code persona on a host, over a fake daemon whose turns run until ended (autoEnd false),
+ * and whose prompts come after their call’s line (callLines), as the CLI asks.
  * @param {{ daemon?: object, signIn?: any, store?: Store, settings?: object, d?: any }} [o]
  */
-export function rig({ daemon = {}, signIn = null, store = new Store(null), settings = {}, d = createFakeDaemon({ autoEnd: false, ...daemon }) } = {}) {
+export function rig({
+  daemon = {},
+  signIn = null,
+  store = new Store(null),
+  settings = {},
+  d = createFakeDaemon({ autoEnd: false, callLines: true, ...daemon }),
+} = {}) {
   const hosts = fakeHosts(d, { signIn });
   const f = forbidden();
   const claude = new ClaudeCodeAdapter({

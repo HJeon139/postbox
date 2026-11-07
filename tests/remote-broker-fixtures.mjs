@@ -164,16 +164,17 @@ export function makeBroker(h, over = {}) {
 }
 
 /**
- * A shim connected to the broker: its lines, checked as the shim checks them.
- * @param {ReturnType<typeof createBroker>} b @param {string} turn
+ * A shim connected to the broker: its lines, checked as the shim checks them. `key`: the key its hello carries, the
+ * same for each connection of one shim process; none by default.
+ * @param {ReturnType<typeof createBroker>} b @param {string} turn @param {string} [token] @param {string} [key]
  */
-export function connectShim(b, turn, token = turnToken(turn)) {
+export function connectShim(b, turn, token = turnToken(turn), key = undefined) {
   /** @type {any[]} */
   const got = [];
   const taken = new Set();
   let ended = false;
   const h = b.shim({
-    first: JSON.stringify({ type: 'hello', token, turn }),
+    first: JSON.stringify({ type: 'hello', token, turn, ...(key ? { shim: key } : {}) }),
     write: (s) => {
       for (const l of s.split('\n').filter(Boolean)) {
         const r = parseLine('daemon-to-shim', l);

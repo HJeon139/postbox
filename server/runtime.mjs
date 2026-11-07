@@ -114,6 +114,7 @@ import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
+import { workEvents } from './turn-work.mjs';
 import { closeOrphanCards, retireStale } from './wake-cards.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
@@ -750,21 +751,8 @@ export class Runtime {
         rt.ledger.denied(turn, d.toolUseId);
         rt.recordDenial(turn, d);
       },
-      // For the work ledger (#132): each tool call with its whole input, before it runs ({ id, name, input, who });
-      // what it returned ({ id, isError, text, result: the tool’s own record, vcsCwd }); a background task’s end
-      // ({ toolUseId, status, summary, outputFile }); and the process’s running spend ({ key, costUsd, tokens }).
-      toolUse(u) {
-        if (live()) recordScheduledTool(rt, turn, u);
-      },
-      toolResult(r) {
-        if (live()) rt.ledger.toolResult(turn, r);
-      },
-      taskEnded(t) {
-        if (live()) rt.ledger.taskEnded(turn, t);
-      },
-      usage(u) {
-        if (live()) rt.ledger.usage(turn, u);
-      },
+      // For the work ledger (#132): toolUse, toolResult, taskEnded and usage (turn-work.mjs).
+      ...workEvents(rt, turn, live),
       /**
        * Where this turn ends in the backend’s own transcript, such as { claudeSessionId, uuid }. A topic
        * thread that branches from this turn’s messages forks the agent’s session there.

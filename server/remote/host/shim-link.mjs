@@ -26,7 +26,7 @@ export function connect(sh) {
   }
   let hello;
   try {
-    hello = encode(message('shim-to-daemon', 'hello', { token, turn: sh.turn }));
+    hello = encode(message('shim-to-daemon', 'hello', { token, turn: sh.turn, shim: sh.key }));
   } catch (e) {
     log(`The token at ${tokenPath} isn’t one the daemon takes: ${e.message}`);
     return reconnectLater(sh);

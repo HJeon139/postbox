@@ -191,14 +191,32 @@ sequenceDiagram
   participant M as Postbox MCP
   participant R as Runtime
   participant Y as You
-  A->>M: permission_prompt(Bash, "rm -rf build")
-  M->>R: requestPermission
-  R->>Y: card in the thread, agent needs you
-  Y->>R: Allow, Always allow, Edit, or Don't allow (with a reason)
-  R-->>M: allow (with updatedInput or updatedPermissions), or deny with a message
+  A->>M: permission_prompt(Bash, "rm -rf build", tool_use_id)
+  M->>R: claim the call the stream showed with that tool_use_id
+  alt no such call, another name or input, or claimed already
+    R-->>M: deny with why, and a line for you
+  else the first claim of the call, as the stream showed it
+    R->>Y: card in the thread, agent needs you
+    Y->>R: Allow, Always allow, Edit, or Don't allow (with a reason)
+    R-->>M: allow (with updatedInput or updatedPermissions), or deny with a message
+  end
   M-->>A: behavior allow / deny
   Note over R: Stop, the turn ending, or 25 hours unanswered answers deny and marks the card expired
 ```
+
+**A prompt counts only for a call its stream showed** ([#353](https://github.com/HJeon139/postbox/issues/353), [#665](https://github.com/HJeon139/postbox/issues/665)). The turn’s token is in the CLI’s arguments (`--mcp-config`), so a command the agent runs can post `permission_prompt` too, with any tool and input. So before a rule, the write judge and its budget, or a card sees a prompt, [`server/prompt-claim.mjs`](../server/prompt-claim.mjs) claims the call it names, for the laptop’s prompts and a host’s alike:
+- **The binding rule.** Its `tool_use_id` is one the turn’s stream showed as a `tool_use`, the agent’s own or a subagent’s, still without a result; its `tool_name` is that call’s, exactly; its `input` is deep-equal to the call’s, whatever the key order (a recorded Edit’s prompt orders its keys unlike its stream, [`permission-edit-prompts.json`](../tests/fixtures/claude-code/permission-edit-prompts.json)); and it’s the first claim of that call. Anything else is refused at once with a deny in the CLI’s shape, and the person sees a line that names the stream’s call, never anything the prompt said. The card draws the stream’s name and input, and who asks; the prompt’s `permission_suggestions` are never read, so Always allow is Postbox’s own rule for the stream’s call.
+- **The hold.** The CLI can ask before Postbox has read the call’s line, so a prompt for an ID not seen yet waits for that line, at most `PROMPT_CALL_WAIT_MS` (5 s), and at most `PROMPT_HOLDS_MAX` (8) wait in a turn: one more is refused at once. On a host, while the stream is still being read up to where the host has it (a replay after a restart or a reconnect), the 5 s wait starts once the read has caught up, and the wait ends `PROMPT_REPLAY_WAIT_MS` (60 s) after the prompt first came, whatever the read does. A prompt the host ends while it waits gets no card ([`shared/limits.mjs`](../shared/limits.mjs)).
+- **On a host,** the daemon names each prompt itself (its `entry`), and Postbox tells a resend from another prompt by that, never by the shim’s ID. The shim’s prompt IDs are random, and the daemon sends an answer only to the connections of the shim that asked, which it knows by the key in its hello (“Postbox’s tools on the host: a stdio shim”, below).
+- **Antigravity is exempt** (`capabilities.promptHook`): its prompts come from Postbox’s own PreToolUse hook, with an ID of the hook’s that no stream line carries, so the rule would refuse every one. Declined for now; the follow-up (P1) has the hook pass the ID of the call its stream shows, which needs a recorded hook event.
+- **What it leaves:**
+  - A PreToolUse hook that rewrites a call’s input, an organization’s managed one included, makes the CLI’s own prompt differ from the call. It fails closed: no card, the call is denied, and the line names the keys that differ.
+  - A copy that takes a real call’s ID and input from the transcript, and claims first, gets nothing beyond that call: its card shows exactly the stream’s call. The CLI’s own prompt is then refused, visibly, so the call is denied.
+  - A flood that keeps 8 prompts waiting can get a genuine prompt that came before its own line refused at once, visibly.
+  - Antigravity’s hook keeps the old path, so #665’s attack still works there until its follow-up.
+  - A host on an older Postbox names no entry and sends each answer to every connection of a turn, until it’s installed again with this version.
+  - A shim from before this version sends no key, so on a new daemon every keyless shim of a turn counts as the same one, and any of them can take another’s prompt, until the shim is installed again too.
+  - A tool’s `result` still goes to every shim of its turn, so another connection sees it too, and any connection to a turn can end one of its prompts as expired or canceled by its ID, which denies it. Neither allows anything; a follow-up gives both the routing answers have.
 
 **What it rests on**
 - **The mode is always passed.** Left out, Claude Code would take `permissions.defaultMode` from your own settings, or `auto`, and an agent you set to ask could stop asking.
@@ -232,7 +250,7 @@ sequenceDiagram
 - **Allow:** `{ behavior: "allow", updatedInput }`, as asked.
 - **Always allow:** allow, and keep allowing calls like it. The card says the rule and where it’s saved before you click.
   - The Agent SDK passes Claude Code’s own suggestions (`canUseTool`’s `suggestions`), and they go back as `updatedPermissions`. Rules go to the folder’s local settings: one suggested for the session only would end with the turn, since each Postbox turn is a new session, and one for the project’s shared settings belongs to the person’s team. The card says when it moved one. A mode is offered only for the rest of the turn, never saved as a default. When the SDK sends no suggestions, or says a saved rule would grant more than the call (`suppressAlwaysAllowRule`), there’s no Always allow.
-  - The CLI’s prompt tool gets no suggestions and no agent id: a real turn recorded only `tool_name`, `input` and `tool_use_id`, for the agent’s call and for a subagent’s ([`permission-prompts.json`](../tests/fixtures/claude-code/permission-prompts.json)). So Postbox makes the rule as it does for a refusal ([`server/permission-rules.mjs`](../server/permission-rules.mjs)) and saves it in `.claude/settings.local.json` itself. A rule too long to keep (a command with a heredoc only ever gets its exact text) isn’t offered.
+  - The CLI’s prompt tool gets no suggestions and no agent id: a real turn recorded only `tool_name`, `input` and `tool_use_id`, for the agent’s call and for a subagent’s ([`permission-prompts.json`](../tests/fixtures/claude-code/permission-prompts.json)). So Postbox makes the rule as it does for a refusal ([`server/permission-rules.mjs`](../server/permission-rules.mjs)) and saves it in `.claude/settings.local.json` itself. Any suggestions a prompt carries are ignored, since a copy of the CLI’s prompt could carry any (“A prompt counts only for a call its stream showed”, above). A rule too long to keep (a command with a heredoc only ever gets its exact text) isn’t offered.
 - **Edit:** allow with the input you changed, as `updatedInput`: the command for Bash, with the call’s other fields kept, else the input’s JSON, which has to parse. An input too large to keep on the card (16,000 characters) can’t be edited, only allowed as it is. The recorded turn ran the edited command.
 - **Don’t allow:** `{ behavior: "deny", message }`, with your reason in the message, when you give one.
 
@@ -245,7 +263,7 @@ A subagent’s prompt names the subagent. The SDK passes its id (`agentID`, the 
 - **The mode** is the persona’s, so it reaches running conversations from their next turn, as [intent.md](intent.md) says. On an Agent SDK turn that’s running, Postbox also tries the query’s `setPermissionMode`; the SDK documents it for streaming input only, and Postbox sends one prompt string, so the panel says whether it applied now.
 - **Which rule decides** a typed call is answered in Claude Code’s order: deny, then ask, then allow, then the mode, with the rule forms Claude Code documents ([`shared/permission-match.mjs`](../shared/permission-match.mjs)). The panel says Claude Code has the final say: hooks, managed settings and its own checks aren’t modeled.
 
-**Revisit when** the CLI’s prompt tool passes `permission_suggestions` (then the CLI’s cards can use them too), or Postbox runs SDK turns with streaming input, so the mode and rules can change during a turn.
+**Revisit when** the CLI’s stream carries a call’s suggestions (then the CLI’s cards can use them too; a prompt’s own can’t be trusted), Antigravity’s hook can name the call its stream shows, or Postbox runs SDK turns with streaming input, so the mode and rules can change during a turn.
 
 ## 7. Attached sessions: resume and mirror
 
@@ -629,7 +647,7 @@ flowchart TD
 | `start { turn, harness, folder, argv, env, stdin, files, agentFile?, attachments? }` | Writes the turn folder and its files, then starts the runner. `attachments` are the files the person attached to the message, as base64, written to `attachments/<name>` in the turn folder, since the agent can’t read a path on the laptop; the message names those copies. At most 16, 3 MiB each and 3.5 MiB in all (decoded), so a start at every limit still fits in one 16 MiB line; Postbox refuses a message over one before the turn starts |
 | `read { turn, from }` | Sends `out.jsonl` lines from that byte offset, then follows new ones |
 | `write { turn, line }` | A line for a held stdin |
-| `answer { turn, prompt, result }` | Answers a permission prompt waiting in the shim. A prompt’s identity is its turn and its ID, since each turn’s shim picks its own IDs |
+| `answer { turn, prompt, result }` | Answers a permission prompt waiting in the shim. A prompt’s identity is its turn and its ID, since each turn’s shim picks its own IDs; the daemon also names each one (`entry`), which is what Postbox tells a resend from another prompt by ([#353](https://github.com/HJeon139/postbox/issues/353)) |
 | `reply { turn, id, ok, text }` | Answers a tool call the daemon passed on, such as `corpus_search` |
 | `check` | Runs the host’s `signInCheck`, as an argument list with no shell |
 | `stop { turn }` | SIGINT to the turn’s process group, then SIGKILL after a grace period, once the runner is matched. For Codex, `turn/interrupt` first |
@@ -649,6 +667,7 @@ The daemon sends back stream lines with their offsets, turn endings, queued tool
 - **`bring_to_conversation` is listed where the laptop lists it:** only for a turn the person started in a side or topic thread, which the runtime tells the shim with `--bring`. Whether it may post depends on the thread and the turn, which only Postbox knows, so a call waits for Postbox’s answer (`ask`), as `corpus_search` does, `review_block` (#133), whose comments go on a review block only Postbox has, and `open_topic` (#637), whose answer carries the topic thread’s id, which only Postbox has.
 - **Reading tools ask Postbox while it is attached, and answer from a snapshot if it goes away or is slow.** The snapshot is the conversation as Postbox gave the daemon at turn start, kept current. A read that Postbox has not answered in 100 s, or that is open when the link drops, is answered from it at once, with a note that newer items may be missing; the 100 s keeps the answer inside the 120 s after which Kiro gives up a call (#582). `corpus_search` goes to Postbox when it’s connected, and otherwise returns an error that says so. `add_dataset` isn’t available there: it loads a file on the laptop, which an agent on the host can’t name, and the agent is told so.
 - **It reconnects** if the daemon restarts, so a waiting prompt survives that.
+- **A prompt’s answer goes only to the shim that asked it** ([#353](https://github.com/HJeon139/postbox/issues/353)). Any client with the turn’s token can connect as one of its shims, so a prompt’s ID is random, and each hello carries the shim process’s own random key, the same on each reconnect. The daemon keeps, for each prompt, the connections that sent it, and sends its answer to those alone; another key asking the same is refused. `prompts.jsonl` keeps the key’s SHA-256, never the key, and a record an older daemon wrote, with none, goes to the first shim that sends it again.
 - **Resumes pass it again.** `--mcp-config` and `--settings` aren’t restored on `--resume` ([sessions](https://code.claude.com/docs/en/sessions)), so every turn passes them, as the local adapter already does.
 
 **Permission prompts while nobody is connected.** A prompt never auto-approves because nobody is connected. The host enforces `permissionWaitMax`, since the laptop may be asleep when it runs out: the shim (Claude Code) or the daemon through the held stdin (Codex) denies, and records the expiry, which the card shows on reconnect. Kiro CLI refuses headless and has nothing to wait on.

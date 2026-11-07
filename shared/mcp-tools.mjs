@@ -209,7 +209,8 @@ export const TOOL_DEFS = [
     inputSchema: {
       type: 'object',
       // What Claude Code sends (tests/fixtures/claude-code/permission-prompts.json), and the suggestions and agent id
-      // its prompt types document (PermissionRequestHookInput’s permission_suggestions), should a version send them.
+      // its prompt types document (PermissionRequestHookInput’s permission_suggestions). Postbox takes neither from a
+      // prompt (#353): who asks comes from the stream, and Always allow is Postbox’s own rule for the stream’s call.
       properties: {
         tool_name: { type: 'string' },
         input: { type: 'object' },
