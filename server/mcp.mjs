@@ -28,6 +28,7 @@ import { AgentFileError } from './runtime.mjs';
 import { recordedTools } from './scheduled-wakes.mjs';
 import { withUrgent } from './subagent-end.mjs';
 import { closedTo, READ_TOOLS } from './tool-gate.mjs';
+import { viewApp } from './view-app/view-app.mjs';
 
 // The tools live in shared/mcp-tools.mjs, which the host’s shim serves too (#120); this keeps their old import working.
 export { READ_TOOLS, TOOL_DEFS };
@@ -83,10 +84,8 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
       const name = msg.params?.name;
       const args = msg.params?.arguments ?? {};
       if (closedTo(rt, name)) return reply({ content: [{ type: 'text', text: closedTo(rt, name) }], isError: true }); // tool-gate.mjs
-      // react and the asset tools are their own modules’, beside the runtime’s tools, and recorded as they are (#466).
       const turn = rt.turns.get(sessionId) ?? null;
-      const own = { react: (a) => reactTool(rt, rt.session(sessionId), a), ...assetTools(rt, sessionId, turn) };
-      const tools = { ...rt.toolsFor(sessionId, turn), ...recordedTools(rt, turn, own) };
+      const tools = { ...rt.toolsFor(sessionId, turn), ...recordedTools(rt, turn, ownTools(rt, sessionId, turn)) };
       if (name === 'permission_prompt') return reply(asksByPrompt(rt, sessionId) ? await permission(rt, sessionId, args, closeOrSignal) : NOT_YOUR_PROMPT);
       if (!(name in tools) || !TOOL_DEFS.some((t) => t.name === name)) return fail(-32602, `There’s no tool called “${name}”.`);
       try {
@@ -96,7 +95,7 @@ async function one(rt, sessionId, msg, turnToken, closeOrSignal) {
         noteAnswer(rt.turns.get(sessionId) ?? null, name, r);
         // An urgent note for the agent comes first (#229): this is how it hears one mid-turn.
         const text = withUrgent(rt, sessionId, r.results ? JSON.stringify(r.results) : r.message, turn);
-        return reply({ content: [{ type: 'text', text }], isError: r.ok === false && !r.waiting });
+        return reply({ content: contentOf(text, r), isError: r.ok === false && !r.waiting });
       } catch (e) {
         if (e instanceof AgentFileError) return reply({ content: [{ type: 'text', text: e.message }], isError: true });
         return reply({ content: [{ type: 'text', text: e.userMessage ?? e.message }], isError: true });
@@ -116,3 +115,28 @@ function offered(rt, sessionId, turnToken, name) {
   if (name === 'bring_to_conversation') return sameToken(turn?.token, turnToken) && offersBring(rt, turn);
   return name !== 'permission_prompt' || asksByPrompt(rt, sessionId);
 }
+
+/** What view_app needs of the turn: where it speaks, how to end its reply so far, and whether its agent sees images. */
+function viewContext(rt, sessionId, turn) {
+  const se = rt.session(sessionId);
+  const images = rt.adapters.get(rt.personaFor(se)?.backend)?.capabilities?.images === true;
+  return {
+    threadId: () => turn?.threadId ?? se.threadId,
+    endSegment: () => {
+      if (turn) turn.segment = null;
+    },
+    images,
+  };
+}
+
+/** react, view_app and the asset tools: their own modules’, beside the runtime’s tools, and recorded as they are (#466). */
+function ownTools(rt, sessionId, turn) {
+  return {
+    react: (a) => reactTool(rt, rt.session(sessionId), a),
+    view_app: (a) => viewApp(rt, sessionId, a, viewContext(rt, sessionId, turn)),
+    ...assetTools(rt, sessionId, turn),
+  };
+}
+
+/** A tool’s reply as MCP content: its text, and the picture view_app took, for a backend that sees images (#95). */
+const contentOf = (text, r) => [{ type: 'text', text }, ...(r.image ? [{ type: 'image', data: r.image.data, mimeType: r.image.mimeType }] : [])];

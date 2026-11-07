@@ -59,6 +59,10 @@
 //   capabilities.models: [ids]        the models it offers, suggested in the model field instead of Claude’s
 //   capabilities.tools: 'none'        it can’t turn a tool off for one agent, so the Tools help says so (#143)
 //   capabilities.isolation: false     it always loads your own setup, so the sheet has no Isolated switch (#143)
+//   capabilities.images: true         its agent sees an image in a tool’s result, so view_app sends the picture itself;
+//                                     to any other, view_app gives the path of the copy it saved (#95)
+//   capabilities.skills: true         it loads Postbox’s skills and yours, so the persona sheet lists them all to turn
+//                                     off for one agent (#207); 'postbox': it loads only Postbox’s, so only those show
 //   capabilities.promptTool: false    it never asks through Postbox’s permission_prompt (the CLI’s --permission-prompt-tool),
 //                                     so MCP doesn’t list it and refuses a call to it at once (#220)
 //   capabilities.promptHook: true     its prompts come from Postbox’s own hook, by an id of the hook’s (Antigravity’s),

@@ -3,7 +3,7 @@
 import { itemOf } from './item-index.mjs';
 
 /** What a session can need you for. Every one makes its ring pulse, so every one counts (#285): a refused step too. */
-export const NEEDS_KINDS = ['block', 'failed', 'hop', 'permission', 'appsend', 'denial', 'toolask'];
+export const NEEDS_KINDS = ['block', 'failed', 'hop', 'permission', 'appsend', 'denial', 'toolask', 'viewask'];
 
 /** @param {any} se */
 export const needsYouNow = (se) => !!se?.needs && NEEDS_KINDS.includes(se.needs.kind);

@@ -2,6 +2,31 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.39.0 (2026-11-07)
+
+### Features
+
+- **adapters:** Antigravity, Kiro and Codex leave out the skills a persona turned off
+- **personas:** choose which skills each agent loads
+- **adapters:** Antigravity, Kiro and Codex agents load the visual-explainer skill too
+- **adapters:** every Claude agent loads Postbox's visual-explainer skill by default
+
+## 1.38.0 (2026-11-07)
+
+### Features
+
+- **server:** view_app shows an agent its app as the person first sees it
+
+### Fixes
+
+- **app:** the view report reads the conversation's width without a document query
+- **server:** view_app starts up in one call, keeping start() under its ceiling
+- **app:** view_app shows a check's note as the person sees it
+- **server:** view_app's pictures stay out of the project's commits
+- **server:** view_app's browser can't hang a call or outlive a stop
+- **server:** view_app asks again a week after Not now
+- **app:** view_app's picture is as wide as the app the person sees
+
 ## 1.37.1 (2026-11-07)
 
 ### Fixes

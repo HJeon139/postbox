@@ -4,12 +4,11 @@
 - agents: researcher
 - models: persona
 - judge: visual
-- seed: visual-skill
 - steps: 6
 - project: Team onboarding
 - conversation: Title system
 
-This measures the draft visual-explainer skill ([#207](https://github.com/HJeon139/postbox/issues/207)) on the disguised version of its hard brief (designs/skills/visual-explainer/briefs/spore-archetypes.md, “The disguised version”): the same rules as Spore’s archetypes, with every name changed so the agent can’t recall the answer. The scenario’s name, project and conversation say nothing about the subject or the skill, because the agent sees its folder, which is named after the scenario, and the project’s name. **With the skill:** the draft visual-explainer skill sits in the project as a Claude Code project skill (`- seed: visual-skill`). Its baseline is [trial-c2](trial-c2.md). The runs are scored afterward, with the takeaway test on the first visual’s screenshot; your job is to ask as this person would. Don’t name a chart type, a shape, a library, Postbox’s tools, the word “app”, the skill, or the game this is modeled on.
+This measures the draft visual-explainer skill ([#207](https://github.com/HJeon139/postbox/issues/207)) on the disguised version of its hard brief (designs/skills/visual-explainer/briefs/spore-archetypes.md, “The disguised version”): the same rules as Spore’s archetypes, with every name changed so the agent can’t recall the answer. The scenario’s name, project and conversation say nothing about the subject or the skill, because the agent sees its folder, which is named after the scenario, and the project’s name. **With the skill:** Postbox’s visual-explainer skill, which every Claude agent on this computer loads by default. Its baseline is [trial-c2](trial-c2.md). The runs are scored afterward, with the takeaway test on the first visual’s screenshot; your job is to ask as this person would. Don’t name a chart type, a shape, a library, Postbox’s tools, the word “app”, the skill, or the game this is modeled on.
 
 ## Phase 1: Ask
 

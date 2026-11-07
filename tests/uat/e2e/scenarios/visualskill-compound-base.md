@@ -7,8 +7,9 @@
 - steps: 6
 - project: Visual skill
 - conversation: Why compound interest wins
+- skills: off
 
-This measures the draft visual-explainer skill ([#207](https://github.com/HJeon139/postbox/issues/207)) on one of its starter briefs (designs/skills/visual-explainer/briefs/). **Without the skill:** the baseline for [visualskill-compound](visualskill-compound.md), with the same persona and the same messages, and no skill in the project. The runs are scored afterward, with the takeaway test on the first visual’s screenshot; your job is to ask as this person would. Don’t name a chart type, a library, Postbox’s tools, the word “app” or the skill.
+This measures the draft visual-explainer skill ([#207](https://github.com/HJeon139/postbox/issues/207)) on one of its starter briefs (designs/skills/visual-explainer/briefs/). **Without the skill** (`- skills: off`): the baseline for [visualskill-compound](visualskill-compound.md), with the same persona and the same messages, and no skill in the project. The runs are scored afterward, with the takeaway test on the first visual’s screenshot; your job is to ask as this person would. Don’t name a chart type, a library, Postbox’s tools, the word “app” or the skill.
 
 ## Phase 1: Ask
 
