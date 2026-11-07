@@ -238,5 +238,22 @@ function mark(id, ranges) {
   // them, from reviews no longer shown, is cleared.
   if (marked.size > 50) for (const [k, v] of marked) if (k !== id && !v[0]?.startContainer.isConnected) marked.delete(k);
   marked.set(id, ranges);
+  paintMarks();
+}
+/** The highlight, from every review’s ranges still marked. */
+function paintMarks() {
   CSS.highlights.set('rv-quote', new Highlight(...[...marked.values()].flat()));
 }
+// Going to another conversation draws it in the same task, so a frame later a range off the page is one from a review
+// no longer shown. Its ranges hold its text, and so its old page: they go then, not only past 50 reviews (#945).
+addEventListener('hashchange', () =>
+  requestAnimationFrame(() => {
+    let gone = false;
+    for (const [k, v] of marked)
+      if (!v[0]?.startContainer.isConnected) {
+        marked.delete(k);
+        gone = true;
+      }
+    if (gone && globalThis.CSS?.highlights && typeof Highlight !== 'undefined') paintMarks();
+  }),
+);
