@@ -18,6 +18,7 @@ import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
 import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
+import { failedCallout } from './failed-actions.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
 import { openPermissions, openRunChoice } from './permissions.mjs';
@@ -357,26 +358,7 @@ function renderItem(it, prev, ctx) {
         it.work ? workChip(it, ctx) : null,
         hostEnd(it),
         it.status === 'stopped' && !it.note ? stoppedTag(it) : null,
-        it.status === 'failed' && !failedOnHost(it)
-          ? h(
-              'div.callout',
-              { role: 'alert' },
-              h('span.g.g-failed', { 'aria-hidden': 'true' }),
-              h('div.grow', ...failureText(it.error)),
-              h(
-                'button.btn.sm',
-                {
-                  type: 'button',
-                  onclick: () =>
-                    api(`/api/threads/${ctx.threadId}/items/${it.id}/retry`, {}).catch((e) =>
-                      toast({ title: 'Retry didn’t start', text: e.message, level: 'blocking' }),
-                    ),
-                },
-                icon('retry', 'i-sm'),
-                'Retry',
-              ),
-            )
-          : null,
+        it.status === 'failed' && !failedOnHost(it) ? failedCallout(ctx.threadId, it, failureText(it.error)) : null,
         it.status === 'retried' ? h('span.stopped-tag', 'Retried below') : null,
         it.sources?.length
           ? h(

@@ -19,6 +19,7 @@ import { MockAdapter } from './adapters/mock.mjs';
 import { PROBES, registerBackends } from './backends.mjs';
 import { INLINE_TYPES } from './blobs.mjs';
 import { buildInfo } from './build-info.mjs';
+import { dismissFailed } from './card-needs.mjs';
 import { Corpus } from './corpus.mjs';
 import { openDataFolder } from './data-folder.mjs';
 import { listFolder } from './folders.mjs';
@@ -366,6 +367,7 @@ export async function start({
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/summarize$/)) && req.method === 'POST') return send(res, 200, rt.summarizeBack(m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/diagram$/)) && req.method === 'POST')
       return send(res, 200, rt.diagramCheck(m[1], m[2], body));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/dismiss$/)) && req.method === 'POST') return send(res, 200, dismissFailed(rt, m[1], m[2]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/retry$/)) && req.method === 'POST') {
       await rt.retry(m[1], m[2]);
       return send(res, 200, { ok: true });
