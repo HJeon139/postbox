@@ -174,11 +174,13 @@ export const POSTBOX_CHANNELS = {
       turnId(m.turn, 'caught-up.turn') ||
       oneOf(m.log, 'caught-up.log', LOGS) ||
       int(m.size, 'caught-up.size', 0, Number.MAX_SAFE_INTEGER),
-    /** { turn, exit, size }: after the turn’s last line; exit is null for an interrupted turn. */
+    /** { turn, exit, size, unkilled? }: after the turn’s last line; exit is null for an interrupted turn. unkilled: its
+     * runner hung past the silence ceiling and its process was still there after its SIGKILL, so it may still run (#872). */
     ended: (m) =>
-      fields(m, 'ended', ['turn', 'exit', 'size']) ||
+      fields(m, 'ended', ['turn', 'exit', 'size'], ['unkilled']) ||
       turnId(m.turn, 'ended.turn') ||
       (m.exit === null ? '' : checkExit(m.exit, 'ended.exit')) ||
+      opt(m.unkilled, (v) => (typeof v === 'boolean' ? '' : 'ended.unkilled must be true or false.')) ||
       int(m.size, 'ended.size', 0, Number.MAX_SAFE_INTEGER),
     /** { turn, id, name, args }: a shim tool call for Postbox; id is the shim’s, unique only within the turn. */
     tool: (m) =>

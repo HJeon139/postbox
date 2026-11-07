@@ -58,7 +58,7 @@ test('#738 row 2: scan during a short stall reads the turn as running, not inter
   }
 });
 
-test('#738 row 3: a live runner silent for the ceiling ends then, exit null, and not a millisecond before', async () => {
+test('#738 row 3: a live runner silent for the ceiling is killed then and ends, exit null, and not a millisecond before', async () => {
   const s = silentSetup();
   try {
     const c = await startReading(s);
@@ -74,7 +74,7 @@ test('#738 row 3: a live runner silent for the ceiling ends then, exit null, and
     assert.equal((await s.daemon.scan())[0].state, 'interrupted', 'the scan agrees once the ceiling is reached');
     assert.equal(s.logs.filter((l) => /t1.*didn’t answer as its runner/.test(l)).length, 1, 'the silence’s start, logged once');
     assert.equal(s.logs.filter((l) => /t1.*hasn’t answered as its runner for 60 s/.test(l)).length, 1, 'the ceiling, logged once');
-    assert.deepEqual(s.kills, []);
+    assert.deepEqual(s.kills, [[-4001, 'SIGKILL']], 'killed at the ceiling (#872)');
   } finally {
     s.done();
   }
@@ -195,6 +195,8 @@ test('#738 row 12: after a daemon restart, a stall counts from the new daemon’
     await s.clock.tick(CEILING_MS - 1);
     assert.equal((await s.daemon.scan())[0].state, 'running');
     await s.clock.tick(1);
+    assert.equal((await s.daemon.scan())[0].state, 'running', 'killed at the ceiling, and running until it’s gone (#872)');
+    assert.deepEqual(s.kills, [[-777, 'SIGKILL']]);
     assert.equal((await s.daemon.scan())[0].state, 'interrupted');
   } finally {
     s.done();

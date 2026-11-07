@@ -45,7 +45,8 @@
 //   REMOTE_LIMITS.streamLineBytes, or whose `line` message would encode to over lineBytes, is sent with `cut: true` and
 //   empty text, so the stream moves on and the adapter can say a line was lost.
 // - `ended` follows a turn’s last line on a `read` that’s following it, once per `read`; `exit` is null for an
-//   interrupted turn (no live runner and no exit.json).
+//   interrupted turn (no live runner and no exit.json), and `unkilled: true` says its runner hung past the silence
+//   ceiling and its process was still there after its SIGKILL, so it isn’t resumed on its own (#872).
 // - `caught-up` follows a `read`’s first pass, once per `read`: it has sent every line the log had when that pass
 //   reached the file’s end, and `size` is the offset past the last of them (the file’s size then, less a last line
 //   still without its \n). A peer rebuilding from both logs (Codex) knows from it when it has seen what was there.

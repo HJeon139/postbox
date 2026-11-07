@@ -3,13 +3,17 @@
 // at work (stopped for a moment, its event loop held up), so a miss alone doesn’t end the turn: while runner.json still
 // names a live process of this boot (proc.mjs’s sameProcess, as cleanup and Stop judge it), the turn runs on, until it
 // has been silent for RUNNER_SILENT_MAX_MS. The silence is kept per turn, shared by every look, and timed on the daemon’s
-// monotonic clock (d.mono), so setting the wall clock neither stretches the ceiling nor cuts it short.
+// monotonic clock (d.mono), so setting the wall clock neither stretches the ceiling nor cuts it short. At the ceiling
+// its process is killed (daemon-kill.mjs’s endHung, #872), and the turn ends once it’s gone, or KILL_WAIT_MS later,
+// said to be unkilled, if it won’t go: a turn never ends here with its process still known to run unless it says so.
 
 import { TURN_FILES, validateRunnerRecord } from '../../../shared/remote-protocol.mjs';
-import { RUNNER_SILENT_MAX_MS } from './daemon-constants.mjs';
+import { KILL_WAIT_MS, RUNNER_SILENT_MAX_MS } from './daemon-constants.mjs';
 import { readJson, runnerAlive } from './daemon-files.mjs';
+import { endHung } from './daemon-kill.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Silence} Silence */
+/** @typedef {import('../../../shared/remote-protocol.mjs').RunnerRecord} RunnerRecord */
 
 /**
  * Whether the turn runs: not one found dead, and its runner answers, or is silent but still runner.json’s process and
@@ -25,19 +29,19 @@ export async function turnRunning(d, turn) {
     answered(d, turn);
     return true;
   }
-  const pid = await liveRunnerPid(d, turn);
-  if (pid === null) {
+  const runner = await liveRunner(d, turn);
+  if (runner === null) {
     processGone(d, turn);
     return false;
   }
-  return withinCeiling(d, turn, pid);
+  return withinCeiling(d, turn, runner);
 }
 
-/** runner.json’s PID, while it’s valid and names this runner’s process still, else null. @param {Daemon} d @param {string} turn */
-async function liveRunnerPid(d, turn) {
+/** runner.json, while it’s valid and names this runner’s process still, else null. @param {Daemon} d @param {string} turn */
+async function liveRunner(d, turn) {
   const rec = validateRunnerRecord(await readJson(d.p.turn(turn, TURN_FILES.runner)));
   if (!rec.ok) return null;
-  return (await d.proc.sameProcess(rec.msg)) ? rec.msg.pid : null;
+  return (await d.proc.sameProcess(rec.msg)) ? rec.msg : null;
 }
 
 /** The runner answered: a silence it was in is over. @param {Daemon} d @param {string} turn */
@@ -58,18 +62,33 @@ function processGone(d, turn) {
 
 /**
  * A silent runner whose process is still there: running while its silence is under the ceiling. The silence starts at
- * this miss if none is under way. Past the ceiling it stays recorded, so the turn stays ended until the runner answers.
- * @param {Daemon} d @param {string} turn @param {number} pid
+ * this miss if none is under way. At the ceiling its process is killed, and the turn runs on until it’s gone (the
+ * caller sees that as a miss), through Stop’s grace period if one is under way, or for KILL_WAIT_MS. Past that the
+ * silence stays recorded, unkilled, so the turn stays ended until the runner answers.
+ * @param {Daemon} d @param {string} turn @param {RunnerRecord} runner
  */
-function withinCeiling(d, turn, pid) {
-  const silence = d.silentSince.get(turn) ?? startSilence(d, turn, pid);
+async function withinCeiling(d, turn, runner) {
+  const silence = d.silentSince.get(turn) ?? startSilence(d, turn, runner.pid);
   if (d.mono() - silence.since < RUNNER_SILENT_MAX_MS) return true;
   if (!silence.over) {
     silence.over = true;
-    d.log(`Turn ${turn}’s runner (process ${pid}) hasn’t answered as its runner for ${seconds(RUNNER_SILENT_MAX_MS)} s; the turn is ended as interrupted.`);
+    silence.killedAt = d.mono();
+    d.log(
+      `Turn ${turn}’s runner (process ${runner.pid}) hasn’t answered as its runner for ${seconds(RUNNER_SILENT_MAX_MS)} s; it’s killed, and the turn ends as interrupted once it’s gone.`,
+    );
+    await endHung(d, turn, runner);
+    return true;
+  }
+  if (d.killTimers.has(turn) || d.mono() - (silence.killedAt ?? 0) < KILL_WAIT_MS) return true;
+  if (!silence.unkilled) {
+    silence.unkilled = true;
+    d.log(`Turn ${turn}’s runner (process ${runner.pid}) is still there ${seconds(KILL_WAIT_MS)} s after its SIGKILL; the turn ends as interrupted, unkilled.`);
   }
   return false;
 }
+
+/** Whether the turn ends with its process still there after the ceiling’s kill (#872). @param {Daemon} d @param {string} turn */
+export const unkilled = (d, turn) => d.silentSince.get(turn)?.unkilled === true;
 
 /**
  * “Didn’t answer as its runner”: the daemon can’t tell no answer from one for another turn or a refused token, since
@@ -78,7 +97,7 @@ function withinCeiling(d, turn, pid) {
  */
 function startSilence(d, turn, pid) {
   /** @type {Silence} */
-  const silence = { since: d.mono(), pid, over: false };
+  const silence = { since: d.mono(), pid, over: false, killedAt: null, unkilled: false };
   d.silentSince.set(turn, silence);
   d.log(
     `Turn ${turn}’s runner (process ${pid}) didn’t answer as its runner, but its process is still running; it’s kept running for up to ${seconds(RUNNER_SILENT_MAX_MS)} s.`,

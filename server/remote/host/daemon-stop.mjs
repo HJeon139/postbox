@@ -5,7 +5,7 @@ import { promises as fsp } from 'node:fs';
 import { FILE_MODE, TURN_FILES, validateRunnerRecord } from '../../../shared/remote-protocol.mjs';
 import { readExit, readJson } from './daemon-files.mjs';
 import { follow } from './daemon-follow.mjs';
-import { recordShells, signal } from './daemon-kill.mjs';
+import { killShells, recordShells, signal } from './daemon-kill.mjs';
 import { needTurn } from './daemon-reply.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
@@ -49,6 +49,11 @@ export async function stopTurn(d, turn) {
     return false;
   }
   const pid = rec.msg.pid;
+  if (typeof d.silentSince.get(turn)?.killedAt === 'number') {
+    // Killed at the silence ceiling already (daemon-kill.mjs’s endHung): the follower ends it, and nothing is sent twice.
+    d.log(`Stop for turn ${turn}: its runner (process ${pid}) was killed at the silence ceiling already; nothing more was signaled.`);
+    return true;
+  }
   recordShells(d, turn, pid);
   signal(d, pid, 'SIGINT', turn);
   if (!d.killTimers.has(turn))
@@ -67,14 +72,11 @@ async function killAfterGrace(d, turn, runner) {
   const pid = runner.pid;
   d.killTimers.delete(turn);
   // The harness may have ended on SIGINT and left a shell running, so the recorded shell groups still
-  // there are killed either way, as the laptop’s stopTurn does. liveGroups matches a group only by a member
-  // with the start time it was recorded with, so a reused PID is never hit. Only the turn’s own group waits on
+  // there are killed either way, as the laptop’s stopTurn does (killShells). Only the turn’s own group waits on
   // runner.json still naming a live runner.
   const ended = (await readExit(d, turn)) || !(await d.proc.sameProcess(runner));
   if (!ended) recordShells(d, turn, pid);
-  const found = [...(d.shells.get(turn)?.values() ?? [])];
-  d.shells.delete(turn);
-  for (const g of await d.proc.liveGroups(found)) signal(d, g.pgid, 'SIGKILL', turn, 'tool shell group');
+  await killShells(d, turn);
   if (ended) return;
   signal(d, pid, 'SIGKILL', turn);
   // The runner went with its group, so nobody else will say how the harness ended.
