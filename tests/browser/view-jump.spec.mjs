@@ -42,18 +42,29 @@ for (const [name, at, block] of /** @type {const} */ ([
   });
 }
 
-test('a jump to the last item lands at the end, following', async ({ page }) => {
-  await openRoom(app, page, room);
-  // Up from the end first, so the jump has somewhere to go.
-  await jump(page, 5000, 'center');
-  await landed(page);
-  const key = await jump(page, -1, 'center');
-  await landed(page);
-  const v = await where(page, key, 'center');
-  test.info().annotations.push({ type: 'measured', description: `${placed(v)}: ${JSON.stringify(v)}` });
-  expect.soft(v.atEnd, 'at the end').toBe(true);
-  expect.soft(v.mode, 'following').toBe('following');
-});
+// Items shorter than their estimate, as the Mac’s fonts draw them, as well as at their usual size: centring the last
+// item then leaves room below it, so it’s the jump’s own rule, not the page’s geometry, that lands it at the end.
+for (const [sizes, css] of [
+  ['its usual size', ''],
+  ['shorter than its estimate', '.transcript .item { line-height: 1.05 !important; font-size: 12px !important }'],
+]) {
+  test(`a jump to the last item lands at the end, following, with items at ${sizes}`, async ({ page }) => {
+    await openRoom(app, page, room);
+    if (css) await page.addStyleTag({ content: css });
+    // Up from the end first, so the jump has somewhere to go.
+    await jump(page, 5000, 'center');
+    await landed(page);
+    const key = await jump(page, -1, 'center');
+    await landed(page);
+    const v = await where(page, key, 'center');
+    // The newest message goes to the end, whatever its block, so it isn’t placed by its block: it’s in view, at the end.
+    test.info().annotations.push({ type: 'measured', description: JSON.stringify(v) });
+    expect.soft(v.top + v.height, 'its end is below the top bar').toBeGreaterThan(0);
+    expect.soft(v.top, 'and its top above the window’s bottom').toBeLessThan(800);
+    expect.soft(v.atEnd, 'at the end').toBe(true);
+    expect.soft(v.mode, 'following').toBe('following');
+  });
+}
 
 test('after a jump, your own wheel turn takes the anchor at the middle again, not the jump’s target', async ({ page }) => {
   await openRoom(app, page, room);
