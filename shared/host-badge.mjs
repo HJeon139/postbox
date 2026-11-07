@@ -8,6 +8,9 @@ export const SHORT_MAX = 8;
 
 const CONTROL = /\p{Cc}/u;
 
+/** The badge of an agent whose host was removed: a fixed word, since there’s no machine to name. */
+export const REMOVED_BADGE = 'removed';
+
 /**
  * A short name the person typed: trimmed, at most SHORT_MAX characters, with no control characters. An empty one
  * clears it, so the badge goes back to the one made from the destination.
@@ -24,14 +27,17 @@ export function checkShortName(v) {
 
 /**
  * The badge for a host: its short name, or the first part of its machine’s name cut to SHORT_MAX characters
- * (user@dev-box.corp.example.com is “dev-box”). An IP address keeps its end, where addresses on one network differ.
- * @param {{ name?: string, short?: string } | null | undefined} host
+ * (user@dev-box.corp.example.com is “dev-box”). An IP address keeps its end, where addresses on one network differ,
+ * without an IPv6 address’s zone (%en0, or %25en0 as a URL writes it). A host that was removed is REMOVED_BADGE.
+ * @param {{ name?: string, short?: string, removed?: boolean } | null | undefined} host
  */
 export function badgeOf(host) {
+  if (host?.removed) return REMOVED_BADGE;
   if (host?.short) return host.short;
   const machine = String(host?.name ?? '')
     .replace(/^.*@/, '')
-    .replace(/^\[(.*)\]$/, '$1');
+    .replace(/^\[(.*)\]$/, '$1')
+    .replace(/%.*$/, '');
   // An IPv4 or IPv6 address: its end. A name: its first label, from its start.
   if (/^[\d.]+$|:/.test(machine)) return Array.from(machine).slice(-SHORT_MAX).join('');
   return Array.from(machine.split('.')[0] || machine)

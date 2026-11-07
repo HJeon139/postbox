@@ -75,3 +75,12 @@ test('a short name set in the host’s settings becomes its badge, and clearing 
   await synced(page, started.app);
   await expect(badge(page)).toHaveText('buildfar');
 });
+
+// Last, since it takes the host away.
+test('an agent whose host was removed shows “removed”, not a cut of the words that stand for it', async ({ page }) => {
+  await page.goto(`${started.app.origin}/#/t/${conv.id}`);
+  await synced(page, started.app);
+  started.app.store.emit('host', { id: host.id, removed: true });
+  await synced(page, started.app);
+  await expect(badge(page)).toHaveText('removed');
+});

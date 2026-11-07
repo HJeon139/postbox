@@ -6,7 +6,12 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
-import { badgeOf, checkShortName, SHORT_MAX } from '../shared/host-badge.mjs';
+import { badgeOf, checkShortName, REMOVED_BADGE, SHORT_MAX } from '../shared/host-badge.mjs';
+
+test('an agent whose host was removed gets a fixed word, not a cut of “a removed host”', () => {
+  assert.equal(badgeOf({ name: 'a removed host', removed: true }), REMOVED_BADGE);
+  assert.equal(REMOVED_BADGE, 'removed');
+});
 
 test('a host’s short name is its badge', () => {
   assert.equal(badgeOf({ name: 'me@dev-box.corp.example.com', short: 'gpu' }), 'gpu');
@@ -16,12 +21,15 @@ test('without one, the badge is the first label of the machine’s name, cut to 
   assert.equal(badgeOf({ name: 'me@dev-box.corp.example.com' }), 'dev-box');
   assert.equal(badgeOf({ name: 'buildfarm-west-2.example.com' }), 'buildfar');
   assert.equal(badgeOf({ name: 'devbox' }), 'devbox');
+  assert.equal(badgeOf({ name: 'me@db' }), 'db', 'a short machine name is a short badge');
   assert.equal(Array.from(badgeOf({ name: 'a-very-long-ssh-alias' })).length, SHORT_MAX);
 });
 
 test('an IP address keeps its end, where addresses on one network differ', () => {
   assert.equal(badgeOf({ name: 'me@10.20.30.140' }), '0.30.140');
   assert.equal(badgeOf({ name: 'me@[fe80::1:2:3]' }), '0::1:2:3');
+  assert.equal(badgeOf({ name: 'me@[fe80::1:2:3%25en0]' }), '0::1:2:3', 'without its zone');
+  assert.equal(badgeOf({ name: 'fe80::1:2:3%en0' }), '0::1:2:3');
 });
 
 test('a short name is trimmed, at most SHORT_MAX characters, and an empty one clears it', () => {
