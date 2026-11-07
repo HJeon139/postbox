@@ -819,7 +819,7 @@ sequenceDiagram
   - **On no, or a failed download,** `view_app` returns no picture and says why. The pre-display check is unchanged.
 - **The process:** one browser, started on first use and closed after five idle minutes, as Kokoro is. Each capture gets a new browser context and a temporary profile, and times out after 20 seconds. The browser stops with the server.
 - **What it renders:** the real Postbox page, not the app page alone. An app gets D3, KaTeX and Mermaid from the host page over the postMessage bridge (§10), so the page alone would draw without them. The capture tab opens the app’s conversation with `?nocheck`, scrolls the app into view, and takes the app’s frame.
-  - **Size:** the person’s window size, reported by the open Postbox tab, or 1000 × 680 (a 14-inch laptop’s browser) when no tab is open.
+  - **Size:** the person’s window size and the width of their conversation beside the rail and any open pane, reported by the open Postbox tab. When no tab is open, 1000 × 680 (a 14-inch laptop’s browser), with the conversation beside the rail as the page lays it out.
   - **Theme:** the person’s.
   - **First:** the app at its inline size. **Full screen** comes second, in a later change.
 - **The capture tab can’t act.** Its browser context aborts every request that isn’t a `GET` to Postbox’s own address, and every request to any other host. This is enforced by the driver, so it doesn’t depend on the page’s code. That means it can’t report that a thread was viewed (which clears unread counts), can’t write, and can’t reach the network. Apps load nothing from a URL anyway (§10).

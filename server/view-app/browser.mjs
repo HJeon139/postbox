@@ -153,11 +153,12 @@ export class AppBrowser {
 
   /**
    * A PNG of one app, rendered by the real page in capture mode (app/js/capture-view.mjs) at the given window and
-   * theme. The context aborts every request that isn’t a GET to `origin`.
-   * @param {{ origin: string, threadId: string, itemId: string, width: number, height: number, theme: 'light'|'dark' }} at
+   * theme, in a conversation `column` px wide, or beside the rail when that’s null. The context aborts every request
+   * that isn’t a GET to `origin`.
+   * @param {{ origin: string, threadId: string, itemId: string, width: number, height: number, column?: number|null, theme: 'light'|'dark' }} at
    * @returns {Promise<Buffer>}
    */
-  async capture({ origin, threadId, itemId, width, height, theme }) {
+  async capture({ origin, threadId, itemId, width, height, column = null, theme }) {
     const browser = await this.browser();
     const context = await browser.newContext({ viewport: { width, height }, colorScheme: theme, reducedMotion: 'reduce', deviceScaleFactor: 1 });
     try {
@@ -167,7 +168,7 @@ export class AppBrowser {
         return r.method() === 'GET' && new URL(r.url()).origin === own ? route.continue() : route.abort();
       });
       const page = await context.newPage();
-      const q = new URLSearchParams({ capture: itemId, thread: threadId });
+      const q = new URLSearchParams({ capture: itemId, thread: threadId, ...(column ? { column: String(column) } : {}) });
       await page.goto(`${own}/?nocheck&${q}`, { timeout: CAPTURE_MS });
       await page.waitForSelector('[data-capture="ready"], [data-capture="missing"]', { timeout: CAPTURE_MS });
       if (await page.$('[data-capture="missing"]')) throw new Error('The page couldn’t find that app to show.');

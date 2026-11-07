@@ -121,8 +121,10 @@ function view(threadId) {
   clearInterval(viewTimer);
   const ping = () => {
     if (document.visibilityState !== 'visible' || route().threadId !== threadId) return;
-    // With the window’s size and theme, which view_app renders apps at (#95).
-    const at = JSON.stringify({ width: innerWidth, height: innerHeight, theme: theme() });
+    // With the window’s size and theme, and how wide the conversation is beside the rail and any pane, which view_app
+    // renders apps at (#95).
+    const column = document.querySelector('.app > .main')?.clientWidth;
+    const at = JSON.stringify({ width: innerWidth, height: innerHeight, column, theme: theme() });
     fetch(`/api/threads/${threadId}/view`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: at }).catch(() => {});
     // A thread open in the panel is being read too.
     const side = route().sideId;

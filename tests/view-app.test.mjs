@@ -194,13 +194,15 @@ test('a capture that fails says so, and that the pre-display check still stands'
   }
 });
 
-test('the window comes from the person’s tab when it reported one in the last half hour, bounded, else 1000 × 680', () => {
+test('the window and column come from the person’s tab when it reported them in the last half hour, bounded, else 1000 × 680', () => {
   const s = setup();
   try {
     const v = viewOf(s.rt);
-    assert.deepEqual(v.windowNow(), { width: 1000, height: 680, theme: 'light' });
-    v.noteWindow({ width: 1440.4, height: 900, theme: 'dark' });
-    assert.deepEqual({ ...v.windowNow(), at: 0 }, { width: 1440, height: 900, theme: 'dark', at: 0 });
+    assert.deepEqual(v.windowNow(), { width: 1000, height: 680, column: null, theme: 'light' }, 'no column: the page lays it out beside the rail');
+    v.noteWindow({ width: 1440.4, height: 900, column: 751.6, theme: 'dark' });
+    assert.deepEqual({ ...v.windowNow(), at: 0 }, { width: 1440, height: 900, column: 752, theme: 'dark', at: 0 });
+    v.noteWindow({ width: 1440, height: 900, column: 5000 });
+    assert.equal(v.windowNow().column, null, 'a column wider than the window is left to the page');
     v.noteWindow({ width: 99999, height: 900, theme: 'dark' });
     v.noteWindow({ width: '<svg>', height: 900 });
     v.noteWindow(null);

@@ -1,7 +1,8 @@
 // view_app (#95; designs/architecture.md, “Agents see their app”) renders a real agent app in the pinned headless
 // shell, inline in Postbox’s own page in capture mode: its libraries reach it over the bridge, its pending check
-// doesn’t hide it, and the capture reports nothing to Postbox. The size and theme follow the person’s open tab. A page
-// that tries to write, or to reach another host, during a capture gets nothing through.
+// doesn’t hide it, and the capture reports nothing to Postbox. The size, the conversation’s width beside the rail and
+// any pane, and the theme follow the person’s open tab. A page that tries to write, or to reach another host, during a
+// capture gets nothing through.
 
 import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
@@ -73,9 +74,8 @@ test('an agent sees its D3 app rendered inline before its check has run, and the
     expect.soft(r.message).toMatch(/inline in the conversation, in a 1000 × 680 window, light theme/);
     const png = sizeOf(r.image.data);
     expect.soft(png.png, 'a PNG').toBe(true);
-    // The conversation’s column is at most 760 px wide; the app fills it, with its header.
-    expect.soft(png.width).toBeGreaterThan(600);
-    expect.soft(png.width).toBeLessThanOrEqual(760);
+    // At 1000 px, beside the rail, the app fills the conversation, with its header: 1000 − 248 − 48 px of padding.
+    expect.soft(png.width).toBe(704);
     expect.soft(png.height).toBeGreaterThan(240);
     expect.soft(rt.s.apps[shown.appId].check.status, 'nobody checked it: no tab was open').toBe('pending');
     expect.soft(viewed, 'the capture page never reported a thread as viewed').toEqual([]);
@@ -101,6 +101,39 @@ test('the capture uses the size and theme the person’s open Postbox tab report
   expect.soft(r.ok, r.message).toBe(true);
   expect.soft(r.message).toMatch(/in a 1280 × 800 window, dark theme/);
   expect.soft(r.image, 'this backend gets the saved file’s path instead').toBeNull();
+});
+
+test('the picture is as wide as the app the person sees, beside the rail by default and beside an open pane', async ({ page }) => {
+  test.setTimeout(120_000);
+  const { rt } = app;
+  const projectId = await project();
+  const t = rt.createThread({ projectId, title: 'Width check', personaIds: [rt.personaByHandle('researcher').id] });
+  const se = rt.sessionsIn(t.id)[0];
+  const shown = rt.toolsFor(se.id).show_app({ title: 'Width', code: '<p style="padding:12px">As wide as yours.</p>' });
+  const ctx = { threadId: () => t.id, endSegment() {}, images: true };
+  /** The app’s width in the person’s page, and in view_app’s picture, once the tab has reported this window. */
+  const both = async (width, height, hash) => {
+    await page.setViewportSize({ width, height });
+    await page.goto(`${app.origin}/#/t/${t.id}${hash}`);
+    await synced(page, app);
+    const frame = page.locator('.transcript .appframe').first();
+    await expect(frame).toBeVisible();
+    await expect.poll(() => viewOf(rt).windowNow().width, { timeout: 15_000 }).toBe(width);
+    const seen = Math.round((await frame.boundingBox())?.width ?? 0);
+    const r = await viewApp(rt, se.id, { appId: shown.appId }, ctx);
+    expect(r.ok, r.message).toBe(true);
+    return { seen, sent: sizeOf(r.image.data).width };
+  };
+  const laptop = await both(1000, 680, '');
+  expect.soft(laptop.sent, 'beside the rail, at 1000 × 680').toBe(laptop.seen);
+  expect.soft(laptop.seen, 'the rail takes its room').toBe(704);
+  const pane = await both(1280, 800, '?work');
+  expect.soft(pane.sent, 'beside the open Work pane, at 1280 × 800').toBe(pane.seen);
+  // With no tab’s report, the page lays the conversation out beside the rail at 1000 × 680, as the person above saw it.
+  await page.goto('about:blank');
+  viewOf(rt).window = null;
+  const r = await viewApp(rt, se.id, { appId: shown.appId }, ctx);
+  expect.soft(sizeOf(r.image.data).width, 'no tab open: 1000 × 680 beside the rail').toBe(laptop.seen);
 });
 
 test('a capture lets through only GETs to its own origin', async () => {

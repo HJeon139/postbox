@@ -20,13 +20,14 @@ export class ViewApp {
     this.dir = join(dataDir, 'browsers');
     this.origin = origin;
     this.browser = browser ?? new AppBrowser({ dir: this.dir });
-    /** @type {{ width: number, height: number, theme: 'light'|'dark', at: number }|null} */
+    /** @type {{ width: number, height: number, column: number|null, theme: 'light'|'dark', at: number }|null} */
     this.window = null;
   }
 
   /**
    * The person’s window, from their open Postbox tab’s report of the conversation it shows (server/index.mjs, the
-   * view route). Bounded where it enters; a report that isn’t a window is ignored.
+   * view route), with how wide the conversation is there beside the rail and any pane. Bounded where it enters; a
+   * report that isn’t a window is ignored, and a column that doesn’t fit in it is left to the page’s own layout.
    * @param {unknown} body
    */
   noteWindow(body) {
@@ -34,14 +35,17 @@ export class ViewApp {
     const w = Math.round(Number(b.width));
     const h = Math.round(Number(b.height));
     if (!(w >= WINDOW.min && w <= WINDOW.max && h >= WINDOW.min && h <= WINDOW.max)) return;
-    this.window = { width: w, height: h, theme: b.theme === 'dark' ? 'dark' : 'light', at: Date.now() };
+    const c = Math.round(Number(b.column));
+    const column = c >= WINDOW.min / 2 && c <= w ? c : null;
+    this.window = { width: w, height: h, column, theme: b.theme === 'dark' ? 'dark' : 'light', at: Date.now() };
   }
 
   /** The window a capture uses now. */
   windowNow() {
     const w = this.window;
     if (w && Date.now() - w.at < WINDOW_FRESH_MS) return w;
-    return { ...DEFAULT_WINDOW, theme: /** @type {'light'} */ ('light') };
+    // No tab: the page lays the conversation out beside the rail, as a person opening it would see it.
+    return { ...DEFAULT_WINDOW, column: null, theme: /** @type {'light'} */ ('light') };
   }
 
   close() {
