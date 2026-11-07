@@ -4,7 +4,7 @@
 // such as one on a drive that isn’t mounted.
 
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { stageOlder } from '../tools/uat/hosts-stage.mjs';
@@ -84,4 +84,20 @@ test('#766 a worktree list that fails skips the forgetting, and the staging stil
     ['list'],
     'nothing removed before the add',
   );
+});
+
+test('#766 staging reached through a link to the runs folder forgets a gone worktree git lists by its real path', async () => {
+  const r = runs();
+  const link = join(tempDir('pb-runs-link-'), 'runs');
+  symlinkSync(r.root, link);
+  const old = join(realpathSync(r.root), 'old', 'staged-AbC123');
+  const listed = porcelain([
+    [`worktree ${old}`, 'HEAD 3333333333333333333333333333333333333333', 'detached', 'prunable gitdir file points to non-existent location'],
+  ]);
+  const calls = [];
+  const data = join(link, 'new', 'data');
+  await stageOlder({ root: '/repo', tag: 'v1.16.1', version: '1.16.1', data, label: 'host1', host }, { run: fakeGit(calls, listed), load });
+  const add = calls.findIndex((c) => c[1] === 'add');
+  const removes = calls.slice(0, add).filter((c) => c[1] === 'remove');
+  assert.deepEqual(removes, [['worktree', 'remove', '--force', old]], 'the old run’s, by its real path, before the add');
 });

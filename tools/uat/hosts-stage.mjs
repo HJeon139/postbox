@@ -8,7 +8,7 @@
 // deletes it itself (tools/uat/hosts-end.mjs, removeStaged); baseline() refused the host if Postbox was there before.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -55,6 +55,7 @@ const STAGED_RE = /^staged-[A-Za-z0-9]{6}$/;
  * Forgets the staging worktrees a runner killed mid-install left registered (#766): only a staged-XXXXXX folder of a
  * run under `runsRoot`, and only once its folder is gone. `git worktree prune` would forget every worktree of the
  * checkout whose folder is missing, such as one on a drive that isn’t mounted. A list that fails forgets nothing.
+ * git lists real paths, so `runsRoot` matches as given or as its real path (/tmp is /private/tmp on macOS).
  * @param {string} root the checkout @param {string} runsRoot the folder the runs’ folders are in @param {typeof git} [run]
  */
 export function forgetStaleStaged(root, runsRoot, run = git) {
@@ -64,9 +65,19 @@ export function forgetStaleStaged(root, runsRoot, run = git) {
     .split('\0')
     .filter((f) => f.startsWith('worktree '))
     .map((f) => f.slice('worktree '.length));
+  const runs = new Set([runsRoot, realOrSelf(runsRoot)]);
   for (const path of paths) {
-    if (!STAGED_RE.test(basename(path)) || dirname(dirname(path)) !== runsRoot || existsSync(path)) continue;
+    if (!STAGED_RE.test(basename(path)) || !runs.has(dirname(dirname(path))) || existsSync(path)) continue;
     run(['worktree', 'remove', '--force', path], root);
+  }
+}
+
+/** path with its links resolved, or path itself when it can’t be resolved. @param {string} path */
+function realOrSelf(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
   }
 }
 
