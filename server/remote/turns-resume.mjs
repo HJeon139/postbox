@@ -85,6 +85,8 @@ function autoResume(rts, sessionId) {
   if (hostOf(rt.personaFor(se)) !== r.hostId) return;
   // Nor can one whose backend isn’t registered here: a resume would only fail again (#874, #909).
   if (!registeredAdapter(rt, rt.personaFor(se))) return;
+  // Nor one that may still be running on the host (reattach, #909).
+  if (r.resume.person) return;
   // An interruption that keeps coming back waits for the person after a few resumes, and so does one whose process
   // there may still run (#872).
   if (r.resume.why === 'interrupted' && (r.resume.unkilled || (r.autoResumes ?? 0) >= AUTO_RESUMES)) return;
@@ -131,7 +133,10 @@ export async function reattach(rts, sessionId) {
     rts.restoring.delete(r.turn);
     rts.early.delete(r.turn);
     releaseHost(rts, r.hostId);
-    interrupted(rts, sessionId, whyNotAttached(now.handle, persona, { listed: Boolean(listed), moved }));
+    // A turn the host still lists may still be running there: resumed on its own once the backend is back, a second
+    // turn would run beside it on the same session (#872), so it waits for the person. A moved one waits anyway.
+    const person = Boolean(listed) && !moved;
+    interrupted(rts, sessionId, whyNotAttached(now.handle, persona, { listed: Boolean(listed), moved }), { person });
     return;
   }
   // Running, ended or interrupted, it’s replayed from the start, so the reply is whole: what came before is replaced.
@@ -155,8 +160,12 @@ function whyNotAttached(handle, persona, { listed, moved }) {
   return unregisteredWhy(persona);
 }
 
-/** A turn that was on a host and is gone: Interrupted, and resumed once the host is back. @param {RemoteTurns} rts @param {string} sessionId @param {string} why */
-export function interrupted(rts, sessionId, why) {
+/**
+ * A turn that was on a host and is gone: Interrupted, and resumed once the host is back, unless `person` says it waits
+ * for the person (resume.person).
+ * @param {RemoteTurns} rts @param {string} sessionId @param {string} why @param {{ person?: boolean }} [o]
+ */
+export function interrupted(rts, sessionId, why, { person = false } = {}) {
   const rt = rts.rt;
   const se = rt.s.sessions[sessionId];
   if (!se?.remoteTurn) return;
@@ -173,7 +182,7 @@ export function interrupted(rts, sessionId, why) {
     error: message,
     remote: { state: 'interrupted', hostId: se.remoteTurn.hostId },
   });
-  updateRemote(rts, sessionId, { state: 'interrupted', at: rts.now(), resume: { why: 'interrupted', at: rts.now() } });
+  updateRemote(rts, sessionId, { state: 'interrupted', at: rts.now(), resume: { why: 'interrupted', at: rts.now(), ...(person ? { person } : {}) } });
   rt.updateSession(sessionId, {
     state: 'failed',
     needs: { kind: 'failed', itemId: it.id, text: message },

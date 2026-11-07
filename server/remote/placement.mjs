@@ -110,7 +110,8 @@ function unregisteredReason(handle, backend, kind) {
     case 'request':
       return `@${clipName(handle)}’s ${unavailable}. ${fix}.`;
     case 'interrupted':
-      return `${unavailable}, so Postbox can’t follow the turn here. ${fix}`;
+      // The line names the host first, so it says which computer the backend is missing from.
+      return `${name} isn’t available to Postbox on this computer, so it can’t follow the turn on the host. Install it here and restart Postbox, or change this agent’s backend`;
   }
   throw new Error(`Unknown kind of unregistered reason: ${kind}`);
 }
