@@ -7,14 +7,18 @@ import { agyHooksJson, HOOK_TIMEOUT_S } from './agy-hook.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
 /**
- * The plugin’s files, by path under its folder. Pure, so the tests can check them.
- * @param {{ mcpUrl: string, rules: string, hookCommand?: string|null, hookTimeout?: number }} opts
+ * The plugin’s files, by path under its folder. Pure, so the tests can check them. `skills`: Postbox’s skills, by path
+ * under its skills folder (agentSkillFiles in agent-plugin.mjs), which go in the plugin’s own skills/ folder. Checked
+ * with agy 1.5.3: `/skills` listed `postbox:visual-explainer` from there, with the plugin as its source, before the
+ * model ran, and `agy plugin validate` counted it.
+ * @param {{ mcpUrl: string, rules: string, hookCommand?: string|null, hookTimeout?: number, skills?: Record<string, string> }} opts
  */
-export const agyPlugin = ({ mcpUrl, rules, hookCommand = null, hookTimeout = HOOK_TIMEOUT_S }) => ({
+export const agyPlugin = ({ mcpUrl, rules, hookCommand = null, hookTimeout = HOOK_TIMEOUT_S, skills = {} }) => ({
   'plugin.json': `${JSON.stringify({ name: POSTBOX_SERVER })}\n`,
   'mcp_config.json': `${JSON.stringify({ mcpServers: { [POSTBOX_SERVER]: { serverUrl: mcpUrl } } }, null, 2)}\n`,
   'rules/AGENTS.md': rules,
   ...(hookCommand ? { 'hooks.json': `${JSON.stringify(agyHooksJson(hookCommand, hookTimeout), null, 2)}\n` } : {}),
+  ...Object.fromEntries(Object.entries(skills).map(([path, text]) => [`skills/${path}`, text])),
 });
 /**
  * Writes the plugin’s files (agyPlugin) into its folder, `dir`. hooks.json is removed first, since a turn before left it

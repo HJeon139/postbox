@@ -25,6 +25,7 @@ function recordedServer(seen) {
     const request = JSON.parse(chunk.toString());
     seen.push(request);
     if (request.method === 'initialize') child.stdout.write(`${JSON.stringify({ ...events.find((event) => event.id === 1), id: request.id })}\n`);
+    else if (request.method === 'skills/extraRoots/set') child.stdout.write(`${JSON.stringify({ id: request.id, result: {} })}\n`);
     else if (request.method === 'mcpServerStatus/list') child.stdout.write(`${JSON.stringify({ id: request.id, result: { data: [], nextCursor: null } })}\n`);
     else if (request.method === 'thread/start') child.stdout.write(`${JSON.stringify({ ...events.find((event) => event.id === 2), id: request.id })}\n`);
     else if (request.method === 'turn/start') child.stdout.write(`${JSON.stringify({ ...events.find((event) => event.id === 3), id: request.id })}\n`);
