@@ -16,6 +16,7 @@
 import { randomBytes } from 'node:crypto';
 import { escapeRegExp } from '../shared/regex.mjs';
 import { setupOf } from './adapters/setup.mjs';
+import { passConfirmed } from './confirm-grant.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { pushConsequence, pushedMessage, pushOf, runPush } from './push-on-request.mjs';
 import { actionWords, numberOf, offRequest } from './request-floor.mjs';
@@ -259,6 +260,7 @@ export async function settledCall(rt, sessionId, req) {
   // the push already landed: the integrator’s re-review of #598).
   const open = () => rt.store.writable && rt.store.epoch === epoch;
   const current = () => open() && !!turn && rt.turns.get(sessionId) === turn;
+  if (passConfirmed(rt, sessionId, req)) return { allow: true }; // #852: a confirmed command, once, as written
   if (isWriteCall(req.tool, req.input) && (await writePasses(rt, sessionId, req).catch(() => false))) return { allow: true };
   /** @type {Awaited<ReturnType<typeof requestedCall>>} */
   let found = null;

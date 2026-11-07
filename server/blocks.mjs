@@ -7,6 +7,7 @@ import { buildEvent } from '../shared/events.mjs';
 import { LIMITS } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { releaseNeed } from './card-needs.mjs';
+import { recordConfirm } from './confirm-grant.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { REACT, toggleReaction } from './reactions.mjs';
 import { keepReviewThreads } from './review-comments.mjs';
@@ -55,7 +56,7 @@ export function act(rt, threadId, itemId, action, values, revision) {
   if (locks)
     rt.patchItem(threadId, itemId, {
       answered: true,
-      answer: { action, values: r.event.values, voice: r.voice, at: Date.now(), revision: current, read: false },
+      answer: { action, values: r.event.values, voice: r.voice, at: Date.now(), revision: current, read: false, ...recordConfirm(rt, it, threadId, action) },
       ...(dismissed ? { closed: { by: 'person', at: Date.now() } } : {}),
     });
   rt.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
@@ -73,7 +74,8 @@ export function act(rt, threadId, itemId, action, values, revision) {
 export function answerDelivered(rt, threadId, message) {
   if (message.kind !== 'event' || !message.blockItemId) return;
   const it = rt.store.item(threadId, message.blockItemId);
-  if (it?.answer?.read === false && it.answer.revision === message.event.revision) rt.patchItem(threadId, it.id, { answer: { ...it.answer, read: true } });
+  if (it?.answer?.read === false && it.answer.revision === message.event.revision)
+    rt.patchItem(threadId, it.id, { answer: { ...it.answer, read: true, readAt: Date.now() } });
 }
 
 /**
