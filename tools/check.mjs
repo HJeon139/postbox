@@ -5,7 +5,8 @@
 //
 // Each stage runs in a process group of its own, so the terminal’s Ctrl-C reaches only this process, and the forwarding
 // here is the only way it reaches a stage. Ctrl-C, SIGTERM or SIGHUP (the terminal closing) passes to the running
-// stage; a second signal kills the stage’s whole group, for a stage that hangs and ignores the first (#815). The run
+// stage’s whole group: npm, its shell and what they started, since npm passes on only SIGINT and SIGTERM, and only to
+// its shell, which lets `a && b` go on to b. A second signal kills the group, for a stage that ignores the first (#815). The run
 // removes its folder once the stage exits, before its last line, which a closed terminal may never show, then exits
 // 130, 143 or 129, for the first signal it was sent.
 
@@ -24,7 +25,7 @@ export const SIGNAL_EXIT = { SIGHUP: 129, SIGINT: 130, SIGTERM: 143 };
 const secs = (/** @type {number} */ ms) => `${(ms / 1000).toFixed(1)} s`;
 
 /**
- * @typedef {{ pid?: number, kill: (signal: NodeJS.Signals) => unknown }} Child
+ * @typedef {{ pid?: number }} Child
  * @typedef {(script: string, env: Record<string, string> | undefined, spawned: (child: Child) => void) => Promise<number>} Run
  */
 
@@ -46,8 +47,8 @@ function npmRun(script, env, spawned) {
 /**
  * Runs the stages in order and returns the exit code: 0, or the first failing stage’s. With a runDir, the test
  * stages get TMPDIR set to the folder it opens, which is closed however the run ends, before the last lines. A signal
- * of SIGNAL_EXIT’s on signals goes to the running stage’s child, and no stage starts after it; a second one kills the
- * child’s process group with kill. The run returns the first signal’s SIGNAL_EXIT once the stage ends.
+ * of SIGNAL_EXIT’s on signals goes to the running stage’s process group with kill, and no stage starts after it; a
+ * second one kills that group. The run returns the first signal’s SIGNAL_EXIT once the stage ends.
  * @param {{ stages?: string[], run?: Run, now?: () => number, log?: (m: string) => void,
  *   runDir?: { open: () => { path: string, close: () => void } }, signals?: Pick<NodeJS.EventEmitter, 'on' | 'off'>,
  *   kill?: (pid: number, signal: NodeJS.Signals) => unknown }} [o]
@@ -62,8 +63,7 @@ export async function check(o = {}) {
   const stop = (/** @type {keyof SIGNAL_EXIT} */ sig) => {
     const again = stopping !== undefined;
     stopping ??= sig;
-    if (!again) child?.kill(sig);
-    else if (child?.pid) killGroup(kill, child.pid);
+    if (child?.pid) signalGroup(kill, child.pid, again ? 'SIGKILL' : sig);
   };
   const handlers = Object.keys(SIGNAL_EXIT).map((sig) => /** @type {const} */ ([sig, () => stop(/** @type {keyof SIGNAL_EXIT} */ (sig))]));
   for (const [sig, h] of handlers) signals.on(sig, h);
@@ -89,13 +89,13 @@ export async function check(o = {}) {
 }
 
 /**
- * Kills a stage’s whole process group: npm, its shell and whatever they started, none of which a signal they
- * ignore would end. A group that has already exited has nothing left to kill.
- * @param {(pid: number, signal: NodeJS.Signals) => unknown} kill @param {number} pid
+ * Sends signal to a stage’s whole process group: npm, its shell and whatever they started. A group that has already
+ * exited has nothing left to signal.
+ * @param {(pid: number, signal: NodeJS.Signals) => unknown} kill @param {number} pid @param {NodeJS.Signals} signal
  */
-function killGroup(kill, pid) {
+function signalGroup(kill, pid, signal) {
   try {
-    kill(-pid, 'SIGKILL');
+    kill(-pid, signal);
   } catch (e) {
     if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'ESRCH') throw e;
   }

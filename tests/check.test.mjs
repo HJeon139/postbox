@@ -97,8 +97,8 @@ test('the run’s folder is removed when a stage throws', async () => {
 });
 
 /**
- * A stage that hands check its child, pid 4242, which exits once it’s sent a signal, or, where it ignores them, only
- * once its process group is killed; and a process that check listens on for Ctrl-C, SIGTERM and SIGHUP.
+ * A stage that hands check its child, pid 4242, which exits once its process group is sent a signal, or, where it
+ * ignores them, only once the group is killed; and a process that check listens on for Ctrl-C, SIGTERM and SIGHUP.
  */
 function signalled({ ignores = false } = {}) {
   const proc = new EventEmitter();
@@ -111,24 +111,19 @@ function signalled({ ignores = false } = {}) {
   const running = new Promise((ok) => (started = () => ok(undefined)));
   /** @type {(code: number) => void} */
   let exit = () => {};
-  const run = (/** @type {string} */ s, /** @type {unknown} */ _env, /** @type {(c: { pid: number, kill: (sig: string) => void }) => void} */ spawned) => {
+  const run = (/** @type {string} */ s, /** @type {unknown} */ _env, /** @type {(c: { pid: number }) => void} */ spawned) => {
     ran.push(s);
     return new Promise((ok) => {
       exit = ok;
-      spawned({
-        pid: 4242,
-        kill: (sig) => {
-          sent.push(sig);
-          if (!ignores) ok(1);
-        },
-      });
+      spawned({ pid: 4242 });
       started();
     });
   };
-  /** process.kill, for check’s second signal: a negative pid is the process group. */
+  /** process.kill, which check signals the stage with: a negative pid is the process group. */
   const kill = (/** @type {number} */ pid, /** @type {string} */ sig) => {
     sent.push(`${pid} ${sig}`);
     if (pid === -4242 && sig === 'SIGKILL') exit(137);
+    else if (pid === -4242 && !ignores) exit(1);
   };
   return { proc, sent, ran, run, running, kill };
 }
@@ -138,14 +133,14 @@ for (const [sig, exit] of /** @type {const} */ ([
   ['SIGTERM', 143],
   ['SIGHUP', 129],
 ])) {
-  test(`${sig} is passed to the running stage, the run’s folder removed once it exits, and check exits ${exit}`, { timeout: 5000 }, async () => {
+  test(`${sig} is passed to the stage’s whole group, the run’s folder removed once it exits, and check exits ${exit}`, { timeout: 5000 }, async () => {
     const s = signalled();
     const { r, runDir } = fakeRunDir();
     const done = check({ stages: ['test', 'test:process'], run: s.run, runDir, signals: s.proc, kill: s.kill, now: () => 0, log: () => {} });
     await s.running;
     assert.equal(r.closed, 0, 'the folder stays while the stage runs');
     s.proc.emit(sig);
-    assert.deepEqual(s.sent, [sig]);
+    assert.deepEqual(s.sent, [`-4242 ${sig}`], 'the signal goes to the stage’s whole group, not only npm');
     assert.equal(await done, exit);
     assert.deepEqual(s.ran, ['test'], 'no stage starts after the signal');
     assert.equal(r.closed, 1);
@@ -160,7 +155,7 @@ test('a second signal kills the stage’s whole process group, and check still e
   await s.running;
   s.proc.emit('SIGINT');
   s.proc.emit('SIGTERM');
-  assert.deepEqual(s.sent, ['SIGINT', '-4242 SIGKILL'], 'the first signal goes to the stage, the second kills its group');
+  assert.deepEqual(s.sent, ['-4242 SIGINT', '-4242 SIGKILL'], 'the first signal goes to the stage’s group, the second kills it');
   assert.equal(await done, 130);
   assert.deepEqual(s.ran, ['test'], 'no stage starts after the signals');
   assert.equal(r.closed, 1, 'the folder is removed once');
