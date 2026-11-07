@@ -178,8 +178,11 @@ test('focus the person moves as the address changes stays there, when the thread
 
 test('a thread already open that changes doesn’t take focus', async ({ page }) => {
   const r = await openRoom(page, 'Reply open renamed');
+  await countFocusTimers(page);
   const topicId = await replyInThread(page, r);
   await focusIsOn(page, 'side-input');
+  // The thread can land before Reply in thread’s own 150 ms timer, so wait for that timer before moving focus.
+  await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).focusTimersRun), { message: 'that timer, run' }).toBe(1);
   await page.evaluate(() => /** @type {HTMLElement} */ (document.activeElement).blur());
   await focusIsOff(page);
   app.rt.renameThread(topicId, 'The 1908 edition');
