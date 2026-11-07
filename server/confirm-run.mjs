@@ -55,20 +55,24 @@ export function ghEnv(env, cwd) {
 }
 
 /**
- * Whether gh’s config could send this call somewhere else, read just before it runs (critic’s read of r3, P2 2): a
- * `http_unix_socket`, a host other than github.com, or an alias named pr or issue. A file that can’t be read is as if
- * absent; one gh reads is in YAML, read here line by line, so a shape this reader doesn’t follow refuses.
+ * Whether gh’s config could send this call somewhere else, read just before it runs (critic’s read of r3, P2 2;
+ * lead-security’s read of the code): a `http_unix_socket` with any value, a host other than github.com, or an alias
+ * named pr or issue. gh reads YAML in every form, quoted keys and flow style included, so these read the text, not its
+ * lines, and fail closed: the one shape let through is the empty `http_unix_socket:` gh writes by default. A file that
+ * can’t be read is as if absent.
  * @param {string} dir  gh’s config folder
  * @returns {Promise<string | null>}  why it can’t run, or null
  */
 export async function ghConfigProblem(dir) {
   const config = await readFile(join(dir, 'config.yml'), 'utf8').catch(() => '');
   const hosts = await readFile(join(dir, 'hosts.yml'), 'utf8').catch(() => '');
-  if (/^[ \t]*http_unix_socket:[ \t]*['"]?[^\s'"#]/m.test(config)) return 'gh’s config sends its calls through a socket (http_unix_socket)';
-  const aliases = /^aliases:\s*\n((?:[ \t]+.*\n?)*)/m.exec(config)?.[1] ?? '';
-  if (/^[ \t]+['"]?(pr|issue)['"]?:/m.test(aliases)) return 'gh’s config has an alias named pr or issue';
-  const named = [...hosts.matchAll(/^(['"]?)([^\s:'"#][^:'"]*)\1:/gm)].map((m) => m[2]);
-  if (named.some((h) => h !== 'github.com')) return `gh is signed in to ${named.find((h) => h !== 'github.com')}, not only github.com`;
+  const sockets = config.match(/http_unix_socket/g)?.length ?? 0;
+  const emptySockets = config.match(/^http_unix_socket:[ \t]*(?:#.*)?$/gm)?.length ?? 0;
+  if (sockets > emptySockets) return 'gh’s config sends its calls through a socket (http_unix_socket)';
+  if (/(?:^|[\s{,'"])(?:pr|issue)['"]?[ \t]*:/m.test(config)) return 'gh’s config has an alias named pr or issue';
+  const named = [...hosts.matchAll(/['"]?([\w.-]+\.[A-Za-z]{2,})['"]?[ \t]*:/g)].map((m) => m[1]);
+  const other = named.find((h) => h !== 'github.com');
+  if (other) return `gh is signed in to ${other}, not only github.com`;
   return null;
 }
 
@@ -85,7 +89,11 @@ const CONTROLS = /[\x00-\x08\x0b-\x1f\x80-\x9f]/g;
  * @param {string} text
  */
 export function cleanOutput(text) {
-  const clean = String(text).replace(ESCAPES, '').replace(CONTROLS, '');
+  // Then format characters too (bidi overrides and isolates, zero-width ones), which can reorder or hide text.
+  const clean = String(text)
+    .replace(ESCAPES, '')
+    .replace(CONTROLS, '')
+    .replace(/\p{Cf}/gu, '');
   if (clean.length <= OUTPUT_LIMIT) return clean;
   return `${clean.slice(0, OUTPUT_LIMIT)}…`;
 }

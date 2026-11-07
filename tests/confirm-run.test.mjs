@@ -119,3 +119,7 @@ test('#852 r3: gh’s config is refused in every YAML form gh reads: quoted keys
     assert.match((await ghConfigProblem(dir)) ?? '', why, text);
   }
 });
+
+test('#852 r3: cleanOutput removes bidi and other format characters, which can reorder or hide text', () => {
+  assert.equal(cleanOutput('safe \u202eevil\u202c and \u200bhidden\u2066x\u2069'), 'safe evil and hiddenx');
+});
