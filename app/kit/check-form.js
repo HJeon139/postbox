@@ -6,7 +6,7 @@
 // and before check.js. Its code is in a block rather than a wrapping function, so Biome measures each function at the
 // default length; a block’s const bindings stay out of the app’s global scope, where a function declaration wouldn’t.
 {
-  const { rgb, hidden, guard } = window.__pbCheck;
+  const { rgb, hidden, guard, clip } = window.__pbCheck;
   const WORD = /\p{L}[\p{L}\p{N}’'-]*/gu;
   const wordsIn = (s) => (s.match(WORD) ?? []).length;
   // Words in controls, tables and code are the app’s interface and data, not its picture.
@@ -20,6 +20,13 @@
     return !hidden(el) && (b.width > 0 || b.height > 0);
   };
   const opaque = (c) => c && c.a > 0.5;
+  // An element named the way the agent wrote it, so it can fix that element rather than redraw the page: its tag with
+  // its id or first class, and else the nearest ancestor with an id.
+  const ident = (el) => {
+    const own = (el.id && `#${el.id}`) || (el.classList?.[0] && `.${el.classList[0]}`) || '';
+    const holder = own ? null : el.parentElement?.closest('[id]');
+    return `${el.tagName.toLowerCase()}${own}${holder ? ` in #${holder.id}` : ''}`;
+  };
 
   // ── Text in shapes ───────────────────────────────────────────────────────────────────
 
@@ -113,18 +120,22 @@
     for (const t of texts()) {
       total += t.words;
       const box = boxOf(t, shapesOf);
-      if (box) boxes.set(box, (boxes.get(box) ?? 0) + t.words);
+      if (!box) continue;
+      const b = boxes.get(box) ?? boxes.set(box, { n: 0, el: box.el ?? box, text: '' }).get(box);
+      [b.n, b.text] = [b.n + t.words, `${b.text} ${t.el.textContent}`];
     }
-    const held = [...boxes.values()].filter((n) => n <= PROSE);
+    const kept = [...boxes.values()].filter((b) => b.n <= PROSE);
+    const held = kept.map((b) => b.n);
     const boxed = held.reduce((a, n) => a + n, 0);
     const wordy = held.filter((n) => n > WORDY).length;
     const share = total ? boxed / total : 0;
     if (!(wordy >= 2 || (share >= 0.5 && held.length >= 4 && boxed >= 12))) return [];
     const most = wordy ? `, and ${wordy} of them hold more than ${WORDY} words` : '';
+    const top = kept.reduce((a, b) => (b.n > a.n ? b : a));
     return [
       {
         code: 'text-in-shapes',
-        message: `At ${w} px, ${boxed} of ${total} words (${Math.round(share * 100)}%) sit inside ${held.length} boxes${most}: a diagram of labeled boxes. Draw what the things are or do, with short labels beside the marks, and explain in prose.`,
+        message: `At ${w} px, ${boxed} of ${total} words (${Math.round(share * 100)}%) sit inside ${held.length} boxes${most}, such as the ${ident(top.el)} holding “${clip(top.text)}”: a diagram of labeled boxes. Draw what the things are or do, with short labels beside the marks, and explain in prose.`,
       },
     ];
   };
@@ -135,7 +146,7 @@
   // and a background (bars drawn as divs) by their class and color. A data series is one group.
   const markGroups = function () {
     const groups = new Map();
-    const add = (key, el) => (groups.get(key) ?? groups.set(key, []).get(key)).push(el.getBoundingClientRect());
+    const add = (key, el) => (groups.get(key) ?? groups.set(key, Object.assign([], { el })).get(key)).push(el.getBoundingClientRect());
     const svgs = [...document.querySelectorAll('svg')];
     for (const el of document.querySelectorAll('svg rect, svg circle, svg ellipse, svg path, svg line, svg polygon')) {
       if (el.closest(PARKED) || !shown(el)) continue;
@@ -187,11 +198,11 @@
     hidden.reset();
     const ranked = markGroups().filter((g) => ranking(g));
     if (!ranked.length) return [];
-    const n = Math.max(...ranked.map((g) => g.length));
+    const most = ranked.reduce((a, g) => (g.length > a.length ? g : a));
     return [
       {
         code: 'ranks-one-number',
-        message: `At ${w} px, ${n} marks vary on one axis only, so this ranks one number. If the idea is how two things relate, place each mark by both; if it’s how things link, draw the links.`,
+        message: `At ${w} px, ${most.length} marks (${ident(most.el)}) vary on one axis only, so this ranks one number. If the idea is how two things relate, place each mark by both; if it’s how things link, draw the links.`,
       },
     ];
   };

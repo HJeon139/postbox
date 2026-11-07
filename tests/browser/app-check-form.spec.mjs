@@ -3,13 +3,14 @@
 // - ranks-one-number: marks that vary along one axis only, as bars from one baseline (in SVG, and as divs), and as a
 //   lollipop sorted by its value.
 // A scatter, which places each mark by two values, and a force-laid network, whose nodes sit where their links put
-// them, get neither. Both are notes: the app is shown with notes, and the agent hears of them in its lint turn.
+// them, get neither. Both are notes: the app is shown with notes, and the agent hears of them in its lint turn, with
+// the element each note is about named by its id or class, so it can fix that element rather than redraw the page.
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 const svg = (w, h, label, body) =>
-  `<!doctype html><html><body style="margin:0;padding:8px;color:var(--text)"><svg viewBox="0 0 ${w} ${h}" style="width:100%;max-width:${w * 1.5}px;height:auto;display:block" role="img" aria-label="${label}">${body}</svg></body></html>`;
+  `<!doctype html><html><body style="margin:0;padding:8px;color:var(--text)"><svg id="pic" viewBox="0 0 ${w} ${h}" style="width:100%;max-width:${w * 1.5}px;height:auto;display:block" role="img" aria-label="${label}">${body}</svg></body></html>`;
 const text = (x, y, s, anchor = 'start') => `<text x="${x}" y="${y}" font-size="14" fill="var(--text)" text-anchor="${anchor}">${s}</text>`;
 // A seeded random number, so each fixture draws the same picture every run.
 const seeded = (seed) => () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
@@ -139,7 +140,7 @@ const network = svg(
 const htmlBars = `<!doctype html><html><body style="margin:0;padding:8px;color:var(--text);font:14px system-ui,sans-serif">
 <h3>Time to first reply</h3>
 <div style="display:grid;grid-template-columns:80px 1fr;gap:8px 12px;align-items:center">
-${DAYS.map(([d, v]) => `<span>${d}</span><div style="background:var(--line)"><div style="height:16px;width:${(v / 170) * 100}%;background:var(--accent)"></div></div>`).join('\n')}
+${DAYS.map(([d, v]) => `<span>${d}</span><div style="background:var(--line)"><div class="fill" style="height:16px;width:${(v / 170) * 100}%;background:var(--accent)"></div></div>`).join('\n')}
 </div></body></html>`;
 
 const APPS = {
@@ -208,10 +209,13 @@ test('#889 the check tells boxes and rankings apart from a scatter and a network
   const message = (key, code) => problems(key).find((p) => p.code === code)?.message ?? '';
   expect
     .soft(message('lollipop', 'ranks-one-number'), 'says what happened and what to do next')
-    .toMatch(/vary on one axis only, so this ranks one number\. If the idea is how two things relate, place each mark by both/);
+    .toMatch(/marks \(line in #pic\) vary on one axis only, so this ranks one number\. If the idea is how two things relate, place each mark by both/);
+  expect.soft(message('htmlBars', 'ranks-one-number'), 'names the div bars by their class').toMatch(/6 marks \(div\.fill\)/);
   expect
     .soft(message('boxes', 'text-in-shapes'), 'counts the words in boxes and the boxes holding a sentence')
-    .toMatch(/\d+ of \d+ words \(\d+%\) sit inside 5 boxes, and 2 of them hold more than 6 words/);
+    .toMatch(
+      /\d+ of \d+ words \(\d+%\) sit inside 5 boxes, and 2 of them hold more than 6 words, such as the rect in #pic holding “Embed every chunk with the small model”/,
+    );
   const told = () => new Set(calls.filter((m) => m.kind === 'lint').flatMap((m) => m.problems.map((p) => `${p.scope?.id} ${p.code}`)));
   await expect
     .poll(() => ['boxes text-in-shapes', 'lollipop ranks-one-number'].every((k) => told().has(k.replace(' ', `-${thread.id} `))), {
