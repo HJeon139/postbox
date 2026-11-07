@@ -586,7 +586,7 @@ const RENDER = {
       h(
         'div.block-body',
         md(b.statement),
-        commandsSection(b.commands),
+        commandsSection(b.commands, item.bodyFiles),
         done
           ? h(
               'span.answered-note',
