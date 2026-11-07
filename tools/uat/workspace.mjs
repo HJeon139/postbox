@@ -3,6 +3,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { seedFakeEnv } from './allowonce-triggers.mjs';
+import { seedBareRemote } from './confirm-triggers.mjs';
 import { seedFiles } from './fixtures.mjs';
 import { hideSteeringAbove } from './steering.mjs';
 import * as tm from './telemetry-run.mjs';
@@ -20,6 +21,7 @@ export function makeWorkspace(scenario, paths, dir) {
   if (scenario.seed === 'fake-env') seedFakeEnv(paths.workspace);
   if (scenario.seed === 'visual-skill') seedVisualSkill(paths.workspace);
   if (scenario.files) seedFiles(paths.workspace, scenario.files);
+  if (scenario.seed === 'bare-remote') seedBareRemote(paths.workspace);
   // After the seeds, so the excludes join any settings one planted. The run’s folder is the tester’s.
   hideSteeringAbove(paths.workspace);
   hideSteeringAbove(dir);

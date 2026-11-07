@@ -12,6 +12,7 @@
 
 import { NEEDS_TRIGGERS } from '../../server/room-checks-needs.mjs';
 import { ALLOW_ONCE_TRIGGERS } from './allowonce-triggers.mjs';
+import { CONFIRM_TRIGGERS } from './confirm-triggers.mjs';
 import { DELIVERY_TRIGGERS } from './delivery-triggers.mjs';
 import { DISMISS_TRIGGERS } from './dismiss-triggers.mjs';
 import { REVIEW_FIGURE_TRIGGERS } from './review-figures-triggers.mjs';
@@ -39,6 +40,7 @@ export const TRIGGERS = {
   ...TELEMETRY_TRIGGERS,
   ...NEEDS_TRIGGERS,
   ...ALLOW_ONCE_TRIGGERS,
+  ...CONFIRM_TRIGGERS,
   ...DELIVERY_TRIGGERS,
   ...VIEW_TRIGGERS,
   ...WAITING_TRIGGERS,
