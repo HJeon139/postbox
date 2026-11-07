@@ -88,12 +88,20 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const hostTurns = hostTurnsList(threadId);
 
   const appSig = (app) => JSON.stringify([app.current, app.versions?.length, app.check?.status, app.check?.problems?.length ?? 0, app.retired?.at ?? null]);
+  /** The id of the app a block draws: an app’s own, or an app review’s (#857). */
+  const drawnApp = (it) => {
+    if (it.kind !== 'block' || !it.valid) return null;
+    if (it.block.type === 'app') return it.block.id;
+    if (it.block.type === 'review' && it.block.format === 'app') return it.block.appId;
+    return null;
+  };
   const render = (it, prev) => {
     const ctx = { threadId, kind: S().threads[threadId]?.kind, rerender: () => rerender(it.id) };
     const node = renderItem(it, prev, ctx);
     messageActions(node, it, ctx);
     node.dataset.key = it.id;
-    if (it.kind === 'block' && it.valid && it.block.type === 'app' && S().apps[it.block.id]) node.dataset.appSig = appSig(S().apps[it.block.id]);
+    const drawn = S().apps[drawnApp(it)];
+    if (drawn) node.dataset.appSig = appSig(drawn);
     if (it.kind === 'agent') node.dataset.remoteSig = remoteSig(it);
     node.classList.add('item');
     if (!node.hasAttribute('tabindex')) node.tabIndex = -1;
@@ -183,24 +191,17 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       for (const it of itemsOf(threadId))
         if (it.kind === 'sidelink' && nodes.get(it.id)?.dataset.sideSig !== sideSig(sideActive(it.sideThreadId))) rerender(it.id);
     } else if (ch.type === 'app') {
-      for (const it of itemsOf(threadId))
-        if (it.kind === 'block' && it.valid && (it.block.id === d.id || it.block.appId === d.id)) {
-          if (it.block.type === 'app') {
-            // Only what changes the frame re-renders it: a new version, a version picked, the check’s result, or retiring (#193).
-            // Saved state never does; the running app already has it, and reloading would make it save again.
-            const sig = appSig(d);
-            const node = nodes.get(it.id);
-            if (node?.dataset.appSig !== sig) {
-              rerender(it.id);
-              const fresh = nodes.get(it.id);
-              if (fresh) fresh.dataset.appSig = sig;
-            }
-          } else if (it.block.type === 'review' && it.block.format === 'app') {
-            // The review frame keeps its draft; only re-render when the app’s version changed.
-            const prev = nodes.get(it.id)?.dataset.appVersion;
-            if (prev !== String(d.current)) rerender(it.id);
-          }
-        }
+      // Only what changes the frame re-renders it, for an app and an app review alike: a new version, a version picked,
+      // the check’s result, or retiring (#193). A review shown while its app was being checked draws the result (#857),
+      // and keeps its draft, which lives outside the node. Saved state never re-renders: the running app already has it,
+      // and reloading would make it save again.
+      const sig = appSig(d);
+      for (const it of itemsOf(threadId)) {
+        if (drawnApp(it) !== d.id || nodes.get(it.id)?.dataset.appSig === sig) continue;
+        rerender(it.id);
+        const fresh = nodes.get(it.id);
+        if (fresh) fresh.dataset.appSig = sig;
+      }
     }
     hostChanged(ch, threadId, nodes, rerender, hostTurns);
   });
@@ -414,9 +415,7 @@ function renderItem(it, prev, ctx) {
         focusComposer();
         return r;
       };
-      const node = h('div.col.turn', showWho ? who(it, ctx) : null, renderBlock(it, { act, threadId: ctx.threadId }), it.work ? workChip(it, ctx) : null);
-      if (it.valid && it.block.type === 'review' && it.block.format === 'app') node.dataset.appVersion = String(S().apps[it.block.appId]?.current ?? '');
-      return node;
+      return h('div.col.turn', showWho ? who(it, ctx) : null, renderBlock(it, { act, threadId: ctx.threadId }), it.work ? workChip(it, ctx) : null);
     }
     case 'voice':
       // An app’s summary is its own wording, so it shows beside your line as a quote from the app, never in your
