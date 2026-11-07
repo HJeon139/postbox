@@ -64,6 +64,7 @@ const WRITE_ROUTES = {
   'POST ^\\/api\\/threads\\/([^/]+)\\/items\\/([^/]+)\\/share$': ['/api/threads/th_none/items/it_none/share'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/summarize$': ['/api/threads/th_none/summarize'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/items\\/([^/]+)\\/diagram$': ['/api/threads/th_none/items/it_none/diagram'],
+  'POST ^\\/api\\/threads\\/([^/]+)\\/items\\/([^/]+)\\/dismiss$': ['/api/threads/th_none/items/it_none/dismiss'],
   'POST ^\\/api\\/threads\\/([^/]+)\\/items\\/([^/]+)\\/retry$': ['/api/threads/th_none/items/it_none/retry'],
   'POST ^\\/api\\/sessions\\/([^/]+)\\/(stop|undo-delete)$': ['/api/sessions/se_none/stop', '/api/sessions/se_none/undo-delete'],
   'POST ^\\/api\\/sessions\\/([^/]+)\\/resume$': ['/api/sessions/se_none/resume'],

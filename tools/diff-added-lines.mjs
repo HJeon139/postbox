@@ -206,11 +206,13 @@ function withAdded(files) {
 /**
  * The lines a commit’s diff adds, by file, read as readDiff reads them; a file it deletes adds none.
  * @param {string} diff
- * @returns {{ files: Map<string, string[]>, binary: number }} the added lines by file, and how many binary files it skipped
+ * @returns {{ files: Map<string, string[]>, ranges: Map<string, { start: number, end: number }[]>, binary: number }} the
+ *   added lines by file, their ranges of line numbers in the new file, and how many binary files it skipped
  */
 export function parseAddedLines(diff) {
   const { files, binary } = readDiff(diff);
-  return { files: new Map(withAdded(files).map(([path, file]) => [path, file.lines])), binary };
+  const added = withAdded(files);
+  return { files: new Map(added.map(([path, file]) => [path, file.lines])), ranges: new Map(added.map(([path, file]) => [path, file.ranges])), binary };
 }
 
 /**
