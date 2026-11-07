@@ -146,6 +146,11 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
       };
     }
   }
+  const kept = ASKING.has(v.block.type) && !existing.answered && !newFiles ? keptWaiting(rt, where, existing, v.block, now) : null;
+  if (kept) {
+    if (given.files) given.held = true;
+    return kept;
+  }
   /** @type {Record<string, any>} */
   const patch = { block: v.block, answered: false, answer: null, closed: null, revision: (existing.revision ?? 1) + 1, updatedAt: now, ...files };
   if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
@@ -177,6 +182,25 @@ function reviewImages(block, existing, given) {
 
 // What a block holds that the person never sees: changing it alone doesn’t ask again (#286).
 const UNSEEN = new Set(['fallback', 'version']);
+
+/**
+ * #593: an update to a block that asks and still waits, which changes nothing the person would answer (only what they can’t
+ * see, or whether a review’s threads are resolved, which shows at once), is written in place. A new revision would
+ * refuse their answer as stale and mark “Changes since you looked” over an empty diff. A withdrawn or dismissed block
+ * counts as answered, so an update to it asks again, as before.
+ * Returns the tool’s reply, or null when the update asks again.
+ * @param {any} rt @param {string} where @param {any} existing @param {any} block @param {number} now
+ */
+function keptWaiting(rt, where, existing, block, now) {
+  const differ = changedKeys(block, existing.block).map((k) => (k === 'threads' && sameThreads(block.threads, existing.block.threads) ? STATUS : k));
+  if (!differ.every((k) => UNSEEN.has(k) || k === STATUS)) return null;
+  if (!differ.length) return { ok: true, message: `Nothing in ${block.id} changed, so it still waits on the person as it was.` };
+  rt.patchItem(where, existing.id, { block, updatedAt: now });
+  return { ok: true, message: `Updated the ${differ.join(', ')} of ${block.id}; it still waits on the person as it was, since nothing they’d answer changed.` };
+}
+const STATUS = 'threads’ status';
+/** Whether two lists of review threads differ only in their status. @param {any[]} [a] @param {any[]} [b] */
+const sameThreads = (a = [], b = []) => JSON.stringify(a.map(({ status, ...t }) => t)) === JSON.stringify(b.map(({ status, ...t }) => t));
 
 /** The keys whose values differ between two blocks. @param {Record<string, any>} a @param {Record<string, any>} b */
 const changedKeys = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k]));

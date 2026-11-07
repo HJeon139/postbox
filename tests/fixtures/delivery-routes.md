@@ -58,7 +58,7 @@ This document records the results of the five-backend delivery spike investigati
   - Complete process-relative and event-relative timestamps are recorded in committed manifest [`delivery-routes/timing-manifest.json`](delivery-routes/timing-manifest.json).
   - Behavioral scoring logic (written after the runs, before any were scored) and refusal counterexample verification are covered by [`tests/spike-scorer.test.mjs`](../spike-scorer.test.mjs).
 - **Scope & Limitations (Not Today's Postbox Adapter):**
-  - This run verifies backend CLI capability when stdin is held open with `--input-format stream-json`. Today's Postbox adapter (`server/adapters/claude-code.mjs:295`) calls `child.stdin.end(prompt)` unconditionally.
+  - This run verifies backend CLI capability when stdin is held open with `--input-format stream-json`. Today's Postbox adapter (`server/adapters/claude-code.mjs:288`) calls `child.stdin.end(prompt)` unconditionally.
   - Enabling this route in Postbox requires the stream-json parity checks from gpt's draft 6 (`--resume`, `--session-id`, forks, slash commands, attachments, images, permission prompts) as an explicit dependency for A3.
   - The edge case where an incoming message and a background task completion notification arrive simultaneously remains unexercised.
 - **Status:** **Verified Live (n=1 existence only, transport & model-facing artifact; behavior acknowledged, not exact-line).**
