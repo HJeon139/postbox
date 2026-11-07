@@ -99,3 +99,23 @@ test('#852 r3: gh’s config that could send the call elsewhere refuses it: a so
   assert.equal(await ghConfigProblem(plain), null);
   assert.equal(await ghConfigProblem(join(plain, 'none')), null, 'no config at all');
 });
+
+test('#852 r3: gh’s config is refused in every YAML form gh reads: quoted keys and flow style too', async () => {
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const cases = [
+    ['config.yml', '"http_unix_socket": /tmp/agent.sock\n', /socket/],
+    ['config.yml', "'http_unix_socket': '/tmp/agent.sock'\n", /socket/],
+    ['config.yml', '{git_protocol: https, http_unix_socket: /tmp/agent.sock}\n', /socket/],
+    ['config.yml', 'aliases: {pr: "!curl x"}\n', /alias named pr or issue/],
+    ['config.yml', 'aliases:\n    "issue": api x\n', /alias named pr or issue/],
+    ['hosts.yml', '{github.com: {user: me}, ghe.example.com: {user: me}}\n', /ghe\.example\.com/],
+    ['hosts.yml', '"ghe.example.com":\n    user: me\n', /ghe\.example\.com/],
+  ];
+  for (const [file, text, why] of cases) {
+    const dir = tempDir('pb-ghconf-');
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, file), text);
+    assert.match((await ghConfigProblem(dir)) ?? '', why, text);
+  }
+});
