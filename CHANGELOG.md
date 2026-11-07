@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.39.3 (2026-11-07)
+
+### Fixes
+
+- **catalog:** the string-options error's example is a valid option itself (#455)
+- **remote:** a host asks hostUpdateRefusal before sending an update_block, in one place (#854)
+- **remote:** a host's shim refuses an invalid update_block in the call, as Postbox would (#854)
+- **catalog:** string options get one error with an option's shape, and the docs name it (#455)
+- **catalog:** options with no id aren't reported as duplicates of "undefined" (#552)
+- **remote:** a host's daemon queues an outcome or withdraw update_block for Postbox (#854)
+
 ## 1.39.2 (2026-11-07)
 
 ### Fixes
