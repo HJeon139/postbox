@@ -1191,7 +1191,8 @@ export class Runtime {
     const ex = this.exiting.get(turn.sessionId);
     if (ex?.turn !== turn) return;
     this.exiting.delete(turn.sessionId);
-    const se = this.s.sessions[turn.sessionId];
+    // From the pending session: Stop's “stopping” may still be held behind a commit as the turn exits (#796).
+    const se = this.store.pending.session(turn.sessionId) ?? this.s.sessions[turn.sessionId];
     if (!se) return;
     // Something else may have set the state meanwhile (archive, an answered card); “Stopping” goes either way.
     // A remote turn Postbox stopped because it hung says so instead (#120).

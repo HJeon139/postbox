@@ -114,6 +114,7 @@ const PENDING = {
     'endTurn',
     'endTurn',
     'recordStopped',
+    'turnExited',
     'runningProgress',
     'setJobStep',
     'settleJobs',
@@ -127,7 +128,7 @@ const PENDING = {
     'purgeSession',
     'purgeSession',
     'purgeSession',
-  ], // the turn’s own items and apps, a move after a pending read, sweeps that write back, the thread a message, a delivery or a topic reply count goes to, maybe opened or deleting behind a held commit, and the members a purge keeps its room for, maybe joined behind one (#796)
+  ], // the turn’s own items and apps, a move after a pending read, sweeps that write back, the thread a message, a delivery or a topic reply count goes to, maybe opened or deleting behind a held commit, and the members a purge keeps its room for, maybe joined behind one, and the session a stopped turn's exit settles, its “stopping” maybe held (#796)
   // The reply with the mention, a side line right after its add, and sweeps of hop cards; the conversation's hop count,
   // the topic the wake answers in, and endChain's hops and queued wakes, each maybe held behind a commit (#796).
   // A session's change and notice diff against the session a held change left (#796's class in sessions).
