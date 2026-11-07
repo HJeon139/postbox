@@ -305,7 +305,9 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
           );
       }
       // Writes outside Postbox (#112): many rules with one cause, and what lets a call through without asking.
-      if (b === 'ask' && view.writes?.rules.length) rows.push(writesRow(view.writes), requestedRow(p, change));
+      if (b === 'ask' && view.writes?.rules.length) rows.push(writesRow(view.writes));
+      // In Auto the harness decides writes (harness first), but when it asks about one you asked for, this still applies.
+      if (b === 'ask' && (view.writes?.rules.length || p.permissionMode === 'auto')) rows.push(requestedRow(p, change));
       if (b === 'allow')
         rows.push(h('li', h('code.perm-rule', 'mcp__postbox'), h('span.small.dim.grow', `from ${SOURCE.postbox}: they only show things here`)));
       return h(
@@ -583,7 +585,7 @@ function requestedRow(p, change) {
     checkField({
       id: 'perm-requested',
       label: 'Writes you asked for run without a card',
-      help: `In Auto mode, a write outside Postbox that you asked ${p.handle} for runs without a card: one a confirm you confirmed shows word for word, or one your message asks for, as a quick check by Claude Haiku finds. That check sends the call and your message to Anthropic. Each such write leaves a line in the conversation with Stop, five at most a turn. Only plain pushes, gh creates, comments and edits, and tools that create or edit can pass; deletes, merges, force pushes, your own ask rules and Ask me mode always ask.`,
+      help: `In Auto mode, when Claude Code asks about a write outside Postbox that you asked ${p.handle} for, it runs without a card: one a confirm you confirmed shows word for word, or one your message asks for, as a quick check by Claude Haiku finds. That check sends the call and your message to Anthropic. Each such write leaves a line in the conversation with Stop, five at most a turn. Only plain pushes, gh creates, comments and edits, and tools that create or edit can pass; deletes, merges, force pushes, your own ask rules and Ask me mode always ask.`,
       on: p.allowRequested !== false,
       onToggle: (on) =>
         change(
