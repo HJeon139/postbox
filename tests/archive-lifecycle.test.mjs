@@ -3,21 +3,17 @@
 // once. The server is started as it is at boot (start({ listen: false })), twice where a restart matters.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { afterEach, test } from 'node:test';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
 
 let port = 4461;
-const dirs = [];
 const open = [];
 afterEach(async () => {
   for (const app of open.splice(0)) await app.close();
-  for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true });
 });
 /** Starts Postbox on dir: a fresh demo install the first time, else what the last start left. */
 async function boot(dir, fresh = false) {
@@ -31,8 +27,7 @@ async function restart(app, dir) {
   return boot(dir);
 }
 async function install() {
-  const dir = await mkdtemp(join(tmpdir(), 'pb-archive-'));
-  dirs.push(dir);
+  const dir = tempDir('pb-archive-');
   return { dir, app: await boot(dir, true) };
 }
 const conversations = (st) => Object.values(st.threads).filter((t) => t.kind !== 'topic' && t.kind !== 'side');
