@@ -157,7 +157,7 @@ Postbox is plain ES modules (`.mjs`), with JSDoc types, no build step and no fra
 
 **One concern per module, small enough to read in one sitting** (architecture.md, “The front end”). Biome fails a file or function past its default length. Files already past it, such as `server/runtime.mjs` and `app/js/thread.mjs`, have a ceiling at their size on 23 October 2026, so they can shrink and can’t grow (architecture.md, “Module and function size”). A change that adds a concern to one of them moves it into its own module, and a change that shrinks one lowers its ceiling to the new size.
 
-**A circular import means a missing module.** The shared value belongs in a third module that neither imports back, which is usually `shared/`.
+**A circular import means a missing module.** The shared value belongs in a third module that neither imports back, which is usually `shared/`. Biome’s `noImportCycles` fails a new one, and `tests/import-cycles-scc.test.mjs` holds the cycles still there (#312) to its recorded list, which only shrinks.
 
 **Each test file is named for what it tests**: `tests/store.test.mjs` for `server/store.mjs`, so a reader finds a module’s tests on the first guess. When a module’s test file is at its length ceiling, new tests go in `tests/<module>-<concern>.test.mjs`, such as `tests/runtime-jobs.test.mjs`, so a search for `runtime` still finds them (architecture.md, “Module and function size”). Every test file ends in `.test.mjs`, or `npm test` never runs it.
 
