@@ -43,3 +43,10 @@ Play this phase on its own, with `--phases 4 --stage-host-version <tag>`, an old
 - steps: 8
 
 host1 has this run’s Postbox, installed at the start, and the runner has turned on host1’s consent to keep Postbox up to date there, as the toggle in Settings › Hosts does (#464). Remove Postbox from host1 as someone might by hand (fault remove-postbox, target host1): the run stops Postbox’s programs there and deletes its folder, while this computer keeps host1’s token. host1 then reads Disconnected while nothing needs it, which is expected. Send @researcher, on host1, a message asking it to run `uname -n` and tell you what it printed: that turn finds Postbox missing there, Postbox installs it again by itself with a new token, and the turn waits for it and then runs there. Don’t press Install…. Once the turn is done, host1’s card should read Connected and say Postbox wasn’t on host1 any more, so it installed its version there again and made a new token, and that turns that ran there before are gone. A card that never reads Connected, a turn that fails, Postbox installing it more than once, or a card or line that shows a token is a finding.
+
+## Phase 6: A hung agent on a host
+
+- triggers: host-hung-killed
+- steps: 8
+
+Ask @researcher, on host1, to run `sleep 120; echo done` in its folder and tell you what it printed. About 15 seconds into that turn, hang its runner (an interrupt with fault stop-runner, target host1): the run sends SIGSTOP to the turn’s runner there, so it goes silent while its process stays (#872). host1 stays Connected. Then wait up to 3 minutes (wait 180 seconds) without sending anything: past a minute of silence, host1’s daemon should kill the runner, and Postbox should show @researcher’s turn interrupted once and then resume it on its own, with no Resume from you, and the resumed turn should finish. A turn that stays working past the 3 minutes, one interrupted more than once, a turn that waits for you to resume it, or two turns of @researcher’s running at once is a finding.

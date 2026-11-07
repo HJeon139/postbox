@@ -103,7 +103,7 @@ test('#872 the stop-runner script finds the newest running turn’s runner, chec
   assert.match(s, /"\$HOME"\/\.postbox-remote\/turns\/\*\/runner\.json/);
   assert.match(s, /exit\.json/, 'skips a turn that ended');
   assert.match(s, /-nt/, 'the newest');
-  assert.match(s, /runner\[\.\]mjs/, 'only a runner’s process');
+  assert.match(s, /\/server\/remote\/host\/runner\.mjs \$t"\)/, 'only that turn’s runner');
   assert.match(s, /kill -STOP "\$p"/);
   assert.match(s, /echo "stopped \$p"/);
 });
