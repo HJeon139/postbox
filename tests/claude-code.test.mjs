@@ -348,12 +348,8 @@ test('the Agent SDK adapter passes the mode explicitly, loads Postbox’s tools 
 test('the Agent SDK’s canUseTool allows Postbox’s tools and asks you about the rest', async () => {
   const sdk = fakeSdk(fixture('block'));
   const asked = [];
-  const ctx = fakeCtx({
-    askPermission: async (req) => {
-      asked.push(req);
-      return { allow: false, message: 'No.' };
-    },
-  });
+  const no = { allow: false, message: 'No.' };
+  const ctx = fakeCtx({ askPermission: async (req) => asked.push(req) && no });
   await new AgentSdkAdapter({ sdk, workRoot: '/tmp/pb-test-work' }).deliver({}, { kind: 'user', text: 'x' }, ctx);
   const can = sdk.calls[0].options.canUseTool;
   assert.deepEqual(await can('mcp__postbox__show_block', { block: {} }), { behavior: 'allow', updatedInput: { block: {} } });
@@ -367,6 +363,8 @@ test('the Agent SDK’s canUseTool allows Postbox’s tools and asks you about t
       suggestions: [],
       suppressAlways: false,
       agentId: null,
+      // In-process, so bound to the call the SDK is about to make (#852).
+      bound: true,
     },
   ]);
 });

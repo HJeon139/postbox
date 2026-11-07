@@ -7,18 +7,35 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { TRIGGERS, unknownTriggers } from '../tools/uat/triggers.mjs';
-import { afterBlock, bash, confirm, setup } from './requested-setup.mjs';
+import { bash, cards, confirm, setup, until } from './requested-setup.mjs';
 
 const PUSH = 'git push origin HEAD:refs/heads/uat-confirm';
+const LABEL = 'gh pr edit 896 --repo o/r --add-label x';
 const fired = (s, id) => TRIGGERS[id].run({ threads: [s.t.id], state: { items: { [s.t.id]: s.store.items(s.t.id) } } });
 
 test('#852 confirmed-command-ran fires for the confirmed run, and carded-again for the second run’s card', async () => {
   const s = await setup({ permissionMode: 'ask' });
   assert.deepEqual(fired(s, 'confirmed-command-ran'), []);
-  assert.deepEqual(await afterBlock(s, confirm(`Runs:\n\n\`\`\`\n${PUSH}\n\`\`\``), ['confirm', {}], [bash(PUSH), bash(PUSH)]), [true, false]);
+  s.next.push(async (c) => c.tools.show_block({ block: { ...confirm('Labels the PR.'), commands: [LABEL] } }));
+  s.rt.sendMessage(s.t.id, { text: 'Label it.' });
+  await until(() => !s.rt.turns.size);
+  const it = s.store.items(s.t.id).find((i) => i.kind === 'block');
+  const answers = [];
+  s.next.push(async (c) => {
+    for (const id of ['tu1', 'tu2']) {
+      c.toolUse({ id, name: 'Bash', input: { command: LABEL } });
+      const asked = c.askPermission({ ...bash(LABEL), bound: true, toolUseId: id });
+      const r = await Promise.race([asked, until(() => cards(s).length > 0).then(() => null)]);
+      if (!r) await s.rt.act(s.t.id, cards(s)[0].id, 'deny', {});
+      answers.push((r ?? (await asked)).allow);
+    }
+  });
+  await s.rt.act(s.t.id, it.id, 'confirm', {}, it.revision ?? 1);
+  await until(() => answers.length === 2 && !s.rt.turns.size);
+  assert.deepEqual(answers, [true, false]);
   const [ran, ...more] = fired(s, 'confirmed-command-ran');
   assert.deepEqual(more, []);
-  assert.match(ran.evidence, /^@now ran “git push origin HEAD:refs\/heads\/uat-confirm”, as confirmed \(Push 2d7c9a65\)\.$/);
+  assert.match(ran.evidence, /^@now ran “gh pr edit 896 --repo o\/r --add-label x”, as confirmed \(Push 2d7c9a65\)\.$/);
   const [again, ...others] = fired(s, 'confirmed-command-carded-again');
   assert.deepEqual(others, []);
   assert.match(again.evidence, /The same command again got a card/);

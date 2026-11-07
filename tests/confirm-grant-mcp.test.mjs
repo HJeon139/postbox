@@ -7,12 +7,12 @@ import { test } from 'node:test';
 import { handleMcp } from '../server/mcp.mjs';
 import { cards, confirm, lines, setup, until } from './requested-setup.mjs';
 
-const LABEL = 'gh pr edit 896 --add-label "ready for integrator"';
-const statement = `Confirming runs this:\n\n\`\`\`\n${LABEL}\n\`\`\``;
+const LABEL = 'gh pr edit 896 --repo o/r --add-label "ready for integrator"';
+const statement = 'Confirming labels the PR.';
 
 /** The agent shows the confirm, the person confirms it, and the next turn runs `step`. */
 async function confirmedThen(s, step) {
-  s.next.push(async (c) => c.tools.show_block({ block: confirm(statement) }));
+  s.next.push(async (c) => c.tools.show_block({ block: { ...confirm(statement), commands: [LABEL] } }));
   s.rt.sendMessage(s.t.id, { text: 'Label it.' });
   await until(() => !s.rt.turns.size);
   const it = s.store.items(s.t.id).find((i) => i.kind === 'block');
@@ -21,7 +21,7 @@ async function confirmedThen(s, step) {
     await step(c);
     done = true;
   });
-  await s.rt.act(s.t.id, it.id, 'confirm', {});
+  await s.rt.act(s.t.id, it.id, 'confirm', {}, it.revision ?? 1);
   // A prompt the stream never shows waits for its call up to PROMPT_CALL_WAIT_MS (5 s) before it's refused.
   for (let i = 0; i < 40 && !(done && !s.rt.turns.size); i++) await until(() => done && !s.rt.turns.size);
 }
