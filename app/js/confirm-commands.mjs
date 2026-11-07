@@ -27,6 +27,19 @@ function bodySection(file) {
 }
 
 /**
+ * “Pushes this commit”: the push Postbox would make, as it read it when the confirm was shown.
+ * @param {{ push: { sentence: string } }} entry
+ */
+function pushSection(entry) {
+  return h(
+    'div.confirm-body-file',
+    { role: 'group', 'aria-label': 'Pushes this commit' },
+    h('div.confirm-cmds-head', 'Pushes this commit'),
+    h('div.small', entry.push.sentence),
+  );
+}
+
+/**
  * The “Runs when you confirm” section under a confirm’s statement, or null when it names no commands.
  * @param {string[] | undefined} commands  the confirm’s commands, as the catalog passed them
  * @param {BodyFile[] | undefined} [bodyFiles]  the files those commands post, as the item keeps them
@@ -37,6 +50,9 @@ export function commandsSection(commands, bodyFiles = []) {
     'div.confirm-cmds',
     { role: 'group', 'aria-label': 'Runs when you confirm' },
     h('div.confirm-cmds-head', 'Runs when you confirm'),
-    commands.map((text, i) => [h('pre.confirm-cmd', h('code', text)), bodyFiles.filter((f) => f.command === i).map(bodySection)]),
+    commands.map((text, i) => [
+      h('pre.confirm-cmd', h('code', text)),
+      bodyFiles.filter((f) => f.command === i).map((f) => (f.push ? pushSection(f) : bodySection(f))),
+    ]),
   );
 }

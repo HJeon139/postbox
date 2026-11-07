@@ -8,7 +8,9 @@ import { lstat, readFile, realpath, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, sep } from 'node:path';
 import { splitCommand } from '../shared/command-chains.mjs';
+import { confirmShape } from '../shared/confirm-shapes.mjs';
 import { words } from './adapters/agy-auto.mjs';
+import { pushConsequence, pushOf } from './push-on-request.mjs';
 
 /** The most a body file may hold, in bytes, and how many of its lines the confirm keeps. */
 export const BODY_MAX = 64 * 1024;
@@ -141,6 +143,10 @@ export async function confirmBodies(rt, sessionId, name, args) {
   const bodyFiles = [];
   for (const [index, command] of block.commands.entries()) {
     if (typeof command !== 'string') continue; // the catalog refuses it
+    const shape = confirmShape(command);
+    const pinned = await pinShape(rt, sessionId, shape, command, index);
+    if (!pinned.ok) return pinned;
+    if (pinned.entry) bodyFiles.push(pinned.entry);
     const { paths, unclear } = bodyOptions(command);
     if (unclear || paths.length > 1)
       return { ok: false, why: `Postbox can’t tell which one file command ${index + 1}’s --body-file posts. Name one file, as --body-file /path/to/body.md.` };
@@ -166,4 +172,33 @@ export function unreadBody(block, bodyFiles) {
   };
   if (block.commands.every(read)) return null;
   return 'Postbox didn’t read the file this confirm’s --body-file posts, so it can’t show the person what it posts. Show it through Postbox’s MCP tools from this computer.';
+}
+
+/** The project’s GitHub repository, as `owner/name` from the push URL the person set, or null for any other host. */
+export function subjectRepo(url) {
+  const m = /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/.exec(String(url ?? ''));
+  return m ? `${m[1]}/${m[2]}`.toLowerCase() : null;
+}
+
+/**
+ * What a confirm’s command is tied to when it’s shown (critic’s read of r3): a gh shape’s `--repo` must be the
+ * project’s GitHub repository; a push is pinned to the commit, branch and repository it would land, as the person
+ * sees it under the command, and the call is refused if any has changed (confirm-grant.mjs).
+ * @returns {Promise<{ ok: true, entry?: any } | { ok: false, why: string }>}
+ */
+async function pinShape(rt, sessionId, shape, command, index) {
+  if (shape.kind === 'none') return { ok: true };
+  const { folder, project } = await rt.panelTarget({ sessionId });
+  if (shape.kind === 'gh') {
+    const repo = subjectRepo(project?.pushUrl);
+    if (repo && repo === shape.repo.toLowerCase()) return { ok: true };
+    return {
+      ok: false,
+      why: `Command ${index + 1} posts to ${shape.repo}, but this project’s repository is ${repo ?? 'not one on github.com'}. A confirm can post only to the project’s own repository.`,
+    };
+  }
+  const push = await (rt.pushes?.consequence ?? pushConsequence)({ folder, url: project?.pushUrl, push: pushOf(command), named: command.toLowerCase() });
+  if (!push)
+    return { ok: false, why: `Postbox can’t make command ${index + 1}’s push: it needs the project’s repository set, and a branch with a commit to push.` };
+  return { ok: true, entry: { command: index, push: { branch: push.branch, sha: push.sha, url: push.url, sentence: push.sentence } } };
 }

@@ -9,10 +9,11 @@
 // numbers are the packet’s.
 
 import { createHash } from 'node:crypto';
+import { readFile, realpath } from 'node:fs/promises';
 import { commandProblem } from '../shared/confirm-commands.mjs';
 import { confirmShape } from '../shared/confirm-shapes.mjs';
-import { bodyStillSame } from './confirm-body.mjs';
-import { cleanOutput, runConfirmedGh } from './confirm-run.mjs';
+import { bodyStillSame, subjectRepo } from './confirm-body.mjs';
+import { cleanOutput, ghConfigDir, ghConfigProblem, runConfirmedGh } from './confirm-run.mjs';
 import { pushOf } from './push-on-request.mjs';
 import { trimSecrets } from './telemetry-secrets.mjs';
 import { personAsks } from './write-guard.mjs';
@@ -70,8 +71,14 @@ async function recordFiles(rt, threadId, itemId, entries, bodyFiles) {
   for (const [index, command] of entries.entries()) {
     const shape = typeof command === 'string' && !commandProblem(command) ? confirmShape(command) : null;
     if (!shape || shape.kind === 'none') continue;
-    const file = shape.kind === 'gh' && shape.bodyFile ? shownFile(bodyFiles, index, shape.bodyFile) : null;
-    if (shape.kind === 'gh' && shape.bodyFile && !(file && (await bodyStillSame(file)))) continue;
+    if (shape.kind === 'push') {
+      // The push as the confirm showed it, pinned when it was shown (confirm-body.mjs, pinShape).
+      const pinned = bodyFiles.find((f) => f.command === index && f.push);
+      if (pinned) files[sha256(command)] = [pinned];
+      continue;
+    }
+    const file = shape.bodyFile ? shownFile(bodyFiles, index, shape.bodyFile) : null;
+    if (shape.bodyFile && !(file && (await bodyStillSame(file)))) continue;
     files[sha256(command)] = file ? [file] : [];
   }
   const it = rt.store.item(threadId, itemId);
@@ -109,12 +116,36 @@ function grants(rt, c, sessionId, hash, now) {
   return it;
 }
 
-/** Rule 11: the body file is still the bytes and the real path the block showed, and holds no secret Postbox knows. */
-async function bodyHolds(files, argv) {
-  for (const file of files) if (!(await bodyStillSame(file)) || trimSecrets(file.text ?? '') !== (file.text ?? '')) return false;
-  // The words the call posts besides the file: its title and labels (a path or a branch isn’t posted as text).
+/**
+ * Rule 11, and critic’s read of r3: the body as gh will read it, from Postbox, not from the agent’s path. Read once
+ * here, by its real path, and checked against what the block showed; gh gets these bytes on stdin (`--body-file -`),
+ * so nothing can swap the file after the check. Null when it changed, holds a secret Postbox knows, or the title or
+ * labels do.
+ * @returns {Promise<{ argv: string[], input: string | undefined } | null>}
+ */
+async function checkedCall(files, argv) {
   const posted = argv.filter((_, i) => TEXT_FLAGS.has(argv[i - 1])).join('\n');
-  return trimSecrets(posted) === posted;
+  if (trimSecrets(posted) !== posted) return null;
+  const [file] = files;
+  if (!file) return { argv, input: undefined };
+  const real = await realpath(file.path).catch(() => null);
+  const bytes = real && real === file.real ? await readFile(real).catch(() => null) : null;
+  if (!bytes || createHash('sha256').update(bytes).digest('hex') !== file.sha256) return null;
+  const text = bytes.toString('utf8');
+  if (trimSecrets(text) !== text) return null;
+  const at = argv.indexOf('--body-file');
+  return { argv: argv.map((w, i) => (i === at + 1 ? '-' : w)), input: text };
+}
+
+/**
+ * A gh shape’s run as Postbox will make it, or null for a card: `--repo` is still the project’s GitHub repository,
+ * gh’s config sends nothing elsewhere, and the body is the one checked (checkedCall).
+ */
+async function ghCall(rt, sessionId, shape, files) {
+  const { project } = await rt.panelTarget({ sessionId });
+  if (subjectRepo(project?.pushUrl) !== shape.repo.toLowerCase()) return null;
+  if (await ghConfigProblem(ghConfigDir())) return null;
+  return checkedCall(files, shape.argv);
 }
 
 /** Calls being let through now, by `${itemId}:${hash}`: rule 13’s reservation, so two at once can’t both pass. */
@@ -145,13 +176,15 @@ export async function confirmedCall(rt, sessionId, req) {
   reserving.add(key);
   try {
     if (await personAsks(rt, sessionId, { tool, input })) return null;
-    if (shape.kind === 'gh' && !(await bodyHolds(at.it.answer.files[hash], shape.argv))) return null;
+    const run = shape.kind === 'gh' ? await ghCall(rt, sessionId, shape, at.it.answer.files[hash]) : null;
+    if (shape.kind === 'gh' && !run) return null;
     // Rules 3–8 again, since the reads took time; then used, on disk, before anything runs.
     const it = grants(rt, at.c, sessionId, hash, Date.now());
     if (!it || rt.turns.get(sessionId) !== turn || !rt.store.writable) return null;
     rt.patchItem(at.c.threadId, it.id, { answer: { ...it.answer, ran: [...(it.answer.ran ?? []), hash] } });
     await rt.store.flush();
-    return { threadId: at.c.threadId, label: String(it.block.confirmLabel ?? ''), blockItemId: it.id, sha256: hash, command, shape };
+    const pinned = shape.kind === 'push' ? at.it.answer.files[hash][0]?.push : null;
+    return { threadId: at.c.threadId, label: String(it.block.confirmLabel ?? ''), blockItemId: it.id, sha256: hash, command, shape, run, pinned };
   } catch {
     return null;
   } finally {
@@ -173,14 +206,16 @@ export async function confirmedFound(rt, sessionId, req, pushes) {
   const c = await confirmedCall(rt, sessionId, req);
   if (!c) return null;
   const found = { threadId: c.threadId, how: /** @type {const} */ ('confirmed'), label: c.label, blockItemId: c.blockItemId, sha256: c.sha256 };
-  if (c.shape.kind === 'gh') {
-    const r = await (rt.runGh ?? runConfirmedGh)(c.shape.argv);
+  if (c.shape.kind === 'gh' && c.run) {
+    const r = await (rt.runGh ?? runConfirmedGh)(c.run.argv, { input: c.run.input });
     return { ...found, gh: { argv: r.argv, status: r.status, output: cleanOutput(r.output), message: ranMessage(r) } };
   }
   const { folder, project } = await rt.panelTarget({ sessionId });
   // The branch the push names counts as named, as a request’s words do (push-on-request.mjs, tokensOf).
   const push = await (rt.pushes ?? pushes).consequence({ folder, url: project?.pushUrl, push: pushOf(c.command), named: c.command.toLowerCase() });
-  return push ? { ...found, push } : null;
+  // The push the person saw when the confirm was shown: the same commit, branch and repository, or a card.
+  const same = push && c.pinned && push.sha === c.pinned.sha && push.branch === c.pinned.branch && push.url === c.pinned.url;
+  return same ? { ...found, push } : null;
 }
 
 /** The allowed-call line’s fields for a confirmed command: which confirm, and what Postbox ran for it. */
