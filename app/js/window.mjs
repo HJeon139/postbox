@@ -12,7 +12,7 @@ import { h } from './dom.mjs';
 import { restoreDetails } from './rerender-state.mjs';
 import { createHeights } from './window-heights.mjs';
 import { CEILING, CHUNK, FLOOR, MARGIN } from './window-limits.mjs';
-import { drop, dropBottom, dropTop, fill, gapBefore, paintSpacers, pinned, rejoin, release, shrink } from './window-shrink.mjs';
+import { drop, dropBottom, dropTop, fill, gapBefore, paintSpacers, pinned, recenter, rejoin, release, shrink } from './window-shrink.mjs';
 
 const FLAG = 'pb-window';
 // Rough first estimates by kind, in px, from prep-712’s 1,000-item room at 1280 px (median 71 px); a kind’s own
@@ -58,6 +58,24 @@ function heightsFor(key, list) {
 export function createWindow(o) {
   if (!windowOn() || o.list.length <= CEILING) return null;
   return new TranscriptWindow(o);
+}
+
+/** Every window on the page, so a jump to an item can find the one that holds it. @type {Set<TranscriptWindow>} */
+const live = new Set();
+
+/**
+ * The node for an item a window holds, mounting the range around it first if it’s off the page; null when no window
+ * holds it (the window is off, or the item isn’t in a long transcript). Every jump to an item asks this before it
+ * looks for the item on the page (#866, W3).
+ * @param {string} itemId
+ * @returns {HTMLElement | null}
+ */
+export function mountFor(itemId) {
+  for (const w of live) {
+    const node = w.reach(itemId);
+    if (node) return node;
+  }
+  return null;
 }
 
 class TranscriptWindow {
@@ -132,11 +150,14 @@ class TranscriptWindow {
     }
     this.paintBelow();
   }
-  /** The range to open on: around the anchor, or the newest items, covering the view and its margins by estimate. */
-  openRange() {
-    const total = this.total;
+  /** Where the range opens: the kept anchor, or the newest item. */
+  openCenter() {
     const anchored = this.anchorKey ? this.indexOf.get(this.anchorKey) : undefined;
-    const center = anchored ?? total - 1;
+    return anchored ?? this.total - 1;
+  }
+  /** The range to open on: around the anchor, or the newest items, covering the view and its margins by estimate. */
+  openRange(center = this.openCenter()) {
+    const total = this.total;
     const reach = this.viewH() * (MARGIN + 0.5);
     let a = center;
     let b = center + 1;
@@ -219,6 +240,7 @@ class TranscriptWindow {
   }
   /** Mounts the opening range between its spacers, then grows as you scroll. */
   build() {
+    live.add(this);
     [this.from, this.to] = this.openRange();
     this.el.append(this.above, this.below);
     this.mountRun(this.from, this.to, this.below);
@@ -260,7 +282,15 @@ class TranscriptWindow {
   get size() {
     return this.to - this.from;
   }
+  /** Item `id`’s node, mounting the range around it if it’s off the page; null if this window doesn’t hold it. @param {string} id */
+  reach(id) {
+    const i = this.indexOf.get(id);
+    if (i === undefined || !this.el.isConnected) return null;
+    if (!this.nodes.has(id)) recenter(this, i);
+    return this.nodes.get(id) ?? null;
+  }
   destroy() {
+    live.delete(this);
     cancelAnimationFrame(this.raf);
     this.sizes.disconnect();
     this.scroller()?.removeEventListener('scroll', this.scrolled);

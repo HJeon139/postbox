@@ -4,6 +4,7 @@ import { api, liveSessions } from './client.mjs';
 import { h, icon, plural } from './dom.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { toast } from './ui.mjs';
+import { mountFor } from './window.mjs';
 
 export function sideLine(it, ctx) {
   // The agent at work in it, with the ring and state word the sidebar rows use (#121), so the conversation shows
@@ -49,7 +50,7 @@ export function sideLine(it, ctx) {
 
 /** Once the side thread’s panel has opened, scrolls to the card there and focuses what answers it. */
 function goToCard(itemId, frames = 180) {
-  const node = document.querySelector(`.sidepanel [data-key="${CSS.escape(itemId)}"]`);
+  const node = mountFor(itemId) ?? document.querySelector(`.sidepanel [data-key="${CSS.escape(itemId)}"]`);
   if (!node) {
     if (frames) requestAnimationFrame(() => goToCard(itemId, frames - 1));
     return;

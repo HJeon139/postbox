@@ -6,6 +6,7 @@
 import { conversationOf, needsOrder, needsYouNow, whereNeeds } from '/shared/needs.mjs';
 import { client, hrefOf, liveSessions } from './client.mjs';
 import { navigate, route, toast } from './ui.mjs';
+import { mountFor } from './window.mjs';
 
 const S = () => client.state;
 const frame = () => new Promise((r) => requestAnimationFrame(() => r(undefined)));
@@ -23,7 +24,8 @@ function here() {
  * @param {string} itemId
  */
 export async function focusItem(itemId) {
-  const find = () => document.querySelector(`[data-key="${CSS.escape(itemId ?? '')}"]`);
+  // A window holding the item off the page mounts it first (window.mjs, #866).
+  const find = () => mountFor(itemId ?? '') ?? document.querySelector(`[data-key="${CSS.escape(itemId ?? '')}"]`);
   let node = find();
   for (const end = Date.now() + 3000; !node && Date.now() < end; node = find()) await frame();
   if (!node) return false;

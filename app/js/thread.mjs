@@ -36,7 +36,7 @@ import { threadMenu } from './thread-menu.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
 import { mountView } from './view-state.mjs';
 import { welcome } from './welcome.mjs';
-import { createWindow } from './window.mjs';
+import { createWindow, mountFor } from './window.mjs';
 import { workList } from './work-list.mjs';
 
 export { focusComposer } from './hop-card.mjs';
@@ -124,6 +124,12 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   };
   /** @type {ReturnType<typeof createWindow>} */
   let win = null;
+  /** The items on the page: with a window, only the mounted ones; the rest draw from the state when they mount. */
+  const shown = () => {
+    const list = itemsOf(threadId);
+    if (!win) return list;
+    return [...nodes.keys()].map((id) => list[placeIn(threadId, id)]).filter(Boolean);
+  };
   const all = () => {
     el.replaceChildren();
     nodes.clear();
@@ -189,14 +195,13 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
           pending.clear();
         });
     } else if (ch.type === 'glossary' && (d.threadId === threadId || d.threadId === S().threads[threadId]?.parentId)) {
-      for (const it of itemsOf(threadId)) if (it.kind === 'agent' && usesTerm(it, d.entry, nodes.get(it.id))) updateText(it.id, true);
+      for (const it of shown()) if (it.kind === 'agent' && usesTerm(it, d.entry, nodes.get(it.id))) updateText(it.id, true);
     } else if (ch.type === 'session') {
       // An agent at work here may not be one of this thread’s own (#110): its turn is in it.
       paintWorking();
-      for (const it of itemsOf(threadId))
-        if (it.kind === 'sidelink' && nodes.get(it.id)?.dataset.sideSig !== sideSig(sideActive(it.sideThreadId))) rerender(it.id);
+      for (const it of shown()) if (it.kind === 'sidelink' && nodes.get(it.id)?.dataset.sideSig !== sideSig(sideActive(it.sideThreadId))) rerender(it.id);
     } else if (ch.type === 'app') {
-      for (const it of itemsOf(threadId))
+      for (const it of shown())
         if (it.kind === 'block' && it.valid && (it.block.id === d.id || it.block.appId === d.id)) {
           if (it.block.type === 'app') {
             // Only what changes the frame re-renders it: a new version, a version picked, the check’s result, or retiring (#193).
@@ -553,7 +558,7 @@ function movedLine(it, ctx) {
             'aria-label': `Go to it: ${it.title}`,
             onclick: (e) => {
               const box = /** @type {HTMLElement} */ (e.currentTarget).closest('.transcript');
-              const node = box?.querySelector(`:scope > [data-key="${CSS.escape(it.itemId)}"]`);
+              const node = mountFor(it.itemId) ?? box?.querySelector(`:scope > [data-key="${CSS.escape(it.itemId)}"]`);
               if (!(node instanceof HTMLElement)) return;
               node.scrollIntoView({ block: 'center' });
               (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus({ preventScroll: true });
