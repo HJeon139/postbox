@@ -40,6 +40,7 @@ import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } fro
 import { catchUp, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
+import { DELETE_UNDO_MS } from './delete-undo.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
@@ -123,7 +124,6 @@ export { PERMISSION_MODES, readCapped };
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
-export const DELETE_UNDO_MS = 10000;
 const STEP_STATES = new Set(['running', 'done', 'failed', 'denied', 'stopped']);
 /** What a step is when it isn’t a tool call (#73): a thought, a subagent’s narration, or a subagent’s own step. */
 const STEP_KINDS = /** @type {Set<unknown>} */ (new Set(['thought', 'said', 'agent']));
