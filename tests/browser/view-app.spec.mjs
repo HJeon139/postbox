@@ -103,6 +103,19 @@ test('the capture uses the size and theme the person’s open Postbox tab report
   expect.soft(r.image, 'this backend gets the saved file’s path instead').toBeNull();
 });
 
+/** A local server that records each request it gets, and answers with `page(otherPort)`. */
+async function recorder(page = () => '') {
+  const got = [];
+  const server = createServer((req, res) => {
+    got.push(`${req.method} ${req.url}`);
+    res.writeHead(200, { 'content-type': 'text/html', 'access-control-allow-origin': '*' });
+    res.end(page());
+  });
+  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+  const port = /** @type {import('node:net').AddressInfo} */ (server.address()).port;
+  return { got, port, close: () => new Promise((ok) => server.close(ok)) };
+}
+
 test('the picture is as wide as the app the person sees, beside the rail by default and beside an open pane', async ({ page }) => {
   test.setTimeout(120_000);
   const { rt } = app;
@@ -138,22 +151,21 @@ test('the picture is as wide as the app the person sees, beside the rail by defa
 
 test('a capture lets through only GETs to its own origin', async () => {
   test.setTimeout(60_000);
-  const got = [];
-  const server = createServer((req, res) => {
-    got.push(`${req.method} ${req.url}`);
-    res.writeHead(200, { 'content-type': 'text/html' });
-    res.end(`<div data-capture-item style="width:200px;height:100px">A page that tries to act</div><script>
+  // Another address on this computer, which a GET could reach if the guard checked only the method.
+  const other = await recorder();
+  const own = await recorder(
+    () => `<div data-capture-item style="width:200px;height:100px">A page that tries to act</div><script>
       Promise.allSettled([
         fetch('/write', { method: 'POST', body: 'x' }),
-        fetch('https://example.com/'),
+        fetch('http://127.0.0.1:${other.port}/elsewhere'),
         fetch('/read'),
       ]).then(() => { document.body.dataset.capture = 'ready'; });
-    </script>`);
-  });
-  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+    </script>`,
+  );
+  const got = own.got;
   const b = new AppBrowser({ dir: playwrightBrowsers() });
   try {
-    const port = /** @type {import('node:net').AddressInfo} */ (server.address()).port;
+    const port = own.port;
     const png = await b.capture({ origin: `http://127.0.0.1:${port}`, threadId: 't', itemId: 'i', width: 800, height: 600, theme: 'light' });
     expect.soft(png.length).toBeGreaterThan(0);
     expect
@@ -168,9 +180,11 @@ test('a capture lets through only GETs to its own origin', async () => {
         'a GET to its own origin still goes through',
       )
       .toBe(true);
+    expect.soft(other.got, 'nothing reached another origin, even a GET').toEqual([]);
   } finally {
     await b.close();
-    await new Promise((ok) => server.close(ok));
+    await own.close();
+    await other.close();
   }
 });
 
