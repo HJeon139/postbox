@@ -28,6 +28,8 @@
 // `### On a host` heading replaces the phase’s text then (tools/uat/hosts-scenario.mjs).
 
 import { DEFAULT_HOP_LIMIT } from '../../shared/limits.mjs';
+import { filesOf } from './fixtures.mjs';
+import { judgeOf } from './visual-judge.mjs';
 
 /** The backends that run Claude. Every other one makes a scenario a compatibility run. */
 export const CLAUDE_BACKENDS = new Set(['claude-code', 'agent-sdk']);
@@ -98,8 +100,13 @@ export function parseScenario(md) {
     models: meta.models === 'persona' ? 'persona' : 'run',
     // Telemetry (designs/telemetry-persona.md, U2): `- seed: canaries` plants the run’s canaries in the workspace,
     // `- gh: none` starts Postbox with no gh, and `- telemetry: manual` leaves recording to the scenario. `- seed:
-    // fake-env` plants the allow-once scenario’s fake .env (tools/uat/workspace.mjs).
+    // fake-env` plants the allow-once scenario’s fake .env, and `- seed: visual-skill` the draft visual-explainer skill
+    // as a project skill (tools/uat/workspace.mjs).
     seed: meta.seed ?? null,
+    // `- files: subscriptions` (#206): a folder of tests/uat/e2e/fixtures/ copied into the workspace (tools/uat/fixtures.mjs).
+    files: filesOf(meta.files),
+    // `- judge: visual` (#206): the tester judges the first visual that answers its question (tools/uat/visual-judge.mjs).
+    judge: judgeOf(meta.judge),
     // `- seed-diagrams: 6` (#701): with `- seed: big-room`, that many of its agent replies end in a Mermaid diagram.
     seedDiagrams: seedDiagramsOf(meta['seed-diagrams'], meta.seed),
     gh: meta.gh === 'none' ? 'none' : 'yes',

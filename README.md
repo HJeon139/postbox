@@ -138,7 +138,7 @@ Every block is validated before it’s shown ([`shared/catalog.mjs`](shared/cata
 | `confirm` | `statement` (say exactly what will happen), `confirmLabel`, `cancelLabel?` | `confirm` or `cancel` → `{}` |
 | `image` | `src` (https from an allowed origin), `alt` (required), `caption?`, `width?`, `height?` | None |
 | `code` | `code`, `language?`, `filename?` | None. A Copy button is built in. |
-| `review` | `format: markdown \| code \| app`, `content` (markdown and code), `appId` (app), `previous?` (shows a diff; Postbox counts revisions), `threads?: [{ id, line? \| anchor?, status: open \| resolved, comments: [{ author, text }] }]`, `language?`, `filename?` | `submit` → `{ verdict: comment \| approve \| request_changes, comments: [{ line? \| anchor?, text }] }` |
+| `review` | `format: markdown \| code \| app`, `content` (markdown and code), `appId` (app), `previous?` (shows a diff; Postbox counts revisions), `threads?: [{ id, line? \| anchor?, status: open \| resolved, comments: [{ author, text }] }]`, `language?`, `filename?`, `files?: [{ name?, path }]` (markdown: images from the agent’s folder, `path` where each is and `name` a plain file name, PNG, JPEG, GIF or WebP, that the content shows by name or path) | `submit` → `{ verdict: comment \| approve \| request_changes, comments: [{ line? \| anchor?, text }] }` |
 | `app` | `code` (HTML with inline script and style), `permissions?: [tool names]` | Whatever the app sends (see below) |
 
 Long text fields (`prompt`, `body`, `statement`, review content) are Markdown. Short labels are plain text.
@@ -230,6 +230,8 @@ Postbox never reads, stores or asks for an API key. The Claude backends use Clau
 | Run everything | never asks. Use it only in a folder you can lose. |
 
 Postbox always passes the mode explicitly, so a default from your own Claude Code settings never changes it. A change to a persona’s mode, or to where it runs, reaches its conversations from their next turn.
+
+**Hooks.** In every mode but Run everything, a Claude Code or Agent SDK agent’s turns run without the hooks in your settings files and plugins, and without your custom status line, since a hook that approves a tool call would skip Postbox’s permission cards ([#817](https://github.com/HJeon139/postbox/issues/817)). Your terminal’s Claude Code is unchanged. The permissions panel lists each `PreToolUse` hook it finds in `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`), only when the agent uses your setup, and in the agent folder’s `.claude/settings.json` and `.claude/settings.local.json`. When a persona names its own folder, that’s the folder it reads, not the project’s. For an agent on a host, those are this computer’s files, not the host’s. Hooks your organization manages still run, and one of those can still approve a call without a card.
 
 **Folders.** An agent works in its project’s root folder, or in the folder its persona names, or, if neither is set, in `workspaces/<name>` in the data folder. If its persona names a folder, it can also read the project’s. Its permission mode decides what it may change. Postbox’s own tools (show_block and the rest) never ask; they only show things in the thread.
 

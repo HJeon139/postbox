@@ -2,7 +2,7 @@
 // which waits for the person’s answer or denies at permissionWaitMax. shim.mjs’s header says how each waits.
 
 import { NOT_YOUR_PROMPT, TOOL_DEFS } from '../../../shared/mcp-tools.mjs';
-import { encode, message, TOOL_ROUTES } from '../../../shared/remote-protocol.mjs';
+import { encode, message, TOOL_ROUTES, toolRoute } from '../../../shared/remote-protocol.mjs';
 import { fail, minutes, queuedText, respond, send, textResult } from './shim-harness.mjs';
 import { after, deliver, settle, TIMINGS } from './shim-state.mjs';
 
@@ -22,7 +22,8 @@ export function toolCall(sh, rpcId, params) {
   if (name === 'permission_prompt' && !sh.asksByPrompt) return respond(rpcId, NOT_YOUR_PROMPT);
   if (args === null || typeof args !== 'object' || Array.isArray(args)) return fail(rpcId, -32602, `${name}’s arguments must be an object.`);
   if (name === 'permission_prompt') return permission(sh, rpcId, args, params?._meta?.progressToken);
-  const route = TOOL_ROUTES[name];
+  // A review’s files may be refused on the host, so that call waits for its answer (toolRoute, #780).
+  const route = toolRoute(name, args);
   // show_app without an id gets one here, so the text can name it and the agent can update it; the laptop would
   // pick one the same way (newId('app')).
   const sent = name === 'show_app' && typeof args.id !== 'string' ? { ...args, id: `app_${sh.nextId()}` } : args;

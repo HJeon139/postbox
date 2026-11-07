@@ -13,6 +13,8 @@
 // - keyFrame: the key-to-frame measurements --measure-key-frame made of the run’s room (#508, tools/uat/key-frame-run.mjs)
 // - keyFrameOn: whether the run had --measure-key-frame on, so a run without it, or one saved before this was, can’t
 //   say it didn’t measure (tools/uat/triggers-measure.mjs)
+// - views, once the page has a transcript: where each transcript’s view was each step, and whether it had settled
+//   (#531, tools/uat/view-probe.mjs), for view-moved and window-paged-back
 
 export const newProbes = () => ({
   fullScreen: [],

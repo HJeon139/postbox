@@ -2851,8 +2851,8 @@ export class Runtime {
       show_block(args, given = {}) {
         return showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools: this }, args, given);
       },
-      update_block(args) {
-        return updateBlock(rt, sessionId, args, { turn, se, threadId, endSegment });
+      update_block(args, given = {}) {
+        return updateBlock(rt, sessionId, args, { turn, se, threadId, endSegment }, given);
       },
       review_block: (args) => reviewBlock(rt, sessionId, args),
       show_app(args, given = {}) {

@@ -2,6 +2,130 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.35.1 (2026-11-07)
+
+### Fixes
+
+- **skills:** the visual explainer also loads on questions about how code is put together
+- **skills:** the visual explainer loads on everyday asks about code and data
+
+## 1.35.0 (2026-11-06)
+
+### Features
+
+- **uat:** a scenario can put the person’s own files in the workspace
+
+### Fixes
+
+- **app:** choices are fitted in one pass, so a room's choices cost one layout, not one each
+- **app:** timeOf and dayOf format with one Intl.DateTimeFormat each, made once
+
+## 1.34.1 (2026-11-06)
+
+### Fixes
+
+- **skills:** a chart whose marks carry the values counts as drawn
+- **agents:** a predict-first question sits beside the picture, never in front of it
+
+## 1.34.0 (2026-11-06)
+
+### Features
+
+- **uat:** the customer judges the visual, with `- judge: visual`
+
+### Fixes
+
+- **agents:** a picture that explains draws the things, not labeled boxes
+- **uat:** the customer's relationship check applies where the idea is a dependence
+- **skills:** VE11 applies only where the idea is a relationship between variables
+
+## 1.33.0 (2026-11-06)
+
+### Features
+
+- **security:** the permissions panel names the PreToolUse hooks Postbox turns off (#817)
+
+### Fixes
+
+- **security:** the hook list hides values named like credentials, and bearer tokens (#817)
+- **security:** an Agent SDK turn started in bypass keeps it until it ends or is stopped (#817)
+- **security:** the hook list marks every format character, filler, tag and variation selector (#817)
+- **security:** the hooks panel doesn’t say there are none when no file could be read (#817)
+- **security:** the hooks panel says a host agent’s list is this computer’s settings (#817)
+- **security:** the hook list marks bidi and zero-width characters like control characters (#817)
+- **security:** Postbox’s own settings turn off hooks and mods in every mode but bypass (#817)
+
+## 1.32.1 (2026-11-06)
+
+### Fixes
+
+- **agents:** the researcher's picture is for visual explanations, with predict-first kept
+- **mock:** the demo explainer shows a picture with a control, and practice only on request
+- **skills:** list all twelve content shapes in the visual-explainer run
+- **agents:** an explainer is a picture with a control, and practice only on request
+
+## 1.32.0 (2026-11-06)
+
+### Features
+
+- **uat:** window-paged-back, reading at the big room's first day (#531)
+- **uat:** the view probe, each transcript's view each step before any screenshot (#531)
+- **checks:** view-moved, the view moving or changing mode with no input between (#531)
+
+### Fixes
+
+- **uat:** the runner's last check pass decides the run's unverified rows
+- **checks:** view-moved tallies each transcript's pairs, and says when it compared none
+- **checks:** view-moved reads the runner's moves as inputs, and says when the probe saw nothing
+- **checks:** view-moved spans unsettled samples, keys each finding, says when it checked nothing
+- **uat:** the view probe escapes the last anchor it splices into page code
+- **checks:** view-moved reads each transcript's previous sample from a map
+
+## 1.31.0 (2026-11-06)
+
+### Features
+
+- **review:** Lines draws a review's attached figures as Preview does (#780)
+- **uat:** triggers and a scenario for a review that shows two figures, here and on a host (#780)
+- **review:** show_block's description says a review can carry images from the agent's folder (#780)
+- **remote:** a review block shown from a remote host carries its images (#780)
+- **review:** Preview shows a review's attached images from the item's route (#780)
+- **server:** the item's route serves a review's image, same-origin only (#780)
+- **review:** show_block and update_block keep a review's images with each revision (#780)
+- **review:** read an attached image's type and size from its header bytes (#780)
+- **review:** an image target resolves to a file attached to the block, by exact key (#780)
+
+### Fixes
+
+- **remote:** a host app's data file record keeps only its name, SHA-256 and size (#780)
+- **review:** release a call's staged blobs when a later put fails, and 404 a gone blob (#780)
+- **review:** a call's review images are kept only when an item took them (#828)
+- **test:** #780's swap and blob specs remove their temp folders, as main now checks (#780)
+- **remote:** a host's review call with files waits for Postbox's answer (#780)
+- **review:** a refused review call never removes bytes an ordinary put has in flight (#780)
+- **review:** refuse files on a review's withdraw or outcome (#780)
+- **review:** keep at most 8 replaced files on a review item (#780)
+- **review:** keep a review's images only when its block is shown or updated (#780)
+- **review:** check every file before storing any, and keep the header's filename whole (#780)
+- **server:** agentFile reads the file it opened and checked, not a link swapped in after (#780)
+
+## 1.30.0 (2026-11-06)
+
+### Features
+
+- **tools:** a server bench measures the snapshot stall, /api/state, streaming and startup by size
+- **tools:** the snapshot-stall bench writes through the server's writeSnapshot and seeds --items
+
+### Fixes
+
+- **tools:** the server bench checks its streamed reply landed, and the stall bench its seeded room
+- **tools:** the server bench checks each startup replayed its log, and reports the measured count
+- **tools:** the server bench writes its report whole, and a stop waits for the write
+- **tools:** the snapshot stall bench refuses --items with --snapshot or --data
+- **tools:** the snapshot stall bench refuses a missing or unparsable --snapshot or --data
+- **tools:** the server report no longer says the reducer finds a streamed item by a scan
+- **tools:** the server bench stops on SIGINT or SIGTERM after the size in progress cleans up
+
 ## 1.29.0 (2026-11-06)
 
 ### Features

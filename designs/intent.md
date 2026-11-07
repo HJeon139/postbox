@@ -9,7 +9,7 @@ Postbox is one place to direct several AI agents at once. You message them, wake
 Three situations shaped the design:
 
 - **Exploring your own data.** You’re indexing a collection of books for lexical and semantic search, but you can’t yet say which sources and passages you want. An agent writes a corpus explorer mid-conversation. It runs inline, queries your corpus through Postbox, and sends back the passages you pick.
-- **Learning a hard topic.** You want to understand how agents reason and act. An agent pulls papers from arXiv and builds a step-by-step explainer with citations, diagrams and an exercise you can practice on.
+- **Learning a hard topic.** You want to understand how agents reason and act. An agent pulls papers from arXiv and builds an explainer with citations and a picture you can change to see the idea move, and practice when you ask for it.
 - **Giving feedback.** Agents need more than multiple choice. They also need free-form answers, and they need to show you a design, a document or code that you can comment on line by line.
 
 None of these interfaces are built into Postbox. Agents generate them, and Postbox runs them safely.

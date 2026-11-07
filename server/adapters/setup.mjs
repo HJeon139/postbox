@@ -17,10 +17,15 @@
 
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
-/** Setting sources, as `--setting-sources` and the SDK’s `settingSources` spell them. */
+/**
+ * Setting sources, as `--setting-sources` and the SDK’s `settingSources` spell them. The permissions panel reads the
+ * same ones (permission-rules.mjs, readRules; permission-hooks.mjs, readHooks).
+ * @type {readonly ('user'|'project'|'local')[]}
+ */
 export const HOST_SOURCES = ['user', 'project', 'local'];
 // Isolated keeps the project’s local file too: that’s where “Always allow” on a refusal card saves its rules
 // (.claude/settings.local.json in the agent’s folder, server/permission-rules.mjs), so they keep working.
+/** @type {readonly ('project'|'local')[]} */
 export const ISOLATED_SOURCES = ['project', 'local'];
 
 /**
@@ -100,6 +105,10 @@ export function settingsFor(persona, memoryDir = null) {
     ...SETTINGS_OVERLAY,
     ...(memoryDir ? { autoMemoryDirectory: memoryDir } : {}),
     ...(usesHostSetup && mcpOff.length ? { deniedMcpServers: mcpOff.map((serverName) => ({ serverName })) } : {}),
+    // A hook or mod that approves a call would skip the ask rules and the permission prompt (#817). In this flag
+    // layer it holds against a `disableAllHooks: false` in user, project or local settings; managed hooks still run.
+    // Bypass keeps the person’s hooks: there, they may be the only check left.
+    ...(persona?.permissionMode === 'bypass' ? {} : { disableAllHooks: true }),
   };
 }
 
