@@ -77,7 +77,7 @@ for (const [name, mark] of blanks) {
 
 test('#817: a very long command or matcher is cut, with an ellipsis at the cut', async () => {
   const file = await settings(pre(command('M'.repeat(500), 'x'.repeat(100_000))));
-  assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: `${'M'.repeat(99)}…`, type: 'command', text: `${'x'.repeat(199)}…` }]);
+  assert.deepEqual((await readHookFile(file)).hooks, [{ event: 'PreToolUse', matcher: `${'M'.repeat(99)}…`, type: 'command', text: `${'x'.repeat(199)}…` }]);
 });
 
 test('#817: a command or matcher exactly at its limit isn’t cut', async () => {
