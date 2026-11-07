@@ -3,8 +3,8 @@
 // the Claude adapters’ memory folders). Undo brings back the persona, the sessions this delete took and its memory.
 // A new persona with the same name starts clean, since memory is kept by id.
 
+import { DELETE_UNDO_MS } from './delete-undo.mjs';
 import { httpError } from './helpers.mjs';
-import { DELETE_UNDO_MS } from './runtime.mjs';
 import { whenWritable } from './store-outage.mjs';
 
 /**

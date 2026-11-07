@@ -3,9 +3,9 @@
 // function takes the manager’s state first (hosts-status.mjs’s Manager).
 
 import { hostOf, instanceOf, tokenOf, update } from './hosts-status.mjs';
-import { WITHDRAWN } from './hosts-update.mjs';
 import { createHostLink } from './link.mjs';
 import { failure as sshFailure } from './ssh.mjs';
+import { WITHDRAWN } from './update-withdrawn.mjs';
 
 /** How long a connected host that nothing needs keeps its session, so back-to-back turns share one. */
 export const IDLE_GRACE_MS = 2 * 60 * 1000;

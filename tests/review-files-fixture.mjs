@@ -32,6 +32,28 @@ class InFolder {
   }
 }
 
+/**
+ * Runs step(ctx) inside a turn of the agent’s, and gives what it returns once the turn has ended. It waits on the step’s
+ * own promise, not a bounded poll: a slow write on a loaded runner outlasted the poll and left nothing to read (#779).
+ * @param {Runtime} rt @param {{ next: Function[] }} adapter @param {string} threadId @param {(ctx: any) => Promise<any>} step
+ */
+export async function duringTurn(rt, adapter, threadId, step) {
+  const done = new Promise((ok, fail) => {
+    adapter.next.push(async (c) => step(c).then(ok, fail));
+  });
+  rt.sendMessage(threadId, { text: 'go' });
+  const out = await done;
+  while (rt.turns.size) await sleep(5);
+  return out;
+}
+
+/** Calls a tool over MCP from inside a turn, with that turn’s token, and gives its text and whether it failed. */
+export async function callTool(rt, adapter, threadId, sessionId, name, args) {
+  const msg = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } };
+  const out = await duringTurn(rt, adapter, threadId, (c) => handleMcp(rt, sessionId, msg, new URL(c.mcpUrl).searchParams.get('turn')));
+  return { text: out.result?.content?.[0]?.text ?? out.error?.message, isError: out.result?.isError ?? true };
+}
+
 export async function setup() {
   const root = await mkdtemp(join(tmpdir(), 'pb-review-files-'));
   roots.push(root);
@@ -50,24 +72,8 @@ export async function setup() {
   const a = rt.createPersona({ handle: 'alpha' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id] });
   const se = rt.sessionsIn(t.id)[0];
-  /** Runs step(ctx) inside a turn of the agent’s, and gives what it returns once the turn has ended. */
-  const during = async (step) => {
-    let out = null;
-    adapter.next.push(async (c) => {
-      out = await step(c);
-    });
-    rt.sendMessage(t.id, { text: 'go' });
-    // Up to 5 s, as a loaded CI runner needs: it stops as soon as the turn has ended with the call’s answer.
-    for (let i = 0; i < 1000 && (out === null || rt.turns.size); i++) await sleep(5);
-    return out;
-  };
-  /** Calls a tool over MCP from inside a turn, with that turn’s token. */
-  const call = async (name, args) => {
-    const out = await during((c) =>
-      handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } }, new URL(c.mcpUrl).searchParams.get('turn')),
-    );
-    return { text: out.result?.content?.[0]?.text ?? out.error?.message, isError: out.result?.isError ?? true };
-  };
+  const during = (step) => duringTurn(rt, adapter, t.id, step);
+  const call = (name, args) => callTool(rt, adapter, t.id, se.id, name, args);
   /** The review block item with this block id. */
   const review = (id) => store.items(t.id).find((i) => i.kind === 'block' && i.block?.id === id);
   return { rt, store, t, se, folder, root, call, during, review };

@@ -9,12 +9,11 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { AgentFileError, agentFile } from '../server/agent-files.mjs';
 import { Blobs } from '../server/blobs.mjs';
-import { handleMcp } from '../server/mcp.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { callTool } from './review-files-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const MAX = 1024;
 
 /** A folder the agent works in, with a file, and a folder outside it with a secret of the same name. */
@@ -161,17 +160,7 @@ async function showApp(folder, root) {
   const a = rt.createPersona({ handle: 'alpha' });
   const t = rt.createThread({ projectId: 'p1', title: 'T', personaIds: [a.id] });
   const se = rt.sessionsIn(t.id)[0];
-  const call = async (name, args) => {
-    let out = null;
-    adapter.next.push(async (c) => {
-      const msg = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } };
-      out = await handleMcp(rt, se.id, msg, new URL(c.mcpUrl).searchParams.get('turn'));
-    });
-    rt.sendMessage(t.id, { text: 'go' });
-    // Up to 5 s, as a loaded CI runner needs: it stops as soon as the turn has ended with the call’s answer.
-    for (let i = 0; i < 1000 && (out === null || rt.turns.size); i++) await sleep(5);
-    return { text: out.result?.content?.[0]?.text ?? out.error?.message, isError: out.result?.isError ?? true };
-  };
+  const call = (name, args) => callTool(rt, adapter, t.id, se.id, name, args);
   return { rt, call };
 }
 
