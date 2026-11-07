@@ -37,7 +37,7 @@ The “rearchitecture-508” room closed on 2 November 2026. This section record
 
 **Decided in the room, not yet in `design.md`:**
 - **Client-side virtualization first, the server window later.** The page keeps a conversation's data in memory and draws only the items near the view, anchored by B1b's explicit view state. B1a (positions), B2 (the items API) and B3 (the server window) wait until a measurement on a large room shows virtualization isn't enough for PF-1. Virtualization needs no change to A1, since needs-you and open asks still read the whole state in memory. (The person, 2 November.)
-- **#305 is in sprint 4.** It was parked on 3 November until a large-room measurement after virtualization (#615, the integrator’s answer on the slice order); on 6 November the person brought it into sprint 4. It cuts the state the page loads (old turns’ work and activity), not the number of messages drawn. Its design is draft 9 (`designs/305-archive-turns.md`), on branch `docs/305-r8`, not yet in a PR; #615 holds draft 7.
+- **#305 is in sprint 4.** It was parked on 3 November until a large-room measurement after virtualization (#615, the integrator’s answer on the slice order); on 6 November the person brought it into sprint 4. It cuts the state the page loads (old turns’ work and activity), not the number of messages drawn. Its design is draft 10, approved as draft 9 on 7 November (`designs/305-archive-turns.md`), on branch `docs/305-r8`, not yet in a PR; #615 holds draft 7.
 - **A1 is split,** as the integrator asked on #608: PR 1 is merged (#630); A1b was to be the ask-only reducer with its first producer; after the integrator’s review of #781 it is one tie rule (`a1b-asks.md`), and the rest of A1, #594’s case included, moves to A2. #633 is merged. A2 to A4 follow it.
 - **The process now in force:** rules 19 to 21 (`room-rules.md`); critic's adversarial pass in a fresh subagent on every pull request; authors read `designs/review-guide.md` (#659); the author's UAT run for changes that touch a conversation surface; the person approves pushes, not reply texts; a rebase with no code change keeps its sign-off.
 
@@ -51,7 +51,7 @@ The “rearchitecture-508” room closed on 2 November 2026. This section record
 | A1b, client-side virtualization, the flaky epoch-token test | their own issues, linked from #508 | gpt, engineer, open |
 | The lag hotfix branch `fix/chunk-snapshot` | abandoned (#560: v1.3.0's fixes cured the lag) | none |
 
-**Decisions still open:** #544 (P0 Kiro), #538 (a supervisor agent), #564 (split and priority), and whether #305’s switch still waits on the large-room measurement (`designs/305-archive-turns.md`, “Open questions”).
+**Decisions still open:** #544 (P0 Kiro), #538 (a supervisor agent), #564 (split and priority). #305’s switch is decided: on as soon as its step 3 merges (the person, 7 November).
 
 ## Waves
 
