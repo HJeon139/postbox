@@ -7,6 +7,8 @@ import { BOOT, fakeClock, hello, setup, startMsg, waitFor } from './remote-daemo
 export const CEILING_MS = 60_000;
 /** How long the daemon waits for a runner it killed at the ceiling to go (daemon-constants.mjs’s KILL_WAIT_MS, #872). */
 export const KILL_WAIT_MS = 5000;
+/** How long a silence’s last process check stands (daemon-constants.mjs’s PROCESS_CHECK_MS, #872). */
+export const PROCESS_CHECK_MS = 5000;
 
 /**
  * A daemon with a fake clock and its log kept. Its fake runner’s process is there while state.same is, and ends at a

@@ -8,7 +8,7 @@
 // said to be unkilled, if it won’t go: a turn never ends here with its process still known to run unless it says so.
 
 import { TURN_FILES, validateRunnerRecord } from '../../../shared/remote-protocol.mjs';
-import { KILL_WAIT_MS, RUNNER_SILENT_MAX_MS } from './daemon-constants.mjs';
+import { KILL_WAIT_MS, PROCESS_CHECK_MS, RUNNER_SILENT_MAX_MS } from './daemon-constants.mjs';
 import { readJson, runnerAlive } from './daemon-files.mjs';
 import { endHung } from './daemon-kill.mjs';
 
@@ -29,12 +29,24 @@ export async function turnRunning(d, turn) {
     answered(d, turn);
     return true;
   }
+  if (checkedLately(d, turn)) return true;
   const runner = await liveRunner(d, turn);
   if (runner === null) {
     processGone(d, turn);
     return false;
   }
   return withinCeiling(d, turn, runner);
+}
+
+/**
+ * Whether a silence under the ceiling found its process there within PROCESS_CHECK_MS: then that check stands, since
+ * on macOS each one runs sysctl and ps, and holds up the daemon (#872). The ceiling’s decision takes a fresh one.
+ * @param {Daemon} d @param {string} turn
+ */
+function checkedLately(d, turn) {
+  const silence = d.silentSince.get(turn);
+  if (!silence || d.mono() - silence.since >= RUNNER_SILENT_MAX_MS) return false;
+  return d.mono() - silence.checked < PROCESS_CHECK_MS;
 }
 
 /** runner.json, while it’s valid and names this runner’s process still, else null. @param {Daemon} d @param {string} turn */
@@ -69,6 +81,7 @@ function processGone(d, turn) {
  */
 async function withinCeiling(d, turn, runner) {
   const silence = d.silentSince.get(turn) ?? startSilence(d, turn, runner.pid);
+  silence.checked = d.mono();
   if (d.mono() - silence.since < RUNNER_SILENT_MAX_MS) return true;
   if (!silence.over) {
     silence.over = true;
@@ -97,7 +110,7 @@ export const unkilled = (d, turn) => d.silentSince.get(turn)?.unkilled === true;
  */
 function startSilence(d, turn, pid) {
   /** @type {Silence} */
-  const silence = { since: d.mono(), pid, over: false, killedAt: null, unkilled: false };
+  const silence = { since: d.mono(), checked: d.mono(), pid, over: false, killedAt: null, unkilled: false };
   d.silentSince.set(turn, silence);
   d.log(
     `Turn ${turn}’s runner (process ${pid}) didn’t answer as its runner, but its process is still running; it’s kept running for up to ${seconds(RUNNER_SILENT_MAX_MS)} s.`,

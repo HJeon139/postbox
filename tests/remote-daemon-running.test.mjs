@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { appendFile, rm, writeFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { TURN_FILES } from '../shared/remote-protocol.mjs';
-import { CEILING_MS, silentSetup, startOnHost, startReading } from './remote-daemon-running-setup.mjs';
+import { CEILING_MS, PROCESS_CHECK_MS, silentSetup, startOnHost, startReading } from './remote-daemon-running-setup.mjs';
 import { hello, makeTurn, startMsg } from './remote-daemon-setup.mjs';
 
 test('#738 row 1: a live runner that misses `who` for a while is not reported ended', async () => {
@@ -117,6 +117,7 @@ test('#738 row 6: a runner that’s a zombie ends: sameProcess is false for it',
     await s.looks(2, c);
     assert.deepEqual(s.ended(c), [], 'running while its process is up');
     host.procs.set(pid, { state: 'Z', start: 1234 });
+    await s.clock.tick(PROCESS_CHECK_MS);
     assert.equal((await c.msgs.next('ended')).exit, null);
   } finally {
     s.done();
@@ -248,6 +249,7 @@ test('#738 a silence’s end is logged: answered again with its length, or the p
     s.alive.delete('t1');
     await s.looks(2, c);
     s.state.same = false;
+    await s.clock.tick(PROCESS_CHECK_MS);
     assert.equal((await c.msgs.next('ended')).exit, null);
     assert.equal(s.logs.filter((l) => /t1.*is gone/.test(l)).length, 1);
   } finally {

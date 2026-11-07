@@ -8,7 +8,7 @@ import { writeFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { followerEnds } from '../server/remote/host/daemon-running.mjs';
 import { TURN_FILES } from '../shared/remote-protocol.mjs';
-import { CEILING_MS, silentSetup, startReading } from './remote-daemon-running-setup.mjs';
+import { CEILING_MS, PROCESS_CHECK_MS, silentSetup, startReading } from './remote-daemon-running-setup.mjs';
 import { hello, startMsg } from './remote-daemon-setup.mjs';
 
 const HOUR = 3_600_000;
@@ -113,6 +113,7 @@ test('#738 a silence is forgotten each way it ends: an answer, the process gone,
     },
     async processGone({ s, c }) {
       s.state.same = false;
+      await s.clock.tick(PROCESS_CHECK_MS);
       await c.msgs.next('ended');
     },
     async foundDead({ s, c }) {

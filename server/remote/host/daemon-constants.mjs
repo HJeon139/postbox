@@ -21,6 +21,8 @@ export const RUNNER_SILENT_MAX_MS = 60_000;
  * laptop doesn’t resume it beside a process that may still run (daemon-running.mjs, #872).
  */
 export const KILL_WAIT_MS = 5000;
+/** How long a silent runner’s last process check stands before the next look checks again (daemon-running.mjs, #872). */
+export const PROCESS_CHECK_MS = 5000;
 /** How long a launched runner has to answer on its socket before `start` fails, and how often it’s asked. */
 export const RUNNER_START_MS = 10_000;
 export const RUNNER_START_POLL_MS = 50;
@@ -69,8 +71,9 @@ export const READ_CHUNK = 64 * 1024;
  *   queue: Promise<void>, close: (reason?: 'replaced' | 'taken-over') => void, instance?: string | null }} Conn
  *   instance: the Postbox its hello named, once it’s the driver (daemon-hello.mjs)
  * @typedef {{ stop: () => void, poke: () => void }} Follower
- * @typedef {{ since: number, pid: number, over: boolean, killedAt: number | null, unkilled: boolean }} Silence
- *   a runner’s silence: since its first miss, on the daemon’s monotonic clock (mono); over once it has lasted
+ * @typedef {{ since: number, checked: number, pid: number, over: boolean, killedAt: number | null, unkilled: boolean }} Silence
+ *   a runner’s silence: since its first miss, on the daemon’s monotonic clock (mono); checked: when its process was
+ *   last found there, on mono, which stands for PROCESS_CHECK_MS; over once it has lasted
  *   RUNNER_SILENT_MAX_MS, when its process is killed (killedAt, on mono); unkilled once it’s still there KILL_WAIT_MS later
  * @typedef {{ turn: string, harness: string, state: 'running' | 'ended' | 'interrupted', size: number,
  *   exit: import('../../../shared/remote-protocol.mjs').ExitRecord | null }} TurnFound
