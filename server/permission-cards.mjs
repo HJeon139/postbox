@@ -7,7 +7,7 @@ import { httpError } from './helpers.mjs';
 import { editedInput, MAX_EDIT_INPUT, MAX_REASON } from './permission-edit.mjs';
 import { closeCard, dismissPermission } from './permission-expiry.mjs';
 import { addAllowRule, alwaysAllow, cleanRule, rulesFor, takeBackRule } from './permission-rules.mjs';
-import { requestAdapter } from './remote/placement.mjs';
+import { registeredAdapter, requestAdapter } from './remote/placement.mjs';
 import { gated } from './store-outage.mjs';
 import { draftOf, isWriteCall, whereOf } from './write-guard.mjs';
 import { settledCall } from './write-intent.mjs';
@@ -120,7 +120,7 @@ export function alwaysFor(rt, se, { tool, input, suggestions, suppressAlways }) 
  * @param {string|undefined} backend
  */
 export function readsRules(rt, backend) {
-  const adapter = backend && rt.adapters.names().includes(backend) ? rt.adapters.get(backend) : null;
+  const adapter = backend ? registeredAdapter(rt, { backend }) : null;
   return Boolean(adapter?.folderFor) && adapter?.capabilities?.permissions !== 'none';
 }
 

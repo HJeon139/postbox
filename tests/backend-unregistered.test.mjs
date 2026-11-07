@@ -112,6 +112,25 @@ test('#874 a mention of an agent not yet in the conversation, whose backend isnâ
   );
 });
 
+test('#874 a topic-thread message with no mention, for an agent not in the conversation whose backend isnâ€™t registered, joins it to nothing', async () => {
+  const f = setup();
+  f.rt.sendMessage(f.t.id, { text: '@beta hi' });
+  await settle(f.rt);
+  const { threadId } = f.rt.startTopic(f.t.id, f.store.items(f.t.id).find((i) => i.kind === 'agent').id);
+  // The thread was woken for @gamma, who has no session in the conversation: the agent a message with no mention goes to.
+  f.rt.putThread({ ...f.store.state.threads[threadId], woke: 'gamma', lastSpeaker: null, members: [] });
+  unregister(f, f.c);
+  const sessions = Object.keys(f.store.state.sessions).length;
+  const members = f.store.state.threads[f.t.id].members;
+  const items = f.store.items(threadId).length;
+  assert.throws(() => f.rt.sendMessage(threadId, { text: 'hi' }), { status: 422, message: REASON.replace('@beta', '@gamma') });
+  assert.equal(Object.keys(f.store.state.sessions).length, sessions, 'no session made');
+  assert.deepEqual(f.store.state.threads[f.t.id].members, members, 'no one joined the conversation');
+  assert.deepEqual(f.store.state.threads[threadId].members, []);
+  assert.equal(f.store.items(threadId).length, items, 'nothing posted');
+  assert.equal(f.store.items(f.t.id).filter((i) => i.kind === 'system' && /gamma/.test(i.text ?? '')).length, 0);
+});
+
 test('#874 Retry for an agent whose backend is still missing gives another failed reply, not a 500', async () => {
   const f = await failedOnce();
   const [first] = failedIn(f, f.t.id);

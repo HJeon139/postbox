@@ -2,6 +2,7 @@
 // “ask” mode. It waits for your answer on a card in the conversation. Only that backend asks through it.
 
 import { describePermission } from './adapters/claude-stream.mjs';
+import { registeredAdapter } from './remote/placement.mjs';
 
 function toAbortSignal(closeOrSignal) {
   if (!closeOrSignal) return null;
@@ -63,7 +64,7 @@ export async function permission(rt, sessionId, args, closeOrSignal = null) {
 export function asksByPrompt(rt, sessionId) {
   const se = rt.s.sessions[sessionId];
   const backend = rt.turns.get(sessionId)?.backend ?? (se ? rt.personaFor(se)?.backend : null);
-  const adapter = backend && rt.adapters.names().includes(backend) ? rt.adapters.get(backend) : null;
+  const adapter = backend ? registeredAdapter(rt, { backend }) : null;
   return Boolean(adapter) && adapter.capabilities?.promptTool !== false;
 }
 

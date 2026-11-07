@@ -28,7 +28,7 @@ export function runsHere(rt, backend) {
 
 /** Why a backend can’t run on this computer, and what can. @param {any} rt @param {string} backend */
 export function notHere(rt, backend) {
-  const elsewhere = rt.adapters.names().includes(backend) && rt.adapters.get(backend).capabilities?.remote;
+  const elsewhere = registeredAdapter(rt, { backend })?.capabilities?.remote;
   return `“${backend}” isn’t available on this computer. Available: ${localBackends(rt).join(', ')}.${elsewhere ? ' It can run on one of your hosts: choose one for this agent.' : ''} See README, “Run real agents”.`;
 }
 

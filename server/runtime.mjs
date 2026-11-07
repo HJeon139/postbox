@@ -450,6 +450,8 @@ export class Runtime {
       if (!targets.length) {
         // The last speaker’s agent replies, as in a conversation; before anyone has, the agent it started with.
         const p = threadPersona(this, t);
+        // Refused before sideSession, which would join an agent not yet in the conversation (#874).
+        if (p) refuseUnregisteredSend(this, [p]);
         const se = p && this.sideSession(t, p.id, 'you');
         if (!se) throw httpError(409, 'No agent is in this thread. @-mention one to bring it in.');
         targets.push({ se });
@@ -2398,7 +2400,7 @@ export class Runtime {
    */
   defaultModelFor(backend) {
     if (backend === 'mock') return 'mock';
-    const offered = this.adapters.names().includes(backend) ? this.adapters.get(backend).capabilities?.models : null;
+    const offered = registeredAdapter(this, { backend })?.capabilities?.models ?? null;
     return offered?.includes(AUTO_MODEL) && !offered.includes(DEFAULT_MODEL) ? AUTO_MODEL : DEFAULT_MODEL;
   }
 
