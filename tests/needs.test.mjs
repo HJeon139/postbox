@@ -68,6 +68,21 @@ test('the agents that need you come oldest first by their ask, and the open conv
   );
 });
 
+test('two agents that waited as long are ordered by session id code unit, whatever the runtime’s locale', () => {
+  const tied = {
+    threads: { room: { id: 'room', kind: 'thread' } },
+    sessions: {},
+    items: { room: [{ id: 'ask', at: 1 }] },
+  };
+  const upper = session('se_B', 'beta', 'room', { kind: 'block', itemId: 'ask' });
+  const lower = session('se_a', 'alpha', 'room', { kind: 'block', itemId: 'ask' });
+  assert.deepEqual(
+    needsOrder(tied, [lower, upper]).map((se) => se.id),
+    ['se_B', 'se_a'],
+    '“B” is U+0042, before “a” at U+0061',
+  );
+});
+
 test('needsAt says who needed you from the page the runner was on, in ⌃J’s order', () => {
   const at = needsAt(state, '#/t/room/side/side');
   assert.equal(at.here, 'room');
