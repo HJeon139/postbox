@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, relative, sep } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { buildCommitMatches } from '../build-commit.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
@@ -71,10 +72,10 @@ const running = (server) =>
     server.stderr.on('data', read);
     server.once('exit', (code) => fail(new Error(`postbox exited with ${code}:\n${out}`)));
   });
-/** The commit HEAD is at, as the build line shows it, or null outside a clone. */
+/** HEAD's full sha, or null outside a clone. The build line shows its first 7 characters (#919). */
 function headCommit() {
   try {
-    return execFileSync('git', ['-C', ROOT, 'rev-parse', '--short=7', 'HEAD'], {
+    return execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 10_000,
@@ -156,7 +157,10 @@ test('serves the page, its media and the build line, and writes only under HOME/
     assert.ok((await page.text()).includes('<html'), 'it serves the page at /');
     assert.equal((await fetch(`${origin}/media/favicon.svg`)).status, 200, 'it serves the bundled media');
     const { config } = await fetch(`${origin}/api/state`).then((r) => r.json());
-    assert.deepEqual([config.build?.version, config.build?.commit], [version, headCommit()], 'the build line shows the version and the commit');
+    assert.equal(config.build?.version, version, 'the build line shows the version');
+    const head = headCommit();
+    if (head === null) assert.equal(config.build?.commit, null, 'outside a clone the build line shows no commit');
+    else assert.ok(buildCommitMatches(config.build?.commit, head), `the build line shows HEAD's commit: ${config.build?.commit} of ${head}`);
   } finally {
     server.kill('SIGTERM');
     await exited;
