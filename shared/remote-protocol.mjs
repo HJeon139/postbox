@@ -38,7 +38,8 @@
 //   the laptop; the token holder already runs any argv as the host’s user, so a list here would protect nothing.
 // - `welcome` gives the daemon’s home folder, so Postbox can build absolute paths (the default `~/postbox-work/<handle>`
 //   folder, the shim’s path for `--mcp-config`) without the host’s shell expanding `~`. It also lists every turn folder
-//   it found, with its state, so a restarted Postbox knows what to replay.
+//   it found, with its state, so a restarted Postbox knows what to replay, and `unkilled: true` on an interrupted one,
+//   as its `ended` says it (#872).
 // - Offsets are byte offsets into out.jsonl (or in.jsonl, `log: 'in'`, for rebuilding a Codex turn). A `line` carries
 //   its own offset and `next`, the offset just past its \n; `ack.upTo` and a later `read.from` are a `next`. A last line
 //   with no \n is sent only once the turn has ended, with `next` equal to the file’s size. A line over

@@ -76,7 +76,7 @@ export const READ_CHUNK = 64 * 1024;
  *   last found there, on mono, which stands for PROCESS_CHECK_MS; over once it has lasted
  *   RUNNER_SILENT_MAX_MS, when its process is killed (killedAt, on mono); unkilled once it’s still there KILL_WAIT_MS later
  * @typedef {{ turn: string, harness: string, state: 'running' | 'ended' | 'interrupted', size: number,
- *   exit: import('../../../shared/remote-protocol.mjs').ExitRecord | null }} TurnFound
+ *   exit: import('../../../shared/remote-protocol.mjs').ExitRecord | null, unkilled?: true }} TurnFound
  * @typedef {{ hello?: (send: (type: string, body: Record<string, unknown>) => void) => void | Promise<void>,
  *   message?: (msg: any, reply: { send: (type: string, body: Record<string, unknown>) => void, fail: (code: string, text: string) => void }) => boolean | Promise<boolean>,
  *   load?: (turns: TurnFound[]) => Promise<void>, starting?: (turn: string) => Promise<void>, started?: (turn: string) => unknown,

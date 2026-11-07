@@ -146,12 +146,12 @@ export const POSTBOX_CHANNELS = {
       list(m.turns, 'welcome.turns', REMOTE_LIMITS.turns, (t, i) => {
         const at = `welcome.turns[${i}]`;
         return (
-          fields(t, at, ['turn', 'harness', 'state', 'size', 'exit']) ||
+          fields(t, at, ['turn', 'harness', 'state', 'size', 'exit'], ['unkilled']) ||
           turnId(t.turn, `${at}.turn`) ||
           oneOf(t.harness, `${at}.harness`, HARNESSES) ||
           oneOf(t.state, `${at}.state`, TURN_STATES) ||
           int(t.size, `${at}.size`, 0, Number.MAX_SAFE_INTEGER) ||
-          (t.state === 'ended' ? checkExit(t.exit, `${at}.exit`) : t.exit === null ? '' : `${at}.exit must be null unless the turn has ended.`)
+          turnEnd(t, at)
         );
       }),
     /** { turn }: the runner is up and runner.json is written. */
@@ -218,3 +218,17 @@ export const POSTBOX_CHANNELS = {
     error: (m) => checkError(m),
   },
 };
+
+/**
+ * A welcome turn’s exit, and its unkilled: as ended’s, its process may still run there, so only an interrupted turn
+ * has one (#872). @param {any} t @param {string} at
+ */
+function turnEnd(t, at) {
+  if (t.unkilled !== undefined) {
+    const bad = bool(t.unkilled, `${at}.unkilled`);
+    if (bad) return bad;
+    if (t.state !== 'interrupted') return `${at}.unkilled is only for an interrupted turn.`;
+  }
+  if (t.state === 'ended') return checkExit(t.exit, `${at}.exit`);
+  return t.exit === null ? '' : `${at}.exit must be null unless the turn has ended.`;
+}
