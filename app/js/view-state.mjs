@@ -74,6 +74,7 @@ function follow(v) {
   // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back. It’s a guess (the
   // transcript shrinking and growing back in one frame moves the view up too), so a clamp may undo it (onScroll).
   if (v.stuck && s.scrollTop < v.lastTop - 1 && !atEnd(s)) {
+    (window.__vlog ||= []).push(['follow-guess', v.inPanel, s.scrollTop, v.lastTop, s.scrollHeight, s.clientHeight, sizeOf(s), v.size, document.querySelector('.topbar')?.getBoundingClientRect().height, new Error().stack.split('\n').slice(1, 5).join(' | ')]);
     v.stuck = false;
     v.guessed = true;
     v.anchor = findAnchor(v);
@@ -127,7 +128,10 @@ function onScroll(v) {
   if (atEnd(s) && (v.stuck || !clamped)) {
     if (!v.stuck) v.held = measure(v, s);
     v.stuck = true;
-  } else if (s.scrollTop < v.lastTop) v.stuck = false;
+  } else if (s.scrollTop < v.lastTop) {
+    if (v.stuck) (window.__vlog ||= []).push(['scroll-unstick', v.inPanel, s.scrollTop, v.lastTop, v.seenTop, s.scrollHeight, s.clientHeight, sizeOf(s), v.size]);
+    v.stuck = false;
+  } else if (atEnd(s) && !v.stuck) (window.__vlog ||= []).push(['clamp-kept', v.inPanel, s.scrollTop, v.seenTop, sizeOf(s), v.size]);
   if (moved) v.guessed = false;
   // However you got near the end, there’s nothing unread below any more (#91).
   if (gapOf(s) <= PILL_ROOM) seen(v);
@@ -227,7 +231,7 @@ function newView({ el, inPanel, nodes, was }) {
     inPanel,
     nodes,
     unseen: was?.unseen ?? 0,
-    stuck: !was,
+    stuck: (((window.__vlog ||= []).push(['new', inPanel, !!was])), !was),
     anchor: was?.anchor ?? null,
     dead: false,
     shown: -1,

@@ -174,7 +174,10 @@ async function threadEndAfterGrow(page, { width, height }) {
 async function threadFollows(page) {
   await open(page, `/side/${topic}?work`);
   await settled(page);
-  expect((await place(page)).mode, 'opened at the end').toBe('following');
+  const pl = await place(page);
+  if (pl.mode !== 'following')
+    console.log('VLOG', JSON.stringify(pl), JSON.stringify(await page.evaluate(() => [window.__vlog, document.querySelector('.topbar')?.outerHTML.length, document.querySelector('.topbar')?.getBoundingClientRect().height])));
+  expect(pl.mode, 'opened at the end').toBe('following');
   await page.locator('#thread-full').click();
   await expect(page.locator('.sidepanel.pane-full')).toBeVisible();
   await settled(page);
