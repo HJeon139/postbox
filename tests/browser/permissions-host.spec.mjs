@@ -47,6 +47,6 @@ test('#120 the panel for an agent on a host says its Claude Code reads the host�
   await page.locator('.menu button.mi', { hasText: 'Permissions…' }).click();
   const dialog = page.locator('.dialog');
   await expect(dialog.locator('.perm-panel')).toBeVisible();
-  await expect(dialog).toContainText('@coder runs on build.example.com, where Claude Code reads the agent folder’s settings files there');
+  await expect(dialog).toContainText('coder runs on build.example.com, where Claude Code reads the agent folder’s settings files there');
   await expect(dialog).toContainText('not the ones listed here from this computer');
 });

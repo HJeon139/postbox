@@ -56,7 +56,7 @@ export function permissionBlock(it, ctx) {
         throw e;
       });
   const titleId = `pm-${it.id}`;
-  const by = it.who ? `@${it.handle}’s subagent (${it.who})` : `@${it.handle}`;
+  const by = it.who ? `${it.handle}’s subagent (${it.who})` : it.handle;
   const bash = it.tool === 'Bash';
   // Edit and Don’t allow open a small form in the card; only one at a time.
   const form = h('div.perm-form');
@@ -143,7 +143,7 @@ export function permissionBlock(it, ctx) {
       }
     });
     form.replaceChildren(
-      h('label.label', { for: id }, `Why not? @${it.handle} reads this`),
+      h('label.label', { for: id }, `Why not? ${it.handle} reads this`),
       why,
       h(
         'div.row-flex',
@@ -225,7 +225,7 @@ function dismissFoot(it, act) {
     'div.block-foot',
     // act’s toast says what went wrong, and the button stays to try again.
     h('button.btn', { type: 'button', onclick: () => act('dismiss').catch(() => null) }, 'Dismiss'),
-    h('span.small.dim', `This can’t be answered any more, but @${it.handle} still shows as waiting for you on it.`),
+    h('span.small.dim', `This can’t be answered any more, but ${it.handle} still shows as waiting for you on it.`),
   );
 }
 
@@ -244,25 +244,25 @@ export function toolAskBlock(it, ctx) {
     h(
       'div.block-head',
       open ? h('span.g.g-needs', { 'aria-hidden': 'true' }) : null,
-      h('span.title.grow', { id: titleId }, `@${it.handle} asks you to turn on “${it.label}”`),
+      h('span.title.grow', { id: titleId }, `${it.handle} asks you to turn on “${it.label}”`),
       // Turned on from the card, the agent panel or the persona sheet (#237): the card says what’s true now.
       h('span.kind', it.status === 'on' ? 'Turned on · ' : 'Turned off · ', h('span.tool-name', it.tool)),
     ),
     h(
       'div.block-body',
-      h('p', it.status === 'on' ? `It was turned off for @${it.handle} in Postbox.` : `It’s turned off for @${it.handle} in Postbox, so it can’t use it here.`),
-      it.why ? h('p.small', h('b', `@${it.handle}: `), it.why) : null,
+      h('p', it.status === 'on' ? `It was turned off for ${it.handle} in Postbox.` : `It’s turned off for ${it.handle} in Postbox, so it can’t use it here.`),
+      it.why ? h('p.small', h('b', `${it.handle}: `), it.why) : null,
       open
         ? h(
             'p.small.dim',
-            `Turning it on ticks it in @${it.handle}’s Tools, in every conversation, from its next turn. Its permission mode still decides each call.`,
+            `Turning it on ticks it in ${it.handle}’s Tools, in every conversation, from its next turn. Its permission mode still decides each call.`,
           )
         : h('span.answered-note', icon(it.status === 'on' ? 'check' : 'x', 'i-sm'), it.status === 'on' ? 'Turned on.' : 'Kept off.'),
     ),
     open
       ? h(
           'div.block-foot',
-          h('button.btn', { type: 'button', onclick: () => act('on') }, `Turn on for @${it.handle}`),
+          h('button.btn', { type: 'button', onclick: () => act('on') }, `Turn on for ${it.handle}`),
           h('button.btn.ghost', { type: 'button', onclick: () => act('off') }, 'Keep it off'),
         )
       : null,

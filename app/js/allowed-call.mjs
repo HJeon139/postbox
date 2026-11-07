@@ -13,6 +13,13 @@ const first = (it) => {
   return line.length > 80 ? `${line.slice(0, 79)}…` : line;
 };
 
+/** A push Postbox made itself: what landed where, or why it couldn’t, so the card asks instead. */
+function pushSaid(it, p, why) {
+  const sha = h('code', p.sha.slice(0, 7));
+  if (it.status === 'failed') return ['Couldn’t push ', sha, ` to ${p.branch} of ${p.url} for ${it.handle}: ${p.error}. It asks you on a card instead`];
+  return ['Pushed ', sha, ` to ${p.branch} of ${p.url} for ${it.handle}, in place of its own git push: ${why}`];
+}
+
 /** @param {any} it  the allowedcall item @param {{ threadId: string }} ctx */
 export function allowedCallLine(it, ctx) {
   const stopped = it.status === 'stopped';
@@ -23,11 +30,7 @@ export function allowedCallLine(it, ctx) {
   const why = it.how === 'confirmed' ? `you confirmed “${it.approved}”` : `you asked: “${it.quote}”`;
   // A push Postbox made itself, in place of the agent’s (server/push-on-request.mjs): what landed where, or why not.
   const p = it.push;
-  const said = !p
-    ? ['Ran ', h('code', first(it)), ` for @${it.handle} without a card: ${why}`]
-    : it.status === 'failed'
-      ? ['Couldn’t push ', h('code', p.sha.slice(0, 7)), ` to ${p.branch} of ${p.url} for @${it.handle}: ${p.error}. It asks you on a card instead`]
-      : ['Pushed ', h('code', p.sha.slice(0, 7)), ` to ${p.branch} of ${p.url} for @${it.handle}, in place of its own git push: ${why}`];
+  const said = p ? pushSaid(it, p, why) : ['Ran ', h('code', first(it)), ` for ${it.handle} without a card: ${why}`];
   return h(
     'div.col',
     { dataset: { allowedCall: it.id } },

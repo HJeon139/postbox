@@ -12,7 +12,7 @@ import { navigate, openWork, paneHref, route, setPaneFull } from './ui.mjs';
 export const dur = (ms) => (ms ? formatDuration(ms) : '');
 /** A host’s name now (it may have been renamed since), else as the ledger kept it (#120). */
 export const hostName = (x) => client.state.hosts?.[x.host?.id]?.name ?? x.host?.name ?? 'a host';
-export const who = (e) => `@${e.handle}${e.host ? ` on ${hostName(e)}` : ''}${e.who ? ` · ${e.who}` : ''}`;
+export const who = (e) => `${e.handle}${e.host ? ` on ${hostName(e)}` : ''}${e.who ? ` · ${e.who}` : ''}`;
 export const priced = (n, has) => (has ? formatCost(n) : '—');
 /** +a −d, with the signs as text and each count in its color. */
 export function signedEl(added, deleted) {
@@ -142,7 +142,7 @@ export function effortSection(s, entries, threadId, win) {
     h(
       'tr',
       { class: total ? 'work-total' : '' },
-      h(total ? 'th' : 'td', { scope: total ? 'row' : null }, total ? 'All' : `@${a.handle}`),
+      h(total ? 'th' : 'td', { scope: total ? 'row' : null }, total ? 'All' : a.handle),
       h('td.num', a.turns.toLocaleString('en-US')),
       h('td.num', dur(a.ms) || '—'),
       h('td.num', a.toolCalls.toLocaleString('en-US')),
@@ -209,7 +209,7 @@ function idleList(s, entries, threadId, win) {
         return h(
           'li',
           { id: `widle-${t.id}`, tabindex: '-1' },
-          workLink(threadId, { full: true, turn: t.id }, `@${t.handle} at ${timeOf(t.startedAt)}`),
+          workLink(threadId, { full: true, turn: t.id }, `${t.handle} at ${timeOf(t.startedAt)}`),
           h(
             'span.small.dim',
             ` · ${[dur(t.ms), anyPrice ? formatCost(t.costUsd ?? 0) : null, cmds.length ? `${plural(cmds.length, 'command')}${failed ? `, ${failed} failed` : ''}` : null, files ? `${plural(files, 'file')} put back` : null].filter(Boolean).join(' · ')}`,

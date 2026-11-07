@@ -30,7 +30,7 @@ const ASKS_ROWS = [
 const OFF =
   'In every mode but Run everything, Postbox turns off hooks from settings files, plugin hooks and your custom status line for its own turns, since a hook that approves a tool call would skip the ask rules and the permission card. Postbox can’t list your plugins’ hooks here: /hooks in Claude Code shows them. Hooks your organization manages still run, and one of those can still approve a call without asking you.';
 const ISOLATED = 'It’s isolated, so it doesn’t read the hooks in your user settings.';
-const dontRun = (handle) => `These don’t run in @${handle}’s Postbox turns, except in Run everything mode. They still run when you use Claude Code yourself.`;
+const dontRun = (handle) => `These don’t run in ${handle}’s Postbox turns, except in Run everything mode. They still run when you use Claude Code yourself.`;
 
 test.beforeAll(async () => {
   /** @type {Record<string, string>} */
@@ -122,7 +122,7 @@ test('#817 a hook’s command with markup in it shows literally, never as HTML',
 test('#817 in Run everything mode, the panel says the hooks run', async ({ page }) => {
   const hooks = await openHooks(page, 'runner');
   await expect.soft(hooks.locator('li')).toHaveText([USER_ROW, PROJECT_ROW]);
-  await expect.soft(hooks.locator('p.help')).toHaveText(['In Run everything mode, these run in @runner’s Postbox turns too.', OFF]);
+  await expect.soft(hooks.locator('p.help')).toHaveText(['In Run everything mode, these run in runner’s Postbox turns too.', OFF]);
 });
 
 test('#817 an Isolated agent’s panel lists the project’s hooks only, and says it doesn’t read the user’s', async ({ page }) => {
@@ -145,7 +145,7 @@ test('#817 for an agent on a host, the panel says the hooks listed are this comp
   await expect.soft(hooks.locator('li')).toHaveText([USER_ROW, PROJECT_ROW]);
   await expect
     .soft(hooks.locator('p.help'))
-    .toHaveText(['@remote runs on build.example.com. These are the hooks in this computer’s settings files; the host’s own settings aren’t shown here.', OFF]);
+    .toHaveText(['remote runs on build.example.com. These are the hooks in this computer’s settings files; the host’s own settings aren’t shown here.', OFF]);
 });
 
 test('#817 when no settings file can be listed, the panel says why for each, and not that there are no hooks', async ({ page }) => {

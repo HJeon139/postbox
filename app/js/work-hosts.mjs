@@ -15,7 +15,7 @@ export function hostNotes(turns) {
   for (const t of turns) {
     if (!t.host) continue;
     const name = hostName(t);
-    (by.get(name) ?? by.set(name, new Set()).get(name)).add(`@${t.handle}`);
+    (by.get(name) ?? by.set(name, new Set()).get(name)).add(t.handle);
   }
   return [...by].map(([name, handles]) =>
     h(
@@ -54,7 +54,7 @@ const notRecorded = (g) => h('span.small.dim', `on ${hostName(g)}, not recorded`
  * @param {any} g  a row of editRows @param {{ threadId: string, turnId: string | null }} o
  */
 export function editItem(item, g, { threadId, turnId }) {
-  const by = [...g.handles].map((x) => `@${x}`).join(', ');
+  const by = [...g.handles].join(', ');
   return item(
     g.id,
     '',

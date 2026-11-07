@@ -2,6 +2,31 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.37.0 (2026-11-07)
+
+### Features
+
+- **hosts:** show each host as a short badge in the agents list
+- **app:** show agent names without the @
+
+### Fixes
+
+- **uat:** staging matches the runs folder by its real path too
+- **tests:** check's first signal goes to the stage's whole process group
+- **runtime:** don’t let a subagent’s step split an agent’s words
+- **runtime:** start a reply’s words anew after a tool call when others spoke
+- **hosts:** refuse invisible characters in a host’s short name
+- **hosts:** name a removed host’s badge, and drop an IPv6 zone
+- **runtime:** keep a reply’s words in one part while others write
+- **runtime:** place a reply’s words where the agent wrote them
+- **threads:** put reactions left of the thread button
+- **tests:** the remote pipeline's machine folder goes through tempdir
+- **tests:** a second ctrl-c or a sighup ends the gate and removes its run folder
+- **tests:** the gate's temp sweep never makes a hard-linked file outside writable
+- **uat:** a postbox that fails to start is stopped before the error reaches its caller
+- **uat:** the run's postbox sleeps with node's timers, not through the browser module
+- **uat:** staging forgets only its own gone worktrees, never prunes the checkout
+
 ## 1.36.4 (2026-11-07)
 
 ### Fixes

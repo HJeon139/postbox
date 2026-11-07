@@ -75,6 +75,7 @@ import {
   runsHere,
 } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
+import { replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
 import {
@@ -687,29 +688,7 @@ export class Runtime {
     const rt = this;
     const live = () => !turn.closed;
     const se = () => rt.s.sessions[turn.sessionId];
-    const ensureSegment = () => {
-      if (!turn.segment) {
-        const it = rt.addItem(turn.threadId, {
-          kind: 'agent',
-          sessionId: turn.sessionId,
-          personaId: se0.personaId,
-          handle: se0.handle,
-          turnId: turn.id,
-          text: '',
-          status: 'streaming',
-          activity: turn.first ? null : { steps: [...turn.steps] },
-          ...replyMarks(turn),
-        });
-        // The text before a tool call or a block is finished; only the newest segment shows the caret.
-        if (turn.lastSegment) rt.patchItem(turn.threadId, turn.lastSegment, { status: 'done' });
-        turn.segment = it.id;
-        turn.lastSegment = turn.openSegment = it.id; // openSegment: the one still streaming, by its id (closeSegment)
-        if (!turn.first) turn.first = it.id;
-        if (turn.said) turn.said += '\n\n';
-        rt.putThread({ ...rt.s.threads[turn.threadId], lastSpeaker: turn.sessionId });
-      }
-      return turn.segment;
-    };
+    const ensureSegment = () => replySegment(rt, turn, se0);
     const tools = this.toolsFor(turn.sessionId, turn);
     const thread = rt.s.threads[turn.threadId];
     const persona = rt.personaFor(se0);
@@ -795,7 +774,7 @@ export class Runtime {
       },
       text(delta) {
         if (!live() || !delta) return;
-        const id = ensureSegment();
+        const id = wordsSegment(rt, turn, se0);
         turn.said += delta;
         rt.store.emit('item.text', { threadId: turn.threadId, id, text: delta });
         if (se().state !== 'gen') rt.updateSession(turn.sessionId, { state: 'gen', currentStep: 'Writing a reply' });
@@ -816,6 +795,7 @@ export class Runtime {
         if (!live()) return;
         // A lint turn that only calls tools (define_term, say) is quiet: it ends as a one-line note, not a reply.
         if (!turn.first && turn.kind !== 'lint') ensureSegment();
+        if (!who) stepTaken(turn);
         const i = turn.steps.findIndex((s) => s.id === id);
         const step = {
           id: id ?? newId('st'),

@@ -49,11 +49,11 @@ test('an agent’s @-mention wakes another in the conversation: both messages sh
   await expect.poll(() => held.turns.slice(before).map((t) => t.sessionId), { message: 'both turns' }).toEqual([r.researcher.id, r.indexer.id]);
   await r.idle();
   await test.step('both messages are in the main transcript', async () => {
-    await expect(said(page, '@indexer please index the 1908 edition.')).toBeVisible();
+    await expect(said(page, 'indexer please index the 1908 edition.')).toBeVisible();
     await expect(said(page, 'Indexed the 1908 edition: two chapters fewer.')).toBeVisible();
   });
   await test.step('the woken turn ran in the conversation, and no side thread or line appeared', async () => {
-    expect(held.turns.at(-1), '@indexer answered in the conversation').toMatchObject({ sessionId: r.indexer.id, thread: r.room.id });
+    expect(held.turns.at(-1), 'indexer answered in the conversation').toMatchObject({ sessionId: r.indexer.id, thread: r.room.id });
     expect(r.sideOf(), 'no side thread').toBeUndefined();
     expect(store.items(r.room.id).filter((x) => x.kind === 'sidelink')).toEqual([]);
     await expect(page.locator('#main .pill', { hasText: 'asked' }), 'no side-thread line').toHaveCount(0);
@@ -72,7 +72,7 @@ test('wake_agent posts its message in the conversation as the waker’s, and the
   held.scripts.set(r.indexer.id, (ctx) => ctx.text('The 1999 edition is indexed.'));
   await open(page, `#/t/${r.room.id}`);
   rt.sendMessage(r.room.id, { text: '@researcher get the 1999 edition indexed' });
-  await expect.poll(() => held.turns.some((t) => t.sessionId === r.indexer.id && t.thread === r.room.id), { message: '@indexer’s turn there' }).toBe(true);
+  await expect.poll(() => held.turns.some((t) => t.sessionId === r.indexer.id && t.thread === r.room.id), { message: 'indexer’s turn there' }).toBe(true);
   await r.idle();
   const wake = store.items(r.room.id).find((x) => x.kind === 'agent' && x.text === 'Index the 1999 edition too.');
   expect(wake, 'the wake is @researcher’s message in the conversation').toMatchObject({ handle: 'researcher', hop: 1 });
@@ -86,7 +86,7 @@ test('a side thread from before #372 opens read-only: its lines, and a note wher
   const r = room('Old side');
   const side = r.oldSide('Which editions differ?');
   await open(page, `#/t/${r.room.id}`);
-  await page.locator('#main .pill', { hasText: '@indexer asked @researcher' }).click();
+  await page.locator('#main .pill', { hasText: 'indexer asked researcher' }).click();
   await expect(page).toHaveURL(new RegExp(`#/t/${r.room.id}/side/${side.id}$`));
   const panel = page.locator('.sidepanel');
   await expect(panel.getByText('Which editions differ?')).toBeVisible();

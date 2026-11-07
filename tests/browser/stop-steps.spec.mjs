@@ -66,7 +66,7 @@ async function stopWith(page, title, choice, text = 'Start a background loop tha
   await synced(page, app);
   rt.sendMessage(room.id, { text });
   await expect(jobStop(page), 'the job’s row, with its own Stop').toBeVisible();
-  await page.locator('.composer').getByRole('button', { name: 'Stop @developer’s reply', exact: true }).click();
+  await page.locator('.composer').getByRole('button', { name: 'Stop developer’s reply', exact: true }).click();
   await page
     .locator('.stop-ask')
     .getByRole('button', { name: choice === 'stop' ? 'Stop it too' : 'Keep running', exact: true })

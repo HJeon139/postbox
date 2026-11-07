@@ -19,7 +19,7 @@ const ON_HOST = new Set(['running', 'waiting', 'lost', 'stopping']);
 /**
  * The host a session’s agent runs on: where its turn is while one is on a host, else where its persona is placed.
  * Null for an agent on this computer.
- * @param {any} se @returns {{ id: string, name: string, status: any, settings: any } | null}
+ * @param {any} se @returns {{ id: string, name: string, short: string, removed: boolean, status: any, settings: any } | null}
  */
 export function hostOf(se) {
   if (!se) return null;
@@ -28,7 +28,7 @@ export function hostOf(se) {
   const id = (r && ON_HOST.has(r.state) ? r.hostId : null) ?? placed;
   if (!id) return null;
   const h = S().hosts?.[id];
-  return { id, name: h?.name ?? 'a removed host', status: S().hostStatus?.[id] ?? null, settings: h?.settings ?? {} };
+  return { id, name: h?.name ?? 'a removed host', short: h?.short ?? '', removed: !h, status: S().hostStatus?.[id] ?? null, settings: h?.settings ?? {} };
 }
 
 /** Whether a turn of the session runs on its host, or may: one at work here, or one Postbox hasn’t heard the end of. @param {any} se */
@@ -111,7 +111,7 @@ export function stopNote(se) {
   if (!host || !busy(se)) return null;
   const n = runningJobs(se).length;
   if (!n) return null;
-  return `Stop also stops @${se.handle}’s ${n === 1 ? 'background job' : `${n} background jobs`} on ${host.name}: a job on a host stops with its turn.`;
+  return `Stop also stops ${se.handle}’s ${n === 1 ? 'background job' : `${n} background jobs`} on ${host.name}: a job on a host stops with its turn.`;
 }
 
 /**

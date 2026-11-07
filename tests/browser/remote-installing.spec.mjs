@@ -47,7 +47,7 @@ const withUpdate = (state, outcome) => ({
 });
 const sessionOf = (persona) => s.app.rt.sessionsIn(at.room.id).find((se) => se.personaId === persona.id);
 /** An agent’s row in the sidebar’s Agents. */
-const row = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^@${handle}$`) }) });
+const row = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^${handle}$`) }) });
 
 /** Opens the room with @waiter at work, its turn waiting on the host. @param {import('@playwright/test').Page} page */
 async function open(page) {
@@ -73,7 +73,7 @@ const story = async (page) => {
   await test.step('in the agent’s panel', async () => {
     await row(page, 'waiter').locator('.agent-btn').click();
     const panel = page.locator('.dialog.quick');
-    await expect.soft(panel.getByRole('region', { name: 'Where @waiter runs' }), 'the panel says it too').toContainText(LINE);
+    await expect.soft(panel.getByRole('region', { name: 'Where waiter runs' }), 'the panel says it too').toContainText(LINE);
     await page.keyboard.press('Escape');
     await expect(panel).toBeHidden();
   });

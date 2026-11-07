@@ -101,7 +101,7 @@ function summarizeButton(sideId, parent) {
     openMenu(
       el,
       // A side thread from before Postbox kept whom it woke can’t say who started it.
-      pair.map((x, i) => ({ label: `@${x} writes it`, desc: i || !t.woke ? '' : 'started this thread', run: () => ask(x) })),
+      pair.map((x, i) => ({ label: `${x} writes it`, desc: i || !t.woke ? '' : 'started this thread', run: () => ask(x) })),
       { label: 'Who writes the summary' },
     );
   const el = h(
@@ -178,10 +178,5 @@ function threadRoot(root) {
     },
     'Show all',
   );
-  return h(
-    'div.thread-root',
-    h('span.label', root.kind === 'user' ? 'You' : `@${root.handle ?? ''}`),
-    md,
-    text.length > 280 || /\n\s*\n/.test(text) ? more : null,
-  );
+  return h('div.thread-root', h('span.label', root.kind === 'user' ? 'You' : (root.handle ?? '')), md, text.length > 280 || /\n\s*\n/.test(text) ? more : null);
 }

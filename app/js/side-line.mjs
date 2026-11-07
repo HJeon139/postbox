@@ -23,13 +23,13 @@ export function sideLine(it, ctx) {
         onclick: () => card && goToCard(card),
       },
       at ? ringFor(at, 'xs') : icon('thread', 'i-sm'),
-      h('b', `@${it.from}`),
+      h('b', it.from),
       ' asked ',
-      h('b', `@${it.to}`),
-      at ? [' · ', h('b', `@${at.handle}`), ` ${doing(at)}`] : null,
+      h('b', it.to),
+      at ? [' · ', h('b', at.handle), ` ${doing(at)}`] : null,
       ` · ${plural(it.count ?? 0, 'message')} · Open`,
     ),
-    failed ? failedActions(it.sideThreadId, failed, { name: `@${at.handle}’s turn in the side thread`, focusAfter: 'a.pill' }) : null,
+    failed ? failedActions(it.sideThreadId, failed, { name: `${at.handle}’s turn in the side thread`, focusAfter: 'a.pill' }) : null,
   );
 }
 

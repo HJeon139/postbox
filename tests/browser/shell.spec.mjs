@@ -66,7 +66,7 @@ test('Delete session moved from the overview’s card menu to the agent’s quic
   await open(page, `#/t/${threads[0].id}`);
   await page.locator('.rail .agent-row .agent-btn').first().click();
   await page.locator('.backdrop .dialog.quick').getByRole('button', { name: 'Delete session…' }).click();
-  await expect(page.getByText('Delete @shelly’s session?')).toBeVisible();
+  await expect(page.getByText('Delete shelly’s session?')).toBeVisible();
   // An agent’s session is archived only with its conversation (#320).
   await expect(page.getByRole('button', { name: 'Archive instead' })).toHaveCount(0);
   await page.keyboard.press('Escape');

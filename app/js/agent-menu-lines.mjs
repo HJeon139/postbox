@@ -13,7 +13,7 @@ export function agentMenuLines(sessions, openPersona, queueAnchor) {
       [
         agentQueueMenuItem(session, queueAnchor),
         {
-          label: [`@${session.handle}`, mockMarker(session)],
+          label: [session.handle, mockMarker(session)],
           icon: 'agent',
           desc: `${factsText(factsOf(session))} · ${stateWord(session.state).toLowerCase()}`,
           kbd: 'Edit',

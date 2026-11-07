@@ -69,7 +69,7 @@ function paintOpenAsks(el) {
   el.hidden = !ask;
   if (el.textContent !== (ask?.text ?? '')) el.textContent = ask?.text ?? '';
   if (ask) el.dataset.item = ask.itemId;
-  if (ask) el.setAttribute('aria-label', `${ask.text} from @${se.handle}: go to it`);
+  if (ask) el.setAttribute('aria-label', `${ask.text} from ${se.handle}: go to it`);
 }
 client.on((ch) => {
   const blocks = CHANGES_BLOCKS(ch.type);
