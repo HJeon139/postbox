@@ -71,8 +71,8 @@ export const READ_CHUNK = 64 * 1024;
  *   queue: Promise<void>, close: (reason?: 'replaced' | 'taken-over') => void, instance?: string | null }} Conn
  *   instance: the Postbox its hello named, once it’s the driver (daemon-hello.mjs)
  * @typedef {{ stop: () => void, poke: () => void }} Follower
- * @typedef {{ since: number, checked: number, pid: number, over: boolean, killedAt: number | null, unkilled: boolean }} Silence
- *   a runner’s silence: since its first miss, on the daemon’s monotonic clock (mono); checked: when its process was
+ * @typedef {{ since: number, checked: number, look: number, pid: number, over: boolean, killedAt: number | null, unkilled: boolean }} Silence
+ *   a runner’s silence: since its first miss, on the daemon’s monotonic clock (mono), on look number `look`; checked: when its process was
  *   last found there, on mono, which stands for PROCESS_CHECK_MS; over once it has lasted
  *   RUNNER_SILENT_MAX_MS, when its process is killed (killedAt, on mono); unkilled once it’s still there KILL_WAIT_MS later
  * @typedef {{ turn: string, harness: string, state: 'running' | 'ended' | 'interrupted', size: number,
@@ -106,6 +106,8 @@ export const READ_CHUNK = 64 * 1024;
  * - acked: per turn, how far Postbox has applied out.jsonl; cleanup.mjs keeps it in `.ack`.
  * - dead: turns whose runner was found not to be the one runner.json names: interrupted, whatever a socket says.
  * - silentSince: turns whose runner stopped answering while its process still runs, and since when (daemon-running.mjs).
+ *   looks: how many looks at a turn have begun, each one’s number; answeredLook: per turn, the newest look its runner
+ *   answered, so crossing looks keep the newer verdict.
  * - killTimers: SIGKILL timers, per turn. shells: tool shells’ groups Stop recorded, per turn.
  * - stoppedFirst: turns asked to stop while this daemon didn’t have them: a start for one is refused (stop). In memory
  *   only, since a restart ends every channel a late start could come on.
@@ -117,7 +119,7 @@ export const READ_CHUNK = 64 * 1024;
  * - brk: the broker (broker.mjs, or the test’s); shimSeam: what serves a shim’s connection.
  * @typedef {Required<Omit<DaemonOpts, 'broker' | 'shim'>> & { p: ReturnType<typeof import('../../../shared/remote-protocol.mjs').hostPaths>,
  *   settings: Record<string, any>, programs: import('./programs.mjs').Programs | null, conns: Set<Conn>, driver: Conn | null, ids: number,
- *   acked: Map<string, number>, dead: Set<string>, silentSince: Map<string, Silence>, killTimers: Map<string, any>, shells: Map<string, Map<number, import('./proc.mjs').ToolGroup>>,
+ *   acked: Map<string, number>, dead: Set<string>, silentSince: Map<string, Silence>, looks: number, answeredLook: Map<string, number>, killTimers: Map<string, any>, shells: Map<string, Map<number, import('./proc.mjs').ToolGroup>>,
  *   stoppedFirst: Set<string>, starting: Map<string, Promise<void>>, problems: Map<string, string>, idleTimer: any, lastActive: number,
  *   closed: boolean, removing: boolean, sweepTimer: any, checks: Promise<void>, checking: Set<any>,
  *   cleanup: ReturnType<typeof import('./cleanup.mjs').createCleanup>, brk: Broker, shimSeam: ShimSeam | undefined }} Daemon

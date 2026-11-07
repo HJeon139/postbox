@@ -26,8 +26,10 @@ export async function turnRunning(d, turn) {
     forgetSilence(d, turn);
     return false;
   }
+  // Looks can cross, so each takes a number, and the newer one’s verdict stands (#872).
+  const look = ++d.looks;
   if (await runnerAlive(d, turn)) {
-    answered(d, turn);
+    answered(d, turn, look);
     return true;
   }
   if (checkedLately(d, turn)) return true;
@@ -36,7 +38,7 @@ export async function turnRunning(d, turn) {
     processGone(d, turn);
     return false;
   }
-  return withinCeiling(d, turn, runner);
+  return withinCeiling(d, turn, runner, look);
 }
 
 /**
@@ -57,11 +59,16 @@ async function liveRunner(d, turn) {
   return (await d.proc.sameProcess(rec.msg)) ? rec.msg : null;
 }
 
-/** The runner answered: a silence it was in is over. @param {Daemon} d @param {string} turn */
-function answered(d, turn) {
+/**
+ * The runner answered on this look: a silence it was in is over, unless a later look’s miss began it.
+ * @param {Daemon} d @param {string} turn @param {number} look
+ */
+function answered(d, turn, look) {
   const silence = d.silentSince.get(turn);
+  if (silence && silence.look > look) return;
   // One kept by a daemon before a restart, which this one never took up, is over too.
   forgetSilence(d, turn);
+  d.answeredLook.set(turn, look);
   if (!silence) return;
   d.log(`Turn ${turn}’s runner (process ${silence.pid}) answered again after ${seconds(d.mono() - silence.since)} s of silence.`);
 }
@@ -79,10 +86,13 @@ function processGone(d, turn) {
  * this miss if none is under way. At the ceiling its process is killed, and the turn runs on until it’s gone (the
  * caller sees that as a miss), through Stop’s grace period if one is under way, or for KILL_WAIT_MS. Past that the
  * silence stays recorded, unkilled, so the turn stays ended until the runner answers.
- * @param {Daemon} d @param {string} turn @param {RunnerRecord} runner
+ * A miss on a look older than one that got an answer starts no silence: that answer is newer.
+ * @param {Daemon} d @param {string} turn @param {RunnerRecord} runner @param {number} look
  */
-async function withinCeiling(d, turn, runner) {
-  const silence = d.silentSince.get(turn) ?? startSilence(d, turn, runner.pid);
+async function withinCeiling(d, turn, runner, look) {
+  const had = d.silentSince.get(turn);
+  if (!had && (d.answeredLook.get(turn) ?? 0) > look) return true;
+  const silence = had ?? startSilence(d, turn, runner.pid, look);
   silence.checked = d.mono();
   if (d.mono() - silence.since < RUNNER_SILENT_MAX_MS) return true;
   if (!silence.over) {
@@ -109,12 +119,12 @@ export const unkilled = (d, turn) => d.silentSince.get(turn)?.unkilled === true;
  * “Didn’t answer as its runner”: the daemon can’t tell no answer from one for another turn or a refused token, since
  * askRunner is false for each (runner-client.mjs). One a daemon before a restart kept for this runner goes on
  * (daemon-silence.mjs); else it starts now, and is kept.
- * @param {Daemon} d @param {string} turn @param {number} pid @returns {Silence}
+ * @param {Daemon} d @param {string} turn @param {number} pid @param {number} look @returns {Silence}
  */
-function startSilence(d, turn, pid) {
+function startSilence(d, turn, pid, look) {
   const ago = keptSilence(d, turn, pid);
   /** @type {Silence} */
-  const silence = { since: d.mono() - (ago ?? 0), checked: d.mono(), pid, over: false, killedAt: null, unkilled: false };
+  const silence = { since: d.mono() - (ago ?? 0), checked: d.mono(), look, pid, over: false, killedAt: null, unkilled: false };
   d.silentSince.set(turn, silence);
   if (ago === null) keepSilence(d, turn, pid, 0);
   d.log(
@@ -142,5 +152,6 @@ export function followerEnds({ dead, misses }) {
 /** The turn has ended with exit.json, or its silence is over: it’s forgotten, here and in the turn folder. @param {Daemon} d @param {string} turn */
 export function forgetSilence(d, turn) {
   d.silentSince.delete(turn);
+  d.answeredLook.delete(turn);
   dropSilence(d, turn);
 }
