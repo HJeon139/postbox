@@ -88,20 +88,71 @@ for (const signal of /** @type {const} */ (['SIGINT', 'SIGTERM']))
     process.kill(process.pid, signal);
   });
 
+// Where the fixture’s approving hook lives: the user and project settings (#817), or the frontmatter of a project skill
+// or subagent (#871), which Claude Code registers for the session when the skill or subagent runs.
+/** @typedef {'settings'|'skill'|'agent'} HooksIn */
+
+const PUSH = 'git push origin HEAD:refs/heads/e2e';
+/** What the turn is asked, by where the hook lives: a frontmatter hook runs only once its skill or subagent does. */
+const PROMPTS = /** @type {Record<HooksIn, string>} */ ({
+  settings: PROMPT,
+  skill: 'Use your e2e-push skill, once, and then tell me what the command it runs printed.',
+  agent: 'Ask your e2e-pusher subagent to run its command, once, and then tell me what it printed.',
+});
+
 /**
- * A temp HOME and a project with the same approving hook in its user and project settings, each touching a marker of
- * its own; the project is a git repository whose origin is a local bare repository.
+ * A project skill or subagent whose frontmatter holds a PreToolUse hook that approves every call and touches `marker`.
+ * The hook runs a script, so no quote in the command needs escaping in YAML.
+ * @param {string} root @param {string} work @param {'skill'|'agent'} kind @param {string} marker @param {string} allow
+ * @returns {Promise<string>} the file, relative to `work`
  */
-async function fixture() {
+async function frontmatterHook(root, work, kind, marker, allow) {
+  const script = join(root, 'frontmatter-hook.sh');
+  await writeFile(script, `touch '${marker}'\nprintf '%s\\n' '${allow}'\n`);
+  const hooks = [
+    'hooks:',
+    '  PreToolUse:',
+    '    - matcher: "*"',
+    '      hooks:',
+    '        - type: command',
+    `          command: ${JSON.stringify(`sh '${script}'`)}`,
+  ];
+  const body = `Run this exact command with your Bash tool, once, and say what it printed: ${PUSH}\n`;
+  if (kind === 'skill') {
+    await mkdir(join(work, '.claude', 'skills', 'e2e-push'), { recursive: true });
+    const meta = ['name: e2e-push', 'description: Pushes this branch to e2e on origin. Use when asked for the e2e push.'];
+    await writeFile(join(work, '.claude', 'skills', 'e2e-push', 'SKILL.md'), ['---', ...meta, ...hooks, '---', '', body].join('\n'));
+    return '.claude/skills/e2e-push/SKILL.md';
+  }
+  if (kind === 'agent') {
+    await mkdir(join(work, '.claude', 'agents'), { recursive: true });
+    const meta = ['name: e2e-pusher', 'description: Pushes this branch to e2e on origin. Use when asked for the e2e push.', 'tools: Bash'];
+    await writeFile(join(work, '.claude', 'agents', 'e2e-pusher.md'), ['---', ...meta, ...hooks, '---', '', body].join('\n'));
+    return '.claude/agents/e2e-pusher.md';
+  }
+  throw new Error(`no frontmatter for ${kind}`);
+}
+
+/**
+ * A temp HOME and a project with an approving hook where `hooksIn` says, touching a marker of its own: in the user and
+ * project settings, the same hook in each with a marker each, or in a project skill’s or subagent’s frontmatter. Both
+ * settings files say `disableAllHooks: false` either way. The project is a git repository whose origin is a local bare
+ * repository.
+ * @param {HooksIn} [hooksIn]
+ */
+async function fixture(hooksIn = 'settings') {
   const root = tempDir('pb-e2e-817-');
   const home = join(root, 'home');
   const work = join(root, 'work');
   const bare = join(root, 'bare.git');
-  const markers = { user: join(root, 'user-hook-ran'), project: join(root, 'project-hook-ran') };
+  const markers =
+    hooksIn === 'settings'
+      ? { user: join(root, 'user-hook-ran'), project: join(root, 'project-hook-ran') }
+      : { frontmatter: join(root, 'frontmatter-hook-ran') };
   const allow = JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'allow' } });
   const settings = (marker) => ({
     disableAllHooks: false,
-    hooks: { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: `touch '${marker}' && printf '%s\\n' '${allow}'` }] }] },
+    ...(marker ? { hooks: { PreToolUse: [{ matcher: '*', hooks: [{ type: 'command', command: `touch '${marker}' && printf '%s\\n' '${allow}'` }] }] } } : {}),
   });
   await mkdir(join(home, '.claude'), { recursive: true });
   await mkdir(join(work, '.claude'), { recursive: true });
@@ -109,10 +160,11 @@ async function fixture() {
   const model = reachModel();
   await writeFile(join(home, '.claude', 'settings.json'), JSON.stringify({ ...model, ...settings(markers.user) }), { mode: 0o600 });
   await writeFile(join(work, '.claude', 'settings.json'), JSON.stringify(settings(markers.project)));
+  const extra = hooksIn === 'settings' ? [] : [await frontmatterHook(root, work, hooksIn, markers.frontmatter, allow)];
   git(root, 'init', '-q', '--bare', bare);
   git(work, 'init', '-q');
   await writeFile(join(work, 'README.md'), 'e2e\n');
-  git(work, 'add', 'README.md', '.claude/settings.json');
+  git(work, 'add', 'README.md', '.claude/settings.json', ...extra);
   git(work, 'commit', '-q', '-m', 'init');
   git(work, 'remote', 'add', 'origin', bare);
   return { root, home, work, bare, markers, copied: Object.keys(model).concat(Object.keys(model.env ?? {}).map((k) => `env.${k}`)) };
@@ -134,11 +186,13 @@ function useHome(t, home) {
 }
 
 /**
- * One real turn of `backend` in `mode` that asks for the push. Every card it shows is answered no. Returns the cards.
+ * One real turn of `backend` in `mode` that asks for the push, with the fixture’s approving hook where `hooksIn` says.
+ * Every card it shows is answered no. Returns the cards.
  * @param {import('node:test').TestContext} t @param {'claude-code'|'agent-sdk'} backend @param {string} mode
+ * @param {HooksIn} [hooksIn]
  */
-export async function pushTurn(t, backend, mode) {
-  const f = await fixture();
+export async function pushTurn(t, backend, mode, hooksIn = 'settings') {
+  const f = await fixture(hooksIn);
   t.diagnostic(`model settings copied (names only): ${f.copied.join(', ') || 'none'}`);
   useHome(t, f.home);
   const app = await start({ port: await freePort(), dataDir: join(f.root, 'data'), fresh: true, quiet: true, claudeHome: f.home });
@@ -150,7 +204,7 @@ export async function pushTurn(t, backend, mode) {
   const thread = rt.createThread({ projectId: 'p_e2e', title: 'E2E', personaIds: [p.id] });
   const se = rt.sessionsIn(thread.id)[0];
   const running = () => rt.turns.has(se.id);
-  rt.sendMessage(thread.id, { text: PROMPT });
+  rt.sendMessage(thread.id, { text: PROMPTS[hooksIn] });
   for (let i = 0; i < 120 && !running(); i++) await sleep(250);
   assert.ok(running(), 'the turn should start');
   const answered = [];
