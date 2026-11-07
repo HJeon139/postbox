@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.35.3 (2026-11-07)
+
+### Fixes
+
+- **blocks:** a chosen option's description reads on its chip in the light theme (#873)
+
 ## 1.35.2 (2026-11-07)
 
 ### Fixes
