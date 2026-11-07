@@ -1,5 +1,5 @@
-// Search the conversation (#866, W4): the top bar’s Search button and ⌘⇧F (Ctrl+Shift+F) open it, ⌘F stays the
-// browser’s own find, and a hit jumps to the item, far up a long room too. Its index is built when search first opens,
+// Search the conversation (#866, W4): the top bar’s Search button opens it, with no key of its own; ⌘F stays the
+// browser’s own find and ⌘K the palette, and a hit jumps to the item, far up a long room too. Its index is built when search first opens,
 // rewritten one item at a time, and a reply is found once it’s done, not while it streams.
 
 import { expect, test } from '@playwright/test';
@@ -32,34 +32,39 @@ async function open(page) {
 }
 const dialog = (page) => page.locator('.dialog.search-dialog');
 const field = (page) => dialog(page).getByRole('combobox', { name: 'Search this conversation' });
+const openSearch = (page) => page.getByRole('button', { name: 'Search this conversation' }).click();
 
-test('#866 W4 the Search button and Ctrl+Shift+F open search; Ctrl+F is left to the browser', async ({ page }) => {
+test('#866 W4 the Search button opens search, and focus goes back to it; ⌘F stays the browser’s, ⌘K the palette', async ({ page }) => {
   await open(page);
-  await page.getByRole('button', { name: 'Search this conversation' }).click();
+  await openSearch(page);
   await expect(field(page)).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(dialog(page)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Search this conversation' }), 'focus goes back to the button').toBeFocused();
-  for (const keys of ['Control+Shift+F', 'Meta+Shift+F']) {
-    await page.locator('#main').focus();
-    await page.keyboard.press(keys);
-    await expect(field(page), keys).toBeFocused();
-    await page.keyboard.press('Escape');
-  }
-  // The browser’s find: the page lets Ctrl+F (⌘F) through untouched.
-  const prevented = await page.evaluate(() => {
-    const e = new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true });
-    document.body.dispatchEvent(e);
-    return e.defaultPrevented;
-  });
-  expect(prevented).toBe(false);
+  // No key opens search, and the browser’s find keys, ⌘F and Firefox’s ⌘⇧F, reach the browser: none is prevented.
+  const prevented = await page.evaluate(() =>
+    [
+      { key: 'f', metaKey: true },
+      { key: 'f', ctrlKey: true },
+      { key: 'F', metaKey: true, shiftKey: true },
+    ].map((init) => {
+      const e = new KeyboardEvent('keydown', { ...init, bubbles: true, cancelable: true });
+      document.body.dispatchEvent(e);
+      return e.defaultPrevented;
+    }),
+  );
+  expect(prevented).toEqual([false, false, false]);
   await expect(dialog(page)).toHaveCount(0);
+  // ⌘K is still the palette.
+  await page.locator('#main').focus();
+  await page.keyboard.press('Control+K');
+  await expect(page.locator('.dialog.palette:not(.search-dialog) input')).toBeFocused();
 });
 
 test('#866 W4 a word only in an item far up the room finds it, and Enter jumps to it and focuses it', async ({ page }) => {
   await open(page);
   const far = app.store.items(room)[FAR];
-  await page.keyboard.press('Control+Shift+F');
+  await openSearch(page);
   await field(page).fill('zeppelin');
   const hit = dialog(page).getByRole('option').first();
   await expect(hit).toContainText('zeppelin');
@@ -73,7 +78,7 @@ test('#866 W4 a word only in an item far up the room finds it, and Enter jumps t
 
 test('#866 W4 a change to an item shows in search, and a streaming reply is found only once it’s done', async ({ page }) => {
   await open(page);
-  await page.keyboard.press('Control+Shift+F');
+  await openSearch(page);
   await field(page).fill('quokka');
   await expect(dialog(page).getByRole('status')).toHaveText('Nothing found');
   await page.keyboard.press('Escape');
@@ -81,13 +86,13 @@ test('#866 W4 a change to an item shows in search, and a streaming reply is foun
   const it = app.rt.addItem(room, { kind: 'agent', sessionId: se?.id, handle: 'coder', text: '', status: 'streaming' });
   for (const w of ['A ', 'quokka ', 'sighting.']) app.store.emit('item.text', { threadId: room, id: it.id, text: w });
   await synced(page, app);
-  await page.keyboard.press('Control+Shift+F');
+  await openSearch(page);
   await field(page).fill('quokka');
   await expect(dialog(page).getByRole('status'), 'not while it streams').toHaveText('Nothing found');
   await page.keyboard.press('Escape');
   app.rt.patchItem(room, it.id, { status: 'done', text: 'A quokka sighting.' });
   await synced(page, app);
-  await page.keyboard.press('Control+Shift+F');
+  await openSearch(page);
   await field(page).fill('quokka');
   await expect(dialog(page).getByRole('option').first()).toHaveAttribute('data-item', it.id);
   // Changed again: one entry is rewritten, not the room’s, and the new words are found, the old ones aren’t.
@@ -97,7 +102,7 @@ test('#866 W4 a change to an item shows in search, and a streaming reply is foun
   app.rt.patchItem(room, it.id, { text: 'A wombat instead.' });
   await synced(page, app);
   expect((await writes()) - before, 'entries written for one patch').toBe(1);
-  await page.keyboard.press('Control+Shift+F');
+  await openSearch(page);
   await field(page).fill('quokka');
   await expect(dialog(page).getByRole('status')).toHaveText('Nothing found');
   await field(page).fill('wombat');
@@ -107,7 +112,7 @@ test('#866 W4 a change to an item shows in search, and a streaming reply is foun
 test('#866 W4 an item’s text shows in a hit as text, never as HTML', async ({ page }) => {
   const it = app.rt.addItem(room, { kind: 'user', text: 'markup <img src=x onerror="window.__pwned=1"> axolotl', status: 'done' });
   await open(page);
-  await page.keyboard.press('Control+Shift+F');
+  await openSearch(page);
   await field(page).fill('axolotl');
   const hit = dialog(page).getByRole('option').first();
   await expect(hit).toHaveAttribute('data-item', it.id);
@@ -119,7 +124,7 @@ test('#866 W4 an item’s text shows in a hit as text, never as HTML', async ({ 
 
 test('#866 W4 the open search has no accessibility problems', async ({ page }) => {
   await open(page);
-  await page.keyboard.press('Control+Shift+F');
+  await openSearch(page);
   await field(page).fill('zeppelin');
   await expect(dialog(page).getByRole('option').first()).toBeVisible();
   expect(await axe(page)).toEqual([]);
