@@ -33,8 +33,16 @@ async function readingAtTop(page, title) {
   await expect(page.locator(`.transcript[data-thread="${conv.id}"] > .item`)).toHaveCount(1000, { timeout: 15_000 });
   await still(page);
   await page.mouse.move(640, 400);
-  await page.mouse.wheel(0, -200_000);
-  await expect.poll(() => page.evaluate(() => scrollY), { message: 'the wheel to reach the top' }).toBeLessThan(2000);
+  // Chromium takes one big turn at once; Firefox moves about 1,500 px a turn, so turn until the top.
+  await expect
+    .poll(
+      async () => {
+        await page.mouse.wheel(0, -200_000);
+        return page.evaluate(() => scrollY);
+      },
+      { message: 'the wheel to reach the top', timeout: 30_000 },
+    )
+    .toBeLessThan(2000);
   await expect(page.locator('#main.transcript')).toHaveAttribute('data-view-mode', 'reading');
   await still(page);
   app.rt.addItem(conv.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: 'A reply since.', status: 'done' });
@@ -47,12 +55,14 @@ const record = (page) =>
   page.evaluate(() => {
     const w = /** @type {any} */ (window);
     w.smoothYs = [scrollY];
+    w.smoothHs = [document.documentElement.scrollHeight];
     w.smoothDone = new Promise((done) => {
       let calm = 0;
       const end = performance.now() + 10_000;
       const tick = () => {
         const ys = w.smoothYs;
         ys.push(scrollY);
+        w.smoothHs.push(document.documentElement.scrollHeight);
         calm = ys.at(-1) === ys.at(-2) ? calm + 1 : 0;
         if ((calm >= 30 && ys.at(-1) !== ys[0]) || performance.now() > end) done(ys);
         else requestAnimationFrame(tick);
@@ -61,32 +71,52 @@ const record = (page) =>
     });
   });
 const recorded = (page) => page.evaluate(() => /** @type {any} */ (window).smoothDone);
+/** Each frame where scrollY went back up: where from and to, and the page's height in the frame before and in it. */
+const backSteps = (page) =>
+  page.evaluate(() => {
+    const { smoothYs: ys, smoothHs: hs } = /** @type {any} */ (window);
+    return ys.flatMap((/** @type {number} */ y, /** @type {number} */ i) =>
+      i && y < ys[i - 1] ? [{ frame: i, from: ys[i - 1], to: y, heightBefore: hs[i - 1], height: hs[i] }] : [],
+    );
+  });
 const gap = (page) => page.evaluate(() => document.documentElement.scrollHeight - scrollY - innerHeight);
 
-test('Jump to latest over 1,000 skipped items scrolls smoothly, and ends following at the end', async ({ page }) => {
-  await readingAtTop(page, 'Smooth jump');
-  await record(page);
-  await page.locator('.jump').getByRole('button').click();
-  const ys = /** @type {number[]} */ (await recorded(page));
-  await still(page);
-  const steps = ys.slice(1).map((y, i) => y - ys[i]);
-  const distance = /** @type {number} */ (ys.at(-1)) - ys[0];
-  const v = {
-    frames: ys.length,
-    distinct: new Set(ys).size,
-    distance,
-    biggest: Math.max(...steps),
-    backwards: steps.filter((d) => d < 0).length,
-    mode: await page.locator('#main.transcript').getAttribute('data-view-mode'),
-    gap: await gap(page),
-  };
-  test.info().annotations.push({ type: 'measured', description: JSON.stringify(v) });
-  expect.soft(v.distinct, 'scrollY takes many values on the way down').toBeGreaterThan(5);
-  expect.soft(v.backwards, 'scrollY never goes back up').toBe(0);
-  expect.soft(v.biggest, 'no one frame jumps more than 60% of the way').toBeLessThanOrEqual(0.6 * distance);
-  expect.soft(v.mode, 'it ends following').toBe('following');
-  expect.soft(v.gap, 'it ends at the end').toBeLessThanOrEqual(2);
-});
+// Items shorter than their estimate, as the Mac’s fonts draw them, as well as at their usual size (view-jump.spec.mjs):
+// on the Mac, Chromium’s scrollY went back up once on the way down.
+for (const [sizes, css] of [
+  ['their usual size', ''],
+  ['shorter than their estimate', '.transcript .item { line-height: 1.05 !important; font-size: 12px !important }'],
+  ['far shorter than their estimate', '.transcript .item { line-height: 0.9 !important; font-size: 8px !important }'],
+])
+  test(`Jump to latest over 1,000 skipped items at ${sizes} scrolls smoothly, and ends following at the end`, async ({ page }) => {
+    if (css)
+      await page.addInitScript((rule) => {
+        addEventListener('DOMContentLoaded', () => document.head.append(Object.assign(document.createElement('style'), { textContent: rule })));
+      }, css);
+    await readingAtTop(page, `Smooth jump, items at ${sizes}`);
+    await record(page);
+    await page.locator('.jump').getByRole('button').click();
+    const ys = /** @type {number[]} */ (await recorded(page));
+    await still(page);
+    const steps = ys.slice(1).map((y, i) => y - ys[i]);
+    const distance = /** @type {number} */ (ys.at(-1)) - ys[0];
+    const v = {
+      frames: ys.length,
+      distinct: new Set(ys).size,
+      distance,
+      biggest: Math.max(...steps),
+      backwards: steps.filter((d) => d < 0).length,
+      mode: await page.locator('#main.transcript').getAttribute('data-view-mode'),
+      gap: await gap(page),
+      back: await backSteps(page),
+    };
+    test.info().annotations.push({ type: 'measured', description: JSON.stringify(v) });
+    expect.soft(v.distinct, 'scrollY takes many values on the way down').toBeGreaterThan(5);
+    expect.soft(v.backwards, 'scrollY never goes back up').toBe(0);
+    expect.soft(v.biggest, 'no one frame jumps more than 60% of the way').toBeLessThanOrEqual(0.6 * distance);
+    expect.soft(v.mode, 'it ends following').toBe('following');
+    expect.soft(v.gap, 'it ends at the end').toBeLessThanOrEqual(2);
+  });
 
 test('a wheel up during the jump is you reading: the view stays where you turned it, not dragged to the end', async ({ page }) => {
   await readingAtTop(page, 'Smooth jump, then a wheel up');
