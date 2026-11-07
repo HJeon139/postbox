@@ -76,7 +76,7 @@ import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './r
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere, runsHere } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
-import { replySegment, wordsSegment } from './reply-segment.mjs';
+import { replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
 import {
@@ -788,6 +788,7 @@ export class Runtime {
         if (!live()) return;
         // A lint turn that only calls tools (define_term, say) is quiet: it ends as a one-line note, not a reply.
         if (!turn.first && turn.kind !== 'lint') ensureSegment();
+        stepTaken(turn);
         const i = turn.steps.findIndex((s) => s.id === id);
         const step = {
           id: id ?? newId('st'),
