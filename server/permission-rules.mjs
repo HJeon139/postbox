@@ -7,6 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, realpath, rename, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { chains } from '../shared/command-chains.mjs';
+import { HOST_SOURCES, ISOLATED_SOURCES } from './adapters/setup.mjs';
 
 export { chains };
 
@@ -189,14 +190,13 @@ export async function readSettingsFile(file) {
 }
 
 /**
- * The rules from each settings source an agent reads. The user source only when the persona loads the person’s
- * setup (`--setting-sources user,project,local`); an Isolated one reads project and local only.
+ * The rules from each settings source an agent reads, the same sources its turns load (HOST_SOURCES or
+ * ISOLATED_SOURCES, server/adapters/setup.mjs): the user source only when the persona loads the person’s setup.
  * @param {{ folder: string, home: string, configDir?: string|null, usesHostSetup: boolean }} opts
  */
 export async function readRules({ folder, home, configDir = null, usesHostSetup }) {
   const files = settingsFiles(folder, home, configDir);
-  /** @type {('user'|'project'|'local')[]} */
-  const sources = usesHostSetup ? ['user', 'project', 'local'] : ['project', 'local'];
+  const sources = usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES;
   return Promise.all(sources.map(async (source) => ({ source, writable: source !== 'project', ...(await readSettingsFile(files[source])) })));
 }
 

@@ -231,6 +231,8 @@ Postbox never reads, stores or asks for an API key. The Claude backends use Clau
 
 Postbox always passes the mode explicitly, so a default from your own Claude Code settings never changes it. A change to a persona’s mode, or to where it runs, reaches its conversations from their next turn.
 
+**Hooks.** In every mode but Run everything, a Claude Code or Agent SDK agent’s turns run without the hooks in your settings files and plugins, and without your custom status line, since a hook that approves a tool call would skip Postbox’s permission cards ([#817](https://github.com/HJeon139/postbox/issues/817)). Your terminal’s Claude Code is unchanged. The permissions panel lists each `PreToolUse` hook it finds in `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`), only when the agent uses your setup, and in the agent folder’s `.claude/settings.json` and `.claude/settings.local.json`. When a persona names its own folder, that’s the folder it reads, not the project’s. For an agent on a host, those are this computer’s files, not the host’s. Hooks your organization manages still run, and one of those can still approve a call without a card.
+
 **Folders.** An agent works in its project’s root folder, or in the folder its persona names, or, if neither is set, in `workspaces/<name>` in the data folder. If its persona names a folder, it can also read the project’s. Its permission mode decides what it may change. Postbox’s own tools (show_block and the rest) never ask; they only show things in the thread.
 
 **The Kiro CLI.** Each turn, Postbox writes a Kiro custom agent with the guide as its prompt, Postbox’s MCP server and the persona’s rules, and removes it when the turn ends ([`server/adapters/kiro-cli.mjs`](server/adapters/kiro-cli.mjs)). What differs from Claude Code:
@@ -278,7 +280,10 @@ The two real adapters share a system prompt that teaches the catalog, the kit an
 - `show_app`, `update_app`, and `retire_app`, which leaves an app that’s no longer needed as one line in its place, with a link to what replaced it and its versions (#193)
 - `define_term`
 - `propose_agent`
-- `schedule_wake`, `wake_agent`
+- `schedule_wake`, and `cancel_wake`, which cancels a wake the agent scheduled, once its work is done (#458)
+- `wake_agent`
+- `open_topic`, which opens the topic thread of a message in the agent’s conversation, or finds the one it has, and can post a first message there that wakes up to 16 agents it names; its answer says whether that message was posted, by its id (#637)
+- `bring_to_conversation`, which posts in the main conversation from a topic or side thread, only when you ask for it there (#128)
 - `ask_for_tool`, which asks you on a card to turn on a tool that’s turned off for the agent
 - `corpus_search`, and `add_dataset`, which loads a JSON Lines file from the project’s `.postbox/datasets/` folder into the corpus with no restart. A dataset is searched only when a search names it in `books`, and it’s loaded again after a restart (#47).
 - `read_conversation`, the conversation’s history (each turn already starts with what happened since the agent’s last one). A block comes with what it holds: a review, card or code block’s content, a choice or form’s prompt, options or fields and your answer, an app’s title. Both cut an item at 2,000 characters, saying how much they kept and giving its id.

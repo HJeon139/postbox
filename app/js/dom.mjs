@@ -59,11 +59,19 @@ export const icon = (name, extra = '') => h(`span.i.i-${name}${extra ? '.' + ext
 export const $ = (sel, root = document) => root.querySelector(sel);
 export const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
+// One formatter each, made once: a toLocale*String call builds its formatter every time, which cost about 1.2 s of a
+// switch into a 10,000-item room (#866). Each gives the same text as the toLocale*String call it replaces. They keep
+// the time zone the page loaded with, until it reloads.
+const TIME = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+const DAY = new Intl.DateTimeFormat('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+
+/** A time as 14:05. @param {number} ms */
 export function timeOf(ms) {
-  return new Date(ms).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return TIME.format(ms);
 }
+/** A day as Friday, November 6. @param {number} ms */
 export function dayOf(ms) {
-  return new Date(ms).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' });
+  return DAY.format(ms);
 }
 export function ago(ms) {
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
