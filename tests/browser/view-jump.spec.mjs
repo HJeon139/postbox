@@ -42,8 +42,9 @@ for (const [name, at, block] of /** @type {const} */ ([
   });
 }
 
-// Items shorter than their estimate, as the Mac’s fonts draw them, as well as at their usual size: centring the last
-// item then leaves room below it, so it’s the jump’s own rule, not the page’s geometry, that lands it at the end.
+// Items shorter than their estimate, as the Mac’s fonts draw them, as well as at their usual size. On the Mac the jump
+// once left the last item centred and the view reading; with the room held below the newest message as padding
+// (view-state.mjs follow()), centring it clamps to the end, which these cases check.
 for (const [sizes, css] of [
   ['its usual size', ''],
   ['shorter than its estimate', '.transcript .item { line-height: 1.05 !important; font-size: 12px !important }'],
