@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { test } from 'node:test';
 import { hashFiles, namedFiles, sameFiles } from '../server/named-files.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -37,6 +37,7 @@ const FORMS = [
   ['-Fk=@f', 'gh api x -Fbody=@b.md', 'b.md'],
   ['-f k=@f', 'gh api x -f body=@b.md', 'b.md'],
   ['--field k=@f', 'gh api x --field body=@b.md', 'b.md'],
+  ['--field=k=@f', 'gh api x --field=body=@b.md', 'b.md'],
   ['a < redirect', 'cat < in.txt', 'in.txt'],
   ['a <redirect with no space', 'wc -l <in.txt', 'in.txt'],
 ];
@@ -103,6 +104,18 @@ test('namedFiles resolves an absolute path with no folder', () => {
 test('namedFiles refuses a relative path with no folder', () => {
   const got = namedFiles('bash a.sh', null);
   assert.equal(got.ok, false);
+});
+
+test('namedFiles refuses a relative path with no folder, even one that resolves from /', () => {
+  const dir = folder();
+  assert.equal(namedFiles(`bash ${relative('/', join(dir, 'a.sh'))}`, null).ok, false);
+});
+
+test('namedFiles refuses stdin even when the folder holds a file named -', () => {
+  const dir = folder();
+  writeFileSync(join(dir, '-'), 'x\n');
+  assert.equal(namedFiles('gh pr create --body-file -', dir).ok, false);
+  assert.equal(namedFiles('gh api x -F body=@-', dir).ok, false);
 });
 
 test('namedFiles refuses a file it can’t find', () => {

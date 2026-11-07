@@ -55,7 +55,9 @@ test('a folder in no repository fails', async () => {
 test('a .git file with gitdir: fails', async () => {
   const dir = tempDir('pb-git-gitdir-');
   writeFileSync(join(dir, '.git'), 'gitdir: /somewhere/else/.git/worktrees/x\n');
-  assert.equal((await repoRunsCode(dir)).ok, false);
+  const got = await repoRunsCode(dir);
+  assert.equal(got.ok, false);
+  assert.match(got.ok ? '' : got.why, /isn’t a folder/);
 });
 
 test('a .sample hook passes, executable or not', async () => {
@@ -143,8 +145,9 @@ test('a comment or a quoted value that names a key passes', async () => {
   assert.deepEqual(await repoRunsCode(repo(text)), { ok: true });
 });
 
-test('a value continued onto the next line fails, as git and this reader could split it apart', async () => {
-  const text = '[user]\n\tname = a \\\n[core]\n\tfsmonitor = ./watch.sh\n';
+test('a value continued onto the next line fails: git reads the next header as part of it', async () => {
+  // git reads core.name as “x [user]”, then fsmonitor under [core]; a line-by-line reader would put it under [user].
+  const text = '[core]\n\tname = x \\\n[user]\n\tfsmonitor = ./watch.sh\n';
   assert.equal((await repoRunsCode(repo(text))).ok, false);
 });
 
