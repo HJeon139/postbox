@@ -61,6 +61,8 @@
 //   capabilities.isolation: false     it always loads your own setup, so the sheet has no Isolated switch (#143)
 //   capabilities.promptTool: false    it never asks through Postbox’s permission_prompt (the CLI’s --permission-prompt-tool),
 //                                     so MCP doesn’t list it and refuses a call to it at once (#220)
+//   capabilities.promptHook: true     its prompts come from Postbox’s own hook, by an id of the hook’s (Antigravity’s),
+//                                     so they aren’t matched to a call its stream showed, as the CLI’s are (#353)
 //   capabilities.remote: { ... }      how it runs on a remote host, where the daemon starts its process (#120):
 //     stdin: 'file' | 'none' | 'held'   the turn’s message goes in a file, or nothing goes in, or stdin stays open
 //                                       until the turn ends (Codex’s JSON-RPC)
@@ -89,7 +91,7 @@
  */
 
 /**
- * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', isolation?: boolean, promptTool?: boolean, models?: string[],
+ * @typedef {{ name: string, capabilities?: { fork?: boolean, permissions?: 'rules' | 'none', resume?: boolean, tools?: 'deny-list' | 'none', isolation?: boolean, promptTool?: boolean, promptHook?: boolean, models?: string[],
  *   remote?: RemoteCapabilities },
  *   deliver(session: object, message: object, ctx: object): Promise<void>, dispose?(session: object): void }} Adapter
  */
@@ -123,6 +125,15 @@ export function checkRemoteContext(remote, { attach = false } = {}) {
     throw new Error('A remote turn needs Postbox’s version (ctx.remote.version) to find the shim on the host, so it wasn’t started.');
   if (!attach && typeof remote.nextTurn !== 'function')
     throw new Error('A remote turn needs ctx.remote.nextTurn from the runtime, so it wasn’t started on the host.');
+}
+
+/**
+ * The adapter registered for a backend, or null when none is, or none is named: what a check of its capabilities
+ * reads, so it asks what the adapter can do, never its name.
+ * @param {{ adapters: { names(): string[], get(name: string): any } }} rt @param {unknown} backend
+ */
+export function adapterOf(rt, backend) {
+  return typeof backend === 'string' && backend && rt.adapters.names().includes(backend) ? rt.adapters.get(backend) : null;
 }
 
 export class AdapterRegistry {

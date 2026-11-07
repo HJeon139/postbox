@@ -161,6 +161,35 @@ export const HELD_WAKES = 20;
 /** How long a remote read waits for Postbox before it is answered from the host's snapshot (#582). Kiro gives up a call after 120 s, so the answer has to be there well before. */
 export const REMOTE_READ_TIMEOUT_MS = 100_000;
 
+/**
+ * How long a permission prompt waits for its call to show in the turn’s stream before it’s refused (#353, #665). The
+ * CLI asks between a call’s tool_use line and its result, but the line and the prompt reach Postbox by different pipes
+ * (stdout, and HTTP or the host’s link), so the prompt can come first by a moment.
+ */
+export const PROMPT_CALL_WAIT_MS = 5_000;
+
+/**
+ * How long, at most, a host’s permission prompt waits for its turn’s stream to be read up to where the host has it
+ * before PROMPT_CALL_WAIT_MS starts (#353, server/remote/turns-replay.mjs), from when the prompt first came; past it,
+ * it’s refused as one whose call never showed. A daemon that hangs mid-read, or a link that keeps dropping, never says
+ * the read caught up, and the prompt would hold its request open for good. A minute reads a log of the host’s default
+ * logMaxBytes (256 MiB) at about 5 MB/s, and stays far under the 10-minute floor of the host’s stallTimeout
+ * (shared/remote-settings.mjs), so a held prompt is answered long before its turn could be judged stalled.
+ */
+export const PROMPT_REPLAY_WAIT_MS = 60_000;
+
+/**
+ * Lines a turn shows for its refused permission prompts, one per call, at most (#353, #665); past it, one line counts
+ * the rest. A flood of prompts from a command the agent runs stays a few lines.
+ */
+export const PROMPT_REFUSAL_LINES = 5;
+
+/**
+ * Permission prompts a turn holds open at once while each waits for its call’s line (#353, #665), at most; one past it
+ * is refused at once. Each held prompt is an open request, so a flood from a command the agent runs holds only a few.
+ */
+export const PROMPT_HOLDS_MAX = 8;
+
 /** @typedef {keyof typeof LIMITS} LimitName */
 
 /**

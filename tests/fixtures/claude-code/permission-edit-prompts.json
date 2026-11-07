@@ -1,0 +1,23 @@
+{
+  "about": "The arguments Claude Code (2.1.318, claude-haiku-5-5, -p, --permission-mode manual, --permission-prompt-tool mcp__postbox__permission_prompt) sent to Postbox’s permission_prompt tool in the turn recorded in permission-edit.jsonl: an Edit, then a Write (the Read before them didn’t ask). Taken from the permission cards Postbox made of them (each card keeps the call’s input as sent, and its tool_use_id). Neither carries permission_suggestions or an agent id. Both were answered { behavior: allow, updatedInput } as asked; note.txt then held “The sky is blue today.” and done.txt “done”. The Edit’s input carries replace_all: false, as the stream’s assistant message does (where it comes first), though the streamed input_json_delta never sent it.",
+  "prompts": [
+    {
+      "tool_name": "Edit",
+      "input": {
+        "file_path": "/workspace/coder/note.txt",
+        "old_string": "The sky is green today.",
+        "new_string": "The sky is blue today.",
+        "replace_all": false
+      },
+      "tool_use_id": "toolu_bdrk_01Vu4AXvR8Y3ARCA3NJtNKMa"
+    },
+    {
+      "tool_name": "Write",
+      "input": {
+        "file_path": "/workspace/coder/done.txt",
+        "content": "done\n"
+      },
+      "tool_use_id": "toolu_bdrk_014CjiSeJggt7iaPLR6QThjP"
+    }
+  ]
+}

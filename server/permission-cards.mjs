@@ -1,13 +1,14 @@
 // Permission cards and refusal cards: a call that waits for your answer, and a call Claude Code refused without asking.
 // Runtime keeps a one-line method for each, so its callers and tests don’t change.
 
+import { adapterOf } from './adapters/adapter.mjs';
 import { POSTBOX_TIMEOUT_MS } from './adapters/setup.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { httpError } from './helpers.mjs';
 import { editedInput, MAX_EDIT_INPUT, MAX_REASON } from './permission-edit.mjs';
 import { closeCard, dismissPermission } from './permission-expiry.mjs';
 import { addAllowRule, alwaysAllow, cleanRule, rulesFor, takeBackRule } from './permission-rules.mjs';
-import { registeredAdapter, requestAdapter } from './remote/placement.mjs';
+import { requestAdapter } from './remote/placement.mjs';
 import { gated } from './store-outage.mjs';
 import { draftOf, isWriteCall, whereOf } from './write-guard.mjs';
 import { settledCall } from './write-intent.mjs';
@@ -33,10 +34,11 @@ export const CARD_WAIT_MS = POSTBOX_TIMEOUT_MS - EXPIRY_MARGIN_MS;
  * @param {string} sessionId
  * suppressAlways is the SDK’s suppressAlwaysAllowRule: the rule Always allow would save grants more than this call.
  * draft is what a write outside Postbox carries (server/write-guard.mjs’s draftOf), found from input when not given.
- * hostPrompt: on a remote turn, the prompt on the host this card answers (#120), kept on the card as `remote`.
+ * hostPrompt: on a remote turn, the prompt on the host this card answers (#120), kept on the card as `remote`, with the
+ * daemon’s entry for it (#353).
  * @param {{ tool: string, summary: string, detail?: string, toolUseId?: string|null, input?: any, suggestions?: unknown,
  *           agentId?: string|null, suppressAlways?: boolean, draft?: { field: string, text: string } | null,
- *           hostPrompt?: { hostId: string, turn: string, id: string } | null }} req
+ *           hostPrompt?: { hostId: string, turn: string, id: string, entry?: string | null } | null }} req
  * @returns {Promise<{ allow: boolean, message?: string, updatedInput?: Record<string, any>, updatedPermissions?: any[] }>}
  */
 export async function requestPermission(rt, sessionId, req) {
@@ -71,7 +73,16 @@ export function askPerson(
     always: hostAlways(rt.alwaysFor(se, { tool, input, suggestions, suppressAlways }), hostPrompt),
     // A subagent’s prompt names it, as its refusals do: by the SDK’s agent id, or by the call the stream saw it make.
     who: whoAsked(turn, agentId, toolUseId),
-    ...(hostPrompt ? { remote: { hostId: hostPrompt.hostId, turn: hostPrompt.turn, prompt: hostPrompt.id } } : {}),
+    ...(hostPrompt
+      ? {
+          remote: {
+            hostId: hostPrompt.hostId,
+            turn: hostPrompt.turn,
+            prompt: hostPrompt.id,
+            ...(hostPrompt.entry !== undefined ? { entry: hostPrompt.entry } : {}),
+          },
+        }
+      : {}),
     status: 'open',
   });
   // The text so far is finished; the reply continues below the card.
@@ -120,7 +131,7 @@ export function alwaysFor(rt, se, { tool, input, suggestions, suppressAlways }) 
  * @param {string|undefined} backend
  */
 export function readsRules(rt, backend) {
-  const adapter = backend ? registeredAdapter(rt, { backend }) : null;
+  const adapter = adapterOf(rt, backend);
   return Boolean(adapter?.folderFor) && adapter?.capabilities?.permissions !== 'none';
 }
 

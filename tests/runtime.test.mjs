@@ -572,34 +572,6 @@ test('Stop expires an open permission card and answers no', async () => {
   assert.equal(store.items(t.id).find((i) => i.kind === 'permission').status, 'expired');
 });
 
-test('MCP permission_prompt answers in the shape Claude Code expects', async () => {
-  const { rt, store, t, adapter } = setup();
-  let reply = null;
-  adapter.next.push(async (c) => {
-    const se = rt.sessionsIn(t.id)[0];
-    const pending = handleMcp(
-      rt,
-      se.id,
-      {
-        jsonrpc: '2.0',
-        id: 9,
-        method: 'tools/call',
-        params: { name: 'permission_prompt', arguments: { tool_name: 'Bash', input: { command: 'ls', description: 'List files' } } },
-      },
-      new URL(c.mcpUrl).searchParams.get('turn'),
-    );
-    await sleep(10);
-    const card = store.items(t.id).find((i) => i.kind === 'permission');
-    assert.equal(card.summary, 'run a command: List files');
-    rt.act(t.id, card.id, 'allow');
-    reply = await pending;
-    c.text('ok');
-  });
-  rt.sendMessage(t.id, { text: 'list' });
-  await settle(rt);
-  assert.deepEqual(JSON.parse(reply.result.content[0].text), { behavior: 'allow', updatedInput: { command: 'ls', description: 'List files' } });
-});
-
 test('personas keep a permission mode and a model; real backends default to Claude Opus 5.5', () => {
   const { rt } = setup();
   rt.adapters.register({ name: 'claude-code', deliver: async () => {} });

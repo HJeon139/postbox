@@ -1,11 +1,12 @@
 // The broker’s permission prompts (#120): a shim’s prompt written down and sent to Postbox, Postbox’s answer written
-// down and sent to the turn’s shims, and a prompt’s end, when its shim gave up, its turn stopped, or no shim waits on
-// it any more. broker.mjs’s header says what’s written down when.
+// down and sent to the connections of the shim that asked it, and a prompt’s end, when its shim gave up, its turn
+// stopped, or no shim waits on it any more. broker.mjs’s header says what’s written down when.
 
+import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { HOST_DEFAULTS, REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
 import { note, record, refusal, unrecorded, written } from './broker-records.mjs';
-import { CANCELED, key, STOPPED_TEXT, toShims } from './broker-state.mjs';
+import { CANCELED, key, STOPPED_TEXT } from './broker-state.mjs';
 
 /**
  * @typedef {import('./broker-state.mjs').Broker} Broker
@@ -15,7 +16,7 @@ import { CANCELED, key, STOPPED_TEXT, toShims } from './broker-state.mjs';
  */
 
 /** @param {Prompt} q */
-export const promptBody = (q) => ({ id: q.id, turn: q.turn, request: q.request });
+export const promptBody = (q) => ({ id: q.id, turn: q.turn, entry: q.entry, request: q.request });
 /** Sends an expiry if Postbox is attached; it waits for the next hello if not. @param {Broker} b @param {Expiry} x */
 export function sendExpiry(b, x) {
   const k = key(x.turn, x.id);
@@ -94,6 +95,12 @@ export async function permission(b, c, turn, m) {
     // name a turn, so an allow planted for a harmless request would otherwise answer a dangerous one.
     if (!isDeepStrictEqual(m.request, known.request))
       return deny(`Permission request ${m.id} was asked already, with a different request, so this one isn’t allowed. Ask again under a new id.`);
+    // Nor does another shim asking the same (#353): only the shim that asked, by its key, hears the answer, on each
+    // connection it makes. A record an older daemon wrote names no shim, so the first to send it again takes it.
+    if (known.owner !== undefined && known.owner !== c.owner)
+      return deny(`Permission request ${m.id} was asked by another connection, so this one isn’t allowed. Ask again under a new id.`);
+    known.owner = c.owner;
+    known.asked.add(c);
     // A shim still waits on it: it ends the prompt itself.
     known.replayed = false;
     const saved = await known.saved;
@@ -102,11 +109,14 @@ export async function permission(b, c, turn, m) {
     return;
   }
   if (b.unrecordedEnds.has(k)) return deny(`Permission request ${m.id} has ended already, so it can’t be shown again.`);
+  // The entry is the daemon’s own name for this record, never the shim’s or the request’s: Postbox tells a resend from
+  // another prompt by it (#353), and a shim can pick any id.
   /** @type {Prompt} */
-  const q = { turn, id: m.id, request: m.request, answer: null, over: false, at: b.now() };
+  const q = { turn, id: m.id, entry: randomUUID(), request: m.request, answer: null, over: false, at: b.now(), owner: c.owner, asked: new Set([c]) };
   b.prompts.set(k, q);
-  // Shown only once it’s on disk, as a queued call is acknowledged only then (call).
-  q.saved = record(b, turn, 'prompts', { op: 'prompt', id: q.id, request: q.request, at: q.at }).then(
+  // Shown only once it’s on disk, as a queued call is acknowledged only then (call). The owner is the key’s hash, so
+  // the file never holds the shim’s key.
+  q.saved = record(b, turn, 'prompts', { op: 'prompt', id: q.id, entry: q.entry, owner: q.owner, request: q.request, at: q.at }).then(
     () => '',
     (e) => unrecorded('this permission request', e),
   );
@@ -160,7 +170,12 @@ export async function onAnswer(b, m, reply) {
       return;
     }
   }
-  toShims(b, m.turn, 'permission-answer', { id: q.id, result: q.answer });
+  // Only to the connections of the shim that asked (#353), never to every shim of the turn: a client that only said
+  // hello, or sent the same request under another key, never learns the person’s answer.
+  for (const s of q.asked) {
+    if (s.closed) q.asked.delete(s);
+    else s.send('permission-answer', { id: q.id, result: q.answer });
+  }
 }
 
 /**

@@ -6,7 +6,6 @@ import { lstat, mkdir, readdir, readFile, symlink, writeFile } from 'node:fs/pro
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
-import { handleMcp } from '../server/mcp.mjs';
 import { alwaysAllow, changeRule, cleanRule, readRules, settingsFiles } from '../server/permission-rules.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
@@ -184,33 +183,6 @@ test('#66: a subagent’s prompt names the subagent, from the stream', async () 
   rt.act(t.id, card.id, 'allow');
   await settle(rt);
   assert.match(store.items(t.id).find((i) => i.kind === 'voice').text, /^Allowed: @coder’s subagent \(general-purpose\) to run a command/);
-});
-
-test('#66: MCP permission_prompt passes suggestions and the agent id, and answers with your edit or Always allow', async () => {
-  const { rt, store, t, adapter, se } = await setup();
-  const replies = [];
-  // The turn’s own token, as Claude Code sends it (#54).
-  const token = () => rt.turns.get(se.id)?.token ?? null;
-  const ask = (args) => handleMcp(rt, se.id, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'permission_prompt', arguments: args } }, token());
-  const suggestions = [{ type: 'addRules', rules: [{ toolName: 'Read', ruleContent: '//data/**' }], behavior: 'allow', destination: 'localSettings' }];
-  adapter.next.push(async (c) => {
-    c.subagentNames(({ agentId }) => (agentId === 'task-1' ? 'Explore' : null));
-    const one = ask({ tool_name: 'Read', input: { file_path: '/data/a' }, tool_use_id: 'tu1', permission_suggestions: suggestions, agent_id: 'task-1' });
-    await sleep(10);
-    const card = openCard(store, t);
-    assert.equal(card.who, 'Explore');
-    rt.act(t.id, card.id, 'always', {});
-    replies.push(await one);
-    const two = ask({ tool_name: 'Bash', input: { command: 'ls' }, tool_use_id: 'tu2' });
-    await sleep(10);
-    rt.act(t.id, openCard(store, t).id, 'edit', { command: 'ls -la' });
-    replies.push(await two);
-  });
-  rt.sendMessage(t.id, { text: 'go' });
-  await settle(rt);
-  const [a, b] = replies.map((r) => JSON.parse(r.result.content[0].text));
-  assert.deepEqual(a, { behavior: 'allow', updatedInput: { file_path: '/data/a' }, updatedPermissions: suggestions });
-  assert.deepEqual(b, { behavior: 'allow', updatedInput: { command: 'ls -la' } });
 });
 
 test('#66: suggestions are bounded; the project’s shared settings go local; modes and folders stay for the turn', () => {

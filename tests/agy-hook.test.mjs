@@ -110,7 +110,7 @@ function setupHookRuntime() {
   const store = new Store(null);
   const adapter = {
     name: 'antigravity-cli',
-    capabilities: { promptTool: true, permissions: 'none' },
+    capabilities: { promptTool: true, promptHook: true, permissions: 'none' },
     next: /** @type {any[]} */ ([]),
     async deliver(_s, _m, ctx) {
       await this.next.shift()?.(ctx);

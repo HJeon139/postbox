@@ -4,6 +4,7 @@
 
 import { needHost, releaseHost } from './turns-need.mjs';
 import { endCard, openCards } from './turns-prompts.mjs';
+import { caughtUp } from './turns-replay.mjs';
 import { whenBack } from './turns-resume.mjs';
 import { mayBeOnHost, ON_HOST, remoteError, unconfirmed, updateRemote } from './turns-shared.mjs';
 import { offsetAt } from './turns-start.mjs';
@@ -118,4 +119,6 @@ function forget(rts, live) {
   for (const t of live.hostTurns) if (rts.byTurn.get(t) === live) rts.byTurn.delete(t);
   rts.dirty.delete(live.sessionId);
   releaseHost(rts, live.hostId);
+  // A prompt still waiting for the replay waits only its bound now, and is refused: its turn is over here.
+  caughtUp(live);
 }

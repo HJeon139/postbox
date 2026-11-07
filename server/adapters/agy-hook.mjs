@@ -21,6 +21,8 @@ import { POSTBOX_SERVER } from './setup.mjs';
 export const HOOK_SCRIPT = fileURLToPath(import.meta.url);
 /** Outlasts Postbox’s card wait (CARD_WAIT_MS) so an unanswered card expires to deny before agy times the hook out. */
 export const HOOK_TIMEOUT_S = Math.ceil(CARD_WAIT_MS / 1000) + 60;
+/** How Antigravity asks (adapter.mjs’s capabilities): through permission_prompt, from this hook, by an id no stream line carries (#353). */
+export const HOOK_PROMPTS = Object.freeze({ promptTool: true, promptHook: true });
 
 const WRITE_TOOLS = new Set(['write_file', 'write_to_file', 'edit_file', 'replace_file_content', 'multi_replace_file_content']);
 const READ_TOOLS = new Set(['read_file', 'view_file', 'list_dir', 'find_by_name', 'grep_search']);

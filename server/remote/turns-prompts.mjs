@@ -9,7 +9,10 @@ import { describePermission } from '../adapters/claude-stream.mjs';
 import { offerNeed } from '../card-needs.mjs';
 import { closeCard, tellExpired } from '../permission-expiry.mjs';
 import { asksByPrompt } from '../permission-prompt.mjs';
+import { claimPrompt } from '../prompt-claim.mjs';
+import { claimAhead } from '../turn-work.mjs';
 import { linkOf } from './turns-need.mjs';
+import { replayCeiling, replayed } from './turns-replay.mjs';
 import { ENDED_TEXT, key, ON_HOST, send, sessionOfTurn, updateRemote } from './turns-shared.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
@@ -18,13 +21,16 @@ import { ENDED_TEXT, key, ON_HOST, send, sessionOfTurn, updateRemote } from './t
 /**
  * A permission prompt waiting in the shim: the laptop’s card (requestPermission), answered with `answer`. A repeat
  * of one already answered gets the same answer again; one already showing waits on its card.
- * @param {RemoteTurns} rts @param {string} hostId @param {{ id: string, turn: string, request: Record<string, any> }} m
+ * @param {RemoteTurns} rts @param {string} hostId @param {{ id: string, turn: string, entry?: string, request: Record<string, any> }} m
  */
 export function onPrompt(rts, hostId, m) {
   const k = key(m.turn, m.id);
   if (rts.endedPrompts.has(k)) return;
   const link = linkOf(rts, hostId);
-  const card = cardOf(rts, m.turn, m.id);
+  // The card is this prompt’s only if the daemon’s entry says so: the same shim id under another entry is another
+  // prompt, which claims as any does (#353), and never gets the card’s answer.
+  const shown = cardOf(rts, m.turn, m.id);
+  const card = shown && sameEntry(shown.it, m) ? shown : null;
   if (card && card.it.status !== 'open') {
     if (card.it.remote?.answer) send(link, 'answer', { turn: m.turn, prompt: m.id, result: card.it.remote.answer });
     return;
@@ -43,19 +49,72 @@ export function onPrompt(rts, hostId, m) {
     if (!rts.rt.permissionWaits.has(card.it.id)) waitOn(rts, live, card, m);
     return;
   }
-  const { tool_name, input = {}, tool_use_id, permission_suggestions, agent_id } = m.request ?? {};
-  const { summary, detail } = describePermission(String(tool_name ?? 'a tool'), input);
+  // As on the laptop, only a prompt for a call the turn’s stream showed counts, once (#353). The daemon’s repeat of one
+  // still waiting for its call is that prompt, not a second: the first answers. While the stream is still being read
+  // up to where the host has it (a replay after a restart), the wait for the call’s line starts once it has, or the
+  // prompt is refused at its ceiling, from when it first came.
+  const by = byOf(m.turn, m.entry);
+  const ready = replayed(live);
+  const ceiling = ready ? replayCeiling(live, by) : null;
+  void claimPrompt(rts.rt, live.sessionId, m.request, { by, ready, readyEnd: ceiling?.at ?? null }).then((claim) => {
+    ceiling?.release();
+    // The wait can outlast the prompt: the daemon ended it meanwhile (its permissionWaitMax, or the harness gave up),
+    // so nobody takes its answer and it gets no card. A turn that ended meanwhile is the claim’s own refusal (ended):
+    // Stop and a turn’s end close it, drop it from rt.turns and forget its host turns in one step, which the claim
+    // reads after its wait.
+    if (rts.endedPrompts.has(k)) return;
+    if (claim.ok) cardFor(rts, hostId, live, m, claim);
+    else if (claim.why !== 'repeat') answered(rts, hostId, m, { allow: false, message: claim.message }, {});
+  });
+}
+
+/**
+ * The card for a host prompt that claimed its call, drawn from the call as the stream showed it.
+ * @param {RemoteTurns} rts @param {string} hostId @param {Live} live @param {{ id: string, turn: string, entry?: string, request: Record<string, any> }} m
+ * @param {{ tool: string, input: any, agentId?: string | null }} call
+ */
+function cardFor(rts, hostId, live, m, { tool, input, agentId }) {
+  // Only the call’s id is the prompt’s, as on the laptop (server/permission-prompt.mjs): who asks is the stream’s, and
+  // its permission_suggestions never reach the card, which a copy that claimed first could otherwise fill.
+  const { tool_use_id } = m.request ?? {};
+  const { summary, detail } = describePermission(String(tool ?? 'a tool'), input);
   const asked = ask(rts, live.rt, {
-    tool: String(tool_name ?? ''),
+    tool: String(tool ?? ''),
     summary,
     detail,
     toolUseId: tool_use_id ?? null,
     input,
-    suggestions: permission_suggestions,
-    agentId: typeof agent_id === 'string' ? agent_id : null,
-    hostPrompt: { hostId, turn: m.turn, id: m.id },
+    agentId: agentId ?? null,
+    // null: a prompt that came without the daemon’s entry, which no other prompt is.
+    hostPrompt: { hostId, turn: m.turn, id: m.id, entry: typeof m.entry === 'string' ? m.entry : null },
   });
   asked.then((answer) => answered(rts, hostId, m, answer, input));
+}
+
+/**
+ * Which prompt a host prompt is, for its claim: the daemon’s own entry for its record, the same in every resend
+ * (server/remote/host/broker-prompts.mjs), never the shim’s id or anything in the request, which a shim chooses. One
+ * without an entry is a prompt of its own each time it comes.
+ * @param {string} turn @param {unknown} entry
+ */
+const byOf = (turn, entry) => (typeof entry === 'string' ? key(turn, entry) : Symbol('prompt'));
+
+/**
+ * Whether a card answers this prompt: the daemon’s same entry, or a card from before entries (no `entry` at all), which
+ * a resend of its prompt still finds. A card whose prompt came without one (null) is no other prompt’s.
+ * @param {any} it @param {any} m
+ */
+const sameEntry = (it, m) => it.remote?.entry === undefined || (typeof m.entry === 'string' && it.remote.entry === m.entry);
+
+/**
+ * After a restart, each card shown for the host turn before it holds its call (#353): the call counts as claimed by the
+ * card’s prompt once the replayed stream shows it, so a copy of the prompt under another id gets no second card. That
+ * holds for a card already answered too, whose call may still be running.
+ * @param {RemoteTurns} rts @param {Live} live @param {string} turn
+ */
+export function claimShown(rts, live, turn) {
+  for (const { it } of permissionCards(rts, turn))
+    if (typeof it.toolUseId === 'string' && it.toolUseId) claimAhead(live.rt, it.toolUseId, byOf(turn, it.remote?.entry));
 }
 
 /** A card shown before a restart, waited on again. @param {RemoteTurns} rts @param {Live} live @param {{ threadId: string, it: any }} card @param {any} m */
@@ -207,13 +266,16 @@ function cardOf(rts, turn, id) {
 }
 
 /** @param {RemoteTurns} rts @param {string} turn */
-export function openCards(rts, turn) {
+export const openCards = (rts, turn) => permissionCards(rts, turn).filter((c) => c.it.status === 'open');
+
+/** Every card for a host turn’s prompts, in its session’s conversation. @param {RemoteTurns} rts @param {string} turn */
+function permissionCards(rts, turn) {
   const se = sessionOfTurn(rts, turn);
   if (!se) return [];
   return rts.rt.conversationThreads(se.threadId).flatMap((/** @type {string} */ threadId) =>
     rts.rt.store.pending
       .items(threadId)
-      .filter((/** @type {any} */ i) => i.kind === 'permission' && i.status === 'open' && i.remote?.turn === turn)
+      .filter((/** @type {any} */ i) => i.kind === 'permission' && i.remote?.turn === turn)
       .map((/** @type {any} */ it) => ({ threadId, it })),
   );
 }
