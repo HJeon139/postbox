@@ -23,20 +23,21 @@ export const key = (turn, id) => `${turn} ${id}`;
  * @typedef {{ turn: string, id: string, name: string, route: 'queue' | 'ask' | 'read', args: Record<string, any> | null, replied: boolean,
  *   owner?: string | null, result?: { ok: boolean, text: string }, saved?: Promise<string>, replying?: Promise<string>, offline?: boolean,
  *   bytes?: number, arrived?: number, timer?: any }} Tool
- *   owner: the calling shim’s ShimConn owner, the only one its result goes to (#908), undefined for a record an older
- *   daemon wrote, which the first shim to send it again takes; saved: settles once the call is written down, with ''
+ *   owner: the calling shim’s ShimConn owner, the only one its result goes to (#908), null as a prompt’s is, and
+ *   undefined for a record an older daemon wrote, which the first shim to send it again takes; saved: settles once the call is written down, with ''
  *   or why it couldn’t be (a prompt’s likewise); replying: a reply being written down, likewise (a prompt’s
  *   answering); bytes: its tool message’s encoded size, while it waits
  * @typedef {{ turn: string, id: string, entry: string, request: Record<string, any>, answer: Record<string, any> | null,
  *   over: boolean, at: number, owner?: string | null, asked: Set<ShimConn>, replayed?: boolean, saved?: Promise<string>,
  *   answering?: Promise<string> }} Prompt
  *   entry: the daemon’s own ID for the prompt’s record (broker-prompts.mjs); at: when it was asked; owner: the asking
- *   shim’s ShimConn owner, null for one that sent no key, undefined for a record an older daemon wrote, which the
- *   first shim to send it again takes; asked: the connections that sent it, the only ones its answer goes to;
+ *   shim’s ShimConn owner; null for a record of a shim that sent no key (before #908), which no shim can take;
+ *   undefined for a record an older daemon wrote, which the first shim to send it again takes; asked: the connections that sent it, the only ones its answer goes to;
  *   replayed: read back from prompts.jsonl at start, and no shim has sent it again since
  * @typedef {{ turn: string, id: string, at: number, reason: 'expired' | typeof CANCELED }} Expiry
- * @typedef {{ turn: string | null, owner: string | null, closed: boolean, send: (type: string, body: Record<string, unknown>) => void }} ShimConn
- *   owner: the SHA-256 of the key the shim sent in its hello, the same across its reconnects; null if it sent none
+ * @typedef {{ turn: string | null, owner: string, closed: boolean, send: (type: string, body: Record<string, unknown>) => void }} ShimConn
+ *   owner: the SHA-256 of the key the shim sent in its hello, the same across its reconnects; a hello with none is
+ *   refused (#908)
  * @typedef {{ pos: number, rest: Buffer, skipping: boolean }} LogPos
  * @typedef {{ rpcId: unknown, method: string, id: string | null, seen: number }} CodexRequest
  * @typedef {{ turn: string, out: LogPos, in: LogPos, requests: Map<string, CodexRequest>, pending: Map<string, CodexRequest>,

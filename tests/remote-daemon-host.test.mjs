@@ -82,7 +82,7 @@ test('the socket: a relayed Postbox is served, and a shim goes to the broker, wh
     s.daemon.accept(/** @type {any} */ (b.sock));
     const got = [];
     b.fromDaemon.on('data', (d) => got.push(String(d)));
-    b.toDaemon.write(`${JSON.stringify({ type: 'hello', token: TOKEN, turn: 't1' })}\n`);
+    b.toDaemon.write(`${JSON.stringify({ type: 'hello', token: TOKEN, turn: 't1', shim: 'k'.repeat(32) })}\n`);
     await new Promise((r) => b.fromDaemon.on('end', r));
     // A turn it didn’t start has no token of its own, and the host’s isn’t a shim’s (#120), so it’s refused there.
     assert.match(got.join(''), /"type":"error","code":"bad-token".*turn t1’s, in its folder on this host/);

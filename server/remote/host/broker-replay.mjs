@@ -11,8 +11,9 @@ import { toolBytes } from './broker-tools.mjs';
 /** @typedef {import('./broker-state.mjs').Broker} Broker */
 
 /**
- * The shim a prompt or call record names (#353, #908): its key’s SHA-256, or null for one that sent no key. A record an
- * older daemon wrote has no owner at all (undefined), and the first shim to send it again takes it.
+ * The shim a prompt or call record names (#353, #908): its key’s SHA-256, or null for one that sent no key (before
+ * #908), which no shim can take. A record an older daemon wrote has no owner at all (undefined), and the first shim to
+ * send it again takes it.
  * @param {any} r
  */
 function ownerOf(r) {

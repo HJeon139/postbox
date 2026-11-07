@@ -4,7 +4,8 @@
 // shim-to-daemon, daemon-to-shim, and the tool, prompt, prompt-expired, reply, answer, snapshot and snapshot-items
 // messages between Postbox and the daemon. daemon.mjs hands it each shim connection and those Postbox messages.
 //
-// - A shim says hello with its turn and that turn’s own token (TURN_FILES.shimToken, compared in constant time). A
+// - A shim says hello with its turn, that turn’s own token (TURN_FILES.shimToken, compared in constant time) and its
+//   own key, which tells its connections from another shim’s; a hello with no key is refused with version (#908). A
 //   turn that isn’t one the daemon started, has ended, or is stopping is refused with turn-ended, as the laptop refuses a call from a stopped turn
 //   (#126): Stop marks the turn stopping first, so a call made after it never reaches the conversation.
 // - Each tool call is answered by its route (TOOL_ROUTES). A `queue` call is written to the turn folder’s tools.jsonl,
