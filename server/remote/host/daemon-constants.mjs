@@ -60,7 +60,7 @@ export const READ_CHUNK = 64 * 1024;
  *   => { pid: number, scoped: boolean, lingerOff: boolean } | Promise<{ pid: number, scoped: boolean, lingerOff: boolean }>} LaunchRunner
  *   scoped: the runner went into a systemd user scope; lingerOff: logind says lingering is off for this user
  * @typedef {(socketPath: string, turn: string, o: { timeoutMs: number, token: string }) => Promise<boolean>} AskRunner
- * @typedef {{ sameProcess: (r: import('../../../shared/remote-protocol.mjs').RunnerRecord) => boolean | Promise<boolean>,
+ * @typedef {{ sameProcess: (r: import('../../../shared/remote-protocol.mjs').RunnerRecord) => boolean | Promise<boolean>, bootId: () => string | null,
  *   toolGroups: (pgid: number) => import('./proc.mjs').ToolGroup[] | null,
  *   liveGroups: (groups: import('./proc.mjs').ToolGroup[]) => import('./proc.mjs').ToolGroup[] | Promise<import('./proc.mjs').ToolGroup[]> }} Proc
  * @typedef {(o: { socketPath: string, turn: string, line: string, token: string }) => Promise<number>} WriteRunner

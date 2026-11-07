@@ -11,6 +11,7 @@ import { TURN_FILES, validateRunnerRecord } from '../../../shared/remote-protoco
 import { KILL_WAIT_MS, PROCESS_CHECK_MS, RUNNER_SILENT_MAX_MS } from './daemon-constants.mjs';
 import { readJson, runnerAlive } from './daemon-files.mjs';
 import { endHung } from './daemon-kill.mjs';
+import { dropSilence, keepSilence, keptSilence } from './daemon-silence.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Silence} Silence */
 /** @typedef {import('../../../shared/remote-protocol.mjs').RunnerRecord} RunnerRecord */
@@ -22,7 +23,7 @@ import { endHung } from './daemon-kill.mjs';
  */
 export async function turnRunning(d, turn) {
   if (d.dead.has(turn)) {
-    d.silentSince.delete(turn);
+    forgetSilence(d, turn);
     return false;
   }
   if (await runnerAlive(d, turn)) {
@@ -59,8 +60,9 @@ async function liveRunner(d, turn) {
 /** The runner answered: a silence it was in is over. @param {Daemon} d @param {string} turn */
 function answered(d, turn) {
   const silence = d.silentSince.get(turn);
+  // One kept by a daemon before a restart, which this one never took up, is over too.
+  forgetSilence(d, turn);
   if (!silence) return;
-  d.silentSince.delete(turn);
   d.log(`Turn ${turn}’s runner (process ${silence.pid}) answered again after ${seconds(d.mono() - silence.since)} s of silence.`);
 }
 
@@ -68,7 +70,7 @@ function answered(d, turn) {
 function processGone(d, turn) {
   const silence = d.silentSince.get(turn);
   if (!silence) return;
-  d.silentSince.delete(turn);
+  forgetSilence(d, turn);
   d.log(`Turn ${turn}’s runner (process ${silence.pid}) is gone after ${seconds(d.mono() - silence.since)} s of silence.`);
 }
 
@@ -105,15 +107,20 @@ export const unkilled = (d, turn) => d.silentSince.get(turn)?.unkilled === true;
 
 /**
  * “Didn’t answer as its runner”: the daemon can’t tell no answer from one for another turn or a refused token, since
- * askRunner is false for each (runner-client.mjs).
+ * askRunner is false for each (runner-client.mjs). One a daemon before a restart kept for this runner goes on
+ * (daemon-silence.mjs); else it starts now, and is kept.
  * @param {Daemon} d @param {string} turn @param {number} pid @returns {Silence}
  */
 function startSilence(d, turn, pid) {
+  const ago = keptSilence(d, turn, pid);
   /** @type {Silence} */
-  const silence = { since: d.mono(), checked: d.mono(), pid, over: false, killedAt: null, unkilled: false };
+  const silence = { since: d.mono() - (ago ?? 0), checked: d.mono(), pid, over: false, killedAt: null, unkilled: false };
   d.silentSince.set(turn, silence);
+  if (ago === null) keepSilence(d, turn, pid, 0);
   d.log(
-    `Turn ${turn}’s runner (process ${pid}) didn’t answer as its runner, but its process is still running; it’s kept running for up to ${seconds(RUNNER_SILENT_MAX_MS)} s.`,
+    ago === null
+      ? `Turn ${turn}’s runner (process ${pid}) didn’t answer as its runner, but its process is still running; it’s kept running for up to ${seconds(RUNNER_SILENT_MAX_MS)} s.`
+      : `Turn ${turn}’s runner (process ${pid}) still doesn’t answer as its runner, ${seconds(ago)} s into a silence that began before this daemon started; it’s kept running for up to ${seconds(RUNNER_SILENT_MAX_MS)} s in all.`,
   );
   return silence;
 }
@@ -132,7 +139,8 @@ export function followerEnds({ dead, misses }) {
   return misses >= MISSES_TO_END;
 }
 
-/** The turn has ended with exit.json: its silence, if any, is forgotten. @param {Daemon} d @param {string} turn */
+/** The turn has ended with exit.json, or its silence is over: it’s forgotten, here and in the turn folder. @param {Daemon} d @param {string} turn */
 export function forgetSilence(d, turn) {
   d.silentSince.delete(turn);
+  dropSilence(d, turn);
 }
