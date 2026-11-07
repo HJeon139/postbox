@@ -60,6 +60,7 @@ const ACCOUNT_KEYS = 'planType|authMode|usedPercent|plan_type|auth_mode|used_per
 // table’s “{” or “,”, so a code declaration such as “const x = …” isn’t one (#696). A bare key after a name character
 // is part of a longer name, and one before “==” is a comparison, not a value.
 const ACCOUNT_FIELD = new RegExp(
+  // lint-allow regex: ACCOUNT_KEYS is a constant list of key names, built once here.
   `\\\\?"(${ACCOUNT_KEYS})\\\\?"|(?<![A-Za-z0-9_$])(${ACCOUNT_KEYS})(?=\\s*:)|(?<=(?:^|[{,])[ \\t]*)(${ACCOUNT_KEYS})(?=[ \\t]*=(?!=))`,
   'gm',
 );

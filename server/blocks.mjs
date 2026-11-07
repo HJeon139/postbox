@@ -7,7 +7,7 @@ import { buildEvent } from '../shared/events.mjs';
 import { LIMITS } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { releaseNeed } from './card-needs.mjs';
-import { unreadBody } from './confirm-body.mjs';
+import { bodiesChange, unreadBody } from './confirm-body.mjs';
 import { recordConfirm } from './confirm-grant.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { REACT, toggleReaction } from './reactions.mjs';
@@ -148,8 +148,7 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   // One that changes only what the person can’t see (its fallback) asks nothing new, so an answered block stays
   // answered, and an outcome can follow (#286).
   const { files, newFiles } = reviewImages(v.block, existing, given.files);
-  const bodies = v.block.type === 'confirm' ? { bodyFiles: given.bodyFiles ?? [] } : {};
-  const newBodies = JSON.stringify(bodies.bodyFiles ?? []) !== JSON.stringify(existing.bodyFiles ?? []);
+  const { bodies, newBodies } = bodiesChange(v.block, existing, given.bodyFiles);
   if (existing.answered && !newFiles && !newBodies) {
     const differ = changedKeys(v.block, existing.block).filter((k) => k !== 'outcome');
     if (differ.length > 0 && !existing.closed && differ.every((k) => UNSEEN.has(k))) {
@@ -162,7 +161,7 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
       };
     }
   }
-  const kept = ASKING.has(v.block.type) && !existing.answered && !newFiles ? keptWaiting(rt, where, existing, v.block, now) : null;
+  const kept = ASKING.has(v.block.type) && !existing.answered && !newFiles && !newBodies ? keptWaiting(rt, where, existing, v.block, now) : null;
   if (kept) {
     if (given.files) given.held = true;
     return kept;

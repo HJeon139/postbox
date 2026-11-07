@@ -202,3 +202,14 @@ async function pinShape(rt, sessionId, shape, command, index) {
     return { ok: false, why: `Postbox can’t make command ${index + 1}’s push: it needs the project’s repository set, and a branch with a commit to push.` };
   return { ok: true, entry: { command: index, push: { branch: push.branch, sha: push.sha, url: push.url, sentence: push.sentence } } };
 }
+
+/**
+ * What an update_block writes of a confirm’s body files, and whether they changed, which counts as a change the person
+ * sees: an answered confirm asks again, and a waiting one isn’t kept in place (blocks.mjs, updateBlock).
+ * @param {any} block @param {any} existing  the item @param {any[] | undefined} bodyFiles  read before the tool ran
+ */
+export function bodiesChange(block, existing, bodyFiles) {
+  const bodies = block.type === 'confirm' ? { bodyFiles: bodyFiles ?? [] } : {};
+  const newBodies = JSON.stringify(bodies.bodyFiles ?? []) !== JSON.stringify(existing.bodyFiles ?? []);
+  return { bodies, newBodies };
+}
