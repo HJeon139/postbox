@@ -245,21 +245,18 @@ test('#874 a summary for an agent whose backend isn’t registered fails with Re
   assert.equal(f.adapter.calls.length, calls);
 });
 
-test('#874 a host turn reattached for an unregistered backend gives a failed reply, not a crash', async () => {
+test('#874 a host turn reattached for an unregistered backend is Interrupted once, not a crash', async () => {
   const { store, d } = restarted();
   const r = rig({ store, d });
   r.rt.adapters = new AdapterRegistry();
   startUp(r);
   await until(() => r.store.items(r.t.id).some((i) => i.kind === 'agent' && i.status === 'failed'), 'the failed reply');
   await until(() => !r.rt.turns.size && !r.rt.exiting.size, 'the turn to end');
-  // Choice 7 (a): each reattach gives one failed reply. A turn attached again keeps nothing of its own for Retry to send
-  // (askedOf, server/turn-marks.mjs), as on a host.
+  // #909: the turn can’t be followed here, so it’s Interrupted and no longer waits to be attached: a second reattach
+  // adds nothing (tests/remote-turns-unregistered.test.mjs has the rest).
   await reattach(r.rt.remote, r.se().id);
-  await until(() => !r.rt.turns.size && !r.rt.exiting.size, 'the second turn to end');
+  await until(() => !r.rt.turns.size && !r.rt.exiting.size, 'anything the second reattach started to end');
   const failed = r.store.items(r.t.id).filter((i) => i.kind === 'agent' && i.status === 'failed');
-  assert.equal(failed.length, 2, 'one per reattach');
-  for (const it of failed) {
-    assert.equal(it.error, REASON.replace('@beta', '@coder'));
-    assert.equal(it.asked, null);
-  }
+  assert.equal(failed.length, 1, 'one, for the first');
+  assert.equal(failed[0].remote?.state, 'interrupted');
 });

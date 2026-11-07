@@ -12,7 +12,7 @@
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, synced } from './postbox.mjs';
 import { axe } from './remote-hosts.mjs';
-import { HUNG, startRemoteTurns } from './remote-turns.mjs';
+import { HUNG, startRemoteTurns, UNREGISTERED } from './remote-turns.mjs';
 
 /** @type {Awaited<ReturnType<typeof startRemoteTurns>>} */
 let s;
@@ -71,7 +71,7 @@ test('#120 each ring’s label says where its agent runs and the connection, not
 
 test('#120 the turn states read in words in the transcript: Sign-in needed and Interrupted with Resume, hung, Lost', async ({ page }) => {
   await open(page);
-  const { signin, interrupted, hung, lost } = s.items;
+  const { signin, interrupted, unregistered, hung, lost } = s.items;
   await expect
     .soft(item(page, signin).getByRole('alert'))
     .toHaveText(/^Sign-in needed on host\.example\.com · Sign in there, then resume @coder\. Resume it once you’ve signed in\.\s*Resume$/);
@@ -80,6 +80,8 @@ test('#120 the turn states read in words in the transcript: Sign-in needed and I
     .toHaveText(
       /^Interrupted on host\.example\.com · The agent’s process there ended without finishing its turn\. It was interrupted again after Postbox resumed it, so it waits for you\.\s*Resume$/,
     );
+  // #909: an agent whose backend isn’t registered here says why its turn can’t be followed, and what to do.
+  await expect.soft(item(page, unregistered).getByRole('alert')).toContainText(`Interrupted on host.example.com · ${UNREGISTERED}.`);
   await expect.soft(item(page, hung).locator('.stopped-tag')).toHaveText(HUNG);
   await expect
     .soft(item(page, lost).getByRole('alert'))
