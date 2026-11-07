@@ -14,6 +14,7 @@ Use one when:
 | Slidev export | a `slides.md` file in the agent’s folder, plus a code block | (needs a real agent) |
 | Line-by-line review | a review block, then `update_block` with `previous` to show the diff | Corpus schema spec |
 | Dashboard | an app with `postbox.charts.*`, each chart with a Table view | Corpus dashboard |
+| Dependency map | an app with `postbox.graph`: the modules as nodes grouped by package, imports as edges, and the edges that cross packages or close a cycle highlighted | (not yet) |
 | Long job | a progress block with counts, moved on with `update_block`, every step closed, then a summary | Index the shelf |
 
 ## Narrated walkthrough
@@ -74,6 +75,28 @@ The model alternates between thinking and acting.
 3. Tell the person how to see it: `npx @slidev/cli slides.md` in that folder opens the deck, and `npx @slidev/cli export slides.md` makes a PDF. Postbox doesn’t run Slidev itself, because it would download a large toolchain the first time.
 
 The same passages can serve both: the narrated walkthrough for listening now, and the Slidev deck’s speaker notes for presenting later.
+
+## Dependency map
+
+For a question about how code, services or tasks depend on each other: what imports what, what calls what, what has to finish first. Drawn by hand, these came out as labeled boxes or a Mermaid flowchart every time, because a readable node-link layout is hard to write blind (#206, #888). So decide what connects and let the kit decide where things go.
+
+1. Read the code for the edges: one node per module (or service, or task), one edge per import (or call, or wait), and each node’s package as its group. A size or a line count can be its value.
+2. Pick the edges the answer is about, and highlight them: `"between-groups"` for what crosses a boundary, `"cycles"` for what imports itself round a loop, or a function of the edge for anything else.
+3. Show one app:
+
+```js
+postbox.graph(document.getElementById('map'), {
+  label: 'How the shop and core packages import each other',
+  groups: [{ id: 'shop', label: 'Shop' }, { id: 'core', label: 'Core' }],
+  nodes: [{ id: 'shop/cart', label: 'cart', group: 'shop', value: 420 }, /* … */],
+  edges: [['shop/cart', 'core/session'] /* , … */],
+  highlight: 'between-groups',
+});
+```
+
+4. Under it, one line on how to read it (“Bold arrows cross from shop into core”), and the finding in a sentence.
+
+The kit lays it out with d3-force, in [`app/kit/graph-layout.js`](../app/kit/graph-layout.js): each group pulls to a center of its own and is drawn as one soft region, every node and its 13 px label are pushed apart until none overlap, and a cycle of three or more is laid out on a ring. It draws at 1000 × 680 or larger, scrolling sideways in a narrow window rather than shrinking its text, with a Table view of the edges. Past a few hundred nodes, draw an adjacency matrix with `postbox.charts.heatmap` instead.
 
 ## Writing your own
 
