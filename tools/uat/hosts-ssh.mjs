@@ -52,7 +52,9 @@ export const SCRIPTS = {
     't=$(basename "$(dirname "$b")")',
     // Its runner as the daemon starts it, `<node> <runner.mjs> <turn>`: a command line that only names one isn’t it.
     'a=$(ps -p "$p" -o args=) || { echo none; exit 0; }',
-    'case "$a" in *" $HOME/.postbox-remote/"*"/server/remote/host/runner.mjs $t") ;; *) echo none; exit 0 ;; esac',
+    // Under $HOME or its resolved folder: where $HOME is a symlink, the daemon’s runners name the resolved one.
+    'r=$(cd "$HOME/.postbox-remote" && pwd -P) || r="$HOME/.postbox-remote"',
+    'case "$a" in *" $HOME/.postbox-remote/"*"/server/remote/host/runner.mjs $t") ;; *" $r/"*"/server/remote/host/runner.mjs $t") ;; *) echo none; exit 0 ;; esac',
     'kill -STOP "$p" || exit 4',
     'echo "turn $t"',
     'echo "stopped $p"',
