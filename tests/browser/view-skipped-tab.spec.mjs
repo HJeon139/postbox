@@ -91,6 +91,17 @@ const nextAfter = (from) =>
     };
   });
 
+/**
+ * The names of an item’s message actions, in Tab order, as nextAfter names a control: the reactions, then the thread
+ * button (#378 puts the thread button on the right), whatever order the bar has.
+ * @param {any} item a locator of the item
+ * @returns {Promise<string[]>}
+ */
+const actionsOf = (item) =>
+  item.evaluate((/** @type {Element} */ n) =>
+    [...n.querySelectorAll('.msg-actions button, .msg-actions a[href]')].map((b) => b.getAttribute('aria-label') ?? b.textContent?.trim() ?? ''),
+  );
+
 /** What has focus in the page: its item’s key and its name. @param {any} page */
 const focused = (page) =>
   page.evaluate(() => {
@@ -119,7 +130,7 @@ test('#712a: with an app in view, Tab goes into it, out to the next control in d
   const appKey = await appItem.getAttribute('data-key');
   expect
     .soft(next, 'the next control after the frame is its own message’s first action')
-    .toEqual({ key: appKey, name: 'Reply in thread', skipped: false, rects: 1 });
+    .toEqual({ key: appKey, name: (await actionsOf(appItem))[0], skipped: false, rects: 1 });
   await page.keyboard.press('Tab');
   await expect.poll(() => focused(page), { message: 'Tab out of the app lands on the next control' }).toEqual({ key: next?.key, name: next?.name });
   await still(page);
@@ -147,7 +158,9 @@ test('#712a: scrolled away from the app, Tab out of it and on into the skipped i
     await wheel(page, 6000);
     const next = await nextAfter(frame);
     // Behind tabTarget’s filter (app/js/apps.mjs): a control in a skipped item still has its client rect.
-    expect.soft(next, 'the app’s next control is skipped, and has a client rect').toEqual({ key: appKey, name: 'Reply in thread', skipped: true, rects: 1 });
+    expect
+      .soft(next, 'the app’s next control is skipped, and has a client rect')
+      .toEqual({ key: appKey, name: (await actionsOf(appItem))[0], skipped: true, rects: 1 });
     await expect(inside, 'focus is still in the pad').toBeFocused();
     await page.keyboard.press('Tab');
     await expect.poll(() => focused(page), { message: 'Tab out of the skipped app lands on its next control' }).toEqual({ key: next?.key, name: next?.name });
@@ -157,12 +170,14 @@ test('#712a: scrolled away from the app, Tab out of it and on into the skipped i
   });
 
   await test.step('Tab from the app’s last control, scrolled away again, lands in the skipped item below', async () => {
-    const last = appItem.getByRole('button', { name: 'Done: react' });
+    const last = appItem.locator('.msg-actions').getByRole('button', { name: /** @type {string} */ ((await actionsOf(appItem)).at(-1)), exact: true });
     await last.focus();
     await wheel(page, 6000);
     const next = await nextAfter(last);
     const tallKey = await tallItem.getAttribute('data-key');
-    expect.soft(next, 'the next control is the tall reply’s first action, skipped').toEqual({ key: tallKey, name: 'Reply in thread', skipped: true, rects: 1 });
+    expect
+      .soft(next, 'the next control is the tall reply’s first action, skipped')
+      .toEqual({ key: tallKey, name: (await actionsOf(tallItem))[0], skipped: true, rects: 1 });
     await page.keyboard.press('Tab');
     await expect.poll(() => focused(page), { message: 'Tab lands on the control in the skipped item' }).toEqual({ key: next?.key, name: next?.name });
     await still(page);
