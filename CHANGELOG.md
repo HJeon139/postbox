@@ -2,6 +2,20 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.35.2 (2026-11-07)
+
+### Fixes
+
+- **adapters:** count open_topic among Postbox’s quiet tools
+- **uat:** find a message’s thread link by its class, not by the word “thread”
+- **server:** open_topic says whether it posted its message, and by which id
+- **server:** cap open_topic’s mentions and check each handle’s shape first
+- **server:** import SUMMARY_MODEL from its own module, out of the catch-up cycle
+- **remote:** the follower ends a turn through followerEnds, and the design says so (#738)
+- **remote:** log a silent host runner as not answering as its runner (#738)
+- **remote:** time a silent host runner on a monotonic clock
+- **remote:** keep a silent host runner running while its process lives
+
 ## 1.35.1 (2026-11-07)
 
 ### Fixes
