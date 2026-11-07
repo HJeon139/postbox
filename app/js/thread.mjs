@@ -36,6 +36,7 @@ import { systemLine } from './system-line.mjs';
 import { failedOnHost, hostChanged, hostEnd, hostTurnsList, ranHere, remoteSig } from './thread-host.mjs';
 import { threadMenu } from './thread-menu.mjs';
 import { announceStreaming, navigate, openMenu, say, toast } from './ui.mjs';
+import { viewAskBlock } from './view-ask-card.mjs';
 import { mountView } from './view-state.mjs';
 import { workList } from './work-list.mjs';
 
@@ -462,6 +463,8 @@ function renderItem(it, prev, ctx) {
       return denialBlock(it, ctx);
     case 'toolask':
       return toolAskBlock(it, ctx);
+    case 'viewask':
+      return viewAskBlock(it, ctx);
     case 'allowedcall':
       return allowedCallLine(it, ctx);
     case 'appsend':

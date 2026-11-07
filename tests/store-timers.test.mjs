@@ -43,6 +43,7 @@ const PLACED = {
   'remote/hosts-requests.mjs': 2, // request timeouts on a host link: no store
   'remote/hosts-status.mjs': 1, // a host’s heard-from timer: connection status, no store
   'remote/hosts-update.mjs': 2, // an install’s ssh timeouts, passed to installHost: no store
+  'view-app/browser.mjs': 3, // view_app’s download time limit, its idle browser’s close, and a capture’s or close’s own limit (#95): no store
   'remote/hosts.mjs': 3, // a reconnect’s timer: no store
   'remote/install.mjs': 5, // a wait and an injected timeout: no store
   'remote/link.mjs': 7, // passes an injected setTimer through to a host link: no store
