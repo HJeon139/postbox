@@ -135,7 +135,7 @@ Every block is validated before it’s shown ([`shared/catalog.mjs`](shared/cata
 | `table` | `columns: [{ id, label, kind?: text \| number, sortable? }]`, `rows: [{ id, cells: { [columnId]: value } }]` (up to 5,000), `rowAction?: { id, label }` | `<rowAction.id>` → `{ rowId }` |
 | `progress` | `steps: [{ id, label, state: pending \| running \| done \| failed, detail?, duration? }]` | None. Move it on with `update_block`. |
 | `card` | `body?`, `facts?: [{ label, value }]`, `actions?: [{ id, label }]` (up to 3) | `<action.id>` → `{}` |
-| `confirm` | `statement` (say exactly what will happen), `confirmLabel`, `cancelLabel?` | `confirm` or `cancel` → `{}` |
+| `confirm` | `statement` (say exactly what will happen), `confirmLabel`, `cancelLabel?`, `commands?` (up to 3 exact commands that run, with no second card, when you confirm; each shown whole) | `confirm` or `cancel` → `{}` |
 | `image` | `src` (https from an allowed origin), `alt` (required), `caption?`, `width?`, `height?` | None |
 | `code` | `code`, `language?`, `filename?` | None. A Copy button is built in. |
 | `review` | `format: markdown \| code \| app`, `content` (markdown and code), `appId` (app), `previous?` (shows a diff; Postbox counts revisions), `threads?: [{ id, line? \| anchor?, status: open \| resolved, comments: [{ author, text }] }]`, `language?`, `filename?`, `files?: [{ name?, path }]` (markdown: images from the agent’s folder, `path` where each is and `name` a plain file name, PNG, JPEG, GIF or WebP, that the content shows by name or path) | `submit` → `{ verdict: comment \| approve \| request_changes, comments: [{ line? \| anchor?, text }] }` |
