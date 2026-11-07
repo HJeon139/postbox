@@ -4,7 +4,7 @@
 
 import { ASKING } from '../shared/catalog.mjs';
 import { clip } from '../shared/text.mjs';
-import { APP_SEND_LIMIT } from './apps.mjs';
+import { APP_SEND_LIMIT } from './app-send-limits.mjs';
 
 /** The threads whose cards are the agent's: its own, and the side and topic threads off it. */
 const threadsOf = (rt, se) => [

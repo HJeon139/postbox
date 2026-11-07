@@ -16,22 +16,8 @@ import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './ada
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { retireApp } from './app-retire.mjs';
-import {
-  APP_HOLD_MAX,
-  APP_SEND_LIMIT,
-  APP_SEND_WINDOW_MS,
-  appCheck,
-  appEvent,
-  appFile,
-  appQuery,
-  appState,
-  hostTool,
-  needAppSend,
-  registerApp,
-  resolveAppSend,
-  showApp,
-  updateApp,
-} from './apps.mjs';
+import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
+import { appCheck, appEvent, appFile, appQuery, appState, hostTool, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
