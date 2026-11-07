@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseScenario } from '../tools/uat/scenario.mjs';
 import { SCHEMA, systemPrompt } from '../tools/uat/tester.mjs';
-import { JUDGING, judgeOf, VERDICTS, visualSection } from '../tools/uat/visual-judge.mjs';
+import { JUDGING, judgeOf, SKETCHES, VERDICTS, visualSection } from '../tools/uat/visual-judge.mjs';
 
 const md = (header) =>
   `# A scenario\n\n- persona: A person who wants one idea explained well enough to tell a friend.\n${header}\nSummary.\n\n## Phase 1: Ask\n\nAsk.\n\n## Phase 2: Follow up\n\nFollow up.\n`;
@@ -25,6 +25,17 @@ test('the tester is told how to judge only when the scenario asks for it', () =>
   const plain = systemPrompt({ scenario: parseScenario(md('')), issues: [] });
   assert.ok(judging.includes('Judging the visual') && judging.includes(JUDGING));
   assert.ok(!plain.includes('Judging the visual') && !plain.includes(JUDGING));
+});
+
+// The skill draws three thumbnails before the full visual (designs/skills/visual-explainer/SKILL.md, “The run”), and
+// the verdict is meant for the full one: a judge that graded the sketches would grade every with-skill run on them.
+test('the judge skips a set of thumbnails and judges the full visual that follows', () => {
+  const judging = systemPrompt({ scenario: parseScenario(md('- judge: visual')), issues: [] });
+  assert.ok(judging.includes(SKETCHES));
+  assert.match(SKETCHES, /small sketches side by side.*don’t judge it/);
+  assert.match(SKETCHES, /Judge the full visual that follows/);
+  assert.match(SKETCHES, /without asking for changes/);
+  assert.match(SCHEMA.properties.visual.description, /never a set of sketches/);
 });
 
 test('the tester may answer with a visual verdict, which every step doesn’t need', () => {

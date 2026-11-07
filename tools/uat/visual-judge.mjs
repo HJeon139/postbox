@@ -1,8 +1,10 @@
 // The customer judges the visual (#206, #333). A scenario with `- judge: visual` asks the tester, who plays the person,
-// to judge the first visual that answers their question from its screenshot, as the person who asked, and record a
+// to judge the first full visual that answers their question from its screenshot, as the person who asked, and record a
 // structured verdict in that step’s answer. The bar is the maintainer’s, from their blind verdicts on 20 agent-made
 // visuals on November 6, 2026 (designs/skills/visual-explainer/references/critique.md, “How far to trust it”): labeled
-// boxes fail, a chart of one fixed answer isn’t a relationship, and unreadable text is a miss.
+// boxes fail, a chart of one fixed answer isn’t a relationship, and unreadable text is a miss. A set of small sketches
+// shown to pick from isn’t judged: the skill draws three thumbnails first (SKILL.md, “The run”, step 3), and the
+// verdict is on the full visual that follows them.
 
 import { cell } from './trigger-facts.mjs';
 
@@ -11,7 +13,8 @@ export const VERDICTS = ['landed', 'mostly', 'partly', 'missed'];
 /** The tester’s optional `visual` answer, added to its step schema (tools/uat/tester.mjs). */
 export const VISUAL_SCHEMA = {
   type: 'object',
-  description: 'Only when the scenario asks you to judge visuals, and only the step a new visual first answers your question.',
+  description:
+    'Only when the scenario asks you to judge visuals, and only the step a new full visual first answers your question: never a set of sketches to pick from.',
   properties: {
     item: { type: 'string', description: 'The item label of the visual, such as I7.' },
     takeaway: { type: 'string', description: 'In one or two sentences, what the picture alone tells you.' },
@@ -29,9 +32,13 @@ export function judgePrompt(scenario) {
   if (scenario.judge !== 'visual') return '';
   return `
 
-Judging the visual: this scenario asks you to. The first time an agent shows a visual that answers your question (an app, or a diagram in its reply), open its screenshot before you read the agent’s words, and fill visual in that step’s answer, once per new visual:
+Judging the visual: this scenario asks you to. The first time an agent shows a visual that answers your question (an app, or a diagram in its reply), open its screenshot before you read the agent’s words, and fill visual in that step’s answer, once per new visual. ${SKETCHES}
 ${JUDGING}`;
 }
+
+/** Thumbnails come before the visual, and the person picks among them rather than judging them. */
+export const SKETCHES =
+  'If what it shows is a set of small sketches side by side, offered to pick from, that isn’t the visual yet: don’t judge it. If you’re asked to pick, pick the one that shows best what you asked, as the person would, without asking for changes. Judge the full visual that follows, usually the same app’s next version.';
 
 /** The judging instructions, shared by the tester’s prompt and the calibration against a person’s verdicts. */
 export const JUDGING = `- takeaway: in one or two sentences, what the picture alone tells you. Not the reply’s words, and not a headline on the visual that states a conclusion: if the drawing doesn’t carry it, it doesn’t count.
