@@ -7,10 +7,10 @@ import { positionOf } from '../shared/item-index.mjs';
 import { READING } from '../shared/limits.mjs';
 import { keepFor, leftOut, mentions } from './catch-up-keep.mjs';
 import { clipText } from './helpers.mjs';
+import { SUMMARY_MODEL } from './summary-model.mjs';
 
 /** How long a thread stays quiet after a reply before its summary is written. */
 export const SUMMARY_DELAY_MS = 5000;
-export const SUMMARY_MODEL = 'haiku';
 const SUMMARY_TIMEOUT_MS = 60000;
 const SAID = (i) => (i.kind === 'user' || i.kind === 'agent') && i.text && i.status !== 'failed';
 

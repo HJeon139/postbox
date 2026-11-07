@@ -12,7 +12,9 @@ import { stat } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
 import { PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
+import { readHooks } from './permission-hooks.mjs';
 import { BEHAVIORS, changeRule, cleanRule, readRules, settingsFiles } from './permission-rules.mjs';
+import { requestAdapter } from './remote/placement.mjs';
 
 /**
  * What a persona may do without asking. auto (the default): Claude Code’s safety classifier approves routine
@@ -33,7 +35,7 @@ export async function panelTarget(rt, { sessionId = null, personaId = null, proj
   const persona = se ? rt.personaFor(se) : personaId ? rt.persona(personaId) : null;
   if (!persona) throw httpError(404, 'That agent doesn’t exist.');
   const project = rt.s.projects[se ? rt.s.threads[se.threadId]?.projectId : (projectId ?? '')] ?? rt.latestProject(persona.id) ?? null;
-  const adapter = rt.adapters.get(persona.backend);
+  const adapter = requestAdapter(rt, persona.handle, persona);
   const folder = adapter?.folderFor ? await adapter.folderFor(persona, project) : persona.folder || project?.folder || null;
   return { se, persona, project, folder };
 }
@@ -48,7 +50,8 @@ export function latestProject(rt, personaId) {
 /**
  * Everything the panel shows. Rule lists carry their source: user, project, local (the settings files), conversation
  * (rt session’s), tools (the persona’s unticked Tools, as deny rules), publishing (when it may not publish outside
- * Postbox), writes (ask rules for writes outside Postbox, #112) and postbox (its own tools, always allowed).
+ * Postbox), writes (ask rules for writes outside Postbox, #112) and postbox (its own tools, always allowed). hooks
+ * lists each settings file’s PreToolUse and PermissionRequest hooks, with the same sources (#817, #871).
  * @param {any} rt @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null }} who
  */
 export async function permissionsView(rt, who) {
@@ -57,7 +60,10 @@ export async function permissionsView(rt, who) {
   // The mock shows its rules too (the Tools ones); a real backend that doesn’t read Claude Code’s shows none.
   const readsRules = !real || rt.readsRules(persona.backend);
   const { usesHostSetup, canPublish, allowRequested } = setupOf(persona);
-  const files = real && readsRules && folder ? await readRules({ folder, home: rt.home, configDir: rt.configDir, usesHostSetup }) : [];
+  const read = { folder, home: rt.home, configDir: rt.configDir, usesHostSetup };
+  const files = real && readsRules && folder ? await readRules(read) : [];
+  // The hooks there that can approve a call, which Postbox’s settings turn off in every mode but bypass (#817, #871).
+  const hooks = real && readsRules && folder ? await readHooks(read) : [];
   const has = new Set(persona.tools ?? []);
   const tools = Object.entries(TOOL_RULES).map(([id, rules]) => ({ id, on: has.has(id), rules }));
   const conversation = se ? { allow: [...(se.rules?.allow ?? [])], ask: [...(se.rules?.ask ?? [])], deny: [...(se.rules?.deny ?? [])] } : null;
@@ -82,6 +88,7 @@ export async function permissionsView(rt, who) {
     projectFolder: project?.folder ?? null,
     home: rt.home,
     files,
+    hooks,
     conversation,
     tools,
     publishing: canPublish ? [] : [...PUBLISHING_TOOLS],
