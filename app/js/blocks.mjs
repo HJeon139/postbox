@@ -575,7 +575,7 @@ const RENDER = {
     const setError = (m) => err.replaceChildren(errLine(m) ?? '');
     const node = h(
       'div',
-      { class: done ? 'answered' : '', 'aria-labelledby': titleId, style: done ? {} : { borderColor: 'var(--accent)' } },
+      { class: done ? 'answered blk-confirm' : 'blk-confirm', 'aria-labelledby': titleId, style: done ? {} : { borderColor: 'var(--accent)' } },
       h(
         'div.block-head',
         done ? null : h('span.g.g-needs', { 'aria-hidden': 'true' }),
