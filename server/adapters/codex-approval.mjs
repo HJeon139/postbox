@@ -1,7 +1,24 @@
-// Map Codex app-server approval requests onto Postbox permissions and MCP elicitation responses.
+// Map Codex app-server approval requests onto Postbox permissions and MCP elicitation responses, and the sandbox and
+// approval policy a turn starts with (codexPermissions, moved out of codex.mjs).
 
 import { draftOf } from '../write-guard.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
+
+/**
+ * The sandbox and approvals for a turn. In Auto, Codex’s own reviewer (approvalsReviewer auto_review) approves or
+ * denies what the sandbox stops, as Claude Code’s classifier does, instead of asking the person; Codex keeps a reviewer
+ * for later turns, so every other mode names the person.
+ */
+export function codexPermissions(persona, cwd) {
+  const mode = persona?.permissionMode ?? 'auto';
+  const sandboxPolicy =
+    mode === 'bypass'
+      ? { type: 'dangerFullAccess' }
+      : mode === 'ask'
+        ? { type: 'readOnly' }
+        : { type: 'workspaceWrite', ...(cwd ? { writableRoots: [cwd] } : {}), networkAccess: false };
+  return { sandboxPolicy, approvalPolicy: mode === 'bypass' ? 'never' : 'on-request', approvalsReviewer: mode === 'auto' ? 'auto_review' : 'user' };
+}
 
 /** Map Codex app-server approval requests onto Postbox permissions and MCP elicitation responses. */
 export async function codexApproval(ctx, msg) {

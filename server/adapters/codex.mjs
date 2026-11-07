@@ -5,7 +5,7 @@ import { mkdirSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { describeTool, isQuietTool } from './claude-stream.mjs';
-import { codexApproval } from './codex-approval.mjs';
+import { codexApproval, codexPermissions } from './codex-approval.mjs';
 import { codexMcpApprovalConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
 import { findCodex } from './codex-models.mjs';
 import { attachmentPaths, CODEX_REMOTE, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
@@ -19,7 +19,7 @@ import { codexWork } from './work-calls.mjs';
 
 export { codexModels, codexVersion, findCodex } from './codex-models.mjs';
 export { codexRemoteConfigArgs, createCodexRebuild, INTERRUPT_REACH_MS, interruptedError } from './codex-remote.mjs';
-export { codexApproval };
+export { codexApproval, codexPermissions };
 
 // Codex always reads your own Codex configuration and MCP servers: there’s no Isolated mode (isolation: false). On a
 // remote host (#120), it runs as CODEX_REMOTE says (server/adapters/codex-remote.mjs).
@@ -35,22 +35,6 @@ export const CODEX_CAPABILITIES = Object.freeze({
 
 /** A local folder’s real path, or the folder as given if it can’t be resolved: Codex refuses a writable root with a symlink in its path. */
 const realFolder = (dir) => realpath(dir).catch(() => dir);
-
-/**
- * The sandbox and approvals for a turn. In Auto, Codex’s own reviewer (approvalsReviewer auto_review) approves or
- * denies what the sandbox stops, as Claude Code’s classifier does, instead of asking the person; Codex keeps a reviewer
- * for later turns, so every other mode names the person.
- */
-export function codexPermissions(persona, cwd) {
-  const mode = persona?.permissionMode ?? 'auto';
-  const sandboxPolicy =
-    mode === 'bypass'
-      ? { type: 'dangerFullAccess' }
-      : mode === 'ask'
-        ? { type: 'readOnly' }
-        : { type: 'workspaceWrite', ...(cwd ? { writableRoots: [cwd] } : {}), networkAccess: false };
-  return { sandboxPolicy, approvalPolicy: mode === 'bypass' ? 'never' : 'on-request', approvalsReviewer: mode === 'auto' ? 'auto_review' : 'user' };
-}
 
 /**
  * The model to name in thread/start and turn/start, or null to name none, so Codex uses its own default: null for no
