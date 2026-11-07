@@ -158,6 +158,21 @@ test('#120 L5: Interrupted (no runner, no exit.json) resumes on its own once the
   assert.equal(r.se().remoteTurn.state, 'done');
 });
 
+test('#872 Interrupted with its process there unkilled waits for the person: no resume on its own, even once the host is back', async () => {
+  const r = rig();
+  const turn = await running(r);
+  await until(() => r.se().backendState?.claudeSessionId, 'the session ID');
+  r.d.interrupt(turn, { unkilled: true });
+  await settled(r);
+  assert.equal(r.se().remoteTurn.state, 'interrupted');
+  const failed = r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'failed');
+  assert.match(failed.error, new RegExp(`^Interrupted on ${escapeRegExp(HOST)}: .*process there didn’t stop`));
+  r.hosts.emit('status', r.host.id, { state: 'connected' });
+  await sleep(20);
+  assert.equal(starts(r.d).length, 1, 'not resumed beside a process that may still run');
+  assert.ok(r.se().remoteTurn.resume, 'the person can resume it');
+});
+
 // ── 5. Stop ──────────────────────────────────────────────────────────────────────────
 
 test('#120 L5: Stop on a remote turn is a plain stop: no keep-jobs ask, no keep list, and a job’s own Stop says why not', async () => {
