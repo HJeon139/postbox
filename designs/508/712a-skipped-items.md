@@ -6,14 +6,14 @@ Part of #508's lane: a long room should perform like a small one. #712a is the p
 
 - **Every item stays mounted.** `.transcript.cv-skip > .item` gets `content-visibility: auto; contain-intrinsic-size: auto 71px` (91 px under 600 px). Those are the median item of a generated 1,000-item room (`app/workbench.css`).
 - **The browser skips the layout and paint of items off screen.** It lays each one out at the estimate until it draws, and then remembers the item's real size.
-- **Nothing is unmounted,** so focus, drafts, app frames and find-in-page keep working. Find-in-page draws the item it finds (`beforematch`).
+- **Nothing is unmounted,** so focus, drafts, app frames and find-in-page keep working. Find-in-page draws the item it finds, as the browser does for a skipped item it matches (`view-skipped.spec.mjs`, “find-in-page finds a word only a skipped item has”).
 - **Where it applies:** only where `CSS.supports('content-visibility', 'auto')` (`app/js/view-skip.mjs`).
 - **An item with a fixed descendant is never skipped:** a full-screen review, a full-screen app, or an app's check frame (`:has(.rv-full, .app-full.fullscreen, .check-frame)`). Skipping contains layout and paint, so the item would become the box those are placed in.
 
 ## Keeping your place (B1b's view state)
 
 - **Each draw is heard.** An item drawing for the first time changes size, and the view holds its anchor through `follow()`. The view hears that from the transcript's ResizeObserver, and from `contentvisibilityautostatechange` on the transcript, in capture.
-  - **Why the event is needed:** while following, the transcript holds a `min-height`. An item drawing inside that held height changes nothing the observer sees, so the anchor would go stale, and the next resize would apply the stale correction as a scroll. `composer-grow.spec.mjs` "#422: scrolled up" fails without the listener: the message you read moves 27 px.
+  - **Why the event is needed:** while following, the transcript holds the room below its newest message as bottom padding (`--held`). An item drawing inside that held room changes nothing the observer sees, so the anchor would go stale, and the next resize would apply the stale correction as a scroll. `composer-grow.spec.mjs` "#422: scrolled up" fails without the listener: the message you read moves 27 px.
   - **Nothing is observed per item.** Revision 2 observed each drawn item; the draw event alone is enough.
 - **A jump makes its target the anchor.** `jumpTo(el, block)`, in `app/js/view-jump.mjs`:
   - it measures the target with its item drawn;
@@ -21,7 +21,8 @@ Part of #508's lane: a long room should perform like a small one. #712a is the p
   - it pins the item as the anchor (`pin()` in `view-state.mjs`) until you scroll, so the items it passed can draw at their real size without pushing it away.
   - **The item stays drawn until painted,** so a target deep inside a tall item isn't skipped again.
   - **Every jump to an item goes through it:** seven sites in `app/js/`, and the UAT runner's own jumps. `tests/view-jump-sites.test.mjs` fails on any `scrollIntoView`, or any `focus()` without `preventScroll`, outside the allowed list.
-- **The smooth jump to the end stays smooth.** While it runs, `follow()` doesn't snap to the end. On `scrollend` it goes the rest of the way, if it got where it was aimed. If it stopped short, you stopped it, and the view reads where it stopped.
+- **A message appended while you follow is drawn at once,** one at a time (`drawNewest`, `app/js/view-skip.mjs`), so the view goes to the end once, at its real height. Drawing the next lets the one before be skipped again, so a burst of replies doesn't stay drawn.
+- **The smooth jump to the end stays smooth.** While it runs, `follow()` doesn't snap to the end. On `scrollend` it goes the rest of the way, unless input that can scroll the page came while it ran: a wheel turn, a touch, a press on the scrollbar, or a scroll key outside a field (`app/js/view-smooth.mjs`). Then you stopped it, and the view reads where it stopped. A jump to an item during it ends it (`halt()`), and puts the item in place again a frame later, since Chromium still applies one more step of the smooth scroll then.
   - Without `scrollend`, or with reduced motion, it jumps at once.
 
 ## The checks
