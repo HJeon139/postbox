@@ -13,10 +13,9 @@ export const PROCESS_CHECK_MS = 5000;
 /**
  * A daemon with a fake clock and its log kept. Its fake runner’s process is there while state.same is, and ends at a
  * SIGKILL to its group, as a real one does, unless it’s one that can’t be killed (killable false). sameCalls counts the
- * process checks. @param {{ killable?: boolean, [k: string]: any }} [o] more of setup’s options
+ * process checks. @param {{ killable?: boolean, clock?: ReturnType<typeof fakeClock>, [k: string]: any }} [o] more of setup’s options
  */
-export function silentSetup({ killable = true, ...o } = {}) {
-  const clock = fakeClock();
+export function silentSetup({ killable = true, clock = fakeClock(), ...o } = {}) {
   const logs = [];
   const killed = (/** @type {number} */ pid) => killable && s.kills.some(([p, sig]) => p === -pid && sig === 'SIGKILL');
   const sameProcess = async (/** @type {{ pid: number }} */ r) => {
