@@ -121,13 +121,13 @@ export function sweep(d) {
   return removed;
 }
 
-/** A run’s folder: open() sweeps leftovers and makes a fresh one; close() removes it. @param {Deps} [d] */
+/** A run’s folder: open() sweeps leftovers and makes a fresh one; list() names what is in it; close() removes it. @param {Deps} [d] */
 export function gateRunDir(d = defaultDeps()) {
   return {
     open() {
       sweep(d);
       const path = d.fs.mkdtempSync(join(runBase(d), `${PREFIX}${d.pid}-`));
-      return { path, close: () => removeAll(d.fs, path) };
+      return { path, close: () => removeAll(d.fs, path), list: () => d.fs.readdirSync(path) };
     },
   };
 }
