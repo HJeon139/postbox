@@ -23,9 +23,10 @@ failOnPageErrors(test);
 
 /**
  * A long room and a short one in the same project, with the same three agents in each.
- * @param {{ diagrams?: number }} [opts] how many of the long room’s replies end in a Mermaid diagram
+ * @param {{ diagrams?: number, review?: boolean }} [opts] how many of the long room’s replies end in a Mermaid diagram,
+ *   and whether it ends in a review with a comment on a selection
  */
-function rooms({ diagrams = 0 } = {}) {
+function rooms({ diagrams = 0, review = false } = {}) {
   const { rt, store } = app;
   const projectId = /** @type {any} */ (Object.values(store.state.projects)[0]).id;
   const personas = ['ada', 'bo', 'cy'].map((handle) => rt.personaByHandle(handle) ?? rt.createPersona({ handle }));
@@ -35,6 +36,17 @@ function rooms({ diagrams = 0 } = {}) {
   // The big room’s replies are from researcher, critic and developer: give each one of these agents’ sessions.
   const [a, b, c] = Object.values(sessions);
   seedBigRoom(store, long.id, { count: ITEMS, diagrams }, { researcher: a, critic: b, developer: c });
+  if (review) {
+    const [author, reader] = rt.sessionsIn(long.id);
+    const content = '# A draft\n\nIts price is low, and its plan is short.\n';
+    rt.toolsFor(author.id).show_block({
+      block: { id: 'draft', type: 'review', version: 1, title: 'A draft', fallback: 'A draft', format: 'markdown', content },
+    });
+    const said = rt
+      .toolsFor(reader.id)
+      .review_block({ blockId: 'draft', comments: [{ line: 3, col: 14, endLine: 3, endCol: 16, quote: 'low', text: 'How low?' }] });
+    if (!said.ok) throw new Error(`The reader couldn’t comment: ${said.message}`);
+  }
   for (const se of rt.sessionsIn(short.id))
     rt.addItem(short.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: `A reply from ${se.handle}.`, status: 'done' });
   return { long, short };
@@ -56,15 +68,17 @@ async function liveNodes(cdp) {
 }
 
 // A room with diagrams too (#945): each diagram’s frame is lazy, so one far up the room never loads, and its
-// listener had kept its frame, and so its page, until it had once been seen on the page.
-for (const [what, diagrams] of /** @type {const} */ ([
-  ['', 0],
-  [' with diagrams', 12],
+// listener had kept its frame, and so its page, until it had once been seen on the page. And one ending in a review
+// with a comment on a selection: its marked ranges (review-preview.mjs) were let go of only past 50 reviews.
+for (const [what, diagrams, review] of /** @type {const} */ ([
+  ['', 0, false],
+  [' with diagrams', 12, false],
+  [' with a review whose comment marks its text', 0, true],
 ]))
   test(`#866 a trip into a long room${what} and back keeps no copy of its page`, async ({ page, browserName }) => {
     test.skip(browserName !== 'chromium', 'the node count comes from Chromium’s DevTools protocol');
     test.setTimeout(120_000);
-    const { long, short } = rooms({ diagrams });
+    const { long, short } = rooms({ diagrams, review });
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`${app.origin}/#/t/${short.id}`);
     await synced(page, app);
