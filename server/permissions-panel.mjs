@@ -51,7 +51,7 @@ export function latestProject(rt, personaId) {
  * Everything the panel shows. Rule lists carry their source: user, project, local (the settings files), conversation
  * (rt session’s), tools (the persona’s unticked Tools, as deny rules), publishing (when it may not publish outside
  * Postbox), writes (ask rules for writes outside Postbox, #112) and postbox (its own tools, always allowed). hooks
- * lists each settings file’s PreToolUse hooks, with the same sources (#817).
+ * lists each settings file’s PreToolUse and PermissionRequest hooks, with the same sources (#817, #871).
  * @param {any} rt @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null }} who
  */
 export async function permissionsView(rt, who) {
@@ -62,7 +62,7 @@ export async function permissionsView(rt, who) {
   const { usesHostSetup, canPublish, allowRequested } = setupOf(persona);
   const read = { folder, home: rt.home, configDir: rt.configDir, usesHostSetup };
   const files = real && readsRules && folder ? await readRules(read) : [];
-  // The PreToolUse hooks there, which Postbox’s settings turn off in every mode but bypass (#817).
+  // The hooks there that can approve a call, which Postbox’s settings turn off in every mode but bypass (#817, #871).
   const hooks = real && readsRules && folder ? await readHooks(read) : [];
   const has = new Set(persona.tools ?? []);
   const tools = Object.entries(TOOL_RULES).map(([id, rules]) => ({ id, on: has.has(id), rules }));

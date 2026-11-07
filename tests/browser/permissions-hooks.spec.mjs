@@ -1,12 +1,13 @@
-// The permissions panel names the PreToolUse hooks in the settings files an agent reads (#817): Postbox’s own settings
-// turn them off in every mode but Run everything, so the panel says which won’t run, and that hooks the person’s
-// organization manages still do. A hook’s command is the person’s data, shown as text. Scripted Claude Code agents,
-// one per state, working in temp folders, with a home of their own for the user settings.
+// The permissions panel names the PreToolUse and PermissionRequest hooks in the settings files an agent reads (#817,
+// #871): Postbox’s own settings turn them off in every mode but Run everything, so the panel says which won’t run, and
+// that hooks the person’s organization manages still do. Each row says its event. A hook’s command is the person’s
+// data, shown as text. Scripted Claude Code agents, one per state, working in temp folders, with a home of their own
+// for the user settings.
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, settled, startPostbox, synced, windowWidth } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -17,10 +18,17 @@ let manyFile = '';
 let brokenFile = (name) => name;
 
 const MARKUP = 'echo "<b id=hook-markup>allow</b>" && exit 0';
-const USER_ROW = 'Bash ~/bin/audit-bash from your user settings';
-const PROJECT_ROW = `Bash ${MARKUP} from the project’s shared settings`;
+const USER_ROW = 'PreToolUse Bash ~/bin/audit-bash from your user settings';
+const PROJECT_ROW = `PreToolUse Bash ${MARKUP} from the project’s shared settings`;
+// A PermissionRequest hook that approves, with a long command and a token in its matcher and command (#871).
+const RULES = Array(12).fill('--rule allow').join(' ');
+const APPROVE = `node ~/bin/approve.js --token sk-871 ${RULES}`;
+const ASKS_ROWS = [
+  'PreToolUse Edit check-edit from the project’s shared settings',
+  `PermissionRequest Bash|api_key=… node ~/bin/approve.js --token … ${RULES} from the project’s shared settings`,
+];
 const OFF =
-  'In every mode but Run everything, Postbox turns off hooks from settings files, plugin hooks and your custom status line for its own turns, since a hook that approves a tool call would skip the ask rules and the permission card. Hooks your organization manages still run, and one of those can still approve a call without asking you.';
+  'In every mode but Run everything, Postbox turns off hooks from settings files, plugin hooks and your custom status line for its own turns, since a hook that approves a tool call would skip the ask rules and the permission card. Postbox can’t list your plugins’ hooks here: /hooks in Claude Code shows them. Hooks your organization manages still run, and one of those can still approve a call without asking you.';
 const ISOLATED = 'It’s isolated, so it doesn’t read the hooks in your user settings.';
 const dontRun = (handle) => `These don’t run in @${handle}’s Postbox turns, except in Run everything mode. They still run when you use Claude Code yourself.`;
 
@@ -35,8 +43,15 @@ test.beforeAll(async () => {
       folders.work = join(root, 'work');
       folders.many = join(root, 'many');
       folders.broken = join(root, 'broken');
-      for (const dir of [join(root, '.claude'), join(folders.work, '.claude'), join(folders.many, '.claude'), join(folders.broken, '.claude')])
+      folders.asker = join(root, 'asks');
+      for (const dir of [join(root, '.claude'), ...['work', 'many', 'broken', 'asker'].map((k) => join(folders[k], '.claude'))])
         await mkdir(dir, { recursive: true });
+      // The PermissionRequest hook comes first in the file, and the panel still lists the PreToolUse one first.
+      const asks = {
+        PermissionRequest: [{ matcher: 'Bash|api_key=sk-9', hooks: [{ type: 'command', command: APPROVE }] }],
+        PreToolUse: [{ matcher: 'Edit', hooks: [{ type: 'command', command: 'check-edit' }] }],
+      };
+      await writeFile(join(folders.asker, '.claude', 'settings.json'), JSON.stringify({ hooks: asks }));
       // Neither file an Isolated agent reads there is JSON.
       for (const name of ['settings.json', 'settings.local.json']) await writeFile(join(folders.broken, '.claude', name), '{');
       brokenFile = (name) => join(folders.broken, '.claude', name);
@@ -63,6 +78,7 @@ test.beforeAll(async () => {
     ['loner', { permissionMode: 'auto', usesHostSetup: false }],
     ['many', { permissionMode: 'auto', usesHostSetup: false }],
     ['broken', { permissionMode: 'auto', usesHostSetup: false }],
+    ['asker', { permissionMode: 'auto', usesHostSetup: false }],
   ]) {
     const persona = rt.createPersona({ handle, backend: 'claude-code', ...setup });
     threads[handle] = rt.createThread({ projectId: 'pr_hooks', title: handle, personaIds: [persona.id] }).id;
@@ -119,8 +135,8 @@ test('#817 a file with more than 50 hooks lists 50, and says how many more are i
   const hooks = await openHooks(page, 'many');
   const rows = hooks.locator('li');
   await expect.soft(rows).toHaveCount(51);
-  await expect.soft(rows.first()).toHaveText('Bash hook 0 from the project’s shared settings');
-  await expect.soft(rows.nth(49)).toHaveText('Bash hook 49 from the project’s shared settings');
+  await expect.soft(rows.first()).toHaveText('PreToolUse Bash hook 0 from the project’s shared settings');
+  await expect.soft(rows.nth(49)).toHaveText('PreToolUse Bash hook 49 from the project’s shared settings');
   await expect.soft(rows.last()).toHaveText(`and 5 more in ${manyFile}`);
 });
 
@@ -141,6 +157,29 @@ test('#817 when no settings file can be listed, the panel says why for each, and
       `${brokenFile('settings.local.json')} isn’t valid JSON, so Postbox can’t list its hooks.`,
     ]);
   await expect.soft(hooks.locator('li')).toHaveCount(0);
-  await expect.soft(hooks.getByText('No PreToolUse hooks'), 'no “none” beside the errors').toHaveCount(0);
+  await expect.soft(hooks.getByText('No PreToolUse or PermissionRequest hooks'), 'no “none” beside the errors').toHaveCount(0);
   await expect.soft(hooks.locator('p.help')).toHaveText([ISOLATED, OFF]);
 });
+
+// #871: a PermissionRequest hook can approve a call too, so it gets a row of its own, with its event, at both widths.
+for (const [width, phone] of [
+  [375, true],
+  [1280, false],
+]) {
+  test.describe(`at ${width} px`, () => {
+    test.use(phone ? { viewport: { width, height: 800 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : { viewport: { width, height: 900 } });
+
+    test(`#871 the panel names each PermissionRequest hook, with its event, and fits the window (${width} px)`, async ({ page }) => {
+      const hooks = await openHooks(page, 'asker');
+      await expect.soft(hooks.locator('li')).toHaveText(ASKS_ROWS);
+      await expect.soft(hooks.locator('li').nth(1).getByText('PermissionRequest', { exact: true }), 'the event is named').toBeVisible();
+      await expect.soft(hooks.locator('p.help')).toHaveText([dontRun('asker'), ISOLATED, OFF]);
+      await expect.soft(hooks.getByText('sk-871'), 'the token in the command stays hidden').toHaveCount(0);
+      await settled(page);
+      const over = await page
+        .locator('.dialog')
+        .evaluate((d, w) => [d.scrollWidth - d.clientWidth, document.documentElement.scrollWidth - w], windowWidth(page));
+      expect.soft(over, 'nothing overflows sideways').toEqual([0, 0]);
+    });
+  });
+}
