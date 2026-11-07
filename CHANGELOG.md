@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.35.1 (2026-11-07)
+
+### Fixes
+
+- **skills:** the visual explainer also loads on questions about how code is put together
+- **skills:** the visual explainer loads on everyday asks about code and data
+
 ## 1.35.0 (2026-11-06)
 
 ### Features
