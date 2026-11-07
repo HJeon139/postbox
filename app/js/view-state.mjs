@@ -5,7 +5,7 @@
 
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
- *   anchor: { key: string, at: number } | null, dead: boolean, shown: number, lastTop: number, seenTop: number,
+ *   anchor: { key: string, at: number } | null, dead: boolean, shown: number, lastTop: number, seenTop: number, guessed?: boolean,
  *   held: { end: number, last: number, width: number }, jump: ((n: number) => void) | null, bound: any, size: string,
  *   sizes: ResizeObserver, changes: MutationObserver, changed?: boolean, noted?: number }} View
  */
@@ -71,9 +71,11 @@ function follow(v) {
   noteEnd(v);
   const s = box(v);
   if (!s || v.dead) return;
-  // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back.
+  // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back. It’s a guess (the
+  // transcript shrinking and growing back in one frame moves the view up too), so a clamp may undo it (onScroll).
   if (v.stuck && s.scrollTop < v.lastTop - 1 && !atEnd(s)) {
     v.stuck = false;
+    v.guessed = true;
     v.anchor = findAnchor(v);
     // The anchor is taken where the view now is, so that scroll is heard: heard() below mustn’t take it in again.
     v.lastTop = s.scrollTop;
@@ -119,12 +121,14 @@ function onScroll(v) {
   // A box that changed size since the last scroll event (full screen and back, the window) can clamp the view to its
   // new end. That isn’t you: the view doesn’t start following, and keeps your place for when the box is back, as heard()
   // doesn’t take it in (#837). A clamp only moves the view up from where the last scroll event saw it (holding the
-  // anchor through the resize may already have moved lastTop there); reaching the end by moving down is you.
-  const clamped = sizeOf(s) !== v.size && s.scrollTop < v.seenTop;
+  // anchor through the resize may already have moved lastTop there); reaching the end by moving down is you. A place
+  // follow() only guessed you scrolled to isn’t kept: the clamp to the end follows again, as before the guard.
+  const clamped = !v.guessed && sizeOf(s) !== v.size && s.scrollTop < v.seenTop;
   if (atEnd(s) && (v.stuck || !clamped)) {
     if (!v.stuck) v.held = measure(v, s);
     v.stuck = true;
   } else if (s.scrollTop < v.lastTop) v.stuck = false;
+  if (moved) v.guessed = false;
   // However you got near the end, there’s nothing unread below any more (#91).
   if (gapOf(s) <= PILL_ROOM) seen(v);
   v.lastTop = s.scrollTop;
