@@ -10,6 +10,7 @@ import { splitLines } from '/shared/review-diff.mjs';
 import { reviewFileKeys } from '/shared/review-files.mjs';
 import { enhanceMarkdown } from './apps.mjs';
 import { h, icon, trusted } from './dom.mjs';
+import { WeakElements } from './held-weakly.mjs';
 
 /** Each Preview’s source lines, for putting a selection back. @type {WeakMap<Element, string[]>} */
 const sources = new WeakMap();
@@ -88,6 +89,16 @@ function partOf(md, node) {
   return el;
 }
 
+// The Previews you can select in, held weakly (held-weakly.mjs), with one listener for the page. Each Preview had a
+// document listener of its own, which went only at the next selection change after it left the page: until then it
+// kept its review, and so its old page, alive (#945).
+const selectable = new WeakElements();
+/** @type {WeakMap<HTMLElement, () => void>} */
+const onSelection = new WeakMap();
+document.addEventListener('selectionchange', () => {
+  for (const root of selectable) if (root.isConnected) onSelection.get(root)?.();
+});
+
 /** The Comment button beside a selection, and a click that selects nothing, which picks a line. */
 function selecting(root, md, lines, env) {
   /** @type {any} */
@@ -101,7 +112,7 @@ function selecting(root, md, lines, env) {
   );
   root.append(btn);
   const update = () => {
-    if (!root.isConnected) return document.removeEventListener('selectionchange', update);
+    if (!root.isConnected) return;
     const sel = getSelection();
     const r = sel?.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0) : null;
     const inside = r && md.contains(r.startContainer) && md.contains(r.endContainer) && !partOf(md, r.startContainer)?.matches('.rv-thread');
@@ -118,7 +129,8 @@ function selecting(root, md, lines, env) {
     const place = end?.closest('[data-sl]') ?? partOf(md, r.endContainer);
     if (place && place.nextSibling !== btn) place.after(btn);
   };
-  document.addEventListener('selectionchange', update);
+  selectable.add(root);
+  onSelection.set(root, update);
   // A click that only clears a selection, or one on text, which can be selected, stays in Preview.
   let selected = false;
   root.addEventListener('mousedown', () => {
