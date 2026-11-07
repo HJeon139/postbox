@@ -1,8 +1,9 @@
 // The permissions panel’s hooks section (#817). Postbox’s own settings turn off hooks from settings files and plugins,
 // and the custom status line, in its turns in every mode but Run everything: a hook that approves a call would skip
-// the ask rules for writes outside Postbox and the permission card. This section names each PreToolUse hook the
-// server found in the settings files the agent reads (server/permission-hooks.mjs), and says what still runs. A hook’s
-// matcher and command are the person’s data: they go in as text, through h().
+// the ask rules for writes outside Postbox and the permission card. This section names each PreToolUse and
+// PermissionRequest hook the server found in the settings files the agent reads, with its event (#871,
+// server/permission-hooks.mjs), says plugins’ hooks can’t be listed, and says what still runs. A hook’s matcher and
+// command are the person’s data: they go in as text, through h().
 
 import { h, icon } from './dom.mjs';
 
@@ -25,8 +26,8 @@ function runsNote(p) {
 function noneNote(hooks) {
   const failed = hooks.filter((f) => f.error).length;
   if (failed && failed === hooks.length) return null;
-  if (failed) return h('span.help', {}, 'No PreToolUse hooks in the other settings files it reads.');
-  return h('span.help', {}, 'No PreToolUse hooks in the settings files it reads.');
+  if (failed) return h('span.help', {}, 'No PreToolUse or PermissionRequest hooks in the other settings files it reads.');
+  return h('span.help', {}, 'No PreToolUse or PermissionRequest hooks in the settings files it reads.');
 }
 
 /**
@@ -43,6 +44,7 @@ export function hooksSection({ persona: p, hooks }, sources) {
         h(
           'span.grow',
           {},
+          h('span.small.dim', {}, `${x.event} `),
           h('code.perm-rule', {}, x.matcher),
           ' ',
           x.type === 'command' ? null : h('span.small.dim', {}, `${x.type} hook: `),
@@ -66,7 +68,7 @@ export function hooksSection({ persona: p, hooks }, sources) {
     h(
       'p.help',
       {},
-      'In every mode but Run everything, Postbox turns off hooks from settings files, plugin hooks and your custom status line for its own turns, since a hook that approves a tool call would skip the ask rules and the permission card. Hooks your organization manages still run, and one of those can still approve a call without asking you.',
+      'In every mode but Run everything, Postbox turns off hooks from settings files, plugin hooks and your custom status line for its own turns, since a hook that approves a tool call would skip the ask rules and the permission card. Postbox can’t list your plugins’ hooks here: /hooks in Claude Code shows them. Hooks your organization manages still run, and one of those can still approve a call without asking you.',
     ),
   );
 }

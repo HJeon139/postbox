@@ -6,6 +6,7 @@ import { lstat, open, realpath } from 'node:fs/promises';
 import { basename, resolve, sep } from 'node:path';
 import { LIMITS, limitText } from '../shared/limits.mjs';
 import { readCappedFrom } from './read-capped.mjs';
+import { requestAdapter } from './remote/placement.mjs';
 
 /** A data file of an app’s version, stored by its hash (#54). @typedef {{ name: string, sha256: string, size: number }} AppFile */
 export const FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
@@ -19,7 +20,7 @@ export async function agentFolders(rt, sessionId) {
   const se = rt.session(sessionId);
   const persona = rt.personaFor(se);
   const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId] ?? null;
-  const adapter = rt.adapters.get(persona?.backend);
+  const adapter = requestAdapter(rt, se.handle, persona);
   const own = adapter?.folderFor ? await adapter.folderFor(persona, project) : persona?.folder || project?.folder || null;
   return [...new Set([own, project?.folder, ...(se.addDirs ?? [])].filter(Boolean))];
 }

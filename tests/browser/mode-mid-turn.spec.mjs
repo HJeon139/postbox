@@ -79,6 +79,9 @@ test('the quick panel says a running turn keeps its mode until it ends, and that
   // With no turn running, it says only when it applies.
   release();
   await expect.poll(() => app.rt.turns.size, { message: 'coder done' }).toBe(1);
+  // The panel redraws once the page hears the turn ended; a click during that redraw is lost (#768).
+  await expect(panel.getByRole('button', { name: 'Stop', exact: true })).toBeDisabled();
+  await synced(page, app);
   await panel
     .locator('[role=radiogroup][aria-label^="Permission mode"]')
     .getByRole('radio', { name: /^Ask me/ })

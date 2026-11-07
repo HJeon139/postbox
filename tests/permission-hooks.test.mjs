@@ -25,12 +25,14 @@ const command = (matcher, cmd) => ({ matcher, hooks: [{ type: 'command', command
 test('#817: a hook command with quotes, angle brackets and ampersands is listed exactly as written, as text', async () => {
   const cmd = 'echo "<img src=x onerror=alert(1)>" &amp; && printf \'{"a":1}\' > /tmp/x';
   const file = await settings(pre(command('Bash', cmd)));
-  assert.deepEqual(await readHookFile(file), { file, exists: true, hooks: [{ matcher: 'Bash', type: 'command', text: cmd }], more: 0 });
+  assert.deepEqual(await readHookFile(file), { file, exists: true, hooks: [{ event: 'PreToolUse', matcher: 'Bash', type: 'command', text: cmd }], more: 0 });
 });
 
 test('#817: a NUL or another control character in a hook shows as a replacement mark, and a line break as a space', async () => {
   const file = await settings(pre(command('Ba\u0000sh', 'touch a\u0000b\nnext\tone\u001b[31m\u007f')));
-  assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: 'Ba\uFFFDsh', type: 'command', text: 'touch a\uFFFDb next one\uFFFD[31m\uFFFD' }]);
+  assert.deepEqual((await readHookFile(file)).hooks, [
+    { event: 'PreToolUse', matcher: 'Ba\uFFFDsh', type: 'command', text: 'touch a\uFFFDb next one\uFFFD[31m\uFFFD' },
+  ]);
 });
 
 test('#817: bidi and zero-width characters in a hook show as a replacement mark, so they can’t reorder or hide its text', async () => {
@@ -38,14 +40,14 @@ test('#817: bidi and zero-width characters in a hook show as a replacement mark,
   const marks = '\u200b\u200c\u200d\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\ufeff';
   const file = await settings(pre(command('Ba\u200bsh', `echo safe\u202e#exe.txt${marks}\u2028next\u2029end`)));
   assert.deepEqual((await readHookFile(file)).hooks, [
-    { matcher: 'Ba\uFFFDsh', type: 'command', text: `echo safe\uFFFD#exe.txt${'\uFFFD'.repeat(15)} next end` },
+    { event: 'PreToolUse', matcher: 'Ba\uFFFDsh', type: 'command', text: `echo safe\uFFFD#exe.txt${'\uFFFD'.repeat(15)} next end` },
   ]);
 });
 
 test('#817: a C1 control character in a hook shows as a replacement mark, as a C0 one does', async () => {
   // U+0085 is a next line and U+009B a control sequence introducer: a terminal reads both, and the page shows neither.
   const file = await settings(pre(command('Ba\u0080sh', 'echo a\u0085b\u009b31mc\u009f')));
-  assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: 'Ba\uFFFDsh', type: 'command', text: 'echo a\uFFFDb\uFFFD31mc\uFFFD' }]);
+  assert.deepEqual((await readHookFile(file)).hooks, [{ event: 'PreToolUse', matcher: 'Ba\uFFFDsh', type: 'command', text: 'echo a\uFFFDb\uFFFD31mc\uFFFD' }]);
 });
 
 // Each of these displays as nothing, or as a blank, so it could hide inside a command that reads as another one.
@@ -69,35 +71,35 @@ const blanks = [
 for (const [name, mark] of blanks) {
   test(`#817: ${name} in a hook shows as a replacement mark`, async () => {
     const file = await settings(pre(command(`Ba${mark}sh`, `rm -rf ~${mark}/tmp/x`)));
-    assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: 'Ba\uFFFDsh', type: 'command', text: 'rm -rf ~\uFFFD/tmp/x' }]);
+    assert.deepEqual((await readHookFile(file)).hooks, [{ event: 'PreToolUse', matcher: 'Ba\uFFFDsh', type: 'command', text: 'rm -rf ~\uFFFD/tmp/x' }]);
   });
 }
 
 test('#817: a very long command or matcher is cut, with an ellipsis at the cut', async () => {
   const file = await settings(pre(command('M'.repeat(500), 'x'.repeat(100_000))));
-  assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: `${'M'.repeat(99)}…`, type: 'command', text: `${'x'.repeat(199)}…` }]);
+  assert.deepEqual((await readHookFile(file)).hooks, [{ event: 'PreToolUse', matcher: `${'M'.repeat(99)}…`, type: 'command', text: `${'x'.repeat(199)}…` }]);
 });
 
 test('#817: a command or matcher exactly at its limit isn’t cut', async () => {
   const file = await settings(pre(command('M'.repeat(100), 'x'.repeat(200))));
-  assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: 'M'.repeat(100), type: 'command', text: 'x'.repeat(200) }]);
+  assert.deepEqual((await readHookFile(file)).hooks, [{ event: 'PreToolUse', matcher: 'M'.repeat(100), type: 'command', text: 'x'.repeat(200) }]);
 });
 
 test('#817: a hook type past 20 characters is cut, with an ellipsis at the cut', async () => {
   const file = await settings(pre({ matcher: 'Bash', hooks: [{ type: 't'.repeat(500), command: 'x' }] }));
-  assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: 'Bash', type: `${'t'.repeat(19)}…`, text: 'x' }]);
+  assert.deepEqual((await readHookFile(file)).hooks, [{ event: 'PreToolUse', matcher: 'Bash', type: `${'t'.repeat(19)}…`, text: 'x' }]);
 });
 
 test('#817: a hook with both a command and a prompt shows its command, as Claude Code runs a command hook', async () => {
   const file = await settings(pre({ matcher: 'Bash', hooks: [{ type: 'command', command: 'audit', prompt: 'Is this safe?', url: 'http://x' }] }));
-  assert.deepEqual((await readHookFile(file)).hooks, [{ matcher: 'Bash', type: 'command', text: 'audit' }]);
+  assert.deepEqual((await readHookFile(file)).hooks, [{ event: 'PreToolUse', matcher: 'Bash', type: 'command', text: 'audit' }]);
 });
 
 test('#817: a hook that isn’t an object (null, a string) is listed as a command hook with no text, and doesn’t throw', async () => {
   const file = await settings(pre({ matcher: 'Bash', hooks: [null, 'touch /tmp/pwned'] }));
   assert.deepEqual((await readHookFile(file)).hooks, [
-    { matcher: 'Bash', type: 'command', text: '' },
-    { matcher: 'Bash', type: 'command', text: '' },
+    { event: 'PreToolUse', matcher: 'Bash', type: 'command', text: '' },
+    { event: 'PreToolUse', matcher: 'Bash', type: 'command', text: '' },
   ]);
 });
 
@@ -154,10 +156,10 @@ test('#817: a hook with no matcher matches every tool, and a hook of another typ
     ),
   );
   assert.deepEqual((await readHookFile(file)).hooks, [
-    { matcher: '*', type: 'command', text: 'audit' },
-    { matcher: 'Edit', type: 'prompt', text: 'Is this safe?' },
-    { matcher: 'Edit', type: 'http', text: 'http://x' },
-    { matcher: 'Edit', type: 'command', text: '' },
+    { event: 'PreToolUse', matcher: '*', type: 'command', text: 'audit' },
+    { event: 'PreToolUse', matcher: 'Edit', type: 'prompt', text: 'Is this safe?' },
+    { event: 'PreToolUse', matcher: 'Edit', type: 'http', text: 'http://x' },
+    { event: 'PreToolUse', matcher: 'Edit', type: 'command', text: '' },
   ]);
 });
 

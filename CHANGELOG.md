@@ -2,6 +2,53 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.36.4 (2026-11-07)
+
+### Fixes
+
+- **app:** Reply in thread’s own focus timer leaves focus the person moved (#887)
+- **app:** open a topic thread’s panel when its event lands after its address
+
+## 1.36.3 (2026-11-07)
+
+### Fixes
+
+- **app:** the view notes a shrink at once for a removal-only batch and a whole redraw (#903)
+- **app:** the view's change watcher reads the page at most once a frame
+- **lint:** lint-ternary and lint-caps compare with upstream/main when it is newer
+- **hooks:** the hook names lint-ternary, and npm run hooks says what it changes
+- **lint:** lint-ternary lets a pure move of an old nested ternary through
+- **lint:** lint-ternary honors a line-level lint-allow ternary with a reason
+
+## 1.36.2 (2026-11-07)
+
+### Fixes
+
+- **remote:** only a result holds off the stall stop, and each task keeps its own 2 h (#847)
+- **remote:** a listed background task holds off the stall stop for up to 2 h (#847)
+- **permissions:** name PermissionRequest hooks in the panel, with each hook's event
+- **permissions:** hide credentials in hook matchers, as in their commands
+
+## 1.36.1 (2026-11-07)
+
+### Fixes
+
+- **server:** refuse a topic-thread send to an unavailable agent before it joins
+- **server:** refuse requests about an unregistered backend with a 422
+- **server:** fail a turn for an unregistered backend with a reason and Retry
+
+## 1.36.0 (2026-11-07)
+
+### Features
+
+- **state:** apply turn.archive, a public event nothing emits yet
+- **uat:** the failed-reply-dismissed trigger (#883)
+- **threads:** Dismiss a failed reply without running it again (#883)
+
+### Fixes
+
+- **threads:** after Dismiss, focus stays on the control that's left (#883)
+
 ## 1.35.6 (2026-11-07)
 
 ### Fixes
