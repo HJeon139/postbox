@@ -131,14 +131,23 @@ function holderOf(look, name, except = null) {
   return id && id !== except ? look.assets[id] : null;
 }
 
+/** What a delete’s version holds: no bytes. */
+const NO_BYTES = Object.freeze({ sha256: null, size: 0, isText: false });
+
 /**
- * The hash of the bytes a write’s version would hold, from its base: the write’s, the restored version’s, the base’s
- * for a rename, which keeps them, and null for a delete. A rename or delete request carries no sha256 (#703).
+ * The version this kind’s bytes come from, at this base: a write’s own, the named version’s for a restore (undefined
+ * if there is none), the base’s for a rename, which keeps them, and none for a delete. The one place that decides it,
+ * for a repeat’s check and a new version alike; a rename or delete request carries no sha256 (#703).
  */
+function bytesSource(asset, req, base) {
+  if (req.kind === 'restore') return versionAt(asset, req.version);
+  if (req.kind === 'rename') return versionAt(asset, base);
+  return req.kind === 'delete' ? NO_BYTES : req;
+}
+
+/** The hash of the bytes a write’s version would hold, from the base it names. */
 function bytesFrom(asset, req) {
-  if (req.kind === 'restore') return versionAt(asset, req.version)?.sha256;
-  if (req.kind === 'rename') return versionAt(asset, req.base)?.sha256;
-  return req.kind === 'delete' ? null : req.sha256;
+  return bytesSource(asset, req, req.base ?? null)?.sha256;
 }
 
 /**
@@ -151,8 +160,12 @@ function repeatOf(look, asset, req) {
   const byOp = req.op && own(look.index.ops, opKey(asset.id, req.author, req.op));
   if (byOp) return versionAt(asset, byOp);
   const head = headOf(asset);
-  if (!head || head.author !== req.author || head.base !== (req.base ?? null) || head.sha256 !== bytesFrom(asset, req)) return null;
-  return req.kind !== 'rename' || asset.name === req.name.normalize('NFC') ? head : null;
+  if (!head) return null;
+  const sameAuthor = head.author === req.author;
+  const sameBase = head.base === (req.base ?? null);
+  const sameBytes = head.sha256 === bytesFrom(asset, req);
+  const sameName = req.kind !== 'rename' || asset.name === req.name.normalize('NFC');
+  return sameAuthor && sameBase && sameBytes && sameName ? head : null;
 }
 
 /**
@@ -183,11 +196,10 @@ function targetOf(look, req) {
   return null;
 }
 
-/** The version a restore or rename takes its bytes from: the one named, or the head; none for a write or delete. */
+/** Where the new version’s bytes come from, at the head (I4 made it the base), checked for a restore. */
 function sourceOf(asset, req) {
-  if (req.kind === 'rename') return headOf(asset);
-  if (req.kind !== 'restore') return null;
-  const from = versionAt(asset, req.version);
+  const from = bytesSource(asset, req, asset?.head ?? null);
+  if (req.kind !== 'restore') return from;
   if (!from) refuse('no-version', SAY.noVersion(asset.id, req.version));
   if (!from.sha256) refuse('no-version', SAY.restoreDelete(req.version));
   if (from.pruned) refuse('pruned', SAY.pruned(req.version));
@@ -196,9 +208,9 @@ function sourceOf(asset, req) {
 
 /** The new version’s bytes: the write’s, an older version’s for a restore, the head’s for a rename, none for a delete. */
 function bytesOf(asset, req) {
-  if (req.kind === 'delete') return { sha256: null, size: 0, type: asset.versions.at(-1)?.type ?? null, isText: false };
-  const from = sourceOf(asset, req) ?? req;
-  return { sha256: from.sha256, size: from.size, type: from.type, isText: from.isText };
+  const from = sourceOf(asset, req);
+  const type = req.kind === 'delete' ? (asset.versions.at(-1)?.type ?? null) : from.type;
+  return { sha256: from.sha256, size: from.size, type, isText: from.isText };
 }
 
 /**

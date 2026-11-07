@@ -149,7 +149,7 @@ test('rename_asset of a deleted asset is refused, saying to restore it first, wh
   const { id } = await A.write_asset({ name: 'old.md', text: 'body' });
   await A.delete_asset({ id, base: 1 });
   const said = `Asset ${id} is deleted, so it can’t be renamed. Bring a version back with restore_asset first, then rename it.`;
-  // The refusal quotes the id, never the name an agent sent, so quotes, <, & and NUL can't reach it.
+  // The refusal quotes the id, never the name an agent sent, so quotes, <, & and NUL can’t reach it.
   for (const name of ['new.md', 'q"<&>.md', 'q&amp;.md']) {
     const r = await A.rename_asset({ id, base: 2, name });
     assert.deepEqual([r.ok, r.message], [false, said], name);

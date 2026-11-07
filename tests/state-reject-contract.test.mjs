@@ -22,7 +22,7 @@ const version = (/** @type {number} */ v, /** @type {string} */ c) => ({
 
 /**
  * A state holding what the valid payloads below name: a thread `t` with an item, a work entry, a session, and an asset
- * `as` in its room with version 1, made through the reducer so the room's index is as the store keeps it.
+ * `as` in its room with version 1, made through the reducer so the room’s index is as the store keeps it.
  */
 function base() {
   const s = emptyState();
