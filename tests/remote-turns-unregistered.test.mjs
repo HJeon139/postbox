@@ -1,7 +1,8 @@
 // #909: a turn on a host for an agent whose backend isn’t registered after a restart (#874) is Interrupted once,
 // with the reason, and waits for the person: the host coming back again neither attaches it nor resumes it, and a
-// turn stopped with Sign-in needed isn’t resumed when its check passes. Once the backend is registered again, the
-// Interrupted turn resumes as any other does.
+// turn stopped with Sign-in needed isn’t resumed when its check passes. Once the backend is registered again, a turn
+// the host listed still waits for the person, since it may still be running there and a resume would run beside it
+// (#872); one the host had no record of resumes as any other does.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -9,7 +10,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { restarted, rig, settled, sleep, starts, startUp, until } from './remote-turns-helpers.mjs';
 
 const WHY =
-  'Claude Code isn’t available on this computer, so Postbox can’t follow the turn here. Install it and restart Postbox, or change this agent’s backend';
+  'Claude Code isn’t available to Postbox on this computer, so it can’t follow the turn on the host. Install it here and restart Postbox, or change this agent’s backend';
 /** #874’s reason for a turn that didn’t start, as the person’s Resume gives it. */
 const REASON = '@coder’s turn didn’t start: Claude Code isn’t available on this computer. Install it and restart Postbox, or change this agent’s backend.';
 
@@ -77,9 +78,30 @@ test('#909 an Interrupted turn whose backend isn’t registered isn’t resumed 
   assert.equal(starts(d).length, 0);
 });
 
-test('#909 once the backend is registered again, the Interrupted turn resumes when the host is back', async () => {
+test('#909 once the backend is registered again, a turn the host listed waits for the person, and their Resume starts once', async () => {
   const { r, d, registered } = await unregisteredRestart();
   assert.equal(r.se().remoteTurn.state, 'interrupted');
+  assert.equal(r.se().remoteTurn.resume?.person, true, 'it waits for the person');
+  r.rt.adapters = registered;
+  back(r);
+  await quiet(r);
+  back(r);
+  await quiet(r);
+  assert.equal(starts(d).length, 0, 'not resumed beside a turn that may still run there (#872)');
+  assert.equal(r.se().remoteTurn.autoResumes ?? 0, 0);
+  assert.deepEqual(r.rt.resumeRemote(r.se().id), { ok: true });
+  await until(() => starts(d).length === 1, 'the person’s resume');
+  d.end(starts(d)[0].turn);
+  await quiet(r);
+  back(r);
+  await quiet(r);
+  assert.equal(starts(d).length, 1, 'one start');
+});
+
+test('#909 once the backend is registered again, a turn the host had no record of resumes when the host is back', async () => {
+  const { r, d, registered } = await unregisteredRestart({ welcome: 'missing' });
+  assert.equal(r.se().remoteTurn.state, 'interrupted');
+  assert.ok(!r.se().remoteTurn.resume?.person, 'nothing runs there to wait on');
   r.rt.adapters = registered;
   back(r);
   await until(() => starts(d).length === 1, 'the resume');

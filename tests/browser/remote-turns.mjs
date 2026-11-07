@@ -10,7 +10,7 @@ const MIN = 60_000;
 export const HUNG = 'Stopped: no output for 15 min (the last at 14:02)';
 /** Why a turn on a host can’t be followed when its agent’s backend isn’t registered here (#909, unregisteredWhy). */
 export const UNREGISTERED =
-  'Claude Code isn’t available on this computer, so Postbox can’t follow the turn here. Install it and restart Postbox, or change this agent’s backend';
+  'Claude Code isn’t available to Postbox on this computer, so it can’t follow the turn on the host. Install it here and restart Postbox, or change this agent’s backend';
 
 // The welcome as the daemon sends it (shared/remote-protocol.mjs), trimmed: Claude Code and Kiro CLI found, Codex not.
 const WELCOME = {
@@ -167,7 +167,7 @@ function unregisteredTurn(app, { A, room }, ses, now) {
       threadId: room.id,
       at: now,
       state: 'interrupted',
-      resume: { why: 'interrupted', at: now },
+      resume: { why: 'interrupted', at: now, person: true },
       autoResumes: 0,
     },
   });
