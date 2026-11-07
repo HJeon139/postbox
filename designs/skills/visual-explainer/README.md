@@ -4,7 +4,7 @@ The skill [#207](https://github.com/HJeon139/postbox/issues/207) proposed bundli
 
 | File | What it holds |
 |---|---|
-| [SKILL.md](../../../agent-plugin/skills/visual-explainer/SKILL.md) | The house rules (VE1 to VE12) and the run, from brief to report |
+| [SKILL.md](../../../agent-plugin/skills/visual-explainer/SKILL.md) | The house rules (VE1 to VE13) and the run, from brief to report |
 | [references/brief.md](../../../agent-plugin/skills/visual-explainer/references/brief.md) | The one-idea brief an agent writes before drawing |
 | [references/shapes.md](../../../agent-plugin/skills/visual-explainer/references/shapes.md) | Content shapes, the forms each allows and refuses, and what position means in each |
 | [references/critique.md](../../../agent-plugin/skills/visual-explainer/references/critique.md) | The floor (verify and refuse), the takeaway test and the report |
@@ -35,7 +35,7 @@ It adapts the structure of two open-source design skills. No text is copied from
 | A context file every command reads | [impeccable](https://github.com/pbakaus/impeccable) (Apache 2.0), `PRODUCT.md` | The brief |
 | A floor of “verify” and “refuse” lines, each with a rule id | impeccable, `craft-floor.md` | The floor in the critique |
 | Two isolated assessments that don’t see each other, then a report ranked P0 to P3 and one question | impeccable, `critique.md` | The floor and the takeaway test, kept apart |
-| A short list of house rules that win over the long references | [taste-skill](https://github.com/leonxlnx/taste-skill) (MIT), `SKILL.md` | VE1 to VE12 |
+| A short list of house rules that win over the long references | [taste-skill](https://github.com/leonxlnx/taste-skill) (MIT), `SKILL.md` | VE1 to VE13 |
 | Classify first; the class decides what’s allowed | taste-skill, the kind-of-business table | The shape table |
 | Write the words before the picture | taste-skill, “Write all the copy first” | Title and labels before marks |
 | Diagrams from a small spec, with one-to-three-word labels and a node limit (“crowded means it should be a list”) | taste-skill, `references/diagrams.md` | VE3, VE7; a spec-driven kit is next |
