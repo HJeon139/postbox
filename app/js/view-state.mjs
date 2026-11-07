@@ -1,7 +1,7 @@
 // The transcript’s view (#508’s design, “Browser”): following the newest message, or reading at an anchor, a message
 // and how far down the view it starts. Only your own scrolling changes which; every change in size re-applies it.
 // It owns that state for one transcript, holds the anchor through changes in size (#88, #297, #341), and publishes what
-// it is on the transcript as data-view-* (publish). Moved from thread.mjs’s mountTranscript (#531).
+// it is on the transcript as data-view-* (publish, view-publish.mjs). Moved from thread.mjs’s mountTranscript (#531).
 
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
@@ -11,6 +11,7 @@
  */
 import { onlyRemoves } from './view-changes.mjs';
 import { atEnd, box, findAnchor, gapOf, viewTop } from './view-geometry.mjs';
+import { publish } from './view-publish.mjs';
 
 // The pill floats just above the composer. It shows only while the end is further below than that, so what it
 // floats over is never the working rows or the end of the last message (#91).
@@ -29,21 +30,6 @@ function holdAnchor(v) {
   if (Math.abs(d) < 1) return;
   s.scrollTop += d;
   v.lastTop = s.scrollTop;
-}
-/**
- * What the view is, on the transcript for anyone to read (the UAT’s probe, #531): data-view-mode is following or
- * reading, and while reading, data-view-anchor and data-view-offset are the anchor’s key and how far down the view it
- * starts, to 0.1 px. Written after each entry point, and only what changed.
- * @param {View} v
- */
-function publish(v) {
-  const reading = !v.stuck && v.anchor;
-  const next = {
-    viewMode: v.stuck ? 'following' : 'reading',
-    viewAnchor: reading ? v.anchor.key : '',
-    viewOffset: reading ? String(Math.round(v.anchor.at * 10) / 10) : '',
-  };
-  for (const [k, value] of Object.entries(next)) if (v.el.dataset[k] !== value) v.el.dataset[k] = value;
 }
 /** @param {View} v */
 function seen(v) {
