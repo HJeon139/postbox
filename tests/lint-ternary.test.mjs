@@ -1,10 +1,10 @@
 // The pure parts of tools/lint-ternary.mjs (#685): the nested ternaries in Biome’s report, which of them sit on an added
-// line, and which files have more than at the base. The lines a diff adds are read by tools/diff-added-lines.mjs, tested
+// line, the key a hit is matched by, and which hits the base doesn’t account for (#752). The lines a diff adds are read by tools/diff-added-lines.mjs, tested
 // in tests/diff-added-lines.test.mjs. Its runs against real git and Biome are in tests/process/lint-ternary.test.mjs.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { changedFiles, changedRanges, countByPath, nestedTernaries, newHits, overlapsAdded, risenCounts } from '../tools/lint-ternary.mjs';
+import { changedFiles, changedRanges, excessHits, hitKey, nestedTernaries, overlapsAdded } from '../tools/lint-ternary.mjs';
 
 test('lint-ternary: a hit counts when any line of its span is an added line, and not when it only borders one', () => {
   const added = [
@@ -38,14 +38,25 @@ test('lint-ternary: an error in Biome’s report, or diagnostics it left out, fa
   assert.throws(() => nestedTernaries(report([], 3)), /3 diagnostics/);
 });
 
-test('lint-ternary: only hits on an added line of their own file are new', () => {
-  const added = new Map([['a.mjs', [{ start: 4, end: 4 }]]]);
-  const hits = [
-    { path: 'a.mjs', start: 4, end: 4 },
-    { path: 'a.mjs', start: 9, end: 9 },
-    { path: 'b.mjs', start: 4, end: 4 },
+test('lint-ternary: a hit’s key is the trimmed text of its lines, so moving or reindenting it keeps it', () => {
+  const lines = ['const a = 1;', '    return x ?', '\t  y ? 1 : 2', '  : 3;  '];
+  assert.equal(hitKey(lines, { start: 2, end: 3 }), 'return x ?\ny ? 1 : 2');
+  assert.equal(hitKey(['return x ? y ? 1 : 2 : 3;'], { start: 1, end: 1 }), hitKey(['      return x ? y ? 1 : 2 : 3;'], { start: 1, end: 1 }));
+});
+
+test('lint-ternary: a key fails only past its count at the base, over the whole change, with the excess on added lines first', () => {
+  const now = [
+    { path: 'a.mjs', key: 'k', added: true },
+    { path: 'a.mjs', key: 'k', added: false },
+    { path: 'b.mjs', key: 'moved', added: true },
+    { path: 'c.mjs', key: 'new', added: false },
   ];
-  assert.deepEqual(newHits(hits, added), [{ path: 'a.mjs', start: 4, end: 4 }]);
+  const before = [{ key: 'k' }, { key: 'moved' }, { key: 'gone' }];
+  assert.deepEqual(excessHits(before, now), [
+    { path: 'c.mjs', key: 'new', added: false },
+    { path: 'a.mjs', key: 'k', added: true },
+  ]);
+  assert.deepEqual(excessHits([], [{ key: 'x', added: true }]), [{ key: 'x', added: true }], 'none at the base');
 });
 
 test('lint-ternary: git’s -z name-status gives each file’s path now and at the base, with none for an added one', () => {
@@ -55,12 +66,6 @@ test('lint-ternary: git’s -z name-status gives each file’s path now and at t
     { path: 'new.mjs', oldPath: '' },
     { path: 'moved/new.mjs', oldPath: 'old.mjs' },
   ]);
-});
-
-test('lint-ternary: a file fails when it has more hits than at the base, where a file missing from the base has none', () => {
-  const before = countByPath([{ path: 'same.mjs' }, { path: 'same.mjs' }, { path: 'fewer.mjs' }]);
-  const after = countByPath([{ path: 'same.mjs' }, { path: 'same.mjs' }, { path: 'more.mjs' }]);
-  assert.deepEqual(risenCounts(['same.mjs', 'fewer.mjs', 'more.mjs'], before, after), [{ path: 'more.mjs', before: 0, after: 1 }]);
 });
 
 test('lint-ternary: a diff the shared parser can’t read fails under lint-ternary’s name', () => {

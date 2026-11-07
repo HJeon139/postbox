@@ -112,6 +112,7 @@ const SAY = {
   noVersion: (id, v) => `Asset ${id} has no version ${v}.`,
   pruned: (v) => `Version ${v} was pruned under the room’s retention rule, so its bytes are gone.`,
   deleted: (id) => `Asset ${id} is deleted already.`,
+  renameDeleted: (id) => `Asset ${id} is deleted, so it can’t be renamed. Bring a version back with restore_asset first, then rename it.`,
   stale: (asset, head, base) =>
     `@${head?.author} wrote version ${asset.head} of ${asset.id} since version ${base ?? 'none'}. Read version ${asset.head}, then write again from it.`,
   budget: (total) =>
@@ -130,17 +131,41 @@ function holderOf(look, name, except = null) {
   return id && id !== except ? look.assets[id] : null;
 }
 
+/** What a delete’s version holds: no bytes. */
+const NO_BYTES = Object.freeze({ sha256: null, size: 0, isText: false });
+
+/**
+ * The version this kind’s bytes come from, at this base: a write’s own, the named version’s for a restore (undefined
+ * if there is none), the base’s for a rename, which keeps them, and none for a delete. The one place that decides it,
+ * for a repeat’s check and a new version alike; a rename or delete request carries no sha256 (#703).
+ */
+function bytesSource(asset, req, base) {
+  if (req.kind === 'restore') return versionAt(asset, req.version);
+  if (req.kind === 'rename') return versionAt(asset, base);
+  return req.kind === 'delete' ? NO_BYTES : req;
+}
+
+/** The hash of the bytes a write’s version would hold, from the base it names. */
+function bytesFrom(asset, req) {
+  return bytesSource(asset, req, req.base ?? null)?.sha256;
+}
+
 /**
  * The version that is already this write, or null (I5): one with the write’s op and author, or a head with the same
- * base, bytes and author (and name, for a rename). Durable, unlike the store’s op ids, which a snapshot drops.
+ * base, bytes and author (and name, for a rename). Durable, unlike the store’s op ids, which a snapshot drops. A
+ * retry sends the same name, so a rename compares it exactly, as stored (NFC): one that changes only its case is a
+ * new rename, not a repeat.
  */
 function repeatOf(look, asset, req) {
   const byOp = req.op && own(look.index.ops, opKey(asset.id, req.author, req.op));
   if (byOp) return versionAt(asset, byOp);
   const head = headOf(asset);
-  const bytes = req.kind === 'restore' ? versionAt(asset, req.version)?.sha256 : req.sha256;
-  if (!head || head.author !== req.author || head.base !== (req.base ?? null) || head.sha256 !== bytes) return null;
-  return req.kind !== 'rename' || nameKey(asset.name) === nameKey(req.name) ? head : null;
+  if (!head) return null;
+  const sameAuthor = head.author === req.author;
+  const sameBase = head.base === (req.base ?? null);
+  const sameBytes = head.sha256 === bytesFrom(asset, req);
+  const sameName = req.kind !== 'rename' || asset.name === req.name.normalize('NFC');
+  return sameAuthor && sameBase && sameBytes && sameName ? head : null;
 }
 
 /**
@@ -171,11 +196,10 @@ function targetOf(look, req) {
   return null;
 }
 
-/** The version a restore or rename takes its bytes from: the one named, or the head; none for a write or delete. */
+/** Where the new version’s bytes come from, at the head (I4 made it the base), checked for a restore. */
 function sourceOf(asset, req) {
-  if (req.kind === 'rename') return headOf(asset);
-  if (req.kind !== 'restore') return null;
-  const from = versionAt(asset, req.version);
+  const from = bytesSource(asset, req, asset?.head ?? null);
+  if (req.kind !== 'restore') return from;
   if (!from) refuse('no-version', SAY.noVersion(asset.id, req.version));
   if (!from.sha256) refuse('no-version', SAY.restoreDelete(req.version));
   if (from.pruned) refuse('pruned', SAY.pruned(req.version));
@@ -184,20 +208,23 @@ function sourceOf(asset, req) {
 
 /** The new version’s bytes: the write’s, an older version’s for a restore, the head’s for a rename, none for a delete. */
 function bytesOf(asset, req) {
-  if (req.kind === 'delete') return { sha256: null, size: 0, type: asset.versions.at(-1)?.type ?? null, isText: false };
-  const from = sourceOf(asset, req) ?? req;
-  return { sha256: from.sha256, size: from.size, type: from.type, isText: from.isText };
+  const from = sourceOf(asset, req);
+  const type = req.kind === 'delete' ? (asset.versions.at(-1)?.type ?? null) : from.type;
+  return { sha256: from.sha256, size: from.size, type, isText: from.isText };
 }
 
 /**
  * Checks an update against its asset, as the commit sees it: the base is the head (I4), the version bound, a delete
- * of a live asset, and a free name when it changes or a deleted asset comes back.
+ * or rename of a live asset (#707: a deleted one comes back by a restore or a write, never a rename), and a free name
+ * when it changes or a deleted asset comes back. Stale comes first: a rename from an old base of an asset another
+ * agent deleted answers who wrote since, as any stale write does.
  */
 function checkUpdate(look, asset, req) {
   const head = headOf(asset);
   if ((req.base ?? null) !== asset.head) refuse('stale', SAY.stale(asset, head, req.base));
   if (asset.versions.length >= ASSETS.assetVersions) refuse('too-many', SAY.tooManyVersions(asset.id));
   if (req.kind === 'delete' && !head?.sha256) refuse('deleted', SAY.deleted(asset.id));
+  if (req.kind === 'rename' && !head?.sha256) refuse('deleted', SAY.renameDeleted(asset.id));
   const name = req.kind === 'rename' ? req.name : asset.name;
   const comesBack = !head?.sha256 && req.kind !== 'delete';
   const holder = req.kind === 'rename' || comesBack ? holderOf(look, name, asset.id) : null;

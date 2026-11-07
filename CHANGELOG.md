@@ -2,6 +2,43 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.36.2 (2026-11-07)
+
+### Fixes
+
+- **remote:** only a result holds off the stall stop, and each task keeps its own 2 h (#847)
+- **remote:** a listed background task holds off the stall stop for up to 2 h (#847)
+- **permissions:** name PermissionRequest hooks in the panel, with each hook's event
+- **permissions:** hide credentials in hook matchers, as in their commands
+
+## 1.36.1 (2026-11-07)
+
+### Fixes
+
+- **server:** refuse a topic-thread send to an unavailable agent before it joins
+- **server:** refuse requests about an unregistered backend with a 422
+- **server:** fail a turn for an unregistered backend with a reason and Retry
+
+## 1.36.0 (2026-11-07)
+
+### Features
+
+- **state:** apply turn.archive, a public event nothing emits yet
+- **uat:** the failed-reply-dismissed trigger (#883)
+- **threads:** Dismiss a failed reply without running it again (#883)
+
+### Fixes
+
+- **threads:** after Dismiss, focus stays on the control that's left (#883)
+
+## 1.35.6 (2026-11-07)
+
+### Fixes
+
+- **assets:** a rename of a deleted asset is refused, and says to restore it first
+- **state:** the asset handlers check their payload before changing anything
+- **assets:** a rename or delete retried without an op is a repeat, and another agent's is stale
+
 ## 1.35.5 (2026-11-07)
 
 ### Fixes
