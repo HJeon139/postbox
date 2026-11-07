@@ -58,7 +58,7 @@ for (const width of [375, 1280])
       r.runIn(side, r.researcher.id, 'Review the plan.');
       await expect.poll(() => store.state.sessions[r.researcher.id].state, { message: 'the failed turn' }).toBe('failed');
       await open(page, `#/t/${r.room.id}`);
-      const line = page.locator('#main [data-side-sig]').filter({ has: page.locator('.pill', { hasText: '@researcher failed' }) });
+      const line = page.locator('#main [data-side-sig]').filter({ has: page.locator('.pill', { hasText: 'researcher failed' }) });
       await expect(line.getByRole('button')).toHaveText(['Retry', 'Dismiss']);
       const before = held.turns.length;
       // By keyboard: Enter on Dismiss, and focus lands on the line’s Open once its buttons go.
