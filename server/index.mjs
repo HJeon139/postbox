@@ -5,14 +5,12 @@
 //
 // The same as the postbox command (bin/postbox.mjs), which reads the flags and finds the data folder (server/home.mjs).
 
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
-import { extname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gzipSync } from 'node:zlib';
 import { AdapterRegistry } from './adapters/adapter.mjs';
 import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
@@ -37,7 +35,7 @@ import { servedReviewFile } from './review-files.mjs';
 import { httpError, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { seed, toBoilerplate } from './seed.mjs';
-import { decodePath, mediaPath, servedFile } from './served-files.mjs';
+import { decodePath, file, mediaPath, servedFile, TYPES } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
@@ -49,23 +47,6 @@ const STOP_ROUTE = /^\/api\/(sessions\/[^/]+\/(stop|jobs\/[^/]+\/stop)|threads\/
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
-const TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.json': 'application/json',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.avif': 'image/avif',
-  '.woff2': 'font/woff2',
-  '.txt': 'text/plain; charset=utf-8',
-  '.md': 'text/markdown; charset=utf-8',
-};
 const STATIC = {
   '/app/': join(ROOT, 'app'),
   '/shared/': join(ROOT, 'shared'),
@@ -539,44 +520,6 @@ function appHeaders(config) {
     'referrer-policy': 'no-referrer',
     'x-content-type-options': 'nosniff',
   };
-}
-
-// Static files carry an ETag, so a reload revalidates cheaply (304) instead of downloading everything,
-// and text is gzipped when the browser accepts it. Both are cached in memory by path and modification time.
-const staticCache = new Map();
-/** @param {import('node:http').ServerResponse} res @param {string} path @param {Record<string, string>} [headers] @param {import('node:http').IncomingMessage|null} [req] */
-async function file(res, path, headers = {}, req = null) {
-  let st;
-  try {
-    st = await stat(path);
-  } catch {
-    throw httpError(404, 'Not found.');
-  }
-  if (!st.isFile()) throw httpError(404, 'Not found.');
-  let entry = staticCache.get(path);
-  if (!entry || entry.mtime !== st.mtimeMs) {
-    const data = await readFile(path);
-    const type = TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream';
-    const compressible = /^(text\/|application\/json|image\/svg)/.test(type) && data.length > 1024;
-    entry = { mtime: st.mtimeMs, data, type, etag: `"${createHash('sha1').update(data).digest('base64url')}"`, gz: compressible ? gzipSync(data) : null };
-    staticCache.set(path, entry);
-  }
-  const base = {
-    'content-type': entry.type,
-    'cache-control': 'no-cache',
-    etag: entry.etag,
-    'x-content-type-options': 'nosniff',
-    vary: 'accept-encoding',
-    ...headers,
-  };
-  if (req?.headers['if-none-match'] === entry.etag) {
-    res.writeHead(304, base);
-    res.end();
-    return;
-  }
-  const gzip = entry.gz && /\bgzip\b/.test(req?.headers['accept-encoding'] ?? '');
-  res.writeHead(200, { ...base, ...(gzip ? { 'content-encoding': 'gzip' } : {}) });
-  res.end(gzip ? entry.gz : entry.data);
 }
 
 function raw(res, status, body, headers = {}) {
