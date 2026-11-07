@@ -153,3 +153,19 @@ export function dropBottom(w, px) {
   last.after(w.below);
   w.paintSpacers();
 }
+
+/**
+ * Moves the range to item i, for a jump to an item that isn’t on the page: everything mounted leaves (but what has
+ * focus, which stays as an island), and the range opens around i, as a conversation opens around its anchor. The
+ * jump then scrolls to it.
+ * @param {any} w the window @param {number} i
+ */
+export function recenter(w, i) {
+  for (let k = w.from; k < w.to; k++) w.drop(k);
+  [w.from, w.to] = w.openRange(i);
+  w.below.before(w.above);
+  const below = [...w.islands.keys()].filter((k) => k >= w.to).sort((a, b) => b - a);
+  for (const k of below) w.below.after(/** @type {HTMLElement} */ (w.islands.get(k)));
+  w.mountRun(w.from, w.to, w.below);
+  w.paintSpacers();
+}
