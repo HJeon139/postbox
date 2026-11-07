@@ -76,6 +76,7 @@ import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './r
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import { hereFolder, localBackends, notHere, placedPatch, placement, refuseHere, runsHere } from './remote/placement.mjs';
 import { RemoteTurns } from './remote/turns.mjs';
+import { replySegment } from './reply-segment.mjs';
 import { reviewBlock } from './review-comments.mjs';
 import { cancelWake } from './schedule-tools.mjs';
 import {
@@ -680,29 +681,7 @@ export class Runtime {
     const rt = this;
     const live = () => !turn.closed;
     const se = () => rt.s.sessions[turn.sessionId];
-    const ensureSegment = () => {
-      if (!turn.segment) {
-        const it = rt.addItem(turn.threadId, {
-          kind: 'agent',
-          sessionId: turn.sessionId,
-          personaId: se0.personaId,
-          handle: se0.handle,
-          turnId: turn.id,
-          text: '',
-          status: 'streaming',
-          activity: turn.first ? null : { steps: [...turn.steps] },
-          ...replyMarks(turn),
-        });
-        // The text before a tool call or a block is finished; only the newest segment shows the caret.
-        if (turn.lastSegment) rt.patchItem(turn.threadId, turn.lastSegment, { status: 'done' });
-        turn.segment = it.id;
-        turn.lastSegment = turn.openSegment = it.id; // openSegment: the one still streaming, by its id (closeSegment)
-        if (!turn.first) turn.first = it.id;
-        if (turn.said) turn.said += '\n\n';
-        rt.putThread({ ...rt.s.threads[turn.threadId], lastSpeaker: turn.sessionId });
-      }
-      return turn.segment;
-    };
+    const ensureSegment = () => replySegment(rt, turn, se0);
     const tools = this.toolsFor(turn.sessionId, turn);
     const thread = rt.s.threads[turn.threadId];
     const persona = rt.personaFor(se0);
