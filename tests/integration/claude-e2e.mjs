@@ -229,6 +229,12 @@ export async function pushTurn(t, backend, mode, hooksIn = 'settings') {
     .filter((i) => i.kind === 'agent')
     .map((i) => i.text)
     .join('\n');
+  // What the turn cost, from the work ledger's turn entries, so a paid run reports its spend (#871).
+  const costs = rt.ledger
+    .entries(thread.id)
+    .map((e) => e.costUsd)
+    .filter((c) => typeof c === 'number');
+  t.diagnostic(`turn cost (USD): ${costs.length ? costs.reduce((a, b) => a + b, 0).toFixed(4) : 'unpriced'}`);
   return { ...f, answered, said };
 }
 
