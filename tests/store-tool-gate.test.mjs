@@ -59,6 +59,7 @@ test('every tool is classified for the gate: the read set, or the writers; a new
     'show_block',
     'update_app',
     'update_block',
+    'view_app', // adds the download card, and saves the picture in the agent’s folder (#95)
     'wake_agent',
     'write_asset',
   ]);

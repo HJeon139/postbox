@@ -95,6 +95,16 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: 'view_app',
+    description:
+      'See an app you or another agent showed in this conversation, as the person first sees it: inline in the conversation, at the size of their Postbox window (1000 × 680 when no tab is open), in their theme, at its current version. Returns a picture, and saves it in your folder under .postbox/view. Look before you call an app done: the pre-display check catches what it measures, not a layout that’s simply wrong. The first time, Postbox asks the person whether to download the browser it renders with; end your turn then, and you’ll hear their answer.',
+    inputSchema: {
+      type: 'object',
+      properties: { appId: { type: 'string', description: 'The appId show_app or update_app returned.' } },
+      required: ['appId'],
+    },
+  },
+  {
     name: 'define_term',
     description: 'Add a term to the glossary of this conversation, or of the topic thread you’re in. Every later mention links to its definition.',
     inputSchema: {

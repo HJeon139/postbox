@@ -41,6 +41,8 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
   if (it.kind === 'denial' && it.status === 'open') return { kind: 'denial', itemId: it.id, text: `A step was refused: ${it.summary}`, ...where };
   if (it.kind === 'toolask' && it.status === 'open')
     return { kind: 'toolask', itemId: it.id, text: `@${se.handle} asks you to turn on “${it.label}”`, ...where };
+  if (it.kind === 'viewask' && it.status === 'open')
+    return { kind: 'viewask', itemId: it.id, text: `@${se.handle} asks to see its app: download Chromium?`, ...where };
   return null;
 }
 
@@ -51,7 +53,7 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
  * its refusals, its tool request, and last the cards that wait until answered (app sends, wake requests). Within a kind,
  * the newest. It ranks exactly the kinds a need can have, shared/needs.mjs's NEEDS_KINDS (tests/card-needs-kinds.test.mjs).
  */
-export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, denial: 3, toolask: 4, appsend: 5, hop: 5 });
+export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, denial: 3, toolask: 4, viewask: 4, appsend: 5, hop: 5 });
 
 /** The needs tied to a turn: the person moving on clears them (runtime.mjs, the turn's start). The rest wait until answered. */
 export const TURN_TIED = new Set(['failed', 'block', 'denial', 'toolask']);

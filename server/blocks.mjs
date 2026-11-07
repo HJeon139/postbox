@@ -12,6 +12,7 @@ import { REACT, toggleReaction } from './reactions.mjs';
 import { keepReviewThreads } from './review-comments.mjs';
 import { revisedFiles } from './review-files.mjs';
 import { resolveToolAsk } from './tool-ask.mjs';
+import { resolveViewAsk } from './view-app/consent.mjs';
 import { stopRequested } from './write-intent.mjs';
 
 export const CATCH_UP_CHARS = 16000;
@@ -28,6 +29,7 @@ export function act(rt, threadId, itemId, action, values, revision) {
   if (it.kind === 'denial') return rt.resolveDenial(threadId, itemId, action);
   if (it.kind === 'appsend') return rt.resolveAppSend(threadId, itemId, action);
   if (it.kind === 'toolask') return resolveToolAsk(rt, threadId, itemId, action);
+  if (it.kind === 'viewask') return resolveViewAsk(rt, threadId, itemId, action);
   if (it.kind === 'allowedcall') return stopRequested(rt, threadId, itemId, action);
   if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
   if (it.closed?.by === 'agent')

@@ -2,6 +2,7 @@
 
 import './ring.mjs';
 import { onThemeChange } from './apps.mjs';
+import { CAPTURE, mountCapture } from './capture-view.mjs';
 import { client, connect, hrefOf, load, needsYou } from './client.mjs';
 import { $, h, icon } from './dom.mjs';
 import './focus-clear.mjs';
@@ -12,6 +13,7 @@ import { notify } from './notify-toast.mjs';
 import { mountPane } from './pane.mjs';
 import { canonical } from './pane-route.mjs';
 import { holdFocus } from './rerender-state.mjs';
+import { theme } from './sandbox-libs.mjs';
 import { liveMembers, mountEmptyProject, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';
 import { initHoverCards, navigate, refind, route, say, setAttention } from './ui.mjs';
@@ -119,7 +121,9 @@ function view(threadId) {
   clearInterval(viewTimer);
   const ping = () => {
     if (document.visibilityState !== 'visible' || route().threadId !== threadId) return;
-    fetch(`/api/threads/${threadId}/view`, { method: 'POST' }).catch(() => {});
+    // With the window’s size and theme, which view_app renders apps at (#95).
+    const at = JSON.stringify({ width: innerWidth, height: innerHeight, theme: theme() });
+    fetch(`/api/threads/${threadId}/view`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: at }).catch(() => {});
     // A thread open in the panel is being read too.
     const side = route().sideId;
     if (side) fetch(`/api/threads/${side}/view`, { method: 'POST' }).catch(() => {});
@@ -207,8 +211,12 @@ addEventListener('pb-pane', (e) => {
 try {
   await load();
   applyTheme();
-  connect();
-  render();
+  // view_app’s capture page shows one app and nothing else: no stream, no report that a thread is open (#95).
+  if (CAPTURE) mountCapture(root);
+  else {
+    connect();
+    render();
+  }
 } catch (e) {
   root.replaceChildren(h('div', { style: { padding: '24px' } }, h('h1.title', 'Postbox couldn’t start'), h('p', e.message)));
 }

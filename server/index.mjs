@@ -41,6 +41,8 @@ import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
 import { watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
+import { ViewApp } from './view-app/view-app.mjs';
+import { attachViewApp, viewOf } from './view-app/view-of.mjs';
 
 /** The routes that stop an agent’s turn, a background job or a `!` command: allowed while the store is closed, as Stop must be. */
 const STOP_ROUTE = /^\/api\/(sessions\/[^/]+\/(stop|jobs\/[^/]+\/stop)|threads\/[^/]+\/shell\/[^/]+\/stop)$/;
@@ -112,6 +114,8 @@ export async function start({
   // The hosts’ links (#120), made on first use (server/remote/serve.mjs).
   const hosts = hostManagerFor(given, () => rt, dataDir, config.build.version);
   const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator, spawnShell, hosts });
+  // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture.md, “Agents see their app”).
+  attachViewApp(rt, new ViewApp({ dataDir, origin: () => `http://127.0.0.1:${/** @type {any} */ (server.address())?.port ?? port}` }));
   // Recording conversations for telemetry, and its 30-day sweep (designs/telemetry-persona.md, R7, R11).
   watchTelemetry(rt);
   const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
@@ -328,6 +332,7 @@ export async function start({
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/messages$/)) && req.method === 'POST') return send(res, 201, rt.sendMessage(m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/view$/)) && req.method === 'POST') {
       rt.view(m[1]);
+      viewOf(rt).noteWindow(body);
       return send(res, 200, { ok: true });
     }
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/queue\/([^/]+)$/)) && req.method === 'PATCH') {
@@ -491,6 +496,7 @@ export async function start({
     // After the turns, whose Stop goes to their hosts over these links (#120).
     await stopHosts(hosts, stopWake);
     narrator?.stop();
+    await viewOf(rt).close();
     if (server.listening) await new Promise((ok) => server.close(ok));
     await store.close(); // flushes, and releases the data folder’s lock for the next Postbox
   }
