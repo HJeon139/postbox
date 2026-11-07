@@ -788,7 +788,7 @@ export class Runtime {
         if (!live()) return;
         // A lint turn that only calls tools (define_term, say) is quiet: it ends as a one-line note, not a reply.
         if (!turn.first && turn.kind !== 'lint') ensureSegment();
-        stepTaken(turn);
+        if (!who) stepTaken(turn);
         const i = turn.steps.findIndex((s) => s.id === id);
         const step = {
           id: id ?? newId('st'),

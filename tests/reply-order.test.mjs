@@ -150,3 +150,36 @@ test('a step with nothing posted meanwhile keeps the words in one part', async (
     ['Let me look. The answer is 42.'],
   );
 });
+
+test('a subagent’s step between two chunks doesn’t split the agent’s words, even while another agent writes', async () => {
+  const f = setup();
+  /** @type {(() => void)[]} */
+  const open = [];
+  const gates = Array.from({ length: 2 }, () => new Promise((r) => open.push(() => r(undefined))));
+  f.adapter.next.push(
+    async (ctx) => {
+      ctx.text('Main sen');
+      ctx.activity({ id: 'sub-1', label: 'Read notes.md', state: 'running', who: 'helper' });
+      await gates[0];
+      await gates[1];
+      ctx.text('tence goes on.');
+    },
+    async (ctx) => {
+      await gates[0];
+      ctx.text('Beta writes meanwhile.');
+    },
+  );
+  f.rt.sendMessage(f.t.id, { text: '@alpha @beta both of you' });
+  await until(() => f.adapter.calls.length === 2);
+  open[0]();
+  await until(() => agentItems(f).some((it) => it.text === 'Beta writes meanwhile.'));
+  open[1]();
+  await settle(f.rt);
+
+  const alpha = agentItems(f).filter((it) => it.sessionId === f.alpha.id && it.text);
+  assert.deepEqual(
+    alpha.map((it) => it.text),
+    ['Main sentence goes on.'],
+    'a subagent’s step isn’t the agent’s own, so it’s no boundary',
+  );
+});

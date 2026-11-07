@@ -54,7 +54,11 @@ export function wordsSegment(rt, turn, se0) {
   return id;
 }
 
-/** A step the turn took: after words in its open part, it’s a boundary its next words may start a new part at. @param {any} turn */
+/**
+ * A step the turn took itself: after words in its open part, it’s a boundary its next words may start a new part at.
+ * A subagent’s step (one with a `who`) isn’t called here: it runs beside the agent’s writing, so the agent’s words can
+ * go on mid-sentence after it. @param {any} turn
+ */
 export function stepTaken(turn) {
   if (turn.segment && turn.wordsIn === turn.segment) turn.stepAfterWords = true;
 }
