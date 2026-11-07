@@ -6,6 +6,7 @@
 import { inSight, measure } from './view-box.mjs';
 import { register, unregister } from './view-jump.mjs';
 import { DRAWN, drawNewest, skipOffscreen } from './view-skip.mjs';
+import { whenSmoothEnds } from './view-smooth.mjs';
 
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
@@ -51,22 +52,21 @@ function scrollToEnd(v, smooth = false) {
   v.smoothing = !!s && smooth && !v.inPanel && 'onscrollend' in window && !atEnd(s);
   if (v.smoothing && matchMedia('(prefers-reduced-motion: reduce)').matches) v.smoothing = false;
   if (v.smoothing) {
-    const aim = /** @type {Element} */ (s).scrollHeight - /** @type {Element} */ (s).clientHeight;
-    addEventListener('scrollend', () => smoothEnded(v, aim), { once: true });
+    whenSmoothEnds((stoppedByYou) => smoothEnded(v, stoppedByYou));
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
   } else if (s) s.scrollTop = s.scrollHeight;
   seen(v);
 }
-// The smooth jump to the end stopped. Where it got where it was aimed, the items it passed drew at their real sizes
-// on the way, so the end may have moved further down: go the rest of the way. Short of there, you stopped it: a wheel
-// turn or a drag ends it, and Chromium drops a wheel turn's own scroll. That's you reading where it stopped.
-/** @param {View} v @param {number} aim */
-function smoothEnded(v, aim) {
+// The smooth jump to the end stopped. The items it passed drew at their real sizes on the way, so the end has moved:
+// unless you did something meanwhile, go the rest of the way. If you did, a wheel turn or a drag ended it (Chromium
+// drops a wheel turn's own scroll), and that's you reading where it stopped (view-smooth.mjs).
+/** @param {View} v @param {boolean} stoppedByYou */
+function smoothEnded(v, stoppedByYou) {
   const s = box(v);
   if (!v.smoothing || v.dead || !s) return;
   v.smoothing = false;
   if (atEnd(s)) return;
-  if (s.scrollTop >= aim - 2) s.scrollTop = s.scrollHeight;
+  if (!stoppedByYou) s.scrollTop = s.scrollHeight;
   else {
     v.stuck = false;
     v.anchor = findAnchor(v);
