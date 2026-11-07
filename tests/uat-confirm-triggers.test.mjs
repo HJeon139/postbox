@@ -15,6 +15,7 @@ const fired = (s, id) => TRIGGERS[id].run({ threads: [s.t.id], state: { items: {
 
 test('#852 confirmed-command-ran fires for the confirmed run, and carded-again for the second run’s card', async () => {
   const s = await setup({ permissionMode: 'ask' });
+  s.rt.runGh = async (argv) => ({ status: 0, output: 'ok', argv, timedOut: false });
   assert.deepEqual(fired(s, 'confirmed-command-ran'), []);
   s.next.push(async (c) => c.tools.show_block({ block: { ...confirm('Labels the PR.'), commands: [LABEL] } }));
   s.rt.sendMessage(s.t.id, { text: 'Label it.' });
@@ -27,7 +28,7 @@ test('#852 confirmed-command-ran fires for the confirmed run, and carded-again f
       const asked = c.askPermission({ ...bash(LABEL), bound: true, toolUseId: id });
       const r = await Promise.race([asked, until(() => cards(s).length > 0).then(() => null)]);
       if (!r) await s.rt.act(s.t.id, cards(s)[0].id, 'deny', {});
-      answers.push((r ?? (await asked)).allow);
+      answers.push(r ? /^Postbox ran this/.test(r.message ?? '') : (await asked).allow);
     }
   });
   await s.rt.act(s.t.id, it.id, 'confirm', {}, it.revision ?? 1);

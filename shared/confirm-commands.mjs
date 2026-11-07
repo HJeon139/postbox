@@ -2,6 +2,7 @@
 // must see every byte of each, so an entry may hold only text that draws as itself. Pure and dependency-free, so the
 // catalog and the server share one check.
 
+import { confirmShape } from './confirm-shapes.mjs';
 import { str } from './schema.mjs';
 
 /** How many commands a confirm may name, and how long each may be. */
@@ -12,13 +13,15 @@ export const COMMANDS = Object.freeze({ max: 3, length: 2000, line: 400 });
 // also a format character, a variation selector also a combining mark).
 /** @type {[RegExp, string][]} */
 const HIDDEN = [
-  [/[^\P{Cc}\t\n]/u, 'a control character (a command may hold tabs and new lines only)'],
+  [/\p{Cc}/u, 'a control character, a tab or a line break (a command is one line)'],
   [/[\u{E0000}-\u{E007F}]/u, 'a tag character, which draws as nothing'],
   [/[\uFE00-\uFE0F\u{E0100}-\u{E01EF}]/u, 'a variation selector, which draws as nothing'],
   [/\p{Cf}/u, 'an invisible formatting character, which can hide or reorder text'],
   [/[\p{Zl}\p{Zp}]/u, 'a line or paragraph separator, which breaks a line where a shell doesn’t'],
   [/\p{Mn}/u, 'a combining mark, which changes how the character before it looks'],
   [/[\u115F\u1160\u3164\uFFA0]/u, 'a Hangul filler, which draws as blank space'],
+  [/[^\P{Zs} ]/u, 'a space other than a plain one, which can look like nothing or like a plain space'],
+  [/[\p{Me}\p{Co}\p{Cn}]/u, 'an enclosing mark, a private-use or an unassigned character, which may not draw as itself'],
 ];
 
 const codePoint = (ch) => `U+${/** @type {number} */ (ch.codePointAt(0)).toString(16).toUpperCase().padStart(4, '0')}`;
@@ -34,10 +37,10 @@ export function commandProblem(text) {
     if (found) return `has ${codePoint(found[0])}, ${reason}. Take it out.`;
   }
   if (/ {3}/.test(text)) return 'has three or more spaces in a row, which can push the rest out of view. Use one or two.';
-  if (text.split('\n').some((line) => line.length > COMMANDS.line)) {
-    return `has a line longer than ${COMMANDS.line} characters. Break it with a backslash and a new line.`;
-  }
-  return null;
+  if (text.length > COMMANDS.line) return `is longer than ${COMMANDS.line} characters.`;
+  // r3: only the shapes Postbox runs itself (shared/confirm-shapes.mjs).
+  const shape = confirmShape(text);
+  return shape.kind === 'none' ? `${shape.why}.` : null;
 }
 
 /** The catalog’s rule for one command: text of 1 to 2,000 characters with no problem above. */

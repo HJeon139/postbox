@@ -25,24 +25,37 @@ const errorsOf = (commands) => {
   return r.errors;
 };
 
-const PUSH = 'git -C /home/me/postbox push origin wip/852-field';
-const LONG = `cd /home/me/postbox && gh pr edit 896 --repo owner/postbox --add-label ready\ngh pr view 896 --repo owner/postbox\t--json state`;
+const PUSH = 'git push origin wip/852-field';
+const LONG = 'gh pr edit 896 --repo owner/postbox --add-label "ready for integrator" --remove-label "changes requested"';
 
-test('a confirm with one to three plain commands passes, tabs and new lines included', () => {
-  for (const commands of [[PUSH], [PUSH, LONG], [PUSH, LONG, 'x'.repeat(400)]]) {
+test('a confirm with one to three of the shapes passes', () => {
+  const third = 'gh issue comment 12 --repo owner/postbox --body-file /tmp/pb-x/b.md';
+  for (const commands of [[PUSH], [PUSH, LONG], [PUSH, LONG, third]]) {
     const r = validateBlock(confirm(commands));
     assert.equal(r.ok, true, JSON.stringify(r.errors));
   }
   assert.equal(commandProblem(LONG), null);
-  assert.equal(commandProblem(`${'a'.repeat(400)}\n${'b'.repeat(400)}`), null, 'each line may be 400 characters');
-  assert.equal(commandProblem('git commit -m "two  spaces"'), null, 'two spaces in a row are fine');
+  assert.equal(commandProblem('gh issue create --repo o/r --title "two  spaces"'), null, 'two spaces in a row are fine');
+});
+
+test('r3: a command that isn’t one of the shapes is refused, with the reason', () => {
+  for (const [text, reason] of [
+    ['git -C /home/me/postbox push origin x', /lone git push/],
+    ['gh pr edit 896 --add-label x', /--repo owner\/name/],
+    ['echo hi', /isn’t a git push or one of the gh commands/],
+  ])
+    assert.match(errorsOf([text]).join('\n'), reason, text);
 });
 
 // Each class of refusal, with a character (or text) that only it catches, and the words its reason must use.
 const REFUSED = [
   ['a run of three spaces', `git push${' '.repeat(3)}--force`, /three or more spaces in a row/],
-  ['a 401-character line', `echo ${'y'.repeat(396)}`, /a line longer than 400 characters/],
-  ['U+0007, a control character', 'git push\u0007', /U\+0007, a control character/],
+  ['a 401-character command', `gh issue create --repo o/r --title ${'y'.repeat(370)}`, /longer than 400 characters/],
+  ['a tab', 'git push\torigin', /U\+0009, a control character, a tab or a line break/],
+  ['a line break', 'git push\ngit push', /U\+000A, a control character, a tab or a line break/],
+  ['U+00A0, a no-break space', 'git push\u00A0origin', /U\+00A0, a space other than a plain one/],
+  ['U+E000, a private-use character', 'git push\uE000', /U\+E000, an enclosing mark, a private-use or an unassigned character/],
+  ['U+0007, a control character', 'git push\u0007', /U\+0007, a control character, a tab or a line break/],
   ['U+061C, an invisible format character', 'git push\u061C origin', /U\+061C, an invisible formatting character/],
   ['U+00AD, a soft hyphen', 'git pu\u00ADsh', /U\+00AD, an invisible formatting character/],
   ['U+2060, a word joiner', 'git\u2060push', /U\+2060, an invisible formatting character/],

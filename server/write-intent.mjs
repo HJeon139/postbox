@@ -261,7 +261,7 @@ export async function settledCall(rt, sessionId, req) {
   const open = () => rt.store.writable && rt.store.epoch === epoch;
   const current = () => open() && !!turn && rt.turns.get(sessionId) === turn;
   if (isWriteCall(req.tool, req.input) && (await writePasses(rt, sessionId, req).catch(() => false))) return { allow: true };
-  /** @type {(Awaited<ReturnType<typeof requestedCall>> & { blockItemId?: string, sha256?: string }) | null} */
+  /** @type {(Awaited<ReturnType<typeof requestedCall>> & { blockItemId?: string, sha256?: string, gh?: any }) | null} */
   let found = null;
   try {
     found = (await confirmedFound(rt, sessionId, req, PUSHES)) ?? (await requestedCall(rt, sessionId, req));
@@ -300,9 +300,11 @@ export async function settledCall(rt, sessionId, req) {
     how: found.how,
     ...(found.how === 'confirmed' ? { approved: clip(found.label, 200) } : { quote: clipText(found.quote, 300) }),
     ...(found.blockItemId ? { blockItemId: found.blockItemId, sha256: found.sha256 } : {}),
+    ...(found.gh ? { gh: { argv: found.gh.argv, status: found.gh.status, output: found.gh.output } } : {}),
     ...(found.push ? { push: { sha: found.push.sha, branch: found.push.branch, url: found.push.url, error: done?.ok ? null : done?.error } } : {}),
     status: done && !done.ok ? 'failed' : 'allowed',
   });
+  if (found.gh) return { allow: false, message: found.gh.message }; // #852: Postbox ran it; the agent’s own doesn’t
   if (!found.push) return { allow: true };
   if (!done?.ok) return null;
   recordPush(rt, turn, found.push);

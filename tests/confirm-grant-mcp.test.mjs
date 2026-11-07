@@ -35,20 +35,24 @@ const prompt = (s, c, args) =>
   );
 const answerOf = (reply) => JSON.parse(reply.result.content[0].text);
 
-test('#852 1a: permission_prompt for a confirmed command the stream showed answers allow, with no card', async () => {
+test('#852 1a r3: permission_prompt for a confirmed command the stream showed: Postbox runs it, with no card', async () => {
   const s = await setup({ permissionMode: 'ask' });
+  s.rt.runGh = async (argv) => ({ status: 0, output: 'ok', argv, timedOut: false });
   let reply;
   await confirmedThen(s, async (c) => {
     c.toolUse({ id: 'tu1', name: 'Bash', input: { command: LABEL, description: 'Label the PR' } });
     reply = await prompt(s, c, { tool_name: 'Bash', input: { command: LABEL, description: 'Label the PR' }, tool_use_id: 'tu1' });
   });
-  assert.deepEqual(answerOf(reply), { behavior: 'allow', updatedInput: { command: LABEL, description: 'Label the PR' } });
+  const answer = answerOf(reply);
+  assert.equal(answer.behavior, 'deny', 'the agent’s own call never runs');
+  assert.match(answer.message, /^Postbox ran this for you, as the person confirmed/);
   assert.equal(cards(s).length, 0);
   assert.equal(lines(s).length, 1);
 });
 
 test('#852 1a: a prompt for the confirmed command that the stream never showed is refused, and spends nothing', async () => {
   const s = await setup({ permissionMode: 'ask' });
+  s.rt.runGh = async (argv) => ({ status: 0, output: 'ok', argv, timedOut: false });
   let forged;
   let real;
   await confirmedThen(s, async (c) => {
@@ -58,6 +62,6 @@ test('#852 1a: a prompt for the confirmed command that the stream never showed i
     real = await prompt(s, c, { tool_name: 'Bash', input: { command: LABEL }, tool_use_id: 'tu2' });
   });
   assert.equal(answerOf(forged).behavior, 'deny');
-  assert.equal(answerOf(real).behavior, 'allow', 'the forged prompt didn’t use the confirm up');
+  assert.match(answerOf(real).message, /^Postbox ran this/, 'the forged prompt didn’t use the confirm up');
   assert.equal(lines(s).length, 1);
 });
