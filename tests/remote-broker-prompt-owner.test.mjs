@@ -72,6 +72,31 @@ test('#353 a connection that sends another shim’s prompt again, identical, get
   }
 });
 
+test('#908 another shim sending a prompt’s id with a different request hears just what the same request gets', async () => {
+  const h = makeHome();
+  try {
+    const { k } = await asked(h);
+    const path = h.p.turn('t1', TURN_FILES.prompts);
+    const before = lines(path);
+    const copy = connectShim(k.b, 't1', turnToken('t1'), OTHER);
+    await copy.next('welcome');
+    // The owner check comes first, so its reply can’t tell whether it guessed the request too.
+    const heard = async (request) => {
+      copy.send('permission', { id: 'p1', request });
+      await copy.next('permission-answer');
+      return copy.raw.at(-1);
+    };
+    const same = await heard(structuredClone(REQUEST));
+    assert.match(same, /asked by another connection/);
+    assert.equal(await heard({ ...REQUEST, input: { command: 'whoami' } }), same, 'byte for byte');
+    await sleep(20);
+    assert.deepEqual(lines(path), before, 'nothing is written down');
+    assert.equal(k.sent.length, 1, 'nothing new reaches Postbox');
+  } finally {
+    await h.done();
+  }
+});
+
 test('#353 after the shim reconnects, its prompt’s answer reaches its new connection, and after a daemon restart too', async () => {
   const h = makeHome();
   try {

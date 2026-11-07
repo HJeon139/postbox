@@ -129,6 +129,20 @@ export function brokerState({
 }
 
 /**
+ * Whether a call or a prompt is this connection’s shim’s, by its key (#353, #908): any client with a turn’s token can
+ * name its id, so another key’s, or a keyless shim’s (null), is refused; one no shim owns yet (a record an older daemon
+ * wrote) is taken by the first shim to send it. A call’s take is written down (broker-tools.mjs’s answerResend), so a
+ * restart doesn’t leave it for anyone again; a prompt’s deliberately isn’t: it lasts at most permissionWaitMax, and
+ * after a restart the first shim to send it again, or end it, takes it again.
+ * @param {Tool | Prompt} r @param {ShimConn} c
+ */
+export function takes(r, c) {
+  if (r.owner !== undefined && r.owner !== c.owner) return false;
+  r.owner = c.owner;
+  return true;
+}
+
+/**
  * Sends a call’s result to the connections of the shim that made it, by its key, never to every shim of the turn
  * (#908): any client with a turn’s token can connect as one of its shims. It goes to each live connection of that
  * shim, so one that reconnected while the call waited gets it without sending it again. A call no shim owns yet (a

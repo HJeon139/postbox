@@ -7,7 +7,7 @@ import { carriesBlockFiles, encodedBytes, REMOTE_LIMITS, TURN_FILES, toolRoute }
 import { filesReader, withoutFiles } from './broker-files.mjs';
 import { armReadTimer, claim, detached, readLocal, settled, settleOffline } from './broker-offline.mjs';
 import { note, record, refusal, startOf, unrecorded, written } from './broker-records.mjs';
-import { key, QUEUED_TEXT, toOwner } from './broker-state.mjs';
+import { key, QUEUED_TEXT, takes, toOwner } from './broker-state.mjs';
 
 /**
  * @typedef {import('./broker-state.mjs').Broker} Broker
@@ -173,12 +173,10 @@ async function queueTool(b, k, t, result) {
  * @param {(ok: boolean, text: string) => void} result
  */
 async function answerResend(b, c, known, route, result) {
-  if (known.owner !== undefined && known.owner !== c.owner)
+  const ownerless = known.owner === undefined;
+  if (!takes(known, c))
     return result(false, `Call ${known.id} was made by another connection, so this one gets none of its answer. Call again under a new id.`);
-  if (known.owner === undefined) {
-    known.owner = c.owner;
-    await note(b, known.turn, 'tools', { op: 'owner', id: known.id, owner: c.owner });
-  }
+  if (ownerless) await note(b, known.turn, 'tools', { op: 'owner', id: known.id, owner: c.owner });
   if (known.route === 'read' && known.result) return result(known.result.ok, known.result.text); // no wait on a disk
   const saved = await known.saved;
   if (saved) return result(false, saved);
