@@ -2,6 +2,7 @@
 // removing it, and a project’s folder on one. The hosts are in the state (s.hosts, 'host' events); the runtime
 // (server/runtime.mjs) calls these with itself first, and its host manager (rt.hosts) reaches each host’s daemon.
 
+import { checkShortName } from '../../shared/host-badge.mjs';
 import { HOST_ENFORCED } from '../../shared/remote-protocol.mjs';
 import { checkDestination, checkHostPath, checkHostSettings } from '../../shared/remote-settings.mjs';
 import { httpError } from '../helpers.mjs';
@@ -26,23 +27,24 @@ function hostNamed(rt, name, except) {
 }
 
 /**
- * Adds a host: its SSH destination and any settings that differ from the defaults.
- * @param {any} rt @param {{ name?: unknown, settings?: unknown }} opts
+ * Adds a host: its SSH destination, its short name if it has one, and any settings that differ from the defaults.
+ * @param {any} rt @param {{ name?: unknown, short?: unknown, settings?: unknown }} opts
  */
-export function addHost(rt, { name, settings } = {}) {
+export function addHost(rt, { name, short, settings } = {}) {
   const dest = checked(checkDestination(name));
   if (hostNamed(rt, dest)) throw httpError(409, `${dest} is already a host.`);
-  const h = { id: newId('ho'), name: dest, settings: checked(checkHostSettings(settings)), createdAt: Date.now() };
+  const h = { id: newId('ho'), name: dest, ...shortOf(short), settings: checked(checkHostSettings(settings)), createdAt: Date.now() };
   rt.store.emit('host', h);
   return h;
 }
 
 /**
- * Renames a host or changes some of its settings; settings not given keep their values. A change to one the daemon
- * enforces (HOST_ENFORCED) reaches a connected host at once: its link opens a new session, whose hello sends it.
- * @param {any} rt @param {string} id @param {{ name?: unknown, settings?: unknown }} patch
+ * Renames a host, changes its short name, or changes some of its settings; settings not given keep their values. A
+ * change to one the daemon enforces (HOST_ENFORCED) reaches a connected host at once: its link opens a new session,
+ * whose hello sends it.
+ * @param {any} rt @param {string} id @param {{ name?: unknown, short?: unknown, settings?: unknown }} patch
  */
-export function updateHost(rt, id, { name, settings } = {}) {
+export function updateHost(rt, id, { name, short, settings } = {}) {
   const h = host(rt, id);
   const dest = name === undefined ? h.name : checked(checkDestination(name));
   if (hostNamed(rt, dest, id)) throw httpError(409, `${dest} is already a host.`);
@@ -53,7 +55,13 @@ export function updateHost(rt, id, { name, settings } = {}) {
       409,
       `${h.name} can’t be renamed while agents’ turns run there or wait to go on there: they’d carry on on ${h.name} while new ones went to ${dest}. Stop them or let them finish, then rename it.`,
     );
-  const next = { ...h, name: dest, settings: checked(checkHostSettings(settings ?? {}, h.settings)) };
+  const { short: was, ...rest } = h;
+  const next = {
+    ...rest,
+    name: dest,
+    ...(short === undefined ? shortOf(was) : shortOf(short)),
+    settings: checked(checkHostSettings(settings ?? {}, h.settings)),
+  };
   rt.store.emit('host', next);
   const enforced = HOST_ENFORCED.some((k) => JSON.stringify(h.settings?.[k]) !== JSON.stringify(next.settings?.[k]));
   // Renamed: the manager drops the old link now, if nothing needs it, and the next use dials the new destination.
@@ -184,6 +192,16 @@ export function setProjectHostFolder(rt, projectId, hostId, folder) {
   const next = { ...p, hostFolders };
   rt.store.emit('project', next);
   return next;
+}
+
+/**
+ * A host’s short name as it’s kept: { short } once it has one, nothing when it has none or it was cleared, so its badge
+ * is made from its destination (shared/host-badge.mjs). @param {unknown} v
+ */
+function shortOf(v) {
+  if (v === undefined || v === null) return {};
+  const s = checked(checkShortName(v));
+  return s ? { short: s } : {};
 }
 
 /** A check’s value, or its refusal as a 422. @param {import('../../shared/remote-settings.mjs').Checked} r */

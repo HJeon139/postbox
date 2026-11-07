@@ -13,7 +13,7 @@
 import { BACKEND_NAMES, chipEffort, chipModel } from '/shared/agent-facts.mjs';
 import { modeWhen } from '/shared/mode-when.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
-import { everyMinute, hostSection, modelOptions } from './agent-host.mjs';
+import { everyMinute, hostBadge, hostSection, modelOptions } from './agent-host.mjs';
 import { agentQueueButton } from './agent-queue.mjs';
 import { toolSwitch } from './agent-tools.mjs';
 import { paintTree, subagentToggle } from './agent-tree.mjs';
@@ -21,7 +21,7 @@ import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './c
 import { fill, h, syncList } from './dom.mjs';
 import { openAsksEl } from './open-asks.mjs';
 import { MODES, openPermissions } from './permissions.mjs';
-import { hostLine, stopNote, turnLine } from './remote.mjs';
+import { hostLine, hostOf, stopNote, turnLine } from './remote.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { capsOf, confirmDelete, EFFORT_NAMES, modeHelp, openSettings } from './sheets.mjs';
 import { keepFocus, navigate, openDialog, say, toast } from './ui.mjs';
@@ -118,7 +118,7 @@ function paintRow(n, se, fresh = false) {
   const runs = f.mock ? '' : `${chipModel(f)} · ${chipEffort(f)}`;
   const joined = joinedWhy(se);
   // Where it runs, for an agent on a host, and how its turn there stands when that needs saying.
-  const where = hostLine(se);
+  const where = [hostLine(se), hostOf(se)?.short];
   const there = turnLine(se);
   const sig = JSON.stringify([se.handle, f.mock, se.state, runs, joined, where, there]);
   paintTree(n, se, fresh);
@@ -128,7 +128,7 @@ function paintRow(n, se, fresh = false) {
     n.querySelector('.agent-btn .name'),
     h('span', h('b', se.handle), mockMarker(se), h('span.agent-state', ` · ${stateWord(se.state).toLowerCase()}`)),
     runs ? h('span.sub', runs) : null,
-    where ? h('span.sub.host-line', where) : null,
+    hostBadge(se),
     there ? h('span.sub.host-turn', there) : null,
     joined ? h('span.sub', joined) : null,
   );

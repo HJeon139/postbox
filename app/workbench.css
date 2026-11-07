@@ -1230,6 +1230,9 @@ code.wc-name { font-size: 12px; }
 .agent-btn .agent-state { color: var(--dim); font-size: 12px; }
 /* Where an agent on a host runs, and how its turn there stands (#120): words that wrap, never cut off. */
 .agent-btn .name > .host-line, .agent-btn .name > .host-turn { white-space: normal; overflow-wrap: anywhere; }
+/* The host as a short badge, so a long SSH destination doesn’t fill the row; its tooltip has the whole line. */
+.host-badge { display: inline-block; max-width: 9ch; padding: 0 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--chip);
+  color: var(--text); font-size: 11px; line-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: 1px; }
 .agent-asks { padding-left: 38px; }
 .agent-asks > [hidden] { display: none; }
 /* The agent tree (#121): its turn in a side thread, and its forks there, nested under its row. */
