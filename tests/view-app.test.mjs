@@ -11,6 +11,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { STOPPED } from '../server/view-app/browser.mjs';
 import { answerIn, DECLINE_MS, keepAnswer } from '../server/view-app/consent.mjs';
 import { ViewApp, viewApp } from '../server/view-app/view-app.mjs';
 import { attachViewApp, viewOf } from '../server/view-app/view-of.mjs';
@@ -132,6 +133,20 @@ test('a failed download says why on the card and to the agent', async () => {
     assert.equal(card.status, 'failed');
     assert.equal(card.reason, 'The download stopped (exit 1).');
     assert.ok(notices(s.adapter, s.se).some((c) => /it failed: The download stopped \(exit 1\)\. Carry on without view_app/.test(c.message.text)));
+  } finally {
+    s.done();
+  }
+});
+
+test('a download that stopping Postbox ended says so on the card, and wakes no agent on the way out', async () => {
+  const s = setup(fakeBrowser({ status: 'missing', install: { ok: false, message: STOPPED } }));
+  try {
+    await viewApp(s.rt, s.se.id, { appId: s.appId }, ctx(s.t));
+    s.rt.act(s.t.id, cards(s.rt, s.t)[0].id, 'download');
+    for (let i = 0; i < 50 && cards(s.rt, s.t)[0].status === 'downloading'; i++) await sleep(5);
+    assert.equal(cards(s.rt, s.t)[0].status, 'failed');
+    assert.equal(cards(s.rt, s.t)[0].reason, STOPPED);
+    assert.deepEqual(notices(s.adapter, s.se), []);
   } finally {
     s.done();
   }

@@ -41,6 +41,7 @@ import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
 import { watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
+import { settleDownloads } from './view-app/consent.mjs';
 import { ViewApp } from './view-app/view-app.mjs';
 import { attachViewApp, viewOf } from './view-app/view-of.mjs';
 
@@ -123,6 +124,7 @@ export async function start({
   settleInterrupted(rt);
   for (const [threadId, list] of Object.entries(store.state.items))
     for (const it of list) if (it.status === 'streaming') rt.patchItem(threadId, it.id, { status: 'stopped' });
+  settleDownloads(rt);
   rt.rearmSchedules();
   rt.rearmDeletions();
   rearmPersonaDeletes(rt);

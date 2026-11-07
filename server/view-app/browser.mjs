@@ -13,6 +13,24 @@ const IDLE_MS = 5 * 60 * 1000;
 export const CAPTURE_MS = 20000;
 /** How long the download may take before Postbox gives up on it. */
 const INSTALL_MS = 10 * 60 * 1000;
+/** What a download that stopping Postbox ended says. */
+export const STOPPED = 'Postbox stopped before the download finished. Call view_app again to be asked again.';
+/** How long closing a context or the browser may take before Postbox stops waiting on it. */
+const CLOSE_MS = 5000;
+
+/**
+ * `promise`, or a rejection saying `what` took too long after `ms`. A hung browser answers nothing, and view_app’s
+ * call mustn’t wait on it for good. @template T @param {Promise<T>} promise @param {number} ms @param {string} what
+ * @returns {Promise<T>}
+ */
+function within(promise, ms, what) {
+  /** @type {NodeJS.Timeout|undefined} */
+  let timer;
+  const late = new Promise((_, no) => {
+    timer = setTimeout(() => no(Object.assign(new Error(`${what} took longer than ${ms / 1000} s.`), { late: true })), ms);
+  });
+  return /** @type {Promise<T>} */ (Promise.race([promise, late])).finally(() => clearTimeout(timer));
+}
 /** The window a capture uses when no Postbox tab has reported its own: a 14-inch laptop’s browser (#95’s ruling). */
 export const DEFAULT_WINDOW = Object.freeze({ width: 1000, height: 680 });
 
@@ -51,11 +69,13 @@ function shellIn(dir, revision) {
 
 export class AppBrowser {
   /**
-   * @param {{ dir: string, spawnImpl?: typeof spawn, load?: () => Promise<any>, pkg?: string|null }} opts
-   *   dir: Postbox’s own browsers folder, in its data folder; load and pkg replace playwright-core in tests
+   * @param {{ dir: string, spawnImpl?: typeof spawn, load?: () => Promise<any>, pkg?: string|null, captureMs?: number }} opts
+   *   dir: Postbox’s own browsers folder, in its data folder; load, pkg and captureMs replace playwright-core and the
+   *   limit in tests
    */
-  constructor({ dir, spawnImpl = spawn, load = () => import('playwright-core'), pkg = packageDir() }) {
+  constructor({ dir, spawnImpl = spawn, load = () => import('playwright-core'), pkg = packageDir(), captureMs = CAPTURE_MS }) {
     this.dir = dir;
+    this.captureMs = captureMs;
     this.spawn = spawnImpl;
     this.load = load;
     this.pkg = pkg;
@@ -65,6 +85,10 @@ export class AppBrowser {
     this.idle = null;
     /** @type {Promise<{ ok: boolean, message?: string }>|null} */
     this.installing = null;
+    /** The installer while it runs, so stopping Postbox stops it too. @type {import('node:child_process').ChildProcess|null} */
+    this.installer = null;
+    /** Whether Postbox is stopping, which ends a download that’s running. */
+    this.stopping = false;
   }
 
   /** Whether the package is there, and whether its browser is downloaded. @returns {'no-package'|'missing'|'ready'} */
@@ -87,6 +111,7 @@ export class AppBrowser {
         env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: this.dir },
         stdio: ['ignore', 'ignore', 'pipe'],
       });
+      this.installer = child;
       let err = '';
       child.stderr?.on('data', (d) => {
         err = (err + d).slice(-2000);
@@ -100,10 +125,12 @@ export class AppBrowser {
       child.on('close', (code, signal) => {
         clearTimeout(timer);
         if (code === 0 && this.status() === 'ready') resolve({ ok: true });
+        else if (child.killed && signal === 'SIGKILL' && this.stopping) resolve({ ok: false, message: STOPPED });
         else resolve({ ok: false, message: `The download stopped (${signal ?? `exit ${code}`}). ${err.trim().split('\n').pop() ?? ''}`.trim() });
       });
     }).finally(() => {
       this.installing = null;
+      this.installer = null;
     });
     return this.installing;
   }
@@ -142,23 +169,43 @@ export class AppBrowser {
     this.idle.unref();
   }
 
-  /** Closes the browser, if one runs. Its pipe closing ends the headless shell too. */
+  /**
+   * Closes the browser, if one runs, and stops a download that’s running. The browser’s pipe closing ends the headless
+   * shell too, so a close that hangs is given up on after CLOSE_MS.
+   */
   async close() {
     if (this.idle) clearTimeout(this.idle);
     this.idle = null;
+    if (this.installer) {
+      // Its card says Postbox stopped, before the store closes (server/view-app/consent.mjs).
+      this.stopping = true;
+      this.installer.kill('SIGKILL');
+      await within(Promise.resolve(this.installing), CLOSE_MS, 'Stopping the download').catch(() => {});
+    }
     const b = this.starting;
     this.starting = null;
-    await b?.then((x) => x.close()).catch(() => {});
+    await within(Promise.resolve(b?.then((x) => x.close())), CLOSE_MS, 'Closing the browser').catch(() => {});
   }
 
   /**
    * A PNG of one app, rendered by the real page in capture mode (app/js/capture-view.mjs) at the given window and
    * theme, in a conversation `column` px wide, or beside the rail when that’s null. The context aborts every request
-   * that isn’t a GET to `origin`.
+   * that isn’t a GET to `origin`. The whole capture has CAPTURE_MS: past that, the browser is closed, as a hung one
+   * would hang every later call too, and the next call starts a new one.
    * @param {{ origin: string, threadId: string, itemId: string, width: number, height: number, column?: number|null, theme: 'light'|'dark' }} at
    * @returns {Promise<Buffer>}
    */
-  async capture({ origin, threadId, itemId, width, height, column = null, theme }) {
+  async capture(at) {
+    try {
+      return await within(this.render(at), this.captureMs, 'Rendering the app');
+    } catch (e) {
+      if (e.late) await this.close();
+      throw e;
+    }
+  }
+
+  /** The capture itself. @param {Parameters<AppBrowser['capture']>[0]} at @returns {Promise<Buffer>} */
+  async render({ origin, threadId, itemId, width, height, column = null, theme }) {
     const browser = await this.browser();
     const context = await browser.newContext({ viewport: { width, height }, colorScheme: theme, reducedMotion: 'reduce', deviceScaleFactor: 1 });
     try {
@@ -176,7 +223,7 @@ export class AppBrowser {
       this.touch();
       return png;
     } finally {
-      await context.close().catch(() => {});
+      await within(context.close(), CLOSE_MS, 'Closing the page').catch(() => {});
     }
   }
 }

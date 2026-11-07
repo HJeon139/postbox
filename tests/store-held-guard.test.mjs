@@ -40,7 +40,7 @@ const PUBLISHED = {
   'telemetry-record.mjs': ['collect'], // a run’s record, after it
   'thread-summary.mjs': ['lineOf', 'lineOf', 'threadCatchUp', 'threadLines', 'readUpTo', 'summarizeThread', 'summarizeThread', 'reactionLines'], // prompts and summaries for a later turn
   'tool-ask.mjs': ['resolveToolAsk'], // the person’s answer to an ask they see
-  'view-app/consent.mjs': ['resolveViewAsk'], // the person’s answer to the download card they see (#95)
+  'view-app/consent.mjs': ['resolveViewAsk', 'settleDownloads'], // the person’s answer to the download card they see, and at startup a card a stop cut short, before any write is held (#95)
   'view-app/view-app.mjs': ['viewApp'], // the app’s item, to render as the person sees it: the picture leaves the process
   'turn-marks.mjs': ['askedAgain', 'askedAgain'], // the person’s Retry of a reply they see
   'wake-cards.mjs': ['resolveHop', 'heldFor'], // the person’s answer to a hop card they see; the catch-up’s held lines, what the person sees (#693)
