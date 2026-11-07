@@ -44,12 +44,6 @@ function drawnRect(item, el) {
   return el.getBoundingClientRect();
 }
 
-/** Whether item is its transcript’s newest message: no keyed item after it, only the working rows. @param {Element} item */
-function isNewest(item) {
-  for (let n = item.nextElementSibling; n; n = n.nextElementSibling) if (n instanceof HTMLElement && n.dataset.key) return false;
-  return true;
-}
-
 /**
  * Puts el where block says, and its item becomes its transcript's anchor. Outside a transcript, a plain scrollIntoView.
  * @param {Element} el @param {'start' | 'center' | 'nearest'} [block]
@@ -66,9 +60,6 @@ export function jumpTo(el, block = 'center') {
   const seen = view.seen();
   const top = r.top - seen.top;
   const wanted = wantedTop(top, r.height, seen.bottom - seen.top, block);
-  // The newest message goes to the end, and the view follows: centring it would leave room below wherever the items
-  // above are shorter than their estimates, as the Mac’s fonts draw them, and the view would read, not follow.
-  if (isNewest(item)) s.scrollTop = s.scrollHeight;
-  else if (wanted !== null) s.scrollTop += top - wanted;
+  if (wanted !== null) s.scrollTop += top - wanted;
   view.pin(item);
 }
