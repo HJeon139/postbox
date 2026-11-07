@@ -4,10 +4,6 @@
 // it is on the transcript as data-view-* (publish, view-publish.mjs). Moved from thread.mjs’s mountTranscript (#531).
 
 import { inSight, measure } from './view-box.mjs';
-import { register, unregister } from './view-jump.mjs';
-import { DRAWN, drawNewest, skipOffscreen } from './view-skip.mjs';
-import { whenSmoothEnds } from './view-smooth.mjs';
-
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
  *   anchor: { key: string, at: number } | null, pinned: boolean, smoothing: boolean, dead: boolean, shown: number,
@@ -17,7 +13,11 @@ import { whenSmoothEnds } from './view-smooth.mjs';
  */
 import { onlyRemoves } from './view-changes.mjs';
 import { atEnd, box, findAnchor, gapOf, viewTop } from './view-geometry.mjs';
+import { register, unregister } from './view-jump.mjs';
+import { newView } from './view-new.mjs';
 import { publish } from './view-publish.mjs';
+import { DRAWN, drawNewest, skipOffscreen } from './view-skip.mjs';
+import { whenSmoothEnds } from './view-smooth.mjs';
 
 // The pill floats just above the composer. It shows only while the end is further below than that, so what it
 // floats over is never the working rows or the end of the last message (#91).
@@ -223,6 +223,15 @@ function changed(v, records) {
   v.noted ||= requestAnimationFrame(() => (v.noted = 0));
   noteEnd(v);
 }
+/**
+ * An item drawn again whole, as a finished reply is: it may come out shorter, and the page may grow back before the
+ * frame (#297), so the note is taken now, while it’s short. Once per redraw, not per streamed delta (#903).
+ * @param {View} v
+ */
+function redrawn(v) {
+  v.changed = true;
+  noteEnd(v);
+}
 // What arrived counts as unseen when the view isn’t on the newest message, including when follow() finds you
 // scrolled up in this frame, before its scroll event told the transcript (#341).
 /** @param {View} v */
@@ -260,32 +269,6 @@ const jumpable = (v) => ({
 });
 
 /**
- * A view’s state as it starts: following, unless it comes back from a rebuild while reading (was). Its observers are
- * added by mountView.
- * @param {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, was?: { anchor: any, unseen: number } }} o
- * @returns {View}
- */
-function newView({ el, inPanel, nodes, was }) {
-  return /** @type {any} */ ({
-    el,
-    inPanel,
-    nodes,
-    unseen: was?.unseen ?? 0,
-    stuck: !was,
-    anchor: was?.anchor ?? null,
-    pinned: false,
-    smoothing: false,
-    dead: false,
-    shown: -1,
-    lastTop: 0,
-    held: { end: 0, last: 0, width: 0 },
-    jump: null,
-    bound: null,
-    size: '',
-    seenTop: 0,
-  });
-}
-/**
  * The view of one transcript.
  * @param {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, was?: { anchor: any, unseen: number } }} o
  */
@@ -320,12 +303,7 @@ export function mountView({ el, inPanel, nodes, was }) {
     scrollToEnd: thenPublish((/** @type {boolean} */ smooth) => scrollToEnd(v, smooth)),
     grew: thenPublish(() => grew(v)),
     rebuilt: thenPublish(() => rebuilt(v)),
-    // An item drawn again whole, as a finished reply is: it may come out shorter, and the page may grow back before
-    // the frame (#297), so the note is taken now, while it’s short. Once per redraw, not per streamed delta (#903).
-    redrawn: () => {
-      v.changed = true;
-      noteEnd(v);
-    },
+    redrawn: () => redrawn(v),
     release: () => release(v),
     setJump: (/** @type {(n: number) => void} */ fn) => (v.jump = fn),
     /** An item moved to the end (item.move): if it was the anchor, its stub holds the place. */
