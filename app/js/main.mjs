@@ -2,6 +2,7 @@
 
 import './ring.mjs';
 import { onThemeChange } from './apps.mjs';
+import { CAPTURE, mountCapture } from './capture-view.mjs';
 import { client, connect, hrefOf, load, needsYou } from './client.mjs';
 import { $, h, icon } from './dom.mjs';
 import './focus-clear.mjs';
@@ -12,6 +13,7 @@ import { notify } from './notify-toast.mjs';
 import { mountPane } from './pane.mjs';
 import { canonical } from './pane-route.mjs';
 import { holdFocus } from './rerender-state.mjs';
+import { theme } from './sandbox-libs.mjs';
 import { liveMembers, mountEmptyProject, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';
 import { initHoverCards, navigate, refind, route, say, setAttention } from './ui.mjs';
@@ -21,6 +23,8 @@ let mounted = [];
 let current = null;
 /** The open conversation’s right pane, which changes in place while you stay in the conversation. */
 let pane = null;
+/** The open conversation’s column beside the rail and any pane, kept so the view report reads its width without a scan. */
+let conversation = null;
 /** @param {{ rebuild?: boolean }} [opts]  rebuild: the whole view, even when only the pane changed */
 function render({ rebuild = false } = {}) {
   const r = route();
@@ -98,14 +102,8 @@ function render({ rebuild = false } = {}) {
   // The right pane: a thread, Work, or both.
   pane = mountPane(t.id);
   mounted.push(rail, tr, comp, pane);
-  const shell = h(
-    'div.app',
-    { class: railHidden() ? 'rail-hidden' : '' },
-    topbar({ title: t.title, threadId: t.id }),
-    rail.el,
-    h('div.main', rail.strip, tr.el, comp.el),
-    pane.el,
-  );
+  conversation = h('div.main', rail.strip, tr.el, comp.el);
+  const shell = h('div.app', { class: railHidden() ? 'rail-hidden' : '' }, topbar({ title: t.title, threadId: t.id }), rail.el, conversation, pane.el);
   root.replaceChildren(shell);
   pane.set(r);
   requestAnimationFrame(() => tr.settle());
@@ -119,7 +117,11 @@ function view(threadId) {
   clearInterval(viewTimer);
   const ping = () => {
     if (document.visibilityState !== 'visible' || route().threadId !== threadId) return;
-    fetch(`/api/threads/${threadId}/view`, { method: 'POST' }).catch(() => {});
+    // With the window’s size and theme, and how wide the conversation is beside the rail and any pane, which view_app
+    // renders apps at (#95).
+    const column = conversation?.isConnected ? conversation.clientWidth : undefined;
+    const at = JSON.stringify({ width: innerWidth, height: innerHeight, column, theme: theme() });
+    fetch(`/api/threads/${threadId}/view`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: at }).catch(() => {});
     // A thread open in the panel is being read too.
     const side = route().sideId;
     if (side) fetch(`/api/threads/${side}/view`, { method: 'POST' }).catch(() => {});
@@ -207,8 +209,12 @@ addEventListener('pb-pane', (e) => {
 try {
   await load();
   applyTheme();
-  connect();
-  render();
+  // view_app’s capture page shows one app and nothing else: no stream, no report that a thread is open (#95).
+  if (CAPTURE) mountCapture(root);
+  else {
+    connect();
+    render();
+  }
 } catch (e) {
   root.replaceChildren(h('div', { style: { padding: '24px' } }, h('h1.title', 'Postbox couldn’t start'), h('p', e.message)));
 }

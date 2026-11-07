@@ -203,8 +203,10 @@ test('#120: a turn the person started in a side or topic thread (ctx.remote.brin
 });
 
 test('Claude Code says how it runs on a remote host; the Agent SDK and the mock can’t', () => {
-  // Only the remote shape: left out, the rest reads as forking, reading rules and Claude’s models (adapter.mjs).
+  // The remote shape, and that its agent sees images (view_app, #95): left out, the rest reads as forking, reading
+  // rules and Claude’s models (adapter.mjs).
   assert.deepEqual(CLAUDE_CODE_CAPABILITIES, {
+    images: true,
     remote: {
       stdin: 'file',
       // The one variable it sets on a host: a resume after an interrupted turn goes on with it (D2).

@@ -37,8 +37,8 @@ const state = {
 };
 const all = Object.values(state.sessions);
 
-test('every kind an agent can need you for counts, a refused step and a tool request too', () => {
-  assert.deepEqual(NEEDS_KINDS, ['block', 'failed', 'hop', 'permission', 'appsend', 'denial', 'toolask']);
+test('every kind an agent can need you for counts, a refused step, a tool request and view_app’s download ask too', () => {
+  assert.deepEqual(NEEDS_KINDS, ['block', 'failed', 'hop', 'permission', 'appsend', 'denial', 'toolask', 'viewask']);
   assert.equal(needsYouNow(state.sessions.c), true);
   assert.equal(needsYouNow(state.sessions.d), true);
   assert.equal(needsYouNow(state.sessions.e), false);

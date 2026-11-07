@@ -29,6 +29,7 @@ export { attachmentPaths } from './remote-turn.mjs';
  * out ends the turn with an authentication_failed result.
  */
 export const CLAUDE_CODE_CAPABILITIES = Object.freeze({
+  images: true,
   remote: Object.freeze({
     stdin: 'file',
     env: Object.freeze(['CLAUDE_CODE_RESUME_INTERRUPTED_TURN']),
