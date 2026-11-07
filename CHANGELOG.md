@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.36.0 (2026-11-07)
+
+### Features
+
+- **state:** apply turn.archive, a public event nothing emits yet
+- **uat:** the failed-reply-dismissed trigger (#883)
+- **threads:** Dismiss a failed reply without running it again (#883)
+
+### Fixes
+
+- **threads:** after Dismiss, focus stays on the control that's left (#883)
+
 ## 1.35.6 (2026-11-07)
 
 ### Fixes
