@@ -47,10 +47,15 @@ for (const [name, at, block] of /** @type {const} */ ([
 for (const [sizes, css] of [
   ['its usual size', ''],
   ['shorter than its estimate', '.transcript .item { line-height: 1.05 !important; font-size: 12px !important }'],
+  ['far shorter than its estimate', '.transcript .item { line-height: 0.9 !important; font-size: 8px !important }'],
 ]) {
   test(`a jump to the last item lands at the end, following, with items at ${sizes}`, async ({ page }) => {
+    // From the page's first draw, as the Mac's fonts are.
+    if (css)
+      await page.addInitScript((rule) => {
+        addEventListener('DOMContentLoaded', () => document.head.append(Object.assign(document.createElement('style'), { textContent: rule })));
+      }, css);
     await openRoom(app, page, room);
-    if (css) await page.addStyleTag({ content: css });
     // Up from the end first, so the jump has somewhere to go.
     await jump(page, 5000, 'center');
     await landed(page);
