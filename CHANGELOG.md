@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.39.2 (2026-11-07)
+
+### Fixes
+
+- **app:** go to a new conversation once the page has it (#926)
+
 ## 1.39.1 (2026-11-07)
 
 ### Fixes
