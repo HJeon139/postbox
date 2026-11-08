@@ -277,7 +277,7 @@ test('#281 taking back an expired card’s rule leaves it when someone asked for
 
 test('fetches are allowed by domain, files by path, anything else by tool', () => {
   assert.equal(rulesFor('WebFetch', { url: 'https://example.com/a?b' }).always, 'WebFetch(domain:example.com)');
-  assert.equal(rulesFor('Edit', { file_path: '/p/a.md' }).once, 'Edit(/p/a.md)');
+  assert.equal(rulesFor('Edit', { file_path: '/p/a.md' }).once, 'Edit(//p/a.md)');
   assert.equal(rulesFor('mcp__search__query', {}).always, 'mcp__search__query');
 });
 
