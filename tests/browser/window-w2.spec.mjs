@@ -57,15 +57,11 @@ test('#866 what you read holds still while the range unmounts below and above it
   await open(page);
   await page.mouse.move(640, 400);
   await scrollUp(page, 40);
-  const key = await page.evaluate(() => {
-    const mid = innerHeight / 2;
-    for (const n of document.querySelectorAll('#main > .item')) {
-      const r = n.getBoundingClientRect();
-      if (r.top <= mid && r.bottom > mid) return /** @type {HTMLElement} */ (n).dataset.key;
-    }
-    return null;
-  });
-  expect(key).toBeTruthy();
+  // The item you read is the view’s anchor. Not the item under the middle line: with the Mac’s item heights, that line
+  // can fall in the 12 px gap between two items, on no item at all (researcher’s probe at d607f96a, nearest item 1 px off).
+  const key = await page.locator('#main').getAttribute('data-view-anchor');
+  expect(key, 'the view reads at an anchor').toBeTruthy();
+  await expect(page.locator(`#main > .item[data-key="${key}"]`), 'the anchor is mounted, in view').toBeInViewport();
   const at = () => page.locator(`#main > .item[data-key="${key}"]`).evaluate((n) => n.getBoundingClientRect().top);
   const before = await at();
   // A few frames for the range to grow and shrink around it, with nothing scrolled.
