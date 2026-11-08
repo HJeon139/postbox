@@ -2,6 +2,17 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.43.0 (2026-11-08)
+
+### Features
+
+- **uat:** record whether the agent chose a picture or words
+
+### Fixes
+
+- **uat:** read the picture measure's log through lines()
+- **uat:** a run whose agent never replied is unknown, not words
+
 ## 1.42.0 (2026-11-08)
 
 ### Features
