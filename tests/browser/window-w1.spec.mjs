@@ -7,7 +7,9 @@ import { seedBigRoom } from '../../tools/uat/big-room.mjs';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
 const SMALL = 500;
-const LARGE = 5000;
+// Six times SMALL, and no more: each case loads every room’s events, and a loaded runner must sync them within
+// expect’s 5 s (5,000 items timed out at load 17 on the build host).
+const LARGE = 3000;
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;

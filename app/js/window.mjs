@@ -237,10 +237,16 @@ class TranscriptWindow {
     this.paintSpacers();
     const moved = first.getBoundingClientRect().top - top;
     if (Math.abs(moved) >= 1) this.scroller().scrollBy(0, moved);
+    // Tell the view now, as the scroll event would a frame later: it holds its anchor where this left it (view-state.mjs).
+    this.scroller().dispatchEvent(new Event('scroll'));
   }
   /** Mounts the opening range between its spacers, then grows as you scroll. */
   build() {
     live.add(this);
+    // The window keeps the page small itself, so the browser’s skipping (view-skip.mjs) stays off here: an item it
+    // mounts must lay out at its real height, or the spacers and the anchor would be measured against estimates.
+    this.el.dataset.window = 'on';
+    this.el.classList.remove('cv-skip');
     [this.from, this.to] = this.openRange();
     this.el.append(this.above, this.below);
     this.mountRun(this.from, this.to, this.below);
