@@ -214,17 +214,26 @@ test('#341 two resizes before the scroll event take an unheard scroll once, not 
   await settled(page);
   // Scroll up by 240 px and, before its scroll event, have the transcript hear two resizes: the first takes the unheard
   // scroll into the anchor, and the second must find nothing left to take.
-  const moved = await page.evaluate(async () => {
+  // What you read is the item across the middle once the scroll lands: two frames on, it's where the scroll put it. An
+  // item above it drawing taller moves scrollY but not the item (researcher's Mac trace: 24 px in Firefox); taking the
+  // scroll in twice would move the item 240 px.
+  const shift = await page.evaluate(async () => {
     const s = /** @type {Element} */ (document.scrollingElement);
-    const before = s.scrollTop;
-    s.scrollTop = before - 240;
+    s.scrollTop -= 240;
+    const items = [...document.querySelectorAll('#main > [data-key]')];
+    const mid = innerHeight / 2;
+    const item = items.find((n) => {
+      const r = n.getBoundingClientRect();
+      return r.top <= mid && r.bottom > mid;
+    });
+    const at = item?.getBoundingClientRect().top ?? 0;
     dispatchEvent(new Event('resize'));
     dispatchEvent(new Event('resize'));
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    return before - s.scrollTop;
+    return { found: !!item, by: Math.round((item?.getBoundingClientRect().top ?? 0) - at) };
   });
-  expect(moved, 'the view stays where the scroll put it').toBeGreaterThanOrEqual(239);
-  expect(moved).toBeLessThanOrEqual(241);
+  expect(shift.found, 'an item across the middle').toBe(true);
+  expect(Math.abs(shift.by), `what you read moved ${shift.by} px`).toBeLessThanOrEqual(2);
 });
 
 test('#341 following, a scroll up the transcript hasn’t heard of, then a resize: the view stays where the scroll put it', async ({ page }) => {
