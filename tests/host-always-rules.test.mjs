@@ -15,7 +15,7 @@ import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
 import { WRITE_TOOLS } from '../server/adapters/setup.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
-import { createFakeDaemon, FIXTURE_PROMPT, FIXTURE_PROMPTS, fixtureLines } from './fake-daemon.mjs';
+import { callLine, createFakeDaemon, FIXTURE_PROMPT, FIXTURE_PROMPTS, fixtureLines } from './fake-daemon.mjs';
 import { corpus, fakeHosts, HOST, rig, running, settled, starts, until, VERSION } from './remote-turns-helpers.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -52,6 +52,14 @@ async function answered(r, action, request = FIXTURE_PROMPT) {
 }
 
 const RULE = 'Bash(echo hi > note.txt)';
+/**
+ * A host prompt for a gh command, after its call’s line in the turn’s stream, as Claude Code sends one (the recorded
+ * call, with this command and ID).
+ */
+function gh(r, turn, command, id) {
+  r.d.append(turn, callLine(FIXTURE_PROMPT).replace(FIXTURE_PROMPT.tool_use_id, id).replace(FIXTURE_PROMPT.input.command, command));
+  return { ...FIXTURE_PROMPT, input: { ...FIXTURE_PROMPT.input, command }, tool_use_id: id };
+}
 /** Keeps an allow rule for a persona on a host, as the permissions panel does. */
 const keep = (rt, personaId, hostId, rule) => rt.changePermissionRule({ personaId, behavior: 'allow', rule, where: 'host', hostId });
 
@@ -120,14 +128,69 @@ test('in Ask me a host card offers Always allow too, and Postbox’s write asks 
   assert.deepEqual(settingsOf(start.argv).permissions, { ask: WRITE_TOOLS, allow: [RULE] });
 });
 
+test('in Ask me, a write Always allowed on a host card runs on the next host turn there without a card', async () => {
+  // Postbox’s write asks stay next to the kept rule in --settings, and an ask rule beats an allow rule in Claude Code,
+  // so the host’s Claude Code still asks: Postbox’s write check has to read the host’s kept rules (writePasses).
+  const r = rigIn('ask');
+  const turn1 = await running(r);
+  r.d.prompt(turn1, gh(r, turn1, 'gh pr create --title a --body b', 'toolu_gh_1'));
+  await until(() => r.store.items(r.t.id).some((i) => i.kind === 'permission'), 'the card');
+  const card = r.store.items(r.t.id).find((i) => i.kind === 'permission');
+  assert.equal(card.always?.saves, 'Bash(gh pr:*)');
+  await r.rt.resolvePermission(r.t.id, card.id, 'always');
+  await until(() => r.d.answers.length === 1, 'the answer');
+  r.d.end(turn1);
+  await settled(r);
+  const turn = await running(r);
+  r.d.prompt(turn, gh(r, turn, 'gh pr create --title z --body y', 'toolu_gh_2'));
+  await until(() => r.d.answers.length === 2, 'the second answer');
+  const cards = r.store.items(r.t.id).filter((i) => i.kind === 'permission');
+  assert.equal(cards.length, 1, 'no second card');
+  assert.equal(r.d.answers[1].result.behavior, 'allow');
+  r.d.end(turn);
+  await settled(r);
+});
+
+test('a write Always allowed for another host still gets a card on this one', async () => {
+  const r = rigIn('ask');
+  const other = r.rt.addHost({ name: 'other.example.com' });
+  keep(r.rt, personaOf(r).id, other.id, 'Bash(gh pr:*)');
+  const turn = await running(r);
+  r.d.prompt(turn, gh(r, turn, 'gh pr create --title a --body b', 'toolu_gh_3'));
+  await until(() => r.store.items(r.t.id).some((i) => i.kind === 'permission'), 'the card');
+  assert.equal(r.d.answers.length, 0);
+  const card = r.store.items(r.t.id).find((i) => i.kind === 'permission');
+  await r.rt.resolvePermission(r.t.id, card.id, 'deny');
+  r.d.end(turn);
+  await settled(r);
+});
+
 test('a subagent’s host prompt offers the same Always allow as the agent’s own, named for the subagent', async () => {
   const r = rigIn('auto');
   const sub = FIXTURE_PROMPTS[1];
   const card = await answered(r, 'always', sub);
   assert.ok(card.who, 'the subagent’s card');
-  const want = r.rt.alwaysFor(r.se(), { tool: sub.tool_name, input: sub.input, suggestions: undefined, suppressAlways: false });
+  const want = r.rt.alwaysFor(r.se(), { tool: sub.tool_name, input: sub.input, suggestions: undefined, suppressAlways: false, hostId: r.host.id });
   assert.deepEqual(card.always, want);
   assert.deepEqual(allowOf(await oneTurn(r)), ['Bash(echo bye > note2.txt)']);
+});
+
+test('a host card’s Always allow names the host of the turn that asked, even once the agent has moved', async () => {
+  const r = rigIn('ask');
+  const turn = await running(r);
+  r.d.prompt(turn, FIXTURE_PROMPT);
+  await until(() => r.store.items(r.t.id).some((i) => i.kind === 'permission'), 'the card');
+  const card = r.store.items(r.t.id).find((i) => i.kind === 'permission');
+  assert.match(card.always.lines[0].text, / on host\.example\.com \(Postbox keeps it/);
+  // The words come from the host the card saves under, not from where the persona is placed when they’re drawn.
+  r.store.emit('persona', { ...personaOf(r), remote: null });
+  const req = { tool: 'Bash', input: FIXTURE_PROMPT.input, suggestions: undefined, suppressAlways: false };
+  assert.match(r.rt.alwaysFor(r.se(), { ...req, hostId: r.host.id }).lines[0].text, / on host\.example\.com \(Postbox keeps it/);
+  r.store.emit('persona', { ...personaOf(r), remote: { hostId: r.host.id } });
+  assert.match(r.rt.alwaysFor(r.se(), req).lines[0].text, / in this folder \(\.claude\/settings\.local\.json\)$/);
+  await r.rt.resolvePermission(r.t.id, card.id, 'deny');
+  r.d.end(turn);
+  await settled(r);
 });
 
 test('a hostile rule is kept and sent as data: quotes, <, &, NUL and the longest a rule may be stay one string in valid JSON', async () => {

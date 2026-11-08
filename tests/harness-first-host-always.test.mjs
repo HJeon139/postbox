@@ -16,7 +16,13 @@ test('a host card from the harness’s own prompt offers Always allow, with the 
   const card = r.store.items(r.t.id).find((i) => i.kind === 'permission');
   // The host prompt carries no suggestions Postbox reads (turns-prompts.mjs, cardFor), so the rule is the one made from
   // the call the stream showed.
-  const want = r.rt.alwaysFor(r.se(), { tool: FIXTURE_PROMPT.tool_name, input: FIXTURE_PROMPT.input, suggestions: undefined, suppressAlways: false });
+  const want = r.rt.alwaysFor(r.se(), {
+    tool: FIXTURE_PROMPT.tool_name,
+    input: FIXTURE_PROMPT.input,
+    suggestions: undefined,
+    suppressAlways: false,
+    hostId: r.host.id,
+  });
   assert.ok(want, 'alwaysFor has a rule for this call');
   assert.deepEqual(card.always, want);
   r.rt.resolvePermission(r.t.id, card.id, 'allow');
