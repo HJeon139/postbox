@@ -63,8 +63,11 @@ test('#337 recorded warnings and crashes reach readers without being called pass
   const note = tools.read_message({ id: receipt.itemId }).message;
   assert.match(note, /v1[\s\S]*note[\s\S]*marks-too-small: Tiny marks/);
   tools.update_app({ id: 'lab', code: '<p>Second</p>' });
+  // A script error goes back to the agent once (#964); the next version that throws is recorded as crashed.
   rt.appCheck('lab', { version: 2, problems: [{ code: 'script-error', message: 'Unexpected token.' }] });
-  assert.match(tools.read_message({ id: 'lab' }).message, /v2[\s\S]*crashed[\s\S]*Unexpected token/);
+  tools.update_app({ id: 'lab', code: '<p>Third</p>' });
+  rt.appCheck('lab', { version: 3, problems: [{ code: 'script-error', message: 'Unexpected token.' }] });
+  assert.match(tools.read_message({ id: 'lab' }).message, /v3[\s\S]*crashed[\s\S]*Unexpected token/);
 });
 
 test('#337 an app check read stays inside the reader’s conversation', () => {

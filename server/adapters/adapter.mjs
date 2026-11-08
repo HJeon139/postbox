@@ -29,8 +29,8 @@
 //   ctx.mcpUrl                              where a real agent connects for the UI tools
 //   ctx.remote                              set when the turn runs on a remote host (#120), and then ctx.mcpUrl is
 //                                           never used: { link, welcome, settings, folder, version, turn, nextTurn,
-//                                           attach?, resumeInterrupted?, bring?, asksByPrompt?, attachments? } (RemoteContext
-//                                           below)
+//                                           attach?, resumeInterrupted?, bring?, asksByPrompt?, attachments?, allow? }
+//                                           (RemoteContext below)
 //                                           link: server/remote/link.mjs’s createHostLink; welcome: the daemon’s
 //                                           latest (home, node.path, harnesses); settings: the host’s
 //                                           (shared/remote-settings.mjs); folder: the host folder it works in;
@@ -49,6 +49,9 @@
 //                                           resumeInterrupted. attachments: the message’s files, which every start
 //                                           carries (server/remote/attachments.mjs); the message names their copies
 //                                           on the host through remote-turn.mjs’s attachmentPaths, never ctx.pathOf.
+//                                           allow: the rules the person always allowed from a card for this persona
+//                                           on this host (server/host-rules.mjs), which Claude Code gets as allow
+//                                           rules in --settings.
 //
 // Throw (or reject) to fail the turn; the message is shown to you with Retry.
 //
@@ -104,7 +107,7 @@
  * A turn’s remote context (#120), as the runtime passes it in ctx.remote.
  * @typedef {{ link: any, welcome: any, settings: Record<string, any>, folder: string, version: string,
  *   turn?: string, nextTurn: () => Promise<string>, attach?: { turn: string }, resumeInterrupted?: boolean, bring?: boolean,
- *   asksByPrompt?: boolean, attachments?: import('../remote/attachments.mjs').RemoteAttachment[] }} RemoteContext
+ *   asksByPrompt?: boolean, attachments?: import('../remote/attachments.mjs').RemoteAttachment[], allow?: string[] }} RemoteContext
  *   asksByPrompt: false for a backend that doesn’t ask through permission_prompt (server/permission-prompt.mjs)
  */
 

@@ -208,10 +208,16 @@ export function marked(mark) {
 export async function teardown(m, postboxes) {
   for (const p of postboxes) await p.done().catch(() => {});
   delete process.env.POSTBOX_CLAUDE_RECORD;
-  for (const s of standins(m)) {
-    m.pids.set(s.pid, 'a stand-in claude');
-    const shim = s.has('shim')?.pid;
-    if (shim) m.pids.set(shim, 'a shim');
+  // A trace that can’t be read (#899) still lets the rest end what the test started; its error comes after.
+  let unread = null;
+  try {
+    for (const s of standins(m)) {
+      m.pids.set(s.pid, 'a stand-in claude');
+      const shim = s.has('shim')?.pid;
+      if (shim) m.pids.set(shim, 'a shim');
+    }
+  } catch (e) {
+    unread = e;
   }
   const daemon = daemonPid(m);
   if (daemon) {
@@ -233,6 +239,7 @@ export async function teardown(m, postboxes) {
         process.kill(target, 'SIGKILL');
       } catch {}
   rmSync(m.root, { recursive: true, force: true });
+  if (unread) throw unread;
   return [...strays.values()];
 }
 
@@ -247,7 +254,14 @@ export async function onMachines(opts, fn) {
   } catch (e) {
     failed = e;
   }
-  const strays = await teardown(m, postboxes);
+  // The test’s own failure is the one reported (#899); a teardown that fails too rides along as its cause.
+  let strays;
+  try {
+    strays = await teardown(m, postboxes);
+  } catch (e) {
+    if (!failed) throw e;
+    if (failed instanceof Error && failed.cause === undefined) failed.cause = e;
+  }
   if (failed) throw failed;
   assert.deepEqual(strays, [], 'every process the test started is gone once Postbox and the daemon have closed');
 }

@@ -152,6 +152,10 @@ async function queueTool(b, k, t, result) {
     (e) => unrecorded(t.name, e),
   );
   const saved = await t.saved;
+  // The shim waits for a queued call’s answer (#827), so it gets one whatever Postbox did meanwhile: a hello can send
+  // the call on, and Postbox answer it, while its record is written. Postbox has it then, and tells its agent of its
+  // own refusal at the next turn (server/remote/turns-tools.mjs).
+  if (t.route === 'queue' && settled(t)) return result(true, QUEUED_TEXT);
   if (saved) {
     if (b.tools.get(k) === t) b.tools.delete(k);
     // A read answered offline meanwhile has been answered: one result per call.

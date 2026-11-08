@@ -7,7 +7,7 @@ import { encode, HARNESSES, message, PROTOCOL_VERSION, utf8Bytes } from '../shar
 /**
  * @typedef {{ offset: number, next: number, text: string }} Line
  * @typedef {{ turn: string, harness: string, stdin: string, start: object | null, out: Line[], in: Line[],
- *             exit: { code: number | null, signal: string | null, at: number } | null, interrupted: boolean,
+ *             exit: { code: number | null, signal: string | null, at: number } | null, interrupted: boolean, unkilled?: boolean,
  *             acked: number, writes: string[], snapshot: object | null, snapshotItems: object[] }} FakeTurn
  * @typedef {{ stdin: import('node:stream').PassThrough, stdout: import('node:stream').PassThrough, ready: boolean,
  *             closed: boolean, follows: Map<string, true>, held?: { turn: string, log: string }[], settings?: any }} Conn
@@ -80,7 +80,7 @@ export const followers = (d, turn, log) => [...d.conns].filter((c) => c.follows.
 export const sendLine = (d, c, t, log, l) =>
   send(d, c, 'line', { turn: t.turn, ...(log === 'in' ? { log } : {}), offset: l.offset, next: l.next, text: l.text });
 /** @param {FakeState} d @param {Conn} c @param {FakeTurn} t */
-export const sendEnded = (d, c, t) => send(d, c, 'ended', { turn: t.turn, exit: t.exit, size: size(t.out) });
+export const sendEnded = (d, c, t) => send(d, c, 'ended', { turn: t.turn, exit: t.exit, size: size(t.out), ...(t.unkilled ? { unkilled: true } : {}) });
 
 /** @param {FakeState} d @param {FakeTurn} t @param {{ code: number | null, signal: string | null }} how */
 export function finish(d, t, how) {
@@ -227,6 +227,13 @@ function welcome(d) {
         : { name, path: null, version: null, looked: [`${home}/.local/bin`, '/usr/local/bin'] },
     ),
     problems: d.problems,
-    turns: [...d.turns.values()].map((t) => ({ turn: t.turn, harness: t.harness, state: turnState(t), size: size(t.out), exit: t.exit })),
+    turns: [...d.turns.values()].map((t) => ({
+      turn: t.turn,
+      harness: t.harness,
+      state: turnState(t),
+      size: size(t.out),
+      exit: t.exit,
+      ...(t.unkilled && turnState(t) === 'interrupted' ? { unkilled: true } : {}),
+    })),
   };
 }

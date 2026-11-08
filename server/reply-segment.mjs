@@ -4,6 +4,7 @@
 // part, so a reply sits where it was written, not where its agent began; words that follow words stay together.
 // replySegment moved from server/runtime.mjs, turnContext.
 
+import { updateThread } from './thread-write.mjs';
 import { replyMarks } from './turn-marks.mjs';
 
 /**
@@ -29,7 +30,7 @@ export function replySegment(rt, turn, se0) {
     turn.lastSegment = turn.openSegment = it.id; // openSegment: the one still streaming, by its id (closeSegment)
     if (!turn.first) turn.first = it.id;
     if (turn.said) turn.said += '\n\n';
-    rt.putThread({ ...rt.s.threads[turn.threadId], lastSpeaker: turn.sessionId });
+    updateThread(rt, turn.threadId, { lastSpeaker: turn.sessionId });
   }
   return turn.segment;
 }

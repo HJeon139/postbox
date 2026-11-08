@@ -16,7 +16,7 @@
 //   d.addTurn(turn, opts)  a turn that was already on the host before Postbox connected
 //   d.append(turn, text)   a new out.jsonl line, sent to whoever follows the turn
 //   d.end(turn, exit?)     the harness exits: exit.json, then `ended` to followers
-//   d.interrupt(turn)      the runner is gone with no exit.json (a reboot, a SIGKILL): `ended` with exit null
+//   d.interrupt(turn, o?)  the runner is gone with no exit.json (a reboot, a SIGKILL): `ended` with exit null
 //   d.appendIn(turn, text) a new in.jsonl line (a write the daemon made, or one a test plays late), sent to followers
 //   d.caughtUp(turn, log)  sends a `caught-up` held back by holdCaughtUp
 //   d.tool(turn, name, args, id?) / d.prompt(turn, request?, id?) / d.expire(turn, id)   queue the shim’s events; the
@@ -241,11 +241,12 @@ function turnMethods(d) {
     end(turn, how = d.exit) {
       finish(d, need(d, turn), how);
     },
-    /** @param {string} turn */
-    interrupt(turn) {
+    /** @param {string} turn @param {{ unkilled?: boolean }} [o]  unkilled: its process there wouldn’t stop (#872) */
+    interrupt(turn, { unkilled = false } = {}) {
       const t = need(d, turn);
       if (t.exit || t.interrupted) return;
       t.interrupted = true;
+      t.unkilled = unkilled;
       for (const c of followers(d, turn, 'out')) {
         sendEnded(d, c, t);
         c.follows.delete(`${turn}:out`);

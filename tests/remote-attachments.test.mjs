@@ -14,6 +14,7 @@ import { encode, message, REMOTE_LIMITS, validateMessage } from '../shared/remot
 import { FILE_RE } from '../shared/remote-protocol-checks.mjs';
 import { start } from './remote-protocol-cases.mjs';
 import { messageOf, rig, settled, starts, until } from './remote-turns-helpers.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const MiB = 1024 * 1024;
 /** NUL, 0xFF, a newline and 0xFE: bytes no text decoding keeps. */
@@ -104,42 +105,34 @@ test('#120: a message over an attachment limit is refused, naming the limit, and
 /** A runtime with a remote persona, and an upload in its blob store. @param {Buffer} bytes */
 async function withUpload(bytes) {
   const r = rig();
-  const dir = mkdtempSync(join(tmpdir(), 'pb-attach-blobs-'));
+  const dir = tempDir('pb-attach-blobs-');
   r.rt.blobs = new Blobs(dir);
   const { sha256 } = await r.rt.blobs.put(bytes);
   r.store.emit('file', { id: 'fi_1', name: 'chart (1).png', size: bytes.length, type: 'image/png', sha256, at: 1, inCorpus: false });
   const a = { kind: 'file', fileId: 'fi_1', name: 'chart (1).png', type: 'image/png' };
-  return { r, a, blob: r.rt.blobs.pathOf(sha256), done: () => rmSync(dir, { recursive: true, force: true }) };
+  return { r, a, blob: r.rt.blobs.pathOf(sha256) };
 }
 
 test('#120: the runtime carries an upload to the host with the turn, and the agent’s message names the copy there', async () => {
-  const { r, a, blob, done } = await withUpload(BYTES);
-  try {
-    r.rt.sendMessage(r.t.id, { text: 'Look at this.', attachments: [a] });
-    await until(() => starts(r.d).length === 1 && r.d.turns.has(starts(r.d)[0].turn), 'the start');
-    const [s] = starts(r.d);
-    assert.deepEqual(s.attachments, [{ name: '1-chart_1_.png', base64: BYTES.toString('base64') }]);
-    const text = messageOf(s);
-    assert.ok(text.includes(`chart (1).png (image/png): /home/user/.postbox-remote/turns/${s.turn}/attachments/1-chart_1_.png`), text);
-    assert.ok(!text.includes(blob), 'the blob store’s path on this computer isn’t named');
-    r.d.end(s.turn);
-    await settled(r);
-  } finally {
-    done();
-  }
+  const { r, a, blob } = await withUpload(BYTES);
+  r.rt.sendMessage(r.t.id, { text: 'Look at this.', attachments: [a] });
+  await until(() => starts(r.d).length === 1 && r.d.turns.has(starts(r.d)[0].turn), 'the start');
+  const [s] = starts(r.d);
+  assert.deepEqual(s.attachments, [{ name: '1-chart_1_.png', base64: BYTES.toString('base64') }]);
+  const text = messageOf(s);
+  assert.ok(text.includes(`chart (1).png (image/png): /home/user/.postbox-remote/turns/${s.turn}/attachments/1-chart_1_.png`), text);
+  assert.ok(!text.includes(blob), 'the blob store’s path on this computer isn’t named');
+  r.d.end(s.turn);
+  await settled(r);
 });
 
 test('#120: a message with an attachment over the limit is refused before the turn starts, naming the limit', async () => {
-  const { r, a, done } = await withUpload(Buffer.alloc(REMOTE_LIMITS.attachmentBytes + 1));
-  try {
-    r.rt.sendMessage(r.t.id, { text: 'Look at this.', attachments: [a] });
-    await until(() => r.store.items(r.t.id).some((i) => i.kind === 'agent' && i.status === 'failed'), 'the refusal');
-    const failed = r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'failed');
-    assert.match(failed.error, /“chart \(1\)\.png” is 3\.1 MB, and a file sent to an agent on a host can be at most 3 MB/);
-    await settled(r);
-    assert.equal(starts(r.d).length, 0, 'nothing started on the host');
-    assert.equal(r.d.received.filter((m) => m.type === 'snapshot').length, 0, 'nor was the host asked for anything');
-  } finally {
-    done();
-  }
+  const { r, a } = await withUpload(Buffer.alloc(REMOTE_LIMITS.attachmentBytes + 1));
+  r.rt.sendMessage(r.t.id, { text: 'Look at this.', attachments: [a] });
+  await until(() => r.store.items(r.t.id).some((i) => i.kind === 'agent' && i.status === 'failed'), 'the refusal');
+  const failed = r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'failed');
+  assert.match(failed.error, /“chart \(1\)\.png” is 3\.1 MB, and a file sent to an agent on a host can be at most 3 MB/);
+  await settled(r);
+  assert.equal(starts(r.d).length, 0, 'nothing started on the host');
+  assert.equal(r.d.received.filter((m) => m.type === 'snapshot').length, 0, 'nor was the host asked for anything');
 });

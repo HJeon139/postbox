@@ -6,13 +6,12 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { assetBlobs, writeAsset } from '../server/assets.mjs';
 import { openDataFolder } from '../server/data-folder.mjs';
 import { publicState } from '../server/public-state.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 /** The text of each file directly in the data folder whose name matches, joined. */
 const filesText = (dir, pattern) =>
@@ -48,12 +47,9 @@ const forms = (/** @type {Buffer} */ bytes, /** @type {string} */ marker) => ({
 });
 
 test('an asset’s content reaches its blob file, and never the event log, a snapshot or /api/state', async (t) => {
-  const dir = await mkdtemp(join(tmpdir(), 'pb-assetprivate-'));
+  const dir = tempDir('pb-assetprivate-');
   const { store } = await openDataFolder(dir);
-  t.after(async () => {
-    await store.close().catch(() => {});
-    await rm(dir, { recursive: true, force: true });
-  });
+  t.after(() => store.close().catch(() => {}));
   store.emit('thread', { id: 'c1', members: [] });
   const marker = `marker-${randomUUID()}`;
   const req = { kind: 'write', room: 'c1', type: 'text/markdown', author: 'dev' };

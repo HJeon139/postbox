@@ -29,6 +29,7 @@
 
 import { DEFAULT_HOP_LIMIT } from '../../shared/limits.mjs';
 import { filesOf } from './fixtures.mjs';
+import { expectsOf } from './picture-choice.mjs';
 import { judgeOf } from './visual-judge.mjs';
 
 /** The backends that run Claude. Every other one makes a scenario a compatibility run. */
@@ -72,6 +73,25 @@ function permissionModesOf(spec) {
   return out;
 }
 
+/**
+ * The settings of #206’s measure of agents’ visuals: the files a run starts with, whether the tester judges the
+ * visual, whether Postbox’s own skills load, and which answer the question should get.
+ * @param {Record<string, string>} meta
+ */
+function visualMeasure(meta) {
+  return {
+    // `- files: subscriptions` (#206): a folder of tests/uat/e2e/fixtures/ copied into the workspace (tools/uat/fixtures.mjs).
+    files: filesOf(meta.files),
+    // `- judge: visual` (#206): the tester judges the first visual that answers its question (tools/uat/visual-judge.mjs).
+    judge: judgeOf(meta.judge),
+    // `- skills: off` (#206): Postbox runs its Claude agents without its own skills (server/adapters/agent-plugin.mjs),
+    // for a baseline to compare with the runs that have them.
+    skills: meta.skills === 'off' ? 'off' : 'on',
+    // `- expects: words` (#983): the answer the first message should get, a picture or words (tools/uat/picture-choice.mjs).
+    expects: expectsOf(meta.expects),
+  };
+}
+
 export function parseScenario(md) {
   const [head, ...phases] = md.split(/\n(?=## )/);
   const lines = head.split('\n');
@@ -103,16 +123,10 @@ export function parseScenario(md) {
     // fake-env` plants the allow-once scenario’s fake .env, and `- seed: git-remote` a throwaway remote with its guards
     // (tools/uat/workspace.mjs, tools/uat/git-remote.mjs).
     seed: meta.seed ?? null,
-    // `- files: subscriptions` (#206): a folder of tests/uat/e2e/fixtures/ copied into the workspace (tools/uat/fixtures.mjs).
-    files: filesOf(meta.files),
-    // `- judge: visual` (#206): the tester judges the first visual that answers its question (tools/uat/visual-judge.mjs).
-    judge: judgeOf(meta.judge),
+    ...visualMeasure(meta),
     // `- seed-diagrams: 6` (#701): with `- seed: big-room`, that many of its agent replies end in a Mermaid diagram.
     seedDiagrams: seedDiagramsOf(meta['seed-diagrams'], meta.seed),
     gh: meta.gh === 'none' ? 'none' : 'yes',
-    // `- skills: off` (#206): Postbox runs its Claude agents without its own skills (server/adapters/agent-plugin.mjs),
-    // for a baseline to compare with the runs that have them.
-    skills: meta.skills === 'off' ? 'off' : 'on',
     telemetry: meta.telemetry === 'manual' ? 'manual' : 'runner',
     summary: lines.filter((l) => l && !l.startsWith('#') && !/^- [\w-]+: /.test(l)).join('\n'),
     steps: count(meta.steps),

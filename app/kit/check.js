@@ -2,7 +2,7 @@
 // and posts what it finds, which goes to the agent. Postbox inlines it after the kit, and only into a check frame’s
 // page (server/sandbox.mjs); the kit hands it what it shares with the rest of the kit.
 (function () {
-  const { ready, errors, post, rgb, lum, textOverflow, textOverlap, controlHidden, classCollisions } = window.__pbCheck;
+  const { ready, errors, post, rgb, lum, textOverflow, textOverlap, controlHidden, classCollisions, ghostChoices } = window.__pbCheck;
   delete window.__pbCheck;
   // ── The pre-display check ─────────────────────────────────────────────────────────────
   // Run inside hidden frames at 375 and 1280 px before you see the app. Problems go to the agent.
@@ -29,8 +29,8 @@
     .then(() => new Promise((r) => setTimeout(r, 600)))
     .then(quiet)
     // Text over text is measured twice, a second apart, and the other layout problems once (check-layout.js, check-controls.js).
-    .then(() => Promise.all([textOverlap(innerWidth), textOverflow(innerWidth), controlHidden(innerWidth), classCollisions(innerWidth)]))
-    .then(([overlaps, overflows, hiddenControls, collisions]) => {
+    .then(() => Promise.all([textOverlap(innerWidth), textOverflow(innerWidth), controlHidden(innerWidth), classCollisions(innerWidth), ghostChoices()]))
+    .then(([overlaps, overflows, hiddenControls, collisions, ghosts]) => {
       const problems = [];
       const w = innerWidth;
       const sw = document.documentElement.scrollWidth;
@@ -65,7 +65,7 @@
         if (+el.getAttribute('tabindex') > 0)
           problems.push({ code: 'tab-order', message: 'An element sets a positive tabindex, which breaks keyboard order.' });
       });
-      problems.push(...lowContrast(), ...legibility(w), ...overflows, ...overlaps, ...hiddenControls, ...collisions);
+      problems.push(...lowContrast(), ...legibility(w), ...overflows, ...overlaps, ...hiddenControls, ...collisions, ...ghosts);
       for (const e of errors) problems.push({ code: 'script-error', message: e });
       post({ type: 'check', width: w, problems });
     });
@@ -155,11 +155,9 @@
       if (shown(el) && el.textContent.trim()) sizes.push(parseFloat(getComputedStyle(el).fontSize) * scale(el));
     const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     const seen = new Set();
-    const words = [];
     for (let n = walk.nextNode(); n; n = walk.nextNode()) {
       const el = n.parentElement;
       if (!n.textContent.trim() || !el || el.closest('svg') || !shown(el)) continue;
-      words.push(n.textContent);
       if (seen.has(el)) continue;
       seen.add(el);
       sizes.push(parseFloat(getComputedStyle(el).fontSize));
@@ -171,16 +169,15 @@
         message: `At ${w} px, ${small.length} of ${sizes.length} labels are drawn under 9 px (the smallest at ${px(Math.min(...small))} px), too small to read. Make them larger, or show fewer.`,
       });
     // An app that shows only an error or a missing-data message hasn’t worked, even if nothing else is wrong.
-    const said = words.join(' ').trim().replace(/\s+/g, ' ');
-    const content = marks || document.querySelector('canvas, table tr, input, select, textarea, img');
-    if (said && said.length < 300 && !content && ONLY_ERROR.test(said))
+    // app/kit/drawn.js decides, for a script error once the app is shown too (#964).
+    const { content, said } = window.__pbDrawn.look();
+    if (said && !content && window.__pbDrawn.onlyError(said))
       out.push({
         code: 'only-error',
         message: `It shows only “${said.slice(0, 120)}”, which reads as an error or missing data. Make sure the data it needs is there, or say what the person can do.`,
       });
     return out;
   }
-  const ONLY_ERROR = /\b(?:error|failed|isn[’']t loaded|not loaded|restart postbox|no data|missing|couldn[’']t|could not|can[’']t load|unable to|not found)\b/i;
   function background(el) {
     for (let e = el; e; e = e.parentElement) {
       const c = rgb(getComputedStyle(e).backgroundColor);

@@ -8,19 +8,18 @@
 // its first frame, which they ignore.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { rm } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { after, before, test } from 'node:test';
 import { Store } from '../server/store.mjs';
 import { fakeRequest } from './fake-http.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
 
 const PORT = 4457;
-const tmp = () => mkdtemp(join(tmpdir(), 'pb-epoch-'));
+const tmp = () => tempDir('pb-epoch-');
 let app;
 let dir;
 before(async () => {
@@ -30,7 +29,6 @@ before(async () => {
 });
 after(async () => {
   await app.close();
-  await rm(dir, { recursive: true, force: true });
 });
 
 /**

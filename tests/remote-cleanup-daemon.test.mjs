@@ -10,6 +10,7 @@ import { test } from 'node:test';
 import { MESSAGE_FILE, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { daemonSetup, startMsg, until } from './remote-cleanup-setup.mjs';
 import { hostHome } from './socket-base.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 test('daemon: an ack survives a restart; once the turn has ended and is acked whole its logs go, and welcome and read still answer', async () => {
   const s = daemonSetup();
@@ -88,7 +89,7 @@ test('daemon: start writes start.agentFile into the Kiro home the runner will us
 
 test('daemon: an agent file never replaces one that’s there, and start.env’s KIRO_HOME must resolve under ~/.postbox-remote', async () => {
   const s = daemonSetup();
-  const outside = mkdtempSync(join(tmpdir(), 'pb-outside-'));
+  const outside = tempDir('pb-outside-');
   try {
     const kiro = (turn, agentFile, env = {}) => startMsg(turn, { harness: 'kiro-cli', stdin: 'none', files: [], env, agentFile });
     const c = await s.connect();
@@ -119,7 +120,6 @@ test('daemon: an agent file never replaces one that’s there, and start.env’s
     assert.ok(!existsSync(join(s.home, '.kiro', 'agents', 'pb.json')));
   } finally {
     s.done();
-    rmSync(outside, { recursive: true, force: true });
   }
 });
 

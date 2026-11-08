@@ -10,12 +10,10 @@
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { start } from '../../server/index.mjs';
 import { describeInstall } from '../../server/remote/install.mjs';
+import { tempDir } from '../temp-dirs.mjs';
 import { chromiumMissing, freePort } from './chrome.mjs';
 
 const skip = await chromiumMissing();
@@ -109,7 +107,7 @@ before(async () => {
   const { launch } = await import('../../tools/browser.mjs');
   const { driver } = await import('../../tools/uat/driver.mjs');
   hosts = await import('../../tools/uat/driver-hosts.mjs');
-  dataDir = await mkdtemp(join(tmpdir(), 'pb-test-uat-hosts-'));
+  dataDir = tempDir('pb-test-uat-hosts-');
   const none = async () => null;
   const nothing = async () => [];
   const probes = {
@@ -135,7 +133,6 @@ before(async () => {
 after(async () => {
   await page?.close().catch(() => {});
   await app?.close();
-  if (dataDir) await rm(dataDir, { recursive: true, force: true });
 });
 
 /** One step of the story, in order, on the one page; a step that fails closes what it left open, as the driver does. */
