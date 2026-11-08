@@ -25,6 +25,8 @@ failOnPageErrors(test);
  * and the end has never drawn.
  */
 async function readingAtTop(page, title) {
+  // The setup alone can take most of a minute on CI's delayed shard, waiting for the reply below.
+  test.setTimeout(90_000);
   const conv = bigRoom(app, title);
   const [se] = app.rt.sessionsIn(conv.id);
   await page.setViewportSize({ width: 1280, height: 800 });
@@ -67,8 +69,11 @@ async function readingAtTop(page, title) {
         transcripts: document.querySelectorAll('.transcript').length,
       };
     }, reply.id);
+  // CI's report on 039a38ee: when the 15 s ran out the pill was there, unhidden, saying 1 new, with the reply on the
+  // page, read just after. The reply had arrived late, in the delayed shard: wait for it, then for its pill.
+  await expect(page.locator(`[data-key="${reply.id}"]`), 'the reply to reach the page').toBeAttached({ timeout: 45_000 });
   await expect(page.locator('.jump'))
-    .toBeVisible({ timeout: 15_000 })
+    .toBeVisible({ timeout: 5_000 })
     .catch(async (e) => {
       throw new Error(`${e.message}\nthe page when the check gave up: ${JSON.stringify(await state())}`);
     });
