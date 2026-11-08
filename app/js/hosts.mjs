@@ -50,15 +50,15 @@ export function hostsPanel() {
   return root;
 }
 
-/** Live while it’s on the page; it stops listening once it’s gone (another tab, or Settings closed). @param {Panel} p */
+/**
+ * Live while it’s on the page; it stops listening once it’s gone (another tab, or Settings closed). Settings puts the
+ * panel on the page as it builds it (sheets.mjs), so any change or tick that finds it off the page finds it gone:
+ * waiting to have seen it first kept a panel left before either for good, ticking (#945).
+ * @param {Panel} p
+ */
 function listen(p) {
-  let seen = false;
   const off = client.on((ch) => {
-    if (!p.root.isConnected) {
-      if (seen) stop();
-      return;
-    }
-    seen = true;
+    if (!p.root.isConnected) return stop();
     if (ch.type === 'host.status') {
       paintStatus(p, ch.data?.id);
       syncKeepUpdated(p, ch.data?.id);
@@ -67,11 +67,7 @@ function listen(p) {
   });
   // “Last heard from” moves on with the clock.
   const tick = setInterval(() => {
-    if (!p.root.isConnected) {
-      if (seen) stop();
-      return;
-    }
-    seen = true;
+    if (!p.root.isConnected) return stop();
     for (const id of Object.keys(S().hosts ?? {})) paintStatus(p, id);
   }, 30_000);
   const stop = () => {

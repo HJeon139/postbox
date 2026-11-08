@@ -16,11 +16,14 @@ import { client } from './client.mjs';
  */
 export function onChangeWhileAlive(el, fn) {
   const ref = new WeakRef(el);
-  const off = client.on((change) => {
+  const listener = (change) => {
     const live = ref.deref();
     if (!live) return off();
     fn(live, change, off);
-  });
+  };
+  // Marked, so a spec counting the page’s listeners can leave out those that go once their element is collected.
+  listener.whileAlive = true;
+  const off = client.on(listener);
   return off;
 }
 

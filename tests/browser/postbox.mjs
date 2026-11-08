@@ -160,12 +160,13 @@ export function watchWrites(page, url = /./) {
 /**
  * The page’s client listeners that stay until something removes them: not those that remove themselves once their
  * element is gone, at the next change after it leaves the page (they read `.isConnected`) or once it’s collected
- * (`ref.deref()`, app/js/held-weakly.mjs), as a queue button that was never on the page is (#912).
+ * (`onChangeWhileAlive` marks those `whileAlive`, app/js/held-weakly.mjs), as a queue button that was never on the
+ * page is (#912).
  * @param {import('@playwright/test').Page} page
  */
 export const keptListeners = (page) =>
   page.evaluate(() =>
-    import('/app/js/client.mjs').then(({ client }) => [...client.listeners].filter((f) => !/\.isConnected|ref\.deref\(\)/.test(String(f))).length),
+    import('/app/js/client.mjs').then(({ client }) => [...client.listeners].filter((f) => !f.whileAlive && !/\.isConnected/.test(String(f))).length),
   );
 
 /**

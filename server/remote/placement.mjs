@@ -95,15 +95,33 @@ const clipName = (s) => clipText(String(s).replace(/[\p{Cc}\p{Cf}]/gu, ''), 40);
 
 /**
  * Why an agent whose backend isn’t registered in this Postbox (#874: `POSTBOX_BACKENDS=mock`, `--demo`, the Agent SDK
- * or agy missing, or a name this version doesn’t know) can’t run, for its turn or for a request about it. A backend
+ * or agy missing, or a name this version doesn’t know) can’t run: for its turn, for a request about it, or for its turn
+ * on a host Postbox can’t follow after a restart (#909), which `interrupted()` ends with its own period. A backend
  * Postbox knows goes by its harness’s label; any other by its name, in quotes.
- * @param {string} handle @param {string} backend @param {{ turn: boolean }} o
+ * @param {string} handle @param {string} backend @param {'turn' | 'request' | 'interrupted'} kind
  */
-function unregisteredReason(handle, backend, { turn }) {
+function unregisteredReason(handle, backend, kind) {
   const name = Object.hasOwn(HARNESS_LABELS, backend) ? HARNESS_LABELS[backend][0] : `“${clipName(backend)}”`;
-  const unavailable = `${name} isn’t available on this computer. Install it and restart Postbox, or change this agent’s backend.`;
-  return turn ? `@${clipName(handle)}’s turn didn’t start: ${unavailable}` : `@${clipName(handle)}’s ${unavailable}`;
+  const unavailable = `${name} isn’t available on this computer`;
+  const fix = 'Install it and restart Postbox, or change this agent’s backend';
+  switch (kind) {
+    case 'turn':
+      return `@${clipName(handle)}’s turn didn’t start: ${unavailable}. ${fix}.`;
+    case 'request':
+      return `@${clipName(handle)}’s ${unavailable}. ${fix}.`;
+    case 'interrupted':
+      // The line names the host first, so it says which computer the backend is missing from.
+      return `${name} isn’t available to Postbox on this computer, so it can’t follow the turn on the host. Install it here and restart Postbox, or change this agent’s backend`;
+  }
+  throw new Error(`Unknown kind of unregistered reason: ${kind}`);
 }
+
+/**
+ * Why a turn on a host can’t be followed after a restart when its agent’s backend isn’t registered here (#909), for
+ * `Interrupted on <host>: <why>.`: it has no final period, and no handle, since the line is the agent’s own.
+ * @param {any} persona
+ */
+export const unregisteredWhy = (persona) => unregisteredReason('', backendOf(persona), 'interrupted');
 
 /** A persona’s adapter, or null when its backend isn’t registered (#874). @param {any} rt @param {any} persona */
 export function registeredAdapter(rt, persona) {
@@ -117,7 +135,7 @@ export function registeredAdapter(rt, persona) {
  */
 export function requestAdapter(rt, handle, persona) {
   const adapter = registeredAdapter(rt, persona);
-  if (!adapter) throw httpError(422, unregisteredReason(handle, backendOf(persona), { turn: false }));
+  if (!adapter) throw httpError(422, unregisteredReason(handle, backendOf(persona), 'request'));
   return adapter;
 }
 
@@ -127,7 +145,7 @@ export function requestAdapter(rt, handle, persona) {
  * @param {any} se @param {any} persona
  */
 export function refuseUnregistered(se, persona) {
-  const text = unregisteredReason(se.handle, backendOf(persona), { turn: true });
+  const text = unregisteredReason(se.handle, backendOf(persona), 'turn');
   throw Object.assign(new Error(text), { userMessage: text });
 }
 
@@ -138,7 +156,7 @@ export function refuseUnregistered(se, persona) {
  */
 export function refuseUnregisteredSend(rt, personas) {
   const p = personas.find((x) => !registeredAdapter(rt, x));
-  if (p) throw httpError(422, unregisteredReason(p.handle, backendOf(p), { turn: true }));
+  if (p) throw httpError(422, unregisteredReason(p.handle, backendOf(p), 'turn'));
 }
 
 /**

@@ -4,9 +4,13 @@
 
 /**
  * Whether a thread’s conversation is being deleted: deleteThread marks its root alone, so a side thread’s agent is
- * held too (#725). @param {any} rt @param {string} threadId
+ * held too (#725). Read pending, as sendMessage reads it: a delete held behind a commit holds what comes meanwhile
+ * (#796). @param {any} rt @param {string} threadId
  */
-export const conversationDeleting = (rt, threadId) => Boolean(rt.s.threads[rt.lineage(threadId).at(-1)]?.deleting);
+export function conversationDeleting(rt, threadId) {
+  const pending = (/** @type {string} */ id) => rt.store.pending.thread(id);
+  return Boolean(pending(rt.lineage(threadId, pending).at(-1))?.deleting);
+}
 
 /** Delivers what deliver held for a session in an Undo window, in the order it came. @param {any} rt @param {string} sessionId */
 export function releaseHeld(rt, sessionId) {

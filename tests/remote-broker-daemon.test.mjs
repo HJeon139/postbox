@@ -38,7 +38,7 @@ test('the daemon: a shim on its socket reaches the broker, Stop refuses the turn
     await msgs.next('started');
     const { got, shimSend } = socketShim(daemon);
     // The turn’s own token, which the daemon wrote at its start.
-    shimSend('hello', { token: readFileSync(p.turn('t1', TURN_FILES.shimToken), 'utf8'), turn: 't1' });
+    shimSend('hello', { token: readFileSync(p.turn('t1', TURN_FILES.shimToken), 'utf8'), turn: 't1', shim: 'k'.repeat(32) });
     await until(() => got.find((m) => m.type === 'welcome'), 'the welcome');
     assert.equal(got[0].permissionWaitMax, 60_000, 'the setting from Postbox’s hello');
     shimSend('call', { id: 'c1', name: 'read_conversation', args: {} });
