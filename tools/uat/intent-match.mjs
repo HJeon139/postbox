@@ -3,6 +3,8 @@
 // (its takeaway, tools/uat/visual-judge.mjs) without seeing the intent. After the run, a judge is given both sentences
 // and says whether they match: yes, partly or no.
 
+import { LIMITS } from '../../shared/limits.mjs';
+import { wordCount } from '../../shared/text.mjs';
 import { logEvents } from './picture-choice.mjs';
 import { shotAtStep } from './picture-shots.mjs';
 
@@ -63,7 +65,9 @@ Does the reader’s takeaway carry the agent’s intent? yes: the same point, in
 /** The report’s cell for a version’s intent. @param {{ intent?: string|null, intentV?: number }} visual */
 export function intentCell(visual) {
   if (visual.intent === undefined || visual.intent === null) return 'not an app';
-  return visual.intent || `none: v${visual.intentV} had no intent`;
+  if (!visual.intent) return `none: v${visual.intentV} had no intent`;
+  const n = wordCount(visual.intent);
+  return n > LIMITS.appIntentWords ? `${visual.intent} (${n} words, over ${LIMITS.appIntentWords})` : visual.intent;
 }
 
 /**

@@ -7,7 +7,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { agreement, calibrationPage, twinPairs } from '../tools/uat/calibration.mjs';
+import { agreement, arenaPairs, calibrationPage, twinPairs } from '../tools/uat/calibration.mjs';
 import { firstJudged } from '../tools/uat/pairs-backfill.mjs';
 
 test('#995 a scenario’s runs pair with its -base twin’s, newest first, one scenario after another', () => {
@@ -75,4 +75,19 @@ test('#995 a finished run’s picture is the item its customer judged first', ()
   const report = '## Visual verdicts\n\n| Step | Item |\n|---|---|\n| 5 | I3 | landed |\n| 6 | I9 | partly |\n';
   assert.equal(firstJudged(report), 'I3');
   assert.equal(firstJudged('## Timeline\n\n| 5 | I3 |'), null, 'only from the visual verdicts');
+});
+
+test('#995 a person is never shown a brief, a question or a screenshot twice; the judge alone may be', () => {
+  const r = (scenario, run, question, shot) => ({ scenario, run, picture: { question, shot } });
+  const pairs = [
+    { skill: r('subs', 'a', 'Cancel?', 's1.png'), base: r('subs-base', 'b', 'Cancel?', 's1.png') },
+    { skill: r('subs', 'c', 'Cancel?', 's1.png'), base: r('subs-base', 'd', 'Cancel?', 's1.png') }, // the same brief again
+    { skill: r('tests', 'e', 'Cancel?', 's1.png'), base: r('tests-base', 'f', 'Cancel?', 's1.png') }, // the same question
+    { skill: r('shelf', 'a', 'What have I got?', 's1.png'), base: r('shelf-base', 'g', 'What have I got?', 's1.png') }, // run a’s shot again
+    { skill: r('pantry', 'h', 'How is it saved?', 's1.png'), base: r('pantry-base', 'i', 'How is it saved?', 's1.png') },
+  ];
+  assert.deepEqual(
+    arenaPairs(pairs).map((p) => p.skill.run),
+    ['a', 'h'],
+  );
 });

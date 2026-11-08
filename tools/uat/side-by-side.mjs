@@ -6,6 +6,7 @@
 // person who asked. Whether to draw at all is #983’s measure, not this one (tools/uat/picture-choice.mjs).
 
 import { relative } from 'node:path';
+import { LIMITS } from '../../shared/limits.mjs';
 import { appAt, versionAt } from './intent-match.mjs';
 import { pairShot } from './pair-shot.mjs';
 import { firstExchange } from './picture-choice.mjs';
@@ -19,18 +20,20 @@ export const PAIR_SCHEMA = {
   required: ['pick', 'why'],
 };
 
-/** The first sentence of a text, up to 300 characters. @param {string} text */
+/** The first sentence of a text, cut to the intent’s word limit with an ellipsis. @param {string} text */
 export function firstSentence(text) {
   const t = String(text ?? '')
     .replace(/\s+/g, ' ')
     .trim();
-  return (/^.*?[.!?](?=\s|$)/.exec(t)?.[0] ?? t).slice(0, 300);
+  const words = (/^.*?[.!?](?=\s|$)/.exec(t)?.[0] ?? t).split(' ').filter(Boolean);
+  const max = LIMITS.appIntentWords;
+  return words.length > max ? `${words.slice(0, max).join(' ')}…` : words.join(' ');
 }
 
 /**
  * What the picture was meant to say: the agent’s intent for the version shown (#995), or, for a version from before
- * apps had one, the first sentence of the plain-text version the agent wrote with it, marked as such, never as the
- * agent’s intent.
+ * apps had one, the first sentence of the plain-text version the agent wrote with it, cut to 16 words and marked as
+ * such, never as the agent’s intent.
  * @param {ReturnType<typeof appAt>} app @param {number} at  when the screenshot was taken
  * @returns {{ intent: string, intentFrom: 'agent'|'fallback'|null, v: number|null }}
  */

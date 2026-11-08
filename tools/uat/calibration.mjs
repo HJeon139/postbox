@@ -33,6 +33,22 @@ export function twinPairs(runs, n) {
 }
 
 /** One side: its picture, and the sentence it was meant to say, introduced for what it is. */
+/**
+ * The pairs a person may be shown: no brief, question or screenshot twice (the maintainer’s rule for the arena, #995).
+ * A model judge may see repeats; a person sees one only with a reason the page states and the maintainer agreed to.
+ * @param {{ skill: any, base: any }[]} pairs  as twinPairs gives them, in order of preference
+ */
+export function arenaPairs(pairs) {
+  const seen = new Set();
+  return pairs.filter((p) => {
+    const marks = [`brief:${p.skill.scenario.replace(/-base$/, '')}`, `question:${p.skill.picture.question}`, `question:${p.base.picture.question}`];
+    const shots = [p.skill, p.base].map((r) => `shot:${r.dir ?? r.run}/${r.picture.shot}`);
+    if ([...marks, ...shots].some((m) => seen.has(m))) return false;
+    for (const m of [...marks, ...shots]) seen.add(m);
+    return true;
+  });
+}
+
 const sideHtml = (name, file, side) => {
   const said = side.intent ? `: “${escapeHtml(side.intent)}”` : '.';
   return `<section class="side"><h3>Picture ${name}</h3><img src="${file}" alt="Picture ${name}, as it was on screen"><p class="meant"><span class="dim">${escapeHtml(meantLabel(side))}</span>${said}</p></section>`;
@@ -82,14 +98,15 @@ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([json],{
  * Copies each pair’s pictures into `out` as <n>-a.png and <n>-b.png and writes the page.
  * @param {{ persona: string, question: string, sides: { file: string, intent: string, intentFrom: string|null }[] }[]} pairs
  *   sides: A’s and B’s, with their screenshot’s path
- * @param {string} out
+ * @param {string} out @param {{ page?: boolean }} [o]  page: false copies the pictures for a model judge only, with no page
  */
-export function calibrationPage(pairs, out) {
+export function calibrationPage(pairs, out, { page = true } = {}) {
   mkdirSync(out, { recursive: true });
   pairs.forEach((p, i) => {
     copyFileSync(p.sides[0].file, join(out, `${i + 1}-a.png`));
     copyFileSync(p.sides[1].file, join(out, `${i + 1}-b.png`));
   });
+  if (!page) return;
   const cards = pairs.map((p, i) => card(p, i + 1)).join('\n');
   writeFileSync(
     join(out, 'index.html'),

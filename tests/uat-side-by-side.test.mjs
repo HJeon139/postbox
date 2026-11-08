@@ -95,7 +95,8 @@ test('#995 a version from before intents gets the first sentence of its text ver
   assert.equal(meantLabel({ intentFrom: 'fallback' }), 'The agent’s text version of it (it gave no intent)');
   assert.equal(meantLabel({ intentFrom: 'agent' }), 'What the agent meant it to say');
   assert.equal(firstSentence('No stop here'), 'No stop here');
-  assert.equal(firstSentence('x'.repeat(400)).length, 300);
+  const long = 'Cost per use, monthly cost divided by uses per month, from your last 90 days, for each of your subscriptions. More.';
+  assert.equal(firstSentence(long), 'Cost per use, monthly cost divided by uses per month, from your last 90 days, for…');
 });
 
 test('#995 the judge sees only the two pictures and what each was meant to say, as the maintainer does', async () => {

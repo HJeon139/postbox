@@ -68,6 +68,8 @@ test('#995 the judge compares the takeaway with the intent of the version the te
   assert.deepEqual(timeline[0].visual, { item: 'I3', takeaway, intent: said, intentV: 1, match: 'partly', matchWhy: 'It names the six, not the $10 line.' });
   assert.equal(intentCell(timeline[1].visual), 'none: v2 had no intent');
   assert.equal(intentCell(timeline[2].visual), 'not an app');
+  const wordy = 'This picture shows how the monthly cost of each subscription compares with how often you actually used it lately.';
+  assert.equal(intentCell({ intent: wordy, intentV: 1 }), `${wordy} (19 words, over 16)`);
   const row = visualSection([
     { step: 2, visual: { ...timeline[0].visual, drawn: true, relationship: true, one_idea: true, readable: true, verdict: 'mostly' } },
   ]);
