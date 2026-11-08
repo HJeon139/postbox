@@ -8,7 +8,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { agreement, arenaPairs, calibrationPage, PAGE_CSP, pageId, twinPairs } from '../tools/uat/calibration.mjs';
+import { agreement, arenaPairs, calibrationPage, judgeIntoKey, PAGE_CSP, pageId, twinPairs } from '../tools/uat/calibration.mjs';
 import { firstJudged } from '../tools/uat/pairs-backfill.mjs';
 
 test('#995 a scenario’s runs pair with its -base twin’s, newest first, one scenario after another', () => {
@@ -135,4 +135,25 @@ test('#995 each page keeps its picks under its own name, so one page’s picks n
   assert.ok(html.includes(`<body data-page="${pageId(first)}">`));
   assert.ok(html.includes("const saved='picks-'+document.body.dataset.page;"));
   assert.ok(!html.includes('picks-995'), 'no name shared by every page');
+});
+
+test('#995 a failed judge call keeps the key: which side was which, and what the call cost', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-calibrate-'));
+  t.after(() => rmSync(dir, { recursive: true }));
+  const file = join(dir, 'page-key.json');
+  const read = () => JSON.parse(readFileSync(file, 'utf8'));
+  const key = [1, 2, 3].map((n) => ({ n, skillAs: 'A', judge: null, cost: 0 }));
+  const onDisk = [];
+  const result = await judgeIntoKey(key, file, async ({ n }) => {
+    onDisk.push(read().map((k) => k.skillAs));
+    if (n === 2) throw Object.assign(new Error('No answer.'), { cost: 0.03 });
+    return { pick: 'A', why: 'Clearer.', cost: 0.05 };
+  });
+  assert.deepEqual(onDisk[0], ['A', 'A', 'A'], 'written before the first call');
+  assert.equal(result.failed, 1);
+  assert.ok(Math.abs(result.spent - 0.13) < 1e-9, 'the failed call’s cost counts');
+  assert.deepEqual(read()[1], { n: 2, skillAs: 'A', judge: null, cost: 0.03, error: 'No answer.' });
+  assert.deepEqual(read()[2].judge, { pick: 'A', why: 'Clearer.' }, 'the calls after it still ran');
+  const a = agreement(read(), { picks: [1, 2, 3].map((n) => ({ n, pick: 'A' })) });
+  assert.equal(a.pairs, 2, 'the pair with no judge’s pick is left out');
 });

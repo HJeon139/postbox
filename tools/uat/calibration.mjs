@@ -150,6 +150,33 @@ ${cards}
 }
 
 /**
+ * Asks the judge about each pair, writing the key before the first call and after each one. The key is the only record
+ * of which side was which, so a failed call or a stopped run can’t lose a person’s picks: a failed pair keeps
+ * `judge: null`, with what the call cost, and `agreement` leaves it out.
+ * @param {{ n: number, judge: any, cost: number, error?: string }[]} key  mutated in place
+ * @param {string} file @param {(entry: any) => Promise<{ pick: string, why: string, cost: number }>} judgeOne
+ * @returns {Promise<{ spent: number, failed: number }>}
+ */
+export async function judgeIntoKey(key, file, judgeOne) {
+  const save = () => writeFileSync(file, `${JSON.stringify(key, null, 2)}\n`);
+  save();
+  let spent = 0;
+  let failed = 0;
+  for (const entry of key) {
+    try {
+      const { pick, why, cost } = await judgeOne(entry);
+      Object.assign(entry, { judge: { pick, why }, cost });
+    } catch (e) {
+      failed++;
+      Object.assign(entry, { judge: null, cost: e.cost ?? 0, error: e.message });
+    }
+    spent += entry.cost;
+    save();
+  }
+  return { spent, failed };
+}
+
+/**
  * The judge’s agreement with the maintainer’s picks, as skill, base or tie: how often they picked the same, and Cohen’s
  * κ, which discounts what two judges would agree on by chance. Pairs without a pick are left out.
  * @param {{ n: number, skillAs: 'A'|'B', judge: { pick: string } }[]} key @param {{ picks: { n: number, pick: string|null }[] }} answers

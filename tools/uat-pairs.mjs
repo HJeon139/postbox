@@ -8,11 +8,11 @@
 //   node tools/uat-pairs.mjs rate <folder>                       how often the judge preferred the skill’s picture
 //   node tools/uat-pairs.mjs agree <folder> <picks.json>         the judge’s agreement with the maintainer’s picks
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { agreement, arenaPairs, calibrationPage, twinPairs } from './uat/calibration.mjs';
+import { agreement, arenaPairs, calibrationPage, judgeIntoKey, twinPairs } from './uat/calibration.mjs';
 import { pictureOfRun } from './uat/pairs-backfill.mjs';
 import { runsRoot } from './uat/runs.mjs';
 import { parseScenario } from './uat/scenario.mjs';
@@ -64,23 +64,21 @@ async function build({ person }) {
     return { persona: personaOf(p.skill.scenario), question: p.skill.picture.question, sides, skillAs, p };
   });
   calibrationPage(shown, out, { page: person });
-  const key = [];
-  let spent = 0;
-  for (const [i, s] of shown.entries()) {
-    const judge = await judgePair({ persona: s.persona, question: s.question, sides: s.sides, model: opt['judge-model'], ask: askOnce });
-    spent += judge.cost;
-    key.push({ n: i + 1, skillAs: s.skillAs, skill: s.p.skill.run, base: s.p.base.run, judge: { pick: judge.pick, why: judge.why } });
-  }
-  writeFileSync(`${out}-key.json`, `${JSON.stringify(key, null, 2)}\n`);
+  const key = shown.map((s, i) => ({ n: i + 1, skillAs: s.skillAs, skill: s.p.skill.run, base: s.p.base.run, judge: null, cost: 0 }));
+  const { spent, failed } = await judgeIntoKey(key, `${out}-key.json`, ({ n }) => {
+    const s = shown[n - 1];
+    return judgePair({ persona: s.persona, question: s.question, sides: s.sides, model: opt['judge-model'], ask: askOnce });
+  });
   const where = person ? join(out, 'index.html') : out;
-  console.log(`${key.length} pairs in ${where}; the key, with the judge’s picks, is in ${out}-key.json. Spent $${spent.toFixed(2)}.`);
+  const noPick = failed ? ` The judge gave no pick on ${failed}; the key says why.` : '';
+  console.log(`${key.length} pairs in ${where}; the key, with the judge’s picks, is in ${out}-key.json. Spent $${spent.toFixed(2)}.${noPick}`);
 }
 
 async function main() {
   if (command === 'build' || command === 'judge') return build({ person: command === 'build' });
   if (command === 'rate') {
     const key = JSON.parse(readFileSync(`${resolve(args[0])}-key.json`, 'utf8'));
-    const a = agreement(key, { picks: key.map((k) => ({ n: k.n, pick: k.judge.pick })) });
+    const a = agreement(key, { picks: key.map((k) => ({ n: k.n, pick: k.judge?.pick ?? null })) });
     console.log(
       `${a.pairs} pairs: the judge preferred the skill’s picture in ${a.judge.skill} (${pct(a.pairs ? a.judge.skill / a.pairs : null)}), the baseline’s in ${a.judge.base}, neither in ${a.judge.tie}. It counts once its agreement with the maintainer is reported.`,
     );
