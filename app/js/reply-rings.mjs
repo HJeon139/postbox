@@ -27,7 +27,7 @@ export function replyLine(it, se, threadId) {
   ring.dataset.session = se.id;
   if (!follows) restRing(ring);
   const word = paintWord(h('span.who-state', { dataset: { session: se.id }, 'aria-live': 'off' }), se, follows);
-  if (follows) followersOf(se.id).add({ ring, word, threadId, itemId: it.id });
+  if (follows) followersOf(se.id).add(follower(ring, word, threadId, it.id));
   return { ring, word };
 }
 
@@ -35,7 +35,11 @@ export function replyLine(it, se, threadId) {
 // and nothing else, with no query over the page or a transcript (#564-b1). The latest reply changes only when an item
 // does. Then a line that no longer is the latest rests and leaves the list, and the transcript’s new latest line joins:
 // drawn later, as replyLine draws it, or already there, when the latest went back to an earlier reply (one replaced).
-/** @typedef {{ ring: Element, word: Element, threadId: string, itemId: string }} Follower */
+// Its ring and words are held weakly (held-weakly.mjs): a line whose transcript has left the page, and isn’t kept to
+// show again, is let go of, not kept with its whole old page (#866).
+/** @typedef {{ ring: WeakRef<Element>, word: WeakRef<Element>, threadId: string, itemId: string }} Follower */
+/** @param {Element} ring @param {Element} word @param {string} threadId @param {string} itemId @returns {Follower} */
+const follower = (ring, word, threadId, itemId) => ({ ring: new WeakRef(ring), word: new WeakRef(word), threadId, itemId });
 /** @type {Map<string, Set<Follower>>} */
 const followers = new Map();
 /** How many lines a session’s list holds before it lets go of those off the page. */
@@ -68,7 +72,7 @@ function promote(root, threadId, se) {
   if (!ring || !word || !key) return;
   ringFor(se, 'xs', ring);
   paintWord(word, se, true);
-  followersOf(se.id).add({ ring, word, threadId, itemId: key });
+  followersOf(se.id).add(follower(ring, word, threadId, key));
 }
 
 /**
@@ -82,17 +86,21 @@ function paintLines(se) {
   if (!set) return;
   // A line off the page is skipped, not painted; it may come back (a transcript kept to show again). Only a long list
   // lets go of those, so lines from transcripts gone for good don’t pile up.
-  if (set.size > KEEP) for (const f of set) if (!f.ring.isConnected) set.delete(f);
+  if (set.size > KEEP) for (const f of set) if (!f.ring.deref()?.isConnected) set.delete(f);
   for (const f of [...set]) {
-    if (!f.ring.isConnected) continue;
-    if (latestReply(f.threadId, se.id) === f.itemId) {
-      ringFor(se, 'xs', f.ring);
-      paintWord(f.word, se, true);
+    const ring = f.ring.deref();
+    const word = f.word.deref();
+    // Let go of by the page: nothing is left to paint.
+    if (!ring || !word) set.delete(f);
+    else if (!ring.isConnected) continue;
+    else if (latestReply(f.threadId, se.id) === f.itemId) {
+      ringFor(se, 'xs', ring);
+      paintWord(word, se, true);
     } else {
-      restRing(f.ring);
-      paintWord(f.word, se, false);
+      restRing(ring);
+      paintWord(word, se, false);
       set.delete(f);
-      promote(f.ring.closest('.transcript'), f.threadId, se);
+      promote(ring.closest('.transcript'), f.threadId, se);
     }
   }
 }

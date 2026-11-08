@@ -13,11 +13,12 @@
 // rt.store; st.items(t)` passed), or through call, apply or bind. Optional chaining is read as a plain member. The guard
 // reads source text, not the program, so a form it doesn't match passes, and review reads for it: an optional call
 // (`rt.store?.items?.(t)`), an optional bracket (`rt.store?.["items"](t)`) and `Reflect.apply(rt.store.items, …)` are three. It reads every .mjs, .js and .cjs file under server/ except the store's own and server/remote/host/,
-// the host daemon, which has no store. Sessions, schedules and the rest have no pending read (§ Not in this change).
+// the host daemon, which has no store. Sessions have a pending read by id, for their writes and a delivery's wait
+// (#796's class); schedules and the rest have none (§ Not in this change).
+// Threads follow the same rule for their writes (#796): tests/thread-write-guard.test.mjs places them.
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { test } from 'node:test';
+import { normalized, placed, sources } from './server-sources-fixture.mjs';
 
 /** store.items() and item(): published reads. */
 const PUBLISHED = {
@@ -78,15 +79,20 @@ const DIRECT = {
 /** store.pending reads. */
 const PENDING = {
   // The agent's next need when a card is answered, the released card whose turn it may read, and the card it notifies:
-  // each decides a write, so a card held behind a commit counts (#366).
-  'card-needs.mjs': ['keptTurns', 'nextNeed', 'releaseNeed', 'notifyOnce'],
+  // each decides a write, so a card held behind a commit counts (#366). An offered card and the current need's card
+  // (takesNeed): their times, and whether the current one still waits, decide whether the offer takes the need (#711).
+  'card-needs.mjs': ['keptTurns', 'nextNeed', 'takesNeed', 'takesNeed', 'releaseNeed', 'notifyOnce'],
   'restart-sweep.mjs': ['cardOf'], // the need's card: whether it still waits, and its time on a tie, decide the need kept (#366)
   'app-retire.mjs': ['retireApp', 'retireApp', 'retireApp', 'release'], // retire_app of an app the turn may have just shown, and its sweep of open sends
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
   'blocks.mjs': ['shownBy'], // update_block of a block the turn just showed
+  'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
   'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
+  // The queue a drain takes from and the queued messages a deleted session's release posts: a wake or a message
+  // queued behind a held commit is in them (#796).
+  'message-queue.mjs': ['releaseQueued', 'drainQueue', 'takePending'],
   'permission-cards.mjs': ['recordDenial'], // the same refused call, once
   'permission-expiry.mjs': ['tellExpired'], // the card a turn’s end just expired, told about once (#721)
   'permission-prompt.mjs': ['permission'], // the card the call waits on
@@ -96,11 +102,20 @@ const PENDING = {
   'reply-segment.mjs': ['wordsSegment'], // whether the turn’s open part is still its thread’s last decides where its next words go
   'runtime.mjs': [
     'addItem',
+    'addItem',
     'bringForward',
+    'sendMessage',
+    'deliver',
+    'deliver',
+    'deliver',
+    'text',
+    'compaction',
     'endWork',
     'endTurn',
     'endTurn',
+    'endTurn',
     'recordStopped',
+    'turnExited',
     'runningProgress',
     'setJobStep',
     'settleJobs',
@@ -112,12 +127,28 @@ const PENDING = {
     'runShellCommand',
     'pollMirror',
     'purgeSession',
-  ], // the turn’s own items and apps, a move after a pending read, and sweeps that write back
-  'side-threads.mjs': ['agentWake', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'], // the reply with the mention, a side line right after its add, and sweeps of hop cards
-  'thread-erase.mjs': ['eraseThreads'], // a thread’s apps, removed in a sweep
+    'purgeSession',
+    'purgeSession',
+  ], // the turn’s own items and apps, a move after a pending read, sweeps that write back, the thread a message, a delivery or a topic reply count goes to, maybe opened or deleting behind a held commit, and the members a purge keeps its room for, maybe joined behind one, and the session a stopped turn's exit settles, its “stopping” maybe held (#796)
+  // The reply with the mention, a side line right after its add, and sweeps of hop cards; the conversation's hop count,
+  // the topic the wake answers in, and endChain's hops and queued wakes, each maybe held behind a commit (#796).
+  // A session's change and notice diff against the session a held change left (#796's class in sessions).
+  // A streamed chunk's state check, a compaction's number and a tool result's urgent notes read the session a held write
+  // left, so a stream holds one patch, not one per chunk, a held compaction counts, and a held note is given. A delivery reads its session pending too (runtime.mjs
+  // deliver, twice): the last summary's givenMentions and seenItem, and a notice, held, are seen, not given again or lost (#506). Whether a thread has a persona's session already
+  // reads its pending members and sessions, so a second mention behind a held commit finds the session the first made.
+  'session-write.mjs': ['updateSession', 'pendingSessionsIn', 'pendingSessionsIn'],
+  'subagent-end.mjs': ['withUrgent'],
+  'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'],
+  // A thread’s apps, removed in a sweep; and whether a delivery's conversation is being deleted, as sendMessage reads it (#796).
+  'thread-erase.mjs': ['conversationDeleting', 'eraseThreads'],
+  // The thread a turn answers in, as deliver chose it from pending, and the topic a turn's end settles: a topic
+  // open_topic just opened, held (#796).
+  'thread-summary.mjs': ['threadHeader', 'threadCatchUp', 'settleThread'],
+  'thread-write.mjs': ['updateThread', 'pendingThreads'], // every write of a thread that exists starts from it (#796)
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
-  'topic-open.mjs': ['startTopic', 'startTopic', 'openTopic', 'conversationOf', 'conversationOf', 'repeatOf'], // one topic per message, the opener's woke, the item's thread and I6's check, each maybe held behind a commit (#637)
+  'topic-open.mjs': ['startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'], // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637)
   'wake-cards.mjs': ['declinedAdd', 'openCard'], // a declined add, so a mention asks no more (#693); another wake’s held hop card, so a second isn’t made
   'write-intent.mjs': ['stillOpen'], // the turn’s own lines, and the person’s held Stop on one
 };
@@ -138,54 +169,6 @@ const COMMITS = {
   'asset-orphans.mjs': ['sweepAssets'], // the released hashes a load deleted: assetReleases only (#516 S3)
   'assets.mjs': ['writeAsset'], // an asset version: assets, assetRooms and assetReleases only, none of items, work or apps (#516 S3)
 };
-
-const DECL =
-  /^\s*(?:export\s+)?(?:async\s+)?function\s+(\w+)|^\s*(?:async\s+)?(?!if\b|for\b|while\b|switch\b|catch\b)(\w+)\s*\([^)]*\)\s*\{\s*$|^(?:export\s+)?const\s+(\w+)\s*=/;
-/** The function a line is in: the nearest declaration above it. @param {string[]} lines @param {number} i */
-function enclosing(lines, i) {
-  for (let j = i; j >= 0; j--) {
-    const m = lines[j].match(DECL);
-    if (m) return m[1] ?? m[2] ?? m[3];
-  }
-  return '(top)';
-}
-/** Optional chaining read as a plain member, so `rt.store?.items(` is placed as `rt.store.items(` is. @param {string} t */
-const normalized = (t) => t.replace(/\?\.(?=[A-Za-z_$])/g, '.');
-/** Each server file's source, with the lines the formatter split joined. @returns {[string, string][]} */
-function sources(dir = new URL('../server', import.meta.url).pathname, rel = '', out = /** @type {[string, string][]} */ ([])) {
-  for (const e of readdirSync(join(dir, rel), { withFileTypes: true })) {
-    const path = rel ? `${rel}/${e.name}` : e.name;
-    if (e.isDirectory()) {
-      if (path !== 'remote/host') sources(dir, path, out);
-      continue;
-    }
-    if (!/\.(mjs|js|cjs)$/.test(e.name) || ['store.mjs', 'store-held.mjs'].includes(path)) continue;
-    const text = normalized(readFileSync(join(dir, path), 'utf8'))
-      .replace(/\s*\n\s*(?=\.[A-Za-z_(])/g, '')
-      .replace(/\(\s*\n\s*/g, '(')
-      .replace(/\s*\n\s*(?=\()/g, '');
-    out.push([path, text]);
-  }
-  return out;
-}
-/** file → the enclosing function of each line matching `re`, in order. @param {RegExp} re */
-function sites(re) {
-  /** @type {Record<string, string[]>} */
-  const out = {};
-  for (const [path, text] of sources()) {
-    const lines = text.split('\n');
-    lines.forEach((line, i) => {
-      if (re.test(line) && !/^\s*(\/\/|\*)/.test(line)) (out[path] ??= []).push(enclosing(lines, i));
-    });
-  }
-  return out;
-}
-const placed = (re, table, what) =>
-  assert.deepEqual(
-    sites(re),
-    table,
-    `${what} changed: place each site, with its reason, by the rule at the top of this file. Found: ${JSON.stringify(sites(re))}`,
-  );
 
 test('every published read of items, work and apps in server/ is placed, by file and function', () => {
   placed(/\bstore\.(items|item)\(/, PUBLISHED, 'the published reads');

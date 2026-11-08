@@ -1,17 +1,67 @@
 // Projects the person adds in Settings: a name and an existing folder, and the repository a push they ask for goes
 // to. Creating one moved out of server/index.mjs.
 
-import { stat } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { realpath, stat } from 'node:fs/promises';
+import { isAbsolute } from 'node:path';
+import { hasInvisible } from '../shared/invisible.mjs';
 import { httpError } from './helpers.mjs';
 import { isPushUrl } from './push-on-request.mjs';
 import { newId } from './store.mjs';
 
-/** @param {any} store @param {{ name?: string, folder?: string }} body */
+// A control character (C0, DEL or C1), NUL included: none belongs in a folder’s path.
+const CONTROL = /\p{Cc}/u;
+// A lone surrogate (Cs) isn’t text. The characters that change how a path displays, or display as nothing, are the
+// ones an asset name refuses (shared/invisible.mjs), except ZWNJ and ZWJ (U+200C, U+200D): they join letters in some
+// scripts and in emoji, and the folder exists under the name the person gave it.
+const SURROGATE = /\p{Cs}/u;
+const JOINERS = /[\u200c\u200d]/gu;
+/** Whether a folder's path holds a character that isn't text, or one that hides or reorders what it shows. @param {string} s */
+const hidden = (s) => SURROGATE.test(s) || hasInvisible(s.replace(JOINERS, ''));
+// The longest folder path taken, in UTF-16 code units: Linux’s PATH_MAX is 4096 bytes, which no longer path fits.
+const MAX_FOLDER = 4096;
+
+/** Whether a full path other than / has an empty, `.` or `..` part: //, /./, /../ or a / at its end. @param {string} path */
+const hasOddPart = (path) =>
+  path !== '/' &&
+  path
+    .slice(1)
+    .split('/')
+    .some((part) => part === '' || part === '.' || part === '..');
+
+/**
+ * A project’s folder as the person wrote it: a full path, as text, of at most MAX_FOLDER characters, with no control
+ * or hidden character and no empty, `.` or `..` part, so no `//`; `/` itself is taken. One `/` at its end, which a
+ * shell’s tab completion adds, is dropped. It bounds the file picker and is where the project’s agents start, so
+ * anything else is refused rather than normalized or resolved against the folder Postbox was started from (#547).
+ * @param {unknown} folder @returns {string}
+ */
+function fullPath(folder) {
+  if (folder === undefined || folder === null || (typeof folder === 'string' && !folder.trim())) throw httpError(422, 'Write the folder’s full path.');
+  if (typeof folder !== 'string') throw httpError(422, 'A project’s folder is its full path, as text. Write the folder’s full path.');
+  if (folder.length > MAX_FOLDER) throw httpError(422, `A folder’s path is at most ${MAX_FOLDER} characters. Pick a folder with a shorter path.`);
+  if (CONTROL.test(folder)) throw httpError(422, 'A folder’s path can’t contain control characters, such as a new line. Write the folder’s full path.');
+  if (hidden(folder))
+    throw httpError(
+      422,
+      'A folder’s path can’t contain invisible characters, such as a zero-width space or a bidi control, or a lone surrogate. Write the folder’s full path.',
+    );
+  if (!isAbsolute(folder)) throw httpError(422, 'Write the folder’s full path, starting with /. Postbox doesn’t guess where a relative one is.');
+  const path = folder !== '/' && folder.endsWith('/') && !folder.endsWith('//') ? folder.slice(0, -1) : folder;
+  if (hasOddPart(path))
+    throw httpError(422, 'A folder’s path can’t have an empty, . or .. part, such as //, /./ or /../. Write the folder’s full path without them.');
+  return path;
+}
+
+/**
+ * Makes a project at an existing folder, kept by its real path (symbolic links resolved), so a check that a path is
+ * inside the project compares it plainly.
+ * @param {any} store @param {{ name?: string, folder?: unknown }} body
+ */
 export async function createProject(store, body) {
-  const folder = resolve(String(body.folder ?? ''));
-  const st = await stat(folder).catch(() => null);
-  if (!st?.isDirectory()) throw httpError(422, 'That folder doesn’t exist. Pick an existing folder for the project.');
+  const written = fullPath(body.folder);
+  const folder = await realpath(written).catch(() => null);
+  const st = folder ? await stat(folder).catch(() => null) : null;
+  if (!folder || !st?.isDirectory()) throw httpError(422, 'That folder doesn’t exist. Pick an existing folder for the project.');
   const p = { id: newId('pr'), name: String(body.name || 'New project').slice(0, 80), folder };
   store.emit('project', p);
   return p;

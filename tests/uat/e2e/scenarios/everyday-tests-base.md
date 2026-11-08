@@ -4,12 +4,14 @@
 - agents: developer
 - models: persona
 - judge: visual
+- expects: picture
 - files: test-health
 - steps: 6
 - project: Shop
 - conversation: Flaky tests
+- skills: off
 
-This measures how an agent explains the person’s own data with a picture, one of the everyday briefs (designs/skills/visual-explainer/briefs/flaky-tests.md). **Baseline:** no skill, the same files and words, to compare with the run that has it. The files are already in the project folder. The runs are scored afterward, with the takeaway test on the first visual’s screenshot; your job is to ask as this person would. Don’t name a chart type, a library, Postbox’s tools, the word “app” or the skill, and don’t point the agent at a file by name.
+This measures how an agent explains the person’s own data with a picture, one of the everyday briefs (designs/skills/visual-explainer/briefs/flaky-tests.md). **Baseline:** without Postbox’s skills (`- skills: off`), the same files and words, to compare with the run that has it. The files are already in the project folder. The runs are scored afterward, with the takeaway test on the first visual’s screenshot; your job is to ask as this person would. Don’t name a chart type, a library, Postbox’s tools, the word “app” or the skill, and don’t point the agent at a file by name.
 
 ## Phase 1: Ask
 

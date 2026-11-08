@@ -10,7 +10,11 @@ const MINUTE = 60 * SECOND;
 export const TIMINGS = timings({
   /** Between progress notifications while a prompt waits. */
   progress: MINUTE,
-  /** An asked tool fails once the daemon has been unreachable this long. */
+  /**
+   * An asked tool fails once the daemon has been unreachable this long. A queued one fails if the daemon hasn’t taken
+   * it in this long, reachable or not: the daemon’s check and its record of the call are local and take milliseconds,
+   * so a daemon that’s up and silent this long is a fault, and one number covers both (#827).
+   */
   unreachable: 30 * SECOND,
   /** An asked tool fails if the daemon hasn’t answered it in this long. */
   askMax: 10 * MINUTE,
@@ -25,7 +29,8 @@ export const TIMINGS = timings({
  * A message for the daemon, kept until it’s settled and sent again, in order, after each reconnect.
  * @typedef {{ msg: Record<string, any>, kind: 'queue' | 'ask' | 'permission' | 'notice', rpcId?: any,
  *   started: number, timers: Set<ReturnType<typeof setTimeout>>, progress?: { token: string | number, value: number },
- *   tool?: string, down?: ReturnType<typeof setTimeout> | null }} Pending
+ *   tool?: string, down?: ReturnType<typeof setTimeout> | null, sent?: Record<string, any> }} Pending
+ * `sent`: a queued call’s arguments as sent, for its answer’s text (queuedText).
  * @typedef {ReturnType<typeof shimState>} Shim
  */
 

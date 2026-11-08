@@ -13,10 +13,11 @@
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { withAskRules } from '../permission-rules.mjs';
-import { commandsOf, createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
+import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, memoryRootFor } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
+import { listCommands } from './sdk-commands.mjs';
 import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
 import { deniedTools, effortOf, fromContext, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
 
@@ -37,8 +38,9 @@ export async function loadAgentSdk() {
 /**
  * @param {{ persona: any, cwd: string, addDirs?: string[], sessionId: string, resume: boolean, mcpUrl: string, guide: string,
  *           abortController: AbortController, canUseTool?: Function, fork?: any, allowOnce?: string[],
- *           rules?: { allow?: string[], ask?: string[], deny?: string[] }, memoryDir?: string|null }} turn
+ *           rules?: { allow?: string[], ask?: string[], deny?: string[] }, memoryDir?: string|null, plugins?: string[] }} turn
  *   rules: the ones the person made for this conversation only (#66), passed every turn. memoryDir: the persona’s own (#208).
+ *   plugins: plugin folders to load, Postbox’s own (agent-plugin.mjs).
  */
 export function sdkOptions({
   persona,
@@ -54,6 +56,7 @@ export function sdkOptions({
   allowOnce = [],
   rules = {},
   memoryDir = null,
+  plugins = [],
 }) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   const setup = setupOf(persona);
@@ -89,6 +92,8 @@ export function sdkOptions({
     thinking: { type: 'adaptive', display: 'summarized' },
     forwardSubagentText: true,
     systemPrompt: { type: 'preset', preset: 'claude_code', append: guide },
+    // Postbox’s skills, beside the person’s own.
+    plugins: plugins.map((path) => ({ type: /** @type {const} */ ('local'), path })),
     permissionMode: MODES[mode],
     ...(mode === 'bypass' ? { allowDangerouslySkipPermissions: true } : { canUseTool }),
     abortController,
@@ -138,28 +143,6 @@ export function liveControl(q, started = 'auto') {
   };
 }
 
-/**
- * The SDK’s supportedCommands() (name, description, argumentHint), marked as skills where init says so, and without
- * the ones bound to a terminal. It’s a control request, which the SDK documents for streaming input only: if it
- * fails, init’s list stands.
- * @param {any} q @param {any} init @param {any} ctx
- */
-export function listCommands(q, init, ctx) {
-  if (typeof q?.supportedCommands !== 'function' || !ctx.commands) return;
-  const skills = new Set(
-    commandsOf(init)
-      .filter((c) => c.skill)
-      .map((c) => c.name),
-  );
-  const terminal = new Set(Array.isArray(init?.terminal_slash_commands) ? init.terminal_slash_commands : []);
-  Promise.resolve()
-    .then(() => q.supportedCommands())
-    .then(
-      (list) => Array.isArray(list) && ctx.commands(list.filter((c) => !terminal.has(c?.name)).map((c) => (skills.has(c?.name) ? { ...c, skill: true } : c))),
-      () => {},
-    );
-}
-
 /** Where a forked session starts: the branch point’s checkpoint, or the latest point of the session it forks. */
 export function sdkForkPoint(state) {
   if (state.fork?.sdkSessionId) return state.fork;
@@ -170,7 +153,7 @@ export function sdkForkPoint(state) {
 export class AgentSdkAdapter {
   name = 'agent-sdk';
   // It asks through canUseTool (sdk-permission.mjs), never through permission_prompt (#220).
-  capabilities = { promptTool: false, images: true };
+  capabilities = { promptTool: false, images: true, skills: true };
 
   /**
    * @param {{ sdk: { query: Function }, workRoot: string, spawnImpl?: typeof spawn, kill?: import('./process-group.mjs').KillFn,

@@ -2,6 +2,181 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.44.3 (2026-11-08)
+
+### Fixes
+
+- **permissions:** a file rule escapes the characters Claude Code reads as a pattern
+- **permissions:** Always allow on a file saves a rule that names it from the root
+- **app:** a review's Preview hears selections through one page listener, held weakly (#945)
+- **app:** a project's Threads page lets the room you left go (#945)
+- **app:** a review's marked text is let go of a frame after you go to another conversation (#945)
+- **app:** the Hosts panel stops listening and ticking once it's off the page, seen or not (#945)
+- **integration:** onMachines reports the test's own failure, and teardown ends what it started first
+
+## 1.44.2 (2026-11-08)
+
+### Fixes
+
+- **sessions:** viewing a conversation clears the unread its agents counted behind a held commit
+- **sessions:** a turn stopped behind a held commit ends idle once it exits, not stopping
+- **catch-up:** a message a summary gives in full reaches the agent once, the person's too
+- **sessions:** a session write and a new agent's turn start from the session as held writes leave it
+- **threads:** every thread write starts from the thread as held writes leave it
+
+## 1.44.1 (2026-11-08)
+
+### Fixes
+
+- **app:** the places menu reads the projects when it opens (#986)
+- **projects:** refuse the shared invisible characters in a folder; check an asset name's first
+- **app:** rebuild the top bar only when what it shows changes (#986)
+- **assets:** refuse C1, bidi and other hidden characters in a new asset's name
+- **files:** send Cross-Origin-Resource-Policy: same-origin on three stored-byte routes
+- **projects:** refuse an empty or relative folder when creating a project
+- **telemetry:** check a session.patch's own public flag before keeping it
+
+## 1.44.0 (2026-11-08)
+
+### Features
+
+- **permissions:** Always allow on a host card, kept by Postbox and sent in the host turn's settings
+- **permissions:** harness first: in Auto, Postbox adds no ask rules of its own for writes
+
+### Fixes
+
+- **remote:** one field for a host turn that may still run, and its hint says it waits
+- **remote:** only a host turn listed running waits for the person
+- **remote:** a listed host turn whose backend wasn't registered waits for the person
+- **remote:** interrupt a host turn whose backend isn't registered after a restart
+- **permissions:** a host's kept Always allow settles a write, and the card names the asking host
+- **permissions:** the panel keeps "Writes you asked for" in Auto, where it still applies
+
+## 1.43.0 (2026-11-08)
+
+### Features
+
+- **uat:** record whether the agent chose a picture or words
+
+### Fixes
+
+- **uat:** read the picture measure's log through lines()
+- **uat:** a run whose agent never replied is unknown, not words
+
+## 1.42.0 (2026-11-08)
+
+### Features
+
+- **uat:** trigger host-queued-refused, and remotehosts phase 7 (#827)
+
+### Fixes
+
+- **remote:** answer a queued call once its record is written, whatever Postbox did (#827)
+- **remote:** a queued call on a host waits for the daemon, so a refusal reaches its agent (#827)
+- **uat:** resolve a session's working folder before naming its Claude Code transcript (#932)
+
+## 1.41.2 (2026-11-08)
+
+### Fixes
+
+- **apps:** a retired app's item keeps to the message column
+
+## 1.41.1 (2026-11-08)
+
+### Fixes
+
+- **apps:** don't report the ResizeObserver loop warning as an app error
+
+## 1.41.0 (2026-11-08)
+
+### Features
+
+- **apps:** the app check reports a choice shown by toggling .ghost
+- **apps:** add a primary button variant for agent apps
+- **uat:** fault stop-runner, trigger host-hung-killed, and remotehosts phase 6 (#872)
+
+### Fixes
+
+- **agents:** the guide says which control is for a choice and which for an action
+- **uat:** phase 6 hangs the runner while a long reply is written (#872)
+- **uat:** stop-runner also matches a runner under the resolved home folder (#872)
+- **remote:** say a host turn ended unkilled in the daemon's welcome too (#872)
+- **remote:** crossing looks at a silent host runner keep the newer one's verdict (#872)
+- **remote:** keep a host runner's silence in its turn folder across daemon restarts (#872)
+- **remote:** a silent host runner's process check stands for 5 s, but not at the ceiling (#872)
+- **remote:** kill a host runner hung past the silence ceiling before its turn ends (#872)
+
+## 1.40.1 (2026-11-08)
+
+### Fixes
+
+- **apps:** send a script error in the pre-display check back to the agent once
+- **apps:** keep an app that has drawn running after a script error
+- **tests:** a browser spec's Postbox removes its folder when its start or its close fails
+- **tests:** the host UAT and view_app stop tests use tempDir
+- **tests:** the push, runner shot and unhandled rejection process tests use tempDir
+- **tests:** the bench signal and lint process tests use tempDir
+- **tests:** the host integration tests and the host UAT tests use tempDir
+- **tests:** the remote e2e tests and the host manager fixture use tempDir
+- **tests:** the remote attachment and cleanup tests make their folders with tempDir
+- **tests:** the app browser, persona delete and steering tests use tempDir
+- **tests:** the asset tools fixture and wiring tests use tempDir
+- **tests:** the archive, prompt claim and asset privacy tests use tempDir
+- **tests:** the review route, prototype key and runtime route tests use tempDir
+- **tests:** the epoch, server token and served files tests use tempDir
+- **tests:** the wake-owner, persona outage and store gate tests use tempDir
+- **tests:** the store outage tests make their data folders with tempDir
+- **tests:** tempDir removes its folders when the test file's process exits
+
+## 1.40.0 (2026-11-08)
+
+### Features
+
+- **skills:** the visual-explainer draws one step's cause close up (VE9)
+- **skills:** the visual-explainer's first state shows the idea (VE13)
+- **app:** search the conversation from the top bar's button, and jump to a hit (#866)
+
+### Fixes
+
+- **app:** the top bar clips its overflow, so it never widens a phone's page (#866)
+- **skills:** the visual-explainer sizes from a frame that can start 0 wide
+- **thread:** a box that changed size and clamped the view to its end doesn't start following
+- **app:** holders of drawn elements hold them weakly, so leaving a room lets its page go (#866)
+- **check:** fail the gate on what test and test:integration leave in its temp folder
+- **agents:** the quick panel repaints for its session, persona and a reload, not each item
+
+## 1.39.3 (2026-11-07)
+
+### Fixes
+
+- **catalog:** the string-options error's example is a valid option itself (#455)
+- **remote:** a host asks hostUpdateRefusal before sending an update_block, in one place (#854)
+- **remote:** a host's shim refuses an invalid update_block in the call, as Postbox would (#854)
+- **catalog:** string options get one error with an option's shape, and the docs name it (#455)
+- **catalog:** options with no id aren't reported as duplicates of "undefined" (#552)
+- **remote:** a host's daemon queues an outcome or withdraw update_block for Postbox (#854)
+
+## 1.39.2 (2026-11-07)
+
+### Fixes
+
+- **app:** go to a new conversation once the page has it (#926)
+
+## 1.39.1 (2026-11-07)
+
+### Fixes
+
+- **needs:** rank an offered card against the need as nextNeed does
+
+## 1.39.0 (2026-11-07)
+
+### Features
+
+- **adapters:** Antigravity, Kiro and Codex leave out the skills a persona turned off
+- **personas:** choose which skills each agent loads
+- **adapters:** Antigravity, Kiro and Codex agents load the visual-explainer skill too
+- **adapters:** every Claude agent loads Postbox's visual-explainer skill by default
+
 ## 1.38.0 (2026-11-07)
 
 ### Features

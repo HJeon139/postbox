@@ -3,13 +3,13 @@
 
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { helloSettings } from '../server/remote/ssh.mjs';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
@@ -19,12 +19,11 @@ let app;
 const call = (r) => fakeRequest(app.handle, { host: `127.0.0.1:${PORT}`, ...r });
 let dir;
 before(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'pb-token-'));
+  dir = tempDir('pb-token-');
   app = await start({ port: PORT, dataDir: dir, fresh: true, demo: true, quiet: true, claudeHome: dir, listen: false });
 });
 after(async () => {
   await app.close();
-  await rm(dir, { recursive: true, force: true });
 });
 
 /** The token, as a browser gets it: by opening the page. */

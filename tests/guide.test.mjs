@@ -183,3 +183,10 @@ test('#838 the guide shows an option’s shape for a choice and a form’s selec
   assert.match(g, /- choice: options \[\{ id, label, description\? \(up to 200 characters, shown under the label\) \}\] \(1–\d+\)/);
   assert.match(g, /options\? \[\{ id, label, description\? \}\] \(select only, up to \d+\)/);
 });
+
+test('#971 the guide says a choice is a seg or chips with aria-pressed, not btns toggling ghost, and at most one btn primary', () => {
+  const g = guideText();
+  assert.match(g, /Postbox’s classes btn \(sm, primary, ghost\), seg, chip,/);
+  assert.match(g, /Pick one of a few options with a seg or chips \(aria-pressed\), not btns toggling ghost\./);
+  assert.match(g, /At most one btn primary; ghost only for a minor action in text; links only for reading\./);
+});

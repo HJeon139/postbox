@@ -8,6 +8,7 @@ import { backendName } from '../../server/room-unverified.mjs';
 import { budgetNote } from './budget.mjs';
 import { agyTokens, kiroCredits, waitingOnYou } from './checks.mjs';
 import { agentsSpent } from './cost.mjs';
+import { pictureSection } from './picture-choice.mjs';
 import { writeJsonAtomic } from './runs.mjs';
 import { countByCheck } from './telemetry-run.mjs';
 import { timingLine } from './timing.mjs';
@@ -125,6 +126,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
     '',
     ...harnessSection(findings),
     ...visualSection(timeline),
+    ...pictureSection(scenario, dir),
     '## Timeline',
     '',
     ...timeline.map((t) => `${t.step}. **${t.phase}.** ${t.assessment} Next: \`${JSON.stringify(t.action)}\``),

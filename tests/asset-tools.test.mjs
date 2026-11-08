@@ -139,7 +139,10 @@ test('I5: a rename_asset or delete_asset retried without an op answers that it r
   assert.equal((await A.rename_asset({ id, base: 1, name })).message, repeated(2));
   const other = await B.rename_asset({ id, base: 1, name });
   assert.equal(other.message, `@alpha wrote version 2 of ${id} since version 1. Read version 2, then write again from it.`);
-  assert.equal((await A.rename_asset({ id, base: 1, name: 'nul\u0000.md' })).message, 'An asset’s name has no backslash or control characters.');
+  assert.equal(
+    (await A.rename_asset({ id, base: 1, name: 'nul\u0000.md' })).message,
+    'An asset’s name has no backslash, control character, line or paragraph separator, lone surrogate, noncharacter, or character that shows as nothing or reorders the text, such as a zero-width space, a bidi control or a variation selector.',
+  );
   assert.equal((await A.delete_asset({ id, base: 2 })).ok, true);
   assert.equal((await A.delete_asset({ id, base: 2 })).message, repeated(3));
 });
@@ -155,7 +158,13 @@ test('rename_asset of a deleted asset is refused, saying to restore it first, wh
     assert.deepEqual([r.ok, r.message], [false, said], name);
   }
   const nul = await A.rename_asset({ id, base: 2, name: 'nul\u0000.md' });
-  assert.deepEqual([nul.ok, nul.message], [false, 'An asset’s name has no backslash or control characters.']);
+  assert.deepEqual(
+    [nul.ok, nul.message],
+    [
+      false,
+      'An asset’s name has no backslash, control character, line or paragraph separator, lone surrogate, noncharacter, or character that shows as nothing or reorders the text, such as a zero-width space, a bidi control or a variation selector.',
+    ],
+  );
   assert.match((await A.list_assets({})).message, new RegExp(`\\[${id}\\] old\\.md: deleted at v2 by @alpha`));
 });
 

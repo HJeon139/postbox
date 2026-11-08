@@ -5,6 +5,7 @@ import { promises as fsp } from 'node:fs';
 import { FILE_MODE, TURN_FILES, validateRunnerRecord } from '../../../shared/remote-protocol.mjs';
 import { readExit, readJson } from './daemon-files.mjs';
 import { follow } from './daemon-follow.mjs';
+import { killShells, recordShells, signal } from './daemon-kill.mjs';
 import { needTurn } from './daemon-reply.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
@@ -48,6 +49,11 @@ export async function stopTurn(d, turn) {
     return false;
   }
   const pid = rec.msg.pid;
+  if (typeof d.silentSince.get(turn)?.killedAt === 'number') {
+    // Killed at the silence ceiling already (daemon-kill.mjs’s endHung): the follower ends it, and nothing is sent twice.
+    d.log(`Stop for turn ${turn}: its runner (process ${pid}) was killed at the silence ceiling already; nothing more was signaled.`);
+    return true;
+  }
   recordShells(d, turn, pid);
   signal(d, pid, 'SIGINT', turn);
   if (!d.killTimers.has(turn))
@@ -66,14 +72,11 @@ async function killAfterGrace(d, turn, runner) {
   const pid = runner.pid;
   d.killTimers.delete(turn);
   // The harness may have ended on SIGINT and left a shell running, so the recorded shell groups still
-  // there are killed either way, as the laptop’s stopTurn does. liveGroups matches a group only by a member
-  // with the start time it was recorded with, so a reused PID is never hit. Only the turn’s own group waits on
+  // there are killed either way, as the laptop’s stopTurn does (killShells). Only the turn’s own group waits on
   // runner.json still naming a live runner.
   const ended = (await readExit(d, turn)) || !(await d.proc.sameProcess(runner));
   if (!ended) recordShells(d, turn, pid);
-  const found = [...(d.shells.get(turn)?.values() ?? [])];
-  d.shells.delete(turn);
-  for (const g of await d.proc.liveGroups(found)) signal(d, g.pgid, 'SIGKILL', turn, 'tool shell group');
+  await killShells(d, turn);
   if (ended) return;
   signal(d, pid, 'SIGKILL', turn);
   // The runner went with its group, so nobody else will say how the harness ended.
@@ -83,30 +86,6 @@ async function killAfterGrace(d, turn, runner) {
   pokeTurn(d, turn);
 }
 
-/**
- * Adds the tool shells’ groups under a turn’s group, as they are now, to what Stop has recorded for it (a group seen
- * both times keeps the members it had each time).
- * @param {Daemon} d @param {string} turn @param {number} pgid
- */
-function recordShells(d, turn, pgid) {
-  const seen = d.proc.toolGroups(pgid);
-  if (seen === null) d.log(`Couldn’t list this host’s processes, so Stop for turn ${turn} reaches only its own group, not its tool shells.`);
-  const mine = d.shells.get(turn) ?? new Map();
-  for (const g of seen ?? []) {
-    const had = mine.get(g.pgid);
-    mine.set(g.pgid, had ? { pgid: g.pgid, members: [...had.members, ...g.members] } : g);
-  }
-  d.shells.set(turn, mine);
-}
-/** @param {Daemon} d @param {number} pgid @param {NodeJS.Signals} sig @param {string} turn */
-const signal = (d, pgid, sig, turn, what = 'group') => {
-  try {
-    d.kill(-pgid, sig);
-    d.log(`Sent ${sig} to turn ${turn}’s ${what} ${pgid}.`);
-  } catch (e) {
-    if (e.code !== 'ESRCH') d.log(`Couldn’t send ${sig} to turn ${turn}’s ${what} ${pgid}: ${e.message}`);
-  }
-};
 /** Wakes every follower of a turn, on every connection. @param {Daemon} d @param {string} turn */
 const pokeTurn = (d, turn) => {
   for (const c of d.conns) for (const [k, f] of c.follows) if (k.startsWith(`${turn}:`)) f.poke();

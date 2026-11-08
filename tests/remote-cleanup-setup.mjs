@@ -117,6 +117,7 @@ export function daemonSetup({ home = hostHome('pbd-'), onRemoved = () => {}, env
     askRunner: async (_path, turn) => alive.has(turn),
     proc: {
       sameProcess: async (r) => alive.has(r.turn ?? ''),
+      bootId: () => BOOT,
       toolGroups: () => [],
       liveGroups: (g) => g,
     },

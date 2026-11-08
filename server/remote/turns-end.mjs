@@ -49,6 +49,14 @@ function endedHow(rts, live, se, err) {
     rts.checkedAt.delete(se.id);
     return remoteError(`Sign-in needed on ${name}. Sign in there, then resume @${se.handle}.`, { state: 'signin', hostId: live.hostId });
   }
+  if (live.exit === null && live.unkilled) {
+    // Its process there may still run (#872): resuming would run a second agent beside it, so the person resumes it.
+    updateRemote(rts, se.id, { state: 'interrupted', at: rts.now(), resume: { why: 'interrupted', at: rts.now(), unkilled: true } });
+    return remoteError(
+      `Interrupted on ${name}: the agent stopped answering, and its process there didn’t stop when it was killed. Check it there, then resume @${se.handle}.`,
+      { state: 'interrupted', hostId: live.hostId },
+    );
+  }
   if (live.exit === null) {
     updateRemote(rts, se.id, { state: 'interrupted', at: rts.now(), resume: { why: 'interrupted', at: rts.now() } });
     whenBack(rts, live.hostId);

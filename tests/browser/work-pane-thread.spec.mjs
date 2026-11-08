@@ -1,6 +1,7 @@
 // A thread in the right pane goes full screen in place (#132), keeping its draft, its scroll and a streaming reply, and
-// comes back as it was, by Escape or the icon; a reload restores it. At 1280 and at 375 px, on the demo’s “Citation
-// fixes” (tests/browser/work-pane.mjs). Moved from tools/check-work-pane.mjs (#303), beside work-pane.spec.mjs.
+// comes back as it was, by Escape or the icon; a reload restores it. Read a little way up from the end, it keeps its
+// place too (#837). At 1280 and at 375 px, on the demo’s “Citation fixes” (tests/browser/work-pane.mjs). Moved from
+// tools/check-work-pane.mjs (#303), beside work-pane.spec.mjs.
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, settled } from './postbox.mjs';
@@ -95,6 +96,94 @@ async function threadFull(page, { width, height }) {
   await stillAt(page, last, 'back in the pane, the message you were reading stayed put');
 }
 
+/** Where the thread’s scroll box is: how far from its end, and whether it follows the end or holds a place. */
+const place = (page) =>
+  page.locator(`${THREAD} .sp-body`).evaluate((b) => ({
+    gap: Math.round(b.scrollHeight - b.clientHeight - b.scrollTop),
+    mode: /** @type {HTMLElement} */ (b.querySelector('.transcript'))?.dataset.viewMode ?? '',
+  }));
+
+/**
+ * #837: read a little way up from the end, a few hundred px, the full screen’s shorter content clamps the view to its
+ * end, and that used to start following, so back in the pane the thread jumped to its end. It keeps its place now.
+ */
+async function threadNearEnd(page, _size, { lateScroll = false } = {}) {
+  await open(page, `/side/${topic}?work`);
+  const body = page.locator(`${THREAD} .sp-body`);
+  await settled(page);
+  const b = await body.boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  for (let i = 0; i < 40 && (await place(page)).gap < 400; i++) {
+    await page.mouse.wheel(0, -100);
+    await settled(page);
+  }
+  const before = await place(page);
+  // It really scrolled up, and holds a place: a check that can fail.
+  expect(before.gap, 'scrolled up from the end').toBeGreaterThanOrEqual(400);
+  expect(before.mode).toBe('reading');
+  // The order the Mac showed about 1 run in 10: the clamp’s scroll event comes after the view has handled the resize.
+  // A capturing listener on the window holds the box’s next scroll event for two frames, then sends it on.
+  if (lateScroll)
+    await body.evaluate((box) => {
+      const hold = (/** @type {Event} */ e) => {
+        if (e.target !== box || !e.isTrusted) return;
+        e.stopImmediatePropagation();
+        removeEventListener('scroll', hold, true);
+        requestAnimationFrame(() => requestAnimationFrame(() => box.dispatchEvent(new Event('scroll'))));
+      };
+      addEventListener('scroll', hold, true);
+    });
+  await page.locator('#thread-full').click();
+  await expect(page.locator('.sidepanel.pane-full')).toBeVisible();
+  await settled(page);
+  expect((await place(page)).mode, 'full screen, still reading, not following').toBe('reading');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.pane-full')).toHaveCount(0);
+  await settled(page);
+  const after = await place(page);
+  expect(after.mode, 'back in the pane, still reading').toBe('reading');
+  expect(Math.abs(after.gap - before.gap), `the gap to the end, ${before.gap} px before and ${after.gap} px after`).toBeLessThanOrEqual(3);
+}
+
+/**
+ * #837’s guard can’t take your own scroll for the box’s: after the window grows with no scroll event, one wheel to the
+ * end is you reaching it, so the thread follows the end again and stays there when the window shrinks back.
+ */
+async function threadEndAfterGrow(page, { width, height }) {
+  await open(page, `/side/${topic}?work`);
+  const body = page.locator(`${THREAD} .sp-body`);
+  await settled(page);
+  const b = await body.boundingBox();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+  for (let i = 0; i < 40 && (await place(page)).gap < 400; i++) {
+    await page.mouse.wheel(0, -100);
+    await settled(page);
+  }
+  expect((await place(page)).mode, 'reading, a way up from the end').toBe('reading');
+  await page.setViewportSize({ width, height: height + 100 });
+  await settled(page);
+  await page.mouse.wheel(0, 5000);
+  await settled(page);
+  expect(await place(page), 'one wheel to the end follows it').toEqual({ gap: 0, mode: 'following' });
+  await page.setViewportSize({ width, height });
+  await settled(page);
+  expect(await place(page), 'and still follows it once the window is back').toEqual({ gap: 0, mode: 'following' });
+}
+
+/** #837’s other side: following the end, full screen and back still follows it. */
+async function threadFollows(page) {
+  await open(page, `/side/${topic}?work`);
+  await settled(page);
+  expect((await place(page)).mode, 'opened at the end').toBe('following');
+  await page.locator('#thread-full').click();
+  await expect(page.locator('.sidepanel.pane-full')).toBeVisible();
+  await settled(page);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.pane-full')).toHaveCount(0);
+  await settled(page);
+  expect(await place(page)).toEqual({ gap: 0, mode: 'following' });
+}
+
 /** a reply streams into the thread full screen and stays when it comes back; the icon and a reload restore it */
 async function threadStreams(page) {
   // The mock’s reply can take most of 30 s on a busy computer.
@@ -147,6 +236,13 @@ async function threadStreams(page) {
 const CASES = [
   ['the thread goes full screen in place, keeping its draft and its scroll, and comes back as it was', threadFull],
   ['a reply streams into the thread full screen and stays when it comes back; the icon and a reload restore it', threadStreams],
+  ['read a little way up from the end, full screen and back keeps the place (#837)', threadNearEnd],
+  ['following the end, full screen and back still follows it (#837)', threadFollows],
+  ['after the window grows, one wheel to the end follows it (#837)', threadEndAfterGrow],
+  [
+    'read a little way up, the clamp’s scroll event late, full screen and back keeps the place (#837)',
+    (page, size) => threadNearEnd(page, size, { lateScroll: true }),
+  ],
 ];
 
 for (const { width, height, phone } of SIZES)

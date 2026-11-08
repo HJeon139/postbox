@@ -10,6 +10,7 @@ import { freshInstall } from '../server/seed.mjs';
 import { deleteRecordings, KEEP_MS, startRecording, stopRecording, sweep, watchTelemetry, within } from '../server/telemetry.mjs';
 import { draftView } from '../server/telemetry-report.mjs';
 import { saveReport } from '../server/telemetry-save.mjs';
+import { EVENTS } from '../shared/state.mjs';
 import { held } from './side-threads-fixture.mjs';
 import { CANARIES, filesUnder, flaggedRoom, labelEach, modeOf, report, settle, setup, turn } from './telemetry-fixture.mjs';
 
@@ -211,4 +212,47 @@ test('review 2: saved reports go with their conversation after Delete recordings
   mkdirSync(join(f.data, 'telemetry', 'th_gone', 'reports', 'rep_x'), { recursive: true });
   assert.ok(sweep(f.rt).includes('th_gone'));
   again();
+});
+
+/** What the recording kept of the event with this seq, or undefined. */
+const keptAt = (f, seq) =>
+  readFileSync(join(f.data, 'telemetry', f.t.id, 'recording', 'events.jsonl'), 'utf8')
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .find((e) => e.seq === seq);
+
+test('a session.patch made private is never recorded, though session stays public (#646)', () => {
+  const f = setup({ record: true });
+  f.stop();
+  const table = { ...EVENTS, 'session.patch': { ...EVENTS['session.patch'], public: false } };
+  const stop = watchTelemetry(f.rt, table);
+  const ev = f.store.emit('session.patch', { id: f.alpha.id, patch: { ctx: 30, updatedAt: 2 } });
+  const after = f.store.emit('session', { ...f.store.state.sessions[f.alpha.id], updatedAt: 3 });
+  stop();
+  assert.equal(f.store.state.sessions[f.alpha.id].ctx, 30, 'the store applied the patch');
+  assert.equal(keptAt(f, after.seq)?.type, 'session', 'a public event after it is recorded');
+  assert.equal(keptAt(f, ev.seq), undefined);
+});
+
+test('a session.patch is never recorded as a session when session is private (#646)', () => {
+  const f = setup({ record: true });
+  f.stop();
+  const table = { ...EVENTS, session: { ...EVENTS.session, public: false } };
+  const stop = watchTelemetry(f.rt, table);
+  const ev = f.store.emit('session.patch', { id: f.alpha.id, patch: { ctx: 40, updatedAt: 2 } });
+  const after = f.store.emit('item.add', { threadId: f.t.id, item: { id: 'it_after', kind: 'user', text: 'after', ts: 3 } });
+  stop();
+  assert.equal(keptAt(f, after.seq)?.type, 'item.add', 'a public event after it is recorded');
+  assert.equal(keptAt(f, ev.seq), undefined);
+});
+
+test('a public session.patch is recorded as the whole session it leaves (#646)', () => {
+  const f = setup({ record: true });
+  const ev = f.store.emit('session.patch', { id: f.alpha.id, patch: { state: 'think', updatedAt: 3 } });
+  f.stop();
+  const kept = keptAt(f, ev.seq);
+  assert.equal(kept?.type, 'session');
+  // The session after the patch, with only the fields telemetry keeps of one.
+  assert.deepEqual(kept?.data, { id: f.alpha.id, state: 'think', finishedAt: null, updatedAt: 3, seenItem: null, handle: 'alpha', needs: null });
 });

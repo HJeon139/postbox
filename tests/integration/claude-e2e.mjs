@@ -24,7 +24,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { delimiter, join } from 'node:path';
@@ -125,6 +125,12 @@ async function frontmatterHook(root, work, kind, marker, allow) {
     return '.claude/skills/e2e-push/SKILL.md';
   }
   if (kind === 'agent') {
+    // Claude Code registers a project subagent's frontmatter hooks only when the folder its definition came from is
+    // trusted, read from the global config's `projects[<folder>].hasTrustDialogAccepted`, in a headless turn too (it
+    // logs "Skipping frontmatter hooks for agent ...: the folder its definition file came from is not trusted"). A
+    // skill's frontmatter hooks have no such check. The temp HOME has no global config, so trust the project there.
+    const projects = { [realpathSync(work)]: { hasTrustDialogAccepted: true } };
+    await writeFile(join(root, 'home', '.claude.json'), JSON.stringify({ projects }), { mode: 0o600 });
     await mkdir(join(work, '.claude', 'agents'), { recursive: true });
     const meta = ['name: e2e-pusher', 'description: Pushes this branch to e2e on origin. Use when asked for the e2e push.', 'tools: Bash'];
     await writeFile(join(work, '.claude', 'agents', 'e2e-pusher.md'), ['---', ...meta, ...hooks, '---', '', body].join('\n'));

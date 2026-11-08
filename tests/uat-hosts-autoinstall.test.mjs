@@ -11,6 +11,7 @@ import { runChecks } from '../tools/uat/checks.mjs';
 import { hostStateOf } from '../tools/uat/history.mjs';
 import { createHostRun, followStatuses, setUpHost } from '../tools/uat/hosts-run.mjs';
 import { HOST_TRIGGERS } from '../tools/uat/triggers-host.mjs';
+import { tempDir } from './temp-dirs.mjs';
 import { facts, remote } from './uat-hosts-facts.mjs';
 
 const trigger = HOST_TRIGGERS['host-auto-installed'];
@@ -101,7 +102,7 @@ test('#464 a consent the page’s request didn’t keep stops the run’s setup,
 });
 
 test('#464 an unstaged host gets no consent from the runner', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pb-auto-'));
+  const dir = tempDir('pb-auto-');
   const hr = createHostRun({
     hosts: [{ label: 'host1', destination: 'host-a.example.com', settings: {} }],
     placement: {},
@@ -118,7 +119,6 @@ test('#464 an unstaged host gets no consent from the runner', async () => {
     install: async () => ({ installOffered: true, confirm: 'Install?' }),
     keepUpdated: async () => assert.fail('no consent for a host the run installs itself'),
   });
-  rmSync(dir, { recursive: true, force: true });
   assert.equal(hr.record.setup[0].consent, undefined);
 });
 

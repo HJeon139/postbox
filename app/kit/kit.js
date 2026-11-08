@@ -87,9 +87,9 @@
     const detail = err?.name && err?.message ? `${err.name}: ${err.message}` : String(err?.message || err);
     const message = detail + (source?.lineno ? ` (line ${source.lineno}, column ${source.colno || 1})` : '');
     errors.push(message);
-    post({ type: 'error', message });
+    post({ type: 'error', message, drawn: !!window.__pbDrawn?.drawn() }); // an app that drew keeps running (#964)
   }
-  addEventListener('error', (e) => report(e.error || e.message, e));
+  addEventListener('error', (e) => window.__pbDrawn?.harmless(e) || report(e.error || e.message, e));
   // Escape inside the app leaves Postbox’s full screen, unless the app used it (to close its own menu, say). The
   // app’s own listeners run after this one, so look once the key press has gone everywhere.
   addEventListener('keydown', (e) => {

@@ -125,18 +125,57 @@ export function nextNeed(rt, se, o = {}) {
 }
 
 /**
- * A new card offers itself as the agent's need: it takes it when none is set, or when it ranks ahead of the current
- * need or the same (the newest within a rank comes first, as in nextNeed). Otherwise it waits, and a release reaches
- * it. Every setter goes through here, so which card shows doesn't depend on whether it was set or released. A failed
- * turn still sets its need directly: it ends the turn, as the turn's end does. A current need of a kind RANK doesn't
- * list is kept, never replaced by default.
+ * A new card offers itself as the agent’s need: it takes it when none is set, when it is the card that already is the
+ * need (an app card’s new count), or when it ranks first by `challengerWins`, as nextNeed chooses (#711). Otherwise it
+ * waits, and a release reaches it. Every setter goes through here, so which card shows doesn’t depend on whether it was
+ * set or released. A failed turn still sets its need directly: it ends the turn, as the turn’s end does. A current need
+ * of a kind RANK doesn’t list is kept, never replaced by default.
  * @param {any} rt @param {any} se @param {any} need @param {string} state  the session's state if it takes the need
  * @returns {boolean} whether it took the need
  */
 export function offerNeed(rt, se, need, state) {
-  const cur = se.needs;
-  if (cur && !(RANK[need.kind] <= RANK[cur.kind])) return false;
+  if (!takesNeed(rt, se, need)) return false;
   rt.updateSession(se.id, { needs: need, state });
+  return true;
+}
+
+/**
+ * Whether an offered need takes the agent’s current one (offerNeed). Both cards’ times are read from pending; when
+ * either card isn’t there, rank alone decides, as before #711. On equal rank, a card that loses only for being older
+ * still takes the need when the current need’s card no longer waits (designs/508/a1b-asks.md, R8), so a dead need never
+ * keeps a live card from being flagged. @param {any} rt @param {any} se @param {any} need @returns {boolean}
+ */
+function takesNeed(rt, se, need) {
+  const cur = se.needs;
+  if (!cur) return true;
+  if (need.itemId === cur.itemId) return true;
+  if (!Object.hasOwn(RANK, cur.kind)) return false;
+  const offeredCard = rt.store.pending.item(need.threadId ?? se.threadId, need.itemId);
+  const curThreadId = cur.threadId ?? se.threadId;
+  const curCard = rt.store.pending.item(curThreadId, cur.itemId);
+  if (!offeredCard || !curCard) return RANK[need.kind] <= RANK[cur.kind];
+  const offered = { kind: need.kind, at: offeredCard.at ?? 0 };
+  const current = { kind: cur.kind, at: curCard.at ?? 0 };
+  if (challengerWins(offered, current)) return true;
+  if (RANK[need.kind] !== RANK[cur.kind]) return false;
+  const curWaits = needOf(rt, se, curCard, curThreadId, [], null) !== null;
+  return !curWaits;
+}
+
+/**
+ * Which of two of an agent’s cards comes first, the one decision nextNeed’s `comesFirst`, the restart’s `keptOrNext`
+ * and `offerNeed` all make (#711): the lower RANK wins; on equal rank the challenger wins unless it is older, so a tie
+ * on time goes to the challenger.
+ * @param {{ kind: string, at: number }} challenger  the card read later, `next`, or the card offered
+ * @param {{ kind: string, at: number }} incumbent  the best so far, or the current need
+ * @returns {boolean} whether the challenger comes first
+ */
+export function challengerWins(challenger, incumbent) {
+  const challengerRank = RANK[challenger.kind];
+  const incumbentRank = RANK[incumbent.kind];
+  if (challengerRank < incumbentRank) return true;
+  if (challengerRank > incumbentRank) return false;
+  if (challenger.at < incumbent.at) return false;
   return true;
 }
 
@@ -191,16 +230,12 @@ function runningKeep(rt, se) {
 }
 
 /**
- * Whether a card's need comes before the best so far: a kind that ranks ahead, or the same kind and the newer card.
+ * Whether a card’s need comes before the best so far, by `challengerWins`: the card read later is the challenger.
  * @param {any} need @param {number} at @param {{ at: number, need: any } | null} best
  */
 function comesFirst(need, at, best) {
   if (!best) return true;
-  const rank = RANK[need.kind];
-  const bestRank = RANK[best.need.kind];
-  if (rank !== bestRank) return rank < bestRank;
-  const sameRankNewer = at >= best.at;
-  return sameRankNewer;
+  return challengerWins({ kind: need.kind, at }, { kind: best.need.kind, at: best.at });
 }
 
 /**

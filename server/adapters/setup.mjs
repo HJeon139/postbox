@@ -17,6 +17,8 @@
 
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { agentPlugins } from './agent-plugin.mjs';
+import { postboxSkillsOn, skillDenies, skillOverrides } from './skill-config.mjs';
 /**
  * Setting sources, as `--setting-sources` and the SDK’s `settingSources` spell them. The permissions panel reads the
  * same ones (permission-rules.mjs, readRules; permission-hooks.mjs, readHooks).
@@ -105,6 +107,8 @@ export function settingsFor(persona, memoryDir = null) {
     ...SETTINGS_OVERLAY,
     ...(memoryDir ? { autoMemoryDirectory: memoryDir } : {}),
     ...(usesHostSetup && mcpOff.length ? { deniedMcpServers: mcpOff.map((serverName) => ({ serverName })) } : {}),
+    // The user and project skills it turned off (#207).
+    ...skillOverrides(persona),
     // A hook or mod that approves a call would skip the ask rules and the permission prompt (#817). In this flag
     // layer it holds against a `disableAllHooks: false` in user, project or local settings; managed hooks still run.
     // Bypass keeps the person’s hooks: there, they may be the only check left.
@@ -132,13 +136,18 @@ const part = (v) => String(v).replace(/[^\w-]/g, '_');
 
 /**
  * What both Claude adapters pass from a turn’s context: the rules the person allowed once or for this conversation
- * (#66), and the persona’s own memory folder under `memoryRoot` (#208).
+ * (#66), or always for this persona on its host (#120), the persona’s own memory folder under `memoryRoot` (#208), and
+ * Postbox’s plugin, with its skills, for a turn on this computer: a host doesn’t have its folder (agent-plugin.mjs).
  * @param {any} ctx @param {string} memoryRoot
  */
 export const fromContext = (ctx, memoryRoot) => ({
   allowOnce: ctx.allowOnce ?? [],
   rules: ctx.rules ?? {},
+  // A host turn’s, which Postbox keeps for that host (#120, server/host-rules.mjs); a turn here has none.
+  hostAllow: ctx.remote?.allow ?? [],
   memoryDir: memoryFolder(memoryRoot, ctx.persona, ctx.project),
+  // Left out when the persona turned off every one of its skills, so the agent isn’t told of them (skill-config.mjs).
+  plugins: ctx.remote || !postboxSkillsOn(ctx.persona).length ? [] : agentPlugins(),
 });
 
 /**
@@ -255,8 +264,16 @@ export const WRITE_TOOLS = [
   'Bash(git --config-env*)',
 ];
 
-/** The ask rules for writes outside Postbox, for a persona’s turn: none in bypass, which runs everything. */
-export const writeRules = (persona) => (persona?.permissionMode === 'bypass' ? [] : [...WRITE_TOOLS]);
+/** The modes in which Postbox adds its own ask rules for writes outside: the ones where the person asked to be asked. */
+const ASKS_FOR_WRITES = new Set(['ask', 'acceptEdits']);
+
+/**
+ * The ask rules for writes outside Postbox, for a persona’s turn. Harness first (the person’s decision, 7 Nov 2026):
+ * in Auto, none, so the harness decides and a card comes only when it asks; in Ask me and Accept edits, all of them;
+ * in bypass, none. Auto is also what an unset or unknown mode runs as. The CLI, the SDK and host turns all build from
+ * this, and the person’s own ask rules are added beside it, in every mode.
+ */
+export const writeRules = (persona) => (ASKS_FOR_WRITES.has(persona?.permissionMode) ? [...WRITE_TOOLS] : []);
 
 /**
  * Tools that act outside Postbox’s record, denied for real backends unless the persona has `agents.outside`. They
@@ -325,11 +342,12 @@ export function toolsOff(persona, rules = TOOL_RULES) {
   return Object.keys(rules).filter((id) => !has.has(id));
 }
 
-/** Every deny rule for a persona’s turn: the publishing tools unless it may publish, then its unticked tools. */
+/** Every deny rule for a persona’s turn: the publishing tools unless it may publish, its unticked tools, and the skills it turned off. */
 export function deniedTools(persona) {
   const { canPublish } = setupOf(persona);
   const has = new Set(Array.isArray(persona?.tools) ? persona.tools : []);
-  return [...new Set([...(canPublish ? [] : PUBLISHING_TOOLS), ...Object.entries(TOOL_RULES).flatMap(([id, rules]) => (has.has(id) ? [] : rules))])];
+  const tools = Object.entries(TOOL_RULES).flatMap(([id, rules]) => (has.has(id) ? [] : rules));
+  return [...new Set([...(canPublish ? [] : PUBLISHING_TOOLS), ...tools, ...skillDenies(persona)])];
 }
 
 // ── Raw streams ─────────────────────────────────────────────────────────────────────────────

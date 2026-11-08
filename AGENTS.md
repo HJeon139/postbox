@@ -28,7 +28,8 @@ POSTBOX_STREAM_LAG=300 npx playwright test   # with the server’s events 300 ms
 ## Scope
 
 - Fix the cause and look for the same class of error everywhere: a bug in one adapter is a question about all of them (designs/developing.md, “Responding to a prompt”).
-- Anything beyond the task needs evidence (a repro, a measurement, a UAT result, an issue, the person’s request) and a reason it serves designs/intent.md: one person directing two to four agents on their own computer, with the loop right before the looks. Otherwise decline it, or file it with its evidence (designs/prompts/README.md, “Rules for every session”).
+- Anything beyond the task needs evidence (a repro, a measurement, a UAT result, an issue, the person’s request) and a reason it serves designs/intent.md: one person directing two to four agents on their own computer, who work together without waiting on the person, with the loop right before the looks. Otherwise decline it, or file it with its evidence (designs/prompts/README.md, “Rules for every session”).
+- Don’t add a card, confirm, warning, notice or limit that waits on the person or asks for their attention unless only they can make the decision it carries, and the harness’s own check isn’t enough. Show what agents did instead (designs/developing.md, “Design habits”).
 - `tools/uat-run.mjs` runs real agents and costs real usage. Run it, and the screenshot tools (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`), only when the task asks for them, or when you’re the reviewing session (designs/prompts/README.md, “Rules for every session”).
 - Make simple, minimal changes, and use what Node, the browser and the repo already have (`h()`, `shared/limits.mjs`, `tests/browser/postbox.mjs`). A new dependency needs a decision in designs/architecture.md first.
 
@@ -59,6 +60,7 @@ POSTBOX_STREAM_LAG=300 npx playwright test   # with the server’s events 300 ms
 
 - Start Postbox only with a port and a `--data` folder of your own: `node server/index.mjs --port <yours> --data <a temp folder>`. Without `--data` it uses `~/.postbox` (or `$POSTBOX_HOME`), which every clone and worktree shares, or a clone’s own `data/` while that still holds conversations.
 - Never touch the preview on 4173, another tool’s server on 4320, a clone’s `data/`, or `~/.postbox` (designs/developing.md, “Running the gate”).
+- Stop whatever you start in the background by its process ID (`$!`), never by job number (in a subshell, `kill %1 %2` can miss one without a word), and check nothing is left before you report. Never `pkill` or `killall` by name (designs/developing.md, “Running the gate”).
 - Never commit `data/`, `uat-runs/`, `.env`, anything under `screenshots/` that `.gitignore` leaves out, or anything with a secret. Postbox never reads, stores or passes an API key or token.
 
 ## Security boundaries

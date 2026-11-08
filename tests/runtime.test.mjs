@@ -2174,7 +2174,11 @@ test('#59: the MCP servers a turn reports are kept on its session, bounded, for 
   assert.equal(ctx.folder, '/tmp');
   assert.equal(ctx.seen[0].name, 'search');
   assert.equal(rt.mcpContext(null, 'p1').folder, '/tmp');
-  assert.deepEqual(rt.mcpContext(null, null), { persona: null, folder: null, seen: [] }, 'mock sessions don’t lend their servers to a new agent');
+  assert.deepEqual(
+    rt.mcpContext(null, null),
+    { persona: null, folder: null, seen: [], skills: [] },
+    'mock sessions don’t lend their servers or skills to a new agent',
+  );
 });
 
 test('#59: a sheet that reads an init from another folder shows only the servers that load everywhere', async () => {

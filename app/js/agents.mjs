@@ -309,9 +309,9 @@ export function openAgentPanel(sessionId, from = null) {
     // The model’s choice, or for a mock agent its first tool.
     initialFocus: () => body.querySelector('[role=radiogroup] [aria-checked="true"]') ?? body.querySelector('[role=switch]'),
   });
+  // Items don’t repaint it: its open-asks button keeps itself up to date, and a rebuild per item forced a layout (#866).
   const off = client.on((ch) => {
-    const mine = ch.type === 'session' ? ch.data.id === sessionId : ['item.add', 'item.patch'].includes(ch.type) ? ch.data?.threadId === first.threadId : true;
-    if (mine && ['session', 'persona', 'load', 'item.add', 'item.patch'].includes(ch.type)) paint();
+    if (ch.type === 'session' ? ch.data.id === sessionId : ['persona', 'load'].includes(ch.type)) paint();
   });
   from?.setAttribute('aria-expanded', 'true');
 }

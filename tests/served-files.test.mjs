@@ -1,18 +1,18 @@
 // Files Postbox serves by a request’s path (server/served-files.mjs): only from inside their folder, through links too.
 
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, realpath, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { mediaFile, servedFile } from '../server/served-files.mjs';
 import { fakeRequest } from './fake-http.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 let dir = '';
 let app = null;
 const PORT = 4987;
 before(async () => {
-  dir = await realpath(await mkdtemp(join(tmpdir(), 'pb-served-')));
+  dir = await realpath(tempDir('pb-served-'));
   await mkdir(join(dir, 'folder', 'sub'), { recursive: true });
   await writeFile(join(dir, 'folder', 'sub', 'in.svg'), '<svg/>');
   await writeFile(join(dir, 'secret.svg'), '<svg>secret</svg>');
@@ -23,7 +23,6 @@ before(async () => {
 });
 after(async () => {
   await app?.close();
-  await rm(dir, { recursive: true, force: true });
 });
 
 test('#351: a served path resolves through links, and is refused when it lands outside its folder', async () => {

@@ -43,21 +43,34 @@ async function freePort() {
  */
 export async function startPostbox(name, { demo = true, mockOnly = true, prepare, server } = {}) {
   if (mockOnly) process.env.POSTBOX_BACKENDS = 'mock';
+  // A bare mkdtemp, not tests/temp-dirs.mjs’s tempDir: this runs in a Playwright worker, which serves many spec
+  // files, so a folder removed at its exit would outlive the spec. A start that fails removes it here, and stop()
+  // removes it even when the close throws (#921).
   const root = await mkdtemp(join(tmpdir(), `pb-spec-${name}-`));
-  await prepare?.(root);
-  // Another worker can bind the port between freePort() and start(): start() then closes what it opened and throws,
-  // so try another port (#367).
+  const remove = () => rm(root, { recursive: true, force: true });
   let app;
-  for (let i = 0; !app; i++)
-    app = await start({ ...server, port: await freePort(), dataDir: join(root, 'data'), fresh: true, demo, quiet: true, claudeHome: root }).catch((e) => {
-      if (e?.code !== 'EADDRINUSE' || i >= 4) throw e;
-    });
+  try {
+    await prepare?.(root);
+    // Another worker can bind the port between freePort() and start(): start() then closes what it opened and throws,
+    // so try another port (#367).
+    for (let i = 0; !app; i++)
+      app = await start({ ...server, port: await freePort(), dataDir: join(root, 'data'), fresh: true, demo, quiet: true, claudeHome: root }).catch((e) => {
+        if (e?.code !== 'EADDRINUSE' || i >= 4) throw e;
+      });
+  } catch (e) {
+    await remove();
+    throw e;
+  }
+  const started = app;
   return {
-    ...app,
+    ...started,
     root,
     async stop() {
-      await app.close();
-      await rm(root, { recursive: true, force: true });
+      try {
+        await started.close();
+      } finally {
+        await remove();
+      }
     },
   };
 }
@@ -143,6 +156,18 @@ export function watchWrites(page, url = /./) {
   for (const ev of /** @type {const} */ (['requestfinished', 'requestfailed'])) page.on(ev, (r) => flying.delete(r) && landed++);
   return { answered: () => expect.poll(() => flying.size === 0 && landed > 0, { message: 'every write the page made answered' }).toBe(true) };
 }
+
+/**
+ * The page’s client listeners that stay until something removes them: not those that remove themselves once their
+ * element is gone, at the next change after it leaves the page (they read `.isConnected`) or once it’s collected
+ * (`onChangeWhileAlive` marks those `whileAlive`, app/js/held-weakly.mjs), as a queue button that was never on the
+ * page is (#912).
+ * @param {import('@playwright/test').Page} page
+ */
+export const keptListeners = (page) =>
+  page.evaluate(() =>
+    import('/app/js/client.mjs').then(({ client }) => [...client.listeners].filter((f) => !f.whileAlive && !/\.isConnected/.test(String(f))).length),
+  );
 
 /**
  * Where focus is, as a short description: the focused element’s role or tag, and its accessible name (its label,

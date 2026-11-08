@@ -10,7 +10,7 @@ export const CANCELED_MSG = 'permission-canceled';
 
 /** What the laptop says to a call from a stopped turn (server/mcp.mjs), word for word. */
 export const STOPPED_TEXT = 'This call came from an agent turn that was stopped or has ended, so Postbox didn’t run it.';
-/** The shim’s result for a call that’s queued: the agent already has its answer, so this only settles the shim’s copy. */
+/** The daemon’s result for a call it has taken and recorded: the shim answers its agent in its own words (#827). */
 export const QUEUED_TEXT = 'Queued for Postbox.';
 /** How often a held Codex turn’s logs are read for approval requests and their answers. */
 export const CODEX_POLL_MS = 1000;

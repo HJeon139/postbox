@@ -12,6 +12,7 @@
 //   <folder>/.agents/plugins/postbox/plugin.json        { "name": "postbox" }
 //   <folder>/.agents/plugins/postbox/mcp_config.json    Postbox’s server, with this conversation’s MCP URL
 //   <folder>/.agents/plugins/postbox/rules/AGENTS.md    the guide, and what Postbox can’t enforce here
+//   <folder>/.agents/plugins/postbox/skills/            Postbox’s skills, unless they’re off (agent-plugin.mjs)
 //
 // and removes it when the turn ends. Checked with agy 1.4.5: the plugin’s server loads as `postbox_postbox` (plugin,
 // then server), and the plugin’s rules reach the model. Two turns in one folder would overwrite each other’s
@@ -47,13 +48,14 @@
 // Stop sends SIGINT, then SIGKILL if the CLI doesn’t exit. POSTBOX_AGY_RECORD=<folder> saves each turn’s raw stream.
 
 import { spawn } from 'node:child_process';
-import { mkdir, rm, rmdir, writeFile } from 'node:fs/promises';
+import { rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { AGY_DEFAULT_MODEL } from '../../shared/agent-facts.mjs';
 import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
-import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_PROMPTS, HOOK_SCRIPT } from './agy-hook.mjs';
-import { agyPlugin, excludeFile, excludePlugin, makeReadOnly, PLUGIN_DIR } from './agy-plugin.mjs';
+import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
+import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
+import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
 import { clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
 import { toolOf } from './agy-tools.mjs';
@@ -64,9 +66,6 @@ import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { DEFAULT_MODEL, EFFORT_LEVELS, effortOf, modelOf, recorderFor, setupOf, TOOL_WORDS, toolsOff } from './setup.mjs';
 import { agyResult } from './work-calls.mjs';
-
-/** What this backend can do, for the runtime and the UI (#117, #370). The adapter adds the models it found. */
-export const AGY_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'none', isolation: false, ...HOOK_PROMPTS });
 
 /** The agy binary: POSTBOX_AGY_BIN, then the PATH. */
 export const findAgy = (env = process.env) => env.POSTBOX_AGY_BIN || 'agy';
@@ -134,7 +133,7 @@ export function modelIds(text) {
   return [...new Set(ids)].slice(0, 60);
 }
 
-export { AGY_DEFAULT_MODEL };
+export { AGY_CAPABILITIES, AGY_DEFAULT_MODEL };
 
 /**
  * The model to pass. A persona that names none gets Postbox’s default, Claude’s, which agy doesn’t offer: that
@@ -607,14 +606,7 @@ export class AntigravityCliAdapter {
         await excludePlugin(cwd).catch(() => false);
       }
       const hookCommand = useHook ? agyHookCommand(this.hookScript) : null;
-      for (const [path, text] of Object.entries(agyPlugin({ mcpUrl: ctx.mcpUrl, rules, hookCommand }))) {
-        const file = join(plugin, path);
-        await mkdir(dirname(file), { recursive: true });
-        if (path === 'hooks.json') await rm(file, { force: true }).catch(() => {});
-        await writeFile(file, text, path === 'hooks.json' ? { mode: 0o444 } : undefined);
-        // The umask masks writeFile’s mode (077 leaves 0o400), so hooks.json is set to 0o444 after it’s written (#730).
-        if (path === 'hooks.json') await makeReadOnly(file);
-      }
+      await writeAgyPlugin(plugin, agyPlugin({ mcpUrl: ctx.mcpUrl, rules, hookCommand, skills: await agySkillFiles(persona) }));
       const hookConfirmed = Boolean(useHook && (await confirmAgyHook({ version: this.version, pluginDir: plugin, script: this.hookScript })));
       // A hook that didn’t check out isn’t passed, so agy refuses what it would ask about: the rules say so, not “a card”.
       if (useHook && !hookConfirmed) await writeFile(join(plugin, 'rules', 'AGENTS.md'), rulesWith(false));

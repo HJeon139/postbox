@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
 import { offersBring } from '../bring.mjs';
+import { hostRulesOf } from '../host-rules.mjs';
 import { asksByPrompt } from '../permission-prompt.mjs';
 import { noteScheduledTurn } from '../scheduled-wakes.mjs';
 import { wokeOf } from '../turn-marks.mjs';
@@ -78,18 +79,7 @@ export async function prepare(rts, turn, ctx, message) {
   const attach = typeof message.attach === 'string' ? message.attach : null;
   // Read now, so a message over the limits is refused before anything is asked of the host (attachments.mjs).
   const attachments = attach ? [] : await carryAttachments(message, ctx.pathOf);
-  // A host renamed while turns still run over its old link: nothing new starts there, and nothing falls back to it.
-  let welcome;
-  let link;
-  try {
-    // Stop ends a wait for an install of this version there at once (#464-b2b); the install goes on.
-    welcome = await hosts.ensureWelcome(live.hostId, { signal: ctx.signal });
-    link = hosts.link(live.hostId);
-  } catch (e) {
-    if (ctx.signal.aborted) throw abortError();
-    throw renamedBusy(rts, e, live.hostId, se) ?? e;
-  }
-  if (ctx.signal.aborted) throw abortError();
+  const { welcome, link } = await welcomeOf(rts, hosts, live, ctx, se);
   live.link = trackAcks(rts, live, listen(rts, live.hostId) ?? link);
   if (!attach) await warnSignIn(rts, turn, ctx, se, host);
   const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId] ?? null;
@@ -113,6 +103,8 @@ export async function prepare(rts, turn, ctx, message) {
     // As server/mcp.mjs offers permission_prompt only to a backend that asks through it, so does the shim (shimArgs).
     asksByPrompt: asksByPrompt(rt, turn.sessionId),
     attachments,
+    // What the person always allowed for this persona on this host, from a card (host-rules.mjs): its own, no other host’s.
+    allow: hostRulesOf(rt, persona.id, live.hostId),
   };
   if (attach) attachTo(rts, live, se, turn, attach, remote);
   else {
@@ -123,6 +115,26 @@ export async function prepare(rts, turn, ctx, message) {
   if (!resume) return message;
   const line = whyLine(resume.why, host.name);
   return message.slash === true ? message : { ...message, context: [line, ...(message.context ?? [])] };
+}
+
+/**
+ * The host’s welcome and link for a turn’s start. A host renamed while turns still run over its old link: nothing new
+ * starts there, and nothing falls back to it.
+ * @param {RemoteTurns} rts @param {any} hosts @param {Live} live @param {any} ctx @param {any} se
+ */
+async function welcomeOf(rts, hosts, live, ctx, se) {
+  let welcome;
+  let link;
+  try {
+    // Stop ends a wait for an install of this version there at once (#464-b2b); the install goes on.
+    welcome = await hosts.ensureWelcome(live.hostId, { signal: ctx.signal });
+    link = hosts.link(live.hostId);
+  } catch (e) {
+    if (ctx.signal.aborted) throw abortError();
+    throw renamedBusy(rts, e, live.hostId, se) ?? e;
+  }
+  if (ctx.signal.aborted) throw abortError();
+  return { welcome, link };
 }
 
 /**
