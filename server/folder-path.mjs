@@ -154,13 +154,16 @@ export function sessionFolder(cwd) {
  * files it names and the work ledger. One stored before it was checked (#990), a relative one say, is refused with a
  * 409 rather than used: it would be resolved against the folder Postbox was started from. A 409, not a 422: the
  * request that reads it is fine, the agent’s stored folder isn’t, and the person changes it in the agent’s sheet.
- * @param {{ handle: string, folder?: unknown } | null | undefined} persona @returns {string}
+ * An agent on a host keeps its folder unchecked (placedFolder), and never works in it here: one the check refuses is
+ * read here as none of its own, and checked again once the agent moves back.
+ * @param {{ handle: string, folder?: unknown, remote?: { hostId?: string } | null } | null | undefined} persona @returns {string}
  */
 export function storedFolder(persona) {
   const folder = persona?.folder;
   try {
     agentFolderPath(folder);
   } catch (e) {
+    if (persona?.remote?.hostId) return '';
     const handle = persona?.handle;
     const why = `Postbox couldn’t open the folder ${shownFolder(folder)} for @${handle}: ${e.message} Change it in @${handle}’s sheet, under Folder, or leave it empty to work in the project’s root folder.`;
     throw Object.assign(httpError(409, why), { cause: e });

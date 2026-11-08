@@ -1,7 +1,8 @@
 // #990 and #120: an agent placed on a host works there in the project’s folder on that host, or one of its own there
 // (server/remote/turns-start.mjs), never in its sheet’s Folder, so a folder on this computer isn’t checked for it.
 // Its sheet re-sends Folder with every save, so one stored before #990, a relative one say, would otherwise refuse
-// every change to the agent until Folder was cleared. Moved back to this computer, its folder is checked again.
+// every change to the agent until Folder was cleared. What reads its folder here (the permissions panel, the files it
+// names) reads one the check refuses as no folder of its own. Moved back to this computer, its folder is checked again.
 
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
@@ -79,4 +80,22 @@ test('moving an agent to a host takes its folder unchecked, and moving it back t
   const back = rt.updatePersona(p.id, { remote: null, folder: '/srv/a' });
   assert.equal(back.remote, null);
   assert.equal(back.folder, '/srv/a');
+});
+
+test('the permissions panel and the files of an agent on a host read a folder the check refuses as none of its own', async () => {
+  const { store, rt, host, project } = setup();
+  const p = rt.createPersona({ handle: 'alpha', backend: 'claude-code', remote: { hostId: host.id } });
+  store.emit('persona', { ...store.state.personas[p.id], folder: 'server' });
+  const t = rt.createThread({ projectId: 'p1', title: 'alpha', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, project);
+  assert.equal((await rt.panelTarget({ personaId: p.id, projectId: 'p1' })).folder, project);
+  assert.deepEqual(await rt.agentFolders(se.id), [project]);
+  // The same folder on an agent here is still refused, with where to change it.
+  const here = rt.createPersona({ handle: 'beta', backend: 'claude-code' });
+  store.emit('persona', { ...store.state.personas[here.id], folder: 'server' });
+  await assert.rejects(
+    () => rt.panelTarget({ personaId: here.id, projectId: 'p1' }),
+    (e) => e.status === 409,
+  );
 });
