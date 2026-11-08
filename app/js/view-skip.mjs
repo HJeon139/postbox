@@ -16,6 +16,8 @@ export const SKIP_CLASS = 'cv-skip';
  */
 export function skipOffscreen(el) {
   if (typeof CSS === 'undefined' || !CSS.supports('content-visibility', 'auto')) return;
+  // A transcript the window holds (#866, window.mjs) mounts only the items near the view, at their real heights.
+  if (el.dataset?.window) return;
   el.classList.add(SKIP_CLASS);
 }
 
