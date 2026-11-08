@@ -12,6 +12,7 @@ const COUNT = 400;
 
 // Tracing is off: the trace's snapshot lays out each item the transcript skips (#712a) at every action, and over 400
 // items the change case ran past its 30 s, 2 of 2 with the trace on, against 12 of 12 passed in 16.9 s without it.
+// The page has no such cost: no code in app/js reads the layout of every item (findAnchor is a binary search).
 test.use({ trace: 'off' });
 const FAR = 40;
 
