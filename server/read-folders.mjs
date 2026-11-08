@@ -52,7 +52,7 @@ export function readFolderOffer({ backend, tool, input, hostId = null, home }) {
   const dir = real(dirname(file));
   const realHome = real(home);
   if (!dir || !realHome || !offerable(dir, realHome)) return null;
-  return { lines: [{ text: `Always allow reading files in ${dir} in this conversation`, rule: dir }], readDir: dir };
+  return { lines: [{ text: `Always allow ${dir} for reading files, in this conversation`, rule: dir }], readDir: dir };
 }
 
 /**
