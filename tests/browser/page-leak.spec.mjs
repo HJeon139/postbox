@@ -86,19 +86,25 @@ for (const [what, diagrams, review] of /** @type {const} */ ([
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('HeapProfiler.enable');
     const atLong = [];
+    const atShort = [];
     for (let r = 0; r < ROUNDS; r++) {
       await open(page, long);
       atLong.push(await liveNodes(cdp));
       await open(page, short);
+      // A frame for what the page lets go on its next frame after a switch (review-preview.mjs’s marks).
+      await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+      atShort.push(await liveNodes(cdp));
     }
     const page1 = await page.evaluate(() => document.getElementsByTagName('*').length);
     test.info().annotations.push({
       type: 'measured',
-      description: `live nodes at the long room, each visit: ${atLong.join(', ')}; the short room’s page: ${page1} elements`,
+      description: `live nodes at the long room, each visit: ${atLong.join(', ')}; back in the short room: ${atShort.join(', ')}; the short room’s page: ${page1} elements`,
     });
     // One copy of the long room’s page is about atLong[0] nodes. Kept, each visit adds one; let go, the count holds.
     const growth = /** @type {number} */ (atLong.at(-1)) - /** @type {number} */ (atLong[1]);
     expect(growth, `live nodes, visit by visit: ${atLong.join(', ')}`).toBeLessThan(atLong[0] * 0.1);
+    // Back in the short room, the long room’s page is let go too, not held until the next visit replaces it.
+    expect(atShort.at(-1), `live nodes back in the short room: ${atShort.join(', ')}`).toBeLessThan(atLong[0] * 0.5);
   });
 
 // From a room to the project’s Threads page (#945): the page let the room’s column go only once another room was
