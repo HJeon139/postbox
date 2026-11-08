@@ -68,7 +68,21 @@ The principles behind the rules: [Larkin & Simon 1987](https://mechanism.ucsd.ed
   - Held out, on four everyday briefs not used in tuning (`everyday-pantry`, `-shelf`, `-subs`, `-tests`), two runs each with the tuned skill and one without: 1.75 against 1.25. Both misses with the skill weren’t the drawing: a first version that crashed, and a plain data table posted before the chart.
   - The tester answered Postbox’s browser card inconsistently, so some agents could see their app and some couldn’t. With the skill, it made no difference (1.80 with the browser, 2.00 without, 15 runs each).
   - Three runs per condition is noisy: one run moves a mean by up to 1. Only the sleep brief’s rise and the jam’s crashes are clear.
+- **Picture or words, counted on November 8, 2026** ([#983](https://github.com/HJeon139/postbox/issues/983)): every run above judged a picture the person had asked for, so none said whether an agent chooses one. Counted from each run’s own Postbox log since November 6, the first visual after the person’s first message:
+
+  | The person | Skill | Drew in the first reply | Drew later | Never drew |
+  |---|---|---|---|---|
+  | Asked for a picture (7 briefs) | off | 31 of 31 | 0 | 0 |
+  | Asked for a picture (7 briefs) | on | 79 of 79 | 0 | 0 |
+  | Didn’t ask (5 briefs) | off | 12 of 18 | 1 | 5 |
+  | Didn’t ask (5 briefs) | on | 26 of 33 | 4 | 3 |
+
+  - Postbox’s guide already tells every agent to write an app when one explains better than prose, so the skill-off runs measure the guide, and the difference is the skill’s.
+  - Unasked, the skill changed one brief: the book shelf drew first in 5 of 6 runs with it and 0 of 3 without. A question that reads as a decision (“Where should we start?”, “Where did the time go?”) never got a picture first, with or without it.
+  - It changes what agents draw more than whether: Mermaid diagrams were 12 of 44 first visuals without the skill and 2 of 109 with it.
+  - Every judged run now records this: the report’s “Picture or words” line and run.json’s `picture` (`tools/uat/picture-choice.mjs`). `- expects: picture` or `- expects: words` says which the first message should get. Count runs from run.json’s `picture.met` by scenario, skill on and off: the unasked scenarios (`everyday-shelf`, `everyday-tests`, `everyday-subs-cancel`, `everyday-pantry-race`) and #206’s two controls, where words are right (`control-subs-total`, `control-pantry-start`), each with a `-base` twin.
 - **Not done:**
+  - #206’s side-by-side preference, an app against a text answer to the same question, “preferred over text in 7 or more of 10 pairs”, hasn’t been run. It needs a judge shown both answers.
   - The takeaway test, now on a text-hidden screenshot with the floor’s new lines, hasn’t been rerun against the maintainer’s verdicts. Until it agrees about as well as people agree with each other (κ about 0.45 to 0.6), it informs a person’s judgment and doesn’t replace it.
   - The tester judges the first visual, so a data table posted before the picture is scored as the visual. Whether the skill should say “the picture first” is untested.
   - A first version that crashes is what the reader sees, even when a later version is good. Postbox stops an app on the browser’s harmless “ResizeObserver loop” error, which caused one of the crashes.
