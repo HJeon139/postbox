@@ -1,9 +1,9 @@
 // The pre-display check holds back a visual that can’t be read, and tells the agent which elements to fix (#997): text
-// in boxes (an accent strip on each box too) and a sentence in a box, text under 12 px, low contrast on an SVG label, a
-// label cut off by its SVG’s edge, labels drawn over each other, and a figure below the first view at 1000 × 680. A
-// chart whose labels sit beside its marks, a legend’s swatches, and a page that shows its title and figure at once
-// pass. Every app goes up in one conversation, which a page opened before the tests checks; each test reads what the
-// check found, and what the agent was sent.
+// in boxes (an accent strip on each box too, and a Mermaid flowchart) and a sentence in a box, text under 12 px, low
+// contrast on an SVG label, a label cut off by its SVG’s edge, labels drawn over each other, and a figure below the
+// first view at 1000 × 680. A chart whose labels sit beside its marks, a legend’s swatches, and a page that shows its
+// title and figure at once pass. Every app goes up in one conversation, which a page opened before the tests checks;
+// each test reads what the check found, and what the agent was sent.
 
 import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
@@ -47,6 +47,13 @@ const chart = `<h2 style="color:var(--text);margin:8px">Rent and dining out drov
 const APPS = {
   flow,
   accent,
+  // The same steps as a Mermaid flowchart, whose labels are HTML in each node’s foreignObject.
+  mermaid: `<div id="m"></div><script>
+postbox.load('mermaid').then((mermaid) => {
+  mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+  return mermaid.render('flow-m', 'flowchart LR\\n  A[Read file] --> B[Parse rows] --> C[Check totals] --> D[Write temp] --> E[Swap in]');
+}).then(({ svg }) => { document.getElementById('m').innerHTML = svg; });
+</script>`,
   chart,
   // Page text at 10 px, and an SVG label drawn at 9 px.
   small: `<div style="padding:12px;color:var(--text)"><h2 style="margin:0">Where the time went</h2><p class="fine" style="font-size:10px">Source: the team’s timesheets</p>
@@ -118,6 +125,10 @@ test('#997 a flowchart of named boxes is held back as text in boxes, naming the 
 
 test('#997 a flowchart whose boxes have an accent strip is still text in boxes', () => {
   expect(heldFor('accent', 'text-in-boxes')[0], says('accent')).toMatch(/^In svg#accent, 5 of 5 labels sit inside boxes/);
+});
+
+test('#997 a Mermaid flowchart of named boxes is text in boxes', () => {
+  expect(heldFor('mermaid', 'text-in-boxes')[0], says('mermaid')).toMatch(/^In svg#flow-m, 5 of 5 labels sit inside boxes, such as “Read file”/);
 });
 
 test('#997 a box holding a sentence is held back, naming the box and its words', () => {
