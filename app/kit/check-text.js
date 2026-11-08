@@ -5,7 +5,11 @@
 // biome-ignore lint/suspicious/noRedundantUseStrict: the page runs this as a classic script, which isn’t strict without it.
 'use strict';
 {
-  const { rgb, lum } = window.__pbCheck;
+  const { rgb, lum, clip, where, hidden } = window.__pbCheck;
+  // The smallest text a person can read at a glance: the critique’s floor (VE12). An SVG drawn a little under its
+  // viewBox’s size draws a 12 px label at 11.7 px, which reads the same, so a label counts as small under 11.5 px.
+  const MIN_SIZE = 12;
+  const SMALL = 11.5;
 
   // Text whose contrast with what’s behind it is under WCAG AA, up to 3.
   function lowContrast() {
@@ -51,41 +55,55 @@
     return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
   }
 
+  // Shown, at a size, and not hidden for screen readers only (clipped to 1 px, as .sr-only text is).
   const shown = (el) => {
     const b = el.getBoundingClientRect();
-    if (!b.width && !b.height) return false;
+    if (b.width <= 1 || b.height <= 1) return false;
     const cs = getComputedStyle(el);
-    return cs.visibility !== 'hidden' && cs.display !== 'none' && +cs.opacity !== 0;
+    return !hidden(el) && cs.clip === 'auto' && cs.clipPath === 'none';
   };
   // How much an SVG element is scaled on screen, from its user units.
   const scale = (el) => {
     const m = el.getScreenCTM?.();
     return m ? Math.hypot(m.a, m.b) : 1;
   };
-  const px = (n) => Math.round(n * 10) / 10;
+  const tenth = (n) => Math.round(n * 10) / 10;
 
-  // Text: SVG labels at their scaled size, and page text at its font size.
-  function smallText(w) {
+  // Every label the person reads, with the size it’s drawn at: SVG labels at their scaled size, and page text at its
+  // font size. KaTeX sets its own sizes, its limits and indices among them.
+  function labels() {
     const out = [];
-    const sizes = [];
     for (const el of document.querySelectorAll('svg text'))
-      if (shown(el) && el.textContent.trim()) sizes.push(parseFloat(getComputedStyle(el).fontSize) * scale(el));
+      if (!el.parentElement.closest('text') && el.textContent.trim() && shown(el))
+        out.push({ el, t: el.textContent, size: parseFloat(getComputedStyle(el).fontSize) * scale(el) });
     const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     const seen = new Set();
     for (let n = walk.nextNode(); n; n = walk.nextNode()) {
       const el = n.parentElement;
-      if (!n.textContent.trim() || !el || el.closest('svg') || !shown(el)) continue;
-      if (seen.has(el)) continue;
+      if (!n.textContent.trim() || !el || seen.has(el) || el.closest('svg, script, style, .katex') || !shown(el)) continue;
       seen.add(el);
-      sizes.push(parseFloat(getComputedStyle(el).fontSize));
+      out.push({ el, t: n.textContent, size: parseFloat(getComputedStyle(el).fontSize) });
     }
-    const small = sizes.filter((s) => s < 9);
-    if (small.length >= 3 && small.length / sizes.length >= 0.2)
-      out.push({
-        code: 'text-too-small',
-        message: `At ${w} px, ${small.length} of ${sizes.length} labels are drawn under 9 px (the smallest at ${px(Math.min(...small))} px), too small to read. Make them larger, or show fewer.`,
-      });
     return out;
+  }
+
+  /**
+   * text-too-small: labels under 12 px, the critique’s floor (VE12), named, the smallest first. A subscript or a
+   * superscript is part of a label, set smaller on purpose. The code says when it’s measured at a width other than
+   * the one the floor names: at 375 px, where an SVG scaled to fit draws its labels small, it’s a warning (server/apps.mjs).
+   */
+  function smallText(w, code = 'text-too-small') {
+    hidden.reset();
+    const all = labels();
+    const small = all.filter((l) => l.size < SMALL && !l.el.closest('sub, sup')).sort((a, b) => a.size - b.size);
+    if (!small.length) return [];
+    const such = small.slice(0, 3).map((l) => `“${clip(l.t)}” (${where(l.el)}) at ${tenth(l.size)} px`);
+    return [
+      {
+        code,
+        message: `At ${w} px, ${small.length} of ${all.length} labels are under ${MIN_SIZE} px, such as ${such.join(', ')}. Set text at ${MIN_SIZE} px or more. Where a chart has no room for its labels at that size, label fewer of its marks, or let it grow.`,
+      },
+    ];
   }
 
   Object.assign(window.__pbCheck, { lowContrast, smallText });

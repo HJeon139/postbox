@@ -32,7 +32,7 @@
   if (new URLSearchParams(location.search).has('view')) {
     const scriptErrors = () => errors.map((e) => ({ code: 'script-error', message: e }));
     settled
-      .then(() => Promise.all([firstView(), textInBoxes()]))
+      .then(() => Promise.all([firstView(), textInBoxes(), smallText(innerWidth)]))
       .then((found) => post({ type: 'check', width: innerWidth, problems: [...found.flat(), ...scriptErrors()] }));
     return;
   }
@@ -130,7 +130,9 @@
         code: 'dashes-too-fine',
         message: `At ${w} px, ${dashed} dashed ${dashed === 1 ? 'line has' : 'lines have'} dashes, gaps or strokes of ${px(finest)} px, too fine to tell from a solid line. Use dashes of at least 4 px, gaps of 3 px and lines 1 px wide, or tell the series apart by color and a label.`,
       });
-    out.push(...smallText(w));
+    // Text under 12 px holds a version back at 1000 × 680, the size the critique reads at (check-view’s frame); at 375 px
+    // it’s a warning, and at 1280 px it’s no smaller than at 1000.
+    if (w < 1000) out.push(...smallText(w, `text-too-small-${w}`));
     // An app that shows only an error or a missing-data message hasn’t worked, even if nothing else is wrong.
     // app/kit/drawn.js decides, for a script error once the app is shown too (#964).
     const { content, said } = window.__pbDrawn.look();
