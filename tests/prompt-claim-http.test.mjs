@@ -5,30 +5,26 @@
 
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { REFUSED } from '../server/prompt-claim.mjs';
 import { fakeRequest } from './fake-http.mjs';
 import { askedAfter, feed, PROMPTS } from './prompt-setup.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
 const PORT = 4441;
 
-/** A Postbox with no listener, in a temp folder of its own, closed and then removed when the test ends. */
+/** A Postbox with no listener, in a temp folder of its own, closed and then removed when the test file ends. */
 async function server(/** @type {import('node:test').TestContext} */ t) {
-  const dir = await mkdtemp(join(tmpdir(), 'pb-replay-'));
+  const dir = tempDir('pb-replay-');
   const folder = join(dir, 'work');
   await mkdir(folder);
   const app = await start({ port: PORT, dataDir: dir, fresh: true, quiet: true, claudeHome: dir, listen: false });
-  // One hook, in this order: t.after runs its hooks first to last and skips the rest when one throws, so a removal
-  // racing the store’s last writes would skip close() and leave its keep-alive timer holding the process open.
-  t.after(async () => {
-    await app.close();
-    await rm(dir, { recursive: true, force: true });
-  });
+  // tempDir removes the folder when the file’s process exits, after this has closed the store and its keep-alive timer.
+  t.after(() => app.close());
   return { app, folder };
 }
 

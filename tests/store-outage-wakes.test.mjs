@@ -4,10 +4,8 @@
 // the reload re-arms the same schedule from the recovered state. Unless the reload drops the held copy, the wake is
 // delivered twice: two paid turns where a restart delivers it once. The same real Postbox setup on its own port.
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
+import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
@@ -18,7 +16,7 @@ let app;
 let dir;
 let rt;
 before(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'pb-outage-wakes-'));
+  dir = tempDir('pb-outage-wakes-');
   app = await start({ port: PORT, dataDir: dir, fresh: true, demo: false, quiet: true, claudeHome: dir, listen: false, hosts: null });
   rt = app.rt;
   rt.store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
@@ -26,7 +24,6 @@ before(async () => {
 });
 after(async () => {
   await app.close();
-  await rm(dir, { recursive: true, force: true });
 });
 beforeEach(async () => {
   if (!rt.store.writable) await rt.store.reload();

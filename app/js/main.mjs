@@ -14,8 +14,10 @@ import { mountPane } from './pane.mjs';
 import { canonical } from './pane-route.mjs';
 import { holdFocus } from './rerender-state.mjs';
 import { theme } from './sandbox-libs.mjs';
+import { threadTopbar } from './search-dialog.mjs';
 import { liveMembers, mountEmptyProject, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';
+import { topbarSig } from './topbar-sig.mjs';
 import { initHoverCards, navigate, refind, route, say, setAttention } from './ui.mjs';
 
 const root = $('#root');
@@ -103,7 +105,7 @@ function render({ rebuild = false } = {}) {
   pane = mountPane(t.id);
   mounted.push(rail, tr, comp, pane);
   conversation = h('div.main', rail.strip, tr.el, comp.el);
-  const shell = h('div.app', { class: railHidden() ? 'rail-hidden' : '' }, topbar({ title: t.title, threadId: t.id }), rail.el, conversation, pane.el);
+  const shell = h('div.app', { class: railHidden() ? 'rail-hidden' : '' }, threadTopbar(t), rail.el, conversation, pane.el);
   root.replaceChildren(shell);
   pane.set(r);
   requestAnimationFrame(() => tr.settle());
@@ -170,9 +172,17 @@ function topbarChanged(se) {
   topSig.set(se.id, sig);
   return changed;
 }
+/** What the top bar is drawn from in the open view: topbar()’s arguments. */
+function barView() {
+  if (current.view === 'thread') return { title: client.state.threads[current.threadId]?.title, threadId: current.threadId };
+  if (current.projectId) return { title: current.view === 'threads' ? 'Threads' : '', projectId: current.projectId };
+  return {};
+}
 function refreshTop() {
   const old = root.querySelector('header.topbar');
   if (!old || !current) return;
+  // Only a change to what the bar shows rebuilds it: another conversation’s event costs a compare, not a layout (#986).
+  if (old.dataset.sig === topbarSig(barView())) return;
   let next;
   if (current.view === 'thread') {
     const t = client.state.threads[current.threadId];
@@ -184,7 +194,7 @@ function refreshTop() {
       back();
       return;
     }
-    next = topbar({ title: t.title, threadId: t.id });
+    next = threadTopbar(t);
   } else if (current.projectId) next = topbar({ title: current.view === 'threads' ? 'Threads' : '', projectId: current.projectId });
   else next = topbar({});
   // The keyboard stays where it was: focus on a control of the old bar moves to the same control in the new one.

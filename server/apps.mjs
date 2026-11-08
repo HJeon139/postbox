@@ -31,7 +31,9 @@ export function appCheck(rt, appId, { version, problems = [] }) {
     rt.store.emit('app', { ...app, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
     return { status: 'passed' };
   }
-  if (clean.some((p) => p.code === 'script-error')) {
+  // A script error goes back to the agent once, like any blocking problem (#964); after that, or with no agent to
+  // tell, the version shows as crashed.
+  if (clean.some((p) => p.code === 'script-error') && (app.check.attempt > 0 || !rt.s.sessions[app.sessionId])) {
     rt.store.emit('app', { ...app, check: { status: 'crashed', attempt: app.check.attempt, problems: clean } });
     return { status: 'crashed' };
   }
@@ -59,6 +61,9 @@ export function appCheck(rt, appId, { version, problems = [] }) {
   }
   return { status: 'note' };
 }
+
+/** The status of an app whose agent’s app-check turn ended without a new version: crashed if its script threw (#964). */
+export const fixEnded = (app) => (app.check.problems?.some((p) => p.code === 'script-error') ? 'crashed' : 'note');
 
 // An app’s sends are limited (#38): server/app-send-limits.mjs says how, and why.
 
@@ -112,7 +117,7 @@ export function needAppSend(rt, app, itemId, waiting) {
   // A later event of a card that isn't the need changes nothing: the card isn't new, so it doesn't offer itself again.
   if (waiting !== 1 && se.needs?.itemId !== itemId) return;
   const text = `${app.title} wants to send ${waiting === 1 ? '1 message' : `${waiting} messages`} for you`;
-  const took = offerNeed(rt, se, { kind: 'appsend', itemId, text }, rt.turns.has(se.id) ? se.state : 'needs');
+  const took = offerNeed(rt, se, { kind: 'appsend', itemId, text, ...rt.awayFrom(se, app.threadId) }, rt.turns.has(se.id) ? se.state : 'needs');
   // Only the first event is noticed: behind another need it isn't yet, and is when it becomes the need (card-needs.mjs).
   if (waiting !== 1) return;
   rt.patchItem(app.threadId, itemId, { notifiedAt: took ? Date.now() : null });

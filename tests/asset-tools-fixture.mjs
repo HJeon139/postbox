@@ -1,27 +1,24 @@
 // What the asset tools’ tests share (#516 S3b): a runtime whose store keeps a data folder, so assets/ is there, with a
 // project folder for path writes, and two agents in one conversation.
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { assetTools } from '../server/asset-tools.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { ScriptedAdapter } from './side-threads-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 /**
- * A room for one test. Its store, and the folders the fixture made, are closed and removed when the test ends.
+ * A room for one test. Its store is closed when the test ends, and the folders the fixture made are removed when the
+ * test file ends.
  * @param {import('node:test').TestContext} ctx @param {{ store?: Store | null }} [opts]  a store of the test’s own
  */
 export async function assetRoom(ctx, { store = null } = {}) {
-  const dir = mkdtempSync(join(tmpdir(), 'pb-asset-tools-'));
-  const folder = mkdtempSync(join(tmpdir(), 'pb-asset-folder-'));
+  const dir = tempDir('pb-asset-tools-');
+  const folder = tempDir('pb-asset-folder-');
   const s = store ?? (await new Store(join(dir, 'data')).load());
-  ctx.after(async () => {
-    await s.close();
-    for (const d of [dir, folder]) rmSync(d, { recursive: true, force: true });
-  });
+  ctx.after(() => s.close());
   const adapter = new ScriptedAdapter();
   const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({

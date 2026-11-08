@@ -3,12 +3,10 @@
 // reads go on, Retry and Stop are allowed; POST /api/store/retry runs Retry and reopens; the live streams get a `status`
 // frame when writes close or reopen, and `epoch` then `resync` when Retry installs a new epoch.
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { after, before, test } from 'node:test';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
@@ -19,7 +17,7 @@ let app;
 let dir;
 let cookie;
 before(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'pb-gate-'));
+  dir = tempDir('pb-gate-');
   app = await start({ port: PORT, dataDir: dir, fresh: true, demo: false, quiet: true, claudeHome: dir, listen: false });
   app.store.emit('thread', { id: 't1', members: [] });
   await app.store.flush();
@@ -27,7 +25,6 @@ before(async () => {
 });
 after(async () => {
   await app.close();
-  await rm(dir, { recursive: true, force: true });
 });
 
 const host = () => `127.0.0.1:${PORT}`;

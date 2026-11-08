@@ -12,7 +12,6 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AdapterRegistry } from './adapters/adapter.mjs';
-import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { PROBES, registerBackends } from './backends.mjs';
 import { INLINE_TYPES } from './blobs.mjs';
@@ -32,12 +31,13 @@ import { rearmPersonaDeletes } from './persona-delete.mjs';
 import { createProject, setPushUrl } from './projects.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { settleInterrupted } from './restart-sweep.mjs';
-import { servedReviewFile } from './review-files.mjs';
+import { SAME_ORIGIN_ONLY, servedReviewFile } from './review-files.mjs';
 import { httpError, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { seed, toBoilerplate } from './seed.mjs';
 import { decodePath, file, mediaPath, servedFile, TYPES } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
+import { setupRoute } from './setup-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
 import { watchTelemetry } from './telemetry.mjs';
@@ -65,6 +65,9 @@ const BUNDLED_MEDIA = join(ROOT, 'app', 'media');
 // archive it unpacked, could put an HTML page or a scripted SVG there, and on Postbox’s origin it would carry the page’s
 // token cookie. It goes without the open CORS header, too, which would let another site’s script read it.
 const MEDIA_HEADERS = { 'content-security-policy': "sandbox; default-src 'none'; style-src 'unsafe-inline'" };
+// A command’s output from the work ledger (#132) is text the page reads, never a page, and it stays on Postbox’s own
+// origin (#820).
+const OUTPUT_HEADERS = { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff', ...SAME_ORIGIN_ONLY };
 
 /**
  * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean,
@@ -276,12 +279,9 @@ export async function start({
     }
 
     if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config, corpus }));
-    // The MCP servers a persona would load, with their status (#59): names, scopes and statuses only, never config.
-    if (path === '/api/mcp-servers' && req.method === 'GET') {
-      const { persona, folder, seen } = rt.mcpContext(url.searchParams.get('personaId'), url.searchParams.get('projectId'));
-      const found = await yourMcpServers(folder, { home: claudeHome });
-      return send(res, 200, { folder, servers: mcpServerList({ found, seen, off: persona?.mcpOff ?? [] }) });
-    }
+    // What a persona would load, for its sheet: its MCP servers and skills (server/setup-routes.mjs).
+    const setupDid = await setupRoute(rt, path, req.method, url, claudeHome);
+    if (setupDid) return send(res, setupDid.status, setupDid.body);
     // The permissions panel (#66): one agent’s mode, rules with their sources, folders and tools.
     if (path === '/api/permissions' && req.method === 'GET') {
       const q = (k) => url.searchParams.get(k) || null;
@@ -292,7 +292,7 @@ export async function start({
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/files\/([^/]+)\/diff$/)) && req.method === 'GET')
       return send(res, 200, await rt.workDiff(m[1], m[2], url.searchParams.get('change')));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/commands\/([^/]+)\/output$/)) && req.method === 'GET')
-      return raw(res, 200, await rt.workOutput(m[1], m[2]), { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff' });
+      return raw(res, 200, await rt.workOutput(m[1], m[2]), OUTPUT_HEADERS);
     // A data file an app’s version carries (#54), for the app’s postbox.file(name). Text, never run as a page.
     if ((m = path.match(/^\/api\/apps\/([^/]+)\/files\/([^/]+)$/)) && req.method === 'GET')
       return raw(res, 200, await rt.appFile(decodePath(m[1]), decodePath(m[2]), Number(url.searchParams.get('v')) || undefined), {
@@ -300,6 +300,7 @@ export async function start({
         'x-content-type-options': 'nosniff',
         'content-security-policy': "sandbox; default-src 'none'",
         'cache-control': 'no-store',
+        ...SAME_ORIGIN_ONLY,
       });
     // A review’s image (#780): only a file on that item, by its name and SHA-256; every miss is the same 404.
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/files\/([^/]+)$/)) && req.method === 'GET') {
@@ -407,6 +408,7 @@ export async function start({
         'content-security-policy': "sandbox; default-src 'none'",
         'content-disposition': `${inline ? 'inline' : 'attachment'}; filename="${f.name.replace(/[^\w.-]/g, '_')}"`,
         'cache-control': 'private, max-age=31536000, immutable',
+        ...SAME_ORIGIN_ONLY,
       });
     }
     if (path === '/api/corpus' && req.method === 'POST') {

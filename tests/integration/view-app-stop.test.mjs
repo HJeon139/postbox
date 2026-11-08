@@ -2,23 +2,26 @@
 // killed Postbox left downloading says so on the next start, instead of downloading for good.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { start } from '../../server/index.mjs';
 import { STOPPED } from '../../server/view-app/browser.mjs';
 import { viewOf } from '../../server/view-app/view-of.mjs';
 import { freePort } from '../process/chrome.mjs';
+import { tempDir } from '../temp-dirs.mjs';
 
 test('stop closes view_app’s browser, and the next start settles a card left downloading', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'pb-view-stop-'));
+  const root = tempDir('pb-view-stop-');
   const work = join(root, 'work');
   mkdirSync(work);
   // demo: no real backends are looked for, so no CLI runs or leaves anything behind.
   const opts = { dataDir: join(root, 'data'), demo: true, quiet: true, claudeHome: root };
+  /** The Postbox an assert left running, closed so the file’s process exits and tempDir removes the folder (#921). */
+  let open = /** @type {{ close: () => Promise<void> } | null} */ (null);
   try {
     const first = await start({ ...opts, port: await freePort(), fresh: true });
+    open = first;
     const { rt, store } = first;
     store.emit('project', { id: 'pv', name: 'View app', folder: work });
     const t = rt.createThread({ projectId: 'pv', title: 'Cut short', personaIds: [rt.personaByHandle('researcher').id] });
@@ -30,6 +33,7 @@ test('stop closes view_app’s browser, and the next start settles a card left d
       closed++;
       return close();
     };
+    open = null;
     await first.close();
     assert.equal(closed, 1, 'stop closed the browser');
 
@@ -42,6 +46,6 @@ test('stop closes view_app’s browser, and the next start settles a card left d
       await second.close();
     }
   } finally {
-    rmSync(root, { recursive: true, force: true });
+    await open?.close();
   }
 });

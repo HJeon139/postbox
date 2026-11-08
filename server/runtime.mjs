@@ -17,7 +17,7 @@ import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typed
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { retireApp } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
-import { appCheck, appEvent, appFile, appQuery, appState, hostTool, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
+import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, hostTool, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
@@ -227,6 +227,7 @@ export class Runtime {
         usesHostSetup: p.usesHostSetup !== false,
         canPublish: p.canPublish === true,
         mcpOff: p.mcpOff ?? [],
+        skillsOff: p.skillsOff ?? [],
         tools: p.tools ?? [],
       }
     );
@@ -998,10 +999,10 @@ export class Runtime {
       this.takePending(se, turn, 'wakes');
       return;
     }
-    // An app-check turn that ended without a new version: show the app with a note instead of waiting forever.
+    // An app-check turn that ended without a new version: show the app with a note, or crashed (#964), not wait forever.
     if (turn.kind === 'app-check') {
       for (const app of Object.values(this.store.pending.apps()))
-        if (app.sessionId === se.id && app.check.status === 'fixing') this.store.emit('app', { ...app, check: { ...app.check, status: 'note' } });
+        if (app.sessionId === se.id && app.check.status === 'fixing') this.store.emit('app', { ...app, check: { ...app.check, status: fixEnded(app) } });
     }
     // Only this turn’s asking blocks make the agent need you. Older ones you left open stay open, and the
     // client shows them quietly (“1 open review”), so moving on clears needs-you (#69). A turn you didn’t start
@@ -2369,6 +2370,7 @@ export class Runtime {
     usesHostSetup = true,
     canPublish = false,
     mcpOff = [],
+    skillsOff = [],
     folder = '',
     tools = [],
     examples = [],
@@ -2384,7 +2386,7 @@ export class Runtime {
     if (!this.adapters.names().includes(backend)) throw httpError(422, notHere(this, backend));
     if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
     checkEffort(effort);
-    checkSetup({ usesHostSetup, canPublish, mcpOff });
+    checkSetup({ usesHostSetup, canPublish, mcpOff, skillsOff });
     const placed = placement(this, remote, backend);
     if (!placed && !runsHere(this, backend)) throw httpError(422, notHere(this, backend));
     const p = {
@@ -2399,6 +2401,7 @@ export class Runtime {
       usesHostSetup,
       canPublish,
       mcpOff: serverNames(mcpOff),
+      skillsOff: skillNames(skillsOff),
       folder: String(folder ?? ''),
       tools: [...new Set(tools)],
       examples,
@@ -2420,6 +2423,7 @@ export class Runtime {
     if (patch.effort !== undefined) checkEffort(patch.effort);
     checkSetup(patch);
     if (patch.mcpOff !== undefined) patch = { ...patch, mcpOff: serverNames(patch.mcpOff) };
+    if (patch.skillsOff !== undefined) patch = { ...patch, skillsOff: skillNames(patch.skillsOff) };
     if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend)) throw httpError(422, notHere(this, patch.backend));
     // Where it runs (#120), and whether its backend runs here when that’s here.
     patch = placedPatch(this, id, p, patch);
@@ -2438,6 +2442,7 @@ export class Runtime {
         'canPublish',
         'allowRequested',
         'mcpOff',
+        'skillsOff',
         'folder',
         'tools',
         'examples',
@@ -2522,6 +2527,8 @@ export class Runtime {
       persona,
       folder,
       seen: seenFolder === folder ? servers : servers.filter((s) => s.source !== 'project' && s.source !== 'local'),
+      // The skills that session listed in its / menu (#207): the sheet takes only plugins’, which load in every folder.
+      skills: (seen?.commands ?? []).filter((c) => c.skill).map((c) => c.name),
     };
   }
 
@@ -2916,6 +2923,7 @@ const COMMAND_REFRESH_MS = 5000;
 const MAX_COMMAND_REFRESHES = 60;
 /** Server names, trimmed and without repeats. Postbox’s own server can’t be turned off, so it’s dropped. */
 const serverNames = (list) => [...new Set(list.map((n) => n.trim()))].filter((n) => n !== POSTBOX_SERVER);
+const skillNames = (list) => [...new Set(list.map((n) => n.trim()))];
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, o[k]]));
 
 export { formatDuration };

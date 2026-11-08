@@ -7,7 +7,7 @@ import { encodedBytes, REMOTE_LIMITS, TURN_FILES } from '../../../shared/remote-
 import { READ_CHUNK } from './daemon-constants.mjs';
 import { readExit, sizeOf } from './daemon-files.mjs';
 import { fail, send } from './daemon-reply.mjs';
-import { followerEnds, forgetSilence, turnRunning } from './daemon-running.mjs';
+import { followerEnds, forgetSilence, turnRunning, unkilled } from './daemon-running.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
 /** @typedef {import('./daemon-constants.mjs').Follower} Follower */
@@ -209,7 +209,11 @@ async function run(fl) {
     }
     if (over) {
       if (exit) forgetSilence(d, turn);
-      if (which === 'out') await send(c, 'ended', { turn, exit, size: (await d.cleanup.deletedSize(turn)) ?? (await sizeOf(fl.path)) });
+      if (which === 'out') {
+        const size = (await d.cleanup.deletedSize(turn)) ?? (await sizeOf(fl.path));
+        // Its process may still run there, so the laptop leaves its resume to the person (#872).
+        await send(c, 'ended', { turn, exit, size, ...(!exit && unkilled(d, turn) ? { unkilled: true } : {}) });
+      }
       if (exit) d.cleanup.turnEnded(turn).catch((e) => d.log(`Cleaning turn ${turn} failed: ${e.message}`));
       return;
     }

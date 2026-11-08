@@ -92,9 +92,9 @@ export function setup({ token = TOKEN, same = true, clock, onIdle, uid, spawn, b
   /**
    * What the fake proc reports: toolGroups’ answers, one per call (null: the processes can’t be listed), and the
    * groups liveGroups finds gone. launching: what launchRunner waits for before its runner is up. logind: what the
-   * daemon’s logind check finds (runner.mjs’s logindFacts), and logindAsks how often it was asked.
+   * daemon’s logind check finds (runner.mjs’s logindFacts), and logindAsks how often it was asked. boot: this boot’s ID.
    * @type {{ same: boolean, scoped: boolean, lingerOff: boolean, refuse: string, groups: any[][] | null, goneGroups: number[], launching: Promise<void> | null,
-   *   logind: { killUserProcesses: boolean | null, linger: boolean | null }, logindAsks: number }}
+   *   logind: { killUserProcesses: boolean | null, linger: boolean | null }, logindAsks: number, boot: string }}
    */
   const state = {
     same,
@@ -106,6 +106,7 @@ export function setup({ token = TOKEN, same = true, clock, onIdle, uid, spawn, b
     launching: null,
     logind: { killUserProcesses: null, linger: null },
     logindAsks: 0,
+    boot: BOOT,
   };
   const groupLookups = [];
   const daemon = createDaemon({
@@ -166,6 +167,7 @@ function fakeRunners(state, { alive, launches, asks, groupLookups, sameProcess =
     },
     proc: {
       sameProcess,
+      bootId: () => state.boot,
       toolGroups: (pgid) => {
         groupLookups.push(pgid);
         return state.groups === null ? null : (state.groups.shift() ?? []);

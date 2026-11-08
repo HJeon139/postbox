@@ -6,6 +6,7 @@
 
 import { api, client } from './client.mjs';
 import { h, icon } from './dom.mjs';
+import { onChangeWhileAlive } from './held-weakly.mjs';
 import { fileIssue, showSaved } from './telemetry-issue.mjs';
 import { navigate, openDialog, paneHref, route, setPaneFull, toast } from './ui.mjs';
 
@@ -76,22 +77,25 @@ function openTelemetry(convId) {
   navigate(paneHref(convId, { side: here ? r.sideId : null, work: here && r.work, telemetry: true }), { replace: here });
 }
 
+/** @param {HTMLElement} badge @param {string} threadId */
+function paintBadge(badge, threadId) {
+  const rec = S().threads[threadId]?.recording;
+  badge.hidden = !rec?.on;
+  badge.textContent = rec?.on ? `Recording since ${time(rec.startedAt ?? rec.since)}` : '';
+}
+
 /** The header’s word for a recording conversation (R5): “Recording since 14:02”, kept up to date. */
 export function recordingBadge(t) {
   // A page with no conversation (Threads, Archived) has no badge, and nothing listening for one.
   if (!t) return null;
   const badge = h('span.rec-badge', { id: 'recording-badge', role: 'status' });
-  const paint = () => {
-    const rec = S().threads[t?.id]?.recording;
-    badge.hidden = !rec?.on;
-    badge.textContent = rec?.on ? `Recording since ${time(rec.startedAt ?? rec.since)}` : '';
-  };
-  paint();
+  paintBadge(badge, t.id);
   // The top bar is rebuilt often, and mounts what it builds at once: a badge that isn’t in the page by the next change
-  // has been dropped, and stops listening, so listeners don’t pile up.
-  const off = client.on((ch) => {
-    if (!badge.isConnected) return off();
-    if (ch.type === 'thread' && ch.data.id === t.id) paint();
+  // has been dropped, and stops listening, so listeners don’t pile up. It’s held weakly until then, so a dropped one
+  // doesn’t keep its old page alive while no change comes (#866).
+  onChangeWhileAlive(badge, (b, ch, off) => {
+    if (!b.isConnected) return off();
+    if (ch.type === 'thread' && ch.data.id === t.id) paintBadge(b, t.id);
   });
   return badge;
 }

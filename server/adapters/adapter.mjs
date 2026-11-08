@@ -29,8 +29,8 @@
 //   ctx.mcpUrl                              where a real agent connects for the UI tools
 //   ctx.remote                              set when the turn runs on a remote host (#120), and then ctx.mcpUrl is
 //                                           never used: { link, welcome, settings, folder, version, turn, nextTurn,
-//                                           attach?, resumeInterrupted?, bring?, asksByPrompt?, attachments? } (RemoteContext
-//                                           below)
+//                                           attach?, resumeInterrupted?, bring?, asksByPrompt?, attachments?, allow? }
+//                                           (RemoteContext below)
 //                                           link: server/remote/link.mjs’s createHostLink; welcome: the daemon’s
 //                                           latest (home, node.path, harnesses); settings: the host’s
 //                                           (shared/remote-settings.mjs); folder: the host folder it works in;
@@ -49,6 +49,9 @@
 //                                           resumeInterrupted. attachments: the message’s files, which every start
 //                                           carries (server/remote/attachments.mjs); the message names their copies
 //                                           on the host through remote-turn.mjs’s attachmentPaths, never ctx.pathOf.
+//                                           allow: the rules the person always allowed from a card for this persona
+//                                           on this host (server/host-rules.mjs), which Claude Code gets as allow
+//                                           rules in --settings.
 //
 // Throw (or reject) to fail the turn; the message is shown to you with Retry.
 //
@@ -61,6 +64,8 @@
 //   capabilities.isolation: false     it always loads your own setup, so the sheet has no Isolated switch (#143)
 //   capabilities.images: true         its agent sees an image in a tool’s result, so view_app sends the picture itself;
 //                                     to any other, view_app gives the path of the copy it saved (#95)
+//   capabilities.skills: true         it loads Postbox’s skills and yours, so the persona sheet lists them all to turn
+//                                     off for one agent (#207); 'postbox': it loads only Postbox’s, so only those show
 //   capabilities.promptTool: false    it never asks through Postbox’s permission_prompt (the CLI’s --permission-prompt-tool),
 //                                     so MCP doesn’t list it and refuses a call to it at once (#220)
 //   capabilities.promptHook: true     its prompts come from Postbox’s own hook, by an id of the hook’s (Antigravity’s),
@@ -102,7 +107,7 @@
  * A turn’s remote context (#120), as the runtime passes it in ctx.remote.
  * @typedef {{ link: any, welcome: any, settings: Record<string, any>, folder: string, version: string,
  *   turn?: string, nextTurn: () => Promise<string>, attach?: { turn: string }, resumeInterrupted?: boolean, bring?: boolean,
- *   asksByPrompt?: boolean, attachments?: import('../remote/attachments.mjs').RemoteAttachment[] }} RemoteContext
+ *   asksByPrompt?: boolean, attachments?: import('../remote/attachments.mjs').RemoteAttachment[], allow?: string[] }} RemoteContext
  *   asksByPrompt: false for a backend that doesn’t ask through permission_prompt (server/permission-prompt.mjs)
  */
 

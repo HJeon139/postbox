@@ -43,3 +43,17 @@ Play this phase on its own, with `--phases 4 --stage-host-version <tag>`, an old
 - steps: 8
 
 host1 has this run’s Postbox, installed at the start, and the runner has turned on host1’s consent to keep Postbox up to date there, as the toggle in Settings › Hosts does (#464). Remove Postbox from host1 as someone might by hand (fault remove-postbox, target host1): the run stops Postbox’s programs there and deletes its folder, while this computer keeps host1’s token. host1 then reads Disconnected while nothing needs it, which is expected. Send @researcher, on host1, a message asking it to run `uname -n` and tell you what it printed: that turn finds Postbox missing there, Postbox installs it again by itself with a new token, and the turn waits for it and then runs there. Don’t press Install…. Once the turn is done, host1’s card should read Connected and say Postbox wasn’t on host1 any more, so it installed its version there again and made a new token, and that turns that ran there before are gone. A card that never reads Connected, a turn that fails, Postbox installing it more than once, or a card or line that shows a token is a finding.
+
+## Phase 6: A hung agent on a host
+
+- triggers: host-hung-killed
+- steps: 8
+
+Ask @researcher, on host1, to write a story of about 1,500 words straight into its reply, with no tools: a reply that long keeps the turn running while it’s written, where Claude Code refuses a long wait. About 3 seconds into that turn, while the reply is still coming, hang its runner (an interrupt with fault stop-runner, target host1): the run sends SIGSTOP to the turn’s runner there, so it goes silent while its process stays (#872). host1 stays Connected. Then wait up to 3 minutes (wait 180 seconds) without sending anything: past a minute of silence, host1’s daemon should kill the runner, and Postbox should show @researcher’s turn interrupted once and then resume it on its own, with no Resume from you, and the resumed turn should finish. A turn that stays working past the 3 minutes, one interrupted more than once, a turn that waits for you to resume it, or two turns of @researcher’s running at once is a finding.
+
+## Phase 7: A refused call on a host
+
+- triggers: host-queued-refused
+- steps: 4
+
+Ask @researcher, on host1, to show an app from a file outside its folder: `show_app` with `codePath` set to `/etc/hosts`, as written, without copying that file or changing the path. The call itself should come back with an error saying the file is outside its folder, and @researcher should tell you that reason, not that the app was shown (#827). Then ask it to show the same app with its code inline instead, one paragraph that says hello: that app should appear in the conversation. An agent that says the first app was shown, or a first app that appears, is a finding.

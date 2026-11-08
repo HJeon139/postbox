@@ -54,7 +54,7 @@ function fakeRunDir() {
   const r = { opened: 0, closed: 0, path: '/tmp/pb-gate-1-AbC123' };
   const open = () => {
     r.opened++;
-    return { path: r.path, close: () => void r.closed++ };
+    return { path: r.path, close: () => void r.closed++, list: () => [] };
   };
   return { r, runDir: { open } };
 }
@@ -164,7 +164,7 @@ test('a second signal kills the stage’s whole process group, and check still e
 test('the run’s folder is removed before the last line is printed, which a closed terminal may never show', async () => {
   /** @type {string[]} */
   const order = [];
-  const runDir = { open: () => ({ path: '/tmp/pb-gate-1-AbC123', close: () => void order.push('closed') }) };
+  const runDir = { open: () => ({ path: '/tmp/pb-gate-1-AbC123', close: () => void order.push('closed'), list: () => [] }) };
   await check({ stages: ['test'], run: async () => 1, runDir, now: () => 0, log: (m) => order.push(m) });
   assert.deepEqual(order, ['closed', '✖ test failed (exit 1) in 0.0 s', 'npm run check failed at test after 0.0 s: test 0.0 s.']);
 });
@@ -178,6 +178,7 @@ test('a run folder that can’t be removed is a warning, and a passing check sti
       close: () => {
         throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
       },
+      list: () => [],
     }),
   };
   const code = await check({ stages: ['test'], run: async () => 0, runDir, now: () => 0, log: (m) => log.push(m) });

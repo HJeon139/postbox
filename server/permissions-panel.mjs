@@ -12,6 +12,7 @@ import { stat } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
 import { PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
+import { changeHostRule, hostRuleList } from './host-rules.mjs';
 import { readHooks } from './permission-hooks.mjs';
 import { BEHAVIORS, changeRule, cleanRule, readRules, settingsFiles } from './permission-rules.mjs';
 import { requestAdapter } from './remote/placement.mjs';
@@ -90,6 +91,8 @@ export async function permissionsView(rt, who) {
     files,
     hooks,
     conversation,
+    // The allow rules Postbox keeps for this persona on a host (#120, host-rules.mjs), each with its host’s name.
+    hostRules: real && readsRules ? hostRuleList(rt, persona) : [],
     tools,
     publishing: canPublish ? [] : [...PUBLISHING_TOOLS],
     // Writes outside Postbox ask first (#112), except what the persona may publish, for a backend that reads rules.
@@ -107,12 +110,15 @@ export async function permissionsView(rt, who) {
 
 /**
  * Adds or removes a rule. where: local (the default, as the CLI saves “don’t ask again”), user (the person’s own
- * settings, only for a persona that loads them) or conversation (rt session only). The project’s shared
- * settings.json is never written.
+ * settings, only for a persona that loads them), conversation (rt session only) or host (an allow rule Postbox keeps
+ * for the persona on hostId, #120). The project’s shared settings.json is never written.
  * @param {any} rt @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null, behavior: string, rule: string,
- *           where?: string, remove?: boolean }} change
+ *           where?: string, remove?: boolean, hostId?: string|null }} change
  */
-export async function changePermissionRule(rt, { sessionId = null, personaId = null, projectId = null, behavior, rule, where = 'local', remove = false }) {
+export async function changePermissionRule(
+  rt,
+  { sessionId = null, personaId = null, projectId = null, behavior, rule, where = 'local', remove = false, hostId = null },
+) {
   if (!BEHAVIORS.includes(/** @type {any} */ (behavior))) throw httpError(422, 'A rule allows, asks or denies.');
   const clean = cleanRule(rule);
   if (!clean)
@@ -125,11 +131,17 @@ export async function changePermissionRule(rt, { sessionId = null, personaId = n
       409,
       'The project’s settings are shared with your team, so Postbox doesn’t change them. Save the rule in rt folder’s local settings, or edit .claude/settings.json yourself.',
     );
-  if (!['local', 'user', 'conversation'].includes(where))
+  if (!['local', 'user', 'conversation', 'host'].includes(where))
     throw httpError(422, 'A rule is saved in rt folder’s local settings, your user settings or rt conversation.');
   const { se, persona, folder } = await rt.panelTarget({ sessionId, personaId, projectId });
   if (persona.backend === 'mock' || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
   const b = /** @type {'allow'|'ask'|'deny'} */ (behavior);
+  // A rule Postbox keeps for the persona on a host (#120): only Always allow makes one, so only an allow rule.
+  if (where === 'host') {
+    if (b !== 'allow') throw httpError(422, 'Postbox keeps only allow rules for a host.');
+    const { changed } = changeHostRule(rt, { personaId: persona.id, hostId: String(hostId ?? ''), rule: clean, remove });
+    return { ok: true, where, changed, applies: 'next turn' };
+  }
   if (where === 'conversation') {
     if (!se) throw httpError(409, 'Open the panel from a conversation to make a rule for it only.');
     const rules = { allow: [...(se.rules?.allow ?? [])], ask: [...(se.rules?.ask ?? [])], deny: [...(se.rules?.deny ?? [])] };

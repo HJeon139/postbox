@@ -2,8 +2,7 @@
 // a host-mode run records them (tests/uat-hostwakes-fixture.mjs).
 
 import assert from 'node:assert/strict';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { cpSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { placementOf } from '../tools/uat/hosts-options.mjs';
@@ -12,6 +11,7 @@ import { parseScenario } from '../tools/uat/scenario.mjs';
 import { unknownTriggers } from '../tools/uat/triggers.mjs';
 import { HOSTWAKE_TRIGGERS as T } from '../tools/uat/triggers-hostwakes.mjs';
 
+import { tempDir } from './temp-dirs.mjs';
 import { check, facts, REFUSED, received, SENT, s, turn, wakeStream } from './uat-hostwakes-fixture.mjs';
 
 test('the scenario parses, and every trigger it names is one the runner knows', () => {
@@ -222,7 +222,7 @@ test('a held wake the conversation shows while it waits is still a refusal until
 
 test('readReceived reads what each agent received from the store’s session events, merged with what it read before', () => {
   // Session events shaped as in a run’s data/events-1.jsonl, a line each as the store appends them, trimmed to the fields read here.
-  const dir = mkdtempSync(join(tmpdir(), 'pb-received-'));
+  const dir = tempDir('pb-received-');
   const msg = (other, text, at) => ({ dir: 'from', other, text, at });
   const line = (seq, data) => JSON.stringify({ seq, type: 'session', data });
   writeFileSync(
@@ -234,19 +234,15 @@ test('readReceived reads what each agent received from the store’s session eve
       .map((l) => `${l}\n`)
       .join(''),
   );
-  try {
-    const earlier = [{ handle: 'developer', from: 'researcher', text: 'gone with an old segment', at: 0 }];
-    assert.deepEqual(
-      readReceived(dir, earlier).map((r) => [r.handle, r.from, r.at]),
-      [
-        ['developer', 'researcher', 0],
-        ['critic', 'researcher', 1],
-        ['critic', 'developer', 2],
-      ],
-    );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const earlier = [{ handle: 'developer', from: 'researcher', text: 'gone with an old segment', at: 0 }];
+  assert.deepEqual(
+    readReceived(dir, earlier).map((r) => [r.handle, r.from, r.at]),
+    [
+      ['developer', 'researcher', 0],
+      ['critic', 'researcher', 1],
+      ['critic', 'developer', 2],
+    ],
+  );
 });
 
 test('outside host mode, the host check says nothing', () => {
@@ -257,44 +253,36 @@ test('outside host mode, the host check says nothing', () => {
 test('#508: readReceived applies the store’s session.patch events onto the snapshot’s sessions, and unset drops a field', () => {
   // recordAgentMessage writes through updateSession, which emits session.patch, not a whole session (designs/508, “Store
   // events”). The fixture is a run’s data folder: snapshot.json is the state itself, and the log after it holds patches.
-  const dir = mkdtempSync(join(tmpdir(), 'pb-received-'));
+  const dir = tempDir('pb-received-');
   cpSync(new URL('./fixtures/uat/received-patches/', import.meta.url), dir, { recursive: true });
-  try {
-    const got = readReceived(dir);
-    assert.deepEqual(
-      got.map((r) => [r.handle, r.from, r.text]),
-      [
-        ['critic', 'researcher', '@critic Ready for your task.'],
-        ['critic', 'developer', '@critic, I’m ready for your task.'],
-        ['researcher', 'critic', 'critic to researcher'],
-      ],
-      'the snapshot’s message, the patch’s, and none from a patch to a session the log never held whole',
-    );
-    assert.equal(
-      got.some((r) => r.handle === 'ghost'),
-      false,
-    );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const got = readReceived(dir);
+  assert.deepEqual(
+    got.map((r) => [r.handle, r.from, r.text]),
+    [
+      ['critic', 'researcher', '@critic Ready for your task.'],
+      ['critic', 'developer', '@critic, I’m ready for your task.'],
+      ['researcher', 'critic', 'critic to researcher'],
+    ],
+    'the snapshot’s message, the patch’s, and none from a patch to a session the log never held whole',
+  );
+  assert.equal(
+    got.some((r) => r.handle === 'ghost'),
+    false,
+  );
 });
 
 test('#508: the hostwakes triggers see a hand-off delivered after the Allow when the store recorded it as a session.patch', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pb-received-'));
+  const dir = tempDir('pb-received-');
   cpSync(new URL('./fixtures/uat/received-patches/', import.meta.url), dir, { recursive: true });
-  try {
-    const f = { ...facts({ extraItems: [turn('critic', s(50)), turn('researcher', s(410))] }), received: readReceived(dir) };
-    const seen = T['held-wake-delivered-after-allow'].run(f);
-    assert.equal(seen.length, 1, 'the refused hand-off reached @researcher after the Allow');
-    assert.match(seen[0].evidence, /Postbox sent @critic’s refused hand-off to @researcher after you allowed the card/);
-    assert.deepEqual(
-      check('refused-wake-lost')
-        .run(f)
-        .map((x) => x.title),
-      ['@developer’s hand-off to @critic was refused and lost'],
-      'critic’s hand-off was delivered, so only developer’s is lost',
-    );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const f = { ...facts({ extraItems: [turn('critic', s(50)), turn('researcher', s(410))] }), received: readReceived(dir) };
+  const seen = T['held-wake-delivered-after-allow'].run(f);
+  assert.equal(seen.length, 1, 'the refused hand-off reached @researcher after the Allow');
+  assert.match(seen[0].evidence, /Postbox sent @critic’s refused hand-off to @researcher after you allowed the card/);
+  assert.deepEqual(
+    check('refused-wake-lost')
+      .run(f)
+      .map((x) => x.title),
+    ['@developer’s hand-off to @critic was refused and lost'],
+    'critic’s hand-off was delivered, so only developer’s is lost',
+  );
 });

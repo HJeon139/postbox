@@ -118,7 +118,10 @@ function sawCaughtUp(rts, m) {
 function sawEnded(rts, m) {
   const live = rts.byTurn.get(m.turn);
   if (!live) return;
-  if (m.turn === live.current) live.exit = m.exit;
+  if (m.turn === live.current) {
+    live.exit = m.exit;
+    live.unkilled = m.unkilled === true;
+  }
   offsetAt(rts, live, m.turn, m.size, true);
 }
 

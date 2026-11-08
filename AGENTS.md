@@ -28,7 +28,8 @@ POSTBOX_STREAM_LAG=300 npx playwright test   # with the server’s events 300 ms
 ## Scope
 
 - Fix the cause and look for the same class of error everywhere: a bug in one adapter is a question about all of them (designs/developing.md, “Responding to a prompt”).
-- Anything beyond the task needs evidence (a repro, a measurement, a UAT result, an issue, the person’s request) and a reason it serves designs/intent.md: one person directing two to four agents on their own computer, with the loop right before the looks. Otherwise decline it, or file it with its evidence (designs/prompts/README.md, “Rules for every session”).
+- Anything beyond the task needs evidence (a repro, a measurement, a UAT result, an issue, the person’s request) and a reason it serves designs/intent.md: one person directing two to four agents on their own computer, who work together without waiting on the person, with the loop right before the looks. Otherwise decline it, or file it with its evidence (designs/prompts/README.md, “Rules for every session”).
+- Don’t add a card, confirm, warning, notice or limit that waits on the person or asks for their attention unless only they can make the decision it carries, and the harness’s own check isn’t enough. Show what agents did instead (designs/developing.md, “Design habits”).
 - `tools/uat-run.mjs` runs real agents and costs real usage. Run it, and the screenshot tools (`tools/shoot-app.mjs`, `tools/shoot-uat.mjs`), only when the task asks for them, or when you’re the reviewing session (designs/prompts/README.md, “Rules for every session”).
 - Make simple, minimal changes, and use what Node, the browser and the repo already have (`h()`, `shared/limits.mjs`, `tests/browser/postbox.mjs`). A new dependency needs a decision in designs/architecture.md first.
 

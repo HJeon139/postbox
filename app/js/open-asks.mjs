@@ -4,6 +4,7 @@
 import { ASKING } from '/shared/catalog.mjs';
 import { client, itemsOf } from './client.mjs';
 import { h, plural } from './dom.mjs';
+import { WeakElements } from './held-weakly.mjs';
 import { focusItem } from './needs-nav.mjs';
 
 const S = () => client.state;
@@ -57,9 +58,9 @@ export function openAsksEl(se, before = undefined) {
   return el;
 }
 // The buttons drawn, kept here rather than found by a query over the whole page (#564-b1). One off the page is skipped,
-// not painted, since it may come back; only a long list lets go of those.
-/** @type {Set<HTMLElement>} */
-const buttons = new Set();
+// not painted, since it may come back; only a long list lets go of those. They’re held weakly, so one the page has let
+// go of is let go of here too, not kept with its whole old page (#866, held-weakly.mjs).
+const buttons = new WeakElements();
 const KEEP = 32;
 // What can change a session’s open blocks: any item change but streamed text, a removal, a thread, a load.
 const CHANGES_BLOCKS = (/** @type {string} */ type) => (type.startsWith('item.') && type !== 'item.text') || ['remove', 'thread', 'load'].includes(type);

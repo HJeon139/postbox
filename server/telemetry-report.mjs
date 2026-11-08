@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { finalCheck, labelsOf, MAX_REFS } from '../shared/telemetry.mjs';
 import { blurred, jsonLines, leaveOut, pruned } from '../shared/telemetry-bytes.mjs';
 import { FLAG } from '../shared/telemetry-vocab.mjs';
+import { claudeTranscriptFile } from './claude-transcript-file.mjs';
 import { httpError } from './helpers.mjs';
 import { CHECKS, liveChecks } from './room-checks.mjs';
 import { newId } from './store.mjs';
@@ -55,7 +56,7 @@ function liveFacts(rt, c) {
     const sid = se?.backendState?.claudeSessionId;
     if (!sid || !c.agents.has(se.personaId)) continue;
     try {
-      f.transcripts.push({ handle: se.handle, lines: readFileSync(join(projects, cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${sid}.jsonl`), 'utf8').split('\n') });
+      f.transcripts.push({ handle: se.handle, lines: readFileSync(claudeTranscriptFile(projects, cwd, sid), 'utf8').split('\n') });
     } catch {
       f.gaps.push({ kind: 'transcript', agent: c.agents.get(se.personaId).id, reason: 'unreadable' });
     }
