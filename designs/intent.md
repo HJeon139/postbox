@@ -20,7 +20,7 @@ At its core, Postbox’s conversations are a way to manage what each agent remem
 
 One technical person running two to four agents on their own projects. They switch between two modes:
 
-- **Dispatch:** several agents work in the background on long tasks. You check progress and answer when one is blocked.
+- **Dispatch:** several agents work in the background on long tasks, handing work to each other, on this computer and on hosts. You check progress and answer when one needs a decision only you can make.
 - **Deep focus:** a long session with one agent, working through its apps.
 
 Density and speed matter more than onboarding. There is no sign-in and there are no other people in rooms.
@@ -34,8 +34,9 @@ People who run Postbox may also volunteer telemetry reports to help improve it (
 3. **Calm by default; draw the eye only when it matters.** Only blocking events pulse and notify. Every animation eases in, eases out, then rests.
 4. **Make good UI the easy path.** Agents do what is easiest, so the kit’s defaults (chart marks, tokens, controls) matter more than any written guidance.
 5. **Never rely on color, hover or motion alone.** Every value is also available as text, a label or a table view, and reduced motion is respected everywhere. Every action is visible without hovering; hover only opens previews, such as glossary and citation cards.
-6. **You stay in charge of your agents.** New personas need your approval, wake chains are capped, and tools are granted explicitly.
+6. **You stay in charge of your agents.** New personas need your approval and wake chains are capped. What an agent may run is decided by its harness in the mode you set, and Postbox adds no gate of its own on top (principle 8).
 7. **You decide what an agent remembers.** Each agent has one session per conversation, and you choose its memory by where you talk to it: a new conversation starts clean, Compact shortens it, and deleting the conversation ends it. Agents never fork themselves, and nothing from a thread is put in another agent’s context unless that agent chooses to read it or you send it (decided 23 October 2026, #228).
+8. **Agents work together without waiting on you; Postbox shows what they did.** Postbox is permissive and collaborative first. Agents hand work to each other, on this computer, on hosts and across a feature branch, as fast as their harnesses allow, and Postbox makes their work easy to see rather than asking you to approve it. A card, a confirm, a warning or a notice that waits on you, or asks for your attention, earns its place only when it carries a decision only you can make. One that repeats what you already allowed, that the harness already judges, or that guards against a risk no one has seen, is tedium, not safety, and it’s left out. When in doubt, show the action where you can see it, and don’t ask (decided 8 November 2026, after [#852](https://github.com/HJeon139/postbox/issues/852): in one day the person approved about 258 cards and confirms, about 165 of them a kind they had already allowed).
 
 ## How the app is organized
 
