@@ -176,3 +176,68 @@ test('#324 on a host turn’s card, a harness’s own offer is allowed always; P
     status: 409,
   });
 });
+
+// A matching rule runs the command outside Codex’s sandbox and asks no one, for every Codex session on the computer:
+// codex-rs/core/src/exec_policy.rs at rust-v0.167.0, :467–469 (Skip { bypass_sandbox }) and :904–905 (rules/default.rules).
+test('#324 no offer for a path or assignment as the first word, a versioned interpreter, a launcher, or a run subcommand', () => {
+  const offline = (prefix) => codexAlwaysOffer(command({ proposedExecpolicyAmendment: prefix }).params, EDITS);
+  for (const prefix of [
+    ['/bin/sh'],
+    ['/usr/bin/env', 'x'],
+    ['./run.sh'],
+    ['FOO=bar', 'node'],
+    ['python3.12', 'x.py'],
+    ['bunx', 'x'],
+    ['uvx', 'x'],
+    ['tsx', 'x'],
+    ['osascript', '-e'],
+    ['uv', 'run'],
+    ['cargo', 'run'],
+    ['go', 'run'],
+    ['kubectl', 'exec'],
+    ['gh', 'extension'],
+    ['npm', 'x'],
+  ])
+    assert.equal(offline(prefix), null, JSON.stringify(prefix));
+  assert.notEqual(offline(['cargo', 'test']), null, 'a subcommand that runs no other program is fine');
+});
+
+test('#324 in Auto, a persona that may not fetch the web is offered no prefix; no persona without web.fetch is offered a host', () => {
+  const prefix = command({ proposedExecpolicyAmendment: ['curl', 'example.com'] }).params;
+  assert.equal(codexAlwaysOffer(prefix, AUTO_OFFLINE), null, 'a rule would run it outside the offline sandbox');
+  assert.notEqual(codexAlwaysOffer(prefix, AUTO_WEB), null);
+  const host = command({
+    networkApprovalContext: { host: 'api.github.com' },
+    proposedNetworkPolicyAmendments: [{ host: 'api.github.com', action: 'allow' }],
+  }).params;
+  for (const persona of [EDITS, { permissionMode: 'ask', tools: ['shell'] }]) assert.equal(codexAlwaysOffer(host, persona), null, persona.permissionMode);
+  assert.notEqual(codexAlwaysOffer(host, { permissionMode: 'acceptEdits', tools: ['web.fetch'] }), null);
+});
+
+test('#324 the card says the rule runs outside Codex’s sandbox, for every Codex session; a wildcard host or a long prefix is refused', () => {
+  const offer = codexAlwaysOffer(command({ proposedExecpolicyAmendment: ['gh', 'issue'] }).params, EDITS);
+  assert.equal(
+    offer?.lines[0].text,
+    'Always allow commands starting with gh issue, as a Codex rule: they run outside its sandbox, with no card, in every Codex session on this computer',
+  );
+  const web = { permissionMode: 'acceptEdits', tools: ['web.fetch'] };
+  for (const h of ['*', '*.example.com', 'a b'])
+    assert.equal(
+      codexAlwaysOffer(command({ networkApprovalContext: { host: h }, proposedNetworkPolicyAmendments: [{ host: h, action: 'allow' }] }).params, web),
+      null,
+      h,
+    );
+  assert.equal(codexAlwaysOffer(command({ proposedExecpolicyAmendment: ['ls', 'x'.repeat(130)] }).params, EDITS), null, 'too long to show whole');
+});
+
+test('#324 a file-change request is offered nothing, even with a proposal on it', async () => {
+  const asked = [];
+  const ctx = { persona: EDITS, askPermission: async (req) => (asked.push(req) ? { allow: true } : null) };
+  const res = await codexApproval(ctx, {
+    method: 'item/fileChange/requestApproval',
+    id: 9,
+    params: { itemId: 'i3', proposedExecpolicyAmendment: ['gh', 'issue'] },
+  });
+  assert.deepEqual(res, { decision: 'accept' });
+  assert.equal(asked[0].suppressAlways, true);
+});
