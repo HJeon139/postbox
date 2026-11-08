@@ -4,6 +4,7 @@
 // tests/remote-broker-fixtures.mjs, beside tests/remote-broker-prompts.test.mjs, which is at its length limit.
 
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { TURN_FILES } from '../shared/remote-protocol.mjs';
@@ -31,13 +32,10 @@ test('#353 a connection of the turn that only said hello gets no answer to anoth
     const { k, s } = await asked(h);
     const bystander = connectShim(k.b, 't1', turnToken('t1'), OTHER);
     await bystander.next('welcome');
-    const keyless = connectShim(k.b, 't1');
-    await keyless.next('welcome');
     assert.deepEqual((await k.post('answer', { turn: 't1', prompt: 'p1', result: ALLOW })).errors, []);
     assert.deepEqual(await s.next('permission-answer'), { type: 'permission-answer', id: 'p1', result: ALLOW });
     await sleep(20);
     assert.deepEqual(answers(bystander), [], 'the bystander heard nothing');
-    assert.deepEqual(answers(keyless), [], 'nor did one with no key');
   } finally {
     await h.done();
   }
@@ -47,12 +45,12 @@ test('#353 a connection that sends another shim’s prompt again, identical, get
   const h = makeHome();
   try {
     const { k, s } = await asked(h);
-    for (const key of [OTHER, undefined]) {
-      const copy = connectShim(k.b, 't1', turnToken('t1'), key);
+    {
+      const copy = connectShim(k.b, 't1', turnToken('t1'), OTHER);
       await copy.next('welcome');
       copy.send('permission', { id: 'p1', request: structuredClone(REQUEST) });
       const got = await copy.next('permission-answer');
-      assert.equal(got.result.behavior, 'deny', `${key ? 'another key' : 'no key'}: refused`);
+      assert.equal(got.result.behavior, 'deny', 'another key: refused');
       assert.match(got.result.message, /asked by another connection/);
       assert.deepEqual((await k.post('answer', { turn: 't1', prompt: 'p1', result: ALLOW })).errors, []);
       // Sent again once the person answered: still refused, never the allow.
@@ -69,6 +67,31 @@ test('#353 a connection that sends another shim’s prompt again, identical, get
       answers(s).some((m) => m.result.behavior === 'allow'),
       'the shim that asked got it',
     );
+  } finally {
+    await h.done();
+  }
+});
+
+test('#908 another shim sending a prompt’s id with a different request hears just what the same request gets', async () => {
+  const h = makeHome();
+  try {
+    const { k } = await asked(h);
+    const path = h.p.turn('t1', TURN_FILES.prompts);
+    const before = lines(path);
+    const copy = connectShim(k.b, 't1', turnToken('t1'), OTHER);
+    await copy.next('welcome');
+    // The owner check comes first, so its reply can’t tell whether it guessed the request too.
+    const heard = async (request) => {
+      copy.send('permission', { id: 'p1', request });
+      await copy.next('permission-answer');
+      return copy.raw.at(-1);
+    };
+    const same = await heard(structuredClone(REQUEST));
+    assert.match(same, /asked by another connection/);
+    assert.equal(await heard({ ...REQUEST, input: { command: 'whoami' } }), same, 'byte for byte');
+    await sleep(20);
+    assert.deepEqual(lines(path), before, 'nothing is written down');
+    assert.equal(k.sent.length, 1, 'nothing new reaches Postbox');
   } finally {
     await h.done();
   }
@@ -141,28 +164,77 @@ test('#353 a prompt an older daemon wrote down, with no owner, is taken by the f
   }
 });
 
-test('#353 a prompt from a shim that sent no key isn’t one a shim with a key may take, before a restart or after', async () => {
+test('#353 a prompt written down with no key isn’t one a shim with a key may take after a restart', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    // As a daemon before #908 wrote a keyless shim’s prompt: owner null, which no connection has any more.
+    const rec = { op: 'prompt', id: 'p1', entry: 'e1', owner: null, request: REQUEST, at: Date.now() };
+    writeFileSync(h.p.turn('t1', TURN_FILES.prompts), `${JSON.stringify(rec)}\n`);
+    const k = makeBroker(h);
+    await k.b.load([{ turn: 't1', state: 'running' }]);
+    for (const key of [OTHER, KEY]) {
+      const copy = connectShim(k.b, 't1', turnToken('t1'), key);
+      await copy.next('welcome');
+      copy.send('permission', { id: 'p1', request: REQUEST });
+      assert.match((await copy.next('permission-answer')).result.message, /asked by another connection/, `key ${key[0]}`);
+    }
+  } finally {
+    await h.done();
+  }
+});
+
+test('#908 a hello with no key is refused, and the connection hears nothing of the turn', async () => {
   const h = makeHome();
   try {
     h.turn('t1');
     const k = makeBroker(h);
-    const keyless = connectShim(k.b, 't1');
-    await keyless.next('welcome');
+    const keyless = connectShim(k.b, 't1', turnToken('t1'), null);
+    const first = await keyless.next('error');
+    assert.equal(keyless.got[0], first, 'its first message is the refusal, not a welcome');
+    assert.equal(first.code, 'version');
+    assert.match(first.message, /Install Postbox on this host again/);
+    assert.ok(keyless.ended, 'and the connection is closed');
+    keyless.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'q' } });
     keyless.send('permission', { id: 'p1', request: REQUEST });
-    await until(() => k.sent.length, 'the prompt');
-    assert.equal(lines(h.p.turn('t1', TURN_FILES.prompts))[0].owner, null, 'written down as no key, not as no owner');
-    for (const b of [k.b, null]) {
-      let broker = b;
-      if (!broker) {
-        const again = makeBroker(h);
-        await again.b.load([{ turn: 't1', state: 'running' }]);
-        broker = again.b;
-      }
-      const copy = connectShim(broker, 't1', turnToken('t1'), OTHER);
-      await copy.next('welcome');
-      copy.send('permission', { id: 'p1', request: REQUEST });
-      assert.match((await copy.next('permission-answer')).result.message, /asked by another connection/, b ? 'before a restart' : 'after');
-    }
+    await k.b.stopping('t1');
+    await sleep(20);
+    assert.deepEqual(keyless.got, [first], 'its call, its prompt and Stop reach it with nothing');
+    assert.deepEqual(k.sent, [], 'and Postbox heard nothing of them');
+  } finally {
+    await h.done();
+  }
+});
+
+test('#908 no connection hears a shim’s key, or its hash, in anything the daemon sends, nor does Postbox', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    const k = makeBroker(h);
+    const s = connectShim(k.b, 't1', turnToken('t1'), KEY);
+    const other = connectShim(k.b, 't1', turnToken('t1'), OTHER);
+    await s.next('welcome');
+    await other.next('welcome');
+    // The shim asks and calls; the other sends the same ids again and tries to end the prompt.
+    s.send('permission', { id: 'p1', request: REQUEST });
+    s.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'q' } });
+    await until(() => k.sent.length >= 2, 'the prompt and the call at Postbox');
+    other.send('permission', { id: 'p1', request: REQUEST });
+    other.send('call', { id: 'c1', name: 'corpus_search', args: { query: 'q' } });
+    other.send('permission-canceled', { id: 'p1', at: 1 });
+    await other.next('error', (m) => m.code === 'no-prompt');
+    await k.post('answer', { turn: 't1', prompt: 'p1', result: ALLOW });
+    await k.post('reply', { turn: 't1', id: 'c1', ok: true, text: 'found' });
+    await s.next('result');
+    await k.b.stopping('t1');
+    await sleep(20);
+    const secrets = [KEY, OTHER].flatMap((key) => [key, createHash('sha256').update(key).digest('hex')]);
+    for (const [who, heard] of [
+      ['the shim', s.raw],
+      ['the other', other.raw],
+      ['Postbox', k.sent.map((m) => JSON.stringify(m))],
+    ])
+      assert.ok(heard.length && !secrets.some((x) => heard.join('\n').includes(x)), `${who} heard no key and no key’s hash`);
   } finally {
     await h.done();
   }

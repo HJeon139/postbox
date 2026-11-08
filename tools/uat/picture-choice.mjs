@@ -18,7 +18,7 @@ export function expectsOf(spec) {
 }
 
 /** Postbox’s event log in a data folder, in order: events-1.jsonl, events-2.jsonl… @param {string} data */
-function logEvents(data) {
+export function logEvents(data) {
   if (!existsSync(data)) return [];
   const segments = readdirSync(data)
     .map((f) => f.match(/^events-(\d+)\.jsonl$/))
@@ -29,37 +29,64 @@ function logEvents(data) {
 }
 
 /**
- * The first visual after the person’s first message, from a run’s Postbox data folder.
- * `inputsBefore` counts what the person said or clicked between their first message and that visual: 0 is the first reply.
- * Null when the log doesn’t hold the person’s first message (a run that never sent one, or a log cut by a snapshot).
- * With no visual, `replied` says whether the agent wrote anything after that message, so a run whose agent never
- * answered isn’t read as one that chose words.
+ * The person’s first message and what answered it, from a run’s Postbox data folder: the first visual after it (an
+ * app or image block, or a Mermaid fence in a reply), the item that shows it, and how many times the person spoke or
+ * clicked before it (0 is the first reply). `nextMessageAt` is when the person next wrote after the input the visual
+ * answered, or null: a click on the agent’s own card isn’t a message, since it’s part of getting the answer. `replied` says whether any agent wrote anything,
+ * so a run whose agent never answered isn’t read as one that chose words. Null when the log doesn’t hold the person’s
+ * first message (a run that never sent one, or a log cut by a snapshot).
  * @param {string} data  the run’s Postbox data folder
- * @returns {{ first: 'app'|'image'|'diagram'|null, inputsBefore: number|null, replied?: boolean } | null}
+ * @returns {{ question: string, visual: { kind: 'app'|'image'|'diagram', itemId: string, inputsBefore: number } | null, replied: boolean, nextMessageAt: number|null } | null}
  */
-export function pictureChoice(data) {
+export function firstExchange(data) {
   const kinds = new Map();
   const text = new Map();
   let inputs = -1; // the person’s first message makes it 0
+  let question = '';
+  let visual = null;
+  const messages = []; // the person’s messages, not clicks: [their input’s number, when]
+  const saw = (kind, itemId) => {
+    visual ??= { kind, itemId, inputsBefore: inputs };
+  };
   for (const e of logEvents(data)) {
     if (e.type === 'item.add') {
       const it = e.data.item;
       kinds.set(it.id, it.kind);
       if (it.kind === 'user' || it.kind === 'voice') inputs++;
+      if (it.kind === 'user') messages.push([inputs, it.at ?? null]);
+      if (inputs === 0 && (it.kind === 'user' || it.kind === 'voice')) question = it.text ?? '';
       if (inputs < 0) continue;
       // An app is a catalog block of type app (shared/catalog.mjs), as an image is.
-      if (it.kind === 'block' && (it.block?.type === 'app' || it.block?.type === 'image')) return { first: it.block.type, inputsBefore: inputs };
-      if (it.kind === 'agent') text.set(it.id, it.text ?? '');
-      if (it.kind === 'agent' && text.get(it.id).includes('```mermaid')) return { first: 'diagram', inputsBefore: inputs };
+      if (it.kind === 'block' && (it.block?.type === 'app' || it.block?.type === 'image')) saw(it.block.type, it.id);
+      if (it.kind !== 'agent') continue;
+      text.set(it.id, it.text ?? '');
+      if (text.get(it.id).includes('```mermaid')) saw('diagram', it.id);
     } else if (e.type === 'item.text' && inputs >= 0 && kinds.get(e.data.id) === 'agent') {
       // A reply streams in chunks: a diagram counts once its fence has arrived.
       const t = (text.get(e.data.id) ?? '') + e.data.text;
       text.set(e.data.id, t);
-      if (t.includes('```mermaid')) return { first: 'diagram', inputsBefore: inputs };
+      if (t.includes('```mermaid')) saw('diagram', e.data.id);
     }
   }
   if (inputs < 0) return null;
-  return { first: null, inputsBefore: null, replied: [...text.values()].some((t) => t.trim() !== '') };
+  const which = visual?.inputsBefore ?? 0;
+  const nextMessageAt = messages.find(([n]) => n > which)?.[1] ?? null;
+  const replied = [...text.values()].some((t) => t.trim() !== '');
+  return { question, visual, replied, nextMessageAt };
+}
+
+/**
+ * The first visual after the person’s first message (firstExchange), as #983 counts it.
+ * Null when the log doesn’t hold the person’s first message. With no visual, `replied` says whether the agent wrote
+ * anything after that message.
+ * @param {string} data  the run’s Postbox data folder
+ * @returns {{ first: 'app'|'image'|'diagram'|null, inputsBefore: number|null, replied?: boolean } | null}
+ */
+export function pictureChoice(data) {
+  const x = firstExchange(data);
+  if (!x) return null;
+  if (x.visual) return { first: x.visual.kind, inputsBefore: x.visual.inputsBefore };
+  return { first: null, inputsBefore: null, replied: x.replied };
 }
 
 /** The choice in words: never drew, drew in the first reply, or drew after the person spoke or clicked. */

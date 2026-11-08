@@ -11,8 +11,9 @@ import { toolBytes } from './broker-tools.mjs';
 /** @typedef {import('./broker-state.mjs').Broker} Broker */
 
 /**
- * The shim a prompt record names (#353): its key’s SHA-256, or null for one that sent no key. A record an older daemon
- * wrote has no owner at all (undefined), and the first shim to send it again takes it.
+ * The shim a prompt or call record names (#353, #908): its key’s SHA-256, or null for one that sent no key (before
+ * #908), which no shim can take. A record an older daemon wrote has no owner at all (undefined), and the first shim to
+ * send it again takes it.
  * @param {any} r
  */
 function ownerOf(r) {
@@ -59,8 +60,13 @@ async function loadTurn(b, turn) {
       // A record that wouldn’t make a valid tool message is left out, never sent.
       if (validateMessage('daemon-to-postbox', { type: 'tool', ...body }).ok) {
         const arrived = Number.isSafeInteger(r.at) && r.at >= 0 ? r.at : b.now();
-        b.tools.set(k, { turn, id: r.id, name: r.name, route: r.route, args: r.args, replied: false, bytes: toolBytes(turn, r.name, r.args ?? {}), arrived });
+        const bytes = toolBytes(turn, r.name, r.args ?? {});
+        b.tools.set(k, { turn, id: r.id, name: r.name, route: r.route, args: r.args, replied: false, owner: ownerOf(r), bytes, arrived });
       }
+    } else if (r.op === 'owner') {
+      // The first shim to send an ownerless call again took it (broker-tools.mjs’s answerResend).
+      const t = b.tools.get(k);
+      if (t && t.owner === undefined) t.owner = ownerOf(r);
     } else if (r.op === 'reply') {
       const t = b.tools.get(k);
       if (t) {
