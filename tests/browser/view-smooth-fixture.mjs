@@ -35,9 +35,12 @@ export async function readingAtTop(app, page, title) {
   await still(page);
   // Straight to the top, so the view reads. A wheel turn up used to come first; on CI’s delayed shard it didn’t make the
   // view read within 15 s (ebe964fd), and the wheel case still turns the wheel itself. The top is held for 30 frames
-  // before the jump.
+  // before the jump. The mode is read in the page, not by a locator: Playwright’s locator check run in the frame after
+  // the scroll held up the page’s next frame 3.9 s on the build host (0.6 s with skipping off), and over 15 s on CI’s
+  // delayed shard, so the view never heard the scroll (#959).
   await page.evaluate(() => scrollTo(0, 0));
-  await expect(page.locator('#main.transcript')).toHaveAttribute('data-view-mode', 'reading', { timeout: 15_000 });
+  const mode = () => page.evaluate(() => /** @type {HTMLElement} */ (document.querySelector('#main.transcript'))?.dataset.viewMode);
+  await expect.poll(mode, { message: 'the view to read at the top', timeout: 15_000 }).toBe('reading');
   await expect.poll(() => page.evaluate(heldAtTop), { message: 'the view to hold at the top for 30 frames', timeout: 15_000 }).toBe(true);
   await still(page);
   const reply = app.rt.addItem(conv.id, {
