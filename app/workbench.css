@@ -269,6 +269,9 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .app.rail-hidden > .rail, .app.rail-auto > .rail { display: none; }
 .topbar { grid-column: 1 / -1; position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
   height: 48px; padding: 0 12px 0 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
+/* fitTopbar measures the bar with nothing dropped, wider than a phone: its overflow is clipped, not added to the page’s
+   width, which reflowed the whole page and moved the transcripts’ scroll (#837). Its own scrollWidth still says it. */
+.topbar { overflow-x: clip; }
 .brand { font-weight: 700; letter-spacing: .02em; display: flex; align-items: center; gap: 8px; }
 .brand .mark { width: 18px; height: 18px; border: 2px solid var(--accent); border-radius: 5px; position: relative; }
 .brand .mark::after { content: ""; position: absolute; left: 3px; right: 3px; top: 5px; height: 2px; background: var(--accent); }
