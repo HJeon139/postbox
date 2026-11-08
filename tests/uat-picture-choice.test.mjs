@@ -68,7 +68,7 @@ test('words, with no picture, meet a control and miss a picture question', (t) =
   const dir = runWith([add('it_1', 'user', { text: 'How many are there?' }), add('it_2', 'agent', { text: 'Fourteen, $212 a month.' })]);
   t.after(() => rmSync(dir, { recursive: true }));
   const choice = pictureChoice(join(dir, 'data'));
-  assert.deepEqual(choice, { first: null, inputsBefore: null });
+  assert.deepEqual(choice, { first: null, inputsBefore: null, replied: true });
   assert.equal(pictureVerdict('words', choice).met, true);
   assert.equal(pictureVerdict('picture', choice).met, false);
   assert.deepEqual(pictureSection({ judge: 'visual', expects: 'words' }, dir), [
@@ -77,6 +77,14 @@ test('words, with no picture, meet a control and miss a picture question', (t) =
     'The agent never drew. The question should get words, with no picture (`- expects: words`): met.',
     '',
   ]);
+});
+
+test('an agent that never replied didn’t choose words: the run is unknown, never a met control', (t) => {
+  const dir = runWith([add('it_1', 'user', { text: 'How do I start this project?' }), add('it_2', 'agent', { text: '' })]);
+  t.after(() => rmSync(dir, { recursive: true }));
+  const choice = pictureChoice(join(dir, 'data'));
+  assert.deepEqual(choice, { first: null, inputsBefore: null, replied: false });
+  assert.deepEqual(pictureVerdict('words', choice), { said: 'never replied', met: null });
 });
 
 test('a log without the person’s first message is unknown, never a miss or a pass', (t) => {

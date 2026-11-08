@@ -35,8 +35,10 @@ function logEvents(data) {
  * The first visual after the person’s first message, from a run’s Postbox data folder.
  * `inputsBefore` counts what the person said or clicked between their first message and that visual: 0 is the first reply.
  * Null when the log doesn’t hold the person’s first message (a run that never sent one, or a log cut by a snapshot).
+ * With no visual, `replied` says whether the agent wrote anything after that message, so a run whose agent never
+ * answered isn’t read as one that chose words.
  * @param {string} data  the run’s Postbox data folder
- * @returns {{ first: 'app'|'image'|'diagram'|null, inputsBefore: number|null } | null}
+ * @returns {{ first: 'app'|'image'|'diagram'|null, inputsBefore: number|null, replied?: boolean } | null}
  */
 export function pictureChoice(data) {
   const kinds = new Map();
@@ -59,7 +61,8 @@ export function pictureChoice(data) {
       if (t.includes('```mermaid')) return { first: 'diagram', inputsBefore: inputs };
     }
   }
-  return inputs < 0 ? null : { first: null, inputsBefore: null };
+  if (inputs < 0) return null;
+  return { first: null, inputsBefore: null, replied: [...text.values()].some((t) => t.trim() !== '') };
 }
 
 /** The choice in words: never drew, drew in the first reply, or drew after the person spoke or clicked. */
@@ -74,6 +77,7 @@ function saidOf({ first, inputsBefore }) {
 /** What the choice was, in words, and whether it met the scenario’s `- expects`. @param {string|null} expects @param {ReturnType<typeof pictureChoice>} choice */
 export function pictureVerdict(expects, choice) {
   if (!choice) return { said: 'unknown: the log doesn’t hold the person’s first message', met: null };
+  if (choice.first === null && !choice.replied) return { said: 'never replied', met: null };
   const said = saidOf(choice);
   if (!expects) return { said, met: null };
   const drewFirst = choice.first !== null && choice.inputsBefore === 0;
