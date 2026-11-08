@@ -4,13 +4,13 @@
 // tests/integration/remote-attachments.test.mjs.
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { ATTACHMENTS_DIR, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { setup as cleanupSetup, ls, makeTurn } from './remote-cleanup-setup.mjs';
 import { hello, setup, startMsg } from './remote-daemon-setup.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const BYTES = Buffer.from([0x00, 0xff, 0x41, 0x0a, 0x00, 0xfe]);
 
@@ -55,7 +55,7 @@ test('#120: an ended turn’s attachments go with its other files, and their fol
 
 test('#120: an attachments folder that’s a link is unlinked, never followed, and a folder the agent made in it keeps it', async () => {
   const s = cleanupSetup();
-  const outside = mkdtempSync(join(tmpdir(), 'pb-outside-'));
+  const outside = tempDir('pb-outside-');
   try {
     writeFileSync(join(outside, 'keep.txt'), 'mine');
     const linked = makeTurn(s.p, 't1');
@@ -71,6 +71,5 @@ test('#120: an attachments folder that’s a link is unlinked, never followed, a
     assert.ok(s.logs.some((l) => l.includes(`Couldn’t delete ${join(made, ATTACHMENTS_DIR)}`)));
   } finally {
     s.done();
-    rmSync(outside, { recursive: true, force: true });
   }
 });

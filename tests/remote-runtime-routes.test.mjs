@@ -2,14 +2,14 @@
 // the server’s host manager and wake, and the backends it lists.
 
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { tokenFile } from '../server/remote/install.mjs';
 import { SshFailure, failure as sshFailure } from '../server/remote/ssh.mjs';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
 import { FakeHosts, fakeClock, refused } from './remote-runtime-helpers.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
@@ -25,12 +25,11 @@ const call = (r) => fakeRequest(app.handle, { host: `127.0.0.1:${PORT}`, ...r })
 const pageCookie = async () => (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
 
 before(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'pb-hosts-'));
+  dir = tempDir('pb-hosts-');
   app = await start({ port: PORT, dataDir: dir, fresh: true, demo: true, quiet: true, claudeHome: dir, listen: false, hosts: fake, wake: wakeClock });
 });
 after(async () => {
   await app.close();
-  await rm(dir, { recursive: true, force: true });
   // Stopping the server stops noticing wakes and closes the hosts’ links.
   assert.equal(wakeClock.cleared, true);
   assert.deepEqual(fake.calls.at(-1), ['close']);
@@ -159,28 +158,24 @@ test('#120 D2: the server wakes its hosts when this computer wakes', async () =>
 });
 
 test('#120: left out, the server makes the real host manager, keeping tokens in its data folder, and closes it at close', async () => {
-  const own = await mkdtemp(join(tmpdir(), 'pb-hosts-own-'));
+  const own = tempDir('pb-hosts-own-');
   const server = await start({ port: PORT + 1, dataDir: own, fresh: true, demo: true, quiet: true, claudeHome: own, listen: false });
-  try {
-    const hosts = server.rt.hosts;
-    assert.equal(typeof hosts?.refresh, 'function', 'server/remote/hosts.mjs’s manager');
-    const h = server.rt.addHost({ name: 'host.example.com' });
-    assert.equal(server.rt.hostStatus(h.id).state, 'not-installed', 'no token in its data folder yet');
-    // A host whose token install.mjs wrote there is installed.
-    const h2 = server.rt.addHost({ name: 'other.example.com' });
-    await mkdir(join(own, 'remote-tokens'), { recursive: true, mode: 0o700 });
-    await writeFile(tokenFile(own, h2.id), 'fake-token-0123456789abcdefghijklmnop\n', { mode: 0o600 });
-    assert.equal(server.rt.hostStatus(h2.id).state, 'disconnected', 'installed: its token is in the data folder');
-    assert.equal(hosts.link(h2.id), hosts.link(h2.id));
-    await server.close();
-    assert.throws(() => hosts.link(h2.id), /closed its host connections/);
-  } finally {
-    await rm(own, { recursive: true, force: true });
-  }
+  const hosts = server.rt.hosts;
+  assert.equal(typeof hosts?.refresh, 'function', 'server/remote/hosts.mjs’s manager');
+  const h = server.rt.addHost({ name: 'host.example.com' });
+  assert.equal(server.rt.hostStatus(h.id).state, 'not-installed', 'no token in its data folder yet');
+  // A host whose token install.mjs wrote there is installed.
+  const h2 = server.rt.addHost({ name: 'other.example.com' });
+  await mkdir(join(own, 'remote-tokens'), { recursive: true, mode: 0o700 });
+  await writeFile(tokenFile(own, h2.id), 'fake-token-0123456789abcdefghijklmnop\n', { mode: 0o600 });
+  assert.equal(server.rt.hostStatus(h2.id).state, 'disconnected', 'installed: its token is in the data folder');
+  assert.equal(hosts.link(h2.id), hosts.link(h2.id));
+  await server.close();
+  assert.throws(() => hosts.link(h2.id), /closed its host connections/);
 });
 
 test('#120: Claude Code, Kiro CLI and Codex are listed without their CLI here, marked not local, and this computer’s list leaves them out', async () => {
-  const own = await mkdtemp(join(tmpdir(), 'pb-hosts-probes-'));
+  const own = tempDir('pb-hosts-probes-');
   const none = async () => null;
   const nothing = async () => [];
   // Only Claude Code is on this computer; nothing is probed for real.
@@ -213,12 +208,11 @@ test('#120: Claude Code, Kiro CLI and Codex are listed without their CLI here, m
     assert.deepEqual(server.rt.createPersona({ handle: 'far', backend: 'codex', remote: { hostId: h.id } }).remote, { hostId: h.id });
   } finally {
     await server.close();
-    await rm(own, { recursive: true, force: true });
   }
 });
 
 test('#120: an adapter a check registers after start runs on this computer, even in place of one that runs only on a host', async () => {
-  const own = await mkdtemp(join(tmpdir(), 'pb-hosts-scripted-'));
+  const own = tempDir('pb-hosts-scripted-');
   // As the browser checks start it: demo, with POSTBOX_BACKENDS=mock, then a scripted Claude Code put in.
   const server = await start({ port: PORT + 3, dataDir: own, fresh: true, demo: true, quiet: true, claudeHome: own, listen: false, hosts: null });
   try {
@@ -237,6 +231,5 @@ test('#120: an adapter a check registers after start runs on this computer, even
     assert.equal(state.json.config.backends['claude-code'].local, true, 'the page sees it as local too');
   } finally {
     await server.close();
-    await rm(own, { recursive: true, force: true });
   }
 });
