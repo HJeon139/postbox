@@ -2,6 +2,7 @@
 // the pure parts the server (server/ledger.mjs) and the Work view (app/js/work.mjs) share: line counts from a
 // diff, what a command line did to version control and to services outside Postbox, and the totals.
 
+import { pushesIn } from './git-push.mjs';
 import { formatDuration } from './text.mjs';
 import { ledgerIndex } from './work-index.mjs';
 
@@ -56,7 +57,9 @@ const GH_WRITES =
  * What a command line did to version control and to services outside Postbox, read from the command and its
  * output. A commit and a push the tool result already reported (gitOperation) don’t need this; a branch, a gh
  * write and an API call with a write method do.
- * @returns {{ branches: string[], commit: { sha: string, branch: string, message: string } | null, push: { remote: string|null, refs: string[] } | null,
+ * A command that pushes has one push for each `To <remote>` report git printed that landed a ref; with none landed,
+ * the one push, as git said nothing of what it sent (#978).
+ * @returns {{ branches: string[], commit: { sha: string, branch: string, message: string } | null, pushes: import('./git-push.mjs').Push[],
  *             external: { kind: 'gh' | 'api', what: string, urls: string[] }[] }}
  */
 export function commandFacts(command, output = '') {
@@ -72,17 +75,12 @@ export function commandFacts(command, output = '') {
   for (const m of cmd.matchAll(new RegExp(String.raw`\bgit\s+(?:-C\s+\S+\s+)?branch\s+(?!-)${ARG}`, 'g'))) branches.add(unquote(m[1]));
   const c = /^\[([^\s\]]+)(?: \([^)]*\))? ([0-9a-f]{7,64})\] (.*)$/m.exec(out);
   const commit = /\bgit\b[^;&|]*\bcommit\b/.test(cmd) && c ? { branch: c[1], sha: c[2], message: c[3] } : null;
-  const push = /\bgit\s+(?:-C\s+\S+\s+)?push\b/.test(cmd)
-    ? {
-        remote: /^To (\S+)/m.exec(out)?.[1] ?? null,
-        refs: [...out.matchAll(/^\s*[*+\-!= ]?\s*(\[new [a-z]+\]|[0-9a-f]{7,64}\.\.\.?[0-9a-f]{7,64})\s+(\S+)\s+->\s+(\S+)/gm)].map((m) => `${m[2]} → ${m[3]}`),
-      }
-    : null;
+  const pushes = /\bgit\s+(?:-C\s+\S+\s+)?push\b/.test(cmd) ? pushesIn(out) : [];
   const external = [];
   for (const m of cmd.matchAll(GH_WRITES)) external.push({ kind: /** @type {'gh'} */ ('gh'), what: `gh ${m[1]} ${m[2]}`, urls: urlsIn(out) });
   const api = /\bgh\s+api\b[^;&|]*?(?:-X|--method)\s+(POST|PATCH|PUT|DELETE)\b/i.exec(cmd);
   if (api) external.push({ kind: /** @type {'api'} */ ('api'), what: `gh api ${api[1].toUpperCase()}`, urls: urlsIn(out) });
-  return { branches: [...branches], commit, push, external };
+  return { branches: [...branches], commit, pushes, external };
 }
 
 // MCP tool names whose verb writes to the service (create_pull_request, add_issue_comment, send_message…).
