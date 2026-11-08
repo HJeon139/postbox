@@ -12,6 +12,9 @@ const SHORT = 200;
 // Twice the ceiling, so a room mounted whole can’t pass the bounded case, and small enough to mount whole and sync
 // within expect’s 5 s: 1,500 items mounted whole didn’t, on the build host.
 const LONG = 500;
+// Over the ceiling, for the window off: the smallest room the window would hold, so mounting it whole syncs within
+// expect’s 5 s on a loaded host (500 mounted whole didn’t, once, at load 15).
+const OFF = 300;
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -20,7 +23,7 @@ const rooms = {};
 test.beforeAll(async () => {
   app = await startPostbox('window-default');
   const projectId = Object.values(app.rt.s.projects)[0].id;
-  for (const count of [SHORT, LONG]) {
+  for (const count of [SHORT, OFF, LONG]) {
     const t = app.rt.createThread({ projectId, title: `${count} items`, personaIds: [] });
     seedBigRoom(app.store, t.id, { count });
     rooms[count] = t.id;
@@ -51,7 +54,7 @@ test('#866 with no flag set, a short room mounts every item', async ({ page }) =
   expect(await mounted(page)).toBe(app.store.items(rooms[SHORT]).length);
 });
 
-test('#866 with the flag off, a long room mounts every item, as before', async ({ page }) => {
-  await open(page, LONG, 'off');
-  expect(await mounted(page)).toBe(app.store.items(rooms[LONG]).length);
+test('#866 with the flag off, a room over the ceiling mounts every item, as before', async ({ page }) => {
+  await open(page, OFF, 'off');
+  expect(await mounted(page)).toBe(app.store.items(rooms[OFF]).length);
 });

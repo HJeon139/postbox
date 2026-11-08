@@ -58,11 +58,7 @@ test('#866 with the window on, a 5,000-item room holds about as many elements as
   await expect(page.locator(`#main > .item[data-key="${last}"]`)).toBeInViewport();
 });
 
-test('#866 with the window off, the room mounts every item, as before', async ({ page }) => {
-  await open(page, SMALL, false);
-  const { items } = await counted(page);
-  expect(items).toBe(app.store.items(rooms[SMALL]).length);
-});
+// With the window off, a room mounts every item: window-default.spec.mjs, in a room small enough to mount whole.
 
 for (const on of [false, true])
   test(`#866 with the window ${on ? 'on' : 'off'}, a message sent into the open room appears at the end`, async ({ page }) => {
