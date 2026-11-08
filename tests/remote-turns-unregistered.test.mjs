@@ -2,7 +2,7 @@
 // with the reason, and waits for the person: the host coming back again neither attaches it nor resumes it, and a
 // turn stopped with Sign-in needed isn’t resumed when its check passes. Once the backend is registered again, a turn
 // the host listed still waits for the person, since it may still be running there and a resume would run beside it
-// (#872); one the host had no record of resumes as any other does.
+// (#872); one the host had no record of, or listed as ended, resumes as any other does.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -26,10 +26,10 @@ const quiet = async (r) => {
 /**
  * A Postbox restarted during @coder’s turn on the host, with no backend registered for it now (#874), after the
  * startup’s attempt to attach it. `registered` is the registry it had, to put back.
- * @param {{ signIn?: any, saved?: object, welcome?: 'running' | 'missing', moved?: boolean }} [o] `saved` patches the
+ * @param {{ signIn?: any, saved?: object, welcome?: 'running' | 'ended' | 'missing', moved?: boolean }} [o] `saved` patches the
  * session’s saved remoteTurn before the startup; `moved` puts the agent on this computer since
  */
-async function unregisteredRestart({ signIn = null, saved = null, welcome = /** @type {'running' | 'missing'} */ ('running'), moved = false } = {}) {
+async function unregisteredRestart({ signIn = null, saved = null, welcome = /** @type {'running' | 'ended' | 'missing'} */ ('running'), moved = false } = {}) {
   const { store, d } = restarted({ welcome });
   const r = rig({ store, d, signIn });
   if (saved) r.rt.updateSession(r.se().id, { remoteTurn: { ...r.se().remoteTurn, ...saved } });
@@ -78,24 +78,41 @@ test('#909 an Interrupted turn whose backend isn’t registered isn’t resumed 
   assert.equal(starts(d).length, 0);
 });
 
-test('#909 once the backend is registered again, a turn the host listed waits for the person, and their Resume starts once', async () => {
-  const { r, d, registered } = await unregisteredRestart();
+test('#909 after the backend is installed and Postbox restarted, a turn the host listed running waits for the person, and their Resume starts once', async () => {
+  const { r, d } = await unregisteredRestart();
   assert.equal(r.se().remoteTurn.state, 'interrupted');
   assert.equal(r.se().remoteTurn.resume?.person, true, 'it waits for the person');
-  r.rt.adapters = registered;
-  back(r);
-  await quiet(r);
-  back(r);
-  await quiet(r);
+  // Postbox restarts with the backend registered: a new runtime on the saved state, and a new connection.
+  r.rt.remote.close();
+  d.drop();
+  d.connect();
+  const again = rig({ store: r.store, d });
+  startUp(again);
+  await quiet(again);
+  assert.equal(again.se().remoteTurn.resume?.person, true, 'the flag is read back from the saved state');
+  back(again);
+  await quiet(again);
   assert.equal(starts(d).length, 0, 'not resumed beside a turn that may still run there (#872)');
-  assert.equal(r.se().remoteTurn.autoResumes ?? 0, 0);
-  assert.deepEqual(r.rt.resumeRemote(r.se().id), { ok: true });
+  assert.equal(again.se().remoteTurn.autoResumes ?? 0, 0);
+  assert.deepEqual(again.rt.resumeRemote(again.se().id), { ok: true });
   await until(() => starts(d).length === 1, 'the person’s resume');
   d.end(starts(d)[0].turn);
-  await quiet(r);
-  back(r);
-  await quiet(r);
+  await quiet(again);
+  back(again);
+  await quiet(again);
   assert.equal(starts(d).length, 1, 'one start');
+});
+
+test('#909 a turn the host listed as ended doesn’t wait for the person, and resumes once the backend is registered again', async () => {
+  const { r, d, registered } = await unregisteredRestart({ welcome: 'ended' });
+  assert.equal(r.se().remoteTurn.state, 'interrupted');
+  assert.ok(!r.se().remoteTurn.resume?.person, 'nothing runs there to wait on');
+  r.rt.adapters = registered;
+  back(r);
+  await until(() => starts(d).length === 1, 'the resume');
+  assert.equal(r.se().remoteTurn.autoResumes, 1);
+  d.end(starts(d)[0].turn);
+  await settled(r);
 });
 
 test('#909 once the backend is registered again, a turn the host had no record of resumes when the host is back', async () => {
