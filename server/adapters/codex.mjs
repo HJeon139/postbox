@@ -8,6 +8,7 @@ import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { codexApproval } from './codex-approval.mjs';
 import { codexMcpApprovalConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
 import { findCodex } from './codex-models.mjs';
+import { networkOn } from './codex-network.mjs';
 import { attachmentPaths, CODEX_CAPABILITIES, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
 import { openCodexThread } from './codex-thread.mjs';
 import { codexContextPercent } from './context-usage.mjs';
@@ -43,8 +44,7 @@ export function codexPermissions(persona, cwd) {
 function sandboxOf(persona, mode, cwd) {
   if (mode === 'bypass') return { type: 'dangerFullAccess' };
   if (mode === 'ask') return { type: 'readOnly' };
-  const networkAccess = mode === 'auto' && Array.isArray(persona?.tools) && persona.tools.includes('web.fetch');
-  return { type: 'workspaceWrite', ...(cwd ? { writableRoots: [cwd] } : {}), networkAccess };
+  return { type: 'workspaceWrite', ...(cwd ? { writableRoots: [cwd] } : {}), networkAccess: networkOn(persona) };
 }
 
 /**

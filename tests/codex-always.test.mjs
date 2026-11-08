@@ -9,6 +9,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { codexAlwaysOffer } from '../server/adapters/codex-always.mjs';
 import { codexApproval } from '../server/adapters/codex-approval.mjs';
+import { allowAlways } from '../server/permission-cards.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -45,16 +46,28 @@ test('#324 a network stop offers its host in Accept edits, and nothing in Auto f
   assert.equal(codexAlwaysOffer(params, AUTO_OFFLINE), null, 'one click would undo “personas without web access stay offline”');
   assert.notEqual(codexAlwaysOffer(params, AUTO_WEB), null);
   // A deny amendment is never offered as an allow.
-  assert.equal(codexAlwaysOffer(command({ proposedNetworkPolicyAmendments: [{ host: 'x.example', action: 'deny' }] }).params, EDITS), null);
+  assert.equal(
+    codexAlwaysOffer(
+      command({ networkApprovalContext: { host: 'x.example' }, proposedNetworkPolicyAmendments: [{ host: 'x.example', action: 'deny' }] }).params,
+      EDITS,
+    ),
+    null,
+  );
 });
 
 test('#324 codexApproval sends the offer on the card, and answers Always allow as Codex’s decision, once as accept', async () => {
   /** @type {any[]} */
   const asked = [];
-  const ctx = (answer) => ({ persona: EDITS, askPermission: async (req) => (asked.push(req), answer(req)) });
+  const ctx = (answer) => ({
+    persona: EDITS,
+    askPermission: async (req) => {
+      asked.push(req);
+      return answer(req);
+    },
+  });
   const msg = command({ proposedExecpolicyAmendment: ['gh', 'issue'] });
   const always = await codexApproval(
-    ctx((req) => ({ allow: true, updatedPermissions: req.offer.updates })),
+    ctx((req) => ({ allow: true, updatedPermissions: req.suggestions.updates })),
     msg,
   );
   assert.deepEqual(always, { decision: { acceptWithExecpolicyAmendment: { execpolicy_amendment: ['gh', 'issue'] } } });
@@ -79,7 +92,7 @@ test('#324 codexApproval sends the offer on the card, and answers Always allow a
     { method: 'item/fileChange/requestApproval', id: 8, params: { itemId: 'i2' } },
   );
   assert.equal(asked.at(-1).suppressAlways, true);
-  assert.equal(asked.at(-1).offer ?? null, null);
+  assert.equal(asked.at(-1).suggestions ?? null, null);
 });
 
 /** A Codex agent whose turn the test scripts, in a temp folder. */
@@ -140,3 +153,15 @@ async function waitFor(check) {
   }
   throw new Error('Timed out.');
 }
+
+test('#324 on a host turn’s card, a harness’s own offer is allowed always; Postbox’s own rule there still isn’t', async () => {
+  const settled = [];
+  const rt = { addItem: () => {}, settlePermission: (...a) => settled.push(a) };
+  const offer = codexAlwaysOffer(command({ proposedExecpolicyAmendment: ['gh', 'issue'] }).params, EDITS);
+  const remote = { hostId: 'ho_1', turn: 't', id: 'p1' };
+  assert.deepEqual(await allowAlways(rt, 'th_1', { id: 'it_1', always: offer, remote }, '@coder to run a command'), { ok: true });
+  assert.deepEqual(settled[0][3], { updatedPermissions: offer?.updates });
+  await assert.rejects(allowAlways(rt, 'th_1', { id: 'it_2', always: { lines: [{ text: 'x' }], updates: [{ type: 'addRules' }] }, remote }, 'x'), {
+    status: 409,
+  });
+});

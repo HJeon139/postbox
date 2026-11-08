@@ -34,6 +34,7 @@ export const CARD_WAIT_MS = POSTBOX_TIMEOUT_MS - EXPIRY_MARGIN_MS;
  * SDK’s `suggestions`), which Always allow returns; agentId names the subagent that asks, when one does.
  * @param {string} sessionId
  * suppressAlways is the SDK’s suppressAlwaysAllowRule: the rule Always allow would save grants more than this call.
+ * suggestions may instead be a harness’s own offer, `{ lines, updates, harness: true }`, which it saves itself (#324).
  * draft is what a write outside Postbox carries (server/write-guard.mjs’s draftOf), found from input when not given.
  * hostPrompt: on a remote turn, the prompt on the host this card answers (#120), kept on the card as `remote`, with the
  * daemon’s entry for it (#353).
@@ -212,7 +213,7 @@ export async function allowAlways(rt, threadId, it, asked) {
         throw httpError(409, ended);
       }
     }
-  } else if (it.remote) throw httpError(409, ON_HOST);
+  } else if (it.remote && !it.always.harness) throw httpError(409, ON_HOST);
   rt.addItem(threadId, { kind: 'voice', text: `Always allowed (${it.always.lines.map((l) => l.rule ?? l.text).join(', ')}): ${asked}` });
   rt.settlePermission(it.id, 'allowed-always', undefined, it.always.updates ? { updatedPermissions: it.always.updates } : {});
   return { ok: true };

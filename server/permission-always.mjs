@@ -8,6 +8,8 @@ import { alwaysAllow, cleanRule, rulesFor } from './permission-rules.mjs';
  * What Always allow offers on a card, or null for none:
  * - none when Claude Code says a saved rule would grant more than this call (the SDK’s suppressAlwaysAllowRule);
  * - Claude Code’s own suggestions when it sends a list (the SDK does, and an empty list means none);
+ * - a harness’s own offer, `{ lines, updates, harness: true }`, as it is: the harness saves that rule itself, on this
+ *   computer or a host (Codex’s, server/adapters/codex-always.mjs, #324);
  * - otherwise, for the CLI’s prompt tool, which sends no list at all (recorded), the rule Postbox makes for a refusal,
  *   which it saves where the CLI saves “don’t ask again”; but only for a backend that reads rules from a folder.
  * hostId: the host of the turn that asked, for a host prompt; where the rule is kept then, and what the card says.
@@ -17,6 +19,7 @@ import { alwaysAllow, cleanRule, rulesFor } from './permission-rules.mjs';
 export function alwaysFor(rt, se, { tool, input, suggestions, suppressAlways, hostId = null }) {
   if (suppressAlways) return null;
   if (Array.isArray(suggestions)) return alwaysAllow(suggestions);
+  if (isHarnessOffer(suggestions)) return suggestions;
   if (suggestions !== null && suggestions !== undefined) return null;
   const persona = rt.persona(se.personaId);
   // For a turn on a host, Postbox keeps the rule for that host (host-rules.mjs), and the card says so.
@@ -42,3 +45,6 @@ function postboxAlways(tool, input, where = null) {
     words: r.alwaysWords,
   };
 }
+
+/** Whether suggestions are a harness’s own Always allow, which it saves itself (#324). @param {unknown} suggestions */
+const isHarnessOffer = (suggestions) => typeof suggestions === 'object' && suggestions !== null && /** @type {any} */ (suggestions).harness === true;
