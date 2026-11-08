@@ -33,14 +33,16 @@ export function inSight(v) {
   return { top: Math.max(0, bar), bottom: s.clientHeight };
 }
 // How far past what the page lost the browser’s move may go: Linux Firefox moved the view up 59 px as the page lost 39
-// (the shorter-items case in view-skipped-append.spec.mjs), and the Mac’s Firefox 18 px (researcher’s trace).
+// (the shorter-items case in view-skipped-append.spec.mjs), and the Mac’s Firefox 18 px past what the page lost, with
+// its height unchanged (researcher’s trace of view-skipped-append.spec.mjs:24).
 const BROWSER_SLACK = 24;
 /**
- * Whether a move up of up px is the browser’s: the page got shorter since the view last measured it, by no less than
- * the move less BROWSER_SLACK. A reply landing or an item growing as you scroll makes it taller (#341’s cases).
+ * Whether a move up of up px is the browser’s: no more than what the page lost since the view last measured it, if
+ * anything, and BROWSER_SLACK more. A wheel turn of yours moves further; a reply landing or an item growing as you
+ * scroll makes the page taller and loses nothing (#341’s cases).
  * @param {View} v @param {Element} s @param {number} up
  */
 export function browserMoved(v, s, up) {
-  const lost = v.held.end - s.scrollHeight;
-  return lost > 0 && up <= lost + BROWSER_SLACK;
+  const lost = Math.max(0, v.held.end - s.scrollHeight);
+  return up <= lost + BROWSER_SLACK;
 }
