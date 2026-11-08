@@ -213,6 +213,10 @@ export function readRun(dir, { scenarios } = {}) {
     // Where the run’s time went (tools/uat/timing.mjs): only a live run measures it, so a recheck keeps it.
     timing: saved.timing ?? null,
     proposals: Array.isArray(findings.telemetry?.proposals) ? findings.telemetry.proposals : [],
+    // Whether the agent drew first (#983), and its first picture against a words-only answer (#995): only a live run
+    // or tools/uat-pairs.mjs records them, so a recheck keeps them.
+    ...(saved.picture ? { picture: saved.picture } : {}),
+    ...(saved.sideBySide ? { sideBySide: saved.sideBySide, pictureJudges: saved.pictureJudges ?? null } : {}),
   };
 }
 
