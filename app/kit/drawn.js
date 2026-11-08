@@ -1,7 +1,8 @@
 // Whether an agent app’s page shows something real: a mark, a picture, a table, a control, or words that aren’t only an
 // error or a missing-data message. Postbox adds it to every app page before the kit (server/sandbox.mjs). The kit asks
 // it when the app hits a script error, to keep an app that drew running (#964), and the pre-display check asks it for
-// an app that shows only an error (the only-error note in app/kit/check.js).
+// an app that shows only an error (the only-error note in app/kit/check.js). It also says which window errors are
+// harmless, so the kit doesn’t report them at all (#960).
 (function () {
   const ONLY_ERROR = /\b(?:error|failed|isn[’']t loaded|not loaded|restart postbox|no data|missing|couldn[’']t|could not|can[’']t load|unable to|not found)\b/i;
   const MARKS = 'svg circle, svg rect, svg ellipse, svg path, svg line, svg polyline, svg polygon, svg image';
@@ -57,4 +58,13 @@
     return last.drawn;
   }
   window.__pbDrawn = { look, onlyError, drawn };
+})();
+
+// Which window errors are harmless, so the kit doesn’t report them at all (#960).
+(function () {
+  // The browser’s ResizeObserver loop warning: a resize callback changed what it observes, and the rest is delivered
+  // next frame. It arrives as an error event with no error object, in either wording, and it isn’t a crash.
+  const RESIZE_LOOP = /^ResizeObserver loop (?:completed with undelivered notifications|limit exceeded)/;
+  /** Whether a window error event is harmless, so the kit doesn’t report it. @param {ErrorEvent} e */
+  window.__pbDrawn.harmless = (e) => !e.error && RESIZE_LOOP.test(e.message ?? '');
 })();

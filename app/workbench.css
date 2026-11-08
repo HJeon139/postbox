@@ -325,6 +325,9 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .transcript.cv-skip > .item:has(.rv-full, .app-full.fullscreen, .check-frame) { content-visibility: visible; }
 .col { width: 100%; max-width: 760px; margin: 0 auto; }
 .wide { width: 100%; }
+/* A retired app is one line, not a frame (#193), so its item keeps to the column, and its reactions and thread link
+   line up under it as under any message (#973). */
+.wide:has(> .app-retired) { max-width: 760px; margin-inline: auto; }
 
 /* ───────── Turns ───────── */
 

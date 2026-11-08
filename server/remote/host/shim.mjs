@@ -10,10 +10,12 @@
 // - The turn’s own token comes from its folder (TURN_FILES.shimToken, which the daemon writes as the turn starts),
 //   read on each connect, never from arguments or the environment, which other users can read through /proc. The
 //   daemon takes no other token from a shim, and refuses a call from a turn that has ended.
-// - A `queue` tool (TOOL_ROUTES) returns at once, connected or not: the call waits here until the daemon answers it
-//   with `result`, and is sent again, with the same ID, after each reconnect. Its text says it was sent, not what
-//   the laptop would say: the laptop’s text depends on its state (an id already taken, a block it refuses), which the
-//   shim can’t know, so it never claims a block was shown.
+// - A `queue` tool (TOOL_ROUTES) waits for the daemon’s `result`, which comes once the daemon has checked the call and
+//   recorded it, whether Postbox is connected or not (#827). A refusal returns as the tool’s error, in the daemon’s
+//   words. A call taken gets text that says it was sent, not what the laptop would say: the laptop’s text depends on
+//   its state (an id already taken, a block it refuses), which the shim can’t know, so it never claims a block was
+//   shown, and Postbox tells the agent of its own refusal at its next turn. The call is sent again, with the same ID,
+//   after each reconnect, and fails if the daemon hasn’t taken it within TIMINGS.unreachable.
 // - An `ask` or `host` tool waits for the daemon’s `result`, sent again after a reconnect. It fails with an error
 //   that says why if the daemon stays unreachable for TIMINGS.unreachable, or doesn’t answer in TIMINGS.askMax.
 // - permission_prompt sends `permission` and waits for `permission-answer`, however many times the daemon restarts.

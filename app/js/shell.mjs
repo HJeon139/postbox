@@ -16,9 +16,10 @@ import { ringFor, stateWord } from './ring.mjs';
 import { confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
 import './store-line.mjs';
 import { recordingBadge, telemetryItems } from './telemetry.mjs';
+import { liveMembers, topbarSig } from './topbar-sig.mjs';
 import { closeWork, navigate, openMenu, openWork, route, toast, undoToast } from './ui.mjs';
 
-export { railHidden, toggleRail };
+export { liveMembers, railHidden, toggleRail };
 
 const S = () => client.state;
 
@@ -26,8 +27,6 @@ const S = () => client.state;
  * The top bar: the places menu, the path to the open conversation and its two views, and the global actions. The
  * agents, their rings and their quick panels are in the sidebar’s Agents section (#105, #320).
  */
-/** A conversation’s agents that are here: neither archived nor being deleted. */
-export const liveMembers = (t) => t.members.filter((id) => S().sessions[id] && !S().sessions[id].archived && !S().sessions[id].deleting).join(',');
 
 export function topbar({ title = '', threadId = null, projectId = null }) {
   const t = threadId ? S().threads[threadId] : null;
@@ -35,14 +34,14 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
   const project = pid ? S().projects[pid] : null;
   const n = needsYou().length;
   const needsIn = (id) => needsYou().filter((se) => S().threads[se.threadId]?.projectId === id).length;
-  const projects = Object.values(S().projects);
-  // The Postbox mark opens the places menu: every project, from anywhere.
+  // The Postbox mark opens the places menu: every project, from anywhere, read when it opens, since the bar isn’t
+  // rebuilt for another project’s change (#986).
   const places = (e) =>
     openMenu(
       e.currentTarget,
       [
         { heading: 'Projects' },
-        ...projectPlaces(projects, pid, needsIn, (id) => navigate(`#/p/${id}`)),
+        ...projectPlaces(Object.values(S().projects), pid, needsIn, (id) => navigate(`#/p/${id}`)),
         'hr',
         { label: 'New project…', icon: 'plus', run: () => openSettings('projects') },
       ],
@@ -141,6 +140,8 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
   );
   // Who it was drawn for: main.mjs rebuilds the view when an agent joins or leaves, and only then.
   if (t) bar.dataset.members = liveMembers(t);
+  // What it was drawn from: main.mjs rebuilds it only when that changes (#986).
+  bar.dataset.sig = topbarSig({ title, threadId, projectId });
   fitter?.observe(bar);
   // Fitted once it’s on the page too: the observer’s first call waits for a frame, which a hidden tab can hold back.
   queueMicrotask(() => fitTopbar(bar));

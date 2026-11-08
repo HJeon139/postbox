@@ -81,22 +81,22 @@ test('server/discover and any other unknown method get method not found (-32601)
   assert.equal((await shim.call('tools/call', { name: 'no_such_tool', arguments: {} })).error.code, -32602);
 });
 
-test('a queued tool returns at once, and the daemon receives its call', async (t) => {
+test('a queued tool’s call reaches the daemon, and returns once the daemon has taken it', async (t) => {
   const { shim, daemon } = await setup(t);
   await daemon.connected();
   const id = shim.tool('show_block', { block: { id: 'pick', type: 'choice', version: 1, fallback: 'Pick one' } });
-  const res = await shim.response(id);
-  assert.match(textOf(res), /Sent block pick to Postbox/);
-  assert.equal(res.result.isError, undefined);
   const call = await daemon.next('call');
   assert.equal(call.name, 'show_block');
   assert.equal(call.args.block.id, 'pick');
+  daemon.send('result', { id: call.id, ok: true, text: 'Queued for Postbox.' });
+  const res = await shim.response(id);
+  assert.match(textOf(res), /Sent block pick to Postbox/);
+  assert.equal(res.result.isError, undefined);
 });
 
-test('a queued tool returns at once with no daemon, and is sent with the same ID when the daemon comes up', async (t) => {
+test('a queued tool sent with no daemon waits, and is sent with the same ID when the daemon comes up', async (t) => {
   const { shim, daemon } = await setup(t, { startDaemon: false, timings: { backoff: 20, backoffMax: 50 } });
-  const res = await shim.response(shim.tool('define_term', { term: 'shim', definition: 'The host’s MCP server.' }));
-  assert.match(textOf(res), /Sent “shim” to the glossary/);
+  const id = shim.tool('define_term', { term: 'shim', definition: 'The host’s MCP server.' });
   await daemon.start();
   const call = await daemon.next('call');
   assert.equal(call.name, 'define_term');
@@ -106,6 +106,7 @@ test('a queued tool returns at once with no daemon, and is sent with the same ID
   const again = await daemon.next('call', 1);
   assert.equal(again.id, call.id);
   daemon.send('result', { id: call.id, ok: true, text: 'Queued.' });
+  assert.match(textOf(await shim.response(id)), /Sent “shim” to the glossary/);
   await daemon.stop();
   await daemon.start();
   await daemon.next('hello', 2);
