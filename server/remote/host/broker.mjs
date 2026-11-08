@@ -4,7 +4,8 @@
 // shim-to-daemon, daemon-to-shim, and the tool, prompt, prompt-expired, reply, answer, snapshot and snapshot-items
 // messages between Postbox and the daemon. daemon.mjs hands it each shim connection and those Postbox messages.
 //
-// - A shim says hello with its turn and that turn’s own token (TURN_FILES.shimToken, compared in constant time). A
+// - A shim says hello with its turn, that turn’s own token (TURN_FILES.shimToken, compared in constant time) and its
+//   own key, which tells its connections from another shim’s; a hello with no key is refused with version (#908). A
 //   turn that isn’t one the daemon started, has ended, or is stopping is refused with turn-ended, as the laptop refuses a call from a stopped turn
 //   (#126): Stop marks the turn stopping first, so a call made after it never reaches the conversation.
 // - Each tool call is answered by its route (TOOL_ROUTES). A `queue` call is written to the turn folder’s tools.jsonl,
@@ -15,8 +16,11 @@
 // - A permission prompt is written to prompts.jsonl and crosses as `prompt`. Postbox’s `answer` goes to the turn’s
 //   shims as permission-answer, and again whenever a shim resends the prompt (after a reconnect), since the daemon
 //   can’t tell whether a shim that went away read it. The shim’s notice that it expired, or that the harness canceled the call, ends it,
-//   and Postbox hears prompt-expired, now or after its next hello.
+//   and Postbox hears prompt-expired, now or after its next hello. Only the shim that asked can end it, and not once
+//   it’s answered; another key’s notice is refused as one for an unknown id is (#908).
 // - A call or prompt is (turn, id): each shim picks its own IDs. A resent one is recognized and never queued twice.
+//   A call’s result, live or answered offline, goes only to the connections of the shim that made it, by its key, and
+//   a resend from another key gets none of it (#908).
 // - Everything waiting for Postbox survives a daemon restart: tools.jsonl and prompts.jsonl are append-only records of
 //   what arrived and what settled, replayed at start, an asked call’s reply with its text, so a shim that sends the
 //   call again after a restart gets it. After each Postbox hello every unreplied tool, unanswered prompt and unsent
