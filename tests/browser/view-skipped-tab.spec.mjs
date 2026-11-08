@@ -185,3 +185,30 @@ test('#712a: scrolled away from the app, Tab out of it and on into the skipped i
     await holds(page, t, 'after Tab into the skipped item');
   });
 });
+
+// critic's P2 on #959: apps.mjs hears every Tab to see if it goes into an app frame. It read the rects of every
+// focusable on the page, and over skipped items each read laid that item out: one Tab from the composer in a 1,000-item
+// room took 975 layouts and about 3 s. It looks only as far as the next control now.
+test('#712a: a Tab from the composer in a 1,000-item room lays out a handful of items, not the room', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the layout count comes from Chromium’s DevTools protocol');
+  const t = bigRoom(app, 'Tab cost');
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await expect(page.locator(`.transcript[data-thread="${t.id}"] > .item`)).toHaveCount(1000, { timeout: 15_000 });
+  await page.locator('.composer textarea').first().focus();
+  await still(page);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Performance.enable');
+  const layouts = async () => (await cdp.send('Performance.getMetrics')).metrics.find((x) => x.name === 'LayoutCount')?.value ?? 0;
+  const counts = [];
+  for (const key of ['Tab', 'Shift+Tab']) {
+    await page.locator('.composer textarea').first().focus();
+    await still(page);
+    const before = await layouts();
+    await page.keyboard.press(key);
+    counts.push((await layouts()) - before);
+  }
+  test.info().annotations.push({ type: 'measured', description: `layouts for Tab, then Shift+Tab: ${counts.join(', ')}` });
+  for (const n of counts) expect(n, `layouts for one key, of ${counts.join(', ')}`).toBeLessThan(20);
+});
