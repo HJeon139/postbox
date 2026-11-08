@@ -1,7 +1,11 @@
-// A permission mode changed while an Agent SDK turn runs (#66, #371, #817). A turn started in bypass loaded the
-// person’s hooks, with no permission callback and no ask rules for writes outside Postbox; switching its mode live would
-// leave those hooks running while the panel says they don’t. So it keeps bypass until it ends or is stopped, and the
-// runtime lists it with the turns that keep their mode. The Claude Code CLI can’t change a running turn’s mode at all.
+// A permission mode changed while an Agent SDK turn runs (#66, #371, #817, #806). A turn loads the person’s hooks when it
+// starts, in every mode but Ask me and Accept edits (settingsFor in server/adapters/setup.mjs); in those two Postbox
+// turns hooks off, since a hook that approves a call would skip their ask rules for writes outside Postbox and the
+// card. So a turn that started with hooks on doesn’t switch live into Ask me or Accept edits: the hooks it loaded would
+// keep running where the panel says they don’t. And a turn started in bypass, with no permission callback and no ask
+// rules for writes outside, keeps bypass. Either keeps its mode until it ends or is stopped, and the runtime lists it
+// with the turns that keep their mode. A switch that leaves hooks off, or turns them on, changes live. The Claude
+// Code CLI can’t change a running turn’s mode at all.
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -40,6 +44,79 @@ test('#817: an Agent SDK turn started outside bypass still changes live, into by
   assert.equal(await live.setPermissionMode('bypass'), true);
   assert.equal(await live.setPermissionMode('auto'), true);
   assert.deepEqual(q.modes, ['bypassPermissions', 'auto']);
+});
+
+// Each mode a turn can start in, with whether its hooks loaded (on), and each mode it can be switched to live.
+const STARTS = [
+  ['auto', true],
+  ['ask', false],
+  ['acceptEdits', false],
+  ['plan', true],
+  ['not-a-mode', true],
+];
+const SDK_MODE = { auto: 'auto', ask: 'default', acceptEdits: 'acceptEdits', bypass: 'bypassPermissions' };
+
+test('#806: a turn that loaded hooks doesn’t switch live into Ask me or Accept edits; every other live switch from a non-bypass start takes effect', async () => {
+  for (const [started, hooksOn] of STARTS) {
+    for (const mode of ['auto', 'ask', 'acceptEdits', 'bypass']) {
+      const q = query();
+      const takes = !(hooksOn && (mode === 'ask' || mode === 'acceptEdits'));
+      const label = `started ${started}, switched to ${mode}`;
+      assert.equal(await liveControl(q, started).setPermissionMode(mode), takes, label);
+      assert.deepEqual(q.modes, takes ? [SDK_MODE[mode]] : [], label);
+    }
+  }
+});
+
+test('#806: a live control told nothing about its start treats the turn as Auto, so a switch to Ask me waits', async () => {
+  const q = query();
+  const live = liveControl(q);
+  assert.equal(await live.setPermissionMode('ask'), false);
+  assert.equal(await live.setPermissionMode('acceptEdits'), false);
+  assert.deepEqual(q.modes, []);
+});
+
+test('#806: once a turn that started in Ask me has switched to Auto, switching back to Ask me still takes effect', async () => {
+  const q = query();
+  const live = liveControl(q, 'ask');
+  assert.equal(await live.setPermissionMode('auto'), true);
+  assert.equal(await live.setPermissionMode('ask'), true);
+  assert.deepEqual(q.modes, ['auto', 'default']);
+});
+
+test('#806: switching to Ask me during an Auto turn lists its session as keeping its mode, and the persona changes for next turns', async () => {
+  const { rt, adapter, t, a, alpha } = setup();
+  rt.updatePersona(a.id, { permissionMode: 'auto' });
+  const q = query();
+  const h = held();
+  adapter.next.push(async (ctx) => {
+    ctx.control(liveControl(q, ctx.persona.permissionMode));
+    await h.step(ctx);
+  });
+  rt.sendMessage(t.id, { text: '@alpha run the tests' });
+  await sleep(5);
+  assert.deepEqual(await rt.setPermissionMode(a.id, 'acceptEdits'), { ok: true, now: [], later: [alpha.id] });
+  assert.deepEqual(q.modes, [], 'the running turn keeps Auto, so the hooks it loaded and its mode agree until it ends');
+  assert.equal(rt.persona(a.id).permissionMode, 'acceptEdits');
+  h.release();
+  await settle(rt);
+});
+
+test('#806: switching to Auto during an Ask me turn changes it now, since its hooks stay off', async () => {
+  const { rt, adapter, t, a, alpha } = setup();
+  rt.updatePersona(a.id, { permissionMode: 'ask' });
+  const q = query();
+  const h = held();
+  adapter.next.push(async (ctx) => {
+    ctx.control(liveControl(q, ctx.persona.permissionMode));
+    await h.step(ctx);
+  });
+  rt.sendMessage(t.id, { text: '@alpha run the tests' });
+  await sleep(5);
+  assert.deepEqual(await rt.setPermissionMode(a.id, 'auto'), { ok: true, now: [alpha.id], later: [] });
+  assert.deepEqual(q.modes, ['auto']);
+  h.release();
+  await settle(rt);
 });
 
 test('#817: leaving bypass during a bypass turn lists its session as keeping its mode, not as changed now', async () => {
@@ -105,6 +182,30 @@ test('#817: the Agent SDK adapter hands over a live control that knows its turn 
   assert.deepEqual(q.modes, []);
   ctx.abort.abort();
   await done;
+});
+
+test('#806: the Agent SDK adapter hands over a live control that knows its turn started in Auto, or in no mode', async () => {
+  for (const permissionMode of ['auto', undefined]) {
+    const q = query();
+    const sdk = {
+      query({ options }) {
+        const run = (async function* () {
+          yield { type: 'system', subtype: 'init', session_id: 'sdk-1' };
+          await new Promise((r) => options.abortController.signal.addEventListener('abort', r));
+        })();
+        return Object.assign(run, { setPermissionMode: q.setPermissionMode });
+      },
+    };
+    const adapter = new AgentSdkAdapter({ sdk, workRoot: tempDir('pb-live-mode-work-'), listProcesses: async () => [] });
+    const ctx = fakeCtx(permissionMode);
+    const done = adapter.deliver({}, { kind: 'user', text: 'Go' }, ctx).catch(() => {});
+    await until(() => ctx.calls.control, 'the live control');
+    assert.equal(await ctx.calls.control.setPermissionMode('ask'), false, `started in ${permissionMode}`);
+    assert.equal(await ctx.calls.control.setPermissionMode('bypass'), true, `started in ${permissionMode}`);
+    assert.deepEqual(q.modes, ['bypassPermissions'], `started in ${permissionMode}`);
+    ctx.abort.abort();
+    await done;
+  }
 });
 
 test('#817: the Claude Code CLI hands over no live mode change, so a running CLI turn always keeps its mode', async () => {
