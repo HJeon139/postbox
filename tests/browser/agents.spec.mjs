@@ -402,19 +402,19 @@ test('a subagent at work is a child in the agent tree, with what it was asked an
     await expect.poll(() => store.state.sessions[indexer.id].state, { message: 'the turn to end' }).toBe('idle');
     await synced(page, app);
     await expect(subs, 'the subagents left the tree').toHaveCount(0);
-    const tree = await page
-      .locator('.turn details.activity')
-      .last()
-      .evaluate((reply) => {
-        const top = reply.querySelector(':scope > ul.steps');
-        const reader = [...(top?.children ?? [])].find((li) => li.querySelector(':scope > .step-text')?.textContent?.includes('Subagent: Reader'));
-        return {
-          said: [...(reader?.querySelectorAll(':scope > ul.steps > li.said') ?? [])].map(
-            (li) => li.querySelector('.step-text > summary, .step-text')?.textContent,
-          ),
-          nested: !!reader?.querySelector(':scope > ul.steps > li > ul.steps li.said'),
-        };
-      });
+    const list = page.locator('.turn details.activity').last();
+    await list.locator('> summary').click();
+    await expect(list.locator(':scope > ul.steps'), 'a folded list’s steps, built when it opens (#1028)').toHaveCount(1);
+    const tree = await list.evaluate((reply) => {
+      const top = reply.querySelector(':scope > ul.steps');
+      const reader = [...(top?.children ?? [])].find((li) => li.querySelector(':scope > .step-text')?.textContent?.includes('Subagent: Reader'));
+      return {
+        said: [...(reader?.querySelectorAll(':scope > ul.steps > li.said') ?? [])].map(
+          (li) => li.querySelector('.step-text > summary, .step-text')?.textContent,
+        ),
+        nested: !!reader?.querySelector(':scope > ul.steps > li > ul.steps li.said'),
+      };
+    });
     expect(tree.said[0]).toBe("general-purpose: I'll count the words in the test string with Bash to get the first result.");
     expect(tree.nested, 'the nested subagent’s narration is nested under it').toBe(true);
   } finally {
