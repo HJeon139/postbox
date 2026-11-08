@@ -28,13 +28,15 @@ function holdStops(t) {
 }
 
 /**
- * A Postbox restarted during @coder’s turn on the host, which gives up attaching it.
- * @param {{ why: 'moved' | 'unregistered', welcome?: 'running' | 'unkilled' | 'missing' }} o
+ * A Postbox restarted during @coder’s turn on the host, which gives up attaching it. `to`, for a moved agent: this
+ * computer, or a second host.
+ * @param {{ why: 'moved' | 'unregistered', welcome?: 'running' | 'unkilled' | 'missing', to?: 'here' | 'host' }} o
  */
-async function gaveUp({ why, welcome = 'running' }) {
+async function gaveUp({ why, welcome = 'running', to = 'here' }) {
   const { store, d } = restarted({ welcome });
   const r = rig({ store, d });
-  if (why === 'moved') r.store.emit('persona', { ...r.rt.persona(r.se().personaId), remote: null });
+  const remote = to === 'host' ? { hostId: r.rt.addHost({ name: 'other.example.com' }).id } : null;
+  if (why === 'moved') r.store.emit('persona', { ...r.rt.persona(r.se().personaId), remote });
   else r.rt.adapters = new AdapterRegistry();
   startUp(r);
   await until(() => r.se().remoteTurn?.state === 'interrupted', 'Interrupted');
@@ -93,9 +95,10 @@ test('#965 the stop is asked again after a restart before the host confirmed it'
   assert.deepEqual(d.stops, ['host-turn-1', 'host-turn-1']);
 });
 
-test('#965 a stop still waiting on the host the agent moved off doesn’t hold its Resume here', async (t) => {
+test('#965 a stop still waiting on the host the agent moved off doesn’t hold its Resume on the new host', async (t) => {
   holdStops(t);
-  const { r, d } = await gaveUp({ why: 'moved' });
+  const { r, d } = await gaveUp({ why: 'moved', to: 'host' });
+  assert.notEqual(r.rt.persona(r.se().personaId).remote?.hostId, r.host.id, 'on another host now');
   assert.deepEqual(d.stops, ['host-turn-1'], 'the old host is asked');
   assert.equal(r.se().remoteTurn.stopping?.length, 1, 'not yet confirmed');
   assert.equal(resumeRefusal(r), null);
