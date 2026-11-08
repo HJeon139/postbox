@@ -7,9 +7,9 @@ import { readFileSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { GEMINI_MODEL } from '../shared/agent-facts.mjs';
-import { HANDLE } from '../shared/limits.mjs';
 import { agentFolderPath } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
+import { handleOf } from './persona-checks.mjs';
 import { newId } from './store.mjs';
 
 // Read once, when the module loads: freshInstall() is synchronous, and the UAT's checks call it as well as seed().
@@ -172,18 +172,22 @@ export const KNOWN_TOOLS = [
 ];
 
 /**
- * Refuses agents.json before any of its agents is made, so one refused leaves none rather than some, with the reason
- * naming the file and the agent (#990): each one’s name, as createPersona reads it, that no two share one, and each
- * one’s folder. The built-in agents pass.
+ * Refuses agents.json before any of its agents is made, with the reason naming the file and the agent (#990). It checks
+ * only each one’s name, as createPersona reads it, that no two share one, and each one’s folder: an agents.json that fails
+ * one of those seeds none of its agents. Its other fields (backend, permission mode, effort, setup, host) are checked
+ * only by createPersona, agent by agent, so one of those refused can still stop seeding partway, with the agents before
+ * it made. The built-in agents pass.
  * @param {unknown[]} personas
  */
 function checkAgents(personas) {
   const seen = new Set();
   personas.forEach((p, i) => {
-    const handle = String(/** @type {any} */ (p)?.handle ?? '')
-      .replace(/^@/, '')
-      .trim();
-    if (!HANDLE.test(handle)) throw httpError(422, `agents.json: agent ${i + 1}: A name uses 2–24 letters, digits, - or _, and starts with a letter.`);
+    let handle;
+    try {
+      handle = handleOf(/** @type {any} */ (p)?.handle);
+    } catch (e) {
+      throw httpError(e.status, `agents.json: agent ${i + 1}: ${e.message}`);
+    }
     if (seen.has(handle.toLowerCase())) throw httpError(409, `agents.json: agent ${i + 1}: @${handle} is there twice. Give each agent a name of its own.`);
     seen.add(handle.toLowerCase());
     try {

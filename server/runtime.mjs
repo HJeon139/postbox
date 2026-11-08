@@ -7,7 +7,7 @@ import { homedir } from 'node:os';
 import { basename, resolve, sep } from 'node:path';
 import { ASKING } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
-import { HANDLE, READING } from '../shared/limits.mjs';
+import { READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
@@ -60,7 +60,7 @@ import {
   permissionsView,
   setPermissionMode,
 } from './permissions-panel.mjs';
-import { checkEffort, checkSetup } from './persona-checks.mjs';
+import { checkEffort, checkSetup, handleOf } from './persona-checks.mjs';
 import { readCapped } from './read-capped.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
@@ -2375,10 +2375,7 @@ export class Runtime {
     createdBy = null,
     remote = null,
   }) {
-    handle = String(handle ?? '')
-      .replace(/^@/, '')
-      .trim();
-    if (!HANDLE.test(handle)) throw httpError(422, 'A name uses 2–24 letters, digits, - or _, and starts with a letter.');
+    handle = handleOf(handle);
     if (this.personaByHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
     if (this.deletingHandle(handle)) throw httpError(409, `@${handle} is being deleted. Undo that, or wait 10 seconds for the name to be free.`);
     if (!this.adapters.names().includes(backend)) throw httpError(422, notHere(this, backend));
