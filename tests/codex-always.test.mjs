@@ -18,10 +18,16 @@ const command = (extra = {}) => ({ method: 'item/commandExecution/requestApprova
 const AUTO_WEB = { permissionMode: 'auto', tools: ['shell', 'web.fetch'] };
 const AUTO_OFFLINE = { permissionMode: 'auto', tools: ['shell'] };
 const EDITS = { permissionMode: 'acceptEdits', tools: ['shell'] };
+const EDITS_WEB = { permissionMode: 'acceptEdits', tools: ['shell', 'web.fetch'] };
 
 test('#324 a command card offers exactly Codex’s proposed prefix, answered as Codex’s own amendment', () => {
   const offer = codexAlwaysOffer(command({ proposedExecpolicyAmendment: ['gh', 'issue'] }).params, EDITS);
-  assert.deepEqual(offer?.lines, [{ text: 'Always allow commands starting with gh issue, as a Codex rule', rule: 'gh issue' }]);
+  assert.deepEqual(offer?.lines, [
+    {
+      text: 'Always allow commands starting with gh issue, as a Codex rule: they run outside its sandbox, with no card, in every Codex session on this computer',
+      rule: 'gh issue',
+    },
+  ]);
   assert.deepEqual(offer?.updates, [{ type: 'codex', decision: { acceptWithExecpolicyAmendment: { execpolicy_amendment: ['gh', 'issue'] } } }]);
 });
 
@@ -44,13 +50,15 @@ test('#324 no offer for a prefix that runs any program, an operator, a one-word 
   assert.notEqual(codexAlwaysOffer(command({ proposedExecpolicyAmendment: ['git', 'status'] }).params, EDITS), null);
 });
 
-test('#324 a network stop offers its host in Accept edits, and nothing in Auto for a persona that may not fetch the web', () => {
+test('#324 a network stop offers its host to a persona that may fetch the web, and nothing to one that may not', () => {
   const params = command({
     networkApprovalContext: { host: 'api.github.com' },
     proposedNetworkPolicyAmendments: [{ host: 'api.github.com', action: 'allow' }],
   }).params;
-  const offer = codexAlwaysOffer(params, EDITS);
-  assert.deepEqual(offer?.lines, [{ text: 'Always allow network access to api.github.com, as a Codex rule', rule: 'api.github.com' }]);
+  const offer = codexAlwaysOffer(params, EDITS_WEB);
+  assert.deepEqual(offer?.lines, [
+    { text: 'Always allow network access to api.github.com, as a Codex rule, in every Codex session on this computer', rule: 'api.github.com' },
+  ]);
   assert.deepEqual(offer?.updates, [
     { type: 'codex', decision: { applyNetworkPolicyAmendment: { network_policy_amendment: { host: 'api.github.com', action: 'allow' } } } },
   ]);
@@ -60,7 +68,7 @@ test('#324 a network stop offers its host in Accept edits, and nothing in Auto f
   assert.equal(
     codexAlwaysOffer(
       command({ networkApprovalContext: { host: 'x.example' }, proposedNetworkPolicyAmendments: [{ host: 'x.example', action: 'deny' }] }).params,
-      EDITS,
+      EDITS_WEB,
     ),
     null,
   );
@@ -146,7 +154,7 @@ test('#324 Always allow on the card hands Codex’s decision back and writes no 
   const card = await waitFor(() => store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open'));
   assert.deepEqual(
     card.always.lines.map((l) => l.text),
-    ['Always allow commands starting with gh issue, as a Codex rule'],
+    ['Always allow commands starting with gh issue, as a Codex rule: they run outside its sandbox, with no card, in every Codex session on this computer'],
   );
   await rt.act(t.id, card.id, 'always', {});
   await waitFor(() => decision);

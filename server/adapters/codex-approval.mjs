@@ -61,8 +61,9 @@ async function changeApproval(ctx, msg) {
   const detail =
     [p.command ?? p.reason ?? p.networkApprovalContext?.host ?? p.grantRoot, p.cwd ? `Working directory: ${p.cwd}` : null].filter(Boolean).join('\n\n') ||
     summary;
-  // Always allow saves Codex’s own rule, exactly as Codex proposed it (#324); a file change proposes none.
-  const offer = codexAlwaysOffer(p, ctx.persona);
+  // Always allow saves Codex’s own rule, exactly as Codex proposed it, for a command only (#324): an amendment never
+  // goes back on a file change’s answer.
+  const offer = isFile ? null : codexAlwaysOffer(p, ctx.persona);
   const answer = await ctx.askPermission({
     tool: isFile ? 'Edit' : 'Bash',
     summary,

@@ -57,7 +57,7 @@ const EXAMPLES = ['Bash(npm test)', 'WebFetch(https://example.com/x)', 'Read(src
 function backendNote(p) {
   const intro = `${p.handle} runs on ${BACKEND_NAMES[p.backend] ?? p.backend}, which doesn’t read Claude Code’s rules or MCP servers.`;
   if (p.backend === 'codex')
-    return `${intro} Ask me uses read-only; Auto and Accept edits share workspace-write with network off; Run everything has full access and no approval prompts. The per-agent Tools checklist is unavailable.`;
+    return `${intro} Ask me uses read-only; Auto uses workspace-write, with network on if it may fetch the web, and Codex’s reviewer judges what the sandbox stops; Accept edits uses workspace-write with network off; Run everything has full access and no approval prompts. Of its Tools, only Web counts, for network in Auto. Always allow on its card saves a Codex rule: a matching command then runs outside Codex’s sandbox, with no card, in every Codex session on this computer.`;
   if (capsOf(p.backend).tools === 'none') return `${intro} Its mode decides what it may do.`;
   return `${intro} Its mode and its Tools decide what it may do.`;
 }
