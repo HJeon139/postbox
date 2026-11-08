@@ -3,11 +3,12 @@
 // picture of a run that finished before it was recorded (tools/uat/pairs-backfill.mjs).
 
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { agreement, arenaPairs, calibrationPage, twinPairs } from '../tools/uat/calibration.mjs';
+import { agreement, arenaPairs, calibrationPage, PAGE_CSP, twinPairs } from '../tools/uat/calibration.mjs';
 import { firstJudged } from '../tools/uat/pairs-backfill.mjs';
 
 test('#995 a scenario’s runs pair with its -base twin’s, newest first, one scenario after another', () => {
@@ -40,7 +41,8 @@ test('#995 the page shows two pictures and what each meant to say, with no run, 
   calibrationPage([{ persona: 'Someone with many subscriptions.', question: 'Which should I cancel?', sides }], out);
   assert.deepEqual(readdirSync(out).sort(), ['1-a.png', '1-b.png', 'index.html']);
   const html = readFileSync(join(out, 'index.html'), 'utf8');
-  assert.ok(!/skill|base|everyday/i.test(html.replace(/Postbox/g, '')), 'nothing tells which condition a picture came from');
+  const shown = html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, '').replace(/<script>[\s\S]*<\/script>/, '');
+  assert.ok(!/skill|base|everyday/i.test(shown), 'nothing tells which condition a picture came from');
   assert.match(html, /The agent’s text version of it \(it gave no intent\)<\/span>: “Cancel &lt;the&gt; gym\.”/);
   assert.match(html, /What the agent meant it to say<\/span>: “Six cost over \$10 a use\.”/);
   assert.ok(html.indexOf('1-a.png') < html.indexOf('1-b.png'));
@@ -90,4 +92,22 @@ test('#995 a person is never shown a brief, a question or a screenshot twice; th
     arenaPairs(pairs).map((p) => p.skill.run),
     ['a', 'h'],
   );
+});
+
+test('#995 the page loads nothing from elsewhere: its CSP allows its own pictures, and its style and script by hash', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-calibrate-'));
+  t.after(() => rmSync(dir, { recursive: true }));
+  writeFileSync(join(dir, 'p.png'), 'png');
+  const sides = [
+    { file: join(dir, 'p.png'), intent: 'One.', intentFrom: 'agent' },
+    { file: join(dir, 'p.png'), intent: '', intentFrom: null },
+  ];
+  calibrationPage([{ persona: 'Someone.', question: 'Q?', sides }], join(dir, 'page'));
+  const html = readFileSync(join(dir, 'page', 'index.html'), 'utf8');
+  assert.ok(html.includes(`<meta http-equiv="Content-Security-Policy" content="${PAGE_CSP}">`));
+  assert.match(PAGE_CSP, /^default-src 'none'; img-src 'self';/);
+  const hash = (text) => `'sha256-${createHash('sha256').update(text).digest('base64')}'`;
+  const inline = (tag) => new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(html)?.[1] ?? '';
+  assert.ok(PAGE_CSP.includes(`script-src ${hash(inline('script'))}`), 'the script’s hash is the one the policy allows');
+  assert.ok(PAGE_CSP.includes(`style-src ${hash(inline('style'))}`), 'the style’s hash is the one the policy allows');
 });

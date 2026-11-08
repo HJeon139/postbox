@@ -3,6 +3,7 @@
 // on a page: the person, their question, and the two screenshots, each with what it was meant to say, in an order of
 // the page’s own. The model judge is shown exactly that. agreement() compares their picks.
 
+import { createHash } from 'node:crypto';
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { escapeHtml } from '../../shared/markdown.mjs';
@@ -94,6 +95,14 @@ document.getElementById('save').addEventListener('click',()=>{const json=JSON.st
 const left=read().picks.filter((p)=>!p.pick).length;document.getElementById('left').textContent=left?left+' pairs have no pick yet.':'Every pair has a pick.';
 const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([json],{type:'application/json'}));a.download='picks.json';a.click();});`;
 
+const sha = (text) => `'sha256-${createHash('sha256').update(text).digest('base64')}'`;
+
+/**
+ * The page’s content security policy: nothing loads but its own pictures, its one style and its one script, by hash.
+ * Agents’ sentences on it are escaped text, and this holds even if one ever isn’t: no remote image, script or request.
+ */
+export const PAGE_CSP = `default-src 'none'; img-src 'self'; style-src ${sha(STYLE)}; script-src ${sha(SCRIPT)}; base-uri 'none'; form-action 'none'`;
+
 /**
  * Copies each pair’s pictures into `out` as <n>-a.png and <n>-b.png and writes the page.
  * @param {{ persona: string, question: string, sides: { file: string, intent: string, intentFrom: string|null }[] }[]} pairs
@@ -111,6 +120,7 @@ export function calibrationPage(pairs, out, { page = true } = {}) {
   writeFileSync(
     join(out, 'index.html'),
     `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="${PAGE_CSP}">
 <title>Picture against picture</title><style>${STYLE}</style></head><body><main>
 <h1>Picture against picture: ${pairs.length} pairs</h1>
 <p class="dim">Each pair is two agents’ first pictures for one person’s question, each with the sentence it was meant to say. Pick the picture that leaves that person understanding more, judging what the drawing shows and whether it says what it meant to. Pick Neither when they help equally. The order is random.</p>
