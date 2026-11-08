@@ -92,6 +92,18 @@ export function recordPushes(ledger, turn, cmdId, pushes, namedBranch, cwd) {
   }
 }
 
+/** The pushes git reported as sent by a command that then failed or was stopped: no others, and no named branch. */
+export function recordLandedPushes(ledger, turn, cmdId, pushes, cwd) {
+  recordPushes(
+    ledger,
+    turn,
+    cmdId,
+    pushes.filter((p) => p.refs.length > 0),
+    '',
+    cwd,
+  );
+}
+
 /** A commit, with its files and lines from git, so they match `git show --numstat`. */
 export async function recordCommit(ledger, turn, cmdId, { sha, branch }, cwd, message) {
   // A tool result’s gitOperation is the backend’s word, not git’s: a sha of --output=<file> would have git write a file.

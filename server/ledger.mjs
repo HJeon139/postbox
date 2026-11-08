@@ -40,7 +40,7 @@ import {
 import { describeTool } from './adapters/claude-stream.mjs';
 import { fileDiff, output, restore } from './ledger-answers.mjs';
 import { commandSeen, commandStarted, folderWatch, turnEnded } from './ledger-commands.mjs';
-import { clip, gitState, pushed, recordCommit, recordPushes, rootOf, runGit, tracked } from './ledger-git.mjs';
+import { clip, gitState, pushed, recordCommit, recordLandedPushes, recordPushes, rootOf, runGit, tracked } from './ledger-git.mjs';
 import { known, memoryBlobs, nodeIo, sameSnap } from './ledger-io.mjs';
 import { hostEdit, hostFolder, hostOf } from './ledger-remote.mjs';
 import { newId } from './store.mjs';
@@ -360,11 +360,13 @@ export class Ledger {
       output,
       ...(state === 'background' ? { taskId: r.backgroundTaskId } : {}),
     });
+    const cwd = vcsCwd ?? w.folder ?? w.projectFolder;
+    // A command that failed or was stopped part way still sent what git says it sent (#978); a refused one ran nothing.
+    if (state === 'failed' || state === 'stopped') return recordLandedPushes(this, turn, cmdId, commandFacts(e.command, out).pushes, cwd);
     if (state !== 'done' && state !== 'background') return;
     // What it did to version control and to services outside Postbox.
     const facts = commandFacts(e.command, out);
     const op = r?.gitOperation && typeof r.gitOperation === 'object' ? r.gitOperation : null;
-    const cwd = vcsCwd ?? w.folder ?? w.projectFolder;
     for (const name of facts.branches) {
       if (this.entries(w.convId).some((x) => x.kind === 'branch' && x.name === name && x.cwd === cwd)) continue;
       this.add(w.convId, this.base(turn, { kind: 'branch', id: newId('wb'), commandId: cmdId, name: clip(name, 200), cwd }));

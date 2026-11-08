@@ -2,12 +2,15 @@
 
 /** @typedef {{ remote: string|null, refs: string[], branch: string }} Push branch: the first branch it sent to, or ''. */
 
+// At most this many pushes from one command: each is a Work entry, and the command’s own text sets how many
+// reports there are (server/AGENTS.md: arrays are capped at the boundary).
+const MAX_PUSHES = 100;
 // A ref git push reports as sent: a new one, or old..new, then `src -> dst`. Rejected and up-to-date ones aren’t.
 const SENT_REF = /^\s*[*+\-!= ]?\s*(\[new [a-z]+\]|[0-9a-f]{7,64}\.\.\.?[0-9a-f]{7,64})\s+(\S+)\s+->\s+(\S+)/gm;
 
 /**
  * The pushes in git push’s output: each `To <remote>` line starts one, and holds the refs it sent up to the next.
- * With none that sent a ref, the one push, with the remote git named if any. O(output).
+ * With none that sent a ref, the one push, with the remote git named if any. At most MAX_PUSHES. O(output).
  * @returns {Push[]}
  */
 export function pushesIn(out) {
@@ -21,7 +24,7 @@ export function pushesIn(out) {
     };
   });
   const landed = pushes.filter((p) => p.refs.length > 0);
-  if (landed.length) return landed;
+  if (landed.length) return landed.slice(0, MAX_PUSHES);
   return [{ remote: pushes[0]?.remote ?? null, refs: [], branch: '' }];
 }
 
