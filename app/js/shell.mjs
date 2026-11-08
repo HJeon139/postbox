@@ -34,14 +34,14 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
   const project = pid ? S().projects[pid] : null;
   const n = needsYou().length;
   const needsIn = (id) => needsYou().filter((se) => S().threads[se.threadId]?.projectId === id).length;
-  const projects = Object.values(S().projects);
-  // The Postbox mark opens the places menu: every project, from anywhere.
+  // The Postbox mark opens the places menu: every project, from anywhere, read when it opens, since the bar isn’t
+  // rebuilt for another project’s change (#986).
   const places = (e) =>
     openMenu(
       e.currentTarget,
       [
         { heading: 'Projects' },
-        ...projectPlaces(projects, pid, needsIn, (id) => navigate(`#/p/${id}`)),
+        ...projectPlaces(Object.values(S().projects), pid, needsIn, (id) => navigate(`#/p/${id}`)),
         'hr',
         { label: 'New project…', icon: 'plus', run: () => openSettings('projects') },
       ],

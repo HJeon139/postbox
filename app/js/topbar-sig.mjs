@@ -1,7 +1,8 @@
 // What the top bar draws from the state (#986), so main.mjs rebuilds the bar only when one of those changes: any
 // conversation’s event used to rebuild it, and fitting the new bar laid out the whole page. topbarSig reads exactly
 // what topbar() (shell.mjs) reads for the bar it draws; a part the bar comes to show has to join it here, or the bar
-// goes stale (tests/browser/topbar-cost.spec.mjs changes each part in turn).
+// goes stale (tests/browser/topbar-cost.spec.mjs changes each part in turn). It covers only what the bar draws: the
+// bar’s handlers read the state when they run (the places menu, the conversation’s menu, the rail toggle).
 
 import { client, needsYou } from './client.mjs';
 
