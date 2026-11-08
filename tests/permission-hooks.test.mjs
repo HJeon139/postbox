@@ -1,5 +1,5 @@
 // #817: the permissions panel names each PreToolUse hook in the settings files an agent reads, since Postbox’s own
-// settings turn them off in every mode but bypass. A hook’s matcher and command are the person’s data, shown as text:
+// settings turn them off in Ask me and Accept edits (#806). A hook’s matcher and command are the person’s data, shown as text:
 // each test gives the reader hostile or broken input and checks the exact strings it hands the panel.
 
 import assert from 'node:assert/strict';

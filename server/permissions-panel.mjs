@@ -63,7 +63,7 @@ export async function permissionsView(rt, who) {
   const { usesHostSetup, canPublish, allowRequested } = setupOf(persona);
   const read = { folder, home: rt.home, configDir: rt.configDir, usesHostSetup };
   const files = real && readsRules && folder ? await readRules(read) : [];
-  // The hooks there that can approve a call, which Postbox’s settings turn off in every mode but bypass (#817, #871).
+  // The hooks there that can approve a call, which Postbox’s settings turn off in Ask me and Accept edits (#817, #871, #806).
   const hooks = real && readsRules && folder ? await readHooks(read) : [];
   const has = new Set(persona.tools ?? []);
   const tools = Object.entries(TOOL_RULES).map(([id, rules]) => ({ id, on: has.has(id), rules }));

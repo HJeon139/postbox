@@ -1,10 +1,13 @@
 // The permissions panel’s hooks section (#817). Postbox’s own settings turn off hooks from settings files and plugins,
-// and the custom status line, in its turns in every mode but Run everything: a hook that approves a call would skip
-// the ask rules for writes outside Postbox and the permission card. This section names each PreToolUse and
+// and the custom status line, in its turns in Ask me and Accept edits: there a hook that approves a call would skip
+// the ask rules for writes outside Postbox and the permission card. In Auto and Run everything they run (#806,
+// shared/hook-modes.mjs). This section names each PreToolUse and
 // PermissionRequest hook the server found in the settings files the agent reads, with its event (#871,
 // server/permission-hooks.mjs), says plugins’ hooks can’t be listed, and says what still runs. A hook’s matcher and
 // command are the person’s data: they go in as text, through h().
 
+import { PERMISSIONS } from '/shared/agent-facts.mjs';
+import { asksForWrites } from '/shared/hook-modes.mjs';
 import { h, icon } from './dom.mjs';
 
 /**
@@ -14,8 +17,10 @@ import { h, icon } from './dom.mjs';
  */
 function runsNote(p) {
   if (p.host) return `${p.handle} runs on ${p.host}. These are the hooks in this computer’s settings files; the host’s own settings aren’t shown here.`;
-  if (p.permissionMode === 'bypass') return `In Run everything mode, these run in ${p.handle}’s Postbox turns too.`;
-  return `These don’t run in ${p.handle}’s Postbox turns, except in Run everything mode. They still run when you use Claude Code yourself.`;
+  const name = (PERMISSIONS.find(([id]) => id === p.permissionMode) ?? PERMISSIONS[0])[1];
+  if (asksForWrites(p.permissionMode))
+    return `These don’t run in ${p.handle}’s Postbox turns in ${name} mode. They run in Auto and Run everything, and when you use Claude Code yourself.`;
+  return `In ${name} mode, these run in ${p.handle}’s Postbox turns too.`;
 }
 
 /**
@@ -68,7 +73,7 @@ export function hooksSection({ persona: p, hooks }, sources) {
     h(
       'p.help',
       {},
-      'In every mode but Run everything, Postbox turns off hooks from settings files, plugin hooks and your custom status line for its own turns, since a hook that approves a tool call would skip the ask rules and the permission card. Postbox can’t list your plugins’ hooks here: /hooks in Claude Code shows them. Hooks your organization manages still run, and one of those can still approve a call without asking you.',
+      'In Ask me and Accept edits, Postbox turns off hooks from settings files, plugin hooks and your custom status line for its own turns, since a hook that approves a tool call would skip the ask rules and the permission card. In Auto and Run everything they run, as when you use Claude Code yourself. Postbox can’t list your plugins’ hooks here: /hooks in Claude Code shows them. Hooks your organization manages always run, and one of those can approve a call without asking you.',
     ),
   );
 }
