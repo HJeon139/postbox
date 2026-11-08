@@ -17,8 +17,14 @@ import { askOnce } from './tester.mjs';
  */
 export async function judgePictures({ scenario, dir, paths, labels, keys, timeline, facts, shoot, ask = askOnce, model, log }) {
   if (scenario.judge !== 'visual' && !scenario.expects) return;
-  const matched = await matchIntents({ timeline, data: paths.data, shots: paths.shots, keys, ask, cwd: dir, model, log });
-  facts.firstPicture = await firstPicture({ dir, data: paths.data, shots: paths.shots, labels, shoot });
+  // Either can throw on a run folder it can’t read; the run still writes its report and run.json.
+  const matched = await matchIntents({ timeline, data: paths.data, shots: paths.shots, keys, ask, cwd: dir, model, log }).catch((e) => {
+    log(`The intent judge failed: ${e.message}`);
+    return 0;
+  });
+  facts.firstPicture = await firstPicture({ dir, data: paths.data, shots: paths.shots, labels, shoot }).catch((e) => ({
+    skipped: `reading it failed: ${e.message}`,
+  }));
   facts.pictureJudges = { usd: Math.round(matched * 100) / 100 };
   log(`First picture: ${facts.firstPicture.skipped ? `none (${facts.firstPicture.skipped})` : facts.firstPicture.shot}.`);
 }

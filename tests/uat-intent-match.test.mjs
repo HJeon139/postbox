@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { appAt, intentCell, MATCH_SCHEMA, matchIntents, matchPrompt, versionAt } from '../tools/uat/intent-match.mjs';
+import { judgePictures } from '../tools/uat/picture-judges.mjs';
 import { visualSection } from '../tools/uat/visual-judge.mjs';
 
 const said = 'Six subscriptions cost over $10 a use; cancel those.';
@@ -82,4 +83,21 @@ test('#995 the judge is told to compare the point, with the intent given after t
   assert.match(p, /not that sentence, said it tells them:\n“B”/);
   assert.match(p, /Judge the point, not the wording\./);
   assert.deepEqual(MATCH_SCHEMA.properties.match.enum, ['yes', 'partly', 'no']);
+});
+
+test('#995 a judge that throws on an unreadable run folder is logged, and the run goes on to its report', async (t) => {
+  const dir = runWith({});
+  t.after(() => rmSync(dir, { recursive: true }));
+  // A shots “folder” that’s a file: reading it throws.
+  writeFileSync(join(dir, 'not-a-folder'), 'x');
+  const timeline = [{ step: 2, visual: { item: 'I3', takeaway: 'Six to cancel.' } }];
+  const facts = {};
+  const logged = [];
+  const paths = { data: join(dir, 'data'), shots: join(dir, 'not-a-folder') };
+  const keys = new Map([['I3', 'it_3']]);
+  const o = { scenario: { judge: 'visual' }, dir, paths, labels: new Map([['it_3', 'I3']]), keys, timeline, facts, model: 'm' };
+  await judgePictures({ ...o, ask: async () => ({ value: {}, cost: 0 }), log: (l) => logged.push(l) });
+  assert.match(logged[0], /^The intent judge failed: /);
+  assert.ok(facts.firstPicture.skipped, 'no first picture, and no throw');
+  assert.deepEqual(facts.pictureJudges, { usd: 0 });
 });
