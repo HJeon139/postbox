@@ -177,11 +177,12 @@ test('personas that use your setup load your MCP servers next to Postbox’s; Is
   const isolated = { model: 'mock', usesHostSetup: false, mcpOff: ['search'] };
   const args = claudeArgs({ ...base, persona: isolated });
   assert.ok(args.includes('--strict-mcp-config'));
-  // Nothing else loads, so nothing to deny; and in Auto, Postbox adds no ask rules of its own (harness first).
-  assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default', disableAllHooks: true });
+  // Nothing else loads, so nothing to deny; and in Auto, Postbox adds no ask rules of its own (harness first), and
+  // turns none of the person’s hooks off (#806).
+  assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default' });
   const o = sdkOptions({ ...sdkBase, persona: isolated });
   assert.equal(o.strictMcpConfig, true);
-  assert.deepEqual(o.settings, { outputStyle: 'default', disableAllHooks: true });
+  assert.deepEqual(o.settings, { outputStyle: 'default' });
 });
 
 test('a permission card can wait a day: Postbox’s server is passed with a 25-hour timeout, in both backends (#217)', () => {
@@ -215,7 +216,6 @@ test('servers a persona turned off are denied by name in both backends; Postbox�
   const want = {
     outputStyle: 'default',
     deniedMcpServers: [{ serverName: 'search' }, { serverName: 'claude.ai Google Drive' }],
-    disableAllHooks: true,
   };
   assert.deepEqual(JSON.parse(after(claudeArgs({ ...base, persona }), '--settings')), want);
   assert.deepEqual(sdkOptions({ ...sdkBase, persona }).settings, want);
