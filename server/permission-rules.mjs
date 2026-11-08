@@ -279,6 +279,15 @@ export function withAskRules(overlay, ask) {
   return ask?.length ? { ...overlay, permissions: { ...(overlay.permissions ?? {}), ask: [...ask] } } : overlay;
 }
 
+/**
+ * The overlay with these allow rules too, next to any it has: a host turn’s Always allow rules (#120,
+ * server/host-rules.mjs). Each is a string in the JSON, never spliced into it.
+ * @param {Record<string, any>} overlay @param {string[]} allow
+ */
+export function withAllowRules(overlay, allow) {
+  return allow?.length ? { ...overlay, permissions: { ...(overlay.permissions ?? {}), allow: [...(overlay.permissions?.allow ?? []), ...allow] } } : overlay;
+}
+
 // ── Always allow on a permission card (#66, #10) ─────────────────────────────────────────
 // The Agent SDK’s prompts carry Claude Code’s own suggestions (canUseTool’s `suggestions`): the exact changes behind
 // “don’t ask again”. Returning them as `updatedPermissions` applies them. The CLI’s prompt tool sends none, and its

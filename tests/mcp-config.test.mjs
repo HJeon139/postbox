@@ -8,7 +8,7 @@ import { sdkOptions } from '../server/adapters/agent-sdk.mjs';
 import { claudeArgs } from '../server/adapters/claude-code.mjs';
 import { createStreamMapper } from '../server/adapters/claude-stream.mjs';
 import { mcpServerList, yourMcpServers } from '../server/adapters/mcp-config.mjs';
-import { isPublishingTool, WRITE_TOOLS } from '../server/adapters/setup.mjs';
+import { isPublishingTool } from '../server/adapters/setup.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
 const HOME = '/home/you';
@@ -177,11 +177,11 @@ test('personas that use your setup load your MCP servers next to Postbox’s; Is
   const isolated = { model: 'mock', usesHostSetup: false, mcpOff: ['search'] };
   const args = claudeArgs({ ...base, persona: isolated });
   assert.ok(args.includes('--strict-mcp-config'));
-  // Nothing else loads, so nothing to deny; writes outside Postbox still ask (#112): gh runs in an Isolated persona too.
-  assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default', disableAllHooks: true, permissions: { ask: WRITE_TOOLS } });
+  // Nothing else loads, so nothing to deny; and in Auto, Postbox adds no ask rules of its own (harness first).
+  assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default', disableAllHooks: true });
   const o = sdkOptions({ ...sdkBase, persona: isolated });
   assert.equal(o.strictMcpConfig, true);
-  assert.deepEqual(o.settings, { outputStyle: 'default', disableAllHooks: true, permissions: { ask: WRITE_TOOLS } });
+  assert.deepEqual(o.settings, { outputStyle: 'default', disableAllHooks: true });
 });
 
 test('a permission card can wait a day: Postbox’s server is passed with a 25-hour timeout, in both backends (#217)', () => {
@@ -216,7 +216,6 @@ test('servers a persona turned off are denied by name in both backends; Postbox�
     outputStyle: 'default',
     deniedMcpServers: [{ serverName: 'search' }, { serverName: 'claude.ai Google Drive' }],
     disableAllHooks: true,
-    permissions: { ask: WRITE_TOOLS },
   };
   assert.deepEqual(JSON.parse(after(claudeArgs({ ...base, persona }), '--settings')), want);
   assert.deepEqual(sdkOptions({ ...sdkBase, persona }).settings, want);
