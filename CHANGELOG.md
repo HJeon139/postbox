@@ -2,6 +2,25 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.41.0 (2026-11-08)
+
+### Features
+
+- **apps:** the app check reports a choice shown by toggling .ghost
+- **apps:** add a primary button variant for agent apps
+- **uat:** fault stop-runner, trigger host-hung-killed, and remotehosts phase 6 (#872)
+
+### Fixes
+
+- **agents:** the guide says which control is for a choice and which for an action
+- **uat:** phase 6 hangs the runner while a long reply is written (#872)
+- **uat:** stop-runner also matches a runner under the resolved home folder (#872)
+- **remote:** say a host turn ended unkilled in the daemon's welcome too (#872)
+- **remote:** crossing looks at a silent host runner keep the newer one's verdict (#872)
+- **remote:** keep a host runner's silence in its turn folder across daemon restarts (#872)
+- **remote:** a silent host runner's process check stands for 5 s, but not at the ceiling (#872)
+- **remote:** kill a host runner hung past the silence ceiling before its turn ends (#872)
+
 ## 1.40.1 (2026-11-08)
 
 ### Fixes
