@@ -16,7 +16,7 @@ export const MAX_READ_DIRS = 20;
 /**
  * A path as it really is, links followed and in its true case, or null when it doesn’t exist. The native call, since
  * realpathSync keeps the case it’s given, and macOS’s disk ignores case: /USERS/<you>/.ssh would pass the home checks
- * (critic’s read of 756ac89e). @param {string} p
+ * (#338). @param {string} p
  */
 function real(p) {
   try {

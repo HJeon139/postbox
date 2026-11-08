@@ -42,8 +42,7 @@ test('#338 an Antigravity read outside its folders offers its folder, named on t
 });
 
 // The card shows each line as “Always allow <code>rule</code>” and then the text past `Always allow ${rule}`
-// (app/js/permission-cards.mjs), so a text that doesn’t start that way is garbled on the card (the integrator’s read
-// of #1016, the same renderer).
+// (app/js/permission-cards.mjs), so a text that doesn’t start that way is garbled on the card, as #324’s was.
 test('#338 the offer’s text starts with “Always allow <its folder>”, as the card shows it', () => {
   const { home, notes } = aHome();
   const [line] = readFolderOffer({ ...agy, input: { file_path: join(notes, 'a.md') }, home })?.lines ?? assert.fail('an offer');
@@ -173,7 +172,7 @@ test('#338 a conversation keeps up to 20 readable folders; one already listed ad
   assert.throws(() => addReadFolder(rt, se.id, '/r/more'), { status: 422 });
 });
 
-// critic’s read of 756ac89e, on macOS: realpathSync keeps the case it’s given, and the disk ignores it, so
+// #338, on macOS: realpathSync keeps the case it’s given, and the disk ignores it, so
 // /USERS/<you>/.ssh/x got past the home and dot-folder checks. The real path must come in its true case. Runs only
 // where the file system ignores case, as macOS’s does by default; elsewhere such a path doesn’t exist.
 const caseBlind = (dir) => existsSync(dir.toUpperCase()) && dir.toUpperCase() !== dir;
