@@ -38,9 +38,21 @@ export function latestByName(runs) {
   const latest = new Map();
   for (const run of runs) {
     const seen = latest.get(run.name);
-    if (!seen || (run.started_at ?? '') > (seen.started_at ?? '')) latest.set(run.name, run);
+    if (!seen || isNewer(run, seen)) latest.set(run.name, run);
   }
   return latest;
+}
+
+/**
+ * Whether run is a later attempt than seen. A run still queued or going is the newest: a queued rerun has no
+ * started_at yet. Otherwise the later start wins.
+ * @param {{ status: string, started_at?: string | null }} run @param {{ status: string, started_at?: string | null }} seen
+ */
+function isNewer(run, seen) {
+  const runOpen = run.status !== 'completed';
+  const seenOpen = seen.status !== 'completed';
+  if (runOpen !== seenOpen) return runOpen;
+  return (run.started_at ?? '') > (seen.started_at ?? '');
 }
 
 /** One required name’s state: pass, pending, missing or fail. @param {{ status: string, conclusion: string | null } | undefined} run @param {Set<string>} passing */
@@ -104,9 +116,14 @@ export function signoffChecks(pr, { gh = ghJson, log = console.log } = {}) {
     const repo = gh(['repo', 'view', '--json', 'nameWithOwner']).nameWithOwner;
     const view = gh(['pr', 'view', String(pr), '--json', 'headRefOid,baseRefName']);
     head = view.headRefOid;
-    const rules = gh(['api', `repos/${repo}/rules/branches/${view.baseRefName}`]);
+    const required = requiredOf(gh(['api', `repos/${repo}/rules/branches/${view.baseRefName}`]));
+    // Nothing required means the rules weren't read, not that nothing is required: main always requires checks.
+    if (!required.contexts.length && !required.tools.length) {
+      log(`signoff-checks #${pr}: no required checks found for ${view.baseRefName}: is its ruleset readable? -> ERROR`);
+      return EXIT.error;
+    }
     const runs = gh(['api', '--paginate', '--slurp', `repos/${repo}/commits/${head}/check-runs?per_page=100`]).flatMap((page) => page.check_runs);
-    v = evaluate(requiredOf(rules), runs);
+    v = evaluate(required, runs);
   } catch (e) {
     log(`signoff-checks #${pr}: gh failed: ${/** @type {Error} */ (e).message.split('\n')[0]} -> ERROR`);
     return EXIT.error;
