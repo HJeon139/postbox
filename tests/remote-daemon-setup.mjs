@@ -70,12 +70,30 @@ export function fakeClock(t0 = 1_760_000_000_000) {
 /**
  * A daemon over a temp home, with fake runners.
  * @param {{ token?: string | null, same?: boolean, clock?: ReturnType<typeof fakeClock>, onIdle?: () => void, settings?: object, uid?: number, spawn?: any, broker?: any,
- *   log?: (line: string) => void, sameProcess?: (r: any) => boolean | Promise<boolean>, answer?: (turn: string) => boolean, pollMs?: number }} [o]
+ *   log?: (line: string) => void, sameProcess?: (r: any) => boolean | Promise<boolean>, answer?: (turn: string) => boolean, pollMs?: number,
+ *   env?: Record<string, string>, findPrograms?: (o: any) => Promise<any>, probeLoginPath?: () => Promise<any> }} [o]
  *   spawn: the daemon’s own spawn, for the sign-in check (the runners are launchRunner’s, faked here). broker: in place
  *   of the daemon’s own. sameProcess: in place of the fake one that answers `same`, such as proc.mjs’s own over fake facts.
  *   answer: whether the fake runner answers a `who`, in place of its turn being in `alive`. pollMs: the followers’ poll.
+ *   findPrograms: in place of the one finding PROGRAMS_FOUND. probeLoginPath: in place of the one whose login shell
+ *   fails, so a turn’s PATH is the daemon’s own (#672).
  */
-export function setup({ token = TOKEN, same = true, clock, onIdle, uid, spawn, broker, env, log = () => {}, sameProcess, answer, pollMs = 10 } = {}) {
+export function setup({
+  token = TOKEN,
+  same = true,
+  clock,
+  onIdle,
+  uid,
+  spawn,
+  broker,
+  env,
+  log = () => {},
+  sameProcess,
+  answer,
+  pollMs = 10,
+  findPrograms = async () => structuredClone(PROGRAMS_FOUND),
+  probeLoginPath = async () => ({ ok: false, why: 'the test’s host has no login shell' }),
+} = {}) {
   // A short folder name: a turn’s socket path must fit Linux’s 108 bytes, and macOS’s tmpdir is long.
   const home = hostHome('pbd-');
   const p = hostPaths(home, VERSION);
@@ -119,7 +137,8 @@ export function setup({ token = TOKEN, same = true, clock, onIdle, uid, spawn, b
       writes.push(o);
       return 42;
     },
-    findPrograms: async () => structuredClone(PROGRAMS_FOUND),
+    findPrograms,
+    probeLoginPath,
     kill: (pid, signal) => kills.push([pid, signal]),
     log,
     onIdle,
