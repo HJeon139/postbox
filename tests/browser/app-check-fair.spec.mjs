@@ -4,6 +4,8 @@
 //   a label in a box that scrolls sideways), and one on a solid shape or a thick route line is measured against it.
 //   One that is too faint on its shape is told to change its ink for that fill, never to use the page’s text color.
 // - The kit’s own styles meet the 12 px floor in an app: kbd and every class the guide offers.
+// - Text in boxes: a chart’s marks that carry its values aren’t boxes holding names (a treemap, a Gantt chart, bars with
+//   their names inside), nor is a backing the color of the page behind a label, nor a legend’s frame.
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
@@ -12,6 +14,7 @@ failOnPageErrors(test);
 
 // White labels on a dark navy shape, drawn several ways; navy and white are about 14:1.
 const ON = 'fill="#ffffff" font-size="14"';
+const TEXT = 'fill="var(--text)" font-size="14"';
 const APPS = {
   gradient: `<svg width="320" height="80" role="img" aria-label="Gradient"><defs><linearGradient id="g"><stop offset="0" stop-color="#14213d"/><stop offset="1" stop-color="#1d3557"/></linearGradient></defs>
 <rect x="0" y="0" width="300" height="60" fill="url(#g)"/><text x="16" y="36" ${ON}>Peak demand</text></svg>`,
@@ -26,6 +29,63 @@ const APPS = {
   crossed: `<svg width="320" height="80" role="img" aria-label="Crossed"><line x1="0" y1="31" x2="300" y2="31" stroke="#14213d"/><text x="16" y="36" fill="var(--text)" font-size="14">Peak demand</text></svg>`,
   // Navy text on a navy shape: too faint, and told to change its ink for that fill.
   faint: `<svg width="320" height="80" role="img" aria-label="Faint"><rect class="band" x="0" y="0" width="300" height="60" fill="#14213d"/><text x="16" y="36" fill="#2b3f66" font-size="14">Peak demand</text></svg>`,
+  // A treemap of spending: six tiles whose sizes are the values, with their names inside.
+  treemap: `<svg width="340" height="240" role="img" aria-label="Spending">${[
+    [0, 0, 180, 120, 'Housing'],
+    [180, 0, 160, 120, 'Food'],
+    [0, 120, 120, 120, 'Transport'],
+    [120, 120, 110, 120, 'Health'],
+    [230, 120, 110, 60, 'Leisure'],
+    [230, 180, 110, 60, 'Gifts'],
+  ]
+    .map(
+      ([x, y, w, h, k]) =>
+        `<rect x="${x + 1}" y="${y + 1}" width="${w - 2}" height="${h - 2}" fill="var(--panel)" stroke="var(--line-strong)"/><text x="${x + 8}" y="${y + 22}" ${TEXT}>${k}</text>`,
+    )
+    .join('')}</svg>`,
+  // A Gantt chart: six spans whose lengths are their durations, each named inside.
+  gantt: `<svg width="340" height="220" role="img" aria-label="Plan">${[
+    [10, 120, 'Design'],
+    [40, 100, 'Review'],
+    [100, 160, 'Build'],
+    [230, 90, 'Test'],
+    [150, 140, 'Launch'],
+    [280, 50, 'Ship'],
+  ]
+    .map(
+      ([x, w, k], i) =>
+        `<rect x="${x}" y="${i * 36 + 4}" width="${w}" height="28" fill="var(--panel)" stroke="var(--line-strong)"/><text x="${x + 8}" y="${i * 36 + 23}" ${TEXT}>${k}</text>`,
+    )
+    .join('')}</svg>`,
+  // Bars whose lengths are the values, with their names inside.
+  bars: `<svg width="340" height="210" role="img" aria-label="Spending by category">${[
+    ['Rent', 300],
+    ['Dining', 250],
+    ['Food', 200],
+    ['Travel', 160],
+    ['Bills', 130],
+  ]
+    .map(
+      ([k, v], i) =>
+        `<rect x="10" y="${i * 40 + 4}" width="${v}" height="30" fill="var(--panel)" stroke="var(--line-strong)"/><text x="18" y="${i * 40 + 24}" ${TEXT}>${k}</text>`,
+    )
+    .join('')}</svg>`,
+  // A graph of five modules, named beside their dots, with each edge’s label on a backing the color of the page.
+  backing: `<svg width="340" height="220" role="img" aria-label="Modules">${[
+    [40, 40, 'server', 170, 40, 'imports'],
+    [170, 40, 'store', 300, 110, 'writes'],
+    [300, 110, 'files', 170, 180, 'reads'],
+    [170, 180, 'client', 40, 110, 'calls'],
+    [40, 110, 'pages', 40, 40, 'loads'],
+  ]
+    .map(
+      ([x1, y1, k, x2, y2, e]) =>
+        `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="var(--line-strong)"/><circle cx="${x1}" cy="${y1}" r="7" fill="var(--accent)"/><text x="${x1 + 12}" y="${y1 - 10}" ${TEXT}>${k}</text><rect x="${(x1 + x2) / 2 - 26}" y="${(y1 + y2) / 2 - 11}" width="52" height="20" fill="var(--bg)"/><text x="${(x1 + x2) / 2 - 22}" y="${(y1 + y2) / 2 + 4}" ${TEXT}>${e}</text>`,
+    )
+    .join('')}</svg>`,
+  // A line chart with its legend of line keys in a frame.
+  legend: `<svg width="340" height="220" role="img" aria-label="Income"><polyline points="10,150 90,120 170,110 250,80 330,60" fill="none" stroke="var(--s1)" stroke-width="2"/><polyline points="10,170 90,150 170,145 250,120 330,105" fill="none" stroke="var(--s2)" stroke-width="2"/>
+<rect class="key" x="10" y="4" width="320" height="50" fill="none" stroke="var(--line-strong)"/><line x1="20" y1="20" x2="40" y2="20" stroke="var(--s1)" stroke-width="2"/><text x="48" y="25" ${TEXT}>Median household income in dollars</text><line x1="20" y1="42" x2="40" y2="42" stroke="var(--s2)" stroke-width="2"/><text x="48" y="47" ${TEXT}>Mean household income</text></svg>`,
   kit: `<div style="padding:12px;color:var(--text)"><h2 style="margin:0 0 8px">Kit sampler</h2>
 <p>Press <kbd>→</kbd> to step. <span class="dim">Dim</span>, <span class="small">small</span>, <span class="mono">mono</span> and <span class="pill">pill</span>.</p>
 <div class="label">Section label</div>
@@ -71,6 +131,17 @@ for (const [id, what] of [
   ['crossed', 'a label with a hairline crossing its middle'],
 ])
   test(`#997 ${what} passes`, () => {
+    expect(check(id).status, says(id)).toBe('passed');
+  });
+
+for (const [id, what] of [
+  ['treemap', 'a treemap with its names inside its tiles'],
+  ['gantt', 'a Gantt chart with its tasks named inside their spans'],
+  ['bars', 'a bar chart with its names inside its bars'],
+  ['backing', 'edge labels on backings the color of the page'],
+  ['legend', 'a legend of line keys in a frame'],
+])
+  test(`#997 ${what} isn’t text in boxes, and passes`, () => {
     expect(check(id).status, says(id)).toBe('passed');
   });
 
