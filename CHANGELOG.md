@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.44.2 (2026-11-08)
+
+### Fixes
+
+- **sessions:** viewing a conversation clears the unread its agents counted behind a held commit
+- **sessions:** a turn stopped behind a held commit ends idle once it exits, not stopping
+- **catch-up:** a message a summary gives in full reaches the agent once, the person's too
+- **sessions:** a session write and a new agent's turn start from the session as held writes leave it
+- **threads:** every thread write starts from the thread as held writes leave it
+
 ## 1.44.1 (2026-11-08)
 
 ### Fixes
