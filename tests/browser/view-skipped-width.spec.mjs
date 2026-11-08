@@ -114,3 +114,26 @@ test('#712a read 400 px up, the window grows 500 px taller and back: the view ke
   await still(page);
   await keptPlace(page, before, narrowed);
 });
+
+// researcher's Mac check on 3c294cef: with the window taller, the view flipped to following for a frame. There the
+// view reads at the end it was clamped to, and the items around it draw at heights the Mac's fonts give them, so what's
+// below it shrinks and the browser clamps it again, up, at a box size already seen. Here the newest message shrinks by
+// 40 px to stand in for that: a clamp moves the view up, and reaching the end yourself moves it down.
+test('#712a read 400 px up, the window taller, then what’s below shrinks: the view keeps reading', async ({ page }) => {
+  const { before } = await readingNearEnd(page, 'Height: taller, then a shrink');
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  await still(page);
+  expect((await place(page)).gap, 'clamped to the end, reading').toBeLessThanOrEqual(2);
+  const shrunk = page.evaluate(() => {
+    const items = document.querySelectorAll('#main > [data-key]');
+    const last = /** @type {HTMLElement} */ (items[items.length - 1]);
+    last.style.marginBottom = '-40px';
+  });
+  await shrunk;
+  const narrowed = { modes: await modes(page), ...(await place(page)) };
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await still(page);
+  test.info().annotations.push({ type: 'measured', description: JSON.stringify({ before, narrowed, after: await place(page) }) });
+  expect(narrowed.modes, 'taller, then the shrink: each frame reading').toEqual(['reading']);
+  expect((await place(page)).mode, 'back at its height, still reading').toBe('reading');
+});
