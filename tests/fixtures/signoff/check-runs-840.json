@@ -1,0 +1,70 @@
+{
+  "check_runs": [
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "Demo in Chrome, with accessibility checks",
+      "started_at": "2026-11-06T07:35:05Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "skipped",
+      "name": "Play the demo and screenshot every scene",
+      "started_at": "2026-11-06T07:23:41Z",
+      "status": "completed"
+    },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, 3/3)", "started_at": "2026-11-06T07:23:44Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, demo-1)", "started_at": "2026-11-06T07:23:44Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, 3/3)", "started_at": "2026-11-06T07:23:43Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, 1/3)", "started_at": "2026-11-06T07:23:43Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, demo-2)", "started_at": "2026-11-06T07:23:43Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, 2/3)", "started_at": "2026-11-06T07:23:43Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, demo-2)", "started_at": "2026-11-06T07:23:43Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, 1/3)", "started_at": "2026-11-06T07:23:43Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, demo-1)", "started_at": "2026-11-06T07:23:43Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, 2/3)", "started_at": "2026-11-06T07:23:43Z", "status": "completed" },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "New and changed specs, ten times",
+      "started_at": "2026-11-06T07:23:43Z",
+      "status": "completed"
+    },
+    { "app": "github-advanced-security", "conclusion": "success", "name": "CodeQL", "started_at": "2026-11-06T07:20:06Z", "status": "completed" },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "Lint, types, project rules and tests",
+      "started_at": "2026-11-06T07:19:35Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "Whether the change is docs only",
+      "started_at": "2026-11-06T07:19:35Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "Prompt surface diff and SkillSpector",
+      "started_at": "2026-11-06T07:19:35Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "No new dependency with a known vulnerability",
+      "started_at": "2026-11-06T07:19:35Z",
+      "status": "completed"
+    },
+    { "app": "github-actions", "conclusion": "success", "name": "Analyze (actions)", "started_at": "2026-11-06T07:19:34Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Analyze (javascript-typescript)", "started_at": "2026-11-06T07:19:34Z", "status": "completed" }
+  ],
+  "head": "82ffee084f71b0a4edf9e3eb47c89ccd91482a41",
+  "note": "merged PR, every check done",
+  "pr": 840,
+  "recorded": "2026-11-06T08:54:11Z"
+}
