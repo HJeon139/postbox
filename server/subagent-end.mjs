@@ -19,13 +19,14 @@ export function endSubagent(rt, sessionId, subId) {
   if (!sub || !rt.turns.has(sessionId)) throw httpError(409, 'That subagent has already ended.');
   if ((se.endingSubagents ?? []).includes(subId)) return { ending: true };
   const what = sub.asked && sub.asked !== sub.name ? `${sub.name}, asked “${sub.asked}”` : sub.name;
-  rt.updateSession(sessionId, {
-    endingSubagents: [...(se.endingSubagents ?? []), subId],
+  // From the pending session: a notice still held behind a commit stays in the context (#796's class in sessions).
+  rt.updateSession(sessionId, (now) => ({
+    endingSubagents: [...(now.endingSubagents ?? []), subId],
     context: [
-      ...(se.context ?? []),
+      ...(now.context ?? []),
       `${URGENT} the person ended your subagent ${what} (id ${subId}). If it’s still running, stop it now with your own tools, and don’t use its result.`,
     ].slice(-20),
-  });
+  }));
   return { ending: true };
 }
 
@@ -38,9 +39,10 @@ export const notUrgent = (/** @type {string[]} */ context) => context.filter((x)
  * @param {any} rt @param {string} sessionId @param {string} text @param {any} turn
  */
 export function withUrgent(rt, sessionId, text, turn) {
-  const se = rt.s.sessions[sessionId];
+  // Pending: an urgent note, or another notice, still held behind a commit is given, or kept for the next turn (#796's class).
+  const se = rt.store.pending.session(sessionId);
   const urgent = (se?.context ?? []).filter((/** @type {string} */ x) => x.startsWith(URGENT));
-  if (urgent.length) rt.updateSession(sessionId, { context: se.context.filter((/** @type {string} */ x) => !x.startsWith(URGENT)) });
+  if (urgent.length) rt.updateSession(sessionId, (now) => ({ context: now.context.filter((/** @type {string} */ x) => !x.startsWith(URGENT)) }));
   // A newer message from the sender the agent is answering, waiting in this thread (#694), comes after any urgent note.
   const notes = [...urgent, ...newerFromSender(rt, sessionId, turn)];
   return notes.length ? `${notes.join('\n')}\n\n${text}` : text;

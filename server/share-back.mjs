@@ -5,6 +5,7 @@
 import { positionOf } from '../shared/item-index.mjs';
 import { clip, httpError } from './helpers.mjs';
 import { threadPersona } from './side-threads.mjs';
+import { updateThread } from './thread-write.mjs';
 
 /** “Send to conversation”: a message from a topic or side thread (#128) is posted in its conversation, for you and its agents. */
 export function shareToConversation(rt, topicId, itemId) {
@@ -43,7 +44,7 @@ export function summarizeBack(rt, topicId, opts) {
   if (rt.summarizing(topicId)) throw httpError(409, 'A summary is already on its way. It’s posted in the conversation when it’s written.');
   // Kept on the thread for the panel’s button, until the turn ends or is stopped. A restart can leave it
   // behind an idle agent, which the panel treats as done; the check above looks at the turns themselves.
-  rt.putThread({ ...topic, summaryPending: { sessionId: se.id, at: Date.now() } });
+  updateThread(rt, topicId, { summaryPending: { sessionId: se.id, at: Date.now() } });
   rt.addItem(topicId, { kind: 'voice', text: 'Asked for a summary to send back to the conversation' });
   const what = topic.kind === 'side' ? 'side thread' : 'topic thread';
   rt.deliver(
@@ -90,9 +91,8 @@ export function summarizing(rt, topicId) {
  * @param {any} rt @param {string} topicId @param {any} [ended]
  */
 export function clearSummaryPending(rt, topicId, ended = null) {
-  const t = rt.s.threads[topicId];
   const next = ended?.pending.some((p) => p.summarizeTo && p.threadId === topicId);
-  if (t?.summaryPending && !next && !rt.summarizing(topicId)) rt.putThread({ ...t, summaryPending: null });
+  if (!next && !rt.summarizing(topicId)) updateThread(rt, topicId, (t) => (t.summaryPending ? { summaryPending: null } : null));
 }
 
 /**

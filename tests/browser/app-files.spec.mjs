@@ -2,7 +2,9 @@
 // from the agent’s folder, reads the file in its sandbox with postbox.file(name); a raw POST to /mcp with only the
 // session id, as a script would send, is refused and shows nothing; a dataset the agent loads from the project’s
 // .postbox/datasets/ shows a line and reaches an app with no restart, but not a search that doesn’t name it; and
-// Settings offers no session-id-only endpoint. Moved from tools/checks/app-files.mjs (#303).
+// Settings offers no session-id-only endpoint. The data file reaches the page at 127.0.0.1 and at localhost with
+// Cross-Origin-Resource-Policy: same-origin, which doesn’t block the page’s own load (#820). Moved from
+// tools/checks/app-files.mjs (#303).
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -59,12 +61,12 @@ test.afterAll(async () => {
 failOnPageErrors(test);
 test.use({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
 
-/** A conversation of its own with the librarian, open in the page; its id and the librarian’s session. */
-async function room(page, title) {
+/** A conversation of its own with the librarian, open in the page at origin; its id and the librarian’s session. */
+async function room(page, title, origin = app.origin) {
   const { rt } = app;
   const t = rt.createThread({ projectId, title, personaIds: [rt.personaByHandle('librarian').id] });
   const [se] = rt.sessionsIn(t.id);
-  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await page.goto(`${origin}/#/t/${t.id}`);
   await synced(page, app);
   return { t, se };
 }
@@ -72,20 +74,33 @@ async function room(page, title) {
 const saved = (id, key) =>
   expect.poll(() => app.rt.s.apps[id]?.state?.[key], { message: `the app “${id}” to save what it found`, timeout: 15_000 }).toBeTruthy();
 
-test('#54 an app shown from codePath reads its data file in the sandbox, and a file it doesn’t carry rejects', async ({ page }) => {
-  const { rt } = app;
-  // The app asks for missing.json on purpose, from its frame and its check’s: the server answers 404.
-  allowPageError(page, /status of 404/, { times: 3 });
-  const { se } = await room(page, 'Files');
-  const { args, files } = await rt.appFiles(se.id, { id: 'pairs', title: 'Pair explorer', codePath: 'explorer.html', files: [{ path: 'pairs.json' }] });
-  const shown = rt.toolsFor(se.id).show_app(args, { files });
-  expect(shown.ok, shown.message).toBe(true);
-  await expect(page.frameLocator('.transcript .appframe iframe').locator('#out')).toHaveText('1258 pairs, the first about claim 0');
-  await saved('pairs', 'missing');
-  const st = rt.s.apps.pairs.state;
-  expect.soft([st.read, st.first], 'the app read its data file').toEqual([1258, 'claim 0']);
-  expect.soft(st.missing, 'a file the version doesn’t carry rejects, and says so').toMatch(/has no file “missing\.json”/);
-});
+for (const host of ['127.0.0.1', 'localhost'])
+  test(`#54 #820 at ${host}, an app shown from codePath reads its data file in the sandbox, with CORP that doesn’t block it, and a file it doesn’t carry rejects`, async ({
+    page,
+  }) => {
+    const { rt } = app;
+    const id = `pairs_${host.replace(/\W/g, '')}`;
+    // The app asks for missing.json on purpose, from its frame and its check’s three: the server answers 404.
+    allowPageError(page, /status of 404/, { times: 4 });
+    /** @type {{ status: number, corp: string | undefined }[]} */
+    const answers = [];
+    page.on('response', (r) => {
+      if (r.url().includes(`/api/apps/${id}/files/pairs.json`)) answers.push({ status: r.status(), corp: r.headers()['cross-origin-resource-policy'] });
+    });
+    const { se } = await room(page, `Files at ${host}`, app.origin.replace('127.0.0.1', host));
+    const { args, files } = await rt.appFiles(se.id, { id, title: 'Pair explorer', codePath: 'explorer.html', files: [{ path: 'pairs.json' }] });
+    const shown = rt.toolsFor(se.id).show_app(args, { files });
+    expect(shown.ok, shown.message).toBe(true);
+    await expect(page.frameLocator('.transcript .appframe iframe').locator('#out')).toHaveText('1258 pairs, the first about claim 0');
+    await saved(id, 'missing');
+    const st = rt.s.apps[id].state;
+    expect.soft([st.read, st.first], 'the app read its data file').toEqual([1258, 'claim 0']);
+    expect.soft(st.missing, 'a file the version doesn’t carry rejects, and says so').toMatch(/has no file “missing\.json”/);
+    expect.soft(answers.length, 'the data file came from its route').toBeGreaterThanOrEqual(1);
+    expect
+      .soft(answers, 'each answer is a 200 with Cross-Origin-Resource-Policy: same-origin')
+      .toEqual(answers.map(() => ({ status: 200, corp: 'same-origin' })));
+  });
 
 test('#54 a tool call to /mcp with only the session id is refused, and nothing of it reaches the conversation', async ({ page }) => {
   const { rt, store } = app;

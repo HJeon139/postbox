@@ -64,7 +64,7 @@ test('#37 an off-screen app pauses while the next app is checked', async ({ page
   await page.evaluate(() => window.scrollTo(0, document.scrollingElement.scrollHeight));
   await settled(page);
   tools.show_app({ id: 'after-offscreen', title: 'After off-screen', code: PLAIN });
-  await expect(page.locator('iframe.check-frame[title="Checking After off-screen"]')).toHaveCount(2);
+  await expect(page.locator('iframe.check-frame[title="Checking After off-screen"]')).toHaveCount(3);
   await expect(offscreen).toHaveCount(0);
   await expect.poll(() => rt.s.apps['after-offscreen'].check.status, { timeout: 30_000 }).toBe('passed');
 });
@@ -90,7 +90,7 @@ test('#37 a visible app keeps running through another conversation’s check wit
   await page.mouse.move(1, 1);
 
   otherRoom.rt.toolsFor(otherRoom.session.id).show_app({ id: 'other-counter-app', title: 'Other counter app', code: PLAIN });
-  await expect(page.locator('iframe.check-frame[title="Checking Other counter app"]')).toHaveCount(2);
+  await expect(page.locator('iframe.check-frame[title="Checking Other counter app"]')).toHaveCount(3);
   expect(await handle.evaluate((node) => node.isConnected), 'the same visible frame stays mounted').toBe(true);
   await expect.poll(async () => Number(await counter.textContent())).toBeGreaterThan(before);
   await expect.poll(() => otherRoom.rt.s.apps['other-counter-app'].check.status, { timeout: 30_000 }).toBe('passed');
@@ -108,7 +108,7 @@ test('#37 a check leaves the app the person is using mounted', async ({ page }) 
   await active.contentFrame().locator('#draft').fill('unsaved words');
   await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('title'))).toBe('Active app');
   tools.show_app({ id: 'checking-next', title: 'Checking next', code: PLAIN });
-  await expect(page.locator('iframe.check-frame[title="Checking Checking next"]')).toHaveCount(2);
+  await expect(page.locator('iframe.check-frame[title="Checking Checking next"]')).toHaveCount(3);
   await expect(active).toBeAttached();
   await expect(active.contentFrame().locator('#draft')).toHaveValue('unsaved words');
   await expect.poll(() => rt.s.apps['checking-next'].check.status, { timeout: 30_000 }).toBe('passed');
@@ -129,7 +129,7 @@ test('#37 an app the person used keeps unsaved state while another conversation 
   await page.mouse.move(1, 1);
 
   otherRoom.rt.toolsFor(otherRoom.session.id).show_app({ id: 'other-app', title: 'Other app', code: PLAIN });
-  await expect(page.locator('iframe.check-frame[title="Checking Other app"]')).toHaveCount(2);
+  await expect(page.locator('iframe.check-frame[title="Checking Other app"]')).toHaveCount(3);
   await expect(visible, 'the visible frame is not torn down').toBeAttached();
   await expect(visible.contentFrame().locator('#visible-draft')).toHaveValue('keep this draft');
   await expect.poll(() => otherRoom.rt.s.apps['other-app'].check.status, { timeout: 30_000 }).toBe('passed');
@@ -209,7 +209,7 @@ test('an app mounted during another check has a placeholder and loads once', asy
   await page.goto(`${app.origin}/#/t/${checkingRoom.thread.id}`);
   await synced(page, app);
   checkingRoom.rt.toolsFor(checkingRoom.session.id).show_app({ id: 'check-in-progress', title: 'Check in progress', code: PLAIN });
-  await expect(page.locator('iframe.check-frame[title="Checking Check in progress"]')).toHaveCount(2);
+  await expect(page.locator('iframe.check-frame[title="Checking Check in progress"]')).toHaveCount(3);
 
   let loads = 0;
   page.on('request', (request) => {

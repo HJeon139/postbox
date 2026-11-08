@@ -1,10 +1,13 @@
-// The pre-display check queue for agent-written apps. Hidden frames report two widths before an app is shown.
+// The pre-display check queue for agent-written apps. Hidden frames report three sizes before an app is shown.
 
 import { api, client } from './client.mjs';
 
 const checks = new Map(); // `${appId}:${version}` → { appId, version, results: Map(width → problems), frames, timer, resolve }
 const failed = new Set(); // saves to the server that wait for the connection to reopen before retrying
-const WIDTHS = [375, 1280];
+// 375 and 1280 px wide, as tall as a check frame, and 1000 × 680, the size a visual is read at, where the frame checks
+// only what shows before any scrolling (#997). A result is keyed by its frame’s width.
+const FRAMES = [{ width: 375 }, { width: 1280 }, { width: 1000, height: 680, view: true }];
+const WIDTHS = FRAMES.map((f) => f.width);
 const NO_CHECK = new URLSearchParams(location.search).has('nocheck');
 let makeFrame = null;
 let pauseFrames = () => [];
@@ -37,8 +40,8 @@ function launchFrames(appId, version, check) {
   check.results.clear();
   for (const frame of check.frames) frame.remove();
   check.frames = [];
-  for (const width of WIDTHS) {
-    const frame = makeFrame(appId, version, { check: true, width });
+  for (const size of FRAMES) {
+    const frame = makeFrame(appId, version, { check: true, ...size });
     check.frames.push(frame);
     document.body.append(frame);
   }

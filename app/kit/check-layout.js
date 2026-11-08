@@ -12,6 +12,26 @@
     return t.length > 40 ? `${t.slice(0, 40)}…` : t;
   };
   const px = (n) => Math.round(n);
+  // Where an element is, so the agent can find it (#997): up to three steps of tag and classes, ending at an id.
+  const where = (el) => {
+    const steps = [];
+    for (let e = el; e && e !== document.body && steps.length < 3; e = e.parentElement) {
+      const tag = e.tagName.toLowerCase();
+      if (e.id) {
+        steps.unshift(`${tag}#${CSS.escape(e.id)}`);
+        break;
+      }
+      steps.unshift(step(e, tag));
+    }
+    return steps.join(' > ');
+  };
+  // One step: its tag with up to two classes, or with its place among its siblings of that tag when it has none.
+  function step(e, tag) {
+    const classes = [...e.classList].slice(0, 2).map((c) => `.${CSS.escape(c)}`);
+    if (classes.length) return tag + classes.join('');
+    const same = [...(e.parentElement?.children ?? [])].filter((s) => s.tagName === e.tagName);
+    return same.length > 1 ? `${tag}:nth-of-type(${same.indexOf(e) + 1})` : tag;
+  }
   // Scrolls at once, whatever the app’s scroll-behavior: the check measures right after.
   const jump = (top) => scrollTo({ top, behavior: 'instant' });
   const ownText = (el) =>
@@ -82,7 +102,7 @@
       if (s.past <= 1 || scrolls(el)) continue;
       out.push({
         code: 'text-overflow',
-        message: `At ${w} px, “${clip(text)}” is ${px(s.width)} px wide in a ${el.clientWidth} px box, so it spills out of it. Let it wrap (remove white-space: nowrap), or give its grid column minmax(0, …).`,
+        message: `At ${w} px, “${clip(text)}” (${where(el)}) is ${px(s.width)} px wide in a ${el.clientWidth} px box, so it spills out of it. Let it wrap (remove white-space: nowrap), or give its grid column minmax(0, …).`,
       });
     }
     return out;
@@ -161,7 +181,8 @@
         const key = `${clip(a.n.textContent)}\u0000${clip(b.n.textContent)}`;
         const mid = [(Math.max(a.r.left, b.r.left) + Math.min(a.r.right, b.r.right)) / 2, (Math.max(a.r.top, b.r.top) + Math.min(a.r.bottom, b.r.bottom)) / 2];
         if (found.has(key) || asks++ >= 200) continue;
-        if (bothShow(a, b, mid[0], mid[1], y0)) found.set(key, { a: clip(a.n.textContent), b: clip(b.n.textContent), x: px(x), y: px(y) });
+        if (bothShow(a, b, mid[0], mid[1], y0))
+          found.set(key, { a: clip(a.n.textContent), b: clip(b.n.textContent), at: [a, b].map((t) => where(t.n.parentElement)), x: px(x), y: px(y) });
       }
     }
     jump(y0);
@@ -181,7 +202,7 @@
         if (first.has(key) && out.length < 3)
           out.push({
             code: 'text-overlap',
-            message: `At ${w} px, “${o.a}” is drawn over “${o.b}” (${o.x} × ${o.y} px). Give the text room: let it wrap, or make its column wider.`,
+            message: `At ${w} px, “${o.a}” (${o.at[0]}) is drawn over “${o.b}” (${o.at[1]}) by ${o.x} × ${o.y} px. Give the text room: let it wrap, or make its column wider.`,
           });
       return out;
     });
@@ -200,6 +221,6 @@
   Object.assign(window.__pbCheck, {
     textOverflow: guard('text-overflow', textOverflow),
     textOverlap: guard('text-overlap', textOverlap),
-    ...{ clip, px, jump, hidden, shownPart, guard },
+    ...{ clip, px, where, jump, hidden, shownPart, guard },
   });
 })();

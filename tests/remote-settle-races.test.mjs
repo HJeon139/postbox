@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { promises as fsp, writeFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { TURN_FILES } from '../shared/remote-protocol.mjs';
-import { connectShim, makeBroker, makeHome, turnToken, until } from './remote-broker-fixtures.mjs';
+import { connectShim, makeBroker, makeHome, SHIM_KEY, turnToken, until } from './remote-broker-fixtures.mjs';
 import { holdingIo, journal, reached } from './remote-settle-io.mjs';
 
 test('a live reply that arrives while an offline settle reads the snapshot is refused, and the shim gets one answer (T07)', async () => {
@@ -208,7 +208,7 @@ test('a live reply that arrives after the offline answer is refused with no-tool
   }
 });
 
-test('a shim whose send throws does not stop the answer reaching the other shims (T25)', async () => {
+test('a connection whose send throws does not stop the answer reaching its shim’s other connection (T25)', async () => {
   const h = makeHome();
   try {
     const turn = 't_t25';
@@ -219,22 +219,29 @@ test('a shim whose send throws does not stop the answer reaching the other shims
     );
     const k = makeBroker(h);
     await k.b.starting(turn);
-    // A shim whose connection breaks after its welcome: each write after that throws.
-    let broken = false;
+    // The shim’s old connection, half open: it breaks after its welcome, and each write after that throws. It has the
+    // shim’s key, so the answer is sent to it too (#908), and the throw is on the way to the good one.
+    let writes = 0;
     k.b.shim({
-      first: JSON.stringify({ type: 'hello', token: turnToken(turn), turn }),
+      first: JSON.stringify({ type: 'hello', token: turnToken(turn), turn, shim: SHIM_KEY }),
       write: () => {
-        if (broken) throw new Error('connection gone');
-        broken = true;
+        writes += 1;
+        if (writes > 1) throw new Error('connection gone');
         return true;
       },
       end: () => {},
     });
+    await until(() => writes === 1, 'the broken connection’s welcome');
     const s = connectShim(k.b, turn);
     await s.next('welcome');
     k.state.attached = false;
     const res = await s.call('call_r', 'read_message', { id: 'i0' });
-    assert.match(res.text, /x 0/, 'the good shim still gets the answer');
+    assert.match(res.text, /x 0/, 'the good connection still gets the answer');
+    assert.equal(writes, 2, 'the answer was tried on the broken connection too');
+    assert.ok(
+      k.logs.some((l) => /Couldn’t send result/.test(l)),
+      'and its throw was logged',
+    );
   } finally {
     await h.done();
   }

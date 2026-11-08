@@ -169,8 +169,8 @@ export function saveBackendState(rt, sessionId, patch) {
 
 /** @param {Runtime} rt @param {string} sessionId @param {Record<string, any>} patch */
 function writeBackendState(rt, sessionId, patch) {
-  const se = rt.s.sessions[sessionId];
-  if (se) rt.updateSession(sessionId, { backendState: { ...(se.backendState ?? {}), ...patch } });
+  // From the pending session: a resume id saved behind a held commit, then the model, kept only the model (#796's class).
+  rt.updateSession(sessionId, (se) => ({ backendState: { ...(se.backendState ?? {}), ...patch } }));
 }
 
 /** Runs what waited for writes, in order, while they stay open. @param {Runtime} rt */

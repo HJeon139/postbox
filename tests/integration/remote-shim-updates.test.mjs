@@ -17,8 +17,15 @@ test('#854 an invalid whole-block update_block is refused in the call; an outcom
   // Postbox checks an outcome or a withdraw against the block it names, and an image’s origin against its own list.
   const image = { id: 'img', type: 'image', version: 1, fallback: 'A cover', src: 'https://upload.wikimedia.org/a.png', alt: 'A cover' };
   const sent = [{ id: 'pick', outcome: 'Filed as #1' }, { id: 'pick', withdraw: 'Stale.' }, image];
-  for (const block of sent) assert.equal((await shim.response(shim.tool('update_block', { block }))).result.isError, undefined);
-  const calls = [await daemon.next('call'), await daemon.next('call', 1), await daemon.next('call', 2)];
+  const calls = [];
+  for (const block of sent) {
+    const id = shim.tool('update_block', { block });
+    const call = await daemon.next('call', calls.length);
+    calls.push(call);
+    // A queued call is answered once the daemon has taken it (#827).
+    daemon.send('result', { id: call.id, ok: true, text: 'Queued for Postbox.' });
+    assert.equal((await shim.response(id)).result.isError, undefined);
+  }
   assert.deepEqual(
     calls.map((c) => c.args.block),
     sent,

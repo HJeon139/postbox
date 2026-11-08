@@ -10,7 +10,11 @@ const MINUTE = 60 * SECOND;
 export const TIMINGS = timings({
   /** Between progress notifications while a prompt waits. */
   progress: MINUTE,
-  /** An asked tool fails once the daemon has been unreachable this long. */
+  /**
+   * An asked tool fails once the daemon has been unreachable this long. A queued one fails if the daemon hasn’t taken
+   * it in this long, reachable or not: the daemon’s check and its record of the call are local and take milliseconds,
+   * so a daemon that’s up and silent this long is a fault, and one number covers both (#827).
+   */
   unreachable: 30 * SECOND,
   /** An asked tool fails if the daemon hasn’t answered it in this long. */
   askMax: 10 * MINUTE,
@@ -25,7 +29,8 @@ export const TIMINGS = timings({
  * A message for the daemon, kept until it’s settled and sent again, in order, after each reconnect.
  * @typedef {{ msg: Record<string, any>, kind: 'queue' | 'ask' | 'permission' | 'notice', rpcId?: any,
  *   started: number, timers: Set<ReturnType<typeof setTimeout>>, progress?: { token: string | number, value: number },
- *   tool?: string, down?: ReturnType<typeof setTimeout> | null }} Pending
+ *   tool?: string, down?: ReturnType<typeof setTimeout> | null, sent?: Record<string, any> }} Pending
+ * `sent`: a queued call’s arguments as sent, for its answer’s text (queuedText).
  * @typedef {ReturnType<typeof shimState>} Shim
  */
 
@@ -35,8 +40,6 @@ export const TIMINGS = timings({
  * @param {string} turn @param {ReturnType<typeof import('./paths.mjs').paths>} P @param {{ asksByPrompt?: boolean }} [o]
  */
 export function shimState(turn, P, { asksByPrompt = true } = {}) {
-  const prefix = `${process.pid.toString(36)}${Date.now().toString(36)}`;
-  let counter = 0;
   return {
     turn,
     P,
@@ -47,11 +50,12 @@ export function shimState(turn, P, { asksByPrompt = true } = {}) {
     byRequest: new Map(),
     /** @type {WeakMap<Pending, ReturnType<typeof setTimeout>>} each prompt’s deadline */
     expiries: new WeakMap(),
-    nextId: () => `${prefix}-${++counter}`,
     /**
-     * A prompt’s ID, random, so no other client of the turn can guess it (#353); and this process’s own key, sent in
-     * each hello, which the daemon answers a prompt only to.
+     * A call’s ID, and a prompt’s, random, so no other client of the turn can guess one and claim it first (#353,
+     * #908): the daemon keeps each by (turn, id), and refuses a second shim that sends it. And this process’s own key,
+     * sent in each hello, by which the daemon answers a call or prompt only to this shim; it goes to the daemon alone.
      */
+    nextId: () => randomUUID(),
     promptId: () => randomUUID(),
     key: randomBytes(24).toString('base64url'),
     /** @type {import('node:net').Socket | null} */

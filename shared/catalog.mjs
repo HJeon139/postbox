@@ -5,7 +5,7 @@
 // plain-text fallback. A block that fails validation is never rendered: the app shows its fallback
 // and a collapsed "Show the raw block" instead.
 
-import { LIMITS } from './limits.mjs';
+import { INTENT_CHARS, LIMITS } from './limits.mjs';
 import { ANCHOR, anchorError } from './review-comments.mjs';
 import { bool, id, int, list, num, obj, oneOf, scalar, str, typeName } from './schema.mjs';
 import { isSafeUrl, LOCAL_HTTP } from './urls.mjs';
@@ -264,6 +264,7 @@ const SCHEMAS = {
   app: {
     fields: {
       code: str({ min: 1, max: LIMITS.appCode }),
+      intent: str({ max: INTENT_CHARS }),
       permissions: list(str({ min: 1, max: 64, pattern: /^[a-z][a-z0-9_.]*$/, label: 'tool name' }), { max: 12 }),
     },
     required: ['code'],
