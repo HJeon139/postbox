@@ -25,7 +25,7 @@ test('#324 a command card offers exactly Codex’s proposed prefix, answered as 
   const offer = codexAlwaysOffer(command({ proposedExecpolicyAmendment: ['gh', 'issue', 'view'] }).params, EDITS_WEB);
   assert.deepEqual(offer?.lines, [
     {
-      text: 'Always allow commands starting with gh issue view, as a Codex rule: they run outside its sandbox, with no card, in every Codex session on this computer',
+      text: 'Always allow gh issue view and any command starting with it, as a Codex rule: they run outside its sandbox, with no card, in every Codex session on this computer',
       rule: 'gh issue view',
     },
   ]);
@@ -58,7 +58,7 @@ test('#324 a network stop offers its host to a persona that may fetch the web, a
   }).params;
   const offer = codexAlwaysOffer(params, AUTO_WEB);
   assert.deepEqual(offer?.lines, [
-    { text: 'Always allow network access to api.github.com, as a Codex rule, in every Codex session on this computer', rule: 'api.github.com' },
+    { text: 'Always allow api.github.com for network access, as a Codex rule, in every Codex session on this computer', rule: 'api.github.com' },
   ]);
   assert.deepEqual(offer?.updates, [
     { type: 'codex', decision: { applyNetworkPolicyAmendment: { network_policy_amendment: { host: 'api.github.com', action: 'allow' } } } },
@@ -155,7 +155,9 @@ test('#324 Always allow on the card hands Codex’s decision back and writes no 
   const card = await waitFor(() => store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open'));
   assert.deepEqual(
     card.always.lines.map((l) => l.text),
-    ['Always allow commands starting with gh issue view, as a Codex rule: they run outside its sandbox, with no card, in every Codex session on this computer'],
+    [
+      'Always allow gh issue view and any command starting with it, as a Codex rule: they run outside its sandbox, with no card, in every Codex session on this computer',
+    ],
   );
   await rt.act(t.id, card.id, 'always', {});
   await waitFor(() => decision);
@@ -238,7 +240,7 @@ test('#324 the card says the rule runs outside Codex’s sandbox, for every Code
   const offer = codexAlwaysOffer(command({ proposedExecpolicyAmendment: ['gh', 'issue', 'view'] }).params, EDITS_WEB);
   assert.equal(
     offer?.lines[0].text,
-    'Always allow commands starting with gh issue view, as a Codex rule: they run outside its sandbox, with no card, in every Codex session on this computer',
+    'Always allow gh issue view and any command starting with it, as a Codex rule: they run outside its sandbox, with no card, in every Codex session on this computer',
   );
   const web = AUTO_WEB;
   for (const h of ['*', '*.example.com', 'a b', '.', '-', '...', 'localhost', '1.2.3.4'])
@@ -260,4 +262,19 @@ test('#324 a file-change request is offered nothing, even with a proposal on it'
   });
   assert.deepEqual(res, { decision: 'accept' });
   assert.equal(asked[0].suppressAlways, true);
+});
+
+// The integrator’s read of 6c2968f1: the card shows each line as “Always allow <code>rule</code>” and then the text past
+// `Always allow ${rule}` (app/js/permission-cards.mjs, the card’s Always allow), so a text that doesn’t start that way
+// is garbled on the card: “Always allow `ls`mmands starting with ls…”. Every offer must start with its rule.
+test('#324 every line Codex’s Always allow offers starts with “Always allow <its rule>”, as the card shows it', () => {
+  const offers = [
+    codexAlwaysOffer(command({ proposedExecpolicyAmendment: ['ls'] }).params, EDITS_WEB),
+    codexAlwaysOffer(command({ proposedExecpolicyAmendment: ['gh', 'pr', 'view'] }).params, EDITS_WEB),
+    codexAlwaysOffer(
+      command({ networkApprovalContext: { host: 'api.github.com' }, proposedNetworkPolicyAmendments: [{ host: 'api.github.com', action: 'allow' }] }).params,
+      AUTO_WEB,
+    ),
+  ];
+  for (const offer of offers) for (const l of offer?.lines ?? assert.fail('an offer')) assert.ok(l.text.startsWith(`Always allow ${l.rule} `), l.text);
 });
