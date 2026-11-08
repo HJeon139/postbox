@@ -4,7 +4,7 @@
 import { hostUpdateRefusal } from '../../../shared/block-updates.mjs';
 import { NOT_YOUR_PROMPT, TOOL_DEFS } from '../../../shared/mcp-tools.mjs';
 import { encode, message, TOOL_ROUTES, toolRoute } from '../../../shared/remote-protocol.mjs';
-import { fail, minutes, queuedText, respond, send, textResult } from './shim-harness.mjs';
+import { fail, minutes, respond, send, textResult } from './shim-harness.mjs';
 import { after, deliver, settle, TIMINGS } from './shim-state.mjs';
 
 /**
@@ -44,12 +44,15 @@ export function toolCall(sh, rpcId, params) {
   /** @type {Pending} */
   const p = { msg, kind: route === 'queue' ? 'queue' : 'ask', started: Date.now(), timers: new Set(), tool: name, down: null };
   sh.pending.set(id, p);
-  if (route === 'queue') {
-    deliver(sh, p, id);
-    return respond(rpcId, textResult(queuedText(name, sent)));
-  }
   p.rpcId = rpcId;
   sh.byRequest.set(JSON.stringify(rpcId), id);
+  // A queued call waits for the daemon’s verdict, which comes after its own checks and its record of the call, so a
+  // refusal on the host reaches the agent in this call (#827). shim-link.mjs’s result answers it.
+  if (route === 'queue') {
+    p.sent = sent;
+    after(p, () => queueTimedOut(sh, id), TIMINGS.unreachable);
+    return deliver(sh, p, id);
+  }
   after(
     p,
     () => {
@@ -66,6 +69,19 @@ export function toolCall(sh, rpcId, params) {
   );
   if (!sh.ready) watchDown(sh, p);
   deliver(sh, p, id);
+}
+
+/**
+ * A queued call the daemon hasn’t taken within TIMINGS.unreachable fails. The daemon may have recorded it just before
+ * it stopped, and would then send it on a restart, so the text says it may still arrive.
+ * @param {Shim} sh @param {string} id
+ */
+function queueTimedOut(sh, id) {
+  const p = settle(sh, id);
+  if (!p) return;
+  const what = sh.ready ? `didn’t answer ${p.tool} within ${minutes(TIMINGS.unreachable)}` : `isn’t reachable, so ${p.tool} couldn’t be sent`;
+  const text = `Postbox’s daemon on this host ${what}. The daemon may still have it, so check the conversation before you call it again.`;
+  respond(p.rpcId, textResult(text, true));
 }
 
 /** An asked call fails once the daemon has been unreachable for TIMINGS.unreachable. @param {Shim} sh @param {Pending} p */
