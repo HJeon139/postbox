@@ -15,6 +15,9 @@ const folders = [];
 after(() => Promise.all(folders.map((f) => rm(f, { recursive: true, force: true }))));
 export const EXPIRED_NOTE =
   /^\[Postbox\] Your request to run the deploy \(`make deploy`\) expired before the person answered it, so it didn’t run\. Ask again if you still need it\.$/;
+/** #853: what the agent hears when the person’s Stop or Send now ended its turn while the card waited. */
+export const WITHDRAWN_NOTE =
+  /^\[Postbox\] Your request to run the deploy \(`make deploy`\) was still waiting for the person when they stopped your turn, so it didn’t run\. They didn’t refuse it\. Ask again if you still need it\.$/;
 
 /** A Claude Code agent whose turns the test scripts: each step is one turn, and every turn’s message is kept. */
 export async function setup() {

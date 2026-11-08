@@ -120,7 +120,8 @@ export function parseScenario(md) {
     models: meta.models === 'persona' ? 'persona' : 'run',
     // Telemetry (designs/telemetry-persona.md, U2): `- seed: canaries` plants the run’s canaries in the workspace,
     // `- gh: none` starts Postbox with no gh, and `- telemetry: manual` leaves recording to the scenario. `- seed:
-    // fake-env` plants the allow-once scenario’s fake .env (tools/uat/workspace.mjs).
+    // fake-env` plants the allow-once scenario’s fake .env, and `- seed: git-remote` a throwaway remote with its guards
+    // (tools/uat/workspace.mjs, tools/uat/git-remote.mjs).
     seed: meta.seed ?? null,
     ...visualMeasure(meta),
     // `- seed-diagrams: 6` (#701): with `- seed: big-room`, that many of its agent replies end in a Mermaid diagram.

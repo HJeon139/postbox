@@ -1,0 +1,126 @@
+{
+  "check_runs": [
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "Demo in Chrome, with accessibility checks",
+      "started_at": "2026-11-06T02:25:12Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "skipped",
+      "name": "Play the demo and screenshot every scene",
+      "started_at": "2026-11-06T02:13:12Z",
+      "status": "completed"
+    },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, 1/3)", "started_at": "2026-11-06T02:13:15Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, demo-1)", "started_at": "2026-11-06T02:13:14Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, 3/3)", "started_at": "2026-11-06T02:13:14Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, 1/3)", "started_at": "2026-11-06T02:13:14Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, 2/3)", "started_at": "2026-11-06T02:13:14Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, demo-2)", "started_at": "2026-11-06T02:13:14Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, demo-2)", "started_at": "2026-11-06T02:13:14Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, demo-1)", "started_at": "2026-11-06T02:13:14Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, 2/3)", "started_at": "2026-11-06T02:13:14Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, 3/3)", "started_at": "2026-11-06T02:13:14Z", "status": "completed" },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "New and changed specs, ten times",
+      "started_at": "2026-11-06T02:13:14Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "Whether the change is docs only",
+      "started_at": "2026-11-06T02:10:21Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "No new dependency with a known vulnerability",
+      "started_at": "2026-11-06T02:09:50Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "Lint, types, project rules and tests",
+      "started_at": "2026-11-06T02:10:09Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "Prompt surface diff and SkillSpector",
+      "started_at": "2026-11-06T02:10:17Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "Demo in Chrome, with accessibility checks",
+      "started_at": "2026-11-06T01:55:25Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "skipped",
+      "name": "Play the demo and screenshot every scene",
+      "started_at": "2026-11-06T01:43:31Z",
+      "status": "completed"
+    },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, demo-2)", "started_at": "2026-11-06T01:43:33Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, 2/3)", "started_at": "2026-11-06T01:43:33Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, 2/3)", "started_at": "2026-11-06T01:43:32Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, demo-2)", "started_at": "2026-11-06T01:43:32Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, 3/3)", "started_at": "2026-11-06T01:43:32Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, 3/3)", "started_at": "2026-11-06T01:43:32Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, 1/3)", "started_at": "2026-11-06T01:43:32Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (late, demo-1)", "started_at": "2026-11-06T01:43:32Z", "status": "completed" },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, 1/3)", "started_at": "2026-11-06T01:43:32Z", "status": "completed" },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "New and changed specs, ten times",
+      "started_at": "2026-11-06T01:43:32Z",
+      "status": "completed"
+    },
+    { "app": "github-actions", "conclusion": "success", "name": "Browser specs (plain, demo-1)", "started_at": "2026-11-06T01:43:32Z", "status": "completed" },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "No new dependency with a known vulnerability",
+      "started_at": "2026-11-06T01:40:00Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "Prompt surface diff and SkillSpector",
+      "started_at": "2026-11-06T01:40:00Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "Whether the change is docs only",
+      "started_at": "2026-11-06T01:40:00Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "Lint, types, project rules and tests",
+      "started_at": "2026-11-06T01:40:00Z",
+      "status": "completed"
+    }
+  ],
+  "head": "35a4d2fd50e38b2e71606d4684f20ea801de46b9",
+  "note": "head before its rebase: CodeQL never ran",
+  "pr": 783,
+  "recorded": "2026-11-06T08:54:11Z"
+}

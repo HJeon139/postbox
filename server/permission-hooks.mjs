@@ -1,7 +1,8 @@
 // The hooks in the settings files an agent reads that can approve a tool call, for the permissions panel (#817, #871).
-// Postbox’s own settings turn hooks off in every mode but bypass (settingsFor in server/adapters/setup.mjs), since a
-// hook that approves a call skips the ask rules for writes outside Postbox and the permission card. The panel names
-// each such hook it finds there, with its event, so the person knows which of theirs won’t run in Postbox turns.
+// Postbox’s own settings turn hooks off in Ask me and Accept edits (settingsFor in server/adapters/setup.mjs, and
+// shared/hook-modes.mjs), since there a hook that approves a call skips the ask rules for writes outside Postbox and the
+// permission card; in Auto and Run everything they run (#806). The panel names each such hook it finds there, with its
+// event, so the person knows which of theirs run in Postbox turns, and in which modes.
 // Org-managed hooks aren’t read here: they still run. Plugins’ hooks aren’t either: Claude Code documents where a
 // plugin is turned on (enabledPlugins) but not where its hooks are kept, so the panel says it can’t list them.
 //

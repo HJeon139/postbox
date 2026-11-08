@@ -40,10 +40,14 @@ export async function startRoom(data) {
   await store.close();
 }
 
-/** Seeds the big room at `items` into a data folder, in the room startRoom() makes. @param {string} data @param {number} items */
-export async function seedRoomFolder(data, items) {
+/**
+ * Seeds the big room at `items` into a data folder, in the room startRoom() makes. work: with each reply’s turn, its
+ * work entries and steps (#305), as seedBigRoom takes it; off, the benches’ room.
+ * @param {string} data @param {number} items @param {{ work?: boolean }} [opts]
+ */
+export async function seedRoomFolder(data, items, { work = false } = {}) {
   await startRoom(data);
-  await seedBigRoomData(data, THREAD, AGENTS, { count: items });
+  await seedBigRoomData(data, THREAD, AGENTS, { count: items, work });
 }
 
 /** The state a data folder loads to, read by the server’s own Store, which is closed after. @param {string} data */

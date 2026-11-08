@@ -1,9 +1,13 @@
 // #817 end to end: a PreToolUse hook that approves every call, in the person’s user settings and the project’s, with
-// `disableAllHooks: false` in both, doesn’t run in a Postbox turn in Auto, so a push waits on the permission card. One
+// `disableAllHooks: false` in both, doesn’t run in a Postbox turn in Ask me, so a push waits on the permission card. One
 // real turn through each real adapter (the Claude Code CLI and the Agent SDK) asks for `git push origin
 // HEAD:refs/heads/e2e`; the test answers the card no, and checks the branch never reached the remote and neither hook
 // ran. A control turn through each adapter in Run everything, where Postbox keeps the person’s hooks, shows the
 // fixture’s hooks do run.
+//
+// Ask me, not Auto, since #806: in Auto, Postbox adds no ask rules for writes outside it (harness first, #961), so it
+// keeps the person’s hooks there too, as in their terminal. Ask me and Accept edits are the modes whose ask rules and
+// card a hook could skip, and the ones #817’s guard (`disableAllHooks: true`) still covers.
 //
 // The harness (the fixture, the temp HOME, the turn, and when these skip) is in claude-e2e.mjs.
 
@@ -16,11 +20,11 @@ for (const [backend, skip] of [
   ['claude-code', why],
   ['agent-sdk', sdkWhy],
 ]) {
-  test(`#817 ${backend} in Auto: the approving hooks don’t run, the push waits on a card, and no answers no`, {
+  test(`#817 ${backend} in Ask me: the approving hooks don’t run, the push waits on a card, and no answers no`, {
     skip,
     timeout: TURN_MS + 60_000,
   }, async (t) => {
-    const r = await pushTurn(t, backend, 'auto');
+    const r = await pushTurn(t, backend, 'ask');
     assert.ok(pushCard(r.answered), `a permission card for the push should show; the agent said: ${r.said.slice(0, 500)}`);
     assert.equal(landed(r.bare), false, 'refs/heads/e2e should not be on the remote');
     assert.equal(existsSync(r.markers.user), false, 'the user settings’ hook should not run');

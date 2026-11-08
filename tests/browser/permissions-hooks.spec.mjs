@@ -1,6 +1,6 @@
 // The permissions panel names the PreToolUse and PermissionRequest hooks in the settings files an agent reads (#817,
-// #871): Postbox’s own settings turn them off in every mode but Run everything, so the panel says which won’t run, and
-// that hooks the person’s organization manages still do. Each row says its event. A hook’s command is the person’s
+// #871): Postbox’s own settings turn them off in Ask me and Accept edits, and keep them in Auto and Run everything
+// (#806), so the panel says where they run, and that hooks the person’s organization manages always do. Each row says its event. A hook’s command is the person’s
 // data, shown as text. Scripted Claude Code agents, one per state, working in temp folders, with a home of their own
 // for the user settings.
 
@@ -28,9 +28,12 @@ const ASKS_ROWS = [
   `PermissionRequest Bash|api_key=… node ~/bin/approve.js --token … ${RULES} from the project’s shared settings`,
 ];
 const OFF =
-  'In every mode but Run everything, Postbox turns off hooks from settings files, plugin hooks and your custom status line for its own turns, since a hook that approves a tool call would skip the ask rules and the permission card. Postbox can’t list your plugins’ hooks here: /hooks in Claude Code shows them. Hooks your organization manages still run, and one of those can still approve a call without asking you.';
+  'In Ask me and Accept edits, Postbox turns off hooks from settings files, plugin hooks and your custom status line for its own turns, since a hook that approves a tool call would skip the ask rules and the permission card. In Auto and Run everything they run, as when you use Claude Code yourself. Postbox can’t list your plugins’ hooks here: /hooks in Claude Code shows them. Hooks your organization manages always run, and one of those can approve a call without asking you.';
+const runs = (handle, mode) =>
+  `In ${mode} mode, these run in ${handle}’s Postbox turns too. One that allows a call also skips your ask rules, this conversation’s included, as in your terminal.`;
 const ISOLATED = 'It’s isolated, so it doesn’t read the hooks in your user settings.';
-const dontRun = (handle) => `These don’t run in ${handle}’s Postbox turns, except in Run everything mode. They still run when you use Claude Code yourself.`;
+const dontRun = (handle, mode) =>
+  `These don’t run in ${handle}’s Postbox turns in ${mode} mode. They run in Auto and Run everything, and when you use Claude Code yourself.`;
 
 test.beforeAll(async () => {
   /** @type {Record<string, string>} */
@@ -75,10 +78,10 @@ test.beforeAll(async () => {
   for (const [handle, setup] of [
     ['coder', { permissionMode: 'auto' }],
     ['runner', { permissionMode: 'bypass' }],
-    ['loner', { permissionMode: 'auto', usesHostSetup: false }],
+    ['loner', { permissionMode: 'ask', usesHostSetup: false }],
     ['many', { permissionMode: 'auto', usesHostSetup: false }],
     ['broken', { permissionMode: 'auto', usesHostSetup: false }],
-    ['asker', { permissionMode: 'auto', usesHostSetup: false }],
+    ['asker', { permissionMode: 'acceptEdits', usesHostSetup: false }],
   ]) {
     const persona = rt.createPersona({ handle, backend: 'claude-code', ...setup });
     threads[handle] = rt.createThread({ projectId: 'pr_hooks', title: handle, personaIds: [persona.id] }).id;
@@ -105,10 +108,10 @@ async function openHooks(page, handle) {
   return hooks;
 }
 
-test('#817 the panel names each PreToolUse hook as text, and says it won’t run in Postbox turns', async ({ page }) => {
+test('#806 the panel names each PreToolUse hook as text, and in Auto mode says it runs in Postbox turns', async ({ page }) => {
   const hooks = await openHooks(page, 'coder');
   await expect.soft(hooks.locator('li')).toHaveText([USER_ROW, PROJECT_ROW]);
-  await expect.soft(hooks.locator('p.help')).toHaveText([dontRun('coder'), OFF]);
+  await expect.soft(hooks.locator('p.help')).toHaveText([runs('coder', 'Auto'), OFF]);
   await expect.soft(hooks.locator('p.err'), 'no file failed').toHaveCount(0);
 });
 
@@ -122,13 +125,13 @@ test('#817 a hook’s command with markup in it shows literally, never as HTML',
 test('#817 in Run everything mode, the panel says the hooks run', async ({ page }) => {
   const hooks = await openHooks(page, 'runner');
   await expect.soft(hooks.locator('li')).toHaveText([USER_ROW, PROJECT_ROW]);
-  await expect.soft(hooks.locator('p.help')).toHaveText(['In Run everything mode, these run in runner’s Postbox turns too.', OFF]);
+  await expect.soft(hooks.locator('p.help')).toHaveText([runs('runner', 'Run everything'), OFF]);
 });
 
-test('#817 an Isolated agent’s panel lists the project’s hooks only, and says it doesn’t read the user’s', async ({ page }) => {
+test('#817 an Isolated agent’s panel lists the project’s hooks only, and in Ask me mode says they don’t run', async ({ page }) => {
   const hooks = await openHooks(page, 'loner');
   await expect.soft(hooks.locator('li')).toHaveText([PROJECT_ROW]);
-  await expect.soft(hooks.locator('p.help')).toHaveText([dontRun('loner'), ISOLATED, OFF]);
+  await expect.soft(hooks.locator('p.help')).toHaveText([dontRun('loner', 'Ask me'), ISOLATED, OFF]);
 });
 
 test('#817 a file with more than 50 hooks lists 50, and says how many more are in it', async ({ page }) => {
@@ -173,7 +176,7 @@ for (const [width, phone] of [
       const hooks = await openHooks(page, 'asker');
       await expect.soft(hooks.locator('li')).toHaveText(ASKS_ROWS);
       await expect.soft(hooks.locator('li').nth(1).getByText('PermissionRequest', { exact: true }), 'the event is named').toBeVisible();
-      await expect.soft(hooks.locator('p.help')).toHaveText([dontRun('asker'), ISOLATED, OFF]);
+      await expect.soft(hooks.locator('p.help')).toHaveText([dontRun('asker', 'Accept edits'), ISOLATED, OFF]);
       await expect.soft(hooks.getByText('sk-871'), 'the token in the command stays hidden').toHaveCount(0);
       await settled(page);
       const over = await page

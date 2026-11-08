@@ -1,6 +1,7 @@
 // The checks on a persona’s setup that its create and update share (#57, #59, #60), moved out of server/runtime.mjs
 // under the file-length rule.
 
+import { HANDLE } from '../shared/limits.mjs';
 import { EFFORT_LEVELS } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
 
@@ -22,4 +23,16 @@ export function checkSetup({ usesHostSetup, canPublish, allowRequested, mcpOff, 
 /** A persona’s effort is one of the levels Claude Code and the SDK take (#60). */
 export function checkEffort(effort) {
   if (!EFFORT_LEVELS.includes(effort)) throw httpError(422, `Effort is one of ${EFFORT_LEVELS.join(', ')}.`);
+}
+/**
+ * A persona’s name as it’s stored: without a leading @ and the spaces around it. One that HANDLE refuses is refused here, so
+ * createPersona and agents.json’s check before seeding read a name the same way (#990).
+ * @param {unknown} handle
+ */
+export function handleOf(handle) {
+  const name = String(handle ?? '')
+    .replace(/^@/, '')
+    .trim();
+  if (!HANDLE.test(name)) throw httpError(422, 'A name uses 2–24 letters, digits, - or _, and starts with a letter.');
+  return name;
 }

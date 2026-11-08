@@ -14,6 +14,7 @@ import { NEEDS_TRIGGERS } from '../../server/room-checks-needs.mjs';
 import { ALLOW_ONCE_TRIGGERS } from './allowonce-triggers.mjs';
 import { DELIVERY_TRIGGERS } from './delivery-triggers.mjs';
 import { DISMISS_TRIGGERS } from './dismiss-triggers.mjs';
+import { GIT_PUSH_TRIGGERS } from './gitpush-triggers.mjs';
 import { REVIEW_FIGURE_TRIGGERS } from './review-figures-triggers.mjs';
 import { TELEMETRY_TRIGGERS } from './telemetry-triggers.mjs';
 import { cell as esc } from './trigger-facts.mjs';
@@ -39,6 +40,7 @@ export const TRIGGERS = {
   ...TELEMETRY_TRIGGERS,
   ...NEEDS_TRIGGERS,
   ...ALLOW_ONCE_TRIGGERS,
+  ...GIT_PUSH_TRIGGERS,
   ...DELIVERY_TRIGGERS,
   ...VIEW_TRIGGERS,
   ...WAITING_TRIGGERS,
