@@ -45,12 +45,13 @@ import { keyFrameOut, seededNote } from './uat/key-frame-run.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
 import { openIssues } from './uat/open-issues.mjs';
 import { portFree, startPostbox } from './uat/postbox.mjs';
-import { newProbes, recordInput } from './uat/probes.mjs';
+import { recordInput } from './uat/probes.mjs';
 import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
-import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi, runPaths, userSetup } from './uat/run-files.mjs';
+import { runFacts } from './uat/run-facts.mjs';
+import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi, runPaths } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { chainLimitEnv, phaseCap, stepCap } from './uat/scenario.mjs';
@@ -169,26 +170,7 @@ async function main() {
   if (hr) followStatuses(hr, history.hostStates);
   const findings = new Map(); // key → finding
   const timeline = [];
-  const facts = {
-    agentModels,
-    agentEffort,
-    state: null,
-    threads: [],
-    startPersonas: [],
-    streams: [],
-    kiroStreams: [],
-    agyStreams: [],
-    codexStreams: [],
-    events: [],
-    transcripts: [],
-    console: page.logs,
-    apps: {},
-    probes: { ...newProbes(), keyFrameOn: Boolean(keyFrameOut(opt, scenario, dir)) },
-    samples: [],
-    ui: {},
-    ...userSetup(paths.workspace),
-    ...(hr ? { hosts: hr.record } : {}),
-  };
+  const facts = runFacts({ agentModels, agentEffort, page, keyFrameOn: Boolean(keyFrameOut(opt, scenario, dir)), workspace: paths.workspace, hr });
   run.keep = keeper(dir, facts, paths.workspace);
   let unwatch = () => {};
   try {
