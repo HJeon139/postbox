@@ -16,7 +16,8 @@ import { formatMessage } from '../../server/adapters/guide.mjs';
 import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
 
 const BROKEN = 'flowchart LR\n  A[Read] -->> B[Index]';
-// A chart of 900 dots, labels and dashed links, drawn far too small; the same chart at a readable size.
+// A chart of 900 dots, labels and dashed links, drawn far too small (its labels readable at 1000 px, the size a visual
+// is read at, and too small at 375 px, which is a warning, #997); the same chart at a readable size.
 const chart = ({ n, r, font, dash, stroke, view }) => `<!doctype html><html><body style="margin:0">
 <svg id="c" viewBox="0 0 ${view} ${view / 2}" style="width:100%;height:auto;display:block" role="img" aria-label="Pairs"></svg>
 <script>
@@ -25,12 +26,12 @@ for (let i = 0; i < ${n}; i++) {
   const x = 20 + ((i * 37) % (${view} - 40)), y = 20 + ((i * 53) % (${view} / 2 - 40));
   out += '<circle cx="' + x + '" cy="' + y + '" r="${r}" fill="var(--accent)"/>';
   if (i % 3 === 0) out += '<line x1="' + x + '" y1="' + y + '" x2="' + (x + 30) + '" y2="' + (y + 10) + '" stroke="var(--dim)" stroke-width="${stroke}" stroke-dasharray="${dash}"/>';
-  if (i % 9 === 0) out += '<text x="' + x + '" y="' + (y - 4) + '" font-size="${font}" fill="var(--text)">p' + i + '</text>';
+  if (i % 9 === 0) out += '<text x="' + Math.min(x, ${view} - 3 * ${font}) + '" y="' + Math.max(y - 4, ${font}) + '" font-size="${font}" fill="var(--text)">p' + i + '</text>';
 }
 svg.innerHTML = out;
 </script></body></html>`;
 const APPS = {
-  tiny: { title: 'Pair explorer', code: chart({ n: 900, r: 0.8, font: 9, dash: '2 1', stroke: 0.6, view: 2400 }) },
+  tiny: { title: 'Pair explorer', code: chart({ n: 900, r: 0.8, font: 30, dash: '2 1', stroke: 0.6, view: 2400 }) },
   readable: { title: 'Pair summary', code: chart({ n: 12, r: 8, font: 14, dash: '8 5', stroke: 2, view: 360 }) },
   missing: {
     title: 'SciFact explorer',
@@ -178,7 +179,7 @@ test('#53 apps too small to read, or showing only an error, are shown with notes
   });
   expect(st('readable').status, 'the readable chart passes').toBe('passed');
   expect([st('tiny').status, st('tiny').notes], 'the tiny chart is shown, with notes').toEqual(['note', true]);
-  for (const code of ['marks-too-small', 'text-too-small', 'dashes-too-fine']) expect(codes('tiny'), `the tiny chart gets ${code}`).toContain(code);
+  for (const code of ['marks-too-small', 'text-too-small-375', 'dashes-too-fine']) expect(codes('tiny'), `the tiny chart gets ${code}`).toContain(code);
   const messages = (st('tiny').problems ?? []).map((p) => p.message);
   expect(messages.some((m) => /^At 375 px/.test(m)) && messages.some((m) => /^At 1280 px/.test(m)), 'measured at 375 and 1280 px').toBe(true);
   expect(st('missing').status).toBe('note');

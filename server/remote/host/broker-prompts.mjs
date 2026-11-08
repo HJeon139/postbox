@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { HOST_DEFAULTS, REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
 import { note, record, refusal, unrecorded, written } from './broker-records.mjs';
-import { CANCELED, key, STOPPED_TEXT } from './broker-state.mjs';
+import { CANCELED, key, STOPPED_TEXT, takes } from './broker-state.mjs';
 
 /**
  * @typedef {import('./broker-state.mjs').Broker} Broker
@@ -82,6 +82,25 @@ export function armOrphan(b, q) {
   b.orphanTimers.add(t);
 }
 
+/**
+ * A shim’s notice that its prompt expired or the harness canceled it. Only the shim that asked can end a prompt
+ * (#908): any client with a turn’s token can name its id. Another shim’s prompt gets exactly the refusal an unknown id
+ * gets, so it doesn’t tell whether the id exists, and nothing is written down or sent to Postbox; nor for one that
+ * ended already, which Postbox has heard about. A prompt already answered stays answered: Postbox keeps its answer,
+ * and the shim’s resend gets it.
+ * @param {Broker} b @param {ShimConn} c @param {string} turn @param {any} m @param {Expiry['reason']} reason
+ */
+export async function endFromShim(b, c, turn, m, reason) {
+  const q = b.prompts.get(key(turn, m.id));
+  if (!q || !takes(q, c))
+    return c.send('error', {
+      code: 'no-prompt',
+      message: `There’s no prompt ${m.id} of this shim’s waiting in turn ${turn}, so nothing was ended.`.slice(0, REMOTE_LIMITS.messageChars),
+    });
+  if (q.answer) return;
+  return endPrompt(b, turn, m.id, m.at, reason);
+}
+
 /** A shim’s permission prompt. @param {Broker} b @param {ShimConn} c @param {string} turn @param {any} m */
 export async function permission(b, c, turn, m) {
   const no = await refusal(b, turn);
@@ -91,15 +110,14 @@ export async function permission(b, c, turn, m) {
   /** A prompt that couldn’t be written down is denied, never left waiting or allowed. @param {string} text */
   const deny = (text) => c.send('permission-answer', { id: m.id, result: { behavior: 'deny', message: text.slice(0, REMOTE_LIMITS.messageChars) } });
   if (known) {
-    // The same id asking something else gets nothing of the first one’s answer: any client with a turn’s token can
-    // name a turn, so an allow planted for a harmless request would otherwise answer a dangerous one.
+    // Another shim gets nothing of it (#353): only the shim that asked, by its key, hears the answer, on each
+    // connection it makes. Checked first, so another shim hears the same whatever request it sends, and can’t tell
+    // whether it guessed this one’s.
+    if (!takes(known, c)) return deny(`Permission request ${m.id} was asked by another connection, so this one isn’t allowed. Ask again under a new id.`);
+    // Nor does the same id asking something else: an allow planted for a harmless request would otherwise answer a
+    // dangerous one.
     if (!isDeepStrictEqual(m.request, known.request))
       return deny(`Permission request ${m.id} was asked already, with a different request, so this one isn’t allowed. Ask again under a new id.`);
-    // Nor does another shim asking the same (#353): only the shim that asked, by its key, hears the answer, on each
-    // connection it makes. A record an older daemon wrote names no shim, so the first to send it again takes it.
-    if (known.owner !== undefined && known.owner !== c.owner)
-      return deny(`Permission request ${m.id} was asked by another connection, so this one isn’t allowed. Ask again under a new id.`);
-    known.owner = c.owner;
     known.asked.add(c);
     // A shim still waits on it: it ends the prompt itself.
     known.replayed = false;

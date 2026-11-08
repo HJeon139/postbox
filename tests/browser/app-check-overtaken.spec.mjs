@@ -38,7 +38,7 @@ async function room(page, title) {
 test('a new version during the old one’s check is checked at once, and the old one posts nothing', async ({ page }) => {
   const { rt, tools, posted } = await room(page, 'Overtaken by v2');
   tools.show_app({ id: 'overtaken', title: 'Overtaken', code: PLAIN('v1') });
-  await expect(page.locator('iframe.check-frame[title="Checking Overtaken"]'), 'v1’s check is running').toHaveCount(2);
+  await expect(page.locator('iframe.check-frame[title="Checking Overtaken"]'), 'v1’s check is running').toHaveCount(3);
   const t0 = Date.now();
   tools.update_app({ id: 'overtaken', code: PLAIN('v2') });
   await expect.poll(() => rt.s.apps.overtaken.check.status, { intervals: [50], timeout: 15_000 }).toBe('passed');
@@ -54,7 +54,7 @@ test('a new version during the old one’s check is checked at once, and the old
 test('an app retired during its check posts nothing, and the next app’s check starts', async ({ page }) => {
   const { rt, tools, posted } = await room(page, 'Retired mid-check');
   tools.show_app({ id: 'retiring', title: 'Retiring', code: PLAIN('v1') });
-  await expect(page.locator('iframe.check-frame[title="Checking Retiring"]'), 'its check is running').toHaveCount(2);
+  await expect(page.locator('iframe.check-frame[title="Checking Retiring"]'), 'its check is running').toHaveCount(3);
   expect(tools.retire_app({ id: 'retiring', reason: 'Another app covers it.' }).ok).toBe(true);
   await expect(page.locator('iframe.check-frame[title="Checking Retiring"]'), 'its check frames are gone').toHaveCount(0);
   tools.show_app({ id: 'after-retired', title: 'After retired', code: PLAIN('v1') });
@@ -66,7 +66,7 @@ test('a version checked again after a drop is checked, not skipped', async ({ pa
   // The dropped check’s key must not count as checked or failed: retiring v1 mid-check, then a new version, gets checked.
   const { rt, tools } = await room(page, 'Back after retiring');
   tools.show_app({ id: 'returns', title: 'Returns', code: PLAIN('v1') });
-  await expect(page.locator('iframe.check-frame[title="Checking Returns"]')).toHaveCount(2);
+  await expect(page.locator('iframe.check-frame[title="Checking Returns"]')).toHaveCount(3);
   tools.retire_app({ id: 'returns', reason: 'For now.' });
   await expect(page.locator('iframe.check-frame[title="Checking Returns"]')).toHaveCount(0);
   tools.update_app({ id: 'returns', code: PLAIN('v2') });

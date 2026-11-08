@@ -64,6 +64,8 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }
     budget: saved.budget ?? null,
     // Where the live run’s time went (tools/uat/timing.mjs): a recheck measures none of its own, so it keeps the run’s.
     timing: record?.timing ?? null,
+    // The live run’s first picture (#995), for the report.
+    ...(record?.firstPicture ? { firstPicture: record.firstPicture } : {}),
     ui: {},
     ...userSetup(join(dir, 'workspace')),
     ...(hostsRec ? { hosts: hostsRec } : {}),

@@ -45,14 +45,17 @@ import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
 import { keyFrameOut, seededNote } from './uat/key-frame-run.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
 import { openIssues } from './uat/open-issues.mjs';
+import { judgePictures } from './uat/picture-judges.mjs';
 import { portFree, startPostbox } from './uat/postbox.mjs';
-import { newProbes, recordInput } from './uat/probes.mjs';
+import { recordInput } from './uat/probes.mjs';
 import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
+import { endRun } from './uat/run-end.mjs';
 import { runEnv } from './uat/run-env.mjs';
-import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi, runPaths, userSetup } from './uat/run-files.mjs';
+import { runFacts } from './uat/run-facts.mjs';
+import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi, runPaths } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
 import { phaseCap, stepCap } from './uat/scenario.mjs';
@@ -164,26 +167,7 @@ async function main() {
   if (hr) followStatuses(hr, history.hostStates);
   const findings = new Map(); // key → finding
   const timeline = [];
-  const facts = {
-    agentModels,
-    agentEffort,
-    state: null,
-    threads: [],
-    startPersonas: [],
-    streams: [],
-    kiroStreams: [],
-    agyStreams: [],
-    codexStreams: [],
-    events: [],
-    transcripts: [],
-    console: page.logs,
-    apps: {},
-    probes: { ...newProbes(), keyFrameOn: Boolean(keyFrameOut(opt, scenario, dir)) },
-    samples: [],
-    ui: {},
-    ...userSetup(paths.workspace),
-    ...(hr ? { hosts: hr.record } : {}),
-  };
+  const facts = runFacts({ agentModels, agentEffort, page, keyFrameOn: Boolean(keyFrameOut(opt, scenario, dir)), workspace: paths.workspace, hr });
   run.keep = keeper(dir, facts, paths.workspace);
   let unwatch = () => {};
   try {
@@ -529,16 +513,18 @@ async function main() {
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
     if (facts.telemetry) facts.telemetryOut = { proposals: tm.foldLabels(all, facts.telemetry) };
     if (facts.telemetry) budget.spend('telemetry', tm.telemetryBlock(facts.telemetry, all).classifier?.costUsd);
-    Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
-    await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
-    if (opt.verify !== 'no' || opt.file !== 'no') {
-      const review = { ...REVIEW, ask: budget.verifier() };
-      await timing.time('verifier', () =>
-        reviewFindings({ ...review, dir, scenario, findings: all, timeline, log, verify: opt.verify !== 'no', file: opt.file !== 'no' }),
-      );
-      Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
-      await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
-    }
+    const verify = opt.verify !== 'no';
+    const review = { ...REVIEW, dir, scenario, findings: all, timeline, log, verify, file: opt.file !== 'no' };
+    const shoot = (label, file) => d.shotItem(keys.get(label), file);
+    await endRun({
+      report: async () => {
+        Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
+        await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
+      },
+      review: verify || review.file ? () => timing.time('verifier', () => reviewFindings({ ...review, ask: budget.verifier() })) : null,
+      // #995’s judges of the agent’s pictures, after the verifier (tools/uat/run-end.mjs).
+      judge: () => judgePictures({ scenario, dir, paths, labels, keys, timeline, facts, shoot, ask: budget.verifier(), model: opt['tester-model'], log }),
+    });
     // The run’s record for a refit (tools/uat-stats.mjs), so it needn’t parse the report.
     writeJsonAtomic(join(dir, 'run.json'), {
       ...runRecord({

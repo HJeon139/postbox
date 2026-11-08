@@ -955,6 +955,8 @@ html.store-down .sidepanel { padding-bottom: 44px; }
   --line: var(--stage-line); --line-strong: var(--stage-line-strong); --text: var(--stage-text); --dim: var(--stage-dim); }
 html.pb-sandbox, html.pb-sandbox body { background: var(--bg); min-height: 0; }
 html.pb-sandbox body { margin: 0; }
+/* In an app, the kit’s own small text meets the floor the app check holds it to: 12 px (#997). */
+html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size: 12px; }
 
 .skip { position: absolute; left: 8px; top: -40px; z-index: 100; padding: 6px 10px; background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; }
 .skip:focus { top: 8px; }

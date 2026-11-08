@@ -128,7 +128,7 @@ test('a resend of a read already answered offline is served at once, though its 
     k.state.attached = false;
     k.b.driverLost();
     assert.match((await heard(s, 'c1'))?.text ?? '', /x 0/, 'answered offline while the call append is held');
-    // A second shim connection missed that broadcast and sends the same call again.
+    // A second connection of the same shim missed that answer and sends the same call again.
     const s2 = connectShim(k.b, 't_s6');
     await s2.next('welcome');
     s2.send('call', { id: 'c1', name: 'read_message', args: { id: 'i0' } });

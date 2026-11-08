@@ -163,20 +163,26 @@ export function makeBroker(h, over = {}) {
   return { b, sent, logs, writes, state, hello, post };
 }
 
+/** The key a test shim’s hello carries unless it names another: each connection made with it is the same shim (#908). */
+export const SHIM_KEY = 'f'.repeat(32);
+
 /**
  * A shim connected to the broker: its lines, checked as the shim checks them. `key`: the key its hello carries, the
- * same for each connection of one shim process; none by default.
- * @param {ReturnType<typeof createBroker>} b @param {string} turn @param {string} [token] @param {string} [key]
+ * same for each connection of one shim process; SHIM_KEY by default, and null for a hello with none.
+ * @param {ReturnType<typeof createBroker>} b @param {string} turn @param {string} [token] @param {string | null} [key]
  */
-export function connectShim(b, turn, token = turnToken(turn), key = undefined) {
+export function connectShim(b, turn, token = turnToken(turn), key = SHIM_KEY) {
   /** @type {any[]} */
   const got = [];
+  /** @type {string[]} each line as the daemon wrote it */
+  const raw = [];
   const taken = new Set();
   let ended = false;
   const h = b.shim({
     first: JSON.stringify({ type: 'hello', token, turn, ...(key ? { shim: key } : {}) }),
     write: (s) => {
       for (const l of s.split('\n').filter(Boolean)) {
+        raw.push(l);
         const r = parseLine('daemon-to-shim', l);
         assert.ok(r.ok, r.ok ? '' : r.error);
         got.push(r.msg);
@@ -189,6 +195,7 @@ export function connectShim(b, turn, token = turnToken(turn), key = undefined) {
   });
   const shim = {
     got,
+    raw,
     get ended() {
       return ended;
     },

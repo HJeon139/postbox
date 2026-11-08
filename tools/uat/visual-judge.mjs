@@ -4,6 +4,7 @@
 // visuals on November 6, 2026 (agent-plugin/skills/visual-explainer/references/critique.md, “How far to trust it”): labeled
 // boxes fail, a chart of one fixed answer isn’t a relationship, and unreadable text is a miss.
 
+import { intentCell } from './intent-match.mjs';
 import { cell } from './trigger-facts.mjs';
 
 export const VERDICTS = ['landed', 'mostly', 'partly', 'missed'];
@@ -49,12 +50,24 @@ export function visualSection(timeline) {
   return [
     '## Visual verdicts',
     '',
-    'The customer’s judgment of each visual, from its screenshot (`- judge: visual`).',
+    'The customer’s judgment of each visual, from its screenshot (`- judge: visual`). Beside its takeaway, the agent’s intent for an app (#995), which the customer didn’t see, and whether the takeaway carries it.',
     '',
-    '| Step | Item | Verdict | Drawn | Relationship | One idea | Readable | Takeaway |',
-    '|---|---|---|---|---|---|---|---|',
+    '| Step | Item | Verdict | Drawn | Relationship | One idea | Readable | Takeaway | Intent | Match |',
+    '|---|---|---|---|---|---|---|---|---|---|',
     ...judged.map(({ step, visual: v }) => {
-      const cells = [step, v.item, v.verdict, yes(v.drawn), yes(v.relationship), yes(v.one_idea), yes(v.readable), cell(String(v.takeaway))];
+      const takeaway = cell(String(v.takeaway));
+      const cells = [
+        step,
+        v.item,
+        v.verdict,
+        yes(v.drawn),
+        yes(v.relationship),
+        yes(v.one_idea),
+        yes(v.readable),
+        takeaway,
+        cell(intentCell(v)),
+        v.match ?? '–',
+      ];
       return `| ${cells.join(' | ')} |`;
     }),
     '',
