@@ -12,7 +12,7 @@ import { inSight, measure } from './view-box.mjs';
  *   changed?: boolean, noted?: number }} View
  */
 import { onlyRemoves } from './view-changes.mjs';
-import { atEnd, box, findAnchor, gapOf, viewTop } from './view-geometry.mjs';
+import { atEnd, box, findAnchor, gapOf, heldBy, viewTop } from './view-geometry.mjs';
 import { register, unregister } from './view-jump.mjs';
 import { newView } from './view-new.mjs';
 import { publish } from './view-publish.mjs';
@@ -261,6 +261,7 @@ const jumpable = (v) => ({
   seen: () => inSight(v),
   halt: () => halt(v),
   pin: (/** @type {HTMLElement} */ item) => pin(v, item),
+  held: () => heldBy(v),
 });
 
 /**

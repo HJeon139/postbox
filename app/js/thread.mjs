@@ -138,7 +138,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     if (!win) return list;
     return [...nodes.keys()].map((id) => list[placeIn(threadId, id)]).filter(Boolean);
   };
-  const all = () => {
+  const all = (/** @type {string | null} */ anchorKey = was?.anchor?.key ?? null) => {
     el.replaceChildren();
     nodes.clear();
     win?.destroy();
@@ -148,7 +148,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       return;
     }
     // A long conversation mounts only what’s around you, behind its flag (window.mjs, #866); else every item.
-    win = createWindow({ el, key: `${inPanel}:${threadId}`, list, anchorKey: was?.anchor?.key ?? null, inPanel, nodes, mount: (i) => mountAt(list, i) });
+    win = createWindow({ el, key: `${inPanel}:${threadId}`, list, anchorKey, inPanel, nodes, mount: (i) => mountAt(list, i) });
     if (win) win.build();
     else for (let i = 0; i < list.length; i++) el.append(mountAt(list, i));
     hostTurns.paint();
@@ -160,7 +160,8 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const off = client.on((ch) => {
     if (ch.type === 'load') {
       const back = holdFocus();
-      all();
+      // Rebuilt around where you are now, not where the transcript was when it opened.
+      all(view.keep()?.anchor?.key ?? null);
       view.rebuilt();
       back();
       return;
