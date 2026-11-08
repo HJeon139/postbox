@@ -1,26 +1,30 @@
 // `- seed: git-remote` (#305, #296): a remote the run’s agents can commit and push to over and over, that is nothing
-// but a bare repository in the run’s own folder, gone when the run stops. Nothing in the run can reach a real remote
-// or a real gh:
+// but a bare repository in the run’s own folder, gone when the run stops. What keeps an agent’s ordinary pushes and
+// PRs on this computer:
 // - every git that Postbox and its agents run gets GIT_ALLOW_PROTOCOL=file, which git applies over any config file,
 //   per-protocol settings included, and protocol.allow=never with only file allowed, from the environment
 //   (GIT_CONFIG_COUNT) and again from the workspace’s own .git/config. So an https, ssh or git:// remote is refused
 //   before anything leaves this computer;
+// - git reads the run’s own config, not the person’s: GIT_CONFIG_GLOBAL is a file in the run’s folder that holds only a
+//   test identity, and GIT_CONFIG_NOSYSTEM drops the system’s, such as Homebrew’s. So no pushInsteadOf, insteadOf,
+//   include, hook or credential helper of theirs touches an agent’s push;
 // - a fake gh comes first on PATH, and records what it was asked; gh’s config folder is an empty one of the run’s, and
 //   the gh tokens are empty. Claude Code sources CLAUDE_ENV_FILE in the agent’s shell after its profile, which on a Mac
 //   puts Homebrew’s gh back first, so that file puts the run’s bin first again;
-// - preflightRemote checks all of it under the run’s own environment, and the run stops before Postbox starts if any
-//   of it doesn’t hold;
+// - preflightRun checks it on the environment the runner gives Postbox, which the agents inherit, and the run stops
+//   before Postbox starts if any of it doesn’t hold;
 // - the project’s repository, where Postbox makes a push itself (server/push-on-request.mjs), is the bare repository,
 //   and the run stops before any agent turn if it can’t be set (setUpRemote). That push doesn’t read the guard: it
 //   runs git with none of the environment’s config and turns https and ssh back on. What it keeps is PATH, so its
 //   credential helper is the fake gh, gh’s config folder, which is the run’s empty one, and SSH_AUTH_SOCK, which the
 //   run blanks. So for Postbox’s own push, the repository setting is the guard, with no credentials behind it.
-// What’s left, so no one reads this as containment against an agent trying to escape it:
-// - an agent setting out to get round the guard can: `env -i`, or `unset GIT_ALLOW_PROTOCOL` with a `git -c …`. In Ask
-//   me or Accept edits that command comes to a card first; in Auto, the harness decides;
-// - HOME is the person’s own, so their global git hooks and credential helpers still run on an agent’s push to the
-//   run’s remote, and a real gh called by its full path can still read the person’s token from the keychain
-//   (`gh auth token`);
+// What’s left, so no one reads this as containment: the guard is environment the agent’s own shell inherits, so it
+// stops an agent that pushes because the scenario told it to, not one set on reaching a remote. Such an agent can:
+// - undo it: `env -u GIT_ALLOW_PROTOCOL git push …`, `GIT_ALLOW_PROTOCOL=https git push …`, or `env -i`, then
+//   `git -c protocol.allow=always …`. In Ask me or Accept edits that command comes to a card first; in Auto, the
+//   harness decides;
+// - skip git: a real gh called by its full path still reads the person’s sign-in from the keychain (`gh auth token`),
+//   since HOME and the keyring are theirs, and `curl` with that token reaches GitHub;
 // - a file push can reach a bare repository outside the run’s folder, and nothing refuses `--host` for this seed: the
 //   seed is for local runs only.
 // Postbox’s temp folders (pb-*) go in the run’s tmp folder, so the end of the run can say none is left.
@@ -45,6 +49,7 @@ export const remotePaths = (dir) => ({
   ghConfig: join(dir, 'gh-config'),
   ghCalls: join(dir, 'gh-calls.jsonl'),
   envFile: join(dir, 'agent-env.sh'),
+  gitconfig: join(dir, 'gitconfig'),
   tmp: join(dir, 'tmp'),
   record: join(dir, 'remote.json'),
 });
@@ -90,6 +95,8 @@ export function gitRemoteEnv(scenario, dir) {
   const p = remotePaths(dir);
   return {
     ...guardEnv(),
+    GIT_CONFIG_GLOBAL: p.gitconfig,
+    GIT_CONFIG_NOSYSTEM: '1',
     PATH: `${p.bin}:${process.env.PATH ?? ''}`,
     GH_CONFIG_DIR: p.ghConfig,
     GH_TOKEN: '',
@@ -121,6 +128,8 @@ export function seedGitRemote(workspace, dir) {
   chmodSync(join(p.bin, 'gh'), 0o755);
   writeFileSync(p.ghCalls, '');
   writeFileSync(p.envFile, agentEnvFile(p));
+  // The run’s own global config, in place of the person’s: only an identity for the agents’ commits.
+  writeFileSync(p.gitconfig, '[user]\n\tname = UAT developer\n\temail = uat@example.invalid\n');
 }
 
 const quoted = (v) => `'${String(v).replaceAll("'", "'\\''")}'`;
@@ -128,13 +137,22 @@ const quoted = (v) => `'${String(v).replaceAll("'", "'\\''")}'`;
 const agentEnvFile = (p) =>
   [
     `export PATH=${quoted(p.bin)}:"$PATH"`,
-    `export GH_CONFIG_DIR=${quoted(p.ghConfig)}`,
+    `export GH_CONFIG_DIR=${quoted(p.ghConfig)} GIT_CONFIG_GLOBAL=${quoted(p.gitconfig)} GIT_CONFIG_NOSYSTEM=1`,
     "export GH_TOKEN='' GITHUB_TOKEN='' SSH_AUTH_SOCK='' GIT_ALLOW_PROTOCOL=file",
     '',
   ].join('\n');
 
 /**
- * The guard, checked under the run’s own environment before Postbox starts: origin is the run’s remote, git there is
+ * A `- seed: git-remote` run’s guard, checked before Postbox starts on env, the environment the runner gives Postbox
+ * (process.env and runEnv), which the agents inherit. Nothing for any other seed.
+ * @param {{ seed: string|null }} scenario @param {string} workspace @param {string} dir @param {Record<string, string|undefined>} env
+ */
+export function preflightRun(scenario, workspace, dir, env) {
+  if (scenario.seed === 'git-remote') preflightRemote(workspace, dir, env);
+}
+
+/**
+ * The guard, checked under the run’s own environment: origin is the run’s remote, git there is
  * refused an https remote, and gh in a shell like the agent’s (the person’s login shell, then CLAUDE_ENV_FILE) is the
  * fake. Throws, so the run stops, when any of it doesn’t hold.
  * @param {string} workspace @param {string} dir @param {Record<string, string|undefined>} env  the run’s environment

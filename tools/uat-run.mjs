@@ -36,7 +36,7 @@ import { lastCheckPass, MID_TURN, runChecks, waitingOnYou } from './uat/checks.m
 import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
-import { remoteFacts, setUpRemote } from './uat/git-remote.mjs';
+import { preflightRun, remoteFacts, setUpRemote } from './uat/git-remote.mjs';
 import { followEvents } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
 import { HOST_OPTIONS } from './uat/hosts-options.mjs';
@@ -123,6 +123,8 @@ async function main() {
   const canaries = makeWorkspace(scenario, paths, dir);
   // A phase’s `- fault:` (#508): Postbox starts with the fault launcher in front of the faulted agent’s CLI.
   const faults = faultSetup({ scenario, root: ROOT, dir, env: process.env });
+  // `- seed: git-remote`’s guard (#305), checked on the very environment Postbox and its agents get.
+  preflightRun(scenario, paths.workspace, dir, { ...process.env, ...runEnv({ gate, paths, scenario, dir, opt, faults }) });
   const logLines = [];
   const log = (line) => {
     const l = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${line}`;
