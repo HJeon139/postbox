@@ -61,6 +61,25 @@ export function fullPath(folder, whose = 'A project’s') {
  */
 export const agentFolderPath = (folder) => (folder === undefined || folder === null || folder === '' ? '' : fullPath(folder, 'An agent’s'));
 
+/**
+ * A session’s persona snapshot (Runtime.personaFor) without a folder the check refuses (agentFolderPath), as one
+ * taken while the agent’s folder was stored unchecked, before #990. The live persona’s folder shows through it then,
+ * so a folder fixed in the agent’s sheet, as the refusal asks (storedFolder), reaches a conversation already going at
+ * its next turn, and one still bad there is refused. A snapshot’s folder that passes keeps winning. It writes
+ * nothing: the session keeps its snapshot, and this runs wherever a session’s persona is read.
+ * @template {{ folder?: unknown }} T @param {T} snapshot @returns {Omit<T, 'folder'> | T}
+ */
+export function checkedSnapshot(snapshot) {
+  try {
+    agentFolderPath(snapshot.folder);
+    return snapshot;
+  } catch {
+    // Refused: drop it, so the live persona’s folder is the one used.
+    const { folder: _refused, ...rest } = snapshot;
+    return rest;
+  }
+}
+
 // The longest a folder is shown in a message, before it’s cut: a refused one can be any length.
 const SHOWN = 200;
 

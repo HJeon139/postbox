@@ -29,7 +29,7 @@ import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessag
 import { addDataset, reloadDatasets } from './datasets.mjs';
 import { DELETE_UNDO_MS } from './delete-undo.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
-import { agentFolderPath, folderOrNone } from './folder-path.mjs';
+import { agentFolderPath, checkedSnapshot, folderOrNone } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { hostTool } from './host-tool.mjs';
@@ -222,7 +222,7 @@ export class Runtime {
     return (
       p && {
         ...p,
-        ...(se.personaSnapshot ?? {}),
+        ...checkedSnapshot(se.personaSnapshot ?? {}),
         backend: p.backend,
         permissionMode: p.permissionMode ?? 'auto',
         // Whether it loads your Claude Code setup and may publish outside Postbox are permissions too (#57), and
