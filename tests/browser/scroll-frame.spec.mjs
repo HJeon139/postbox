@@ -113,6 +113,25 @@ test('#357 a scroll up, then a change in the same frame, isn’t taken for a cla
   expect(at, 'the view stays where you scrolled it, not back at the end').toBeLessThan(end - 200);
 });
 
+// critic's P1 on #959: a resize heard before your scroll's event takes that scroll in (heard()), so by the event the
+// scroll looks like the transcript's own. Your scroll down to the end must still follow it.
+test('#341 a scroll down to the end, with a resize heard before its event, follows the end', async ({ page }) => {
+  const { t } = room('Scroll to the end, then a resize');
+  await open(page, t);
+  await page.mouse.move(640, 400);
+  await page.mouse.wheel(0, -300);
+  await settled(page);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'reading, a little way up').toBe('reading');
+  // In one task, before the scroll event: to the end, then a resize the transcript hears first.
+  await page.evaluate(() => {
+    const s = /** @type {Element} */ (document.scrollingElement);
+    s.scrollTop = s.scrollHeight;
+    dispatchEvent(new Event('resize'));
+  });
+  await settled(page);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'at the end you scrolled to, it follows').toBe('following');
+});
+
 test('#341 two resizes before the scroll event take an unheard scroll once, not twice', async ({ page }) => {
   const { t } = room('Two resizes, one unheard scroll');
   await open(page, t);
