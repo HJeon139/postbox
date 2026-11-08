@@ -6,54 +6,60 @@
 // every part matches an allow rule runs with no approval and outside the sandbox (:467–469, Skip { bypass_sandbox }),
 // and the rule goes in <codex home>/rules/default.rules (:904–905), so it holds for every Codex session on this
 // computer, in every mode. Nothing judges a matching command after the click, so the card says so, and Always allow
-// offers only what can’t run any program: never a wider rule than Codex proposed, never a prefix that would run
-// another program (#281’s rule), and nothing to a persona that may not fetch the web, since a matching command runs
-// with network.
+// offers only a prefix whose program is on a short list of ones that read and print: never a wider rule than Codex
+// proposed, and nothing to a persona that may not fetch the web, since a matching command runs with network.
+//
+// It’s a list of programs to allow, not to refuse: three rounds of refusing names each missed some that run any
+// program (other shells, launchers, runtimes, `git submodule foreach`, a name in capitals on macOS). A redirect or a
+// substitution can’t turn one of these into a write: Codex matches a script word by word only when it has neither
+// (codex-rs/shell-command/src/bash.rs :22–29, :410–413), and otherwise matches it whole, as `bash -lc …`
+// (exec_policy.rs :913–943), which no rule here starts with.
 
 import { networkOn } from './codex-network.mjs';
 
 /**
- * First words whose job is to run whatever follows them, or that run a program their options name, compared with any
- * version suffix taken off (python3.12 is python). A new one belongs here when that’s what it does. It’s a list of
- * programs to refuse, so it can’t be complete (vim, less and man run one through !, git through an alias): what the
- * person sees before clicking is the exact prefix, and that the rule runs outside Codex’s sandbox.
+ * Programs that read and print, and whose options name no program to run or file to write, as the first word, exactly
+ * (`LS` isn’t `ls`, though macOS would run it). `rg` (--pre), `sort` (--compress-program), `find`, `diff` (-l runs pr),
+ * `tree` (-o) and `uniq` (an output file) aren’t, and nor is git, whose config can name a program for status, diff or
+ * log in a folder the agent chose.
  */
-const RUNS_ANOTHER = new Set([
-  ...['bash', 'sh', 'zsh', 'fish', 'pwsh', 'env', 'sudo', 'xargs', 'time', 'nice', 'nohup', 'timeout', 'watch'],
-  ...['source', 'command', 'exec', 'eval', 'ssh', 'docker', 'osascript', 'make', 'find', 'awk', 'sed', 'tar', 'rsync'],
-  ...['python', 'node', 'perl', 'ruby', 'php', 'npx', 'npm', 'pnpm', 'yarn', 'bun', 'bunx', 'deno', 'uvx', 'tsx'],
+const READS = new Set([
+  'ls',
+  'cat',
+  'head',
+  'tail',
+  'wc',
+  'grep',
+  'stat',
+  'du',
+  'df',
+  'pwd',
+  'which',
+  'echo',
+  'cut',
+  'basename',
+  'dirname',
+  'realpath',
+  'whoami',
+  'uname',
 ]);
-/**
- * Tools whose first word alone covers every subcommand, `git push --force` with `git status`: they need a second word,
- * and it must be a subcommand that runs no other program.
- */
-const SUBCOMMANDS = new Set(['git', 'gh', 'cargo', 'go', 'kubectl', 'brew', 'apt', 'apt-get', 'pip', 'pipx', 'poetry', 'uv', 'rustup', 'gcloud', 'aws', 'az']);
-/** Subcommands that run whatever program comes next: `uv run`, `cargo run`, `kubectl exec`, `gh extension`, `pipx run`, `dlx`. */
-const RUNS_NEXT = new Set(['run', 'exec', 'x', 'dlx', 'extension']);
+/** gh commands that read: the two words after `gh`. A built-in command can’t be an alias, so these run as they say. */
+const GH_READS = new Set(['pr view', 'pr list', 'pr diff', 'pr checks', 'issue view', 'issue list', 'run view', 'run list']);
 /** A shell operator, substitution or redirect inside a word: such a prefix isn’t a plain command. */
 const OPERATOR = /[;&|<>`$()\n\\]/;
-/** A host as Codex names one: letters, digits, dots and hyphens, so no wildcard and no space. */
-const HOST = /^[a-z0-9.-]+$/i;
+/** A host as Codex names one: labels of letters, digits and hyphens joined by dots, with a letter, so no wildcard, no
+ * bare address and no single name such as localhost. */
+const HOST = /^(?=.*[a-z])[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
 /** The longest rule a card shows: one longer isn’t cut short, since a shorter prefix would allow more. */
 const RULE_MAX = 120;
-
-/** A first word as a program’s name: its version suffix taken off (python3.12 → python). @param {string} word */
-const programOf = (word) => word.replace(/[\d.]+$/, '');
 
 /** Whether a proposed prefix is one Always allow may offer. @param {unknown} prefix */
 function plainPrefix(prefix) {
   if (!Array.isArray(prefix) || !prefix.length) return false;
   if (!prefix.every((w) => typeof w === 'string' && w && !OPERATOR.test(w))) return false;
   if (prefix.join(' ').length > RULE_MAX) return false;
-  // A path or an assignment as the first word names a program the list can’t see: /bin/sh, ./run.sh, FOO=bar node.
-  if (/[/=]/.test(prefix[0])) return false;
-  const program = programOf(prefix[0]);
-  // A first word of only digits and dots names no program the lists can check: `.` runs a script, as `source` does.
-  if (!program) return false;
-  if (RUNS_ANOTHER.has(program)) return false;
-  if (!SUBCOMMANDS.has(program)) return true;
-  // The second word must be a subcommand: an option such as git -c can make the tool run any program.
-  return prefix.length >= 2 && !prefix[1].startsWith('-') && !RUNS_NEXT.has(prefix[1]);
+  if (READS.has(prefix[0])) return true;
+  return prefix[0] === 'gh' && prefix.length >= 3 && GH_READS.has(`${prefix[1]} ${prefix[2]}`);
 }
 
 /** Where the rule goes and what it does, as the card says it. */

@@ -213,7 +213,7 @@ export async function allowAlways(rt, threadId, it, asked) {
         throw httpError(409, ended);
       }
     }
-  } else if (it.remote && !it.always.harness) throw httpError(409, ON_HOST);
+  } else if (it.remote) throw httpError(409, ON_HOST);
   rt.addItem(threadId, { kind: 'voice', text: `Always allowed (${it.always.lines.map((l) => l.rule ?? l.text).join(', ')}): ${asked}` });
   rt.settlePermission(it.id, 'allowed-always', undefined, it.always.updates ? { updatedPermissions: it.always.updates } : {});
   return { ok: true };
