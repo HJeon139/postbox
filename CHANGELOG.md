@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.44.3 (2026-11-08)
+
+### Fixes
+
+- **permissions:** a file rule escapes the characters Claude Code reads as a pattern
+- **permissions:** Always allow on a file saves a rule that names it from the root
+- **app:** a review's Preview hears selections through one page listener, held weakly (#945)
+- **app:** a project's Threads page lets the room you left go (#945)
+- **app:** a review's marked text is let go of a frame after you go to another conversation (#945)
+- **app:** the Hosts panel stops listening and ticking once it's off the page, seen or not (#945)
+- **integration:** onMachines reports the test's own failure, and teardown ends what it started first
+
 ## 1.44.2 (2026-11-08)
 
 ### Fixes
