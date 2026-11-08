@@ -1,6 +1,6 @@
 // #416, #794: the permissions panel’s note for an Antigravity agent says what decides what it may do. In Auto that’s
 // its Tools, since Auto runs what they allow with no card; in Ask me and Accept edits, its mode. Before, it said only
-// that its mode decides, beside the Auto text saying its Tools do (the integrator’s read of #1018 at 7d696e87).
+// that its mode decides, beside the Auto text saying its Tools do.
 
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';

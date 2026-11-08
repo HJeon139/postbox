@@ -138,7 +138,7 @@ async function runDeliverTurn(permissionMode, opts = {}, personaExtra = {}) {
   return seen[0];
 }
 
-// The integrator’s read of #1018 at 7d696e87: these two variables carry the persona’s tools and “Can publish” to the
+// #416: these two variables carry the persona’s tools and “Can publish” to the
 // hook (agy-auto.mjs’s personaOf), and only tests that set them by hand covered them.
 test('#416 the adapter hands the hook the persona’s tools and whether it may publish', async () => {
   const may = await runDeliverTurn('auto', { version: '1.4.7' }, { tools: ['shell', 'web.fetch'], canPublish: true });
