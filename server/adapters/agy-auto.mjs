@@ -13,7 +13,8 @@
 // 8 November 2026): with shell any command, with web.fetch any search or fetch, and any MCP tool outside Postbox that
 // doesn’t publish. So these rules matter for a persona without shell or web.fetch; with them, Auto works like Run
 // everything for those tools, and nothing judges the call. A tool on Postbox’s publishing list is refused in Ask me,
-// Accept edits and Auto for a persona that can’t publish (publishingCall); Run everything runs no hook. What’s left goes on to Postbox’s permission_prompt, as a card.
+// Accept edits and Auto for a persona that can’t publish (publishingCall); Run everything runs no hook. What’s left
+// goes on to Postbox’s permission_prompt, as a card.
 // Nothing routine runs code the agent could have written (#423’s review): npm test and npm run run the folder’s
 // scripts, and git commit its hooks, so they ask. git runs only where the folder’s .git is a real folder, which edits
 // in Auto can’t change without a card (agy-hook.mjs), so its config can’t name a program git would run (core.fsmonitor,
