@@ -43,3 +43,27 @@ test('saving an agent’s sheet with a relative folder answers 422 with the full
   assert.equal(r.json.error, RELATIVE);
   assert.equal(app.store.state.personas[made.json.id].folder, '/srv/keeper');
 });
+
+test('the permissions panel and `!` for an agent with a stored relative folder answer 409 with where to change it', async () => {
+  const cookie = await pageCookie();
+  const made = await call({ method: 'POST', path: '/api/personas', body: { handle: 'stale', folder: '/srv/stale' }, cookie });
+  assert.equal(made.status, 201, made.text);
+  // Stored before #990 checked it.
+  app.store.emit('persona', { ...app.store.state.personas[made.json.id], folder: 'server' });
+  const projectId = Object.keys(app.store.state.projects)[0];
+  const t = app.rt.createThread({ projectId, title: 'T', personaIds: [made.json.id] });
+  const refused =
+    'Postbox couldn’t open the folder "server" for @stale: Write the folder’s full path, starting with /. Postbox doesn’t guess where a relative one is. Change it in @stale’s sheet, under Folder, or leave it empty to work in the project’s root folder.';
+  for (const ask of [
+    () => call({ path: `/api/permissions?personaId=${made.json.id}`, cookie }),
+    () => call({ method: 'POST', path: `/api/threads/${t.id}/shell`, body: { command: 'ls' }, cookie }),
+  ]) {
+    const r = await ask();
+    assert.equal(r.status, 409, r.text);
+    assert.equal(r.json.error, refused);
+  }
+  assert.deepEqual(
+    app.store.items(t.id).filter((i) => i.kind === 'command'),
+    [],
+  );
+});

@@ -120,7 +120,7 @@ test('an agent stored with a relative folder before #990 is refused at its turn,
       (e) => {
         assert.equal(
           e.message,
-          `Postbox didn’t open the folder ${JSON.stringify(folder)} for @alpha: ${RELATIVE} Change it in @alpha’s sheet, under Folder (“Where it works”), or leave it empty to work in the project’s root folder.`,
+          `Postbox couldn’t open the folder ${JSON.stringify(folder)} for @alpha: ${RELATIVE} Change it in @alpha’s sheet, under Folder, or leave it empty to work in the project’s root folder.`,
         );
         return true;
       },
@@ -150,7 +150,7 @@ test('a stored folder’s refusal shows its hidden and control characters as esc
     await assert.rejects(
       () => agentFolder({ handle: 'alpha', folder }, null, workRoot),
       (e) => {
-        assert.ok(e.message.startsWith(`Postbox didn’t open the folder ${shown} for @alpha: ${why} Change it`), e.message);
+        assert.ok(e.message.startsWith(`Postbox couldn’t open the folder ${shown} for @alpha: ${why} Change it`), e.message);
         for (const c of ['\u0000', '\u0085', '\u202e']) assert.equal(e.message.includes(c), false, `${JSON.stringify(c)} in the message`);
         return true;
       },
@@ -172,6 +172,6 @@ test('an agent stored with a full-path folder, or none, still works where it did
 test('an adapter’s folder for an agent refuses a stored relative folder', async () => {
   const workRoot = join(tempDir('pb-persona-folder-'), 'workspaces');
   const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot });
-  await assert.rejects(() => adapter.folderFor({ handle: 'alpha', folder: 'server' }, null), /Postbox didn’t open the folder "server" for @alpha/);
+  await assert.rejects(() => adapter.folderFor({ handle: 'alpha', folder: 'server' }, null), /Postbox couldn’t open the folder "server" for @alpha/);
   assert.equal(existsSync(workRoot), false);
 });
