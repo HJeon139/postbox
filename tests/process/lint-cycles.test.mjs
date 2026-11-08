@@ -5,18 +5,17 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { copyFileSync, cpSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { tempDir } from '../temp-dirs.mjs';
 
 const biome = fileURLToPath(new URL('../../node_modules/@biomejs/biome/bin/biome', import.meta.url));
-const home = mkdtempSync(join(tmpdir(), 'pb-test-lint-cycles-'));
+const home = tempDir('pb-test-lint-cycles-');
 copyFileSync(fileURLToPath(new URL('../../biome.json', import.meta.url)), join(home, 'biome.json'));
 // Its Grit plugins, which biome.json names by path.
 cpSync(fileURLToPath(new URL('../../tools/biome', import.meta.url)), join(home, 'tools', 'biome'), { recursive: true });
-after(() => rmSync(home, { recursive: true, force: true }));
 
 /** Writes each file, then Biome’s lint of them: its exit code and what it printed. @param {Record<string, string>} files */
 function lint(files) {

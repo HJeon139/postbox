@@ -5,11 +5,11 @@
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { tempDir } from '../temp-dirs.mjs';
 import { childrenOf, chromiumMissing, running } from './chrome.mjs';
 
 const skip = await chromiumMissing();
@@ -19,12 +19,8 @@ const START_MS = 60_000;
 const EXIT_MS = 20_000;
 /** Every process a test saw, to stop any a failing test left. @type {number[]} */
 const seen = [];
-/** @type {string[]} */
-const folders = [];
-
 after(() => {
   for (const pid of seen.filter(running)) process.kill(pid, 'SIGKILL');
-  for (const f of folders) rmSync(f, { recursive: true, force: true });
 });
 
 /** A process and every process under it, as they run now. @param {number} pid */
@@ -46,8 +42,7 @@ async function until(check, ms) {
 
 /** Starts a bench that measures one small room for longer than the test waits. */
 function bench() {
-  const tmp = mkdtempSync(join(tmpdir(), 'pb-bench-signal-'));
-  folders.push(tmp);
+  const tmp = tempDir('pb-bench-signal-');
   const args = ['tools/bench-key-frame.mjs', '--sizes', '200', '--keys', '2000', '--warmup', '1', '--runs', '1', '--out', join(tmp, 'report.md')];
   const child = spawn(process.execPath, args, { cwd: ROOT, env: { ...process.env, TMPDIR: tmp }, stdio: ['ignore', 'pipe', 'pipe'] });
   seen.push(/** @type {number} */ (child.pid));

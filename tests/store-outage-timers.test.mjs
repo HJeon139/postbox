@@ -6,12 +6,11 @@
 // settled while closed makes no summarizer call. A real Postbox (start({ listen: false })) on a data folder.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { deletePersona, purgePersona } from '../server/persona-delete.mjs';
 import { settleThread } from '../server/thread-summary.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
@@ -29,7 +28,7 @@ let app;
 let dir;
 let rt;
 before(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'pb-outage-timers-'));
+  dir = tempDir('pb-outage-timers-');
   app = await start({ port: PORT, dataDir: dir, fresh: true, demo: false, quiet: true, claudeHome: dir, listen: false, hosts: null });
   rt = app.rt;
   rt.store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
@@ -37,7 +36,6 @@ before(async () => {
 });
 after(async () => {
   await app.close();
-  await rm(dir, { recursive: true, force: true });
 });
 
 // A spec that fails may leave writes closed: the next one starts open, so each fails for its own reason.

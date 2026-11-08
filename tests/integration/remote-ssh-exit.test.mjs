@@ -4,12 +4,12 @@
 // stand-in ssh (tests/fixtures/remote/ssh-with-proxy.mjs) and its proxy.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createSshConnection } from '../../server/remote/ssh.mjs';
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
+import { tempDir } from '../temp-dirs.mjs';
 import { orAfter } from './host.mjs';
 import { VERSION } from './remote-lifecycle-fixtures.mjs';
 
@@ -24,7 +24,7 @@ const alive = (pid) => {
 };
 
 test('#120 a killed ssh ends its connection at once, and the ProxyCommand it started goes with it', async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'pb-ssh-exit-'));
+  const dir = tempDir('pb-ssh-exit-');
   const pids = join(dir, 'pids.json');
   const program = join(dir, 'ssh');
   writeFileSync(program, `#!/bin/sh\nexec '${process.execPath}' '${STANDIN}' "$@"\n`, { mode: 0o755 });
@@ -47,6 +47,5 @@ test('#120 a killed ssh ends its connection at once, and the ProxyCommand it sta
   } finally {
     for (const pid of [p.ssh, p.proxy]) if (pid && alive(pid)) process.kill(pid, 'SIGKILL');
     delete process.env.PB_SSH_PIDS;
-    rmSync(dir, { recursive: true, force: true });
   }
 });

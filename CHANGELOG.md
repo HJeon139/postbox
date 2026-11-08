@@ -2,6 +2,23 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.40.0 (2026-11-08)
+
+### Features
+
+- **skills:** the visual-explainer draws one step's cause close up (VE9)
+- **skills:** the visual-explainer's first state shows the idea (VE13)
+- **app:** search the conversation from the top bar's button, and jump to a hit (#866)
+
+### Fixes
+
+- **app:** the top bar clips its overflow, so it never widens a phone's page (#866)
+- **skills:** the visual-explainer sizes from a frame that can start 0 wide
+- **thread:** a box that changed size and clamped the view to its end doesn't start following
+- **app:** holders of drawn elements hold them weakly, so leaving a room lets its page go (#866)
+- **check:** fail the gate on what test and test:integration leave in its temp folder
+- **agents:** the quick panel repaints for its session, persona and a reload, not each item
+
 ## 1.39.3 (2026-11-07)
 
 ### Fixes

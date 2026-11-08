@@ -17,7 +17,7 @@ import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typed
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { retireApp } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
-import { appCheck, appEvent, appFile, appQuery, appState, hostTool, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
+import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, hostTool, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
@@ -999,10 +999,10 @@ export class Runtime {
       this.takePending(se, turn, 'wakes');
       return;
     }
-    // An app-check turn that ended without a new version: show the app with a note instead of waiting forever.
+    // An app-check turn that ended without a new version: show the app with a note, or crashed (#964), not wait forever.
     if (turn.kind === 'app-check') {
       for (const app of Object.values(this.store.pending.apps()))
-        if (app.sessionId === se.id && app.check.status === 'fixing') this.store.emit('app', { ...app, check: { ...app.check, status: 'note' } });
+        if (app.sessionId === se.id && app.check.status === 'fixing') this.store.emit('app', { ...app, check: { ...app.check, status: fixEnded(app) } });
     }
     // Only this turn’s asking blocks make the agent need you. Older ones you left open stay open, and the
     // client shows them quietly (“1 open review”), so moving on clears needs-you (#69). A turn you didn’t start
