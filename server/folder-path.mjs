@@ -28,6 +28,13 @@ const hasOddPart = (path) =>
     .some((part) => part === '' || part === '.' || part === '..');
 
 /**
+ * A 422 refusing a folder, with `why`, what’s wrong with it and nothing the person should do, kept apart for a message
+ * about a folder the person didn’t write (sessionFolder).
+ * @param {string} message @param {string} why
+ */
+const refused = (message, why) => Object.assign(httpError(422, message), { why });
+
+/**
  * A project’s folder as the person wrote it: a full path, as text, of at most MAX_FOLDER characters, with no control
  * or hidden character and no empty, `.` or `..` part, so no `//`; `/` itself is taken. One `/` at its end, which a
  * shell’s tab completion adds, is dropped. It bounds the file picker and is where the project’s agents start, so
@@ -36,19 +43,34 @@ const hasOddPart = (path) =>
  * @returns {string}
  */
 export function fullPath(folder, whose = 'A project’s') {
-  if (folder === undefined || folder === null || (typeof folder === 'string' && !folder.trim())) throw httpError(422, 'Write the folder’s full path.');
-  if (typeof folder !== 'string') throw httpError(422, `${whose} folder is its full path, as text. Write the folder’s full path.`);
-  if (folder.length > MAX_FOLDER) throw httpError(422, `A folder’s path is at most ${MAX_FOLDER} characters. Pick a folder with a shorter path.`);
-  if (CONTROL.test(folder)) throw httpError(422, 'A folder’s path can’t contain control characters, such as a new line. Write the folder’s full path.');
-  if (hidden(folder))
-    throw httpError(
-      422,
-      'A folder’s path can’t contain invisible characters, such as a zero-width space or a bidi control, or a lone surrogate. Write the folder’s full path.',
+  if (folder === undefined || folder === null || (typeof folder === 'string' && !folder.trim()))
+    throw refused('Write the folder’s full path.', 'Its path is blank.');
+  if (typeof folder !== 'string') {
+    const why = `${whose} folder is its full path, as text.`;
+    throw refused(`${why} Write the folder’s full path.`, why);
+  }
+  if (folder.length > MAX_FOLDER) {
+    const why = `A folder’s path is at most ${MAX_FOLDER} characters.`;
+    throw refused(`${why} Pick a folder with a shorter path.`, why);
+  }
+  if (CONTROL.test(folder)) {
+    const why = 'A folder’s path can’t contain control characters, such as a new line.';
+    throw refused(`${why} Write the folder’s full path.`, why);
+  }
+  if (hidden(folder)) {
+    const why = 'A folder’s path can’t contain invisible characters, such as a zero-width space or a bidi control, or a lone surrogate.';
+    throw refused(`${why} Write the folder’s full path.`, why);
+  }
+  if (!isAbsolute(folder))
+    throw refused(
+      'Write the folder’s full path, starting with /. Postbox doesn’t guess where a relative one is.',
+      'It isn’t a full path, starting with /, and Postbox doesn’t guess where a relative one is.',
     );
-  if (!isAbsolute(folder)) throw httpError(422, 'Write the folder’s full path, starting with /. Postbox doesn’t guess where a relative one is.');
   const path = folder !== '/' && folder.endsWith('/') && !folder.endsWith('//') ? folder.slice(0, -1) : folder;
-  if (hasOddPart(path))
-    throw httpError(422, 'A folder’s path can’t have an empty, . or .. part, such as //, /./ or /../. Write the folder’s full path without them.');
+  if (hasOddPart(path)) {
+    const why = 'A folder’s path can’t have an empty, . or .. part, such as //, /./ or /../.';
+    throw refused(`${why} Write the folder’s full path without them.`, why);
+  }
   return path;
 }
 
@@ -95,6 +117,21 @@ function shownFolder(folder) {
   };
   const shown = String(JSON.stringify(folder)).replace(CONTROL_ALL, asEscape).replace(INVISIBLE, asEscape);
   return shown.length > SHOWN ? `${shown.slice(0, SHOWN)}…` : shown;
+}
+
+/**
+ * The folder an attached Claude Code session ran in, from its transcript, as its agent’s folder
+ * (Runtime.attachClaudeSession), checked as an agent’s is (#990). The person wrote none of it, so one refused names
+ * where the session ran and says what to do instead, rather than asking them to write a folder.
+ * @param {unknown} cwd @returns {string}
+ */
+export function sessionFolder(cwd) {
+  try {
+    return agentFolderPath(cwd);
+  } catch (e) {
+    const message = `This Claude Code session ran in ${shownFolder(cwd)}, which Postbox can’t use as an agent’s folder: ${e.why} Start the session from a different folder, or attach a different one.`;
+    throw Object.assign(httpError(422, message), { cause: e });
+  }
 }
 
 /**

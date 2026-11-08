@@ -235,3 +235,45 @@ test('an adapter’s folder for an agent refuses a stored relative folder', asyn
   );
   assert.equal(existsSync(workRoot), false);
 });
+
+test('attaching a Claude Code session that ran in a folder the check refuses says so, naming the folder, and makes no agent', async () => {
+  // The folder comes from the session’s transcript, not from anything the person wrote, so the message can’t ask them
+  // to write it: it names where the session ran and what to do instead.
+  const attached = (shown, why) =>
+    `This Claude Code session ran in ${shown}, which Postbox can’t use as an agent’s folder: ${why} Start the session from a different folder, or attach a different one.`;
+  for (const [cwd, shown, why] of [
+    ['work/site', '"work/site"', 'It isn’t a full path, starting with /, and Postbox doesn’t guess where a relative one is.'],
+    [
+      '/work/a\u202eb',
+      '"/work/a\\u202eb"',
+      'A folder’s path can’t contain invisible characters, such as a zero-width space or a bidi control, or a lone surrogate.',
+    ],
+    ['/work/a\u0000b', '"/work/a\\u0000b"', 'A folder’s path can’t contain control characters, such as a new line.'],
+    ['/work//site', '"/work//site"', 'A folder’s path can’t have an empty, . or .. part, such as //, /./ or /../.'],
+    [`/${'a'.repeat(4096)}`, `"/${'a'.repeat(198)}…`, 'A folder’s path is at most 4096 characters.'],
+    [42, '42', 'An agent’s folder is its full path, as text.'],
+    ['  ', '"  "', 'Its path is blank.'],
+  ]) {
+    const root = tempDir('pb-persona-folder-cc-');
+    const id = '11111111-2222-3333-4444-555555555555';
+    mkdirSync(join(root, '-work-site'));
+    const typed = { type: 'user', turnOrigin: 'human', cwd, message: { role: 'user', content: 'Fix the header' } };
+    await writeFile(join(root, '-work-site', `${id}.jsonl`), `${JSON.stringify(typed)}\n`);
+    const store = new Store(null);
+    const adapters = new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot: join(root, 'workspaces') }));
+    const config = { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0, claudeProjectsRoot: root };
+    const rt = new Runtime({ store, adapters, corpus: { search: () => [], stats: () => ({}) }, config });
+    store.emit('project', { id: 'p1', name: 'P', folder: '/work' });
+    await assert.rejects(
+      () => rt.attachClaudeSession({ claudeSessionId: id, projectId: 'p1' }),
+      (e) => {
+        assert.equal(e.status, 422, JSON.stringify(cwd));
+        assert.equal(e.message, attached(shown, why), JSON.stringify(cwd));
+        return true;
+      },
+    );
+    assert.deepEqual(Object.keys(store.state.personas), [], JSON.stringify(cwd));
+    assert.deepEqual(Object.keys(store.state.threads), [], JSON.stringify(cwd));
+    rt.stopMirrors();
+  }
+});

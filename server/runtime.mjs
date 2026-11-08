@@ -29,7 +29,7 @@ import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessag
 import { addDataset, reloadDatasets } from './datasets.mjs';
 import { DELETE_UNDO_MS } from './delete-undo.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
-import { agentFolderPath, checkedSnapshot, folderOrNone } from './folder-path.mjs';
+import { agentFolderPath, checkedSnapshot, folderOrNone, sessionFolder } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { hostTool } from './host-tool.mjs';
@@ -2201,6 +2201,7 @@ export class Runtime {
     const cs = (await listClaudeSessions({ root: this.config.claudeProjectsRoot, limit: 500 })).find((x) => x.id === claudeSessionId);
     if (!cs) throw httpError(404, 'That Claude Code session wasn’t found. It may have been deleted.');
     if (!cs.cwd) throw httpError(422, 'That session doesn’t say which folder it ran in, so Postbox can’t resume it.');
+    const folder = sessionFolder(cs.cwd);
     if (Object.values(this.s.sessions).some((se) => se.backendState?.claudeSessionId === claudeSessionId && !se.deleting))
       throw httpError(409, 'That session is already attached.');
     if (!this.s.projects[projectId]) throw httpError(404, 'That project doesn’t exist.');
@@ -2216,7 +2217,7 @@ export class Runtime {
       handle: name,
       backend: 'claude-code',
       description: `Attached from Claude Code in ${cs.cwd}`,
-      folder: cs.cwd,
+      folder,
     });
     const t = this.createThread({ projectId, title: cs.title, personaIds: [p.id] });
     const se = this.sessionsIn(t.id)[0];
