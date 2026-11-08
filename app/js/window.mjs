@@ -21,12 +21,15 @@ const FLAG = 'pb-window';
 // measurements replace them.
 const SEEDS = { user: 48, agent: 96, sys: 28 };
 
-/** Whether the window is on in this browser. */
+/**
+ * Whether the window is on in this browser: by default, the person’s choice of 8 Nov (#866). The flag set to 'off'
+ * mounts every item, as before; a conversation at or under the ceiling mounts whole either way (createWindow).
+ */
 export function windowOn() {
   try {
-    return localStorage.getItem(FLAG) === 'on';
+    return localStorage.getItem(FLAG) !== 'off';
   } catch {
-    return false;
+    return true;
   }
 }
 
