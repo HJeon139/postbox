@@ -59,9 +59,13 @@
         classCollisions(innerWidth),
         ghostChoices(),
         cutOff(innerWidth),
+        lowContrast(innerWidth),
+        // Text under 12 px holds a version back at 1000 × 680, the size the critique reads at (check-view’s frame); at
+        // 375 px it’s a warning, and at 1280 px it’s no smaller than at 1000.
+        innerWidth < 1000 ? smallText(innerWidth, `text-too-small-${innerWidth}`) : [],
       ]),
     )
-    .then(([overlaps, overflows, hiddenControls, collisions, ghosts, cut]) => {
+    .then(([overlaps, overflows, hiddenControls, collisions, ghosts, cut, contrast, small]) => {
       const problems = [];
       const w = innerWidth;
       const sw = document.documentElement.scrollWidth;
@@ -96,12 +100,12 @@
         if (+el.getAttribute('tabindex') > 0)
           problems.push({ code: 'tab-order', message: 'An element sets a positive tabindex, which breaks keyboard order.' });
       });
-      problems.push(...lowContrast(), ...legibility(w), ...overflows, ...overlaps, ...cut, ...hiddenControls, ...collisions, ...ghosts);
+      problems.push(...contrast, ...legibility(w), ...small, ...overflows, ...overlaps, ...cut, ...hiddenControls, ...collisions, ...ghosts);
       for (const e of errors) problems.push({ code: 'script-error', message: e });
       post({ type: 'check', width: w, problems });
     });
-  // Legibility: SVG marks, labels and dash patterns too small to read at this width, and an app that shows only an
-  // error. These are warnings: the app is still shown, and the agent is told.
+  // Legibility: SVG marks and dash patterns too small to see at this width, and an app that shows only an error. These
+  // are warnings: the app is still shown, and the agent is told.
   function legibility(w) {
     const out = [];
     const shown = (el) => {
@@ -152,9 +156,6 @@
         code: 'dashes-too-fine',
         message: `At ${w} px, ${dashed} dashed ${dashed === 1 ? 'line has' : 'lines have'} dashes, gaps or strokes of ${px(finest)} px, too fine to tell from a solid line. Use dashes of at least 4 px, gaps of 3 px and lines 1 px wide, or tell the series apart by color and a label.`,
       });
-    // Text under 12 px holds a version back at 1000 × 680, the size the critique reads at (check-view’s frame); at 375 px
-    // it’s a warning, and at 1280 px it’s no smaller than at 1000.
-    if (w < 1000) out.push(...smallText(w, `text-too-small-${w}`));
     // An app that shows only an error or a missing-data message hasn’t worked, even if nothing else is wrong.
     // app/kit/drawn.js decides, for a script error once the app is shown too (#964).
     const { content, said } = window.__pbDrawn.look();

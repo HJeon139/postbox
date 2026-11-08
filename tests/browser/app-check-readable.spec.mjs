@@ -5,6 +5,7 @@
 // pass. Every app goes up in one conversation, which a page opened before the tests checks; each test reads what the
 // check found, and what the agent was sent.
 
+import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
@@ -158,4 +159,30 @@ test('#997 a figure below the first view at 1000 × 680 is held back, naming it'
 
 test('#997 a title and a figure on screen at once, with labels at 12 px or more beside their marks, pass', () => {
   expect(check('good').status, says('good')).toBe('passed');
+});
+
+test('#997 a contrast or text-size measure that throws says so as a check-error, rather than leaving the frame unanswered', async ({ page }) => {
+  const kit = (name) => readFile(new URL(`../../app/kit/${name}`, import.meta.url), 'utf8');
+  await page.setContent('<svg width="200" height="40"><text x="4" y="20" font-size="14">Peak demand</text></svg><p>Plain text</p>');
+  await page.evaluate(() => {
+    // The kit hands the check its color reader; here it throws, as a bug in it would.
+    /** @type {any} */ (window).__pbCheck = {
+      rgb: () => {
+        throw new Error('no colors');
+      },
+      lum: () => 0,
+    };
+    SVGGraphicsElement.prototype.getScreenCTM = () => {
+      throw new Error('no matrix');
+    };
+  });
+  for (const name of ['check-layout.js', 'check-text.js']) await page.addScriptTag({ content: await kit(name) });
+  const found = await page.evaluate(async () => {
+    const c = /** @type {any} */ (window).__pbCheck;
+    return [...(await c.lowContrast(1000)), ...(await c.smallText(1000))];
+  });
+  expect(found).toEqual([
+    { code: 'check-error', message: expect.stringMatching(/^At 1000 px, Postbox couldn’t check for contrast: no (colors|matrix)$/) },
+    { code: 'check-error', message: 'At 1000 px, Postbox couldn’t check for text-too-small: no matrix' },
+  ]);
 });

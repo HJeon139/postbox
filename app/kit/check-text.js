@@ -230,5 +230,10 @@
     return out;
   }
 
-  Object.assign(window.__pbCheck, { lowContrast, smallText, cutOff: guard('text-cut-off', cutOff) });
+  // Each check that throws loses only its own problems, and says so as a check-error (check-layout.js, guard).
+  Object.assign(window.__pbCheck, {
+    lowContrast: guard('contrast', lowContrast),
+    smallText: (w, code = 'text-too-small') => guard(code, (x) => smallText(x, code))(w),
+    cutOff: guard('text-cut-off', cutOff),
+  });
 }
