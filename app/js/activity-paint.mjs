@@ -49,6 +49,9 @@ function foldedList(summary, steps) {
     summary,
     text,
   );
+  // A click or key on the summary builds before the browser opens the list, so no frame shows the text open. Find opens
+  // it with no click, and its toggle builds then.
+  summary.addEventListener('click', () => buildSteps(list));
   stepsOf.set(list, steps);
   return list;
 }
