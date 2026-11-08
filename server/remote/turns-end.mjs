@@ -3,7 +3,7 @@
 // sees.
 
 import { needHost, releaseHost } from './turns-need.mjs';
-import { endCard, openCards } from './turns-prompts.mjs';
+import { endOrphanCards } from './turns-prompts.mjs';
 import { caughtUp } from './turns-replay.mjs';
 import { whenBack } from './turns-resume.mjs';
 import { mayBeOnHost, ON_HOST, remoteError, unconfirmed, updateRemote } from './turns-shared.mjs';
@@ -28,7 +28,7 @@ export function ended(rts, turn, err) {
   // Postbox is shutting down: the turn goes on on the host, and is attached again after the restart.
   if (rt.closing || !se?.remoteTurn || se.remoteTurn.rtTurn !== turn.id) return err;
   // Its cards nobody waits on (shown before a restart, not sent again) can’t be answered now.
-  for (const t of live.hostTurns) for (const card of openCards(rts, t)) if (!rt.permissionWaits.has(card.it.id)) endCard(rts, card, 'expired', '', rts.now());
+  endOrphanCards(rts, live.hostTurns);
   if (live.hung) return err;
   return endedHow(rts, live, se, err);
 }
@@ -97,6 +97,9 @@ export function stopped(rts, turn, { by, why } = {}) {
       mayBeOnHost(live) &&
       askStop(rts, se.id, live.hostId, live.current, { send: false, unconfirmed: unconfirmed(live), byPerson: by === 'you' }),
   );
+  // Its cards nobody waits on can’t be answered now (#800). A shutdown keeps them: the turn goes on on the host and is
+  // attached again after the restart.
+  if (by !== 'shutdown') endOrphanCards(rts, live.hostTurns);
   // Its process ends through the adapter (its child hears `ended`), but the turn is over here: what comes for it now
   // is refused, as a stopped turn’s calls are on the laptop (#126).
   forget(rts, live);
