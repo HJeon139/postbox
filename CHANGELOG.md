@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.41.2 (2026-11-08)
+
+### Fixes
+
+- **apps:** a retired app's item keeps to the message column
+
 ## 1.41.1 (2026-11-08)
 
 ### Fixes
