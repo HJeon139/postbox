@@ -1,6 +1,6 @@
 // #324: Always allow on a Codex command card offers a rule only for a short list of programs that read and print.
-// critic’s integrator pass on 125a92b0 found that a list of programs to refuse kept missing some. Each prefix refused
-// below was offered on 125a92b0, and each runs a program, or can, outside the sandbox.
+// A list of programs to refuse kept missing some, so the list is of programs to allow. Each prefix refused below was
+// offered by a refuse-list, and each runs a program, or can, outside the sandbox.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';

@@ -264,7 +264,7 @@ test('#324 a file-change request is offered nothing, even with a proposal on it'
   assert.equal(asked[0].suppressAlways, true);
 });
 
-// The integrator’s read of 6c2968f1: the card shows each line as “Always allow <code>rule</code>” and then the text past
+// The card shows each line as “Always allow <code>rule</code>” and then the text past
 // `Always allow ${rule}` (app/js/permission-cards.mjs, the card’s Always allow), so a text that doesn’t start that way
 // is garbled on the card: “Always allow `ls`mmands starting with ls…”. Every offer must start with its rule.
 test('#324 every line Codex’s Always allow offers starts with “Always allow <its rule>”, as the card shows it', () => {
