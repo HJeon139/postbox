@@ -7,6 +7,7 @@
       "app/kit/check-controls.js",
       "app/kit/check-layout.js",
       "app/kit/check-text.js",
+      "app/kit/check-view.js",
       "app/kit/check.js",
       "app/kit/kit.js",
       "app/kit/diagram.js",

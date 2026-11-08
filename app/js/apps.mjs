@@ -357,7 +357,7 @@ export function onThemeChange() {
   });
 }
 
-function frame(appId, version, { check = false, width = null, review = false, onPin, onAnchors, onCrash, onError } = {}) {
+function frame(appId, version, { check = false, width = null, height = null, view = false, review = false, onPin, onAnchors, onCrash, onError } = {}) {
   const app = client.state.apps[appId];
   const iframe = h('iframe', {
     class: check ? 'check-frame' : 'app-iframe',
@@ -366,8 +366,8 @@ function frame(appId, version, { check = false, width = null, review = false, on
     referrerpolicy: 'no-referrer',
     'aria-hidden': check ? 'true' : null,
     tabindex: check ? '-1' : null,
-    src: `/sandbox/app/${encodeURIComponent(appId)}/${version}?theme=${theme()}${check ? '&check' : ''}`,
-    style: check ? { width: `${width}px` } : { height: '200px' },
+    src: `/sandbox/app/${encodeURIComponent(appId)}/${version}?theme=${theme()}${check ? '&check' : ''}${view ? '&view' : ''}`,
+    style: check ? { width: `${width}px`, ...(height ? { height: `${height}px` } : {}) } : { height: '200px' },
   });
   // Messages are matched to this record by the frame’s window, so the kit’s first hello is never missed.
   frames.add({ appId, version, iframe, check, review, onPin, onAnchors, onCrash, onError });

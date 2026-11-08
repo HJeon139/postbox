@@ -1,11 +1,11 @@
-// The pre-display check: it runs in the hidden frames at 375 and 1280 px that check an app before you see it,
-// and posts what it finds, which goes to the agent. Postbox inlines it after the kit, and only into a check frame’s
-// page (server/sandbox.mjs); the kit hands it what it shares with the rest of the kit.
+// The pre-display check: it runs in the hidden frames at 375 and 1280 px, and at 1000 × 680, that check an app before
+// you see it, and posts what it finds, which goes to the agent. Postbox inlines it after the kit, and only into a check
+// frame’s page (server/sandbox.mjs); the kit hands it what it shares with the rest of the kit.
 (function () {
-  const { ready, errors, post, textOverflow, textOverlap, controlHidden, classCollisions, ghostChoices, lowContrast, smallText } = window.__pbCheck;
+  const { ready, errors, post, textOverflow, textOverlap, controlHidden, classCollisions, ghostChoices, lowContrast, smallText, firstView } = window.__pbCheck;
   delete window.__pbCheck;
   // ── The pre-display check ─────────────────────────────────────────────────────────────
-  // Run inside hidden frames at 375 and 1280 px before you see the app. Problems go to the agent.
+  // Run inside hidden frames before you see the app. Problems go to the agent.
   // Wait until the layout stops changing (charts and lists render after their data arrives).
   const quiet = () =>
     new Promise((resolve) => {
@@ -25,9 +25,15 @@
         resolve();
       }, 6000);
     });
-  ready
-    .then(() => new Promise((r) => setTimeout(r, 600)))
-    .then(quiet)
+  const settled = ready.then(() => new Promise((r) => setTimeout(r, 600))).then(quiet);
+  // The frame at 1000 × 680, the size a visual is read at, checks what shows before any scrolling (#997); the frames at
+  // 375 and 1280 px check the rest.
+  if (new URLSearchParams(location.search).has('view')) {
+    const scriptErrors = () => errors.map((e) => ({ code: 'script-error', message: e }));
+    settled.then(() => Promise.all([firstView()])).then((found) => post({ type: 'check', width: innerWidth, problems: [...found.flat(), ...scriptErrors()] }));
+    return;
+  }
+  settled
     // Text over text is measured twice, a second apart, and the other layout problems once (check-layout.js, check-controls.js).
     .then(() => Promise.all([textOverlap(innerWidth), textOverflow(innerWidth), controlHidden(innerWidth), classCollisions(innerWidth), ghostChoices()]))
     .then(([overlaps, overflows, hiddenControls, collisions, ghosts]) => {
