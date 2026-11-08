@@ -2,6 +2,117 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.48.0 (2026-11-08)
+
+### Features
+
+- **uat:** seed the big room’s turns and work, and write its snapshot
+- **uat:** gitpush's Auto case is a scenario of its own, gitpush-auto
+- **uat:** the gitpush scenario, many commits and pushes in Ask me and in Auto
+- **uat:** a throwaway git remote for a run, that nothing real can be reached past
+
+### Fixes
+
+- **uat:** gitpush's push pattern keeps its two kinds of option apart
+- **cards:** tell the agent a request the person's stop withdrew wasn't refused (#853)
+- **server:** read a refused folder of an agent on a host as none, here
+- **server:** keep the folder of an agent on a host as written, so its sheet saves
+- **server:** say where an attached Claude Code session ran when its folder is refused
+- **deps:** skip onnxruntime-node's CUDA download in the repository's .npmrc
+- **server:** let a fixed sheet’s folder reach a session that snapshotted a bad one
+- **security:** say in the hooks panel that a running hook's allow skips ask rules
+- **security:** keep the person's hooks in auto, and turn them off only in ask me and accept edits
+- **remote:** a host card that waits on nothing ends when Postbox stops following its turn (#800)
+- **security:** a turn that loaded hooks doesn't switch live into a mode that turns them off
+- **server:** check agents.json whole before seeding any of its agents
+- **server:** refuse a stored bad folder with a 409 everywhere it’s read
+- **server:** check a persona’s folder as a project’s folder is checked
+- **uat:** a git-remote run reads its own git config, and its preflight runs on runEnv
+- **uat:** gitpush's push pattern takes git's own options, and Always allow's own push doesn't count
+- **uat:** GIT_ALLOW_PROTOCOL=file, a preflight before Postbox starts, and the agent's env file
+- **apps:** a review's new body no longer sweeps apps that aren't on the page yet (#930)
+- **uat:** setUpRemote fails closed, and a git-remote run blanks SSH_AUTH_SOCK
+- **apps:** an app review's old bodies leave the near set, so the page stops looking (#930)
+- **apps:** look under the pointer only near an app, and let go of a view’s apps when it goes (#930)
+- **uat:** a session with a card open isn't working, whatever its state says
+- **uat:** gitpush changes one line of notes.md in Accept edits
+- **uat:** gitpush asks for each commit as its own calls too, and gives the twenty pushes 16 steps
+- **uat:** gitpush asks for each push as its own call, and the runner sets the project's repository
+
+## 1.47.0 (2026-11-08)
+
+### Features
+
+- **tools:** signoff-checks fails a head that lacks CodeQL or any required check
+
+### Fixes
+
+- **tools:** signoff-checks errors on empty rules and lets a queued rerun replace a failure
+- **agents:** a mouse press holds the quick panel's repaint without pointer events
+- **tools:** signoff-checks reads CodeQL as pending while any check run still runs
+- **agents:** a press in the quick panel holds its repaint until it ends
+
+## 1.46.0 (2026-11-08)
+
+### Features
+
+- **apps:** hold back a label cut off by its SVG or a box that doesn't scroll
+- **apps:** check the contrast of SVG labels against the shape under them
+- **apps:** hold back text under 12 px at 1000 x 680, naming the smallest labels
+- **apps:** hold back a figure of boxes holding their names, or a box holding a sentence
+- **apps:** hold back a version whose title or figure is below the first view
+- **apps:** name each element the app check reports, by a selector and its text
+
+### Fixes
+
+- **apps:** judge a label only where it shows, and see shapes that ignore the pointer
+- **apps:** boxes in a few sizes are a diagram's, not a chart's bars
+- **apps:** a contrast or text-size measure that throws reports check-error
+- **apps:** an accent strip down a box's edge doesn't make it a frame
+- **apps:** a chart's marks, a label's backing and a legend's frame aren't text in boxes
+- **apps:** judge an SVG label by what's behind most of it, not a hairline through it
+- **kit:** set kbd at 12 px in apps
+- **apps:** leave an SVG label unjudged when the check can't measure what's behind it
+- **kit:** set the kit's labels, table heads and chart text in apps at 12 px
+
+## 1.45.0 (2026-11-08)
+
+### Features
+
+- **uat:** the arena shows a person no repeats, and every intent keeps to 16 words
+- **apps:** an app’s intent is at most 16 words, and a longer one is flagged
+- **uat:** the side-by-side judge compares two pictures, not a picture and words
+- **uat:** a blind page calibrates the side-by-side judge against the maintainer
+- **uat:** a judge compares a run’s first picture with a words-only answer
+- **uat:** the visual judge compares each app’s takeaway with the agent’s intent
+- **apps:** show_app and update_app take the picture’s one-sentence intent
+
+### Fixes
+
+- **uat:** a run with no first picture isn’t saved as one for good
+- **apps:** every way of showing an app flags a long intent once, with its true length
+- **uat:** no repeats in the arena hold across pages, not only within one
+- **uat:** one failed judge call can’t lose the calibration key
+- **uat:** a calibration page’s saved picks belong to that page
+- **apps:** show_block takes an app block’s intent as show_app does
+- **uat:** the calibration page has a content security policy
+- **guide:** corpus.search’s result names author and year again
+- **uat:** each picture judge reads only what it’s shown, from a folder of its own
+- **uat:** a picture judge that throws can’t stop a run before its report
+- **uat:** the picture judges run after the verifier, so they can’t spend its reserve
+- **uat:** the side-by-side judge sees the finished app, not its check at work
+- **uat:** a recheck keeps a run’s picture choice and its pair of answers
+- **uat:** the words answer starts from the run’s first files, not the agent’s
+
+## 1.44.4 (2026-11-08)
+
+### Fixes
+
+- **remote:** give a shim's calls random ids
+- **remote:** refuse a shim's hello that carries no key
+- **remote:** let only the shim that asked a prompt end it
+- **remote:** send a tool call's result only to the shim that made it
+
 ## 1.44.3 (2026-11-08)
 
 ### Fixes

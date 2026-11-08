@@ -9,6 +9,8 @@ import { FIXTURE_PROMPTS } from './fake-daemon.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 
 const notes = (se) => (se.context ?? []).filter((n) => /expired before the person answered/.test(n));
+const withdrawn = (se) =>
+  (se.context ?? []).filter((n) => /was still waiting for the person when they stopped your turn, so it didn’t run\. They didn’t refuse it\./.test(n));
 
 test('#721 a host’s card its host expired, or ended, tells the agent once for each card', async () => {
   const r = rig();
@@ -42,7 +44,7 @@ test('#721 an Allow that reached the host after it stopped waiting expires the c
   assert.equal(notes(r.se()).length, 1, JSON.stringify(r.se().context));
 });
 
-test('#721 a host card with no wait here, left open when the person stops the turn, ends with no expiry note', async () => {
+test('#721 a host card with no wait here, left open when the person stops the turn, ends; #853 the note says the Stop withdrew it', async () => {
   const r = rig();
   const turn = await running(r);
   const a = r.d.prompt(turn);
@@ -54,5 +56,6 @@ test('#721 a host card with no wait here, left open when the person stops the tu
   await settled(r);
   assert.equal(r.store.item(r.t.id, card.id).status, 'expired');
   assert.equal(r.store.item(r.t.id, card.id).stoppedBy, 'you');
-  assert.equal(notes(r.se()).length, 0, JSON.stringify(r.se().context));
+  assert.equal(notes(r.se()).length, 0, 'not told it expired');
+  assert.equal(withdrawn(r.se()).length, 1, JSON.stringify(r.se().context));
 });

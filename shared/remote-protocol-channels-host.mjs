@@ -27,8 +27,10 @@ export const HOST_CHANNELS = {
   /** shim → daemon, over the daemon’s socket. */
   'shim-to-daemon': {
     /**
-     * { token, turn, shim? }: sent first, and again on each reconnect. shim is the shim process’s own random key, the
-     * same on each reconnect, so a prompt’s answer goes only to the shim that asked it (#353).
+     * { token, turn, shim }: sent first, and again on each reconnect. shim is the shim process’s own random key, the
+     * same on each reconnect. The daemon requires it (#908): it decides which connections hear a call’s result and a
+     * prompt’s answer, and which may end a prompt. The schema keeps it optional, so a hello without one gets the
+     * daemon’s readable refusal rather than a parse error.
      */
     hello: (m) =>
       fields(m, 'hello', ['token', 'turn'], ['shim']) ||

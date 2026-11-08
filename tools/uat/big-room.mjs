@@ -8,6 +8,7 @@
 
 import { Store } from '../../server/store.mjs';
 import { buildEvent } from '../../shared/events.mjs';
+import { roomWork } from './big-room-work.mjs';
 
 /** The word only the first day uses. */
 export const FIRST_DAY_WORD = 'zephyrine';
@@ -147,16 +148,23 @@ function addDiagrams(items, n) {
   }
 }
 
+/** The seed of the work’s own random stream, apart from the items’, so the items are the same with work or without. */
+const WORK_SEED = 305;
+
 /**
  * Writes the room’s items into a conversation of a loaded store, as `item.add` events, before Postbox serves it.
  * sessions: each agent’s session in that conversation, so its items are its own and it can revise its review block.
+ * work: each agent reply is the last of a turn of its agent, with the turn’s work entries written before it and its
+ * steps on it (tools/uat/big-room-work.mjs, #305). Off by default, so the scenarios’ and benches’ rooms don’t change.
  * @param {{ emit: (type: string, data: any) => any }} store  @param {string} threadId
- * @param {Parameters<typeof bigRoomItems>[0]} [opts]
+ * @param {Parameters<typeof bigRoomItems>[0] & { work?: boolean }} [opts]
  * @param {Record<string, { sessionId: string, personaId?: string }>} [sessions]
  */
 export function seedBigRoom(store, threadId, opts, sessions = {}) {
   const room = bigRoomItems(opts);
-  for (const item of room.items) {
+  const work = opts?.work ? roomWork(room.items, { threadId, sessions, rnd: random(WORK_SEED + (opts.seed ?? 0)) }) : null;
+  for (const item of work?.items ?? room.items) {
+    for (const [type, data] of work?.before.get(item.id) ?? []) store.emit(type, data);
     const se = item.handle ? sessions[item.handle] : null;
     store.emit('item.add', { threadId, item: se ? { ...item, sessionId: se.sessionId, ...(se.personaId ? { personaId: se.personaId } : {}) } : item });
   }
@@ -173,16 +181,16 @@ function roomSize(count) {
  * Seeds the room into a conversation in a run’s data folder while its Postbox is down, with the agents’ sessions the
  * page made there, and says where its decision is, for the tester (bigroom.md’s phase 2: “the run gives it to you”).
  * @param {string} data  @param {string} threadId  @param {string[]} agents  the scenario’s; the mention is of the first
- * @param {{ count?: number, diagrams?: number }} [opts]  count: how many items, 1,000 unless a measurement asks for more;
- *   diagrams: as bigRoomItems takes it
+ * @param {{ count?: number, diagrams?: number, work?: boolean }} [opts]  count: how many items, 1,000 unless a measurement
+ *   asks for more; diagrams: as bigRoomItems takes it; work: as seedBigRoom takes it
  */
-export async function seedBigRoomData(data, threadId, agents, { count = 1000, diagrams = 0 } = {}) {
+export async function seedBigRoomData(data, threadId, agents, { count = 1000, diagrams = 0, work = false } = {}) {
   const store = await new Store(data).load();
   /** @type {Record<string, { sessionId: string, personaId?: string }>} */
   const sessions = {};
   for (const se of Object.values(store.state.sessions ?? {}))
     if (se?.threadId === threadId && !se.archived && !sessions[se.handle]) sessions[se.handle] = { sessionId: se.id, personaId: se.personaId };
-  const landmarks = seedBigRoom(store, threadId, { count, handles: agents, diagrams }, sessions);
+  const landmarks = seedBigRoom(store, threadId, { count, handles: agents, diagrams, work }, sessions);
   await store.close(); // and release the folder for the Postbox that starts next
   return {
     landmarks,

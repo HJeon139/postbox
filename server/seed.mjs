@@ -7,6 +7,9 @@ import { readFileSync } from 'node:fs';
 import { mkdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { GEMINI_MODEL } from '../shared/agent-facts.mjs';
+import { agentFolderPath } from './folder-path.mjs';
+import { httpError } from './helpers.mjs';
+import { handleOf } from './persona-checks.mjs';
 import { newId } from './store.mjs';
 
 // Read once, when the module loads: freshInstall() is synchronous, and the UAT's checks call it as well as seed().
@@ -169,6 +172,33 @@ export const KNOWN_TOOLS = [
 ];
 
 /**
+ * Refuses agents.json before any of its agents is made, with the reason naming the file and the agent (#990). It checks
+ * only each one’s name, as createPersona reads it, that no two share one, and each one’s folder: an agents.json that fails
+ * one of those seeds none of its agents. Its other fields (backend, permission mode, effort, setup, host) are checked
+ * only by createPersona, agent by agent, so one of those refused can still stop seeding partway, with the agents before
+ * it made. The built-in agents pass.
+ * @param {unknown[]} personas
+ */
+function checkAgents(personas) {
+  const seen = new Set();
+  personas.forEach((p, i) => {
+    let handle;
+    try {
+      handle = handleOf(/** @type {any} */ (p)?.handle);
+    } catch (e) {
+      throw httpError(e.status, `agents.json: agent ${i + 1}: ${e.message}`);
+    }
+    if (seen.has(handle.toLowerCase())) throw httpError(409, `agents.json: agent ${i + 1}: @${handle} is there twice. Give each agent a name of its own.`);
+    seen.add(handle.toLowerCase());
+    try {
+      agentFolderPath(/** @type {any} */ (p).folder);
+    } catch (e) {
+      throw httpError(e.status, `agents.json: @${handle}’s folder: ${e.message}`);
+    }
+  });
+}
+
+/**
  * @param {any} rt
  * @param {{ dataDir: string, booksDir: string, backend?: string, demo?: boolean }} opts  backend: what the seeded agents run on
  */
@@ -189,6 +219,7 @@ export async function seed(rt, { dataDir, booksDir, backend = 'mock', demo = fal
   } catch {
     /* no agents.json: use the defaults */
   }
+  checkAgents(personas);
   // The seeded agents run on a real model when one is available here, and on the mock otherwise.
   for (const p of personas) rt.createPersona({ backend, ...p });
   for (const b of BOILERPLATES) rt.store.emit('boilerplate', b);

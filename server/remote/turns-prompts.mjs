@@ -265,6 +265,21 @@ function cardOf(rts, turn, id) {
   return null;
 }
 
+/**
+ * Postbox no longer follows these host turns (they ended, were stopped, or weren’t attached again after a restart):
+ * each open card with no wait here can’t be answered any more, so it ends, expired, and its agent hears so (#721). A
+ * card with a wait is answered through its wait (#800, #965).
+ * @param {RemoteTurns} rts @param {Iterable<string>} hostTurns
+ */
+export function endOrphanCards(rts, hostTurns) {
+  for (const t of hostTurns) {
+    for (const card of openCards(rts, t)) {
+      if (rts.rt.permissionWaits.has(card.it.id)) continue;
+      endCard(rts, card, 'expired', '', rts.now());
+    }
+  }
+}
+
 /** @param {RemoteTurns} rts @param {string} turn */
 export const openCards = (rts, turn) => permissionCards(rts, turn).filter((c) => c.it.status === 'open');
 

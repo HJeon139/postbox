@@ -4,6 +4,7 @@
 
 import { afterAppChecks, appChecksRunning, installAppChecks, recordAppCheck } from './app-check.mjs';
 import { crashCard, errorStrip } from './app-crash.mjs';
+import { live, nearBodies, relookSoon, setAppFrameTest } from './app-pointer.mjs';
 import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
 import { api, client, placeIn } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
@@ -16,6 +17,8 @@ export { enhanceMarkdown } from './md-enhance.mjs';
 export { renderAppSendCard };
 
 const frames = new Set(); // { appId, version, iframe, check, review, onPin, onAnchors, onCrash, onError }
+const madeFrames = new WeakSet(); // every iframe frame() made, for isAppFrame
+const bodies = new Set(); // every .app-body mountApp made, until releaseApps finds it gone from the page
 const crashes = new Map(); // `${appId}:${v}` → message (a script error after the app was shown)
 const reloaded = new Set(); // `${appId}:${v}` you chose Reload for after its check crashed: run it, don’t show the crash again
 const viewing = new Map(); // appId → an older version you’re looking at, read-only
@@ -163,8 +166,6 @@ const SNAPSHOTS = typeof MessageEvent !== 'undefined' && 'userActivation' in Mes
 const NOT_ACTIVATED = 'Postbox sends an app’s message only right after the person clicks or presses a key in the app.';
 const NOT_ENTERED = 'Postbox refused this app’s message: the app took the keyboard without the person clicking or tabbing into it.';
 
-/** @type {HTMLIFrameElement | null} the app frame under the pointer */
-let live = null;
 /** @type {{ frame: HTMLIFrameElement, at: number } | null} the app frame a Tab key press is moving focus into */
 let tabbing = null;
 /** @type {HTMLIFrameElement | null} the app frame that holds focus, rightfully */
@@ -177,54 +178,8 @@ const STEALS_TO_STOP = 3; // within STEAL_WINDOW_MS
 const STEAL_WINDOW_MS = 10_000;
 const stopped = new Set(); // `${appId}:${v}` stopped for taking focus, until you reload it
 
-const appFrames = () => [...frames].filter((r) => r.iframe.isConnected).map((r) => r.iframe);
-const isAppFrame = (el) => el instanceof HTMLIFrameElement && appFrames().includes(el);
-
-function makeLive(f) {
-  if (f === live) return;
-  const was = live;
-  live = f;
-  f?.classList.add('live');
-  if (was && was !== f) was.classList.remove('live');
-}
-
-/**
- * The app frame at a point of the window, if one is there and nothing of the page covers it. A frame that isn’t
- * live takes no pointer events, so the page finds the element around it (its .app-body) instead.
- * @param {number} x @param {number} y
- */
-function frameAt(x, y) {
-  const el = document.elementFromPoint(x, y);
-  const f = el instanceof HTMLIFrameElement ? el : el?.closest('.app-body')?.querySelector('iframe.app-iframe');
-  if (!(f instanceof HTMLIFrameElement) || !isAppFrame(f)) return null;
-  const r = f.getBoundingClientRect();
-  return x >= r.left && x < r.right && y >= r.top && y < r.bottom ? f : null;
-}
-
-// Where the pointer last was on this page. It stays put while the page moves under it (a reply streaming in,
-// the wheel, a message landing above), so an app that moves under a resting pointer becomes live, and one that
-// moves away stops being live, without the pointer moving (#38). Inside a live frame the page doesn’t see the
-// pointer move, so this is where it went in: close enough, and any move over the page corrects it.
-/** @type {{ x: number, y: number } | null} */
-let pointer = null;
-function onPointer(e) {
-  pointer = { x: e.clientX, y: e.clientY };
-  makeLive(frameAt(e.clientX, e.clientY));
-}
-for (const type of ['pointermove', 'pointerover', 'pointerdown']) addEventListener(type, onPointer, true);
-
-let relook = 0;
-function relookSoon() {
-  if (!pointer || relook) return;
-  relook = requestAnimationFrame(() => {
-    relook = 0;
-    if (pointer) makeLive(frameAt(pointer.x, pointer.y));
-  });
-}
-addEventListener('scroll', relookSoon, { capture: true, passive: true });
-addEventListener('resize', relookSoon);
-// The transcript renders, an item is added, or an app resizes: what’s under the pointer may have changed.
-new MutationObserver(relookSoon).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+const isAppFrame = (el) => el instanceof HTMLIFrameElement && madeFrames.has(el) && el.isConnected;
+setAppFrameTest(isAppFrame);
 
 /** A frame took focus on its own: refused sends, and stopped if it keeps doing it. */
 function steal(f) {
@@ -334,7 +289,7 @@ let resizeTimer = 0;
 addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    for (const rec of frames) sizeFrame(rec);
+    for (const rec of frames) sizeFrame(rec); // sizeFrame skips a check frame itself
   }, 100);
 });
 
@@ -351,7 +306,7 @@ export function onThemeChange() {
   });
 }
 
-function frame(appId, version, { check = false, width = null, review = false, onPin, onAnchors, onCrash, onError } = {}) {
+function frame(appId, version, { check = false, width = null, height = null, view = false, review = false, onPin, onAnchors, onCrash, onError } = {}) {
   const app = client.state.apps[appId];
   const iframe = h('iframe', {
     class: check ? 'check-frame' : 'app-iframe',
@@ -360,11 +315,12 @@ function frame(appId, version, { check = false, width = null, review = false, on
     referrerpolicy: 'no-referrer',
     'aria-hidden': check ? 'true' : null,
     tabindex: check ? '-1' : null,
-    src: `/sandbox/app/${encodeURIComponent(appId)}/${version}?theme=${theme()}${check ? '&check' : ''}`,
-    style: check ? { width: `${width}px` } : { height: '200px' },
+    src: `/sandbox/app/${encodeURIComponent(appId)}/${version}?theme=${theme()}${check ? '&check' : ''}${view ? '&view' : ''}`,
+    style: check ? { width: `${width}px`, ...(height ? { height: `${height}px` } : {}) } : { height: '200px' },
   });
   // Messages are matched to this record by the frame’s window, so the kit’s first hello is never missed.
   frames.add({ appId, version, iframe, check, review, onPin, onAnchors, onCrash, onError });
+  madeFrames.add(iframe);
   return iframe;
 }
 const isOnScreen = (iframe) => {
@@ -422,9 +378,12 @@ const observer = new IntersectionObserver(
       const id = en.target.dataset.appId;
       if (!id) continue;
       if (en.isIntersecting) {
+        nearBodies.add(en.target);
+        relookSoon();
         clearTimeout(en.target._unload);
         if (unloaded.delete(id)) en.target._remount?.();
       } else {
+        nearBodies.delete(en.target);
         // Far off screen for a moment: unload, keeping the same height so nothing jumps.
         clearTimeout(en.target._unload);
         en.target._unload = setTimeout(() => {
@@ -438,6 +397,40 @@ const observer = new IntersectionObserver(
   },
   { rootMargin: '150% 0px 150% 0px' },
 );
+// One for every app body: an app taller than its box makes the box scroll.
+const bodySizes = new ResizeObserver((entries) => {
+  for (const en of entries) keyboardScroll(en.target);
+});
+
+/**
+ * Lets go of the apps of a view that’s gone (#930): a view’s destroy queues it, so it runs once the view’s elements
+ * have left the page. A frame no longer on the page leaves `frames`, and a body no longer on it stops being watched.
+ */
+export function releaseApps() {
+  for (const rec of frames) if (!rec.iframe.isConnected) frames.delete(rec);
+  for (const body of bodies) {
+    if (body.isConnected) continue;
+    bodies.delete(body);
+    observer.unobserve(body);
+    bodySizes.unobserve(body);
+    nearBodies.delete(body);
+  }
+}
+
+/** A new app body, watched for its size, and for nearness unless it’s a review’s. */
+function appBody(appId, review) {
+  const body = h('div.app-body', { dataset: { appId } });
+  bodies.add(body);
+  bodySizes.observe(body);
+  // A review never unloads, so it isn’t watched for nearness: while it’s mounted, its app may be under the pointer.
+  if (review) {
+    // Its old bodies leave the near set in mayBeUnder(), not here: releaseApps() now would run before the transcript
+    // is attached, and let go of apps above it that aren’t on the page yet (the integrator’s read of #993).
+    body.style.maxHeight = 'none';
+    nearBodies.add(body);
+  }
+  return body;
+}
 
 /**
  * Renders an app (current or viewed version) into `container`. Used by transcript items and app reviews.
@@ -453,9 +446,7 @@ export function mountApp(container, appId, { review = false, onPin, onBack } = {
   const key = `${appId}:${v}`;
   const status = old || (reloaded.has(key) && app.check.status === 'crashed') ? 'passed' : app.check.status;
   const owner = client.state.sessions[app.sessionId]?.handle ?? 'the agent';
-  const body = h('div.app-body', { dataset: { appId } });
-  if (review) body.style.maxHeight = 'none';
-  new ResizeObserver(() => keyboardScroll(body)).observe(body);
+  const body = appBody(appId, review);
   const placeholder = (lines, height = 180, extra = null) => h('div.app-placeholder', { style: { height: `${height}px` } }, h('div.inner', lines, extra));
   const crashed = crashes.get(key);
   /** @type {ReturnType<typeof errorStrip> | null} */
@@ -735,5 +726,5 @@ addEventListener('focusin', (e) => {
 });
 
 addEventListener('resize', () => {
-  for (const rec of frames.values()) sizeFrame(rec);
+  for (const rec of frames) sizeFrame(rec); // sizeFrame skips a check frame itself
 });

@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path';
 import { launch, sleep } from '../browser.mjs';
 import { runChecks } from './checks.mjs';
 import { driver } from './driver.mjs';
+import { remoteFacts } from './git-remote.mjs';
 import { readHistory } from './history.mjs';
 import { asPlayed } from './hosts-options.mjs';
 import { readHosts } from './hosts-run.mjs';
@@ -55,6 +56,7 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }
     codexStreams: readStreams(join(dir, 'streams', 'codex')),
     events: readHistory(dir),
     store: readStore(join(dir, 'data')),
+    remote: remoteFacts(dir),
     console: logs,
     apps: {},
     probes: { ...newProbes(), ...(saved.probes ?? {}) },
@@ -62,6 +64,8 @@ export function savedFacts(dir, { state, mainId, saved, logs, hostsRec, record }
     budget: saved.budget ?? null,
     // Where the live run’s time went (tools/uat/timing.mjs): a recheck measures none of its own, so it keeps the run’s.
     timing: record?.timing ?? null,
+    // The live run’s first picture (#995), for the report.
+    ...(record?.firstPicture ? { firstPicture: record.firstPicture } : {}),
     ui: {},
     ...userSetup(join(dir, 'workspace')),
     ...(hostsRec ? { hosts: hostsRec } : {}),

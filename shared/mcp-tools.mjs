@@ -49,12 +49,13 @@ export const TOOL_DEFS = [
   REVIEW_BLOCK_DEF,
   {
     name: 'show_app',
-    description: `Show an app you wrote (HTML with inline script and style, up to ${n('appCode')} characters) in a sandbox with no network. Send its code inline, or as codePath, a file in your folder, which Postbox reads under the same limit; never post to Postbox from a script. files: up to ${n('appFiles')} data files from your folder, [{ name?, path }], up to ${n('appFileBytes')} each; the app reads one as text with await postbox.file(name). Images load from data: URLs, or from <origin>/media/<name> for a file you copy into the folder $POSTBOX_MEDIA names (never into Postbox’s own folder). It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them). One send carries up to ${n('eventBytes')} of JSON; a larger one rejects inside the app, so send ids for many items. Chart colors: ${PALETTES.map((p) => `${p.name} for ${p.for}`).join('; ')}. Returns the saved appId, version and pending browser check; read_message { id: appId } reads the recorded check later.`,
+    description: `Show an app you wrote (HTML with inline script and style, up to ${n('appCode')} characters) in a sandbox with no network. Send its code inline, or as codePath, a file in your folder, which Postbox reads under the same limit; never post to Postbox from a script. files: up to ${n('appFiles')} data files from your folder, [{ name?, path }], up to ${n('appFileBytes')} each; the app reads one as text with await postbox.file(name). Images load from data: URLs, or from <origin>/media/<name> for a file you copy into the folder $POSTBOX_MEDIA names (never into Postbox’s own folder). It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them). One send carries up to ${n('eventBytes')} of JSON; a larger one rejects inside the app, so send ids for many items. Chart colors: ${PALETTES.map((p) => `${p.name} for ${p.for}`).join('; ')}. intent: one sentence of at most ${n('appIntentWords')} words, what the picture should leave the reader with; Postbox keeps it with the version, and a longer one is flagged. Returns the saved appId, version and pending browser check; read_message { id: appId } reads the recorded check later.`,
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string' },
         title: { type: 'string' },
+        intent: { type: 'string', description: `One sentence of at most ${n('appIntentWords')} words: what the picture should leave the reader with.` },
         code: { type: 'string' },
         codePath: { type: 'string', description: 'A file in your folder with the app’s code, in place of code.' },
         files: { type: 'array', items: FILE_SCHEMA, description: 'Data files from your folder that the app reads with postbox.file(name).' },
@@ -71,6 +72,7 @@ export const TOOL_DEFS = [
       type: 'object',
       properties: {
         id: { type: 'string' },
+        intent: { type: 'string', description: 'What this version should leave the reader with, in one sentence; without it, the last one’s.' },
         code: { type: 'string' },
         codePath: { type: 'string', description: 'A file in your folder with the new code, in place of code.' },
         files: { type: 'array', items: FILE_SCHEMA },

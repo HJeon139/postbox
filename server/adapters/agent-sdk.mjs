@@ -12,6 +12,7 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { switchesLive } from '../../shared/hook-modes.mjs';
 import { withAskRules } from '../permission-rules.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, memoryRootFor } from './folder.mjs';
@@ -105,14 +106,14 @@ export function sdkOptions({
  * running query’s setPermissionMode, setModel and applyFlagSettings({ effortLevel }). The SDK documents them for
  * streaming input only, and Postbox sends a turn’s prompt as one string, so each change is tried, and resolves to
  * whether it took effect now; if not, it applies from the next turn, since all three are passed with every turn. A turn
- * started in bypass keeps it (#817): it loaded the person’s hooks, with no canUseTool or ask rules for writes outside.
+ * that loaded the person’s hooks keeps its mode rather than switch into one that turns them off (switchesLive, #806).
  * @param {any} q  the running query  @param {string} [started]  the Postbox mode the turn started in
  */
 export function liveControl(q, started = 'auto') {
   return {
     /** @param {string} mode  one of Postbox’s modes */
     async setPermissionMode(mode) {
-      if ((started === 'bypass' && mode !== 'bypass') || typeof q?.setPermissionMode !== 'function' || !Object.hasOwn(MODES, mode)) return false;
+      if (!switchesLive(started, mode) || typeof q?.setPermissionMode !== 'function' || !Object.hasOwn(MODES, mode)) return false;
       try {
         await q.setPermissionMode(MODES[/** @type {keyof typeof MODES} */ (mode)]);
         return true;

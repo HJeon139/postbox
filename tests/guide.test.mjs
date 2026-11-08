@@ -190,3 +190,10 @@ test('#971 the guide says a choice is a seg or chips with aria-pressed, not btns
   assert.match(g, /Pick one of a few options with a seg or chips \(aria-pressed\), not btns toggling ghost\./);
   assert.match(g, /At most one btn primary; ghost only for a minor action in text; links only for reading\./);
 });
+
+test('#995 the guide gives corpus.search’s whole result, author and year included, as apps filter by them', () => {
+  const line = guideText()
+    .split('\n')
+    .find((l) => l.includes('"corpus.search" with'));
+  assert.match(line ?? '', /returns \[\{ id, book, title, author, year, chapter, text, lexical: \{ score, terms \} \| null, semantic: number \| null \}\]/);
+});
