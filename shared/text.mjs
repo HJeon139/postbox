@@ -4,7 +4,6 @@ import { GLIMPSE_CHARS, GLIMPSE_SOURCE_CHARS } from './limits.mjs';
 import { renderMarkdown, TABLE_SEP } from './markdown.mjs';
 import { stripTags } from './markdown-inline.mjs';
 
-/** Text on one line, cut to n characters with an ellipsis. */
 /** How many words a text has, by the spaces between them. @param {string} s */
 export const wordCount = (s) =>
   String(s ?? '')
@@ -12,6 +11,7 @@ export const wordCount = (s) =>
     .split(/\s+/)
     .filter(Boolean).length;
 
+/** Text on one line, cut to n characters with an ellipsis. */
 export const clip = (s, n = 240) => {
   const t = String(s ?? '')
     .replace(/\s+/g, ' ')

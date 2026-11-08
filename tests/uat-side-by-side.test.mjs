@@ -38,13 +38,12 @@ const drew = [
   add('it_7', 'agent', 9_500, { text: 'About $2,000.' }),
 ];
 
-test('#995 the first exchange is the reply up to the person’s next message, clicks on the agent’s cards included', (t) => {
+test('#995 the first exchange runs up to the person’s next message, clicks on the agent’s cards included', (t) => {
   const dir = runWith(drew);
   t.after(() => rmSync(dir, { recursive: true }));
   const x = firstExchange(join(dir, 'data'));
   assert.equal(x?.question, 'Which should I cancel?');
   assert.deepEqual(x?.visual, { kind: 'app', itemId: 'it_3', inputsBefore: 0 });
-  assert.equal(x?.reply, 'Drawing it.\n\nCancel the gym.');
   assert.equal(x?.nextMessageAt, 9_000);
 });
 

@@ -33,7 +33,6 @@ export function twinPairs(runs, n) {
   return pairs;
 }
 
-/** One side: its picture, and the sentence it was meant to say, introduced for what it is. */
 /**
  * What earlier pages put in front of a person, from the `*-key.json` files in a folder: their runs, those runs’ briefs,
  * and their questions. A key from `judge`, which no person saw, doesn’t count. A key that can’t be read stops the build:
@@ -86,6 +85,7 @@ export function arenaPairs(pairs, shown = new Set()) {
   });
 }
 
+/** One side: its picture, and the sentence it was meant to say, introduced for what it is. */
 const sideHtml = (name, file, side) => {
   const said = side.intent ? `: “${escapeHtml(side.intent)}”` : '.';
   return `<section class="side"><h3>Picture ${name}</h3><img src="${file}" alt="Picture ${name}, as it was on screen"><p class="meant"><span class="dim">${escapeHtml(meantLabel(side))}</span>${said}</p></section>`;

@@ -31,18 +31,16 @@ export function logEvents(data) {
 /**
  * The person’s first message and what answered it, from a run’s Postbox data folder: the first visual after it (an
  * app or image block, or a Mermaid fence in a reply), the item that shows it, and how many times the person spoke or
- * clicked before it (0 is the first reply). `reply` is the agents’ words in the reply the visual is in, or the first
- * when there’s none (#995 compares it with a words-only answer): from that input to the person’s next message, since a
- * click on the agent’s own card is part of getting its answer. `nextMessageAt` is when that message came, or null. `replied` says whether any agent wrote anything,
+ * clicked before it (0 is the first reply). `nextMessageAt` is when the person next wrote after the input the visual
+ * answered, or null: a click on the agent’s own card isn’t a message, since it’s part of getting the answer. `replied` says whether any agent wrote anything,
  * so a run whose agent never answered isn’t read as one that chose words. Null when the log doesn’t hold the person’s
  * first message (a run that never sent one, or a log cut by a snapshot).
  * @param {string} data  the run’s Postbox data folder
- * @returns {{ question: string, visual: { kind: 'app'|'image'|'diagram', itemId: string, inputsBefore: number } | null, reply: string, replied: boolean, nextMessageAt: number|null } | null}
+ * @returns {{ question: string, visual: { kind: 'app'|'image'|'diagram', itemId: string, inputsBefore: number } | null, replied: boolean, nextMessageAt: number|null } | null}
  */
 export function firstExchange(data) {
   const kinds = new Map();
   const text = new Map();
-  const replyOf = new Map(); // agent item id → how many inputs came before it
   let inputs = -1; // the person’s first message makes it 0
   let question = '';
   let visual = null;
@@ -62,7 +60,6 @@ export function firstExchange(data) {
       if (it.kind === 'block' && (it.block?.type === 'app' || it.block?.type === 'image')) saw(it.block.type, it.id);
       if (it.kind !== 'agent') continue;
       text.set(it.id, it.text ?? '');
-      replyOf.set(it.id, inputs);
       if (text.get(it.id).includes('```mermaid')) saw('diagram', it.id);
     } else if (e.type === 'item.text' && inputs >= 0 && kinds.get(e.data.id) === 'agent') {
       // A reply streams in chunks: a diagram counts once its fence has arrived.
@@ -73,11 +70,9 @@ export function firstExchange(data) {
   }
   if (inputs < 0) return null;
   const which = visual?.inputsBefore ?? 0;
-  const [until, nextMessageAt] = messages.find(([n]) => n > which) ?? [Number.POSITIVE_INFINITY, null];
-  const inReply = (id) => replyOf.get(id) >= which && replyOf.get(id) < until;
-  const said = [...text].filter(([id, t]) => inReply(id) && t.trim() !== '').map(([, t]) => t.trim());
+  const nextMessageAt = messages.find(([n]) => n > which)?.[1] ?? null;
   const replied = [...text.values()].some((t) => t.trim() !== '');
-  return { question, visual, reply: said.join('\n\n'), replied, nextMessageAt };
+  return { question, visual, replied, nextMessageAt };
 }
 
 /**
