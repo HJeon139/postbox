@@ -2,6 +2,28 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.40.1 (2026-11-08)
+
+### Fixes
+
+- **apps:** send a script error in the pre-display check back to the agent once
+- **apps:** keep an app that has drawn running after a script error
+- **tests:** a browser spec's Postbox removes its folder when its start or its close fails
+- **tests:** the host UAT and view_app stop tests use tempDir
+- **tests:** the push, runner shot and unhandled rejection process tests use tempDir
+- **tests:** the bench signal and lint process tests use tempDir
+- **tests:** the host integration tests and the host UAT tests use tempDir
+- **tests:** the remote e2e tests and the host manager fixture use tempDir
+- **tests:** the remote attachment and cleanup tests make their folders with tempDir
+- **tests:** the app browser, persona delete and steering tests use tempDir
+- **tests:** the asset tools fixture and wiring tests use tempDir
+- **tests:** the archive, prompt claim and asset privacy tests use tempDir
+- **tests:** the review route, prototype key and runtime route tests use tempDir
+- **tests:** the epoch, server token and served files tests use tempDir
+- **tests:** the wake-owner, persona outage and store gate tests use tempDir
+- **tests:** the store outage tests make their data folders with tempDir
+- **tests:** tempDir removes its folders when the test file's process exits
+
 ## 1.40.0 (2026-11-08)
 
 ### Features
