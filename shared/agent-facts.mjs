@@ -34,7 +34,7 @@ export const PERMISSIONS = [
 ];
 const BACKEND_MODES = /** @type {Record<string, Record<string, string>>} */ ({
   'kiro-cli': {
-    auto: 'Kiro has no safety check, so this is Ask me: it reads in its folders and runs a few read-only commands, such as git status, and refuses the rest.',
+    auto: 'Kiro has no Auto of its own, so Auto runs what the tools you give it allow, with nothing judging the calls: with Shell, any command; with Web, any search or fetch; any MCP tool that doesn’t publish; and edits in its folders, but not in their .kiro or .git. Anything else is refused, since it can’t ask you.',
     ask: 'It reads in its folders and runs a few read-only commands, such as git status, and refuses the rest: it can’t ask you.',
     acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',
   },

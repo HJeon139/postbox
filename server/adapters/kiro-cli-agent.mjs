@@ -48,7 +48,16 @@ export function kiroRules({ persona, folders, resolve = true }) {
     { capability: 'mcp', match: [`${POSTBOX_SERVER}/*`], effect: 'allow' },
   ];
   if (dirs.length) rules.push({ capability: 'fs_read', match: dirs, effect: 'allow' });
-  if (persona?.permissionMode === 'acceptEdits' && dirs.length) rules.push({ capability: 'fs_write', match: dirs, effect: 'allow' });
+  const mode = persona?.permissionMode ?? 'auto';
+  if ((mode === 'acceptEdits' || mode === 'auto') && dirs.length) {
+    rules.push({ capability: 'fs_write', match: dirs, effect: 'allow' });
+    // An edit there could become a command: Kiro starts the MCP servers a .kiro/settings/mcp.json in the working folder
+    // names, and a .git/config can name a program git runs (#136).
+    rules.push({ capability: 'fs_write', match: dirs.flatMap((d) => [`${d}/.kiro`, `${d}/.git`]), effect: 'deny' });
+  }
+  // Auto runs what the persona’s Tools allow, as #416’s option A: Kiro has no Auto of its own, and nothing judges these
+  // calls. The denies below still hold, since Kiro reads deny over allow.
+  if (mode === 'auto') rules.push(...autoAllows(has));
   for (const [id, caps] of Object.entries(KIRO_TOOL_RULES))
     if (!has.has(id)) for (const capability of caps) rules.push({ capability, match: ['*'], effect: 'deny' });
   if (!canPublish) rules.push({ capability: 'mcp', match: KIRO_PUBLISHING, effect: 'deny' });
@@ -61,6 +70,18 @@ export function kiroRules({ persona, folders, resolve = true }) {
   // Kiro still lists the denied server’s tools to the model; it refuses the call.
   if (!usesHostSetup) rules.push({ capability: 'mcp', match: ['*/*'], exclude: [`${POSTBOX_SERVER}/*`], effect: 'deny' });
   return rules;
+}
+
+/**
+ * Auto’s allows (#136): the ticked Tools’ capabilities, and MCP tools, whose publishing and turned-off ones a deny
+ * still refuses. @param {Set<string>} has  the persona’s ticked Tools
+ */
+function autoAllows(has) {
+  const ticked = Object.entries(KIRO_TOOL_RULES).filter(([id]) => has.has(id));
+  return [
+    ...ticked.flatMap(([, caps]) => caps.map((capability) => ({ capability, match: ['*'], effect: 'allow' }))),
+    { capability: 'mcp', match: ['*/*'], effect: 'allow' },
+  ];
 }
 
 // A live turn (kiro-cli 2.33.1) had a command refused as “The user rejected this tool call.”, and the agent told the
