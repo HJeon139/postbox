@@ -42,9 +42,27 @@ async function readingAtTop(page, title) {
   await page.evaluate(() => scrollTo(0, 0));
   await expect.poll(() => page.evaluate(heldAtTop), { message: 'the view to hold at the top for 30 frames', timeout: 15_000 }).toBe(true);
   await still(page);
-  app.rt.addItem(conv.id, { kind: 'agent', sessionId: se.id, personaId: se.personaId, handle: se.handle, text: 'A reply since.', status: 'done' });
-  // With the server's events late and ten of these rooms at once, the reply took over 5 s to reach the page.
-  await expect(page.locator('.jump')).toBeVisible({ timeout: 15_000 });
+  const reply = app.rt.addItem(conv.id, {
+    kind: 'agent',
+    sessionId: se.id,
+    personaId: se.personaId,
+    handle: se.handle,
+    text: 'A reply since.',
+    status: 'done',
+  });
+  // With the server's events late and ten of these rooms at once, the reply took over 5 s to reach the page. In CI's
+  // late shard the pill didn't show in 15 s on every head from d4f3ebdb: the message says whether the reply had come,
+  // and how the view read, so the next run names the cause.
+  const state = () =>
+    page.evaluate((key) => {
+      const t = /** @type {HTMLElement} */ (document.querySelector('#main.transcript'));
+      return { mode: t?.dataset.viewMode, items: t?.children.length, replyHere: !!document.querySelector(`[data-key="${key}"]`), scrollY };
+    }, reply.id);
+  await expect(page.locator('.jump'))
+    .toBeVisible({ timeout: 15_000 })
+    .catch(async (e) => {
+      throw new Error(`${e.message}\nthe page when the check gave up: ${JSON.stringify(await state())}`);
+    });
 }
 
 // How far back scrollY may step as the page settles near the end: a line of text at the usual size. Firefox on a Mac
