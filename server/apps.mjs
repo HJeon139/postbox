@@ -9,6 +9,7 @@ import { notYours } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { httpError } from './helpers.mjs';
+import { hostTool } from './host-tool.mjs';
 import { newId } from './store.mjs';
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
@@ -274,26 +275,4 @@ export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code,
     moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
   }
   return appReceipt(next, `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.`);
-}
-
-/** Host tools that apps (through the bridge) and agents can use, if granted. */
-export function hostTool(rt, tool, args = {}) {
-  switch (tool) {
-    case 'corpus.search': {
-      const q = String(args.query ?? '').slice(0, 200);
-      const mode = ['both', 'lexical', 'semantic'].includes(args.mode) ? args.mode : 'both';
-      // k and books come from an agent or an app: 1 to 50 results, and the first 50 book ids (#351).
-      const k = Math.max(1, Math.min(50, Math.floor(+args.k || 12)));
-      return rt.corpus.search(q, { mode, k, books: Array.isArray(args.books) ? args.books.slice(0, 50) : undefined });
-    }
-    case 'corpus.read':
-      return rt.corpus.read(String(args.id ?? ''));
-    case 'corpus.stats':
-      return rt.corpus.stats();
-    case 'narrate.speak':
-      if (!rt.narrator) throw httpError(503, 'Narration isn’t installed here. Run npm install to add Kokoro, then restart Postbox.');
-      return rt.narrator.speak(args);
-    default:
-      throw httpError(404, `There’s no host tool called “${tool}”.`);
-  }
 }

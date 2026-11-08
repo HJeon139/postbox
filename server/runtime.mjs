@@ -17,7 +17,7 @@ import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typed
 import { agentFile, agentFolders, appFiles } from './agent-files.mjs';
 import { retireApp } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
-import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, hostTool, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
+import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
@@ -29,6 +29,7 @@ import { addDataset, reloadDatasets } from './datasets.mjs';
 import { DELETE_UNDO_MS } from './delete-undo.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
+import { hostTool } from './host-tool.mjs';
 import { clipItem, describeItem, topicRootLine } from './item-lines.mjs';
 import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } from './kept-jobs.mjs';
 import { Ledger } from './ledger.mjs';
@@ -118,8 +119,8 @@ import { workEvents } from './turn-work.mjs';
 import { closeOrphanCards, retireStale } from './wake-cards.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
-export { hostTool } from './apps.mjs';
 export { httpError } from './helpers.mjs';
+export { hostTool } from './host-tool.mjs';
 export { HOP_LIMIT } from './side-threads.mjs';
 export { PERMISSION_MODES, readCapped };
 
