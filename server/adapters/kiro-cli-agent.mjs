@@ -52,7 +52,8 @@ export function kiroRules({ persona, folders, resolve = true }) {
   if ((mode === 'acceptEdits' || mode === 'auto') && dirs.length) {
     rules.push({ capability: 'fs_write', match: dirs, effect: 'allow' });
     // An edit there could become a command: Kiro starts the MCP servers a .kiro/settings/mcp.json in the working folder
-    // names, and a .git/config can name a program git runs (#136).
+    // names, and a .git/config can name a program git runs (#136). Kiro matches these case-blind where the disk is, as
+    // macOS’s is: kiro-cli 3.1.0 refused .KIRO/settings/mcp.json and .GIT/config there too, recorded live (#136).
     rules.push({ capability: 'fs_write', match: dirs.flatMap((d) => [`${d}/.kiro`, `${d}/.git`]), effect: 'deny' });
   }
   // Auto runs what the persona’s Tools allow, as #416’s option A: Kiro has no Auto of its own, and nothing judges these
