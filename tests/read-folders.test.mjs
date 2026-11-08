@@ -36,9 +36,18 @@ test('#338 an Antigravity read outside its folders offers its folder, named on t
   const { home, notes } = aHome();
   const offer = readFolderOffer({ ...agy, input: { file_path: join(notes, 'a.md') }, home });
   assert.deepEqual(offer, {
-    lines: [{ text: `Always allow reading files in ${notes} in this conversation`, rule: notes }],
+    lines: [{ text: `Always allow ${notes} for reading files, in this conversation`, rule: notes }],
     readDir: notes,
   });
+});
+
+// The card shows each line as “Always allow <code>rule</code>” and then the text past `Always allow ${rule}`
+// (app/js/permission-cards.mjs), so a text that doesn’t start that way is garbled on the card (the integrator’s read
+// of #1016, the same renderer).
+test('#338 the offer’s text starts with “Always allow <its folder>”, as the card shows it', () => {
+  const { home, notes } = aHome();
+  const [line] = readFolderOffer({ ...agy, input: { file_path: join(notes, 'a.md') }, home })?.lines ?? assert.fail('an offer');
+  assert.ok(line.text.startsWith(`Always allow ${line.rule} `), line.text);
 });
 
 test('#338 no Always allow for /, home, a dot-folder in home or inside one, a link to one, a host card, or another backend', () => {
@@ -108,7 +117,7 @@ test('#338 Always allow on the card saves the folder for the conversation, and t
     const asked = runAgyHook(read, { cwd: ws, env, home, fetchImpl: /** @type {any} */ (fetchMcp) });
     await sleep(10);
     const card = store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
-    assert.equal(card.always?.lines[0].text, `Always allow reading files in ${notes} in this conversation`);
+    assert.equal(card.always?.lines[0].text, `Always allow ${notes} for reading files, in this conversation`);
     await rt.act(t.id, card.id, 'always', {});
     results.push(await asked);
   });
