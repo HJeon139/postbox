@@ -3,6 +3,7 @@
 // - Contrast: a label the check can’t measure the background of is left unjudged (a gradient, a shape drawn by <use>,
 //   a label in a box that scrolls sideways), and one on a solid shape or a thick route line is measured against it.
 //   One that is too faint on its shape is told to change its ink for that fill, never to use the page’s text color.
+// - The kit’s own styles meet the 12 px floor in an app: kbd and every class the guide offers.
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
@@ -23,6 +24,14 @@ const APPS = {
   scroller: `<div style="overflow-x:auto;max-width:100%"><svg width="800" height="80" role="img" aria-label="Wide"><rect x="560" y="0" width="230" height="60" fill="#14213d"/><text x="576" y="36" ${ON}>Peak demand</text></svg></div>`,
   // Navy text on a navy shape: too faint, and told to change its ink for that fill.
   faint: `<svg width="320" height="80" role="img" aria-label="Faint"><rect class="band" x="0" y="0" width="300" height="60" fill="#14213d"/><text x="16" y="36" fill="#2b3f66" font-size="14">Peak demand</text></svg>`,
+  kit: `<div style="padding:12px;color:var(--text)"><h2 style="margin:0 0 8px">Kit sampler</h2>
+<p>Press <kbd>→</kbd> to step. <span class="dim">Dim</span>, <span class="small">small</span>, <span class="mono">mono</span> and <span class="pill">pill</span>.</p>
+<div class="label">Section label</div>
+<label class="field"><span class="label">Name</span><input class="input" value="Ada"></label> <select class="select" aria-label="Book"><option>Emma</option></select>
+<p><button class="btn" type="button">Run</button> <button class="btn sm" type="button">Small</button> <button class="btn ghost" type="button">Cancel</button> <button class="btn primary" type="button">Go</button></p>
+<p><button class="chip" type="button" aria-pressed="true">1850s</button> <button class="chip sm" type="button" aria-pressed="false">1860s</button></p>
+<div class="seg" role="group" aria-label="Corpus"><button type="button" aria-pressed="true">Novels</button><button type="button" aria-pressed="false">Letters</button></div>
+<table class="tbl"><tr><th>Book</th><th>Passages</th></tr><tr><td>Emma</td><td>812</td></tr></table></div>`,
 };
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -61,6 +70,10 @@ for (const [id, what] of [
   test(`#997 ${what} passes`, () => {
     expect(check(id).status, says(id)).toBe('passed');
   });
+
+test('#997 kbd and the kit’s classes in an app are 12 px or more, and pass', () => {
+  expect(check('kit').status, says('kit')).toBe('passed');
+});
 
 test('#997 navy text on a navy shape is low contrast, and told to change its ink for that fill', () => {
   const [low] = (check('faint').problems ?? []).filter((p) => p.code === 'contrast');
