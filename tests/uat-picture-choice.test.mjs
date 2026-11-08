@@ -87,6 +87,19 @@ test('an agent that never replied didn’t choose words: the run is unknown, nev
   assert.deepEqual(pictureVerdict('words', choice), { said: 'never replied', met: null });
 });
 
+test('a commit’s events, written as one array line, are read, and a torn last line is skipped, not thrown', (t) => {
+  const dir = runWith([]);
+  t.after(() => rmSync(dir, { recursive: true }));
+  // The report is written while Postbox still runs, so its last line can be mid-write (server/store-commit.mjs, #508).
+  const log = [
+    JSON.stringify(add('it_1', 'user', { text: 'Where should we start?' })),
+    JSON.stringify([add('it_2', 'block', { block: { type: 'app' } })]),
+    '{"type":"item.add","data":{"thr',
+  ];
+  writeFileSync(join(dir, 'data', 'events-1.jsonl'), log.join('\n'));
+  assert.deepEqual(pictureChoice(join(dir, 'data')), { first: 'app', inputsBefore: 0 });
+});
+
 test('a log without the person’s first message is unknown, never a miss or a pass', (t) => {
   const dir = runWith([add('it_9', 'block', { block: { type: 'app' } })]);
   t.after(() => rmSync(dir, { recursive: true }));
