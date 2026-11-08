@@ -128,11 +128,11 @@ test('#872 stop-runner through fault() records the process and the turn, and tel
   assert.match(none, /There was no runner of host1’s newest turn to stop/);
 });
 
-test('#872 the tester can ask for stop-runner, and remotehosts’ last phase plays it', () => {
+test('#872 the tester can ask for stop-runner, and remotehosts’ phase 6 plays it', () => {
   const faults = JSON.stringify(SCHEMA).match(/"enum":\["kill-ssh"[^\]]*\]/g) ?? [];
   assert.ok(faults.length >= 2 && faults.every((f) => f.includes('"stop-runner"')), faults.join(' '));
   const scenario = parseScenario(readFileSync(new URL('uat/e2e/scenarios/remotehosts.md', import.meta.url), 'utf8'));
-  const last = scenario.phases.at(-1);
-  assert.deepEqual(last.triggers, ['host-hung-killed']);
-  assert.match(last.text, /fault stop-runner, target host1/);
+  const hung = scenario.phases.find((p) => p.title.includes('A hung agent'));
+  assert.deepEqual(hung?.triggers, ['host-hung-killed']);
+  assert.match(hung.text, /fault stop-runner, target host1/);
 });
