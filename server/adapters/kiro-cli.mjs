@@ -22,8 +22,11 @@
 // - Permissions: a headless run can’t ask, and Kiro treats every ask as a deny (kiro.dev/docs/permissions). So
 //   there is no permission card: a refused call shows as a denied step, and the agent says what happened. Claude
 //   Code rule syntax (the permissions panel, Allow once, a conversation’s rules) doesn’t reach Kiro.
-//   - ask and auto: Kiro’s defaults, plus reads in the agent’s folders. Kiro has no auto classifier.
-//   - acceptEdits: also writes in the agent’s folders.
+//   - ask: Kiro’s defaults, plus reads in the agent’s folders.
+//   - auto: Kiro has no Auto of its own, so, as #416’s option A, what the persona’s Tools allow (shell, web, MCP tools)
+//     and edits in its folders, with nothing judging them (#136). The denies still hold, since Kiro reads deny over allow.
+//   - acceptEdits: also writes in the agent’s folders. In it and auto, writes to each folder’s .kiro and .git are
+//     denied: Kiro starts the MCP servers a .kiro/settings/mcp.json names, and a .git/config can name a program.
 //   - bypass: --trust-all-tools. Deny rules still hold.
 // - Tools: the persona’s unticked Tools and the publishing tools become deny rules (kiroRules).
 // - Setup (#57): a persona that uses your setup runs with your Kiro home (KIRO_HOME, else ~/.kiro), so your steering,
