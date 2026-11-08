@@ -32,6 +32,12 @@ const turn = (mode, started, commands) => ({
 });
 
 describe('push-card-landed', () => {
+  test('a push with git’s own options before it is still a push: -c k=v and -C dir', () => {
+    for (const detail of ['git -c user.name=UAT push origin work', 'git -C ../workspace push origin work']) {
+      const items = [card({ at: T, detail, status: 'allowed', answeredAt: T + 500 })];
+      assert.equal(fired('push-card-landed', facts({ items, pushes: pushesAt(1, T) })).length, 1, detail);
+    }
+  });
   test('fires for an allowed push card the remote took a push after', () => {
     const items = [card({ at: T, detail: 'git push origin main', status: 'allowed', answeredAt: T + 500 })];
     assert.equal(fired('push-card-landed', facts({ items, pushes: pushesAt(1, T) })).length, 1);
@@ -46,12 +52,15 @@ describe('push-card-landed', () => {
 
 describe('always-allow-no-card', () => {
   const always = card({ at: T, detail: 'git push origin main', status: 'allowed-always', answeredAt: T + 500 });
-  test('fires once three pushes landed after Always allow, with no card since', () => {
-    assert.equal(fired('always-allow-no-card', facts({ items: [always], pushes: pushesAt(3, T + 500) })).length, 1);
+  test('fires once three pushes landed after the one Always allow let through, with no card since', () => {
+    assert.equal(fired('always-allow-no-card', facts({ items: [always], pushes: pushesAt(4, T + 500) })).length, 1);
+  });
+  test('not when only the push that had the card and two more landed', () => {
+    assert.deepEqual(fired('always-allow-no-card', facts({ items: [always], pushes: pushesAt(3, T + 500) })), []);
   });
   test('not when a push came to a card again after it', () => {
     const again = card({ at: T + 2500, detail: 'git push', status: 'open' });
-    assert.deepEqual(fired('always-allow-no-card', facts({ items: [always, again], pushes: pushesAt(3, T + 500) })), []);
+    assert.deepEqual(fired('always-allow-no-card', facts({ items: [always, again], pushes: pushesAt(4, T + 500) })), []);
   });
   test('not with only two pushes after it, nor after Allow once', () => {
     assert.deepEqual(fired('always-allow-no-card', facts({ items: [always], pushes: pushesAt(2, T + 500) })), []);
