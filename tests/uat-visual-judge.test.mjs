@@ -36,7 +36,7 @@ test('the report lists each visual verdict, and adds nothing when no step judged
   const visual = { item: 'I4', takeaway: 'Gaps | grow', drawn: false, relationship: true, one_idea: true, readable: true, verdict: 'partly' };
   const lines = visualSection([{ step: 2, visual }, { step: 3 }]);
   assert.equal(lines[0], '## Visual verdicts');
-  assert.ok(lines.includes('| 2 | I4 | partly | no | yes | yes | yes | Gaps \\| grow |'));
+  assert.ok(lines.includes('| 2 | I4 | partly | no | yes | yes | yes | Gaps \\| grow | not an app | – |'));
   assert.deepEqual(visualSection([{ step: 1 }]), []);
 });
 

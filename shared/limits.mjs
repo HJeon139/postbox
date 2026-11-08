@@ -3,12 +3,17 @@
 // (server/adapters/guide.mjs, the MCP tool descriptions in shared/mcp-tools.mjs) is written from here, so the number
 // an agent is told is the number Postbox enforces (#50). tests/limits.test.mjs fails when one isn’t in the guide.
 
+/** The most an app version’s intent keeps, in characters: a cut for storage, past the 16 words agents are asked for. */
+export const INTENT_CHARS = 300;
+
 /** Sizes an agent can reach. Text lengths are in characters. */
 export const LIMITS = Object.freeze({
   /** An app event’s values as JSON (postbox.send), in bytes. */
   eventBytes: 64 * 1024,
   /** An app’s code (show_app, update_app), inline or from codePath. */
   appCode: 600_000,
+  /** What an app version should leave the reader with: one sentence of at most this many words (show_app and update_app’s intent, #995). */
+  appIntentWords: 16,
   /** Data files one app version carries (show_app and update_app’s files, #54). */
   appFiles: 8,
   /** One of those data files, in bytes. */
