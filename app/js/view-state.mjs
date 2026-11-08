@@ -106,10 +106,12 @@ function heard(v, s) {
   const unheard = s.scrollTop - v.lastTop;
   if (!v.anchor || Math.abs(unheard) < 1) return;
   if (sizeOf(s) !== v.size) return;
+  // A move up that leaves the view at the end is the browser clamping it to an end that came up as what’s below
+  // shrank, never you: a scroll up doesn’t reach the end (onScroll’s rule). The anchor holds (researcher’s Mac trace).
+  if (unheard < 0 && atEnd(s)) return;
   v.anchor = { key: v.anchor.key, at: v.anchor.at - unheard };
   v.lastTop = s.scrollTop;
-  // Its event then looks like the transcript’s own scroll: onScroll still counts it as one the transcript didn’t make
-  // (yours, or the browser’s own clamp, which only moves the view up: onScroll tells them apart).
+  // Its event then looks like the transcript’s own scroll: onScroll still counts it as one the transcript didn’t make.
   v.heardYou = true;
 }
 // Only your own scrolling unsticks the view: content growing never scrolls, and the browser doesn’t anchor
