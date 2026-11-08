@@ -178,7 +178,7 @@ test('#328 syntax and runtime errors name where they happened', () => {
 test('#194 nowrap text in a 120 px column overflows and overlaps, and the messages name the texts, the widths and the usual fix', () => {
   expect.soft(codes('grid'), says('grid')).toEqual(expect.arrayContaining(['text-overflow', 'text-overlap']));
   const over = found('grid').find((p) => p.code === 'text-overflow')?.message ?? '';
-  expect.soft(over).toMatch(/“a long description that won’t fit” is \d+ px wide in a 120 px box/);
+  expect.soft(over).toMatch(/“a long description that won’t fit” \(div > p\) is \d+ px wide in a 120 px box/);
   expect.soft(over).toMatch(/white-space: nowrap/);
   expect.soft(over).toMatch(/minmax\(0, …\)/);
   expect.soft(found('grid').find((p) => p.code === 'text-overlap')?.message, 'text-overlap names both texts').toMatch(/drawn over “Heading”/);
@@ -228,7 +228,7 @@ test('#194 an overlap there both times the check looks is reported, and one that
     return /** @type {any} */ (window).__pbCheck.textOverlap(1280);
   });
   expect(twice.length, JSON.stringify(twice)).toBe(1);
-  expect(twice[0].message).toMatch(/“Still label” is drawn over “Stays here”/);
+  expect(twice[0].message).toMatch(/“Still label” \(p:nth-of-type\(1\)\) is drawn over “Stays here” \(p:nth-of-type\(2\)\)/);
 });
 
 // ── #327 and #89: Postbox styles and controls you can’t see or click ─────────────────────
