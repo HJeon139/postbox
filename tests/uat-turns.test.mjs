@@ -227,3 +227,28 @@ test('a wait the phase asks for runs in full, though nobody works', async (t) =>
   assert.ok(r.took >= 180_000 && r.took < 181_000, `waited ${r.took} ms`);
   assert.equal(r.said, '');
 });
+
+/**
+ * Postbox’s state as the gitpush scenario’s sixth run recorded it: @developer’s card for `git add notes.md` opens
+ * (seq 81) and its session goes to `needs` (seq 82). Then a parallel call of the same turn starts, and the session
+ * reads `tool` again (seq 86) while the card still waits. The turn can’t end until the card is answered.
+ */
+function cardThenParallelCall({ cardAt = 5000, toolAt = 6500 } = {}) {
+  return async () => {
+    const now = Date.now();
+    const needs = now >= cardAt ? { kind: 'permission', itemId: 'it_N9XrmZiC', text: '@developer asks to run git add notes.md' } : null;
+    // `needs` from the card until the parallel call starts, then `tool`, with the card still open.
+    const state = needs && now < toolAt ? 'needs' : 'tool';
+    const se = { id: 'se_1Uxk4bfz', handle: 'developer', threadId: 'th_main', state, needs };
+    return { state: { threads: { th_main: { id: 'th_main', members: [se.id] } }, sessions: { [se.id]: se }, apps: {}, items: { th_main: [] } } };
+  };
+}
+
+test('a card that waits while a parallel call of its turn runs ends the wait, rather than holding it to the time limit', async (t) => {
+  const r = await onFakeClock(t, async () => {
+    const out = await settle(ctx(cardThenParallelCall(), { told: new Set(), handBack: true }));
+    return { out, took: Date.now() };
+  });
+  assert.equal(r.out, null, 'not a turn past the time limit');
+  assert.ok(r.took < 5000 + BLOCK_GRACE_MS + 2000, `the tester had the card at ${r.took} ms, not when the run timed out`);
+});
