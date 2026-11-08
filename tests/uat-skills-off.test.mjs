@@ -27,7 +27,7 @@ test('every baseline of a run with the skill runs without it, and the run it’s
     ['trial-c2.md', 'trial-c1.md'],
     ...['madeddu', 'jia', 'sontag'].map((p) => [`visualpaper-${p}.md`, `visualpaper-${p}-skill.md`]),
   ];
-  assert.equal(pairs.length, 11);
+  assert.equal(pairs.length, 15);
   for (const [base, withSkill] of pairs) {
     assert.equal(read(base).skills, 'off', base);
     assert.equal(read(withSkill).skills, 'on', withSkill);
