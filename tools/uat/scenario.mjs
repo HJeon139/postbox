@@ -100,7 +100,8 @@ export function parseScenario(md) {
     models: meta.models === 'persona' ? 'persona' : 'run',
     // Telemetry (designs/telemetry-persona.md, U2): `- seed: canaries` plants the run’s canaries in the workspace,
     // `- gh: none` starts Postbox with no gh, and `- telemetry: manual` leaves recording to the scenario. `- seed:
-    // fake-env` plants the allow-once scenario’s fake .env (tools/uat/workspace.mjs).
+    // fake-env` plants the allow-once scenario’s fake .env, and `- seed: git-remote` a throwaway remote with its guards
+    // (tools/uat/workspace.mjs, tools/uat/git-remote.mjs).
     seed: meta.seed ?? null,
     // `- files: subscriptions` (#206): a folder of tests/uat/e2e/fixtures/ copied into the workspace (tools/uat/fixtures.mjs).
     files: filesOf(meta.files),

@@ -36,6 +36,7 @@ import { lastCheckPass, MID_TURN, runChecks, waitingOnYou } from './uat/checks.m
 import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
+import { remoteFacts, remoteNote } from './uat/git-remote.mjs';
 import { followEvents } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
 import { HOST_OPTIONS } from './uat/hosts-options.mjs';
@@ -141,7 +142,7 @@ async function main() {
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
   const { agentModels, agentEffort } = await seedAgents({ scenario, opt, root: ROOT, data: paths.data, log });
   // Ctrl-C cleans the hosts up through the page before anything stops (tools/uat/stop.mjs), with what’s there by then.
-  const run = { log };
+  const run = { log, dir };
   const stop = runStop(run);
   const signals = onStopSignal(stop, { log });
   const postbox = await startPostbox({
@@ -197,6 +198,7 @@ async function main() {
     log(`Conversation ${mainThread} started with @${scenario.agents.join(', @')}.`);
     // `- seed: big-room` (#508): the conversation fills with about 1,000 generated items before the tester arrives.
     scenario.summary += await seededNote(scenario, { postbox, data: paths.data, threadId: mainThread, page, log, opt, dir, facts });
+    scenario.summary += remoteNote(scenario, dir); // `- seed: git-remote`: where the throwaway remote is, for Settings
     const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log, input: d.input });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
@@ -264,6 +266,7 @@ async function main() {
       facts.codexStreams = readStreams(paths.codexStreams);
       facts.events = history.events();
       facts.transcripts = readTranscripts(facts, paths.workspace);
+      facts.remote = remoteFacts(dir, facts); // `- seed: git-remote`’s pushes, with the ledger’s size beside them (#305)
       const telOpts = { dir, data: paths.data, workspace: paths.workspace, main: mainThread, canaries, flags: tel.flags, shown: tel.shown };
       if (tm.telemetryOn(opt)) tm.telemetryFacts(facts, { ...telOpts, startedBeforeTurns: tm.runnerRecords(scenario, opt) });
       Object.assign(facts.ui, await readUi(page));
