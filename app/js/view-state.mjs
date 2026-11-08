@@ -124,7 +124,10 @@ function onScroll(v) {
   // doesn’t take it in (#837). A clamp only moves the view up from where the last scroll event saw it (holding the
   // anchor through the resize may already have moved lastTop there); reaching the end by moving down is you.
   const clamped = sizeOf(s) !== v.size && s.scrollTop < v.seenTop;
-  if (atEnd(s) && (v.stuck || !clamped)) {
+  // Nor is the transcript’s own hold of your place reaching the end: after a clamp, the items that came into view draw
+  // from their estimates (#712a), and holding the anchor through that can move the view down to the end.
+  const youReachedEnd = moved && !clamped;
+  if (atEnd(s) && (v.stuck || youReachedEnd)) {
     if (!v.stuck) v.held = measure(v, s);
     v.stuck = true;
   } else if (s.scrollTop < v.lastTop) v.stuck = false;
@@ -134,7 +137,8 @@ function onScroll(v) {
   v.seenTop = s.scrollTop;
   v.size = sizeOf(s);
   if (moved) v.pinned = false;
-  if (v.stuck || (clamped && atEnd(s))) return;
+  // Reading at the end, the view was put there, by a clamp or by its own hold, not by you: keep the anchor you read at.
+  if (v.stuck || atEnd(s)) return;
   if (!moved) holdAnchor(v);
   // Our own hold after a jump: the target stays the anchor while what’s between it and the middle draws (#712).
   if (v.pinned) return;
