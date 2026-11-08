@@ -11,7 +11,7 @@ import { askOnce } from './tester.mjs';
 /**
  * Adds intents and matches to the timeline’s visuals, and the pair to facts.sideBySide. A judge that fails is logged
  * and recorded, never a failed run. Their cost is counted with the verifier’s, after the run.
- * @param {{ scenario: any, dir: string, paths: { data: string, shots: string, workspace: string }, labels: Map<string, string>,
+ * @param {{ scenario: any, dir: string, paths: { data: string, shots: string }, labels: Map<string, string>,
  *   keys: Map<string, string>, timeline: any[], facts: any, ask?: (args: any) => Promise<{ value: any, cost: number }>,
  *   model: string, log: (line: string) => void }} o  ask: the budget’s verifier when the run has a cap, else askOnce
  */
@@ -25,7 +25,6 @@ export async function judgePictures({ scenario, dir, paths, labels, keys, timeli
       scenario,
       dir,
       data: paths.data,
-      workspace: paths.workspace,
       shots,
       labels,
       agent: { model: streamModel(facts.streams), effort: facts.agentEffort ?? null },

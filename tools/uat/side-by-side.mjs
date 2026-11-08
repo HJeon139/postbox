@@ -5,14 +5,16 @@
 // until its agreement with the maintainer’s blind picks is known (tools/uat-pairs.mjs).
 //
 // The words answer is one `claude -p` turn, not a second run: the same model and effort, the persona’s role and
-// instructions, the run’s own project folder and the tools to read and count in it, on the same question. A second
+// instructions, a project folder with the files the run started with and the tools to read and count in them, on the
+// same question. The run’s own folder isn’t used: by then it holds what the agent wrote. A second
 // run would cost a whole run (a tester, a browser, its other steps) for one reply, and Postbox’s guide only adds how
 // to show blocks and apps, which a words answer doesn’t use.
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { firstExchange } from './picture-choice.mjs';
 import { replyShot } from './picture-shots.mjs';
+import { makeWorkspace } from './workspace.mjs';
 
 /** #206’s bar: the picture preferred in this many of these pairs. */
 export const BAR = { wins: 7, of: 10 };
@@ -31,6 +33,18 @@ export const PAIR_SCHEMA = {
   },
   required: ['pick', 'why'],
 };
+
+/**
+ * A project folder for the words answer, in the run’s folder: a repository with the files the scenario starts with,
+ * and Postbox’s own AGENTS.md hidden, as the run’s workspace was before the agent worked in it.
+ * @param {{ files?: string|null }} scenario @param {string} dir  the run’s folder @param {typeof makeWorkspace} [make]  a fake, in tests
+ */
+export function wordsWorkspace(scenario, dir, make = makeWorkspace) {
+  const workspace = join(dir, 'words-workspace');
+  mkdirSync(workspace, { recursive: true });
+  make({ seed: null, files: scenario.files ?? null }, { workspace }, dir);
+  return workspace;
+}
 
 /** The agent the run’s first message went to, as the run seeded it (tools/uat/seed.mjs). @param {string} data @param {string} handle */
 export function personaOf(data, handle) {
@@ -87,8 +101,9 @@ const pictureAnswer = (reply, shot) => `${reply ? `${reply}\n\n` : ''}With it, t
 
 /**
  * Asks for the words answer and the judge’s pick. Returns the record for run.json, or why the run had no pair.
- * @param {{ scenario: any, dir: string, data: string, workspace: string, shots: string, labels: Map<string, string>,
+ * @param {{ scenario: any, dir: string, data: string, workspace?: string, shots: string, labels: Map<string, string>,
  *   agent: { model: string|null, effort: string|null }, judgeModel: string, ask: (args: any) => Promise<{ value: any, cost: number }>, random?: () => number }} o
+ *   workspace: where the words answer runs, a fresh wordsWorkspace when not given
  */
 export async function sideBySide({ scenario, dir, data, workspace, shots, labels, agent, judgeModel, ask, random = Math.random }) {
   const x = firstExchange(data);
@@ -99,7 +114,7 @@ export async function sideBySide({ scenario, dir, data, workspace, shots, labels
   if (!shot) return { skipped: `no screenshot of the agent’s ${x.visual.kind}` };
   const cost = { words: 0, judge: 0 };
   const words = await ask({
-    cwd: workspace,
+    cwd: workspace ?? wordsWorkspace(scenario, dir),
     model: agent.model ?? 'opus',
     prompt: x.question,
     schema: WORDS_SCHEMA,

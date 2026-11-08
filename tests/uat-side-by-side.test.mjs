@@ -3,13 +3,15 @@
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { seedFiles } from '../tools/uat/fixtures.mjs';
 import { firstExchange } from '../tools/uat/picture-choice.mjs';
 import { replyShot } from '../tools/uat/picture-shots.mjs';
-import { BAR, pairRate, sideBySide, sideBySideSection, wordsSystem } from '../tools/uat/side-by-side.mjs';
+import { BAR, pairRate, sideBySide, sideBySideSection, wordsSystem, wordsWorkspace } from '../tools/uat/side-by-side.mjs';
+import { hideSteeringAbove } from '../tools/uat/steering.mjs';
 import { askOnce } from '../tools/uat/tester.mjs';
 
 const add = (id, kind, at, extra = {}) => ({ type: 'item.add', data: { threadId: 'th_1', item: { id, kind, at, ...extra } } });
@@ -94,6 +96,23 @@ test('#995 the words answer is the same agent on the same question, in the run�
   assert.match(words.append, /You are @researcher\.[\s\S]*Cite sources\.[\s\S]*in words only/);
   assert.equal(readFileSync(join(dir, 'words-answer.md'), 'utf8'), 'Cancel the gym and the meal kit.\n');
   assert.equal(wordsSystem({ handle: 'x' }).includes('Your role'), false, 'a persona without a role says none');
+});
+
+test('#995 the words answer starts from the files the run started with, not what the agent left in the run’s folder', (t) => {
+  const dir = runWith(drew);
+  t.after(() => rmSync(dir, { recursive: true }));
+  writeFileSync(join(dir, 'workspace', 'chart.html'), '<p>the agent’s app</p>');
+  // The workspace as makeWorkspace makes it, but for its git init: tests start no process.
+  const make = (scenario, paths) => {
+    seedFiles(paths.workspace, scenario.files);
+    hideSteeringAbove(paths.workspace);
+    return null;
+  };
+  const words = wordsWorkspace({ files: 'subscriptions' }, dir, make);
+  assert.equal(words, join(dir, 'words-workspace'));
+  assert.ok(readdirSync(words).includes('subscriptions.csv'));
+  assert.ok(!existsSync(join(words, 'chart.html')));
+  assert.ok(existsSync(join(words, '.claude', 'settings.json')), 'Postbox’s own AGENTS.md is hidden from it');
 });
 
 test('#995 the judge sees both in random order, and its pick is read back as the picture or the words', async (t) => {
