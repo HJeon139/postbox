@@ -372,7 +372,7 @@ export class Ledger {
     const commit = op?.commit && typeof op.commit.sha === 'string' ? { sha: op.commit.sha, branch: String(op.commit.branch ?? '') } : facts.commit;
     if (commit) await this.recordCommit(turn, cmdId, commit, cwd, facts.commit?.message ?? '');
     // A push Claude Code reported that the command line doesn’t show is the one push, as it says nothing of what it sent.
-    const reported = facts.pushes.length === 0 && op?.push ? [{ remote: null, refs: [] }] : [];
+    const reported = facts.pushes.length === 0 && op?.push ? [{ remote: null, refs: [], branch: '' }] : [];
     recordPushes(this, turn, cmdId, [...facts.pushes, ...reported], op?.push?.branch ?? commit?.branch ?? '', cwd);
     for (const x of facts.external)
       this.add(
