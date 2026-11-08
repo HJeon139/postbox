@@ -4,7 +4,7 @@
 // the page’s own. The model judge is shown exactly that. agreement() compares their picks.
 
 import { createHash } from 'node:crypto';
-import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { escapeHtml } from '../../shared/markdown.mjs';
 import { meantLabel } from './side-by-side.mjs';
@@ -85,11 +85,13 @@ fieldset{border:0;padding:8px 0 0;display:flex;flex-wrap:wrap;gap:16px;align-ite
 button{font:inherit;padding:8px 16px;background:var(--accent);color:#fff;border:0;border-radius:6px;cursor:pointer}
 textarea{width:100%;height:120px;font:13px ui-monospace,monospace;background:var(--panel);color:var(--text);border:1px solid var(--line)}`;
 
-// Saves the picks as picks.json, and shows them to copy; keeps them in this browser meanwhile, where it can.
+// Saves the picks as picks.json, and shows them to copy; keeps them in this browser meanwhile, where it can, under
+// this page’s own name (pageId): every page opened from a file shares one store.
 const SCRIPT = `const pairs=[...document.querySelectorAll('.pair')];
 const read=()=>({picks:pairs.map((a)=>({n:Number(a.dataset.n),pick:a.querySelector('input[type=radio]:checked')?.value??null,note:a.querySelector('.note').value}))});
-const keep=()=>{try{localStorage.setItem('picks-995-pictures',JSON.stringify(read()))}catch{}};
-try{const had=JSON.parse(localStorage.getItem('picks-995-pictures')??'null');for(const p of had?.picks??[]){const a=pairs.find((x)=>Number(x.dataset.n)===p.n);if(!a)continue;if(p.pick)a.querySelector('input[value="'+p.pick+'"]').checked=true;a.querySelector('.note').value=p.note??''}}catch{}
+const saved='picks-'+document.body.dataset.page;
+const keep=()=>{try{localStorage.setItem(saved,JSON.stringify(read()))}catch{}};
+try{const had=JSON.parse(localStorage.getItem(saved)??'null');for(const p of had?.picks??[]){const a=pairs.find((x)=>Number(x.dataset.n)===p.n);if(!a)continue;if(p.pick)a.querySelector('input[value="'+p.pick+'"]').checked=true;a.querySelector('.note').value=p.note??''}}catch{}
 document.addEventListener('change',keep);document.addEventListener('input',keep);
 document.getElementById('save').addEventListener('click',()=>{const json=JSON.stringify(read(),null,2);document.getElementById('out').value=json;
 const left=read().picks.filter((p)=>!p.pick).length;document.getElementById('left').textContent=left?left+' pairs have no pick yet.':'Every pair has a pick.';
@@ -102,6 +104,20 @@ const sha = (text) => `'sha256-${createHash('sha256').update(text).digest('base6
  * Agents’ sentences on it are escaped text, and this holds even if one ever isn’t: no remote image, script or request.
  */
 export const PAGE_CSP = `default-src 'none'; img-src 'self'; style-src ${sha(STYLE)}; script-src ${sha(SCRIPT)}; base-uri 'none'; form-action 'none'`;
+
+/**
+ * A name for this page’s saved picks, from what it shows and in which order: two pages never share picks, and a rebuild
+ * that swaps a pair’s sides doesn’t restore a pick onto the other picture.
+ * @param {{ question: string, sides: { file: string, intent: string }[] }[]} pairs
+ */
+export function pageId(pairs) {
+  const hash = createHash('sha256');
+  for (const p of pairs) {
+    hash.update(`${p.question}\0`);
+    for (const s of p.sides) hash.update(`${s.intent}\0`).update(readFileSync(s.file));
+  }
+  return hash.digest('hex').slice(0, 16);
+}
 
 /**
  * Copies each pair’s pictures into `out` as <n>-a.png and <n>-b.png and writes the page.
@@ -121,7 +137,7 @@ export function calibrationPage(pairs, out, { page = true } = {}) {
     join(out, 'index.html'),
     `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="${PAGE_CSP}">
-<title>Picture against picture</title><style>${STYLE}</style></head><body><main>
+<title>Picture against picture</title><style>${STYLE}</style></head><body data-page="${pageId(pairs)}"><main>
 <h1>Picture against picture: ${pairs.length} pairs</h1>
 <p class="dim">Each pair is two agents’ first pictures for one person’s question, each with the sentence it was meant to say. Pick the picture that leaves that person understanding more, judging what the drawing shows and whether it says what it meant to. Pick Neither when they help equally. The order is random.</p>
 ${cards}

@@ -8,7 +8,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { agreement, arenaPairs, calibrationPage, PAGE_CSP, twinPairs } from '../tools/uat/calibration.mjs';
+import { agreement, arenaPairs, calibrationPage, PAGE_CSP, pageId, twinPairs } from '../tools/uat/calibration.mjs';
 import { firstJudged } from '../tools/uat/pairs-backfill.mjs';
 
 test('#995 a scenario’s runs pair with its -base twin’s, newest first, one scenario after another', () => {
@@ -42,7 +42,7 @@ test('#995 the page shows two pictures and what each meant to say, with no run, 
   assert.deepEqual(readdirSync(out).sort(), ['1-a.png', '1-b.png', 'index.html']);
   const html = readFileSync(join(out, 'index.html'), 'utf8');
   // What a person sees: the body up to </main>. The head’s policy and the script after </main> aren’t on screen.
-  const shown = html.slice(html.indexOf('<body>'), html.indexOf('</main>'));
+  const shown = html.slice(html.indexOf('<body'), html.indexOf('</main>'));
   assert.ok(shown.includes('<h1>Picture against picture'), 'the cut holds the page’s text');
   assert.ok(!/skill|base|everyday/i.test(shown), 'nothing tells which condition a picture came from');
   assert.match(html, /The agent’s text version of it \(it gave no intent\)<\/span>: “Cancel &lt;the&gt; gym\.”/);
@@ -113,4 +113,26 @@ test('#995 the page loads nothing from elsewhere: its CSP allows its own picture
   const inline = (tag) => html.slice(html.indexOf(`<${tag}>`) + tag.length + 2, html.indexOf(`</${tag}>`));
   assert.ok(PAGE_CSP.includes(`script-src ${hash(inline('script'))}`), 'the script’s hash is the one the policy allows');
   assert.ok(PAGE_CSP.includes(`style-src ${hash(inline('style'))}`), 'the style’s hash is the one the policy allows');
+});
+
+test('#995 each page keeps its picks under its own name, so one page’s picks never fill in another’s', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-calibrate-'));
+  t.after(() => rmSync(dir, { recursive: true }));
+  writeFileSync(join(dir, 'one.png'), 'one');
+  writeFileSync(join(dir, 'two.png'), 'two');
+  const one = { file: join(dir, 'one.png'), intent: 'One.', intentFrom: 'agent' };
+  const two = { file: join(dir, 'two.png'), intent: 'Two.', intentFrom: 'agent' };
+  const pair = (question, sides) => ({ persona: 'Someone.', question, sides });
+  const first = [pair('Q?', [one, two])];
+  assert.equal(pageId(first), pageId([pair('Q?', [one, two])]), 'the same page keeps its name, and its picks');
+  assert.notEqual(pageId(first), pageId([pair('Q?', [two, one])]), 'a rebuild that swaps the sides starts empty');
+  assert.notEqual(pageId(first), pageId([pair('Other?', [one, two])]), 'another page starts empty');
+  const before = pageId(first);
+  writeFileSync(join(dir, 'one.png'), 'a different picture');
+  assert.notEqual(before, pageId(first), 'other pictures with the same sentences are another page');
+  calibrationPage(first, join(dir, 'page'));
+  const html = readFileSync(join(dir, 'page', 'index.html'), 'utf8');
+  assert.ok(html.includes(`<body data-page="${pageId(first)}">`));
+  assert.ok(html.includes("const saved='picks-'+document.body.dataset.page;"));
+  assert.ok(!html.includes('picks-995'), 'no name shared by every page');
 });
