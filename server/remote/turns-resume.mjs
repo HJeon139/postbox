@@ -10,6 +10,7 @@ import { releaseHost } from './turns-need.mjs';
 import { continuing } from './turns-origin.mjs';
 import { endOrphanCards } from './turns-prompts.mjs';
 import { AUTO_RESUMES, clock, hostOf, isBack, ON_HOST, SIGN_IN_RECHECK_MS, updateRemote } from './turns-shared.mjs';
+import { askStop } from './turns-stops.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 
@@ -86,6 +87,8 @@ function autoResume(rts, sessionId) {
   if (hostOf(rt.personaFor(se)) !== r.hostId) return;
   // Nor can one whose backend isn’t registered here: a resume would only fail again (#874, #909).
   if (!registeredAdapter(rt, rt.personaFor(se))) return;
+  // Nor while that host hasn’t confirmed a stop Postbox asked of it for this session (#965).
+  if (stopWaitsOn(r, r.hostId)) return;
   // An interruption that keeps coming back waits for the person after a few resumes, and so does one whose process
   // there may still run (resume.unkilled: one killed that didn’t stop, #872, or one left to end on its own after a
   // restart, reattach, #909).
@@ -103,6 +106,13 @@ export function resume(rts, sessionId) {
   const r = se.remoteTurn;
   if (!r?.resume) return { ok: false, message: `@${se.handle} has no stopped turn on a host to resume.` };
   if (rt.turns.has(sessionId)) return { ok: false, message: `@${se.handle} is already at work.` };
+  // A turn there that Postbox asked to stop may still run until the daemon confirms it: a new one would run beside it
+  // on the same session (#872, #965). A stop on another host, one the agent moved off, doesn’t hold it.
+  const hostId = hostOf(rt.personaFor(se));
+  if (hostId && stopWaitsOn(r, hostId)) {
+    const name = rt.s.hosts?.[hostId]?.name ?? 'its host';
+    return { ok: false, message: `@${se.handle}’s last turn on ${name} hasn’t confirmed it stopped. Resume once it has.` };
+  }
   updateRemote(rts, sessionId, { resume: { ...r.resume, auto: false }, autoResumes: 0 });
   const go = continuing(rt, rt.s.sessions[sessionId], { kind: 'notice', text: 'The person asked you to resume. Carry on where you left off.' });
   rt.deliver(sessionId, go.message, go.opts);
@@ -125,19 +135,23 @@ export async function reattach(rts, sessionId) {
   if (!now || now.remoteTurn?.turn !== r.turn || !rts.restoring.has(r.turn) || rt.turns.has(sessionId)) return;
   const listed = (welcome?.turns ?? []).find((/** @type {any} */ t) => t.turn === r.turn);
   // An agent moved off the host since can’t be attached there, nor one whose backend isn’t registered here (#874,
-  // #909): its turn is left to end on its own, and it waits for the person.
+  // #909): it waits for the person, and the host is asked to stop a turn still there.
   const persona = rt.personaFor(now);
   const moved = hostOf(persona) !== r.hostId;
   const unregistered = !registeredAdapter(rt, persona);
   if (!listed || moved || unregistered) {
     rts.restoring.delete(r.turn);
     rts.early.delete(r.turn);
+    // One the host lists as running, or interrupted with its process unkilled (#872), may still run there, moved or
+    // not: the host is asked to stop it, and stays needed until the daemon confirms it (askStop). Asked before the
+    // release, so the host’s link isn’t let go in between (#965).
+    const stillThere = listed?.state === 'running' || listed?.unkilled === true;
+    if (stillThere) askStop(rts, sessionId, r.hostId, r.turn);
     releaseHost(rts, r.hostId);
-    // A turn the host lists as running, or as interrupted with its process unkilled (#872), may still run there:
-    // resumed on its own once the backend is back, a second turn would run beside it on the same session, so it waits
+    // Resumed on its own once the backend is back, a second turn could run beside it on the same session, so it waits
     // for the person. One listed as ended, or interrupted and gone, can’t, and a moved one waits anyway (autoResume’s
     // hostOf check).
-    const mayRun = (listed?.state === 'running' || listed?.unkilled === true) && !moved;
+    const mayRun = stillThere && !moved;
     interrupted(rts, sessionId, whyNotAttached(now.handle, persona, { listed: Boolean(listed), moved }), { unkilled: mayRun });
     // Its cards, kept for the attach, can’t be answered now (#965).
     endOrphanCards(rts, [r.turn]);
@@ -199,4 +213,13 @@ export function interrupted(rts, sessionId, why, { unkilled = false } = {}) {
     finishedAt: rts.now(),
   });
   whenBack(rts, se.remoteTurn.hostId);
+}
+
+/**
+ * Whether a stop Postbox asked of hostId for this session’s turns there is still unconfirmed (remoteTurn.stopping,
+ * askStop): until the daemon confirms it, that turn may still run there.
+ * @param {any} r  the session’s remoteTurn @param {string} hostId
+ */
+function stopWaitsOn(r, hostId) {
+  return (r?.stopping ?? []).some((/** @type {any} */ x) => x.hostId === hostId);
 }
