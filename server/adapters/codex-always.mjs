@@ -43,7 +43,10 @@ const RUNS_ANOTHER = new Set([
   'deno',
   'make',
 ]);
-/** Tools whose first word alone covers every subcommand, `git push --force` with `git status`: they need two words. */
+/**
+ * Tools whose first word alone covers every subcommand, `git push --force` with `git status`: they need a second word,
+ * and it must be the subcommand, not an option.
+ */
 const SUBCOMMANDS = new Set(['git', 'gh', 'cargo', 'go', 'kubectl', 'brew', 'apt', 'apt-get', 'pip', 'pip3', 'uv', 'rustup', 'gcloud', 'aws', 'az']);
 /** A shell operator, substitution or redirect inside a word: such a prefix isn’t a plain command. */
 const OPERATOR = /[;&|<>`$()\n\\]/;
@@ -53,7 +56,9 @@ function plainPrefix(prefix) {
   if (!Array.isArray(prefix) || !prefix.length) return false;
   if (!prefix.every((w) => typeof w === 'string' && w && !OPERATOR.test(w))) return false;
   if (RUNS_ANOTHER.has(prefix[0])) return false;
-  return !(SUBCOMMANDS.has(prefix[0]) && prefix.length < 2);
+  if (!SUBCOMMANDS.has(prefix[0])) return true;
+  // The second word must be a subcommand: an option such as git -c or -C can make the tool run any program.
+  return prefix.length >= 2 && !prefix[1].startsWith('-');
 }
 
 /**
