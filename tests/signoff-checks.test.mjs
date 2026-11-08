@@ -120,3 +120,25 @@ test('signoffChecks reads the PR’s head and its base’s rules through gh, and
   assert.equal(signoffChecks(783, { gh: broken, log: (l) => out.push(l) }), EXIT.error);
   assert.deepEqual(out, ['signoff-checks #783: gh failed: HTTP 502: Bad Gateway -> ERROR']);
 });
+
+test('a queued rerun, which has no start time yet, replaces the failed run before it: pending, not fail', () => {
+  const name = 'Lint, types, project rules and tests';
+  const failed = { name, status: 'completed', conclusion: 'failure', started_at: '2026-11-06T01:00:00Z' };
+  const queued = { name, status: 'queued', conclusion: null, started_at: null };
+  assert.equal(latestByName([failed, queued]).get(name), queued);
+  assert.equal(latestByName([queued, failed]).get(name), queued);
+  const runs = edited(MERGED, (run) => (run.name === name ? queued : undefined));
+  assert.equal(evaluate(REQUIRED, [failed, ...runs]).exit, EXIT.pending);
+});
+
+test('rules that require nothing are an error, not a pass: the ruleset may be unreadable or renamed', () => {
+  const gh = (/** @type {string[]} */ args) => {
+    if (args[0] === 'repo') return { nameWithOwner: 'o/r' };
+    if (args[0] === 'pr') return { headRefOid: MERGED.head, baseRefName: 'main' };
+    if (args[1].includes('/rules/')) return [];
+    return [{ check_runs: MERGED.check_runs }];
+  };
+  const lines = [];
+  assert.equal(signoffChecks(840, { gh, log: (l) => lines.push(l) }), EXIT.error);
+  assert.deepEqual(lines, ['signoff-checks #840: no required checks found for main: is its ruleset readable? -> ERROR']);
+});
