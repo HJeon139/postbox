@@ -1,18 +1,28 @@
 // `- seed: git-remote` (#305, #296): a remote the run’s agents can commit and push to over and over, that is nothing
 // but a bare repository in the run’s own folder, gone when the run stops. Nothing in the run can reach a real remote
 // or a real gh:
-// - every git that Postbox and its agents run takes protocol.allow=never with only file allowed, from the environment
-//   (GIT_CONFIG_COUNT) and again from the workspace’s own .git/config, so an https, ssh or git:// remote is refused
+// - every git that Postbox and its agents run gets GIT_ALLOW_PROTOCOL=file, which git applies over any config file,
+//   per-protocol settings included, and protocol.allow=never with only file allowed, from the environment
+//   (GIT_CONFIG_COUNT) and again from the workspace’s own .git/config. So an https, ssh or git:// remote is refused
 //   before anything leaves this computer;
-// - a fake gh comes first on PATH, and records what it was asked; gh’s config folder is an empty one of the run’s, so a
-//   real gh found another way has no login;
+// - a fake gh comes first on PATH, and records what it was asked; gh’s config folder is an empty one of the run’s, and
+//   the gh tokens are empty. Claude Code sources CLAUDE_ENV_FILE in the agent’s shell after its profile, which on a Mac
+//   puts Homebrew’s gh back first, so that file puts the run’s bin first again;
+// - preflightRemote checks all of it under the run’s own environment, and the run stops before Postbox starts if any
+//   of it doesn’t hold;
 // - the project’s repository, where Postbox makes a push itself (server/push-on-request.mjs), is the bare repository,
 //   and the run stops before any agent turn if it can’t be set (setUpRemote). That push doesn’t read the guard: it
 //   runs git with none of the environment’s config and turns https and ssh back on. What it keeps is PATH, so its
 //   credential helper is the fake gh, gh’s config folder, which is the run’s empty one, and SSH_AUTH_SOCK, which the
 //   run blanks. So for Postbox’s own push, the repository setting is the guard, with no credentials behind it.
-// What’s left: an agent setting out to get round the guard, with `git -c protocol.allow=always …` or `env -i`, beats
-// both copies of it. In Ask me or Accept edits that command comes to a card first.
+// What’s left, so no one reads this as containment against an agent trying to escape it:
+// - an agent setting out to get round the guard can: `env -i`, or `unset GIT_ALLOW_PROTOCOL` with a `git -c …`. In Ask
+//   me or Accept edits that command comes to a card first; in Auto, the harness decides;
+// - HOME is the person’s own, so their global git hooks and credential helpers still run on an agent’s push to the
+//   run’s remote, and a real gh called by its full path can still read the person’s token from the keychain
+//   (`gh auth token`);
+// - a file push can reach a bare repository outside the run’s folder, and nothing refuses `--host` for this seed: the
+//   seed is for local runs only.
 // Postbox’s temp folders (pb-*) go in the run’s tmp folder, so the end of the run can say none is left.
 
 import { spawnSync } from 'node:child_process';
@@ -25,6 +35,8 @@ export const GUARD = [
   ['protocol.allow', 'never'],
   ['protocol.file.allow', 'always'],
 ];
+/** An https remote nothing listens on, refused at once: the preflight’s probe, and the tests’. */
+export const UNREACHABLE = 'https://127.0.0.1:9/uat/none.git';
 
 /** The run’s folders and files for the remote. @param {string} dir  the run’s folder */
 export const remotePaths = (dir) => ({
@@ -32,19 +44,27 @@ export const remotePaths = (dir) => ({
   bin: join(dir, 'bin'),
   ghConfig: join(dir, 'gh-config'),
   ghCalls: join(dir, 'gh-calls.jsonl'),
+  envFile: join(dir, 'agent-env.sh'),
   tmp: join(dir, 'tmp'),
   record: join(dir, 'remote.json'),
 });
 
-/** git with only the guard and these arguments; its stdout, trimmed, or null when it fails. */
+/** git with these arguments, under env (the runner’s own, with the guard, unless the preflight gives the run’s). */
+const gitRun = (args, cwd, env = { ...process.env, ...guardEnv() }) => spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 20_000, env });
+/** git’s stdout, trimmed, or null when it fails. */
 function git(args, cwd) {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 20_000, env: { ...process.env, ...guardEnv() } });
+  const r = gitRun(args, cwd);
   return r.status === 0 ? r.stdout.trim() : null;
+}
+/** git that must work: a seed step that fails stops the run, naming the step and what git said. */
+function mustGit(args, cwd) {
+  const r = gitRun(args, cwd);
+  if (r.status !== 0) throw new Error(`Couldn’t seed the run’s remote: git ${args.join(' ')} failed: ${(r.stderr || r.error?.message || '').trim()}`);
 }
 
 /** The guard as environment: git reads GIT_CONFIG_KEY_n and GIT_CONFIG_VALUE_n over every config file. */
 export function guardEnv() {
-  const env = { GIT_CONFIG_COUNT: String(GUARD.length) };
+  const env = { GIT_ALLOW_PROTOCOL: 'file', GIT_CONFIG_COUNT: String(GUARD.length) };
   GUARD.forEach(([k, v], i) => {
     env[`GIT_CONFIG_KEY_${i}`] = k;
     env[`GIT_CONFIG_VALUE_${i}`] = v;
@@ -78,6 +98,7 @@ export function gitRemoteEnv(scenario, dir) {
     // run is local only: Postbox reaches a host over ssh.
     SSH_AUTH_SOCK: '',
     POSTBOX_UAT_GH_CALLS: p.ghCalls,
+    CLAUDE_ENV_FILE: p.envFile,
     TMPDIR: p.tmp,
   };
 }
@@ -90,15 +111,46 @@ export function gitRemoteEnv(scenario, dir) {
 export function seedGitRemote(workspace, dir) {
   const p = remotePaths(dir);
   for (const d of [p.bin, p.ghConfig, p.tmp]) mkdirSync(d, { recursive: true });
-  git(['init', '-q', '--bare', '-b', 'main', p.remote]);
-  git(['-C', p.remote, 'config', 'core.logAllRefUpdates', 'always']);
-  for (const [k, v] of GUARD) git(['-C', workspace, 'config', k, v]);
-  git(['-C', workspace, 'remote', 'add', 'origin', p.remote]);
+  mustGit(['init', '-q', '--bare', '-b', 'main', p.remote]);
+  mustGit(['-C', p.remote, 'config', 'core.logAllRefUpdates', 'always']);
+  for (const [k, v] of GUARD) mustGit(['-C', workspace, 'config', k, v]);
+  mustGit(['-C', workspace, 'remote', 'add', 'origin', p.remote]);
   // What an agent’s `git add` mustn’t sweep in: its own settings, which Postbox writes, and Python’s caches.
   writeFileSync(join(workspace, '.gitignore'), '.claude/\n__pycache__/\n*.pyc\n');
   writeFileSync(join(p.bin, 'gh'), FAKE_GH);
   chmodSync(join(p.bin, 'gh'), 0o755);
   writeFileSync(p.ghCalls, '');
+  writeFileSync(p.envFile, agentEnvFile(p));
+}
+
+const quoted = (v) => `'${String(v).replaceAll("'", "'\\''")}'`;
+/** What Claude Code sources in the agent’s shell after its profile: the run’s bin first again, and gh with no login. */
+const agentEnvFile = (p) =>
+  [
+    `export PATH=${quoted(p.bin)}:"$PATH"`,
+    `export GH_CONFIG_DIR=${quoted(p.ghConfig)}`,
+    "export GH_TOKEN='' GITHUB_TOKEN='' SSH_AUTH_SOCK='' GIT_ALLOW_PROTOCOL=file",
+    '',
+  ].join('\n');
+
+/**
+ * The guard, checked under the run’s own environment before Postbox starts: origin is the run’s remote, git there is
+ * refused an https remote, and gh in a shell like the agent’s (the person’s login shell, then CLAUDE_ENV_FILE) is the
+ * fake. Throws, so the run stops, when any of it doesn’t hold.
+ * @param {string} workspace @param {string} dir @param {Record<string, string|undefined>} env  the run’s environment
+ */
+export function preflightRemote(workspace, dir, env) {
+  const p = remotePaths(dir);
+  const stop = (what) => new Error(`${what}, so the run stops before any agent turn.`);
+  const origin = gitRun(['-C', workspace, 'remote', 'get-url', 'origin'], undefined, env).stdout?.trim();
+  if (origin !== p.remote) throw stop(`origin is ${origin || 'unset'}, not the run’s remote (${p.remote})`);
+  const probe = gitRun(['-C', workspace, 'ls-remote', UNREACHABLE], undefined, { ...env, GIT_TERMINAL_PROMPT: '0' });
+  if (!/transport 'https' not allowed/.test(probe.stderr ?? ''))
+    throw stop(`git in the run isn’t refused an https remote (it said: ${(probe.stderr ?? '').trim().slice(0, 200)})`);
+  const shell = env.SHELL || '/bin/sh';
+  const which = spawnSync(shell, ['-lic', '[ -n "$CLAUDE_ENV_FILE" ] && . "$CLAUDE_ENV_FILE"; command -v gh'], { env, encoding: 'utf8', timeout: 20_000 });
+  const gh = (which.stdout ?? '').trim().split('\n').at(-1);
+  if (gh !== join(p.bin, 'gh')) throw stop(`gh in the agent’s shell is ${gh || 'missing'}, not the run’s fake (${join(p.bin, 'gh')})`);
 }
 
 /**
