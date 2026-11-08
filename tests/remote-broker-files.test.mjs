@@ -8,7 +8,7 @@ import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { inlineAppFiles } from '../server/remote/host/broker.mjs';
-import { connectShim, makeBroker, makeHome } from './remote-broker-fixtures.mjs';
+import { connectShim, makeBroker, makeHome, until } from './remote-broker-fixtures.mjs';
 
 // ── Files in the agent’s folder ──
 
@@ -141,7 +141,7 @@ test('#780 a review block’s files are read from the turn’s folder and sent a
     // A review’s call with files waits for Postbox’s answer (toolRoute), so Postbox answers each once it’s sent.
     const answered = async (id, name, args) => {
       const got = s.call(id, name, args);
-      while (!k.sent.some((m) => m.type === 'tool' && m.id === id)) await new Promise((r) => setImmediate(r));
+      await until(() => k.sent.some((m) => m.type === 'tool' && m.id === id), `${id} sent to Postbox`, 10_000);
       await k.post('reply', { turn: 't1', id, ok: true, text: 'Shown.' });
       return got;
     };
@@ -172,7 +172,8 @@ test('#854 a valid review update_block with files is sent to Postbox from a host
       if (!r.ok) refused = r.text;
     });
     const sent = () => k.sent.some((m) => m.type === 'tool' && m.id === 'c1');
-    for (let i = 0; i < 2000 && !sent() && refused === null; i++) await new Promise((r) => setImmediate(r));
+    // Bounded in time, not in event-loop turns: reading the file takes 30 to 1,700 turns, more under load.
+    await until(() => sent() || refused !== null, 'the update sent to Postbox or refused', 10_000);
     assert.equal(refused, null, 'not refused on the host');
     assert.ok(sent(), 'sent to Postbox');
     await k.post('reply', { turn: 't1', id: 'c1', ok: true, text: 'Shown.' });
