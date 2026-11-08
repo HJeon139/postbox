@@ -23,3 +23,14 @@ export function shotsOf(shots, label) {
 export function shotAtStep(shots, label, step) {
   return shotsOf(shots, label).findLast((s) => s.n < step) ?? null;
 }
+
+/**
+ * The picture as the reply it’s in left it: the last shot taken before the person’s next message, or the last shot when
+ * nothing came after. By time, from Postbox’s log (tools/uat/picture-choice.mjs, firstExchange), since the tester’s
+ * answer to a card isn’t a message.
+ * @param {string} shots @param {string} label @param {number|null} nextMessageAt
+ */
+export function replyShot(shots, label, nextMessageAt) {
+  const all = shotsOf(shots, label);
+  return all.findLast((s) => nextMessageAt === null || s.at < nextMessageAt) ?? all.at(-1) ?? null;
+}

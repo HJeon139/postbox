@@ -154,6 +154,8 @@ export function runRecord({
     ...(facts.timing ? { timing: facts.timing } : {}),
     // Whether the agent drew, when and what, for a judged run (#983).
     ...pictureRecord(scenario, dir),
+    // #995: the first picture against a words-only answer, and each judged app’s intent against its takeaway.
+    ...(facts.sideBySide ? { sideBySide: facts.sideBySide, pictureJudges: facts.pictureJudges } : {}),
   };
 }
 
