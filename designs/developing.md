@@ -232,6 +232,8 @@ engineering-practices.md, “Tests”, covers speed, recorded fixtures, a failin
 
 **Share setup; keep each action and its assertions inline.** A failing test should be readable without chasing three helpers, and logic moved into a shared helper is itself untested.
 
+**A test’s temp folder is removed when its file’s process exits.** `tempDir` in `tests/temp-dirs.mjs` (#797) removed its folders in node:test’s top-level `after`, which a top-level throw or a `process.exit()` skips, and which ran before a file’s own `after` could stop what still wrote there; a `process.on('exit')` handler runs after both, so it removes them there instead (#921). A signal’s default action skips `exit` too, so the gate’s sweep of its run folders still backs it up.
+
 **Use `node:test` and `node:assert/strict`, and nothing else.** No test framework is a dependency, and `--experimental-test-coverage` is Node’s own ([node:test][node-test]).
 
 **Add a test when the task covers it.** A new behavior, check or test matrix the issue didn’t ask for is added scope, and needs evidence and intent first (prompts/README.md, “Scope”).

@@ -4,12 +4,10 @@
 // recovered state still holds; a manual Retry whose schedule is gone has no other owner, and is the person’s own action.
 // The first two specs are gpt’s probes. The same real Postbox setup on its own port.
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { cancelWakeSchedule, fireScheduledWake } from '../server/scheduled-wakes.mjs';
 import { heldTurn } from '../server/store-outage.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
@@ -20,7 +18,7 @@ let app;
 let dir;
 let rt;
 before(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'pb-wake-owners-'));
+  dir = tempDir('pb-wake-owners-');
   app = await start({ port: PORT, dataDir: dir, fresh: true, demo: false, quiet: true, claudeHome: dir, listen: false, hosts: null });
   rt = app.rt;
   rt.store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
@@ -28,7 +26,6 @@ before(async () => {
 });
 after(async () => {
   await app.close();
-  await rm(dir, { recursive: true, force: true });
 });
 beforeEach(async () => {
   if (!rt.store.writable) await rt.store.reload();

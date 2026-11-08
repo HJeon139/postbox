@@ -7,6 +7,7 @@ import { ASKING } from '../../shared/catalog.mjs';
 import { triesOf, triesWith } from './host-installs.mjs';
 import { agentTurns, hostIdOf, itemsUnderTest, labelOf, onHost, placeOf, remoteStream, remoteTurns, toolUses } from './remote-facts.mjs';
 import { HOSTWAKE_TRIGGERS } from './triggers-hostwakes.mjs';
+import { HUNG_TRIGGERS } from './triggers-hung.mjs';
 
 const MINUTE = 60_000;
 const hostRun = (f) => Boolean(f.hosts?.hosts?.length);
@@ -314,4 +315,6 @@ export const HOST_TRIGGERS = {
   },
   // A hand-off between machines while a wake card waits (tests/uat/e2e/scenarios/hostwakes.md).
   ...HOSTWAKE_TRIGGERS,
+  // A host runner hung past the silence ceiling, killed and resumed (#872).
+  ...HUNG_TRIGGERS,
 };

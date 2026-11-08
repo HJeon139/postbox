@@ -2,12 +2,10 @@
 // findings on 1b: a fence after a loop, not after each await). Split from store-outage-timers.test.mjs under the
 // file-length rule; the same real Postbox setup on its own folder and port.
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { deletePersona, purgePersona } from '../server/persona-delete.mjs';
 import { whenWritable } from '../server/store-outage.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
@@ -25,7 +23,7 @@ let app;
 let dir;
 let rt;
 before(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'pb-outage-persona-'));
+  dir = tempDir('pb-outage-persona-');
   app = await start({ port: PORT, dataDir: dir, fresh: true, demo: false, quiet: true, claudeHome: dir, listen: false, hosts: null });
   rt = app.rt;
   rt.store.emit('project', { id: 'p1', name: 'P', folder: '/tmp' });
@@ -33,7 +31,6 @@ before(async () => {
 });
 after(async () => {
   await app.close();
-  await rm(dir, { recursive: true, force: true });
 });
 
 // A spec that fails may leave writes closed: the next one starts open, so each fails for its own reason.

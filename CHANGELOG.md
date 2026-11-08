@@ -2,6 +2,70 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.41.1 (2026-11-08)
+
+### Fixes
+
+- **apps:** don't report the ResizeObserver loop warning as an app error
+
+## 1.41.0 (2026-11-08)
+
+### Features
+
+- **apps:** the app check reports a choice shown by toggling .ghost
+- **apps:** add a primary button variant for agent apps
+- **uat:** fault stop-runner, trigger host-hung-killed, and remotehosts phase 6 (#872)
+
+### Fixes
+
+- **agents:** the guide says which control is for a choice and which for an action
+- **uat:** phase 6 hangs the runner while a long reply is written (#872)
+- **uat:** stop-runner also matches a runner under the resolved home folder (#872)
+- **remote:** say a host turn ended unkilled in the daemon's welcome too (#872)
+- **remote:** crossing looks at a silent host runner keep the newer one's verdict (#872)
+- **remote:** keep a host runner's silence in its turn folder across daemon restarts (#872)
+- **remote:** a silent host runner's process check stands for 5 s, but not at the ceiling (#872)
+- **remote:** kill a host runner hung past the silence ceiling before its turn ends (#872)
+
+## 1.40.1 (2026-11-08)
+
+### Fixes
+
+- **apps:** send a script error in the pre-display check back to the agent once
+- **apps:** keep an app that has drawn running after a script error
+- **tests:** a browser spec's Postbox removes its folder when its start or its close fails
+- **tests:** the host UAT and view_app stop tests use tempDir
+- **tests:** the push, runner shot and unhandled rejection process tests use tempDir
+- **tests:** the bench signal and lint process tests use tempDir
+- **tests:** the host integration tests and the host UAT tests use tempDir
+- **tests:** the remote e2e tests and the host manager fixture use tempDir
+- **tests:** the remote attachment and cleanup tests make their folders with tempDir
+- **tests:** the app browser, persona delete and steering tests use tempDir
+- **tests:** the asset tools fixture and wiring tests use tempDir
+- **tests:** the archive, prompt claim and asset privacy tests use tempDir
+- **tests:** the review route, prototype key and runtime route tests use tempDir
+- **tests:** the epoch, server token and served files tests use tempDir
+- **tests:** the wake-owner, persona outage and store gate tests use tempDir
+- **tests:** the store outage tests make their data folders with tempDir
+- **tests:** tempDir removes its folders when the test file's process exits
+
+## 1.40.0 (2026-11-08)
+
+### Features
+
+- **skills:** the visual-explainer draws one step's cause close up (VE9)
+- **skills:** the visual-explainer's first state shows the idea (VE13)
+- **app:** search the conversation from the top bar's button, and jump to a hit (#866)
+
+### Fixes
+
+- **app:** the top bar clips its overflow, so it never widens a phone's page (#866)
+- **skills:** the visual-explainer sizes from a frame that can start 0 wide
+- **thread:** a box that changed size and clamped the view to its end doesn't start following
+- **app:** holders of drawn elements hold them weakly, so leaving a room lets its page go (#866)
+- **check:** fail the gate on what test and test:integration leave in its temp folder
+- **agents:** the quick panel repaints for its session, persona and a reload, not each item
+
 ## 1.39.3 (2026-11-07)
 
 ### Fixes

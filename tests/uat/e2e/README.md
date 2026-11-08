@@ -371,33 +371,35 @@ Postbox connects to a host when a turn there needs it, and an installed host not
 
 The triggers, for `remotehosts` and for P0’s Stop phase on a host:
 
-| Trigger                         | Postbox showed that                                                                                             |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| turn-on-each-place              | a turn of a placed agent ran where it’s placed, on each host and on this computer                               |
-| remote-block-answered           | an agent on a host showed a block that asks, and your answer reached it                                         |
-| remote-review-answered          | an agent on a host put a draft up for review, and you answered it                                               |
-| remote-card-after-a-minute      | a permission card from a host was answered more than a minute after it appeared                                 |
-| remote-attachment-read          | an agent on a host read a file you attached, from its copy on the host                                          |
-| cross-host-wake                 | an agent woke an agent that runs on another machine                                                             |
-| remote-stop-says-jobs           | before Stop, it said the background job on the host stops with the turn, and you stopped the agent              |
-| remote-stop-no-process-left     | after Stop on an agent with a background job on a host, nothing of that turn was left running there             |
-| fault-kill-ssh                  | the host read Connected again on its own after its ssh connection was killed                                    |
-| fault-restart-postbox           | the hosts read Connected again after Postbox restarted on the same data                                         |
-| fault-kill-daemon               | the host read Connected again after its daemon was killed                                                       |
-| remote-card-while-disconnected  | a permission card from a host, open when its ssh connection was killed, was answered after it reconnected       |
-| host-staged-older               | a host with an older Postbox on it read not installed, before this run’s version was installed there            |
-| host-auto-installed             | Postbox installed its own version by itself, once, on a host with an older one, and a turn then ran there       |
-| pair-card-opened                | (hostwakes) a wake past a limit raised a card, which waited for you                                             |
-| local-wake-told-in-turn         | (hostwakes) an agent here whose wake was refused got the refusal as `wake_agent`’s own result                   |
-| refused-wake-told-in-turn       | (hostwakes) an agent on a host whose wake was refused was told so, and started a turn, within a minute          |
-| held-wake-delivered-after-allow | (hostwakes) a hand-off refused while a card waited reached its target once you allowed the card, with no resend |
-| wake-held-on-card               | (hostwakes) a wake that needed a card while one waited was held on it, and `wake_agent` said so                 |
+| Trigger                         | Postbox showed that                                                                                              |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| turn-on-each-place              | a turn of a placed agent ran where it’s placed, on each host and on this computer                                |
+| remote-block-answered           | an agent on a host showed a block that asks, and your answer reached it                                          |
+| remote-review-answered          | an agent on a host put a draft up for review, and you answered it                                                |
+| remote-card-after-a-minute      | a permission card from a host was answered more than a minute after it appeared                                  |
+| remote-attachment-read          | an agent on a host read a file you attached, from its copy on the host                                           |
+| cross-host-wake                 | an agent woke an agent that runs on another machine                                                              |
+| remote-stop-says-jobs           | before Stop, it said the background job on the host stops with the turn, and you stopped the agent               |
+| remote-stop-no-process-left     | after Stop on an agent with a background job on a host, nothing of that turn was left running there              |
+| fault-kill-ssh                  | the host read Connected again on its own after its ssh connection was killed                                     |
+| fault-restart-postbox           | the hosts read Connected again after Postbox restarted on the same data                                          |
+| fault-kill-daemon               | the host read Connected again after its daemon was killed                                                        |
+| remote-card-while-disconnected  | a permission card from a host, open when its ssh connection was killed, was answered after it reconnected        |
+| host-staged-older               | a host with an older Postbox on it read not installed, before this run’s version was installed there             |
+| host-auto-installed             | Postbox installed its own version by itself, once, on a host with an older one, and a turn then ran there        |
+| host-hung-killed                | a turn whose runner on a host was stopped ended interrupted once, Postbox resumed it on its own, and it finished |
+| pair-card-opened                | (hostwakes) a wake past a limit raised a card, which waited for you                                              |
+| local-wake-told-in-turn         | (hostwakes) an agent here whose wake was refused got the refusal as `wake_agent`’s own result                    |
+| refused-wake-told-in-turn       | (hostwakes) an agent on a host whose wake was refused was told so, and started a turn, within a minute           |
+| held-wake-delivered-after-allow | (hostwakes) a hand-off refused while a card waited reached its target once you allowed the card, with no resend  |
+| wake-held-on-card               | (hostwakes) a wake that needed a card while one waited was held on it, and `wake_agent` said so                  |
 
 **Stop on a host** never asks about background jobs, since they stop with the turn. So P0’s Stop phase names its agent (`- host: researcher`), and when that agent is on a host, it takes `- host-triggers:` instead of #126’s, and the text under `### On a host` instead of its own. Before each Stop on an agent on a host, the runner reads what the composer says. While agents on hosts work, at most every 5 seconds and once more just before it presses Stop, it lists every process under each turn’s runner there (the runner, the CLI, the tool shells Claude Code starts in sessions of their own, and what they start), each by its PID and start time. Once the daemon’s grace has passed after Stop, it looks for each of them again, for anything in a process group or session one of them was in, and for any process whose working folder is the run’s own `~/postbox-uat/<run>` that no live turn has under it: a `nohup … &` from a call that returned at once leaves its turn’s tree before anything sees it, as the fourth live run’s heartbeat loop did. A tool shell that outlives a killed CLI is a child of PID 1 with neither the runner’s session nor the turn’s ID in its command line, so only that record finds it. A Stop with nothing seen under its turn beforehand can’t be judged, and that is a finding too.
 
 **Faults** (`tools/uat/hosts-watch.mjs`), which the tester picks with `fault {fault, target}`, or mid-turn with an interrupt `{after, do: fault, fault, target}`:
 - `kill-ssh` kills the run’s Postbox’s ssh to that host.
 - `kill-daemon` kills `host.mjs serve` there.
+- `stop-runner` sends SIGSTOP to the runner of that host’s newest running turn, so it hangs with its process still there (#872), and is refused on a host that had Postbox before the run. The host stays connected, so nothing is followed after it.
 - `restart-postbox` stops the run’s Postbox as Ctrl-C does, starts it again on the same data, and reloads the page.
 
 Each is recorded with what Postbox showed after: the host’s states and how long each took, and the agents’ rows; for `kill-ssh`, also which processes it killed. The states come from Postbox’s event stream as each change arrived, as well as from reads of the state, so a drop and a reconnect that both fall between two reads still show. The run waits until each host it touched reads Connected again, or 3 minutes. A host that never read anything but Connected wasn’t cut off, so its fault counts for nothing: not as recovered, and not for a card answered across a drop. A permission card raised while disconnected is a kill-ssh while the card waits, then the answer after the reconnect.

@@ -173,7 +173,7 @@ Every block has id (letters, digits, - _ . :; one block per id in a conversation
 - form: fields (up to ${n('formFields')}) [{ id, label (≤ ${n('fieldLabel')} characters), kind: "text" | "longtext" | "number" | "select" | "toggle" | "date", required?, placeholder?, help?, min?, max?, step?, maxLength?, options? [{ id, label, description? }] (select only, up to ${n('selectOptions')}), default? }], prompt?, submitLabel?, outcome?. Answer: "submit", { [fieldId]: value }.
 - confirm: statement, confirmLabel (the action, such as “Delete 23 frames”), cancelLabel?, outcome?. Answer: "confirm" or "cancel".
 - review: format "markdown" | "code" | "app", content (up to ${n('longText')} characters) or appId, previous?, threads?, language?, filename?, outcome?. Answer: "submit", { verdict: "comment" | "approve" | "request_changes", comments: [{ line? | anchor?, text }] }.
-- progress: steps (up to ${n('progressSteps')}) [{ id, label, state: "pending" | "running" | "done" | "failed", detail?, progress?: { done, total, unit? }, percent?: 0–100, eta? }]. Postbox shows when it last changed and times each step.
+- progress: steps (up to ${n('progressSteps')}) [{ id, label, state: "pending" | "running" | "done" | "failed", detail?, progress?: { done, total, unit? }, percent?: 0–100, eta? }].
 - table: columns (up to ${n('tableColumns')}) [{ id, label, kind?: "text" | "number", sortable? }], rows (up to ${n('tableRows')}) [{ id, cells: { [columnId]: value } }], rowAction?: { id, label }. Answer: the rowAction id, { rowId }.
 - card: body? (up to ${n('cardBody')} characters), facts? (up to ${n('cardFacts')}) [{ label, value }], actions? (up to ${n('cardActions')}) [{ id, label }]. Answer: the action id.
 - image: src (https, from an allowed origin), alt, caption?.
@@ -187,7 +187,7 @@ A picture that explains draws what things are or do, not labeled boxes: draw it 
 
 ## Apps
 
-When a tool explains better than prose (an explorer, a simulator), write one with show_app { id, title, code, permissions?, fallback? }. Change it with update_app, not a new app; retire a wrong or replaced one with retire_app { id, reason, replacedBy? }, not a pointer version. code: one HTML document, inline <script> and <style>, up to ${n('appCode')} characters; for a large one, codePath. Data: files [{ name?, path }] (up to ${n('appFiles')}, ${n('appFileBytes')} each), read with postbox.file(name). add_dataset loads searchable JSONL from .postbox/datasets/ (up to ${n('datasetBytes')}); searches name it in books. No network: no fetch, external scripts or fonts. Use var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw colors, for light and dark, and Postbox’s classes btn (sm, ghost), chip, pill, field, label, input, select, dim, small, mono. Prefix your own classes (lab-row): Postbox styles names like bar. In charts:
+When a tool explains better than prose (an explorer, a simulator), write one with show_app { id, title, code, permissions?, fallback? }. Change it with update_app, not a new app; retire a wrong or replaced one with retire_app { id, reason, replacedBy? }, not a pointer version. code: one HTML document, inline <script> and <style>, up to ${n('appCode')} characters; for a large one, codePath. Data: files [{ name?, path }] (up to ${n('appFiles')}, ${n('appFileBytes')} each), read with postbox.file(name). add_dataset loads searchable JSONL from .postbox/datasets/ (up to ${n('datasetBytes')}); searches name it in books. No network: no fetch, external scripts or fonts. Use var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw ones, and Postbox’s classes btn (sm, primary, ghost), seg, chip, pill, field, label, input, select, dim, small, mono. Pick one of a few options with a seg or chips (aria-pressed), not btns toggling ghost. At most one btn primary; ghost only for a minor action in text; links only for reading. Prefix your classes (lab-row). In charts:
 ${PALETTES.map((p) => `- ${p.name} for ${p.for}: ${p.when}.`).join('\n')}
 
 The global postbox gives you:
@@ -202,7 +202,7 @@ The global postbox gives you:
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view
 - postbox.on("theme", fn) to redraw canvas or SVG on a theme change
 
-Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before showing an app, Postbox checks it in a narrow and a wide window (375 and 1280 px) for layout, accessibility and script errors; fix what it reports with update_app. Look with view_app before calling it done.
+Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before showing an app, Postbox checks it in a narrow and a wide window (375 and 1280 px); fix what it reports with update_app. Look with view_app before you’re done.
 
 ## Working with others
 
@@ -211,7 +211,7 @@ Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before s
 - Writing @handle wakes that agent; to name one, omit @.
 - define_term a term the first time you use it, so later mentions link to it.
 - Files the conversation keeps go in its assets: list_assets, read_asset, and write_asset from the base version you read (rename, delete and restore too).
-- Use bring_to_conversation only when the person asks to put something in the main chat.
+- Use bring_to_conversation only when the person asks for it.
 
 ## Recipes
 

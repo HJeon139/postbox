@@ -145,6 +145,27 @@ test('#120 L5: after a restart a turn the welcome doesn’t list is Interrupted,
   await settled(r);
 });
 
+test('#872 after a restart a turn the welcome lists interrupted, its process there unkilled, waits for the person', async () => {
+  const { store, d } = restarted({ welcome: 'unkilled' });
+  const r = rig({ store, d });
+  startUp(r);
+  await until(() => r.se().remoteTurn.state === 'interrupted', 'Interrupted');
+  await settled(r);
+  r.hosts.emit('status', r.host.id, { state: 'connected' });
+  await sleep(20);
+  assert.equal(starts(d).length, 0, 'not resumed beside a process that may still run');
+  assert.equal(r.se().remoteTurn.resume?.unkilled, true, 'the person can resume it');
+});
+
+test('#872 after a restart a turn the welcome lists interrupted, its process gone, resumes on its own', async () => {
+  const { store, d } = restarted({ welcome: 'interrupted' });
+  const r = rig({ store, d });
+  startUp(r);
+  await until(() => starts(d).length === 1, 'the resume');
+  d.end(starts(d)[0].turn);
+  await settled(r);
+});
+
 /**
  * A restart whose attach waits: the host’s welcome is held until open() (ensureWelcome), so the turn is still waiting
  * to be attached again. @param {any} [o]

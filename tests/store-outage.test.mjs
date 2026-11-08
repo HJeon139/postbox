@@ -6,11 +6,9 @@
 
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
@@ -22,12 +20,11 @@ let dir;
 const call = (r) => fakeRequest(app.handle, { host: `127.0.0.1:${PORT}`, ...r });
 
 before(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'pb-outage-'));
+  dir = tempDir('pb-outage-');
   app = await start({ port: PORT, dataDir: dir, fresh: true, demo: false, quiet: true, claudeHome: dir, listen: false, hosts: null });
 });
 after(async () => {
   await app.close();
-  await rm(dir, { recursive: true, force: true });
 });
 
 /** Waits for a condition, up to 10 s. @param {() => boolean} pred @param {string} what */

@@ -2,13 +2,13 @@
 // folder, a test clock, and waiting until something holds.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHostManager } from '../server/remote/hosts.mjs';
 import { defaultHostSettings } from '../shared/remote-settings.mjs';
 import { createFakeDaemon, FAKE_TOKEN } from './fake-daemon.mjs';
 import { fakeSsh } from './fake-ssh.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 export const VERSION = '0.10.0';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -68,7 +68,7 @@ export function setup({
   delay = 5,
   hostIds = undefined,
 } = {}) {
-  const dataDir = mkdtempSync(join(tmpdir(), 'pbh-'));
+  const dataDir = tempDir('pbh-');
   const hosts = {
     h1: { id: 'h1', name: 'host.example.com', settings: { ...defaultHostSettings(), ...settings }, createdAt: 1 },
     h2: { id: 'h2', name: 'other.example.com', settings: defaultHostSettings(), createdAt: 1 },
@@ -95,7 +95,6 @@ export function setup({
   mgr.on('status', (id, s) => statuses.push({ id, state: s.state, lastHeard: s.lastHeard }));
   const done = () => {
     mgr.close();
-    rmSync(dataDir, { recursive: true, force: true });
   };
   return { mgr, hosts, dataDir, daemon, ssh, clock, statuses, done };
 }
