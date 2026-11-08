@@ -5,6 +5,7 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { lines } from './history.mjs';
 
 export const EXPECTS = ['picture', 'words'];
 
@@ -23,12 +24,8 @@ function logEvents(data) {
     .map((f) => f.match(/^events-(\d+)\.jsonl$/))
     .filter((m) => m !== null)
     .sort((a, b) => Number(a[1]) - Number(b[1]));
-  return segments.flatMap((m) =>
-    readFileSync(join(data, m[0]), 'utf8')
-      .split('\n')
-      .filter(Boolean)
-      .map((l) => JSON.parse(l)),
-  );
+  // lines() unwraps a commit’s array line and skips a torn last one: the report is read while Postbox still writes.
+  return segments.flatMap((m) => lines(readFileSync(join(data, m[0]), 'utf8')));
 }
 
 /**
