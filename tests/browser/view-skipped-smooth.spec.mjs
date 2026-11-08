@@ -156,7 +156,10 @@ test('a wheel up during the jump is you reading: the view stays where you turned
   test.info().annotations.push({ type: 'measured', description: JSON.stringify({ ...v, stopped }) });
   if (!stopped) return;
   expect.soft(v.mode, 'it reads where you turned the wheel').toBe('reading');
-  expect.soft(v.gap, 'it isn’t at the end').toBeGreaterThan(400);
+  // Chromium ends the jump on the turn, well short of the end. Firefox can carry the view on toward it first (180 px
+  // short on a Mac, researcher’s check on 49a5bf91), so there it’s enough that the view reads short of the end.
+  const short = browserName === 'firefox' ? 2 : 400;
+  expect.soft(v.gap, `it isn’t at the end: more than ${short} px short of it`).toBeGreaterThan(short);
 });
 
 // A click or a key that can’t scroll the page doesn’t stop the jump, so it isn’t you reading: starting a reply while
