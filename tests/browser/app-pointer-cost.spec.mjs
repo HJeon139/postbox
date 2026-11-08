@@ -133,6 +133,37 @@ async function reviewGoesLive(page, width) {
   await expect(f, 'live under the resting pointer').toHaveClass(/\blive\b/);
 }
 
+/**
+ * critic’s read of #930: an app review renders a new body each time it re-renders (a comment, an answer), and the
+ * bodies it left behind stayed in the near set until the whole transcript went, so the page kept looking under the
+ * pointer. Here a review is shown, re-rendered twice, answered, and moved far off screen.
+ */
+async function staleReviewLooks(page, width) {
+  const r = await room(page, `Stale review ${width}`);
+  const title = `Stale ${width}`;
+  const appId = await r.show(title);
+  const block = (version) => ({ id: `srv-${width}`, type: 'review', version, title, fallback: 'Review the app.', format: 'app', appId });
+  r.tools.show_block({ block: block(1) });
+  const f = page.locator('.rv-box iframe.app-iframe');
+  await expect(f, 'the review’s app to load').toHaveAttribute('data-sized', '1');
+  for (const version of [2, 3]) {
+    r.tools.update_block({ block: block(version) });
+    await synced(page, app);
+    await expect(f).toHaveAttribute('data-sized', '1');
+  }
+  const it = app.store.items(r.t.id).find((i) => i.kind === 'block' && i.block.type === 'review');
+  await app.rt.act(r.t.id, it.id, 'submit', { verdict: 'approve', comments: [] }, it.revision ?? 1);
+  await synced(page, app);
+  await r.lines(80, 'After');
+  await settled(page);
+  // Far below both apps’ bodies, past the near margin (one and a half windows): nothing on the page is near the view.
+  const below = await page.locator('.app-body').evaluateAll((bodies) => bodies.every((b) => b.getBoundingClientRect().bottom < -1.5 * innerHeight));
+  expect(below, 'every app body is far above the view').toBe(true);
+  const looks = await looksWhileStreaming(page);
+  test.info().annotations.push({ type: 'measured', description: `elementFromPoint calls: ${looks}` });
+  expect(looks, 'looks under the pointer after an answered app review left the view').toBe(0);
+}
+
 for (const width of [375, 1280])
   test.describe(`at ${width} px`, () => {
     test.use({ viewport: { width, height: 800 } });
@@ -161,4 +192,6 @@ for (const width of [375, 1280])
     test('#930 an app scrolled in from far away becomes live under the resting pointer', ({ page }) => scrolledIn(page, width));
 
     test('#930 an app review in view becomes live when it scrolls under the resting pointer', ({ page }) => reviewGoesLive(page, width));
+
+    test('#930 a re-rendered, answered app review far off screen leaves no look under the pointer', ({ page }) => staleReviewLooks(page, width));
   });
