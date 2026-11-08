@@ -9,10 +9,10 @@
 //   node tools/uat-pairs.mjs agree <folder> <picks.json>         the judge’s agreement with the maintainer’s picks
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { agreement, arenaPairs, calibrationPage, judgeIntoKey, twinPairs } from './uat/calibration.mjs';
+import { agreement, arenaPairs, calibrationPage, judgeIntoKey, shownBefore, twinPairs } from './uat/calibration.mjs';
 import { pictureOfRun } from './uat/pairs-backfill.mjs';
 import { runsRoot } from './uat/runs.mjs';
 import { parseScenario } from './uat/scenario.mjs';
@@ -46,7 +46,7 @@ async function twinRuns() {
 
 /**
  * Asks the judge about each pair, as the page shows it. For a person (`build`), the pairs repeat no brief, question or
- * screenshot, and the page is written; for the judge alone (`judge`), pairs may repeat and there’s no page.
+ * screenshot, on this page or an earlier one in the folder above it, and the page is written; for the judge alone (`judge`), pairs may repeat and there’s no page.
  * @param {{ person: boolean }} o
  */
 async function build({ person }) {
@@ -54,7 +54,13 @@ async function build({ person }) {
   const out = resolve(opt.out);
   // A scenario’s question can change between runs: a pair compares answers to the same one.
   const twins = twinPairs(await twinRuns(), Number.POSITIVE_INFINITY).filter((p) => p.skill.picture.question === p.base.picture.question);
-  const chosen = (person ? arenaPairs(twins) : twins).slice(0, Number(opt.pairs));
+  const earlier = person ? shownBefore(dirname(out)) : { seen: new Set(), pages: [] };
+  const chosen = (person ? arenaPairs(twins, earlier.seen) : twins).slice(0, Number(opt.pairs));
+  if (person && !chosen.length) {
+    const shownOn = earlier.pages.length ? ` Already shown on: ${earlier.pages.join(', ')}.` : '';
+    throw new Error(`No pair is left that a person hasn’t seen.${shownOn} A repeat needs a reason the page states, and the maintainer’s OK.`);
+  }
+  if (earlier.pages.length) console.log(`Left out every brief, question and run shown on: ${earlier.pages.join(', ')}.`);
   const shown = chosen.map((p) => {
     const skillAs = Math.random() < 0.5 ? 'A' : 'B';
     // A derived sentence saved before it was cut to 16 words is cut here, as one derived now would be.
@@ -64,7 +70,16 @@ async function build({ person }) {
     return { persona: personaOf(p.skill.scenario), question: p.skill.picture.question, sides, skillAs, p };
   });
   calibrationPage(shown, out, { page: person });
-  const key = shown.map((s, i) => ({ n: i + 1, skillAs: s.skillAs, skill: s.p.skill.run, base: s.p.base.run, judge: null, cost: 0 }));
+  const key = shown.map((s, i) => ({
+    n: i + 1,
+    skillAs: s.skillAs,
+    skill: s.p.skill.run,
+    base: s.p.base.run,
+    question: s.question,
+    person,
+    judge: null,
+    cost: 0,
+  }));
   const { spent, failed } = await judgeIntoKey(key, `${out}-key.json`, ({ n }) => {
     const s = shown[n - 1];
     return judgePair({ persona: s.persona, question: s.question, sides: s.sides, model: opt['judge-model'], ask: askOnce });

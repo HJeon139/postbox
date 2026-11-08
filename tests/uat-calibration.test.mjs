@@ -8,7 +8,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { agreement, arenaPairs, calibrationPage, judgeIntoKey, PAGE_CSP, pageId, twinPairs } from '../tools/uat/calibration.mjs';
+import { agreement, arenaPairs, calibrationPage, judgeIntoKey, PAGE_CSP, pageId, shownBefore, twinPairs } from '../tools/uat/calibration.mjs';
 import { firstJudged } from '../tools/uat/pairs-backfill.mjs';
 
 test('#995 a scenario’s runs pair with its -base twin’s, newest first, one scenario after another', () => {
@@ -156,4 +156,33 @@ test('#995 a failed judge call keeps the key: which side was which, and what the
   assert.deepEqual(read()[2].judge, { pick: 'A', why: 'Clearer.' }, 'the calls after it still ran');
   const a = agreement(read(), { picks: [1, 2, 3].map((n) => ({ n, pick: 'A' })) });
   assert.equal(a.pairs, 2, 'the pair with no judge’s pick is left out');
+});
+
+test('#995 no repeats hold across pages: what an earlier page showed is left out, and a judge-only key doesn’t count', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-calibrate-'));
+  t.after(() => rmSync(dir, { recursive: true }));
+  const stamp = '2026-11-08T02-22-03';
+  const write = (name, key) => writeFileSync(join(dir, name), JSON.stringify(key));
+  write('old-key.json', [{ n: 1, run: `${stamp}-words`, pictureAs: 'A', judge: 'picture' }]);
+  write('page-key.json', [{ n: 1, skill: `${stamp}-subs`, base: `${stamp}-subs-base`, question: 'Cancel?', person: true }]);
+  write('model-key.json', [{ n: 1, skill: `${stamp}-model`, base: `${stamp}-model-base`, question: 'Judged only?', person: false }]);
+  writeFileSync(join(dir, 'other.json'), 'not a key');
+  const { seen, pages } = shownBefore(dir);
+  assert.deepEqual(pages, ['old-key.json', 'page-key.json']);
+  assert.ok(seen.has(`run:${stamp}-words`) && seen.has('brief:words'), 'a key from the first page format counts');
+  assert.ok(seen.has('brief:subs') && seen.has('question:Cancel?') && seen.has(`run:${stamp}-subs-base`));
+  assert.ok(!seen.has('brief:model') && !seen.has('question:Judged only?'), 'no person saw the judge-only pairs');
+  const pair = (scenario, question) => ({
+    skill: { scenario, run: `new-${scenario}`, picture: { question, shot: 'a.png' } },
+    base: { scenario: `${scenario}-base`, run: `new-${scenario}-base`, picture: { question, shot: 'b.png' } },
+  });
+  const left = arenaPairs([pair('subs', 'New wording?'), pair('tests', 'Cancel?'), pair('shelf', 'What have I got?')], seen);
+  assert.deepEqual(
+    left.map((p) => p.skill.scenario),
+    ['shelf'],
+    'the same brief and the same question are both left out',
+  );
+  writeFileSync(join(dir, 'torn-key.json'), 'not json');
+  assert.throws(() => shownBefore(dir), /torn-key\.json doesn’t parse, so what its page showed can’t be left out/);
+  assert.deepEqual(shownBefore(join(dir, 'nowhere')).pages, []);
 });

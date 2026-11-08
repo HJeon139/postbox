@@ -4,7 +4,7 @@
 // the page’s own. The model judge is shown exactly that. agreement() compares their picks.
 
 import { createHash } from 'node:crypto';
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { escapeHtml } from '../../shared/markdown.mjs';
 import { meantLabel } from './side-by-side.mjs';
@@ -35,17 +35,53 @@ export function twinPairs(runs, n) {
 
 /** One side: its picture, and the sentence it was meant to say, introduced for what it is. */
 /**
- * The pairs a person may be shown: no brief, question or screenshot twice (the maintainer’s rule for the arena, #995).
- * A model judge may see repeats; a person sees one only with a reason the page states and the maintainer agreed to.
- * @param {{ skill: any, base: any }[]} pairs  as twinPairs gives them, in order of preference
+ * What earlier pages put in front of a person, from the `*-key.json` files in a folder: their runs, those runs’ briefs,
+ * and their questions. A key from `judge`, which no person saw, doesn’t count. A key that can’t be read stops the build:
+ * leaving it out would let a repeat through.
+ * @param {string} folder
+ * @returns {{ seen: Set<string>, pages: string[] }}
  */
-export function arenaPairs(pairs) {
+export function shownBefore(folder) {
   const seen = new Set();
+  const pages = [];
+  if (!existsSync(folder)) return { seen, pages };
+  for (const name of readdirSync(folder)
+    .filter((f) => f.endsWith('-key.json'))
+    .sort()) {
+    let key;
+    try {
+      key = JSON.parse(readFileSync(join(folder, name), 'utf8'));
+    } catch {
+      throw new Error(`${name} doesn’t parse, so what its page showed can’t be left out. Fix it or move it out of ${folder}.`);
+    }
+    const shown = key.filter((k) => k.person !== false);
+    if (shown.length) pages.push(name);
+    for (const k of shown) {
+      if (k.question) seen.add(`question:${k.question}`);
+      for (const run of [k.skill, k.base, k.run].filter(Boolean)) {
+        seen.add(`run:${run}`);
+        // A run’s folder is <19-character stamp>-<scenario>.
+        seen.add(`brief:${run.slice(20).replace(/-base$/, '')}`);
+      }
+    }
+  }
+  return { seen, pages };
+}
+
+/**
+ * The pairs a person may be shown: no brief, question, run or screenshot twice, on this page or an earlier one (the
+ * maintainer’s rule for the arena, #995). A model judge may see repeats; a person sees one only with a reason the page
+ * states and the maintainer agreed to.
+ * @param {{ skill: any, base: any }[]} pairs  as twinPairs gives them, in order of preference
+ * @param {Set<string>} [shown]  what earlier pages showed (shownBefore)
+ */
+export function arenaPairs(pairs, shown = new Set()) {
+  const seen = new Set(shown);
   return pairs.filter((p) => {
     const marks = [`brief:${p.skill.scenario.replace(/-base$/, '')}`, `question:${p.skill.picture.question}`, `question:${p.base.picture.question}`];
-    const shots = [p.skill, p.base].map((r) => `shot:${r.dir ?? r.run}/${r.picture.shot}`);
-    if ([...marks, ...shots].some((m) => seen.has(m))) return false;
-    for (const m of [...marks, ...shots]) seen.add(m);
+    const runs = [p.skill, p.base].flatMap((r) => [`run:${r.run}`, `shot:${r.dir ?? r.run}/${r.picture.shot}`]);
+    if ([...marks, ...runs].some((m) => seen.has(m))) return false;
+    for (const m of [...marks, ...runs]) seen.add(m);
     return true;
   });
 }
