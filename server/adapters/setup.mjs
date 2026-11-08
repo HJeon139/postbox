@@ -195,8 +195,9 @@ export const isPublishingTool = (name) => RULES.some((r) => r.test(String(name))
 
 /**
  * Ask rules for calls that write outside Postbox (#112), passed in the settings overlay’s `permissions.ask` with the
- * conversation’s own. Claude Code then asks before each one in every mode but bypass, through Postbox’s permission
- * prompt, and the card shows the draft before anything exists outside. An agent created a document in a shared folder
+ * conversation’s own, in Ask me and Accept edits only (writeRules, #961). Claude Code then asks before each one in
+ * those modes, through Postbox’s permission prompt, and the card shows the draft before anything exists outside; in
+ * Auto a write asks only when the harness itself asks. An agent created a document in a shared folder
  * of an external doc tool with a number already taken, and with broken links, and everyone with access saw it first.
  *
  * Unlike PUBLISHING_TOOLS these ask rather than deny, on every server, local ones too: a local server can write to a
