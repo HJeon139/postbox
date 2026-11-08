@@ -56,7 +56,16 @@ async function readingAtTop(page, title) {
   const state = () =>
     page.evaluate((key) => {
       const t = /** @type {HTMLElement} */ (document.querySelector('#main.transcript'));
-      return { mode: t?.dataset.viewMode, items: t?.children.length, replyHere: !!document.querySelector(`[data-key="${key}"]`), scrollY };
+      const jumps = [...document.querySelectorAll('.jump')];
+      return {
+        mode: t?.dataset.viewMode,
+        items: t?.children.length,
+        replyHere: !!document.querySelector(`[data-key="${key}"]`),
+        scrollY,
+        gap: Math.round(document.documentElement.scrollHeight - innerHeight - scrollY),
+        jumps: jumps.map((j) => ({ hidden: /** @type {HTMLElement} */ (j).hidden, text: j.textContent, inComposer: !!j.closest('.composer') })),
+        transcripts: document.querySelectorAll('.transcript').length,
+      };
     }, reply.id);
   await expect(page.locator('.jump'))
     .toBeVisible({ timeout: 15_000 })
