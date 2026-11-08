@@ -51,6 +51,7 @@ import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
+import { endRun } from './uat/run-end.mjs';
 import { runFacts } from './uat/run-facts.mjs';
 import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi, runPaths } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
@@ -513,21 +514,20 @@ async function main() {
     await writeFile(join(dir, 'events.jsonl'), facts.events.map((e) => JSON.stringify(e)).join('\n') + (facts.events.length ? '\n' : ''));
     const all = [...findings.values()];
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
-    // #995’s judges of the agent’s pictures, before the budget’s summary so it counts them.
-    const shoot = (label, file) => d.shotItem(keys.get(label), file);
-    await judgePictures({ scenario, dir, paths, labels, keys, timeline, facts, shoot, ask: budget.verifier(), model: opt['tester-model'], log });
     if (facts.telemetry) facts.telemetryOut = { proposals: tm.foldLabels(all, facts.telemetry) };
     if (facts.telemetry) budget.spend('telemetry', tm.telemetryBlock(facts.telemetry, all).classifier?.costUsd);
-    Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
-    await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
-    if (opt.verify !== 'no' || opt.file !== 'no') {
-      const review = { ...REVIEW, ask: budget.verifier() };
-      await timing.time('verifier', () =>
-        reviewFindings({ ...review, dir, scenario, findings: all, timeline, log, verify: opt.verify !== 'no', file: opt.file !== 'no' }),
-      );
-      Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
-      await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
-    }
+    const verify = opt.verify !== 'no';
+    const review = { ...REVIEW, dir, scenario, findings: all, timeline, log, verify, file: opt.file !== 'no' };
+    const shoot = (label, file) => d.shotItem(keys.get(label), file);
+    await endRun({
+      report: async () => {
+        Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
+        await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
+      },
+      review: verify || review.file ? () => timing.time('verifier', () => reviewFindings({ ...review, ask: budget.verifier() })) : null,
+      // #995’s judges of the agent’s pictures, after the verifier (tools/uat/run-end.mjs).
+      judge: () => judgePictures({ scenario, dir, paths, labels, keys, timeline, facts, shoot, ask: budget.verifier(), model: opt['tester-model'], log }),
+    });
     // The run’s record for a refit (tools/uat-stats.mjs), so it needn’t parse the report.
     writeJsonAtomic(join(dir, 'run.json'), {
       ...runRecord({
