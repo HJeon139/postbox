@@ -38,12 +38,28 @@ test('a path rule allows only its own file: not a sibling, not one in a folder o
   assert.ok(!matches(r.always, 'Edit', '/elsewhere/work/agent/src/a.md'));
 });
 
-test('a path a rule can’t name exactly gets no rule: a glob character, or a ) that would end the rule early', () => {
-  for (const path of [`${folder}/a*.md`, `${folder}/a?.md`, `${folder}/[ab].md`, `${folder}/a{b,c}.md`, `${folder}/a).md`]) {
+test('a path with a character Claude Code reads as a pattern gets a rule that escapes it, and names only its file', () => {
+  // Claude Code reads a path rule as gitignore does: [ ] is a set, * and ? match, and a backslash escapes. A headless
+  // Claude Code 2.1.319 turn in dontAsk mode allowed an edit of a[1].txt under Edit(//…/a\[1\].txt) and refused it under
+  // Edit(//…/a[1].txt). So a Next.js route such as app/[id]/page.tsx gets a rule for itself, not a card with none.
+  for (const name of ['[id]', '[...slug]', 'a*b', 'a?b', '{x,y}']) {
+    const path = `${folder}/app/${name}/page.tsx`;
     const r = rulesFor('Edit', { file_path: path });
-    assert.equal(r.always, null, path);
-    assert.equal(r.once, null, path);
+    assert.ok(r.always, path);
+    assert.ok(matches(r.always, 'Edit', path), `${r.always} for ${path}`);
+    assert.ok(matches(r.once, 'Edit', path), `${r.once} for ${path}`);
   }
+  const r = rulesFor('Edit', { file_path: `${folder}/app/[id]/page.tsx` });
+  assert.equal(r.always, `Edit(/${folder}/app/\\[id\\]/page.tsx)`);
+  for (const other of [`${folder}/app/i/page.tsx`, `${folder}/app/d/page.tsx`, `${folder}/app/[id]/other.tsx`])
+    assert.ok(!matches(r.always, 'Edit', other), other);
+  assert.ok(!matches(rulesFor('Edit', { file_path: `${folder}/a*b.md` }).always, 'Edit', `${folder}/aXXb.md`), 'an escaped * matches only a *');
+});
+
+test('a ) that would end the rule early still gets no rule', () => {
+  const r = rulesFor('Edit', { file_path: `${folder}/a).md` });
+  assert.equal(r.always, null);
+  assert.equal(r.once, null);
 });
 
 test('the rule names the file from the root, and an edit tool’s rule is an Edit rule', () => {
