@@ -132,6 +132,27 @@ test('#341 a scroll down to the end, with a resize heard before its event, follo
   expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'at the end you scrolled to, it follows').toBe('following');
 });
 
+// critic's P3 on #959: a jump pins its item until you scroll; a scroll of yours that a resize heard first is yours too.
+test('#341 a scroll up after a jump, with a resize heard before its event, lets the jump’s item go', async ({ page }) => {
+  const { t } = room('Jump, then a scroll heard first');
+  await open(page, t);
+  const key = await page.evaluate(async () => {
+    const { jumpTo } = await import('/app/js/view-jump.mjs');
+    const items = document.querySelectorAll('#main > [data-key]');
+    const item = /** @type {HTMLElement} */ (items[12]);
+    jumpTo(item);
+    return item.dataset.key;
+  });
+  await settled(page);
+  await page.evaluate(() => {
+    scrollBy(0, -300);
+    dispatchEvent(new Event('resize'));
+  });
+  await settled(page);
+  const anchor = await page.locator('#main.transcript').getAttribute('data-view-anchor');
+  expect(anchor, 'the anchor is taken where you scrolled, not the item you jumped to').not.toBe(key);
+});
+
 test('#341 two resizes before the scroll event take an unheard scroll once, not twice', async ({ page }) => {
   const { t } = room('Two resizes, one unheard scroll');
   await open(page, t);

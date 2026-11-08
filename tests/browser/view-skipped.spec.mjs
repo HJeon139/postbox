@@ -69,11 +69,15 @@ function sideRoom(title) {
 }
 
 for (const where of ['#main', 'the side panel']) {
-  test(`V3 in ${where}: reading where no item has drawn yet, what you read stays put while the items around it draw`, async ({ page }) => {
+  // The side panel doesn’t skip (view-state.mjs, mountView): there it checks the anchor holds as the panel draws.
+  const what = where === '#main' ? 'reading where no item has drawn yet' : 'with its items not skipped';
+  test(`V3 in ${where}: ${what}, what you read stays put while the items around it draw`, async ({ page }) => {
     const inPanel = where !== '#main';
     const room = inPanel ? sideRoom('Skipped: V3 in the panel') : { conv: bigRoom(app, 'Skipped: V3'), side: null };
     await open(page, { ...room, count: 1000 });
     const shown = room.side ?? room.conv;
+    const skips = await page.locator(`.transcript[data-thread="${shown.id}"]`).evaluate((el) => el.classList.contains('cv-skip'));
+    expect(skips, inPanel ? 'the side panel lays out every item' : 'the main pane skips its items off screen').toBe(!inPanel);
     // Put the view halfway up, among items that have never drawn and so sit at the estimate, and take the anchor
     // there. Then, frame by frame, the items above and below it draw at their real sizes.
     const v = await page.evaluate(

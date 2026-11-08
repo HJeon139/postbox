@@ -216,4 +216,7 @@ test('a jump to an item during the jump to the end lands on that item, reading',
   await expect(page.locator(`#main > [data-key="${key}"]`), 'the item you went to is in view').toBeInViewport();
   expect.soft(v.mode, 'it reads there').toBe('reading');
   expect.soft(v.closest, 'no frame after the jump went to the end').toBeGreaterThan(400);
+  // The jump drew its item twice, a frame apart (its second placement): once both have let go, it can be skipped again.
+  const held = await page.locator(`#main > [data-key="${key}"]`).evaluate((el) => /** @type {HTMLElement} */ (el).style.contentVisibility);
+  expect.soft(held, 'the item is let go once painted, not left drawn').toBe('');
 });

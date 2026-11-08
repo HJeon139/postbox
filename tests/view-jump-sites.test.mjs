@@ -12,7 +12,17 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
 const DIR = new URL('../app/js/', import.meta.url);
-const TRANSCRIPT_MODULES = ['thread.mjs', 'apps.mjs', 'needs-nav.mjs', 'side-line.mjs', 'keys.mjs', 'hover-content.mjs', 'blocks.mjs'];
+const TRANSCRIPT_MODULES = [
+  'thread.mjs',
+  'apps.mjs',
+  'needs-nav.mjs',
+  'side-line.mjs',
+  'keys.mjs',
+  'hover-content.mjs',
+  'blocks.mjs',
+  'go-to-item.mjs',
+  'work-sections.mjs',
+];
 
 /** Calls allowed to scroll on their own: matched by file and a piece of the line, so edits elsewhere don't move them. */
 const ALLOWED = [
