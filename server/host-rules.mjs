@@ -26,12 +26,13 @@ export function hostRulesOf(rt, personaId, hostId) {
 }
 
 /**
- * Where Always allow keeps its rule, in the card’s words, for a persona on a host; null for one on this computer.
- * @param {any} rt @param {any} persona
+ * Where Always allow keeps its rule, in the card’s words, for a card from a turn on a host; null for one on this
+ * computer. The host is the one the turn that asked runs on, which the card saves under, not wherever the persona is
+ * placed when the card is drawn: it may have moved while the card was open.
+ * @param {any} rt @param {string | null | undefined} hostId
  */
-export function hostWhere(rt, persona) {
-  const hostId = typeof persona?.remote?.hostId === 'string' ? persona.remote.hostId : null;
-  return hostId ? `on ${rt.s.hosts?.[hostId]?.name ?? 'its host'} (Postbox keeps it, and sends it with each turn there)` : null;
+export function hostWhere(rt, hostId) {
+  return typeof hostId === 'string' && hostId ? `on ${rt.s.hosts?.[hostId]?.name ?? 'its host'} (Postbox keeps it, and sends it with each turn there)` : null;
 }
 
 /**

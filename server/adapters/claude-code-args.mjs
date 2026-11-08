@@ -54,6 +54,10 @@ export function claudeArgs({
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   const setup = setupOf(persona);
   const denied = [...deniedTools(persona), ...(rules.deny ?? [])];
+  // With the persona’s own memory folder (#208), and ask rules for writes outside Postbox (#112), so each comes to a
+  // card first, and the conversation’s own; on a host, the rules the person always allowed there (#120).
+  const asks = withAskRules(settingsFor(persona, memoryDir), [...writeRules(persona), ...(rules.ask ?? [])]);
+  const settings = withAllowRules(asks, hostAllow);
   return [
     '-p',
     '--output-format',
@@ -88,9 +92,7 @@ export function claudeArgs({
     '--setting-sources',
     (setup.usesHostSetup ? HOST_SOURCES : ISOLATED_SOURCES).join(','),
     '--settings',
-    // With the persona’s own memory folder (#208), and ask rules for writes outside Postbox (#112), so each comes to a
-    // card first, and the conversation’s own; on a host, the rules the person always allowed there (#120).
-    JSON.stringify(withAllowRules(withAskRules(settingsFor(persona, memoryDir), [...writeRules(persona), ...(rules.ask ?? [])]), hostAllow)),
+    JSON.stringify(settings),
     ...(denied.length ? ['--disallowedTools', ...denied] : []),
     ...MODES[mode],
     ...addDirs.flatMap((d) => ['--add-dir', d]),
