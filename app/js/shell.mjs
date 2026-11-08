@@ -16,7 +16,7 @@ import { ringFor, stateWord } from './ring.mjs';
 import { confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
 import './store-line.mjs';
 import { recordingBadge, telemetryItems } from './telemetry.mjs';
-import { liveMembers } from './topbar-sig.mjs';
+import { liveMembers, topbarSig } from './topbar-sig.mjs';
 import { closeWork, navigate, openMenu, openWork, route, toast, undoToast } from './ui.mjs';
 
 export { liveMembers, railHidden, toggleRail };
@@ -140,6 +140,8 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
   );
   // Who it was drawn for: main.mjs rebuilds the view when an agent joins or leaves, and only then.
   if (t) bar.dataset.members = liveMembers(t);
+  // What it was drawn from: main.mjs rebuilds it only when that changes (#986).
+  bar.dataset.sig = topbarSig({ title, threadId, projectId });
   fitter?.observe(bar);
   // Fitted once it’s on the page too: the observer’s first call waits for a frame, which a hidden tab can hold back.
   queueMicrotask(() => fitTopbar(bar));
