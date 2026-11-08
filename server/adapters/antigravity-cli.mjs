@@ -194,7 +194,6 @@ export function agyHookVars({ mcpUrl, persona, cwd, addDirs, readDirs }) {
     POSTBOX_AGY_MODE: persona?.permissionMode ?? 'auto',
     POSTBOX_AGY_FOLDERS: JSON.stringify([cwd, ...addDirs]),
     POSTBOX_AGY_READ: JSON.stringify(readDirs),
-    // What Auto lets run without a card, and whether a publishing tool is refused (agy-auto.mjs, #416).
     POSTBOX_AGY_TOOLS: JSON.stringify(Array.isArray(persona?.tools) ? persona.tools : []),
     POSTBOX_AGY_PUBLISH: setupOf(persona).canPublish ? '1' : '',
   };

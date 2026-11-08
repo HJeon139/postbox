@@ -109,7 +109,8 @@ export function isProtectedPath(rawPath, { cwd = process.cwd(), scriptPath = HOO
  * Claude Code toolName and input that Postbox’s permission card expects).
  * @param {any} event
  * @param {{ mode?: string, folders?: string[], readFolders?: string[], cwd?: string, scriptPath?: string, home?: string, tools?: string[], canPublish?: boolean }} [opts]
- *   tools and canPublish: the persona’s (agy-auto.mjs, personaOf, #416); readFolders: folders it may only read (#338)
+ *   tools and canPublish: the persona’s (agy-auto.mjs, personaOf, #416); readFolders: folders it may only read (#338),
+ *   which the read branch counts and an edit or Auto’s routine calls never do
  */
 export function decideAgyTool(
   event,
@@ -156,7 +157,6 @@ export function decideAgyTool(
     if (typeof raw !== 'string' || !raw.trim()) return { decision: 'ask', toolName: 'Read', input: { file_path: '' } };
     const real = realTarget(raw, cwd);
     const agyDirs = [join(home, '.gemini', 'antigravity-cli', 'mcp'), join(home, '.gemini', 'antigravity-cli', 'brain')].map((d) => realTarget(d, '/'));
-    // Readable folders (#338) count here only: never for an edit, nor for Auto’s routine calls.
     const readable = readFolders.map((f) => realTarget(f, cwd)).filter(Boolean);
     if ([...roots, ...readable, ...agyDirs].some((r) => inside(real, r))) return { decision: 'allow' };
     return { decision: 'ask', toolName: 'Read', input: { file_path: raw.trim() } };
