@@ -35,14 +35,11 @@ async function readingAtTop(page, title) {
   await synced(page, app);
   await expect(page.locator(`.transcript[data-thread="${conv.id}"] > .item`)).toHaveCount(1000, { timeout: 15_000 });
   await still(page);
-  // A wheel turn up, so the view reads; then straight to the top, since Firefox moves about 1,500 px a turn. The top is
-  // held for 30 frames before the jump, so no wheel scroll still landing is taken for one during it. The turn is over
-  // the top bar, as view-skipped-tab.spec.mjs’s is: over the room, an item that scrolls itself, a code block or a
-  // table, could take all of it, and the view stayed following (CI, 2 of 60).
-  await page.locator('header.topbar').hover();
-  await page.mouse.wheel(0, -2000);
-  await expect(page.locator('#main.transcript')).toHaveAttribute('data-view-mode', 'reading', { timeout: 15_000 });
+  // Straight to the top, so the view reads. A wheel turn up used to come first; on CI's delayed shard it didn't make the
+  // view read within 15 s (ebe964fd), and the wheel case still turns the wheel itself. The top is held for 30 frames
+  // before the jump.
   await page.evaluate(() => scrollTo(0, 0));
+  await expect(page.locator('#main.transcript')).toHaveAttribute('data-view-mode', 'reading', { timeout: 15_000 });
   await expect.poll(() => page.evaluate(heldAtTop), { message: 'the view to hold at the top for 30 frames', timeout: 15_000 }).toBe(true);
   await still(page);
   const reply = app.rt.addItem(conv.id, {
@@ -131,6 +128,16 @@ const backSteps = (page) =>
       i && y < ys[i - 1] ? [{ frame: i, from: ys[i - 1], to: y, heightBefore: hs[i - 1], height: hs[i] }] : [],
     );
   });
+/**
+ * How many frames scrollY went back up by more than SETTLES and left the view short of the end. A clamp to an end
+ * that came up, as items near it drew shorter, steps scrollY back with the view still at the end, so what's on screen
+ * holds (CI on ebe964fd: 56 px, the gap 0 before and after).
+ */
+const leftEnd = (page) =>
+  page.evaluate((settles) => {
+    const { smoothYs: ys, smoothHs: hs } = /** @type {any} */ (window);
+    return ys.filter((/** @type {number} */ y, /** @type {number} */ i) => i && y < ys[i - 1] - settles && hs[i] - innerHeight - y > 2).length;
+  }, SETTLES);
 const gap = (page) => page.evaluate(() => document.documentElement.scrollHeight - scrollY - innerHeight);
 
 // CI’s runners: once the jump landed at the end, Chromium’s smooth scroll, aimed at a page that shrank under it, stepped
@@ -146,19 +153,18 @@ test('Jump to latest over 1,000 far shorter items on a slow CPU never steps back
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 3 });
   await record(page);
   await page.locator('.jump').getByRole('button').click();
-  const ys = /** @type {number[]} */ (await recorded(page));
+  await recorded(page);
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
   await still(page);
-  const steps = ys.slice(1).map((y, i) => y - ys[i]);
   const v = {
-    backwards: steps.filter((d) => d < -SETTLES).length,
+    backwards: await leftEnd(page),
     mode: await page.locator('#main.transcript').getAttribute('data-view-mode'),
     gap: await gap(page),
     back: await backSteps(page),
   };
   test.info().annotations.push({ type: 'measured', description: JSON.stringify(v) });
   if (v.backwards) test.info().annotations.push({ type: 'trace', description: JSON.stringify(await traceNear(page, v.back)) });
-  expect.soft(v.backwards, `scrollY never goes back up by more than ${SETTLES} px`).toBe(0);
+  expect.soft(v.backwards, `scrollY never goes back up by more than ${SETTLES} px, short of the end`).toBe(0);
   expect.soft(v.mode, 'it ends following').toBe('following');
   expect.soft(v.gap, 'it ends at the end').toBeLessThanOrEqual(2);
 });
@@ -187,7 +193,7 @@ for (const [sizes, css] of [
       distinct: new Set(ys).size,
       distance,
       biggest: Math.max(...steps),
-      backwards: steps.filter((d) => d < -SETTLES).length,
+      backwards: await leftEnd(page),
       mode: await page.locator('#main.transcript').getAttribute('data-view-mode'),
       gap: await gap(page),
       back: await backSteps(page),
@@ -195,7 +201,7 @@ for (const [sizes, css] of [
     test.info().annotations.push({ type: 'measured', description: JSON.stringify(v) });
     if (v.backwards) test.info().annotations.push({ type: 'trace', description: JSON.stringify(await traceNear(page, v.back)) });
     expect.soft(v.distinct, 'scrollY takes many values on the way down').toBeGreaterThan(5);
-    expect.soft(v.backwards, `scrollY never goes back up by more than ${SETTLES} px`).toBe(0);
+    expect.soft(v.backwards, `scrollY never goes back up by more than ${SETTLES} px, short of the end`).toBe(0);
     expect.soft(v.biggest, 'no one frame jumps more than 60% of the way').toBeLessThanOrEqual(0.6 * distance);
     expect.soft(v.mode, 'it ends following').toBe('following');
     expect.soft(v.gap, 'it ends at the end').toBeLessThanOrEqual(2);
