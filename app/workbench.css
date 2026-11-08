@@ -267,7 +267,9 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .app.no-rail, .app.rail-hidden, .app.rail-auto { grid-template-columns: minmax(0, 1fr); }
 /* rail-auto: hidden while the right pane needs its room (#7, pane-width.mjs). */
 .app.rail-hidden > .rail, .app.rail-auto > .rail { display: none; }
-.topbar { grid-column: 1 / -1; position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
+/* overflow-x: clip: a top bar too wide for the window, before fitTopbar drops a crumb, never widens the page. On a
+   phone the viewport grows to fit overflowing content, so the page lays out wider for that frame (#866, #837). */
+.topbar { grid-column: 1 / -1; overflow-x: clip; position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
   height: 48px; padding: 0 12px 0 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
 .brand { font-weight: 700; letter-spacing: .02em; display: flex; align-items: center; gap: 8px; }
 .brand .mark { width: 18px; height: 18px; border: 2px solid var(--accent); border-radius: 5px; position: relative; }
