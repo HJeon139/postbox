@@ -226,3 +226,29 @@ test('a jump to an item during the jump to the end lands on that item, reading',
   const held = await page.locator(`#main > [data-key="${key}"]`).evaluate((el) => /** @type {HTMLElement} */ (el).style.contentVisibility);
   expect.soft(held, 'the item is let go once painted, not left drawn').toBe('');
 });
+
+// critic on #959: CI and Mac Firefox failed the wheel case now and then once landed() came in. landed() ended the jump
+// at the end even when a wheel turn of yours had come during it, cutting your turn short. A wheel event is heard as
+// yours here, the same way whenSmoothEnds hears one, and landed() mustn't write its jump to the end after it.
+test('a wheel turn heard during the jump to the end keeps landed() from ending it there', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the CPU is throttled through Chromium’s DevTools protocol');
+  // Far shorter items, so the page shrinks under the jump and it lands at the end, which is when landed() acts.
+  await page.addInitScript((rule) => {
+    addEventListener('DOMContentLoaded', () => document.head.append(Object.assign(document.createElement('style'), { textContent: rule })));
+  }, '.transcript .item { line-height: 0.9 !important; font-size: 8px !important }');
+  await readingAtTop(page, 'Smooth jump, a wheel heard as it lands');
+  // Slowed as CI is.
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 3 });
+  await record(page);
+  await page.locator('.jump').getByRole('button').click();
+  await expect.poll(() => page.evaluate(() => scrollY), { message: 'the jump to be on its way' }).toBeGreaterThan(2000);
+  await page.evaluate(() => dispatchEvent(new WheelEvent('wheel', { deltaY: -1 })));
+  await recorded(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  await still(page);
+  const writes = await page.evaluate(() =>
+    /** @type {any[]} */ (/** @type {any} */ (window).scrollTrace).filter((t) => t.kind.startsWith('write') && t.at?.includes('landed')),
+  );
+  expect(writes, 'landed() wrote no scroll after your wheel turn').toEqual([]);
+});
