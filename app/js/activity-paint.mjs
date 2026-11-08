@@ -6,7 +6,7 @@ import { h, icon } from './dom.mjs';
 import { jobRows, runningNote } from './reply-stop.mjs';
 import { kiroStep } from './thread-host.mjs';
 
-/** Each list’s steps, which its first open builds; a live step on a list still folded changes them. */
+/** Each list’s steps, which its first open builds; a live step changes them. */
 const stepsOf = /** @type {WeakMap<HTMLElement, any[]>} */ (new WeakMap());
 
 /**
@@ -38,7 +38,17 @@ export function activityParts(it) {
  * @param {HTMLElement} summary @param {any[]} steps
  */
 function foldedList(summary, steps) {
-  const list = h('details.activity', { ontoggle: () => list.open && buildSteps(list) }, summary, h('div.steps-text', steps.map((s) => s.label).join('\n')));
+  const text = h('div.steps-folded', steps.map((s) => s.label).join('\n'));
+  const list = h(
+    'details.activity',
+    {
+      ontoggle: () => {
+        if (list.open) buildSteps(list);
+      },
+    },
+    summary,
+    text,
+  );
   stepsOf.set(list, steps);
   return list;
 }
@@ -48,7 +58,7 @@ function foldedList(summary, steps) {
  * (rerender-state.mjs), so a thought expanded in it can be expanded again. @param {HTMLElement} list
  */
 export function buildSteps(list) {
-  list.querySelector(':scope > .steps-text')?.replaceWith(stepTree(stepsOf.get(list) ?? []));
+  list.querySelector(':scope > .steps-folded')?.replaceWith(stepTree(stepsOf.get(list) ?? []));
 }
 
 /**
@@ -64,7 +74,7 @@ function moveInto(old, next) {
   stepsOf.set(old, steps);
   const tree = /** @type {HTMLElement | null} */ (old.querySelector(':scope > ul.steps'));
   if (tree) moveSteps(tree, steps);
-  else old.querySelector(':scope > .steps-text')?.replaceWith(/** @type {HTMLElement} */ (next.querySelector(':scope > .steps-text')));
+  else old.querySelector(':scope > .steps-folded')?.replaceWith(/** @type {HTMLElement} */ (next.querySelector(':scope > .steps-folded')));
 }
 
 /**
