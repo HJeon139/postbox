@@ -13,9 +13,10 @@ import { askOnce } from './tester.mjs';
  * and recorded, never a failed run. Their cost is counted with the verifier’s, after the run.
  * @param {{ scenario: any, dir: string, paths: { data: string, shots: string }, labels: Map<string, string>,
  *   keys: Map<string, string>, timeline: any[], facts: any, ask?: (args: any) => Promise<{ value: any, cost: number }>,
- *   model: string, log: (line: string) => void }} o  ask: the budget’s verifier when the run has a cap, else askOnce
+ *   shoot?: (label: string, file: string) => Promise<string|null>, model: string, log: (line: string) => void }} o
+ *   ask: the budget’s verifier when the run has a cap, else askOnce; shoot: a shot of an item by its label, now
  */
-export async function judgePictures({ scenario, dir, paths, labels, keys, timeline, facts, ask = askOnce, model, log }) {
+export async function judgePictures({ scenario, dir, paths, labels, keys, timeline, facts, shoot, ask = askOnce, model, log }) {
   if (scenario.judge !== 'visual' && !scenario.expects) return;
   const shots = paths.shots;
   const matched = await matchIntents({ timeline, data: paths.data, shots, keys, ask, cwd: dir, model, log });
@@ -27,6 +28,7 @@ export async function judgePictures({ scenario, dir, paths, labels, keys, timeli
       data: paths.data,
       shots,
       labels,
+      shoot,
       agent: { model: streamModel(facts.streams), effort: facts.agentEffort ?? null },
       judgeModel: model,
       ask,

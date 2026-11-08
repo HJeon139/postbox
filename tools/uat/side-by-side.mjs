@@ -12,8 +12,8 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { pairShot } from './pair-shot.mjs';
 import { firstExchange } from './picture-choice.mjs';
-import { replyShot } from './picture-shots.mjs';
 import { makeWorkspace } from './workspace.mjs';
 
 /** #206’s bar: the picture preferred in this many of these pairs. */
@@ -101,17 +101,19 @@ const pictureAnswer = (reply, shot) => `${reply ? `${reply}\n\n` : ''}With it, t
 
 /**
  * Asks for the words answer and the judge’s pick. Returns the record for run.json, or why the run had no pair.
- * @param {{ scenario: any, dir: string, data: string, workspace?: string, shots: string, labels: Map<string, string>,
+ * @param {{ scenario: any, dir: string, data: string, workspace?: string, shots: string, labels: Map<string, string>, shoot?: (label: string, file: string) => Promise<string|null>,
  *   agent: { model: string|null, effort: string|null }, judgeModel: string, ask: (args: any) => Promise<{ value: any, cost: number }>, random?: () => number }} o
- *   workspace: where the words answer runs, a fresh wordsWorkspace when not given
+ *   workspace: where the words answer runs, a fresh wordsWorkspace when not given; shoot: the runner’s shot of an item now (pairShot)
  */
-export async function sideBySide({ scenario, dir, data, workspace, shots, labels, agent, judgeModel, ask, random = Math.random }) {
+export async function sideBySide({ scenario, dir, data, workspace, shots, labels, shoot, agent, judgeModel, ask, random = Math.random }) {
   const x = firstExchange(data);
   if (!x) return { skipped: 'the log doesn’t hold the person’s first message' };
   if (!x.visual) return { skipped: x.replied ? 'the agent answered in words' : 'the agent never replied' };
   const label = labels.get(x.visual.itemId) ?? null;
-  const shot = label ? replyShot(shots, label, x.nextMessageAt) : null;
-  if (!shot) return { skipped: `no screenshot of the agent’s ${x.visual.kind}` };
+  if (!label) return { skipped: `no screenshot of the agent’s ${x.visual.kind}` };
+  const taken = await pairShot({ data, shots, label, visual: x.visual, nextMessageAt: x.nextMessageAt, shoot });
+  if ('skipped' in taken) return taken;
+  const { shot } = taken;
   const cost = { words: 0, judge: 0 };
   const words = await ask({
     cwd: workspace ?? wordsWorkspace(scenario, dir),
@@ -139,7 +141,13 @@ export async function sideBySide({ scenario, dir, data, workspace, shots, labels
   const pick = pickOf(r.value.pick, pictureFirst);
   return {
     question: x.question,
-    picture: { kind: x.visual.kind, item: label, shot: relative(dir, shot.file), inputsBefore: x.visual.inputsBefore },
+    picture: {
+      kind: x.visual.kind,
+      item: label,
+      shot: relative(dir, shot.file),
+      inputsBefore: x.visual.inputsBefore,
+      ...(taken.retaken ? { retaken: true } : {}),
+    },
     words: 'words-answer.md',
     pictureAs: pictureFirst ? 'A' : 'B',
     pick,

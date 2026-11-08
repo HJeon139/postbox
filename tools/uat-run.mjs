@@ -514,7 +514,8 @@ async function main() {
     const all = [...findings.values()];
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
     // #995’s judges of the agent’s pictures, before the budget’s summary so it counts them.
-    await judgePictures({ scenario, dir, paths, labels, keys, timeline, facts, ask: budget.verifier(), model: opt['tester-model'], log });
+    const shoot = (label, file) => d.shotItem(keys.get(label), file);
+    await judgePictures({ scenario, dir, paths, labels, keys, timeline, facts, shoot, ask: budget.verifier(), model: opt['tester-model'], log });
     if (facts.telemetry) facts.telemetryOut = { proposals: tm.foldLabels(all, facts.telemetry) };
     if (facts.telemetry) budget.spend('telemetry', tm.telemetryBlock(facts.telemetry, all).classifier?.costUsd);
     Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });

@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { seedFiles } from '../tools/uat/fixtures.mjs';
+import { pairShot } from '../tools/uat/pair-shot.mjs';
 import { firstExchange } from '../tools/uat/picture-choice.mjs';
 import { replyShot } from '../tools/uat/picture-shots.mjs';
 import { BAR, pairRate, sideBySide, sideBySideSection, wordsSystem, wordsWorkspace } from '../tools/uat/side-by-side.mjs';
@@ -171,4 +172,46 @@ test('#995 a call that plays the agent names its own tools, system prompt and ar
   assert.equal(args[args.indexOf('--tools') + 1], 'Read,Bash');
   assert.equal(args[args.indexOf('--append-system-prompt') + 1], 'You are @a.');
   assert.equal(args[args.indexOf('--effort') + 1], 'low');
+});
+
+// The app’s v1 failed its check at 3_500 and was shown fixing; v2, fixed, came at 6_000 and passed.
+const fixed = [
+  ...drew.slice(0, 3),
+  { type: 'app', data: { id: 'subs', itemId: 'it_3', versions: [{ v: 1, at: 3_000 }], check: { status: 'fixing' } } },
+  {
+    type: 'app',
+    data: {
+      id: 'subs',
+      itemId: 'it_3',
+      versions: [
+        { v: 1, at: 3_000 },
+        { v: 2, at: 6_000 },
+      ],
+      check: { status: 'passed' },
+    },
+  },
+  ...drew.slice(3),
+];
+
+test('#995 a shot of the app at work on its check is retaken at the end of the run, or the run has no pair', async (t) => {
+  const dir = runWith(fixed, { '01-I3.png': 3_500 });
+  t.after(() => rmSync(dir, { recursive: true }));
+  const visual = { kind: 'app', itemId: 'it_3' };
+  const base = { data: join(dir, 'data'), shots: join(dir, 'shots'), label: 'I3', visual, nextMessageAt: 9_000 };
+  assert.deepEqual(await pairShot(base), { skipped: 'no screenshot of the app’s finished version (v2)' });
+  const shot = [];
+  const shoot = async (label, file) => {
+    shot.push(label);
+    return file;
+  };
+  const r = await pairShot({ ...base, shoot });
+  assert.deepEqual(shot, ['I3']);
+  assert.equal('shot' in r && r.shot.file, join(dir, 'shots', 'judge-I3.png'));
+  assert.equal('retaken' in r && r.retaken, true);
+  // A shot taken after the last version is the picture as the reply left it.
+  const later = runWith(fixed, { '03-I3.png': 7_000 });
+  t.after(() => rmSync(later, { recursive: true }));
+  const kept = await pairShot({ ...base, shots: join(later, 'shots'), data: join(later, 'data'), shoot });
+  assert.equal('shot' in kept && kept.shot.file, join(later, 'shots', '03-I3.png'));
+  assert.equal(shot.length, 1, 'nothing retaken');
 });
