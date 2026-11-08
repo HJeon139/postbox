@@ -8,7 +8,8 @@ import { bashCalls } from './allowonce-triggers.mjs';
 import { clip, itemsOf } from './trigger-facts.mjs';
 
 /** Pushes, and gh PR writes, as a command names them. */
-const PUSH = /(?:^|[;&|]\s*|\s)git\s+(?:-\S+\s+)*push\b/;
+// git’s own options may come first, with their values: `git -c k=v push`, `git -C dir push`.
+const PUSH = /(?:^|[;&|]\s*|\s)git\s+(?:(?:-[cC]\s+\S+|-\S+)\s+)*push\b/;
 const PR_WRITE = /(?:^|[;&|]\s*|\s)gh\s+pr\s+(?:create|edit|comment|merge)\b/;
 const isWrite = (command) => PUSH.test(command) || PR_WRITE.test(command);
 
@@ -45,7 +46,10 @@ export const GIT_PUSH_TRIGGERS = {
       const cards = writeCards(f).filter((c) => PUSH.test(c.detail));
       const always = cards.find((c) => c.status === 'allowed-always');
       if (!always) return [];
-      const after = pushes(f).filter((p) => p.at > (always.answeredAt ?? Infinity));
+      // The first push after the answer is the one the card was for; the three after it are the ones Always allow let through.
+      const after = pushes(f)
+        .filter((p) => p.at > (always.answeredAt ?? Infinity))
+        .slice(1);
       const again = cards.filter((c) => (c.at ?? 0) > always.answeredAt);
       if (after.length < 3 || again.length) return [];
       return [{ at: after[2].at, evidence: `After Always allow on \`${clip(always.detail, 80)}\`, the remote took ${after.length} pushes with no card.` }];
