@@ -2,8 +2,6 @@
 // apps.mjs’s focus and send rules read it. Why frames take no pointer events until then is in apps.mjs, “Sends in
 // your voice”.
 
-import { DRAWN } from './view-skip.mjs';
-
 /** @type {(el: Element | null | undefined) => boolean} whether an element is a mounted app frame; apps.mjs sets it */
 let isAppFrame = () => false;
 /** @param {(el: Element | null | undefined) => boolean} test */
@@ -69,18 +67,5 @@ export function relookSoon() {
 }
 addEventListener('scroll', relookSoon, { capture: true, passive: true });
 addEventListener('resize', relookSoon);
-// With the transcript’s items off screen skipped (#712a), an app’s item draws only once it’s near the view, and a look
-// before then finds no frame under the pointer, with nothing to look again. Likely why #993’s app, brought back under a
-// resting pointer, stayed not live on CI’s runners (#959; not seen on the build host). So an item that draws with a
-// near app body in it looks again: O(near bodies), each a contains().
-/** @param {Event} e */
-function drawnNear(e) {
-  const item = e.target;
-  if (/** @type {any} */ (e).skipped || !(item instanceof Element)) return;
-  for (const body of nearBodies) {
-    if (item.contains(body)) return relookSoon();
-  }
-}
-addEventListener(DRAWN, drawnNear, true);
 // The transcript renders, an item is added, or an app resizes: what’s under the pointer may have changed.
 new MutationObserver(relookSoon).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
