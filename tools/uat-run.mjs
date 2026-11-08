@@ -50,10 +50,11 @@ import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
+import { runEnv } from './uat/run-env.mjs';
 import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi, runPaths, userSetup } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
-import { chainLimitEnv, phaseCap, stepCap } from './uat/scenario.mjs';
+import { phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
 import { interruptAct, localRestart, STEPS } from './uat/steps.mjs';
@@ -147,16 +148,7 @@ async function main() {
     root: ROOT,
     port,
     data: paths.data,
-    env: {
-      ...gate.env,
-      POSTBOX_CLAUDE_RECORD: paths.streams,
-      POSTBOX_KIRO_RECORD: paths.kiroStreams,
-      POSTBOX_AGY_RECORD: paths.agyStreams,
-      POSTBOX_CODEX_RECORD: paths.codexStreams,
-      ...tm.telemetryEnv(scenario, dir, opt),
-      ...chainLimitEnv(scenario), // the scenario’s `- chain-limit:` (#508), for the Postbox this run starts and restarts
-      ...faults?.env,
-    },
+    env: runEnv({ gate, paths, scenario, dir, opt, faults }),
     log,
   });
   const { api } = postbox;
