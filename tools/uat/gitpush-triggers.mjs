@@ -8,8 +8,10 @@ import { bashCalls } from './allowonce-triggers.mjs';
 import { clip, itemsOf } from './trigger-facts.mjs';
 
 /** Pushes, and gh PR writes, as a command names them. */
-// git’s own options may come first, with their values: `git -c k=v push`, `git -C dir push`.
-const PUSH = /(?:^|[;&|]\s*|\s)git\s+(?:(?:-[cC]\s+\S+|-\S+)\s+)*push\b/;
+// git’s own options may come first, with their values: `git -c k=v push`, `git -C dir push`. The two kinds of option
+// are kept apart, so no option can be read both ways: a pattern where `-C` could match either backtracked exponentially
+// on “git -C -! -C -! …” (CodeQL’s js/redos alert on #1001).
+const PUSH = /(?:^|[;&|]\s*|\s)git\s+(?:(?:-[cC]\s+\S+|-(?![cC]\s)\S+)\s+)*push\b/;
 const PR_WRITE = /(?:^|[;&|]\s*|\s)gh\s+pr\s+(?:create|edit|comment|merge)\b/;
 const isWrite = (command) => PUSH.test(command) || PR_WRITE.test(command);
 
