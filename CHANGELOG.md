@@ -2,6 +2,14 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.50.1 (2026-11-08)
+
+### Fixes
+
+- **ledger:** pushes that landed before a command failed, at most 100 (#978)
+- **ledger:** a tag pushed isn't the push's branch (#978)
+- **ledger:** one push entry for each push a command made (#978)
+
 ## 1.50.0 (2026-11-08)
 
 ### Features
