@@ -153,7 +153,12 @@ test('the tester is told where the remote is, for a git-remote run only', () => 
 test('the runner sets the project’s repository to the remote through the page, and says whether it took', async () => {
   const exprs = [];
   const lines = [];
-  const page = { evaluate: async (e) => (exprs.push(e), '/runs/r1/remote.git') };
+  const page = {
+    evaluate: async (e) => {
+      exprs.push(e);
+      return '/runs/r1/remote.git';
+    },
+  };
   const note = await setUpRemote({ seed: 'git-remote' }, { dir: '/runs/r1', page, threadId: 'th_1', log: (l) => lines.push(l) });
   assert.match(exprs[0], /api\('\/api\/projects\/' \+ id \+ '\/push-url', \{ url: "\/runs\/r1\/remote\.git" \}, 'PUT'\)/);
   assert.match(exprs[0], /S\(\)\.threads\["th_1"\]\.projectId/);
@@ -163,4 +168,14 @@ test('the runner sets the project’s repository to the remote through the page,
   await setUpRemote({ seed: 'git-remote' }, { dir: '/runs/r1', page: refused, threadId: 'th_1', log: (l) => lines.push(l) });
   assert.match(lines[1], /^Couldn’t set the project’s repository to the run’s remote: it reads an error: /);
   assert.equal(await setUpRemote({ seed: null }, { dir: '/runs/r1', page, threadId: 'th_1', log: () => {} }), '');
+});
+
+test('the workspace ignores the agent’s own settings and Python’s caches, so git add -A doesn’t sweep them in', () => {
+  const r = run();
+  mkdirSync(join(r.workspace, '.claude'));
+  writeFileSync(join(r.workspace, '.claude', 'settings.local.json'), '{}\n');
+  writeFileSync(join(r.workspace, 'notes.md'), 'Change 1.\n');
+  sh('git', ['add', '-A'], r.workspace, r.env);
+  const staged = sh('git', ['diff', '--cached', '--name-only'], r.workspace, r.env).stdout.trim().split('\n');
+  assert.deepEqual(staged.sort(), ['.gitignore', 'notes.md']);
 });

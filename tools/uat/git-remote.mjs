@@ -85,6 +85,8 @@ export function seedGitRemote(workspace, dir) {
   git(['-C', p.remote, 'config', 'core.logAllRefUpdates', 'always']);
   for (const [k, v] of GUARD) git(['-C', workspace, 'config', k, v]);
   git(['-C', workspace, 'remote', 'add', 'origin', p.remote]);
+  // What an agent’s `git add` mustn’t sweep in: its own settings, which Postbox writes, and Python’s caches.
+  writeFileSync(join(workspace, '.gitignore'), '.claude/\n__pycache__/\n*.pyc\n');
   writeFileSync(join(p.bin, 'gh'), FAKE_GH);
   chmodSync(join(p.bin, 'gh'), 0o755);
   writeFileSync(p.ghCalls, '');
