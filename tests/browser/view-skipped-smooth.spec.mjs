@@ -1,6 +1,6 @@
 // Jump to latest over skipped items (#712a): the pill scrolls smoothly to the end of the main pane. The items it passes
 // draw for the first time on the way down (`content-visibility: auto`, app/workbench.css), and each draw re-applies the
-// view (app/js/view-state.mjs). While the jump runs, that mustn't snap the view to the end, and when it ends short of a
+// view (app/js/view-state.mjs). While the jump runs, that mustn’t snap the view to the end, and when it ends short of a
 // page that grew as it drew, it goes the rest of the way. A wheel up during it is you reading. Each test has a
 // conversation of its own.
 
@@ -10,7 +10,7 @@ import { traceNear, traceScrolls } from './scroll-trace.mjs';
 import { still } from './view-skipped-fixture.mjs';
 import { readingAtTop as atTop } from './view-smooth-fixture.mjs';
 
-// Tracing is off: Playwright's trace snapshots walk all 1,000 items with their skipped styles each action, which
+// Tracing is off: Playwright’s trace snapshots walk all 1,000 items with their skipped styles each action, which
 // takes longer than the test.
 test.use({ colorScheme: 'light', trace: 'off', reducedMotion: 'no-preference' });
 
@@ -54,7 +54,7 @@ const record = async (page) => {
   });
 };
 const recorded = (page) => page.evaluate(() => /** @type {any} */ (window).smoothDone);
-/** Each frame where scrollY went back up: where from and to, and the page's height in the frame before and in it. */
+/** Each frame where scrollY went back up: where from and to, and the page’s height in the frame before and in it. */
 const backSteps = (page) =>
   page.evaluate(() => {
     const { smoothYs: ys, smoothHs: hs } = /** @type {any} */ (window);
@@ -64,7 +64,7 @@ const backSteps = (page) =>
   });
 /**
  * How many frames scrollY went back up by more than SETTLES and left the view short of the end. A clamp to an end
- * that came up, as items near it drew shorter, steps scrollY back with the view still at the end, so what's on screen
+ * that came up, as items near it drew shorter, steps scrollY back with the view still at the end, so what’s on screen
  * holds (CI on ebe964fd: 56 px, the gap 0 before and after).
  */
 const leftEnd = (page) =>
@@ -144,7 +144,7 @@ for (const [sizes, css] of [
 test('a wheel up during the jump is you reading: the view stays where you turned it, not dragged to the end', async ({ page, browserName }) => {
   await readingAtTop(page, 'Smooth jump, then a wheel up');
   await page.locator('.jump').getByRole('button').click();
-  // Partway down, and still moving. Chromium ends the jump on the wheel turn, and drops the turn's own scroll.
+  // Partway down, and still moving. Chromium ends the jump on the wheel turn, and drops the turn’s own scroll.
   await expect.poll(() => page.evaluate(() => scrollY), { message: 'the jump to be on its way' }).toBeGreaterThan(2000);
   await page.mouse.move(640, 400);
   await page.mouse.wheel(0, -400);
@@ -229,7 +229,7 @@ test('a jump to an item during the jump to the end lands on that item, reading',
 
 // critic on #959: CI and Mac Firefox failed the wheel case now and then once landed() came in. landed() ended the jump
 // at the end even when a wheel turn of yours had come during it, cutting your turn short. A wheel event is heard as
-// yours here, the same way whenSmoothEnds hears one, and landed() mustn't write its jump to the end after it.
+// yours here, the same way whenSmoothEnds hears one, and landed() mustn’t write its jump to the end after it.
 test('a wheel turn heard during the jump to the end keeps landed() from ending it there', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'the CPU is throttled through Chromium’s DevTools protocol');
   // Far shorter items, so the page shrinks under the jump and it lands at the end, which is when landed() acts.

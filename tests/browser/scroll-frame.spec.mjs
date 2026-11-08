@@ -2,7 +2,7 @@
 // not when the view moves (#341; the view’s rules are #508’s design, “Browser”). In the frame between:
 // - a reply that lands right after you scroll up is counted as unseen, so Jump to latest shows;
 // - a scroll down while you’re reading back isn’t taken back when something resizes in that frame. #341 saw it about once
-//   in 45 to 90 runs. The resize must change the transcript's height: a 1 px padding on a reply doesn't (its margins
+//   in 45 to 90 runs. The resize must change the transcript’s height: a 1 px padding on a reply doesn’t (its margins
 //   absorb it), which is why this spec passed on main before. 40 px grows the transcript every time.
 // Each test has a conversation of its own.
 
@@ -71,7 +71,7 @@ test('#341 a scroll down while reading back isn’t taken back by a resize in th
   await page.mouse.wheel(0, -1200);
   await settled(page);
   // In an animation frame, as focus-clear.mjs scrolls: scroll down 120 px, then make a reply above the view taller. The
-  // frame's scroll steps have run already, so the ResizeObserver runs before the scroll event tells the transcript the
+  // frame’s scroll steps have run already, so the ResizeObserver runs before the scroll event tells the transcript the
   // view moved.
   const { before, grew } = await page.evaluate(
     () =>
@@ -93,14 +93,14 @@ test('#341 a scroll down while reading back isn’t taken back by a resize in th
   expect(end, 'the view stays where the scroll put it, plus what grew above').toBeGreaterThanOrEqual(before + 120 + grew - 1);
 });
 
-// #357's review found it (fixed in a0b13bf5): while following, a change to the transcript notes where the view is, so a
-// clamp at the page's new end isn't read as a scroll up (#297). Noting it anywhere else would take a scroll up made in the
+// #357’s review found it (fixed in a0b13bf5): while following, a change to the transcript notes where the view is, so a
+// clamp at the page’s new end isn’t read as a scroll up (#297). Noting it anywhere else would take a scroll up made in the
 // same frame, before its scroll event, for a clamp, and pull the view back to the end.
 test('#357 a scroll up, then a change in the same frame, isn’t taken for a clamp and pulled back to the end', async ({ page }) => {
   const { t } = room('Scroll up, then a change');
   await open(page, t);
   const end = await page.evaluate(() => scrollY);
-  // In one task, before the scroll event: scroll up 240 px, then restyle the newest reply, which the transcript's
+  // In one task, before the scroll event: scroll up 240 px, then restyle the newest reply, which the transcript’s
   // MutationObserver notes (a microtask) and its ResizeObserver then follows.
   await page.evaluate(() => {
     scrollBy(0, -240);
@@ -113,8 +113,8 @@ test('#357 a scroll up, then a change in the same frame, isn’t taken for a cla
   expect(at, 'the view stays where you scrolled it, not back at the end').toBeLessThan(end - 200);
 });
 
-// critic's P1 on #959: a resize heard before your scroll's event takes that scroll in (heard()), so by the event the
-// scroll looks like the transcript's own. Your scroll down to the end must still follow it.
+// critic’s P1 on #959: a resize heard before your scroll’s event takes that scroll in (heard()), so by the event the
+// scroll looks like the transcript’s own. Your scroll down to the end must still follow it.
 test('#341 a scroll down to the end, with a resize heard before its event, follows the end', async ({ page }) => {
   const { t } = room('Scroll to the end, then a resize');
   await open(page, t);
@@ -132,7 +132,7 @@ test('#341 a scroll down to the end, with a resize heard before its event, follo
   expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'at the end you scrolled to, it follows').toBe('following');
 });
 
-// critic's P3 on #959: a jump pins its item until you scroll; a scroll of yours that a resize heard first is yours too.
+// critic’s P3 on #959: a jump pins its item until you scroll; a scroll of yours that a resize heard first is yours too.
 test('#341 a scroll up after a jump, with a resize heard before its event, lets the jump’s item go', async ({ page }) => {
   const { t } = room('Jump, then a scroll heard first');
   await open(page, t);
@@ -174,8 +174,8 @@ test('#712a following, a move up the browser makes as the page gets shorter keep
   expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'it still follows').toBe('following');
 });
 
-// researcher's Mac trace of view-skipped-append.spec.mjs:24 in Firefox: following, Firefox moved the view up 18 px with
-// the page's height unchanged, and the room opened reading. A move up that small is the browser's, loss or not.
+// researcher’s Mac trace of view-skipped-append.spec.mjs:24 in Firefox: following, Firefox moved the view up 18 px with
+// the page’s height unchanged, and the room opened reading. A move up that small is the browser’s, loss or not.
 test('#712a following, a move up of 18 px the browser makes with the page’s height unchanged keeps the view following', async ({ page }) => {
   const { t } = room('Following, 18 px up');
   await open(page, t);
@@ -189,8 +189,8 @@ test('#712a following, a move up of 18 px the browser makes with the page’s he
   expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'it still follows').toBe('following');
 });
 
-// critic's P2 on #959: the browser's move is tied to what the page lost; your scroll isn't. Following, you scroll up
-// 300 px in the same task as an item at the end goes, 100 px shorter: that's you, and the view reads.
+// critic’s P2 on #959: the browser’s move is tied to what the page lost; your scroll isn’t. Following, you scroll up
+// 300 px in the same task as an item at the end goes, 100 px shorter: that’s you, and the view reads.
 test('#712a following, a scroll up of yours as the page gets shorter in the same frame reads where you went', async ({ page }) => {
   const { t } = room('Following, a scroll up as the page shrinks');
   await open(page, t);
@@ -214,8 +214,8 @@ test('#341 two resizes before the scroll event take an unheard scroll once, not 
   await settled(page);
   // Scroll up by 240 px and, before its scroll event, have the transcript hear two resizes: the first takes the unheard
   // scroll into the anchor, and the second must find nothing left to take.
-  // What you read is the item across the middle once the scroll lands: two frames on, it's where the scroll put it. An
-  // item above it drawing taller moves scrollY but not the item (researcher's Mac trace: 24 px in Firefox); taking the
+  // What you read is the item across the middle once the scroll lands: two frames on, it’s where the scroll put it. An
+  // item above it drawing taller moves scrollY but not the item (researcher’s Mac trace: 24 px in Firefox); taking the
   // scroll in twice would move the item 240 px.
   const shift = await page.evaluate(async () => {
     const s = /** @type {Element} */ (document.scrollingElement);

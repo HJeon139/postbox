@@ -1,13 +1,13 @@
-// A trace of scroll writes and scroll events in the page, by frame, for view-skipped-smooth.spec.mjs: CI's runners
-// stepped back from the end of the jump to the end where the build host didn't (#959), and the trace says whether
-// anything of the page's wrote the step. The frame is the spec's own count, smoothYs.length - 1.
+// A trace of scroll writes and scroll events in the page, by frame, for view-skipped-smooth.spec.mjs: CI’s runners
+// stepped back from the end of the jump to the end where the build host didn’t (#959), and the trace says whether
+// anything of the page’s wrote the step. The frame is the spec’s own count, smoothYs.length - 1.
 
 /** Starts the trace, or clears it, in the page. @param {any} page */
 export const traceScrolls = (page) =>
   page.evaluate(() => {
     const w = /** @type {any} */ (window);
     // Every scroll write in the page and every scroll event, by frame, with the line that wrote it: on a step back the
-    // case attaches those around it (CI's runners step back where the build host doesn't; #959).
+    // case attaches those around it (CI’s runners step back where the build host doesn’t; #959).
     w.scrollTrace = [];
     const note = (/** @type {string} */ kind, /** @type {any} */ to) =>
       w.scrollTrace.push({

@@ -1,4 +1,4 @@
-// The smooth jump spec's setup (view-skipped-smooth.spec.mjs), moved out at that file's size limit.
+// The smooth jump spec’s setup (view-skipped-smooth.spec.mjs), moved out at that file’s size limit.
 
 import { expect, test } from '@playwright/test';
 import { synced } from './postbox.mjs';
@@ -24,7 +24,7 @@ function heldAtTop() {
  * @param {any} app @param {any} page @param {string} title
  */
 export async function readingAtTop(app, page, title) {
-  // The setup alone can take most of a minute on CI's delayed shard, waiting for the reply below.
+  // The setup alone can take most of a minute on CI’s delayed shard, waiting for the reply below.
   test.setTimeout(90_000);
   const conv = bigRoom(app, title);
   const [se] = app.rt.sessionsIn(conv.id);
@@ -33,7 +33,7 @@ export async function readingAtTop(app, page, title) {
   await synced(page, app);
   await expect(page.locator(`.transcript[data-thread="${conv.id}"] > .item`)).toHaveCount(1000, { timeout: 15_000 });
   await still(page);
-  // Straight to the top, so the view reads. A wheel turn up used to come first; on CI's delayed shard it didn't make the
+  // Straight to the top, so the view reads. A wheel turn up used to come first; on CI’s delayed shard it didn’t make the
   // view read within 15 s (ebe964fd), and the wheel case still turns the wheel itself. The top is held for 30 frames
   // before the jump.
   await page.evaluate(() => scrollTo(0, 0));
@@ -48,8 +48,8 @@ export async function readingAtTop(app, page, title) {
     text: 'A reply since.',
     status: 'done',
   });
-  // With the server's events late and ten of these rooms at once, the reply took over 5 s to reach the page. In CI's
-  // late shard the pill didn't show in 15 s on every head from d4f3ebdb: the message says whether the reply had come,
+  // With the server’s events late and ten of these rooms at once, the reply took over 5 s to reach the page. In CI’s
+  // late shard the pill didn’t show in 15 s on every head from d4f3ebdb: the message says whether the reply had come,
   // and how the view read, so the next run names the cause.
   const state = () =>
     page.evaluate((key) => {
@@ -65,7 +65,7 @@ export async function readingAtTop(app, page, title) {
         transcripts: document.querySelectorAll('.transcript').length,
       };
     }, reply.id);
-  // CI's report on 039a38ee: when the 15 s ran out the pill was there, unhidden, saying 1 new, with the reply on the
+  // CI’s report on 039a38ee: when the 15 s ran out the pill was there, unhidden, saying 1 new, with the reply on the
   // page, read just after. The reply had arrived late, in the delayed shard: wait for it, then for its pill.
   await expect(page.locator(`[data-key="${reply.id}"]`), 'the reply to reach the page').toBeAttached({ timeout: 45_000 });
   await expect(page.locator('.jump'))

@@ -47,7 +47,7 @@ export function whenSmoothEnds(done) {
 
 // The smooth jump to the end stopped. The items it passed drew at their real sizes on the way, so the end has moved:
 // unless you did something meanwhile, go the rest of the way. If you did, a wheel turn or a drag ended it (Chromium
-// drops a wheel turn's own scroll), and that's you reading where it stopped (whenSmoothEnds, above).
+// drops a wheel turn’s own scroll), and that’s you reading where it stopped (whenSmoothEnds, above).
 /** @param {View} v @param {boolean} stoppedByYou */
 export function smoothEnded(v, stoppedByYou) {
   const s = box(v);
@@ -77,7 +77,7 @@ export function halt(v) {
  * The jump to the end has landed there: end it now, with an instant scroll to the end. Chromium’s smooth scroll, aimed
  * at a page that shrank under it as the items it passed drew, stepped back from the end by 138–563 px a frame later
  * with nothing of ours writing (a trace on the build host, CPU throttled 3x, 14 of 20; CI’s runners, 319 px); the view
- * took that for you scrolling up. Ended here, smoothEnded finds the view at the end and does nothing more.
+ * took that for you scrolling up. Ended here, smoothEnded finds the jump already ended.
  * @param {View} v @param {Element} s
  */
 export function landed(v, s) {
