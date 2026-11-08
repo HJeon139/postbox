@@ -5,6 +5,7 @@ import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { isMock, mockMarker } from './agent-facts.mjs';
 import { agentMenuLines } from './agent-menu-lines.mjs';
 import { agentsSection } from './agents.mjs';
+import { chainLimitDesc, openChainLimit } from './chain-limit.mjs';
 import { api, busy, client, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { fill, h, icon, syncList } from './dom.mjs';
 import { installLine } from './install-line.mjs';
@@ -416,6 +417,7 @@ function conversationMenu(anchor, shown) {
     anchor,
     [
       { label: 'Rename…', icon: 'edit', run: () => openRename(t.id) },
+      { label: 'Wake chain limit…', icon: 'agent', desc: chainLimitDesc(t.id), run: () => openChainLimit(t.id) },
       {
         label: 'Add an agent…',
         icon: 'agent',
