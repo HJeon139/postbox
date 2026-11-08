@@ -3,7 +3,9 @@
 // change clamps the view to the end (the window taller than the gap), the transcript’s own hold of your place through
 // those draws moved the view down to the end, and onScroll took that for you reaching it: the view followed, then took
 // a new anchor. Narrowing and widening, with Work beside or the window, and growing taller and back: the view keeps
-// reading, at its place. The gap is a fair measure here: each case’s items drew once at the start, at their real sizes.
+// reading, at its place: the item it reads at stays where it was. The gap to the end is recorded too, but isn’t the
+// place: on a Mac the items around the view draw at heights other than x86’s and their estimates, and moved it 12 px in
+// Chromium and 78 px in Firefox with the view still reading (researcher’s Mac check on d4f3ebdb).
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 import { bigRoom, still } from './view-skipped-fixture.mjs';
@@ -24,6 +26,12 @@ const place = (page) =>
   page.evaluate(() => ({
     gap: Math.round(document.documentElement.scrollHeight - innerHeight - scrollY),
     mode: /** @type {HTMLElement} */ (document.querySelector('#main.transcript'))?.dataset.viewMode ?? '',
+    anchor: /** @type {HTMLElement} */ (document.querySelector('#main.transcript'))?.dataset.viewAnchor ?? '',
+    at: (() => {
+      const key = /** @type {HTMLElement} */ (document.querySelector('#main.transcript'))?.dataset.viewAnchor;
+      const n = key ? document.querySelector(`#main > [data-key="${CSS.escape(key)}"]`) : null;
+      return n ? Math.round(n.getBoundingClientRect().top) : null;
+    })(),
   }));
 
 /** A 1,000-item room open at that size, read up from its end by up px. */
@@ -60,7 +68,9 @@ async function keptPlace(page, before, narrowed) {
   expect(narrowed.modes, 'narrowed, each frame reading').toEqual(['reading']);
   const after = await place(page);
   expect(after.mode, 'back at its width, still reading').toBe('reading');
-  expect(Math.abs(after.gap - before.gap), `the gap to the end, ${before.gap} px before and ${after.gap} px after`).toBeLessThanOrEqual(3);
+  expect(after.anchor, 'the item it reads at is the same').toBe(before.anchor);
+  const moved = Math.abs(/** @type {number} */ (after.at) - /** @type {number} */ (before.at));
+  expect(moved, `the item it reads at, ${before.at} px down before and ${after.at} px after`).toBeLessThanOrEqual(3);
 }
 
 test('#712a read 400 px up, Work opens beside the main pane and closes: the view keeps reading, at its place', async ({ page }) => {

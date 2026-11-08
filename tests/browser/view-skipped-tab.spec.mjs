@@ -117,14 +117,24 @@ async function wheel(page, dy) {
   await still(page);
 }
 
+/**
+ * The pad’s focused element, read in its own document, and whether that document has focus. Tab moving focus is the
+ * first; toBeFocused also needs the second, which on a Mac follows the OS window and read “inactive” with the element
+ * focused (researcher’s Mac checks).
+ */
+async function inPad(frame) {
+  const pad = await (await frame.elementHandle())?.contentFrame();
+  return pad ? pad.evaluate(() => ({ id: document.activeElement?.id ?? '', hasFocus: document.hasFocus() })) : { id: '', hasFocus: false };
+}
+
 test('#712a: with an app in view, Tab goes into it, out to the next control in document order, and Shift+Tab back', async ({ page }) => {
-  const { t, frame, inside, appItem } = await room(page, 'Tab past an app in view');
+  const { t, frame, appItem } = await room(page, 'Tab past an app in view');
   await holds(page, t, 'with the app at the top');
 
   await appItem.getByRole('button', { name: 'Full screen', exact: true }).focus();
   await page.keyboard.press('Tab');
   await expect(frame, 'Tab from Full screen goes into the frame').toBeFocused();
-  await expect(inside).toBeFocused();
+  await expect.poll(() => inPad(frame).then((p) => p.id), { message: 'focus in the pad' }).toBe('go');
 
   const next = await nextAfter(frame);
   const appKey = await appItem.getAttribute('data-key');
@@ -138,7 +148,8 @@ test('#712a: with an app in view, Tab goes into it, out to the next control in d
 
   await page.keyboard.press('Shift+Tab');
   await expect(frame, 'Shift+Tab comes back into the frame').toBeFocused();
-  await expect(inside).toBeFocused();
+  await expect.poll(() => inPad(frame).then((p) => p.id), { message: 'focus back in the pad' }).toBe('go');
+  test.info().annotations.push({ type: 'measured', description: `the pad’s document: ${JSON.stringify(await inPad(frame))}` });
   await still(page);
   await holds(page, t, 'after Shift+Tab back into the app');
 });
