@@ -123,3 +123,28 @@ test('#866 the window torn down gives the transcript its skipping back', async (
   await expect(page.locator('#main > .item')).toHaveCount(app.store.items(small).length);
   await expect(page.locator('#main')).toHaveClass(/cv-skip/);
 });
+
+test('#866 Alt+↑ up the room keeps its target the anchor, in place, while the range grows above it', async ({ page }) => {
+  await open(page);
+  const focused = () => page.evaluate(() => /** @type {HTMLElement} */ (document.activeElement)?.closest('[data-key]')?.getAttribute('data-key'));
+  const first = await firstKey(page);
+  // jumpTo(…, 'nearest') (keys.mjs) leaves each target at the view’s top edge, not across its middle, and pins it.
+  // Up until the view’s top comes within the margin of the range’s top, and the range grows.
+  let grew = false;
+  for (let i = 0; i < 80 && !grew; i++) {
+    await page.keyboard.press('Alt+ArrowUp');
+    await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+    grew = (await firstKey(page)) !== first;
+  }
+  expect(grew, 'the range grew up').toBe(true);
+  await settled(page);
+  const target = await focused();
+  expect(await anchorOf(page), 'the target is the anchor, not the item across the middle').toBe(target);
+  // A narrower window rewraps what’s between the target and the middle: only an anchor on the target keeps it in place.
+  const node = page.locator(`#main > .item[data-key="${target}"]`);
+  const y = await node.evaluate((n) => n.getBoundingClientRect().top);
+  await page.setViewportSize({ width: 900, height: 720 });
+  await settled(page);
+  const after = await node.evaluate((n) => n.getBoundingClientRect().top);
+  expect(Math.abs(after - y), `the target was at ${y} px and is at ${after} px`).toBeLessThan(1);
+});
