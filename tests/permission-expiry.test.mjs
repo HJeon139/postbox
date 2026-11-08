@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { expireWait } from '../server/permission-cards.mjs';
 import { tellExpired } from '../server/permission-expiry.mjs';
 import { endCard } from '../server/remote/turns-prompts.mjs';
-import { EXPIRED_NOTE, notes, settle, setup } from './permission-expiry-fixture.mjs';
+import { EXPIRED_NOTE, notes, settle, setup, WITHDRAWN_NOTE } from './permission-expiry-fixture.mjs';
 
 test('#721 a card that expires unanswered tells the agent in its next turn which request expired, and to ask again', async () => {
   const { rt, t, calls, ask, now } = await setup();
@@ -25,14 +25,18 @@ test('#721 a card that expires unanswered tells the agent in its next turn which
   assert.equal((calls.at(-1).context ?? []).filter((n) => EXPIRED_NOTE.test(n)).length, 0, 'the turn after doesn’t hear it again');
 });
 
-test('#721 Stop expires the card and clears the need, but sends no note: the person stopped it, as on main', async () => {
+test('#721 Stop expires the card and clears the need; #853 the note says the Stop withdrew it, not that the person refused', async () => {
   const { rt, t, ask, now } = await setup();
   const { card } = await ask();
   rt.stop(now().id);
   await settle(rt);
   assert.equal(rt.store.item(t.id, card.id).status, 'expired');
   assert.equal(now().needs, null);
-  assert.equal(notes(now()).length, 0);
+  assert.deepEqual(
+    (now().context ?? []).filter((n) => n.startsWith('[Postbox] Your request')).map((n) => WITHDRAWN_NOTE.test(n)),
+    [true],
+    JSON.stringify(now().context),
+  );
 });
 
 test('#721 a card whose summary is generic names its command in the note, so the agent knows what to ask for again', async () => {
