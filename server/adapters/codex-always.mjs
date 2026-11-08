@@ -7,8 +7,10 @@
 import { networkOn } from './codex-network.mjs';
 
 /**
- * First words whose job is to run whatever follows them, so “commands starting with” one would allow any program
- * (#281’s rule). A new wrapper belongs here when that’s what it does.
+ * First words whose job is to run whatever follows them, or that run a program their options name, so “commands
+ * starting with” one would allow any program (#281’s rule). A new one belongs here when that’s what it does. It’s a
+ * list of programs to refuse, so it can’t be complete (vim, less and man run one through !, git through an alias):
+ * Codex’s sandbox and its reviewer judge what runs, and the card shows the exact prefix before the person clicks.
  */
 const RUNS_ANOTHER = new Set([
   'bash',
@@ -42,6 +44,11 @@ const RUNS_ANOTHER = new Set([
   'bun',
   'deno',
   'make',
+  'find',
+  'awk',
+  'sed',
+  'tar',
+  'rsync',
 ]);
 /**
  * Tools whose first word alone covers every subcommand, `git push --force` with `git status`: they need a second word,
