@@ -5,18 +5,20 @@
 //
 // The evidence is the agent’s own recorded stream (tools/uat/postbox-calls.mjs): the call, its result’s is_error, and
 // its text. A call answered “Sent …” is a taken one, whatever Postbox did with it later, and isn’t an error, so it
-// never fires.
+// never fires; nor does the shim’s error for a daemon that didn’t take the call in time, which isn’t the host’s refusal.
 
 import { postboxCalls } from './postbox-calls.mjs';
 import { onHost, placeOf } from './remote-facts.mjs';
 
 const APP_CALLS = new Set(['show_app', 'update_app']);
+/** The shim’s own words for a daemon that didn’t take the call in time (shim-calls.mjs), which isn’t a refusal. */
+const NOT_TAKEN = /^Postbox’s daemon on this host /;
 
 /** @param {any} f */
 function queuedRefused(f) {
   const streams = (f.streams ?? []).filter((s) => onHost(f, s.handle));
   return postboxCalls(streams)
-    .filter((c) => APP_CALLS.has(c.name) && c.error)
+    .filter((c) => APP_CALLS.has(c.name) && c.error && !NOT_TAKEN.test(c.text))
     .map((c) => ({
       at: c.at,
       evidence: `${placeOf(f, c.handle)}: @${c.handle}’s ${c.name} was refused in the call: “${c.text.slice(0, 160)}”`,

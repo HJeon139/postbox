@@ -25,9 +25,8 @@ export function toolCall(sh, rpcId, params) {
   if (name === 'permission_prompt') return permission(sh, rpcId, args, params?._meta?.progressToken);
   // A review’s files may be refused on the host, so that call waits for its answer (toolRoute, #780).
   const route = toolRoute(name, args);
-  // A queued call is answered before the daemon sees it, so an update the daemon would refuse is refused here, in the
-  // call, with its words (broker-tools.mjs’s prepare, #854). Postbox checks an outcome or a withdraw. A call that
-  // carries files waits for the daemon’s own answer instead.
+  // An update the daemon would refuse is refused here, in the call, with its words (broker-tools.mjs’s prepare, #854),
+  // with no round trip. Postbox checks an outcome or a withdraw. A call that carries files is the daemon’s to check.
   const refused = route === 'queue' && name === 'update_block' ? hostUpdateRefusal(args.block) : null;
   if (refused) return respond(rpcId, textResult(refused, true));
   // show_app without an id gets one here, so the text can name it and the agent can update it; the laptop would
@@ -72,15 +71,14 @@ export function toolCall(sh, rpcId, params) {
 }
 
 /**
- * A queued call the daemon hasn’t taken within TIMINGS.unreachable fails. The daemon may have recorded it just before
- * it stopped, and would then send it on a restart, so the text says it may still arrive.
+ * A queued call the daemon hasn’t taken within TIMINGS.unreachable fails, reachable or not, in one sentence for both:
+ * the daemon may have recorded it just before it stopped, and would then send it on a restart, so it may still arrive.
  * @param {Shim} sh @param {string} id
  */
 function queueTimedOut(sh, id) {
   const p = settle(sh, id);
   if (!p) return;
-  const what = sh.ready ? `didn’t answer ${p.tool} within ${minutes(TIMINGS.unreachable)}` : `isn’t reachable, so ${p.tool} couldn’t be sent`;
-  const text = `Postbox’s daemon on this host ${what}. The daemon may still have it, so check the conversation before you call it again.`;
+  const text = `Postbox’s daemon on this host didn’t take ${p.tool} within ${minutes(TIMINGS.unreachable)}. It may have it anyway, so check the conversation before you call it again.`;
   respond(p.rpcId, textResult(text, true));
 }
 

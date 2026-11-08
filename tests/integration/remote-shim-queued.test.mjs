@@ -7,7 +7,7 @@ import test from 'node:test';
 import { setup, sleep, textOf } from './remote-shim-fixtures.mjs';
 
 const LATER = 'If Postbox refuses it, you’ll hear why at your next turn.';
-const MAY_HAVE = 'may still have it, so check the conversation before you call it again';
+const MAY_HAVE = 'It may have it anyway, so check the conversation before you call it again.';
 
 test('#827 a queued call the daemon refuses returns the refusal as the tool’s error, in the daemon’s words', async (t) => {
   const { shim, daemon } = await setup(t);
@@ -57,7 +57,7 @@ test('#827 with the daemon unreachable, a queued call fails after the wait, says
   const { shim, daemon } = await setup(t, { startDaemon: false, timings: { unreachable: 300, backoff: 20, backoffMax: 50 } });
   const res = await shim.response(shim.tool('define_term', { term: 'shim', definition: 'The host’s MCP server.' }));
   assert.equal(res.result.isError, true);
-  assert.match(textOf(res), /^Postbox’s daemon on this host isn’t reachable, so define_term couldn’t be sent\./);
+  assert.match(textOf(res), /^Postbox’s daemon on this host didn’t take define_term within /);
   assert.ok(textOf(res).includes(MAY_HAVE), textOf(res));
   await daemon.start();
   await daemon.next('hello');
@@ -72,7 +72,7 @@ test('#827 a queued call the daemon never answers fails after the wait, and a la
   const call = await daemon.next('call');
   const res = await shim.response(id);
   assert.equal(res.result.isError, true);
-  assert.match(textOf(res), /^Postbox’s daemon on this host didn’t answer define_term within/);
+  assert.match(textOf(res), /^Postbox’s daemon on this host didn’t take define_term within /);
   assert.ok(textOf(res).includes(MAY_HAVE), textOf(res));
   daemon.send('result', { id: call.id, ok: false, text: 'Too late.' });
   await sleep(100);
