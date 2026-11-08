@@ -17,7 +17,11 @@ export let live = null;
 // layout of the whole page, and a change anywhere on it asked for one, a frame at a time.
 /** @type {Set<Element>} */
 export const nearBodies = new Set();
-const mayBeUnder = () => nearBodies.size > 0 || live !== null;
+/** Whether an app may be under the pointer. A body that left the page goes first (an app review’s old render), O(n). */
+function mayBeUnder() {
+  for (const body of nearBodies) if (!body.isConnected) nearBodies.delete(body);
+  return nearBodies.size > 0 || live !== null;
+}
 
 function makeLive(f) {
   if (f === live) return;

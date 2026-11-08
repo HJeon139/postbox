@@ -430,6 +430,8 @@ function appBody(appId, review) {
   bodySizes.observe(body);
   // A review never unloads, so it isn’t watched for nearness: while it’s mounted, its app may be under the pointer.
   if (review) {
+    // A review renders a new body each time it re-renders: let go of the ones it left behind first.
+    releaseApps();
     body.style.maxHeight = 'none';
     nearBodies.add(body);
   }
