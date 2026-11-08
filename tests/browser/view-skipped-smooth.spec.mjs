@@ -6,6 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { traceNear, traceScrolls } from './scroll-trace.mjs';
 import { bigRoom, still } from './view-skipped-fixture.mjs';
 
 // Tracing is off: Playwright's trace snapshots walk all 1,000 items with their skipped styles each action, which
@@ -100,8 +101,9 @@ function heldAtTop() {
 }
 
 /** Records scrollY every frame from now until it has held for 30 frames, or 10 s. */
-const record = (page) =>
-  page.evaluate(() => {
+const record = async (page) => {
+  await traceScrolls(page);
+  return page.evaluate(() => {
     const w = /** @type {any} */ (window);
     w.smoothYs = [scrollY];
     w.smoothHs = [document.documentElement.scrollHeight];
@@ -119,6 +121,7 @@ const record = (page) =>
       requestAnimationFrame(tick);
     });
   });
+};
 const recorded = (page) => page.evaluate(() => /** @type {any} */ (window).smoothDone);
 /** Each frame where scrollY went back up: where from and to, and the page's height in the frame before and in it. */
 const backSteps = (page) =>
@@ -154,6 +157,7 @@ test('Jump to latest over 1,000 far shorter items on a slow CPU never steps back
     back: await backSteps(page),
   };
   test.info().annotations.push({ type: 'measured', description: JSON.stringify(v) });
+  if (v.backwards) test.info().annotations.push({ type: 'trace', description: JSON.stringify(await traceNear(page, v.back)) });
   expect.soft(v.backwards, `scrollY never goes back up by more than ${SETTLES} px`).toBe(0);
   expect.soft(v.mode, 'it ends following').toBe('following');
   expect.soft(v.gap, 'it ends at the end').toBeLessThanOrEqual(2);
@@ -189,6 +193,7 @@ for (const [sizes, css] of [
       back: await backSteps(page),
     };
     test.info().annotations.push({ type: 'measured', description: JSON.stringify(v) });
+    if (v.backwards) test.info().annotations.push({ type: 'trace', description: JSON.stringify(await traceNear(page, v.back)) });
     expect.soft(v.distinct, 'scrollY takes many values on the way down').toBeGreaterThan(5);
     expect.soft(v.backwards, `scrollY never goes back up by more than ${SETTLES} px`).toBe(0);
     expect.soft(v.biggest, 'no one frame jumps more than 60% of the way').toBeLessThanOrEqual(0.6 * distance);
