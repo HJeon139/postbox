@@ -11,6 +11,7 @@ import { HANDLE, READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
+import { workFolder } from './adapters/folder.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
@@ -28,7 +29,7 @@ import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessag
 import { addDataset, reloadDatasets } from './datasets.mjs';
 import { DELETE_UNDO_MS } from './delete-undo.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
-import { agentFolderPath } from './folder-path.mjs';
+import { agentFolderPath, folderOrNone } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { hostTool } from './host-tool.mjs';
@@ -638,11 +639,7 @@ export class Runtime {
     const project = this.s.projects[this.s.threads[se.threadId]?.projectId] ?? null;
     this.ledger.startTurn(turn, {
       se,
-      folder: hostId
-        ? null
-        : adapter?.folderFor
-          ? Promise.resolve().then(() => adapter.folderFor(persona, project))
-          : persona?.folder || project?.folder || null,
+      folder: hostId ? null : workFolder(adapter, persona, project),
       projectFolder: project?.folder ?? null,
     });
     // Rules the person allowed once (from a refusal card) apply to this turn only.
@@ -1983,8 +1980,7 @@ export class Runtime {
     const project = this.s.projects[t.projectId] ?? null;
     const adapter = persona ? requestAdapter(this, se.handle, persona) : null;
     if (persona?.remote?.hostId) return hereFolder(this, persona, project, adapter);
-    if (adapter?.folderFor) return { folder: await adapter.folderFor(persona, project), host: null };
-    return { folder: persona?.folder || project?.folder || null, host: null };
+    return { folder: await workFolder(adapter, persona, project), host: null };
   }
 
   /**
@@ -2521,10 +2517,10 @@ export class Runtime {
     const project = (projectId && this.s.projects[projectId]) || this.s.projects[this.s.threads[recent?.threadId]?.projectId] || null;
     const seen =
       latest(own) ?? latest(Object.values(this.s.sessions).filter((se) => this.persona(se.personaId)?.usesHostSetup !== false && se.backend !== 'mock'));
-    const folder = persona?.folder || project?.folder || null;
+    const folder = folderOrNone(persona) || project?.folder || null;
     // An init from another folder says nothing about that folder’s project and local servers here: keep only the
     // ones that load everywhere (user, claude.ai, plugins).
-    const seenFolder = seen && (this.persona(seen.personaId)?.folder || this.s.projects[this.s.threads[seen.threadId]?.projectId]?.folder || null);
+    const seenFolder = seen && (folderOrNone(this.persona(seen.personaId)) || this.s.projects[this.s.threads[seen.threadId]?.projectId]?.folder || null);
     const servers = seen?.mcpServers.servers ?? [];
     return {
       persona,

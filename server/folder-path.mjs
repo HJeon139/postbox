@@ -69,11 +69,44 @@ const SHOWN = 200;
  * the text around it, and cut short when long. One that isn’t text shows as JSON.
  * @param {unknown} folder
  */
-export function shownFolder(folder) {
+function shownFolder(folder) {
   const asEscape = (c) => {
     const code = /** @type {number} */ (c.codePointAt(0)).toString(16);
     return code.length > 4 ? `\\u{${code}}` : `\\u${code.padStart(4, '0')}`;
   };
   const shown = String(JSON.stringify(folder)).replace(CONTROL_ALL, asEscape).replace(INVISIBLE, asEscape);
   return shown.length > SHOWN ? `${shown.slice(0, SHOWN)}…` : shown;
+}
+
+/**
+ * A persona’s stored folder, '' for none, for Postbox to work in: its turn, `!` commands, the permissions panel, the
+ * files it names and the work ledger. One stored before it was checked (#990), a relative one say, is refused with a
+ * 409 rather than used: it would be resolved against the folder Postbox was started from. A 409, not a 422: the
+ * request that reads it is fine, the agent’s stored folder isn’t, and the person changes it in the agent’s sheet.
+ * @param {{ handle: string, folder?: unknown } | null | undefined} persona @returns {string}
+ */
+export function storedFolder(persona) {
+  const folder = persona?.folder;
+  try {
+    agentFolderPath(folder);
+  } catch (e) {
+    const handle = persona?.handle;
+    const why = `Postbox couldn’t open the folder ${shownFolder(folder)} for @${handle}: ${e.message} Change it in @${handle}’s sheet, under Folder, or leave it empty to work in the project’s root folder.`;
+    throw Object.assign(httpError(409, why), { cause: e });
+  }
+  return /** @type {string} */ (folder || '');
+}
+
+/**
+ * A persona’s stored folder for what only reads from it, the persona sheet’s MCP servers and skills: '' for one
+ * storedFolder refuses, as for none, so nothing is read relative to the folder Postbox was started from (#990).
+ * @param {{ handle: string, folder?: unknown } | null | undefined} persona @returns {string}
+ */
+export function folderOrNone(persona) {
+  try {
+    return storedFolder(persona);
+  } catch {
+    // Refused: read as no folder of its own.
+    return '';
+  }
 }
