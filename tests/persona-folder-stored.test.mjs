@@ -214,3 +214,18 @@ test('a conversation whose snapshot holds a valid folder keeps working there aft
     if (backend === 'mock') assert.equal((await turn(rt, t).delivered).folder, started);
   }
 });
+
+test('a conversation whose agent had no folder keeps the project’s after its sheet gets one', async () => {
+  const { store, rt } = setup();
+  const later = tempDir('pb-persona-folder-later-');
+  const p = rt.createPersona({ handle: 'mo', backend: 'mock' });
+  const t = rt.createThread({ projectId: 'p1', title: 'mo', personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  assert.equal(se.personaSnapshot.folder, '');
+  rt.updatePersona(p.id, { folder: later });
+  assert.equal(store.state.personas[p.id].folder, later);
+  assert.equal(rt.personaFor(se).folder, '');
+  assert.deepEqual(await rt.commandFolder(t.id), { folder: '/srv/project', host: null });
+  assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, '/srv/project');
+  assert.equal((await turn(rt, t).delivered).folder, '');
+});
