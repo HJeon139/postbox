@@ -17,6 +17,7 @@ import { theme } from './sandbox-libs.mjs';
 import { threadTopbar } from './search-dialog.mjs';
 import { liveMembers, mountEmptyProject, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';
+import { topbarSig } from './topbar-sig.mjs';
 import { initHoverCards, navigate, refind, route, say, setAttention } from './ui.mjs';
 
 const root = $('#root');
@@ -173,9 +174,17 @@ function topbarChanged(se) {
   topSig.set(se.id, sig);
   return changed;
 }
+/** What the top bar is drawn from in the open view: topbar()’s arguments. */
+function barView() {
+  if (current.view === 'thread') return { title: client.state.threads[current.threadId]?.title, threadId: current.threadId };
+  if (current.projectId) return { title: current.view === 'threads' ? 'Threads' : '', projectId: current.projectId };
+  return {};
+}
 function refreshTop() {
   const old = root.querySelector('header.topbar');
   if (!old || !current) return;
+  // Only a change to what the bar shows rebuilds it: another conversation’s event costs a compare, not a layout (#986).
+  if (old.dataset.sig === topbarSig(barView())) return;
   let next;
   if (current.view === 'thread') {
     const t = client.state.threads[current.threadId];

@@ -2,6 +2,44 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.44.2 (2026-11-08)
+
+### Fixes
+
+- **sessions:** viewing a conversation clears the unread its agents counted behind a held commit
+- **sessions:** a turn stopped behind a held commit ends idle once it exits, not stopping
+- **catch-up:** a message a summary gives in full reaches the agent once, the person's too
+- **sessions:** a session write and a new agent's turn start from the session as held writes leave it
+- **threads:** every thread write starts from the thread as held writes leave it
+
+## 1.44.1 (2026-11-08)
+
+### Fixes
+
+- **app:** the places menu reads the projects when it opens (#986)
+- **projects:** refuse the shared invisible characters in a folder; check an asset name's first
+- **app:** rebuild the top bar only when what it shows changes (#986)
+- **assets:** refuse C1, bidi and other hidden characters in a new asset's name
+- **files:** send Cross-Origin-Resource-Policy: same-origin on three stored-byte routes
+- **projects:** refuse an empty or relative folder when creating a project
+- **telemetry:** check a session.patch's own public flag before keeping it
+
+## 1.44.0 (2026-11-08)
+
+### Features
+
+- **permissions:** Always allow on a host card, kept by Postbox and sent in the host turn's settings
+- **permissions:** harness first: in Auto, Postbox adds no ask rules of its own for writes
+
+### Fixes
+
+- **remote:** one field for a host turn that may still run, and its hint says it waits
+- **remote:** only a host turn listed running waits for the person
+- **remote:** a listed host turn whose backend wasn't registered waits for the person
+- **remote:** interrupt a host turn whose backend isn't registered after a restart
+- **permissions:** a host's kept Always allow settles a write, and the card names the asking host
+- **permissions:** the panel keeps "Writes you asked for" in Auto, where it still applies
+
 ## 1.43.0 (2026-11-08)
 
 ### Features
