@@ -81,3 +81,21 @@ test('#995 show_block with an app block takes the intent as show_app does: never
   assert.equal(intents(store, 'long')[0].length, INTENT_CHARS);
   assert.deepEqual(intents(store, 'said'), ['Six cost over $10 a use.']);
 });
+
+test('#995 16 words is within the limit, and every way of showing an app flags a longer intent once, with its true length', () => {
+  const { tools } = setup();
+  const words = (n) => Array.from({ length: n }, () => 'word').join(' ');
+  const flags = (r) => (r.message.match(/Its intent has/g) ?? []).length;
+  assert.equal(flags(tools.show_app({ id: 'at', title: 'A', code: '<p>1</p>', intent: words(16) })), 0, 'exactly 16 is fine');
+  const over = tools.show_app({ id: 'over', title: 'B', code: '<p>1</p>', intent: words(17) });
+  assert.equal(flags(over), 1);
+  assert.match(over.message, /Its intent has 17 words/);
+  const block = (id, intent) => ({ block: { id, type: 'app', version: 1, fallback: 'An app.', code: '<p>1</p>', intent } });
+  const shown = tools.show_block(block('new', words(20)));
+  assert.equal(flags(shown), 1, 'show_block’s new app');
+  assert.match(shown.message, /Its intent has 20 words/);
+  assert.equal(flags(tools.show_block(block('new', words(21)))), 1, 'show_block on an app it already holds');
+  assert.equal(flags(tools.show_app({ id: 'new', title: 'C', code: '<p>2</p>', intent: words(22) })), 1, 'show_app on an app it already holds');
+  // 200 words is past the 300-character cut: the note gives the length the agent wrote.
+  assert.match(tools.show_app({ id: 'huge', title: 'D', code: '<p>1</p>', intent: words(200) }).message, /Its intent has 200 words/);
+});

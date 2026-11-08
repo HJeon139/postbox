@@ -30,7 +30,7 @@ const intentOf = (v) => (typeof v === 'string' ? v.trim().slice(0, INTENT_CHARS)
  * agent can say it shorter with update_app. @param {unknown} v
  */
 function intentNote(v) {
-  const n = wordCount(intentOf(v));
+  const n = typeof v === 'string' ? wordCount(v) : 0; // before the storage cut, so a very long one reports its length
   return n > LIMITS.appIntentWords ? ` Its intent has ${n} words: say it in at most ${LIMITS.appIntentWords} with update_app.` : '';
 }
 
@@ -45,7 +45,7 @@ export function withAppIntent(block) {
 }
 
 /** A receipt with the intent’s note, when there is one. @param {any} r @param {unknown} intent */
-const withIntentNote = (r, intent) => (r.ok && intentNote(intent) ? { ...r, message: r.message + intentNote(intent) } : r);
+export const withIntentNote = (r, intent) => (r.ok && intentNote(intent) ? { ...r, message: r.message + intentNote(intent) } : r);
 
 // ── Apps ───────────────────────────────────────────────────────────────────────────
 
@@ -250,7 +250,7 @@ export function showApp(rt, sessionId, tools, { id, title, code, permissions = [
   const blockId = id ?? newId('app');
   const existing = rt.store.pending.app(blockId);
   if (existing?.sessionId === sessionId) return tools.update_app({ id: blockId, code, permissions, title, intent }, given);
-  const shown = tools.show_block(
+  return tools.show_block(
     {
       block: {
         id: blockId,
@@ -260,12 +260,12 @@ export function showApp(rt, sessionId, tools, { id, title, code, permissions = [
         fallback: fallback ?? `${title ?? 'An app'}: open Postbox to use it.`,
         code,
         permissions,
-        ...(intentOf(intent) && { intent: intentOf(intent) }),
+        // As the agent said it: show_block trims it, cuts it and flags a long one, for every way an app is shown.
+        ...(intent !== undefined && { intent }),
       },
     },
     given,
   );
-  return withIntentNote(shown, intent);
 }
 
 /**
