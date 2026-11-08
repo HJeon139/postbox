@@ -27,7 +27,7 @@
 // on a host: `- host: researcher` names it, `- host-triggers: …` replace its triggers then, and the text under a
 // `### On a host` heading replaces the phase’s text then (tools/uat/hosts-scenario.mjs).
 
-import { DEFAULT_HOP_LIMIT } from '../../shared/limits.mjs';
+import { MAX_HOP_LIMIT } from '../../shared/limits.mjs';
 import { filesOf } from './fixtures.mjs';
 import { expectsOf } from './picture-choice.mjs';
 import { judgeOf } from './visual-judge.mjs';
@@ -174,10 +174,10 @@ export const DEFAULT_STEPS = 15;
 /** The steps a phase with triggers gets unless it says otherwise: the P0 run hit each fix within about 10 turns. */
 export const PHASE_STEPS = 8;
 
-/** A whole number from 1 to 500, or null. */
-const count = (v) => {
+/** A whole number from 1 to max (500 unless given), or null. @param {unknown} v @param {number} [max] */
+const count = (v, max = 500) => {
   const n = Number(String(v ?? '').trim());
-  return Number.isInteger(n) && n >= 1 && n <= 500 ? n : null;
+  return Number.isInteger(n) && n >= 1 && n <= max ? n : null;
 };
 
 /**
@@ -192,11 +192,11 @@ function seedDiagramsOf(spec, seed) {
   return n;
 }
 
-/** The chain limit a scenario asks for, which can only lower the backstop: 1 to 50, null for none. @param {string|undefined} spec */
+/** The chain limit a scenario asks for, the server’s default for its run: 1 to 10,000 (#1035), null for none. @param {string|undefined} spec */
 function chainLimitOf(spec) {
   if (spec === undefined) return null;
-  const n = count(spec);
-  if (!n || n > DEFAULT_HOP_LIMIT) throw new Error(`- chain-limit takes a whole number from 1 to ${DEFAULT_HOP_LIMIT}, not “${String(spec).trim()}”.`);
+  const n = count(spec, MAX_HOP_LIMIT);
+  if (!n) throw new Error(`- chain-limit takes a whole number from 1 to ${MAX_HOP_LIMIT.toLocaleString('en-US')}, not “${String(spec).trim()}”.`);
   return n;
 }
 
