@@ -91,7 +91,7 @@ const APPS = {
   // A big figure set tight over its caption, a <pre> in a box that scrolls sideways, and a badge past a button’s corner.
   tight: `<div style="padding:12px;color:var(--text)"><div style="font-size:40px;line-height:.9;font-weight:600">4,210</div><div style="font-size:12px">passages read</div>
 <div style="overflow-x:auto;margin-top:8px"><pre style="margin:0">const passages = corpus.search({ query: 'hope after loss', mode: 'both', k: 12 });</pre></div>
-<button class="btn" type="button" style="position:relative;margin-top:12px">Inbox<span style="position:absolute;top:-6px;right:-14px;background:var(--accent);color:var(--on-ink);border-radius:8px;padding:0 5px;font-size:11px">12</span></button></div>`,
+<button class="btn" type="button" style="position:relative;margin-top:12px">Inbox<span style="position:absolute;top:-6px;right:-14px;background:var(--accent);color:var(--on-ink);border-radius:8px;padding:0 5px;font-size:12px">12</span></button></div>`,
   // Sixty opaque cards stacked in one place, each of 25 lines: every line is over another, and hidden under the top card.
   cards: `<div style="position:relative;height:600px">${Array.from({ length: 60 }, (_, i) => `<div style="position:absolute;inset:0;background:var(--panel);color:var(--text);padding:8px">${Array.from({ length: 25 }, (_, j) => `Card ${i + 1}, line ${j + 1}`).join('<br>')}</div>`).join('')}</div>`,
   // Controls hidden on purpose: under an open modal dialog, a carousel’s other slides, an accordion closed at max-height: 0,
@@ -178,7 +178,7 @@ test('#328 syntax and runtime errors name where they happened', () => {
 test('#194 nowrap text in a 120 px column overflows and overlaps, and the messages name the texts, the widths and the usual fix', () => {
   expect.soft(codes('grid'), says('grid')).toEqual(expect.arrayContaining(['text-overflow', 'text-overlap']));
   const over = found('grid').find((p) => p.code === 'text-overflow')?.message ?? '';
-  expect.soft(over).toMatch(/“a long description that won’t fit” is \d+ px wide in a 120 px box/);
+  expect.soft(over).toMatch(/“a long description that won’t fit” \(div > p\) is \d+ px wide in a 120 px box/);
   expect.soft(over).toMatch(/white-space: nowrap/);
   expect.soft(over).toMatch(/minmax\(0, …\)/);
   expect.soft(found('grid').find((p) => p.code === 'text-overlap')?.message, 'text-overlap names both texts').toMatch(/drawn over “Heading”/);
@@ -228,7 +228,7 @@ test('#194 an overlap there both times the check looks is reported, and one that
     return /** @type {any} */ (window).__pbCheck.textOverlap(1280);
   });
   expect(twice.length, JSON.stringify(twice)).toBe(1);
-  expect(twice[0].message).toMatch(/“Still label” is drawn over “Stays here”/);
+  expect(twice[0].message).toMatch(/“Still label” \(p:nth-of-type\(1\)\) is drawn over “Stays here” \(p:nth-of-type\(2\)\)/);
 });
 
 // ── #327 and #89: Postbox styles and controls you can’t see or click ─────────────────────

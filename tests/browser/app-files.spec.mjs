@@ -80,8 +80,8 @@ for (const host of ['127.0.0.1', 'localhost'])
   }) => {
     const { rt } = app;
     const id = `pairs_${host.replace(/\W/g, '')}`;
-    // The app asks for missing.json on purpose, from its frame and its check’s: the server answers 404.
-    allowPageError(page, /status of 404/, { times: 3 });
+    // The app asks for missing.json on purpose, from its frame and its check’s three: the server answers 404.
+    allowPageError(page, /status of 404/, { times: 4 });
     /** @type {{ status: number, corp: string | undefined }[]} */
     const answers = [];
     page.on('response', (r) => {

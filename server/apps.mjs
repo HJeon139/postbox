@@ -16,8 +16,12 @@ import { newId } from './store.mjs';
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
-/** App check problems that are warnings: the app is shown, with notes, and the agent is told. */
-const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small', 'dashes-too-fine', 'only-error']);
+/**
+ * App check problems that are warnings: the app is shown, with notes, and the agent is told. Text under 12 px holds a
+ * version back at 1000 × 680, as the critique’s floor does (#997): agents shipped the labels this flagged when it was a
+ * warning. At 375 px it stays a warning: an SVG scaled to fit a narrow pane draws its labels small.
+ */
+const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small-375', 'dashes-too-fine', 'only-error']);
 
 /**
  * What a version should leave the reader with, as the agent said it (#995), or '' when it said nothing: a missing or
@@ -69,7 +73,7 @@ export function appCheck(rt, appId, { version, problems = [] }) {
     return { status: 'crashed' };
   }
   // Problems the agent can’t fix (the frame never answered, or a check of Postbox’s threw) are shown as a note, not
-  // sent back. Warnings (marks or text too small, an app showing only an error) don’t hold the app back: it’s shown
+  // sent back. Warnings (marks or dashes too small, an app showing only an error) don’t hold the app back: it’s shown
   // with notes, and the agent hears of them through the lint pipeline, unless it’s already fixing the app.
   const fixable = clean.filter((p) => p.code !== 'no-answer' && p.code !== 'check-error');
   const blocking = fixable.filter((p) => !APP_WARNINGS.has(p.code));
