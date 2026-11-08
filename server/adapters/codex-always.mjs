@@ -7,7 +7,8 @@
 // and the rule goes in <codex home>/rules/default.rules (:904–905), so it holds for every Codex session on this
 // computer, in every mode. Nothing judges a matching command after the click, so the card says so, and Always allow
 // offers only what can’t run any program: never a wider rule than Codex proposed, never a prefix that would run
-// another program (#281’s rule), and nothing that would give network to a persona that may not fetch the web.
+// another program (#281’s rule), and nothing to a persona that may not fetch the web, since a matching command runs
+// with network.
 
 import { networkOn } from './codex-network.mjs';
 
@@ -19,7 +20,7 @@ import { networkOn } from './codex-network.mjs';
  */
 const RUNS_ANOTHER = new Set([
   ...['bash', 'sh', 'zsh', 'fish', 'pwsh', 'env', 'sudo', 'xargs', 'time', 'nice', 'nohup', 'timeout', 'watch'],
-  ...['command', 'exec', 'eval', 'ssh', 'docker', 'osascript', 'make', 'find', 'awk', 'sed', 'tar', 'rsync'],
+  ...['source', 'command', 'exec', 'eval', 'ssh', 'docker', 'osascript', 'make', 'find', 'awk', 'sed', 'tar', 'rsync'],
   ...['python', 'node', 'perl', 'ruby', 'php', 'npx', 'npm', 'pnpm', 'yarn', 'bun', 'bunx', 'deno', 'uvx', 'tsx'],
 ]);
 /**
@@ -46,8 +47,11 @@ function plainPrefix(prefix) {
   if (prefix.join(' ').length > RULE_MAX) return false;
   // A path or an assignment as the first word names a program the list can’t see: /bin/sh, ./run.sh, FOO=bar node.
   if (/[/=]/.test(prefix[0])) return false;
-  if (RUNS_ANOTHER.has(programOf(prefix[0]))) return false;
-  if (!SUBCOMMANDS.has(prefix[0])) return true;
+  const program = programOf(prefix[0]);
+  // A first word of only digits and dots names no program the lists can check: `.` runs a script, as `source` does.
+  if (!program) return false;
+  if (RUNS_ANOTHER.has(program)) return false;
+  if (!SUBCOMMANDS.has(program)) return true;
   // The second word must be a subcommand: an option such as git -c can make the tool run any program.
   return prefix.length >= 2 && !prefix[1].startsWith('-') && !RUNS_NEXT.has(prefix[1]);
 }
@@ -66,10 +70,14 @@ export function codexAlwaysOffer(params, persona) {
     updates: [{ type: /** @type {const} */ ('codex'), decision }],
     harness: /** @type {const} */ (true),
   });
+  // Network is the one thing every offer gives: a host directly, and a prefix because a matching command runs
+  // outside the sandbox. So a persona that may not fetch the web is offered neither, in any mode.
   const mayFetch = Array.isArray(persona?.tools) && persona.tools.includes('web.fetch');
+  if (!mayFetch) return null;
   if (params?.networkApprovalContext) {
-    // A host is network access, which a persona that may not fetch the web never gets from a card.
-    if (!mayFetch) return null;
+    // Outside Auto the sandbox is offline for every persona (networkOn), so a host rule would give network that
+    // mode never has.
+    if (!networkOn(persona)) return null;
     const proposed = Array.isArray(params.proposedNetworkPolicyAmendments) ? params.proposedNetworkPolicyAmendments : [];
     const host = proposed.find((a) => a?.action === 'allow' && typeof a.host === 'string' && HOST.test(a.host))?.host;
     if (!host) return null;
@@ -77,11 +85,8 @@ export function codexAlwaysOffer(params, persona) {
       applyNetworkPolicyAmendment: { network_policy_amendment: { host, action: 'allow' } },
     });
   }
-  // A matching command runs outside the sandbox, so with network: in Auto, a persona that may not fetch the web stays
-  // offline only if no prefix is offered (“personas without web access stay offline”).
-  const offlineAuto = (persona?.permissionMode ?? 'auto') === 'auto' && !networkOn(persona);
   const prefix = params?.proposedExecpolicyAmendment;
-  if (offlineAuto || !plainPrefix(prefix)) return null;
+  if (!plainPrefix(prefix)) return null;
   const rule = prefix.join(' ');
   return offer(`Always allow commands starting with ${rule}, ${WHERE}`, rule, { acceptWithExecpolicyAmendment: { execpolicy_amendment: [...prefix] } });
 }
