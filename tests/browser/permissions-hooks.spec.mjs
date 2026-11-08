@@ -29,6 +29,8 @@ const ASKS_ROWS = [
 ];
 const OFF =
   'In Ask me and Accept edits, Postbox turns off hooks from settings files, plugin hooks and your custom status line for its own turns, since a hook that approves a tool call would skip the ask rules and the permission card. In Auto and Run everything they run, as when you use Claude Code yourself. Postbox can’t list your plugins’ hooks here: /hooks in Claude Code shows them. Hooks your organization manages always run, and one of those can approve a call without asking you.';
+const runs = (handle, mode) =>
+  `In ${mode} mode, these run in ${handle}’s Postbox turns too. One that allows a call also skips your ask rules, this conversation’s included, as in your terminal.`;
 const ISOLATED = 'It’s isolated, so it doesn’t read the hooks in your user settings.';
 const dontRun = (handle, mode) =>
   `These don’t run in ${handle}’s Postbox turns in ${mode} mode. They run in Auto and Run everything, and when you use Claude Code yourself.`;
@@ -109,7 +111,7 @@ async function openHooks(page, handle) {
 test('#806 the panel names each PreToolUse hook as text, and in Auto mode says it runs in Postbox turns', async ({ page }) => {
   const hooks = await openHooks(page, 'coder');
   await expect.soft(hooks.locator('li')).toHaveText([USER_ROW, PROJECT_ROW]);
-  await expect.soft(hooks.locator('p.help')).toHaveText(['In Auto mode, these run in coder’s Postbox turns too.', OFF]);
+  await expect.soft(hooks.locator('p.help')).toHaveText([runs('coder', 'Auto'), OFF]);
   await expect.soft(hooks.locator('p.err'), 'no file failed').toHaveCount(0);
 });
 
@@ -123,7 +125,7 @@ test('#817 a hook’s command with markup in it shows literally, never as HTML',
 test('#817 in Run everything mode, the panel says the hooks run', async ({ page }) => {
   const hooks = await openHooks(page, 'runner');
   await expect.soft(hooks.locator('li')).toHaveText([USER_ROW, PROJECT_ROW]);
-  await expect.soft(hooks.locator('p.help')).toHaveText(['In Run everything mode, these run in runner’s Postbox turns too.', OFF]);
+  await expect.soft(hooks.locator('p.help')).toHaveText([runs('runner', 'Run everything'), OFF]);
 });
 
 test('#817 an Isolated agent’s panel lists the project’s hooks only, and in Ask me mode says they don’t run', async ({ page }) => {

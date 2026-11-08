@@ -20,7 +20,7 @@ function runsNote(p) {
   const name = (PERMISSIONS.find(([id]) => id === p.permissionMode) ?? PERMISSIONS[0])[1];
   if (asksForWrites(p.permissionMode))
     return `These don’t run in ${p.handle}’s Postbox turns in ${name} mode. They run in Auto and Run everything, and when you use Claude Code yourself.`;
-  return `In ${name} mode, these run in ${p.handle}’s Postbox turns too.`;
+  return `In ${name} mode, these run in ${p.handle}’s Postbox turns too. One that allows a call also skips your ask rules, this conversation’s included, as in your terminal.`;
 }
 
 /**
