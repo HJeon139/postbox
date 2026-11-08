@@ -5,39 +5,66 @@
 // biome-ignore lint/suspicious/noRedundantUseStrict: the page runs this as a classic script, which isn’t strict without it.
 'use strict';
 {
-  const { rgb, lum, clip, where, hidden } = window.__pbCheck;
+  const { rgb, lum, clip, where, jump, hidden } = window.__pbCheck;
   // The smallest text a person can read at a glance: the critique’s floor (VE12). An SVG drawn a little under its
   // viewBox’s size draws a 12 px label at 11.7 px, which reads the same, so a label counts as small under 11.5 px.
   const MIN_SIZE = 12;
   const SMALL = 11.5;
 
-  // Text whose contrast with what’s behind it is under WCAG AA, up to 3.
+  /**
+   * contrast: text whose contrast with what’s behind it is under WCAG AA, up to 3: page text against its nearest opaque
+   * background, and SVG labels against the shape drawn under them (#997).
+   */
   function lowContrast() {
+    hidden.reset();
     const out = [];
-    let low = 0;
-    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    const seen = new Set();
-    for (let n = walk.nextNode(); n && low < 3; n = walk.nextNode()) {
-      const el = n.parentElement;
-      if (!n.textContent.trim() || !el || seen.has(el) || el.closest('svg')) continue;
-      seen.add(el);
-      const cs = getComputedStyle(el);
-      if (cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) continue;
-      const fg = rgb(cs.color);
-      const bg = background(el);
-      if (!fg || !bg) continue;
+    const y0 = scrollY;
+    for (const l of labels()) {
+      if (out.length >= 3) break;
+      const cs = getComputedStyle(l.el);
+      const svg = l.el.closest('svg');
+      const fg = svg ? rgb(cs.fill) : rgb(cs.color);
+      if (!fg) continue;
+      if (svg) fg.a *= +cs.fillOpacity;
+      const bg = svg ? behind(l.el) : background(l.el);
       const ratio = contrast(blend(fg, bg), bg);
-      const size = parseFloat(cs.fontSize);
-      const large = size >= 24 || (size >= 18.66 && +cs.fontWeight >= 700);
-      if (ratio < (large ? 3 : 4.5)) {
-        low++;
+      const large = l.size >= 24 || (l.size >= 18.66 && +cs.fontWeight >= 700);
+      if (ratio < (large ? 3 : 4.5))
         out.push({
           code: 'contrast',
-          message: `Text “${n.textContent.trim().slice(0, 30)}” has contrast ${ratio.toFixed(2)}:1; it needs ${large ? 3 : 4.5}:1.`,
+          message: `Text “${clip(l.t)}” (${where(l.el)}) has contrast ${ratio.toFixed(2)}:1 with what’s behind it; it needs ${large ? 3 : 4.5}:1. Set text in var(--text) or var(--dim), and keep colors for the marks.`,
         });
-      }
     }
+    jump(y0);
     return out;
+  }
+  // What’s painted under an SVG label: its own halo (a wide stroke painted first, as d3 draws one), else the first
+  // opaque shape or box under its middle, else the page behind the SVG.
+  const SHAPES = new Set(['rect', 'circle', 'ellipse', 'path', 'polygon', 'polyline']);
+  function behind(el) {
+    const cs = getComputedStyle(el);
+    const halo = rgb(cs.stroke);
+    if (halo && halo.a > 0.95 && parseFloat(cs.strokeWidth) >= 2 && cs.paintOrder.startsWith('stroke')) return halo;
+    let r = el.getBoundingClientRect();
+    if (r.top < 0 || r.bottom > innerHeight) {
+      jump(scrollY + r.top - innerHeight / 2);
+      r = el.getBoundingClientRect();
+    }
+    const stack = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    for (const e of stack.slice(stack.indexOf(el) + 1)) {
+      const c = paintOf(e);
+      if (c && c.a > 0.95) return c;
+    }
+    return background(el.closest('svg'));
+  }
+  // What an element paints: a shape its fill, a page element its background, and an SVG’s other parts nothing.
+  function paintOf(e) {
+    const s = getComputedStyle(e);
+    if (SHAPES.has(e.tagName.toLowerCase())) {
+      const c = rgb(s.fill);
+      return c && { ...c, a: c.a * +s.fillOpacity };
+    }
+    return e.closest('svg') ? null : rgb(s.backgroundColor);
   }
   function background(el) {
     for (let e = el; e; e = e.parentElement) {

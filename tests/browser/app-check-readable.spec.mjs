@@ -1,8 +1,8 @@
 // The pre-display check holds back a visual that can’t be read, and tells the agent which elements to fix (#997): text
-// in boxes and a sentence in a box, text under 12 px, labels drawn over each other and a figure below the first view at
-// 1000 × 680. A chart whose labels sit beside its marks, and a legend’s swatches and a page that shows its title and
-// figure at once pass. Every app goes up in one conversation, which a page opened before the tests checks; each test
-// reads what the check found, and what the agent was sent.
+// in boxes and a sentence in a box, text under 12 px, low contrast on an SVG label, labels drawn over each other and a
+// figure below the first view at 1000 × 680. A chart whose labels sit beside its marks, and a legend’s swatches and a
+// page that shows its title and figure at once pass. Every app goes up in one conversation, which a page opened before
+// the tests checks; each test reads what the check found, and what the agent was sent.
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
@@ -42,6 +42,8 @@ const APPS = {
   // Page text at 10 px, and an SVG label drawn at 9 px.
   small: `<div style="padding:12px;color:var(--text)"><h2 style="margin:0">Where the time went</h2><p class="fine" style="font-size:10px">Source: the team’s timesheets</p>
 <svg width="300" height="60" role="img" aria-label="Hours"><circle cx="20" cy="30" r="8" fill="var(--accent)"/><text class="tick" x="36" y="34" fill="var(--text)" font-size="9">Meetings</text></svg></div>`,
+  // A pale label on a pale box in an SVG: the page behind the SVG is dark, the box under the label is light.
+  pale: `<svg width="320" height="80" role="img" aria-label="Status"><rect x="0" y="0" width="200" height="60" fill="#ffffff"/><text id="pale-label" x="12" y="36" fill="#d0d0d0" font-size="16">Waiting on review</text></svg>`,
   // Two labels drawn over each other.
   overlap: `<svg width="320" height="60" role="img" aria-label="Labels"><text class="a" x="20" y="30" ${T}>Median income</text><text class="b" x="30" y="34" ${T}>Mean income</text></svg>`,
   // The title, then a block of notes 700 px tall, then the figure: at 1000 × 680, none of the figure shows.
@@ -120,6 +122,10 @@ test('#997 text under 12 px at 1000 × 680 is held back, naming the smallest fir
       ),
     ]);
   expect.soft(heldFor('small', 'text-too-small-375'), says('small')).toHaveLength(1);
+});
+
+test('#997 a pale SVG label on a pale box is low contrast, measured against the box', () => {
+  expect(heldFor('pale', 'contrast'), says('pale')).toEqual([expect.stringMatching(/^Text “Waiting on review” \(text#pale-label\) has contrast 1\.\d+:1/)]);
 });
 
 test('#997 labels drawn over each other are held back, naming both', () => {
