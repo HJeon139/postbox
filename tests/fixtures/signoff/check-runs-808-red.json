@@ -1,0 +1,64 @@
+{
+  "check_runs": [
+    {
+      "app": "github-actions",
+      "conclusion": "skipped",
+      "name": "Play the demo and screenshot every scene",
+      "started_at": "2026-11-06T01:14:54Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "skipped",
+      "name": "Browser specs (${{ matrix.pass }}, ${{ ((startsWith(matrix.shard, 'demo') \u0026\u0026 matrix.shard) || format('{0}/3', matrix.shard)) }})",
+      "started_at": "2026-11-06T01:14:54Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "skipped",
+      "name": "New and changed specs, ten times",
+      "started_at": "2026-11-06T01:14:54Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "failure",
+      "name": "Demo in Chrome, with accessibility checks",
+      "started_at": "2026-11-06T01:14:56Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "Prompt surface diff and SkillSpector",
+      "started_at": "2026-11-06T01:13:13Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "failure",
+      "name": "Lint, types, project rules and tests",
+      "started_at": "2026-11-06T01:13:13Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "Whether the change is docs only",
+      "started_at": "2026-11-06T01:13:13Z",
+      "status": "completed"
+    },
+    {
+      "app": "github-actions",
+      "conclusion": "success",
+      "name": "No new dependency with a known vulnerability",
+      "started_at": "2026-11-06T01:13:13Z",
+      "status": "completed"
+    }
+  ],
+  "head": "9fffb64fe3f8011e75a501d707d6a3d78bbb6d0a",
+  "note": "a head with a red required check",
+  "pr": 808,
+  "recorded": "2026-11-06T08:54:21Z"
+}
