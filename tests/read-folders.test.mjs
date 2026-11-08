@@ -5,8 +5,8 @@
 // each judged on the real path, nor on a host turn’s card. The design is sprint4/338-packet-r1.md v2.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { decideAgyTool, runAgyHook } from '../server/adapters/agy-hook.mjs';
@@ -162,4 +162,19 @@ test('#338 a conversation keeps up to 20 readable folders; one already listed ad
   addReadFolder(rt, se.id, '/r/0');
   assert.equal(rt.s.sessions[se.id].readDirs.length, MAX_READ_DIRS);
   assert.throws(() => addReadFolder(rt, se.id, '/r/more'), { status: 422 });
+});
+
+// critic’s read of 756ac89e, on macOS: realpathSync keeps the case it’s given, and the disk ignores it, so
+// /USERS/<you>/.ssh/x got past the home and dot-folder checks. The real path must come in its true case. Runs only
+// where the file system ignores case, as macOS’s does by default; elsewhere such a path doesn’t exist.
+const caseBlind = (dir) => existsSync(dir.toUpperCase()) && dir.toUpperCase() !== dir;
+test('#338 on a disk that ignores case, a path written in another case is judged by its true case', (t) => {
+  const { home, notes } = aHome();
+  if (!caseBlind(home)) return t.skip('this file system tells case apart');
+  const shout = (p) => p.toUpperCase();
+  const none = (file) => assert.equal(readFolderOffer({ ...agy, input: { file_path: file }, home }), null, file);
+  none(shout(join(home, '.ssh', 'id_ed25519')));
+  none(shout(join(home, 'top.md')));
+  none(join(shout(dirname(home)), 'x.md'));
+  assert.equal(readFolderOffer({ ...agy, input: { file_path: shout(join(notes, 'a.md')) }, home })?.readDir, notes, 'saved in its true case');
 });
