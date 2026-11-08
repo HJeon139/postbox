@@ -68,3 +68,16 @@ export function halt(v) {
   v.smoothing = false;
   return ran;
 }
+
+/**
+ * The jump to the end has landed there: end it now, with an instant scroll to the end. Chromium’s smooth scroll, aimed
+ * at a page that shrank under it as the items it passed drew, stepped back from the end by 138–563 px a frame later
+ * with nothing of ours writing (a trace on the build host, CPU throttled 3x, 14 of 20; CI’s runners, 319 px); the view
+ * took that for you scrolling up. Ended here, smoothEnded finds the view at the end and does nothing more.
+ * @param {View} v @param {Element} s
+ */
+export function landed(v, s) {
+  if (!v.smoothing || !atEnd(s)) return;
+  v.smoothing = false;
+  window.scrollTo({ top: s.scrollHeight, behavior: 'instant' });
+}

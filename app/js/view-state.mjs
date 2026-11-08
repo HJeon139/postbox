@@ -17,7 +17,7 @@ import { register, unregister } from './view-jump.mjs';
 import { newView } from './view-new.mjs';
 import { publish } from './view-publish.mjs';
 import { DRAWN, drawNewest, skipOffscreen } from './view-skip.mjs';
-import { halt, smoothEnded, whenSmoothEnds } from './view-smooth.mjs';
+import { halt, landed, smoothEnded, whenSmoothEnds } from './view-smooth.mjs';
 
 // The pill floats just above the composer. It shows only while the end is further below than that, so what it
 // floats over is never the working rows or the end of the last message (#91).
@@ -123,6 +123,7 @@ function heard(v, s) {
 function onScroll(v) {
   const s = box(v);
   if (!s) return;
+  landed(v, s);
   // The event for a scroll the transcript made itself, holding what you read in place, comes in a later frame, maybe
   // after what’s above has moved again: hold it in place again before taking the anchor there, or you lose your place
   // (#297).
