@@ -29,6 +29,7 @@
 
 import { DEFAULT_HOP_LIMIT } from '../../shared/limits.mjs';
 import { filesOf } from './fixtures.mjs';
+import { expectsOf } from './picture-choice.mjs';
 import { judgeOf } from './visual-judge.mjs';
 
 /** The backends that run Claude. Every other one makes a scenario a compatibility run. */
@@ -74,7 +75,7 @@ function permissionModesOf(spec) {
 
 /**
  * The settings of #206’s measure of agents’ visuals: the files a run starts with, whether the tester judges the
- * visual, and whether Postbox’s own skills load.
+ * visual, whether Postbox’s own skills load, and which answer the question should get.
  * @param {Record<string, string>} meta
  */
 function visualMeasure(meta) {
@@ -86,6 +87,8 @@ function visualMeasure(meta) {
     // `- skills: off` (#206): Postbox runs its Claude agents without its own skills (server/adapters/agent-plugin.mjs),
     // for a baseline to compare with the runs that have them.
     skills: meta.skills === 'off' ? 'off' : 'on',
+    // `- expects: words` (#983): the answer the first message should get, a picture or words (tools/uat/picture-choice.mjs).
+    expects: expectsOf(meta.expects),
   };
 }
 
