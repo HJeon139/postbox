@@ -40,8 +40,6 @@ export const TIMINGS = timings({
  * @param {string} turn @param {ReturnType<typeof import('./paths.mjs').paths>} P @param {{ asksByPrompt?: boolean }} [o]
  */
 export function shimState(turn, P, { asksByPrompt = true } = {}) {
-  const prefix = `${process.pid.toString(36)}${Date.now().toString(36)}`;
-  let counter = 0;
   return {
     turn,
     P,
@@ -52,11 +50,12 @@ export function shimState(turn, P, { asksByPrompt = true } = {}) {
     byRequest: new Map(),
     /** @type {WeakMap<Pending, ReturnType<typeof setTimeout>>} each prompt’s deadline */
     expiries: new WeakMap(),
-    nextId: () => `${prefix}-${++counter}`,
     /**
-     * A prompt’s ID, random, so no other client of the turn can guess it (#353); and this process’s own key, sent in
-     * each hello, which the daemon answers a prompt only to.
+     * A call’s ID, and a prompt’s, random, so no other client of the turn can guess one and claim it first (#353,
+     * #908): the daemon keeps each by (turn, id), and refuses a second shim that sends it. And this process’s own key,
+     * sent in each hello, by which the daemon answers a call or prompt only to this shim; it goes to the daemon alone.
      */
+    nextId: () => randomUUID(),
     promptId: () => randomUUID(),
     key: randomBytes(24).toString('base64url'),
     /** @type {import('node:net').Socket | null} */

@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.44.4 (2026-11-08)
+
+### Fixes
+
+- **remote:** give a shim's calls random ids
+- **remote:** refuse a shim's hello that carries no key
+- **remote:** let only the shim that asked a prompt end it
+- **remote:** send a tool call's result only to the shim that made it
+
 ## 1.44.3 (2026-11-08)
 
 ### Fixes

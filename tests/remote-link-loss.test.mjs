@@ -69,7 +69,7 @@ async function room() {
   await first.msgs.next('started');
   const shim = () => {
     const s = socketShim(daemon);
-    s.shimSend('hello', { token: readFileSync(p.turn('t1', TURN_FILES.shimToken), 'utf8'), turn: 't1' });
+    s.shimSend('hello', { token: readFileSync(p.turn('t1', TURN_FILES.shimToken), 'utf8'), turn: 't1', shim: 'k'.repeat(32) });
     return s;
   };
   const s1 = shim();
