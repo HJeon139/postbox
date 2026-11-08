@@ -4,6 +4,7 @@
 
 import { followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
+import { LIMITS } from '../shared/limits.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { notYours } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
@@ -16,6 +17,12 @@ import { newId } from './store.mjs';
 
 /** App check problems that are warnings: the app is shown, with notes, and the agent is told. */
 const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small', 'dashes-too-fine', 'only-error']);
+
+/**
+ * What a version should leave the reader with, as the agent said it (#995), or '' when it said nothing: a missing or
+ * malformed intent never refuses an app, and a long one is cut to the limit.
+ */
+const intentOf = (v) => (typeof v === 'string' ? v.trim().slice(0, LIMITS.appIntent) : '');
 
 // ── Apps ───────────────────────────────────────────────────────────────────────────
 
@@ -196,7 +203,7 @@ export function registerApp(rt, sessionId, block, itemId, threadId = rt.s.sessio
     sessionId,
     itemId,
     title: block.title ?? 'App',
-    versions: [{ v: 1, code: block.code, permissions: block.permissions ?? [], files, at: Date.now(), summary: '' }],
+    versions: [{ v: 1, code: block.code, permissions: block.permissions ?? [], files, at: Date.now(), summary: '', intent: intentOf(block.intent) }],
     current: 1,
     state: null,
     check: { status: 'pending', attempt: 0, problems: [] },
@@ -213,13 +220,13 @@ export function appOf(rt, it) {
  * show_app: an app is a block of type app (showBlock, server/block-show.mjs), and an id the session already holds is a
  * new version (updateApp). @param {import('./runtime.mjs').Runtime} rt @param {string} sessionId
  * @param {any} tools  the turn's tools as toolsFor made them
- * @param {{ id?: string, title?: string, code: string, permissions?: string[], fallback?: string }} args
+ * @param {{ id?: string, title?: string, code: string, permissions?: string[], fallback?: string, intent?: string }} args
  * @param {{ files?: AppFile[] }} [given]  data files Postbox read from the agent’s folders (#54); never from the call
  */
-export function showApp(rt, sessionId, tools, { id, title, code, permissions = [], fallback }, given = {}) {
+export function showApp(rt, sessionId, tools, { id, title, code, permissions = [], fallback, intent }, given = {}) {
   const blockId = id ?? newId('app');
   const existing = rt.store.pending.app(blockId);
-  if (existing?.sessionId === sessionId) return tools.update_app({ id: blockId, code, permissions, title }, given);
+  if (existing?.sessionId === sessionId) return tools.update_app({ id: blockId, code, permissions, title, intent }, given);
   return tools.show_block(
     {
       block: {
@@ -230,6 +237,7 @@ export function showApp(rt, sessionId, tools, { id, title, code, permissions = [
         fallback: fallback ?? `${title ?? 'An app'}: open Postbox to use it.`,
         code,
         permissions,
+        ...(intentOf(intent) && { intent: intentOf(intent) }),
       },
     },
     given,
@@ -239,10 +247,10 @@ export function showApp(rt, sessionId, tools, { id, title, code, permissions = [
 /**
  * @param {any} rt  the Runtime @param {string} sessionId @param {any} turn  the turn the tools act for, or null
  * @param {() => string} threadId  where the turn speaks @param {() => void} endSegment  ends the reply so far
- * @param {{ id: string, code: string, permissions?: string[], title?: string, summary?: string }} args
- * @param {{ files?: AppFile[] }} [given]  as for show_app; a version without them keeps the last one’s
+ * @param {{ id: string, code: string, permissions?: string[], title?: string, summary?: string, intent?: string }} args
+ * @param {{ files?: AppFile[] }} [given]  as for show_app; a version without them keeps the last one’s, as one without an intent does
  */
-export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code, permissions, title, summary = '' }, given = {}) {
+export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code, permissions, title, summary = '', intent }, given = {}) {
   const app = rt.store.pending.app(id);
   if (!app || app.sessionId !== sessionId) return notYours(rt, sessionId, id);
   const v = validateBlock({ id, type: 'app', version: 1, fallback: 'x', code, permissions: permissions ?? app.versions[app.current - 1].permissions });
@@ -255,6 +263,7 @@ export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code,
       permissions: v.block.permissions ?? [],
       files: given.files ?? app.versions[app.current - 1].files ?? [],
       summary: String(summary ?? '').slice(0, 300),
+      intent: intentOf(intent) || (app.versions[app.current - 1].intent ?? ''),
       at: Date.now(),
     },
   ];

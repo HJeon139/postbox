@@ -9,6 +9,8 @@ export const LIMITS = Object.freeze({
   eventBytes: 64 * 1024,
   /** An app’s code (show_app, update_app), inline or from codePath. */
   appCode: 600_000,
+  /** What an app version should leave the reader with, in one sentence (show_app and update_app’s intent, #995). */
+  appIntent: 300,
   /** Data files one app version carries (show_app and update_app’s files, #54). */
   appFiles: 8,
   /** One of those data files, in bytes. */

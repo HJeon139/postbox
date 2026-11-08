@@ -27,8 +27,8 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
   /** @type {string | null} */
   let renamed = null;
   if (v.ok && v.block.type === 'app' && rt.store.pending.app(v.block.id)) {
-    const { id, code, permissions, title } = /** @type {any} */ (v.block);
-    if (rt.store.pending.app(id).sessionId === sessionId) return tools.update_app({ id, code, permissions, title }, given);
+    const { id, code, permissions, title, intent } = /** @type {any} */ (v.block);
+    if (rt.store.pending.app(id).sessionId === sessionId) return tools.update_app({ id, code, permissions, title, intent }, given);
     renamed = newId(String(id).slice(0, 40));
     v.block = { ...v.block, id: renamed };
   }

@@ -164,7 +164,7 @@ Postbox shows blocks the person answers with a click. Every time you reply, whet
 - Something destructive or costly → first, a confirm that says exactly what will happen.
 - Anything else → Markdown.
 
-The Postbox tools (the “postbox” MCP server) return at once: the answer arrives later as a new message. So ask, end your turn, and continue when it comes. The answer names the block and its revision. A choice, form, confirm or review turns read-only once answered. Report what you did in your reply, or with update_block on the answered block with outcome set (Markdown, up to ${n('outcome')} characters): it shows under the answer, and the block stays answered. Update an answered block without outcome only to ask again.
+The Postbox tools (the “postbox” MCP server) return at once: the answer arrives later as a new message. So ask, end your turn, and continue when it comes. A choice, form, confirm or review turns read-only once answered. Report what you did in your reply, or with update_block on the answered block with outcome set (Markdown, up to ${n('outcome')} characters): it shows under the answer, and the block stays answered. Update an answered block without outcome only to ask again.
 
 ## Blocks
 
@@ -187,16 +187,16 @@ A picture that explains draws what things are or do, not labeled boxes: draw it 
 
 ## Apps
 
-When a tool explains better than prose (an explorer, a simulator), write one with show_app { id, title, code, permissions?, fallback? }. Change it with update_app, not a new app; retire a wrong or replaced one with retire_app { id, reason, replacedBy? }, not a pointer version. code: one HTML document, inline <script> and <style>, up to ${n('appCode')} characters; for a large one, codePath. Data: files [{ name?, path }] (up to ${n('appFiles')}, ${n('appFileBytes')} each), read with postbox.file(name). add_dataset loads searchable JSONL from .postbox/datasets/ (up to ${n('datasetBytes')}); searches name it in books. No network: no fetch, external scripts or fonts. Use var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw ones, and Postbox’s classes btn (sm, primary, ghost), seg, chip, pill, field, label, input, select, dim, small, mono. Pick one of a few options with a seg or chips (aria-pressed), not btns toggling ghost. At most one btn primary; ghost only for a minor action in text; links only for reading. Prefix your classes (lab-row). In charts:
+When a tool explains better than prose (an explorer, a simulator), write one with show_app { id, title, intent (≤ ${n('appIntent')} characters: the one sentence it should leave the reader with), code, permissions?, fallback? }. Change it with update_app, not a new app; retire a wrong or replaced one with retire_app { id, reason, replacedBy? }. code: one HTML document, inline <script> and <style>, up to ${n('appCode')} characters; for a large one, codePath. Data: files [{ name?, path }] (up to ${n('appFiles')}, ${n('appFileBytes')} each), read with postbox.file(name). add_dataset loads searchable JSONL from .postbox/datasets/ (up to ${n('datasetBytes')}); searches name it in books. No network: no fetch, external scripts or fonts. Use var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw ones, and Postbox’s classes btn (sm, primary, ghost), seg, chip, pill, field, label, input, select, dim, small, mono. Pick one of a few options with a seg or chips (aria-pressed), not btns toggling ghost. At most one btn primary; ghost only for a minor action in text; links only for reading. Prefix your classes (lab-row). In charts:
 ${PALETTES.map((p) => `- ${p.name} for ${p.for}: ${p.when}.`).join('\n')}
 
 The global postbox gives you:
 - await postbox.ready → { state, theme, appId }
 - postbox.query(tool, args), for permitted tools you hold:
-  - "corpus.search" with { query, k?, mode?: "both" | "lexical" | "semantic", books?: [ids] } returns [{ id, book, title, author, year, chapter, text, lexical: { score, terms } | null, semantic: number | null }]
+  - "corpus.search" with { query, k?, mode?: "both" | "lexical" | "semantic", books?: [ids] } returns [{ id, book, title, chapter, text, lexical: { score, terms } | null, semantic: number | null }]
   - "corpus.read" with { id } returns one, without scores
   - "corpus.stats" returns { books: [{ id, title, author, year, passages, chapters }], passages }
-- postbox.send(action, values, summary) sends you one event, only from the person’s click or key press; summary is the app’s words, not theirs. Up to 5 a minute; more wait for the person. An event carries up to ${n('eventBytes')} of JSON (more rejects), so hand over many items by id.
+- postbox.send(action, values, summary) sends you one event, only from the person’s click or key press; summary is the app’s words, not theirs. Up to 5 a minute; more wait for the person. An event carries up to ${n('eventBytes')} of JSON, so hand over many items by id.
 - postbox.saveState(obj) and postbox.restoreState() keep state over reloads and versions
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view

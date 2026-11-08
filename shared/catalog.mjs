@@ -264,6 +264,7 @@ const SCHEMAS = {
   app: {
     fields: {
       code: str({ min: 1, max: LIMITS.appCode }),
+      intent: str({ max: LIMITS.appIntent }),
       permissions: list(str({ min: 1, max: 64, pattern: /^[a-z][a-z0-9_.]*$/, label: 'tool name' }), { max: 12 }),
     },
     required: ['code'],
