@@ -146,7 +146,7 @@ async function threadNearEnd(page, _size, { lateScroll = false } = {}) {
 }
 
 /**
- * #837’s guard can’t take your own scroll for the box’s: after the window grows with no scroll event, one wheel to the
+ * #837’s guard can’t take your own scroll for the box’s: after the window grows with no scroll event, wheeling to the
  * end is you reaching it, so the thread follows the end again and stays there when the window shrinks back.
  */
 async function threadEndAfterGrow(page, { width, height }) {
@@ -162,9 +162,13 @@ async function threadEndAfterGrow(page, { width, height }) {
   expect((await place(page)).mode, 'reading, a way up from the end').toBe('reading');
   await page.setViewportSize({ width, height: height + 100 });
   await settled(page);
-  await page.mouse.wheel(0, 5000);
-  await settled(page);
-  expect(await place(page), 'one wheel to the end follows it').toEqual({ gap: 0, mode: 'following' });
+  // Down to the end a wheel at a time, at most 20: Firefox moves one wheel event about 90% of the box at most, so one
+  // big delta stops short there (264 px of a 293 px box at 1280 px, 205 of 228 at 375), and the view rightly reads.
+  for (let i = 0; i < 20 && (await place(page)).gap > 0; i++) {
+    await page.mouse.wheel(0, 5000);
+    await settled(page);
+  }
+  expect(await place(page), 'wheeling down to the end follows it').toEqual({ gap: 0, mode: 'following' });
   await page.setViewportSize({ width, height });
   await settled(page);
   expect(await place(page), 'and still follows it once the window is back').toEqual({ gap: 0, mode: 'following' });
@@ -238,7 +242,7 @@ const CASES = [
   ['a reply streams into the thread full screen and stays when it comes back; the icon and a reload restore it', threadStreams],
   ['read a little way up from the end, full screen and back keeps the place (#837)', threadNearEnd],
   ['following the end, full screen and back still follows it (#837)', threadFollows],
-  ['after the window grows, one wheel to the end follows it (#837)', threadEndAfterGrow],
+  ['after the window grows, wheeling down to the end follows it (#837)', threadEndAfterGrow],
   [
     'read a little way up, the clamp’s scroll event late, full screen and back keeps the place (#837)',
     (page, size) => threadNearEnd(page, size, { lateScroll: true }),
