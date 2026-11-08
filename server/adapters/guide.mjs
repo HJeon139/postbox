@@ -193,7 +193,7 @@ ${PALETTES.map((p) => `- ${p.name} for ${p.for}: ${p.when}.`).join('\n')}
 The global postbox gives you:
 - await postbox.ready → { state, theme, appId }
 - postbox.query(tool, args), for permitted tools you hold:
-  - "corpus.search" with { query, k?, mode?: "both" | "lexical" | "semantic", books?: [ids] } returns [{ id, book, title, chapter, text, lexical: { score, terms } | null, semantic: number | null }]
+  - "corpus.search" with { query, k?, mode?: "both" | "lexical" | "semantic", books?: [ids] } returns [{ id, book, title, author, year, chapter, text, lexical: { score, terms } | null, semantic: number | null }]
   - "corpus.read" with { id } returns one, without scores
   - "corpus.stats" returns { books: [{ id, title, author, year, passages, chapters }], passages }
 - postbox.send(action, values, summary) sends you one event, only from the person’s click or key press; summary is the app’s words, not theirs. Up to 5 a minute; more wait for the person. An event carries up to ${n('eventBytes')} of JSON, so hand over many items by id.
