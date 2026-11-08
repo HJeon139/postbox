@@ -57,8 +57,8 @@ const HIDDEN_MESSAGE =
 export function nameProblem(name) {
   if (typeof name !== 'string' || !name) return 'An asset needs a name, such as notes/plan.md.';
   const n = name.normalize('NFC');
-  if (Buffer.byteLength(n) > ASSETS.nameBytes) return `An asset’s name is at most ${ASSETS.nameBytes} bytes.`;
   if (HIDDEN.test(n) || hasInvisible(n)) return HIDDEN_MESSAGE;
+  if (Buffer.byteLength(n) > ASSETS.nameBytes) return `An asset’s name is at most ${ASSETS.nameBytes} bytes.`;
   if (n.startsWith('/')) return 'An asset’s name is relative to the room: it doesn’t start with /.';
   if (n.split('/').some((part) => part === '' || part === '.' || part === '..')) return 'An asset’s name has no empty, . or .. part.';
   return null;

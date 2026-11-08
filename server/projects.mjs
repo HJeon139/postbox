@@ -3,15 +3,20 @@
 
 import { realpath, stat } from 'node:fs/promises';
 import { isAbsolute } from 'node:path';
+import { hasInvisible } from '../shared/invisible.mjs';
 import { httpError } from './helpers.mjs';
 import { isPushUrl } from './push-on-request.mjs';
 import { newId } from './store.mjs';
 
 // A control character (C0, DEL or C1), NUL included: none belongs in a folder’s path.
 const CONTROL = /\p{Cc}/u;
-// A format character (Cf: the bidi controls, the zero-width ones) can make a path read as another one, and a lone
-// surrogate (Cs) isn’t text.
-const HIDDEN = /[\p{Cf}\p{Cs}]/u;
+// A lone surrogate (Cs) isn’t text. The characters that change how a path displays, or display as nothing, are the
+// ones an asset name refuses (shared/invisible.mjs), except ZWNJ and ZWJ (U+200C, U+200D): they join letters in some
+// scripts and in emoji, and the folder exists under the name the person gave it.
+const SURROGATE = /\p{Cs}/u;
+const JOINERS = /[\u200c\u200d]/gu;
+/** Whether a folder's path holds a character that isn't text, or one that hides or reorders what it shows. @param {string} s */
+const hidden = (s) => SURROGATE.test(s) || hasInvisible(s.replace(JOINERS, ''));
 // The longest folder path taken, in UTF-16 code units: Linux’s PATH_MAX is 4096 bytes, which no longer path fits.
 const MAX_FOLDER = 4096;
 
@@ -35,7 +40,7 @@ function fullPath(folder) {
   if (typeof folder !== 'string') throw httpError(422, 'A project’s folder is its full path, as text. Write the folder’s full path.');
   if (folder.length > MAX_FOLDER) throw httpError(422, `A folder’s path is at most ${MAX_FOLDER} characters. Pick a folder with a shorter path.`);
   if (CONTROL.test(folder)) throw httpError(422, 'A folder’s path can’t contain control characters, such as a new line. Write the folder’s full path.');
-  if (HIDDEN.test(folder))
+  if (hidden(folder))
     throw httpError(
       422,
       'A folder’s path can’t contain invisible characters, such as a zero-width space or a bidi control, or a lone surrogate. Write the folder’s full path.',
