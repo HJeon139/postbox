@@ -112,7 +112,7 @@ test('the Antigravity CLI’s Auto says it works like Run everything for its too
   await field.getByRole('radio', { name: 'Auto', exact: true }).click();
   await expect(field.locator('.help')).toHaveText(/^Antigravity’s Auto: agy’s own Auto isn’t available on this account, so Auto works like Run everything/);
   await expect(field.locator('.help')).toContainText('Nothing judges those calls');
-  await expect(field.locator('.help')).toContainText('A tool that publishes outside Postbox is refused unless the agent can publish.');
+  await expect(field.locator('.help')).toContainText('A tool on Postbox’s publishing list is refused unless the agent can publish.');
   await field.getByRole('radio', { name: 'Accept edits', exact: true }).click();
   await expect(field.locator('.help')).not.toContainText('works like Run everything');
 });

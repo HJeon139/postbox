@@ -58,6 +58,9 @@ function backendNote(p) {
   const intro = `${p.handle} runs on ${BACKEND_NAMES[p.backend] ?? p.backend}, which doesn’t read Claude Code’s rules or MCP servers.`;
   if (p.backend === 'codex')
     return `${intro} Ask me uses read-only; Auto uses workspace-write, with network on if it may fetch the web, and Codex’s reviewer judges what the sandbox stops; Accept edits uses workspace-write with network off; Run everything has full access and no approval prompts. Of its Tools, only Web counts, for network in Auto. Always allow on its card saves a Codex rule: a matching command then runs outside Codex’s sandbox, with no card, in every Codex session on this computer.`;
+  // Antigravity’s Auto runs what its Tools allow (#416), so they decide there, and its mode decides in the others.
+  if (p.backend === 'antigravity-cli')
+    return `${intro} In Auto its Tools decide what runs with no card, and in Ask me and Accept edits its mode decides what asks first.`;
   if (capsOf(p.backend).tools === 'none') return `${intro} Its mode decides what it may do.`;
   return `${intro} Its mode and its Tools decide what it may do.`;
 }

@@ -294,6 +294,6 @@ test('the persona sheet says Antigravity’s Auto works like Run everything for 
   assert.match(help('auto'), /Without Shell or Web, .* asks with a card before the rest/);
   // The integrator’s read of 7d696e87: a public fetch runs with no card even without Web (autoAllows, publicFetch), so the text says so.
   assert.match(help('auto'), /Without Shell or Web, .*fetches public pages/);
-  assert.match(help('auto'), /A tool that publishes outside Postbox is refused unless the agent can publish/);
+  assert.match(help('auto'), /A tool on Postbox’s publishing list is refused unless the agent can publish/);
   assert.notEqual(help('auto'), help('acceptEdits'));
 });

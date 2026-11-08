@@ -43,7 +43,7 @@ const BACKEND_MODES = /** @type {Record<string, Record<string, string>>} */ ({
     acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',
   },
   'antigravity-cli': {
-    auto: 'Antigravity’s Auto: agy’s own Auto isn’t available on this account, so Auto works like Run everything for the tools you give it. With Shell, it runs any command without asking; with Web, any search or fetch; and any MCP tool that doesn’t publish. Nothing judges those calls, and with Shell a command can reach .git or Antigravity’s own settings, which edits can’t. Without Shell or Web, it still runs everyday reads, git status and diff, and gh reads, and asks with a card before the rest. A tool that publishes outside Postbox is refused unless the agent can publish.',
+    auto: 'Antigravity’s Auto: agy’s own Auto isn’t available on this account, so Auto works like Run everything for the tools you give it. With Shell, it runs any command without asking; with Web, any search or fetch; and any MCP tool that doesn’t publish. Nothing judges those calls, and with Shell a command can reach .git or Antigravity’s own settings, which edits can’t. Without Shell or Web, it still runs everyday reads, git status and diff, and gh reads, and fetches public pages, with no card, and asks with a card before the rest. A tool on Postbox’s publishing list is refused unless the agent can publish.',
     ask: 'It reads in its folders, and asks with a card before edits, commands, reads outside its folders, and web fetches.',
     acceptEdits: 'It reads and edits files in its folders freely, and asks with a card before commands, edits outside its folders, and web fetches.',
   },
