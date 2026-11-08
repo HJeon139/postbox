@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.47.0 (2026-11-08)
+
+### Features
+
+- **tools:** signoff-checks fails a head that lacks CodeQL or any required check
+
+### Fixes
+
+- **tools:** signoff-checks errors on empty rules and lets a queued rerun replace a failure
+- **agents:** a mouse press holds the quick panel's repaint without pointer events
+- **tools:** signoff-checks reads CodeQL as pending while any check run still runs
+- **agents:** a press in the quick panel holds its repaint until it ends
+
 ## 1.46.0 (2026-11-08)
 
 ### Features

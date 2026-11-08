@@ -1152,7 +1152,8 @@ export class Runtime {
     if (by !== 'shutdown' && by !== 'store') settleScheduledWake(this, turn, { name: 'AbortError' });
     settleStoppedSteps(this, turn);
     this.endWork(turn, 'stopped');
-    // A waiting permission is answered no; the card keeps who stopped it, and only `you` holds back its note (tellExpired, #721).
+    // A waiting permission is answered no; the card keeps who stopped it, so its note says the person’s stop withdrew
+    // it, or that it expired (tellExpired, #721, #853).
     for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', why, {}, { stoppedBy: by });
     // The open segment by its id, even while it is held behind a commit (its patch follows it in order); then any
     // other segment of this turn still streaming in the visible state (#602).

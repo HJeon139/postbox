@@ -657,13 +657,13 @@ test('#66: a conversation’s rules and added folders reach both backends', () =
 
 test('#66: the SDK adapter’s live control changes a running query’s mode, and says when it couldn’t', async () => {
   const modes = [];
-  const ok = liveControl({ setPermissionMode: async (m) => modes.push(m) });
+  const ok = liveControl({ setPermissionMode: async (m) => modes.push(m) }, 'acceptEdits');
   assert.equal(await ok.setPermissionMode('ask'), true);
   assert.deepEqual(modes, ['default']);
   // The SDK documents setPermissionMode for streaming input only; a string prompt may refuse it.
-  const refused = liveControl({ setPermissionMode: async () => Promise.reject(new Error('Only available in streaming input mode')) });
+  const refused = liveControl({ setPermissionMode: async () => Promise.reject(new Error('Only available in streaming input mode')) }, 'acceptEdits');
   assert.equal(await refused.setPermissionMode('ask'), false);
-  assert.equal(await liveControl({}).setPermissionMode('ask'), false);
+  assert.equal(await liveControl({}, 'acceptEdits').setPermissionMode('ask'), false);
 });
 
 test('a refusal only the result lists (a deny rule in settings) takes its reason from the tool’s error', () => {
@@ -834,10 +834,10 @@ test('every combination of the setup choices reaches both backends', () => {
       const args = claudeArgs({ ...base, persona });
       const sources = usesHostSetup === false ? 'project,local' : 'user,project,local';
       assert.equal(after(args, '--setting-sources'), sources, label);
-      assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default', disableAllHooks: true }, label);
+      assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default' }, label);
       const o = sdkOptions({ ...sdkBase, persona });
       assert.deepEqual(o.settingSources, sources.split(','), label);
-      assert.deepEqual(o.settings, { outputStyle: 'default', disableAllHooks: true }, label);
+      assert.deepEqual(o.settings, { outputStyle: 'default' }, label);
       if (canPublish === true) {
         assert.ok(!args.includes('--disallowedTools'), label);
         assert.equal(o.disallowedTools, undefined, label);

@@ -91,7 +91,7 @@ test('#721 a subagent’s request is named as its own in the note', async () => 
   assert.match(notes(f.now())[0], /^\[Postbox\] Your subagent’s \(reviewer\) request to run the tests expired/);
 });
 
-test('#721 the person’s Stop on a host turn with a card open marks the card, so no note follows', async () => {
+test('#721 the person’s Stop on a host turn with a card open marks the card, so its note will say the Stop withdrew it (#853)', async () => {
   const r = rig();
   const turn = await running(r);
   const a = r.d.prompt(turn);
@@ -102,7 +102,9 @@ test('#721 the person’s Stop on a host turn with a card open marks the card, s
   r.d.end(turn);
   await settled(r);
   assert.equal(r.store.item(r.t.id, card.id).stoppedBy, 'you');
-  assert.equal(notes(r.se()).length, 0, JSON.stringify(r.se().context));
+  // The card stays open on main after this Stop (#800), so no note yet: #1020 closes it, and then tellExpired sends the
+  // withdrawn note, as tests/permission-expiry-host.test.mjs checks for a card its host ends.
+  assert.equal(notes(r.se()).length, 0, 'not told it expired');
 });
 
 test('#721 a store outage that stops a host turn isn’t the person’s Stop: its card, ended later, tells the agent', async (t) => {
