@@ -1,7 +1,8 @@
-// The pre-display check holds back a visual that can’t be read, and tells the agent which elements to fix (#997):
-// labels drawn over each other and a figure below the first view at 1000 × 680. A page that shows its title and figure
-// at once pass. Every app goes up in one conversation, which a page opened before the tests checks; each test reads
-// what the check found, and what the agent was sent.
+// The pre-display check holds back a visual that can’t be read, and tells the agent which elements to fix (#997): text
+// in boxes and a sentence in a box, labels drawn over each other and a figure below the first view at 1000 × 680. A
+// chart whose labels sit beside its marks, and a legend’s swatches and a page that shows its title and figure at once
+// pass. Every app goes up in one conversation, which a page opened before the tests checks; each test reads what the
+// check found, and what the agent was sent.
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
@@ -9,7 +10,35 @@ import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 failOnPageErrors(test);
 
 const T = 'fill="var(--text)" font-size="14"';
+// A flowchart of named boxes, as Mermaid draws one: five boxes joined by arrows, one of them holding a sentence.
+const STEPS = ['Read file', 'Parse rows', 'Check totals', 'Write temp', 'Swap in'];
+const flow = `<h2 style="color:var(--text);margin:8px">How a save works</h2>
+<svg id="flow" width="760" height="120" role="img" aria-label="Save steps">${STEPS.map(
+  (s, i) =>
+    `<rect class="node" x="${10 + i * 150}" y="20" width="120" height="44" rx="6" fill="var(--panel)" stroke="var(--line-strong)"/><text x="${22 + i * 150}" y="47" ${T}>${s}</text>`,
+).join(
+  '',
+)}<rect class="note" x="10" y="74" width="740" height="40" fill="var(--panel)" stroke="var(--line-strong)"/><text x="20" y="99" ${T}>Every row is checked before the old file is replaced on disk</text></svg>`;
+
+// A bar chart: names beside the bars, values inside them (numbers, not names), and a legend of swatches beside names.
+const BARS = [
+  ['Rent', 320],
+  ['Dining out', 180],
+  ['Groceries', 140],
+  ['Transport', 90],
+  ['Utilities', 60],
+];
+const chart = `<h2 style="color:var(--text);margin:8px">Rent and dining out drove the rise</h2>
+<svg id="bars" width="340" height="260" role="img" aria-label="Spending by category">${BARS.map(
+  ([k, v], i) =>
+    `<text x="10" y="${34 + i * 40}" ${T}>${k}</text><rect x="110" y="${16 + i * 40}" width="${v * 0.6}" height="28" fill="var(--accent)"/><text x="${116}" y="${35 + i * 40}" fill="var(--on-ink)" font-size="13">${v}</text>`,
+).join(
+  '',
+)}<rect x="110" y="226" width="14" height="14" fill="var(--accent)"/><text x="130" y="238" ${T}>This year</text><rect x="230" y="226" width="14" height="14" fill="var(--dim)"/><text x="250" y="238" ${T}>Last year</text></svg>`;
+
 const APPS = {
+  flow,
+  chart,
   // Two labels drawn over each other.
   overlap: `<svg width="320" height="60" role="img" aria-label="Labels"><text class="a" x="20" y="30" ${T}>Median income</text><text class="b" x="30" y="34" ${T}>Mean income</text></svg>`,
   // The title, then a block of notes 700 px tall, then the figure: at 1000 × 680, none of the figure shows.
@@ -65,6 +94,19 @@ function heldFor(id, code) {
   expect.soft(check(id).attempt, `${id} went back to the agent once: ${says(id)}`).toBe(1);
   return (sent[id] ?? []).filter((p) => p.code === code).map((p) => p.message);
 }
+
+test('#997 a flowchart of named boxes is held back as text in boxes, naming the boxes’ labels', () => {
+  const [boxes] = heldFor('flow', 'text-in-boxes');
+  expect(boxes, says('flow')).toMatch(/In svg#flow, 6 of 6 labels sit inside boxes, such as “Read file” \(svg#flow > text:nth-of-type\(1\)\)/);
+});
+
+test('#997 a box holding a sentence is held back, naming the box and its words', () => {
+  expect(heldFor('flow', 'words-in-box'), says('flow')).toEqual([expect.stringMatching(/^svg#flow > rect\.note holds 12 words, “Every row is checked/)]);
+});
+
+test('#997 a bar chart with names beside its bars, values in them and a legend of swatches passes', () => {
+  expect(check('chart').status, says('chart')).toBe('passed');
+});
 
 test('#997 labels drawn over each other are held back, naming both', () => {
   expect(heldFor('overlap', 'text-overlap')[0], says('overlap')).toMatch(/“Median income” \([^)]*text\.a\) is drawn over “Mean income” \([^)]*text\.b\)/);

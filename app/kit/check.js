@@ -2,7 +2,8 @@
 // you see it, and posts what it finds, which goes to the agent. Postbox inlines it after the kit, and only into a check
 // frame’s page (server/sandbox.mjs); the kit hands it what it shares with the rest of the kit.
 (function () {
-  const { ready, errors, post, textOverflow, textOverlap, controlHidden, classCollisions, ghostChoices, lowContrast, smallText, firstView } = window.__pbCheck;
+  const { ready, errors, post, textOverflow, textOverlap, controlHidden, classCollisions, ghostChoices, lowContrast, smallText, firstView, textInBoxes } =
+    window.__pbCheck;
   delete window.__pbCheck;
   // ── The pre-display check ─────────────────────────────────────────────────────────────
   // Run inside hidden frames before you see the app. Problems go to the agent.
@@ -26,11 +27,13 @@
       }, 6000);
     });
   const settled = ready.then(() => new Promise((r) => setTimeout(r, 600))).then(quiet);
-  // The frame at 1000 × 680, the size a visual is read at, checks what shows before any scrolling (#997); the frames at
-  // 375 and 1280 px check the rest.
+  // The frame at 1000 × 680, the size a visual is read at, checks what shows before any scrolling, and what the figure is
+  // drawn as (#997); the frames at 375 and 1280 px check the rest.
   if (new URLSearchParams(location.search).has('view')) {
     const scriptErrors = () => errors.map((e) => ({ code: 'script-error', message: e }));
-    settled.then(() => Promise.all([firstView()])).then((found) => post({ type: 'check', width: innerWidth, problems: [...found.flat(), ...scriptErrors()] }));
+    settled
+      .then(() => Promise.all([firstView(), textInBoxes()]))
+      .then((found) => post({ type: 'check', width: innerWidth, problems: [...found.flat(), ...scriptErrors()] }));
     return;
   }
   settled
