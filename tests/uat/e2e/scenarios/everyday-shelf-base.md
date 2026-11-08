@@ -4,6 +4,7 @@
 - agents: researcher
 - models: persona
 - judge: visual
+- expects: picture
 - files: book-shelf
 - steps: 6
 - project: Library

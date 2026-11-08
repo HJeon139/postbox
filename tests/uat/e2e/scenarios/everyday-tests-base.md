@@ -4,6 +4,7 @@
 - agents: developer
 - models: persona
 - judge: visual
+- expects: picture
 - files: test-health
 - steps: 6
 - project: Shop
