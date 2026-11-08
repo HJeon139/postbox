@@ -155,11 +155,9 @@
       if (shown(el) && el.textContent.trim()) sizes.push(parseFloat(getComputedStyle(el).fontSize) * scale(el));
     const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     const seen = new Set();
-    const words = [];
     for (let n = walk.nextNode(); n; n = walk.nextNode()) {
       const el = n.parentElement;
       if (!n.textContent.trim() || !el || el.closest('svg') || !shown(el)) continue;
-      words.push(n.textContent);
       if (seen.has(el)) continue;
       seen.add(el);
       sizes.push(parseFloat(getComputedStyle(el).fontSize));
@@ -171,16 +169,15 @@
         message: `At ${w} px, ${small.length} of ${sizes.length} labels are drawn under 9 px (the smallest at ${px(Math.min(...small))} px), too small to read. Make them larger, or show fewer.`,
       });
     // An app that shows only an error or a missing-data message hasn’t worked, even if nothing else is wrong.
-    const said = words.join(' ').trim().replace(/\s+/g, ' ');
-    const content = marks || document.querySelector('canvas, table tr, input, select, textarea, img');
-    if (said && said.length < 300 && !content && ONLY_ERROR.test(said))
+    // app/kit/drawn.js decides, for a script error once the app is shown too (#964).
+    const { content, said } = window.__pbDrawn.look();
+    if (said && !content && window.__pbDrawn.onlyError(said))
       out.push({
         code: 'only-error',
         message: `It shows only “${said.slice(0, 120)}”, which reads as an error or missing data. Make sure the data it needs is there, or say what the person can do.`,
       });
     return out;
   }
-  const ONLY_ERROR = /\b(?:error|failed|isn[’']t loaded|not loaded|restart postbox|no data|missing|couldn[’']t|could not|can[’']t load|unable to|not found)\b/i;
   function background(el) {
     for (let e = el; e; e = e.parentElement) {
       const c = rgb(getComputedStyle(e).backgroundColor);
