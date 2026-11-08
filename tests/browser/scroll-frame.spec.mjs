@@ -153,6 +153,24 @@ test('#341 a scroll up after a jump, with a resize heard before its event, lets 
   expect(anchor, 'the anchor is taken where you scrolled, not the item you jumped to').not.toBe(key);
 });
 
+// Firefox, as skipped items above draw shorter than their estimates, moves the view up to keep what’s on screen still
+// (#712a; Linux Firefox with shorter items, and the Mac): the page got shorter, and the move up isn’t you. Here, while
+// following: an item above shrinks, the view moves up by more, and a resize is heard before the scroll event.
+test('#712a following, a move up the browser makes as the page gets shorter keeps the view following', async ({ page }) => {
+  const { t } = room('Following, the page shorter');
+  await open(page, t);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode')).toBe('following');
+  await page.evaluate(() => {
+    const items = document.querySelectorAll('#main > [data-key]');
+    const above = /** @type {HTMLElement} */ (items[items.length - 6]);
+    above.style.marginTop = '-40px';
+    scrollBy(0, -60);
+    dispatchEvent(new Event('resize'));
+  });
+  await settled(page);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'it still follows').toBe('following');
+});
+
 test('#341 two resizes before the scroll event take an unheard scroll once, not twice', async ({ page }) => {
   const { t } = room('Two resizes, one unheard scroll');
   await open(page, t);

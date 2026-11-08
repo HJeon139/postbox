@@ -128,6 +128,10 @@ test('#712a read 400 px up, the window taller, then what’s below shrinks: the 
     const items = document.querySelectorAll('#main > [data-key]');
     const last = /** @type {HTMLElement} */ (items[items.length - 1]);
     last.style.marginBottom = '-40px';
+    // As on the Mac, the transcript hears the change before the clamp's scroll event: reading scrollY lays the page
+    // out, which clamps it, and the resize runs follow() and heard() now.
+    void scrollY;
+    dispatchEvent(new Event('resize'));
   });
   await shrunk;
   const narrowed = { modes: await modes(page), ...(await place(page)) };
@@ -135,5 +139,11 @@ test('#712a read 400 px up, the window taller, then what’s below shrinks: the 
   await still(page);
   test.info().annotations.push({ type: 'measured', description: JSON.stringify({ before, narrowed, after: await place(page) }) });
   expect(narrowed.modes, 'taller, then the shrink: each frame reading').toEqual(['reading']);
-  expect((await place(page)).mode, 'back at its height, still reading').toBe('reading');
+  const after = await place(page);
+  expect(after.mode, 'back at its height, still reading').toBe('reading');
+  // The shrink’s clamp isn’t your scroll either: the item read at comes back where it was (researcher’s Mac trace,
+  // where heard() took the clamp in and the item came back 12 px lower in Chromium, 77 px in Firefox).
+  expect(after.anchor, 'the item it reads at is the same').toBe(before.anchor);
+  const moved = Math.abs(/** @type {number} */ (after.at) - /** @type {number} */ (before.at));
+  expect(moved, `the item it reads at, ${before.at} px down before and ${after.at} px after`).toBeLessThanOrEqual(3);
 });

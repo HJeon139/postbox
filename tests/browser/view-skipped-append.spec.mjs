@@ -137,3 +137,22 @@ test('#712a: a burst of replies appended while following draws one at a time, no
   expect(most, `replies drawn by force at once: ${seen}`).toBeLessThanOrEqual(1);
   expect(layouts, `Chromium’s LayoutCount for the burst: ${seen}`).toBeLessThan(BURST * 1.5);
 });
+
+// Firefox moved the view up as the room's items drew shorter than their 71 px estimate, and the room opened reading
+// (the Mac's Firefox, and Linux Firefox with these fonts). It opens following, in each browser.
+test('#712a: a room of items shorter than their estimates opens following', async ({ page }) => {
+  const t = bigRoom(app, 'Shorter than estimates', 60);
+  await page.addInitScript(() =>
+    addEventListener('DOMContentLoaded', () =>
+      document.head.append(
+        Object.assign(document.createElement('style'), { textContent: '.transcript .item { line-height: 1.05 !important; font-size: 12px !important }' }),
+      ),
+    ),
+  );
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await expect(page.locator(`.transcript[data-thread="${t.id}"] > .item`)).toHaveCount(app.store.items(t.id).length);
+  await still(page);
+  await expect(page.locator(`.transcript[data-thread="${t.id}"]`)).toHaveAttribute('data-view-mode', 'following');
+});
