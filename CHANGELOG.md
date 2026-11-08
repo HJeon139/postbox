@@ -2,6 +2,29 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.46.0 (2026-11-08)
+
+### Features
+
+- **apps:** hold back a label cut off by its SVG or a box that doesn't scroll
+- **apps:** check the contrast of SVG labels against the shape under them
+- **apps:** hold back text under 12 px at 1000 x 680, naming the smallest labels
+- **apps:** hold back a figure of boxes holding their names, or a box holding a sentence
+- **apps:** hold back a version whose title or figure is below the first view
+- **apps:** name each element the app check reports, by a selector and its text
+
+### Fixes
+
+- **apps:** judge a label only where it shows, and see shapes that ignore the pointer
+- **apps:** boxes in a few sizes are a diagram's, not a chart's bars
+- **apps:** a contrast or text-size measure that throws reports check-error
+- **apps:** an accent strip down a box's edge doesn't make it a frame
+- **apps:** a chart's marks, a label's backing and a legend's frame aren't text in boxes
+- **apps:** judge an SVG label by what's behind most of it, not a hairline through it
+- **kit:** set kbd at 12 px in apps
+- **apps:** leave an SVG label unjudged when the check can't measure what's behind it
+- **kit:** set the kit's labels, table heads and chart text in apps at 12 px
+
 ## 1.45.0 (2026-11-08)
 
 ### Features
