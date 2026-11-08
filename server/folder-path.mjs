@@ -84,6 +84,21 @@ export function fullPath(folder, whose = 'A project’s') {
 export const agentFolderPath = (folder) => (folder === undefined || folder === null || folder === '' ? '' : fullPath(folder, 'An agent’s'));
 
 /**
+ * An agent’s folder as it’s stored, by where it runs (#990, #120). On this computer it passes agentFolderPath. On a
+ * host its turn works in the project’s folder there, or one of its own there (server/remote/turns-start.mjs), never
+ * this one, so it’s kept as written, unchecked, as text of at most MAX_FOLDER characters, and anything else is refused
+ * as fullPath refuses it: the sheet re-sends Folder with every save, and one stored before #990 would refuse them all.
+ * It’s checked again when the agent moves back here, and read here as none while the check refuses it (storedFolder).
+ * @param {unknown} folder @param {{ hostId?: string } | null | undefined} remote  where the agent runs, after the change
+ * @returns {string}
+ */
+export function placedFolder(folder, remote) {
+  if (!remote?.hostId || folder === undefined || folder === null) return agentFolderPath(folder);
+  if (typeof folder === 'string' && folder.length <= MAX_FOLDER) return folder;
+  return fullPath(folder, 'An agent’s');
+}
+
+/**
  * A session’s persona snapshot (Runtime.personaFor) without a folder the check refuses (agentFolderPath), as one
  * taken while the agent’s folder was stored unchecked, before #990. The live persona’s folder shows through it then,
  * so a folder fixed in the agent’s sheet, as the refusal asks (storedFolder), reaches a conversation already going at
