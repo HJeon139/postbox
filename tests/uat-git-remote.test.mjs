@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, test } from 'node:test';
-import { gitRemoteEnv, guardEnv, remoteFacts, remoteNote, remotePaths, seedGitRemote, tearDownRemote } from '../tools/uat/git-remote.mjs';
+import { gitRemoteEnv, guardEnv, remoteFacts, remoteNote, remotePaths, seedGitRemote, setUpRemote, tearDownRemote } from '../tools/uat/git-remote.mjs';
 
 const made = [];
 afterEach(() => {
@@ -148,4 +148,19 @@ describe('the end of the run', () => {
 test('the tester is told where the remote is, for a git-remote run only', () => {
   assert.match(remoteNote({ seed: 'git-remote' }, '/runs/r1'), /the folder \/runs\/r1\/remote\.git, a bare repository/);
   assert.equal(remoteNote({ seed: null }, '/runs/r1'), '');
+});
+
+test('the runner sets the project’s repository to the remote through the page, and says whether it took', async () => {
+  const exprs = [];
+  const lines = [];
+  const page = { evaluate: async (e) => (exprs.push(e), '/runs/r1/remote.git') };
+  const note = await setUpRemote({ seed: 'git-remote' }, { dir: '/runs/r1', page, threadId: 'th_1', log: (l) => lines.push(l) });
+  assert.match(exprs[0], /api\('\/api\/projects\/' \+ id \+ '\/push-url', \{ url: "\/runs\/r1\/remote\.git" \}, 'PUT'\)/);
+  assert.match(exprs[0], /S\(\)\.threads\["th_1"\]\.projectId/);
+  assert.deepEqual(lines, ['The project’s repository is the run’s remote.']);
+  assert.match(note, /so does the project’s repository in Settings/);
+  const refused = { evaluate: async () => 'an error: That isn’t a repository Postbox can push to.' };
+  await setUpRemote({ seed: 'git-remote' }, { dir: '/runs/r1', page: refused, threadId: 'th_1', log: (l) => lines.push(l) });
+  assert.match(lines[1], /^Couldn’t set the project’s repository to the run’s remote: it reads an error: /);
+  assert.equal(await setUpRemote({ seed: null }, { dir: '/runs/r1', page, threadId: 'th_1', log: () => {} }), '');
 });

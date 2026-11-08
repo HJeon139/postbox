@@ -12,6 +12,7 @@
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
+import { js } from '../browser.mjs';
 
 /** What every git in the run reads: no transport but local paths. */
 export const GUARD = [
@@ -90,13 +91,31 @@ export function seedGitRemote(workspace, dir) {
 }
 
 /**
- * What the tester is told of the remote, for a `- seed: git-remote` run: its path, which it sets as the project’s
- * repository in Settings as a person would, and that nothing else can be reached.
- * @param {{ seed: string|null }} scenario @param {string} dir
+ * What the tester is told of the remote, for a `- seed: git-remote` run: where it is, and that nothing else can be
+ * reached. @param {{ seed: string|null }} scenario @param {string} dir
  */
 export function remoteNote(scenario, dir) {
   if (scenario.seed !== 'git-remote') return '';
-  return `\n\nThis run’s remote is the folder ${remotePaths(dir).remote}, a bare repository the run made and removes at its end. The project folder’s origin already points at it. No other remote and no real gh can be reached from this run.`;
+  return `\n\nThis run’s remote is the folder ${remotePaths(dir).remote}, a bare repository the run made and removes at its end. The project folder’s origin points at it, and so does the project’s repository in Settings, where Postbox makes a push you asked for itself. No other remote and no real gh can be reached from this run.`;
+}
+
+/**
+ * Sets the project’s repository to the run’s remote, through the page as Settings does (PUT push-url, with the page’s
+ * token), so a push the person asks for in Auto goes there (server/push-on-request.mjs). Then the note for the tester.
+ * The first run of the gitpush scenario showed a tester can’t be relied on to find the setting.
+ * @param {{ seed: string|null }} scenario
+ * @param {{ dir: string, page: { evaluate: (expr: string) => Promise<any> }, threadId: string, log: (line: string) => void }} o
+ */
+export async function setUpRemote(scenario, { dir, page, threadId, log }) {
+  if (scenario.seed !== 'git-remote') return '';
+  const set = `import('/app/js/client.mjs').then(async ({ api, S }) => { const id = S().threads[${js(threadId)}].projectId; const p = await api('/api/projects/' + id + '/push-url', { url: ${js(remotePaths(dir).remote)} }, 'PUT'); return p.pushUrl; }).catch((e) => 'an error: ' + e.message)`;
+  const url = await page.evaluate(set);
+  log(
+    url === remotePaths(dir).remote
+      ? 'The project’s repository is the run’s remote.'
+      : `Couldn’t set the project’s repository to the run’s remote: it reads ${url}.`,
+  );
+  return remoteNote(scenario, dir);
 }
 
 /** Each update the remote took, oldest first: the branch, and the commit it moved to. */

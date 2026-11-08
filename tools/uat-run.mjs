@@ -36,7 +36,7 @@ import { lastCheckPass, MID_TURN, runChecks, waitingOnYou } from './uat/checks.m
 import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
-import { remoteFacts, remoteNote } from './uat/git-remote.mjs';
+import { remoteFacts, setUpRemote } from './uat/git-remote.mjs';
 import { followEvents } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
 import { HOST_OPTIONS } from './uat/hosts-options.mjs';
@@ -198,7 +198,7 @@ async function main() {
     log(`Conversation ${mainThread} started with @${scenario.agents.join(', @')}.`);
     // `- seed: big-room` (#508): the conversation fills with about 1,000 generated items before the tester arrives.
     scenario.summary += await seededNote(scenario, { postbox, data: paths.data, threadId: mainThread, page, log, opt, dir, facts });
-    scenario.summary += remoteNote(scenario, dir); // `- seed: git-remote`: where the throwaway remote is, for Settings
+    scenario.summary += await setUpRemote(scenario, { dir, page, threadId: mainThread, log }); // `- seed: git-remote` (#305)
     const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log, input: d.input });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });

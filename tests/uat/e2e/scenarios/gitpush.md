@@ -7,14 +7,14 @@
 - conversation: Small changes, pushed
 - seed: git-remote
 
-@developer runs on Claude Code. Before Postbox starts, the runner makes the project folder a git repository, and makes a bare repository in the run’s own folder as its `origin` (`- seed: git-remote`, #305, #296). Every git in this run can reach only local folders, and gh here is a fake that records what it was asked and creates nothing, so nothing leaves this computer. The runner removes the remote when the run ends. Always name the branch `work` when you ask for a push: Postbox makes a push you asked for itself, and it never pushes to the remote’s default branch unless you name it. Watch for a card that comes back for a push you already allowed, a push the agent says it made that the remote doesn’t have, and the conversation getting slower as the pushes add up.
+@developer runs on Claude Code. Before Postbox starts, the runner makes the project folder a git repository, and makes a bare repository in the run’s own folder as its `origin` (`- seed: git-remote`, #305, #296). Every git in this run can reach only local folders, and gh here is a fake that records what it was asked and creates nothing, so nothing leaves this computer. The runner removes the remote when the run ends. Always name the branch `work` when you ask for a push: Postbox makes a push you asked for itself, and it never pushes to the remote’s default branch unless you name it. Ask for each push as its own Bash call, exactly `git push origin work`, with nothing chained to it by `&&`, `;` or a loop: Claude Code checks each part of a chained command on its own, so a card for a chain offers no Always allow (#238), and one call that pushes in a loop is one card and one line in the Work pane for many pushes. Watch for a card that comes back for a push you already allowed, a push the agent says it made that the remote doesn’t have, and the conversation getting slower as the pushes add up.
 
 ## Phase 1: The first push, allowed once
 
 - triggers: push-card-landed
 - steps: 6
 
-First, open the project’s Settings and set its repository to the remote’s folder, the path this run gives you. Then ask @developer to make a tiny Python module with one function and a test, on a new branch `work`, commit it, and push the branch `work` to origin. @developer is in Ask me, so the push should come to a permission card that names the remote. Read it, then press Allow once. The push should land: ask @developer to show `git ls-remote origin work`, and compare it with its last commit.
+Ask @developer to make a tiny Python module with one function and a test, on a new branch `work`, commit it, and push the branch `work` to origin. @developer is in Ask me, so the push should come to a permission card that names the remote. Read it, then press Allow once. The push should land: ask @developer to show `git ls-remote origin work`, and compare it with its last commit.
 
 ## Phase 2: Always allow, then no more cards
 
@@ -28,7 +28,7 @@ Ask @developer for one small change, a commit, and a push of `work` to origin. W
 - triggers: pushes-at-scale
 - steps: 10
 
-Ask @developer for twenty small changes, one at a time, each its own commit, and a push of `work` to origin after each one: twenty commits and twenty pushes. They can be as small as one line each, such as a new constant or a docstring. While it works, open the Work pane: each push should show there. When it’s done, check the conversation and the Work pane still respond at once, and report anything that got slower.
+Ask @developer for twenty small changes, one at a time, each its own commit, and a push of `work` to origin after each one, as its own `git push origin work` call, never a loop: twenty commits and twenty pushes. With Always allow from phase 2, none of them should come to a card. They can be as small as one line each, such as a new constant or a docstring. While it works, open the Work pane: each push should show there. When it’s done, check the conversation and the Work pane still respond at once, and report anything that got slower.
 
 ## Phase 4: In Auto, pushes and a PR with no card
 
