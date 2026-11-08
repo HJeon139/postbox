@@ -20,6 +20,13 @@ export function skipOffscreen(el) {
 }
 
 /**
+ * How many draws hold each item: two can overlap on one (a jump’s second placement, or drawNewest on a jump’s target),
+ * and the item is let go when the last is. Nothing else sets content-visibility inline.
+ * @type {WeakMap<HTMLElement, number>}
+ */
+const holders = new WeakMap();
+
+/**
  * Draws a skipped item now, at its real size, and lets the browser skip it again once it has painted, when it has
  * remembered that size (contain-intrinsic-size: auto). For an item that must not first lay out at its estimate: a
  * jump’s target (view-jump.mjs), and a message appended while the view follows, which would otherwise make the view
@@ -27,13 +34,15 @@ export function skipOffscreen(el) {
  * @param {HTMLElement} item  @returns {() => void}
  */
 export function drawUntilPainted(item) {
-  const was = item.style.contentVisibility;
+  holders.set(item, (holders.get(item) ?? 0) + 1);
   item.style.contentVisibility = 'visible';
   let done = false;
   const release = () => {
     if (done) return;
     done = true;
-    item.style.contentVisibility = was;
+    const left = /** @type {number} */ (holders.get(item)) - 1;
+    holders.set(item, left);
+    if (!left) item.style.removeProperty('content-visibility');
   };
   requestAnimationFrame(() => requestAnimationFrame(release));
   return release;
