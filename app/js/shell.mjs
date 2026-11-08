@@ -16,9 +16,10 @@ import { ringFor, stateWord } from './ring.mjs';
 import { confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
 import './store-line.mjs';
 import { recordingBadge, telemetryItems } from './telemetry.mjs';
+import { liveMembers } from './topbar-sig.mjs';
 import { closeWork, navigate, openMenu, openWork, route, toast, undoToast } from './ui.mjs';
 
-export { railHidden, toggleRail };
+export { liveMembers, railHidden, toggleRail };
 
 const S = () => client.state;
 
@@ -26,8 +27,6 @@ const S = () => client.state;
  * The top bar: the places menu, the path to the open conversation and its two views, and the global actions. The
  * agents, their rings and their quick panels are in the sidebar’s Agents section (#105, #320).
  */
-/** A conversation’s agents that are here: neither archived nor being deleted. */
-export const liveMembers = (t) => t.members.filter((id) => S().sessions[id] && !S().sessions[id].archived && !S().sessions[id].deleting).join(',');
 
 export function topbar({ title = '', threadId = null, projectId = null }) {
   const t = threadId ? S().threads[threadId] : null;
