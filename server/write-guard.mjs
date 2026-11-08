@@ -2,13 +2,17 @@
 // in a shared folder of an external doc tool, with a number already taken and links that went nowhere, and everyone
 // with access saw it before the person did. Now, in Ask me and Accept edits, each call that writes outside (WRITE_TOOLS
 // in server/adapters/setup.mjs, passed to Claude Code as ask rules) comes to Postbox’s permission card, which shows the
-// draft as the person will publish it; in Auto it comes only when the harness itself asks (harness first). Calls the person has already settled pass without a card:
+// draft as the person will publish it; in Auto it comes only when the harness itself asks (harness first). Calls the
+// person has already settled pass without a card:
 // - one the persona may publish (“Can publish outside Postbox”, the publishing tools);
 // - one an allow rule names exactly, as Always allow on the card saves it: the tool itself (mcp__docs__create_document),
-//   not its whole server, which a person may have allowed for its reads; for gh, a rule with a command pattern.
+//   not its whole server, which a person may have allowed for its reads; for gh, a rule with a command pattern. On a
+//   host, that includes the rules Postbox keeps for the persona there (host-rules.mjs): the host’s Claude Code still
+//   asks, since Postbox’s write ask rules beat the allow rule it sends, so this check is what lets the call run.
 
 import { passesWriteCheck, ruleMatches, splitCommand } from '../shared/permission-match.mjs';
 import { isPublishingTool, POSTBOX_SERVER, setupOf, WRITE_TOOLS } from './adapters/setup.mjs';
+import { hostRulesOf } from './host-rules.mjs';
 import { readRules } from './permission-rules.mjs';
 
 const MCP_RULES = WRITE_TOOLS.filter((r) => r.startsWith('mcp__'));
@@ -35,9 +39,11 @@ export const isWriteCall = (tool, input) => writeCalls(tool, input).length > 0;
 
 /**
  * Whether the person has already settled this write, so it runs without a card (see the top of this file).
- * @param {any} rt  the Runtime @param {string} sessionId @param {{ tool: string, input?: any }} req
+ * hostPrompt: on a host, the prompt it answers, whose host’s kept rules count too.
+ * @param {any} rt  the Runtime @param {string} sessionId
+ * @param {{ tool: string, input?: any, hostPrompt?: { hostId: string } | null }} req
  */
-export async function writePasses(rt, sessionId, { tool, input }) {
+export async function writePasses(rt, sessionId, { tool, input, hostPrompt = null }) {
   const calls = writeCalls(tool, input);
   if (!calls.length) return false;
   // Postbox’s own tools only show things in the conversation. A write rule that matches one (add_dataset matches
@@ -50,6 +56,8 @@ export async function writePasses(rt, sessionId, { tool, input }) {
   const allow = [
     ...files.flatMap((f) => f.allow.map((rule) => ({ rule, root: f.source === 'user' ? rt.home : folder }))),
     ...[...(se?.rules?.allow ?? []), ...(se?.allowOnce ?? [])].map((rule) => ({ rule, root: folder })),
+    // The host that asked, as the card’s Always allow saves under it (permission-cards.mjs, allowAlways).
+    ...(hostPrompt?.hostId && persona ? hostRulesOf(rt, persona.id, hostPrompt.hostId) : []).map((rule) => ({ rule, root: folder })),
   ];
   return calls.every((c) => allow.some((a) => passesWriteCheck(a.rule, c, { cwd: folder ?? '/', home: rt.home, root: a.root ?? folder ?? '/' })));
 }

@@ -72,7 +72,7 @@ export function askPerson(
     // What Edit starts from; an input too large to edit here can still be allowed as it is.
     input: json && json.length <= MAX_EDIT_INPUT ? JSON.parse(json) : null,
     // On a host too (#120): Postbox’s own rule (the host prompt’s suggestions aren’t read), kept for that host.
-    always: rt.alwaysFor(se, { tool, input, suggestions, suppressAlways }),
+    always: rt.alwaysFor(se, { tool, input, suggestions, suppressAlways, hostId: hostPrompt?.hostId ?? null }),
     // A subagent’s prompt names it, as its refusals do: by the SDK’s agent id, or by the call the stream saw it make.
     who: whoAsked(turn, agentId, toolUseId),
     ...(hostPrompt
@@ -118,15 +118,17 @@ export function expireWait(rt, itemId) {
  * - Claude Code’s own suggestions when it sends a list (the SDK does, and an empty list means none);
  * - otherwise, for the CLI’s prompt tool, which sends no list at all (recorded), the rule Postbox makes for a refusal,
  *   which it saves where the CLI saves “don’t ask again”; but only for a backend that reads rules from a folder.
- * @param {any} rt @param {any} se @param {{ tool: unknown, input: any, suggestions: unknown, suppressAlways: boolean }} req
+ * hostId: the host of the turn that asked, for a host prompt; where the rule is kept then, and what the card says.
+ * @param {any} rt @param {any} se
+ * @param {{ tool: unknown, input: any, suggestions: unknown, suppressAlways: boolean, hostId?: string | null }} req
  */
-export function alwaysFor(rt, se, { tool, input, suggestions, suppressAlways }) {
+export function alwaysFor(rt, se, { tool, input, suggestions, suppressAlways, hostId = null }) {
   if (suppressAlways) return null;
   if (Array.isArray(suggestions)) return alwaysAllow(suggestions);
   if (suggestions !== null && suggestions !== undefined) return null;
   const persona = rt.persona(se.personaId);
-  // For an agent on a host, Postbox keeps the rule for that host (host-rules.mjs), and the card says so.
-  return rt.readsRules(persona?.backend) ? postboxAlways(String(tool ?? '').slice(0, 121), input, hostWhere(rt, persona)) : null;
+  // For a turn on a host, Postbox keeps the rule for that host (host-rules.mjs), and the card says so.
+  return rt.readsRules(persona?.backend) ? postboxAlways(String(tool ?? '').slice(0, 121), input, hostWhere(rt, hostId)) : null;
 }
 
 /**

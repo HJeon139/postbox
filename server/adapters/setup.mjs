@@ -136,8 +136,8 @@ const part = (v) => String(v).replace(/[^\w-]/g, '_');
 
 /**
  * What both Claude adapters pass from a turn’s context: the rules the person allowed once or for this conversation
- * (#66), or always for this persona on its host (#120), the persona’s own memory folder under `memoryRoot` (#208), and Postbox’s plugin, with its skills, for a turn
- * on this computer: a host doesn’t have its folder (agent-plugin.mjs).
+ * (#66), or always for this persona on its host (#120), the persona’s own memory folder under `memoryRoot` (#208), and
+ * Postbox’s plugin, with its skills, for a turn on this computer: a host doesn’t have its folder (agent-plugin.mjs).
  * @param {any} ctx @param {string} memoryRoot
  */
 export const fromContext = (ctx, memoryRoot) => ({
