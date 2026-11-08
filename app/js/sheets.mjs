@@ -468,7 +468,10 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
         ),
       ),
       st.backend === 'codex'
-        ? h('p.help', 'Codex app-server does not expose Postbox’s per-agent Tools checklist; this backend reports that capability as unavailable.')
+        ? h(
+            'p.help',
+            'On Codex, Web is the one tool Postbox reads: in Auto, it turns network on in Codex’s sandbox. Turn it on in the agent’s quick panel once the agent is made. Codex doesn’t turn other tools off for one agent.',
+          )
         : h(
             'fieldset',
             { style: { border: 0, padding: 0, margin: 0 } },
@@ -935,7 +938,10 @@ export function openSettings(tab = 'appearance', personaId = null) {
       h('div.field', h('label.label', { for: 'pe-i' }, 'Instructions'), ins),
       runBox,
       run.backend === 'codex'
-        ? h('p.help', 'Codex app-server does not expose Postbox’s per-agent Tools checklist.')
+        ? h(
+            'p.help',
+            'On Codex, Web is the one tool Postbox reads: in Auto, it turns network on in Codex’s sandbox. It’s in the agent’s quick panel. Codex doesn’t turn other tools off for one agent.',
+          )
         : h(
             'div.field',
             h('span.label', 'Tools'),
