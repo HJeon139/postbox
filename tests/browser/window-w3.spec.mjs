@@ -118,7 +118,7 @@ test('#866 the window torn down gives the transcript its skipping back', async (
   expect(await page.locator('#main > .item').count(), 'the window holds the room').toBeLessThan(JUST_OVER);
   await expect(page.locator('#main'), 'no skipping under the window').not.toHaveClass(/cv-skip/);
   // The flag off, a resync rebuilds the room whole, with no window. The init script sets it again only on a load.
-  await page.evaluate(() => localStorage.removeItem('pb-window'));
+  await page.evaluate(() => localStorage.setItem('pb-window', 'off'));
   await resync(page);
   await expect(page.locator('#main > .item')).toHaveCount(app.store.items(small).length);
   await expect(page.locator('#main')).toHaveClass(/cv-skip/);

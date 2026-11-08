@@ -30,7 +30,7 @@ failOnPageErrors(test);
 
 /** Opens a room, with the window’s flag on or off, and waits for it to hold still. */
 async function open(page, count, on) {
-  await page.addInitScript((flag) => (flag ? localStorage.setItem('pb-window', 'on') : localStorage.removeItem('pb-window')), on);
+  await page.addInitScript((flag) => (flag ? localStorage.setItem('pb-window', 'on') : localStorage.setItem('pb-window', 'off')), on);
   await page.goto(`${app.origin}/#/t/${rooms[count]}`);
   await synced(page, app);
   await expect(page.locator('#main .item').last()).toBeVisible();
