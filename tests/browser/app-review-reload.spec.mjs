@@ -1,8 +1,12 @@
-// The integrator’s read of #993 (#930): a review rendering a new app body called releaseApps() at once, while the
-// transcript was still being built off the page. An app item above the review had made its frame and body, but they
-// weren’t on the page yet, so the sweep dropped the frame’s record and stopped watching its body. That app then never
-// heard its own messages: its hello, size, theme, sends and pins were ignored, and it stayed unsized. This is their
-// repro, kept as written apart from its name: an app above an open app review still loads after a reload.
+// #930: a review rendering a new app body called releaseApps() at once, while the transcript was still being built
+// off the page. An app item above the review had made its frame and body, but they weren’t on the page yet, so the
+// sweep dropped the frame’s record and stopped watching its body. That app then never heard its own messages: its
+// hello, size, theme, sends and pins were ignored, and it stayed unsized.
+//
+// The app above is brought into view before its size is checked. Off screen, Chromium throttles a cross-origin frame’s
+// rendering, and an app’s sandbox is cross-origin, so an app just above the view may not measure itself until it’s
+// scrolled to. Checked where it lay, the case raced the view’s settle: it failed 1 in 10 on CI, and 2 in 20 and 1 in 40 here, with
+// the app’s hello heard and no size sent.
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
@@ -38,5 +42,6 @@ test('#930 an app above an open app review still loads after a reload', async ({
   await settled(page);
   await expect(page.locator('.rv-box iframe.app-iframe')).toHaveAttribute('data-sized', '1');
   const above = page.locator('.app-holder iframe.app-iframe[title="Above"]');
+  await above.scrollIntoViewIfNeeded();
   await expect(above, 'the app above the review loads (its messages are heard)').toHaveAttribute('data-sized', '1', { timeout: 8000 });
 });
