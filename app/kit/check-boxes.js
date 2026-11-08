@@ -74,9 +74,9 @@
   }
 
   // Boxes holding labels that are a chart’s marks, which carry its values (the critique’s VE10 asks for these): bars or
-  // a Gantt chart’s spans, three or more of one thickness whose lengths vary at least 1.5 times over, with more room around
-  // some labels than others; and a treemap’s tiles, three or more whose sizes vary at least threefold, filling nine
-  // tenths of the area they span. A diagram’s boxes are sized to their names, with the same room around each, or all one size,
+  // a Gantt chart’s spans, three or more of one thickness whose lengths are mostly different and vary at least 1.5 times over,
+  // with more room around some labels than others; and a treemap’s tiles, three or more whose sizes vary at least threefold, filling nine
+  // tenths of the area they span. A diagram’s boxes are sized to their names, with the same room around each, or come in a few sizes,
   // with gaps between them for its arrows.
   function marksOfData(shapes, held) {
     const data = new Set();
@@ -90,7 +90,8 @@
       for (const set of rows.values()) {
         const lengths = set.map((s) => s.r[along]);
         const rooms = set.map((s) => room(s, along));
-        if (set.length >= 3 && Math.max(...lengths) >= 1.5 * Math.min(...lengths) && Math.max(...rooms) - Math.min(...rooms) >= 30)
+        const distinct = new Set(lengths.map(Math.round)).size / set.length;
+        if (set.length >= 3 && distinct >= 0.6 && Math.max(...lengths) >= 1.5 * Math.min(...lengths) && Math.max(...rooms) - Math.min(...rooms) >= 30)
           for (const s of set) data.add(s.el);
       }
     }

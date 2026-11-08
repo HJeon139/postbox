@@ -44,9 +44,26 @@ const chart = `<h2 style="color:var(--text);margin:8px">Rent and dining out drov
   '',
 )}<rect x="110" y="226" width="14" height="14" fill="var(--accent)"/><text x="130" y="238" ${T}>This year</text><rect x="230" y="226" width="14" height="14" fill="var(--dim)"/><text x="250" y="238" ${T}>Last year</text></svg>`;
 
+// A flowchart whose boxes come in two widths, as a diagram’s do: not bars of different lengths.
+const WIDTHS = [185, 185, 117, 185, 117, 185];
+const twosizes = `<svg id="twosizes" width="1160" height="70" role="img" aria-label="Bill’s path">${[
+  'Introduced',
+  'Committee',
+  'Vote',
+  'Second chamber',
+  'Signs',
+  'Becomes law',
+]
+  .map((s, i) => {
+    const x = 10 + WIDTHS.slice(0, i).reduce((a, b) => a + b + 12, 0);
+    return `<rect x="${x}" y="10" width="${WIDTHS[i]}" height="45" fill="var(--panel)" stroke="var(--line-strong)"/><text x="${x + 10}" y="37" ${T}>${s}</text>`;
+  })
+  .join('')}</svg>`;
+
 const APPS = {
   flow,
   accent,
+  twosizes,
   // The same steps as a Mermaid flowchart, whose labels are HTML in each node’s foreignObject.
   mermaid: `<div id="m"></div><script>
 postbox.load('mermaid').then((mermaid) => {
@@ -129,6 +146,10 @@ test('#997 a flowchart whose boxes have an accent strip is still text in boxes',
 
 test('#997 a Mermaid flowchart of named boxes is text in boxes', () => {
   expect(heldFor('mermaid', 'text-in-boxes')[0], says('mermaid')).toMatch(/^In svg#flow-m, 5 of 5 labels sit inside boxes, such as “Read file”/);
+});
+
+test('#997 a flowchart whose boxes come in two widths is text in boxes, not bars', () => {
+  expect(heldFor('twosizes', 'text-in-boxes')[0], says('twosizes')).toMatch(/^In svg#twosizes, 6 of 6 labels sit inside boxes/);
 });
 
 test('#997 a box holding a sentence is held back, naming the box and its words', () => {
