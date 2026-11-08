@@ -113,8 +113,28 @@ test('an agents.json agent with a relative folder is refused, naming agents.json
   assert.deepEqual(Object.keys(store.state.personas), []);
 });
 
+const NAME = 'A name uses 2–24 letters, digits, - or _, and starts with a letter.';
+
+test('making an agent drops one leading @ and the spaces around its name, and refuses a name that isn’t 2–24 letters, digits, - or _', () => {
+  // agents.json’s check before seeding reads a name the same way, below.
+  const { store, rt } = setup();
+  assert.equal(rt.createPersona({ handle: '@alpha', backend: 'claude-code' }).handle, 'alpha');
+  assert.equal(rt.createPersona({ handle: ' beta \t', backend: 'claude-code' }).handle, 'beta');
+  assert.equal(rt.createPersona({ handle: '@Gamma ', backend: 'claude-code' }).handle, 'Gamma');
+  const made = Object.keys(store.state.personas).length;
+  for (const handle of ['b', '@@delta', ' @delta', '1delta', 'del ta', `d${'e'.repeat(24)}`, '', null, undefined])
+    assert.throws(
+      () => rt.createPersona({ handle, backend: 'claude-code' }),
+      (e) => {
+        assert.equal(e.status, 422, String(handle));
+        assert.equal(e.message, NAME, String(handle));
+        return true;
+      },
+    );
+  assert.equal(Object.keys(store.state.personas).length, made);
+});
+
 test('an agents.json whose second agent would be refused seeds neither, and says which and why', async () => {
-  const NAME = 'A name uses 2–24 letters, digits, - or _, and starts with a letter.';
   for (const [second, status, message] of [
     [{ handle: 'beta', folder: '~/work' }, 422, `agents.json: @beta’s folder: ${RELATIVE}`],
     [{ handle: '@beta', folder: 42 }, 422, `agents.json: @beta’s folder: ${NOT_TEXT}`],
@@ -122,6 +142,8 @@ test('an agents.json whose second agent would be refused seeds neither, and says
     [{ folder: '/srv/b' }, 422, `agents.json: agent 2: ${NAME}`],
     [null, 422, `agents.json: agent 2: ${NAME}`],
     [{ handle: '@Alpha' }, 409, 'agents.json: agent 2: @Alpha is there twice. Give each agent a name of its own.'],
+    [{ handle: '@Alpha \t' }, 409, 'agents.json: agent 2: @Alpha is there twice. Give each agent a name of its own.'],
+    [{ handle: ' @beta' }, 422, `agents.json: agent 2: ${NAME}`],
   ]) {
     const { data, store, rt } = setup();
     await writeFile(join(data, 'agents.json'), JSON.stringify([{ handle: 'alpha', folder: '/srv/a' }, second]));
