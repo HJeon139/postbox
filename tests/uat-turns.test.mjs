@@ -183,7 +183,7 @@ const room = () => ['th_main'];
 
 test('a phase’s own waits are read from its text, and send_then_stop’s delay isn’t one', () => {
   assert.deepEqual(phaseWaits('hostwakes'), [0, 180, 120]);
-  assert.deepEqual(phaseWaits('remotehosts'), [70, 0, 0, 0, 0, 180]);
+  assert.deepEqual(phaseWaits('remotehosts'), [70, 0, 0, 0, 0, 180, 0]);
   assert.deepEqual(phaseWaits('hostexpiry'), [70, 0]);
   assert.equal(phaseWaits('p0').at(-1), 60, 'twice, a minute apart');
   assert.deepEqual(phaseWaits('codex'), [0, 0, 0, 0]);

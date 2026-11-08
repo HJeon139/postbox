@@ -67,9 +67,9 @@ test('the write rules catch tools and gh commands that create, change or delete 
   assert.ok(isWriteCall('Bash', { command: 'cd repo && gh pr comment 12 --body hi' }));
   assert.ok(!isWriteCall('Bash', { command: 'gh issue list --state open' }));
   assert.ok(!isWriteCall('Bash', { command: 'npm test' }));
-  // Bypass runs everything: no asks for it.
+  // Bypass runs everything, and Auto leaves writes to the harness (harness first): no asks for either.
   assert.deepEqual(writeRules({ permissionMode: 'bypass' }), []);
-  assert.deepEqual(writeRules({ permissionMode: 'auto' }), WRITE_TOOLS);
+  assert.deepEqual(writeRules({ permissionMode: 'auto' }), []);
 });
 
 test('a write’s draft is its longest text field, for MCP writes only', () => {

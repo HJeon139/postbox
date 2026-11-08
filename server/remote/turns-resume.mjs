@@ -4,6 +4,7 @@
 // host’s welcome lists it.
 
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
+import { registeredAdapter, unregisteredWhy } from './placement.mjs';
 import { backgroundStopText, waitingOnBackground } from './turns-background.mjs';
 import { releaseHost } from './turns-need.mjs';
 import { continuing } from './turns-origin.mjs';
@@ -82,8 +83,11 @@ function autoResume(rts, sessionId) {
   if (!r?.resume || se.archived || se.deleting || rt.turns.has(sessionId) || rt.exiting.has(sessionId) || rt.closing) return;
   // Only on the host it stopped on: an agent moved since waits for the person.
   if (hostOf(rt.personaFor(se)) !== r.hostId) return;
+  // Nor can one whose backend isn’t registered here: a resume would only fail again (#874, #909).
+  if (!registeredAdapter(rt, rt.personaFor(se))) return;
   // An interruption that keeps coming back waits for the person after a few resumes, and so does one whose process
-  // there may still run (#872).
+  // there may still run (resume.unkilled: one killed that didn’t stop, #872, or one left to end on its own after a
+  // restart, reattach, #909).
   if (r.resume.why === 'interrupted' && (r.resume.unkilled || (r.autoResumes ?? 0) >= AUTO_RESUMES)) return;
   updateRemote(rts, sessionId, { resume: { ...r.resume, auto: true }, autoResumes: (r.autoResumes ?? 0) + 1 });
   // It goes on as the turn it continues: where it spoke, who it answers, what it was asked (turns-origin.mjs).
@@ -119,13 +123,21 @@ export async function reattach(rts, sessionId) {
   const now = rt.s.sessions[sessionId];
   if (!now || now.remoteTurn?.turn !== r.turn || !rts.restoring.has(r.turn) || rt.turns.has(sessionId)) return;
   const listed = (welcome?.turns ?? []).find((/** @type {any} */ t) => t.turn === r.turn);
-  // An agent moved off the host since can’t be attached there: its turn is left to end on its own.
-  const moved = hostOf(rt.personaFor(now)) !== r.hostId;
-  if (!listed || moved) {
+  // An agent moved off the host since can’t be attached there, nor one whose backend isn’t registered here (#874,
+  // #909): its turn is left to end on its own, and it waits for the person.
+  const persona = rt.personaFor(now);
+  const moved = hostOf(persona) !== r.hostId;
+  const unregistered = !registeredAdapter(rt, persona);
+  if (!listed || moved || unregistered) {
     rts.restoring.delete(r.turn);
     rts.early.delete(r.turn);
     releaseHost(rts, r.hostId);
-    interrupted(rts, sessionId, moved ? `@${now.handle} no longer runs there` : 'the host has no record of it');
+    // A turn the host lists as running, or as interrupted with its process unkilled (#872), may still run there:
+    // resumed on its own once the backend is back, a second turn would run beside it on the same session, so it waits
+    // for the person. One listed as ended, or interrupted and gone, can’t, and a moved one waits anyway (autoResume’s
+    // hostOf check).
+    const mayRun = (listed?.state === 'running' || listed?.unkilled === true) && !moved;
+    interrupted(rts, sessionId, whyNotAttached(now.handle, persona, { listed: Boolean(listed), moved }), { unkilled: mayRun });
     return;
   }
   // Running, ended or interrupted, it’s replayed from the start, so the reply is whole: what came before is replaced.
@@ -138,8 +150,23 @@ export async function reattach(rts, sessionId) {
   rt.deliver(sessionId, go.message, go.opts);
 }
 
-/** A turn that was on a host and is gone: Interrupted, and resumed once the host is back. @param {RemoteTurns} rts @param {string} sessionId @param {string} why */
-export function interrupted(rts, sessionId, why) {
+/**
+ * Why a turn on a host can’t be attached again: the agent moved first, since it no longer runs there at all; then the
+ * host having no record of it, which no backend changes; then a backend not registered here (#909).
+ * @param {string} handle @param {any} persona @param {{ listed: boolean, moved: boolean }} o
+ */
+function whyNotAttached(handle, persona, { listed, moved }) {
+  if (moved) return `@${handle} no longer runs there`;
+  if (!listed) return 'the host has no record of it';
+  return unregisteredWhy(persona);
+}
+
+/**
+ * A turn that was on a host and is gone: Interrupted, and resumed once the host is back, unless `unkilled` says its
+ * process there may still run, so it waits for the person (resume.unkilled, as turns-end.mjs keeps it for #872).
+ * @param {RemoteTurns} rts @param {string} sessionId @param {string} why @param {{ unkilled?: boolean }} [o]
+ */
+export function interrupted(rts, sessionId, why, { unkilled = false } = {}) {
   const rt = rts.rt;
   const se = rt.s.sessions[sessionId];
   if (!se?.remoteTurn) return;
@@ -156,7 +183,10 @@ export function interrupted(rts, sessionId, why) {
     error: message,
     remote: { state: 'interrupted', hostId: se.remoteTurn.hostId },
   });
-  updateRemote(rts, sessionId, { state: 'interrupted', at: rts.now(), resume: { why: 'interrupted', at: rts.now() } });
+  /** @type {{ why: string, at: number, unkilled?: boolean }} */
+  const resume = { why: 'interrupted', at: rts.now() };
+  if (unkilled) resume.unkilled = true;
+  updateRemote(rts, sessionId, { state: 'interrupted', at: rts.now(), resume });
   rt.updateSession(sessionId, {
     state: 'failed',
     needs: { kind: 'failed', itemId: it.id, text: message },

@@ -159,6 +159,10 @@ When a defect is filed from a run, add a check for it here if it can be caught d
   - Flaky tests, time against failures by fixture: [with the skill](scenarios/everyday-tests.md), [baseline](scenarios/everyday-tests-base.md).
   - A book collection about to be indexed for search, 84 files that are 46 works: [with the skill](scenarios/everyday-shelf.md), [baseline](scenarios/everyday-shelf-base.md).
   - How a small API saves an item: [with the skill](scenarios/everyday-pantry.md), [baseline](scenarios/everyday-pantry-base.md).
+- **Picture or words** ([#983](https://github.com/HJeon139/postbox/issues/983)): whether an agent chooses a picture when nobody asks for one, and keeps to words when words are right. Every judged run’s report says what the agent drew first and how many times the person spoke or clicked before it (`tools/uat/picture-choice.mjs`), and `- expects: picture` or `- expects: words` says which the first message should get. The book shelf and flaky tests above ask no picture and say `- expects: picture`, and so do these:
+  - Which subscriptions to cancel, a decision about the person’s data: [with the skill](scenarios/everyday-subs-cancel.md), [baseline](scenarios/everyday-subs-cancel-base.md).
+  - Whether two adds at once can lose one, a question about the person’s code: [with the skill](scenarios/everyday-pantry-race.md), [baseline](scenarios/everyday-pantry-race-base.md).
+  - #206’s controls, `- expects: words`, where a picture is the miss: a count and a total, [with the skill](scenarios/control-subs-total.md), [baseline](scenarios/control-subs-total-base.md); the command that starts the project, [with the skill](scenarios/control-pantry-start.md), [baseline](scenarios/control-pantry-start-base.md).
 - M1’s exit check ([#64](https://github.com/HJeon139/postbox/issues/64)), below:
   - [Wiki search: picking an approach](scenarios/wikisearch.md): a question with several reasonable answers
   - [Launch announcement: a draft to approve](scenarios/announcement.md)

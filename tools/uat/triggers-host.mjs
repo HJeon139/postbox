@@ -8,6 +8,7 @@ import { triesOf, triesWith } from './host-installs.mjs';
 import { agentTurns, hostIdOf, itemsUnderTest, labelOf, onHost, placeOf, remoteStream, remoteTurns, toolUses } from './remote-facts.mjs';
 import { HOSTWAKE_TRIGGERS } from './triggers-hostwakes.mjs';
 import { HUNG_TRIGGERS } from './triggers-hung.mjs';
+import { QUEUED_TRIGGERS } from './triggers-queued.mjs';
 
 const MINUTE = 60_000;
 const hostRun = (f) => Boolean(f.hosts?.hosts?.length);
@@ -317,4 +318,6 @@ export const HOST_TRIGGERS = {
   ...HOSTWAKE_TRIGGERS,
   // A host runner hung past the silence ceiling, killed and resumed (#872).
   ...HUNG_TRIGGERS,
+  // An app call a host refused, told to its agent in the call (#827).
+  ...QUEUED_TRIGGERS,
 };

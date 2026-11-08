@@ -5,6 +5,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, 
 import { mkdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { claudeTranscriptFile } from '../../server/claude-transcript-file.mjs';
 import { patchSession } from '../../shared/state.mjs';
 import { lines } from './history.mjs';
 
@@ -212,7 +213,7 @@ export const keeper = (dir, facts, workspace) => () => {
 /** What --recheck reads: the transcripts the run folder kept, or, from a run before it kept them, the agents’ own. */
 export const transcriptsFor = (dir, facts) => savedTranscripts(dir) ?? readTranscripts(facts, join(dir, 'workspace'));
 
-const transcriptOf = (cwd, id) => join(homedir(), '.claude', 'projects', cwd.replace(/[^a-zA-Z0-9]/g, '-'), `${id}.jsonl`);
+const transcriptOf = (cwd, id) => claudeTranscriptFile(join(homedir(), '.claude', 'projects'), cwd, id);
 
 /**
  * What the page shows that the checks read (#105, #146): the Agents section’s text and rows, whether the top bar cuts

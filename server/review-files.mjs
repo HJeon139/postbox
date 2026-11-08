@@ -137,6 +137,14 @@ function findReviewFile(rt, threadId, itemId, name, sha256) {
 }
 
 /**
+ * The header that keeps a stored file to Postbox’s own page (#780, #820): a page on another site can’t embed it, as an
+ * image or a no-cors request, to learn whether it loaded, its size or its timing. Every route that serves a stored
+ * file’s bytes sends it (a file, an app’s data file, a review’s image, a command’s output), except /media/<name>: an
+ * app’s sandboxed frame loads its images from there, and its origin is opaque, so same-origin would block them.
+ */
+export const SAME_ORIGIN_ONLY = Object.freeze({ 'cross-origin-resource-policy': 'same-origin' });
+
+/**
  * The route’s answer for a review’s image (§4): its bytes, with /api/files’s headers for an inline image, plus
  * Cross-Origin-Resource-Policy: same-origin so a page on another site can’t embed it. Null for anything else.
  * @param {any} rt @param {string} threadId @param {string} itemId @param {string} name @param {string} sha256
@@ -152,7 +160,7 @@ export async function servedReviewFile(rt, threadId, itemId, name, sha256) {
     // FILE_NAME already allows only letters, digits and - _ . in a name; this keeps the header whole regardless.
     'content-disposition': `inline; filename="${found.name.replace(/[^\w.-]/g, '_')}"`,
     'cache-control': 'private, max-age=31536000, immutable',
-    'cross-origin-resource-policy': 'same-origin',
+    ...SAME_ORIGIN_ONLY,
   };
   const bytes = await rt.blobs.get(found.sha256).catch((e) => {
     if (e?.code === 'ENOENT') return null;

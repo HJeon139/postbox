@@ -118,3 +118,24 @@ test('held reader 1, endedWithoutReply: a turn whose only reply is a block shown
   );
   await env.close();
 });
+
+// The turn's exit reads the session it settles pending (#796's class in sessions): Stop's “stopping” is still held when
+// the turn exits, so the published session read “gen” and the exit left the session stopping for good.
+test('Stop behind a held commit, with the turn exiting before the release: the session ends idle, not stopping', async () => {
+  const h = await heldStore();
+  const env = await setup(async () => {}, h.store);
+  env.rt.sendMessage(env.t.id, { text: 'go' });
+  await until(() => env.rt.turns.size === 1, 'the turn to start');
+  await h.store.flush();
+  h.hold();
+  const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
+  await h.atSync;
+  assert.equal(env.rt.stop(env.se.id), true);
+  await until(() => !env.rt.exiting.has(env.se.id), 'the stopped turn to exit');
+  h.release();
+  await commit;
+  await h.store.flush();
+  const se = h.store.state.sessions[env.se.id];
+  assert.deepEqual([se.state, se.currentStep], ['idle', 'Stopped by you']);
+  await h.store.close();
+});

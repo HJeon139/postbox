@@ -24,8 +24,11 @@ export const respond = (id, result) => send({ jsonrpc: '2.0', id, result });
 export const fail = (id, code, text) => send({ jsonrpc: '2.0', id, error: { code, message: text } });
 export const textResult = (text, isError = false) => ({ content: [{ type: 'text', text }], ...(isError ? { isError: true } : {}) });
 
-/** What a queued tool returns at once. It says the call was sent, never how the laptop took it. */
-export function queuedText(name, args) {
+/** What a queued tool returns once the daemon has taken it, after the host’s own checks (#827). */
+export const queuedText = (name, args) => `${sentText(name, args)} If Postbox refuses it, you’ll hear why at your next turn.`;
+
+/** That the call was sent, never how the laptop took it, which the shim can’t know. */
+function sentText(name, args) {
   const said = (v) => (typeof v === 'string' && v ? v : null);
   const block = said(args.block?.id);
   const since = 'Postbox applies it as soon as it’s connected to this host';
