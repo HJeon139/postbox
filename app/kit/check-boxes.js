@@ -49,7 +49,8 @@
   // another polygon is a region of a map, and circles and shapes drawn by <use> aren’t measured: in past apps, labels in
   // circles were counts on dots. A rect filled with the SVG’s background and no outline is a backing that keeps a label
   // legible, not a box. One over a third of the SVG is a background or a plot area. One that holds another mark is a
-  // frame (a legend of swatches or line keys, a group of boxes).
+  // frame (a legend of swatches or line keys, a group of boxes); a strip under 8 px (an accent down a box’s edge)
+  // doesn’t make its box a frame.
   function boxes(svg) {
     const whole = area(svg.getBoundingClientRect());
     const bg = backdrop(svg);
@@ -68,12 +69,12 @@
       .map((m) => m.getBoundingClientRect());
     // A mark’s box leaves out its stroke, so a legend’s line key is a box of no height: any size counts.
     const holdsMark = (a) => marks.some((r) => r.width + r.height > 0 && within(r, a.r));
-    const holdsBox = (a) => all.some((b) => area(b.r) < area(a.r) && within(b.r, a.r));
+    const holdsBox = (a) => all.some((b) => area(b.r) < area(a.r) && within(b.r, a.r) && Math.min(b.r.width, b.r.height) >= 8);
     return all.filter((a) => !holdsBox(a) && !holdsMark(a));
   }
 
-  // Boxes that are a chart’s marks, which carry its values (the critique’s VE10 asks for these): bars or a Gantt
-  // chart’s spans, three or more of one thickness whose lengths vary at least 1.5 times over, with more room around
+  // Boxes holding labels that are a chart’s marks, which carry its values (the critique’s VE10 asks for these): bars or
+  // a Gantt chart’s spans, three or more of one thickness whose lengths vary at least 1.5 times over, with more room around
   // some labels than others; and a treemap’s tiles, three or more whose sizes vary at least threefold, filling nine
   // tenths of the area they span. A diagram’s boxes are sized to their names, with the same room around each, or all one size,
   // with gaps between them for its arrows.
@@ -85,7 +86,7 @@
       ['height', 'width'],
     ]) {
       const rows = new Map();
-      for (const s of shapes) rows.set(Math.round(s.r[across]), [...(rows.get(Math.round(s.r[across])) ?? []), s]);
+      for (const s of shapes.filter((x) => held.has(x.el))) rows.set(Math.round(s.r[across]), [...(rows.get(Math.round(s.r[across])) ?? []), s]);
       for (const set of rows.values()) {
         const lengths = set.map((s) => s.r[along]);
         const rooms = set.map((s) => room(s, along));

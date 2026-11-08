@@ -1,9 +1,9 @@
 // The pre-display check holds back a visual that can’t be read, and tells the agent which elements to fix (#997): text
-// in boxes and a sentence in a box, text under 12 px, low contrast on an SVG label, a label cut off by its SVG’s edge,
-// labels drawn over each other, and a figure below the first view at 1000 × 680. A chart whose labels sit beside its
-// marks, a legend’s swatches, and a page that shows its title and figure at once pass. Every app goes up in one
-// conversation, which a page opened before the tests checks; each test reads what the check found, and what the agent
-// was sent.
+// in boxes (an accent strip on each box too) and a sentence in a box, text under 12 px, low contrast on an SVG label, a
+// label cut off by its SVG’s edge, labels drawn over each other, and a figure below the first view at 1000 × 680. A
+// chart whose labels sit beside its marks, a legend’s swatches, and a page that shows its title and figure at once
+// pass. Every app goes up in one conversation, which a page opened before the tests checks; each test reads what the
+// check found, and what the agent was sent.
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
@@ -20,6 +20,12 @@ const flow = `<h2 style="color:var(--text);margin:8px">How a save works</h2>
 ).join(
   '',
 )}<rect class="note" x="10" y="74" width="740" height="40" fill="var(--panel)" stroke="var(--line-strong)"/><text x="20" y="99" ${T}>Every row is checked before the old file is replaced on disk</text></svg>`;
+
+// The same flowchart with a 4 px accent strip down each box’s left edge.
+const accent = `<svg id="accent" width="760" height="70" role="img" aria-label="Save steps">${STEPS.map(
+  (s, i) =>
+    `<rect x="${10 + i * 150}" y="10" width="120" height="44" rx="6" fill="var(--panel)" stroke="var(--line-strong)"/><rect x="${10 + i * 150}" y="10" width="4" height="44" fill="var(--accent)"/><text x="${22 + i * 150}" y="37" ${T}>${s}</text>`,
+).join('')}</svg>`;
 
 // A bar chart: names beside the bars, values inside them (numbers, not names), and a legend of swatches beside names.
 const BARS = [
@@ -39,6 +45,7 @@ const chart = `<h2 style="color:var(--text);margin:8px">Rent and dining out drov
 
 const APPS = {
   flow,
+  accent,
   chart,
   // Page text at 10 px, and an SVG label drawn at 9 px.
   small: `<div style="padding:12px;color:var(--text)"><h2 style="margin:0">Where the time went</h2><p class="fine" style="font-size:10px">Source: the team’s timesheets</p>
@@ -106,6 +113,10 @@ function heldFor(id, code) {
 test('#997 a flowchart of named boxes is held back as text in boxes, naming the boxes’ labels', () => {
   const [boxes] = heldFor('flow', 'text-in-boxes');
   expect(boxes, says('flow')).toMatch(/In svg#flow, 6 of 6 labels sit inside boxes, such as “Read file” \(svg#flow > text:nth-of-type\(1\)\)/);
+});
+
+test('#997 a flowchart whose boxes have an accent strip is still text in boxes', () => {
+  expect(heldFor('accent', 'text-in-boxes')[0], says('accent')).toMatch(/^In svg#accent, 5 of 5 labels sit inside boxes/);
 });
 
 test('#997 a box holding a sentence is held back, naming the box and its words', () => {
