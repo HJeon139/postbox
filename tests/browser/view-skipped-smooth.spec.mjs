@@ -74,6 +74,21 @@ const leftEnd = (page) =>
   }, SETTLES);
 const gap = (page) => page.evaluate(() => document.documentElement.scrollHeight - scrollY - innerHeight);
 
+/**
+ * Clicks Jump to latest, and returns a wait for the jump’s end: its scrollend, heard after the transcript’s own, so the
+ * view has taken in how it ended. Mac Firefox, events late, held still for two frames between the jump’s last scroll
+ * and its scrollend, and a case read the mode before the view did (researcher’s trace on fb5edc6d, 2 of 40).
+ */
+async function jump(page) {
+  await page.locator('.jump').getByRole('button').click();
+  await page.evaluate(() => {
+    const w = /** @type {any} */ (window);
+    w.pbJumpEnded = false;
+    addEventListener('scrollend', () => (w.pbJumpEnded = true), { once: true });
+  });
+  return () => expect.poll(() => page.evaluate(() => /** @type {any} */ (window).pbJumpEnded), { message: 'the jump’s scrollend' }).toBe(true);
+}
+
 // CI’s runners: once the jump landed at the end, Chromium’s smooth scroll, aimed at a page that shrank under it, stepped
 // back from the end by 138–563 px a frame later, with nothing of the page’s writing (a trace with the CPU throttled 3x,
 // 14 of 20; on CI, 319 px), and the view read that as you. With the CPU throttled as slow, from the click on.
@@ -143,11 +158,12 @@ for (const [sizes, css] of [
 
 test('a wheel up during the jump is you reading: the view stays where you turned it, not dragged to the end', async ({ page, browserName }) => {
   await readingAtTop(page, 'Smooth jump, then a wheel up');
-  await page.locator('.jump').getByRole('button').click();
+  const ended = await jump(page);
   // Partway down, and still moving. Chromium ends the jump on the wheel turn, and drops the turn’s own scroll.
   await expect.poll(() => page.evaluate(() => scrollY), { message: 'the jump to be on its way' }).toBeGreaterThan(2000);
   await page.mouse.move(640, 400);
   await page.mouse.wheel(0, -400);
+  await ended();
   await still(page);
   const v = { mode: await page.locator('#main.transcript').getAttribute('data-view-mode'), gap: await gap(page) };
   // Firefox didn’t always stop its smooth scroll for the test’s wheel turn: the scroll went on to the end, where reading
@@ -177,9 +193,10 @@ for (const [how, act] of /** @type {const} */ ([
 ]))
   test(`${how} during the jump isn’t you reading: it still ends following at the end`, async ({ page }) => {
     await readingAtTop(page, `Smooth jump, then ${how}`);
-    await page.locator('.jump').getByRole('button').click();
+    const ended = await jump(page);
     await expect.poll(() => page.evaluate(() => scrollY), { message: 'the jump to be on its way' }).toBeGreaterThan(2000);
     await act(page);
+    await ended();
     await still(page);
     const v = { mode: await page.locator('#main.transcript').getAttribute('data-view-mode'), gap: await gap(page) };
     test.info().annotations.push({ type: 'measured', description: JSON.stringify(v) });
