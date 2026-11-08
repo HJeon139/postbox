@@ -38,8 +38,9 @@ export function inSight(v) {
 const BROWSER_SLACK = 24;
 /**
  * Whether a move up of up px is the browser’s: no more than what the page lost since the view last measured it, if
- * anything, and BROWSER_SLACK more. A wheel turn of yours moves further; a reply landing or an item growing as you
- * scroll makes the page taller and loses nothing (#341’s cases).
+ * anything, and BROWSER_SLACK more. A wheel turn of yours moves further. A trackpad’s first small step up, landing in
+ * the frame between a resize and its scroll event, can be taken for the browser’s: the view goes back to the end, and
+ * the next step unsticks it in onScroll, so only that step is lost (review’s P3 on #959).
  * @param {View} v @param {Element} s @param {number} up
  */
 export function browserMoved(v, s, up) {
