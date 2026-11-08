@@ -11,19 +11,31 @@ export const EXPIRED = new Set(['expired', 'ended']);
 /**
  * Queues a note for the agent’s next turn that its request expired, and what to do: ask again, naming the request by its
  * summary and its command, since a summary alone can be as plain as “run a command”. Once per card, even when two
- * paths expire it (the turn’s end, then its host’s word), since the card keeps that it was told. None when the person
- * stopped the turn (`stoppedBy: 'you'`, as on main), archiving or removing it included. An agent archived or being removed
- * otherwise is told too, as #776’s closeHop tells it: the note waits in its context for a Restore or an Undo.
+ * paths expire it (the turn’s end, then its host’s word), since the card keeps that it was told. When the person’s Stop
+ * or Send now ended the turn (`stoppedBy: 'you'`, archiving or removing it included), the note says so, and that they
+ * didn’t refuse it: Claude Code’s own text for the cut-off call reads as a refusal (#853). An agent archived or being
+ * removed is told too, as #776’s closeHop tells it: the note waits in its context for a Restore or an Undo.
  * @param {any} rt @param {string} threadId @param {string} itemId @param {any} [card]  the card, when the caller has it
  */
 export function tellExpired(rt, threadId, itemId, card = undefined) {
   // The card as it will be, found by id in O(1) (#712b’s index), not by scanning the thread.
   const it = card ?? rt.store.pending.item(threadId, itemId);
-  // Only the person’s Stop holds the note back: a shutdown, a hung stop or a store outage records who stopped it too.
-  if (it?.kind !== 'permission' || it.agentTold || it.stoppedBy === 'you') return;
+  if (it?.kind !== 'permission' || it.agentTold) return;
   if (!rt.s.sessions[it.sessionId]) return;
   rt.patchItem(threadId, itemId, { agentTold: true });
-  rt.tellAgent(it.sessionId, `${requestOf(it)} expired before the person answered it, so it didn’t run. Ask again if you still need it.`);
+  rt.tellAgent(
+    it.sessionId,
+    `${requestOf(it)} ${whyClosed(it)}, so it didn’t run. ${it.stoppedBy === 'you' ? 'They didn’t refuse it. ' : ''}Ask again if you still need it.`,
+  );
+}
+
+/**
+ * Why the request closed unanswered: the person’s own stop, or an expiry (a card past its wait, its host’s word, or a
+ * shutdown, hung stop or store outage, which record who stopped it too). @param {any} it
+ */
+function whyClosed(it) {
+  if (it.stoppedBy === 'you') return 'was still waiting for the person when they stopped your turn';
+  return 'expired before the person answered it';
 }
 
 /** How the note names a request: whose, its summary, and its command when the card has one. @param {any} it */
