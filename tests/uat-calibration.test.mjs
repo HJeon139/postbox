@@ -4,12 +4,12 @@
 
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { agreement, arenaPairs, calibrationPage, judgeIntoKey, PAGE_CSP, pageId, shownBefore, twinPairs } from '../tools/uat/calibration.mjs';
-import { firstJudged } from '../tools/uat/pairs-backfill.mjs';
+import { firstJudged, pictureOfRun } from '../tools/uat/pairs-backfill.mjs';
 
 test('#995 a scenario’s runs pair with its -base twin’s, newest first, one scenario after another', () => {
   const run = (scenario, run) => ({ run, scenario, picture: {} });
@@ -185,4 +185,25 @@ test('#995 no repeats hold across pages: what an earlier page showed is left out
   writeFileSync(join(dir, 'torn-key.json'), 'not json');
   assert.throws(() => shownBefore(dir), /torn-key\.json doesn’t parse, so what its page showed can’t be left out/);
   assert.deepEqual(shownBefore(join(dir, 'nowhere')).pages, []);
+});
+
+test('#995 a run with no first picture isn’t saved as one, so a later reading can still find it', async (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-backfill-'));
+  t.after(() => rmSync(dir, { recursive: true }));
+  mkdirSync(join(dir, 'data'));
+  mkdirSync(join(dir, 'shots'));
+  const add = (id, kind, extra) => ({ type: 'item.add', data: { threadId: 'th_1', item: { id, kind, at: 1, ...extra } } });
+  const events = [add('it_1', 'user', { text: 'Which?' }), add('it_3', 'block', { block: { id: 'subs', type: 'app', fallback: 'Six to cancel.' } })];
+  writeFileSync(join(dir, 'data', 'events-1.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n');
+  writeFileSync(join(dir, 'report.md'), '## Visual verdicts\n\n| 2 | I3 | landed |\n');
+  writeFileSync(join(dir, 'run.json'), JSON.stringify({ scenario: 'subs' }));
+  const onDisk = () => JSON.parse(readFileSync(join(dir, 'run.json'), 'utf8'));
+  assert.deepEqual(await pictureOfRun(dir), { skipped: 'no screenshot of the agent’s app' });
+  assert.equal('firstPicture' in onDisk(), false);
+  writeFileSync(join(dir, 'shots', '01-I3.png'), 'png');
+  assert.equal((await pictureOfRun(dir)).shot, 'shots/01-I3.png');
+  assert.equal(onDisk().firstPicture.shot, 'shots/01-I3.png', 'saved once it has one');
+  // A skip an earlier version saved is read again too.
+  writeFileSync(join(dir, 'run.json'), JSON.stringify({ scenario: 'subs', firstPicture: { skipped: 'old' } }));
+  assert.equal((await pictureOfRun(dir)).shot, 'shots/01-I3.png');
 });
