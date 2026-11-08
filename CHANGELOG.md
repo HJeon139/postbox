@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.44.1 (2026-11-08)
+
+### Fixes
+
+- **app:** the places menu reads the projects when it opens (#986)
+- **projects:** refuse the shared invisible characters in a folder; check an asset name's first
+- **app:** rebuild the top bar only when what it shows changes (#986)
+- **assets:** refuse C1, bidi and other hidden characters in a new asset's name
+- **files:** send Cross-Origin-Resource-Policy: same-origin on three stored-byte routes
+- **projects:** refuse an empty or relative folder when creating a project
+- **telemetry:** check a session.patch's own public flag before keeping it
+
 ## 1.44.0 (2026-11-08)
 
 ### Features
