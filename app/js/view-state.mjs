@@ -277,7 +277,10 @@ export function mountView({ el, inPanel, nodes, was }) {
   const resized = () => follow(v);
   const scrolled = thenPublish(() => onScroll(v));
   v.sizes = new ResizeObserver(resized);
-  skipOffscreen(el);
+  // Only the main pane skips. A panel’s box changes width going full screen and back, and its skipped items in view
+  // then draw at the new width over the frames after, so the browser clamps the view again once the new size is seen,
+  // which #837 takes for you reaching the end (work-pane-thread.spec.mjs).
+  if (!inPanel) skipOffscreen(el);
   // A change that makes the transcript shorter while stuck (a held height released, an app’s check giving way to its
   // frame) pulls the view up to the page’s new end. That isn’t you, but its scroll event can come after the page grew
   // back, and read as you scrolling up (#297). So note where the view is, if it’s at the new end: a wheel turn moves it

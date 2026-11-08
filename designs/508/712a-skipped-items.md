@@ -7,7 +7,7 @@ Part of #508's lane: a long room should perform like a small one. #712a is the p
 - **Every item stays mounted.** `.transcript.cv-skip > .item` gets `content-visibility: auto; contain-intrinsic-size: auto 71px` (91 px under 600 px). Those are the median item of a generated 1,000-item room (`app/workbench.css`).
 - **The browser skips the layout and paint of items off screen.** It lays each one out at the estimate until it draws, and then remembers the item's real size.
 - **Nothing is unmounted,** so focus, drafts, app frames and find-in-page keep working. Find-in-page draws the item it finds, as the browser does for a skipped item it matches (`view-skipped.spec.mjs`, “find-in-page finds a word only a skipped item has”).
-- **Where it applies:** only where `CSS.supports('content-visibility', 'auto')` (`app/js/view-skip.mjs`).
+- **Where it applies:** only where `CSS.supports('content-visibility', 'auto')` (`app/js/view-skip.mjs`), and only in the main pane. A side panel's box changes width going full screen and back, and its skipped items in view then draw at the new width over the frames after: the browser clamps the view again once the new size is seen, and #837's rule takes that for you reaching the end (`work-pane-thread.spec.mjs`, the two near-end cases at 1280 px).
 - **An item with a fixed descendant is never skipped:** a full-screen review, a full-screen app, or an app's check frame (`:has(.rv-full, .app-full.fullscreen, .check-frame)`). Skipping contains layout and paint, so the item would become the box those are placed in.
 
 ## Keeping your place (B1b's view state)
