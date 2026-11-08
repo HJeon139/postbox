@@ -41,7 +41,9 @@ test('#995 the page shows two pictures and what each meant to say, with no run, 
   calibrationPage([{ persona: 'Someone with many subscriptions.', question: 'Which should I cancel?', sides }], out);
   assert.deepEqual(readdirSync(out).sort(), ['1-a.png', '1-b.png', 'index.html']);
   const html = readFileSync(join(out, 'index.html'), 'utf8');
-  const shown = html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, '').replace(/<script>[\s\S]*<\/script>/, '');
+  // What a person sees: the body up to </main>. The head’s policy and the script after </main> aren’t on screen.
+  const shown = html.slice(html.indexOf('<body>'), html.indexOf('</main>'));
+  assert.ok(shown.includes('<h1>Picture against picture'), 'the cut holds the page’s text');
   assert.ok(!/skill|base|everyday/i.test(shown), 'nothing tells which condition a picture came from');
   assert.match(html, /The agent’s text version of it \(it gave no intent\)<\/span>: “Cancel &lt;the&gt; gym\.”/);
   assert.match(html, /What the agent meant it to say<\/span>: “Six cost over \$10 a use\.”/);
@@ -107,7 +109,8 @@ test('#995 the page loads nothing from elsewhere: its CSP allows its own picture
   assert.ok(html.includes(`<meta http-equiv="Content-Security-Policy" content="${PAGE_CSP}">`));
   assert.match(PAGE_CSP, /^default-src 'none'; img-src 'self';/);
   const hash = (text) => `'sha256-${createHash('sha256').update(text).digest('base64')}'`;
-  const inline = (tag) => new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(html)?.[1] ?? '';
+  // The text between the page’s one <tag> and its </tag>, which calibrationPage writes in lower case.
+  const inline = (tag) => html.slice(html.indexOf(`<${tag}>`) + tag.length + 2, html.indexOf(`</${tag}>`));
   assert.ok(PAGE_CSP.includes(`script-src ${hash(inline('script'))}`), 'the script’s hash is the one the policy allows');
   assert.ok(PAGE_CSP.includes(`style-src ${hash(inline('style'))}`), 'the style’s hash is the one the policy allows');
 });
