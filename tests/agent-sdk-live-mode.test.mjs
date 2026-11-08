@@ -179,7 +179,29 @@ test('#817: the Agent SDK adapter hands over a live control that knows its turn 
   const done = adapter.deliver({}, { kind: 'user', text: 'Go' }, ctx).catch(() => {});
   await until(() => ctx.calls.control, 'the live control');
   assert.equal(await ctx.calls.control.setPermissionMode('ask'), false);
+  assert.equal(await ctx.calls.control.setPermissionMode('auto'), false, 'a control that took the turn for Auto would let this through');
   assert.deepEqual(q.modes, []);
+  ctx.abort.abort();
+  await done;
+});
+
+test('#806: the Agent SDK adapter hands over a live control that knows its turn started in Ask me, so Accept edits changes it now', async () => {
+  const q = query();
+  const sdk = {
+    query({ options }) {
+      const run = (async function* () {
+        yield { type: 'system', subtype: 'init', session_id: 'sdk-1' };
+        await new Promise((r) => options.abortController.signal.addEventListener('abort', r));
+      })();
+      return Object.assign(run, { setPermissionMode: q.setPermissionMode });
+    },
+  };
+  const adapter = new AgentSdkAdapter({ sdk, workRoot: tempDir('pb-live-mode-work-'), listProcesses: async () => [] });
+  const ctx = fakeCtx('ask');
+  const done = adapter.deliver({}, { kind: 'user', text: 'Go' }, ctx).catch(() => {});
+  await until(() => ctx.calls.control, 'the live control');
+  assert.equal(await ctx.calls.control.setPermissionMode('acceptEdits'), true);
+  assert.deepEqual(q.modes, ['acceptEdits']);
   ctx.abort.abort();
   await done;
 });
