@@ -86,12 +86,12 @@ export function heldPaint(root, paint) {
     const opts = { capture: true, signal: hold.signal };
     // After the click the press ends in, which the browser dispatches after pointerup and Space’s keyup.
     const end = () => setTimeout(flush);
-    window.addEventListener('pointerup', end, opts);
-    window.addEventListener('pointercancel', end, opts);
+    // A mouse press may come as mouse events alone, with no pointer events, as in Firefox with touch emulated.
+    for (const type of ['pointerup', 'pointercancel', 'mouseup']) window.addEventListener(type, end, opts);
     window.addEventListener('keyup', (e) => e.key === ' ' && end(), opts);
     bound = window.setTimeout(flush, HOLD_MS);
   };
-  root.addEventListener('pointerdown', start);
+  for (const type of ['pointerdown', 'mousedown']) root.addEventListener(type, start);
   root.addEventListener('keydown', (e) => {
     if (e.key === ' ' && !e.repeat && !(e.target instanceof Element && e.target.closest(TEXT_FIELD))) start();
   });
