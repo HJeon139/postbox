@@ -7,6 +7,7 @@
 // and counts (server/asset-orphans.mjs).
 
 import { join } from 'node:path';
+import { hasInvisible } from '../shared/invisible.mjs';
 import { ASSETS } from '../shared/limits.mjs';
 import { emptyIndex, nameKey, opKey, own } from '../shared/state-assets.mjs';
 import { bytesAfter, isTextBytes, prunable } from './asset-retention.mjs';
@@ -34,18 +35,30 @@ function refuse(code, message) {
 }
 
 /**
- * What’s wrong with a name, or null: a relative path in the room, NFC, at most ASSETS.nameBytes bytes, `/` the only
- * separator, no empty, `.` or `..` part, and no backslash, NUL or control character.
+ * What a name can’t hold (#704), besides INVISIBLE’s characters (shared/invisible.mjs, which takes in every format
+ * character, the bidi controls, the variation selectors and the Hangul fillers): a backslash; a control character, C0,
+ * DEL or C1 (Cc); a line or paragraph separator (Zl, Zp); a lone surrogate (Cs), which isn’t text; the blank braille
+ * pattern (U+2800), which shows as nothing; and the noncharacters U+FFFE and U+FFFF. Each can hide or reorder what the
+ * page shows of a name, or isn’t a character at all.
+ */
+const HIDDEN = /[\\\p{Cc}\p{Zl}\p{Zp}\p{Cs}\u2800\ufffe\uffff]/u;
+
+/** What a name with one of HIDDEN’s or INVISIBLE’s characters hears. */
+const HIDDEN_MESSAGE =
+  'An asset’s name has no backslash, control character, line or paragraph separator, lone surrogate, noncharacter, or character that shows as nothing or reorders the text, such as a zero-width space, a bidi control or a variation selector.';
+
+/**
+ * What’s wrong with a new name, or null: a relative path in the room, NFC, at most ASSETS.nameBytes bytes, `/` the only
+ * separator, no empty, `.` or `..` part, and none of HIDDEN’s or INVISIBLE’s characters, checked first so a name with
+ * one hears that, whatever else is wrong with it. A create and a rename ask; a name already stored is never checked
+ * again, so one an older Postbox took keeps loading.
  * @param {unknown} name
  */
 export function nameProblem(name) {
   if (typeof name !== 'string' || !name) return 'An asset needs a name, such as notes/plan.md.';
   const n = name.normalize('NFC');
   if (Buffer.byteLength(n) > ASSETS.nameBytes) return `An asset’s name is at most ${ASSETS.nameBytes} bytes.`;
-  for (const ch of n) {
-    const c = ch.codePointAt(0) ?? 0;
-    if (c < 0x20 || c === 0x7f || ch === '\\') return 'An asset’s name has no backslash or control characters.';
-  }
+  if (HIDDEN.test(n) || hasInvisible(n)) return HIDDEN_MESSAGE;
   if (n.startsWith('/')) return 'An asset’s name is relative to the room: it doesn’t start with /.';
   if (n.split('/').some((part) => part === '' || part === '.' || part === '..')) return 'An asset’s name has no empty, . or .. part.';
   return null;
