@@ -2,6 +2,22 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.44.0 (2026-11-08)
+
+### Features
+
+- **permissions:** Always allow on a host card, kept by Postbox and sent in the host turn's settings
+- **permissions:** harness first: in Auto, Postbox adds no ask rules of its own for writes
+
+### Fixes
+
+- **remote:** one field for a host turn that may still run, and its hint says it waits
+- **remote:** only a host turn listed running waits for the person
+- **remote:** a listed host turn whose backend wasn't registered waits for the person
+- **remote:** interrupt a host turn whose backend isn't registered after a restart
+- **permissions:** a host's kept Always allow settles a write, and the card names the asking host
+- **permissions:** the panel keeps "Writes you asked for" in Auto, where it still applies
+
 ## 1.43.0 (2026-11-08)
 
 ### Features
