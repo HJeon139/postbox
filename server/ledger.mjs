@@ -40,7 +40,7 @@ import {
 import { describeTool } from './adapters/claude-stream.mjs';
 import { fileDiff, output, restore } from './ledger-answers.mjs';
 import { commandSeen, commandStarted, folderWatch, turnEnded } from './ledger-commands.mjs';
-import { clip, gitState, pushed, recordCommit, rootOf, runGit, tracked } from './ledger-git.mjs';
+import { clip, gitState, pushed, recordCommit, recordPushes, rootOf, runGit, tracked } from './ledger-git.mjs';
 import { known, memoryBlobs, nodeIo, sameSnap } from './ledger-io.mjs';
 import { hostEdit, hostFolder, hostOf } from './ledger-remote.mjs';
 import { newId } from './store.mjs';
@@ -371,19 +371,9 @@ export class Ledger {
     }
     const commit = op?.commit && typeof op.commit.sha === 'string' ? { sha: op.commit.sha, branch: String(op.commit.branch ?? '') } : facts.commit;
     if (commit) await this.recordCommit(turn, cmdId, commit, cwd, facts.commit?.message ?? '');
-    if (op?.push || facts.push)
-      this.add(
-        w.convId,
-        this.base(turn, {
-          kind: 'push',
-          id: newId('wp'),
-          commandId: cmdId,
-          branch: clip(op?.push?.branch ?? commit?.branch ?? '', 200),
-          remote: facts.push?.remote ? clip(facts.push.remote, 300) : null,
-          refs: (facts.push?.refs ?? []).slice(0, 20),
-          cwd,
-        }),
-      );
+    // A push Claude Code reported that the command line doesn’t show is the one push, as it says nothing of what it sent.
+    const reported = facts.pushes.length === 0 && op?.push ? [{ remote: null, refs: [] }] : [];
+    recordPushes(this, turn, cmdId, [...facts.pushes, ...reported], op?.push?.branch ?? commit?.branch ?? '', cwd);
     for (const x of facts.external)
       this.add(
         w.convId,
