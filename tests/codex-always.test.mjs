@@ -29,6 +29,14 @@ test('#324 no offer for a prefix that runs any program, an operator, a one-word 
   for (const prefix of [[], ['bash', '-c', 'x'], ['npx', 'tsx'], ['npm', 'run'], ['env', 'X=1'], ['git'], ['gh'], ['cargo'], ['echo', 'a;b'], ['ls', '$(id)']])
     assert.equal(codexAlwaysOffer(command({ proposedExecpolicyAmendment: prefix }).params, EDITS), null, JSON.stringify(prefix));
   assert.equal(codexAlwaysOffer(command().params, EDITS), null, 'nothing proposed');
+  // For a tool with subcommands, the second word must be a subcommand: `git -c` would allow `git -c core.fsmonitor=…`.
+  for (const prefix of [
+    ['git', '-c'],
+    ['git', '-C'],
+    ['git', '--exec-path'],
+    ['gh', '--repo'],
+  ])
+    assert.equal(codexAlwaysOffer(command({ proposedExecpolicyAmendment: prefix }).params, EDITS), null, JSON.stringify(prefix));
   // Two words of a tool with subcommands are fine.
   assert.notEqual(codexAlwaysOffer(command({ proposedExecpolicyAmendment: ['git', 'status'] }).params, EDITS), null);
 });
