@@ -1,14 +1,19 @@
 // `- seed: git-remote` (#305, #296): the run’s throwaway remote takes pushes, nothing in the run reaches a real remote
-// or a real gh, and the end of the run removes the remote and says what’s left. Real git, in temp folders.
+// or a real gh, and the end of the run removes the remote and says what’s left. Real git, in temp folders. A process test
+// (tests/AGENTS.md): HOME is a temp folder of its own and system config is off, so no git here reads your config.
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, test } from 'node:test';
-import { gitRemoteEnv, guardEnv, remoteFacts, remoteNote, remotePaths, seedGitRemote, setUpRemote, tearDownRemote } from '../tools/uat/git-remote.mjs';
+import { after, afterEach, describe, test } from 'node:test';
+import { gitRemoteEnv, guardEnv, remoteFacts, remoteNote, remotePaths, seedGitRemote, setUpRemote, tearDownRemote } from '../../tools/uat/git-remote.mjs';
 
+process.env.HOME = mkdtempSync(join(tmpdir(), 'postbox-uat-git-home-'));
+process.env.GIT_CONFIG_NOSYSTEM = '1';
+const home = process.env.HOME;
+after(() => rmSync(home, { recursive: true, force: true }));
 const made = [];
 afterEach(() => {
   for (const d of made.splice(0)) rmSync(d, { recursive: true, force: true });

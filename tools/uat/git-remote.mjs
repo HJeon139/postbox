@@ -32,7 +32,7 @@ export const remotePaths = (dir) => ({
 
 /** git with only the guard and these arguments; its stdout, trimmed, or null when it fails. */
 function git(args, cwd) {
-  const r = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, ...guardEnv() } });
+  const r = spawnSync('git', args, { cwd, encoding: 'utf8', timeout: 20_000, env: { ...process.env, ...guardEnv() } });
   return r.status === 0 ? r.stdout.trim() : null;
 }
 
