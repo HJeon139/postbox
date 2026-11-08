@@ -107,6 +107,30 @@ test('#1028 opening a folded reply builds its list once, by click, Enter or Spac
   }
 });
 
+for (const how of ['a click', 'Enter', 'Space'])
+  test(`#1028 opening a folded reply by ${how} paints no frame of its text copy`, async ({ page }) => {
+    const { list } = await seeded(page, 3);
+    const summary = list.locator(':scope > summary');
+    // Each frame after the press, before it paints: open with the text copy still in it would show the joined labels.
+    await summary.evaluate((s) => {
+      const d = /** @type {HTMLDetailsElement} */ (s.parentElement);
+      const w = /** @type {any} */ (window);
+      w.pbShown = [];
+      const look = () => w.pbShown.push(d.open && !!d.querySelector(':scope > .steps-folded'));
+      s.addEventListener('click', () => {
+        const frame = () => {
+          look();
+          if (w.pbShown.length < 3) requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      });
+    });
+    if (how === 'a click') await summary.click();
+    else await summary.press(how === 'Enter' ? 'Enter' : ' ');
+    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).pbShown.length)).toBe(3);
+    expect(await page.evaluate(() => /** @type {any} */ (window).pbShown), 'no frame open with the text copy').toEqual([false, false, false]);
+  });
+
 test('#1028 after opening a reply by keyboard, Tab reaches its steps’ own controls in order', async ({ page }) => {
   const { list } = await seeded(page);
   await list.locator('> summary').focus();
