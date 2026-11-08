@@ -27,6 +27,10 @@ const APPS = {
   scroller: `<div style="overflow-x:auto;max-width:100%"><svg width="800" height="80" role="img" aria-label="Wide"><rect x="560" y="0" width="230" height="60" fill="#14213d"/><text x="576" y="36" ${ON}>Peak demand</text></svg></div>`,
   // A label on the page with a dark hairline crossing its middle: the page is behind most of it.
   crossed: `<svg width="320" height="80" role="img" aria-label="Crossed"><line x1="0" y1="31" x2="300" y2="31" stroke="#14213d"/><text x="16" y="36" fill="var(--text)" font-size="14">Peak demand</text></svg>`,
+  // A white label past the SVG’s edge, cut away whole: it doesn’t show, so the page behind isn’t what’s behind it.
+  past: `<svg width="200" height="60" role="img" aria-label="Past"><circle cx="30" cy="30" r="8" fill="var(--accent)"/><text x="230" y="35" ${ON}>Peak demand</text></svg>`,
+  // A white label on a navy shape that ignores the pointer, as an overlay does.
+  ignores: `<svg width="320" height="80" role="img" aria-label="Ignores"><rect x="0" y="0" width="300" height="60" fill="#14213d" style="pointer-events:none"/><text x="16" y="36" ${ON}>Peak demand</text></svg>`,
   // Navy text on a navy shape: too faint, and told to change its ink for that fill.
   faint: `<svg width="320" height="80" role="img" aria-label="Faint"><rect class="band" x="0" y="0" width="300" height="60" fill="#14213d"/><text x="16" y="36" fill="#2b3f66" font-size="14">Peak demand</text></svg>`,
   // A treemap of spending: six tiles whose sizes are the values, with their names inside.
@@ -129,6 +133,8 @@ for (const [id, what] of [
   ['solid', 'a white label on a navy shape'],
   ['scroller', 'a white label in a box that scrolls sideways'],
   ['crossed', 'a label with a hairline crossing its middle'],
+  ['past', 'a white label cut away whole past its SVG’s edge'],
+  ['ignores', 'a white label on a shape that ignores the pointer'],
 ])
   test(`#997 ${what} passes`, () => {
     expect(check(id).status, says(id)).toBe('passed');

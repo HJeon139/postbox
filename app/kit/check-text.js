@@ -20,6 +20,18 @@
     hidden.reset();
     const out = [];
     const [x0, y0] = [scrollX, scrollY];
+    // Asking what’s at a point skips what ignores the pointer, which still shows.
+    const hit = document.head.appendChild(document.createElement('style'));
+    hit.textContent = '* { pointer-events: auto !important; }';
+    try {
+      collectLow(out);
+    } finally {
+      hit.remove();
+    }
+    scrollTo({ left: x0, top: y0, behavior: 'instant' });
+    return out;
+  }
+  function collectLow(out) {
     for (const l of labels()) {
       if (out.length >= 3) break;
       const cs = getComputedStyle(l.el);
@@ -37,8 +49,6 @@
           message: `Text “${clip(l.t)}” (${where(l.el)}) has contrast ${ratio.toFixed(2)}:1 with ${under.on ? `the fill of ${under.on}` : 'the page behind it'}; it needs ${large ? 3 : 4.5}:1. ${under.on ? 'Set dark text on a light fill and light text on a dark one, or put the label beside the mark.' : 'Set text in var(--text) or var(--dim), and keep colors for the marks.'}`,
         });
     }
-    scrollTo({ left: x0, top: y0, behavior: 'instant' });
-    return out;
   }
 
   // What’s painted under an SVG label, as { c, on }, with on naming the shape; or null when the check can’t tell. A
@@ -64,7 +74,10 @@
   }
   // The first thing painted under a point of a label, as { c, on }, or null.
   function paintedAt(el, x, y) {
-    for (const e of document.elementsFromPoint(x, y)) {
+    const stack = document.elementsFromPoint(x, y);
+    // Not showing here: cut off by its SVG, say, so what’s at this point isn’t what’s behind it.
+    if (!stack.some((e) => el.contains(e))) return null;
+    for (const e of stack) {
       if (el.contains(e) || e.closest('text')) continue;
       const p = paintAt(e, x, y);
       if (p === CLEAR) continue;
