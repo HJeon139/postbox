@@ -25,7 +25,7 @@ export function inProcessDaemon(home) {
       return { pid, scoped: false, lingerOff: false };
     },
     askRunner: async (_path, turn) => alive.has(turn),
-    proc: { sameProcess: async () => true, toolGroups: () => [], liveGroups: () => [] },
+    proc: { sameProcess: async () => true, bootId: () => null, toolGroups: () => [], liveGroups: () => [] },
     async writeRunner(o) {
       writes.push(o.line);
       return 10;

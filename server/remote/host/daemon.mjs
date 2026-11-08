@@ -39,9 +39,9 @@
 //
 // The modules, each a concern of the daemon’s, taking its state (`d`, daemon-constants.mjs’s Daemon) first:
 // daemon-create.mjs (createDaemon), daemon-conn.mjs (connections), daemon-hello.mjs, daemon-start.mjs,
-// daemon-read.mjs and daemon-follow.mjs (read and ack), daemon-write.mjs, daemon-stop.mjs, daemon-remove.mjs,
-// daemon-check.mjs (the sign-in check), daemon-scan.mjs (turn folders and timers), daemon-reply.mjs and
-// daemon-files.mjs. The `host` program is daemon-main.mjs, with its locks in daemon-locks.mjs. This file re-exports
+// daemon-read.mjs and daemon-follow.mjs (read and ack), daemon-write.mjs, daemon-stop.mjs and daemon-kill.mjs,
+// daemon-remove.mjs, daemon-check.mjs (the sign-in check), daemon-scan.mjs (turn folders and timers),
+// daemon-reply.mjs and daemon-files.mjs. The `host` program is daemon-main.mjs, with its locks in daemon-locks.mjs. This file re-exports
 // what they offer outside the daemon.
 
 export {

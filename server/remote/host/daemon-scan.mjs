@@ -4,13 +4,13 @@
 import { promises as fsp } from 'node:fs';
 import { REMOTE_LIMITS, TURN_FILES, validateStartRecord } from '../../../shared/remote-protocol.mjs';
 import { readExit, readJson, sizeOf } from './daemon-files.mjs';
-import { forgetSilence, turnRunning } from './daemon-running.mjs';
+import { forgetSilence, turnRunning, unkilled } from './daemon-running.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').TurnFound} TurnFound */
 
 /**
  * Every turn folder: exit.json is ended, a turn daemon-running.mjs finds running is running, and one that’s neither is
- * interrupted. A folder without a valid start.json isn’t a turn the daemon started, and is skipped.
+ * interrupted, and unkilled if its process was still there after the silence ceiling’s SIGKILL (#872). A folder without a valid start.json isn’t a turn the daemon started, and is skipped.
  * @param {Daemon} d @returns {Promise<TurnFound[]>}
  */
 export async function scan(d) {
@@ -42,6 +42,8 @@ async function scanTurn(d, turn) {
     state,
     size: (await d.cleanup.deletedSize(turn)) ?? (await sizeOf(`${dir}/${TURN_FILES.out}`)),
     exit,
+    // As the follower's ended says it, for a laptop that wasn't there for that ended (#872).
+    ...(state === 'interrupted' && unkilled(d, turn) ? { unkilled: true } : {}),
   });
 }
 
