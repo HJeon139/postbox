@@ -92,16 +92,29 @@ export function rulesFor(tool, input = {}) {
     case 'Edit':
     case 'Write':
     case 'MultiEdit':
-    case 'NotebookEdit': {
-      const path = i.file_path ?? i.notebook_path;
-      const verb = tool === 'Read' ? 'reading' : 'changing';
-      return path
-        ? { once: `${tool}(${path})`, always: `${tool}(${path})`, alwaysWords: `${verb} ${path}` }
-        : { once: tool, always: tool, alwaysWords: `${verb} any file` };
-    }
+    case 'NotebookEdit':
+      return pathRules(tool, i.file_path ?? i.notebook_path);
     default:
       return { once: tool, always: tool, alwaysWords: `using ${tool}` };
   }
+}
+
+/**
+ * The rules for a call on one file. Claude Code reads a path rule’s one leading slash as starting in the settings
+ * file’s folder, and two as starting at the root, so an absolute path needs two: `Edit(/a/b)` allowed nothing, and
+ * every Always allow on a file asked again. It matches paths only in Read and Edit rules, and an Edit rule covers every
+ * tool that edits files. It reads a path as gitignore does, so a character it would read as a pattern ([ ] { } * ?, as in
+ * a Next.js route, app/[id]/page.tsx) is escaped. A ) would end the rule early, so a path with an unmatched one gets none.
+ * @param {string} tool @param {unknown} path
+ * @returns {ReturnType<typeof rulesFor>}
+ */
+function pathRules(tool, path) {
+  const verb = tool === 'Read' ? 'reading' : 'changing';
+  if (!path) return { once: tool, always: tool, alwaysWords: `${verb} any file` };
+  const spec = `${String(path).startsWith('/') ? '/' : ''}${String(path).replace(/[\\*?[\]{}]/g, '\\$&')}`;
+  const rule = `${tool === 'Read' ? 'Read' : 'Edit'}(${spec})`;
+  if (!closesAtEnd(rule)) return { once: null, always: null, alwaysWords: '', why: 'paren' };
+  return { once: rule, always: rule, alwaysWords: `${verb} ${path}` };
 }
 
 /** Whether a rule’s parentheses close only at its end, so Claude Code reads it as one rule. @param {string} rule */

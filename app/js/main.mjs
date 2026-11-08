@@ -12,13 +12,12 @@ import { goHome, lastIn, latestIn, remember } from './last-place.mjs';
 import { notify } from './notify-toast.mjs';
 import { mountPane } from './pane.mjs';
 import { canonical } from './pane-route.mjs';
-import { holdFocus } from './rerender-state.mjs';
 import { theme } from './sandbox-libs.mjs';
 import { threadTopbar } from './search-dialog.mjs';
-import { liveMembers, mountEmptyProject, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
+import { mountEmptyProject, mountRail, mountThreads, railHidden, topbar } from './shell.mjs';
 import { mountComposer, mountTranscript } from './thread.mjs';
-import { topbarSig } from './topbar-sig.mjs';
-import { initHoverCards, navigate, refind, route, say, setAttention } from './ui.mjs';
+import { refreshTop, topbarChanged } from './topbar-refresh.mjs';
+import { initHoverCards, navigate, route, say, setAttention } from './ui.mjs';
 
 const root = $('#root');
 let mounted = [];
@@ -47,6 +46,8 @@ function render({ rebuild = false } = {}) {
   for (const m of mounted) m.destroy?.();
   mounted = [];
   pane = null;
+  // Set again only by a room’s view: kept while the project or Threads page shows, it held the room you left (#945).
+  conversation = null;
   if (r.view === 'thread' && !client.state.threads[r.threadId]) {
     navigate('#/');
     return;
@@ -156,7 +157,7 @@ media.addEventListener('change', applyTheme);
 client.on((ch) => {
   if (ch.type === 'settings' || ch.type === 'load') applyTheme();
   if (ch.type === 'notify') notify(ch.data);
-  if (['thread', 'remove', 'project'].includes(ch.type) || (ch.type === 'session' && topbarChanged(ch.data))) refreshTop();
+  if (['thread', 'remove', 'project'].includes(ch.type) || (ch.type === 'session' && topbarChanged(ch.data))) refreshTop({ root, current, render });
   if (ch.type === 'remove' && ch.data.kind === 'thread' && route().threadId === ch.data.id) navigate('#/');
   if (ch.type === 'connection') {
     if (client.connection === 'reconnecting' && client.attempts === 1) say('Connection lost. Reconnecting.');
@@ -164,45 +165,6 @@ client.on((ch) => {
   }
   setAttention(needsYou().length, current?.view === 'thread' ? (client.state.threads[current.threadId]?.title ?? 'Postbox') : 'Postbox');
 });
-
-const topSig = new Map();
-function topbarChanged(se) {
-  const sig = `${se.needs?.kind}|${se.archived}|${se.deleting}`;
-  const changed = topSig.get(se.id) !== sig;
-  topSig.set(se.id, sig);
-  return changed;
-}
-/** What the top bar is drawn from in the open view: topbar()’s arguments. */
-function barView() {
-  if (current.view === 'thread') return { title: client.state.threads[current.threadId]?.title, threadId: current.threadId };
-  if (current.projectId) return { title: current.view === 'threads' ? 'Threads' : '', projectId: current.projectId };
-  return {};
-}
-function refreshTop() {
-  const old = root.querySelector('header.topbar');
-  if (!old || !current) return;
-  // Only a change to what the bar shows rebuilds it: another conversation’s event costs a compare, not a layout (#986).
-  if (old.dataset.sig === topbarSig(barView())) return;
-  let next;
-  if (current.view === 'thread') {
-    const t = client.state.threads[current.threadId];
-    if (!t) return;
-    // Members changed (an agent joined or left): rebuild the whole view, with the keyboard where it was (#739).
-    if (old.dataset.members !== liveMembers(t)) {
-      const back = holdFocus();
-      render({ rebuild: true });
-      back();
-      return;
-    }
-    next = threadTopbar(t);
-  } else if (current.projectId) next = topbar({ title: current.view === 'threads' ? 'Threads' : '', projectId: current.projectId });
-  else next = topbar({});
-  // The keyboard stays where it was: focus on a control of the old bar moves to the same control in the new one.
-  // A rename’s dialog can close before its change arrives, and return focus to the bar this replaces (#26).
-  const back = document.activeElement && old.contains(document.activeElement) ? refind(document.activeElement) : null;
-  old.replaceWith(next);
-  back?.()?.focus();
-}
 
 // ── Hover cards: citations and glossary terms ───────────────────────────────────────────
 
