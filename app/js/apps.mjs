@@ -295,7 +295,7 @@ let resizeTimer = 0;
 addEventListener('resize', () => {
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {
-    for (const rec of frames) if (!rec.check) sizeFrame(rec);
+    for (const rec of frames) sizeFrame(rec); // sizeFrame skips a check frame itself
   }, 100);
 });
 
@@ -430,8 +430,8 @@ function appBody(appId, review) {
   bodySizes.observe(body);
   // A review never unloads, so it isn’t watched for nearness: while it’s mounted, its app may be under the pointer.
   if (review) {
-    // A review renders a new body each time it re-renders: let go of the ones it left behind first.
-    releaseApps();
+    // Its old bodies leave the near set in mayBeUnder(), not here: releaseApps() now would run before the transcript
+    // is attached, and let go of apps above it that aren’t on the page yet (the integrator’s read of #993).
     body.style.maxHeight = 'none';
     nearBodies.add(body);
   }
@@ -738,5 +738,5 @@ addEventListener('focusin', (e) => {
 });
 
 addEventListener('resize', () => {
-  for (const rec of frames) if (!rec.check) sizeFrame(rec);
+  for (const rec of frames) sizeFrame(rec); // sizeFrame skips a check frame itself
 });
