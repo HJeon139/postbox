@@ -26,10 +26,15 @@ const quiet = async (r) => {
 /**
  * A Postbox restarted during @coder’s turn on the host, with no backend registered for it now (#874), after the
  * startup’s attempt to attach it. `registered` is the registry it had, to put back.
- * @param {{ signIn?: any, saved?: object, welcome?: 'running' | 'ended' | 'missing', moved?: boolean }} [o] `saved` patches the
+ * @param {{ signIn?: any, saved?: object, welcome?: 'running' | 'ended' | 'unkilled' | 'missing', moved?: boolean }} [o] `saved` patches the
  * session’s saved remoteTurn before the startup; `moved` puts the agent on this computer since
  */
-async function unregisteredRestart({ signIn = null, saved = null, welcome = /** @type {'running' | 'ended' | 'missing'} */ ('running'), moved = false } = {}) {
+async function unregisteredRestart({
+  signIn = null,
+  saved = null,
+  welcome = /** @type {'running' | 'ended' | 'unkilled' | 'missing'} */ ('running'),
+  moved = false,
+} = {}) {
   const { store, d } = restarted({ welcome });
   const r = rig({ store, d, signIn });
   if (saved) r.rt.updateSession(r.se().id, { remoteTurn: { ...r.se().remoteTurn, ...saved } });
@@ -81,7 +86,7 @@ test('#909 an Interrupted turn whose backend isn’t registered isn’t resumed 
 test('#909 after the backend is installed and Postbox restarted, a turn the host listed running waits for the person, and their Resume starts once', async () => {
   const { r, d } = await unregisteredRestart();
   assert.equal(r.se().remoteTurn.state, 'interrupted');
-  assert.equal(r.se().remoteTurn.resume?.person, true, 'it waits for the person');
+  assert.equal(r.se().remoteTurn.resume?.unkilled, true, 'it waits for the person');
   // Postbox restarts with the backend registered: a new runtime on the saved state, and a new connection.
   r.rt.remote.close();
   d.drop();
@@ -89,7 +94,7 @@ test('#909 after the backend is installed and Postbox restarted, a turn the host
   const again = rig({ store: r.store, d });
   startUp(again);
   await quiet(again);
-  assert.equal(again.se().remoteTurn.resume?.person, true, 'the flag is read back from the saved state');
+  assert.equal(again.se().remoteTurn.resume?.unkilled, true, 'the flag is read back from the saved state');
   back(again);
   await quiet(again);
   assert.equal(starts(d).length, 0, 'not resumed beside a turn that may still run there (#872)');
@@ -103,10 +108,20 @@ test('#909 after the backend is installed and Postbox restarted, a turn the host
   assert.equal(starts(d).length, 1, 'one start');
 });
 
+test('#909 a turn the host lists interrupted, its process there unkilled (#872), waits for the person once the backend is back', async () => {
+  const { r, d, registered } = await unregisteredRestart({ welcome: 'unkilled' });
+  assert.equal(r.se().remoteTurn.state, 'interrupted');
+  assert.equal(r.se().remoteTurn.resume?.unkilled, true, 'its process may still run there');
+  r.rt.adapters = registered;
+  back(r);
+  await quiet(r);
+  assert.equal(starts(d).length, 0, 'not resumed beside a process that may still run');
+});
+
 test('#909 a turn the host listed as ended doesn’t wait for the person, and resumes once the backend is registered again', async () => {
   const { r, d, registered } = await unregisteredRestart({ welcome: 'ended' });
   assert.equal(r.se().remoteTurn.state, 'interrupted');
-  assert.ok(!r.se().remoteTurn.resume?.person, 'nothing runs there to wait on');
+  assert.ok(!r.se().remoteTurn.resume?.unkilled, 'nothing runs there to wait on');
   r.rt.adapters = registered;
   back(r);
   await until(() => starts(d).length === 1, 'the resume');
@@ -118,7 +133,7 @@ test('#909 a turn the host listed as ended doesn’t wait for the person, and re
 test('#909 once the backend is registered again, a turn the host had no record of resumes when the host is back', async () => {
   const { r, d, registered } = await unregisteredRestart({ welcome: 'missing' });
   assert.equal(r.se().remoteTurn.state, 'interrupted');
-  assert.ok(!r.se().remoteTurn.resume?.person, 'nothing runs there to wait on');
+  assert.ok(!r.se().remoteTurn.resume?.unkilled, 'nothing runs there to wait on');
   r.rt.adapters = registered;
   back(r);
   await until(() => starts(d).length === 1, 'the resume');

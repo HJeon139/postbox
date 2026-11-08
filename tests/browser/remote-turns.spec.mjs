@@ -71,7 +71,7 @@ test('#120 each ring’s label says where its agent runs and the connection, not
 
 test('#120 the turn states read in words in the transcript: Sign-in needed and Interrupted with Resume, hung, Lost', async ({ page }) => {
   await open(page);
-  const { signin, interrupted, unregistered, hung, lost } = s.items;
+  const { signin, interrupted, unkilled, unregistered, hung, lost } = s.items;
   await expect
     .soft(item(page, signin).getByRole('alert'))
     .toHaveText(/^Sign-in needed on host\.example\.com · Sign in there, then resume @coder\. Resume it once you’ve signed in\.\s*Resume$/);
@@ -80,6 +80,10 @@ test('#120 the turn states read in words in the transcript: Sign-in needed and I
     .toHaveText(
       /^Interrupted on host\.example\.com · The agent’s process there ended without finishing its turn\. It was interrupted again after Postbox resumed it, so it waits for you\.\s*Resume$/,
     );
+  // #872: a turn whose process there didn’t stop when it was killed isn’t resumed on its own, and the hint says so.
+  await expect
+    .soft(item(page, unkilled).getByRole('alert'))
+    .toContainText('Check it there, then resume @keeper. It may still be running on host.example.com, so it waits for you.');
   // #909: an agent whose backend isn’t registered here says why its turn can’t be followed, and what to do, and that it
   // waits for you, since the turn may still be running there.
   await expect

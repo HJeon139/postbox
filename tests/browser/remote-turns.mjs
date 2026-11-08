@@ -64,8 +64,8 @@ function places(app, hosts, now) {
   const persona = (handle, hostId, backend = 'claude-code') => rt.createPersona({ handle, backend, ...(hostId ? { remote: { hostId } } : {}) });
   // coder: Sign-in needed; fixer: Interrupted; watcher: hung; stopper: stopping, unconfirmed; builder: lost,
   // Disconnected (working); idler: Disconnected (idle); tester: Reconnecting; scout: a Kiro turn’s notice and a
-  // replayed reply; porter: Interrupted after a restart with its backend not registered (#909); cx: Codex’s default,
-  // which runs only on a host.
+  // replayed reply; porter: Interrupted after a restart with its backend not registered (#909); keeper: Interrupted
+  // with its process there unkilled (#872); cx: Codex’s default, which runs only on a host.
   const room = [
     ['coder', A],
     ['fixer', A],
@@ -76,6 +76,7 @@ function places(app, hosts, now) {
     ['tester', C],
     ['scout', A, 'kiro-cli'],
     ['porter', A],
+    ['keeper', A],
     ['cx', B, 'codex'],
   ].map(([handle, host, backend]) => persona(handle, host.id, backend));
   const cx = room.at(-1);
@@ -153,6 +154,40 @@ function turnStates(app, { A, B, room }, ses, now) {
 }
 
 /**
+ * The keeper’s turn, Interrupted with its process there unkilled (#872): it isn’t resumed on its own, since a resume
+ * would run beside it. Returns the reply.
+ */
+function unkilledTurn(app, { A, room }, ses, now) {
+  const { rt } = app;
+  rt.updateSession(ses.keeper.id, {
+    remoteTurn: {
+      hostId: A.id,
+      turn: 'ht_tu_unkilled',
+      offset: 0,
+      rtTurn: 'tu_unkilled',
+      threadId: room.id,
+      at: now,
+      state: 'interrupted',
+      resume: { why: 'interrupted', at: now, unkilled: true },
+      autoResumes: 0,
+    },
+  });
+  const unkilled = rt.addItem(room.id, {
+    kind: 'agent',
+    sessionId: ses.keeper.id,
+    personaId: ses.keeper.personaId,
+    handle: 'keeper',
+    turnId: 'tu_unkilled',
+    text: '',
+    status: 'failed',
+    error:
+      'Interrupted on host.example.com: the agent stopped answering, and its process there didn’t stop when it was killed. Check it there, then resume @keeper.',
+    remote: { state: 'interrupted', hostId: A.id },
+  });
+  return { unkilled };
+}
+
+/**
  * The porter’s turn, Interrupted after a restart because its backend isn’t registered here (#909), and not resumed: the
  * reply says why Postbox can’t follow it. Returns the reply.
  */
@@ -167,7 +202,7 @@ function unregisteredTurn(app, { A, room }, ses, now) {
       threadId: room.id,
       at: now,
       state: 'interrupted',
-      resume: { why: 'interrupted', at: now, person: true },
+      resume: { why: 'interrupted', at: now, unkilled: true },
       autoResumes: 0,
     },
   });
@@ -236,6 +271,6 @@ export async function startRemoteTurns(name) {
   const at = places(app, hosts, now);
   const ses = Object.fromEntries(app.rt.sessionsIn(at.room.id).map((se) => [se.handle, se]));
   const [runner] = app.rt.sessionsIn(at.dm.id);
-  const items = { ...turnStates(app, at, ses, now), ...unregisteredTurn(app, at, ses, now), ...cards(app, at, ses, now) };
+  const items = { ...turnStates(app, at, ses, now), ...unregisteredTurn(app, at, ses, now), ...unkilledTurn(app, at, ses, now), ...cards(app, at, ses, now) };
   return { app, hosts, delivered, ...at, ses, runner, items };
 }
