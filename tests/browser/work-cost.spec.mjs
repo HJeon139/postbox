@@ -5,7 +5,9 @@
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
-test.use({ colorScheme: 'light' });
+// Tracing is off: the trace's snapshot lays out each item the transcript skips (#712a) at every action. With it on, the
+// command case took 30.4 s in the gate against 3.7 s on main, and failed; with it off, 0.6 s, as on main.
+test.use({ colorScheme: 'light', trace: 'off' });
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
