@@ -229,3 +229,17 @@ test('a conversation whose agent had no folder keeps the project’s after its s
   assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, '/srv/project');
   assert.equal((await turn(rt, t).delivered).folder, '');
 });
+
+test('a conversation from before snapshots works in its agent’s folder', async () => {
+  const { store, rt } = setup();
+  const folder = tempDir('pb-persona-folder-unsnapshotted-');
+  const p = rt.createPersona({ handle: 'mo', backend: 'mock', folder });
+  const t = rt.createThread({ projectId: 'p1', title: 'mo', personaIds: [p.id] });
+  const { personaSnapshot: _none, ...old } = rt.sessionsIn(t.id)[0];
+  store.emit('session', old);
+  const se = store.state.sessions[old.id];
+  assert.equal(se.personaSnapshot, undefined);
+  assert.equal(rt.personaFor(se).folder, folder);
+  assert.deepEqual(await rt.commandFolder(t.id), { folder, host: null });
+  assert.equal((await turn(rt, t).delivered).folder, folder);
+});
