@@ -12,6 +12,7 @@ import { h } from './dom.mjs';
 import { restoreDetails } from './rerender-state.mjs';
 import { holdView } from './view-jump.mjs';
 import { holdSkipping } from './view-skip.mjs';
+import { counted, place, ranged, skipsOf } from './window-a11y.mjs';
 import { heightsFor, kindOf } from './window-kept.mjs';
 import { CEILING, CHUNK, FLOOR, MARGIN } from './window-limits.mjs';
 import { drop, dropBottom, dropTop, fill, gapBefore, paintSpacers, pinned, recenter, rejoin, release, shrink } from './window-shrink.mjs';
@@ -74,6 +75,9 @@ class TranscriptWindow {
     this.heights = this.entry.heights;
     /** @type {Map<string, number>} */
     this.indexOf = new Map(this.entry.ids.map((/** @type {string} */ id, /** @type {number} */ i) => [id, i]));
+    /** The indexes of the items that don’t draw, in order, which take no place for a screen reader (window-a11y.mjs). */
+    this.skips = skipsOf(list);
+    this.busyFrame = 0;
     this.above = h('div.win-spacer', { 'aria-hidden': 'true', dataset: { spacer: 'above' } });
     this.below = h('div.win-spacer', { 'aria-hidden': 'true', dataset: { spacer: 'below' } });
     this.gap = 0;
@@ -190,6 +194,7 @@ class TranscriptWindow {
       this.mountRun(this.to, b, this.below);
       this.to = b;
       this.paintBelow();
+      ranged(this);
     }
     this.shrink();
   }
@@ -213,6 +218,7 @@ class TranscriptWindow {
     this.mountRun(a, this.from, first);
     this.from = a;
     this.paintSpacers();
+    ranged(this);
     const moved = first.getBoundingClientRect().top - top;
     if (Math.abs(moved) < 1) return;
     this.scroller().scrollBy(0, moved);
@@ -227,6 +233,7 @@ class TranscriptWindow {
     this.el.append(this.above, this.below);
     this.mountRun(this.from, this.to, this.below);
     this.paintSpacers();
+    ranged(this);
     requestAnimationFrame(() => {
       this.gap = Number.parseFloat(getComputedStyle(this.el).rowGap) || 0;
       this.paintSpacers();
@@ -240,6 +247,7 @@ class TranscriptWindow {
     this.indexOf.set(it.id, this.total);
     this.heights.push(kindOf(it));
     this.entry.ids.push(it.id);
+    counted(this, it);
     if (atEnd) this.to++;
     else this.paintBelow();
     this.scrolled();
@@ -247,6 +255,8 @@ class TranscriptWindow {
   }
   /** An item moved to the end, its stub in its old place (item.move). @param {any} stub @param {any} it */
   moved(stub, it) {
+    // The places of the items that don’t draw stay as they were: a replaced reply is never moved (item.move comes only
+    // from bringForward, which only apps and blocks call, server/apps.mjs and server/blocks.mjs).
     const at = this.indexOf.get(it.id);
     if (at !== undefined) {
       this.indexOf.delete(it.id);
@@ -259,6 +269,7 @@ class TranscriptWindow {
   /** Measures a node the transcript mounted at the end itself. @param {Element} node */
   observe(node) {
     this.sizes.observe(node);
+    place(this, node);
   }
   /** How many items are mounted. */
   get size() {

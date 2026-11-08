@@ -4,6 +4,7 @@
 
 import { h } from './dom.mjs';
 import { saveDetails } from './rerender-state.mjs';
+import { ranged } from './window-a11y.mjs';
 import { CEILING, MARGIN } from './window-limits.mjs';
 
 /** Sets a spacer to stand in for items [a, b). @param {any} w the window @param {HTMLElement} spacer @param {number} a @param {number} b */
@@ -140,6 +141,7 @@ export function dropTop(w, px) {
   w.from += n;
   w.el.insertBefore(w.above, keep);
   w.paintSpacers();
+  ranged(w);
 }
 
 /** Unmounts from the bottom up to `px` of items, down to the ceiling. @param {any} w the window @param {number} px */
@@ -152,6 +154,7 @@ export function dropBottom(w, px) {
   const last = /** @type {HTMLElement} */ (w.nodes.get(w.entry.ids[w.to - 1]));
   last.after(w.below);
   w.paintSpacers();
+  ranged(w);
 }
 
 /**
@@ -168,4 +171,5 @@ export function recenter(w, i) {
   for (const k of below) w.below.after(/** @type {HTMLElement} */ (w.islands.get(k)));
   w.mountRun(w.from, w.to, w.below);
   w.paintSpacers();
+  ranged(w);
 }

@@ -1,11 +1,11 @@
-// Keyboard shortcuts: ⌃J to the next that needs you, ⌘\ for the sidebar, ⌘K for the palette, and Alt+↑/↓ and
-// Alt+End to move through turns and blocks and back to the composer.
+// Keyboard shortcuts: ⌃J to the next that needs you, ⌘\ for the sidebar, ⌘K for the palette, Alt+↑/↓, Home and End
+// to move through turns and blocks (item-nav.mjs), and Alt+End back to the composer.
 
+import { itemEdges, stepItems } from './item-nav.mjs';
 import { nextNeedsYou } from './needs-nav.mjs';
 import { openPalette } from './sheets.mjs';
 import { toggleRail } from './shell.mjs';
 import { focusComposer } from './thread.mjs';
-import { jumpTo } from './view-jump.mjs';
 
 document.addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey;
@@ -25,16 +25,10 @@ document.addEventListener('keydown', (e) => {
     openPalette();
     return;
   }
-  // Alt+↑/↓ moves between turns and blocks; Alt+End returns to the composer.
-  if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-    const items = [...document.querySelectorAll('#main > .item')];
-    if (!items.length) return;
-    e.preventDefault();
-    const at = items.findIndex((n) => n.contains(document.activeElement));
-    const next = items[at < 0 ? items.length - 1 : Math.max(0, Math.min(items.length - 1, at + (e.key === 'ArrowDown' ? 1 : -1)))];
-    next.focus({ preventScroll: true });
-    jumpTo(next, 'nearest');
-  }
+  // Alt+↑/↓ moves between turns and blocks, and Home and End on one go to the first and last (item-nav.mjs, #866);
+  // Alt+End returns to the composer.
+  if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) stepItems(e);
+  if (e.key === 'Home' || e.key === 'End') itemEdges(e);
   if (e.altKey && e.key === 'End') {
     e.preventDefault();
     focusComposer();

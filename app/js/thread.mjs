@@ -17,6 +17,7 @@ import { api, busy, client, hrefOf, itemsOf, placeIn, sessionsAt, sessionsOf, si
 import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
 import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint, placeholderFor } from './composer-to.mjs';
+import { draws } from './counted-items.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { failedCallout } from './failed-actions.mjs';
 import { goToItem } from './go-to-item.mjs';
@@ -41,6 +42,7 @@ import { viewAskBlock } from './view-ask-card.mjs';
 import { mountView } from './view-state.mjs';
 import { welcome } from './welcome.mjs';
 import { createWindow } from './window.mjs';
+import { redrawn } from './window-a11y.mjs';
 import { workList } from './work-list.mjs';
 
 export { focusComposer } from './hop-card.mjs';
@@ -65,6 +67,7 @@ const kept = new Map();
 
 /** A live transcript for one thread. Returns { el, settle, scrollToEnd, setJump, destroy }. */
 export function mountTranscript(threadId, { inPanel = false } = {}) {
+  // Not a feed (#866, W5): a feed may hold only articles, and the welcome and the host-turns row aren’t. Its items are.
   const el = h('div.transcript', { id: inPanel ? null : 'main', tabindex: '-1', 'aria-label': 'Conversation', dataset: { thread: threadId } });
   const nodes = new Map();
   const pending = new Set();
@@ -106,19 +109,23 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     if (it.kind === 'agent') node.dataset.remoteSig = remoteSig(it);
     node.classList.add('item');
     if (!node.hasAttribute('tabindex')) node.tabIndex = -1;
+    if (draws(it)) node.setAttribute('role', 'article');
     return node;
   };
   const rerender = (id) => {
     const list = itemsOf(threadId);
     const i = placeIn(threadId, id);
-    // An item outside the window isn’t on the page; it draws from the state when it’s mounted.
-    if (i < 0 || (win && !nodes.has(id))) return;
+    if (i < 0) return;
+    // An item outside the window isn’t on the page; it draws from the state when it’s mounted. Whether it draws
+    // still moves the places after it (window-a11y.mjs).
+    if (win && !nodes.has(id)) return redrawn(win, list[i], null);
     const old = nodes.get(id);
     // Keep focus, and the caret, inside a block that’s being edited.
     const back = holdFocus();
     const n = render(list[i], list[i - 1]);
     replaceTranscriptItem(old, n, view);
     nodes.set(id, n);
+    if (win) redrawn(win, list[i], n);
     back();
   };
   const mountAt = (/** @type {any[]} */ list, /** @type {number} */ i) => {

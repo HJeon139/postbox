@@ -250,7 +250,7 @@ test('a person who hasn’t answered sees the download card, and Not now is kept
     expect.soft(r.waiting, r.message).toBe(true);
     await page.goto(`${app.origin}/#/t/${t.id}`);
     await synced(page, app);
-    const card = page.getByRole('group', { name: '@researcher asks to see its app' });
+    const card = page.getByRole('article', { name: '@researcher asks to see its app' });
     await expect(card).toContainText('Download Chromium (about 200 MB on disk) so agents can see their apps?');
     await card.getByRole('button', { name: 'Not now' }).click();
     await expect(card).toContainText('Not downloaded. Agents can’t see their apps.');
