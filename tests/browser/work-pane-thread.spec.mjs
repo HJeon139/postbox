@@ -172,6 +172,41 @@ async function threadEndAfterGrow(page, { width, height }) {
 
 /** #837’s other side: following the end, full screen and back still follows it. */
 async function threadFollows(page) {
+  await page.addInitScript(() => {
+    const log = (w) => (window.__vlog ||= []).push([w, new Error().stack.split('\n').slice(2, 7).join(' | ')]);
+    const d = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
+    Object.defineProperty(Element.prototype, 'scrollTop', {
+      get: d.get,
+      set(x) {
+        if (this.classList?.contains('sp-body')) log(`set ${x} from ${this.scrollTop}`);
+        d.set.call(this, x);
+      },
+      configurable: true,
+    });
+    for (const [C, m] of [
+      [Element, 'scrollIntoView'],
+      [Element, 'scrollBy'],
+      [Element, 'scrollTo'],
+      [HTMLElement, 'focus'],
+    ]) {
+      const o = C.prototype[m];
+      C.prototype[m] = function (...a) {
+        log(`${m} ${this.tagName}.${this.className} ${JSON.stringify(a)}`);
+        return o.apply(this, a);
+      };
+    }
+    addEventListener(
+      'scroll',
+      (e) => {
+        const b = e.target;
+        if (b?.classList?.contains('sp-body'))
+          (window.__vlog ||= []).push([
+            `scroll-event ${b.scrollTop} ${b.scrollHeight} ${b.clientHeight} active=${document.activeElement?.tagName}.${document.activeElement?.className}`,
+          ]);
+      },
+      true,
+    );
+  });
   await open(page, `/side/${topic}?work`);
   await settled(page);
   const pl = await place(page);
