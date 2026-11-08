@@ -22,6 +22,8 @@ const APPS = {
   // An 800 px SVG in a box that scrolls sideways: at 375 px its last label is off to the side, where the page can’t
   // scroll to it, and at 1280 px it shows on its navy shape.
   scroller: `<div style="overflow-x:auto;max-width:100%"><svg width="800" height="80" role="img" aria-label="Wide"><rect x="560" y="0" width="230" height="60" fill="#14213d"/><text x="576" y="36" ${ON}>Peak demand</text></svg></div>`,
+  // A label on the page with a dark hairline crossing its middle: the page is behind most of it.
+  crossed: `<svg width="320" height="80" role="img" aria-label="Crossed"><line x1="0" y1="31" x2="300" y2="31" stroke="#14213d"/><text x="16" y="36" fill="var(--text)" font-size="14">Peak demand</text></svg>`,
   // Navy text on a navy shape: too faint, and told to change its ink for that fill.
   faint: `<svg width="320" height="80" role="img" aria-label="Faint"><rect class="band" x="0" y="0" width="300" height="60" fill="#14213d"/><text x="16" y="36" fill="#2b3f66" font-size="14">Peak demand</text></svg>`,
   kit: `<div style="padding:12px;color:var(--text)"><h2 style="margin:0 0 8px">Kit sampler</h2>
@@ -66,6 +68,7 @@ for (const [id, what] of [
   ['route', 'a white label on a thick route line'],
   ['solid', 'a white label on a navy shape'],
   ['scroller', 'a white label in a box that scrolls sideways'],
+  ['crossed', 'a label with a hairline crossing its middle'],
 ])
   test(`#997 ${what} passes`, () => {
     expect(check(id).status, says(id)).toBe('passed');

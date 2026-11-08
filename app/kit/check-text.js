@@ -43,9 +43,9 @@
 
   // What’s painted under an SVG label, as { c, on }, with on naming the shape; or null when the check can’t tell. A
   // label’s own halo (a wide stroke painted first, as d3 draws one) is what’s behind it. Otherwise the page scrolls the
-  // label into view, and the first thing painted under its middle decides. A gradient or pattern, a shape drawn by
-  // <use>, an image, a translucent paint, a label the page can’t scroll to (in a box that scrolls sideways), or nothing
-  // under it at all can’t be measured.
+  // label into view, and the first thing painted under it decides, where two of three points across it agree. A
+  // gradient or pattern, a shape drawn by <use>, an image, a translucent paint, a label the page can’t scroll to (in a
+  // box that scrolls sideways), or nothing under it at all can’t be measured.
   function behind(el) {
     const cs = getComputedStyle(el);
     const halo = rgb(cs.stroke);
@@ -57,7 +57,13 @@
       r = el.getBoundingClientRect();
     }
     if (off()) return null;
-    const [x, y] = [r.left + r.width / 2, r.top + r.height / 2];
+    // Three points on a diagonal across it, so a hairline through it, level or upright, isn’t taken for what’s behind
+    // it: two must agree.
+    const votes = [0.25, 0.5, 0.75].map((f) => paintedAt(el, r.left + r.width * f, r.top + r.height * f));
+    return votes.find((v, i) => v && votes.some((w, j) => j !== i && w && w.c.r === v.c.r && w.c.g === v.c.g && w.c.b === v.c.b)) ?? null;
+  }
+  // The first thing painted under a point of a label, as { c, on }, or null.
+  function paintedAt(el, x, y) {
     for (const e of document.elementsFromPoint(x, y)) {
       if (el.contains(e) || e.closest('text')) continue;
       const p = paintAt(e, x, y);
