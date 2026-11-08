@@ -64,6 +64,7 @@ test('a plain name in any script passes, quotes, < and & included', () => {
 test('a name with a hidden character hears that first, whatever else is wrong with it', () => {
   assert.equal(nameProblem('/a\u202eb.md'), REFUSED);
   assert.equal(nameProblem('a//\u2800.md'), REFUSED);
+  assert.equal(nameProblem(`${'a'.repeat(300)}\u202e.md`), REFUSED);
   assert.equal(nameProblem('/plain.md'), 'An asset’s name is relative to the room: it doesn’t start with /.');
   assert.equal(nameProblem('a/../b.md'), 'An asset’s name has no empty, . or .. part.');
 });

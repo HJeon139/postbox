@@ -56,8 +56,21 @@ test('a folder that isn’t text but would turn into blank text is refused as no
 });
 
 test('a folder with a bidi control, a zero-width character or a lone surrogate is refused', async () => {
-  for (const folder of ['/tmp/a\u202eb', '/tmp/\u2066x\u2069', '/tmp/a\u200bb', '/tmp/a\u200db', '\ufeff/tmp', '/tmp/a\ud800b', '/tmp/a\udc00'])
-    await refused(folder, HIDDEN);
+  for (const folder of ['/tmp/a\u202eb', '/tmp/\u2066x\u2069', '/tmp/a\u200bb', '\ufeff/tmp', '/tmp/a\ud800b', '/tmp/a\udc00']) await refused(folder, HIDDEN);
+});
+
+test('a folder with a character an asset name refuses as invisible is refused too: a Hangul filler, a variation selector, a grapheme joiner, a tag', async () => {
+  for (const folder of ['/tmp/x\u3164', '/tmp/x\u115f', '/tmp/x\ufe0f', '/tmp/a\u034fb', '/tmp/a\u{e0041}b']) await refused(folder, HIDDEN);
+});
+
+test('a folder whose name joins letters with ZWNJ or ZWJ, as Persian names and emoji do, makes the project there', async () => {
+  for (const name of ['\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645', 'a\u200db']) {
+    const folder = join(realpathSync(tempDir('pb-projects-')), name);
+    mkdirSync(folder);
+    const store = new Store(null);
+    const p = await createProject(store, { name: 'Joined', folder });
+    assert.deepEqual(store.state.projects[p.id], { id: p.id, name: 'Joined', folder });
+  }
 });
 
 test('a folder with a . or .. part or a // is refused, never normalized', async () => {
