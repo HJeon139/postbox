@@ -2,6 +2,35 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.45.0 (2026-11-08)
+
+### Features
+
+- **uat:** the arena shows a person no repeats, and every intent keeps to 16 words
+- **apps:** an app’s intent is at most 16 words, and a longer one is flagged
+- **uat:** the side-by-side judge compares two pictures, not a picture and words
+- **uat:** a blind page calibrates the side-by-side judge against the maintainer
+- **uat:** a judge compares a run’s first picture with a words-only answer
+- **uat:** the visual judge compares each app’s takeaway with the agent’s intent
+- **apps:** show_app and update_app take the picture’s one-sentence intent
+
+### Fixes
+
+- **uat:** a run with no first picture isn’t saved as one for good
+- **apps:** every way of showing an app flags a long intent once, with its true length
+- **uat:** no repeats in the arena hold across pages, not only within one
+- **uat:** one failed judge call can’t lose the calibration key
+- **uat:** a calibration page’s saved picks belong to that page
+- **apps:** show_block takes an app block’s intent as show_app does
+- **uat:** the calibration page has a content security policy
+- **guide:** corpus.search’s result names author and year again
+- **uat:** each picture judge reads only what it’s shown, from a folder of its own
+- **uat:** a picture judge that throws can’t stop a run before its report
+- **uat:** the picture judges run after the verifier, so they can’t spend its reserve
+- **uat:** the side-by-side judge sees the finished app, not its check at work
+- **uat:** a recheck keeps a run’s picture choice and its pair of answers
+- **uat:** the words answer starts from the run’s first files, not the agent’s
+
 ## 1.44.4 (2026-11-08)
 
 ### Fixes
