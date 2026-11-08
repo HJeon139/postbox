@@ -65,14 +65,19 @@ function scrollToEnd(v, smooth = false) {
 function release(v) {
   if (v.el.style.getPropertyValue('--held')) v.el.style.removeProperty('--held');
 }
+/** Whether the page got shorter since the view last measured it. @param {View} v @param {Element} s */
+const shrank = (v, s) => s.scrollHeight < v.held.end;
 // After anything changes size: back to the bottom while stuck, else keep what you were reading in place.
 /** @param {View} v */
 function follow(v) {
   noteEnd(v);
   const s = box(v);
   if (!s || v.dead) return;
-  // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back.
-  if (v.stuck && s.scrollTop < v.lastTop - 1 && !atEnd(s)) {
+  // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back. Unless the page got
+  // shorter since: then the move is the browser’s, as Firefox anchors the view when skipped items draw shorter than
+  // their estimates (#712a), and it still follows. A reply landing, or an item growing, as you scroll makes it taller.
+  const up = v.lastTop - s.scrollTop;
+  if (v.stuck && up > 1 && !atEnd(s) && !shrank(v, s)) {
     v.stuck = false;
     v.anchor = findAnchor(v);
     // The anchor is taken where the view now is, so that scroll is heard: heard() below mustn’t take it in again.
