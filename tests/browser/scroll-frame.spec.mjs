@@ -155,7 +155,7 @@ test('#341 a scroll up after a jump, with a resize heard before its event, lets 
 
 // Firefox, as skipped items above draw shorter than their estimates, moves the view up to keep what’s on screen still
 // (#712a; Linux Firefox with shorter items, and the Mac): the page got shorter, and the move up isn’t you. Here, while
-// following: an item above shrinks, the view moves up by more, and a resize is heard before the scroll event.
+// following: an item above shrinks 40 px, the view moves up 56 px, and a resize is heard before the scroll event.
 test('#712a following, a move up the browser makes as the page gets shorter keeps the view following', async ({ page }) => {
   const { t } = room('Following, the page shorter');
   await open(page, t);
@@ -163,12 +163,32 @@ test('#712a following, a move up the browser makes as the page gets shorter keep
   await page.evaluate(() => {
     const items = document.querySelectorAll('#main > [data-key]');
     const above = /** @type {HTMLElement} */ (items[items.length - 6]);
+    const s = /** @type {Element} */ (document.scrollingElement);
+    const at = s.scrollTop;
     above.style.marginTop = '-40px';
-    scrollBy(0, -60);
+    // Up by what the page lost and 16 px more, as Linux Firefox went 20 px past (59 against 39).
+    s.scrollTop = at - 56;
     dispatchEvent(new Event('resize'));
   });
   await settled(page);
   expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'it still follows').toBe('following');
+});
+
+// critic's P2 on #959: the browser's move is tied to what the page lost; your scroll isn't. Following, you scroll up
+// 300 px in the same task as an item at the end goes, 100 px shorter: that's you, and the view reads.
+test('#712a following, a scroll up of yours as the page gets shorter in the same frame reads where you went', async ({ page }) => {
+  const { t } = room('Following, a scroll up as the page shrinks');
+  await open(page, t);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode')).toBe('following');
+  await page.evaluate(() => {
+    const items = document.querySelectorAll('#main > [data-key]');
+    const last = /** @type {HTMLElement} */ (items[items.length - 1]);
+    last.style.marginBottom = '-100px';
+    scrollBy(0, -300);
+    dispatchEvent(new Event('resize'));
+  });
+  await settled(page);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'it reads where you scrolled').toBe('reading');
 });
 
 test('#341 two resizes before the scroll event take an unheard scroll once, not twice', async ({ page }) => {
