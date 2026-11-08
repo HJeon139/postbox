@@ -185,15 +185,35 @@ test('a jump to an item during the jump to the end lands on that item, reading',
   await readingAtTop(page, 'Smooth jump, then a jump to an item');
   await page.locator('.jump').getByRole('button').click();
   await expect.poll(() => page.evaluate(() => scrollY), { message: 'the jump to be on its way' }).toBeGreaterThan(2000);
-  const key = await page.evaluate(async () => {
+  // The smooth scroll’s scrollend is heard three frames late, after the jump has put its item back, as a busy page may
+  // hear it: a capturing listener holds it, then sends it on. Then each frame for half a second, how close the view
+  // came to the end. Without halt() ending the smooth jump, that late scrollend takes the view the rest of the way.
+  const { key, closest } = await page.evaluate(async () => {
     const { jumpTo } = await import('/app/js/view-jump.mjs');
     const item = /** @type {HTMLElement} */ (document.querySelectorAll('#main > [data-key]')[700]);
+    const frame = () => new Promise(requestAnimationFrame);
+    const hold = (/** @type {Event} */ e) => {
+      if (!e.isTrusted) return;
+      e.stopImmediatePropagation();
+      removeEventListener('scrollend', hold, true);
+      void frame()
+        .then(frame)
+        .then(frame)
+        .then(() => document.dispatchEvent(new Event('scrollend', { bubbles: true })));
+    };
+    addEventListener('scrollend', hold, true);
     jumpTo(item);
-    return item.dataset.key;
+    const gaps = [];
+    for (let f = 0; f < 30; f++) {
+      await frame();
+      gaps.push(document.documentElement.scrollHeight - innerHeight - scrollY);
+    }
+    return { key: item.dataset.key, closest: Math.round(Math.min(...gaps)) };
   });
   await still(page);
-  const v = { mode: await page.locator('#main.transcript').getAttribute('data-view-mode'), gap: await gap(page) };
+  const v = { mode: await page.locator('#main.transcript').getAttribute('data-view-mode'), gap: await gap(page), closest };
   test.info().annotations.push({ type: 'measured', description: JSON.stringify(v) });
   await expect(page.locator(`#main > [data-key="${key}"]`), 'the item you went to is in view').toBeInViewport();
   expect.soft(v.mode, 'it reads there').toBe('reading');
+  expect.soft(v.closest, 'no frame after the jump went to the end').toBeGreaterThan(400);
 });
