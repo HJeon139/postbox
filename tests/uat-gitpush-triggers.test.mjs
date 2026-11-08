@@ -53,6 +53,15 @@ describe('push-card-landed', () => {
     const allowed = [card({ at: T, detail: 'git push', status: 'allowed', answeredAt: T + 500 })];
     assert.deepEqual(fired('push-card-landed', facts({ items: allowed })), []);
   });
+
+  test('a command of many short options reads in linear time: CodeQL’s js/redos input on #1001', () => {
+    // As CodeQL’s alert gave it: “git ” and many repetitions of “-C -! ”, which no push ends.
+    const detail = `git ${'-C -! '.repeat(26)}x`;
+    const items = [card({ at: T, detail, status: 'allowed', answeredAt: T + 500 })];
+    const started = performance.now();
+    assert.deepEqual(fired('push-card-landed', facts({ items, pushes: pushesAt(1, T) })), []);
+    assert.ok(performance.now() - started < 200, `took ${Math.round(performance.now() - started)} ms`);
+  });
 });
 
 describe('always-allow-no-card', () => {
