@@ -3,7 +3,7 @@
 // It owns that state for one transcript, holds the anchor through changes in size (#88, #297, #341), and publishes what
 // it is on the transcript as data-view-* (publish, view-publish.mjs). Moved from thread.mjs’s mountTranscript (#531).
 
-import { inSight, measure } from './view-box.mjs';
+import { browserMoved, inSight, measure } from './view-box.mjs';
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
  *   anchor: { key: string, at: number } | null, pinned: boolean, smoothing: boolean, dead: boolean, shown: number,
@@ -65,19 +65,17 @@ function scrollToEnd(v, smooth = false) {
 function release(v) {
   if (v.el.style.getPropertyValue('--held')) v.el.style.removeProperty('--held');
 }
-/** Whether the page got shorter since the view last measured it. @param {View} v @param {Element} s */
-const shrank = (v, s) => s.scrollHeight < v.held.end;
 // After anything changes size: back to the bottom while stuck, else keep what you were reading in place.
 /** @param {View} v */
 function follow(v) {
   noteEnd(v);
   const s = box(v);
   if (!s || v.dead) return;
-  // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back. Unless the page got
-  // shorter since: then the move is the browser’s, as Firefox anchors the view when skipped items draw shorter than
-  // their estimates (#712a), and it still follows. A reply landing, or an item growing, as you scroll makes it taller.
+  // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back. Unless the move is the
+  // browser’s, keeping what’s on screen still as skipped items above draw shorter than their estimates, as Firefox does
+  // (#712a): that move is tied to what the page lost, and a scroll of yours isn’t.
   const up = v.lastTop - s.scrollTop;
-  if (v.stuck && up > 1 && !atEnd(s) && !shrank(v, s)) {
+  if (v.stuck && up > 1 && !atEnd(s) && !browserMoved(v, s, up)) {
     v.stuck = false;
     v.anchor = findAnchor(v);
     // The anchor is taken where the view now is, so that scroll is heard: heard() below mustn’t take it in again.

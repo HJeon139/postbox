@@ -32,3 +32,15 @@ export function inSight(v) {
   const bar = document.querySelector('header.topbar')?.getBoundingClientRect().bottom ?? 0;
   return { top: Math.max(0, bar), bottom: s.clientHeight };
 }
+// How far past what the page lost the browser’s move may go: Linux Firefox moved the view up 59 px as the page lost 39
+// (the shorter-items case in view-skipped-append.spec.mjs), and the Mac’s Firefox 18 px (researcher’s trace).
+const BROWSER_SLACK = 24;
+/**
+ * Whether a move up of up px is the browser’s: the page got shorter since the view last measured it, by no less than
+ * the move less BROWSER_SLACK. A reply landing or an item growing as you scroll makes it taller (#341’s cases).
+ * @param {View} v @param {Element} s @param {number} up
+ */
+export function browserMoved(v, s, up) {
+  const lost = v.held.end - s.scrollHeight;
+  return lost > 0 && up <= lost + BROWSER_SLACK;
+}
