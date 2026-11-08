@@ -54,6 +54,53 @@ export function fill(el, ...children) {
   return append(el, children);
 }
 
+/** The longest a press holds off a repaint (#898), so a press that rests on a panel doesn’t freeze what it shows. */
+const HOLD_MS = 3000;
+const TEXT_FIELD = 'input, textarea, [contenteditable]';
+
+/**
+ * Wraps a panel’s paint so a press in root holds it until the press ends (#898). A repaint replaces root’s buttons, and
+ * a press that began on one and ends on its replacement isn’t a click to the browser, so it was lost. While a pointer
+ * is down in root, or Space (which clicks on its keyup) is down on a control there, a paint waits; the press’s end
+ * paints once, after its click, or HOLD_MS after the first press began, whichever comes first. One that ends after
+ * root has left the page paints nothing. Returns the paint to call.
+ * @param {HTMLElement} root  @param {() => void} paint
+ * @returns {() => void}
+ */
+export function heldPaint(root, paint) {
+  /** @type {AbortController | null} */
+  let hold = null;
+  let pending = false;
+  let bound = 0;
+  const flush = () => {
+    hold?.abort();
+    hold = null;
+    clearTimeout(bound);
+    const due = pending && root.isConnected;
+    pending = false;
+    if (due) paint();
+  };
+  const start = () => {
+    if (hold) return;
+    hold = new AbortController();
+    const opts = { capture: true, signal: hold.signal };
+    // After the click the press ends in, which the browser dispatches after pointerup and Space’s keyup.
+    const end = () => setTimeout(flush);
+    window.addEventListener('pointerup', end, opts);
+    window.addEventListener('pointercancel', end, opts);
+    window.addEventListener('keyup', (e) => e.key === ' ' && end(), opts);
+    bound = window.setTimeout(flush, HOLD_MS);
+  };
+  root.addEventListener('pointerdown', start);
+  root.addEventListener('keydown', (e) => {
+    if (e.key === ' ' && !e.repeat && !(e.target instanceof Element && e.target.closest(TEXT_FIELD))) start();
+  });
+  return () => {
+    if (hold) pending = true;
+    else paint();
+  };
+}
+
 export const icon = (name, extra = '') => h(`span.i.i-${name}${extra ? '.' + extra : ''}`, { 'aria-hidden': 'true' });
 
 export const $ = (sel, root = document) => root.querySelector(sel);

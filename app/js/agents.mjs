@@ -18,7 +18,7 @@ import { agentQueueButton } from './agent-queue.mjs';
 import { toolSwitch } from './agent-tools.mjs';
 import { paintTree, subagentToggle } from './agent-tree.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
-import { fill, h, syncList } from './dom.mjs';
+import { fill, h, heldPaint, syncList } from './dom.mjs';
 import { openAsksEl } from './open-asks.mjs';
 import { MODES, openPermissions } from './permissions.mjs';
 import { hostLine, hostOf, stopNote, turnLine } from './remote.mjs';
@@ -172,7 +172,7 @@ export function openAgentPanel(sessionId, from = null) {
   };
   const failed = (e) => toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' });
 
-  const paint = () => {
+  const paint = heldPaint(body, () => {
     const se = S().sessions[sessionId];
     if (!se || se.archived) {
       dlg?.close();
@@ -289,7 +289,7 @@ export function openAgentPanel(sessionId, from = null) {
         ),
       ),
     );
-  };
+  });
   /** Closes the panel (focus goes back to its row or ring), then does what the button leads to. */
   const handOff = (next) => {
     dlg?.close();
@@ -309,7 +309,7 @@ export function openAgentPanel(sessionId, from = null) {
     // The model’s choice, or for a mock agent its first tool.
     initialFocus: () => body.querySelector('[role=radiogroup] [aria-checked="true"]') ?? body.querySelector('[role=switch]'),
   });
-  // Items don’t repaint it: its open-asks button keeps itself up to date, and a rebuild per item forced a layout (#866).
+  // Not items: a rebuild per item forced a layout, and its open-asks button keeps itself up to date (#866). A press defers one (#898).
   const off = client.on((ch) => {
     if (ch.type === 'session' ? ch.data.id === sessionId : ['persona', 'load'].includes(ch.type)) paint();
   });

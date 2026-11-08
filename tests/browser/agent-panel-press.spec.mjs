@@ -186,3 +186,59 @@ test('a panel closed while a press is held paints nothing when it’s let go', a
   await frames(page);
   expect(await page.evaluate(() => /** @type {any} */ (window).pbPainted), 'the closed panel repainted nothing').toBe(0);
 });
+
+test.describe('by touch at 375 px', () => {
+  test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+
+  /** A finger on the page, through the DevTools protocol, so it stays down between the events it sends. */
+  const finger = async (page) => {
+    const cdp = await page.context().newCDPSession(page);
+    return (type, at) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: at ? [at] : [] });
+  };
+
+  test('a tap held on Ask me while the panel repaints picks it', async ({ page }) => {
+    await panelOpen(page);
+    const touch = await finger(page);
+    await touch('touchStart', await centerOf(askMe(page)));
+    const text = await repaint(page);
+    await touch('touchEnd');
+    await expect.soft(panel(page).locator('.perm-status')).toHaveText(PICKED);
+    await expect.soft.poll(modeOnServer, { message: 'the persona in Ask me' }).toBe('ask');
+    await expect.soft(sub(page), 'the repaint it held landed').toContainText(text, { timeout: 1500 });
+  });
+
+  test('a touch the browser cancels lets the repaint land', async ({ page }) => {
+    await panelOpen(page);
+    const touch = await finger(page);
+    await touch('touchStart', await centerOf(askMe(page)));
+    const text = await repaint(page);
+    expect.soft(await sub(page).textContent(), 'held at first').not.toContain(text);
+    await touch('touchCancel');
+    await expect.soft(sub(page), 'the repaint it held landed').toContainText(text, { timeout: 1500 });
+    expect.soft(modeOnServer(), 'the mode unchanged').toBe('bypass');
+  });
+});
+
+test('Space typed in a text field doesn’t hold a repaint', async ({ page }) => {
+  // The panel has no text field today; a root that holds one, painted the way the panel is.
+  await page.goto(`${app.origin}/#/t/${room.id}`);
+  await synced(page, app);
+  await page.evaluate(() =>
+    import('/app/js/dom.mjs').then(({ h, heldPaint }) => {
+      const w = /** @type {any} */ (window);
+      const root = h('div', h('textarea', { 'aria-label': 'Draft' }));
+      document.body.append(root);
+      w.pbPaints = 0;
+      w.pbPaint = heldPaint(root, () => w.pbPaints++);
+    }),
+  );
+  await page.getByRole('textbox', { name: 'Draft' }).focus();
+  await page.keyboard.down('Space');
+  const painted = await page.evaluate(() => {
+    const w = /** @type {any} */ (window);
+    w.pbPaint();
+    return w.pbPaints;
+  });
+  expect(painted, 'painted at once').toBe(1);
+  await page.keyboard.up('Space');
+});
