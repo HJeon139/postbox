@@ -118,7 +118,25 @@
     }));
   }
 
-  const KIT_CLASSES = new Set(['btn', 'sm', 'ghost', 'chip', 'on', 'pill', 'field', 'label', 'input', 'select', 'dim', 'small', 'mono', 'seg', 'tbl', 'katex']);
+  const KIT_CLASSES = new Set([
+    'btn',
+    'sm',
+    'ghost',
+    'primary',
+    'chip',
+    'on',
+    'pill',
+    'field',
+    'label',
+    'input',
+    'select',
+    'dim',
+    'small',
+    'mono',
+    'seg',
+    'tbl',
+    'katex',
+  ]);
   function classCollisions() {
     const names = new Set();
     for (const el of document.body.querySelectorAll('[class]'))
