@@ -43,7 +43,7 @@ export function whenSmoothEnds(done) {
 
 // The smooth jump to the end stopped. The items it passed drew at their real sizes on the way, so the end has moved:
 // unless you did something meanwhile, go the rest of the way. If you did, a wheel turn or a drag ended it (Chromium
-// drops a wheel turn's own scroll), and that's you reading where it stopped (view-smooth.mjs).
+// drops a wheel turn's own scroll), and that's you reading where it stopped (whenSmoothEnds, above).
 /** @param {View} v @param {boolean} stoppedByYou */
 export function smoothEnded(v, stoppedByYou) {
   const s = box(v);
@@ -60,7 +60,7 @@ export function smoothEnded(v, stoppedByYou) {
 }
 /**
  * A jump to an item ends the smooth jump to the end, and says whether one ran: smoothEnded would take the rest of the
- * way otherwise, since a jump isn’t input that can scroll (view-smooth.mjs). The jump’s own scroll ends the browser’s.
+ * way otherwise, since a jump isn’t input that can scroll (whenSmoothEnds, above). The jump’s own scroll ends the browser’s.
  * @param {View} v
  */
 export function halt(v) {

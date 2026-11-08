@@ -108,7 +108,8 @@ function heard(v, s) {
   if (sizeOf(s) !== v.size) return;
   v.anchor = { key: v.anchor.key, at: v.anchor.at - unheard };
   v.lastTop = s.scrollTop;
-  // Its event then looks like the transcript’s own scroll: onScroll still counts it as yours.
+  // Its event then looks like the transcript’s own scroll: onScroll still counts it as one the transcript didn’t make
+  // (yours, or the browser’s own clamp, which clamped there tells apart).
   v.heardYou = true;
 }
 // Only your own scrolling unsticks the view: content growing never scrolls, and the browser doesn’t anchor
@@ -128,8 +129,10 @@ function onScroll(v) {
   const clamped = sizeOf(s) !== v.size && s.scrollTop < v.seenTop;
   // Nor is the transcript’s own hold of your place reaching the end: after a clamp, the items that came into view draw
   // from their estimates (#712a), and holding the anchor through that can move the view down to the end.
-  const youReachedEnd = (moved || v.heardYou) && !clamped;
+  // A scroll heard() took in first is one the transcript didn’t make, as one that moved is.
+  const yours = moved || v.heardYou;
   v.heardYou = false;
+  const youReachedEnd = yours && !clamped;
   if (atEnd(s) && (v.stuck || youReachedEnd)) {
     if (!v.stuck) v.held = measure(v, s);
     v.stuck = true;
@@ -139,7 +142,7 @@ function onScroll(v) {
   v.lastTop = s.scrollTop;
   v.seenTop = s.scrollTop;
   v.size = sizeOf(s);
-  if (moved) v.pinned = false;
+  if (yours) v.pinned = false;
   // Reading at the end, the view was put there, by a clamp or by its own hold, not by you: keep the anchor you read at.
   if (v.stuck || atEnd(s)) return;
   if (!moved) holdAnchor(v);
@@ -284,9 +287,9 @@ export function mountView({ el, inPanel, nodes, was }) {
   const resized = () => follow(v);
   const scrolled = thenPublish(() => onScroll(v));
   v.sizes = new ResizeObserver(resized);
-  // Only the main pane skips. A panel’s box changes width going full screen and back, and its skipped items in view
-  // then draw at the new width over the frames after, so the browser clamps the view again once the new size is seen,
-  // which #837 takes for you reaching the end (work-pane-thread.spec.mjs).
+  // Only the main pane skips: with skipping on, the side panel fails #837’s two near-end cases at 1280 px
+  // (work-pane-thread.spec.mjs). The likely cause, not proven: going full screen and back changes the box’s width, and
+  // its items in view draw at the new width over the frames after, clamping the view again once the size is seen.
   if (!inPanel) skipOffscreen(el);
   // A change that makes the transcript shorter while stuck (a held height released, an app’s check giving way to its
   // frame) pulls the view up to the page’s new end. That isn’t you, but its scroll event can come after the page grew
