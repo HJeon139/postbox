@@ -91,6 +91,7 @@ test('an empty, missing or null folder still means the project’s folder, on ma
   ])
     assert.equal(rt.createPersona({ handle, backend: 'claude-code', folder }).folder, '', String(folder));
   const p = rt.createPersona({ handle: 'delta', backend: 'claude-code', folder: '/srv/d' });
+  assert.equal(rt.updatePersona(p.id, { description: 'its folder isn’t in the change' }).folder, '/srv/d');
   assert.equal(rt.updatePersona(p.id, { folder: '' }).folder, '');
   assert.equal(rt.updatePersona(p.id, { folder: '/srv/d' }).folder, '/srv/d');
   assert.equal(rt.updatePersona(p.id, { folder: null }).folder, '');
@@ -140,7 +141,10 @@ test('a stored folder’s refusal shows its hidden and control characters as esc
     [`${root}/a\u0000b`, CONTROL, `${at}\\u0000b"`],
     [`${root}/a\u0085b`, CONTROL, `${at}\\u0085b"`],
     [{ toString: () => '/tmp' }, NOT_TEXT, '{}'],
+    [`${root}/a\u{e0041}b`, HIDDEN, `${at}\\u{e0041}b"`],
     [`/${'a'.repeat(5000)}`, TOO_LONG, `"/${'a'.repeat(198)}…`],
+    // 200 characters as shown, quotes included, is shown whole.
+    ['a'.repeat(198), RELATIVE, `"${'a'.repeat(198)}"`],
   ];
   for (const [folder, why, shown] of cases)
     await assert.rejects(
@@ -161,6 +165,8 @@ test('an agent stored with a full-path folder, or none, still works where it did
   assert.equal(existsSync(own), true);
   assert.equal(await agentFolder({ handle: 'alpha', folder: '' }, { folder: root }, join(root, 'w')), root);
   assert.equal(await agentFolder({ handle: 'alpha', folder: '' }, null, join(root, 'w')), join(root, 'w', 'alpha'));
+  assert.equal(await agentFolder({ handle: 'beta' }, null, join(root, 'w')), join(root, 'w', 'beta'));
+  assert.equal(await agentFolder({ handle: 'gamma', folder: null }, { folder: root }, join(root, 'w')), root);
 });
 
 test('an adapter’s folder for an agent refuses a stored relative folder', async () => {
