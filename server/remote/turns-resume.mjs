@@ -133,10 +133,11 @@ export async function reattach(rts, sessionId) {
     rts.restoring.delete(r.turn);
     rts.early.delete(r.turn);
     releaseHost(rts, r.hostId);
-    // A turn the host still lists may still be running there: resumed on its own once the backend is back, a second
-    // turn would run beside it on the same session (#872), so it waits for the person. A moved one waits anyway.
-    const person = Boolean(listed) && !moved;
-    interrupted(rts, sessionId, whyNotAttached(now.handle, persona, { listed: Boolean(listed), moved }), { person });
+    // A turn the host lists as running may still be running there: resumed on its own once the backend is back, a
+    // second turn would run beside it on the same session (#872), so it waits for the person. One listed as ended or
+    // interrupted can’t, and a moved one waits anyway (autoResume’s hostOf check).
+    const mayRun = listed?.state === 'running' && !moved;
+    interrupted(rts, sessionId, whyNotAttached(now.handle, persona, { listed: Boolean(listed), moved }), { person: mayRun });
     return;
   }
   // Running, ended or interrupted, it’s replayed from the start, so the reply is whole: what came before is replaced.
@@ -182,7 +183,10 @@ export function interrupted(rts, sessionId, why, { person = false } = {}) {
     error: message,
     remote: { state: 'interrupted', hostId: se.remoteTurn.hostId },
   });
-  updateRemote(rts, sessionId, { state: 'interrupted', at: rts.now(), resume: { why: 'interrupted', at: rts.now(), ...(person ? { person } : {}) } });
+  /** @type {{ why: string, at: number, person?: boolean }} */
+  const resume = { why: 'interrupted', at: rts.now() };
+  if (person) resume.person = true;
+  updateRemote(rts, sessionId, { state: 'interrupted', at: rts.now(), resume });
   rt.updateSession(sessionId, {
     state: 'failed',
     needs: { kind: 'failed', itemId: it.id, text: message },
