@@ -9,6 +9,7 @@ import { appendFileSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, 
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import { fileURLToPath } from 'node:url';
+import { EVENTS } from '../shared/state.mjs';
 import { setStreamTap } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
 import { keepEvent } from './room-events.mjs';
@@ -201,10 +202,11 @@ function recordLine(rt, begun) {
 
 /**
  * Starts telemetry for a runtime (server/index.mjs calls it at start): the stream tap, the events of recorded rooms, the
- * deletion of a removed conversation’s recordings and reports, and the 30-day sweep, now and once a day.
- * @param {any} rt @returns {() => void} stops it
+ * deletion of a removed conversation’s recordings and reports, and the 30-day sweep, now and once a day. `events` is the
+ * table whose public flags decide what is kept, EVENTS but in a test.
+ * @param {any} rt @param {typeof EVENTS} [events] @returns {() => void} stops it
  */
-export function watchTelemetry(rt) {
+export function watchTelemetry(rt, events = EVENTS) {
   const off = setStreamTap(rt, tapFor(rt));
   const unsubscribe = rt.store.subscribe((ev) => {
     // Whether or not it records now: a room that once did may have saved reports (R11).
@@ -213,7 +215,10 @@ export function watchTelemetry(rt) {
     const whole = ev.type === 'session.patch' ? rt.s.sessions[ev.data?.id] : null;
     const threadId = whole ? whole.threadId : ev.data?.threadId;
     if (!threadId || !rt.s.threads[threadId]) return;
-    const kept = whole ? keepEvent(ev.seq, 'session', whole) : keepEvent(ev.seq, ev.type, ev.data);
+    // keepEvent reads the patch’s own public flag before it keeps the session it leaves (#646). Patching that session
+    // again changes nothing, so it is handed over as the session before the patch.
+    const sessions = whole ? new Map([[whole.id, whole]]) : undefined;
+    const kept = keepEvent(ev.seq, ev.type, ev.data, sessions, events);
     const dir = kept && recordingDir(rt, threadId);
     // A failed write here would throw into the store’s other listeners: it’s a gap instead.
     try {
