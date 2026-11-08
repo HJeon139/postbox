@@ -1,0 +1,106 @@
+// The main pane’s size changing while you read near the end (#712a, critic’s P2 on #959). Its items off screen are
+// skipped, so after a change the items that come into view draw from their estimates over the frames after. Where the
+// change clamps the view to the end (the window taller than the gap), the transcript’s own hold of your place through
+// those draws moved the view down to the end, and onScroll took that for you reaching it: the view followed, then took
+// a new anchor. Narrowing and widening, with Work beside or the window, and growing taller and back: the view keeps
+// reading, at its place. The gap is a fair measure here: each case’s items drew once at the start, at their real sizes.
+import { expect, test } from '@playwright/test';
+import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { bigRoom, still } from './view-skipped-fixture.mjs';
+
+// Tracing is off: Playwright's trace snapshots walk all 1,000 items with their skipped styles each action.
+test.use({ colorScheme: 'light', trace: 'off' });
+
+/** @type {Awaited<ReturnType<typeof startPostbox>>} */
+let app;
+test.beforeAll(async () => {
+  app = await startPostbox('view-skipped-width');
+});
+test.afterAll(async () => app?.stop());
+failOnPageErrors(test);
+
+/** How far the main pane’s view is from its end, and whether it reads or follows. */
+const place = (page) =>
+  page.evaluate(() => ({
+    gap: Math.round(document.documentElement.scrollHeight - innerHeight - scrollY),
+    mode: /** @type {HTMLElement} */ (document.querySelector('#main.transcript'))?.dataset.viewMode ?? '',
+  }));
+
+/** A 1,000-item room open at that size, read up from its end by up px. */
+async function readingNearEnd(page, title, { width = 1280, height = 900, up = 400 } = {}) {
+  const conv = bigRoom(app, title);
+  await page.setViewportSize({ width, height });
+  await page.goto(`${app.origin}/#/t/${conv.id}`);
+  await synced(page, app);
+  await expect(page.locator(`.transcript[data-thread="${conv.id}"] > .item`)).toHaveCount(1000, { timeout: 15_000 });
+  await still(page);
+  await page.evaluate((by) => scrollTo(0, document.documentElement.scrollHeight - innerHeight - by), up);
+  await still(page);
+  const before = await place(page);
+  // It really is up from the end, and reads: a check that can fail.
+  expect(before.gap, 'scrolled up from the end').toBeGreaterThanOrEqual(up - 10);
+  expect(before.mode).toBe('reading');
+  return { conv, before };
+}
+
+/** Each frame for 40 frames, the view’s mode, so a frame that followed is seen even if it reads again after. */
+const modes = (page) =>
+  page.evaluate(async () => {
+    const seen = new Set();
+    for (let f = 0; f < 40; f++) {
+      await new Promise(requestAnimationFrame);
+      seen.add(/** @type {HTMLElement} */ (document.querySelector('#main.transcript'))?.dataset.viewMode);
+    }
+    return [...seen];
+  });
+
+/** After the width changed and changed back: still reading, every frame, at the gap it had. */
+async function keptPlace(page, before, narrowed) {
+  test.info().annotations.push({ type: 'measured', description: JSON.stringify({ before, narrowed, after: await place(page) }) });
+  expect(narrowed.modes, 'narrowed, each frame reading').toEqual(['reading']);
+  const after = await place(page);
+  expect(after.mode, 'back at its width, still reading').toBe('reading');
+  expect(Math.abs(after.gap - before.gap), `the gap to the end, ${before.gap} px before and ${after.gap} px after`).toBeLessThanOrEqual(3);
+}
+
+test('#712a read 400 px up, Work opens beside the main pane and closes: the view keeps reading, at its place', async ({ page }) => {
+  const { before } = await readingNearEnd(page, 'Width: Work beside');
+  const width = () => page.evaluate(() => document.querySelector('#main.transcript')?.getBoundingClientRect().width);
+  const wide = await width();
+  await page.locator('header.topbar #work-button').click();
+  await expect.poll(width, { message: 'the main pane to narrow as Work opens' }).toBeLessThan(/** @type {number} */ (wide) - 100);
+  const narrowed = { modes: await modes(page), ...(await place(page)) };
+  await page.locator('header.topbar #work-button').click();
+  await expect.poll(width, { message: 'the main pane to widen as Work closes' }).toBe(wide);
+  await still(page);
+  await keptPlace(page, before, narrowed);
+});
+
+test('#712a read 400 px up, the window narrows and widens: the view keeps reading, at its place', async ({ page }) => {
+  const { before } = await readingNearEnd(page, 'Width: the window');
+  await page.setViewportSize({ width: 900, height: 900 });
+  const narrowed = { modes: await modes(page), ...(await place(page)) };
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await still(page);
+  await keptPlace(page, before, narrowed);
+});
+
+// The two that clamp the view: the content after it shrinks by more than the gap as the window widens, or the window
+// grows taller than the gap, and the items that come into view then draw from their estimates.
+test('#712a read 60 px up at 900 px, the window widens and narrows: the view keeps reading, at its place', async ({ page }) => {
+  const { before } = await readingNearEnd(page, 'Width: wider, near the end', { width: 900, up: 60 });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const narrowed = { modes: await modes(page), ...(await place(page)) };
+  await page.setViewportSize({ width: 900, height: 900 });
+  await still(page);
+  await keptPlace(page, before, narrowed);
+});
+
+test('#712a read 400 px up, the window grows 500 px taller and back: the view keeps reading, at its place', async ({ page }) => {
+  const { before } = await readingNearEnd(page, 'Height: taller');
+  await page.setViewportSize({ width: 1280, height: 1400 });
+  const narrowed = { modes: await modes(page), ...(await place(page)) };
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await still(page);
+  await keptPlace(page, before, narrowed);
+});
