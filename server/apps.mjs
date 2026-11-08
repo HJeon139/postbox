@@ -4,7 +4,8 @@
 
 import { followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
-import { LIMITS } from '../shared/limits.mjs';
+import { INTENT_CHARS, LIMITS } from '../shared/limits.mjs';
+import { wordCount } from '../shared/text.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { notYours } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
@@ -20,9 +21,21 @@ const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small', 'dashes-too-f
 
 /**
  * What a version should leave the reader with, as the agent said it (#995), or '' when it said nothing: a missing or
- * malformed intent never refuses an app, and a long one is cut to the limit.
+ * malformed intent never refuses an app, and a very long one is cut for storage.
  */
-const intentOf = (v) => (typeof v === 'string' ? v.trim().slice(0, LIMITS.appIntent) : '');
+const intentOf = (v) => (typeof v === 'string' ? v.trim().slice(0, INTENT_CHARS) : '');
+
+/**
+ * The receipt’s note on an intent past its word limit, or ''. It’s flagged, not refused: the app is the work, and the
+ * agent can say it shorter with update_app. @param {unknown} v
+ */
+function intentNote(v) {
+  const n = wordCount(intentOf(v));
+  return n > LIMITS.appIntentWords ? ` Its intent has ${n} words: say it in at most ${LIMITS.appIntentWords} with update_app.` : '';
+}
+
+/** A receipt with the intent’s note, when there is one. @param {any} r @param {unknown} intent */
+const withIntentNote = (r, intent) => (r.ok && intentNote(intent) ? { ...r, message: r.message + intentNote(intent) } : r);
 
 // ── Apps ───────────────────────────────────────────────────────────────────────────
 
@@ -227,7 +240,7 @@ export function showApp(rt, sessionId, tools, { id, title, code, permissions = [
   const blockId = id ?? newId('app');
   const existing = rt.store.pending.app(blockId);
   if (existing?.sessionId === sessionId) return tools.update_app({ id: blockId, code, permissions, title, intent }, given);
-  return tools.show_block(
+  const shown = tools.show_block(
     {
       block: {
         id: blockId,
@@ -242,6 +255,7 @@ export function showApp(rt, sessionId, tools, { id, title, code, permissions = [
     },
     given,
   );
+  return withIntentNote(shown, intent);
 }
 
 /**
@@ -283,5 +297,5 @@ export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code,
     if (app.threadId === threadId()) endSegment();
     moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
   }
-  return appReceipt(next, `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.`);
+  return withIntentNote(appReceipt(next, `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.`), intent);
 }

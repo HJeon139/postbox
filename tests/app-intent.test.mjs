@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
-import { LIMITS } from '../shared/limits.mjs';
+import { INTENT_CHARS } from '../shared/limits.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 
 class Quiet {
@@ -45,10 +45,10 @@ test('#995 a missing, malformed or long intent never refuses an app', () => {
   const { store, tools } = setup();
   assert.equal(tools.show_app({ id: 'none', title: 'A', code: '<p>1</p>' }).ok, true);
   assert.equal(tools.show_app({ id: 'odd', title: 'B', code: '<p>1</p>', intent: 42 }).ok, true);
-  assert.equal(tools.show_app({ id: 'long', title: 'C', code: '<p>1</p>', intent: 'x'.repeat(LIMITS.appIntent + 50) }).ok, true);
+  assert.equal(tools.show_app({ id: 'long', title: 'C', code: '<p>1</p>', intent: 'x'.repeat(INTENT_CHARS + 50) }).ok, true);
   assert.deepEqual(intents(store, 'none'), ['']);
   assert.deepEqual(intents(store, 'odd'), ['']);
-  assert.equal(intents(store, 'long')[0].length, LIMITS.appIntent);
+  assert.equal(intents(store, 'long')[0].length, INTENT_CHARS);
 });
 
 test('#995 show_app and update_app offer intent, and neither requires it', () => {
@@ -57,4 +57,16 @@ test('#995 show_app and update_app offer intent, and neither requires it', () =>
     assert.equal(def?.inputSchema.properties.intent?.type, 'string', `${name} has no intent`);
     assert.ok(!def.inputSchema.required.includes('intent'), `${name} requires intent`);
   }
+});
+
+test('#995 an intent over 16 words is kept and flagged, so the agent can say it shorter', () => {
+  const { store, tools } = setup();
+  const long = 'This picture shows how the monthly cost of each subscription compares with how often you actually used it lately.';
+  const shown = tools.show_app({ id: 'lab', title: 'A', code: '<p>1</p>', intent: long });
+  assert.equal(shown.ok, true);
+  assert.match(shown.message, /Its intent has 19 words: say it in at most 16 with update_app\./);
+  assert.equal(intents(store, 'lab')[0], long);
+  const short = tools.update_app({ id: 'lab', code: '<p>2</p>', intent: 'Six subscriptions cost over $10 a use.' });
+  assert.doesNotMatch(short.message, /Its intent has/);
+  assert.match(tools.update_app({ id: 'lab', code: '<p>3</p>', intent: long }).message, /Its intent has 19 words/);
 });
