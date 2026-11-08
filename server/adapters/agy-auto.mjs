@@ -9,8 +9,11 @@
 //   that isn’t listed, since some run a program (git grep -O, sort --compress-program, rg --pre);
 // - a fetch of a public http(s) address with no query or fragment. A search, or a fetch with a query or fragment,
 //   could carry data out, so it isn’t approved here.
-// What these rules leave goes on to Postbox’s permission_prompt: there the reviewer (#416) judges it, and a write outside
-// Postbox (gh’s issue and pull request writes, an MCP tool that writes) keeps its card (#112), as in Claude Code’s Auto.
+// Beyond these rules, Auto runs what the persona’s own tools allow (personaAllows, #416, option A, the person’s pick of
+// 8 November 2026): with shell any command, with web.fetch any search or fetch, and any MCP tool outside Postbox that
+// doesn’t publish. So these rules matter for a persona without shell or web.fetch; with them, Auto works like Run
+// everything for those tools, and nothing judges the call. A tool that publishes outside Postbox is refused in every mode
+// for a persona that can’t publish (publishingCall). What’s left goes on to Postbox’s permission_prompt, as a card.
 // Nothing routine runs code the agent could have written (#423’s review): npm test and npm run run the folder’s
 // scripts, and git commit its hooks, so they ask. git runs only where the folder’s .git is a real folder, which edits
 // in Auto can’t change without a card (agy-hook.mjs), so its config can’t name a program git would run (core.fsmonitor,
@@ -19,6 +22,7 @@
 import { lstatSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
 import { splitCommand } from '../../shared/command-chains.mjs';
+import { isPublishingTool } from './setup.mjs';
 
 /**
  * The options a command may take: short letters on their own, short letters that take a value, long options on their
@@ -271,4 +275,42 @@ export function autoAllows(name, args, where) {
     default:
       return false;
   }
+}
+
+/**
+ * Whether Auto runs this call because the persona’s own tools allow it (#416, option A, the person’s pick of 8 Nov
+ * 2026): Antigravity’s Auto works like Run everything for the tools its persona has. With shell, any command runs, so
+ * the hook’s guards on .git and Antigravity’s own files hold only for the edit tools, not for a command that reaches
+ * the same files; the one command guard left is PROTECTED_CMD’s card for a command naming them (agy-hook.mjs). With
+ * web.fetch, any search or fetch runs. An MCP tool outside Postbox runs; one that publishes is refused before this
+ * for a persona that can’t publish (publishingCall). Nothing else judges these calls: Claude Code keeps its
+ * classifier and Codex its auto_review, but agy has no Auto of its own on this account.
+ * @param {string} name @param {any} args @param {string[]} tools  the persona’s Tools checklist
+ */
+export function personaAllows(name, args, tools) {
+  if (name === 'run_command') return tools.includes('shell');
+  if (name === 'search_web' || name === 'read_url_content') return tools.includes('web.fetch');
+  return name === 'call_mcp_tool' && typeof args?.ServerName === 'string' && typeof args?.ToolName === 'string' && args.ToolName !== '';
+}
+
+/**
+ * Whether an MCP call is one of the tools that publish outside Postbox (setup.mjs, PUBLISHING_TOOLS, the list Claude
+ * Code’s --disallowedTools gets), which the hook refuses in every mode for a persona that can’t publish.
+ * @param {string} name @param {any} args
+ */
+export const publishingCall = (name, args) => name === 'call_mcp_tool' && isPublishingTool(`mcp__${args?.ServerName ?? ''}__${args?.ToolName ?? ''}`);
+
+/**
+ * The persona’s tools and whether it may publish, as antigravity-cli.mjs passes them to the hook: POSTBOX_AGY_TOOLS,
+ * a JSON list, and POSTBOX_AGY_PUBLISH, “1” when it may. Anything unreadable is no tools and no publishing.
+ * @param {Record<string, string | undefined>} env @returns {{ tools: string[], canPublish: boolean }}
+ */
+export function personaOf(env) {
+  let tools = [];
+  try {
+    tools = JSON.parse(env.POSTBOX_AGY_TOOLS || '[]');
+  } catch {
+    tools = [];
+  }
+  return { tools: Array.isArray(tools) ? tools.filter((t) => typeof t === 'string') : [], canPublish: env.POSTBOX_AGY_PUBLISH === '1' };
 }
