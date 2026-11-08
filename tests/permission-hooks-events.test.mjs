@@ -1,9 +1,10 @@
 // #871: the permissions panel names every hook that could approve a tool call, or change its input, without the
-// card, since `disableAllHooks` turns them all off in Postbox’s turns: a PreToolUse hook (permissionDecision,
-// updatedInput) and a PermissionRequest hook (decision.behavior allow, updatedInput), as the Agent SDK’s types say
-// (PreToolUseHookSpecificOutput and PermissionRequestHookSpecificOutput in sdk.d.ts). Each row says its event. The
-// reader treats a PermissionRequest hook as it does a PreToolUse one: hostile text marked, credentials hidden, long
-// text cut, and a shape it doesn’t know failing the whole file.
+// card, since `disableAllHooks` turns them all off in Postbox’s turns in Ask me and Accept edits (they run in Auto
+// and Run everything, #806): a PreToolUse hook (permissionDecision, updatedInput) and a PermissionRequest hook
+// (decision.behavior allow, updatedInput), as the Agent SDK’s types say (PreToolUseHookSpecificOutput and
+// PermissionRequestHookSpecificOutput in sdk.d.ts). Each row says its event. The reader treats a PermissionRequest
+// hook as it does a PreToolUse one: hostile text marked, credentials hidden, long text cut, and a shape it doesn’t
+// know failing the whole file.
 
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
