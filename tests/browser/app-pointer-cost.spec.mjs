@@ -134,6 +134,38 @@ async function reviewGoesLive(page, width) {
 }
 
 /**
+ * The integrator’s read of #993: an app that left the near margin but hasn’t unloaded yet, brought back under a
+ * resting pointer in one scroll. That scroll’s own event finds the near set empty and doesn’t look, so only the
+ * IntersectionObserver reporting the body in view can make the frame live.
+ */
+async function backUnderPointer(page, width) {
+  const r = await room(page, `Back under ${width}`);
+  await r.lines(4, 'Before');
+  const title = `Back ${width}`;
+  await r.show(title);
+  await r.lines(80, 'After');
+  const f = frameOf(page, title);
+  await f.evaluate((n) => n.scrollIntoView({ block: 'center' }));
+  await settled(page);
+  await expect(f, 'loaded near the view').toHaveAttribute('data-sized', '1');
+  const b = /** @type {{ x: number, y: number, width: number, height: number }} */ (await f.boundingBox());
+  const rest = { x: b.x + b.width / 2, y: b.y + Math.min(40, b.height / 2) };
+  await page.mouse.move(rest.x, rest.y);
+  await expect(f, 'live under the pointer').toHaveClass(/\blive\b/);
+  // Far away in one scroll, and back in another, well within the 1.5 s before a far app unloads.
+  const away = await page.evaluate(() => {
+    const d = 4 * innerHeight;
+    scrollBy(0, d);
+    return d;
+  });
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  await expect(f, 'not live while far away').not.toHaveClass(/\blive\b/);
+  await page.evaluate((d) => scrollBy(0, -d), away);
+  await expect(f, 'still loaded: it came back before unloading').toHaveAttribute('data-sized', '1');
+  await expect(f, 'live again under the resting pointer').toHaveClass(/\blive\b/);
+}
+
+/**
  * critic’s read of #930: an app review renders a new body each time it re-renders (a comment, an answer), and the
  * bodies it left behind stayed in the near set until the whole transcript went, so the page kept looking under the
  * pointer. Here a review is shown, re-rendered twice, answered, and moved far off screen.
@@ -194,4 +226,6 @@ for (const width of [375, 1280])
     test('#930 an app review in view becomes live when it scrolls under the resting pointer', ({ page }) => reviewGoesLive(page, width));
 
     test('#930 a re-rendered, answered app review far off screen leaves no look under the pointer', ({ page }) => staleReviewLooks(page, width));
+
+    test('#930 an app brought back under a resting pointer before it unloads becomes live', ({ page }) => backUnderPointer(page, width));
   });
