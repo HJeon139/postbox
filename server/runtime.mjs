@@ -37,9 +37,9 @@ import { Ledger } from './ledger.mjs';
 import { sendLint } from './lint-delivery.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
 import * as queue from './message-queue.mjs';
+import { alwaysFor } from './permission-always.mjs';
 import {
   allowAlways,
-  alwaysFor,
   askPerson,
   expireStalePermissions,
   readsRules,
