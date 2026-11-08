@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, describe, test } from 'node:test';
 import { gitRemoteEnv, preflightRemote, remotePaths, seedGitRemote } from '../../tools/uat/git-remote.mjs';
+import { runEnv } from '../../tools/uat/run-env.mjs';
 
 process.env.HOME = mkdtempSync(join(tmpdir(), 'postbox-uat-guard-home-'));
 process.env.GIT_CONFIG_NOSYSTEM = '1';
@@ -52,10 +53,46 @@ describe('a per-protocol setting doesn’t get past the guard', () => {
   });
 });
 
+describe('the person’s own git config doesn’t reach the agent’s push', () => {
+  test('a global pushInsteadOf and a failing global hook, and a system pushInsteadOf, change nothing: the push lands on the run’s remote', () => {
+    const r = run();
+    const elsewhere = join(r.dir, 'elsewhere.git');
+    sh('git', ['init', '-q', '--bare', elsewhere], r.dir);
+    const hooks = join(r.dir, 'person-hooks');
+    mkdirSync(hooks);
+    writeFileSync(join(hooks, 'pre-push'), '#!/bin/sh\nexit 1\n');
+    chmodSync(join(hooks, 'pre-push'), 0o755);
+    // As the person’s ~/.gitconfig might: every push to the run’s remote rewritten to another one, and a hook that refuses.
+    writeFileSync(join(home, '.gitconfig'), `[url "${elsewhere}"]\n\tpushInsteadOf = ${remotePaths(r.dir).remote}\n[core]\n\thooksPath = ${hooks}\n`);
+    const system = join(r.dir, 'system.gitconfig');
+    writeFileSync(system, `[url "${elsewhere}"]\n\tpushInsteadOf = ${remotePaths(r.dir).remote}\n`);
+    const { GIT_CONFIG_NOSYSTEM: _, ...base } = process.env;
+    const env = { ...base, GIT_CONFIG_SYSTEM: system, ...gitRemoteEnv({ seed: 'git-remote' }, r.dir) };
+    try {
+      assert.equal(commit({ ...r, env }).status, 0);
+      const p = sh('git', ['push', '-q', 'origin', 'main'], r.workspace, env);
+      assert.equal(p.status, 0, p.stderr);
+      assert.ok(sh('git', ['-C', remotePaths(r.dir).remote, 'rev-parse', 'main'], r.dir, env).stdout.trim(), 'the run’s remote has main');
+      assert.notEqual(sh('git', ['-C', elsewhere, 'rev-parse', '--verify', '-q', 'main'], r.dir, env).status, 0, 'the other remote got nothing');
+    } finally {
+      rmSync(join(home, '.gitconfig'), { force: true });
+    }
+  });
+});
+
 describe('the run checks its guard before any turn', () => {
   test('a run seeded as it should be passes', () => {
     const r = run();
     assert.doesNotThrow(() => preflightRemote(r.workspace, r.dir, r.env));
+  });
+
+  test('it passes on the very environment the runner gives Postbox, and so the agent: runEnv’s', () => {
+    const r = run();
+    const paths = { streams: join(r.dir, 'streams'), kiroStreams: '', agyStreams: '', codexStreams: '' };
+    const scenario = { seed: 'git-remote', gh: 'yes', skills: 'on' };
+    const env = { ...process.env, ...runEnv({ gate: { env: {} }, paths, scenario, dir: r.dir, opt: { telemetry: 'no' }, faults: null }) };
+    assert.doesNotThrow(() => preflightRemote(r.workspace, r.dir, env));
+    assert.equal(env.GIT_CONFIG_GLOBAL, join(r.dir, 'gitconfig'));
   });
 
   test('origin pointing anywhere but the run’s remote stops the run', () => {

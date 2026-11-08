@@ -32,8 +32,13 @@ const turn = (mode, started, commands) => ({
 });
 
 describe('push-card-landed', () => {
-  test('a push with git’s own options before it is still a push: -c k=v and -C dir', () => {
-    for (const detail of ['git -c user.name=UAT push origin work', 'git -C ../workspace push origin work']) {
+  test('a push with git’s own options before it, or after && in a chain, is still a push', () => {
+    for (const detail of [
+      'git -c user.name=UAT push origin work',
+      'git -C ../workspace push origin work',
+      'git --git-dir=.git push origin work',
+      'cd sub && git push origin work',
+    ]) {
       const items = [card({ at: T, detail, status: 'allowed', answeredAt: T + 500 })];
       assert.equal(fired('push-card-landed', facts({ items, pushes: pushesAt(1, T) })).length, 1, detail);
     }

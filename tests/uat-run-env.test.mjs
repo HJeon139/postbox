@@ -18,9 +18,12 @@ test('a git-remote run’s Postbox gets the guard, the fake gh first, the agent�
   assert.equal(e.GH_CONFIG_DIR, '/r/gh-config');
   assert.equal(e.CLAUDE_ENV_FILE, '/r/agent-env.sh');
   assert.equal(e.SSH_AUTH_SOCK, '');
+  assert.equal(e.GIT_CONFIG_GLOBAL, '/r/gitconfig', 'the person’s own ~/.gitconfig: hooks, credential helpers, insteadOf');
+  assert.equal(e.GIT_CONFIG_NOSYSTEM, '1', 'nor the system’s, as Homebrew’s');
 });
 
 test('any other run’s Postbox gets none of it', () => {
   const e = env(null);
-  for (const k of ['GIT_ALLOW_PROTOCOL', 'GIT_CONFIG_COUNT', 'GH_CONFIG_DIR', 'CLAUDE_ENV_FILE', 'SSH_AUTH_SOCK']) assert.equal(e[k], undefined, k);
+  for (const k of ['GIT_ALLOW_PROTOCOL', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_GLOBAL', 'GH_CONFIG_DIR', 'CLAUDE_ENV_FILE', 'SSH_AUTH_SOCK'])
+    assert.equal(e[k], undefined, k);
 });
