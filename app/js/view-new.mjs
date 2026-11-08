@@ -27,5 +27,6 @@ export function newView({ el, inPanel, nodes, was }) {
     bound: null,
     size: '',
     seenTop: 0,
+    heardYou: false,
   });
 }

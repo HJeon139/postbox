@@ -7,7 +7,7 @@ import { inSight, measure } from './view-box.mjs';
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
  *   anchor: { key: string, at: number } | null, pinned: boolean, smoothing: boolean, dead: boolean, shown: number,
- *   lastTop: number, seenTop: number, held: { end: number, last: number, width: number },
+ *   lastTop: number, seenTop: number, heardYou: boolean, held: { end: number, last: number, width: number },
  *   jump: ((n: number) => void) | null, bound: any, size: string, sizes: ResizeObserver, changes: MutationObserver,
  *   changed?: boolean, noted?: number }} View
  */
@@ -108,6 +108,8 @@ function heard(v, s) {
   if (sizeOf(s) !== v.size) return;
   v.anchor = { key: v.anchor.key, at: v.anchor.at - unheard };
   v.lastTop = s.scrollTop;
+  // Its event then looks like the transcript’s own scroll: onScroll still counts it as yours.
+  v.heardYou = true;
 }
 // Only your own scrolling unsticks the view: content growing never scrolls, and the browser doesn’t anchor
 // (overflow-anchor is off), so the view moving up means you moved it, by wheel, keys or a drag, even over an app.
@@ -126,7 +128,8 @@ function onScroll(v) {
   const clamped = sizeOf(s) !== v.size && s.scrollTop < v.seenTop;
   // Nor is the transcript’s own hold of your place reaching the end: after a clamp, the items that came into view draw
   // from their estimates (#712a), and holding the anchor through that can move the view down to the end.
-  const youReachedEnd = moved && !clamped;
+  const youReachedEnd = (moved || v.heardYou) && !clamped;
+  v.heardYou = false;
   if (atEnd(s) && (v.stuck || youReachedEnd)) {
     if (!v.stuck) v.held = measure(v, s);
     v.stuck = true;
