@@ -12,6 +12,13 @@ export function setAppFrameTest(test) {
 /** @type {HTMLIFrameElement | null} the app frame under the pointer */
 export let live = null;
 
+// The app bodies near the view (apps.mjs keeps it: its IntersectionObserver’s, and app reviews while mounted). While
+// there are none and no frame is live, no app can be under the pointer, so the page doesn’t look (#930): a look is a
+// layout of the whole page, and a change anywhere on it asked for one, a frame at a time.
+/** @type {Set<Element>} */
+export const nearBodies = new Set();
+const mayBeUnder = () => nearBodies.size > 0 || live !== null;
+
 function makeLive(f) {
   if (f === live) return;
   const was = live;
@@ -41,13 +48,14 @@ function frameAt(x, y) {
 let pointer = null;
 function onPointer(e) {
   pointer = { x: e.clientX, y: e.clientY };
-  makeLive(frameAt(e.clientX, e.clientY));
+  if (mayBeUnder()) makeLive(frameAt(e.clientX, e.clientY));
 }
 for (const type of ['pointermove', 'pointerover', 'pointerdown']) addEventListener(type, onPointer, true);
 
 let relook = 0;
-function relookSoon() {
-  if (!pointer || relook) return;
+/** Looks again, next frame, for the app frame under a resting pointer; apps.mjs calls it when an app comes near. */
+export function relookSoon() {
+  if (!pointer || relook || !mayBeUnder()) return;
   relook = requestAnimationFrame(() => {
     relook = 0;
     if (pointer) makeLive(frameAt(pointer.x, pointer.y));

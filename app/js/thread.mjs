@@ -10,7 +10,7 @@ import { agentMarkdown, handles, markTerms, paintAgentMarkdown, usesTerm } from 
 import { paintOfflineQueue, paintWaitingLine } from './agent-queue.mjs';
 import { subagentNow } from './agents.mjs';
 import { allowedCallLine } from './allowed-call.mjs';
-import { enhanceMarkdown, renderAppItem, renderAppSendCard } from './apps.mjs';
+import { enhanceMarkdown, releaseApps, renderAppItem, renderAppSendCard } from './apps.mjs';
 import { attChip, fileSize } from './attachment-chip.mjs';
 import { renderBlock } from './blocks.mjs';
 import { api, busy, client, hrefOf, itemsOf, placeIn, sessionsAt, sessionsOf, sideSessionsOf, stopSession, threadLink, uploadFile } from './client.mjs';
@@ -239,6 +239,9 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
       off();
       const where = view.keep();
       view.destroy();
+      // Once its elements have left the page, its apps are let go (#930). Every view with apps, the side panel’s and
+      // the pane’s too, destroys its transcript, so this one call covers them all.
+      queueMicrotask(releaseApps);
       if (where) {
         const key = `${inPanel}:${threadId}`;
         kept.set(key, where);
