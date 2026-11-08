@@ -9,6 +9,10 @@ import { axe } from './remote-hosts.mjs';
 
 // Long enough that item FAR is far above the view, short enough that a loaded CI runner syncs it within expect’s 5 s.
 const COUNT = 400;
+
+// Tracing is off: the trace's snapshot lays out each item the transcript skips (#712a) at every action, and over 400
+// items the change case ran past its 30 s, 2 of 2 with the trace on, against 12 of 12 passed in 16.9 s without it.
+test.use({ trace: 'off' });
 const FAR = 40;
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
