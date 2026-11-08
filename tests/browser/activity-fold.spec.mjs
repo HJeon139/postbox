@@ -196,19 +196,22 @@ const counts = (page) =>
     steps: document.querySelectorAll('details.activity > :not(summary), details.activity > :not(summary) *').length,
   }));
 
-test('#1028 a 500-item room holds at most a third of the elements it would with every list built', async ({ page }) => {
+test('#1028 a 300-item room holds at most a third of the elements it would with every list built', async ({ page }) => {
   test.setTimeout(90_000);
-  await seeded(page, 500);
+  await seeded(page, 300);
   const folded = await counts(page);
-  expect(folded.lists, 'two of three items are replies with steps').toBe(333);
+  expect(folded.lists, 'two of three items are replies with steps').toBe(200);
   expect.soft(folded.steps, 'one element a folded list besides its summary').toBe(folded.lists);
-  // Opening every list builds what main builds folded, so this is main’s count, give or take one element a list.
-  await page.evaluate(() => {
-    for (const d of document.querySelectorAll('details.activity')) /** @type {HTMLDetailsElement} */ (d).open = true;
-  });
-  await expect.poll(() => page.locator('details.activity:not(:has(> ul.steps))').count(), { message: 'every list built', timeout: 30_000 }).toBe(0);
+  // Building every list, in one task through the page’s own module, gives what main builds folded, give or take one
+  // element a list. Opening each one and waiting for its toggle took over 30 s on CI’s runners.
+  await page.evaluate(() =>
+    import('/app/js/activity-paint.mjs').then(({ buildSteps }) => {
+      for (const d of document.querySelectorAll('details.activity')) buildSteps(/** @type {HTMLElement} */ (d));
+    }),
+  );
   const built = await counts(page);
   test.info().annotations.push({ type: 'measured', description: JSON.stringify({ folded, built }) });
+  expect(await page.locator('details.activity > .steps-folded').count(), 'every list built').toBe(0);
   expect(folded.page, `${folded.page} elements folded, ${built.page} built`).toBeLessThanOrEqual(built.page / 3);
 });
 
