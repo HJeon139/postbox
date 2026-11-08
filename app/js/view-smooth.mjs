@@ -24,14 +24,18 @@ function canScroll(e) {
   return true;
 }
 
+/** Whether input of yours that can scroll came during the jump now running, for landed(). */
+let youCame = false;
+
 /**
  * Calls done once the smooth scroll ends (scrollend), saying whether any input of yours that can scroll came while it ran.
  * @param {(stoppedByYou: boolean) => void} done
  */
 export function whenSmoothEnds(done) {
   let came = false;
+  youCame = false;
   const heard = (/** @type {Event} */ e) => {
-    if (canScroll(e)) came = true;
+    if (canScroll(e)) came = youCame = true;
   };
   for (const type of INPUTS) addEventListener(type, heard, { capture: true, passive: true });
   const ended = () => {
@@ -77,7 +81,8 @@ export function halt(v) {
  * @param {View} v @param {Element} s
  */
 export function landed(v, s) {
-  if (!v.smoothing || !atEnd(s)) return;
+  // A wheel turn or a scroll key of yours during it is yours to finish: smoothEnded reads you where it stopped.
+  if (!v.smoothing || youCame || !atEnd(s)) return;
   v.smoothing = false;
   window.scrollTo({ top: s.scrollHeight, behavior: 'instant' });
 }
