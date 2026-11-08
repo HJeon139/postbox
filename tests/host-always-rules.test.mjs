@@ -59,7 +59,9 @@ test('Always allow on a host card keeps the rule for that persona on that host, 
   const r = rigIn('auto');
   const card = await answered(r, 'always');
   assert.equal(card.always.saves, RULE);
-  assert.match(card.always.lines[0].text, new RegExp(`^Always allow .* on ${HOST.replaceAll('.', '\\.')} \\(Postbox keeps it`), 'the card says where');
+  // Compared as text, not as a pattern built from the host name (CodeQL’s unescaped-dot rule on #961).
+  const where = card.always.lines[0].text;
+  assert.ok(where.startsWith('Always allow ') && where.includes(` on ${HOST} (Postbox keeps it`), `the card says where: ${where}`);
   assert.equal(r.d.answers[0].result.behavior, 'allow', 'this call runs now');
   assert.equal(r.d.answers[0].result.updatedPermissions, undefined, 'nothing for the host to save');
   assert.deepEqual(personaOf(r).hostRules, [{ hostId: r.host.id, rule: RULE }]);
