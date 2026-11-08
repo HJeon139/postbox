@@ -6,7 +6,13 @@
 //   before anything leaves this computer;
 // - a fake gh comes first on PATH, and records what it was asked; gh’s config folder is an empty one of the run’s, so a
 //   real gh found another way has no login;
-// - the project’s repository, where Postbox makes a push itself (server/push-on-request.mjs), is the bare repository.
+// - the project’s repository, where Postbox makes a push itself (server/push-on-request.mjs), is the bare repository,
+//   and the run stops before any agent turn if it can’t be set (setUpRemote). That push doesn’t read the guard: it
+//   runs git with none of the environment’s config and turns https and ssh back on. What it keeps is PATH, so its
+//   credential helper is the fake gh, gh’s config folder, which is the run’s empty one, and SSH_AUTH_SOCK, which the
+//   run blanks. So for Postbox’s own push, the repository setting is the guard, with no credentials behind it.
+// What’s left: an agent setting out to get round the guard, with `git -c protocol.allow=always …` or `env -i`, beats
+// both copies of it. In Ask me or Accept edits that command comes to a card first.
 // Postbox’s temp folders (pb-*) go in the run’s tmp folder, so the end of the run can say none is left.
 
 import { spawnSync } from 'node:child_process';
@@ -68,6 +74,9 @@ export function gitRemoteEnv(scenario, dir) {
     GH_CONFIG_DIR: p.ghConfig,
     GH_TOKEN: '',
     GITHUB_TOKEN: '',
+    // No ssh agent, so even Postbox’s own push, which keeps SSH_AUTH_SOCK, has no key for an ssh remote. A git-remote
+    // run is local only: Postbox reaches a host over ssh.
+    SSH_AUTH_SOCK: '',
     POSTBOX_UAT_GH_CALLS: p.ghCalls,
     TMPDIR: p.tmp,
   };
@@ -104,7 +113,8 @@ export function remoteNote(scenario, dir) {
 /**
  * Sets the project’s repository to the run’s remote, through the page as Settings does (PUT push-url, with the page’s
  * token), so a push the person asks for in Auto goes there (server/push-on-request.mjs). Then the note for the tester.
- * The first run of the gitpush scenario showed a tester can’t be relied on to find the setting.
+ * The first run of the gitpush scenario showed a tester can’t be relied on to find the setting. Throws when it doesn’t
+ * take, so the run stops.
  * @param {{ seed: string|null }} scenario
  * @param {{ dir: string, page: { evaluate: (expr: string) => Promise<any> }, threadId: string, log: (line: string) => void }} o
  */
@@ -112,11 +122,10 @@ export async function setUpRemote(scenario, { dir, page, threadId, log }) {
   if (scenario.seed !== 'git-remote') return '';
   const set = `import('/app/js/client.mjs').then(async ({ api, S }) => { const id = S().threads[${js(threadId)}].projectId; const p = await api('/api/projects/' + id + '/push-url', { url: ${js(remotePaths(dir).remote)} }, 'PUT'); return p.pushUrl; }).catch((e) => 'an error: ' + e.message)`;
   const url = await page.evaluate(set);
-  log(
-    url === remotePaths(dir).remote
-      ? 'The project’s repository is the run’s remote.'
-      : `Couldn’t set the project’s repository to the run’s remote: it reads ${url}.`,
-  );
+  // Fail closed: with any other repository, a push the person asks for would go wherever the project points.
+  if (url !== remotePaths(dir).remote)
+    throw new Error(`Couldn’t set the project’s repository to the run’s remote (it reads ${url}), so the run stops before any agent turn.`);
+  log('The project’s repository is the run’s remote.');
   return remoteNote(scenario, dir);
 }
 
