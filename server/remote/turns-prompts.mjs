@@ -272,7 +272,12 @@ function cardOf(rts, turn, id) {
  * @param {RemoteTurns} rts @param {Iterable<string>} hostTurns
  */
 export function endOrphanCards(rts, hostTurns) {
-  for (const t of hostTurns) for (const card of openCards(rts, t)) if (!rts.rt.permissionWaits.has(card.it.id)) endCard(rts, card, 'expired', '', rts.now());
+  for (const t of hostTurns) {
+    for (const card of openCards(rts, t)) {
+      if (rts.rt.permissionWaits.has(card.it.id)) continue;
+      endCard(rts, card, 'expired', '', rts.now());
+    }
+  }
 }
 
 /** @param {RemoteTurns} rts @param {string} turn */
