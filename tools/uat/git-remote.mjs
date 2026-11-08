@@ -159,7 +159,7 @@ export function preflightRemote(workspace, dir, env) {
  */
 export function remoteNote(scenario, dir) {
   if (scenario.seed !== 'git-remote') return '';
-  return `\n\nThis run’s remote is the folder ${remotePaths(dir).remote}, a bare repository the run made and removes at its end. The project folder’s origin points at it, and so does the project’s repository in Settings, where Postbox makes a push you asked for itself. No other remote and no real gh can be reached from this run.`;
+  return `\n\nThis run’s remote is the folder ${remotePaths(dir).remote}, a bare repository the run made and removes at its end. The project folder’s origin points at it, and so does the project’s repository in Settings, where Postbox makes a push you asked for itself. Every git here is refused any other remote, and the gh on the agent’s PATH is a fake.`;
 }
 
 /**
