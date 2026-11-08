@@ -24,10 +24,10 @@ const LOOP_OUT = [
 test('a command that pushes several times has one push for each that landed (#978)', () => {
   const loop = commandFacts('for b in a b c; do git push ../remote.git $b; done; git push ../remote.git HEAD:a; git push ../remote.git a', LOOP_OUT);
   assert.deepEqual(loop.pushes, [
-    { remote: '../remote.git', refs: ['a → a'] },
-    { remote: '../remote.git', refs: ['b → b'] },
-    { remote: '../remote.git', refs: ['c → c'] },
-    { remote: '../remote.git', refs: ['HEAD → a'] },
+    { remote: '../remote.git', refs: ['a → a'], branch: 'a' },
+    { remote: '../remote.git', refs: ['b → b'], branch: 'b' },
+    { remote: '../remote.git', refs: ['c → c'], branch: 'c' },
+    { remote: '../remote.git', refs: ['HEAD → a'], branch: 'a' },
   ]);
   const twoRemotes = commandFacts('git push one && git push two', 'To one.git\n * [new branch] x -> x\nTo two.git\n * [new branch] x -> x\n');
   assert.deepEqual(
@@ -36,15 +36,24 @@ test('a command that pushes several times has one push for each that landed (#97
   );
   assert.deepEqual(
     commandFacts('git push', 'Everything up-to-date\n').pushes,
-    [{ remote: null, refs: [] }],
+    [{ remote: null, refs: [], branch: '' }],
     'a push with nothing to say is still the one push, as before',
   );
   assert.deepEqual(
     commandFacts('git push', 'To r.git\n ! [rejected]        a -> a (fetch first)\n').pushes,
-    [{ remote: 'r.git', refs: [] }],
+    [{ remote: 'r.git', refs: [], branch: '' }],
     'nothing landed: the one push, with its remote',
   );
   assert.deepEqual(commandFacts('git status', LOOP_OUT).pushes, [], 'output alone isn’t a push');
+  // A tag isn’t a branch: a push of one names none (git 2.47’s output), and a push of both names the branch, here
+  // with the tag listed first.
+  assert.deepEqual(commandFacts('git push ../r.git v1.2', 'To ../r.git\n * [new tag]         v1.2 -> v1.2\n').pushes, [
+    { remote: '../r.git', refs: ['v1.2 → v1.2'], branch: '' },
+  ]);
+  const both = 'To ../r.git\n * [new tag]         v1.2 -> v1.3\n * [new branch]      HEAD -> x\n';
+  assert.equal(commandFacts('git push ../r.git HEAD:refs/heads/x refs/tags/v1.2:refs/tags/v1.3', both).pushes[0].branch, 'x');
+  const full = 'To ../r.git\n   04df91d..99ea717  v1.2 -> refs/tags/v1.2\n';
+  assert.equal(commandFacts('git push ../r.git v1.2:refs/tags/v1.2', full).pushes[0].branch, '', 'a tag named in full');
 });
 
 const RECORDED_FILES = { '/workspace/rec/notes.txt': 'alpha\nBETA\ngamma\n', '/workspace/rec/hello.md': '# Hello' };
@@ -84,6 +93,13 @@ test('the recorded push, its output saying nothing of what it sent: the one push
   assert.deepEqual(
     of('push').map((p) => [p.branch, p.remote, p.refs]),
     [['feature', null, []]],
+  );
+  // A tag pushed: the push is on the branch Claude Code named, not on the tag.
+  const tag = (s) => s.replaceAll('* [new branch]      feature -> feature', '* [new tag]         v1.2 -> v1.2');
+  const tagged = await replayLedger('ledger-push', { files: RECORDED_FILES, git: fakeGit(REC), edit: (e) => mapStrings(e, tag) });
+  assert.deepEqual(
+    tagged.of('push').map((p) => [p.branch, p.refs]),
+    [['feature', ['v1.2 → v1.2']]],
   );
   // A push the command line doesn’t show as one (here a config flag before it): Claude Code’s report is the push.
   const flagged = (s) => s.replaceAll('git push -u origin feature', 'git -c push.default=current push -u origin feature');
