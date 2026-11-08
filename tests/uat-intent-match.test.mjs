@@ -2,7 +2,7 @@
 // only after the takeaway was written, and the report shows both sentences and whether they match.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -54,16 +54,17 @@ test('#995 the judge compares the takeaway with the intent of the version the te
   ];
   const calls = [];
   const ask = async (args) => {
-    calls.push(args);
+    calls.push({ ...args, files: readdirSync(args.cwd) });
     return { value: { match: 'partly', why: 'It names the six, not the $10 line.' }, cost: 0.01 };
   };
   const keys = new Map([
     ['I3', 'it_3'],
     ['I7', 'it_7'],
   ]);
-  const spent = await matchIntents({ timeline, data: join(dir, 'data'), shots: join(dir, 'shots'), keys, ask, cwd: dir, model: 'm', log: () => {} });
+  const spent = await matchIntents({ timeline, data: join(dir, 'data'), shots: join(dir, 'shots'), keys, ask, model: 'm', log: () => {} });
   assert.equal(calls.length, 1, 'only the version with an intent is compared');
   assert.equal(calls[0].prompt, matchPrompt(said, takeaway));
+  assert.deepEqual(calls[0].files, [], 'an empty folder of its own: it needs only the two sentences');
   assert.equal(calls[0].schema, MATCH_SCHEMA);
   assert.equal(spent, 0.01);
   assert.deepEqual(timeline[0].visual, { item: 'I3', takeaway, intent: said, intentV: 1, match: 'partly', matchWhy: 'It names the six, not the $10 line.' });

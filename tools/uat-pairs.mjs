@@ -67,9 +67,7 @@ async function build({ person }) {
   const key = [];
   let spent = 0;
   for (const [i, s] of shown.entries()) {
-    const files = [`${i + 1}-a.png`, `${i + 1}-b.png`];
-    const sides = s.sides.map((x, j) => ({ ...x, file: files[j] }));
-    const judge = await judgePair({ persona: s.persona, question: s.question, sides, cwd: out, model: opt['judge-model'], ask: askOnce });
+    const judge = await judgePair({ persona: s.persona, question: s.question, sides: s.sides, model: opt['judge-model'], ask: askOnce });
     spent += judge.cost;
     key.push({ n: i + 1, skillAs: s.skillAs, skill: s.p.skill.run, base: s.p.base.run, judge: { pick: judge.pick, why: judge.why } });
   }

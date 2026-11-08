@@ -5,6 +5,7 @@
 
 import { LIMITS } from '../../shared/limits.mjs';
 import { wordCount } from '../../shared/text.mjs';
+import { inOwnFolder } from './judge-folder.mjs';
 import { logEvents } from './picture-choice.mjs';
 import { shotAtStep } from './picture-shots.mjs';
 
@@ -73,10 +74,11 @@ export function intentCell(visual) {
 /**
  * Adds each judged visual’s intent, and whether the takeaway matches it, to its timeline entry. A visual that isn’t an
  * app, or whose version has no intent, gets no match.
- * @param {{ timeline: any[], data: string, shots: string, keys: Map<string, string>, ask: (args: any) => Promise<{ value: any, cost: number }>, cwd: string, model: string, log: (line: string) => void }} o
+ * @param {{ timeline: any[], data: string, shots: string, keys: Map<string, string>, ask: (args: any) => Promise<{ value: any, cost: number }>, model: string, log: (line: string) => void }} o
+ *   Each comparison runs in an empty folder of its own: it needs only the two sentences.
  * @returns {Promise<number>} what the judge spent
  */
-export async function matchIntents({ timeline, data, shots, keys, ask, cwd, model, log }) {
+export async function matchIntents({ timeline, data, shots, keys, ask, model, log }) {
   let spent = 0;
   for (const t of timeline.filter((x) => x.visual)) {
     const v = t.visual;
@@ -87,7 +89,8 @@ export async function matchIntents({ timeline, data, shots, keys, ask, cwd, mode
     Object.assign(v, { intent: version?.intent ?? '', intentV: version?.v ?? null });
     if (!v.intent) continue;
     try {
-      const r = await ask({ cwd, model, prompt: matchPrompt(v.intent, String(v.takeaway)), schema: MATCH_SCHEMA, budgetUsd: 0.5 });
+      const prompt = matchPrompt(v.intent, String(v.takeaway));
+      const r = await inOwnFolder({}, (cwd) => ask({ cwd, model, prompt, schema: MATCH_SCHEMA, budgetUsd: 0.5 }));
       spent += r.cost;
       Object.assign(v, { match: r.value.match, matchWhy: r.value.why });
     } catch (e) {

@@ -8,6 +8,7 @@
 import { relative } from 'node:path';
 import { LIMITS } from '../../shared/limits.mjs';
 import { appAt, versionAt } from './intent-match.mjs';
+import { inOwnFolder } from './judge-folder.mjs';
 import { pairShot } from './pair-shot.mjs';
 import { firstExchange } from './picture-choice.mjs';
 
@@ -97,12 +98,16 @@ Which picture leaves you understanding more of what you asked, as this person? J
 }
 
 /**
- * Asks the judge about one pair, in the folder that holds both screenshots. `first` is the side shown as A.
- * @param {{ persona: string, question: string, sides: any[], cwd: string, model: string, ask: (args: any) => Promise<{ value: any, cost: number }> }} o
+ * Asks the judge about one pair, in a folder of its own that holds only the two screenshots, as a.png and b.png.
+ * @param {{ persona: string, question: string, sides: { file: string, intent: string, intentFrom: string|null }[], model: string,
+ *   ask: (args: any) => Promise<{ value: any, cost: number }> }} o  sides: A’s and B’s, each file where its screenshot is now
  * @returns {Promise<{ pick: 'A'|'B'|'tie', why: string, cost: number }>}
  */
-export async function judgePair({ persona, question, sides, cwd, model, ask }) {
-  const r = await ask({ cwd, model, prompt: pairPrompt({ persona, question, sides }), schema: PAIR_SCHEMA, budgetUsd: 0.5 });
+export async function judgePair({ persona, question, sides, model, ask }) {
+  const shown = sides.map((s, i) => ({ ...s, file: ['a.png', 'b.png'][i] }));
+  const r = await inOwnFolder({ 'a.png': sides[0].file, 'b.png': sides[1].file }, (cwd) =>
+    ask({ cwd, model, prompt: pairPrompt({ persona, question, sides: shown }), schema: PAIR_SCHEMA, budgetUsd: 0.5 }),
+  );
   return { pick: r.value.pick, why: r.value.why, cost: r.cost };
 }
 

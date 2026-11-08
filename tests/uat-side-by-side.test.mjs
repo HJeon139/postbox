@@ -2,7 +2,7 @@
 // sentence it was meant to say, and a judge shown two of them, picture against picture.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -99,23 +99,27 @@ test('#995 a version from before intents gets the first sentence of its text ver
   assert.equal(firstSentence(long), 'Cost per use, monthly cost divided by uses per month, from your last 90 days, for…');
 });
 
-test('#995 the judge sees only the two pictures and what each was meant to say, as the maintainer does', async () => {
+test('#995 the judge sees only the two pictures and what each was meant to say, in a folder of its own', async (t) => {
+  const run = runWith(drew, { '03-I3.png': 8_000, '05-I3.png': 9_000 });
+  t.after(() => rmSync(run, { recursive: true }));
+  writeFileSync(join(run, 'report.md'), 'The customer’s verdicts.');
   const calls = [];
   const ask = async (args) => {
-    calls.push(args);
+    calls.push({ ...args, files: readdirSync(args.cwd).sort() });
     return { value: { pick: 'B', why: 'B shows which ones cost the most per use.' }, cost: 0.05 };
   };
   const sides = [
-    { file: '1-a.png', intent: 'Six cost over $10 a use.', intentFrom: 'agent' },
-    { file: '1-b.png', intent: 'Cancel the gym.', intentFrom: 'fallback' },
+    { file: join(run, 'shots', '03-I3.png'), intent: 'Six cost over $10 a use.', intentFrom: 'agent' },
+    { file: join(run, 'shots', '05-I3.png'), intent: 'Cancel the gym.', intentFrom: 'fallback' },
   ];
-  const r = await judgePair({ persona: 'Someone.', question: 'Which should I cancel?', sides, cwd: '/out', model: 'm', ask });
+  const r = await judgePair({ persona: 'Someone.', question: 'Which should I cancel?', sides, model: 'm', ask });
   assert.deepEqual(r, { pick: 'B', why: 'B shows which ones cost the most per use.', cost: 0.05 });
-  assert.equal(calls[0].cwd, '/out');
+  assert.deepEqual(calls[0].files, ['a.png', 'b.png'], 'only the two screenshots, not the run’s report');
+  assert.equal(existsSync(calls[0].cwd), false, 'the folder is removed after');
   assert.equal(calls[0].schema, PAIR_SCHEMA);
   const p = calls[0].prompt;
-  assert.match(p, /## Picture A\n\nThe screenshot: 1-a\.png \(open it with Read\)\.\nWhat the agent meant it to say: “Six cost over \$10 a use\.”/);
-  assert.match(p, /## Picture B\n\nThe screenshot: 1-b\.png \(open it with Read\)\.\nThe agent’s text version of it \(it gave no intent\): “Cancel the gym\.”/);
+  assert.match(p, /## Picture A\n\nThe screenshot: a\.png \(open it with Read\)\.\nWhat the agent meant it to say: “Six cost over \$10 a use\.”/);
+  assert.match(p, /## Picture B\n\nThe screenshot: b\.png \(open it with Read\)\.\nThe agent’s text version of it \(it gave no intent\): “Cancel the gym\.”/);
   assert.match(p, /Don’t prefer one for being busier, longer or more polished\./);
   assert.equal(p.includes('Drawing it.'), false, 'none of the reply’s words');
 });

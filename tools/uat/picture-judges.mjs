@@ -18,7 +18,7 @@ import { askOnce } from './tester.mjs';
 export async function judgePictures({ scenario, dir, paths, labels, keys, timeline, facts, shoot, ask = askOnce, model, log }) {
   if (scenario.judge !== 'visual' && !scenario.expects) return;
   // Either can throw on a run folder it can’t read; the run still writes its report and run.json.
-  const matched = await matchIntents({ timeline, data: paths.data, shots: paths.shots, keys, ask, cwd: dir, model, log }).catch((e) => {
+  const matched = await matchIntents({ timeline, data: paths.data, shots: paths.shots, keys, ask, model, log }).catch((e) => {
     log(`The intent judge failed: ${e.message}`);
     return 0;
   });
