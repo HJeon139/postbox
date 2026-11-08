@@ -1,13 +1,13 @@
 // The shell: the top bar, the rail (conversations and rooms with rings, and the open conversation’s agents), the phone
 // ring strip, the places menu, and a project with no conversation yet. There’s no overview (#320): Postbox opens one.
 
-import { installNote } from '/shared/agent-facts.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { isMock, mockMarker } from './agent-facts.mjs';
 import { agentMenuLines } from './agent-menu-lines.mjs';
 import { agentsSection } from './agents.mjs';
 import { api, busy, client, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { fill, h, icon, syncList } from './dom.mjs';
+import { installLine } from './install-line.mjs';
 import { nextNeedsYou } from './needs-nav.mjs';
 import { openPermissions } from './permissions.mjs';
 import { projectPlaces } from './places-menu.mjs';
@@ -19,7 +19,7 @@ import { recordingBadge, telemetryItems } from './telemetry.mjs';
 import { liveMembers, topbarSig } from './topbar-sig.mjs';
 import { closeWork, navigate, openMenu, openWork, route, toast, undoToast } from './ui.mjs';
 
-export { liveMembers, railHidden, toggleRail };
+export { installLine, liveMembers, railHidden, toggleRail };
 
 const S = () => client.state;
 
@@ -405,28 +405,6 @@ function stripItem(x, active) {
     rings(x),
     unread ? h('span.badge', String(unread)) : null,
     h('span', x.title),
-  );
-}
-
-/** What isn’t installed, as the overview used to say (#320); null while every backend is there. */
-export function installLine() {
-  const lead = installNote(client.config ?? {});
-  if (!lead) return null;
-  return h(
-    'div.callout.warn.install-note',
-    icon('warn'),
-    h(
-      'div',
-      h('p', lead),
-      h(
-        'p.small',
-        'To run real agents, install Claude Code so ',
-        h('code', 'claude --version'),
-        ' works, or set ',
-        h('code', 'POSTBOX_CLAUDE_BIN'),
-        ' to where it is, then restart Postbox. The README’s “Run real agents” says more.',
-      ),
-    ),
   );
 }
 
