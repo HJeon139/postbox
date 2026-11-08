@@ -174,6 +174,21 @@ test('#712a following, a move up the browser makes as the page gets shorter keep
   expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'it still follows').toBe('following');
 });
 
+// researcher's Mac trace of view-skipped-append.spec.mjs:24 in Firefox: following, Firefox moved the view up 18 px with
+// the page's height unchanged, and the room opened reading. A move up that small is the browser's, loss or not.
+test('#712a following, a move up of 18 px the browser makes with the page’s height unchanged keeps the view following', async ({ page }) => {
+  const { t } = room('Following, 18 px up');
+  await open(page, t);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode')).toBe('following');
+  await page.evaluate(() => {
+    const s = /** @type {Element} */ (document.scrollingElement);
+    s.scrollTop -= 18;
+    dispatchEvent(new Event('resize'));
+  });
+  await settled(page);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'it still follows').toBe('following');
+});
+
 // critic's P2 on #959: the browser's move is tied to what the page lost; your scroll isn't. Following, you scroll up
 // 300 px in the same task as an item at the end goes, 100 px shorter: that's you, and the view reads.
 test('#712a following, a scroll up of yours as the page gets shorter in the same frame reads where you went', async ({ page }) => {
