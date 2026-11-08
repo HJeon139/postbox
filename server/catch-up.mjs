@@ -11,8 +11,12 @@ import { heldFor } from './wake-cards.mjs';
 
 export { CATCH_UP_ITEMS } from './catch-up-keep.mjs';
 
-/** The catch-up text for a session, or null, and moves its marker to the end of the conversation. */
-export function catchUp(rt, se, excludeId = null) {
+/**
+ * The catch-up text for a session, or null, and moves its marker to the end of the conversation. exclude: the ids of
+ * the messages the turn delivers, every one of a batch, which it reads in full there (#506).
+ * @param {any} rt @param {any} se @param {string[]} [exclude]
+ */
+export function catchUp(rt, se, exclude = []) {
   if (!se) return null;
   const items = rt.store.items(se.threadId);
   const t = rt.s.threads[se.threadId];
@@ -22,7 +26,7 @@ export function catchUp(rt, se, excludeId = null) {
   if (se.seenItem === undefined && (t?.members?.length ?? 0) <= 1 && se.startedAt < (items.at(-1)?.at ?? 0)) return null;
   // Its first catch-up in a topic thread starts with the message the thread is about, unless it holds it already.
   const root = se.seenItem === null ? rt.topicRootLine(se, t) : null;
-  const fresh = items.slice(at + 1).filter((i) => i.id !== excludeId && i.sessionId !== se.id);
+  const fresh = items.slice(at + 1).filter((i) => !exclude.includes(i.id) && i.sessionId !== se.id);
   const entries = fresh
     // A message addressed to the agent comes whole, up to a bound of its own (#499).
     .map((item) => ({ item, line: rt.describeItem(item, se, mentions(item, se.handle) ? READING.mention : READING.item) }))
@@ -33,19 +37,28 @@ export function catchUp(rt, se, excludeId = null) {
   if (!entries.length) return root && `[Postbox] ${root}`;
   const kept = keepFor(entries, se.handle);
   const left = entries.filter((e) => !kept.includes(e));
-  // The mentions this summary gave in full, which pointerIfSeen may point to; one past the cap wasn’t given.
-  rt.updateSession(se.id, { givenMentions: kept.filter((e) => mentions(e.item, se.handle)).map((e) => e.item.id) });
+  // The mentions this summary gave in full, which pointerIfSeen may point to: one past the cap wasn’t given, and one
+  // cut at READING.mention (a message may be 50,000 characters) was given only in part, so it comes again whole.
+  const whole = (/** @type {any} */ e) => mentions(e.item, se.handle) && String(e.item.text ?? '').length <= READING.mention;
+  rt.updateSession(se.id, { givenMentions: kept.filter(whole).map((e) => e.item.id) });
   const where = t?.kind === 'room' ? 'this room' : t?.kind === 'topic' ? 'this thread' : 'this conversation';
   return `[Postbox] ${root ? `${root}\n\n` : ''}What happened in ${where} since your last turn${left.length ? ` ${leftOut(kept, left, items, se.handle)}` : ''}:\n\n${kept.map((e) => e.line).join('\n\n')}`;
 }
 
 /**
- * A queued mention that a summary already gave the agent comes as a pointer to it, so the agent doesn’t read it twice as
- * new (#484). The summary records the mentions it gave (givenMentions), which is how Postbox knows.
+ * A mention that a summary already gave the agent comes as a pointer to it, so the agent doesn’t read it twice as new
+ * (#484): an agent’s queued wake, the person’s message posted while the agent was busy elsewhere (#506), and each
+ * message of a batch. The summary records the mentions it gave (givenMentions), which is how Postbox knows.
  * @param {any} rt @param {any} se @param {any} message
  */
 export function pointerIfSeen(rt, se, message) {
-  if (message?.kind !== 'agent' || !message.itemId || !se?.seenItem) return message;
+  // A batch: each of its messages, and its text as theirs joined, as combineMessages makes it.
+  if (Array.isArray(message?.messages)) {
+    const messages = message.messages.map((/** @type {any} */ m) => pointerIfSeen(rt, se, m));
+    return { ...message, messages, text: messages.map((m) => m.text ?? '').join('\n\n') };
+  }
+  // A command is the whole prompt, so it’s never a pointer, though a Retry delivers it again after a summary (#67).
+  if ((message?.kind !== 'agent' && message?.kind !== 'user') || message.slash || !message.itemId || !se?.seenItem) return message;
   const at = positionOf(rt.store.items(se.threadId), message.itemId);
   // Only a mention the last summary kept was given: a wake_agent message that names no one, or a mention past the
   // mentions’ cap, may have been left out, so it comes in full.
@@ -54,6 +67,6 @@ export function pointerIfSeen(rt, se, message) {
     ...message,
     // Its start, and the call that reads it whole, in case the summary was compacted out of the agent’s context since,
     // or never reached its model (a turn that failed to start, a session started over).
-    text: `${message.from}’s message above, which your last summary gave you in full: “${clip(String(message.text ?? ''), 200)}”. It’s addressed to you: act on it now if you haven’t. read_message { id: "${message.itemId}" } has it whole.`,
+    text: `${message.kind === 'user' ? 'The person' : message.from}’s message above, which your last summary gave you in full: “${clip(String(message.text ?? ''), 200)}”. It’s addressed to you: act on it now if you haven’t. read_message { id: "${message.itemId}" } has it whole.`,
   };
 }

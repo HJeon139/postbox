@@ -5,6 +5,7 @@ import { positionOf } from '../shared/item-index.mjs';
 import { HANDLE, HANDLE_SHAPE, SENDING } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
 import { newId } from './store.mjs';
+import { updateThread } from './thread-write.mjs';
 
 /**
  * Opens the topic thread of one message, or returns the one it has: `created` says which. It reads the message and its
@@ -47,7 +48,7 @@ export function startTopic(rt, threadId, itemId) {
     (answer && rt.s.sessions[answer.sessionId]) ||
     members.find((x) => x.id === parent.lastSpeaker) ||
     members[0];
-  if (src) rt.putThread({ ...topic, woke: src.handle });
+  if (src) updateThread(rt, topic.id, { woke: src.handle });
   return { threadId: topic.id, created: true };
 }
 
@@ -82,7 +83,7 @@ export function openTopic(rt, sessionId, { itemId, message, mentions }) {
   }
   const { threadId, created } = opened;
   // The opener answers there first (I4), only when this call made the topic.
-  if (created) rt.putThread({ ...rt.store.pending.thread(threadId), woke: se.handle });
+  if (created) updateThread(rt, threadId, { woke: se.handle });
   const where = `${created ? 'Opened a topic thread' : 'That message already has a topic thread'}, ${threadId}, beside it in the page. read_conversation { thread: "${threadId}" } reads it.`;
   if (!text) return { ok: true, threadId, created, posted: false, itemId: null, message: where };
   // The reply says what happened to the message (#651): posted, here or in the topic it had, or already there (I6). It

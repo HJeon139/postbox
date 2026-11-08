@@ -6,6 +6,7 @@
 import { HELD_WAKES } from '../shared/limits.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { clip, httpError } from './helpers.mjs';
+import { updateThread } from './thread-write.mjs';
 
 /** The card for a wake past the limit (#108), which waits for the person’s Allow. */
 export function askToWake(rt, from, parent, p, wake) {
@@ -123,7 +124,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
   rt.addItem(threadId, { kind: 'voice', text: voice });
   const from = rt.s.sessions[it.fromSessionId];
   releaseNeed(rt, from, itemId);
-  rt.putThread({ ...rt.s.threads[threadId], hops: 0 });
+  updateThread(rt, threadId, { hops: 0 });
   // Added: it joins with a note on why, as an agent the person adds does, and the wake goes on (#228).
   const p = it.join && allow ? rt.personaByHandle(it.to) : null;
   if (p) {
