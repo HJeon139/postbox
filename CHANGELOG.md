@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.50.0 (2026-11-08)
+
+### Features
+
+- **adapters:** Antigravity's Auto runs what its persona's tools allow (#416)
+
+### Fixes
+
+- **app:** Antigravity's copy says what runs with no card, and what decides it (#416, #794)
+
 ## 1.49.1 (2026-11-08)
 
 ### Fixes
