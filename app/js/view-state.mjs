@@ -1,16 +1,17 @@
 // The transcript’s view (#508’s design, “Browser”): following the newest message, or reading at an anchor, a message
 // and how far down the view it starts. Only your own scrolling changes which; every change in size re-applies it.
 // It owns that state for one transcript, holds the anchor through changes in size (#88, #297, #341), and publishes what
-// it is on the transcript as data-view-* (publish). Moved from thread.mjs’s mountTranscript (#531).
+// it is on the transcript as data-view-* (publish, view-publish.mjs). Moved from thread.mjs’s mountTranscript (#531).
 
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
- *   anchor: { key: string, at: number } | null, dead: boolean, shown: number, lastTop: number,
+ *   anchor: { key: string, at: number } | null, dead: boolean, shown: number, lastTop: number, seenTop: number,
  *   held: { end: number, last: number, width: number }, jump: ((n: number) => void) | null, bound: any, size: string,
  *   sizes: ResizeObserver, changes: MutationObserver, changed?: boolean, noted?: number }} View
  */
 import { onlyRemoves } from './view-changes.mjs';
 import { atEnd, box, findAnchor, gapOf, viewTop } from './view-geometry.mjs';
+import { publish } from './view-publish.mjs';
 
 // The pill floats just above the composer. It shows only while the end is further below than that, so what it
 // floats over is never the working rows or the end of the last message (#91).
@@ -29,21 +30,6 @@ function holdAnchor(v) {
   if (Math.abs(d) < 1) return;
   s.scrollTop += d;
   v.lastTop = s.scrollTop;
-}
-/**
- * What the view is, on the transcript for anyone to read (the UAT’s probe, #531): data-view-mode is following or
- * reading, and while reading, data-view-anchor and data-view-offset are the anchor’s key and how far down the view it
- * starts, to 0.1 px. Written after each entry point, and only what changed.
- * @param {View} v
- */
-function publish(v) {
-  const reading = !v.stuck && v.anchor;
-  const next = {
-    viewMode: v.stuck ? 'following' : 'reading',
-    viewAnchor: reading ? v.anchor.key : '',
-    viewOffset: reading ? String(Math.round(v.anchor.at * 10) / 10) : '',
-  };
-  for (const [k, value] of Object.entries(next)) if (v.el.dataset[k] !== value) v.el.dataset[k] = value;
 }
 /** @param {View} v */
 function seen(v) {
@@ -130,15 +116,21 @@ function onScroll(v) {
   // after what’s above has moved again: hold it in place again before taking the anchor there, or you lose your place
   // (#297).
   const moved = s.scrollTop !== v.lastTop;
-  if (atEnd(s)) {
+  // A box that changed size since the last scroll event (full screen and back, the window) can clamp the view to its
+  // new end. That isn’t you: the view doesn’t start following, and keeps your place for when the box is back, as heard()
+  // doesn’t take it in (#837). A clamp only moves the view up from where the last scroll event saw it (holding the
+  // anchor through the resize may already have moved lastTop there); reaching the end by moving down is you.
+  const clamped = sizeOf(s) !== v.size && s.scrollTop < v.seenTop;
+  if (atEnd(s) && (v.stuck || !clamped)) {
     if (!v.stuck) v.held = measure(v, s);
     v.stuck = true;
   } else if (s.scrollTop < v.lastTop) v.stuck = false;
   // However you got near the end, there’s nothing unread below any more (#91).
   if (gapOf(s) <= PILL_ROOM) seen(v);
   v.lastTop = s.scrollTop;
+  v.seenTop = s.scrollTop;
   v.size = sizeOf(s);
-  if (v.stuck) return;
+  if (v.stuck || (clamped && atEnd(s))) return;
   if (!moved) holdAnchor(v);
   v.anchor = findAnchor(v);
 }
@@ -178,6 +170,7 @@ function settle(v, scrolled, resized) {
     v.held = measure(v, s);
   }
   v.lastTop = s?.scrollTop ?? 0;
+  v.seenTop = v.lastTop;
   if (s) v.size = sizeOf(s);
 }
 /**
@@ -239,6 +232,7 @@ function newView({ el, inPanel, nodes, was }) {
     jump: null,
     bound: null,
     size: '',
+    seenTop: 0,
   });
 }
 /**

@@ -2,6 +2,7 @@
 // down and sent to Postbox once it’s checked and its files are read as the laptop would; and Postbox’s reply to it.
 // broker.mjs’s header says what’s written down when.
 
+import { hostUpdateRefusal } from '../../../shared/block-updates.mjs';
 import { validateBlock } from '../../../shared/catalog.mjs';
 import { carriesBlockFiles, encodedBytes, REMOTE_LIMITS, TURN_FILES, toolRoute } from '../../../shared/remote-protocol.mjs';
 import { filesReader, withoutFiles } from './broker-files.mjs';
@@ -40,12 +41,12 @@ export async function prepare(b, turn, name, args) {
     out = r.args;
   }
   // Only what the laptop would refuse outright is refused here; an invalid show_block or show_app still goes, since
-  // the laptop shows its fallback text (server/runtime.mjs’s show_block).
-  if (name === 'update_block') {
-    // A review’s files aren’t the catalog’s: Postbox takes them off the block before it validates it.
-    const v = validateBlock(carriesBlockFiles(name, out) ? withoutFiles(out.block) : out.block);
-    if (!v.ok) return { ok: false, text: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
-  }
+  // the laptop shows its fallback text (server/runtime.mjs’s show_block). An outcome or a withdraw isn’t a block, and
+  // Postbox checks it against the block it names (server/blocks.mjs, #854).
+  // A review’s files aren’t the catalog’s: Postbox takes them off the block before it validates it.
+  const update = carriesBlockFiles(name, out) ? withoutFiles(out.block) : out.block;
+  const refused = name === 'update_block' ? hostUpdateRefusal(update) : null;
+  if (refused) return { ok: false, text: refused };
   if (name === 'update_app' && typeof out.code === 'string') {
     const v = validateBlock({
       id: out.id,

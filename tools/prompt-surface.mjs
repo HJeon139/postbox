@@ -10,6 +10,7 @@
 //   scan/agy-rules.md        the rules file Antigravity reads, which wraps the guide, with the hook running (#370)
 //   scan/agy-rules-no-hook.md  the same, for agy before 1.4.7, which runs without the hook
 //   scan/mcp-tools.md        every Postbox MCP tool, with its description and its arguments’ descriptions
+//   scan/agent-plugin/       Postbox’s own plugin, which every agent here loads: its skills and their references
 //   scan/repo/               the instructions for agents working on Postbox itself: AGENTS.md files and session prompts
 // and, for a reviewer’s diff, each persona’s whole guide with its backend’s session facts, without the roster of other
 // agents (which would change every file whenever one is added):
@@ -27,6 +28,8 @@ import { TOOL_DEFS } from '../server/mcp.mjs';
 import { BOILERPLATES, DEMO_PERSONAS } from '../server/seed.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+/** Postbox’s own plugin, relative to the repo. */
+const PLUGIN = 'agent-plugin';
 /** The rules a backend turns tools off with; null for one that can’t (Codex, Antigravity). */
 const RULES_OF = { 'claude-code': TOOL_RULES, 'agent-sdk': TOOL_RULES, 'kiro-cli': KIRO_TOOL_RULES, codex: null, 'antigravity-cli': null };
 
@@ -121,14 +124,17 @@ export function render(out) {
       ].join('\n\n'),
     );
   }
+  const copy = (rel, to) => {
+    mkdirSync(dirname(join(out, to)), { recursive: true });
+    cpSync(join(ROOT, rel), join(out, to));
+  };
+  // The skills every agent here loads, and what they link to (server/adapters/agent-plugin.mjs).
+  for (const rel of markdownUnder(PLUGIN, (n) => n.endsWith('.md')).sort()) copy(rel, join('scan', 'agent-plugin', relative(PLUGIN, rel)));
   const repo = [
-    ...markdownUnder('.', (n) => n === 'AGENTS.md' || n === 'CLAUDE.md' || n === 'SKILL.md'),
+    ...markdownUnder('.', (n) => n === 'AGENTS.md' || n === 'CLAUDE.md' || n === 'SKILL.md').filter((rel) => !rel.startsWith(PLUGIN)),
     ...markdownUnder('designs/prompts', (n) => n.endsWith('.md')),
   ];
-  for (const rel of [...new Set(repo)].sort()) {
-    mkdirSync(dirname(join(out, 'scan', 'repo', rel)), { recursive: true });
-    cpSync(join(ROOT, rel), join(out, 'scan', 'repo', rel));
-  }
+  for (const rel of [...new Set(repo)].sort()) copy(rel, join('scan', 'repo', rel));
   return relative(ROOT, out) || out;
 }
 

@@ -66,9 +66,11 @@ test('#464-b2a: a failed automatic install with nobody waiting records failed an
     await t.mgr.setKeepUpdated('h1', true);
     await t.mgr.connect('h1').catch(() => {});
     await until(() => readRecord(t.dataDir)?.installs?.[0]?.outcome === 'failed', 'failed');
+    // The record is on disk before its write has finished and the install's entry goes, which a loaded machine can
+    // take longer than a fixed wait to do (#843): wait for the entry, then settle for any rejection after it.
+    await until(() => !t.mgr.updating.has('h1'), 'the install to be done');
     await settle();
     assert.deepEqual(unhandled, []);
-    assert.equal(t.mgr.updating.has('h1'), false);
     assert.equal(t.mgr.status('h1').update.outcome, 'failed');
   } finally {
     process.off('unhandledRejection', on);

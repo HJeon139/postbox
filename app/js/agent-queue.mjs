@@ -3,6 +3,7 @@
 import { conversationRoot, threadsOfConversation } from '/shared/conversation.mjs';
 import { api, client } from './client.mjs';
 import { h, icon, syncList } from './dom.mjs';
+import { onChangeWhileAlive } from './held-weakly.mjs';
 import { openDialog, openMenu, toast } from './ui.mjs';
 
 const S = () => client.state;
@@ -191,6 +192,30 @@ export function openQueue(sessionId, anchor = null) {
   anchor?.setAttribute('aria-expanded', 'true');
 }
 
+/** A queue button’s count and name, as the queue stands. @param {HTMLElement} button @param {any} session */
+function paintQueueButton(button, session) {
+  const count = entriesFor(session.id).length;
+  button.hidden = count === 0;
+  button.setAttribute('aria-label', `${count} message${count === 1 ? '' : 's'} queued for ${session.handle}`);
+  // The count changes in place, so the button keeps focus through a repaint (F1).
+  const countEl = button.querySelector('.agent-queue-count');
+  if (countEl && countEl.textContent !== String(count)) countEl.textContent = String(count);
+}
+
+/**
+ * A queue button’s listener: it repaints the button it’s given, and stops once the button, after being on the page,
+ * leaves it. Made here, not beside the button, so it closes over nothing that holds the button (#866).
+ * @param {any} session
+ */
+function followQueue(session) {
+  let mounted = false;
+  return (/** @type {HTMLElement} */ b, /** @type {any} */ change, /** @type {() => void} */ off) => {
+    if (b.isConnected) mounted = true;
+    else if (mounted) return off();
+    if (change.type === 'load' || change.type === 'thread') paintQueueButton(b, session);
+  };
+}
+
 export function agentQueueButton(session) {
   const button = h('button.btn.icon.sm.ghost.agent-queue-button', {
     type: 'button',
@@ -198,22 +223,10 @@ export function agentQueueButton(session) {
     'aria-expanded': 'false',
     onclick: () => openQueue(session.id, button),
   });
-  const countEl = h('span.agent-queue-count', { 'aria-hidden': 'true' });
-  button.append(icon('mail', 'i-sm'), countEl);
-  const paint = () => {
-    const count = entriesFor(session.id).length;
-    button.hidden = count === 0;
-    button.setAttribute('aria-label', `${count} message${count === 1 ? '' : 's'} queued for ${session.handle}`);
-    // The count changes in place, so the button keeps focus through a repaint (F1).
-    if (countEl.textContent !== String(count)) countEl.textContent = String(count);
-  };
-  paint();
-  let mounted = false;
-  const off = client.on((change) => {
-    if (button.isConnected) mounted = true;
-    else if (mounted) return off();
-    if (change.type === 'load' || change.type === 'thread') paint();
-  });
+  button.append(icon('mail', 'i-sm'), h('span.agent-queue-count', { 'aria-hidden': 'true' }));
+  paintQueueButton(button, session);
+  // Weakly: a button built and never put on the page, or taken off it, is let go of with its listener (#912, #866).
+  onChangeWhileAlive(button, followQueue(session));
   return button;
 }
 

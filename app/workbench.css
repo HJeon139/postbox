@@ -267,7 +267,9 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .app.no-rail, .app.rail-hidden, .app.rail-auto { grid-template-columns: minmax(0, 1fr); }
 /* rail-auto: hidden while the right pane needs its room (#7, pane-width.mjs). */
 .app.rail-hidden > .rail, .app.rail-auto > .rail { display: none; }
-.topbar { grid-column: 1 / -1; position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
+/* overflow-x: clip: a top bar too wide for the window, before fitTopbar drops a crumb, never widens the page. On a
+   phone the viewport grows to fit overflowing content, so the page lays out wider for that frame (#866, #837). */
+.topbar { grid-column: 1 / -1; overflow-x: clip; position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
   height: 48px; padding: 0 12px 0 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
 .brand { font-weight: 700; letter-spacing: .02em; display: flex; align-items: center; gap: 8px; }
 .brand .mark { width: 18px; height: 18px; border: 2px solid var(--accent); border-radius: 5px; position: relative; }
@@ -1007,6 +1009,8 @@ html.pb-sandbox body { margin: 0; }
 .palette .p-list { list-style: none; padding: 0; margin: 0; max-height: 50vh; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
 .palette .p-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
 .palette .p-list li[aria-selected="true"] { border-color: var(--accent); background: var(--sunk); }
+/* Search’s matched words (#866, W4): bold and underlined, in the text’s own colors. */
+.search-dialog mark { background: none; color: inherit; font-weight: 600; text-decoration: underline; }
 /* Settings’ tabs wrap onto a second row in a narrow window rather than run off it (five since Hosts, #120; #303 found the four did on a phone). */
 .tabs { display: flex; flex-wrap: wrap; gap: 0 4px; border-bottom: 1px solid var(--line); padding: 0 16px; }
 .tabs button { all: unset; cursor: pointer; padding: 8px 10px; border-bottom: 2px solid transparent; color: var(--dim); }
