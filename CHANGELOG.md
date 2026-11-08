@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.42.0 (2026-11-08)
+
+### Features
+
+- **uat:** trigger host-queued-refused, and remotehosts phase 7 (#827)
+
+### Fixes
+
+- **remote:** answer a queued call once its record is written, whatever Postbox did (#827)
+- **remote:** a queued call on a host waits for the daemon, so a refusal reaches its agent (#827)
+- **uat:** resolve a session's working folder before naming its Claude Code transcript (#932)
+
 ## 1.41.2 (2026-11-08)
 
 ### Fixes
