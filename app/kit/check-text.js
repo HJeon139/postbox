@@ -5,7 +5,7 @@
 // biome-ignore lint/suspicious/noRedundantUseStrict: the page runs this as a classic script, which isn’t strict without it.
 'use strict';
 {
-  const { rgb, lum, clip, where, jump, hidden, guard } = window.__pbCheck;
+  const { rgb, lum, clip, where, hidden, guard } = window.__pbCheck;
   // The smallest text a person can read at a glance: the critique’s floor (VE12). An SVG drawn a little under its
   // viewBox’s size draws a 12 px label at 11.7 px, which reads the same, so a label counts as small under 11.5 px.
   const MIN_SIZE = 12;
@@ -13,12 +13,13 @@
 
   /**
    * contrast: text whose contrast with what’s behind it is under WCAG AA, up to 3: page text against its nearest opaque
-   * background, and SVG labels against the shape drawn under them (#997).
+   * background, and SVG labels against what’s painted under them (#997). A label whose background the check can’t
+   * measure is left unjudged: a wrong guess sent agents to darken white text on a dark shape.
    */
   function lowContrast() {
     hidden.reset();
     const out = [];
-    const y0 = scrollY;
+    const [x0, y0] = [scrollX, scrollY];
     for (const l of labels()) {
       if (out.length >= 3) break;
       const cs = getComputedStyle(l.el);
@@ -26,52 +27,83 @@
       const fg = svg ? rgb(cs.fill) : rgb(cs.color);
       if (!fg) continue;
       if (svg) fg.a *= +cs.fillOpacity;
-      const bg = svg ? behind(l.el) : background(l.el);
-      const ratio = contrast(blend(fg, bg), bg);
+      const under = svg ? behind(l.el) : background(l.el);
+      if (!under) continue;
+      const ratio = contrast(blend(fg, under.c), under.c);
       const large = l.size >= 24 || (l.size >= 18.66 && +cs.fontWeight >= 700);
       if (ratio < (large ? 3 : 4.5))
         out.push({
           code: 'contrast',
-          message: `Text “${clip(l.t)}” (${where(l.el)}) has contrast ${ratio.toFixed(2)}:1 with what’s behind it; it needs ${large ? 3 : 4.5}:1. Set text in var(--text) or var(--dim), and keep colors for the marks.`,
+          message: `Text “${clip(l.t)}” (${where(l.el)}) has contrast ${ratio.toFixed(2)}:1 with ${under.on ? `the fill of ${under.on}` : 'the page behind it'}; it needs ${large ? 3 : 4.5}:1. ${under.on ? 'Set dark text on a light fill and light text on a dark one, or put the label beside the mark.' : 'Set text in var(--text) or var(--dim), and keep colors for the marks.'}`,
         });
     }
-    jump(y0);
+    scrollTo({ left: x0, top: y0, behavior: 'instant' });
     return out;
   }
-  // What’s painted under an SVG label: its own halo (a wide stroke painted first, as d3 draws one), else the first
-  // opaque shape or box under its middle, else the page behind the SVG.
-  const SHAPES = new Set(['rect', 'circle', 'ellipse', 'path', 'polygon', 'polyline']);
+
+  // What’s painted under an SVG label, as { c, on }, with on naming the shape; or null when the check can’t tell. A
+  // label’s own halo (a wide stroke painted first, as d3 draws one) is what’s behind it. Otherwise the page scrolls the
+  // label into view, and the first thing painted under its middle decides. A gradient or pattern, a shape drawn by
+  // <use>, an image, a translucent paint, a label the page can’t scroll to (in a box that scrolls sideways), or nothing
+  // under it at all can’t be measured.
   function behind(el) {
     const cs = getComputedStyle(el);
     const halo = rgb(cs.stroke);
-    if (halo && halo.a > 0.95 && parseFloat(cs.strokeWidth) >= 2 && cs.paintOrder.startsWith('stroke')) return halo;
+    if (halo && halo.a > 0.95 && parseFloat(cs.strokeWidth) >= 2 && cs.paintOrder.startsWith('stroke')) return { c: halo, on: null };
     let r = el.getBoundingClientRect();
-    if (r.top < 0 || r.bottom > innerHeight) {
-      jump(scrollY + r.top - innerHeight / 2);
+    const off = () => r.left < 0 || r.top < 0 || r.right > innerWidth || r.bottom > innerHeight;
+    if (off()) {
+      scrollTo({ left: scrollX + r.left - innerWidth / 2, top: scrollY + r.top - innerHeight / 2, behavior: 'instant' });
       r = el.getBoundingClientRect();
     }
-    const stack = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    for (const e of stack.slice(stack.indexOf(el) + 1)) {
-      const c = paintOf(e);
-      if (c && c.a > 0.95) return c;
+    if (off()) return null;
+    const [x, y] = [r.left + r.width / 2, r.top + r.height / 2];
+    for (const e of document.elementsFromPoint(x, y)) {
+      if (el.contains(e) || e.closest('text')) continue;
+      const p = paintAt(e, x, y);
+      if (p === CLEAR) continue;
+      return p && p.a > 0.95 ? { c: p, on: SHAPES.has(e.tagName.toLowerCase()) ? where(e) : null } : null;
     }
-    return background(el.closest('svg'));
+    return null;
   }
-  // What an element paints: a shape its fill, a page element its background, and an SVG’s other parts nothing.
-  function paintOf(e) {
+  // What an element paints at a point: CLEAR where it paints nothing, a color, or null where the check can’t tell. A
+  // shape paints its stroke or its fill there, as its geometry says; an SVG’s groups paint nothing of their own.
+  const CLEAR = 'clear';
+  const SHAPES = new Set(['rect', 'circle', 'ellipse', 'path', 'polygon', 'polyline', 'line']);
+  function paintAt(e, x, y) {
     const s = getComputedStyle(e);
-    if (SHAPES.has(e.tagName.toLowerCase())) {
-      const c = rgb(s.fill);
-      return c && { ...c, a: c.a * +s.fillOpacity };
+    const tag = e.tagName.toLowerCase();
+    if (SHAPES.has(tag)) {
+      const m = e.getScreenCTM()?.inverse();
+      if (!m) return null;
+      const pt = new DOMPoint(x, y).matrixTransform(m);
+      let [paint, opacity] = ['none', 1];
+      if (e.isPointInStroke(pt)) [paint, opacity] = [s.stroke, s.strokeOpacity];
+      else if (e.isPointInFill(pt)) [paint, opacity] = [s.fill, s.fillOpacity];
+      if (paint === 'none') return CLEAR;
+      const c = rgb(paint);
+      return c && { ...c, a: c.a * +opacity * seen(e) };
     }
-    return e.closest('svg') ? null : rgb(s.backgroundColor);
+    if (e instanceof SVGElement && tag !== 'svg') return ['g', 'a', 'foreignobject'].includes(tag) ? CLEAR : null;
+    if (s.backgroundImage !== 'none') return null;
+    const c = rgb(s.backgroundColor);
+    return !c || c.a < 0.05 ? CLEAR : c;
   }
+  // How much of an SVG shape shows: its opacity and its groups’, up to its SVG.
+  function seen(e) {
+    let o = 1;
+    for (let a = e; a && a.tagName.toLowerCase() !== 'svg'; a = a.parentElement) o *= +getComputedStyle(a).opacity;
+    return o;
+  }
+  // The nearest opaque background behind page text, as { c }, or null when a background image comes first.
   function background(el) {
     for (let e = el; e; e = e.parentElement) {
-      const c = rgb(getComputedStyle(e).backgroundColor);
-      if (c && c.a > 0.95) return c;
+      const cs = getComputedStyle(e);
+      if (cs.backgroundImage !== 'none') return null;
+      const c = rgb(cs.backgroundColor);
+      if (c && c.a > 0.95) return { c };
     }
-    return rgb(getComputedStyle(document.documentElement).backgroundColor) || { r: 0, g: 0, b: 0, a: 1 };
+    return { c: rgb(getComputedStyle(document.documentElement).backgroundColor) || { r: 0, g: 0, b: 0, a: 1 } };
   }
   function blend(f, b) {
     return { r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 };
