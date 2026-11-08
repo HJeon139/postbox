@@ -10,6 +10,8 @@
 
 import { h } from './dom.mjs';
 import { restoreDetails } from './rerender-state.mjs';
+import { holdView } from './view-jump.mjs';
+import { holdSkipping } from './view-skip.mjs';
 import { createHeights } from './window-heights.mjs';
 import { CEILING, CHUNK, FLOOR, MARGIN } from './window-limits.mjs';
 import { drop, dropBottom, dropTop, fill, gapBefore, paintSpacers, pinned, recenter, rejoin, release, shrink } from './window-shrink.mjs';
@@ -236,17 +238,15 @@ class TranscriptWindow {
     this.from = a;
     this.paintSpacers();
     const moved = first.getBoundingClientRect().top - top;
-    if (Math.abs(moved) >= 1) this.scroller().scrollBy(0, moved);
-    // Tell the view now, as the scroll event would a frame later: it holds its anchor where this left it (view-state.mjs).
-    this.scroller().dispatchEvent(new Event('scroll'));
+    if (Math.abs(moved) < 1) return;
+    this.scroller().scrollBy(0, moved);
+    // The view takes its anchor where this left it, now, and doesn’t take the move for yours (view-state.mjs).
+    holdView(this.el);
   }
   /** Mounts the opening range between its spacers, then grows as you scroll. */
   build() {
     live.add(this);
-    // The window keeps the page small itself, so the browser’s skipping (view-skip.mjs) stays off here: an item it
-    // mounts must lay out at its real height, or the spacers and the anchor would be measured against estimates.
-    this.el.dataset.window = 'on';
-    this.el.classList.remove('cv-skip');
+    holdSkipping(this.el, true);
     [this.from, this.to] = this.openRange();
     this.el.append(this.above, this.below);
     this.mountRun(this.from, this.to, this.below);
@@ -297,6 +297,7 @@ class TranscriptWindow {
   }
   destroy() {
     live.delete(this);
+    holdSkipping(this.el, false);
     cancelAnimationFrame(this.raf);
     this.sizes.disconnect();
     this.scroller()?.removeEventListener('scroll', this.scrolled);
