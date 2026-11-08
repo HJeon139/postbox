@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { hostUpdateRefusal } from '../shared/block-updates.mjs';
 import { connectShim, makeBroker, makeHome } from './remote-broker-fixtures.mjs';
 
 test('#854 an outcome or a withdraw update_block from a host is queued for Postbox, as the laptop takes it', async () => {
@@ -45,6 +46,24 @@ test('an image update_block from a host is checked for https, and its origin is 
       k.sent.map((m) => m.id),
       ['c1'],
     );
+  } finally {
+    await h.done();
+  }
+});
+
+test('#827 the daemon refuses an invalid update_block in the same words as the shim, which refuses it in the call', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    const k = makeBroker(h);
+    const s = connectShim(k.b, 't1');
+    await s.next('welcome');
+    // The shim refuses an invalid update before the daemon sees it (shim-calls.mjs, hostUpdateRefusal); one that
+    // reaches the daemon, as a call carrying files does, must be refused in the same words.
+    const block = { id: 'pick', type: 'choice', version: 1 };
+    const r = await s.call('c1', 'update_block', { block });
+    assert.equal(r.ok, false);
+    assert.equal(r.text, hostUpdateRefusal(block));
   } finally {
     await h.done();
   }
