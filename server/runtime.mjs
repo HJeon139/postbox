@@ -28,6 +28,7 @@ import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessag
 import { addDataset, reloadDatasets } from './datasets.mjs';
 import { DELETE_UNDO_MS } from './delete-undo.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
+import { agentFolderPath } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { hostTool } from './host-tool.mjs';
@@ -2403,7 +2404,7 @@ export class Runtime {
       canPublish,
       mcpOff: serverNames(mcpOff),
       skillsOff: skillNames(skillsOff),
-      folder: String(folder ?? ''),
+      folder: agentFolderPath(folder),
       tools: [...new Set(tools)],
       examples,
       createdBy,
@@ -2425,6 +2426,7 @@ export class Runtime {
     checkSetup(patch);
     if (patch.mcpOff !== undefined) patch = { ...patch, mcpOff: serverNames(patch.mcpOff) };
     if (patch.skillsOff !== undefined) patch = { ...patch, skillsOff: skillNames(patch.skillsOff) };
+    if (patch.folder !== undefined) patch = { ...patch, folder: agentFolderPath(patch.folder) };
     if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend)) throw httpError(422, notHere(this, patch.backend));
     // Where it runs (#120), and whether its backend runs here when that’s here.
     patch = placedPatch(this, id, p, patch);
