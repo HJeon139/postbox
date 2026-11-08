@@ -44,7 +44,7 @@ test('commands say what they did to version control and to services outside Post
   );
   assert.deepEqual(push.branches, ['feature']);
   assert.deepEqual(push.commit, { branch: 'feature', sha: '15ae03c', message: 'Second' });
-  assert.deepEqual(push.push, { remote: '/workspace/remote.git', refs: ['feature → feature'] });
+  assert.deepEqual(push.pushes, [{ remote: '/workspace/remote.git', refs: ['feature → feature'] }]);
   const pr = commandFacts('gh pr create --title "Kiro adapter" --body x', 'https://github.com/HJeon139/postbox/pull/127\n');
   assert.deepEqual(pr.external, [{ kind: 'gh', what: 'gh pr create', urls: ['https://github.com/HJeon139/postbox/pull/127'] }]);
   assert.equal(commandFacts('gh pr view 127', 'title: x').external.length, 0, 'reading isn’t writing');
