@@ -1,19 +1,15 @@
-// #995’s side-by-side judge (tools/uat/side-by-side.mjs): a judged run’s first picture against a words-only answer from
-// the same agent, shown to a judge in random order, and the rate over runs against #206’s bar of 7 in 10.
+// #995’s side-by-side judge (tools/uat/side-by-side.mjs): a run’s first picture, as the reply left it, with the
+// sentence it was meant to say, and a judge shown two of them, picture against picture.
 
 import assert from 'node:assert/strict';
-import { EventEmitter } from 'node:events';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { seedFiles } from '../tools/uat/fixtures.mjs';
 import { pairShot } from '../tools/uat/pair-shot.mjs';
 import { firstExchange } from '../tools/uat/picture-choice.mjs';
 import { replyShot } from '../tools/uat/picture-shots.mjs';
-import { BAR, pairRate, sideBySide, sideBySideSection, wordsSystem, wordsWorkspace } from '../tools/uat/side-by-side.mjs';
-import { hideSteeringAbove } from '../tools/uat/steering.mjs';
-import { askOnce } from '../tools/uat/tester.mjs';
+import { firstPicture, firstPictureSection, firstSentence, judgePair, meantLabel, meantOf, PAIR_SCHEMA } from '../tools/uat/side-by-side.mjs';
 
 const add = (id, kind, at, extra = {}) => ({ type: 'item.add', data: { threadId: 'th_1', item: { id, kind, at, ...extra } } });
 
@@ -60,118 +56,67 @@ test('#995 the picture is shot as the reply left it, not while its check was at 
   assert.equal(replyShot(join(dir, 'shots'), 'I9', null), null);
 });
 
-/** An ask that answers each schema: the words answer, then the judge’s pick. */
-function fakeAsk(pick) {
+const pictures = [
+  ...drew.slice(0, 3),
+  { type: 'app', data: { id: 'subs', itemId: 'it_3', versions: [{ v: 1, at: 3_000, intent: 'Six cost over $10 a use.' }], check: { status: 'passed' } } },
+  ...drew.slice(3),
+];
+
+test('#995 a run’s first picture is its question, its shot as the reply left it, and the sentence it was meant to say', async (t) => {
+  const dir = runWith(pictures, { '01-I3.png': 3_500, '03-I3.png': 8_000 });
+  t.after(() => rmSync(dir, { recursive: true }));
+  const o = { dir, data: join(dir, 'data'), shots: join(dir, 'shots'), labels: new Map([['it_3', 'I3']]) };
+  assert.deepEqual(await firstPicture(o), {
+    question: 'Which should I cancel?',
+    kind: 'app',
+    item: 'I3',
+    shot: 'shots/03-I3.png',
+    inputsBefore: 0,
+    intent: 'Six cost over $10 a use.',
+    intentFrom: 'agent',
+    v: 1,
+  });
+  const words = runWith([add('it_1', 'user', 1, { text: 'How many?' }), add('it_2', 'agent', 2, { text: '18.' })]);
+  t.after(() => rmSync(words, { recursive: true }));
+  assert.deepEqual(await firstPicture({ ...o, dir: words, data: join(words, 'data') }), { skipped: 'the agent answered in words' });
+  assert.deepEqual(firstPictureSection({ skipped: 'the agent answered in words' }), [
+    '## First picture',
+    '',
+    'None to compare: the agent answered in words.',
+    '',
+  ]);
+  assert.deepEqual(firstPictureSection(undefined), []);
+});
+
+test('#995 a version from before intents gets the first sentence of its text version, marked as not the agent’s intent', () => {
+  const app = { id: 'subs', versions: [{ v: 1, at: 1 }], check: 'passed', fallback: 'At $10+ per use, cancel six. Saves $171 a month.' };
+  assert.deepEqual(meantOf(app, 5), { intent: 'At $10+ per use, cancel six.', intentFrom: 'fallback', v: 1 });
+  assert.deepEqual(meantOf(null, 5), { intent: '', intentFrom: null, v: null });
+  assert.equal(meantLabel({ intentFrom: 'fallback' }), 'The agent’s text version of it (it gave no intent)');
+  assert.equal(meantLabel({ intentFrom: 'agent' }), 'What the agent meant it to say');
+  assert.equal(firstSentence('No stop here'), 'No stop here');
+  assert.equal(firstSentence('x'.repeat(400)).length, 300);
+});
+
+test('#995 the judge sees only the two pictures and what each was meant to say, as the maintainer does', async () => {
   const calls = [];
   const ask = async (args) => {
     calls.push(args);
-    if (args.schema.properties.answer) return { value: { answer: 'Cancel the gym and the meal kit.' }, cost: 0.2 };
-    return { value: { pick, why: 'It shows which ones cost the most per use.' }, cost: 0.05 };
+    return { value: { pick: 'B', why: 'B shows which ones cost the most per use.' }, cost: 0.05 };
   };
-  return { ask, calls };
-}
-
-const context = (dir, ask, random) => ({
-  scenario: { persona: 'Someone with many subscriptions.', agents: ['researcher'] },
-  dir,
-  data: join(dir, 'data'),
-  workspace: join(dir, 'workspace'),
-  shots: join(dir, 'shots'),
-  labels: new Map([['it_3', 'I3']]),
-  agent: { model: 'claude-opus-5-5', effort: 'high' },
-  judgeModel: 'claude-sonnet-5-5',
-  ask,
-  random: () => random,
-});
-
-test('#995 the words answer is the same agent on the same question, in the run’s folder, told to answer in words', async (t) => {
-  const dir = runWith(drew, { '03-I3.png': 8_000 });
-  t.after(() => rmSync(dir, { recursive: true }));
-  const { ask, calls } = fakeAsk('A');
-  await sideBySide(context(dir, ask, 0.1));
-  const words = calls[0];
-  assert.equal(words.prompt, 'Which should I cancel?');
-  assert.equal(words.cwd, join(dir, 'workspace'));
-  assert.equal(words.model, 'claude-opus-5-5');
-  assert.deepEqual(words.extra, ['--permission-mode', 'auto', '--effort', 'high']);
-  assert.match(words.append, /You are @researcher\.[\s\S]*Cite sources\.[\s\S]*in words only/);
-  assert.equal(readFileSync(join(dir, 'words-answer.md'), 'utf8'), 'Cancel the gym and the meal kit.\n');
-  assert.equal(wordsSystem({ handle: 'x' }).includes('Your role'), false, 'a persona without a role says none');
-});
-
-test('#995 the words answer starts from the files the run started with, not what the agent left in the run’s folder', (t) => {
-  const dir = runWith(drew);
-  t.after(() => rmSync(dir, { recursive: true }));
-  writeFileSync(join(dir, 'workspace', 'chart.html'), '<p>the agent’s app</p>');
-  // The workspace as makeWorkspace makes it, but for its git init: tests start no process.
-  const make = (scenario, paths) => {
-    seedFiles(paths.workspace, scenario.files);
-    hideSteeringAbove(paths.workspace);
-    return null;
-  };
-  const words = wordsWorkspace({ files: 'subscriptions' }, dir, make);
-  assert.equal(words, join(dir, 'words-workspace'));
-  assert.ok(readdirSync(words).includes('subscriptions.csv'));
-  assert.ok(!existsSync(join(words, 'chart.html')));
-  assert.ok(existsSync(join(words, '.claude', 'settings.json')), 'Postbox’s own AGENTS.md is hidden from it');
-});
-
-test('#995 the judge sees both in random order, and its pick is read back as the picture or the words', async (t) => {
-  const dir = runWith(drew, { '03-I3.png': 8_000 });
-  t.after(() => rmSync(dir, { recursive: true }));
-  const first = fakeAsk('A');
-  const asA = await sideBySide(context(dir, first.ask, 0.1));
-  assert.equal(asA.pictureAs, 'A');
-  assert.equal(asA.pick, 'picture');
-  assert.match(first.calls[1].prompt, /## Answer A\n\nDrawing it\.\n\nCancel the gym\.\n\nWith it, this picture: shots\/03-I3\.png/);
-  assert.match(first.calls[1].prompt, /## Answer B\n\nCancel the gym and the meal kit\./);
-  assert.match(first.calls[1].prompt, /not its length, its effort or its looks/);
-  const second = fakeAsk('A');
-  const asB = await sideBySide(context(dir, second.ask, 0.9));
-  assert.equal(asB.pictureAs, 'B');
-  assert.equal(asB.pick, 'words', 'A is the words when the picture is B');
-  assert.deepEqual(asB.cost, { words: 0.2, judge: 0.05 });
-  assert.equal((await sideBySide(context(dir, fakeAsk('tie').ask, 0.9))).pick, 'tie');
-});
-
-test('#995 a run with no picture, or none on screen, has no pair, and says why', async (t) => {
-  const words = runWith([add('it_1', 'user', 1, { text: 'How many?' }), add('it_2', 'agent', 2, { text: '18.' })]);
-  const unseen = runWith(drew);
-  t.after(() => {
-    for (const d of [words, unseen]) rmSync(d, { recursive: true });
-  });
-  const { ask, calls } = fakeAsk('A');
-  assert.deepEqual(await sideBySide(context(words, ask, 0.5)), { skipped: 'the agent answered in words' });
-  assert.deepEqual(await sideBySide(context(unseen, ask, 0.5)), { skipped: 'no screenshot of the agent’s app' });
-  assert.equal(calls.length, 0, 'nothing is asked without a pair');
-  assert.deepEqual(sideBySideSection({ skipped: 'the agent answered in words' }), ['## Side by side', '', 'No pair: the agent answered in words.', '']);
-  assert.deepEqual(sideBySideSection(undefined), []);
-});
-
-test('#995 the rate over runs counts a tie as no win, and reads against #206’s bar', () => {
-  const runs = [...Array(7).fill({ pick: 'picture' }), { pick: 'words' }, { pick: 'tie' }, { pick: 'words' }, { skipped: 'the agent answered in words' }];
-  assert.deepEqual(pairRate(runs), { pairs: 10, picture: 7, words: 2, tie: 1, skipped: 1, rate: 0.7, meetsBar: true });
-  assert.equal(pairRate([{ pick: 'picture' }, { pick: 'tie' }]).meetsBar, false);
-  assert.equal(pairRate([]).rate, null);
-  assert.deepEqual(BAR, { wins: 7, of: 10 });
-});
-
-test('#995 a call that plays the agent names its own tools, system prompt and arguments', async () => {
-  /** @type {string[]} */
-  let args = [];
-  const run = (_bin, a) => {
-    args = a;
-    const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stdin: { end: () => {} } });
-    setImmediate(() => {
-      child.stdout.emit('data', JSON.stringify({ structured_output: { answer: 'x' }, total_cost_usd: 0 }));
-      child.emit('close', 0);
-    });
-    return child;
-  };
-  await askOnce({ cwd: '.', model: 'm', prompt: 'p', schema: {}, tools: 'Read,Bash', append: 'You are @a.', extra: ['--effort', 'low'], run });
-  assert.equal(args[args.indexOf('--tools') + 1], 'Read,Bash');
-  assert.equal(args[args.indexOf('--append-system-prompt') + 1], 'You are @a.');
-  assert.equal(args[args.indexOf('--effort') + 1], 'low');
+  const sides = [
+    { file: '1-a.png', intent: 'Six cost over $10 a use.', intentFrom: 'agent' },
+    { file: '1-b.png', intent: 'Cancel the gym.', intentFrom: 'fallback' },
+  ];
+  const r = await judgePair({ persona: 'Someone.', question: 'Which should I cancel?', sides, cwd: '/out', model: 'm', ask });
+  assert.deepEqual(r, { pick: 'B', why: 'B shows which ones cost the most per use.', cost: 0.05 });
+  assert.equal(calls[0].cwd, '/out');
+  assert.equal(calls[0].schema, PAIR_SCHEMA);
+  const p = calls[0].prompt;
+  assert.match(p, /## Picture A\n\nThe screenshot: 1-a\.png \(open it with Read\)\.\nWhat the agent meant it to say: “Six cost over \$10 a use\.”/);
+  assert.match(p, /## Picture B\n\nThe screenshot: 1-b\.png \(open it with Read\)\.\nThe agent’s text version of it \(it gave no intent\): “Cancel the gym\.”/);
+  assert.match(p, /Don’t prefer one for being busier, longer or more polished\./);
+  assert.equal(p.includes('Drawing it.'), false, 'none of the reply’s words');
 });
 
 // The app’s v1 failed its check at 3_500 and was shown fixing; v2, fixed, came at 6_000 and passed.

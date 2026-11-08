@@ -10,7 +10,7 @@ import { agyTokens, kiroCredits, waitingOnYou } from './checks.mjs';
 import { agentsSpent } from './cost.mjs';
 import { pictureSection } from './picture-choice.mjs';
 import { writeJsonAtomic } from './runs.mjs';
-import { sideBySideSection } from './side-by-side.mjs';
+import { firstPictureSection } from './side-by-side.mjs';
 import { countByCheck } from './telemetry-run.mjs';
 import { timingLine } from './timing.mjs';
 import { cell as esc } from './trigger-facts.mjs';
@@ -128,7 +128,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
     ...harnessSection(findings),
     ...visualSection(timeline),
     ...pictureSection(scenario, dir),
-    ...sideBySideSection(facts.sideBySide),
+    ...firstPictureSection(facts.firstPicture),
     '## Timeline',
     '',
     ...timeline.map((t) => `${t.step}. **${t.phase}.** ${t.assessment} Next: \`${JSON.stringify(t.action)}\``),

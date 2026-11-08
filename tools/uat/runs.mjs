@@ -154,8 +154,8 @@ export function runRecord({
     ...(facts.timing ? { timing: facts.timing } : {}),
     // Whether the agent drew, when and what, for a judged run (#983).
     ...pictureRecord(scenario, dir),
-    // #995: the first picture against a words-only answer, and each judged app’s intent against its takeaway.
-    ...(facts.sideBySide ? { sideBySide: facts.sideBySide, pictureJudges: facts.pictureJudges } : {}),
+    // #995: the first picture and what it was meant to say, for the side-by-side judge, and what the intent judge spent.
+    ...(facts.firstPicture ? { firstPicture: facts.firstPicture, pictureJudges: facts.pictureJudges } : {}),
   };
 }
 
@@ -213,10 +213,10 @@ export function readRun(dir, { scenarios } = {}) {
     // Where the run’s time went (tools/uat/timing.mjs): only a live run measures it, so a recheck keeps it.
     timing: saved.timing ?? null,
     proposals: Array.isArray(findings.telemetry?.proposals) ? findings.telemetry.proposals : [],
-    // Whether the agent drew first (#983), and its first picture against a words-only answer (#995): only a live run
+    // Whether the agent drew first (#983), and its first picture (#995): only a live run
     // or tools/uat-pairs.mjs records them, so a recheck keeps them.
     ...(saved.picture ? { picture: saved.picture } : {}),
-    ...(saved.sideBySide ? { sideBySide: saved.sideBySide, pictureJudges: saved.pictureJudges ?? null } : {}),
+    ...(saved.firstPicture ? { firstPicture: saved.firstPicture, pictureJudges: saved.pictureJudges ?? null } : {}),
   };
 }
 

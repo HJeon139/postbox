@@ -20,22 +20,27 @@ export const MATCH_SCHEMA = {
 /**
  * The app an item shows, and its versions, from the run’s Postbox log, or null for an item that isn’t an app.
  * @param {string} data  the run’s Postbox data folder @param {string} itemId
- * @returns {{ id: string, versions: { v: number, at: number, intent?: string }[], check: string|null } | null}  check: its last check’s status
+ * @returns {{ id: string, versions: { v: number, at: number, intent?: string }[], check: string|null, fallback: string } | null}
+ *   check: its last check’s status; fallback: the plain-text version the agent wrote with it (shared/catalog.mjs)
  */
 export function appAt(data, itemId) {
   let id = null;
+  let fallback = '';
   const versions = new Map();
   const checks = new Map();
   for (const e of logEvents(data)) {
     const it = e.type === 'item.add' ? e.data.item : null;
-    if (it?.id === itemId && it.kind === 'block' && it.block?.type === 'app') id = it.block.id;
+    if (it?.id === itemId && it.kind === 'block' && it.block?.type === 'app') {
+      id = it.block.id;
+      fallback = it.block.fallback ?? '';
+    }
     if (e.type !== 'app') continue;
     // An app keeps its id when a new version moves it to a new item.
     if (e.data.itemId === itemId) id = e.data.id;
     versions.set(e.data.id, e.data.versions ?? []);
     checks.set(e.data.id, e.data.check?.status ?? null);
   }
-  return id ? { id, versions: versions.get(id) ?? [], check: checks.get(id) ?? null } : null;
+  return id ? { id, versions: versions.get(id) ?? [], check: checks.get(id) ?? null, fallback } : null;
 }
 
 /**

@@ -69,12 +69,12 @@ test('a run’s record keeps every key the live run writes to run.json, as it wr
   for (const [key, value] of Object.entries(written)) assert.deepEqual(record[key], value, `run.json’s ${key}`);
 });
 
-test('#995 a run’s record keeps whether the agent drew first and its pair of answers, which only the live run records', (t) => {
+test('#995 a run’s record keeps whether the agent drew first and its first picture, which only the live run records', (t) => {
   const picture = { expects: 'picture', first: 'app', inputsBefore: 0, met: true };
-  const sideBySide = { pick: 'words', pictureAs: 'B', why: 'Shorter to act on.' };
-  const record = readRun(runDir(t, { scenario: 'everyday-subs-cancel', picture, sideBySide, pictureJudges: { usd: 0.3 } }));
+  const firstPicture = { kind: 'app', item: 'I3', shot: 'shots/04-I3.png', intent: 'Six cost over $10 a use.', intentFrom: 'agent', v: 2 };
+  const record = readRun(runDir(t, { scenario: 'everyday-subs-cancel', picture, firstPicture, pictureJudges: { usd: 0.3 } }));
   assert.deepEqual(record?.picture, picture);
-  assert.deepEqual(record?.sideBySide, sideBySide);
+  assert.deepEqual(record?.firstPicture, firstPicture);
   assert.deepEqual(record?.pictureJudges, { usd: 0.3 });
-  assert.equal('sideBySide' in (readRun(runDir(t, { scenario: 'delivery' })) ?? {}), false, 'a run without one gets none');
+  assert.equal('firstPicture' in (readRun(runDir(t, { scenario: 'delivery' })) ?? {}), false, 'a run without one gets none');
 });

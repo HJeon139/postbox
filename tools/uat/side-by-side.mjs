@@ -1,29 +1,14 @@
-// #206’s side-by-side preference (#995): would the person rather have had the agent’s picture, or an answer in words?
-// For a judged run’s first picture, the runner asks the same agent the person’s first message once more, with no
-// Postbox and none of its skills, told to answer in words. A judge sees both answers, in random order, and picks one
-// or a tie, as the person. #206’s bar is the picture preferred in 7 of 10 pairs; a model judge’s rate isn’t that bar
-// until its agreement with the maintainer’s blind picks is known (tools/uat-pairs.mjs).
-//
-// The words answer is one `claude -p` turn, not a second run: the same model and effort, the persona’s role and
-// instructions, a project folder with the files the run started with and the tools to read and count in them, on the
-// same question. The run’s own folder isn’t used: by then it holds what the agent wrote. A second
-// run would cost a whole run (a tester, a browser, its other steps) for one reply, and Postbox’s guide only adds how
-// to show blocks and apps, which a words answer doesn’t use.
+// The side-by-side judge (#995): two pictures for the same question, from two conditions, such as a scenario with
+// Postbox’s skill against its `-base` twin, or before and after a change to the guide. Each side is the first picture’s
+// screenshot and the one sentence it was meant to say, nothing else: the agents’ replies around their pictures are
+// mostly setup and process, which a judge read instead of the picture when it saw them. A judge, and the maintainer
+// on the calibration page (tools/uat/calibration.mjs), pick the picture that leaves them understanding more, as the
+// person who asked. Whether to draw at all is #983’s measure, not this one (tools/uat/picture-choice.mjs).
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { relative } from 'node:path';
+import { appAt, versionAt } from './intent-match.mjs';
 import { pairShot } from './pair-shot.mjs';
 import { firstExchange } from './picture-choice.mjs';
-import { makeWorkspace } from './workspace.mjs';
-
-/** #206’s bar: the picture preferred in this many of these pairs. */
-export const BAR = { wins: 7, of: 10 };
-
-const WORDS_SCHEMA = {
-  type: 'object',
-  properties: { answer: { type: 'string', description: 'Your whole reply to the person, in Markdown.' } },
-  required: ['answer'],
-};
 
 export const PAIR_SCHEMA = {
   type: 'object',
@@ -34,78 +19,35 @@ export const PAIR_SCHEMA = {
   required: ['pick', 'why'],
 };
 
-/**
- * A project folder for the words answer, in the run’s folder: a repository with the files the scenario starts with,
- * and Postbox’s own AGENTS.md hidden, as the run’s workspace was before the agent worked in it.
- * @param {{ files?: string|null }} scenario @param {string} dir  the run’s folder @param {typeof makeWorkspace} [make]  a fake, in tests
- */
-export function wordsWorkspace(scenario, dir, make = makeWorkspace) {
-  const workspace = join(dir, 'words-workspace');
-  mkdirSync(workspace, { recursive: true });
-  make({ seed: null, files: scenario.files ?? null }, { workspace }, dir);
-  return workspace;
-}
-
-/** The agent the run’s first message went to, as the run seeded it (tools/uat/seed.mjs). @param {string} data @param {string} handle */
-export function personaOf(data, handle) {
-  try {
-    const agents = JSON.parse(readFileSync(join(data, 'agents.json'), 'utf8'));
-    return agents.find((p) => p.handle === handle) ?? { handle };
-  } catch {
-    return { handle };
-  }
-}
-
-/** The system prompt the words answer appends: who the agent is, and to answer in words. @param {{ handle: string, description?: string, instructions?: string }} p */
-export function wordsSystem(p) {
-  return [
-    `You are @${p.handle}.`,
-    p.description ? `Your role: ${p.description}` : '',
-    p.instructions ? `The person’s instructions for you:\n${p.instructions}` : '',
-    'Answer the person in words only: Markdown text, with no app, picture, chart or diagram. Their files are in this folder; read them as you need.',
-  ]
-    .filter(Boolean)
-    .join('\n\n');
+/** The first sentence of a text, up to 300 characters. @param {string} text */
+export function firstSentence(text) {
+  const t = String(text ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return (/^.*?[.!?](?=\s|$)/.exec(t)?.[0] ?? t).slice(0, 300);
 }
 
 /**
- * What the judge is asked. `first` is the answer shown as A.
- * @param {{ persona: string, question: string, answers: string[] }} o  answers: A’s and B’s text, in that order
+ * What the picture was meant to say: the agent’s intent for the version shown (#995), or, for a version from before
+ * apps had one, the first sentence of the plain-text version the agent wrote with it, marked as such, never as the
+ * agent’s intent.
+ * @param {ReturnType<typeof appAt>} app @param {number} at  when the screenshot was taken
+ * @returns {{ intent: string, intentFrom: 'agent'|'fallback'|null, v: number|null }}
  */
-export function pairPrompt({ persona, question, answers }) {
-  return `You are this person: ${persona}
-
-You asked: “${question}”
-
-Two answers came back. Read both in full before you choose, and open any screenshot an answer names with Read: it’s what you saw on screen.
-
-## Answer A
-
-${answers[0]}
-
-## Answer B
-
-${answers[1]}
-
-Which would you rather have got, as this person, for what you asked? Pick A or B, or tie when neither helps you more. Judge what each lets you understand or decide, not its length, its effort or its looks: an answer isn’t better for being longer, or for being a picture.`;
+export function meantOf(app, at) {
+  const version = app ? versionAt(app.versions, at) : null;
+  if (version?.intent) return { intent: version.intent, intentFrom: 'agent', v: version.v };
+  const derived = firstSentence(app?.fallback ?? '');
+  return { intent: derived, intentFrom: derived ? 'fallback' : null, v: version?.v ?? null };
 }
-
-/** The judge’s A, B or tie, read back as the picture, the words or a tie. @param {string} said @param {boolean} pictureFirst */
-function pickOf(said, pictureFirst) {
-  if (said === 'tie') return 'tie';
-  return (said === 'A') === pictureFirst ? 'picture' : 'words';
-}
-
-/** The picture answer as the judge reads it: the agent’s words, and the screenshot of its picture. @param {string} reply @param {string} shot */
-const pictureAnswer = (reply, shot) => `${reply ? `${reply}\n\n` : ''}With it, this picture: ${shot} (a screenshot; open it with Read).`;
 
 /**
- * Asks for the words answer and the judge’s pick. Returns the record for run.json, or why the run had no pair.
- * @param {{ scenario: any, dir: string, data: string, workspace?: string, shots: string, labels: Map<string, string>, shoot?: (label: string, file: string) => Promise<string|null>,
- *   agent: { model: string|null, effort: string|null }, judgeModel: string, ask: (args: any) => Promise<{ value: any, cost: number }>, random?: () => number }} o
- *   workspace: where the words answer runs, a fresh wordsWorkspace when not given; shoot: the runner’s shot of an item now (pairShot)
+ * A run’s first picture, for run.json: the question, the screenshot as the reply left it, and what it was meant to
+ * say. Or why the run has none.
+ * @param {{ dir: string, data: string, shots: string, labels: Map<string, string>, shoot?: (label: string, file: string) => Promise<string|null> }} o
+ *   labels: item id → the runner’s label; shoot: the runner’s shot of an item now, in a live run (tools/uat/pair-shot.mjs)
  */
-export async function sideBySide({ scenario, dir, data, workspace, shots, labels, shoot, agent, judgeModel, ask, random = Math.random }) {
+export async function firstPicture({ dir, data, shots, labels, shoot }) {
   const x = firstExchange(data);
   if (!x) return { skipped: 'the log doesn’t hold the person’s first message' };
   if (!x.visual) return { skipped: x.replied ? 'the agent answered in words' : 'the agent never replied' };
@@ -113,79 +55,65 @@ export async function sideBySide({ scenario, dir, data, workspace, shots, labels
   if (!label) return { skipped: `no screenshot of the agent’s ${x.visual.kind}` };
   const taken = await pairShot({ data, shots, label, visual: x.visual, nextMessageAt: x.nextMessageAt, shoot });
   if ('skipped' in taken) return taken;
-  const { shot } = taken;
-  const cost = { words: 0, judge: 0 };
-  const words = await ask({
-    cwd: workspace ?? wordsWorkspace(scenario, dir),
-    model: agent.model ?? 'opus',
-    prompt: x.question,
-    schema: WORDS_SCHEMA,
-    tools: 'Read,Grep,Glob,Bash',
-    append: wordsSystem(personaOf(data, scenario.agents[0])),
-    extra: ['--permission-mode', 'auto', ...(agent.effort ? ['--effort', agent.effort] : [])],
-    budgetUsd: 1.5,
-  });
-  cost.words = words.cost;
-  writeFileSync(join(dir, 'words-answer.md'), `${words.value.answer}\n`);
-  const pictureFirst = random() < 0.5;
-  const picture = pictureAnswer(x.reply, relative(dir, shot.file));
-  const answers = pictureFirst ? [picture, words.value.answer] : [words.value.answer, picture];
-  const r = await ask({
-    cwd: dir,
-    model: judgeModel,
-    prompt: pairPrompt({ persona: scenario.persona, question: x.question, answers }),
-    schema: PAIR_SCHEMA,
-    budgetUsd: 1,
-  });
-  cost.judge = r.cost;
-  const pick = pickOf(r.value.pick, pictureFirst);
+  const app = x.visual.kind === 'app' ? appAt(data, x.visual.itemId) : null;
   return {
     question: x.question,
-    picture: {
-      kind: x.visual.kind,
-      item: label,
-      shot: relative(dir, shot.file),
-      inputsBefore: x.visual.inputsBefore,
-      ...(taken.retaken ? { retaken: true } : {}),
-    },
-    words: 'words-answer.md',
-    pictureAs: pictureFirst ? 'A' : 'B',
-    pick,
-    why: r.value.why,
-    cost,
+    kind: x.visual.kind,
+    item: label,
+    shot: relative(dir, taken.shot.file),
+    inputsBefore: x.visual.inputsBefore,
+    ...(taken.retaken ? { retaken: true } : {}),
+    ...meantOf(app, taken.shot.at),
   };
 }
 
-/** The report’s section on it, for a run that has one. @param {any} record  sideBySide’s, or undefined */
-export function sideBySideSection(record) {
-  if (!record) return [];
-  const head = ['## Side by side', ''];
-  if (record.skipped) return [...head, `No pair: ${record.skipped}.`, ''];
-  const picked = { picture: 'the picture', words: 'the words', tie: 'neither' }[record.pick];
-  return [
-    ...head,
-    `The person’s first message, answered twice: the agent’s ${record.picture.kind} (\`${record.picture.shot}\`) with its words, and the same agent with no Postbox and its skills off, told to answer in words (\`${record.words}\`). A judge saw both in random order, the picture as ${record.pictureAs}, and as the person preferred **${picked}**: ${record.why}`,
-    '',
-    'One pair isn’t a rate: tally runs with `node tools/uat-pairs.mjs rate`, against #206’s bar of 7 in 10, once the judge agrees with the maintainer’s blind picks.',
-    '',
-  ];
+/** How a side’s sentence is introduced, so a derived one is never read as the agent’s. @param {{ intentFrom: string|null }} side */
+export function meantLabel(side) {
+  if (side.intentFrom === 'agent') return 'What the agent meant it to say';
+  if (side.intentFrom === 'fallback') return 'The agent’s text version of it (it gave no intent)';
+  return 'It came with no sentence of what it meant to say';
 }
 
 /**
- * The rate over runs’ records: pairs, and how many the picture, the words or neither won. A tie isn’t a win.
- * @param {any[]} records  run.json’s sideBySide, one per run
+ * What the judge is asked: the person, their question, and the two pictures, each with what it was meant to say.
+ * @param {{ persona: string, question: string, sides: { file: string, intent: string, intentFrom: string|null }[] }} o  A’s and B’s
  */
-export function pairRate(records) {
-  const pairs = records.filter((r) => r && !r.skipped && r.pick);
-  const count = (pick) => pairs.filter((r) => r.pick === pick).length;
-  const picture = count('picture');
-  return {
-    pairs: pairs.length,
-    picture,
-    words: count('words'),
-    tie: count('tie'),
-    skipped: records.filter((r) => r?.skipped).length,
-    rate: pairs.length ? picture / pairs.length : null,
-    meetsBar: pairs.length ? picture / pairs.length >= BAR.wins / BAR.of : null,
-  };
+export function pairPrompt({ persona, question, sides }) {
+  const side = (name, s) => `## Picture ${name}\n\nThe screenshot: ${s.file} (open it with Read).\n${meantLabel(s)}${s.intent ? `: “${s.intent}”` : '.'}`;
+  return `You are this person: ${persona}
+
+You asked: “${question}”
+
+Two agents each answered with a picture. Open both screenshots before you choose.
+
+${side('A', sides[0])}
+
+${side('B', sides[1])}
+
+Which picture leaves you understanding more of what you asked, as this person? Judge what the drawing itself shows you, and whether it says what it meant to say. Pick A or B, or tie when neither helps you more. Don’t prefer one for being busier, longer or more polished.`;
+}
+
+/**
+ * Asks the judge about one pair, in the folder that holds both screenshots. `first` is the side shown as A.
+ * @param {{ persona: string, question: string, sides: any[], cwd: string, model: string, ask: (args: any) => Promise<{ value: any, cost: number }> }} o
+ * @returns {Promise<{ pick: 'A'|'B'|'tie', why: string, cost: number }>}
+ */
+export async function judgePair({ persona, question, sides, cwd, model, ask }) {
+  const r = await ask({ cwd, model, prompt: pairPrompt({ persona, question, sides }), schema: PAIR_SCHEMA, budgetUsd: 0.5 });
+  return { pick: r.value.pick, why: r.value.why, cost: r.cost };
+}
+
+/** The report’s line on the run’s first picture, for a run that has one. @param {any} record  firstPicture’s, or undefined */
+export function firstPictureSection(record) {
+  if (!record) return [];
+  const head = ['## First picture', ''];
+  if (record.skipped) return [...head, `None to compare: ${record.skipped}.`, ''];
+  const meant = record.intent ? `${meantLabel(record)}: “${record.intent}”` : `${meantLabel(record)}.`;
+  return [
+    ...head,
+    `The ${record.kind} as the first reply left it (\`${record.shot}\`${record.retaken ? ', shot at the end of the run' : ''}). ${meant}`,
+    '',
+    'The side-by-side judge compares it with another run’s, such as its `-base` twin: `node tools/uat-pairs.mjs build`.',
+    '',
+  ];
 }

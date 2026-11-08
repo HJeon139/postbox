@@ -35,7 +35,7 @@ function runWith(shots) {
 test('#995 an app’s versions are read from the log, and a screenshot shows the newest saved by then', (t) => {
   const dir = runWith({});
   t.after(() => rmSync(dir, { recursive: true }));
-  assert.deepEqual(appAt(join(dir, 'data'), 'it_3'), { id: 'subs', versions, check: null });
+  assert.deepEqual(appAt(join(dir, 'data'), 'it_3'), { id: 'subs', versions, check: null, fallback: '' });
   assert.equal(appAt(join(dir, 'data'), 'it_9'), null, 'an item that isn’t an app');
   assert.equal(versionAt(versions, 4_000)?.v, 1);
   assert.equal(versionAt(versions, 6_000)?.v, 2);

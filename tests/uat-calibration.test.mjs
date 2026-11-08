@@ -1,75 +1,78 @@
-// Calibrating #995’s side-by-side judge (tools/uat/calibration.mjs): the maintainer’s blind page, and the judge’s
-// agreement with their picks; and a pair for a run that finished before the judge (tools/uat/pairs-backfill.mjs).
+// Calibrating #995’s side-by-side judge (tools/uat/calibration.mjs): a scenario’s runs paired with its `-base` twin’s,
+// the maintainer’s blind page of picture against picture, and the judge’s agreement with their picks; and the first
+// picture of a run that finished before it was recorded (tools/uat/pairs-backfill.mjs).
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { agreement, calibrationPage } from '../tools/uat/calibration.mjs';
+import { agreement, calibrationPage, twinPairs } from '../tools/uat/calibration.mjs';
 import { firstJudged } from '../tools/uat/pairs-backfill.mjs';
 
-const pair = (n, judge) => ({
-  run: `run-${n}`,
-  persona: 'Someone with <many> subscriptions.',
-  question: 'Which should I cancel?',
-  reply: 'Cancel **six**.',
-  shot: '/nowhere.png',
-  words: '| Cancel | Saves |\n|---|---|\n| Gym | $59 |',
-  judge,
-});
-
-test('#995 the page shows each pair blind: no run, no judge’s pick, the person’s words as text', (t) => {
-  const out = join(mkdtempSync(join(tmpdir(), 'pb-calibrate-')), 'page');
-  t.after(() => rmSync(join(out, '..'), { recursive: true }));
-  const picks = [0.2, 0.8];
-  const key = calibrationPage([pair(1, 'picture'), pair(2, 'words')], { out, random: () => picks.shift() ?? 0 });
-  assert.deepEqual(key, [
-    { n: 1, run: 'run-1', pictureAs: 'A', judge: 'picture' },
-    { n: 2, run: 'run-2', pictureAs: 'B', judge: 'words' },
+test('#995 a scenario’s runs pair with its -base twin’s, newest first, one scenario after another', () => {
+  const run = (scenario, run) => ({ run, scenario, picture: {} });
+  const runs = [
+    run('subs', '2026-11-07-a'),
+    run('subs', '2026-11-08-a'),
+    run('subs-base', '2026-11-07-b'),
+    run('tests', '2026-11-08-c'),
+    run('tests-base', '2026-11-08-d'),
+    run('shelf', '2026-11-08-e'), // no twin
+  ];
+  const pairs = twinPairs(runs, 3).map((p) => [p.skill.run, p.base.run]);
+  assert.deepEqual(pairs, [
+    ['2026-11-08-a', '2026-11-07-b'],
+    ['2026-11-08-c', '2026-11-08-d'],
   ]);
-  const html = readFileSync(join(out, 'index.html'), 'utf8');
-  assert.ok(!html.includes('run-1') && !/judge/i.test(html.replace(/Judge what each/g, '')), 'nothing tells which run or what the judge picked');
-  assert.match(html, /Someone with &lt;many&gt; subscriptions\./, 'the persona is text, not HTML');
-  assert.match(html, /<table>/, 'the words answer is rendered as Postbox renders Markdown');
-  // Pair 1 has the picture as A, pair 2 as B.
-  const [one, two] = html.split('<article').slice(1);
-  assert.ok(one.indexOf('1-picture.png') < one.indexOf('<h3>Answer B</h3>'));
-  assert.ok(two.indexOf('2-picture.png') > two.indexOf('<h3>Answer B</h3>'));
-  assert.deepEqual(readdirSync(out), ['index.html'], 'the key isn’t in the page’s folder; a missing picture isn’t copied');
+  assert.equal(twinPairs(runs, 1).length, 1);
 });
 
-test('#995 agreement reads the maintainer’s A and B back as picture or words, and discounts chance agreement', () => {
+test('#995 the page shows two pictures and what each meant to say, with no run, condition or reply on it', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'pb-calibrate-'));
+  t.after(() => rmSync(dir, { recursive: true }));
+  for (const f of ['skill.png', 'base.png']) writeFileSync(join(dir, f), 'png');
+  const out = join(dir, 'page');
+  const sides = [
+    { file: join(dir, 'base.png'), intent: 'Cancel <the> gym.', intentFrom: 'fallback' },
+    { file: join(dir, 'skill.png'), intent: 'Six cost over $10 a use.', intentFrom: 'agent' },
+  ];
+  calibrationPage([{ persona: 'Someone with many subscriptions.', question: 'Which should I cancel?', sides }], out);
+  assert.deepEqual(readdirSync(out).sort(), ['1-a.png', '1-b.png', 'index.html']);
+  const html = readFileSync(join(out, 'index.html'), 'utf8');
+  assert.ok(!/skill|base|everyday/i.test(html.replace(/Postbox/g, '')), 'nothing tells which condition a picture came from');
+  assert.match(html, /The agent’s text version of it \(it gave no intent\)<\/span>: “Cancel &lt;the&gt; gym\.”/);
+  assert.match(html, /What the agent meant it to say<\/span>: “Six cost over \$10 a use\.”/);
+  assert.ok(html.indexOf('1-a.png') < html.indexOf('1-b.png'));
+});
+
+test('#995 agreement reads A and B back as the skill’s or the baseline’s picture, and discounts chance agreement', () => {
   const key = [
-    { n: 1, pictureAs: 'A', judge: 'picture' },
-    { n: 2, pictureAs: 'B', judge: 'picture' },
-    { n: 3, pictureAs: 'A', judge: 'words' },
-    { n: 4, pictureAs: 'B', judge: 'tie' },
-    { n: 5, pictureAs: 'A', judge: 'words' },
+    { n: 1, skillAs: 'A', judge: { pick: 'A' } }, // skill, skill: same
+    { n: 2, skillAs: 'B', judge: { pick: 'B' } }, // skill, person base: differs
+    { n: 3, skillAs: 'A', judge: { pick: 'B' } }, // base, base: same
+    { n: 4, skillAs: 'B', judge: { pick: 'tie' } }, // same
+    { n: 5, skillAs: 'A', judge: { pick: 'A' } }, // no pick: left out
   ];
   const picks = [
-    { n: 1, pick: 'A' }, // the picture: same
-    { n: 2, pick: 'A' }, // the words: differs
-    { n: 3, pick: 'B' }, // the words: same
-    { n: 4, pick: 'tie' }, // same
-    { n: 5, pick: null }, // no pick: left out
+    { n: 1, pick: 'A' },
+    { n: 2, pick: 'A' },
+    { n: 3, pick: 'B' },
+    { n: 4, pick: 'tie' },
+    { n: 5, pick: null },
   ];
   const a = agreement(key, { picks });
   assert.equal(a.pairs, 4);
   assert.equal(a.same, 3);
-  assert.equal(a.observed, 0.75);
-  assert.deepEqual(a.person, { picture: 1, words: 2, tie: 1 });
-  assert.deepEqual(a.judge, { picture: 2, words: 1, tie: 1 });
+  assert.deepEqual(a.person, { skill: 1, base: 2, tie: 1 });
+  assert.deepEqual(a.judge, { skill: 2, base: 1, tie: 1 });
   // Chance: 1/4·2/4 + 2/4·1/4 + 1/4·1/4 = 5/16, so κ = (12/16 − 5/16) / (11/16) = 7/11.
   assert.ok(Math.abs(/** @type {number} */ (a.kappa) - 7 / 11) < 1e-9);
   assert.equal(agreement(key, { picks: [] }).kappa, null);
 });
 
-test('#995 a finished run’s picture is the item its customer judged first', (t) => {
-  const dir = mkdtempSync(join(tmpdir(), 'pb-backfill-'));
-  t.after(() => rmSync(dir, { recursive: true }));
-  writeFileSync(join(dir, 'report.md'), '## Visual verdicts\n\n| Step | Item |\n|---|---|\n| 5 | I3 | landed |\n| 6 | I9 | partly |\n');
-  assert.equal(firstJudged(readFileSync(join(dir, 'report.md'), 'utf8')), 'I3');
+test('#995 a finished run’s picture is the item its customer judged first', () => {
+  const report = '## Visual verdicts\n\n| Step | Item |\n|---|---|\n| 5 | I3 | landed |\n| 6 | I9 | partly |\n';
+  assert.equal(firstJudged(report), 'I3');
   assert.equal(firstJudged('## Timeline\n\n| 5 | I3 |'), null, 'only from the visual verdicts');
-  assert.equal(existsSync(join(dir, 'run.json')), false);
 });

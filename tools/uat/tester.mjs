@@ -254,10 +254,9 @@ ${scenario.summary}${judgePrompt(scenario)}`;
 
 /**
  * One-off structured call, in a fresh session (used to verify findings), in the run’s folder. It can Read and Grep there,
- * to check a finding against the run’s records (verifyPrompt). run: a fake spawn, in tests. A call that plays an agent
- * (tools/uat/side-by-side.mjs) names its own tools, a system prompt to append and more arguments, such as its effort.
+ * to check a finding against the run’s records (verifyPrompt). run: a fake spawn, in tests.
  */
-export function askOnce({ cwd, model, prompt, schema, budgetUsd = 2, tools = 'Read,Grep', append = null, extra = [], run = spawn }) {
+export function askOnce({ cwd, model, prompt, schema, budgetUsd = 2, run = spawn }) {
   return new Promise((resolve, reject) => {
     const args = [
       '-p',
@@ -268,14 +267,12 @@ export function askOnce({ cwd, model, prompt, schema, budgetUsd = 2, tools = 'Re
       '--json-schema',
       JSON.stringify(schema),
       '--tools',
-      tools,
+      'Read,Grep',
       '--setting-sources',
       'project',
       ...signIn(),
       '--max-budget-usd',
       String(budgetUsd),
-      ...(append ? ['--append-system-prompt', append] : []),
-      ...extra,
     ];
     const child = run(process.env.POSTBOX_CLAUDE_BIN ?? 'claude', args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
     let out = '';
