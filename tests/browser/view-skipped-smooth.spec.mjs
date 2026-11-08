@@ -5,7 +5,7 @@
 // conversation of its own.
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, startPostbox } from './postbox.mjs';
+import { failOnPageErrors, startPostbox, wholeRoom } from './postbox.mjs';
 import { traceNear, traceScrolls } from './scroll-trace.mjs';
 import { still } from './view-skipped-fixture.mjs';
 import { readingAtTop as atTop } from './view-smooth-fixture.mjs';
@@ -21,6 +21,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// Every item mounted, the window off: this spec is of the whole-room path (postbox.mjs, wholeRoom).
+wholeRoom(test);
 
 // How far back scrollY may step as the page settles near the end: a line of text at the usual size. Firefox on a Mac
 // stepped back 2–8 px, and Chromium on CI too, both with the view ending following at the end. What this guards is the

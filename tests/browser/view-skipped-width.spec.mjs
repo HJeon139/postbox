@@ -7,7 +7,7 @@
 // place: on a Mac the items around the view draw at heights other than x86’s and their estimates, and moved it 12 px in
 // Chromium and 78 px in Firefox with the view still reading (researcher’s Mac check on d4f3ebdb).
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, startPostbox, synced, wholeRoom } from './postbox.mjs';
 import { bigRoom, still } from './view-skipped-fixture.mjs';
 
 // Tracing is off: Playwright's trace snapshots walk all 1,000 items with their skipped styles each action.
@@ -20,6 +20,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// Every item mounted, the window off: this spec is of the whole-room path (postbox.mjs, wholeRoom).
+wholeRoom(test);
 
 /** How far the main pane’s view is from its end, and whether it reads or follows. */
 const place = (page) =>

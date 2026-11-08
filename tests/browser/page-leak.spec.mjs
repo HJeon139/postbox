@@ -6,7 +6,7 @@
 
 import { expect, test } from '@playwright/test';
 import { seedBigRoom } from '../../tools/uat/big-room.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, startPostbox, synced, wholeRoom } from './postbox.mjs';
 
 test.use({ colorScheme: 'light', trace: 'off' });
 
@@ -20,6 +20,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// Every item mounted, the window off: this spec is of the whole-room path (postbox.mjs, wholeRoom).
+wholeRoom(test);
 
 /**
  * A long room and a short one in the same project, with the same three agents in each.

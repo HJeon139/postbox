@@ -4,7 +4,7 @@
 // with the steps’ labels as text, so Find still finds them; its first open builds the list, and it stays built.
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, focusIs, startPostbox } from './postbox.mjs';
+import { failOnPageErrors, focusIs, openAs, startPostbox } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -205,6 +205,9 @@ const counts = (page) =>
 
 test('#1028 a 300-item room holds at most a third of the elements it would with every list built', async ({ page }) => {
   test.setTimeout(90_000);
+  // The whole room on the page, as the count is per list: with the transcript window on, a room over 240 items mounts
+  // only about 40 (#866).
+  await openAs(page, 'whole room');
   await seeded(page, 300);
   const folded = await counts(page);
   expect(folded.lists, 'two of three items are replies with steps').toBe(200);

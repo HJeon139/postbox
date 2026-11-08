@@ -7,7 +7,7 @@
 
 import { expect, test } from '@playwright/test';
 import { SCANS } from '../../tools/uat/doc-query-probe.mjs';
-import { failOnPageErrors, frames, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, frames, startPostbox, synced, wholeRoom } from './postbox.mjs';
 
 // No trace: its snapshots walk the whole page around each action, which a 10,000-item room makes slow.
 test.use({ trace: 'off' });
@@ -20,6 +20,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// Every item mounted, the window off: this spec is of the whole-room path (postbox.mjs, wholeRoom).
+wholeRoom(test);
 
 const confirm = { id: 'ok1', type: 'confirm', version: 1, fallback: 'Ship it?', statement: 'Ship it to main?', confirmLabel: 'Ship it' };
 

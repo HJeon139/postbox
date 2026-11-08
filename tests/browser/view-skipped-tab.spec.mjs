@@ -9,7 +9,7 @@
 
 import { expect, test } from '@playwright/test';
 import { frameOf } from './app-pointer.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, startPostbox, synced, wholeRoom } from './postbox.mjs';
 import { holds } from './view-read-fixture.mjs';
 import { bigRoom, still } from './view-skipped-fixture.mjs';
 
@@ -23,6 +23,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// Every item mounted, the window off: this spec is of the whole-room path (postbox.mjs, wholeRoom).
+wholeRoom(test);
 
 const PAD = `<main style="padding:12px"><button id="go" type="button">Inside the pad</button></main>`;
 // Tall, so the item after it starts well past the margin the browser draws ahead of the view.

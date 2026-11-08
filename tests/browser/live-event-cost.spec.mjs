@@ -7,7 +7,7 @@
 // thread events arrive, and Chromium counts the layout work they cost.
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, frames, settled, startPostbox, synced, wholeRoom } from './postbox.mjs';
 
 // No DOM snapshots in the trace: Playwright snapshots the whole page around each action, each poll of synced() too,
 // and on CI’s runners snapshotting the 1,000-item room took longer than the waits (85 s at a tenth of the CPU, against
@@ -23,6 +23,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// Every item mounted, the window off: this spec is of the whole-room path (postbox.mjs, wholeRoom).
+wholeRoom(test);
 
 const ITEMS = 1000;
 const DIAGRAM = '\n\n```mermaid\ngraph TD\n  A --> B\n```\n';

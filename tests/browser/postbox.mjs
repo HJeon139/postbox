@@ -131,6 +131,23 @@ export function failOnPageErrors(test) {
   });
 }
 
+/**
+ * Mounts every item of a long conversation, with the transcript window off (#866): for a spec of the path the window
+ * replaces, such as #712a’s skipped items or a cost counted over a whole room. The window is on by default for a room
+ * over its ceiling (window-default.spec.mjs).
+ * @param {import('@playwright/test').TestType<any, any>} test
+ */
+export function wholeRoom(test) {
+  // It runs in every frame, and an app’s sandboxed frame can’t reach localStorage: only the page needs the flag.
+  test.beforeEach(({ context }) =>
+    context.addInitScript(() => {
+      try {
+        localStorage.setItem('pb-window', 'off');
+      } catch {}
+    }),
+  );
+}
+
 /** Until the browser has drawn two more frames. @param {import('@playwright/test').Page} page */
 export const frames = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 

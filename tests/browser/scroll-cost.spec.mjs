@@ -3,7 +3,7 @@
 // end. Taking the anchor (#88) used to read one per reply above the middle of the view.
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, settled, startPostbox, synced, wholeRoom } from './postbox.mjs';
 
 // Tracing is off: Playwright's trace snapshots walk every node of the page each action, and on a room of 1,000 items
 // or more under content-visibility that takes longer than the test (view-skipped.spec.mjs).
@@ -18,6 +18,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// Every item mounted, the window off: this spec is of the whole-room path (postbox.mjs, wholeRoom).
+wholeRoom(test);
 
 const REPLIES = 1000;
 

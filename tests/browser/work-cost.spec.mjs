@@ -3,7 +3,7 @@
 // not once per turn list, and full-screen Work draws the newest of its 1,800 commands and the one it opened at.
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, settled, startPostbox, synced, wholeRoom } from './postbox.mjs';
 
 // Tracing is off: the trace's snapshot lays out each item the transcript skips (#712a) at every action. With it on, the
 // command case took 30.4 s in the gate against 3.7 s on main, and failed; with it off, 0.6 s, as on main. The page has
@@ -59,6 +59,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// Every item mounted, the window off: this spec is of the whole-room path (postbox.mjs, wholeRoom).
+wholeRoom(test);
 
 const lists = (page) => page.locator(`.transcript[data-thread="${conv}"] .work-list-turn`);
 /** How long the page may take to load the seeded conversation and draw it: with the events late, on a busy runner. */
