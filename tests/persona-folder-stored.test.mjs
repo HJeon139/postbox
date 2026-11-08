@@ -5,10 +5,12 @@
 // and the person changes it in the sheet. The persona sheet’s MCP servers and skills read nothing relative to it.
 
 import assert from 'node:assert/strict';
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { ClaudeCodeAdapter } from '../server/adapters/claude-code.mjs';
+import { workFolder } from '../server/adapters/folder.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -111,4 +113,104 @@ test('the persona sheet’s MCP servers and skills treat a stored relative folde
   const lone = rt.createPersona({ handle: 'lone', backend: 'mock' });
   store.emit('persona', { ...store.state.personas[lone.id], folder: '../x' });
   assert.equal(rt.mcpContext(lone.id, null).folder, null);
+});
+
+/**
+ * An agent with a valid folder, in a conversation started while its folder was stored as `server` before #990: its
+ * session’s snapshot holds `server`, as old data does. Then its folder is changed in its sheet to `folder`.
+ */
+function snapshotted(rt, store, handle, backend, folder) {
+  const p = rt.createPersona({ handle, backend, folder: '/srv/ok' });
+  const t = rt.createThread({ projectId: 'p1', title: handle, personaIds: [p.id] });
+  const se = rt.sessionsIn(t.id)[0];
+  store.emit('session', { ...store.state.sessions[se.id], personaSnapshot: { ...se.personaSnapshot, folder: 'server' } });
+  store.emit('persona', { ...store.state.personas[p.id], folder });
+  return { p, t, se: store.state.sessions[se.id] };
+}
+
+/**
+ * A turn by the mock agent in `t`: the folder the work ledger is given as it starts, and the persona the adapter is
+ * handed, whose folder a real backend starts in (its folderFor).
+ */
+function turn(rt, t) {
+  const started = [];
+  const startTurn = rt.ledger.startTurn.bind(rt.ledger);
+  rt.ledger.startTurn = (turn, opts) => {
+    started.push(opts.folder);
+    return startTurn(turn, opts);
+  };
+  const { promise: delivered, resolve } = Promise.withResolvers();
+  noFolderFor.deliver = async (_se, _m, ctx) => {
+    resolve(ctx.persona);
+    ctx.text('ok');
+  };
+  rt.sendMessage(t.id, { text: 'hi' });
+  rt.ledger.startTurn = startTurn;
+  assert.equal(started.length, 1);
+  return { ledger: Promise.resolve(started[0]), delivered };
+}
+
+test('a conversation whose snapshot holds a bad folder works in the agent’s folder once its sheet is fixed', async () => {
+  const { store, rt } = setup();
+  const cwdBefore = readdirSync(process.cwd());
+  for (const [handle, backend] of [
+    ['cc', 'claude-code'],
+    ['mo', 'mock'],
+  ]) {
+    const fixed = tempDir(`pb-persona-folder-fixed-${handle}-`);
+    const { t, se } = snapshotted(rt, store, handle, backend, fixed);
+    assert.equal(se.personaSnapshot.folder, 'server', 'the snapshot still holds the bad folder');
+    assert.equal(rt.personaFor(se).folder, fixed);
+    assert.equal(await workFolder(rt.adapters.get(backend), rt.personaFor(se), store.state.projects.p1), fixed);
+    assert.deepEqual(await rt.commandFolder(t.id), { folder: fixed, host: null });
+    assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, fixed);
+    assert.deepEqual(await rt.agentFolders(se.id), [fixed, '/srv/project']);
+    if (backend === 'mock') {
+      const { ledger, delivered } = turn(rt, t);
+      assert.equal(await ledger, fixed);
+      assert.equal((await delivered).folder, fixed);
+    }
+  }
+  assert.deepEqual(readdirSync(process.cwd()), cwdBefore, 'nothing is made in the folder Postbox was started from');
+});
+
+test('a conversation whose snapshot and agent both hold a bad folder is refused with the agent’s folder', async () => {
+  const { store, rt } = setup();
+  const cwdBefore = readdirSync(process.cwd());
+  for (const [handle, backend] of [
+    ['cc', 'claude-code'],
+    ['mo', 'mock'],
+  ]) {
+    const { t, se } = snapshotted(rt, store, handle, backend, '../x');
+    const refusedLive = (e) => {
+      assert.equal(e.status, 409, e.message);
+      assert.equal(e.message, refused(handle, '"../x"', RELATIVE));
+      return true;
+    };
+    await assert.rejects(() => rt.commandFolder(t.id), refusedLive);
+    await assert.rejects(() => rt.panelTarget({ sessionId: se.id }), refusedLive);
+    await assert.rejects(() => rt.agentFolders(se.id), refusedLive);
+    if (backend === 'mock') await assert.rejects(() => turn(rt, t).ledger, refusedLive);
+  }
+  assert.deepEqual(readdirSync(process.cwd()), cwdBefore, 'nothing is made in the folder Postbox was started from');
+});
+
+test('a conversation whose snapshot holds a valid folder keeps working there after the agent’s folder changes', async () => {
+  const { store, rt } = setup();
+  for (const [handle, backend] of [
+    ['cc', 'claude-code'],
+    ['mo', 'mock'],
+  ]) {
+    const started = tempDir(`pb-persona-folder-started-${handle}-`);
+    const later = tempDir(`pb-persona-folder-later-${handle}-`);
+    const p = rt.createPersona({ handle, backend, folder: started });
+    const t = rt.createThread({ projectId: 'p1', title: handle, personaIds: [p.id] });
+    const se = rt.sessionsIn(t.id)[0];
+    rt.updatePersona(p.id, { folder: later });
+    assert.equal(store.state.personas[p.id].folder, later);
+    assert.equal(rt.personaFor(se).folder, started);
+    assert.deepEqual(await rt.commandFolder(t.id), { folder: started, host: null });
+    assert.equal((await rt.panelTarget({ sessionId: se.id })).folder, started);
+    if (backend === 'mock') assert.equal((await turn(rt, t).delivered).folder, started);
+  }
 });
