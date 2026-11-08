@@ -5,12 +5,11 @@
 // shrink on macOS (tests/browser/uat-view.spec.mjs, runnerPage).
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { launch } from '../../tools/browser.mjs';
 import { shots } from '../../tools/uat/driver-shots.mjs';
+import { tempDir } from '../temp-dirs.mjs';
 import { chromiumMissing } from './chrome.mjs';
 
 const skip = await chromiumMissing();
@@ -22,7 +21,7 @@ const PAGE = `data:text/html,${encodeURIComponent(
 )}`;
 
 test('an item shot and a window shot leave the runner’s window the size it set, at 1280 and 375 wide', { skip }, async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'runner-shot-'));
+  const dir = tempDir('runner-shot-');
   const page = await launch();
   try {
     for (const [width, height] of [
@@ -42,6 +41,5 @@ test('an item shot and a window shot leave the runner’s window the size it set
     }
   } finally {
     await page.close();
-    rmSync(dir, { recursive: true, force: true });
   }
 });

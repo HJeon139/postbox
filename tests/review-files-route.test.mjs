@@ -3,12 +3,11 @@
 // another site can’t embed it. Anything else is a 404 that doesn’t say whether the item exists.
 
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { rm } from 'node:fs/promises';
 import { after, before, test } from 'node:test';
 import { fakeRequest } from './fake-http.mjs';
 import { png } from './review-files-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
 const { start } = await import('../server/index.mjs');
@@ -18,12 +17,11 @@ let app;
 let dir;
 const get = (path) => fakeRequest(app.handle, { host: `127.0.0.1:${PORT}`, path });
 before(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'pb-review-route-'));
+  dir = tempDir('pb-review-route-');
   app = await start({ port: PORT, dataDir: dir, fresh: true, demo: false, quiet: true, claudeHome: dir, listen: false });
 });
 after(async () => {
   await app.close();
-  await rm(dir, { recursive: true, force: true });
 });
 
 /** A review item with one stored image, and another review with none. */

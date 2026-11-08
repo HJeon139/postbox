@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { tempDir } from '../temp-dirs.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const POSIX = { skip: process.platform === 'win32' };
@@ -44,7 +45,7 @@ const said = (server, log, text) =>
 
 /** Starts a server with its own port, --data folder and temp HOME, and mock backends, after Node’s preload args (#745). */
 async function serve(t, preload = [], env = {}) {
-  const data = await mkdtemp(join(tmpdir(), 'pb-510-'));
+  const data = tempDir('pb-510-');
   const port = await freePort();
   const server = spawn(process.execPath, [...preload, join(ROOT, 'server/index.mjs'), '--port', String(port), '--data', data], {
     cwd: ROOT,
@@ -58,7 +59,6 @@ async function serve(t, preload = [], env = {}) {
   t.after(async () => {
     server.kill('SIGTERM');
     await exited;
-    await rm(data, { recursive: true, force: true });
   });
   return { server, log, port };
 }

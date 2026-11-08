@@ -27,7 +27,7 @@ export const welcome = {
   problems: [{ code: 'linger-off', message: 'Turns end when your last session on this host does. Run loginctl enable-linger to keep them.' }],
   turns: [
     { turn: 't0', harness: 'claude-code', state: 'ended', size: 10, exit },
-    { turn: 't9', harness: 'codex', state: 'interrupted', size: 0, exit: null },
+    { turn: 't9', harness: 'codex', state: 'interrupted', size: 0, exit: null, unkilled: true },
   ],
 };
 
@@ -155,6 +155,8 @@ export const CASES = {
         [{ ...welcome, harnesses: [welcome.harnesses[0], welcome.harnesses[0]] }, /names the harness “claude-code” twice/],
         [{ ...welcome, turns: [{ ...welcome.turns[0], exit: null }] }, /turns\[0\]\.exit must be an object/],
         [{ ...welcome, turns: [{ ...welcome.turns[1], exit }] }, /exit must be null unless the turn has ended/],
+        [{ ...welcome, turns: [{ ...welcome.turns[1], unkilled: 'yes' }] }, /turns\[0\]\.unkilled must be true or false/],
+        [{ ...welcome, turns: [{ ...welcome.turns[0], unkilled: true }] }, /turns\[0\]\.unkilled is only for an interrupted turn/],
         [{ ...welcome, problems: [{ code: 'x', message: '' }] }, /message can’t be empty/],
       ],
     },

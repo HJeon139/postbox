@@ -93,7 +93,7 @@ export const STDIN_KINDS = Object.freeze(/** @type {const} */ (['file', 'none', 
 
 /**
  * Where each Postbox tool is answered on the host: `host` by the daemon itself (the shim’s blocking permission prompt),
- * `queue` returns at once and crosses to Postbox as a `tool`, `ask` crosses as a `tool` and the shim waits for
+ * `queue` returns once the daemon has checked and recorded it (#827) and crosses to Postbox as a `tool`, `ask` crosses as a `tool` and the shim waits for
  * Postbox’s `reply` (an error at once when Postbox isn’t connected), `read` asks Postbox when attached and falls
  * back to the snapshot when offline. Every tool in shared/mcp-tools.mjs’s TOOL_DEFS is here; tests/remote-protocol.test.mjs checks it.
  */
@@ -209,6 +209,8 @@ export const TURN_FILES = Object.freeze({
   start: 'start.json',
   /** The runner’s Unix socket. */
   socket: 'sock',
+  /** A silent runner’s silence, kept by the daemon across its restarts: { pid, bootId, at } (#872). */
+  silence: 'silence.json',
   /** The turn’s own token, which its shims prove in their hello (#120): written by the daemon before start.json. */
   shimToken: 'shim.token',
   /** The conversation snapshot the reading tools answer from. */

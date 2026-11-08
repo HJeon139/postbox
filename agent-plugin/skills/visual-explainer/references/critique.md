@@ -10,7 +10,8 @@ Check each line on a screenshot at the size the visual is read (1000 × 680 by d
 
 - The title states the idea from the brief, as a claim [VE1].
 - At 1000 × 680, before any scrolling, the title and every part the idea depends on are on screen, and no label is under 12 px [VE8] *countable: the first viewport’s bounding box and label sizes*.
-- Where the outcome comes from steps that add up, one step is drawn, and how steps combine [VE9].
+- With no click, no slider moved and no time waited, the first screenshot shows the idea: a simulation already past its moment, groups already colored and labeled, a stepper already on a worked example [VE13].
+- Where the outcome comes from steps that add up, one step is drawn, and how steps combine, with that one step’s cause visible close up [VE9].
 - The parts are drawn as what they are or do (icons, small drawings, a cutaway, or a chart whose marks carry the values), not as boxes holding their names [VE10] *countable: share of text sitting inside rectangles*.
 - Where the idea is a relationship between variables, one control changes a variable it turns on, and the picture shows what moves with it [VE11].
 - Each relation in the brief’s “must show” is something you can point at [brief].
@@ -38,7 +39,7 @@ Check each line on a screenshot at the size the visual is read (1000 × 680 by d
 
 The test the whole skill serves: does a reader who sees only the picture get the idea?
 
-1. Take two screenshots of the visual as the person will first see it: one as it is, and one with every run of text longer than three words hidden (the title, captions, paragraphs and summary boxes), leaving labels. Hide them in the page before the screenshot, for example by setting `visibility: hidden` on each text element of more than three words, so the layout doesn’t move. The second is the one that counts: a headline that states the idea lets a reader repeat it while the picture carries nothing.
+1. Take two screenshots of the visual as the person will first see it, before any click or wait [VE13]: one as it is, and one with every run of text longer than three words hidden (the title, captions, paragraphs and summary boxes), leaving labels. Hide them in the page before the screenshot, for example by setting `visibility: hidden` on each text element of more than three words, so the layout doesn’t move. The second is the one that counts: a headline that states the idea lets a reader repeat it while the picture carries nothing.
 2. Give each to a different reader who hasn’t seen the brief or the conversation: a subagent in a fresh context when your harness has one, with only that screenshot and this prompt:
 
    > Here is a picture someone made to explain something. In one or two sentences, what does it tell you? Then: what did you look at first, and what, if anything, was hard to read?

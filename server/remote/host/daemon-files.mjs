@@ -2,7 +2,7 @@
 // which each connection proves and each runner checks.
 
 import { randomBytes, timingSafeEqual } from 'node:crypto';
-import { chmodSync, promises as fsp, lstatSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, promises as fsp, lstatSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { DIR_MODE, FILE_MODE, TURN_FILES, validateExitRecord } from '../../../shared/remote-protocol.mjs';
 import { ASK_TIMEOUT_MS } from './daemon-constants.mjs';
 
@@ -39,6 +39,20 @@ export const writeAtomic = async (d, path, text) => {
   const tmp = `${path}.${process.pid}.${++d.ids}.tmp`;
   await fsp.writeFile(tmp, text, { mode: FILE_MODE, flag: 'wx' });
   await fsp.rename(tmp, path);
+};
+/** writeAtomic, synchronously: for a small file whose writes must keep their order (daemon-silence.mjs). @param {Daemon} d @param {string} path @param {string} text */
+export const writeAtomicSync = (d, path, text) => {
+  const tmp = `${path}.${process.pid}.${++d.ids}.tmp`;
+  writeFileSync(tmp, text, { mode: FILE_MODE, flag: 'wx' });
+  renameSync(tmp, path);
+};
+/** A JSON file, or undefined if it’s missing or isn’t JSON. @param {string} path */
+export const readJsonSync = (path) => {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return undefined;
+  }
 };
 /** The host’s token, as this daemon’s home has it, or null if it can’t be read. @param {Daemon} d */
 export const readToken = (d) => {

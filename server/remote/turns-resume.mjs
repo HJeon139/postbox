@@ -82,8 +82,9 @@ function autoResume(rts, sessionId) {
   if (!r?.resume || se.archived || se.deleting || rt.turns.has(sessionId) || rt.exiting.has(sessionId) || rt.closing) return;
   // Only on the host it stopped on: an agent moved since waits for the person.
   if (hostOf(rt.personaFor(se)) !== r.hostId) return;
-  // An interruption that keeps coming back waits for the person after a few resumes.
-  if (r.resume.why === 'interrupted' && (r.autoResumes ?? 0) >= AUTO_RESUMES) return;
+  // An interruption that keeps coming back waits for the person after a few resumes, and so does one whose process
+  // there may still run (#872).
+  if (r.resume.why === 'interrupted' && (r.resume.unkilled || (r.autoResumes ?? 0) >= AUTO_RESUMES)) return;
   updateRemote(rts, sessionId, { resume: { ...r.resume, auto: true }, autoResumes: (r.autoResumes ?? 0) + 1 });
   // It goes on as the turn it continues: where it spoke, who it answers, what it was asked (turns-origin.mjs).
   const go = continuing(rt, rt.s.sessions[sessionId], { kind: 'notice', text: 'Postbox resumed your turn on its own. Carry on where you left off.' });

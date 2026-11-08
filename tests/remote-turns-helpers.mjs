@@ -198,7 +198,7 @@ export const settled = async (r) => {
 };
 
 /** A store whose session had a turn running on the host when Postbox stopped, and a card open for its prompt. */
-export function restarted({ welcome = /** @type {'running' | 'ended' | 'missing'} */ ('running') } = {}) {
+export function restarted({ welcome = /** @type {'running' | 'ended' | 'missing' | 'interrupted' | 'unkilled'} */ ('running') } = {}) {
   const store = new Store(null);
   const d = createFakeDaemon({ autoEnd: false });
   const first = rig({ store, d });
@@ -223,6 +223,8 @@ export function restarted({ welcome = /** @type {'running' | 'ended' | 'missing'
   if (welcome !== 'missing') {
     d.addTurn('host-turn-1', { exit: welcome === 'ended' ? { code: 0, signal: null } : null });
     d.prompt('host-turn-1', FIXTURE_PROMPT, 'p-1');
+    // Interrupted while Postbox was down, its process there killed or, unkilled, still there (#872).
+    if (welcome === 'interrupted' || welcome === 'unkilled') d.interrupt('host-turn-1', { unkilled: welcome === 'unkilled' });
   }
   // The old connection is gone with the old Postbox; the new one connects as the startup in server/index.mjs runs.
   d.drop();

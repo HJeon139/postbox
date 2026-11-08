@@ -5,14 +5,13 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { start } from '../server/index.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { apply, emptyState, ownState } from '../shared/state.mjs';
 import { fakeRequest, NAVIGATION } from './fake-http.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const PORT = 4991;
 const KEYS = ['constructor', 'toString', '__proto__', 'hasOwnProperty'];
@@ -71,13 +70,12 @@ let cookie;
 const call = (r) => fakeRequest(app.handle, { host: `127.0.0.1:${PORT}`, ...r });
 
 before(async () => {
-  dir = await mkdtemp(join(tmpdir(), 'pb-proto-'));
+  dir = tempDir('pb-proto-');
   app = await start({ port: PORT, dataDir: join(dir, 'data'), fresh: true, demo: true, quiet: true, claudeHome: dir, listen: false });
   cookie = (await call({ path: '/', headers: NAVIGATION })).headers['set-cookie'].split(';')[0];
 });
 after(async () => {
   await app.close();
-  await rm(dir, { recursive: true, force: true });
 });
 
 test('#352: every route with an id is found, so a route written another way fails here rather than going untried', () => {

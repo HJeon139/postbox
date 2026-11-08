@@ -5,22 +5,19 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import { pushConsequence, pushOf, pushPlan, runPush } from '../../server/push-on-request.mjs';
+import { tempDir } from '../temp-dirs.mjs';
 
-const home = await mkdtemp(join(tmpdir(), 'pb-push-home-'));
-const roots = [home];
+const home = tempDir('pb-push-home-');
 const env = { ...process.env, HOME: home, GIT_CONFIG_GLOBAL: join(home, 'gitconfig'), GIT_CONFIG_NOSYSTEM: '1' };
 await writeFile(env.GIT_CONFIG_GLOBAL, '[user]\n\tname = t\n\temail = t@example.com\n');
-after(() => Promise.all(roots.map((r) => rm(r, { recursive: true, force: true }))));
 
 /** A bare remote with main, and a clone on feat/now one commit ahead. */
 async function repo() {
-  const root = await mkdtemp(join(tmpdir(), 'pb-push-'));
-  roots.push(root);
+  const root = tempDir('pb-push-');
   const git = (cwd, ...args) => execFileSync('git', args, { cwd, env, stdio: 'pipe', timeout: 10000 }).toString().trim();
   const work = join(root, 'work');
   const remote = join(root, 'remote.git');
@@ -120,8 +117,7 @@ test('a branch the person didn’t name must be the one checked out, and never t
 test('#562’s review: a repository planted where Postbox makes its own is never read, nor a FIFO for .git’s HEAD', async () => {
   const r = await repo();
   // The agent can write to $TMPDIR, where Postbox makes its empty repository: a .git there must change nothing.
-  const planted = await mkdtemp(join(tmpdir(), 'pb-planted-'));
-  roots.push(planted);
+  const planted = tempDir('pb-planted-');
   const elsewhere = join(r.root, 'elsewhere.git');
   const ran = join(r.root, 'ssh-ran');
   execFileSync('git', ['init', '-q', '--bare', elsewhere], { env, timeout: 10000 });

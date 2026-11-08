@@ -7,7 +7,7 @@
 
 import { expect, test } from '@playwright/test';
 import { heldCount, holdTopics, release } from './hold-threads.mjs';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, keptListeners, startPostbox, synced } from './postbox.mjs';
 import { sideRoom } from './side-threads.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -113,10 +113,7 @@ test('going to another conversation first opens nothing there', async ({ page })
   const r = await openRoom(page, 'Reply late left');
   const topicId = await replyInThread(page, r);
   await heard(page);
-  // The page’s listeners, but those that remove themselves once their element is gone: the queue button’s
-  // (agent-queue.mjs) never does for a button that was never on the page (#912), which this doesn’t check.
-  const listeners = () =>
-    page.evaluate(() => import('/app/js/client.mjs').then(({ client }) => [...client.listeners].filter((f) => !String(f).includes('.isConnected')).length));
+  const listeners = () => keptListeners(page);
   const goTo = async (room) => {
     await page.locator(`.rail a[href="#/t/${room.id}"]`).click();
     await expect(page).toHaveURL(new RegExp(`#/t/${room.id}$`));

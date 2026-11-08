@@ -8,16 +8,20 @@
 //   sessions of their own, and outlive a killed CLI as children of PID 1, so neither the runner’s session nor the
 //   turn’s ID in a command line finds them. A Stop with nothing seen under its turn beforehand can’t be judged, and
 //   says so;
-// - fault(): what the tester breaks on purpose, kill-ssh, kill-daemon or restart-postbox, and what Postbox showed
-//   after, until each host it touched reads Connected again or 3 minutes pass (tools/uat/hosts-recovery.mjs); for
-//   kill-ssh, also which processes it killed.
+// - fault(): what the tester breaks on purpose, kill-ssh, kill-daemon, remove-postbox or restart-postbox, and what
+//   Postbox showed after, until each host it touched reads Connected again or 3 minutes pass
+//   (tools/uat/hosts-recovery.mjs); for kill-ssh, also which processes it killed; and stop-runner, which leaves the
+//   host connected, with the process and turn it stopped (#872).
 
 import { spawnSync } from 'node:child_process';
 import { sleep } from '../browser.mjs';
 import { localListeners, newListeners, remoteListeners, treeOf } from './hosts-probe.mjs';
 import { recovery, says } from './hosts-recovery.mjs';
 import { leftInFolder, measureOn, onHost, parseTree, SCRIPTS, stillRunning, treeScript, turnTrees } from './hosts-ssh.mjs';
+import { stopped } from './hosts-stop-runner.mjs';
 import { remoteTurns } from './remote-facts.mjs';
+
+export { stopRunner } from './hosts-stop-runner.mjs';
 
 const BUSY = new Set(['think', 'tool', 'gen']);
 const LISTENER_EVERY_MS = 60_000;
@@ -246,6 +250,7 @@ const FAULT_WHAT = {
   'kill-ssh': { what: (/** @type {string} */ label) => `Postbox’s ssh to ${label}`, did: 'Killed', none: 'kill' },
   'kill-daemon': { what: (/** @type {string} */ label) => `Postbox’s daemon on ${label}`, did: 'Killed', none: 'kill' },
   'remove-postbox': { what: (/** @type {string} */ label) => `Postbox’s folder on ${label}`, did: 'Removed', none: 'remove' },
+  'stop-runner': { what: (/** @type {string} */ label) => `runner of ${label}’s newest turn`, did: 'Stopped the', none: 'stop' },
 };
 
 /**
@@ -272,6 +277,7 @@ export async function fault(hr, { fault: kind, target }, page, input = () => {},
   if (kind === 'restart-postbox') return restart(hr, page, input);
   const h = hr.hosts.find((x) => x.label === target);
   if (!h) throw new Error(`${kind} needs a target: ${hr.hosts.map((x) => x.label).join(' or ')}.`);
+  if (kind === 'stop-runner') return stopped(hr, h, run, FAULT_WHAT[kind]);
   const at = Date.now();
   let hit;
   /** @type {string[]} */
@@ -282,7 +288,7 @@ export async function fault(hr, { fault: kind, target }, page, input = () => {},
     if (r.code !== 0) throw new Error(`Couldn’t kill Postbox’s daemon on ${h.label}: ${r.stderr || `pkill exited ${r.code}`}`);
     hit = r.stdout.trim() === 'killed' ? 1 : 0;
   } else if (kind === 'remove-postbox') hit = await removePostbox(h, run);
-  else throw new Error(`A fault is kill-ssh, kill-daemon, remove-postbox or restart-postbox, not “${kind}”.`);
+  else throw new Error(`A fault is kill-ssh, kill-daemon, remove-postbox, stop-runner or restart-postbox, not “${kind}”.`);
   const words = FAULT_WHAT[kind];
   const what = words.what(h.label);
   if (!hit) {

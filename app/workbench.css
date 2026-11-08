@@ -267,7 +267,9 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .app.no-rail, .app.rail-hidden, .app.rail-auto { grid-template-columns: minmax(0, 1fr); }
 /* rail-auto: hidden while the right pane needs its room (#7, pane-width.mjs). */
 .app.rail-hidden > .rail, .app.rail-auto > .rail { display: none; }
-.topbar { grid-column: 1 / -1; position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
+/* overflow-x: clip: a top bar too wide for the window, before fitTopbar drops a crumb, never widens the page. On a
+   phone the viewport grows to fit overflowing content, so the page lays out wider for that frame (#866, #837). */
+.topbar { grid-column: 1 / -1; overflow-x: clip; position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
   height: 48px; padding: 0 12px 0 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
 .brand { font-weight: 700; letter-spacing: .02em; display: flex; align-items: center; gap: 8px; }
 .brand .mark { width: 18px; height: 18px; border: 2px solid var(--accent); border-radius: 5px; position: relative; }
@@ -315,6 +317,9 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 :root:has(.transcript), .sp-body { overflow-anchor: none; }
 .col { width: 100%; max-width: 760px; margin: 0 auto; }
 .wide { width: 100%; }
+/* A retired app is one line, not a frame (#193), so its item keeps to the column, and its reactions and thread link
+   line up under it as under any message (#973). */
+.wide:has(> .app-retired) { max-width: 760px; margin-inline: auto; }
 
 /* ───────── Turns ───────── */
 
@@ -429,6 +434,10 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .btn.icon { width: 32px; padding: 0; }
 .btn.icon.sm { width: 26px; }
 .btn.send { border-color: var(--accent); }
+/* The one action a view leads with, in an app: filled, so it outranks every plain .btn beside it (#971). A choice among
+   options is a .seg or a .chip with aria-pressed, never a button that toggles .ghost. */
+.btn.primary { background: var(--on); border-color: var(--on); color: var(--on-ink); font-weight: 600; }
+.btn.primary:hover { box-shadow: inset 0 0 0 1px var(--on-ink); }
 .btn.stop { border-color: var(--line); }
 .btn.stop::before { content: ""; width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
 .btn.danger:hover { border-color: var(--alert); }
@@ -994,8 +1003,9 @@ html.pb-sandbox body { margin: 0; }
 .app-full.fullscreen iframe.app-iframe { height: 100%; }
 @keyframes pb-full-in { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .app-full.fullscreen { animation: none; } }
-.app-note { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--dim); background: var(--panel); }
-.app-note .i { color: var(--accent); margin-top: 1px; }
+.app-note, .app-error { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--dim); background: var(--panel); }
+.app-note .i, .app-error .i { color: var(--accent); margin-top: 1px; }
+.app-error { flex-wrap: wrap; align-items: center; border-top: 1px solid var(--line); border-bottom: 0; }
 .check-frame { position: fixed; left: -20000px; top: 0; height: 900px; border: 0; visibility: hidden; }
 
 /* Review */
@@ -1007,6 +1017,8 @@ html.pb-sandbox body { margin: 0; }
 .palette .p-list { list-style: none; padding: 0; margin: 0; max-height: 50vh; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
 .palette .p-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
 .palette .p-list li[aria-selected="true"] { border-color: var(--accent); background: var(--sunk); }
+/* Search’s matched words (#866, W4): bold and underlined, in the text’s own colors. */
+.search-dialog mark { background: none; color: inherit; font-weight: 600; text-decoration: underline; }
 /* Settings’ tabs wrap onto a second row in a narrow window rather than run off it (five since Hosts, #120; #303 found the four did on a phone). */
 .tabs { display: flex; flex-wrap: wrap; gap: 0 4px; border-bottom: 1px solid var(--line); padding: 0 16px; }
 .tabs button { all: unset; cursor: pointer; padding: 8px 10px; border-bottom: 2px solid transparent; color: var(--dim); }

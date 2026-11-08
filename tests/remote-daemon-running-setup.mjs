@@ -5,19 +5,32 @@ import { sameProcess } from '../server/remote/host/proc.mjs';
 import { BOOT, fakeClock, hello, setup, startMsg, waitFor } from './remote-daemon-setup.mjs';
 
 export const CEILING_MS = 60_000;
+/** How long the daemon waits for a runner it killed at the ceiling to go (daemon-constants.mjs’s KILL_WAIT_MS, #872). */
+export const KILL_WAIT_MS = 5000;
+/** How long a silence’s last process check stands (daemon-constants.mjs’s PROCESS_CHECK_MS, #872). */
+export const PROCESS_CHECK_MS = 5000;
 
-/** A daemon with a fake clock and its log kept. @param {object} [o] more of setup’s options */
-export function silentSetup(o = {}) {
-  const clock = fakeClock();
+/**
+ * A daemon with a fake clock and its log kept. Its fake runner’s process is there while state.same is, and ends at a
+ * SIGKILL to its group, as a real one does, unless it’s one that can’t be killed (killable false). sameCalls counts the
+ * process checks. @param {{ killable?: boolean, clock?: ReturnType<typeof fakeClock>, [k: string]: any }} [o] more of setup’s options
+ */
+export function silentSetup({ killable = true, clock = fakeClock(), ...o } = {}) {
   const logs = [];
-  const s = setup({ clock, log: (line) => logs.push(line), ...o });
+  const killed = (/** @type {number} */ pid) => killable && s.kills.some(([p, sig]) => p === -pid && sig === 'SIGKILL');
+  const sameProcess = async (/** @type {{ pid: number }} */ r) => {
+    sameCalls.n++;
+    return s.state.same && !killed(r.pid);
+  };
+  const sameCalls = { n: 0 };
+  const s = setup({ clock, log: (line) => logs.push(line), sameProcess, ...o });
   const ended = (c) => c.msgs.messages.filter((m) => m.type === 'ended');
   /** Waits for the daemon to ask the runner n more times (n more looks at the turn), or for c’s turn to end. */
   const looks = (n, c) => {
     const k = s.asks.length;
     return waitFor(() => s.asks.length >= k + n || (c && ended(c).length > 0));
   };
-  return { ...s, clock, logs, looks, ended };
+  return { ...s, clock, logs, looks, ended, sameCalls };
 }
 
 /** Starts t1 and reads it. */

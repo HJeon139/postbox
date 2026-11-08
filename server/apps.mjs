@@ -31,7 +31,9 @@ export function appCheck(rt, appId, { version, problems = [] }) {
     rt.store.emit('app', { ...app, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
     return { status: 'passed' };
   }
-  if (clean.some((p) => p.code === 'script-error')) {
+  // A script error goes back to the agent once, like any blocking problem (#964); after that, or with no agent to
+  // tell, the version shows as crashed.
+  if (clean.some((p) => p.code === 'script-error') && (app.check.attempt > 0 || !rt.s.sessions[app.sessionId])) {
     rt.store.emit('app', { ...app, check: { status: 'crashed', attempt: app.check.attempt, problems: clean } });
     return { status: 'crashed' };
   }
@@ -59,6 +61,9 @@ export function appCheck(rt, appId, { version, problems = [] }) {
   }
   return { status: 'note' };
 }
+
+/** The status of an app whose agent’s app-check turn ended without a new version: crashed if its script threw (#964). */
+export const fixEnded = (app) => (app.check.problems?.some((p) => p.code === 'script-error') ? 'crashed' : 'note');
 
 // An app’s sends are limited (#38): server/app-send-limits.mjs says how, and why.
 

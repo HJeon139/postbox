@@ -157,7 +157,7 @@ export const SCHEMA = {
         pane: { enum: ['work', 'thread'], description: 'fullscreen: the view to open full screen.' },
         permissions: { type: 'boolean', description: 'settings: also open its permissions panel.' },
         fault: {
-          enum: ['kill-ssh', 'kill-daemon', 'remove-postbox', 'restart-postbox'],
+          enum: ['kill-ssh', 'kill-daemon', 'remove-postbox', 'stop-runner', 'restart-postbox'],
           description: 'fault, in a run with hosts: what to break; target is the host.',
         },
         seconds: { type: 'integer' },
@@ -178,7 +178,10 @@ export const SCHEMA = {
             undo_after: { type: 'integer', description: 'conversation: press Undo this many seconds after the delete.' },
             jobs: { enum: ['stop', 'keep'], description: 'stop: how to answer if Postbox asks whether to stop background jobs too.' },
             text: { type: 'string', description: 'send_now: the message to send.' },
-            fault: { enum: ['kill-ssh', 'kill-daemon', 'remove-postbox', 'restart-postbox'], description: 'fault: what to break while the agent works.' },
+            fault: {
+              enum: ['kill-ssh', 'kill-daemon', 'remove-postbox', 'stop-runner', 'restart-postbox'],
+              description: 'fault: what to break while the agent works.',
+            },
             target: { type: 'string', description: 'fault: the host, such as host1.' },
             item: { type: 'string', description: 'answer: the block to answer while the agent works, such as I7.' },
             verdict: { enum: ['approve', 'request_changes', 'comment'], description: 'answer, on a review: your verdict.' },
