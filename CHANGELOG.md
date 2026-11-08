@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.51.0 (2026-11-08)
+
+### Features
+
+- **adapters:** Kiro's Auto runs what its persona's Tools allow, with .kiro and .git guarded (#136)
+
 ## 1.50.1 (2026-11-08)
 
 ### Fixes
