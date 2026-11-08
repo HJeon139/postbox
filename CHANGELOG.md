@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.41.1 (2026-11-08)
+
+### Fixes
+
+- **apps:** don't report the ResizeObserver loop warning as an app error
+
 ## 1.41.0 (2026-11-08)
 
 ### Features
