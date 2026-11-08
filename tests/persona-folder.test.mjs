@@ -98,11 +98,39 @@ test('an empty, missing or null folder still means the project’s folder, on ma
   assert.equal(rt.updatePersona(p.id, { description: 'no folder in the change' }).folder, '');
 });
 
-test('an agents.json agent with a relative folder is refused, and seeds no agent', async () => {
+test('an agents.json agent with a relative folder is refused, naming agents.json and the agent, and seeds no agent', async () => {
   const { data, store, rt } = setup();
   await writeFile(join(data, 'agents.json'), JSON.stringify([{ handle: 'alpha', folder: '~/work' }]));
-  await assert.rejects(() => seed(rt, { dataDir: data, booksDir: join(data, 'books'), backend: 'claude-code' }), refusal('~/work', RELATIVE));
+  await assert.rejects(
+    () => seed(rt, { dataDir: data, booksDir: join(data, 'books'), backend: 'claude-code' }),
+    refusal('~/work', `agents.json: @alpha’s folder: ${RELATIVE}`),
+  );
   assert.deepEqual(Object.keys(store.state.personas), []);
+});
+
+test('an agents.json whose second agent would be refused seeds neither, and says which and why', async () => {
+  const NAME = 'A name uses 2–24 letters, digits, - or _, and starts with a letter.';
+  for (const [second, status, message] of [
+    [{ handle: 'beta', folder: '~/work' }, 422, `agents.json: @beta’s folder: ${RELATIVE}`],
+    [{ handle: '@beta', folder: 42 }, 422, `agents.json: @beta’s folder: ${NOT_TEXT}`],
+    [{ handle: 'b', folder: '/srv/b' }, 422, `agents.json: agent 2: ${NAME}`],
+    [{ folder: '/srv/b' }, 422, `agents.json: agent 2: ${NAME}`],
+    [null, 422, `agents.json: agent 2: ${NAME}`],
+    [{ handle: '@Alpha' }, 409, 'agents.json: agent 2: @Alpha is there twice. Give each agent a name of its own.'],
+  ]) {
+    const { data, store, rt } = setup();
+    await writeFile(join(data, 'agents.json'), JSON.stringify([{ handle: 'alpha', folder: '/srv/a' }, second]));
+    await assert.rejects(
+      () => seed(rt, { dataDir: data, booksDir: join(data, 'books'), backend: 'claude-code' }),
+      (e) => {
+        assert.equal(e.status, status, JSON.stringify(second));
+        assert.equal(e.message, message);
+        return true;
+      },
+    );
+    assert.deepEqual(Object.keys(store.state.personas), [], JSON.stringify(second));
+    assert.deepEqual(Object.keys(store.state.boilerplates), []);
+  }
 });
 
 test('an agent stored with a relative folder before #990 is refused at its turn, naming the folder and where to change it, and the folder isn’t made', async (t) => {
