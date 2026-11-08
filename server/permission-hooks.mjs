@@ -11,6 +11,7 @@
 // holds hooks in a shape this doesn’t know, says so.
 
 import { readFile } from 'node:fs/promises';
+import { INVISIBLE } from '../shared/invisible.mjs';
 import { HOST_SOURCES, ISOLATED_SOURCES } from './adapters/setup.mjs';
 import { settingsFiles } from './permission-rules.mjs';
 
@@ -24,19 +25,10 @@ const MAX_TYPE = 20;
 // updatedInput (PreToolUseHookSpecificOutput and PermissionRequestHookSpecificOutput in the Agent SDK’s sdk.d.ts).
 const APPROVING_EVENTS = /** @type {const} */ (['PreToolUse', 'PermissionRequest']);
 
-// Characters that change how text around them displays, or that display as nothing: every format character (Cf:
-// zero-width ones, soft hyphens, word joiners, invisible operators, tag characters, U+FEFF), the bidi marks,
-// embeddings, overrides and isolates, the Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), the combining grapheme
-// joiner (U+034F) and the variation selectors (U+FE00 to U+FE0F), which are marks rather than format characters, and the
-// whole tag block (U+E0000 to U+E007F), whose unassigned code points aren’t Cf. A right-to-left override can make a
-// command read as another one.
-// The two marks are alternatives of their own: in one class with other characters, Biome reads them as combining.
-const INVISIBLE = /[\p{Cf}\p{Bidi_Control}\u115f\u1160\u3164\uffa0\u{e0000}-\u{e007f}]|\u034f|[\ufe00-\ufe0f]/gu;
-
 /**
  * A string as one line of text at most `max` long: a tab or line break (U+2028 and U+2029 too) is a space, another
- * control character or a character that shows as nothing (INVISIBLE) the replacement mark, and text past the limit
- * is cut with an ellipsis.
+ * control character or a character that shows as nothing (INVISIBLE, shared/invisible.mjs) the replacement mark, and
+ * text past the limit is cut with an ellipsis.
  * @param {unknown} v @param {number} max
  */
 function shown(v, max) {
