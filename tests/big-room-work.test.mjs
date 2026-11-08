@@ -61,6 +61,11 @@ test('the room has about 7 work entries a turn, about 70% of them commands, as t
   const share = ofKind('command').length / room.work.length;
   assert.ok(perTurn >= 6.5 && perTurn <= 7.5, `${perTurn.toFixed(2)} entries a turn`);
   assert.ok(share >= 0.67 && share <= 0.74, `${(100 * share).toFixed(1)}% commands`);
+  // Most of the rest: a file read or changed in about two turns of five.
+  for (const kind of ['read', 'change']) {
+    const per = ofKind(kind).length / turns.length;
+    assert.ok(per >= 0.3 && per <= 0.5, `${per.toFixed(2)} ${kind} entries a turn`);
+  }
 });
 
 test('turn sizes are skewed: the median turn’s work is under 1 KB, and the largest is over 100 KB', () => {
@@ -68,6 +73,24 @@ test('turn sizes are skewed: the median turn’s work is under 1 KB, and the lar
   const median = sizes[Math.floor(sizes.length / 2)];
   assert.ok(median < 1024, `median ${median} bytes`);
   assert.ok(sizes.at(-1) > 100 * 1024, `largest ${sizes.at(-1)} bytes`);
+});
+
+test('a command weighs about what the 1 November run’s did, and a few turns in a hundred are the very large ones', () => {
+  const commands = ofKind('command');
+  const line = commands.reduce((n, e) => n + e.command.length, 0) / commands.length;
+  const rest = commands.reduce((n, e) => n + bytes({ ...e, command: undefined }), 0) / commands.length;
+  assert.ok(line >= 600 && line <= 1000, `a command line is ${line.toFixed(0)} characters on average`);
+  assert.ok(rest >= 380 && rest <= 480, `a command without its line is ${rest.toFixed(0)} bytes on average`);
+  const large = [...byTurn.values()].filter((list) => bytes(list) > 100 * 1024).length;
+  assert.ok(large >= turns.length / 150 && large <= turns.length / 60, `${large} turns over 100 KB of ${turns.length}`);
+});
+
+test('a reply has about 14 steps of about 300 bytes, as the 1 November run’s did', () => {
+  const steps = replies.reduce((n, it) => n + it.activity.steps.length, 0);
+  const perReply = steps / replies.length;
+  const perStep = replies.reduce((n, it) => n + bytes(it.activity), 0) / steps;
+  assert.ok(perReply >= 13 && perReply <= 15, `${perReply.toFixed(1)} steps a reply`);
+  assert.ok(perStep >= 250 && perStep <= 350, `${perStep.toFixed(0)} bytes a step`);
 });
 
 test('about one turn in 20 makes a branch, a commit, a push and a pull request through gh', () => {
