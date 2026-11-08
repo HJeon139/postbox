@@ -7,10 +7,11 @@ import { homedir } from 'node:os';
 import { basename, resolve, sep } from 'node:path';
 import { ASKING } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
-import { HANDLE, READING } from '../shared/limits.mjs';
+import { READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
 import { carriedList, turnLine } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
+import { workFolder } from './adapters/folder.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
 import { AUTO_MODEL, DEFAULT_EFFORT, EFFORT_LEVELS, POSTBOX_SERVER } from './adapters/setup.mjs';
 import { contentBlocks, listClaudeSessions, recentHistory, TranscriptTail, typedText } from './adapters/terminal-mirror.mjs';
@@ -28,6 +29,7 @@ import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessag
 import { addDataset, reloadDatasets } from './datasets.mjs';
 import { DELETE_UNDO_MS } from './delete-undo.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
+import { checkedSnapshot, folderOrNone, placedFolder, sessionFolder } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { hostTool } from './host-tool.mjs';
@@ -37,9 +39,9 @@ import { Ledger } from './ledger.mjs';
 import { sendLint } from './lint-delivery.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
 import * as queue from './message-queue.mjs';
+import { alwaysFor } from './permission-always.mjs';
 import {
   allowAlways,
-  alwaysFor,
   askPerson,
   expireStalePermissions,
   readsRules,
@@ -58,7 +60,7 @@ import {
   permissionsView,
   setPermissionMode,
 } from './permissions-panel.mjs';
-import { checkEffort, checkSetup } from './persona-checks.mjs';
+import { checkEffort, checkSetup, handleOf } from './persona-checks.mjs';
 import { readCapped } from './read-capped.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
@@ -220,7 +222,7 @@ export class Runtime {
     return (
       p && {
         ...p,
-        ...(se.personaSnapshot ?? {}),
+        ...checkedSnapshot(se.personaSnapshot ?? {}),
         backend: p.backend,
         permissionMode: p.permissionMode ?? 'auto',
         // Whether it loads your Claude Code setup and may publish outside Postbox are permissions too (#57), and
@@ -637,11 +639,7 @@ export class Runtime {
     const project = this.s.projects[this.s.threads[se.threadId]?.projectId] ?? null;
     this.ledger.startTurn(turn, {
       se,
-      folder: hostId
-        ? null
-        : adapter?.folderFor
-          ? Promise.resolve().then(() => adapter.folderFor(persona, project))
-          : persona?.folder || project?.folder || null,
+      folder: hostId ? null : workFolder(adapter, persona, project),
       projectFolder: project?.folder ?? null,
     });
     // Rules the person allowed once (from a refusal card) apply to this turn only.
@@ -1154,7 +1152,8 @@ export class Runtime {
     if (by !== 'shutdown' && by !== 'store') settleScheduledWake(this, turn, { name: 'AbortError' });
     settleStoppedSteps(this, turn);
     this.endWork(turn, 'stopped');
-    // A waiting permission is answered no; the card keeps who stopped it, and only `you` holds back its note (tellExpired, #721).
+    // A waiting permission is answered no; the card keeps who stopped it, so its note says the person’s stop withdrew
+    // it, or that it expired (tellExpired, #721, #853).
     for (const [id, w] of this.permissionWaits) if (w.sessionId === sessionId) this.settlePermission(id, 'expired', why, {}, { stoppedBy: by });
     // The open segment by its id, even while it is held behind a commit (its patch follows it in order); then any
     // other segment of this turn still streaming in the visible state (#602).
@@ -1982,8 +1981,7 @@ export class Runtime {
     const project = this.s.projects[t.projectId] ?? null;
     const adapter = persona ? requestAdapter(this, se.handle, persona) : null;
     if (persona?.remote?.hostId) return hereFolder(this, persona, project, adapter);
-    if (adapter?.folderFor) return { folder: await adapter.folderFor(persona, project), host: null };
-    return { folder: persona?.folder || project?.folder || null, host: null };
+    return { folder: await workFolder(adapter, persona, project), host: null };
   }
 
   /**
@@ -2204,6 +2202,7 @@ export class Runtime {
     const cs = (await listClaudeSessions({ root: this.config.claudeProjectsRoot, limit: 500 })).find((x) => x.id === claudeSessionId);
     if (!cs) throw httpError(404, 'That Claude Code session wasn’t found. It may have been deleted.');
     if (!cs.cwd) throw httpError(422, 'That session doesn’t say which folder it ran in, so Postbox can’t resume it.');
+    const folder = sessionFolder(cs.cwd);
     if (Object.values(this.s.sessions).some((se) => se.backendState?.claudeSessionId === claudeSessionId && !se.deleting))
       throw httpError(409, 'That session is already attached.');
     if (!this.s.projects[projectId]) throw httpError(404, 'That project doesn’t exist.');
@@ -2219,7 +2218,7 @@ export class Runtime {
       handle: name,
       backend: 'claude-code',
       description: `Attached from Claude Code in ${cs.cwd}`,
-      folder: cs.cwd,
+      folder,
     });
     const t = this.createThread({ projectId, title: cs.title, personaIds: [p.id] });
     const se = this.sessionsIn(t.id)[0];
@@ -2378,10 +2377,7 @@ export class Runtime {
     createdBy = null,
     remote = null,
   }) {
-    handle = String(handle ?? '')
-      .replace(/^@/, '')
-      .trim();
-    if (!HANDLE.test(handle)) throw httpError(422, 'A name uses 2–24 letters, digits, - or _, and starts with a letter.');
+    handle = handleOf(handle);
     if (this.personaByHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
     if (this.deletingHandle(handle)) throw httpError(409, `@${handle} is being deleted. Undo that, or wait 10 seconds for the name to be free.`);
     if (!this.adapters.names().includes(backend)) throw httpError(422, notHere(this, backend));
@@ -2403,7 +2399,7 @@ export class Runtime {
       canPublish,
       mcpOff: serverNames(mcpOff),
       skillsOff: skillNames(skillsOff),
-      folder: String(folder ?? ''),
+      folder: placedFolder(folder, placed),
       tools: [...new Set(tools)],
       examples,
       createdBy,
@@ -2428,6 +2424,8 @@ export class Runtime {
     if (patch.backend !== undefined && !this.adapters.names().includes(patch.backend)) throw httpError(422, notHere(this, patch.backend));
     // Where it runs (#120), and whether its backend runs here when that’s here.
     patch = placedPatch(this, id, p, patch);
+    // Its folder is checked for where it runs once the change is made (#990).
+    if (patch.folder !== undefined) patch = { ...patch, folder: placedFolder(patch.folder, patch.remote === undefined ? p.remote : patch.remote) };
     // A persona moved from the mock to a real model gets that backend’s default model.
     if (patch.backend && patch.backend !== 'mock' && (patch.model ?? p.model) === 'mock') patch = { ...patch, model: this.defaultModelFor(patch.backend) };
     const next = {
@@ -2519,10 +2517,10 @@ export class Runtime {
     const project = (projectId && this.s.projects[projectId]) || this.s.projects[this.s.threads[recent?.threadId]?.projectId] || null;
     const seen =
       latest(own) ?? latest(Object.values(this.s.sessions).filter((se) => this.persona(se.personaId)?.usesHostSetup !== false && se.backend !== 'mock'));
-    const folder = persona?.folder || project?.folder || null;
+    const folder = folderOrNone(persona) || project?.folder || null;
     // An init from another folder says nothing about that folder’s project and local servers here: keep only the
     // ones that load everywhere (user, claude.ai, plugins).
-    const seenFolder = seen && (this.persona(seen.personaId)?.folder || this.s.projects[this.s.threads[seen.threadId]?.projectId]?.folder || null);
+    const seenFolder = seen && (folderOrNone(this.persona(seen.personaId)) || this.s.projects[this.s.threads[seen.threadId]?.projectId]?.folder || null);
     const servers = seen?.mcpServers.servers ?? [];
     return {
       persona,

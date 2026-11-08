@@ -5,6 +5,7 @@
 // left to clean up by hand. Postbox and Chromium run in process groups of their own (tools/uat/postbox.mjs,
 // tools/browser.mjs), so a terminal’s Ctrl-C, which reaches its whole foreground group, leaves them up for the cleanup.
 
+import { tearDownRemote } from './git-remote.mjs';
 import { cleanUp } from './hosts-end.mjs';
 
 const SIGNALS = /** @type {const} */ (['SIGINT', 'SIGTERM', 'SIGHUP']);
@@ -32,6 +33,12 @@ export function runStop(run) {
       run.history?.close();
       await run.page?.close().catch(() => {});
       await run.postbox?.kill();
+      // `- seed: git-remote`’s remote (#305): kept as remote.json, then removed, once Postbox can push to it no more.
+      try {
+        if (run.dir) tearDownRemote(run.dir, run.log);
+      } catch (e) {
+        run.log(`Couldn’t remove the run’s remote: ${/** @type {Error} */ (e).message}`);
+      }
     })();
     return done;
   };

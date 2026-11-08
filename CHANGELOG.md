@@ -2,6 +2,43 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.48.0 (2026-11-08)
+
+### Features
+
+- **uat:** seed the big room’s turns and work, and write its snapshot
+- **uat:** gitpush's Auto case is a scenario of its own, gitpush-auto
+- **uat:** the gitpush scenario, many commits and pushes in Ask me and in Auto
+- **uat:** a throwaway git remote for a run, that nothing real can be reached past
+
+### Fixes
+
+- **uat:** gitpush's push pattern keeps its two kinds of option apart
+- **cards:** tell the agent a request the person's stop withdrew wasn't refused (#853)
+- **server:** read a refused folder of an agent on a host as none, here
+- **server:** keep the folder of an agent on a host as written, so its sheet saves
+- **server:** say where an attached Claude Code session ran when its folder is refused
+- **deps:** skip onnxruntime-node's CUDA download in the repository's .npmrc
+- **server:** let a fixed sheet’s folder reach a session that snapshotted a bad one
+- **security:** say in the hooks panel that a running hook's allow skips ask rules
+- **security:** keep the person's hooks in auto, and turn them off only in ask me and accept edits
+- **remote:** a host card that waits on nothing ends when Postbox stops following its turn (#800)
+- **security:** a turn that loaded hooks doesn't switch live into a mode that turns them off
+- **server:** check agents.json whole before seeding any of its agents
+- **server:** refuse a stored bad folder with a 409 everywhere it’s read
+- **server:** check a persona’s folder as a project’s folder is checked
+- **uat:** a git-remote run reads its own git config, and its preflight runs on runEnv
+- **uat:** gitpush's push pattern takes git's own options, and Always allow's own push doesn't count
+- **uat:** GIT_ALLOW_PROTOCOL=file, a preflight before Postbox starts, and the agent's env file
+- **apps:** a review's new body no longer sweeps apps that aren't on the page yet (#930)
+- **uat:** setUpRemote fails closed, and a git-remote run blanks SSH_AUTH_SOCK
+- **apps:** an app review's old bodies leave the near set, so the page stops looking (#930)
+- **apps:** look under the pointer only near an app, and let go of a view’s apps when it goes (#930)
+- **uat:** a session with a card open isn't working, whatever its state says
+- **uat:** gitpush changes one line of notes.md in Accept edits
+- **uat:** gitpush asks for each commit as its own calls too, and gives the twenty pushes 16 steps
+- **uat:** gitpush asks for each push as its own call, and the runner sets the project's repository
+
 ## 1.47.0 (2026-11-08)
 
 ### Features

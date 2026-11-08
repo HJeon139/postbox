@@ -5,6 +5,7 @@ import { constants } from 'node:fs';
 import { lstat, open, realpath } from 'node:fs/promises';
 import { basename, resolve, sep } from 'node:path';
 import { LIMITS, limitText } from '../shared/limits.mjs';
+import { workFolder } from './adapters/folder.mjs';
 import { readCappedFrom } from './read-capped.mjs';
 import { requestAdapter } from './remote/placement.mjs';
 
@@ -21,7 +22,7 @@ export async function agentFolders(rt, sessionId) {
   const persona = rt.personaFor(se);
   const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId] ?? null;
   const adapter = requestAdapter(rt, se.handle, persona);
-  const own = adapter?.folderFor ? await adapter.folderFor(persona, project) : persona?.folder || project?.folder || null;
+  const own = await workFolder(adapter, persona, project);
   return [...new Set([own, project?.folder, ...(se.addDirs ?? [])].filter(Boolean))];
 }
 

@@ -36,6 +36,7 @@ import { lastCheckPass, MID_TURN, runChecks, waitingOnYou } from './uat/checks.m
 import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
+import { preflightRun, remoteFacts, setUpRemote } from './uat/git-remote.mjs';
 import { followEvents } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
 import { HOST_OPTIONS } from './uat/hosts-options.mjs';
@@ -52,11 +53,12 @@ import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
 import { endRun } from './uat/run-end.mjs';
+import { runEnv } from './uat/run-env.mjs';
 import { runFacts } from './uat/run-facts.mjs';
 import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi, runPaths } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
-import { chainLimitEnv, phaseCap, stepCap } from './uat/scenario.mjs';
+import { phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
 import { interruptAct, localRestart, STEPS } from './uat/steps.mjs';
@@ -124,6 +126,8 @@ async function main() {
   const canaries = makeWorkspace(scenario, paths, dir);
   // A phase’s `- fault:` (#508): Postbox starts with the fault launcher in front of the faulted agent’s CLI.
   const faults = faultSetup({ scenario, root: ROOT, dir, env: process.env });
+  // `- seed: git-remote`’s guard (#305), checked on the very environment Postbox and its agents get.
+  preflightRun(scenario, paths.workspace, dir, { ...process.env, ...runEnv({ gate, paths, scenario, dir, opt, faults }) });
   const logLines = [];
   const log = (line) => {
     const l = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${line}`;
@@ -143,23 +147,14 @@ async function main() {
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
   const { agentModels, agentEffort } = await seedAgents({ scenario, opt, root: ROOT, data: paths.data, log });
   // Ctrl-C cleans the hosts up through the page before anything stops (tools/uat/stop.mjs), with what’s there by then.
-  const run = { log };
+  const run = { log, dir };
   const stop = runStop(run);
   const signals = onStopSignal(stop, { log });
   const postbox = await startPostbox({
     root: ROOT,
     port,
     data: paths.data,
-    env: {
-      ...gate.env,
-      POSTBOX_CLAUDE_RECORD: paths.streams,
-      POSTBOX_KIRO_RECORD: paths.kiroStreams,
-      POSTBOX_AGY_RECORD: paths.agyStreams,
-      POSTBOX_CODEX_RECORD: paths.codexStreams,
-      ...tm.telemetryEnv(scenario, dir, opt),
-      ...chainLimitEnv(scenario), // the scenario’s `- chain-limit:` (#508), for the Postbox this run starts and restarts
-      ...faults?.env,
-    },
+    env: runEnv({ gate, paths, scenario, dir, opt, faults }),
     log,
   });
   const { api } = postbox;
@@ -189,6 +184,7 @@ async function main() {
     log(`Conversation ${mainThread} started with @${scenario.agents.join(', @')}.`);
     // `- seed: big-room` (#508): the conversation fills with about 1,000 generated items before the tester arrives.
     scenario.summary += await seededNote(scenario, { postbox, data: paths.data, threadId: mainThread, page, log, opt, dir, facts });
+    scenario.summary += await setUpRemote(scenario, { dir, page, threadId: mainThread, log }); // `- seed: git-remote` (#305)
     const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log, input: d.input });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
@@ -256,6 +252,7 @@ async function main() {
       facts.codexStreams = readStreams(paths.codexStreams);
       facts.events = history.events();
       facts.transcripts = readTranscripts(facts, paths.workspace);
+      facts.remote = remoteFacts(dir, facts); // `- seed: git-remote`’s pushes, with the ledger’s size beside them (#305)
       const telOpts = { dir, data: paths.data, workspace: paths.workspace, main: mainThread, canaries, flags: tel.flags, shown: tel.shown };
       if (tm.telemetryOn(opt)) tm.telemetryFacts(facts, { ...telOpts, startedBeforeTurns: tm.runnerRecords(scenario, opt) });
       Object.assign(facts.ui, await readUi(page));

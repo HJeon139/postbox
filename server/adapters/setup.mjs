@@ -17,6 +17,7 @@
 
 import { appendFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { asksForWrites } from '../../shared/hook-modes.mjs';
 import { agentPlugins } from './agent-plugin.mjs';
 import { postboxSkillsOn, skillDenies, skillOverrides } from './skill-config.mjs';
 /**
@@ -109,10 +110,11 @@ export function settingsFor(persona, memoryDir = null) {
     ...(usesHostSetup && mcpOff.length ? { deniedMcpServers: mcpOff.map((serverName) => ({ serverName })) } : {}),
     // The user and project skills it turned off (#207).
     ...skillOverrides(persona),
-    // A hook or mod that approves a call would skip the ask rules and the permission prompt (#817). In this flag
-    // layer it holds against a `disableAllHooks: false` in user, project or local settings; managed hooks still run.
-    // Bypass keeps the person’s hooks: there, they may be the only check left.
-    ...(persona?.permissionMode === 'bypass' ? {} : { disableAllHooks: true }),
+    // In Ask me and Accept edits, a hook or mod that approves a call would skip Postbox’s ask rules for writes and the
+    // permission prompt (#817), so hooks are off there. In this flag layer it holds against a `disableAllHooks: false`
+    // in user, project or local settings; managed hooks still run. Auto (harness first, #961) and bypass add no such
+    // ask rules, so the person’s hooks run, as in their terminal (#806). The same modes as writeRules (asksForWrites).
+    ...(asksForWrites(persona?.permissionMode) ? { disableAllHooks: true } : {}),
   };
 }
 
@@ -193,8 +195,9 @@ export const isPublishingTool = (name) => RULES.some((r) => r.test(String(name))
 
 /**
  * Ask rules for calls that write outside Postbox (#112), passed in the settings overlay’s `permissions.ask` with the
- * conversation’s own. Claude Code then asks before each one in every mode but bypass, through Postbox’s permission
- * prompt, and the card shows the draft before anything exists outside. An agent created a document in a shared folder
+ * conversation’s own, in Ask me and Accept edits only (writeRules, #961). Claude Code then asks before each one in
+ * those modes, through Postbox’s permission prompt, and the card shows the draft before anything exists outside; in
+ * Auto a write asks only when the harness itself asks. An agent created a document in a shared folder
  * of an external doc tool with a number already taken, and with broken links, and everyone with access saw it first.
  *
  * Unlike PUBLISHING_TOOLS these ask rather than deny, on every server, local ones too: a local server can write to a
@@ -264,16 +267,13 @@ export const WRITE_TOOLS = [
   'Bash(git --config-env*)',
 ];
 
-/** The modes in which Postbox adds its own ask rules for writes outside: the ones where the person asked to be asked. */
-const ASKS_FOR_WRITES = new Set(['ask', 'acceptEdits']);
-
 /**
  * The ask rules for writes outside Postbox, for a persona’s turn. Harness first (the person’s decision, 7 Nov 2026):
  * in Auto, none, so the harness decides and a card comes only when it asks; in Ask me and Accept edits, all of them;
  * in bypass, none. Auto is also what an unset or unknown mode runs as. The CLI, the SDK and host turns all build from
  * this, and the person’s own ask rules are added beside it, in every mode.
  */
-export const writeRules = (persona) => (ASKS_FOR_WRITES.has(persona?.permissionMode) ? [...WRITE_TOOLS] : []);
+export const writeRules = (persona) => (asksForWrites(persona?.permissionMode) ? [...WRITE_TOOLS] : []);
 
 /**
  * Tools that act outside Postbox’s record, denied for real backends unless the persona has `agents.outside`. They

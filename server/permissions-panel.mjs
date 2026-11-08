@@ -10,6 +10,7 @@
 
 import { stat } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
+import { workFolder } from './adapters/folder.mjs';
 import { PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
 import { changeHostRule, hostRuleList } from './host-rules.mjs';
@@ -37,7 +38,7 @@ export async function panelTarget(rt, { sessionId = null, personaId = null, proj
   if (!persona) throw httpError(404, 'That agent doesn’t exist.');
   const project = rt.s.projects[se ? rt.s.threads[se.threadId]?.projectId : (projectId ?? '')] ?? rt.latestProject(persona.id) ?? null;
   const adapter = requestAdapter(rt, persona.handle, persona);
-  const folder = adapter?.folderFor ? await adapter.folderFor(persona, project) : persona.folder || project?.folder || null;
+  const folder = await workFolder(adapter, persona, project);
   return { se, persona, project, folder };
 }
 /** The project of a persona’s latest conversation, for the panel opened from the persona editor. */
@@ -63,7 +64,7 @@ export async function permissionsView(rt, who) {
   const { usesHostSetup, canPublish, allowRequested } = setupOf(persona);
   const read = { folder, home: rt.home, configDir: rt.configDir, usesHostSetup };
   const files = real && readsRules && folder ? await readRules(read) : [];
-  // The hooks there that can approve a call, which Postbox’s settings turn off in every mode but bypass (#817, #871).
+  // The hooks there that can approve a call, which Postbox’s settings turn off in Ask me and Accept edits (#817, #871, #806).
   const hooks = real && readsRules && folder ? await readHooks(read) : [];
   const has = new Set(persona.tools ?? []);
   const tools = Object.entries(TOOL_RULES).map(([id, rules]) => ({ id, on: has.has(id), rules }));
