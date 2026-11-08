@@ -118,6 +118,7 @@ describe('what the guard is, and gh', () => {
       [['pr', 'create', '--title', 'A change', '--body', 'Why.']],
     );
     assert.equal(r.env.GH_CONFIG_DIR, remotePaths(r.dir).ghConfig, 'a real gh found another way has no login');
+    assert.equal(r.env.SSH_AUTH_SOCK, '', 'no ssh agent, so Postbox’s own push has no key for an ssh remote');
   });
 
   test('another seed gets none of it', () => {
@@ -169,9 +170,15 @@ test('the runner sets the project’s repository to the remote through the page,
   assert.match(exprs[0], /S\(\)\.threads\["th_1"\]\.projectId/);
   assert.deepEqual(lines, ['The project’s repository is the run’s remote.']);
   assert.match(note, /so does the project’s repository in Settings/);
-  const refused = { evaluate: async () => 'an error: That isn’t a repository Postbox can push to.' };
-  await setUpRemote({ seed: 'git-remote' }, { dir: '/runs/r1', page: refused, threadId: 'th_1', log: (l) => lines.push(l) });
-  assert.match(lines[1], /^Couldn’t set the project’s repository to the run’s remote: it reads an error: /);
+  // Fail closed: a repository that didn’t take stops the run, rather than leaving whatever the project had.
+  for (const answer of ['an error: That isn’t a repository Postbox can push to.', 'git@github.com:someone/real.git']) {
+    const page2 = { evaluate: async () => answer };
+    await assert.rejects(
+      setUpRemote({ seed: 'git-remote' }, { dir: '/runs/r1', page: page2, threadId: 'th_1', log: (l) => lines.push(l) }),
+      /Couldn’t set the project’s repository to the run’s remote .*so the run stops before any agent turn/,
+    );
+  }
+  assert.equal(lines.length, 1, 'nothing logged as set when it wasn’t');
   assert.equal(await setUpRemote({ seed: null }, { dir: '/runs/r1', page, threadId: 'th_1', log: () => {} }), '');
 });
 
