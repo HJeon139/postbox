@@ -109,7 +109,7 @@ function heard(v, s) {
   v.anchor = { key: v.anchor.key, at: v.anchor.at - unheard };
   v.lastTop = s.scrollTop;
   // Its event then looks like the transcript’s own scroll: onScroll still counts it as one the transcript didn’t make
-  // (yours, or the browser’s own clamp, which clamped there tells apart).
+  // (yours, or the browser’s own clamp, which only moves the view up: onScroll tells them apart).
   v.heardYou = true;
 }
 // Only your own scrolling unsticks the view: content growing never scrolls, and the browser doesn’t anchor
@@ -122,17 +122,14 @@ function onScroll(v) {
   // after what’s above has moved again: hold it in place again before taking the anchor there, or you lose your place
   // (#297).
   const moved = s.scrollTop !== v.lastTop;
-  // A box that changed size since the last scroll event (full screen and back, the window) can clamp the view to its
-  // new end. That isn’t you: the view doesn’t start following, and keeps your place for when the box is back, as heard()
-  // doesn’t take it in (#837). A clamp only moves the view up from where the last scroll event saw it (holding the
-  // anchor through the resize may already have moved lastTop there); reaching the end by moving down is you.
-  const clamped = sizeOf(s) !== v.size && s.scrollTop < v.seenTop;
-  // Nor is the transcript’s own hold of your place reaching the end: after a clamp, the items that came into view draw
-  // from their estimates (#712a), and holding the anchor through that can move the view down to the end.
-  // A scroll heard() took in first is one the transcript didn’t make, as one that moved is.
+  // Reaching the end follows it only when you went there: by a scroll the transcript didn’t make (moved, or one heard()
+  // took in first), and down from where the last scroll event saw the view (seenTop; holding the anchor may already
+  // have moved lastTop). A clamp of the view to an end that came up only moves it up: the box grew (full screen and
+  // back, the window, #837), or what’s below shrank, as items around the view draw at their real sizes (#712a). The
+  // transcript’s own hold of your place can move it down to the end, but it isn’t a scroll the transcript didn’t make.
   const yours = moved || v.heardYou;
   v.heardYou = false;
-  const youReachedEnd = yours && !clamped;
+  const youReachedEnd = yours && s.scrollTop > v.seenTop;
   if (atEnd(s) && (v.stuck || youReachedEnd)) {
     if (!v.stuck) v.held = measure(v, s);
     v.stuck = true;
