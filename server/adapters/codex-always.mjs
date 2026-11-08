@@ -26,9 +26,9 @@ const RUNS_ANOTHER = new Set([
  * Tools whose first word alone covers every subcommand, `git push --force` with `git status`: they need a second word,
  * and it must be a subcommand that runs no other program.
  */
-const SUBCOMMANDS = new Set(['git', 'gh', 'cargo', 'go', 'kubectl', 'brew', 'apt', 'apt-get', 'pip', 'uv', 'rustup', 'gcloud', 'aws', 'az']);
-/** Subcommands that run whatever program comes next: `uv run`, `cargo run`, `kubectl exec`, `gh extension`, `npm x`. */
-const RUNS_NEXT = new Set(['run', 'exec', 'x', 'extension']);
+const SUBCOMMANDS = new Set(['git', 'gh', 'cargo', 'go', 'kubectl', 'brew', 'apt', 'apt-get', 'pip', 'pipx', 'poetry', 'uv', 'rustup', 'gcloud', 'aws', 'az']);
+/** Subcommands that run whatever program comes next: `uv run`, `cargo run`, `kubectl exec`, `gh extension`, `pipx run`, `dlx`. */
+const RUNS_NEXT = new Set(['run', 'exec', 'x', 'dlx', 'extension']);
 /** A shell operator, substitution or redirect inside a word: such a prefix isn’t a plain command. */
 const OPERATOR = /[;&|<>`$()\n\\]/;
 /** A host as Codex names one: letters, digits, dots and hyphens, so no wildcard and no space. */
