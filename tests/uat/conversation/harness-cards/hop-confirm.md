@@ -2,7 +2,7 @@
 
 ![Wake-limit confirm](../../screenshots/hop-confirm.png)
 
-**Where:** After 50 agent-to-agent wakes in one chain (three until #320, ten until #492). A chain ends when you act or no agent is left working on it.
+**Where:** After the room’s chain limit of agent-to-agent wakes in one chain: 1,000 unless the room sets another in its menu, Wake chain limit… (three until #320, ten until #492, 50 until #1035). A chain ends when you act or no agent is left working on it.
 
 ## Why it exists
 

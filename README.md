@@ -36,6 +36,8 @@ A global install brings the optional packages too (the Agent SDK and Kokoro, sev
 
 Open <http://127.0.0.1:4173/>. Postbox listens only on this machine. Your conversations are kept in `~/.postbox` as an event log, so they survive a restart and an upgrade. Set `POSTBOX_HOME` to keep them somewhere else, or pass `--data <folder>` for one run. Add `--fresh` to start over.
 
+**Agents waking agents.** After 1,000 agent wakes in a row without your message, the next waits for your Allow, as a backstop against agents that never stop. A room sets its own limit, from 1 to 10,000, in its menu (⋯ › Wake chain limit…); a room without one uses the server’s default, which `POSTBOX_CHAIN_LIMIT` sets, a whole number from 1 to 10,000 (#1035).
+
 **A clone that ran an earlier version.** Earlier versions kept everything in the clone’s `data/` folder. A clone whose `data/` has conversations keeps using it, unless `POSTBOX_HOME` is set, and says so when it starts. To move it to `~/.postbox`, stop Postbox and run `npm start -- --move-data`: it moves the folder and leaves a link in its place, so paths your conversations recorded still work. An agent that works in its own workspace folder starts a new Claude Code session on its next turn, since its folder moved; its conversation in Postbox stays. Postbox never moves it without being asked.
 
 One Postbox runs on a data folder at a time: a second one on the same folder refuses to start, and says which process has it.
