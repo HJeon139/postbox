@@ -205,6 +205,13 @@ test('#324 no offer for a path or assignment as the first word, a versioned inte
     ['kubectl', 'exec'],
     ['gh', 'extension'],
     ['npm', 'x'],
+    ['python3'],
+    ['/usr/bin/bash'],
+    ['FOO=1', 'make'],
+    ['pnpm', 'dlx'],
+    ['pipx', 'run'],
+    ['poetry', 'run'],
+    ['ls', 'x'.repeat(118)],
   ])
     assert.equal(offline(prefix), null, JSON.stringify(prefix));
   assert.notEqual(offline(['cargo', 'test']), null, 'a subcommand that runs no other program is fine');
