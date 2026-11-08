@@ -189,6 +189,8 @@ test('a panel closed while a press is held paints nothing when it’s let go', a
 
 test.describe('by touch at 375 px', () => {
   test.use({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  // The finger below goes through Chromium’s DevTools protocol, which other browsers don’t have.
+  test.skip(({ browserName }) => browserName !== 'chromium', 'a held touch needs Chromium’s DevTools protocol');
 
   /** A finger on the page, through the DevTools protocol, so it stays down between the events it sends. */
   const finger = async (page) => {
