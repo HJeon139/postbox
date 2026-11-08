@@ -6,8 +6,9 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
 import { DEFAULT_MODEL as ADAPTERS_DEFAULT_MODEL } from '../server/adapters/setup.mjs';
 import { handleMcp } from '../server/mcp.mjs';
-import { DEFAULT_MODEL, HOP_LIMIT, Runtime } from '../server/runtime.mjs';
+import { DEFAULT_MODEL, Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { updateThread } from '../server/thread-write.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -216,12 +217,13 @@ test('an invalid block is stored with its fallback, never rendered as given', as
   assert.equal(result.ok, false);
 });
 
-test(`after ${HOP_LIMIT} agent wakes in a row, the next one waits for your confirm`, async () => {
+test('after the room’s chain limit of agent wakes in a row, the next one waits for your confirm', async () => {
   const { rt, store, t, b } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
+  updateThread(rt, t.id, { chainLimit: 3 }); // the room’s own (#1035), so the test needn’t make 1,000 wakes
   // All while the chain runs: one that ends starts the count again (#492).
-  for (let i = 0; i < HOP_LIMIT; i++) assert.equal(rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true }).ok, true);
+  for (let i = 0; i < 3; i++) assert.equal(rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true }).ok, true);
   const r = rt.agentWake(alpha.id, 'beta', 'check again');
   assert.equal(r.waiting, true);
   const hop = store.items(t.id).find((i) => i.kind === 'hop');
@@ -240,7 +242,8 @@ test('a wake you allow delivers its whole message, not the card’s preview (#10
   const { rt, store, t, b, adapter } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
-  for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
+  updateThread(rt, t.id, { chainLimit: 3 });
+  for (let i = 0; i < 3; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
   const long = `Must fix: ${'acceptance bar, '.repeat(200)}`.slice(0, 3000);
   assert.equal(rt.agentWake(alpha.id, 'beta', long).waiting, true);
   const hop = store.items(t.id).find((i) => i.kind === 'hop');
@@ -256,7 +259,8 @@ test('a wake request stored before #108, with only a preview, still delivers tha
   const { rt, store, t, b, adapter } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
-  for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
+  updateThread(rt, t.id, { chainLimit: 3 });
+  for (let i = 0; i < 3; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
   rt.agentWake(alpha.id, 'beta', 'the whole message');
   const hop = store.items(t.id).find((i) => i.kind === 'hop');
   rt.patchItem(t.id, hop.id, { text: undefined, reason: 'the preview' });
