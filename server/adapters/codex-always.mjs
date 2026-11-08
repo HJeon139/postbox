@@ -62,7 +62,10 @@ function plainPrefix(prefix) {
   return prefix[0] === 'gh' && prefix.length >= 3 && GH_READS.has(`${prefix[1]} ${prefix[2]}`);
 }
 
-/** Where the rule goes and what it does, as the card says it. */
+/**
+ * Where the rule goes and what it does, as the card says it. Each text starts with `Always allow ${rule}`, since the
+ * card shows the rule in code and then the rest of the text (app/js/permission-cards.mjs).
+ */
 const WHERE = 'as a Codex rule: they run outside its sandbox, with no card, in every Codex session on this computer';
 
 /**
@@ -87,12 +90,14 @@ export function codexAlwaysOffer(params, persona) {
     const proposed = Array.isArray(params.proposedNetworkPolicyAmendments) ? params.proposedNetworkPolicyAmendments : [];
     const host = proposed.find((a) => a?.action === 'allow' && typeof a.host === 'string' && HOST.test(a.host))?.host;
     if (!host) return null;
-    return offer(`Always allow network access to ${host}, as a Codex rule, in every Codex session on this computer`, host, {
+    return offer(`Always allow ${host} for network access, as a Codex rule, in every Codex session on this computer`, host, {
       applyNetworkPolicyAmendment: { network_policy_amendment: { host, action: 'allow' } },
     });
   }
   const prefix = params?.proposedExecpolicyAmendment;
   if (!plainPrefix(prefix)) return null;
   const rule = prefix.join(' ');
-  return offer(`Always allow commands starting with ${rule}, ${WHERE}`, rule, { acceptWithExecpolicyAmendment: { execpolicy_amendment: [...prefix] } });
+  return offer(`Always allow ${rule} and any command starting with it, ${WHERE}`, rule, {
+    acceptWithExecpolicyAmendment: { execpolicy_amendment: [...prefix] },
+  });
 }
