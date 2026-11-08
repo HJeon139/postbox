@@ -96,3 +96,16 @@ test('#986 an agent joining the open conversation still rebuilds its view', asyn
   await expect(page.locator('.rail .agent-row', { hasText: 'binder' })).toBeVisible();
   expect(await kept(page), 'a new bar').toBe(0);
 });
+
+test('#986 the places menu lists the projects as they are when it opens, though the bar wasn’t rebuilt', async ({ page }) => {
+  await twoOpen(page);
+  const base = Object.values(app.rt.s.projects)[0];
+  const another = { ...base, id: `pr_menu${n}`, name: 'Bindery' };
+  app.store.emit('project', another);
+  app.store.emit('project', { ...another, name: 'Bindery, renamed' });
+  await synced(page, app);
+  expect(await kept(page), 'the same top bar').toBe(1);
+  await page.locator('#places-button').click();
+  await expect(page.locator('.menu')).toContainText('Bindery, renamed');
+  await page.keyboard.press('Escape');
+});
