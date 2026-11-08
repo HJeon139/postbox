@@ -23,19 +23,17 @@ export function tellExpired(rt, threadId, itemId, card = undefined) {
   if (it?.kind !== 'permission' || it.agentTold) return;
   if (!rt.s.sessions[it.sessionId]) return;
   rt.patchItem(threadId, itemId, { agentTold: true });
-  rt.tellAgent(
-    it.sessionId,
-    `${requestOf(it)} ${whyClosed(it)}, so it didn’t run. ${it.stoppedBy === 'you' ? 'They didn’t refuse it. ' : ''}Ask again if you still need it.`,
-  );
+  rt.tellAgent(it.sessionId, `${requestOf(it)} ${whyClosed(it)} Ask again if you still need it.`);
 }
 
 /**
- * Why the request closed unanswered: the person’s own stop, or an expiry (a card past its wait, its host’s word, or a
- * shutdown, hung stop or store outage, which record who stopped it too). @param {any} it
+ * Why the request closed unanswered, as the note says it: the person’s own stop, which wasn’t a refusal (#853), or an
+ * expiry (a card past its wait, its host’s word, or a shutdown, hung stop or store outage, which record who stopped it
+ * too). @param {any} it
  */
 function whyClosed(it) {
-  if (it.stoppedBy === 'you') return 'was still waiting for the person when they stopped your turn';
-  return 'expired before the person answered it';
+  if (it.stoppedBy === 'you') return 'was still waiting for the person when they stopped your turn, so it didn’t run. They didn’t refuse it.';
+  return 'expired before the person answered it, so it didn’t run.';
 }
 
 /** How the note names a request: whose, its summary, and its command when the card has one. @param {any} it */
