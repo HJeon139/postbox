@@ -18,7 +18,7 @@ export function expectsOf(spec) {
 }
 
 /** Postbox’s event log in a data folder, in order: events-1.jsonl, events-2.jsonl… @param {string} data */
-function logEvents(data) {
+export function logEvents(data) {
   if (!existsSync(data)) return [];
   const segments = readdirSync(data)
     .map((f) => f.match(/^events-(\d+)\.jsonl$/))

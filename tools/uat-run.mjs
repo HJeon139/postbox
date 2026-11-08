@@ -44,6 +44,7 @@ import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
 import { keyFrameOut, seededNote } from './uat/key-frame-run.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
 import { openIssues } from './uat/open-issues.mjs';
+import { judgePictures } from './uat/picture-judges.mjs';
 import { portFree, startPostbox } from './uat/postbox.mjs';
 import { recordInput } from './uat/probes.mjs';
 import { recheck } from './uat/recheck.mjs';
@@ -512,6 +513,8 @@ async function main() {
     await writeFile(join(dir, 'events.jsonl'), facts.events.map((e) => JSON.stringify(e)).join('\n') + (facts.events.length ? '\n' : ''));
     const all = [...findings.values()];
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
+    // #995’s judges of the agent’s pictures, before the budget’s summary so it counts them.
+    await judgePictures({ scenario, dir, paths, labels, keys, timeline, facts, ask: budget.verifier(), model: opt['tester-model'], log });
     if (facts.telemetry) facts.telemetryOut = { proposals: tm.foldLabels(all, facts.telemetry) };
     if (facts.telemetry) budget.spend('telemetry', tm.telemetryBlock(facts.telemetry, all).classifier?.costUsd);
     Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
