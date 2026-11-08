@@ -3,6 +3,7 @@
 
 import { validateBlock } from '../shared/catalog.mjs';
 import { appReceipt } from './app-check-status.mjs';
+import { withAppIntent } from './apps.mjs';
 import { OUTCOME_LATER } from './blocks.mjs';
 import { newId } from './store.mjs';
 import { wokeOf } from './turn-marks.mjs';
@@ -21,6 +22,8 @@ export function showBlock(rt, sessionId, { turn, se, threadId, endSegment, tools
   // answers, even Cancel, so it’s refused here and only taken by update_block once the block is answered.
   if (block && typeof block === 'object' && Object.hasOwn(block, 'outcome'))
     return { ok: false, message: OUTCOME_LATER(String(block.id ?? 'this block'), 'The block wasn’t shown.') };
+  // An app’s intent is never why it’s refused (#995): trimmed and cut as show_app does.
+  block = withAppIntent(block);
   const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
   // App ids are global. Yours already: it’s a new version. Another agent’s: yours gets a fresh id, and
   // theirs (its versions and saved state) is left alone.

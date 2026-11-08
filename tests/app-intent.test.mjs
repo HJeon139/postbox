@@ -70,3 +70,14 @@ test('#995 an intent over 16 words is kept and flagged, so the agent can say it 
   assert.doesNotMatch(short.message, /Its intent has/);
   assert.match(tools.update_app({ id: 'lab', code: '<p>3</p>', intent: long }).message, /Its intent has 19 words/);
 });
+
+test('#995 show_block with an app block takes the intent as show_app does: never refused for it', () => {
+  const { store, tools } = setup();
+  const app = (id, intent) => ({ block: { id, type: 'app', version: 1, fallback: 'An app.', code: '<p>1</p>', intent } });
+  assert.equal(tools.show_block(app('num', 42)).ok, true);
+  assert.equal(tools.show_block(app('long', `  ${'x'.repeat(INTENT_CHARS + 50)}  `)).ok, true);
+  assert.equal(tools.show_block(app('said', '  Six cost over $10 a use. ')).ok, true);
+  assert.deepEqual(intents(store, 'num'), ['']);
+  assert.equal(intents(store, 'long')[0].length, INTENT_CHARS);
+  assert.deepEqual(intents(store, 'said'), ['Six cost over $10 a use.']);
+});

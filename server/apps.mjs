@@ -34,6 +34,16 @@ function intentNote(v) {
   return n > LIMITS.appIntentWords ? ` Its intent has ${n} words: say it in at most ${LIMITS.appIntentWords} with update_app.` : '';
 }
 
+/**
+ * An app block as show_block takes it, with its intent trimmed and cut as show_app’s is, or dropped when it isn’t
+ * text, so the catalog never refuses an app for its intent. @param {any} block
+ */
+export function withAppIntent(block) {
+  if (block?.type !== 'app' || !Object.hasOwn(block, 'intent')) return block;
+  const { intent, ...rest } = block;
+  return intentOf(intent) ? { ...rest, intent: intentOf(intent) } : rest;
+}
+
 /** A receipt with the intent’s note, when there is one. @param {any} r @param {unknown} intent */
 const withIntentNote = (r, intent) => (r.ok && intentNote(intent) ? { ...r, message: r.message + intentNote(intent) } : r);
 
