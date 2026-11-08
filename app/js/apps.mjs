@@ -9,6 +9,7 @@ import { api, client, placeIn } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
 import { goToItem } from './go-to-item.mjs';
 import { libSource, theme } from './sandbox-libs.mjs';
+import { nextTabStop } from './tab-stop.mjs';
 import { openMenu, toast } from './ui.mjs';
 
 export { enhanceMarkdown } from './md-enhance.mjs';
@@ -238,17 +239,9 @@ function steal(f) {
   rec.onCrash?.();
 }
 
-/** Where Tab or Shift+Tab goes from the focused element, if that’s an app frame. */
+/** Where Tab or Shift+Tab goes from the focused element, if that’s an app frame. @param {boolean} back */
 function tabTarget(back) {
-  const all = [
-    ...document.querySelectorAll('a[href], button, input, select, textarea, iframe.app-iframe, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'),
-  ].filter((el) => {
-    if (!(el instanceof HTMLElement) || el.tabIndex < 0 || /** @type {any} */ (el).disabled) return false;
-    if (!el.getClientRects().length || el.closest('[hidden]')) return false;
-    return !el.parentElement?.closest('[inert]');
-  });
-  const i = all.indexOf(/** @type {HTMLElement} */ (document.activeElement));
-  const next = all[i < 0 ? (back ? all.length - 1 : 0) : i + (back ? -1 : 1)];
+  const next = nextTabStop(back);
   return isAppFrame(next) ? /** @type {HTMLIFrameElement} */ (next) : null;
 }
 
