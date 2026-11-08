@@ -2,8 +2,21 @@
 // you see it, and posts what it finds, which goes to the agent. Postbox inlines it after the kit, and only into a check
 // frame’s page (server/sandbox.mjs); the kit hands it what it shares with the rest of the kit.
 (function () {
-  const { ready, errors, post, textOverflow, textOverlap, controlHidden, classCollisions, ghostChoices, lowContrast, smallText, firstView, textInBoxes } =
-    window.__pbCheck;
+  const {
+    ready,
+    errors,
+    post,
+    textOverflow,
+    textOverlap,
+    controlHidden,
+    classCollisions,
+    ghostChoices,
+    lowContrast,
+    smallText,
+    cutOff,
+    firstView,
+    textInBoxes,
+  } = window.__pbCheck;
   delete window.__pbCheck;
   // ── The pre-display check ─────────────────────────────────────────────────────────────
   // Run inside hidden frames before you see the app. Problems go to the agent.
@@ -38,8 +51,17 @@
   }
   settled
     // Text over text is measured twice, a second apart, and the other layout problems once (check-layout.js, check-controls.js).
-    .then(() => Promise.all([textOverlap(innerWidth), textOverflow(innerWidth), controlHidden(innerWidth), classCollisions(innerWidth), ghostChoices()]))
-    .then(([overlaps, overflows, hiddenControls, collisions, ghosts]) => {
+    .then(() =>
+      Promise.all([
+        textOverlap(innerWidth),
+        textOverflow(innerWidth),
+        controlHidden(innerWidth),
+        classCollisions(innerWidth),
+        ghostChoices(),
+        cutOff(innerWidth),
+      ]),
+    )
+    .then(([overlaps, overflows, hiddenControls, collisions, ghosts, cut]) => {
       const problems = [];
       const w = innerWidth;
       const sw = document.documentElement.scrollWidth;
@@ -74,7 +96,7 @@
         if (+el.getAttribute('tabindex') > 0)
           problems.push({ code: 'tab-order', message: 'An element sets a positive tabindex, which breaks keyboard order.' });
       });
-      problems.push(...lowContrast(), ...legibility(w), ...overflows, ...overlaps, ...hiddenControls, ...collisions, ...ghosts);
+      problems.push(...lowContrast(), ...legibility(w), ...overflows, ...overlaps, ...cut, ...hiddenControls, ...collisions, ...ghosts);
       for (const e of errors) problems.push({ code: 'script-error', message: e });
       post({ type: 'check', width: w, problems });
     });
