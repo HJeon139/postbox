@@ -1,5 +1,6 @@
-// Controls you can’t see or click, for the pre-display check (app/kit/check.js): control-hidden (#89). Postbox inlines
-// it into a check frame’s page after check-layout.js, whose helpers it takes from window.__pbCheck, and before check.js.
+// Controls you can’t see or click, and a choice shown as one button and links, for the pre-display check
+// (app/kit/check.js): control-hidden (#89) and ghost-choice (#971). Postbox inlines it into a check frame’s page after
+// check-layout.js, whose helpers it takes from window.__pbCheck, and before check.js.
 (function () {
   const { clip, px, jump, hidden, shownPart, guard } = window.__pbCheck;
 
@@ -147,6 +148,26 @@
     }));
   }
 
+  /**
+   * ghost-choice (#971): sibling .btn buttons with aria-pressed, where the chosen ones drop .ghost and the rest keep it,
+   * so the options you can still pick read as links. aria-pressed is what marks a set as a choice: a .btn beside a
+   * ghost Cancel, with no pressed state, is an action and a minor one, as it should be.
+   */
+  function ghostChoices() {
+    const sets = new Set([...document.querySelectorAll('.btn[aria-pressed]')].map((el) => el.parentElement));
+    const found = [];
+    for (const set of sets) {
+      const options = [...set.children].filter((el) => el.matches('.btn[aria-pressed]'));
+      const ghosts = options.filter((el) => el.classList.contains('ghost'));
+      if (ghosts.length && ghosts.length < options.length) found.push({ options, ghosts });
+    }
+    return found.slice(0, 3).map(({ options, ghosts }) => ({
+      code: 'ghost-choice',
+      message: `${options.length} buttons with aria-pressed, such as ${name(ghosts[0])}, show which is chosen by dropping .ghost, so the others read as links. Make the set a .seg of buttons or .chip buttons, keeping aria-pressed, with no .ghost.`,
+    }));
+  }
+
   window.__pbCheck.controlHidden = guard('control-hidden', controlHidden);
   window.__pbCheck.classCollisions = guard('class-collision', classCollisions);
+  window.__pbCheck.ghostChoices = guard('ghost-choice', ghostChoices);
 })();
