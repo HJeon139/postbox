@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.49.1 (2026-11-08)
+
+### Fixes
+
+- **remote:** ask the host to stop a turn Postbox gives up on, and resume only once it has (#965)
+
 ## 1.49.0 (2026-11-08)
 
 ### Features
