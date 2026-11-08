@@ -125,6 +125,35 @@ const backSteps = (page) =>
   });
 const gap = (page) => page.evaluate(() => document.documentElement.scrollHeight - scrollY - innerHeight);
 
+// CI’s runners: once the jump landed at the end, Chromium’s smooth scroll, aimed at a page that shrank under it, stepped
+// back from the end by 138–563 px a frame later, with nothing of the page’s writing (a trace with the CPU throttled 3x,
+// 14 of 20; on CI, 319 px), and the view read that as you. With the CPU throttled as slow, from the click on.
+test('Jump to latest over 1,000 far shorter items on a slow CPU never steps back from the end', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'the CPU is throttled through Chromium’s DevTools protocol');
+  await page.addInitScript((rule) => {
+    addEventListener('DOMContentLoaded', () => document.head.append(Object.assign(document.createElement('style'), { textContent: rule })));
+  }, '.transcript .item { line-height: 0.9 !important; font-size: 8px !important }');
+  await readingAtTop(page, 'Smooth jump on a slow CPU');
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 3 });
+  await record(page);
+  await page.locator('.jump').getByRole('button').click();
+  const ys = /** @type {number[]} */ (await recorded(page));
+  await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+  await still(page);
+  const steps = ys.slice(1).map((y, i) => y - ys[i]);
+  const v = {
+    backwards: steps.filter((d) => d < -SETTLES).length,
+    mode: await page.locator('#main.transcript').getAttribute('data-view-mode'),
+    gap: await gap(page),
+    back: await backSteps(page),
+  };
+  test.info().annotations.push({ type: 'measured', description: JSON.stringify(v) });
+  expect.soft(v.backwards, `scrollY never goes back up by more than ${SETTLES} px`).toBe(0);
+  expect.soft(v.mode, 'it ends following').toBe('following');
+  expect.soft(v.gap, 'it ends at the end').toBeLessThanOrEqual(2);
+});
+
 // Items shorter than their estimate, as the Mac’s fonts draw them, as well as at their usual size (view-jump.spec.mjs):
 // on the Mac, Chromium’s scrollY went back up once on the way down.
 for (const [sizes, css] of [
