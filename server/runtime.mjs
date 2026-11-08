@@ -62,6 +62,7 @@ import {
 } from './permissions-panel.mjs';
 import { checkEffort, checkSetup, handleOf } from './persona-checks.mjs';
 import { readCapped } from './read-capped.mjs';
+import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
@@ -719,6 +720,8 @@ export class Runtime {
       rules: { allow: [...(se0.rules?.allow ?? [])], ask: [...(se0.rules?.ask ?? [])], deny: [...(se0.rules?.deny ?? [])] },
       /** Folders the person added for this conversation (#66), passed as --add-dir / additionalDirectories. */
       addDirs: [...(se0.addDirs ?? [])],
+      /** Folders it may only read in this conversation, from Always allow on a read card (#338, read-folders.mjs). */
+      readDirs: [...(se0.readDirs ?? [])],
       /** The adapter says how to name a subagent from its id (a prompt’s agent id), so its prompt names it. */
       subagentNames(fn) {
         turn.subagentName = fn;
@@ -1865,7 +1868,8 @@ export class Runtime {
     return askPerson(this, sessionId, req);
   }
   alwaysFor(se, req) {
-    return alwaysFor(this, se, req);
+    // A read outside an Antigravity agent’s folders offers its folder as readable (#338); otherwise as before.
+    return readCardAlways(this, se, req) ?? alwaysFor(this, se, req);
   }
   readsRules(backend) {
     return readsRules(this, backend);
@@ -1877,6 +1881,8 @@ export class Runtime {
     return resolvePermission(this, threadId, itemId, action, values);
   }
   allowAlways(threadId, it, asked) {
+    // A readable folder is saved for the conversation, then the card is answered as any Always allow (#338).
+    if (it.always?.readDir && !it.remote) addReadFolder(this, it.sessionId, it.always.readDir);
     return allowAlways(this, threadId, it, asked);
   }
   recordDenial(turn, d) {

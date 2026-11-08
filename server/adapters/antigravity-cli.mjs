@@ -184,6 +184,23 @@ export function modeArgs(persona, { hookConfirmed = false } = {}) {
 }
 
 /**
+ * What the hook reads from its environment: its MCP server, the mode, the folders it may work in, apart from those
+ * the folders it may only read (#338), which only its read branch reads, and the persona’s tools and publishing (#416).
+ * @param {{ mcpUrl: string, persona: any, cwd: string, addDirs: string[], readDirs: string[] }} o
+ */
+export function agyHookVars({ mcpUrl, persona, cwd, addDirs, readDirs }) {
+  return {
+    POSTBOX_MCP_URL: mcpUrl,
+    POSTBOX_AGY_MODE: persona?.permissionMode ?? 'auto',
+    POSTBOX_AGY_FOLDERS: JSON.stringify([cwd, ...addDirs]),
+    POSTBOX_AGY_READ: JSON.stringify(readDirs),
+    // What Auto lets run without a card, and whether a publishing tool is refused (agy-auto.mjs, #416).
+    POSTBOX_AGY_TOOLS: JSON.stringify(Array.isArray(persona?.tools) ? persona.tools : []),
+    POSTBOX_AGY_PUBLISH: setupOf(persona).canPublish ? '1' : '',
+  };
+}
+
+/**
  * The CLI arguments for one turn. Pure, so the tests can check them. Every flag comes before the message: given
  * as --print=<message>, it is one argument whatever it starts with.
  * @param {{ persona: any, model: string, effort: string|null, sessionId?: string|null, prompt: string, addDirs?: string[], hookConfirmed?: boolean }} turn
@@ -645,14 +662,7 @@ export class AntigravityCliAdapter {
     const effort = agyEffort(model, effortOf(persona));
     const args = agyArgs({ persona, model, effort, sessionId, prompt, addDirs, hookConfirmed });
     const mapper = createAgyMapper(ctx, { effort, resumed: sessionId, wrote });
-    const hookVars = {
-      POSTBOX_MCP_URL: ctx.mcpUrl,
-      POSTBOX_AGY_MODE: persona?.permissionMode ?? 'auto',
-      POSTBOX_AGY_FOLDERS: JSON.stringify([cwd, ...addDirs]),
-      // What Auto lets run without a card, and whether a publishing tool is refused (agy-auto.mjs, #416).
-      POSTBOX_AGY_TOOLS: JSON.stringify(Array.isArray(persona?.tools) ? persona.tools : []),
-      POSTBOX_AGY_PUBLISH: setupOf(persona).canPublish ? '1' : '',
-    };
+    const hookVars = agyHookVars({ mcpUrl: ctx.mcpUrl, persona, cwd, addDirs, readDirs: ctx.readDirs ?? [] });
     const env = hookConfirmed ? { ...this.env, ...hookVars } : this.env;
     return new Promise((resolve, reject) => {
       let child;
