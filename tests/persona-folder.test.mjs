@@ -26,13 +26,16 @@ const HIDDEN =
   'A folder’s path can’t contain invisible characters, such as a zero-width space or a bidi control, or a lone surrogate. Write the folder’s full path.';
 const PARTS = 'A folder’s path can’t have an empty, . or .. part, such as //, /./ or /../. Write the folder’s full path without them.';
 const TOO_LONG = 'A folder’s path is at most 4096 characters. Pick a folder with a shorter path.';
+/** A stored folder’s refusal at @alpha’s turn, the folder shown as `shown`. */
+const turnRefused = (shown, why) =>
+  `Postbox couldn’t open the folder ${shown} for @alpha: ${why} Change it in @alpha’s sheet, under Folder, or leave it empty to work in the project’s root folder.`;
 
 /** Each refused folder, by the message it’s refused with. */
 const FAILURES = [
   [EMPTY, ['  ', '\t', ' \n ']],
   [RELATIVE, ['.', '..', 'server', './server', '../x', 'relative/x', '~', '~/x', '~root/x', ' /tmp', 'a"<&b']],
   [CONTROL, ['/tmp/a\u0000b', '\u0000', '/tmp/a\nb', '/tmp/\u007f', '/tmp/a\u0085b']],
-  [NOT_TEXT, [42, true, ['/tmp'], [], { toString: () => '/tmp' }]],
+  [NOT_TEXT, [42, true, 0, false, Number.NaN, ['/tmp'], [], { toString: () => '/tmp' }]],
   [HIDDEN, ['/tmp/a\u202eb', '/tmp/\u2066x\u2069', '/tmp/a\u200bb', '\ufeff/tmp', '/tmp/a\ud800b', '/tmp/x\u3164']],
   [PARTS, ['/tmp/x/../../etc', '/tmp/..', '/..', '/.', '/tmp/./x', '/tmp/./', '//tmp', '/tmp//x', '/tmp//', '//']],
   [TOO_LONG, [`/${'a'.repeat(4096)}`]],
@@ -79,6 +82,8 @@ test('an agent’s full-path folder is kept as written, without making it, but f
   assert.equal(existsSync(gone), false, 'the folder is made at the agent’s first turn, not when it’s saved');
   assert.equal(rt.updatePersona(a.id, { folder: '/srv/x/' }).folder, '/srv/x');
   assert.equal(rt.updatePersona(a.id, { folder: '/' }).folder, '/');
+  const longest = `/${'a'.repeat(4095)}`;
+  assert.equal(rt.updatePersona(a.id, { folder: longest }).folder, longest, 'a folder of exactly 4096 characters is taken');
   assert.equal(rt.updatePersona(a.id, { folder: '/srv/mi\u200cx' }).folder, '/srv/mi\u200cx', 'ZWNJ joins letters, as a project’s folder takes it');
 });
 
@@ -146,10 +151,7 @@ test('an agent stored with a relative folder before #990 is refused at its turn,
     await assert.rejects(
       () => agentFolder({ handle: 'alpha', folder }, { folder: '/srv/project' }, workRoot),
       (e) => {
-        assert.equal(
-          e.message,
-          `Postbox couldn’t open the folder ${JSON.stringify(folder)} for @alpha: ${RELATIVE} Change it in @alpha’s sheet, under Folder, or leave it empty to work in the project’s root folder.`,
-        );
+        assert.equal(e.message, turnRefused(JSON.stringify(folder), RELATIVE));
         return true;
       },
     );
@@ -168,18 +170,20 @@ test('a stored folder’s refusal shows its hidden and control characters as esc
     [`${root}/a\u202eb`, HIDDEN, `${at}\\u202eb"`],
     [`${root}/a\u0000b`, CONTROL, `${at}\\u0000b"`],
     [`${root}/a\u0085b`, CONTROL, `${at}\\u0085b"`],
+    // Every one is an escape, not only the first: JSON.stringify escapes the C0 controls, shownFolder DEL, C1 and bidi.
+    [`${root}/a\u0000\u0000\n\n\u007f\u007f\u0085\u0085\u202e\u202eb`, CONTROL, `${at}\\u0000\\u0000\\n\\n\\u007f\\u007f\\u0085\\u0085\\u202e\\u202eb"`],
     [{ toString: () => '/tmp' }, NOT_TEXT, '{}'],
     [`${root}/a\u{e0041}b`, HIDDEN, `${at}\\u{e0041}b"`],
     [`/${'a'.repeat(5000)}`, TOO_LONG, `"/${'a'.repeat(198)}…`],
-    // 200 characters as shown, quotes included, is shown whole.
+    // 200 characters as shown, quotes included, is shown whole; 201 is cut to 200, then …
     ['a'.repeat(198), RELATIVE, `"${'a'.repeat(198)}"`],
+    ['a'.repeat(199), RELATIVE, `"${'a'.repeat(199)}…`],
   ];
   for (const [folder, why, shown] of cases)
     await assert.rejects(
       () => agentFolder({ handle: 'alpha', folder }, null, workRoot),
       (e) => {
-        assert.ok(e.message.startsWith(`Postbox couldn’t open the folder ${shown} for @alpha: ${why} Change it`), e.message);
-        for (const c of ['\u0000', '\u0085', '\u202e']) assert.equal(e.message.includes(c), false, `${JSON.stringify(c)} in the message`);
+        assert.equal(e.message, turnRefused(shown, why));
         return true;
       },
     );
@@ -200,6 +204,12 @@ test('an agent stored with a full-path folder, or none, still works where it did
 test('an adapter’s folder for an agent refuses a stored relative folder', async () => {
   const workRoot = join(tempDir('pb-persona-folder-'), 'workspaces');
   const adapter = new ClaudeCodeAdapter({ bin: 'claude', workRoot });
-  await assert.rejects(() => adapter.folderFor({ handle: 'alpha', folder: 'server' }, null), /Postbox couldn’t open the folder "server" for @alpha/);
+  await assert.rejects(
+    () => adapter.folderFor({ handle: 'alpha', folder: 'server' }, null),
+    (e) => {
+      assert.equal(e.message, turnRefused('"server"', RELATIVE));
+      return true;
+    },
+  );
   assert.equal(existsSync(workRoot), false);
 });
