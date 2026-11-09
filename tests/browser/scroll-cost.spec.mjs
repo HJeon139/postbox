@@ -5,7 +5,9 @@
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
-test.use({ colorScheme: 'light' });
+// Tracing is off: Playwright's trace snapshots walk every node of the page each action, and on a room of 1,000 items
+// or more under content-visibility that takes longer than the test (view-skipped.spec.mjs).
+test.use({ colorScheme: 'light', trace: 'off' });
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -96,7 +98,9 @@ test('#572: scrolling 1,000 replies on light costs about what it does on dark to
   const cost = {};
   for (const theme of /** @type {const} */ (['dark', 'light'])) {
     await page.emulateMedia({ colorScheme: theme });
-    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    // Read in the page, not with a locator: a locator's check that misses takes an aria snapshot of the page, and on
+    // 1,000 skipped items that lays each one out, seconds the theme's change then waits behind (#712a).
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe(theme);
     const ms = await traced(page, 60);
     cost[theme] = Math.round(COMPOSITING.reduce((sum, name) => sum + (ms[name] ?? 0), 0));
   }
@@ -104,7 +108,9 @@ test('#572: scrolling 1,000 replies on light costs about what it does on dark to
   test.info().annotations.push({ type: 'measured', description: said });
   expect(cost.dark, 'the trace recorded the work it measures').toBeGreaterThan(0);
   // Light still draws each icon with its rim, from a file of its own, and every one of them is there.
-  const files = await page.evaluate(() => [...new Set([...document.querySelectorAll('.react-icon')].map((n) => getComputedStyle(n).backgroundImage))]);
+  const files = await page.evaluate(() => [
+    ...new Set([...document.querySelectorAll('.react-btn')].map((n) => getComputedStyle(n, '::before').backgroundImage)),
+  ]);
   expect(files, 'one file per reaction').toHaveLength(5);
   for (const f of files) {
     const url = f.match(/url\("(.+)"\)/)?.[1] ?? '';

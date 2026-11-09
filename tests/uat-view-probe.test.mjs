@@ -143,6 +143,11 @@ test('observe records the view probe before any screenshot scrolls the page', as
           calls.push('queries');
           return { origin: ORIGIN, sessionEvents: 0, scanCount: 0, scans: [], byId: 0, items: 1 };
         }
+        // The skipped-items probe (#712a) runs here too; this stand-in shows it no conversation.
+        if (expr.includes('contentVisibilityAuto')) {
+          calls.push('skipped');
+          return null;
+        }
         calls.push(/data-view-mode/.test(expr) ? 'views' : 'diagrams');
         return /data-view-mode/.test(expr)
           ? [{ where: 'main', thread: 't', mode: 'following', anchorId: '', expected: null, actual: null, gap: 0, origin: ORIGIN, prev: null, settled: true }]
@@ -160,7 +165,7 @@ test('observe records the view probe before any screenshot scrolls the page', as
   };
   const facts = { probes: {}, state: { threads: {}, sessions: {} }, threads: [] };
   await observe({ d, labels: new Map(), keys: new Map(), seen: new Map(), paths: { shots: '/nowhere' }, timeline: [1, 2], dir: '/', facts });
-  assert.deepEqual(calls, ['diagrams', 'queries', 'views', 'items', 'shot']);
+  assert.deepEqual(calls, ['diagrams', 'queries', 'views', 'skipped', 'items', 'shot']);
   assert.equal(facts.probes.views.length, 1);
 });
 

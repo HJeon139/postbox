@@ -2,20 +2,11 @@
 // as text, with nothing hidden in it and nothing to resolve. Moved out of server/projects.mjs.
 
 import { isAbsolute } from 'node:path';
-import { hasInvisible, INVISIBLE } from '../shared/invisible.mjs';
+import { hasControl, hiddenInFolder, INVISIBLE } from '../shared/invisible.mjs';
 import { httpError } from './helpers.mjs';
 
-// A control character (C0, DEL or C1), NUL included: none belongs in a folder’s path.
-const CONTROL = /\p{Cc}/u;
-// Every one of them, to show each as its escape (shownFolder).
+// Every control character, to show each as its escape (shownFolder).
 const CONTROL_ALL = /\p{Cc}/gu;
-// A lone surrogate (Cs) isn’t text. The characters that change how a path displays, or display as nothing, are the
-// ones an asset name refuses (shared/invisible.mjs), except ZWNJ and ZWJ (U+200C, U+200D): they join letters in some
-// scripts and in emoji, and the folder exists under the name the person gave it.
-const SURROGATE = /\p{Cs}/u;
-const JOINERS = /[\u200c\u200d]/gu;
-/** Whether a folder's path holds a character that isn't text, or one that hides or reorders what it shows. @param {string} s */
-const hidden = (s) => SURROGATE.test(s) || hasInvisible(s.replace(JOINERS, ''));
 // The longest folder path taken, in UTF-16 code units: Linux’s PATH_MAX is 4096 bytes, which no longer path fits.
 const MAX_FOLDER = 4096;
 
@@ -53,11 +44,11 @@ export function fullPath(folder, whose = 'A project’s') {
     const why = `A folder’s path is at most ${MAX_FOLDER} characters.`;
     throw refused(`${why} Pick a folder with a shorter path.`, why);
   }
-  if (CONTROL.test(folder)) {
+  if (hasControl(folder)) {
     const why = 'A folder’s path can’t contain control characters, such as a new line.';
     throw refused(`${why} Write the folder’s full path.`, why);
   }
-  if (hidden(folder)) {
+  if (hiddenInFolder(folder)) {
     const why = 'A folder’s path can’t contain invisible characters, such as a zero-width space or a bidi control, or a lone surrogate.';
     throw refused(`${why} Write the folder’s full path.`, why);
   }

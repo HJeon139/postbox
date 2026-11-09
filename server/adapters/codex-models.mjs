@@ -1,6 +1,7 @@
 // The codex binary, its version, and the models this sign-in offers (server/adapters/codex.mjs runs it).
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { versionIn } from '../../shared/cli-version.mjs';
 
 export const findCodex = (env = process.env) => env.POSTBOX_CODEX_BIN || 'codex';
 
@@ -28,7 +29,9 @@ function probe(bin, args, timeout = 8000) {
 }
 export async function codexVersion(bin = findCodex()) {
   const out = await probe(bin, ['--version']);
-  return out?.match(/(?:codex\s+)?([\w.-]+)$/i)?.[1] ?? null;
+  // Found when `--version` succeeds, as for the other CLIs, whatever it prints.
+  if (out == null) return null;
+  return versionIn(out) ?? 'unknown';
 }
 export async function codexModels(bin = findCodex()) {
   // The documented app-server model/list method returns the local account's picker-visible catalog.
