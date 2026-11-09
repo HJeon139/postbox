@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.55.3 (2026-11-09)
+
+### Fixes
+
+- **blocks:** a year or id ends the label, or starts it with no amount after (#1065 round 4)
+- **blocks:** a singular year or id anywhere names the column, and a silent label defers to the id
+- **blocks:** read a year or id column's name past a note or punctuation after it
+- **blocks:** keep separators in an amount column over a year or an id
+
 ## 1.55.2 (2026-11-09)
 
 ### Fixes
