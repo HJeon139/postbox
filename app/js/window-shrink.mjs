@@ -194,6 +194,17 @@ function indexAt(w, px) {
 const mountedAt = (w, i) => /** @type {HTMLElement} */ (w.nodes.get(w.entry.ids[i])).getBoundingClientRect();
 
 /**
+ * Where the conversation starts on the page: its first element, where it’s shown, since the spacers sit where they
+ * were painted, with the estimates of then. The top spacer is hidden when empty, with a rect of all zeros, and then
+ * the range starts the conversation. @param {any} w the window @param {number} rangeTop the range’s first item’s top
+ */
+function conversationTop(w, rangeTop) {
+  const first = /** @type {HTMLElement} */ (w.el.firstElementChild);
+  if (first.getClientRects().length > 0) return first.getBoundingClientRect().top;
+  return rangeTop - w.spanOf(0, w.from) - (w.from > 0 ? w.gap : 0);
+}
+
+/**
  * A scroll that left the view past the margin of both of the range’s edges, so growing from an edge would show blank
  * spacer until enough scroll events walk the range over: the range moves to the item under the middle of the view,
  * and the view to it, or to the end if it was at the end (End). Returns whether it did. @param {any} w the window
@@ -207,7 +218,7 @@ export function leap(w) {
   const box = /** @type {Element} */ (w.inPanel ? w.el.parentElement : document.scrollingElement);
   const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight <= 2;
   const mid = (w.inPanel ? box.getBoundingClientRect().top : 0) + box.clientHeight / 2;
-  const itemsTop = rangeTop - w.spanOf(0, w.from) - (w.from > 0 ? w.gap : 0);
+  const itemsTop = conversationTop(w, rangeTop);
   const i = indexAt(w, mid - itemsTop);
   recenter(w, i);
   // The items drew at their real heights, not the estimates the spacers stood in with, so the view goes where you were.
