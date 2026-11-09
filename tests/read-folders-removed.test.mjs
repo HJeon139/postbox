@@ -13,6 +13,7 @@ import { handleMcp } from '../server/mcp.mjs';
 import { changePermissionFolder } from '../server/permissions-panel.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { heldStore } from './stop-reply-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -78,12 +79,15 @@ function hookOf(rt, se, ctx, cwd, home) {
   return (/** @type {string} */ file) => runAgyHook(JSON.stringify({ toolCall: { name: 'view_file', args: { AbsolutePath: file } } }), opts);
 }
 
-/** Reads `file` through the hook; refuses the card it opens, if one does, and says whether one did. */
-async function readOnce(rt, t, hook, file) {
+/**
+ * Reads `file` through the hook; refuses the card it opens, if one does, and says whether one did. By the card’s wait,
+ * since a card added behind a held commit isn’t in the published items yet.
+ */
+async function readOnce(rt, hook, file) {
   const asked = hook(file);
   await sleep(10);
-  const card = rt.store.items(t.id).find((/** @type {any} */ i) => i.kind === 'permission' && i.status === 'open');
-  if (card) rt.settlePermission(card.id, 'denied', 'test');
+  const [card] = rt.permissionWaits.keys();
+  if (card) rt.settlePermission(card, 'denied', 'test');
   return { result: await asked, card: Boolean(card) };
 }
 
@@ -95,11 +99,35 @@ test('#1074 a readable folder removed in the panel mid-turn gets a card on the n
   const reads = [];
   await aTurn(rt, adapter, t, async (ctx) => {
     const hook = hookOf(rt, se, ctx, where.ws, where.home);
-    reads.push(await readOnce(rt, t, hook, file));
+    reads.push(await readOnce(rt, hook, file));
     await changePermissionFolder(rt, { sessionId: se.id, path: where.notes, remove: true, read: true });
-    reads.push(await readOnce(rt, t, hook, file));
+    reads.push(await readOnce(rt, hook, file));
   });
   assert.deepEqual(reads[0], { result: { decision: 'allow' }, card: false }, 'readable: no card');
   assert.equal(reads[1].card, true, 'removed: a card on the next read');
   assert.equal(reads[1].result.decision, 'deny');
+});
+
+// A read decides an allow, so a removal written behind a commit still being written counts at once (#796’s class).
+test('#1074 a readable folder removed behind a held commit gets a card on the next read', async () => {
+  const where = aHome();
+  const h = await heldStore();
+  const { rt, adapter, t, se } = aRoom(h.store, where);
+  await h.store.flush();
+  /** @type {any} */
+  let read = null;
+  await aTurn(rt, adapter, t, async (ctx) => {
+    const hook = hookOf(rt, se, ctx, where.ws, where.home);
+    h.hold();
+    const commit = h.store.commit([{ type: 'settings', data: { theme: 'system' } }]);
+    await h.atSync;
+    await changePermissionFolder(rt, { sessionId: se.id, path: where.notes, remove: true, read: true });
+    assert.deepEqual(rt.s.sessions[se.id].readDirs, [where.notes], 'the removal is still held');
+    read = await readOnce(rt, hook, join(where.notes, 'a.md'));
+    h.release();
+    await commit;
+  });
+  assert.equal(read?.card, true, 'removed: a card on the next read');
+  assert.equal(read?.result.decision, 'deny');
+  await h.store.close();
 });
