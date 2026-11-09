@@ -4,6 +4,7 @@
 // a login shell for every turn. Each turn runs with the merged PATH, unless the laptop sends one; when the login shell
 // failed, a turn’s PATH is the daemon’s own, as before.
 
+import { dirname } from 'node:path';
 import { REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
 import { mergePath } from './login-path.mjs';
 
@@ -54,5 +55,10 @@ export function welcomeLoginPath(d) {
  */
 export function turnEnv(d, env) {
   if (!d.loginPath?.ok || Object.hasOwn(env, 'PATH') || Object.keys(env).length >= REMOTE_LIMITS.envVars) return env;
-  return { PATH: mergePath(d.loginPath.entries, d.env.PATH, REMOTE_LIMITS.envValueBytes), ...env };
+  // The folder of the Node the daemon runs on comes after the login shell’s entries: on a host whose profile doesn’t put
+  // a version manager’s Node on PATH, an agent still finds the one Postbox runs on, past what the terminal finds, on
+  // purpose (#672). A profile’s own Node, earlier on PATH, still wins.
+  const nodeDir = dirname(d.programs?.node?.path ?? process.execPath);
+  const first = d.loginPath.entries.includes(nodeDir) ? d.loginPath.entries : [...d.loginPath.entries, nodeDir];
+  return { PATH: mergePath(first, d.env.PATH, REMOTE_LIMITS.envValueBytes), ...env };
 }
