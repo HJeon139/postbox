@@ -102,6 +102,8 @@ test('#927: an Authorization header hides its credential under any scheme, or no
   assert.equal(await shownText(`curl -H "Authorization: token ${GH}" -d @-`), 'curl -H "Authorization: token …" -d @-');
   assert.equal(await shownText(`curl -H "authorization:${SK}"<in`), 'curl -H "authorization:…"<in');
   assert.equal(await shownText('curl -H Authorization:abc123;ok'), 'curl -H Authorization:…;ok');
+  assert.equal(await shownText('curl -H Authorization:FAKEVALUE123 https://audit.example/log'), 'curl -H Authorization:… https://audit.example/log');
+  assert.equal(await shownText('curl -H "Authorization:FAKEVALUE123 rest" ok'), 'curl -H "Authorization:…" ok');
   assert.equal(await shownText('curl -H "Proxy-Authorization: Basic abc&def"'), 'curl -H "Proxy-Authorization: Basic …"');
 });
 
@@ -204,4 +206,16 @@ test('#927: overlapping shapes hide every credential once, and keep each name', 
 test('#927: a character that shows as nothing before = still lets the name be read, and is marked', async () => {
   assert.equal(await shownText('api_key\u200B=sk-1 run'), 'api_key\uFFFD=… run');
   assert.equal(await shownText('GITHUB_\u2060TOKEN=abc run'), 'GITHUB_\uFFFDTOKEN=… run');
+});
+
+test('#927: names full of invisible marks are read in linear time, so a hostile settings file can’t stall the server', async () => {
+  const hooks20 = ['\u200bkey', '\u200b--key'].flatMap((part) => Array(10).fill({ type: 'command', command: part.repeat(500) }));
+  const file = join(tempDir('pb-hooks-redact-'), 'settings.json');
+  await writeFile(file, JSON.stringify({ hooks: { PreToolUse: [{ matcher: 'Bash', hooks: hooks20 }] } }));
+  const start = performance.now();
+  const { hooks } = await readHookFile(file);
+  const ms = performance.now() - start;
+  assert.equal(hooks.length, 20);
+  assert.ok(ms < 1000, `${Math.round(ms)} ms for 20 hooks`);
+  assert.equal(await shownText('\u200bMY\u200bTOKEN=s3cret ok'), '\ufffdMY\ufffdTOKEN=… ok', 'a name with marks is still hidden');
 });
