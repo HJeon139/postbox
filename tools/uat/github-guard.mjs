@@ -20,7 +20,7 @@
 // still reads the keychain’s token, in a run that isn’t a git-remote one, whose project has a repository set.
 
 import { spawnSync } from 'node:child_process';
-import { guardEnv, NO_TOKEN, preflightRemote, remotePaths, UNREACHABLE } from './git-remote.mjs';
+import { guardEnv, NO_TOKEN, preflightRemote, remotePaths, tearDownRemote, UNREACHABLE } from './git-remote.mjs';
 
 /**
  * The environment that takes the person’s GitHub away from a run’s Postbox and its agents, or nothing when the scenario
@@ -66,6 +66,18 @@ function preflightNoGithub(env) {
  * @param {Record<string, string|undefined>} env
  */
 export function preflightRun(scenario, workspace, dir, env) {
-  if (scenario.seed === 'git-remote') preflightRemote(workspace, dir, env);
-  else if (scenario.github !== 'real') preflightNoGithub(env);
+  if (scenario.seed === 'git-remote') {
+    try {
+      preflightRemote(workspace, dir, env);
+    } catch (e) {
+      // The run’s stop doesn’t exist yet, so nothing else would remove the remote this run seeded. The preflight’s reason
+      // is what stops the run: a teardown that fails too only adds that the remote is still there.
+      try {
+        tearDownRemote(dir, () => {});
+      } catch (left) {
+        throw new Error(`${e.message} The run’s remote couldn’t be removed either: ${left.message}`, { cause: e });
+      }
+      throw e;
+    }
+  } else if (scenario.github !== 'real') preflightNoGithub(env);
 }
