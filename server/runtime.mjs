@@ -24,7 +24,7 @@ import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
 import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
-import { catchUp, pointerIfSeen } from './catch-up.mjs';
+import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
 import { DELETE_UNDO_MS } from './delete-undo.mjs';
@@ -335,9 +335,7 @@ export class Runtime {
     const now = Date.now();
     const st = { id: newId('it'), kind: 'moved', at: now, itemId: id, ...stub, ...carriedList(items[i]).stub };
     this.store.emit('item.move', { threadId, id, stub: st, patch: { ...patch, ...carriedList(items[i]).item, at: now, movedAt: now } });
-    // A session whose catch-up marker was the item now reads on from the stub, where the item was, so what came
-    // after it isn’t skipped. Pending, so a marker a catch-up just wrote behind a held commit moves too (#956).
-    for (const se of pendingSessionsIn(this, threadId)) if (se.seenItem === id) this.updateSession(se.id, { seenItem: st.id });
+    moveMarkers(this, threadId, id, st.id);
     return true;
   }
   updateSession(id, patch) {
