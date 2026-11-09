@@ -86,8 +86,11 @@ test('a summary turn takes nothing from its thread’s queue', async () => {
   assert.deepEqual(turns.at(-1), ['conversation', ['Queued W.']], 'the wake has a turn of its own');
 });
 
-test('Send now, then messages in two threads during the exit: a wake queued in the conversation joins its turn', async () => {
+test('Send now, then messages in two threads during the exit: a wake queued in the conversation joins its turn', async (t) => {
   const f = busyWithTopic();
+  // One clock reading for all of it, as when the wake and the person's message land in the same millisecond: their
+  // order then comes from when each arrived, not from the clock (#733, the integrator's read of #1045).
+  t.mock.method(Date, 'now', () => 1_000_000);
   f.rt.agentWake(f.alpha.id, 'beta', 'Queued W in conversation.');
   const q = f.rt.sendMessage(f.topic, { text: '@beta topic P' });
   f.rt.sendQueuedNow(f.topic, q.queued.id);
