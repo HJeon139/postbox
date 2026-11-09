@@ -75,7 +75,7 @@ for (const width of [375, 1280])
       await synced(page, app);
       const flag = button(page, 'Flag this');
       await expect(flag).toHaveAttribute('data-count', '1');
-      expect(await pseudo(flag, '::after', 'content'), 'the count, drawn by the button').toBe('"1"');
+      expect(await pseudo(flag, '::after', 'content'), 'the count, drawn by the button, with empty alt text').toBe('"1" / ""');
       await expect(good, 'no count where nobody reacted').not.toHaveAttribute('data-count', /./);
     });
 
