@@ -83,6 +83,47 @@ test('a Send now turn sends only the person’s message; the wake runs in the ne
   ]);
 });
 
+test('Send now pressed while a plain Stop is still exiting sends only the person’s message; the wake runs next', async () => {
+  const f = setup();
+  const busy = held();
+  f.adapter.next.push(busy.step);
+  f.rt.sendMessage(f.t.id, { text: '@beta start' });
+  await sleep(5);
+  const q = f.rt.sendMessage(f.t.id, { text: '@beta change of plan' });
+  f.rt.stop(f.beta.id); // a plain Stop: the turn leaves turns, so Send now’s own stop finds nothing to stop
+  f.rt.agentWake(f.alpha.id, 'beta', 'Wake W from alpha.');
+  f.rt.sendQueuedNow(f.t.id, q.queued.id);
+  assert.ok(f.rt.exiting.has(f.beta.id), 'the stopped turn is still exiting');
+  busy.release();
+  await settle(f.rt);
+  assert.deepEqual(turnsAfterFirst(f), [
+    ['conversation', ['@beta change of plan']],
+    ['conversation', ['Wake W from alpha.']],
+  ]);
+});
+
+test('Send now during a plain Stop’s exit leaves the person’s other queued message for the next turn too', async () => {
+  const f = setup();
+  const busy = held();
+  f.adapter.next.push(busy.step);
+  f.rt.sendMessage(f.t.id, { text: '@beta start' });
+  await sleep(5);
+  const q = f.rt.sendMessage(f.t.id, { text: '@beta change of plan' });
+  f.rt.sendMessage(f.t.id, { text: '@beta and later this' });
+  f.rt.stop(f.beta.id);
+  f.rt.sendQueuedNow(f.t.id, q.queued.id);
+  busy.release();
+  await settle(f.rt);
+  assert.deepEqual(turnsAfterFirst(f).slice(0, 1), [['conversation', ['@beta change of plan']]]);
+  assert.ok(
+    turnsAfterFirst(f)
+      .slice(1)
+      .flatMap(([, texts]) => texts)
+      .includes('@beta and later this'),
+    'the other queued message runs after the Send now turn',
+  );
+});
+
 test('after a Stop, a held notice behind the person’s message keeps the queued wake behind it', async () => {
   const f = await stoppedBeta();
   f.rt.sendMessage(f.t.id, { text: '@beta after the stop' });
