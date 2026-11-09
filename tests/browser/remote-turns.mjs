@@ -202,7 +202,8 @@ function unregisteredTurn(app, { A, room }, ses, now) {
       threadId: room.id,
       at: now,
       state: 'interrupted',
-      resume: { why: 'interrupted', at: now, unkilled: true },
+      // The host had no record of it (#965’s P3), so nothing may still run there: only the missing backend holds it.
+      resume: { why: 'interrupted', at: now, noBackend: true },
       autoResumes: 0,
     },
   });
