@@ -2,6 +2,7 @@
 // (persona.remote = { hostId }). Which backends run here, which can run on a host, and the checks a persona’s
 // placement passes when it’s made or changed. The runtime (server/runtime.mjs) calls these with itself first.
 
+import { INVISIBLE } from '../../shared/invisible.mjs';
 import { lookedText } from '../../shared/remote-protocol.mjs';
 import { clipText, httpError } from '../helpers.mjs';
 
@@ -88,11 +89,15 @@ export function refuseHere(rt, se, persona) {
 /** The backend a persona’s turn runs on. @param {any} persona @returns {string} */
 const backendOf = (persona) => persona?.backend ?? 'mock';
 
+// A control character or a lone surrogate (Cs, which the u flag reads one at a time), for clipName.
+const NOT_TEXT = /[\p{Cc}\p{Cs}]/gu;
+
 /**
- * A name from the data, for the person (#874): control and format characters stripped, at most 40 characters.
+ * A name from the data, for the person (#874): control characters, lone surrogates and every character that hides or
+ * reorders text (INVISIBLE, shared/invisible.mjs, #1049) stripped, at most 40 characters.
  * @param {unknown} s
  */
-const clipName = (s) => clipText(String(s).replace(/[\p{Cc}\p{Cf}]/gu, ''), 40);
+const clipName = (s) => clipText(String(s).replace(NOT_TEXT, '').replace(INVISIBLE, ''), 40);
 
 /**
  * Why an agent whose backend isn’t registered in this Postbox (#874: `POSTBOX_BACKENDS=mock`, `--demo`, the Agent SDK
