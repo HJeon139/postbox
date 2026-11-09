@@ -135,6 +135,31 @@ test('#521 a waiting question needs the person mid-turn, and answering it lets g
   assert.notEqual(s.se().needs?.itemId, q.id, 'answered, it no longer needs the person');
 });
 
+test('#521 a card answered while a question waits gives the need back to the question', async () => {
+  const s = setup();
+  let card;
+  const asked = new Promise((done) => {
+    s.adapter.next.push(async (c) => {
+      const question = canUseTool(c, 'AskUserQuestion', inputOf('one-auto'), { toolUseID: 'toolu_ask_2' });
+      await until(() => s.questions().length === 1, 'the question');
+      // A subagent asks permission while the question waits: its card takes the need, as a permission does.
+      card = c.askPermission({ tool: 'Bash', summary: 'run a command', input: { command: 'ls' }, agentId: 'sub-1' });
+      done(await question);
+      await card;
+      c.text('Done.');
+    });
+  });
+  s.rt.sendMessage(s.t.id, { text: 'Ask me.' });
+  await until(() => s.items().some((i) => i.kind === 'permission' && i.status === 'open'), 'the subagent’s card');
+  const open = s.items().find((i) => i.kind === 'permission' && i.status === 'open');
+  assert.equal(s.se().needs?.itemId, open.id, 'the card is the need first');
+  s.rt.act(s.t.id, open.id, 'allow', {});
+  const [q] = s.questions();
+  await until(() => s.se().needs?.itemId === q.id, 'the need back on the waiting question');
+  s.choose(q, ['Red']);
+  assert.equal((await asked).behavior, 'allow');
+});
+
 test('#521 a turn stopped while a question waits tells the agent it stays open, and its answer later comes as an event', async () => {
   const s = setup();
   const asked = s.ask(inputOf('two-auto'));
@@ -149,6 +174,7 @@ test('#521 a turn stopped while a question waits tells the agent it stays open, 
   await until(() => !s.rt.turns.size, 'the turn to end');
   const left = s.questions()[1];
   assert.equal(s.store.item(s.t.id, left.id).answered, false, 'the block stays, still asking');
+  assert.equal(s.store.item(s.t.id, left.id).status, undefined, 'and isn’t closed as an expired card');
   s.choose(left, ['Pear']);
   await until(() => s.delivered.some((m) => m.kind === 'event' && m.blockItemId === left.id), 'its answer as an event');
 });
