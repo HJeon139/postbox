@@ -2,6 +2,18 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.55.0 (2026-11-09)
+
+### Features
+
+- **uat:** a run's report names each call to GitHub its guard refused
+
+### Fixes
+
+- **uat:** a call counts as an attempt only when one segment of its command runs gh or git
+- **uat:** the GitHub line reads gh's and git's own wording, and skips a run with no guard
+- **blocks:** a wide table fades the side that has more columns to scroll to
+
 ## 1.54.3 (2026-11-09)
 
 ### Fixes
