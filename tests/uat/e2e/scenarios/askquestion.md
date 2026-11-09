@@ -19,7 +19,7 @@ Ask @researcher to use its AskUserQuestion tool to ask you one multiple-choice q
 
 ## Phase 2: Two questions in one call, one of them several picks
 
-- triggers: question-answered-in-turn
+- triggers: questions-answered-in-turn
 - steps: 5
 
 Ask @researcher to use its AskUserQuestion tool once more, with two questions in the same call: which of three colors to use for the project’s logo, and which of four launch days suit you, where you may pick more than one. Answer the first choice block, check that the second appears only after it, and pick two days in it. Then check that @researcher’s reply in the same turn names the color you chose and both days, and that no permission card for AskUserQuestion appeared. Say what you saw.
