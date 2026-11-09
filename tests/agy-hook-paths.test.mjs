@@ -109,7 +109,8 @@ test('#1074 a .. after a link climbs from where the link leads, as the file syst
   assert.equal(decide('read_file', { Path: `${notes}/sublink/../id_rsa` }, opts).decision, 'ask', 'notes/sublink/.. is ~/.ssh');
   assert.equal(decide('read_file', { Path: 'sublink/../secret.txt' }, opts).decision, 'ask', 'ws/sublink/.. is outside');
   assert.equal(decide('write_file', { Path: `${ws}/sublink/../secret.txt` }, opts).decision, 'ask');
-  assert.equal(decide('read_file', { Path: `${notes}/../notes/a.md` }, opts).decision, 'allow', 'a .. with no link is the folder’s own');
+  assert.equal(decide('read_file', { Path: `${ws}/../ws/a.txt` }, opts).decision, 'allow', 'a .. with no link is the folder’s own');
+  assert.equal(decide('read_file', { Path: `${notes}/../notes/a.md` }, opts).decision, 'ask', 'a readable folder is Postbox’s to answer');
 });
 
 test('#1074 a .. after a link inside the workspace asks when its plain reading leaves it, read or write, in every mode', () => {

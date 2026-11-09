@@ -65,12 +65,15 @@ test('#338 no Always allow for /, home, a dot-folder in home or inside one, a li
   assert.equal(readFolderOffer({ ...agy, input: { file_path: join(notes, 'a.md') }, home: join(notes, 'inner') }), null, 'a folder that holds home');
 });
 
-test('#338 a readable folder lets the hook read there, and nothing else: an edit there still asks', () => {
+// The hook’s list is the turn’s start, so a folder removed mid-turn would still be read there with no card (#1074): a
+// read there asks Postbox, which answers it from the session as it is now (inReadFolder).
+test('#1074 a read in a readable folder asks Postbox, and an edit there asks too', () => {
   const { home, ws, notes } = aHome();
   const event = (name, args) => ({ toolCall: { name, args } });
   for (const mode of ['auto', 'acceptEdits', 'ask']) {
     const opts = { mode, folders: [ws], readFolders: [notes], cwd: ws, home };
-    assert.equal(decideAgyTool(event('view_file', { AbsolutePath: join(notes, 'a.md') }), opts).decision, 'allow', mode);
+    const file_path = join(notes, 'a.md');
+    assert.deepEqual(decideAgyTool(event('view_file', { AbsolutePath: file_path }), opts), { decision: 'ask', toolName: 'Read', input: { file_path } }, mode);
     assert.equal(decideAgyTool(event('write_to_file', { TargetFile: join(notes, 'b.md'), CodeContent: 'x' }), opts).decision, 'ask', mode);
     assert.equal(decideAgyTool(event('view_file', { AbsolutePath: join(home, '.ssh', 'id_ed25519') }), opts).decision, 'ask', mode);
   }
@@ -137,8 +140,20 @@ test('#338 Always allow on the card saves the folder for the conversation, and t
   assert.deepEqual(rt.s.sessions[se.id].readDirs, [notes]);
   assert.deepEqual(rt.s.sessions[se.id].addDirs ?? [], [], 'not a folder it may work in');
   const next = { ...env, POSTBOX_AGY_READ: JSON.stringify(rt.s.sessions[se.id].readDirs) };
-  const again = await runAgyHook(read, { cwd: ws, env: next, home, fetchImpl: () => assert.fail('no card the second time') });
-  assert.equal(again.decision, 'allow');
+  let asks = 0;
+  const counted = async (url, init) => {
+    asks++;
+    return fetchMcp(url, init);
+  };
+  // The next turn’s read, while that turn runs, as its hook asks.
+  adapter.next.push(async () => {
+    results.push(await runAgyHook(read, { cwd: ws, env: next, home, fetchImpl: /** @type {any} */ (counted) }));
+  });
+  rt.sendMessage(t.id, { text: 'read them again' });
+  for (let i = 0; i < 200 && results.length < 2; i++) await sleep(5);
+  assert.equal(results[1]?.decision, 'allow');
+  assert.equal(asks, 1, 'asked Postbox, which reads the session as it is now (#1074)');
+  assert.equal(store.items(t.id).filter((i) => i.kind === 'permission').length, 1, 'no card the second time');
 });
 
 test('#338 the panel lists a readable folder as read only, and Remove takes out only that one', async () => {
