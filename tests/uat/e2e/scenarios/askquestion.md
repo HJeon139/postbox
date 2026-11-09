@@ -16,3 +16,10 @@ A targeted scenario for #521, Claude Code only, with @researcher on this compute
 - steps: 4
 
 Ask @researcher to use its AskUserQuestion tool to ask you one multiple-choice question: which of three names it suggests to use for your new project. Once you’ve answered, it should write one line using the name you picked. When the question shows as a choice, pick one of its options. Then check that @researcher’s reply, without you sending anything more, uses the name you picked, and say whether you saw any permission card about AskUserQuestion, a refusal card, or an error.
+
+## Phase 2: Two questions in one call, one of them several picks
+
+- triggers: question-answered-in-turn
+- steps: 5
+
+Ask @researcher to use its AskUserQuestion tool once more, with two questions in the same call: which of three colors to use for the project’s logo, and which of four launch days suit you, where you may pick more than one. Answer the first choice block, check that the second appears only after it, and pick two days in it. Then check that @researcher’s reply in the same turn names the color you chose and both days, and that no permission card for AskUserQuestion appeared. Say what you saw.

@@ -91,12 +91,12 @@ test('#521 question-answered-in-turn doesn’t fire when the answer reaches the 
   assert.deepEqual(fired(r), []);
 });
 
-test('the askquestion scenario’s one phase is there to cause it', () => {
+test('each of the askquestion scenario’s two phases is there to cause it', () => {
   const s = parseScenario(readFileSync(new URL('uat/e2e/scenarios/askquestion.md', import.meta.url), 'utf8'));
   assert.deepEqual(unknownTriggers(s), []);
   assert.deepEqual(
     s.phases.map((p) => p.triggers ?? []),
-    [['question-answered-in-turn']],
+    [['question-answered-in-turn'], ['question-answered-in-turn']],
   );
   assert.equal(s.permissionModes.researcher, 'auto');
 });
