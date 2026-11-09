@@ -83,3 +83,11 @@ test('#934 a send that fails doesn’t hold back the ones after it, which are st
   await expect.poll(steps, { message: `the ${N - 1} sends after the failed one stored` }).toHaveLength(N - 1);
   expect(steps()).toEqual(Array.from({ length: N - 1 }, (_, i) => i + 2));
 });
+
+test('#934 a send that never gets an answer doesn’t hold back the ones after it for long', async ({ page }) => {
+  const { steps, click } = await burstApp(page, 'Burst past a stuck send');
+  await click();
+  // The first POST is never answered; the chain moves on once its turn has waited long enough.
+  await expect.poll(steps, { message: `the ${N - 1} sends after the stuck one stored`, timeout: 20_000 }).toHaveLength(N - 1);
+  expect(steps()).toEqual(Array.from({ length: N - 1 }, (_, i) => i + 2));
+});
