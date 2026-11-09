@@ -34,13 +34,13 @@ export function inSight(v) {
 }
 // How far past what the page lost the browser’s move may go: Linux Firefox moved the view up 59 px as the page lost 39
 // (the shorter-items case in view-skipped-append.spec.mjs), and the Mac’s Firefox 18 px past what the page lost, with
-// its height unchanged (researcher’s trace of view-skipped-append.spec.mjs:24).
+// its height unchanged (#712a, view-skipped-append.spec.mjs’s first case).
 const BROWSER_SLACK = 24;
 /**
  * Whether a move up of up px is the browser’s: no more than what the page lost since the view last measured it, if
  * anything, and BROWSER_SLACK more. A wheel turn of yours moves further. A trackpad’s first small step up, landing in
  * the frame between a resize and its scroll event, can be taken for the browser’s: the view goes back to the end, and
- * the next step unsticks it in onScroll, so only that step is lost (review’s P3 on #959).
+ * the next step unsticks it in onScroll, so only that step is lost (#712a).
  * @param {View} v @param {Element} s @param {number} up
  */
 export function browserMoved(v, s, up) {

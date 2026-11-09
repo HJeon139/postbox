@@ -110,7 +110,7 @@ function heard(v, s) {
   if (!v.anchor || Math.abs(unheard) < 1) return;
   if (sizeOf(s) !== v.size) return;
   // A move up that leaves the view at the end is the browser clamping it to an end that came up as what’s below
-  // shrank, never you: a scroll up doesn’t reach the end (onScroll’s rule). The anchor holds (researcher’s Mac trace).
+  // shrank, never you: a scroll up doesn’t reach the end (onScroll’s rule). The anchor holds (#712a).
   if (unheard < 0 && atEnd(s)) return;
   v.anchor = { key: v.anchor.key, at: v.anchor.at - unheard };
   v.lastTop = s.scrollTop;
