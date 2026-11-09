@@ -64,6 +64,13 @@ postbox.load('d3').then((d3) => {
   postbox.on('theme', paint);
 });
 </script>`,
+  // Review of #1099: an app that sizes itself once, at load, to the width it sees, and has no resize handler. It must
+  // see the frame’s real width at load, so it fits.
+  sized: `<div id="c" style="height:24px;background:var(--panel)">fits</div>
+<script>document.getElementById('c').style.width = innerWidth + 'px';</script>`,
+  // An error at load that happens only at a phone’s width must still be caught at 375 px.
+  narrow: `<p style="color:var(--text)">Narrow only</p>
+<script>if (innerWidth < 380) boomAtNarrow();</script>`,
   heatmap: `<div id="h" style="padding:8px"></div><script>postbox.charts.heatmap(document.getElementById('h'), { rows: ['Middlemarch', 'Persuasion'], cols: ['Grief', 'Hope', 'Money'], values: [[3, 5, 8], [6, 2, 4]], label: 'Themes by book' });</script>`,
 };
 // What each browser calls reading .select of a null d3: Firefox names d3, Chromium names the property.
@@ -88,7 +95,7 @@ test.beforeAll(async ({ browser }) => {
   for (const [id, code] of Object.entries(APPS)) tools.show_app({ id, title: id, code });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, colorScheme: 'dark' });
   page.on('pageerror', (e) => {
-    if (!/d3 is null|reading 'select'/.test(e.message)) errors.push(`exception: ${e.message}`);
+    if (!/d3 is null|reading 'select'|boomAtNarrow/.test(e.message)) errors.push(`exception: ${e.message}`);
   });
   page.on('console', (m) => m.type() === 'error' && errors.push(`console.error: ${m.text()}`));
   await page.goto(`${app.origin}/#/t/${t.id}`);
@@ -109,7 +116,7 @@ const says = (id) =>
     .join('\n') || 'no problems';
 const passed = (id) => app.rt.s.apps[id].check.status === 'passed';
 
-test('the page threw no exceptions and logged no errors, apart from the d3 errors, while it checked the apps', () => {
+test('the page threw no exceptions and logged no errors, apart from the errors the apps throw, while it checked the apps', () => {
   expect(errors).toEqual([]);
 });
 
@@ -138,3 +145,12 @@ for (const [id, what] of [
   test(`#819 ${what} still passes`, () => {
     expect(passed(id), says(id)).toBe(true);
   });
+
+test('#819 an app that sizes itself to its width once, at load, still passes, so each frame loads at its own width', () => {
+  expect(passed('sized'), says('sized')).toBe(true);
+});
+
+test('#819 an error at load that happens only at a phone’s width is still caught', () => {
+  expect.soft(passed('narrow'), says('narrow')).toBe(false);
+  expect.soft(says('narrow')).toMatch(/script-error: ReferenceError: boomAtNarrow/);
+});
