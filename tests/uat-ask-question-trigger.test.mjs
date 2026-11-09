@@ -13,6 +13,7 @@ import { settle, setup } from './side-threads-fixture.mjs';
 const RECORDED = JSON.parse(readFileSync(new URL('fixtures/claude-code/ask-user-question-prompts.json', import.meta.url), 'utf8')).prompts;
 const ONE = RECORDED.find((p) => p.run === 'one-auto').input;
 const TWO = RECORDED.find((p) => p.run === 'two-auto').input;
+const MULTI = RECORDED.find((p) => p.run === 'multi-auto').input;
 
 const until = async (fn, what) => {
   for (let i = 0; i < 400; i++) {
@@ -110,12 +111,17 @@ test('#521 questions-answered-in-turn fires for two questions of one call, one w
   assert.match(hit.evidence, /Color Green, fruits Apple, Plum\./);
 });
 
-test('#521 questions-answered-in-turn doesn’t fire for one question, or for two with only one pick each', async () => {
+test('#521 questions-answered-in-turn doesn’t fire for one question, even with several picks, or for two with one pick each', async () => {
   const one = await asking();
   one.choose('Blue');
   await one.done;
   await settle(one.rt);
   assert.deepEqual(firedBy('questions-answered-in-turn', one), [], 'one question');
+  const several = await asking({ input: MULTI, after: (c) => c.text('Thanks.') });
+  several.choose('Pear', 'Plum');
+  await several.done;
+  await settle(several.rt);
+  assert.deepEqual(firedBy('questions-answered-in-turn', several), [], 'one question, even with several picks');
   const two = await asking({ input: TWO, after: (c) => c.text('Thanks.') });
   two.choose('Red');
   await until(() => two.store.items(two.t.id).filter((i) => i.kind === 'block' && i.question).length === 2, 'the second question');
