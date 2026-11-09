@@ -85,6 +85,16 @@ describe('an agent’s git reaches no network remote', () => {
     });
   }
 
+  test('git hands an agent no credential from the person’s helper', () => {
+    // The person’s global config names a helper, as osxkeychain is on a Mac; this one prints a made-up password.
+    const person = tempDir('postbox-uat-github-helper-home-');
+    writeFileSync(join(person, '.gitconfig'), `[credential]\n\thelper = "!f() { echo username=person; echo password=${TOKEN}; }; f"\n`);
+    const ask = 'protocol=https\nhost=github.com\n\n';
+    const fill = (env) => spawnSync('git', ['credential', 'fill'], { env: { ...env, HOME: person }, input: ask, encoding: 'utf8', timeout: 20_000 });
+    assert.match(fill(personEnv()).stdout, new RegExp(`password=${TOKEN}`), 'the control: the person’s own git gets it');
+    assert.doesNotMatch(fill(agentEnv({}).env).stdout, /password=/);
+  });
+
   test('a push to a local path still lands', () => {
     const remote = join(tempDir('postbox-uat-github-bare-'), 'remote.git');
     sh('git', ['init', '-q', '--bare', '-b', 'main', remote], personEnv());
@@ -144,5 +154,18 @@ describe('the run checks the guard before Postbox starts', () => {
     assert.equal(env.PATH.split(':')[0], remotePaths(dir).bin);
     const fromFile = sh('/bin/sh', ['-c', `. '${remotePaths(dir).envFile}'; printf %s "$GH_TOKEN"`], { ...env, GH_TOKEN: '' });
     assert.equal(fromFile.stdout, NO_TOKEN, 'the file the agent’s shell sources after its profile keeps gh off the keychain');
+  });
+});
+
+describe('the check runs in a shell like the agent’s, a login shell', () => {
+  test('a login profile that undoes the guard stops the run', needsGh, () => {
+    const { dir, env } = agentEnv({});
+    // A login shell reads the profile after the environment it inherited, so a profile can put a login back.
+    const profileHome = tempDir('postbox-uat-github-profile-');
+    writeFileSync(join(profileHome, '.profile'), `unset GH_TOKEN\nexport GH_CONFIG_DIR='${signedIn()}'\n`);
+    assert.throws(
+      () => preflightRun({ seed: null }, dir, dir, { ...env, HOME: profileHome }),
+      /gh in the agent’s shell can still reach a GitHub login, so the run stops/,
+    );
   });
 });
