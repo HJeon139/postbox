@@ -1,5 +1,5 @@
 // A skipped item clips its paint to its own box (content-visibility: auto contains paint, #712a), so the focus ring of
-// a reaction button flush with the item’s bottom edge was cut off below it (the integrator’s read of #959). The item
+// a reaction button flush with the item’s bottom edge was cut off below it (#712a). The item
 // gives its paint 4 px of room past its box (overflow-clip-margin, app/workbench.css). Here the strip just below the
 // item is captured with the button focused and not: the ring shows there only if it isn’t clipped.
 

@@ -2,6 +2,88 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.54.2 (2026-11-09)
+
+### Fixes
+
+- **apps:** an app's send in an archived conversation is refused before it's recorded (#848)
+- **blocks:** an answer in an archived conversation is refused before it's recorded (#848)
+
+## 1.54.1 (2026-11-09)
+
+### Fixes
+
+- **queue:** an API Send now marks a plain Stop’s exit silent too, through one stopForSendNow (#1040)
+- **queue:** Send now during a plain Stop’s exit marks the exit silent, so it goes alone (#1040)
+- **queue:** after a Stop, the first turn takes its thread's queued wakes (#1040)
+- **uat:** a teardown that fails after a failed preflight keeps the preflight's reason
+- **uat:** the guard blanks git's askpass, so a terminal's sign-in gives an agent's git no password
+- **server:** echoedId cuts with partEnd, so an echoed id never ends on half a pair (#895)
+- **server:** cut the ids update_block and retire_app echo in their refusals to 40 characters
+- **files:** keep hidesName for the callers that read one character at a time
+- **files:** keep only England's, Scotland's and Wales's flags whole
+- **files:** stored upload names are cleaned where they're read, and tag flags stay whole
+- **blocks:** the reaction count leaves the accessibility tree, and an unproved rule goes (#1068)
+- **tests:** flag connector tool ids, keep recordings' plugins public, print no path from the scan
+- **work:** a ref line's flag takes its own spaces, so a run of spaces splits one way (#1032)
+- **work:** read git push's ref lines with spaces and tabs only, in linear time (#1032)
+- **uat:** the git-remote preflight probes outside the workspace, and a failed one removes the remote
+- **security:** take every default-ignorable code point and line separator into the invisible set
+- **uat:** the guard empties git's credential helpers, so no run's git hands out the person's
+- **blocks:** an app review draws its app's check result as the transcript does (#857)
+- **blocks:** show a number field's range before any submit
+
+## 1.54.0 (2026-11-09)
+
+### Features
+
+- **tools:** a --strict cited-commits run fails on a token that isn't an object
+- **tools:** check that every commit a note or pr body cites is on github
+
+### Fixes
+
+- **composer:** keep a draft's attachments over a switch, as its text is
+- **permissions:** an edit that changes nothing is a plain allow
+- **blocks:** an all-strings options error's example id starts with a letter or digit (#951)
+- **message-queue:** Send now finds its entry in the pending queue, and refuses one already sent
+- **remote:** #1043's smaller points: probe exit, its clock, sign-in PATH, looked text (#1066)
+- **security:** dataset titles and the picker's names keep ZWJ, ZWNJ and VS16, with hidesName
+- **security:** a host's stored short name is kept unchecked when a change leaves it alone
+- **app:** a reply arriving while you read up counts on the pill without reading layout (#1047)
+- **security:** one surrogate-safe cut for every clip, and names and titles kept before the checks
+- **security:** refuse hidden characters in a short name and dataset title, mark them in the picker
+
+## 1.53.1 (2026-11-09)
+
+### Fixes
+
+- **blocks:** a late answer to an AskUserQuestion tells the agent its question and labels (#521)
+- **blocks:** a question whose wait ends mid-turn lets go of the running turn's need (#521)
+- **blocks:** an AskUserQuestion's block holds its call's id, and a host keeps the card (#521)
+- **blocks:** AskUserQuestion asks as choice blocks, and the answers are its result (#521)
+
+## 1.53.0 (2026-11-09)
+
+### Features
+
+- **adapters:** Always allow on an Antigravity read card makes its folder readable (#338)
+
+### Fixes
+
+- **wake-cards:** the declined-add trigger counts only mentions before the decline was lifted (#789)
+- **queue:** break a clock tie by arrival, so same-millisecond messages keep their order (#733)
+- **permissions:** judge a read by the file it leads to, not the link's folder (#338)
+- **permissions:** offer the folder a read card is about, and read a saved one at once (#338)
+- **queue:** a shutdown’s log counts the first waiting delivery too (#733)
+- **runtime:** stop settles a turn’s steps from the pending session
+- **runtime:** endJob decides on held steps from the pending session
+- **catch-up:** an item brought forward in a topic thread moves seenIn to its stub
+- **runtime:** bringForward moves catch-up markers held behind a commit
+- **wake-cards:** mark a declined add lifted when the person adds that agent
+- **queue:** fold the thread’s queue into the next turn whatever other threads wait
+- **adapters:** start the read card's offer with its folder, so the card reads whole (#338)
+- **adapters:** judge a read card's folder by its true case (#338)
+
 ## 1.52.1 (2026-11-09)
 
 ### Fixes

@@ -20,6 +20,7 @@ import { retireApp } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
+import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
@@ -176,7 +177,8 @@ export class Runtime {
     this.configDir = claudeConfigDir !== undefined ? claudeConfigDir : this.home === homedir() ? process.env.CLAUDE_CONFIG_DIR || null : null;
     this.blobs = blobs ?? null;
     this.narrator = narrator ?? null;
-    this.permissionWaits = new Map(); // permission item id → { resolve, threadId, sessionId, timer }
+    // A permission card’s item id, or an AskUserQuestion block’s (`question`, server/ask-question.mjs) → its call’s wait.
+    this.permissionWaits = new Map(); // item id → { resolve, threadId, sessionId, timer, question? }
     this.mirrors = new Map(); // attached session id → { tail, timer, agentItem, steps }
     this.turns = new Map(); // sessionId → live turn
     // sessionId → a stopped turn whose process hasn’t exited yet, and what waits for it: { turn, held, silent } (#126)
@@ -472,8 +474,8 @@ export class Runtime {
     const q =
       busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now(), seq: arrival() } : null;
     if (q) updateThread(this, threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
-    // Send now is a change of course: background jobs keep running, each with its own Stop (#129).
-    else for (const { se } of busy) this.stop(se.id, { silent: true, jobs: 'keep', sendNow: true });
+    // Send now is a change of course (stopForSendNow), also for one already exiting from a plain Stop (#1040).
+    else if (sendNow) for (const { se } of targets) queue.stopForSendNow(this, se.id);
     const sent = q ? { queued: q } : this.postAndDeliver(threadId, { text, attachments }, targets);
     // A card waiting to wake one of them is stale now (#439), whether this went at once or waits in the queue. It
     // retires after, so the wake you never allowed goes behind your message rather than ahead of it.
@@ -1218,9 +1220,12 @@ export class Runtime {
       }
       return;
     }
-    for (const h of ex.silent ? held : queue.batchPending(this, held, se.threadId))
-      this.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
-    if (!held.length && !ex.silent) this.drainQueues(se.id, turn.threadId);
+    // A silent exit (Send now, which sends only your message, and archive, erase, side threads, host admin and the
+    // like) delivers what was held as it is, and the queue waits for that turn’s end. Any other Stop, the person’s, a
+    // store outage’s or a hung host turn’s, gives the first turn its thread’s queue, in arrival order, as a turn’s
+    // normal end does (#733, #1040).
+    if (ex.silent) for (const h of held) this.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
+    else this.takePending(se, { pending: held, threadId: turn.threadId }, true);
   }
 
   /**
@@ -1867,7 +1872,9 @@ export class Runtime {
   // ── Permission prompts: server/permission-cards.mjs ──────────────────────────────────
 
   requestPermission(sessionId, req) {
-    return requestPermission(this, sessionId, req);
+    // Claude Code’s AskUserQuestion asks as choice blocks, here on this computer: server/ask-question.mjs (#521).
+    const questions = req.tool === QUESTION_TOOL && !req.hostPrompt ? questionBlocks(req.input) : null;
+    return questions ? askQuestions(this, sessionId, req, questions) : requestPermission(this, sessionId, req);
   }
   askPerson(sessionId, req) {
     return askPerson(this, sessionId, req);

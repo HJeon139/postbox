@@ -62,7 +62,7 @@ export async function heldStore() {
   const dir = await mkdtemp(join(tmpdir(), 'pb-stop-held-'));
   folders.push(dir);
   let hold = false;
-  let release = () => {};
+  let release = (/** @type {Error | undefined} */ _e) => {};
   let reached = () => {};
   const atSync = new Promise((r) => {
     reached = () => r(undefined);
@@ -76,8 +76,9 @@ export async function heldStore() {
           if (hold) {
             hold = false;
             reached();
-            await new Promise((r) => {
-              release = () => r(undefined);
+            // Released with an error, the held sync fails with it: the I/O failure path (store-retry.mjs, fail()).
+            await new Promise((r, reject) => {
+              release = (/** @type {Error | undefined} */ e) => (e ? reject(e) : r(undefined));
             });
           }
           return fh.sync();
@@ -86,5 +87,5 @@ export async function heldStore() {
     },
   });
   const store = await new Store(dir, { io }).load();
-  return { store, hold: () => (hold = true), atSync, release: () => release() };
+  return { store, hold: () => (hold = true), atSync, release: (/** @type {Error | undefined} */ e) => release(e) };
 }

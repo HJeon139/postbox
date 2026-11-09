@@ -1,6 +1,7 @@
 // Postbox’s `check` (daemon.mjs’s header, #120): the host’s sign-in check, run one at a time and answered `checked`.
 
 import { SIGN_IN_CHECK_MS } from '../../../shared/remote-protocol.mjs';
+import { turnEnv } from './daemon-login.mjs';
 import { fail, send } from './daemon-reply.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
@@ -39,7 +40,7 @@ function runCheck(d, argv) {
       resolve({ code });
     };
     try {
-      child = d.spawn(argv[0], argv.slice(1), { cwd: d.home, env: d.env, stdio: ['ignore', 'ignore', 'ignore'], shell: false });
+      child = d.spawn(argv[0], argv.slice(1), { cwd: d.home, env: { ...d.env, ...turnEnv(d, {}) }, stdio: ['ignore', 'ignore', 'ignore'], shell: false });
     } catch (e) {
       return finish(null, `couldn’t start: ${e.message}`);
     }
