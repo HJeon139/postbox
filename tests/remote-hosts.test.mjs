@@ -158,3 +158,24 @@ test('hosts: a turn’s child listening for the link’s messages keeps it neede
     s.done();
   }
 });
+
+test('#991 a stored host setting this Postbox now refuses stops the link with its reason, runs no ssh, and connects once fixed and retried', async () => {
+  // Saved before checkHostPath refused a bidi control: ssh-args.mjs checks it again before ssh runs, and threw out of
+  // the reconnector, from the microtask a listener’s need() runs in, so the process exited.
+  const s = setup({ settings: { claudePath: '/opt/\u202eclaude' } });
+  try {
+    const l = s.mgr.link('h1');
+    l.on('message', () => {});
+    await until(() => l.state === 'stopped', 'the link stopped for the person');
+    assert.equal(s.ssh.calls.length, 0, 'no ssh ran');
+    assert.match(l.failure?.message ?? '', /claudePath can’t contain invisible characters/);
+    assert.equal(l.failure?.retry, false, 'not retried on its own');
+    assert.match(s.mgr.status('h1').failure?.message ?? '', /claudePath can’t contain invisible characters/, 'the Hosts panel shows why');
+    s.hosts.h1.settings = { ...s.hosts.h1.settings, claudePath: '/opt/claude' };
+    l.retry();
+    await until(() => l.connected, 'connected once the setting is fixed');
+    assert.equal(s.ssh.calls.length, 1);
+  } finally {
+    s.done();
+  }
+});

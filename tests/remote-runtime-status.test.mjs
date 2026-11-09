@@ -113,3 +113,18 @@ test('#120 D2: a failing wake handler is logged, and the checks go on', () => {
   assert.equal(n, 2);
   assert.match(errors[0], /boom/);
 });
+
+test('#672: a host’s status passes on what the welcome says of its login PATH: a count and a reason, no entries', () => {
+  const { rt, store, hosts } = setup();
+  const h = rt.addHost({ name: 'host.example.com' });
+  rt.watchHosts();
+  const base = { version: 2, home: '/home/user', node: { path: '/usr/bin/node', version: 'v22.1.0' }, harnesses: [], problems: [], turns: [] };
+  for (const loginPath of [
+    { ok: true, entries: 13, ms: 149 },
+    { ok: false, why: 'the login shell didn’t print its PATH within 5 s.' },
+  ]) {
+    hosts.statuses.set(h.id, { state: 'connected', failure: null, welcome: { ...base, loginPath }, lastHeard: 2 });
+    hosts.emit('status', h.id, hosts.statuses.get(h.id));
+    assert.deepEqual(store.state.hostStatus[h.id].welcome.loginPath, loginPath);
+  }
+});

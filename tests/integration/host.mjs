@@ -109,7 +109,7 @@ export function gone(pid) {
 /**
  * The daemon with its own runner functions (createDaemon’s defaults: launchRunner, askRunner, sendStdin, sameProcess
  * and the tool-shell lookups, none injected). Only findPrograms (each harness is node, given harness.mjs as its first
- * argument) and logind (no systemd scope) are given. connect() is a Postbox that has taken over; close() ends it all.
+ * argument), logind (no systemd scope) and probeLoginPath (no login shell, so it runs none of yours, #672) are given. connect() is a Postbox that has taken over; close() ends it all.
  * @param {ReturnType<typeof makeHost>} h @param {object} [over]  createDaemon options
  */
 export function realDaemon(h, over = {}) {
@@ -124,6 +124,7 @@ export function realDaemon(h, over = {}) {
       problems: [],
     }),
     logind: () => ({ killUserProcesses: null, linger: null }),
+    probeLoginPath: async () => ({ ok: false, why: 'the test runs no login shell' }),
     log: () => {},
     pollMs: 20,
     ...over,

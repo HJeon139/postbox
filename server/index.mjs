@@ -43,6 +43,7 @@ import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
 import { watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
+import { uploadName } from './upload-name.mjs';
 import { startViewApp } from './view-app/view-app.mjs';
 import { viewOf } from './view-app/view-of.mjs';
 
@@ -460,10 +461,7 @@ export async function start({
   }
 
   async function upload(req) {
-    const name =
-      decodePath(String(req.headers['x-filename'] ?? 'file'))
-        .replace(/[\\/]/g, '_')
-        .slice(0, 200) || 'file';
+    const name = uploadName(decodePath(String(req.headers['x-filename'] ?? 'file')));
     const chunks = [];
     let size = 0;
     for await (const c of req) {

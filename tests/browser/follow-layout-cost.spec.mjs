@@ -6,6 +6,10 @@
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
+// Tracing is off: Playwright’s trace snapshot walks the page each action, and an item the transcript skips (#712a) is
+// laid out on its own when the walk reaches it, which Chromium counts as the page’s layouts (choice-layout-cost.spec.mjs).
+test.use({ trace: 'off' });
+
 const BATCHES = 50;
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */

@@ -38,6 +38,7 @@ export function inProcessDaemon(home) {
       ],
       problems: [],
     }),
+    probeLoginPath: async () => ({ ok: false, why: 'the test runs no login shell' }),
     kill: () => {},
     log: () => {},
     pollMs: 10,

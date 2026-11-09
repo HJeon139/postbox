@@ -18,6 +18,32 @@ import { sessionRoute } from '../server/session-routes.mjs';
 import { Store } from '../server/store.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
+/**
+ * A backend whose forget waits until released (#1039). `reached` resolves when the purge enters its forget, so a test
+ * releases it only once it’s waiting: a fixed wait could release it before the purge gets there (an earlier backend’s
+ * forget can take longer), and the purge would then wait on a resolver nobody calls.
+ */
+function slowForget() {
+  let release = () => {};
+  /** @type {(v?: unknown) => void} */
+  let entered = () => {};
+  const reached = new Promise((r) => (entered = r));
+  const forget = () =>
+    new Promise((r) => {
+      release = r;
+      entered();
+    });
+  const adapter = { name: 'slow', deliver: async () => {}, forget };
+  return { adapter, reached, release: () => release() };
+}
+
+/** `p`, or a failure naming `what` after `ms`, so a purge that never ends fails with a message, not a hung file. */
+function within(p, ms, what) {
+  let timer;
+  const late = new Promise((_, reject) => (timer = setTimeout(() => reject(new Error(`${what} didn’t happen within ${ms} ms`)), ms)));
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+}
+
 async function setup() {
   const data = tempDir('pb-persona-delete-');
   const workRoot = join(data, 'workspaces');
@@ -163,16 +189,31 @@ test('#208: an agent being deleted can’t be added to a conversation, and the p
 
 test('#208: Undo during the purge says it’s too late, and the persona isn’t brought back half-gone', async () => {
   const s = await setup();
-  let release = () => {};
-  const slow = { name: 'slow', deliver: async () => {}, forget: () => new Promise((r) => (release = r)) };
-  s.rt.adapters.register(slow);
+  const slow = slowForget();
+  s.rt.adapters.register(slow.adapter);
   await sessionRoute(s.rt, `/api/personas/${s.alpha.id}`, 'DELETE', {});
   const purging = purgePersona(s.rt, s.alpha.id);
-  await new Promise((r) => setTimeout(r, 10));
+  await within(slow.reached, 5000, 'the purge reaching the slow forget');
   // The purge waits on a backend’s forget: Undo now must not answer 200 and then lose.
   await assert.rejects(sessionRoute(s.rt, `/api/personas/${s.alpha.id}/undo-delete`, 'POST', {}), (e) => e.status === 409 && /too late/.test(e.message));
-  release();
-  await purging;
+  slow.release();
+  await within(purging, 5000, 'the purge finishing');
+  assert.equal(s.store.state.personas[s.alpha.id], undefined);
+});
+
+test('#1039: Undo during the purge, with an earlier backend slow to forget, still says it’s too late and finishes', async () => {
+  const s = await setup();
+  // A backend registered before the slow one, whose forget takes longer than the wait below: the purge reaches the
+  // slow forget only after it, as the real claude-code adapter’s disk removal can under load.
+  s.rt.adapters.register({ name: 'lag', deliver: async () => {}, forget: () => new Promise((r) => setTimeout(r, 50)) });
+  const slow = slowForget();
+  s.rt.adapters.register(slow.adapter);
+  await sessionRoute(s.rt, `/api/personas/${s.alpha.id}`, 'DELETE', {});
+  const purging = purgePersona(s.rt, s.alpha.id);
+  await within(slow.reached, 5000, 'the purge reaching the slow forget');
+  await assert.rejects(sessionRoute(s.rt, `/api/personas/${s.alpha.id}/undo-delete`, 'POST', {}), (e) => e.status === 409 && /too late/.test(e.message));
+  slow.release();
+  await within(purging, 5000, 'the purge finishing');
   assert.equal(s.store.state.personas[s.alpha.id], undefined);
 });
 

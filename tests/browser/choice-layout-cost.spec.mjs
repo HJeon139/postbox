@@ -6,6 +6,10 @@
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, settled, startPostbox, synced } from './postbox.mjs';
 
+// Tracing is off: Playwright’s trace snapshot walks the page each action, and an item the transcript skips (#712a) is
+// laid out on its own when the walk reaches it, so with 60 choices the snapshots took 351 of the 374 layouts counted.
+test.use({ trace: 'off' });
+
 const OPTIONS = [
   { id: 'yes', label: 'Yes' },
   { id: 'no', label: 'No' },

@@ -6,6 +6,7 @@ import { client, itemIn } from './client.mjs';
 import { h, icon } from './dom.mjs';
 import { reactors, who } from './reactions.mjs';
 import { mdNode } from './ui.mjs';
+import { jumpTo } from './view-jump.mjs';
 
 /** The card for a citation marker or a glossary term, or null when there’s nothing to show. */
 export function hoverContent(trigger) {
@@ -36,7 +37,8 @@ export function hoverContent(trigger) {
               href: `#src-${it.id}-${n}`,
               onclick: (e) => {
                 e.preventDefault();
-                document.getElementById(`src-${it.id}-${n}`)?.scrollIntoView({ block: 'center' });
+                const source = document.getElementById(`src-${it.id}-${n}`);
+                if (source) jumpTo(source);
               },
             },
             'Show in sources',

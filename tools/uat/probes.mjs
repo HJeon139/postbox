@@ -15,6 +15,8 @@
 //   say it didn’t measure (tools/uat/triggers-measure.mjs)
 // - views, once the page has a transcript: where each transcript’s view was each step, and whether it had settled
 //   (#531, tools/uat/view-probe.mjs), for view-moved and window-paged-back
+// - skipped, once the page shows a conversation: how many of its items the browser skipped (#712a,
+//   tools/uat/skip-probe.mjs); a run from before it has none, and rows-skipped stays silent
 
 export const newProbes = () => ({
   fullScreen: [],

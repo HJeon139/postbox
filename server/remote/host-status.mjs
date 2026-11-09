@@ -29,7 +29,15 @@ export function hostStatus(rt, id) {
   return {
     state: st.state ?? null,
     failure: f && { kind: f.kind ?? 'failed', message: String(f.message ?? ''), next: f.next ?? null, retry: f.retry === true },
-    welcome: w && { version: w.version, home: w.home, node: w.node, harnesses: w.harnesses ?? [], problems: w.problems ?? [] },
+    welcome: w && {
+      version: w.version,
+      home: w.home,
+      node: w.node,
+      harnesses: w.harnesses ?? [],
+      problems: w.problems ?? [],
+      // The login PATH as a count, or why it wasn’t used (#672): never its entries.
+      ...(w.loginPath ? { loginPath: w.loginPath } : {}),
+    },
     lastHeard: st.lastHeard ?? null,
     keepUpdated: st.keepUpdated === true,
     update: updateFields(st.update),
