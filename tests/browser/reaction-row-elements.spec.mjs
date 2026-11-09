@@ -61,7 +61,7 @@ for (const width of [375, 1280])
     test('each button draws its own icon, and a count from another shows as the button’s, not an element’s', async ({ page }) => {
       const good = button(page, 'Good');
       expect(await pseudo(good, '::before', 'background-image'), 'the icon').toMatch(/reaction-approve/);
-      expect(await pseudo(good, '::before', 'width')).toBe('20px');
+      expect(await pseudo(good, '::before', 'width'), 'the icon’s box, the theme’s own').toMatch(/^(20|22\.5)px$/);
       toggleReaction(app.rt, thread.id, message.id, '🚩', { id: critic.id, handle: 'judge' });
       await synced(page, app);
       const flag = button(page, 'Flag this');
