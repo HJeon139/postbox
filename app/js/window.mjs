@@ -15,7 +15,7 @@ import { holdSkipping } from './view-skip.mjs';
 import { createHeights } from './window-heights.mjs';
 import { edgeKeys } from './window-keys.mjs';
 import { CEILING, CHUNK, FLOOR, MARGIN } from './window-limits.mjs';
-import { drop, dropBottom, dropTop, fill, gapBefore, leap, paintSpacers, pinned, recenter, rejoin, release, shrink } from './window-shrink.mjs';
+import { drop, dropBottom, dropTop, fill, gapBefore, leap, paintSpacers, pinned, recenter, rejoin, release, scheduleGrow, shrink } from './window-shrink.mjs';
 
 const FLAG = 'pb-window';
 // Rough first estimates by kind, in px, from prep-712’s 1,000-item room at 1280 px (median 71 px); a kind’s own
@@ -110,10 +110,9 @@ class TranscriptWindow {
     this.from = 0;
     this.to = 0;
     this.raf = 0;
+    this.timer = 0;
     this.sizes = new ResizeObserver((entries) => this.measured(entries));
-    this.scrolled = () => {
-      if (!this.raf) this.raf = requestAnimationFrame(() => this.grow());
-    };
+    this.scrolled = () => scheduleGrow(this);
   }
   get total() {
     return this.entry.ids.length;
@@ -209,7 +208,7 @@ class TranscriptWindow {
   }
   /** Grows the range toward a spacer that’s within the margin of the view, holding what you see in place. */
   grow() {
-    this.raf = 0;
+    this.timer = 0;
     if (!this.el.isConnected) return;
     this.release();
     // A scroll far past both edges (the scrollbar dragged, Home, End) moves the range there at once.
@@ -309,6 +308,7 @@ class TranscriptWindow {
     live.delete(this);
     holdSkipping(this.el, false);
     cancelAnimationFrame(this.raf);
+    clearTimeout(this.timer);
     this.sizes.disconnect();
     this.scroller()?.removeEventListener('scroll', this.scrolled);
   }

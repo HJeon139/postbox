@@ -155,6 +155,19 @@ export function dropBottom(w, px) {
 }
 
 /**
+ * Asks for grow() just after the next frame’s layout, where its reads of where things are cost nothing; read in the
+ * frame, they forced a layout for each reply that arrived while you read (#1047). Once at a time.
+ * @param {any} w the window
+ */
+export function scheduleGrow(w) {
+  if (w.raf || w.timer) return;
+  w.raf = requestAnimationFrame(() => {
+    w.raf = 0;
+    w.timer = setTimeout(() => w.grow(), 0);
+  });
+}
+
+/**
  * Moves the range to item i, for a jump to an item that isn’t on the page: everything mounted leaves (but what has
  * focus, which stays as an island), and the range opens around i, as a conversation opens around its anchor. The
  * jump then scrolls to it.
