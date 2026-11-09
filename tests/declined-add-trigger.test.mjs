@@ -52,6 +52,21 @@ test('declined-add-no-card needs the mention to name that agent, not one whose h
   assert.deepEqual(trigger.run(factsOf(f)), []);
 });
 
+test('declined-add-no-card doesn’t fire for a mention after the person added that agent themselves (#789)', async () => {
+  const f = setup();
+  await says(f, f.alpha, 'Let’s ask @gamma to check the numbers.');
+  const card = f.store.items(f.t.id).find((i) => i.kind === 'hop' && i.join);
+  f.rt.resolveHop(f.t.id, card.id, false);
+  await settle(f.rt);
+  // The person adds gamma by mentioning it, which lifts the decline; a later mention by another agent then reaches
+  // gamma with no card, as it should, since the decline no longer stands.
+  f.adapter.next.push(async (c) => c.text('Here.'));
+  f.rt.sendMessage(f.t.id, { text: '@gamma please join' });
+  await settle(f.rt);
+  await says(f, f.beta, 'Then @gamma can take a look later.');
+  assert.deepEqual(trigger.run(factsOf(f)), []);
+});
+
 test('the declinedadd scenario’s second phase is there to cause declined-add-no-card', () => {
   const s = parseScenario(readFileSync(new URL('uat/e2e/scenarios/declinedadd.md', import.meta.url), 'utf8'));
   assert.deepEqual(unknownTriggers(s), []);
