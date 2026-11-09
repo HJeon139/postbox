@@ -58,9 +58,15 @@ async function shownAfter(page, scroll) {
   return itemAtMiddle(page);
 }
 
-test('#866 a scroll to the middle of a long room shows items there within two frames', async ({ page }) => {
+test('#866 a scroll to the middle of a long room shows items there within two frames, where it was dragged', async ({ page }) => {
   await open(page);
+  const target = await page.evaluate(() => document.scrollingElement.scrollHeight / 2);
   expect(await shownAfter(page, () => scrollTo(0, document.scrollingElement.scrollHeight / 2)), 'an item across the middle of the view').toBe(true);
+  await settled(page);
+  // Where it was dragged, within 3%: the range moved to the item that was there, by where the spacer sat on the page,
+  // not by heights estimated since (7% short here and a third short in critic’s probe, before 430191f9’s fix).
+  const y = await page.evaluate(() => scrollY);
+  expect(Math.abs(y - target), `the view at ${Math.round(y)}, dragged to ${Math.round(target)}`).toBeLessThan(target * 0.03);
 });
 
 test('#866 Home in a long room opened at its end shows its first items within two frames, and End its last', async ({ page }) => {

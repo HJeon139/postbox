@@ -105,8 +105,12 @@ for (const mode of ROOM_MODES)
       // One copy of the long room’s page is about atLong[0] nodes. Kept, each visit adds one; let go, the count holds.
       const growth = /** @type {number} */ (atLong.at(-1)) - /** @type {number} */ (atLong[1]);
       expect(growth, `live nodes, visit by visit: ${atLong.join(', ')}`).toBeLessThan(atLong[0] * 0.1);
-      // Back in the short room, the long room’s page is let go too, not held until the next visit replaces it.
-      expect(atShort.at(-1), `live nodes back in the short room: ${atShort.join(', ')}`).toBeLessThan(atLong[0] * 0.5);
+      // Back in the short room, the long room’s page is let go too, not held until the next visit replaces it. What
+      // lets go a frame after the switch (review-preview.mjs’s marks) can still be running when the last count is taken
+      // (1 run in 60 on the Mac, window on), so the count is read again until it drops; a page that’s kept never does.
+      await expect
+        .poll(() => liveNodes(cdp), { message: `live nodes back in the short room: ${atShort.join(', ')}`, timeout: 5000 })
+        .toBeLessThan(atLong[0] * 0.5);
     });
 
 // From a room to the project’s Threads page (#945): the page let the room’s column go only once another room was
