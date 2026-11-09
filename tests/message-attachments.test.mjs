@@ -76,19 +76,49 @@ test('#991 a project file is attached by its path, and one whose path holds a bi
   const { rt, store, t } = room();
   const kept = [
     { kind: 'project-file', path: 'notes/plan.md' },
-    { kind: 'project-file', path: 'notes/❤\ufe0f \u200d.md' },
+    { kind: 'project-file', path: 'notes/❤\ufe0f 👨\u200d👩 क्\u200dष.md' },
   ];
   // A project file keeps only its kind and path: a fileId sent beside it would make its chip open another upload.
   const sentKept = kept.map((a) => ({ ...a, fileId: 'f1', name: 'other.md', type: 'text/html' }));
   const { item } = rt.sendMessage(t.id, { text: '@beta read this', attachments: sentKept });
-  assert.deepEqual(store.state.items[t.id].find((i) => i.id === item.id).attachments, kept, 'VS16 and ZWJ, as an upload’s name keeps them');
+  assert.deepEqual(store.state.items[t.id].find((i) => i.id === item.id).attachments, kept, 'VS16 and ZWJ in emoji and words, as an upload’s name keeps them');
   await settle(rt);
   const before = store.state.items[t.id].length;
-  for (const path of [`notes/report${RLO}dm.exe`, 'notes/a\u200bb.md', 'notes/a\u0085b.md'])
+  // #1067: a VS16 or ZWJ is held to where it shows or joins, as an upload’s name has it.
+  for (const path of [`notes/report${RLO}dm.exe`, 'notes/a\u200bb.md', 'notes/a\u0085b.md', 'notes/ \u200d.md', 'notes/\ufe0fa.md'])
     assert.throws(
       () => rt.sendMessage(t.id, { text: '@beta read this', attachments: [{ kind: 'project-file', path }] }),
       (e) => e.status === 422 && /can’t be attached/.test(e.message),
       JSON.stringify(path),
     );
   assert.equal(store.state.items[t.id].length, before, 'nothing posted');
+});
+
+// #1067: an upload stored before #991’s cleaning kept its raw name, and a message that attaches it took that name
+// from the record. It’s cleaned where the message reads it, and the record is left as it was stored.
+test('#1067 a file attachment whose upload was stored under a raw name has it cleaned, in the message and the prompt', async () => {
+  const { rt, store, adapter, t, beta } = setup();
+  const old = { id: 'f0', name: `report${RLO}fdp.exe`, type: 'application/x-msdownload', size: 5, sha256: SHA, at: 1, inCorpus: false };
+  store.emit('file', old);
+  const { item } = rt.sendMessage(t.id, { text: '@beta read this', attachments: [{ kind: 'file', fileId: 'f0' }] });
+  assert.deepEqual(store.state.items[t.id].find((i) => i.id === item.id).attachments, [{ ...KEPT, fileId: 'f0' }]);
+  assert.match(rt.describeItem(item), /\[attached: report_fdp\.exe\]/);
+  await settle(rt);
+  const prompt = formatMessage(adapter.calls.find((c) => c.sessionId === beta.id).message);
+  assert.match(prompt, /^- report_fdp\.exe \(application\/x-msdownload\)$/m);
+  assert.ok(!prompt.includes(RLO), prompt);
+  assert.equal(store.state.files.f0.name, old.name, 'the stored record isn’t rewritten');
+});
+
+const NO_PATH = 'A project file is attached by its path, and this one was sent without a path. Attach it again from the project’s files.';
+
+test('#1067 a project file sent without a path is refused with a 422, and nothing is posted', () => {
+  const { rt, store, t } = room();
+  for (const path of [undefined, null, '', 7])
+    assert.throws(
+      () => rt.sendMessage(t.id, { text: '@beta read this', attachments: [{ kind: 'project-file', path }] }),
+      (e) => e.status === 422 && e.message === NO_PATH,
+      JSON.stringify(path),
+    );
+  assert.deepEqual(store.state.items[t.id] ?? [], [], 'nothing posted');
 });
