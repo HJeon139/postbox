@@ -146,19 +146,20 @@ export function takePending(rt, se, turn, drain) {
     rt.deliver(se.id, next.message, { summarizeTo: next.summarizeTo, threadId: next.threadId });
     const t = rt.turns.get(se.id);
     if (t) t.pending.push(...groups);
-    else holdRest(rt, se, groups);
+    else holdRest(rt, se, next, groups);
   } else if (drain) rt.drainQueues(se.id, turn.threadId, drain === 'wakes');
 }
 
 /**
  * The rest of what waited, when its first group started no turn (#733): each takes deliver's held path, in order (an
- * Undo window, writes closed, a session behind a held commit). Shutting down, none can wait, so the drop is logged.
+ * Undo window, writes closed, a session behind a held commit), as the first did. Shutting down, deliver holds nothing,
+ * the first group included, so the drop of all of them is logged.
  */
-function holdRest(rt, se, groups) {
-  if (!groups.length) return;
+function holdRest(rt, se, next, groups) {
   if (rt.closing) {
-    const kinds = [...new Set(groups.map((g) => g.message.kind))].join(', ');
-    const n = groups.length === 1 ? '1 waiting delivery' : `${groups.length} waiting deliveries`;
+    const lost = [next, ...groups];
+    const kinds = [...new Set(lost.map((g) => g.message.kind))].join(', ');
+    const n = lost.length === 1 ? '1 waiting delivery' : `${lost.length} waiting deliveries`;
     console.warn(`@${se.handle}’s turn ended as Postbox shut down: ${n} (${kinds}) undelivered.`);
     return;
   }
