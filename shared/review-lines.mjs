@@ -23,7 +23,7 @@ import { displayCloser } from './math.mjs';
  * as a row between the header and the body (#835); null when a diff changed it.
  * @typedef {{ type: 'line', depth: number, unit: Unit }
  *   | { type: 'code', depth: number, lang: string, units: Unit[], hidden: Row[] }
- *   | { type: 'table', depth: number, source: string, units: Unit[], sep: Unit | null, hidden: Row[], rows: Row[] }
+ *   | { type: 'table', depth: number, source: string, units: Unit[], sep: Unit | null, head: number, hidden: Row[], rows: Row[] }
  *   | { type: 'list', depth: number, source: string, units: Unit[], hidden: Row[], rows: Row[] }} Group
  */
 
@@ -136,8 +136,9 @@ function tableGroup(rows, sep, depth) {
   const delimiters = rows.filter((r, k) => k === sep || (k > sep && changed && r.kind !== 'same' && TABLE_SEP.test(r.t)));
   const shown = rows.filter((r) => !delimiters.includes(r));
   const source = [shown[0], rows[sep], ...shown.slice(1)].map((r) => r.t).join('\n');
-  if (changed) return { type: 'table', depth, source, units: shown.map(rowUnit), sep: null, hidden: delimiters, rows };
-  return { type: 'table', depth, source, units: shown.map(rowUnit), sep: rowUnit(rows[sep]), hidden: [], rows };
+  // head: how many units head the table, before its delimiter: two when a diff renamed the header (#1098).
+  if (changed) return { type: 'table', depth, source, units: shown.map(rowUnit), sep: null, head: sep, hidden: delimiters, rows };
+  return { type: 'table', depth, source, units: shown.map(rowUnit), sep: rowUnit(rows[sep]), head: sep, hidden: [], rows };
 }
 
 // One unit per item, in the order the items render (li in document order); blank and continuation lines
