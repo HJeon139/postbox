@@ -222,8 +222,21 @@ test('#521 a question nobody answers within CARD_WAIT_MS stays open, and the age
   // block polls without timers.
   mock.timers.enable({ apis: ['setTimeout'] });
   let answer;
+  /** @type {() => void} */
+  let goOn = () => {};
+  const held = new Promise((r) => {
+    goOn = r;
+  });
   try {
-    const asked = s.ask(inputOf('one-auto'));
+    // The turn goes on after the call is refused, as an SDK turn does, until the test lets it end.
+    const asked = new Promise((r) => {
+      s.adapter.next.push(async (c) => {
+        r(await canUseTool(c, 'AskUserQuestion', inputOf('one-auto'), { toolUseID: 'toolu_ask_9' }));
+        await held;
+        c.text('Done.');
+      });
+    });
+    s.rt.sendMessage(s.t.id, { text: 'Ask me.' });
     for (let i = 0; i < 2000 && s.questions().length === 0; i++) await new Promise((r) => setImmediate(r));
     assert.equal(s.questions().length, 1, 'the question');
     mock.timers.tick(CARD_WAIT_MS);
@@ -231,6 +244,10 @@ test('#521 a question nobody answers within CARD_WAIT_MS stays open, and the age
   } finally {
     mock.timers.reset();
   }
+  assert.ok(s.rt.turns.size, 'the turn still runs');
+  assert.notEqual(s.se().needs?.itemId, s.questions()[0].id, 'no call waits on it now, so it isn’t what the running turn needs');
+  goOn();
+  await until(() => !s.rt.turns.size, 'the turn to end');
   assert.equal(answer.behavior, 'deny');
   assert.ok(answer.message.includes(STILL_OPEN), answer.message);
   assert.ok(!/ask again if/i.test(answer.message), `no “ask again” beside “don’t ask it again”: ${answer.message}`);
