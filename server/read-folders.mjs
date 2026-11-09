@@ -69,7 +69,8 @@ export function readFolderOffer({ backend, tool, input, hostId = null, home }) {
   const dir = folderOf(input);
   const realHome = real(home);
   if (!dir || !realHome || !offerable(dir, realHome)) return null;
-  return { lines: [{ text: `Always allow ${dir} for reading files, in this conversation`, rule: dir }], readDir: dir };
+  // The agent’s, not the conversation’s: kept on its session, so another Antigravity agent there asks again (#1074).
+  return { lines: [{ text: `Always allow ${dir} for this agent to read, in this conversation`, rule: dir }], readDir: dir };
 }
 
 /**
