@@ -176,6 +176,23 @@ test('#208: Undo during the purge says it’s too late, and the persona isn’t 
   assert.equal(s.store.state.personas[s.alpha.id], undefined);
 });
 
+test('#1039: Undo during the purge, with an earlier backend slow to forget, still says it’s too late and finishes', async () => {
+  const s = await setup();
+  // A backend registered before the slow one, whose forget takes longer than the wait below: the purge reaches the
+  // slow forget only after it, as the real claude-code adapter’s disk removal can under load.
+  s.rt.adapters.register({ name: 'lag', deliver: async () => {}, forget: () => new Promise((r) => setTimeout(r, 50)) });
+  let release = () => {};
+  const slow = { name: 'slow', deliver: async () => {}, forget: () => new Promise((r) => (release = r)) };
+  s.rt.adapters.register(slow);
+  await sessionRoute(s.rt, `/api/personas/${s.alpha.id}`, 'DELETE', {});
+  const purging = purgePersona(s.rt, s.alpha.id);
+  await new Promise((r) => setTimeout(r, 10));
+  await assert.rejects(sessionRoute(s.rt, `/api/personas/${s.alpha.id}/undo-delete`, 'POST', {}), (e) => e.status === 409 && /too late/.test(e.message));
+  release();
+  await purging;
+  assert.equal(s.store.state.personas[s.alpha.id], undefined);
+});
+
 test('#208: a purge a restart cut short finishes when Postbox starts again', async () => {
   const s = await setup();
   await s.remember(s.alpha);
