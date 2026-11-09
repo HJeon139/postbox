@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { mock, test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
+import { formatMessage } from '../server/adapters/guide.mjs';
 import { canUseTool } from '../server/adapters/sdk-permission.mjs';
 import { STILL_OPEN } from '../server/ask-question.mjs';
 import { CARD_WAIT_MS } from '../server/permission-cards.mjs';
@@ -182,6 +183,41 @@ test('#521 a turn stopped while a question waits tells the agent it stays open, 
   assert.equal(s.store.item(s.t.id, left.id).status, undefined, 'and isn’t closed as an expired card');
   s.choose(left, ['Pear']);
   await until(() => s.delivered.some((m) => m.kind === 'event' && m.blockItemId === left.id), 'its answer as an event');
+  // Postbox made the block’s ids, so the agent reads the question and the labels, not ids it never saw.
+  const said = formatMessage(s.delivered.find((m) => m.kind === 'event' && m.blockItemId === left.id));
+  assert.match(said, /AskUserQuestion “Which fruits\?”/, said);
+  assert.match(said, /chose “Pear”/, said);
+});
+
+test('#521 a dismissal after an answer keeps the answer, and the call names the questions never shown', async () => {
+  const s = setup();
+  const input = inputOf('two-auto');
+  input.questions.push({ question: 'Which day?', header: 'Day', options: [{ label: 'Monday' }, { label: 'Friday' }], multiSelect: false });
+  const asked = s.ask(input);
+  await until(() => s.questions().length === 1, 'the first question');
+  s.choose(s.questions()[0], ['Blue']);
+  await until(() => s.questions().length === 2, 'the second question');
+  s.rt.act(s.t.id, s.questions()[1].id, 'dismiss', {});
+  const answer = await asked;
+  assert.equal(answer.behavior, 'deny');
+  assert.ok(answer.message.startsWith('The person dismissed the question.'), answer.message);
+  assert.ok(answer.message.includes('“Which color?”: Blue'), `the answer before it: ${answer.message}`);
+  assert.ok(answer.message.includes('“Which day?”'), `the question never shown: ${answer.message}`);
+  assert.equal(s.questions().length, 2, 'the third was never shown');
+});
+
+test('#521 a turn stopped at the second of three questions says which were never shown', async () => {
+  const s = setup();
+  const input = inputOf('two-auto');
+  input.questions.push({ question: 'Which day?', header: 'Day', options: [{ label: 'Monday' }, { label: 'Friday' }], multiSelect: false });
+  const asked = s.ask(input);
+  await until(() => s.questions().length === 1, 'the first question');
+  s.choose(s.questions()[0], ['Red']);
+  await until(() => s.questions().length === 2, 'the second question');
+  s.rt.stop(s.se().id);
+  const answer = await asked;
+  assert.ok(answer.message.includes('“Which day?”'), `the question never shown: ${answer.message}`);
+  assert.ok(!answer.message.includes('“Which fruits?”: '), `the open one isn’t named as answered: ${answer.message}`);
 });
 
 test('#521 a question past the catalog’s limits keeps today’s permission card', async () => {
