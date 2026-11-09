@@ -16,13 +16,28 @@ const REFUSALS = [
   { re: /^fatal: transport '(\w+)' not allowed/m, what: (m) => `git is refused ${m[1]}` },
 ];
 
+/** `VAR=value` before a command, or `env` with its options and assignments: what runs is the word after them. */
+const PREFIX = /^(?:\w+=\S*\s+)*(?:env(?:\s+(?:-u\s+\S+|-(?!u\s)\S+|\w+=\S*))*\s+)?/;
 /**
- * Each Bash call the guard refused, in the order the turns ran.
+ * Whether one segment of the command, split at `|`, `||`, `&&`, `;` and new lines, runs gh or git, by name or by a
+ * path ending in it. A read that only prints their words, `grep "Bad credentials" notes.md` say, runs neither.
+ * @param {string} command
+ */
+export function runsGhOrGit(command) {
+  return command.split(/\|\||&&|[|;\n]/).some((segment) => {
+    const word = segment.trim().replace(PREFIX, '').split(/\s+/)[0] ?? '';
+    return /(?:^|\/)(?:gh|git)$/.test(word);
+  });
+}
+
+/**
+ * Each Bash call the guard refused, in the order the turns ran: one that runs gh or git and printed their refusal.
  * @param {any[]} streams  the agents’ recorded turns (readStreams) @returns {{ handle: string, command: string, what: string }[]}
  */
 export function githubAttempts(streams) {
   const out = [];
   for (const c of bashCalls(streams)) {
+    if (!runsGhOrGit(c.command)) continue;
     const text = c.result?.text ?? '';
     for (const r of REFUSALS) {
       const m = r.re.exec(text);
