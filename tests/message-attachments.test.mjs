@@ -74,8 +74,12 @@ test('#991 attachments that aren’t a list of objects are refused with a 422, a
 
 test('#991 a project file is attached by its path, and one whose path holds a bidi or invisible character is refused', async () => {
   const { rt, store, t } = room();
-  const { item } = rt.sendMessage(t.id, { text: '@beta read this', attachments: [{ kind: 'project-file', path: 'notes/plan.md' }] });
-  assert.deepEqual(store.state.items[t.id].find((i) => i.id === item.id).attachments, [{ kind: 'project-file', path: 'notes/plan.md' }]);
+  const kept = [
+    { kind: 'project-file', path: 'notes/plan.md' },
+    { kind: 'project-file', path: 'notes/❤\ufe0f \u200d.md' },
+  ];
+  const { item } = rt.sendMessage(t.id, { text: '@beta read this', attachments: kept });
+  assert.deepEqual(store.state.items[t.id].find((i) => i.id === item.id).attachments, kept, 'VS16 and ZWJ, as an upload’s name keeps them');
   await settle(rt);
   const before = store.state.items[t.id].length;
   for (const path of [`notes/report${RLO}dm.exe`, 'notes/a\u200bb.md', 'notes/a\u0085b.md'])

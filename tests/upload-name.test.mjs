@@ -1,7 +1,8 @@
 // #991: an uploaded file’s name (POST /api/files, its x-filename header) shows in its attachment chip, so each control
 // character, lone surrogate and character that hides or reorders text becomes “_”, as \ and / do, rather than the
 // upload being refused: the file is the person’s, and its name is only shown. ZWNJ and ZWJ stay, as a folder keeps
-// them (#547). The name is cut at 200 characters, never between the two halves of a surrogate pair.
+// them (#547), and so does VS16 (U+FE0F), which a folder refuses: with ZWJ alone, ❤️ and 🏳️‍🌈 lost it to “_”. The name is
+// cut at 200 characters, never between the two halves of a surrogate pair.
 
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
@@ -41,7 +42,9 @@ const CASES = [
   ['a\u200bb.txt', 'a_b.txt'],
   ['\ufeffa.txt', '_a.txt'],
   ['a\u3164b.txt', 'a_b.txt'],
-  ['a\ufe0fb.txt', 'a_b.txt'],
+  ['a\ufe0eb.txt', 'a_b.txt'],
+  ['❤\ufe0f.png', '❤\ufe0f.png'],
+  ['🏳\ufe0f\u200d🌈.png', '🏳\ufe0f\u200d🌈.png'],
   ['a\u{e0041}b.txt', 'a_b.txt'],
   ['نامه\u200cها.txt', 'نامه\u200cها.txt'],
   ['👨\u200d👩\u200d👧.png', '👨\u200d👩\u200d👧.png'],
