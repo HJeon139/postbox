@@ -154,3 +154,65 @@ test('#866 an item kept for its focus stays in its place in the conversation whe
   expect(places.includes(1000), 'the focused item is still on the page').toBe(true);
   expect(places, 'mounted items in the conversation’s order').toEqual([...places].sort((a, b) => a - b));
 });
+
+test('#866 after Home, a drag of the scrollbar to the middle stays at the middle', async ({ page }) => {
+  await open(page);
+  await page.keyboard.press('Home');
+  await frames(page);
+  await settled(page);
+  const target = await page.evaluate(() => document.scrollingElement.scrollHeight / 2);
+  expect(await shownAfter(page, () => scrollTo(0, document.scrollingElement.scrollHeight / 2)), 'an item across the middle of the view').toBe(true);
+  await settled(page);
+  const y = await page.evaluate(() => scrollY);
+  expect(y, `the view stayed near where it was dragged, ${Math.round(target)}, not back at the top`).toBeGreaterThan(target / 2);
+});
+
+/** Records whether each Home or End press was taken by the page, as the event reaches the window last. */
+const recordKeys = (page) =>
+  page.evaluate(() => {
+    const taken = /** @type {boolean[]} */ ([]);
+    /** @type {any} */ (window).taken = taken;
+    addEventListener('keydown', (e) => (e.key === 'Home' || e.key === 'End') && taken.push(e.defaultPrevented));
+  });
+
+test('#866 End after a click in another scroll container scrolls that container, not the conversation', async ({ page }) => {
+  await open(page);
+  await recordKeys(page);
+  // A pane of its own that scrolls, as the side panel, a table or a dialog does.
+  await page.evaluate(() => {
+    const pane = document.createElement('div');
+    pane.id = 'zz-pane';
+    pane.style.cssText = 'position:fixed;left:20px;top:120px;width:300px;height:200px;overflow:auto;z-index:9999;background:white';
+    pane.innerHTML = '<p style="height:3000px">Plain text in a pane that scrolls.</p>';
+    document.body.append(pane);
+  });
+  await page.locator('#zz-pane p').click({ position: { x: 20, y: 20 } });
+  const before = await page.evaluate(() => scrollY);
+  await page.keyboard.press('End');
+  await frames(page);
+  await settled(page);
+  expect(await page.evaluate(() => /** @type {any} */ (window).taken), 'the page left End to the browser').toEqual([false]);
+  expect(await page.evaluate(() => /** @type {HTMLElement} */ (document.getElementById('zz-pane')).scrollTop), 'the pane scrolled').toBeGreaterThan(0);
+  expect(await page.evaluate(() => scrollY), 'the conversation stayed where it was').toBe(before);
+});
+
+test('#866 Ctrl+Home and Shift+End stay the browser’s', async ({ page }) => {
+  await open(page);
+  await recordKeys(page);
+  await page.keyboard.press('Control+Home');
+  await page.keyboard.press('Shift+End');
+  expect(await page.evaluate(() => /** @type {any} */ (window).taken)).toEqual([false, false]);
+});
+
+test('#866 an item with focus keeps it when the range jumps far past it', async ({ page }) => {
+  const t = await open(page);
+  const ids = app.store.items(t.id).map((it) => it.id);
+  expect(await page.evaluate((id) => import('/app/js/needs-nav.mjs').then((m) => m.focusItem(id)), ids[1990])).toBe(true);
+  const focused = () =>
+    page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.closest('[data-key]')?.getAttribute('data-key') ?? null);
+  expect(await focused()).toBe(ids[1990]);
+  // A drag of the scrollbar to the top, far past the range, while the item keeps focus.
+  await shownAfter(page, () => scrollTo(0, 0));
+  await settled(page);
+  expect(await focused(), 'focus stayed on the item').toBe(ids[1990]);
+});
