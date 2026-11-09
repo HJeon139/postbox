@@ -61,6 +61,7 @@ import {
   setPermissionMode,
 } from './permissions-panel.mjs';
 import { checkEffort, checkSetup, handleOf } from './persona-checks.mjs';
+import { arrival } from './queue-batch.mjs';
 import { readCapped } from './read-capped.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
@@ -465,7 +466,8 @@ export class Runtime {
     refuseUnregisteredSend(this, woken);
     // Messages to a busy agent wait in the queue unless you choose Send now.
     const busy = targets.filter(({ se }) => this.turns.has(se.id));
-    const q = busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now() } : null;
+    const q =
+      busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now(), seq: arrival() } : null;
     if (q) updateThread(this, threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
     // Send now is a change of course: background jobs keep running, each with its own Stop (#129).
     else for (const { se } of busy) this.stop(se.id, { silent: true, jobs: 'keep', sendNow: true });
@@ -555,14 +557,14 @@ export class Runtime {
     if (this.turns.has(sessionId)) {
       // Agent-to-agent messages and events wait for the current turn to end.
       const t = this.turns.get(sessionId);
-      t.pending.push({ message: { ...message, at: message.at ?? Date.now() }, summarizeTo, threadId });
+      t.pending.push({ message: { ...message, at: message.at ?? Date.now(), seq: message.seq ?? arrival() }, summarizeTo, threadId });
       return;
     }
     // A stopped turn’s process is still exiting: the next turn waits for it, so a session never runs two (#126). An answer
     // held here isn’t read yet: it’s read when the turn it starts begins.
     const exiting = this.exiting.get(sessionId);
     if (exiting) {
-      exiting.held.push({ message: { ...message, at: message.at ?? Date.now() }, summarizeTo, threadId });
+      exiting.held.push({ message: { ...message, at: message.at ?? Date.now(), seq: message.seq ?? arrival() }, summarizeTo, threadId });
       return;
     }
     // Shutting down: a new CLI would outlive Postbox. A message you sent waits in the queue (turnExited).
@@ -1206,7 +1208,7 @@ export class Runtime {
     // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI.
     if (this.closing) {
       for (const h of held.filter((x) => x.message.kind === 'user')) {
-        const q = { id: newId('q'), text: h.message.text ?? '', attachments: h.message.attachments ?? [], sessionIds: [se.id], at: Date.now() };
+        const q = { id: newId('q'), text: h.message.text ?? '', attachments: h.message.attachments ?? [], sessionIds: [se.id], at: Date.now(), seq: arrival() };
         updateThread(this, h.threadId ?? se.threadId, (t) => ({ queue: [...(t.queue ?? []), q] }));
       }
       return;

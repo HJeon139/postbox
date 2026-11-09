@@ -5,6 +5,7 @@
 
 import { HANDLE, HANDLE_SHAPE, HOP_LIMIT } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
+import { arrival } from './queue-batch.mjs';
 import { newId } from './store.mjs';
 import { pendingThreads, updateThread } from './thread-write.mjs';
 import { askToAdd, askToWake, closeHop, closeOwnCard, dropHeld, retireStale } from './wake-cards.mjs';
@@ -74,11 +75,20 @@ export function agentWake(
   // The woken agent answers from its session in the conversation (#110). Busy, it takes the wake when its turn ends,
   // from the queue where it was sent, where the person sees it and can cancel it (#228).
   const waits = rt.turns.has(target.id) || rt.exiting.has(target.id);
-  const wake = { id: newId('q'), kind: 'wake', from: from.handle, fromSessionId: from.id, text, itemId: it.id, sessionIds: [target.id], at: Date.now() };
+  const wake = wakeEntry(from, target, text, it.id);
   if (waits) updateThread(rt, at, (t) => ({ queue: [...(t.queue ?? []), wake] }));
   else deliverWake(rt, at, wake);
   // itemId: the message the wake went out as, so a turn’s further mentions reuse it rather than post it again.
   return { ok: true, itemId: it.id, message: waits ? `Woke @${p.handle}: it’s busy, so it answers when its current turn ends.` : `Woke @${p.handle}.` };
+}
+
+/**
+ * A wake as its thread’s queue keeps it, for an agent that’s busy, or delivered at once: who sent it, the message it
+ * went out as, and when it arrived (`seq`, the order a tie on the clock keeps, queue-batch.mjs).
+ * @param {any} from  the waking session @param {any} target  the woken one @param {string} text @param {string} itemId
+ */
+function wakeEntry(from, target, text, itemId) {
+  return { id: newId('q'), kind: 'wake', from: from.handle, fromSessionId: from.id, text, itemId, sessionIds: [target.id], at: Date.now(), seq: arrival() };
 }
 
 /** An agent whose turn runs in a side thread from before #372 is told, once, that hand-offs happen in the conversation. */

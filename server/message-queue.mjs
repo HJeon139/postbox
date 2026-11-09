@@ -1,6 +1,6 @@
 // Queued messages, their controls and delivery order; one session still runs at most one turn (#228).
 import { clip, httpError, queuedIn } from './helpers.mjs';
-import { combineMessages, latestMessage, plainMessage, readyGroups } from './queue-batch.mjs';
+import { byArrival, combineMessages, latestMessage, plainMessage, readyGroups } from './queue-batch.mjs';
 import { deliverWake } from './side-threads.mjs';
 import { pendingThreads, updateThread } from './thread-write.mjs';
 
@@ -103,7 +103,7 @@ function takeBatches(rt, threadId, groups) {
 function queuedMessages(rt, threadId, entries, cache = new Map()) {
   return entries.flatMap((q) => {
     if (q.kind !== 'wake') {
-      if (!cache.has(q)) cache.set(q, postUserMessage(rt, threadId, q).message);
+      if (!cache.has(q)) cache.set(q, { ...postUserMessage(rt, threadId, q).message, seq: q.seq });
       return [cache.get(q)];
     }
     const target = rt.s.sessions[q.sessionIds[0]];
@@ -111,7 +111,7 @@ function queuedMessages(rt, threadId, entries, cache = new Map()) {
       deliverWake(rt, threadId, q);
       return [];
     }
-    const message = { kind: 'agent', from: `@${q.from}`, text: q.text, itemId: q.itemId, at: q.at };
+    const message = { kind: 'agent', from: `@${q.from}`, text: q.text, itemId: q.itemId, at: q.at, seq: q.seq };
     return [latestMessage(rt, threadId, message)];
   });
 }
@@ -139,7 +139,7 @@ export function takePending(rt, se, turn, drain) {
         const ready = readyGroups(rt, t, drain === 'wakes');
         for (const batch of takeBatches(rt, where, ready)) {
           if (batch.sessionIds[0] !== se.id) deliverBatch(rt, where, batch.sessionIds, batch.messages);
-          else next.message = combineMessages([...(next.message.messages ?? [next.message]), ...batch.messages].sort((a, b) => (a.at ?? 0) - (b.at ?? 0)));
+          else next.message = combineMessages([...(next.message.messages ?? [next.message]), ...batch.messages].sort(byArrival));
         }
       }
     }
