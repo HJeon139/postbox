@@ -66,6 +66,15 @@ test('#362: another session’s wakes don’t count against an agent’s', (t) =
   assert.equal(ask(f, f.alpha).ok, false);
 });
 
+test('#362: wakes the person scheduled count too, and the refusal says how many are pending', (t) => {
+  const f = setup();
+  t.after(() => clear(f));
+  for (let i = 0; i < CAP + 3; i++) f.rt.schedule(f.alpha.id, { inMs: 60_000, note: `the person’s ${i}` });
+  const r = ask(f, f.alpha);
+  assert.equal(r.ok, false);
+  assert.match(r.message, /^You have 23 pending wakes,/);
+});
+
 test('#362: schedule_wake’s description names the cap', () => {
   const said = TOOL_DEFS.find((x) => x.name === 'schedule_wake')?.description ?? '';
   assert.match(said, /up to 20 pending/);
