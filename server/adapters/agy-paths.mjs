@@ -30,5 +30,21 @@ function realOr(p) {
 }
 
 export const inside = (target, dir) => Boolean(target && dir && (target === dir || target.startsWith(`${dir}${sep}`)));
-export const pathArg = (args) =>
-  args?.Path ?? args?.TargetFile ?? args?.AbsolutePath ?? args?.DirectoryPath ?? args?.SearchPath ?? args?.SearchDirectory ?? null;
+/** agy’s names for a file tool’s paths (recorded: read_file’s Path, view_file’s AbsolutePath, write_to_file’s TargetFile). */
+export const PATH_FIELDS = Object.freeze(['Path', 'TargetFile', 'AbsolutePath', 'DirectoryPath', 'SearchPath', 'SearchDirectory']);
+
+/**
+ * Every path a file call names, in PATH_FIELDS’ order: one call can name two, as { Path, SearchPath }, and each is
+ * judged (#1074). A blank one names nothing; a value that isn’t a string is kept, so the call is judged unreadable.
+ * @param {any} args @returns {unknown[]}
+ */
+export const pathArgs = (args) => PATH_FIELDS.map((k) => args?.[k]).filter((v) => v !== undefined && v !== null && !(typeof v === 'string' && !v.trim()));
+
+/**
+ * Whether a path leads into one of the folders, by its real path.
+ * @param {string} raw @param {string[]} dirs @param {{ cwd: string }} where
+ */
+export const leadsInto = (raw, dirs, { cwd }) => {
+  const real = realTarget(raw, cwd);
+  return dirs.some((d) => inside(real, d));
+};

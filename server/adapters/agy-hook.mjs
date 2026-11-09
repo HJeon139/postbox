@@ -16,7 +16,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CARD_WAIT_MS } from '../permission-cards.mjs';
 import { autoAllows, inGit, personaAllows, personaOf, publishingCall } from './agy-auto.mjs';
-import { inside, pathArg, realTarget } from './agy-paths.mjs';
+import { inside, leadsInto, PATH_FIELDS, pathArgs, realTarget } from './agy-paths.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
 export const HOOK_SCRIPT = fileURLToPath(import.meta.url);
@@ -121,25 +121,8 @@ export function decideAgyTool(
     return { decision: 'ask', toolName: `mcp__${server || 'mcp'}__${tool || name}`, input };
   }
   if (SUBAGENT_TOOLS.has(name)) return { decision: 'allow' };
-  if (WRITE_TOOLS.has(name)) {
-    const raw = pathArg(args);
-    if (isProtectedPath(raw, { cwd, scriptPath, home }))
-      return { decision: 'deny', reason: 'Postbox doesn’t allow editing Antigravity’s plugin, hook or settings files.' };
-    const real = realTarget(raw, cwd);
-    // In Auto, an edit in .git asks: its config and hooks could name a program the routine git commands would run.
-    const gitEdit = mode === 'auto' && (inGit(resolve(cwd, String(raw))) || inGit(real));
-    if (roots.some((r) => inside(real, r)) && (mode === 'auto' || mode === 'acceptEdits') && !gitEdit) return { decision: 'allow' };
-    return { decision: 'ask', toolName: name.startsWith('write') ? 'Write' : 'Edit', input: { file_path: String(raw ?? '').trim() } };
-  }
-  if (READ_TOOLS.has(name)) {
-    const raw = pathArg(args);
-    if (typeof raw !== 'string' || !raw.trim()) return { decision: 'ask', toolName: 'Read', input: { file_path: '' } };
-    const real = realTarget(raw, cwd);
-    const agyDirs = [join(home, '.gemini', 'antigravity-cli', 'mcp'), join(home, '.gemini', 'antigravity-cli', 'brain')].map((d) => realTarget(d, '/'));
-    const readable = readFolders.map((f) => realTarget(f, cwd)).filter(Boolean);
-    if ([...roots, ...readable, ...agyDirs].some((r) => inside(real, r))) return { decision: 'allow' };
-    return { decision: 'ask', toolName: 'Read', input: { file_path: raw.trim() } };
-  }
+  if (WRITE_TOOLS.has(name)) return decideWrite(name, args, { mode, roots, cwd, scriptPath, home });
+  if (READ_TOOLS.has(name)) return decideRead(args, { roots, readFolders, cwd, home });
   if (name === 'run_command') {
     const summary = String(args.toolSummary ?? '').trim();
     const warn = PROTECTED_CMD.test(command) ? 'Touches Antigravity’s plugin, hook or settings' : '';
@@ -151,6 +134,35 @@ export function decideAgyTool(
   return { decision: 'ask', toolName: name, input: args };
 }
 
+/**
+ * An edit: refused when any path it names is Antigravity’s own, and with no card in Auto and Accept edits only when every
+ * one stays in the agent’s folders (#1074), else a card about the first that doesn’t.
+ */
+function decideWrite(name, args, { mode, roots, cwd, scriptPath, home }) {
+  const paths = pathArgs(args);
+  if (!paths.length || paths.some((p) => isProtectedPath(p, { cwd, scriptPath, home })))
+    return { decision: 'deny', reason: 'Postbox doesn’t allow editing Antigravity’s plugin, hook or settings files.' };
+  // In Auto, an edit in .git asks: its config and hooks could name a program the routine git commands would run.
+  const gitEdit = (/** @type {string} */ p) => mode === 'auto' && (inGit(resolve(cwd, p)) || inGit(realTarget(p, cwd)));
+  const asks = /** @type {string[]} */ (paths).find((p) => !leadsInto(p, roots, { cwd }) || gitEdit(p));
+  if (!asks && (mode === 'auto' || mode === 'acceptEdits')) return { decision: 'allow' };
+  return { decision: 'ask', toolName: name.startsWith('write') ? 'Write' : 'Edit', input: { file_path: String(asks ?? paths[0]).trim() } };
+}
+
+/**
+ * A read: with no card when every path it names leads into the agent’s folders, its readable ones or agy’s own (#1074),
+ * else a card about the first that doesn’t.
+ */
+function decideRead(args, { roots, readFolders, cwd, home }) {
+  const paths = pathArgs(args);
+  if (!paths.length || paths.some((p) => typeof p !== 'string')) return { decision: 'ask', toolName: 'Read', input: { file_path: '' } };
+  const agyDirs = [join(home, '.gemini', 'antigravity-cli', 'mcp'), join(home, '.gemini', 'antigravity-cli', 'brain')].map((d) => realTarget(d, '/'));
+  const readable = readFolders.map((f) => realTarget(f, cwd)).filter(Boolean);
+  const dirs = /** @type {string[]} */ ([...roots, ...readable, ...agyDirs]);
+  const outside = /** @type {string[]} */ (paths).find((p) => !leadsInto(p, dirs, { cwd }));
+  return outside === undefined ? { decision: 'allow' } : { decision: 'ask', toolName: 'Read', input: { file_path: outside.trim() } };
+}
+
 function buildOverwrite(check, args, updatedInput, { cwd, scriptPath, home }) {
   if (!updatedInput || typeof updatedInput !== 'object') return null;
   if (check.toolName === 'Bash' && typeof updatedInput.command === 'string' && updatedInput.command !== args?.CommandLine)
@@ -158,7 +170,9 @@ function buildOverwrite(check, args, updatedInput, { cwd, scriptPath, home }) {
   if ((check.toolName === 'Write' || check.toolName === 'Edit' || check.toolName === 'Read') && typeof updatedInput.file_path === 'string') {
     if (check.toolName !== 'Read' && isProtectedPath(updatedInput.file_path, { cwd, scriptPath, home })) return 'denied';
     if (updatedInput.file_path === check.input.file_path) return null;
-    const key = ['Path', 'TargetFile', 'AbsolutePath', 'DirectoryPath', 'SearchPath', 'SearchDirectory'].find((k) => k in (args ?? {})) ?? 'Path';
+    // Back in the field the card was about, of the paths the call names (#1074).
+    const named = (/** @type {string} */ k) => typeof args?.[k] === 'string' && args[k].trim() === check.input.file_path;
+    const key = PATH_FIELDS.find(named) ?? PATH_FIELDS.find((k) => k in (args ?? {})) ?? 'Path';
     return { ...args, [key]: updatedInput.file_path };
   }
   return null;
