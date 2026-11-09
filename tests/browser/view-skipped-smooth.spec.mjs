@@ -75,19 +75,33 @@ const leftEnd = (page) =>
 const gap = (page) => page.evaluate(() => document.documentElement.scrollHeight - scrollY - innerHeight);
 
 /**
- * Clicks Jump to latest, and returns a wait for the jump’s end: its scrollend, heard after the transcript’s own, so the
- * view has taken in how it ended. Mac Firefox, events late, held still for two frames between the jump’s last scroll
- * and its scrollend, and a case read the mode before the view did (researcher’s trace on fb5edc6d, 2 of 40).
+ * Clicks Jump to latest, and returns a wait for its scrollend, heard after the transcript’s own, so the view has taken
+ * in how it ended. The listener goes on before the click, so the first scrollend after it is the jump’s (critic’s read
+ * of #959). Mac Firefox, events late, held still for two frames between the jump’s last scroll and its scrollend, and a
+ * case read the mode before the view did (researcher’s trace on fb5edc6d, 2 of 40). Only for a jump your input stops:
+ * one that lands at the end is ended by landed()’s instant scroll, which fires no scrollend (endsFollowing, below).
  */
 async function jump(page) {
-  await page.locator('.jump').getByRole('button').click();
   await page.evaluate(() => {
     const w = /** @type {any} */ (window);
     w.pbJumpEnded = false;
     addEventListener('scrollend', () => (w.pbJumpEnded = true), { once: true });
   });
+  await page.locator('.jump').getByRole('button').click();
   return () => expect.poll(() => page.evaluate(() => /** @type {any} */ (window).pbJumpEnded), { message: 'the jump’s scrollend' }).toBe(true);
 }
+/** Waits for the end a jump that nothing stopped reaches: following, at the end. */
+const endsFollowing = (page) =>
+  expect
+    .poll(
+      () =>
+        page.evaluate(() => {
+          const mode = /** @type {HTMLElement} */ (document.querySelector('#main.transcript'))?.dataset.viewMode;
+          return mode === 'following' && document.documentElement.scrollHeight - scrollY - innerHeight <= 2;
+        }),
+      { message: 'the jump to end following, at the end', timeout: 15_000 },
+    )
+    .toBe(true);
 
 // CI’s runners: once the jump landed at the end, Chromium’s smooth scroll, aimed at a page that shrank under it, stepped
 // back from the end by 138–563 px a frame later, with nothing of the page’s writing (a trace with the CPU throttled 3x,
@@ -193,10 +207,10 @@ for (const [how, act] of /** @type {const} */ ([
 ]))
   test(`${how} during the jump isn’t you reading: it still ends following at the end`, async ({ page }) => {
     await readingAtTop(page, `Smooth jump, then ${how}`);
-    const ended = await jump(page);
+    await jump(page);
     await expect.poll(() => page.evaluate(() => scrollY), { message: 'the jump to be on its way' }).toBeGreaterThan(2000);
     await act(page);
-    await ended();
+    await endsFollowing(page);
     await still(page);
     const v = { mode: await page.locator('#main.transcript').getAttribute('data-view-mode'), gap: await gap(page) };
     test.info().annotations.push({ type: 'measured', description: JSON.stringify(v) });
