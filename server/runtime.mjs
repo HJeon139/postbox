@@ -20,6 +20,7 @@ import { retireApp } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
+import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
@@ -64,6 +65,7 @@ import {
 import { checkEffort, checkSetup, handleOf } from './persona-checks.mjs';
 import { arrival } from './queue-batch.mjs';
 import { readCapped } from './read-capped.mjs';
+import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
@@ -175,7 +177,8 @@ export class Runtime {
     this.configDir = claudeConfigDir !== undefined ? claudeConfigDir : this.home === homedir() ? process.env.CLAUDE_CONFIG_DIR || null : null;
     this.blobs = blobs ?? null;
     this.narrator = narrator ?? null;
-    this.permissionWaits = new Map(); // permission item id → { resolve, threadId, sessionId, timer }
+    // A permission card’s item id, or an AskUserQuestion block’s (`question`, server/ask-question.mjs) → its call’s wait.
+    this.permissionWaits = new Map(); // item id → { resolve, threadId, sessionId, timer, question? }
     this.mirrors = new Map(); // attached session id → { tail, timer, agentItem, steps }
     this.turns = new Map(); // sessionId → live turn
     // sessionId → a stopped turn whose process hasn’t exited yet, and what waits for it: { turn, held, silent } (#126)
@@ -722,6 +725,8 @@ export class Runtime {
       rules: { allow: [...(se0.rules?.allow ?? [])], ask: [...(se0.rules?.ask ?? [])], deny: [...(se0.rules?.deny ?? [])] },
       /** Folders the person added for this conversation (#66), passed as --add-dir / additionalDirectories. */
       addDirs: [...(se0.addDirs ?? [])],
+      /** Folders it may only read in this conversation, from Always allow on a read card (#338, read-folders.mjs). */
+      readDirs: [...(se0.readDirs ?? [])],
       /** The adapter says how to name a subagent from its id (a prompt’s agent id), so its prompt names it. */
       subagentNames(fn) {
         turn.subagentName = fn;
@@ -1864,13 +1869,16 @@ export class Runtime {
   // ── Permission prompts: server/permission-cards.mjs ──────────────────────────────────
 
   requestPermission(sessionId, req) {
-    return requestPermission(this, sessionId, req);
+    // Claude Code’s AskUserQuestion asks as choice blocks, here on this computer: server/ask-question.mjs (#521).
+    const questions = req.tool === QUESTION_TOOL && !req.hostPrompt ? questionBlocks(req.input) : null;
+    return questions ? askQuestions(this, sessionId, req, questions) : requestPermission(this, sessionId, req);
   }
   askPerson(sessionId, req) {
     return askPerson(this, sessionId, req);
   }
   alwaysFor(se, req) {
-    return alwaysFor(this, se, req);
+    // A read outside an Antigravity agent’s folders offers its folder as readable (#338); otherwise as before.
+    return readCardAlways(this, se, req) ?? alwaysFor(this, se, req);
   }
   readsRules(backend) {
     return readsRules(this, backend);
@@ -1882,6 +1890,8 @@ export class Runtime {
     return resolvePermission(this, threadId, itemId, action, values);
   }
   allowAlways(threadId, it, asked) {
+    // A readable folder is saved for the conversation, then the card is answered as any Always allow (#338).
+    if (it.always?.readDir && !it.remote) addReadFolder(this, it.sessionId, it.always.readDir);
     return allowAlways(this, threadId, it, asked);
   }
   recordDenial(turn, d) {

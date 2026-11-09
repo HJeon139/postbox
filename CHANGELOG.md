@@ -2,6 +2,50 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.53.1 (2026-11-09)
+
+### Fixes
+
+- **blocks:** a late answer to an AskUserQuestion tells the agent its question and labels (#521)
+- **blocks:** a question whose wait ends mid-turn lets go of the running turn's need (#521)
+- **blocks:** an AskUserQuestion's block holds its call's id, and a host keeps the card (#521)
+- **blocks:** AskUserQuestion asks as choice blocks, and the answers are its result (#521)
+
+## 1.53.0 (2026-11-09)
+
+### Features
+
+- **adapters:** Always allow on an Antigravity read card makes its folder readable (#338)
+
+### Fixes
+
+- **wake-cards:** the declined-add trigger counts only mentions before the decline was lifted (#789)
+- **queue:** break a clock tie by arrival, so same-millisecond messages keep their order (#733)
+- **permissions:** judge a read by the file it leads to, not the link's folder (#338)
+- **permissions:** offer the folder a read card is about, and read a saved one at once (#338)
+- **queue:** a shutdown’s log counts the first waiting delivery too (#733)
+- **runtime:** stop settles a turn’s steps from the pending session
+- **runtime:** endJob decides on held steps from the pending session
+- **catch-up:** an item brought forward in a topic thread moves seenIn to its stub
+- **runtime:** bringForward moves catch-up markers held behind a commit
+- **wake-cards:** mark a declined add lifted when the person adds that agent
+- **queue:** fold the thread’s queue into the next turn whatever other threads wait
+- **adapters:** start the read card's offer with its folder, so the card reads whole (#338)
+- **adapters:** judge a read card's folder by its true case (#338)
+
+## 1.52.1 (2026-11-09)
+
+### Fixes
+
+- **remote:** mark a turn as waiting for its backend only when nothing else holds it (#965)
+- **uat:** keep every run's agents off the person's real GitHub
+- **personas:** the Undo-during-purge tests wait for the slow forget, not a fixed time (#1039)
+- **sandbox:** let only Postbox’s page frame the app and Mermaid sandbox pages
+- **remote:** the Interrupted hint says a turn waits for its backend, not for its host (#965)
+- **remote:** a host turn's PATH holds the daemon's own Node folder after the login shell's (#672)
+- **remote:** a failed re-probe keeps the first PATH; a host's status carries loginPath (#672)
+- **remote:** run host turns with the login shell's PATH (#672, #474)
+
 ## 1.52.0 (2026-11-09)
 
 ### Features
