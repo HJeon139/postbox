@@ -102,6 +102,8 @@ export async function permissionsView(rt, who) {
       ...(folder ? [{ path: folder, source: 'folder' }] : []),
       ...(project?.folder && project.folder !== folder ? [{ path: project.folder, source: 'project' }] : []),
       ...(se?.addDirs ?? []).map((path) => ({ path, source: 'conversation' })),
+      // Folders it may only read, from Always allow on a read card (#338, read-folders.mjs).
+      ...(se?.readDirs ?? []).map((path) => ({ path, source: 'read' })),
       ...files.flatMap((f) => f.dirs.map((path) => ({ path, source: f.source }))),
     ],
     // Agents of rt persona with a turn running now: a mode change reaches them now only where the backend allows.
@@ -168,10 +170,12 @@ export async function changePermissionRule(
 /**
  * Adds a folder rt conversation’s agent may work in, passed as --add-dir / additionalDirectories from its next
  * turn, or removes one. path is absolute, or relative to the project’s folder (from the folder picker).
- * @param {any} rt @param {{ sessionId: string, path: string, remove?: boolean }} change
+ * @param {any} rt @param {{ sessionId: string, path: string, remove?: boolean, read?: boolean }} change
  */
-export async function changePermissionFolder(rt, { sessionId, path, remove = false }) {
+export async function changePermissionFolder(rt, { sessionId, path, remove = false, read = false }) {
   const se = rt.session(sessionId);
+  // A readable folder (#338) is only ever removed here; Always allow on a read card adds it.
+  if (read) return removeReadFolder(rt, se.id, String(path ?? ''));
   const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId];
   const raw = String(path ?? '').trim();
   if (!raw || raw.length > 1000) throw httpError(422, 'Pick a folder, or write its full path.');
@@ -212,4 +216,13 @@ export async function setPermissionMode(rt, personaId, mode) {
     else if (turn) later.push(se.id);
   }
   return { ok: true, now, later };
+}
+
+/**
+ * Takes a readable folder out of the conversation (#338), built from the pending session (#796’s class).
+ * @param {any} rt @param {string} sessionId @param {string} dir
+ */
+function removeReadFolder(rt, sessionId, dir) {
+  rt.updateSession(sessionId, (/** @type {any} */ pending) => ({ readDirs: (pending.readDirs ?? []).filter((/** @type {string} */ d) => d !== dir) }));
+  return { ok: true, path: dir };
 }

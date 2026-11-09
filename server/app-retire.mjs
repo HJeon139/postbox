@@ -3,6 +3,7 @@
 // and it runs no sandbox until they open a version. A new version (update_app) brings it back.
 
 import { releaseNeed } from './card-needs.mjs';
+import { echoedId } from './helpers.mjs';
 
 /**
  * Why there’s no app of the session’s with that id. With no forks (#228), a topic thread’s agent is the conversation’s
@@ -10,7 +11,7 @@ import { releaseNeed } from './card-needs.mjs';
  * @param {any} _rt  the Runtime @param {string} _sessionId @param {string} id
  */
 export function notYours(_rt, _sessionId, id) {
-  return { ok: false, message: `There’s no app with id ${id} from you.` };
+  return { ok: false, message: `There’s no app with id ${echoedId(id)} from you.` };
 }
 
 /**
@@ -33,7 +34,8 @@ export function retireApp(rt, sessionId, { id, reason, replacedBy } = {}) {
     const other = rid === app.id ? null : rt.store.pending.app(rid);
     const shown = rt.store.pending.items(app.threadId).filter((x) => x.kind === 'block' && x.valid && x.block.id === rid && (other || x.block.type !== 'app'));
     const item = shown.find((x) => x.sessionId === sessionId) ?? shown[0];
-    if (!item) return { ok: false, message: `There’s no other app or block ${rid} in this conversation. Name one shown here, or leave out replacedBy.` };
+    if (!item)
+      return { ok: false, message: `There’s no other app or block ${echoedId(rid)} in this conversation. Name one shown here, or leave out replacedBy.` };
     to = { id: rid, title: String(other?.title ?? item.block.title ?? item.block.prompt ?? rid).slice(0, 200), itemId: item.id };
   }
   rt.store.emit('app', { ...app, retired: { by: rt.session(sessionId).handle, reason: why, replacedBy: to, at: Date.now() } });

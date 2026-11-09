@@ -15,18 +15,11 @@ import { onlyRemoves } from './view-changes.mjs';
 import { atEnd, box, findAnchor, gapOf, heldBy, viewTop } from './view-geometry.mjs';
 import { register, unregister } from './view-jump.mjs';
 import { newView } from './view-new.mjs';
+import { countUnseen, PILL_ROOM, seen, showJump } from './view-pill.mjs';
 import { publish } from './view-publish.mjs';
 import { DRAWN, drawNewest, skipOffscreen } from './view-skip.mjs';
 import { halt, landed, smoothEnded, whenSmoothEnds } from './view-smooth.mjs';
 
-// The pill floats just above the composer. It shows only while the end is further below than that, so what it
-// floats over is never the working rows or the end of the last message (#91).
-const PILL_ROOM = 48;
-/** @param {View} v @param {Element | null} s */
-function showJump(v, s) {
-  const n = s && gapOf(s) > PILL_ROOM ? v.unseen : 0;
-  if (n !== v.shown) v.jump?.((v.shown = n));
-}
 /** @param {View} v */
 function holdAnchor(v) {
   const s = box(v);
@@ -36,11 +29,6 @@ function holdAnchor(v) {
   if (Math.abs(d) < 1) return;
   s.scrollTop += d;
   v.lastTop = s.scrollTop;
-}
-/** @param {View} v */
-function seen(v) {
-  v.unseen = 0;
-  showJump(v, null);
 }
 // Smoothly only in the main pane, with motion allowed, and where the browser says when a scroll ends: follow() holds
 // off while it runs, and smoothEnded() goes the rest of the way (#712a).
@@ -239,10 +227,7 @@ function grew(v) {
     drawNewest(v.el);
     follow(v);
   }
-  if (!v.stuck) {
-    v.unseen++;
-    showJump(v, box(v));
-  }
+  if (!v.stuck) countUnseen(v);
 }
 
 /**

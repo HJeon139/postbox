@@ -9,10 +9,10 @@
 //   test identity, and GIT_CONFIG_NOSYSTEM drops the system’s, such as Homebrew’s. So no pushInsteadOf, insteadOf,
 //   include, hook or credential helper of theirs touches an agent’s push;
 // - a fake gh comes first on PATH, and records what it was asked; gh’s config folder is an empty one of the run’s, and
-//   the gh tokens are empty. Claude Code sources CLAUDE_ENV_FILE in the agent’s shell after its profile, which on a Mac
-//   puts Homebrew’s gh back first, so that file puts the run’s bin first again;
-// - preflightRun checks it on the environment the runner gives Postbox, which the agents inherit, and the run stops
-//   before Postbox starts if any of it doesn’t hold;
+//   GH_TOKEN is a token GitHub refuses (NO_TOKEN). Claude Code sources CLAUDE_ENV_FILE in the agent’s shell after its
+//   profile, which on a Mac puts Homebrew’s gh back first, so that file puts the run’s bin first again;
+// - preflightRun (tools/uat/github-guard.mjs) checks it on the environment the runner gives Postbox, which the agents
+//   inherit, and the run stops before Postbox starts if any of it doesn’t hold;
 // - the project’s repository, where Postbox makes a push itself (server/push-on-request.mjs), is the bare repository,
 //   and the run stops before any agent turn if it can’t be set (setUpRemote). That push doesn’t read the guard: it
 //   runs git with none of the environment’s config and turns https and ssh back on. What it keeps is PATH, so its
@@ -23,8 +23,8 @@
 // - undo it: `env -u GIT_ALLOW_PROTOCOL git push …`, `GIT_ALLOW_PROTOCOL=https git push …`, or `env -i`, then
 //   `git -c protocol.allow=always …`. In Ask me or Accept edits that command comes to a card first; in Auto, the
 //   harness decides;
-// - skip git: a real gh called by its full path still reads the person’s sign-in from the keychain (`gh auth token`),
-//   since HOME and the keyring are theirs, and `curl` with that token reaches GitHub;
+// - skip git: with GH_TOKEN unset, a real gh called by its full path still reads the person’s sign-in from the keychain
+//   (`gh auth token`), since HOME and the keyring are theirs, and `curl` with that token reaches GitHub;
 // - a file push can reach a bare repository outside the run’s folder, and nothing refuses `--host` for this seed: the
 //   seed is for local runs only.
 // Postbox’s temp folders (pb-*) go in the run’s tmp folder, so the end of the run can say none is left.
@@ -34,13 +34,24 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, wr
 import { join, resolve, sep } from 'node:path';
 import { js } from '../browser.mjs';
 
-/** What every git in the run reads: no transport but local paths. */
+/**
+ * What every git in the run reads: no transport but local paths, no credential helper and no askpass. An empty helper
+ * empties the list the person’s config built, osxkeychain on a Mac, and an empty askPass sets aside a global
+ * core.askPass, so `git credential fill` hands out nothing of theirs. noGithubEnv blanks GIT_ASKPASS and SSH_ASKPASS too.
+ */
 export const GUARD = [
   ['protocol.allow', 'never'],
   ['protocol.file.allow', 'always'],
+  ['credential.helper', ''],
+  ['core.askPass', ''],
 ];
 /** An https remote nothing listens on, refused at once: the preflight’s probe, and the tests’. */
 export const UNREACHABLE = 'https://127.0.0.1:9/uat/none.git';
+/**
+ * What the run’s GH_TOKEN holds: a token GitHub refuses. It has to be set, not empty: gh reads an empty one as none and
+ * falls back on the keychain, so `gh auth token` hands out the person’s real token with GH_CONFIG_DIR an empty folder.
+ */
+export const NO_TOKEN = 'uat-run-has-no-github-token';
 
 /** The run’s folders and files for the remote. @param {string} dir  the run’s folder */
 export const remotePaths = (dir) => ({
@@ -99,7 +110,7 @@ export function gitRemoteEnv(scenario, dir) {
     GIT_CONFIG_NOSYSTEM: '1',
     PATH: `${p.bin}:${process.env.PATH ?? ''}`,
     GH_CONFIG_DIR: p.ghConfig,
-    GH_TOKEN: '',
+    GH_TOKEN: NO_TOKEN,
     GITHUB_TOKEN: '',
     // No ssh agent, so even Postbox’s own push, which keeps SSH_AUTH_SOCK, has no key for an ssh remote. A git-remote
     // run is local only: Postbox reaches a host over ssh.
@@ -138,18 +149,9 @@ const agentEnvFile = (p) =>
   [
     `export PATH=${quoted(p.bin)}:"$PATH"`,
     `export GH_CONFIG_DIR=${quoted(p.ghConfig)} GIT_CONFIG_GLOBAL=${quoted(p.gitconfig)} GIT_CONFIG_NOSYSTEM=1`,
-    "export GH_TOKEN='' GITHUB_TOKEN='' SSH_AUTH_SOCK='' GIT_ALLOW_PROTOCOL=file",
+    `export GH_TOKEN=${NO_TOKEN} GITHUB_TOKEN='' SSH_AUTH_SOCK='' GIT_ALLOW_PROTOCOL=file`,
     '',
   ].join('\n');
-
-/**
- * A `- seed: git-remote` run’s guard, checked before Postbox starts on env, the environment the runner gives Postbox
- * (process.env and runEnv), which the agents inherit. Nothing for any other seed.
- * @param {{ seed: string|null }} scenario @param {string} workspace @param {string} dir @param {Record<string, string|undefined>} env
- */
-export function preflightRun(scenario, workspace, dir, env) {
-  if (scenario.seed === 'git-remote') preflightRemote(workspace, dir, env);
-}
 
 /**
  * The guard, checked under the run’s own environment: origin is the run’s remote, git there is

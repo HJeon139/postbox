@@ -77,3 +77,19 @@ test('check: one that runs past SIGN_IN_CHECK_MS is killed and fails; without a 
     s.done();
   }
 });
+
+test('#1066 the sign-in check runs with the login shell’s PATH first, so a program only it puts on PATH is found', async () => {
+  const sp = checkSpawn();
+  const s = setup({ spawn: sp.spawn, probeLoginPath: async () => ({ ok: true, entries: ['/opt/tools/bin', '/usr/bin'], ms: 5 }) });
+  try {
+    const c = await hello(s, { settings: { signInCheck: ['mwinit', '-s'] } });
+    c.send('check');
+    await until(() => sp.calls.length === 1, 'the check to start');
+    const [call] = sp.calls;
+    assert.equal(call.options.env.PATH.split(':')[0], '/opt/tools/bin', call.options.env.PATH);
+    call.child.emit('exit', 0, null);
+    assert.equal((await c.msgs.next('checked')).ok, true);
+  } finally {
+    s.done();
+  }
+});

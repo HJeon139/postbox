@@ -256,7 +256,11 @@ export const TOOL_DEFS = [
       properties: {
         id: { type: 'string', description: 'The dataset’s id: letters, digits, - and _, such as scifact-abstracts.' },
         path: { type: 'string', description: 'The file, relative to the project’s .postbox/datasets/.' },
-        title: { type: 'string' },
+        title: {
+          type: 'string',
+          description:
+            'The title the corpus lists it under; without one, its id. Plain text, cut past 200 characters, with no control characters or ones that reorder text or show as nothing.',
+        },
       },
       required: ['id', 'path'],
     },

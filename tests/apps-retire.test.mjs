@@ -134,3 +134,18 @@ test('#193: retire_app is one of the MCP tools, with a reason it requires', () =
   assert.deepEqual(def.inputSchema.required, ['id', 'reason']);
   assert.match(def.description, /rather than updating it to a version that only points elsewhere/);
 });
+
+test('#895: retire_app’s refusal for an app that isn’t yours cuts a 20,000-character id, and still says so', () => {
+  const { tools } = setup();
+  const r = tools.retire_app({ id: 'a'.repeat(20_000), reason: 'Done.' });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /^There’s no app with id a{40} from you\.$/);
+});
+
+test('#895: retire_app’s refusal for a replacedBy that isn’t shown cuts a 20,000-character id, and still says so', () => {
+  const { tools } = setup();
+  tools.show_app({ id: 'lab', title: 'Practice lab', code: '<p>1</p>' });
+  const r = tools.retire_app({ id: 'lab', reason: 'Done.', replacedBy: 'a'.repeat(20_000) });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /^There’s no other app or block a{40} in this conversation\. Name one shown here, or leave out replacedBy\.$/);
+});

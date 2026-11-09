@@ -67,7 +67,7 @@ const backSteps = (page) =>
 /**
  * How many frames scrollY went back up by more than SETTLES and left the view short of the end. A clamp to an end
  * that came up, as items near it drew shorter, steps scrollY back with the view still at the end, so what’s on screen
- * holds (CI on ebe964fd: 56 px, the gap 0 before and after).
+ * holds (on CI: 56 px, the gap 0 before and after).
  */
 const leftEnd = (page) =>
   page.evaluate((settles) => {
@@ -78,9 +78,9 @@ const gap = (page) => page.evaluate(() => document.documentElement.scrollHeight 
 
 /**
  * Clicks Jump to latest, and returns a wait for its scrollend, heard after the transcript’s own, so the view has taken
- * in how it ended. The listener goes on before the click, so the first scrollend after it is the jump’s (critic’s read
- * of #959). Mac Firefox, events late, held still for two frames between the jump’s last scroll and its scrollend, and a
- * case read the mode before the view did (researcher’s trace on fb5edc6d, 2 of 40). Only for a jump your input stops:
+ * in how it ended. The listener goes on before the click, so the first scrollend after it is the jump’s
+ * (#712a). Mac Firefox, events late, held still for two frames between the jump’s last scroll and its scrollend, and a
+ * case read the mode before the view did (a Mac trace, 2 of 40). Only for a jump your input stops:
  * one that lands at the end is ended by landed()’s instant scroll, which fires no scrollend (endsFollowing, below).
  */
 async function jump(page) {
@@ -189,14 +189,16 @@ test('a wheel up during the jump is you reading: the view stays where you turned
   if (!stopped) return;
   expect.soft(v.mode, 'it reads where you turned the wheel').toBe('reading');
   // Chromium ends the jump on the turn, well short of the end. Firefox can carry the view on toward it first (180 px
-  // short on a Mac, researcher’s check on 49a5bf91), so there it’s enough that the view reads short of the end.
+  // short on a Mac), so there it’s enough that the view reads short of the end.
   const short = browserName === 'firefox' ? 2 : 400;
   expect.soft(v.gap, `it isn’t at the end: more than ${short} px short of it`).toBeGreaterThan(short);
 });
 
 // A click or a key that can’t scroll the page doesn’t stop the jump, so it isn’t you reading: starting a reply while
 // the jump runs leaves it to go the rest of the way and follow (app/js/view-smooth.mjs). Two cases, so a click and a
-// key are told apart: a click into the composer, and typing into it after a focus that no input made.
+// key are told apart: a click into the composer, and typing into it after a focus that no input made. The items are
+// taller than their estimates, so the page grows under the jump and its glide ends short of the end, and only
+// smoothEnded() takes it the rest of the way (#1069): at their usual size the glide reaches the end on its own here.
 for (const [how, act] of /** @type {const} */ ([
   ['a click into the composer', (page) => page.locator('#composer-input').click()],
   [
@@ -208,6 +210,9 @@ for (const [how, act] of /** @type {const} */ ([
   ],
 ]))
   test(`${how} during the jump isn’t you reading: it still ends following at the end`, async ({ page }) => {
+    await page.addInitScript((rule) => {
+      addEventListener('DOMContentLoaded', () => document.head.append(Object.assign(document.createElement('style'), { textContent: rule })));
+    }, '.transcript .item { line-height: 2 !important }');
     await readingAtTop(page, `Smooth jump, then ${how}`);
     await jump(page);
     await expect.poll(() => page.evaluate(() => scrollY), { message: 'the jump to be on its way' }).toBeGreaterThan(2000);
@@ -263,7 +268,7 @@ test('a jump to an item during the jump to the end lands on that item, reading',
   expect.soft(held, 'the item is let go once painted, not left drawn').toBe('');
 });
 
-// critic on #959: CI and Mac Firefox failed the wheel case now and then once landed() came in. landed() ended the jump
+// #712a: CI and Mac Firefox failed the wheel case now and then once landed() came in. landed() ended the jump
 // at the end even when a wheel turn of yours had come during it, cutting your turn short. A wheel event is heard as
 // yours here, the same way whenSmoothEnds hears one, and landed() mustn’t write its jump to the end after it.
 test('a wheel turn heard during the jump to the end keeps landed() from ending it there', async ({ page, browserName }) => {

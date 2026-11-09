@@ -76,6 +76,22 @@ test('a short name set in the host’s settings becomes its badge, and clearing 
   await expect(badge(page)).toHaveText('buildfar');
 });
 
+test('#1052 Save with nothing changed keeps a short name stored before the check refused it, with no error', async ({ page }) => {
+  // As an earlier Postbox kept it: an emoji with VS16, which a short name now refuses.
+  started.app.store.emit('host', { ...started.app.store.state.hosts[host.id], short: '🖥️' });
+  await page.goto(`${started.app.origin}/#/t/${conv.id}`);
+  await synced(page, started.app);
+  await page.evaluate(() => import('/app/js/sheets.mjs').then((m) => m.openSettings('hosts')));
+  await page.locator(`#ho-${host.id}-edit`).click();
+  await expect(page.getByLabel('Short name')).toHaveValue('🖥️');
+  await page.locator(`#ho-${host.id}-save`).click();
+  await expect(page.getByText(`Saved ${DEST}`), 'it saves').toBeVisible();
+  await expect(page.locator(`#ho-${host.id}-save`), 'and the editor closes').toHaveCount(0);
+  expect(started.app.store.state.hosts[host.id].short, 'the name is kept').toBe('🖥️');
+  const { short: _old, ...rest } = started.app.store.state.hosts[host.id];
+  started.app.store.emit('host', rest);
+});
+
 // Last, since it takes the host away.
 test('an agent whose host was removed shows “removed”, not a cut of the words that stand for it', async ({ page }) => {
   await page.goto(`${started.app.origin}/#/t/${conv.id}`);

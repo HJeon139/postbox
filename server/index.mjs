@@ -34,16 +34,16 @@ import { settleInterrupted } from './restart-sweep.mjs';
 import { SAME_ORIGIN_ONLY, servedReviewFile } from './review-files.mjs';
 import { patchThread } from './room-chain-limit.mjs';
 import { httpError, Runtime } from './runtime.mjs';
-import { mermaidPage, sandboxPage } from './sandbox.mjs';
+import { sandboxRoute } from './sandbox-routes.mjs';
 import { seed, toBoilerplate } from './seed.mjs';
-import { decodePath, file, mediaPath, servedFile, TYPES } from './served-files.mjs';
+import { decodePath, file, mediaPath, servedFile } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
 import { setupRoute } from './setup-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
 import { watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
-import { uploadName } from './upload-name.mjs';
+import { storedName, uploadName } from './upload-name.mjs';
 import { startViewApp } from './view-app/view-app.mjs';
 import { viewOf } from './view-app/view-of.mjs';
 
@@ -141,7 +141,7 @@ export async function start({
   // reconnect when this computer wakes (#120).
   const stopWake = startHosts(rt, hosts, wake);
   for (const f of Object.values(store.state.files))
-    if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
+    if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: storedName(f.name), author: 'Your file', year: null });
   if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
   // Datasets agents loaded (#47) come back from their projects’ .postbox/datasets/.
   await rt.reloadDatasets();
@@ -248,31 +248,10 @@ export async function start({
         return file(res, await servedFile(dir, path.slice(prefix.length)), prefix === '/kit/' ? { 'access-control-allow-origin': '*' } : {}, req);
     }
 
-    // Sandbox frames: agent apps and Mermaid diagrams. Each is its own page with a strict policy and,
-    // because the iframe is sandboxed without allow-same-origin, an opaque origin.
+    // Sandbox frames: agent apps and Mermaid diagrams (server/sandbox-routes.mjs).
+    const sandbox = sandboxRoute(store, origin, `http://${host}`, path, url);
+    if (sandbox) return raw(res, 200, sandbox.html, sandbox.headers);
     let m;
-    if ((m = path.match(/^\/sandbox\/app\/([^/]+)\/(\d+)$/))) {
-      const app = store.state.apps[decodePath(m[1])];
-      const v = app?.versions[+m[2] - 1];
-      if (!v) throw httpError(404, 'That app version doesn’t exist.');
-      const page = sandboxPage({
-        origin,
-        app,
-        version: v,
-        theme: url.searchParams.get('theme') === 'light' ? 'light' : 'dark',
-        check: url.searchParams.has('check'),
-      });
-      return raw(res, 200, page.html, {
-        'content-type': TYPES['.html'],
-        'content-security-policy': page.csp,
-        'cache-control': 'no-store',
-        'x-content-type-options': 'nosniff',
-      });
-    }
-    if (path === '/sandbox/mermaid') {
-      const page = mermaidPage({ origin, theme: url.searchParams.get('theme') === 'light' ? 'light' : 'dark' });
-      return raw(res, 200, page.html, { 'content-type': TYPES['.html'], 'content-security-policy': page.csp, 'cache-control': 'no-store' });
-    }
 
     if (path === '/mcp') {
       if (req.method !== 'POST') return raw(res, 405, 'Use POST for MCP requests.', { allow: 'POST' });
@@ -417,7 +396,7 @@ export async function start({
       const f = store.state.files[body.fileId];
       if (!f) throw httpError(404, 'That file doesn’t exist.');
       if (!/^text\/|\.txt$|\.md$/i.test(f.type + ' ' + f.name)) throw httpError(422, 'Only plain-text and Markdown files can be added to the corpus for now.');
-      corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
+      corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: storedName(f.name), author: 'Your file', year: null });
       corpus.reindex();
       store.emit('file', { ...f, inCorpus: true });
       return send(res, 200, { ok: true, corpus: corpus.stats() });

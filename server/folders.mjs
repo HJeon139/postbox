@@ -1,8 +1,25 @@
 // A project’s folder as the folder picker lists it (GET /api/projects/:id/files), moved from server/index.mjs’s start.
+// A file’s name is the person’s, as it is on disk, so it isn’t refused; the picker shows it as `shown`, with each
+// character that would hide or reorder it marked, and attaches it by its real `path` (#1052).
 
 import { readdir, realpath, stat } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
 import { httpError } from './helpers.mjs';
+import { hidesName } from './upload-name.mjs';
+
+/**
+ * A name as the picker shows it: each character that would hide or reorder it (hidesName, server/upload-name.mjs: a
+ * control character, a lone surrogate, or one that shows as nothing or reorders text) is the replacement mark, as the
+ * permissions panel marks a hook’s text (server/permission-hooks.mjs). ZWJ, ZWNJ and VS16 show, as in a display name,
+ * so ❤️.txt and 👩‍💻.txt show whole. @param {string} name
+ */
+export const markedName = (name) => Array.from(name, (c) => (hidesName(c) ? '\uFFFD' : c)).join('');
+
+/**
+ * The characters markedName marks in a name, once each, as U+XXXX: the picker’s title for its row says what each
+ * mark stands for. @param {string} name
+ */
+const hiddenIn = (name) => [...new Set(Array.from(name).filter(hidesName))].map((c) => `U+${c.codePointAt(0)?.toString(16).toUpperCase().padStart(4, '0')}`);
 
 /**
  * The entries of a folder in a project, sub relative to its root: never outside it, even through symbolic links.
@@ -23,8 +40,18 @@ export async function listFolder(project, sub) {
     // A symbolic link that leads out of the folder is marked, so the picker says so instead of opening it (#28).
     const to = e.isSymbolicLink() ? await realpath(full).catch(() => null) : null;
     const outside = !!to && to !== root && !to.startsWith(root + sep);
-    list.push({ name: e.name, path: relative(root, full), dir: s.isDirectory(), size: s.size, ...(outside ? { outside } : {}) });
+    const hidden = hiddenIn(e.name);
+    list.push({
+      name: e.name,
+      shown: markedName(e.name),
+      ...(hidden.length ? { hidden } : {}),
+      path: relative(root, full),
+      dir: s.isDirectory(),
+      size: s.size,
+      ...(outside ? { outside } : {}),
+    });
   }
   list.sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1));
-  return { root: project.folder, path: relative(root, target), entries: list };
+  const path = relative(root, target);
+  return { root: project.folder, path, shownPath: markedName(path), entries: list };
 }

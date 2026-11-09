@@ -52,7 +52,7 @@ const PUBLISHED = {
 /** Direct reads of state.items, state.work or state.apps: published reads. */
 const DIRECT = {
   'apps.mjs': ['appCheck', 'appEvent', 'appState', 'appQuery', 'appFile', 'appOf'], // HTTP answers to the page about an app, and appOf for read_message and the host snapshot (#516's S1): a read tool and what it sends
-  'index.mjs': ['start', 'route'], // /api/state and startup
+  'index.mjs': ['start'], // /api/state and startup
   'item-lines.mjs': ['describeItem', 'describeItem'], // a read tool’s app line
   'ledger-git.mjs': ['gitState'], // the Work view’s git state: an answer to the page
   'ledger-answers.mjs': ['published'], // the Work view’s diff and output, answers to the page
@@ -69,6 +69,7 @@ const DIRECT = {
   'room-delivery.mjs': ['itemsOf'], // the same
   'room-unverified.mjs': ['uncheckedThreads'], // the same
   'runtime.mjs': ['expireStaleCommands'], // at startup
+  'sandbox-routes.mjs': ['sandboxRoute'], // an app version’s sandbox page: an HTTP answer to the page
   'telemetry-record.mjs': ['blockRow', 'workOf'], // a run’s record, after it
   'telemetry-report.mjs': ['liveFacts', 'liveFacts'], // the same
   'tool-ask.mjs': ['settleToolAsks'], // only the thread ids; each thread is read through store.pending
@@ -87,12 +88,14 @@ const PENDING = {
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
   'blocks.mjs': ['shownBy'], // update_block of a block the turn just showed
+  'catch-up.mjs': ['moveMarkers'], // the conversation of a topic an item moved in, maybe opened behind a held commit, whose sessions' markers move (#1041)
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
   'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
   // The queue a drain takes from and the queued messages a deleted session's release posts: a wake or a message
-  // queued behind a held commit is in them (#796).
-  'message-queue.mjs': ['releaseQueued', 'drainQueue', 'takePending'],
+  // queued behind a held commit is in them (#796). Send now aims at an entry the person sees, but a turn ending behind
+  // a held commit may have drained it already, and sending it again would deliver it twice (#1007).
+  'message-queue.mjs': ['sendQueuedNow', 'releaseQueued', 'drainQueue', 'takePending'],
   'permission-cards.mjs': ['recordDenial'], // the same refused call, once
   'permission-expiry.mjs': ['tellExpired'], // the card a turn’s end just expired, told about once (#721)
   'permission-prompt.mjs': ['permission'], // the card the call waits on
@@ -114,8 +117,14 @@ const PENDING = {
     'endTurn',
     'endTurn',
     'endTurn',
+    // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
+    'stop',
     'recordStopped',
     'turnExited',
+    // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).
+    'endJob',
+    'endJob',
+    'endJob',
     'runningProgress',
     'setJobStep',
     'settleJobs',
@@ -151,7 +160,7 @@ const PENDING = {
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
   'topic-open.mjs': ['startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'], // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637)
-  'wake-cards.mjs': ['declinedAdd', 'openCard'], // a declined add, so a mention asks no more (#693); another wake’s held hop card, so a second isn’t made
+  'wake-cards.mjs': ['lastAddAnswer', 'openCard'], // a declined add, so a mention asks no more (#693), and its lift by the person’s add (#789); another wake’s held hop card, so a second isn’t made
   'write-intent.mjs': ['stillOpen'], // the turn’s own lines, and the person’s held Stop on one
 };
 

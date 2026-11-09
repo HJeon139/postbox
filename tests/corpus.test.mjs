@@ -9,6 +9,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Corpus, parseDataset } from '../server/corpus.mjs';
 import { hostTool, Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { FINE, JOINED, SHOWN_HIDDEN } from './hidden-chars-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const BOOK = `CHAPTER I\n\n${'The whale swam past the ship in the morning light, and the crew watched it go. '.repeat(8)}\n\nCHAPTER II\n\n${'Another day at sea, with no whale. '.repeat(12)}\n\nCHAPTER III\n\n${'The end of the voyage came at last, and the whale was not seen again. '.repeat(8)}`;
@@ -142,6 +143,61 @@ test('#351: add_dataset refuses a .postbox or datasets folder that links out of 
   }
 });
 
+const TITLE_ERROR =
+  'A dataset’s title can’t hold control characters, characters that reorder text or show as nothing (such as U+202E or U+200B), or half of a surrogate pair. Call add_dataset again with a title without them.';
+
+test('#1052: add_dataset refuses a title that hides or reorders text, before it loads anything', async () => {
+  const { dsDir, store, rt, t, tools } = await setup();
+  await writeFile(join(dsDir, 'x.jsonl'), jsonl([{ text: 'A record.' }]));
+  const before = store.items(t.id).length;
+  const results = [];
+  for (const [what, c] of Object.entries(SHOWN_HIDDEN)) results.push([what, await tools.add_dataset({ id: 'x', path: 'x.jsonl', title: `report${c}fdp` })]);
+  assert.deepEqual(
+    results,
+    Object.keys(SHOWN_HIDDEN).map((what) => [what, { ok: false, message: TITLE_ERROR }]),
+  );
+  assert.deepEqual(Object.keys(store.state.datasets), [], 'nothing was kept');
+  assert.deepEqual(
+    rt.corpus.stats().books.map((b) => b.id),
+    ['moby'],
+    'nothing was loaded',
+  );
+  assert.equal(store.items(t.id).length, before, 'no line in the conversation');
+});
+
+test('#1052: a dataset title of accents, CJK or punctuation is kept as it is', async () => {
+  const { dsDir, store, tools } = await setup();
+  await writeFile(join(dsDir, 'x.jsonl'), jsonl([{ text: 'A record.' }]));
+  for (const title of FINE) {
+    const r = await tools.add_dataset({ id: 'x', path: 'x.jsonl', title });
+    assert.equal(r.ok, true, r.message);
+    assert.equal(store.state.datasets.x.title, title);
+  }
+});
+
+test('#1052: a dataset title with ZWJ, ZWNJ or VS16 is kept as it is, as a display name keeps it', async () => {
+  const { dsDir, store, tools } = await setup();
+  await writeFile(join(dsDir, 'x.jsonl'), jsonl([{ text: 'A record.' }]));
+  const kept = [];
+  for (const [what, title] of Object.entries(JOINED)) {
+    const r = await tools.add_dataset({ id: 'x', path: 'x.jsonl', title });
+    kept.push([what, r.ok, store.state.datasets.x?.title]);
+  }
+  assert.deepEqual(
+    kept,
+    Object.entries(JOINED).map(([what, title]) => [what, true, title]),
+  );
+});
+
+test('#1052: a long dataset title is cut before a character, never inside its surrogate pair', async () => {
+  const { dsDir, store, tools } = await setup();
+  await writeFile(join(dsDir, 'x.jsonl'), jsonl([{ text: 'A record.' }]));
+  // The 199th and 200th UTF-16 units are one emoji’s pair: the cut keeps 199 units, so it would end in half of it.
+  const r = await tools.add_dataset({ id: 'x', path: 'x.jsonl', title: `${'a'.repeat(198)}\u{1F600}${'b'.repeat(10)}` });
+  assert.equal(r.ok, true, r.message);
+  assert.equal(store.state.datasets.x.title, `${'a'.repeat(198)}…`);
+});
+
 test('#47: a project with no folder has nowhere to load from, and says so', async () => {
   const { rt, store, tools } = await setup();
   store.emit('project', { ...store.state.projects.p1, folder: null });
@@ -166,6 +222,53 @@ test('#47: datasets are loaded again after a restart, from where they were', asy
   assert.equal(await rt.reloadDatasets(), 1);
   assert.equal(corpus.read('claims:c1').text, 'Vitamin D reduces fractures.');
   assert.equal(corpus.search('vitamin', { books: ['claims'] }).length, 1);
+});
+
+test('#1052: a dataset title kept before titles were checked, which the check refuses, is the dataset’s id after a restart', async () => {
+  const first = await setup();
+  await writeFile(join(first.dsDir, 'claims.jsonl'), jsonl([{ id: 'c1', text: 'Vitamin D reduces fractures.' }]));
+  await writeFile(join(first.dsDir, 'notes.jsonl'), jsonl([{ id: 'n1', text: 'A note.' }]));
+  assert.equal((await first.tools.add_dataset({ id: 'claims', path: 'claims.jsonl' })).ok, true);
+  assert.equal((await first.tools.add_dataset({ id: 'notes', path: 'notes.jsonl', title: 'Field notes' })).ok, true);
+  // As an older Postbox kept it, with a right-to-left override in its title.
+  first.store.emit('dataset', { ...first.store.state.datasets.claims, title: 'fdp.\u202Etxt' });
+  const corpus = new Corpus();
+  const rt = new Runtime({
+    store: first.store,
+    adapters: new AdapterRegistry().register({ name: 'mock', deliver: async () => {} }),
+    corpus,
+    config: { origin: 'http://127.0.0.1:1', imageOrigins: [] },
+  });
+  assert.equal(await rt.reloadDatasets(), 2);
+  assert.deepEqual(
+    corpus.stats().books.map((b) => [b.id, b.title]),
+    [
+      ['claims', 'claims'],
+      ['notes', 'Field notes'],
+    ],
+  );
+});
+
+test('#1052: a dataset title kept with ZWJ, ZWNJ or VS16 reloads with its title after a restart', async () => {
+  const first = await setup();
+  const ids = Object.keys(JOINED).map((_, i) => `d${i}`);
+  for (const [i, title] of Object.values(JOINED).entries()) {
+    await writeFile(join(first.dsDir, `${ids[i]}.jsonl`), jsonl([{ id: 'r', text: 'A record.' }]));
+    // As a Postbox before #1052 kept it, unchecked.
+    first.store.emit('dataset', { id: ids[i], projectId: 'p1', path: `${ids[i]}.jsonl`, title, author: '@librarian', records: 1 });
+  }
+  const corpus = new Corpus();
+  const rt = new Runtime({
+    store: first.store,
+    adapters: new AdapterRegistry().register({ name: 'mock', deliver: async () => {} }),
+    corpus,
+    config: { origin: 'http://127.0.0.1:1', imageOrigins: [] },
+  });
+  assert.equal(await rt.reloadDatasets(), ids.length);
+  assert.deepEqual(
+    corpus.stats().books.map((b) => [b.id, b.title]),
+    ids.map((id, i) => [id, Object.values(JOINED)[i]]),
+  );
 });
 
 test('#351: corpus_search returns 1 to 50 results whatever k says, and reads at most 50 book ids', async () => {

@@ -15,7 +15,7 @@ test('a commit that adds a file named after an address fails, and its log holds 
   const sha = await commit(dir, `${address}.txt`, 'nothing private\n', 'add a note');
   const { status, err } = scan(dir, 'main..HEAD');
   assert.equal(status, 1);
-  assert.match(err, new RegExp(`^${sha} a file’s name: email in the file name$`, 'm'));
+  assert.match(err, new RegExp(`^${sha} file 1 of git show --name-only: email in the file name$`, 'm'));
   for (const part of ['jdoe', 'corp']) assert.ok(!err.includes(part), `the log holds “${part}”`);
 });
 
@@ -26,7 +26,7 @@ test('a file named after an address that holds private text too prints no part o
   const { status, err } = scan(dir, 'main..HEAD');
   assert.equal(status, 1);
   const findings = err.split('\n').filter((line) => line.startsWith(sha));
-  const where = `${sha} a file’s name`;
+  const where = `${sha} file 1 of git show --name-only`;
   assert.deepEqual(findings, [`${where}: email in the file name`, `${where}: home path at line 2`, `${where}: email at line 1`]);
   for (const part of ['jdoe', 'corp', 'alice', 'Users', 'n-']) assert.ok(!err.includes(part), `the log holds “${part}”`);
 });
@@ -37,7 +37,7 @@ test('a commit that adds an empty file named after an address fails, though it a
   const sha = await commit(dir, `${address}.txt`, '', 'add an empty note');
   const { status, err } = scan(dir, 'main..HEAD');
   assert.equal(status, 1, err);
-  assert.match(err, new RegExp(`^${sha} a file’s name: email in the file name$`, 'm'));
+  assert.match(err, new RegExp(`^${sha} file 1 of git show --name-only: email in the file name$`, 'm'));
   for (const part of ['jdoe', 'corp']) assert.ok(!err.includes(part), `the log holds “${part}”`);
 });
 
@@ -50,7 +50,7 @@ test('a rename to a name that holds a home slug fails, though it changes no line
   const sha = git(dir, 'rev-parse', '--short=7', 'HEAD');
   const { status, err } = scan(dir, 'main..HEAD');
   assert.equal(status, 1, err);
-  assert.match(err, new RegExp(`^${sha} a file’s name: home path in the file name$`, 'm'));
+  assert.match(err, new RegExp(`^${sha} file 1 of git show --name-only: home path in the file name$`, 'm'));
   for (const part of ['alice', 'Users']) assert.ok(!err.includes(part), `the log holds “${part}”`);
 });
 

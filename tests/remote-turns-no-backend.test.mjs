@@ -32,7 +32,7 @@ test('#965 a turn given up because its backend isn’t registered is marked noBa
   assert.equal(moved.r.se().remoteTurn.resume?.noBackend, undefined, 'given up because the agent moved, with its backend here');
 });
 
-// The integrator’s case on #1050: the mark says the missing backend is all that holds the turn, since the hint then
+// #965: the mark says the missing backend is all that holds the turn, since the hint then
 // promises it resumes on its own. One that may still run there waits for the person (#872), and a moved agent’s isn’t
 // resumed on its own either, so neither is marked, though its backend is missing too.
 test('#965 a turn that may still run on the host, or whose agent moved, isn’t marked noBackend, though its backend is missing', async () => {

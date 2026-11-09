@@ -1,11 +1,11 @@
-// The main pane’s size changing while you read near the end (#712a, critic’s P2 on #959). Its items off screen are
+// The main pane’s size changing while you read near the end (#712a). Its items off screen are
 // skipped, so after a change the items that come into view draw from their estimates over the frames after. Where the
 // change clamps the view to the end (the window taller than the gap), the transcript’s own hold of your place through
 // those draws moved the view down to the end, and onScroll took that for you reaching it: the view followed, then took
 // a new anchor. Narrowing and widening, with Work beside or the window, and growing taller and back: the view keeps
 // reading, at its place: the item it reads at stays where it was. The gap to the end is recorded too, but isn’t the
 // place: on a Mac the items around the view draw at heights other than x86’s and their estimates, and moved it 12 px in
-// Chromium and 78 px in Firefox with the view still reading (researcher’s Mac check on d4f3ebdb).
+// Chromium and 78 px in Firefox with the view still reading (a Mac check).
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, startPostbox, synced, wholeRoom } from './postbox.mjs';
 import { bigRoom, still } from './view-skipped-fixture.mjs';
@@ -117,7 +117,7 @@ test('#712a read 400 px up, the window grows 500 px taller and back: the view ke
   await keptPlace(page, before, narrowed);
 });
 
-// researcher's Mac check on 3c294cef: with the window taller, the view flipped to following for a frame. There the
+// On a Mac (#712a): with the window taller, the view flipped to following for a frame. There the
 // view reads at the end it was clamped to, and the items around it draw at heights the Mac's fonts give them, so what's
 // below it shrinks and the browser clamps it again, up, at a box size already seen. Here the newest message shrinks by
 // 40 px to stand in for that: a clamp moves the view up, and reaching the end yourself moves it down.
@@ -143,7 +143,7 @@ test('#712a read 400 px up, the window taller, then what’s below shrinks: the 
   expect(narrowed.modes, 'taller, then the shrink: each frame reading').toEqual(['reading']);
   const after = await place(page);
   expect(after.mode, 'back at its height, still reading').toBe('reading');
-  // The shrink’s clamp isn’t your scroll either: the item read at comes back where it was (researcher’s Mac trace,
+  // The shrink’s clamp isn’t your scroll either: the item read at comes back where it was (a Mac trace,
   // where heard() took the clamp in and the item came back 12 px lower in Chromium, 77 px in Firefox).
   expect(after.anchor, 'the item it reads at is the same').toBe(before.anchor);
   const moved = Math.abs(/** @type {number} */ (after.at) - /** @type {number} */ (before.at));
