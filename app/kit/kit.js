@@ -58,6 +58,9 @@
       // Each listener runs in a microtask of its own, so one that throws stops no other, and its error reaches the
       // window’s error handler below with the line it happened on (#819).
       for (const fn of listeners.theme) queueMicrotask(() => fn(m.theme));
+    } else if (m.type === 'resize' && init.check) {
+      // The check’s stand-in for the resizes a live frame gets in its first second (#819); the frame keeps its width.
+      dispatchEvent(new Event('resize'));
     } else if (m.type === 'reply') {
       const p = pending.get(m.id);
       if (!p) return;
