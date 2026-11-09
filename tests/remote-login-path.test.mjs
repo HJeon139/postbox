@@ -100,6 +100,18 @@ async function startedRecord(s, over = {}) {
   return JSON.parse(readFileSync(s.p.turn('t1', TURN_FILES.start), 'utf8'));
 }
 
+test('#672: a turn’s PATH holds the folder of the Node the daemon runs on, after the login shell’s, when the shell has none', async () => {
+  const programs = structuredClone(PROGRAMS_FOUND);
+  programs.node = { path: '/x/node/22/bin/node', version: 'v22.12.0' };
+  const s = setup({ probeLoginPath: loginOk(['/login/bin']), findPrograms: async () => programs, env: { PATH: '/usr/bin:/bin' } });
+  try {
+    const record = await startedRecord(s);
+    assert.equal(record.env.PATH, '/login/bin:/x/node/22/bin:/usr/bin:/bin');
+  } finally {
+    s.done();
+  }
+});
+
 test('#672: a turn’s PATH is the login shell’s first, then the daemon’s, once each', async () => {
   const s = setup({ probeLoginPath: loginOk(['/login/bin', '/usr/bin']), env: { PATH: '/usr/bin:/bin' } });
   try {
