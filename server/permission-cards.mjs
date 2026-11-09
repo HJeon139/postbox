@@ -136,6 +136,8 @@ export function settlePermission(rt, itemId, status, message, answer = {}, patch
   rt.permissionWaits.delete(itemId);
   // A question (server/ask-question.mjs, #521) isn’t a card: its block stays asking, and its call hears why it ended.
   if (w.question) {
+    // No call waits on it now, so it isn’t what the running turn needs; once the turn ends it counts as an asking block.
+    releaseNeed(rt, rt.s.sessions[w.sessionId], itemId, 'tool');
     w.resolve({ message });
     return true;
   }

@@ -174,7 +174,8 @@ export class Runtime {
     this.configDir = claudeConfigDir !== undefined ? claudeConfigDir : this.home === homedir() ? process.env.CLAUDE_CONFIG_DIR || null : null;
     this.blobs = blobs ?? null;
     this.narrator = narrator ?? null;
-    this.permissionWaits = new Map(); // permission item id → { resolve, threadId, sessionId, timer }
+    // A permission card’s item id, or an AskUserQuestion block’s (`question`, server/ask-question.mjs) → its call’s wait.
+    this.permissionWaits = new Map(); // item id → { resolve, threadId, sessionId, timer, question? }
     this.mirrors = new Map(); // attached session id → { tail, timer, agentItem, steps }
     this.turns = new Map(); // sessionId → live turn
     // sessionId → a stopped turn whose process hasn’t exited yet, and what waits for it: { turn, held, silent } (#126)
