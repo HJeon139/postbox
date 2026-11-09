@@ -74,6 +74,7 @@ const DIRECT = {
   'tool-ask.mjs': ['settleToolAsks'], // only the thread ids; each thread is read through store.pending
   'view-app/view-app.mjs': ['viewApp'], // the app the agent named, to find its thread and version for the picture (#95)
   'waiting-on-you.mjs': ['waitingOnYou'], // shared with the page, which has only what was broadcast
+  'work-archive-read.mjs': ['summaryOf'], // an archived turn’s summary, for the page’s Work view: an HTTP answer (#305)
 };
 
 /** store.pending reads. */
@@ -171,6 +172,21 @@ const COMMITS = {
   'asset-orphans.mjs': ['sweepAssets'], // the released hashes a load deleted: assetReleases only (#516 S3)
   'assets.mjs': ['writeAsset'], // an asset version: assets, assetRooms and assetReleases only, none of items, work or apps (#516 S3)
 };
+
+/**
+ * The reads of an archived turn (#305; designs/305-archive-turns.md, “Held emits and the pending read”): the lookup
+ * helper and every caller. Each reads published, as what it reads leaves the process as an HTTP answer, so a caller
+ * whose result decides a write, such as the archive pass, has to be placed here with its reason.
+ */
+const ARCHIVE_READS = {
+  'ledger-answers.mjs': ['archivedEntry'], // the diff, output and restore of an entry the Work view shows
+  'work-archive-read.mjs': ['archived'], // the helper itself, which takes the published state from its caller
+  'work-archive-routes.mjs': ['workTurn'], // GET …/work/turns/:turnId, the Work view’s “Show details”
+};
+
+test('every read of an archived turn in server/ is placed: the lookup helper and the routes read published', () => {
+  placed(/\barchived\(/, ARCHIVE_READS, 'the archive reads');
+});
 
 test('every published read of items, work and apps in server/ is placed, by file and function', () => {
   placed(/\bstore\.(items|item)\(/, PUBLISHED, 'the published reads');
