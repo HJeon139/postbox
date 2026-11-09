@@ -84,7 +84,8 @@ test('#1074 a read card naming a second path outside a readable folder still ask
   const { home, ws, notes } = aHome();
   const args = { Path: join(notes, 'a.md'), SearchPath: join(home, '.ssh') };
   const card = decideAgyTool({ toolCall: { name: 'grep_search', args } }, { mode: 'ask', folders: [ws], cwd: ws, home });
-  const rt = { s: { sessions: { s1: { personaId: 'p1', readDirs: [notes] } } }, persona: () => ({ backend: 'antigravity-cli' }) };
+  const sessions = { s1: { personaId: 'p1', readDirs: [notes] } };
+  const rt = { s: { sessions }, store: { pending: { session: (id) => sessions[id] } }, persona: () => ({ backend: 'antigravity-cli' }) };
   assert.equal(inReadFolder(rt, 's1', { tool: card.toolName, input: card.input }), false, 'answered with no card');
   assert.equal(readFolderOffer({ ...agy, input: card.input, home }), null, 'an offer for one folder would allow both');
   assert.equal(inReadFolder(rt, 's1', { tool: 'Read', input: { file_path: join(notes, 'a.md') } }), true, 'one path there needs no card');

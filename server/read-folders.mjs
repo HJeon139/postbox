@@ -84,12 +84,13 @@ export function readFolderOffer({ backend, tool, input, hostId = null, home }) {
 
 /**
  * Whether a read card needs no asking, since its folder is in one the conversation saved as readable: by the session as
- * it is now, so a folder allowed earlier in the turn counts at once, where the hook’s list is the turn’s start (#338).
- * O(folders saved), at most MAX_READ_DIRS.
+ * it is now, so a folder allowed or removed earlier in the turn counts at once (#338, #1074). From the pending session:
+ * it decides an allow, so a removal still held behind a commit counts too (#796’s class). O(folders saved), at most
+ * MAX_READ_DIRS.
  * @param {any} rt @param {string} sessionId @param {{ tool: unknown, input?: any, hostPrompt?: { hostId: string } | null }} req
  */
 export function inReadFolder(rt, sessionId, { tool, input, hostPrompt = null }) {
-  const se = rt.s.sessions[sessionId];
+  const se = rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId];
   const backend = se ? rt.persona(se.personaId)?.backend : undefined;
   if (!se?.readDirs?.length || !answersRead({ backend, tool, hostId: hostPrompt?.hostId ?? null })) return false;
   // Where each read leads, so a link in a saved folder to ~/.ssh isn’t inside it. A saved folder passed the offer’s
