@@ -16,7 +16,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CARD_WAIT_MS } from '../permission-cards.mjs';
 import { autoAllows, inGit, personaAllows, personaOf, publishingCall } from './agy-auto.mjs';
-import { inside, leadsInto, PATH_FIELDS, pathArgs, realTarget } from './agy-paths.mjs';
+import { inside, leadsInto, PATH_FIELDS, pathArgs, readingsOf, realTarget } from './agy-paths.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
 export const HOOK_SCRIPT = fileURLToPath(import.meta.url);
@@ -72,8 +72,13 @@ export async function confirmAgyHook({ version, pluginDir, script = HOOK_SCRIPT,
  */
 export function isProtectedPath(rawPath, { cwd = process.cwd(), scriptPath = HOOK_SCRIPT, home = homedir() } = {}) {
   if (typeof rawPath !== 'string' || !rawPath.trim()) return true;
-  const abs = resolve(cwd, rawPath.trim()).toLowerCase();
-  const real = (realTarget(rawPath, cwd) ?? abs).toLowerCase();
+  return readingsOf(rawPath, cwd, home).some((at) => protectedAt(at, { scriptPath, home }));
+}
+
+/** Whether one absolute path, as written or where it leads, is one isProtectedPath protects. */
+function protectedAt(at, { scriptPath, home }) {
+  const abs = resolve(at).toLowerCase();
+  const real = (realTarget(at, '/') ?? abs).toLowerCase();
   const pluginRe = /(?:^|[\\/])\.agents(?:[\\/]plugins(?:[\\/]|$)|$)/;
   if (pluginRe.test(abs) || pluginRe.test(real)) return true;
   const realScript = (realTarget(scriptPath, '/') ?? resolve(scriptPath)).toLowerCase();
@@ -143,8 +148,8 @@ function decideWrite(name, args, { mode, roots, cwd, scriptPath, home }) {
   if (!paths.length || paths.some((p) => isProtectedPath(p, { cwd, scriptPath, home })))
     return { decision: 'deny', reason: 'Postbox doesn’t allow editing Antigravity’s plugin, hook or settings files.' };
   // In Auto, an edit in .git asks: its config and hooks could name a program the routine git commands would run.
-  const gitEdit = (/** @type {string} */ p) => mode === 'auto' && (inGit(resolve(cwd, p)) || inGit(realTarget(p, cwd)));
-  const asks = /** @type {string[]} */ (paths).find((p) => !leadsInto(p, roots, { cwd }) || gitEdit(p));
+  const gitEdit = (/** @type {string} */ p) => mode === 'auto' && readingsOf(p, cwd, home).some((at) => inGit(at) || inGit(realTarget(at, '/')));
+  const asks = /** @type {string[]} */ (paths).find((p) => !leadsInto(p, roots, { cwd, home }) || gitEdit(p));
   if (!asks && (mode === 'auto' || mode === 'acceptEdits')) return { decision: 'allow' };
   return { decision: 'ask', toolName: name.startsWith('write') ? 'Write' : 'Edit', input: { file_path: String(asks ?? paths[0]).trim() } };
 }
@@ -159,7 +164,7 @@ function decideRead(args, { roots, readFolders, cwd, home }) {
   const agyDirs = [join(home, '.gemini', 'antigravity-cli', 'mcp'), join(home, '.gemini', 'antigravity-cli', 'brain')].map((d) => realTarget(d, '/'));
   const readable = readFolders.map((f) => realTarget(f, cwd)).filter(Boolean);
   const dirs = /** @type {string[]} */ ([...roots, ...readable, ...agyDirs]);
-  const outside = /** @type {string[]} */ (paths).find((p) => !leadsInto(p, dirs, { cwd }));
+  const outside = /** @type {string[]} */ (paths).find((p) => !leadsInto(p, dirs, { cwd, home }));
   return outside === undefined ? { decision: 'allow' } : { decision: 'ask', toolName: 'Read', input: { file_path: outside.trim() } };
 }
 

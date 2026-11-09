@@ -41,10 +41,23 @@ export const PATH_FIELDS = Object.freeze(['Path', 'TargetFile', 'AbsolutePath', 
 export const pathArgs = (args) => PATH_FIELDS.map((k) => args?.[k]).filter((v) => v !== undefined && v !== null && !(typeof v === 'string' && !v.trim()));
 
 /**
- * Whether a path leads into one of the folders, by its real path.
- * @param {string} raw @param {string[]} dirs @param {{ cwd: string }} where
+ * The places a path may name, absolute but with its .. kept for realTarget: from cwd, and for one that starts with ~,
+ * from home too, since whether agy expands ~ is unproved (#1074). A call is allowed only when every one is, and
+ * refused when any is protected.
+ * @param {string} raw @param {string} cwd @param {string} home
  */
-export const leadsInto = (raw, dirs, { cwd }) => {
-  const real = realTarget(raw, cwd);
-  return dirs.some((d) => inside(real, d));
-};
+export function readingsOf(raw, cwd, home) {
+  const p = raw.trim();
+  const fromCwd = isAbsolute(p) ? p : `${cwd}${sep}${p}`;
+  return /^~(?:$|[\\/])/.test(p) ? [fromCwd, `${home}${p.slice(1)}`] : [fromCwd];
+}
+
+/**
+ * Whether a path leads into one of the folders, by its real path, every way it may be read (readingsOf).
+ * @param {string} raw @param {string[]} dirs @param {{ cwd: string, home: string }} where
+ */
+export const leadsInto = (raw, dirs, { cwd, home }) =>
+  readingsOf(raw, cwd, home).every((at) => {
+    const real = realTarget(at, '/');
+    return dirs.some((d) => inside(real, d));
+  });
