@@ -84,6 +84,15 @@ test('a token that isn’t an object is reported apart, and doesn’t fail the c
   assert.ok(lines.includes(`not a known object: ${NOT_AN_OBJECT}`), lines.join('\n'));
 });
 
+test('with --strict, a token that isn’t an object fails the check, as a never-pushed head from another clone would', async () => {
+  const file = join(tempDir('pb-cited-note-'), 'note.md');
+  await writeFile(file, `At ${cite(BASE)}, not ${NOT_AN_OBJECT}.`);
+  const lines = [];
+  const exit = citedCommits({ file }, { cwd: work, env, strict: true, log: (line) => lines.push(line) });
+  assert.equal(exit, EXIT.fail);
+  assert.equal(lines.at(-1), `cited-commits ${file} commits=1 reachable=1 unreachable=0 unknown=1 -> FAIL`);
+});
+
 test('a number with no letter a–f in it isn’t read as a cited commit at all', async () => {
   assert.deepEqual(citedTokens(`${NUMBER} 1234567 abc123 ${cite(BASE)} ${'a'.repeat(41)} ${cite(BASE)}`), [cite(BASE)]);
   const { exit, lines } = await onNote(`Its limit is ${NUMBER} bytes.`);
