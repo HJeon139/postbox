@@ -4,7 +4,7 @@
 // with the steps’ labels as text, so Find still finds them; its first open builds the list, and it stays built.
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, focusIs, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, focusIs, startPostbox } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -57,7 +57,14 @@ async function seeded(page, count = 3) {
   }
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await expect(page.locator(`.transcript[data-thread="${t.id}"] > [data-key]`)).toHaveCount(count, { timeout: 30_000 });
-  await synced(page, app);
+  // A big room’s last events can reach a slow CI runner after its items have drawn, past synced()’s 5 s (#1028).
+  const seq = app.store.state.seq;
+  await expect
+    .poll(() => page.evaluate(() => import('/app/js/client.mjs').then(({ client }) => client.seq)), {
+      message: `the page to hear event ${seq}`,
+      timeout: 30_000,
+    })
+    .toBeGreaterThanOrEqual(seq);
   const reply = page.locator(`.transcript[data-thread="${t.id}"] [data-key="${last}"]`);
   /** @param {Record<string, any>} step */
   const step = (step) => store.emit('item.patch', { threadId: t.id, id: last, activityStep: { state: 'done', ms: 50, ...step } });
