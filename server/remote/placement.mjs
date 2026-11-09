@@ -31,7 +31,7 @@ export function runsHere(rt, backend) {
 /** Why a backend can’t run on this computer, and what can. @param {any} rt @param {string} backend */
 export function notHere(rt, backend) {
   const elsewhere = registeredAdapter(rt, { backend })?.capabilities?.remote;
-  return `“${backend}” isn’t available on this computer. Available: ${localBackends(rt).join(', ')}.${elsewhere ? ' It can run on one of your hosts: choose one for this agent.' : ''} See README, “Run real agents”.`;
+  return `“${clipName(backend)}” isn’t available on this computer. Available: ${localBackends(rt).join(', ')}.${elsewhere ? ' It can run on one of your hosts: choose one for this agent.' : ''} See README, “Run real agents”.`;
 }
 
 /**
@@ -46,12 +46,13 @@ export function placement(rt, remote, backend) {
     throw httpError(422, 'Where an agent runs is null, for this computer, or { hostId } for one of your hosts.');
   const h = typeof r.hostId === 'string' && Object.hasOwn(rt.s.hosts ?? {}, r.hostId) ? rt.s.hosts[r.hostId] : null;
   if (!h) throw httpError(422, 'That host doesn’t exist; it may have been removed. Pick one of your hosts, or run the agent on this computer.');
-  if (!rt.adapters.names().includes(backend)) throw httpError(422, `“${backend}” isn’t available in this Postbox, so it can’t run on ${h.name} either.`);
+  if (!rt.adapters.names().includes(backend))
+    throw httpError(422, `“${clipName(backend)}” isn’t available in this Postbox, so it can’t run on ${h.name} either.`);
   if (!rt.adapters.get(backend).capabilities?.remote) {
     const can = rt.adapters.names().filter((n) => rt.adapters.get(n).capabilities?.remote);
     throw httpError(
       422,
-      `“${backend}” runs only on this computer, so this agent can’t run on ${h.name}. ${can.length ? `Backends here that can run on a host: ${can.join(', ')}.` : 'Claude Code, Kiro CLI and Codex can run on a host, and none of them is on this computer.'}`,
+      `“${clipName(backend)}” runs only on this computer, so this agent can’t run on ${h.name}. ${can.length ? `Backends here that can run on a host: ${can.join(', ')}.` : 'Claude Code, Kiro CLI and Codex can run on a host, and none of them is on this computer.'}`,
     );
   }
   checkHarness(rt, h, backend);
