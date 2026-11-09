@@ -920,7 +920,8 @@ html.store-down .sidepanel { padding-bottom: 44px; }
   .ringstrip a[aria-current="page"] { border-color: var(--line); background: var(--panel); color: var(--text); }
   .ringstrip a .badge { position: absolute; top: 0; right: 6px; }
   .ringstrip a span { max-width: 64px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .transcript { padding: 16px 12px 8px; }
+  /* The bottom keeps the room held below the newest message while following, as the wide rule does (#712a). */
+  .transcript { padding: 16px 12px calc(8px + var(--held, 0px)); }
   .tbl td { padding: 7px 8px; }
   .tbl th button { padding: 8px; }
   .tbl td.act { padding: 4px; }
