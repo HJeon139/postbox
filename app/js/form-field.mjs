@@ -1,11 +1,12 @@
 // One field of a form block: its label, its control, its help and its error. The form (blocks.mjs) keeps the
 // draft and the submit; a field reads its value from the draft, or from the answer once it’s sent.
 
+import { numberRange } from '/shared/number-range.mjs';
 import { h, icon } from './dom.mjs';
 
 /**
  * @typedef {{ id: string, label: string, kind: string, required?: boolean, help?: string, placeholder?: string,
- *   maxLength?: number, options?: { id: string, label: string, description?: string }[] }} Field
+ *   min?: number, max?: number, maxLength?: number, options?: { id: string, label: string, description?: string }[] }} Field
  * @typedef {{ values: Record<string, unknown>, errors: Record<string, string> }} Draft
  * @typedef {{ itemId: string, vals: Record<string, unknown>, d: Draft, done: boolean, rerender: () => void }} FieldContext
  */
@@ -90,11 +91,13 @@ export function formField(f, at) {
   const id = `${at.itemId}-${f.id}`;
   const errId = `${id}-err`;
   const err = at.d.errors[f.id];
+  // A number field’s range shows before any submit, in the words its error uses (#822).
+  const range = f.kind === 'number' ? numberRange(f).hint : '';
   const common = {
     id,
     disabled: at.done,
     'aria-invalid': err ? 'true' : null,
-    'aria-describedby': [err ? errId : null, f.help ? `${id}-help` : null].filter(Boolean).join(' ') || null,
+    'aria-describedby': [err ? errId : null, range ? `${id}-range` : null, f.help ? `${id}-help` : null].filter(Boolean).join(' ') || null,
     required: !!f.required,
   };
   const v = at.vals[f.id] ?? '';
@@ -109,6 +112,7 @@ export function formField(f, at) {
     { class: f.kind === 'longtext' || f.kind === 'toggle' ? 'span' : '' },
     f.kind === 'toggle' ? null : h('label.label', { for: id }, f.label, f.required ? ' *' : ''),
     control,
+    range ? h('span.help', { id: `${id}-range` }, range) : null,
     f.help ? h('span.help', { id: `${id}-help` }, f.help) : null,
     err ? h('span.err', { id: errId }, icon('warn'), err) : null,
     counter,
