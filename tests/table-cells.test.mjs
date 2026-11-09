@@ -98,3 +98,31 @@ for (const [label, v, want] of [
   test(`#844 “${label}” keeps ${v}’s separators`, () => {
     assert.equal(fmtCell(v, { id: 'n', label }), want);
   });
+
+// Round 4 of #1065’s review: a note decides once, the singular is a name at the start or the end only when no
+// amount follows it, a slash before the name reads as “per”, and the label decides over the id once it mentions one.
+for (const [label, v] of [
+  ['Years (FY)', 2024],
+  ['IDs (internal)', 12345],
+  ['Paper IDs (arXiv)', 12345],
+])
+  test(`#844 “${label}” shows ${v} as written`, () => {
+    assert.equal(fmtCell(v, { id: 'n', label }), String(v));
+  });
+
+for (const [label, v, want] of [
+  ['Year-over-year growth', 12345, '12,345'],
+  ['Year-end revenue', 1234567, '1,234,567'],
+  ['Year-to-date sales', 1234567, '1,234,567'],
+  ['Year 1 revenue', 1234567, '1,234,567'],
+  ['ID count', 12345, '12,345'],
+  ['Revenue / year', 1234567, '1,234,567'],
+  ['Revenue/year', 1234567, '1,234,567'],
+])
+  test(`#844 “${label}” keeps ${v}’s separators`, () => {
+    assert.equal(fmtCell(v, { id: 'n', label }), want);
+  });
+
+test('#844 a label whose note alone mentions a year decides over an id that names one', () => {
+  assert.equal(fmtCell(1234567, { id: 'year', label: 'Revenue (per year)' }), '1,234,567');
+});
