@@ -9,7 +9,7 @@ import { LIMITS } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { answerQuestion, lateAnswer, waitingQuestion } from './ask-question.mjs';
 import { releaseNeed } from './card-needs.mjs';
-import { clip, clipText, echoedId, httpError } from './helpers.mjs';
+import { clip, clipText, echoedId, httpError, refuseArchived } from './helpers.mjs';
 import { REACT, toggleReaction } from './reactions.mjs';
 import { keepReviewThreads } from './review-comments.mjs';
 import { revisedFiles } from './review-files.mjs';
@@ -55,6 +55,7 @@ export function act(rt, threadId, itemId, action, values, revision) {
   const dismissed = locks && action === 'dismiss';
   const r = dismissed ? dismissal(it.block, current) : buildEvent(it.block, action, values, { revision: current });
   if (!r.ok) throw Object.assign(httpError(422, r.error), { fieldErrors: r.fieldErrors });
+  refuseArchived(rt, it.sessionId);
   // An AskUserQuestion’s block (#521): the answer is its call’s result, so the agent has it now, and no event goes.
   const asked = waitingQuestion(rt, itemId);
   // read: whether the agent has had the answer in a turn yet. Until then an update can’t reopen the block.
