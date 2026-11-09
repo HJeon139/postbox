@@ -45,6 +45,7 @@ import { watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
 import { startViewApp } from './view-app/view-app.mjs';
 import { viewOf } from './view-app/view-of.mjs';
+import { workRoute } from './work-routes.mjs';
 
 /** The routes that stop an agent’s turn, a background job or a `!` command: allowed while the store is closed, as Stop must be. */
 const STOP_ROUTE = /^\/api\/(sessions\/[^/]+\/(stop|jobs\/[^/]+\/stop)|threads\/[^/]+\/shell\/[^/]+\/stop)$/;
@@ -288,10 +289,9 @@ export async function start({
       const q = (k) => url.searchParams.get(k) || null;
       return send(res, 200, await rt.permissionsView({ sessionId: q('sessionId'), personaId: q('personaId'), projectId: q('projectId') }));
     }
-    // The work ledger (#132): where each change stands in git, a file’s diff and a command’s output.
-    if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/git$/)) && req.method === 'GET') return send(res, 200, await rt.workGit(m[1]));
-    if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/files\/([^/]+)\/diff$/)) && req.method === 'GET')
-      return send(res, 200, await rt.workDiff(m[1], m[2], url.searchParams.get('change')));
+    // The work ledger (#132): where each change stands in git and a file’s diff (server/work-routes.mjs), a command’s output.
+    const workDid = await workRoute(rt, path, req.method, url);
+    if (workDid) return send(res, workDid.status, workDid.body);
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/commands\/([^/]+)\/output$/)) && req.method === 'GET')
       return raw(res, 200, await rt.workOutput(m[1], m[2]), OUTPUT_HEADERS);
     // A data file an app’s version carries (#54), for the app’s postbox.file(name). Text, never run as a page.
