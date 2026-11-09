@@ -49,14 +49,14 @@ test('#991 a message queued behind a busy agent holds its file’s upload name t
   await settle(rt);
 });
 
-test('#991 a file attachment whose upload isn’t known is kept, as before, with its name cleaned as an upload’s, or “file”', async () => {
+test('#991 a file attachment whose upload isn’t known keeps only its id and its name, cleaned as an upload’s, or “file”', async () => {
   const { rt, store, t } = room();
-  const sent = { kind: 'file', fileId: 'gone', name: `a${RLO}b.txt`, type: 'text/plain', size: 3 };
+  const sent = { kind: 'file', fileId: 'gone', name: `a${RLO}b.txt`, type: `x${RLO}exe.fdp`, size: 3, path: 'other' };
   const unnamed = { kind: 'file', fileId: 'gone' };
   const { item } = rt.sendMessage(t.id, { text: '@beta read this', attachments: [sent, unnamed] });
   assert.deepEqual(store.state.items[t.id].find((i) => i.id === item.id).attachments, [
-    { ...sent, name: 'a_b.txt' },
-    { ...unnamed, name: 'file' },
+    { kind: 'file', fileId: 'gone', name: 'a_b.txt' },
+    { kind: 'file', fileId: 'gone', name: 'file' },
   ]);
   await settle(rt);
 });
@@ -78,7 +78,9 @@ test('#991 a project file is attached by its path, and one whose path holds a bi
     { kind: 'project-file', path: 'notes/plan.md' },
     { kind: 'project-file', path: 'notes/❤\ufe0f \u200d.md' },
   ];
-  const { item } = rt.sendMessage(t.id, { text: '@beta read this', attachments: kept });
+  // A project file keeps only its kind and path: a fileId sent beside it would make its chip open another upload.
+  const sentKept = kept.map((a) => ({ ...a, fileId: 'f1', name: 'other.md', type: 'text/html' }));
+  const { item } = rt.sendMessage(t.id, { text: '@beta read this', attachments: sentKept });
   assert.deepEqual(store.state.items[t.id].find((i) => i.id === item.id).attachments, kept, 'VS16 and ZWJ, as an upload’s name keeps them');
   await settle(rt);
   const before = store.state.items[t.id].length;
