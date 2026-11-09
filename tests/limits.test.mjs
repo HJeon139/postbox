@@ -97,7 +97,13 @@ function runKit(init) {
 }
 
 test('postbox.send over the limit rejects inside the app, names the limit, and posts nothing', async () => {
-  const page = sandboxPage({ origin: 'http://127.0.0.1:1', app: { id: 'ap', title: 'Explorer' }, version: { v: 1, code: '' }, theme: 'dark' });
+  const page = sandboxPage({
+    origin: 'http://127.0.0.1:1',
+    ancestor: 'http://127.0.0.1:1',
+    app: { id: 'ap', title: 'Explorer' },
+    version: { v: 1, code: '' },
+    theme: 'dark',
+  });
   const attr = page.html.match(/data-init="([^"]*)"/)?.[1] ?? '';
   const init = JSON.parse(attr.replaceAll('&quot;', '"').replaceAll('&amp;', '&'));
   assert.equal(init.limits.eventBytes, LIMITS.eventBytes);
