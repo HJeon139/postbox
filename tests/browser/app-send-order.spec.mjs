@@ -26,6 +26,8 @@ test.afterAll(async () => {
   await app?.stop();
 });
 failOnPageErrors(test);
+// Without MessageEvent.userActivation, Firefox sends no app event without a card (#76), so none reaches the order here.
+test.skip(({ browserName }) => browserName !== 'chromium', 'app sends need MessageEvent.userActivation (#76)');
 
 /**
  * A conversation with @librarian showing the burst app, loaded, with each event POST counted and the first held until
