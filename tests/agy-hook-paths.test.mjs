@@ -65,7 +65,6 @@ test('#1074 a ~ path is judged as the home folder too, since whether agy expands
   assert.equal(decide('write_file', { Path: '~/.gemini/antigravity-cli/settings.json' }, opts).decision, 'deny');
   assert.equal(isProtectedPath('~/.gemini/antigravity-cli/settings.json', { cwd: ws, home }), true);
   assert.equal(decide('edit_file', { Path: '~/outside/x.txt' }, opts).decision, 'ask', 'in the project as cwd/~, outside it as home');
-  assert.equal(decide('read_file', { Path: '~notes/a.md' }, opts).decision, 'allow', 'a name that only starts with ~ is a file in the project');
 });
 
 test('#1074 a bare ~ is the home folder too, so listing it asks', () => {
@@ -186,4 +185,17 @@ test('#1074 an edited path on a card about a tidied path goes back in that path�
   const res = await runAgyHook(JSON.stringify({ toolCall: { name: 'grep_search', args } }), { cwd: ws, env, home, fetchImpl: /** @type {any} */ (fetchImpl) });
   assert.deepEqual(asked, { file_path: join(out, 'secret.txt') });
   assert.deepEqual(res, { decision: 'allow', overwrite: { ...args, SearchPath: join(out, 'other.txt') } });
+});
+
+test('#1074 a ~user path may be anyone’s home, so a file call naming one asks, as Auto’s commands do', () => {
+  const { home, ws } = aHome();
+  mkdirSync(join(ws, '~root', '.ssh'), { recursive: true });
+  for (const mode of ['ask', 'auto', 'acceptEdits']) {
+    const opts = { mode, folders: [ws], cwd: ws, home };
+    assert.deepEqual(decide('read_file', { Path: '~root/.ssh/x' }, opts), { decision: 'ask', toolName: 'Read', input: { file_path: '~root/.ssh/x' } }, mode);
+    assert.equal(decide('read_file', { Path: '~notes/a.md' }, opts).decision, 'ask', `${mode}: a folder named ~notes in the project asks too`);
+    assert.equal(decide('write_file', { Path: '~root/.ssh/authorized_keys' }, opts).decision, 'ask', `${mode}: a write`);
+    assert.equal(decide('write_file', { Path: '~you/.gemini/antigravity-cli/settings.json' }, opts).decision, 'deny', `${mode}: it may be this home`);
+  }
+  assert.equal(decide('run_command', { CommandLine: 'cat ~root/.ssh/x' }, { mode: 'auto', folders: [ws], cwd: ws, home }).decision, 'ask', 'Auto agrees');
 });
