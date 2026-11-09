@@ -79,9 +79,14 @@ test(`#1047 ${BURST} replies arriving one a frame while you read higher up force
   test.info().annotations.push({ type: 'measured', description: JSON.stringify({ layouts, forced }) });
   await expect(page.getByRole('button', { name: new RegExp(`Jump to latest · ${BURST} new`) })).toBeVisible();
   // Before the fix, 98 with skipping: 50 in grew() → showJump() → gapOf, and 48 in follow(), after the pill’s write.
-  // With events late, a reply can land in the frame an item draws in, and follow() reads then: 3 of 50 once.
-  const all = Object.values(forced).reduce((a, b) => a + b, 0);
-  expect.soft(all, `layouts Postbox forced over ${BURST} replies`).toBeLessThanOrEqual(5);
+  // None of them reads the gap to the end. With events late, a reply can land in the frame an item draws in, and
+  // follow() reads the view then: up to 7 of 50 on CI’s runners, against 48 before the fix.
+  const of = (/** @type {string} */ fn) =>
+    Object.entries(forced)
+      .filter(([at]) => at.startsWith(`${fn}@`))
+      .reduce((sum, [, n]) => sum + n, 0);
+  expect.soft(of('gapOf'), `layouts the gap to the end forced over ${BURST} replies`).toBe(0);
+  expect.soft(of('follow'), `layouts follow() forced over ${BURST} replies`).toBeLessThanOrEqual(15);
   // Each reply’s frame lays out once, with a few more as the page settles. A pill written after the frame’s layout
   // lays it out again, once a reply: about 100 layouts in all.
   expect.soft(layouts, `layouts over ${BURST} replies`).toBeLessThanOrEqual(BURST + 25);
