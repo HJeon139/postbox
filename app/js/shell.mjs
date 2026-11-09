@@ -1,13 +1,14 @@
 // The shell: the top bar, the rail (conversations and rooms with rings, and the open conversation’s agents), the phone
 // ring strip, the places menu, and a project with no conversation yet. There’s no overview (#320): Postbox opens one.
 
-import { installNote } from '/shared/agent-facts.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { isMock, mockMarker } from './agent-facts.mjs';
 import { agentMenuLines } from './agent-menu-lines.mjs';
 import { agentsSection } from './agents.mjs';
+import { chainLimitDesc, openChainLimit } from './chain-limit.mjs';
 import { api, busy, client, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { fill, h, icon, syncList } from './dom.mjs';
+import { installLine } from './install-line.mjs';
 import { nextNeedsYou } from './needs-nav.mjs';
 import { openPermissions } from './permissions.mjs';
 import { projectPlaces } from './places-menu.mjs';
@@ -19,7 +20,7 @@ import { recordingBadge, telemetryItems } from './telemetry.mjs';
 import { liveMembers, topbarSig } from './topbar-sig.mjs';
 import { closeWork, navigate, openMenu, openWork, route, toast, undoToast } from './ui.mjs';
 
-export { liveMembers, railHidden, toggleRail };
+export { installLine, liveMembers, railHidden, toggleRail };
 
 const S = () => client.state;
 
@@ -408,28 +409,6 @@ function stripItem(x, active) {
   );
 }
 
-/** What isn’t installed, as the overview used to say (#320); null while every backend is there. */
-export function installLine() {
-  const lead = installNote(client.config ?? {});
-  if (!lead) return null;
-  return h(
-    'div.callout.warn.install-note',
-    icon('warn'),
-    h(
-      'div',
-      h('p', lead),
-      h(
-        'p.small',
-        'To run real agents, install Claude Code so ',
-        h('code', 'claude --version'),
-        ' works, or set ',
-        h('code', 'POSTBOX_CLAUDE_BIN'),
-        ' to where it is, then restart Postbox. The README’s “Run real agents” says more.',
-      ),
-    ),
-  );
-}
-
 function conversationMenu(anchor, shown) {
   // The top bar may be older than the thread: archived since, say.
   const t = S().threads[shown.id] ?? shown;
@@ -438,6 +417,7 @@ function conversationMenu(anchor, shown) {
     anchor,
     [
       { label: 'Rename…', icon: 'edit', run: () => openRename(t.id) },
+      { label: 'Wake chain limit…', icon: 'agent', desc: chainLimitDesc(t.id), run: () => openChainLimit(t.id) },
       {
         label: 'Add an agent…',
         icon: 'agent',
