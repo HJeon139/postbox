@@ -137,31 +137,50 @@ export const GLIMPSE_SOURCE_CHARS = 2000;
 
 /**
  * Agent wakes in a row, without you, before the next waits for your Allow: a backstop against agents that never stop,
- * until a supervisor agent watches the room (#538). 3 until #320 raised it to 10, and 50 since #492.
+ * until a supervisor agent watches the room (#538). 3 until #320 raised it to 10, 50 since #492, and 1,000 since #1035,
+ * after one held wake left every agent in a room waiting about 7.5 hours. It’s the default: each room can set its own
+ * (server/room-chain-limit.mjs).
  */
-export const DEFAULT_HOP_LIMIT = 50;
+export const DEFAULT_HOP_LIMIT = 1000;
 /**
- * The chain limit POSTBOX_CHAIN_LIMIT asks for, or the default when it isn’t set (#508). The UAT runner sets it for the
- * Postbox it starts, so a scenario’s `- chain-limit: 3` reaches the card in a few wakes. It can only lower the limit: a
- * value that isn’t a whole number from 1 to 50 is refused, so a mistyped one can’t run as 50 and a shell can’t turn the
- * backstop off. Read once, when the module loads: every reader of HOP_LIMIT,
- * the one that enforces it (server/side-threads.mjs) and the one agents read (shared/mcp-tools.mjs), gets the same number.
+ * The most a room’s chain limit, or POSTBOX_CHAIN_LIMIT, can be (#1035): about a week of wakes at one a minute, so a
+ * chain that never ends still stops (designs/intent.md, principle 6).
+ */
+export const MAX_HOP_LIMIT = 10_000;
+/** A count as the person reads it: 1,000. @param {number} n */
+const count = (n) => n.toLocaleString('en-US');
+/**
+ * The server’s default chain limit, which POSTBOX_CHAIN_LIMIT sets, or DEFAULT_HOP_LIMIT when it isn’t set (#508,
+ * #1035). The UAT runner sets it for the Postbox it starts, so a scenario’s `- chain-limit: 3` reaches the card in a few
+ * wakes. A value that isn’t a whole number from 1 to MAX_HOP_LIMIT is refused, so a mistyped one can’t run as the
+ * default and a shell can’t turn the backstop off. Read once, when the module loads, so the check, the card and what
+ * agents are told (shared/mcp-tools.mjs) get the same default.
  * @param {string|undefined} value  the variable’s text
  */
 export function chainLimit(value) {
   const text = String(value ?? '').trim();
   if (!text) return DEFAULT_HOP_LIMIT;
-  if (!/^\d+$/.test(text) || Number(text) < 1 || Number(text) > DEFAULT_HOP_LIMIT)
-    throw new Error(`POSTBOX_CHAIN_LIMIT takes a whole number from 1 to ${DEFAULT_HOP_LIMIT}, not “${text}”.`);
+  if (!/^\d+$/.test(text) || Number(text) < 1 || Number(text) > MAX_HOP_LIMIT)
+    throw new Error(`POSTBOX_CHAIN_LIMIT takes a whole number from 1 to ${count(MAX_HOP_LIMIT)}, not “${text}”.`);
   return Number(text);
 }
-// The browser loads this module too (app/js/composer-to.mjs), where there is no process: it reads the default.
+// The browser loads this module too (app/js/composer-to.mjs), where there is no process: it reads the default, and the
+// page reads the server’s from /api/state.
 export const HOP_LIMIT = chainLimit(globalThis.process?.env?.POSTBOX_CHAIN_LIMIT);
+/** What a room’s own chain limit takes (#1035): the server refuses anything else with this, and the dialog shows it. */
+export const ROOM_CHAIN_LIMIT_TAKES = `A room’s wake chain limit is a whole number from 1 to ${count(MAX_HOP_LIMIT)}.`;
+/** Whether a value is a chain limit a room can have: a whole number from 1 to MAX_HOP_LIMIT, never a string. @param {unknown} v */
+export const isRoomChainLimit = (v) => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= MAX_HOP_LIMIT;
 /**
  * Agent wakes in a row, without you, after which the room shows the count with a hint to Stop agents going nowhere
  * (#492), well before the chain limit: E2’s replay found no loop past 2 wakes, and ordinary hand-offs run longer.
  */
 export const CHAIN_HINT = 6;
+/**
+ * The count the hint shows from in a room with that limit: CHAIN_HINT, or the room’s limit when it’s lower, so the hint
+ * never names a count past the limit (#1035). @param {number} limit
+ */
+export const chainHintAt = (limit) => Math.min(CHAIN_HINT, limit);
 /** Wakes held on one waiting wake card, delivered or not as the person answers it (#439); past this, they’re refused. */
 export const HELD_WAKES = 20;
 

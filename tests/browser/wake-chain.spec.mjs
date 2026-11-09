@@ -35,7 +35,9 @@ for (const width of [1280, 375])
     await page.goto(`${app.origin}/#/t/${room.id}`);
     await synced(page, app);
     const hint = page.locator('.composer .hint');
-    await expect(hint).toContainText(`Agents have woken each other ${CHAIN_HINT} times since your last message. If they’re going nowhere, Stop them.`);
+    await expect(hint).toContainText(
+      `Agents have woken each other ${CHAIN_HINT} times since your last message, of the room’s limit of 1,000. If they’re going nowhere, Stop them.`,
+    );
     await expect(hint.locator('.chain')).toBeVisible();
     if (width !== 375) return;
     app.rt.sendMessage(room.id, { text: '@alpha thanks, that’s enough' });

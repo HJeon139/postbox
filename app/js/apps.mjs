@@ -8,7 +8,9 @@ import { live, nearBodies, relookSoon, setAppFrameTest } from './app-pointer.mjs
 import { renderAppSendCard, SEND_LIMIT } from './app-send-card.mjs';
 import { api, client, placeIn } from './client.mjs';
 import { $$, ago, h, icon } from './dom.mjs';
+import { goToItem } from './go-to-item.mjs';
 import { libSource, theme } from './sandbox-libs.mjs';
+import { nextTabStop } from './tab-stop.mjs';
 import { openMenu, toast } from './ui.mjs';
 
 export { enhanceMarkdown } from './md-enhance.mjs';
@@ -192,17 +194,9 @@ function steal(f) {
   rec.onCrash?.();
 }
 
-/** Where Tab or Shift+Tab goes from the focused element, if that’s an app frame. */
+/** Where Tab or Shift+Tab goes from the focused element, if that’s an app frame. @param {boolean} back */
 function tabTarget(back) {
-  const all = [
-    ...document.querySelectorAll('a[href], button, input, select, textarea, iframe.app-iframe, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'),
-  ].filter((el) => {
-    if (!(el instanceof HTMLElement) || el.tabIndex < 0 || /** @type {any} */ (el).disabled) return false;
-    if (!el.getClientRects().length || el.closest('[hidden]')) return false;
-    return !el.parentElement?.closest('[inert]');
-  });
-  const i = all.indexOf(/** @type {HTMLElement} */ (document.activeElement));
-  const next = all[i < 0 ? (back ? all.length - 1 : 0) : i + (back ? -1 : 1)];
+  const next = nextTabStop(back);
   return isAppFrame(next) ? /** @type {HTMLIFrameElement} */ (next) : null;
 }
 
@@ -650,13 +644,7 @@ export function renderAppItem(item, ctx) {
 function retiredLine(app, versionBtn, ctx) {
   const r = app.retired;
   const to = r.replacedBy && placeIn(ctx.threadId, r.replacedBy.itemId) >= 0 ? r.replacedBy : null;
-  const goTo = (e) => {
-    const box = /** @type {HTMLElement} */ (e.currentTarget).closest('.transcript');
-    const node = box?.querySelector(`:scope > [data-key="${CSS.escape(to.itemId)}"]`);
-    if (!(node instanceof HTMLElement)) return;
-    node.scrollIntoView({ block: 'center' });
-    (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus({ preventScroll: true });
-  };
+  const goTo = (e) => goToItem(e, to.itemId);
   return h(
     'div.col.sys-line.app-retired',
     { role: 'group', 'aria-label': `${app.title}, retired` },

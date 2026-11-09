@@ -126,7 +126,14 @@ function tryNow(r) {
   r.timer = null;
   if (!r.needed()) return set(r, 'idle');
   set(r, 'connecting');
-  const c = r.open();
+  let c;
+  try {
+    c = r.open();
+  } catch (e) {
+    // A session that can’t be made, such as over a host setting saved before a check refused it, which ssh-args.mjs
+    // checks again before ssh runs (#991): waiting won’t change it, so it stops for the person, saying why.
+    return lost(r, failure('settings', 'the host', { why: String(e?.message ?? e) }));
+  }
   r.conn = c;
   c.connect().then(
     (welcome) => {

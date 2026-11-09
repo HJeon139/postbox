@@ -73,12 +73,31 @@ function windowPagedBack(f) {
   return [{ at: s.at, evidence: `At step ${s.step}, ${where} was reading at ${s.anchorId}, one of the seeded room’s first-day items.` }];
 }
 
+/**
+ * A settled sample of a room of more than 1,000 items with more than half of them skipped (a browser that can't say
+ * has skipped: null, which never counts): the run read a long room
+ * with the browser skipping the items off screen (#712a, tools/uat/skip-probe.mjs). Its check, rows-skipped
+ * (tools/uat/checks-view.mjs), fires on the opposite: fewer than half. O(samples).
+ * @param {{ probes?: { skipped?: any[] } }} f
+ */
+function itemsSkipped(f) {
+  const s = (f.probes?.skipped ?? []).find((x) => x.settled && x.items > 1000 && x.skipped * 2 > x.items);
+  if (!s) return [];
+  return [{ at: s.at, evidence: `At step ${s.step}, ${s.skipped} of the conversation’s ${s.items} items were skipped.` }];
+}
+
 export const VIEW_TRIGGERS = {
   'window-paged-back': {
     issue: 531,
     says: 'you read at one of the big room’s first-day items, having paged back to its start',
     recorded: (f) => Array.isArray(f.probes?.views),
     run: windowPagedBack,
+  },
+  'items-skipped': {
+    issue: 712,
+    says: 'the page read a room of more than 1,000 items with most of them skipped',
+    recorded: (f) => Array.isArray(f.probes?.skipped),
+    run: itemsSkipped,
   },
   'diagram-deferred': {
     issue: 695,

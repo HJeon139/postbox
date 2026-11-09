@@ -8,7 +8,8 @@ import { dirname, join } from 'node:path';
 import { Duplex, PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { EXIT, HOST_ENTRY, main } from '../server/remote/host/daemon.mjs';
-import { findPrograms, parseVersion } from '../server/remote/host/programs.mjs';
+import { findPrograms } from '../server/remote/host/programs.mjs';
+import { versionIn } from '../shared/cli-version.mjs';
 import { encode, hostPaths, message, PROTOCOL_VERSION, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { readMessages } from './fake-daemon.mjs';
 import { attachOnce, fakeClock, hello, makeTurn, setup, TOKEN, VERSION, waitFor } from './remote-daemon-setup.mjs';
@@ -222,9 +223,9 @@ test('findPrograms: configured paths, then the PATH and install folders; version
       found.problems.map((p) => p.code),
       ['old-node', 'not-found'],
     );
-    assert.equal(parseVersion('codex-cli 0.50.0\n'), '0.50.0');
-    assert.equal(parseVersion('kiro-cli 1.2.3-beta.1'), '1.2.3-beta.1');
-    assert.equal(parseVersion(''), null);
+    assert.equal(versionIn('codex-cli 0.50.0\n'), '0.50.0');
+    assert.equal(versionIn('kiro-cli 1.2.3-beta.1'), '1.2.3-beta.1');
+    assert.equal(versionIn(''), null);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

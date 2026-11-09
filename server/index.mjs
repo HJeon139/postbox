@@ -32,6 +32,7 @@ import { createProject, setPushUrl } from './projects.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { settleInterrupted } from './restart-sweep.mjs';
 import { SAME_ORIGIN_ONLY, servedReviewFile } from './review-files.mjs';
+import { patchThread } from './room-chain-limit.mjs';
 import { httpError, Runtime } from './runtime.mjs';
 import { mermaidPage, sandboxPage } from './sandbox.mjs';
 import { seed, toBoilerplate } from './seed.mjs';
@@ -42,6 +43,7 @@ import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
 import { watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
+import { uploadName } from './upload-name.mjs';
 import { startViewApp } from './view-app/view-app.mjs';
 import { viewOf } from './view-app/view-of.mjs';
 
@@ -320,7 +322,7 @@ export async function start({
 
     if (path === '/api/threads' && req.method === 'POST') return send(res, 201, rt.createThread(body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteThread(m[1]));
-    if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, rt.renameThread(m[1], body.title));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, patchThread(rt, m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/undo-delete$/)) && req.method === 'POST') {
       rt.undoDeleteThread(m[1]);
       return send(res, 200, { ok: true });
@@ -459,10 +461,7 @@ export async function start({
   }
 
   async function upload(req) {
-    const name =
-      decodePath(String(req.headers['x-filename'] ?? 'file'))
-        .replace(/[\\/]/g, '_')
-        .slice(0, 200) || 'file';
+    const name = uploadName(decodePath(String(req.headers['x-filename'] ?? 'file')));
     const chunks = [];
     let size = 0;
     for await (const c of req) {

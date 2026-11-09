@@ -17,6 +17,8 @@ export const FAILURE_KINDS = Object.freeze({
   busy: { retry: false },
   // No Node 22 or later on the host to run the daemon: waiting doesn’t install one.
   'no-node': { retry: false },
+  // Postbox refused what it would send, before ssh ran: a host setting saved before a check refused it (#991).
+  settings: { retry: false },
   // The daemon closed the channel itself, such as after `remove`.
   ended: { retry: true },
   failed: { retry: true },
@@ -121,6 +123,7 @@ export function failure(kind, d, detail = {}) {
       `Postbox’s host program couldn’t start on ${d}: it needs Node 22 or later.${quote}`,
       `Install Node 22 or later on ${d}, or set its Node path in Postbox’s host settings, then reconnect.`,
     ],
+    settings: [`Postbox can’t connect to ${d} with its settings.${quote}`, `Change it in the host’s settings, then reconnect.`],
     ended: [`The Postbox daemon on ${d} closed the connection.`, tryAgain],
     failed: [
       `The connection to ${d} failed${detail.code != null ? ` (ssh exited with ${detail.code})` : detail.signal ? ` (ssh ended on ${detail.signal})` : ''}.${quote}`,

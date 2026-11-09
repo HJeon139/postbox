@@ -22,6 +22,7 @@
 
 import { execFile as nodeExecFile } from 'node:child_process';
 import { constants, promises as fsp } from 'node:fs';
+import { versionIn } from '../../../shared/cli-version.mjs';
 import { checkHostPath } from '../../../shared/remote-settings.mjs';
 import { mergePath } from './login-path.mjs';
 
@@ -94,18 +95,6 @@ export function compareVersions(a, b) {
 }
 
 /**
- * A version from `--version`’s output: the first x.y.z in it (claude prints “2.1.211 (Claude Code)”), else its first
- * line, clipped; null for no output.
- * @param {string} out
- */
-export function parseVersion(out) {
-  const m = /\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/.exec(out);
-  if (m) return m[0].slice(0, 200);
-  const first = out.split('\n').find((l) => l.trim());
-  return first ? first.trim().slice(0, 200) : null;
-}
-
-/**
  * Finds node and the harnesses.
  * @param {{ home: string, settings: Record<string, any>, env?: NodeJS.ProcessEnv, execFile?: ExecFile,
  *   isExecutable?: (path: string) => Promise<boolean>, listDir?: (dir: string) => Promise<string[]>,
@@ -133,7 +122,7 @@ export async function findPrograms({
     new Promise((resolve) => {
       try {
         execFile(path, ['--version'], { timeout: VERSION_TIMEOUT_MS, maxBuffer: 64 * 1024, env: runEnv }, (err, stdout) =>
-          resolve(err ? { error: err.message } : { version: parseVersion(String(stdout)) }),
+          resolve(err ? { error: err.message } : { version: versionIn(String(stdout)) }),
         );
       } catch (e) {
         resolve({ error: e.message });
