@@ -1,7 +1,9 @@
 // The folder picker stays usable around symbolic links (#28): a link that leads out of the project’s folder is marked
 // and offers no Open or Attach, a link inside it opens as a folder, and a folder that won’t open (it became a link out
 // since it was listed) says why above the list, which stays, with its Up. On a project whose folder, in the spec’s
-// temp folder, holds the links. Moved from tools/checks/folder-picker.mjs (#303).
+// temp folder, holds the links. Moved from tools/checks/folder-picker.mjs (#303). A file whose name holds a
+// right-to-left override is listed with it marked, and attaches by its real path, and a folder whose name holds an
+// isolate heads the list marked once opened (#1052).
 
 import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -14,6 +16,8 @@ let app;
 let root;
 let away;
 let threadId;
+/** A file’s name that reads as “ab.txt” reordered: a, a right-to-left override, then b.txt. */
+const REVERSED = 'a\u202Eb.txt';
 test.beforeAll(async () => {
   app = await startPostbox('folder-picker');
   // The project’s folder, and a folder beside it that its links lead to.
@@ -22,6 +26,8 @@ test.beforeAll(async () => {
   await mkdir(join(root, 'docs', 'later'), { recursive: true });
   await mkdir(away);
   await writeFile(join(root, 'notes.txt'), 'notes');
+  await writeFile(join(root, REVERSED), 'reversed');
+  await mkdir(join(root, 'in\u2066side'));
   await writeFile(join(root, 'docs', 'guide.md'), '# Guide');
   await writeFile(join(away, 'secret.txt'), 'not for the picker');
   await symlink(away, join(root, 'away-link'));
@@ -102,4 +108,32 @@ test('#28 a folder that won’t open says why above the list, which stays, with 
     await rm(join(root, 'docs', 'later'));
     await mkdir(join(root, 'docs', 'later'));
   }
+});
+
+test('#1052 a file whose name reorders text is listed with the character marked, and attaches by its real path', async ({ page }) => {
+  await picker(page);
+  await expect(row(page, 'a\uFFFDb.txt'), 'listed with the override marked').toHaveCount(1);
+  await expect(list(page).locator('.grow', { hasText: '\u202E' }), 'nowhere shown as it is').toHaveCount(0);
+  await expect(row(page, 'a\uFFFDb.txt').getByRole('button')).toHaveAccessibleName('Attach a\uFFFDb.txt');
+  await button(page, 'Attach a\uFFFDb.txt').click();
+  // The attachment is the file as it is on disk. #1046 refuses sending one whose path holds such a character; until
+  // it lands, the message carries it.
+  await page.locator('.main .composer').getByRole('button', { name: 'Send', exact: true }).click();
+  await expect
+    .poll(() =>
+      app.store
+        .items(threadId)
+        .filter((i) => i.kind === 'user')
+        .flatMap((i) => i.attachments ?? [])
+        .map((a) => [a.kind, a.path]),
+    )
+    .toEqual([['project-file', REVERSED]]);
+});
+
+test('#1052 a folder whose name holds a bidi isolate is listed, and heads the list once opened, with it marked', async ({ page }) => {
+  await picker(page);
+  await expect(row(page, 'in\uFFFDside').getByRole('button')).toHaveAccessibleName('Open in\uFFFDside');
+  await button(page, 'Open in\uFFFDside').click();
+  await expect(list(page).locator('li.empty-note'), 'the folder, opened').toHaveText('This folder is empty.');
+  await expect(where(page)).toHaveText(/\/project\/in\uFFFDside$/);
 });

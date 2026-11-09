@@ -9,6 +9,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Corpus, parseDataset } from '../server/corpus.mjs';
 import { hostTool, Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { FINE, HOSTILE } from './hidden-chars-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const BOOK = `CHAPTER I\n\n${'The whale swam past the ship in the morning light, and the crew watched it go. '.repeat(8)}\n\nCHAPTER II\n\n${'Another day at sea, with no whale. '.repeat(12)}\n\nCHAPTER III\n\n${'The end of the voyage came at last, and the whale was not seen again. '.repeat(8)}`;
@@ -140,6 +141,47 @@ test('#351: add_dataset refuses a .postbox or datasets folder that links out of 
     assert.deepEqual(Object.keys(store.state.datasets), []);
     assert.equal(rt.corpus.stats().books.length, 1);
   }
+});
+
+const TITLE_ERROR =
+  'A dataset’s title can’t hold control characters, characters that reorder text or show as nothing (such as U+202E or U+200B), or half of a surrogate pair. Call add_dataset again with a title without them.';
+
+test('#1052: add_dataset refuses a title that hides or reorders text, before it loads anything', async () => {
+  const { dsDir, store, rt, t, tools } = await setup();
+  await writeFile(join(dsDir, 'x.jsonl'), jsonl([{ text: 'A record.' }]));
+  const before = store.items(t.id).length;
+  const results = [];
+  for (const [what, c] of Object.entries(HOSTILE)) results.push([what, await tools.add_dataset({ id: 'x', path: 'x.jsonl', title: `report${c}fdp` })]);
+  assert.deepEqual(
+    results,
+    Object.keys(HOSTILE).map((what) => [what, { ok: false, message: TITLE_ERROR }]),
+  );
+  assert.deepEqual(Object.keys(store.state.datasets), [], 'nothing was kept');
+  assert.deepEqual(
+    rt.corpus.stats().books.map((b) => b.id),
+    ['moby'],
+    'nothing was loaded',
+  );
+  assert.equal(store.items(t.id).length, before, 'no line in the conversation');
+});
+
+test('#1052: a dataset title of accents, CJK or punctuation is kept as it is', async () => {
+  const { dsDir, store, tools } = await setup();
+  await writeFile(join(dsDir, 'x.jsonl'), jsonl([{ text: 'A record.' }]));
+  for (const title of FINE) {
+    const r = await tools.add_dataset({ id: 'x', path: 'x.jsonl', title });
+    assert.equal(r.ok, true, r.message);
+    assert.equal(store.state.datasets.x.title, title);
+  }
+});
+
+test('#1052: a long dataset title is cut before a character, never inside its surrogate pair', async () => {
+  const { dsDir, store, tools } = await setup();
+  await writeFile(join(dsDir, 'x.jsonl'), jsonl([{ text: 'A record.' }]));
+  // The 199th and 200th UTF-16 units are one emoji’s pair: the cut keeps 199 units, so it would end in half of it.
+  const r = await tools.add_dataset({ id: 'x', path: 'x.jsonl', title: `${'a'.repeat(198)}\u{1F600}${'b'.repeat(10)}` });
+  assert.equal(r.ok, true, r.message);
+  assert.equal(store.state.datasets.x.title, `${'a'.repeat(198)}…`);
 });
 
 test('#47: a project with no folder has nowhere to load from, and says so', async () => {
