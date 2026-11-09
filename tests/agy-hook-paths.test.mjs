@@ -115,3 +115,16 @@ test('#1074 an edited path on a card goes back in the field the card was about',
   assert.deepEqual(asked, { file_path: join(out, 'secret.txt') });
   assert.deepEqual(res, { decision: 'allow', overwrite: { ...args, SearchPath: join(out, 'other.txt') } });
 });
+
+test('#1074 in Auto, a ~ edit that leads into .git through a link in home asks', () => {
+  const { home, ws } = aHome();
+  mkdirSync(join(ws, '.git'));
+  symlinkSync(join(ws, '.git'), join(home, 'gitlink'));
+  assert.equal(decide('write_file', { Path: '~/gitlink/config' }, { mode: 'auto', folders: [ws], cwd: ws, home }).decision, 'ask');
+});
+
+test('#1074 a read naming a path that isn’t a string next to a project file asks, with nothing to show', () => {
+  const { home, ws } = aHome();
+  const res = decide('grep_search', { Path: join(ws, 'a.txt'), SearchPath: 42 }, { mode: 'auto', folders: [ws], cwd: ws, home });
+  assert.deepEqual(res, { decision: 'ask', toolName: 'Read', input: { file_path: '' } });
+});
