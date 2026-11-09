@@ -158,7 +158,9 @@ export function preflightRemote(workspace, dir, env) {
   const stop = (what) => new Error(`${what}, so the run stops before any agent turn.`);
   const origin = gitRun(['-C', workspace, 'remote', 'get-url', 'origin'], undefined, env).stdout?.trim();
   if (origin !== p.remote) throw stop(`origin is ${origin || 'unset'}, not the run’s remote (${p.remote})`);
-  const probe = gitRun(['-C', workspace, 'ls-remote', UNREACHABLE], undefined, { ...env, GIT_TERMINAL_PROMPT: '0' });
+  // From the run’s tmp folder, outside the workspace: the workspace’s own .git/config refuses https too, so a probe
+  // there would pass with the environment’s guard gone, which is the one an agent’s git in any folder relies on.
+  const probe = gitRun(['ls-remote', UNREACHABLE], p.tmp, { ...env, GIT_TERMINAL_PROMPT: '0' });
   if (!/transport 'https' not allowed/.test(probe.stderr ?? ''))
     throw stop(`git in the run isn’t refused an https remote (it said: ${(probe.stderr ?? '').trim().slice(0, 200)})`);
   const shell = env.SHELL || '/bin/sh';
