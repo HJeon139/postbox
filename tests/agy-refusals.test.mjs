@@ -87,7 +87,7 @@ test('#370 condition 1: --dangerously-skip-permissions is passed for ask, auto a
   assert.equal(await confirmAgyHook({ version: '1.4.7', pluginDir: dir }), false);
 });
 
-async function runDeliverTurn(permissionMode, opts = {}) {
+async function runDeliverTurn(permissionMode, opts = {}, personaExtra = {}) {
   const root = tempDir('pb-agy-turn-');
   /** @type {any[]} */
   const seen = [];
@@ -118,7 +118,7 @@ async function runDeliverTurn(permissionMode, opts = {}) {
     ...opts,
   });
   const abort = new AbortController();
-  const persona = { handle: 'gem', model: 'gemini-3.8-flash-high', permissionMode, tools: [] };
+  const persona = { handle: 'gem', model: 'gemini-3.8-flash-high', permissionMode, tools: [], ...personaExtra };
   const nop = () => {};
   const ctx = {
     signal: abort.signal,
@@ -137,6 +137,17 @@ async function runDeliverTurn(permissionMode, opts = {}) {
   await adapter.deliver({}, { kind: 'user', text: 'hi' }, ctx);
   return seen[0];
 }
+
+// #416: these two variables carry the persona’s tools and “Can publish” to the
+// hook (agy-auto.mjs’s personaOf), and only tests that set them by hand covered them.
+test('#416 the adapter hands the hook the persona’s tools and whether it may publish', async () => {
+  const may = await runDeliverTurn('auto', { version: '1.4.7' }, { tools: ['shell', 'web.fetch'], canPublish: true });
+  assert.equal(may.env.POSTBOX_AGY_TOOLS, JSON.stringify(['shell', 'web.fetch']));
+  assert.equal(may.env.POSTBOX_AGY_PUBLISH, '1');
+  const mayNot = await runDeliverTurn('auto', { version: '1.4.7' }, { tools: [], canPublish: false });
+  assert.equal(mayNot.env.POSTBOX_AGY_TOOLS, '[]');
+  assert.equal(mayNot.env.POSTBOX_AGY_PUBLISH, '', 'one that can’t publish is refused publishing tools');
+});
 
 test('#370 condition 1: AntigravityCliAdapter writes read-only hooks.json and falls back to mode flags when unconfirmed', async () => {
   const confirmed = await runDeliverTurn('auto', { version: '1.4.7' });

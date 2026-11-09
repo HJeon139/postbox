@@ -78,6 +78,32 @@ export async function runGit(cwd, args, { timeoutMs = 10000, exec = execFile } =
  */
 const SHA = /^[0-9a-f]{7,64}$/;
 
+/**
+ * One `push` entry for each push a command made (#978), on the first branch it sent to, else namedBranch: the one
+ * Claude Code’s gitOperation or the commit named. O(pushes).
+ * @param {import('../shared/git-push.mjs').Push[]} pushes
+ */
+export function recordPushes(ledger, turn, cmdId, pushes, namedBranch, cwd) {
+  for (const p of pushes) {
+    const branch = p.branch || namedBranch;
+    const remote = p.remote ? clip(p.remote, 300) : null;
+    const entry = { kind: 'push', id: newId('wp'), commandId: cmdId, branch: clip(branch, 200), remote, refs: p.refs.slice(0, 20), cwd };
+    ledger.add(turn.work.convId, ledger.base(turn, entry));
+  }
+}
+
+/** The pushes git reported as sent by a command that then failed or was stopped: no others, and no named branch. */
+export function recordLandedPushes(ledger, turn, cmdId, pushes, cwd) {
+  recordPushes(
+    ledger,
+    turn,
+    cmdId,
+    pushes.filter((p) => p.refs.length > 0),
+    '',
+    cwd,
+  );
+}
+
 /** A commit, with its files and lines from git, so they match `git show --numstat`. */
 export async function recordCommit(ledger, turn, cmdId, { sha, branch }, cwd, message) {
   // A tool result’s gitOperation is the backend’s word, not git’s: a sha of --output=<file> would have git write a file.

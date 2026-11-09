@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Store } from '../server/store.mjs';
-import { HOP_LIMIT } from '../shared/limits.mjs';
+import { updateThread } from '../server/thread-write.mjs';
 import { held, settle, setup, sleep } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
 
@@ -65,13 +65,14 @@ test('two wakes queued for a busy agent behind a held commit both reach it after
   await f.store.close();
 });
 
-test('51 wakes in a row behind a held commit raise the wake-limit card', async () => {
+test('a room’s limit set behind a held commit holds: its sixth wake in a row raises the wake-limit card (#1035)', async () => {
   const f = await heldRoom();
   const b = await busyBeta(f);
   const release = await f.hold();
+  updateThread(f.rt, f.t.id, { chainLimit: 5 });
   const answers = [];
-  for (let i = 0; i <= HOP_LIMIT; i++) answers.push(f.rt.agentWake(f.alpha.id, 'beta', `Hand-off ${i + 1}.`));
-  assert.equal(answers.filter((r) => r.ok).length, HOP_LIMIT);
+  for (let i = 0; i <= 5; i++) answers.push(f.rt.agentWake(f.alpha.id, 'beta', `Hand-off ${i + 1}.`));
+  assert.equal(answers.filter((r) => r.ok).length, 5);
   assert.equal(answers.at(-1).waiting, true, 'the wake past the limit waits for the person');
   assert.equal(f.store.pending.items(f.t.id).filter((x) => x.kind === 'hop' && x.status === 'open').length, 1);
   await release();

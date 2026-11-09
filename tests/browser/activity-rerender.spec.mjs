@@ -101,6 +101,8 @@ test('#573: 10 activity steps change the step list and no Markdown box, frame or
   });
   // The list shows all ten: the steps were drawn, so the counts below aren’t from a page at rest.
   await expect(reply.locator('details.activity > summary'), 'the summary counts the steps').toContainText('10');
+  // A folded list holds its steps as text until it opens (#1028).
+  await reply.locator('details.activity > summary').click();
   await expect(reply.locator('details.activity ul.steps > li'), 'one row a step').toHaveCount(10);
   expect.soft(work.md, `Markdown boxes changed: ${work.md}`).toBe(0);
   expect.soft(work.framesAdded, `diagram frames added: ${work.framesAdded}`).toBe(0);
@@ -112,12 +114,12 @@ test('#573: the diagram’s frame, an open list, an expanded thought and a selec
   const { reply, step } = await seeded(page, 'keeps');
   step({ id: 'think_1', kind: 'thought', label: 'Planning', detail: 'First the files, then the tests.' });
   step({ id: 'tool_1', label: 'Read a.md', state: 'running' });
+  await reply.locator('details.activity > summary').click();
   await expect(reply.locator('details.activity ul.steps > li')).toHaveCount(2);
   const frame = reply.locator('figure.diagram iframe');
   await frame.evaluate((el) => {
     /** @type {any} */ (el).__before = true;
   });
-  await reply.locator('details.activity > summary').click();
   await reply.locator('details.step-text > summary').click();
   await reply.locator(':scope > .md p').first().dblclick();
   const selected = () => page.evaluate(() => String(getSelection()));
@@ -157,6 +159,7 @@ test('#573: a whole step list, as a terminal’s mirror sends it, changes no Mar
       app.store.emit('item.patch', { threadId: t.id, id, patch: { activity: { steps: steps.map((s) => ({ ...s })) } } });
     }
   });
+  await reply.locator('details.activity > summary').click();
   await expect(reply.locator('details.activity ul.steps > li'), 'one row a step').toHaveCount(5);
   await expect(reply.locator('details.activity > summary')).not.toContainText('running');
   expect.soft(work.md, `Markdown boxes changed: ${work.md}`).toBe(0);

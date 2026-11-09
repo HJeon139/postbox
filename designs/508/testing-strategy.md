@@ -25,7 +25,7 @@ All three agents start in a room seeded with about 1,000 items (`- seed: big-roo
 - triggers: held-behind-card, held-released
 - steps: 6
 
-The scenario sets `- chain-limit: 3`, so the run’s Postbox raises a card on the fourth agent wake since the person’s message. Since #541 there’s no pair limit, and the default backstop of 50 is out of reach in a phase.
+The scenario sets `- chain-limit: 3`, so the run’s Postbox raises a card on the fourth agent wake since the person’s message. Since #541 there’s no pair limit, and the default backstop of 50 (1,000 since #1035) is out of reach in a phase.
 
 Ask @critic and @developer to settle the version number between them, by mentioning each other until they agree, and in the same message ask @researcher and @critic to do the same for the changelog wording. The fourth agent wake raises the “allow another wake?” card: don’t answer it. Wait until the card also holds a wake from the other pair, then say what the conversation shows is waiting on you. Answer Allow on the card; when the next one appears, allow it too.
 

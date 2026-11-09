@@ -2,6 +2,60 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.51.1 (2026-11-09)
+
+### Fixes
+
+- **app:** a press on a folded reply's summary builds its list before it opens
+- **app:** build a reply’s folded steps only when its list opens
+
+## 1.51.0 (2026-11-08)
+
+### Features
+
+- **adapters:** Kiro's Auto runs what its persona's Tools allow, with .kiro and .git guarded (#136)
+
+## 1.50.1 (2026-11-08)
+
+### Fixes
+
+- **ledger:** pushes that landed before a command failed, at most 100 (#978)
+- **ledger:** a tag pushed isn't the push's branch (#978)
+- **ledger:** one push entry for each push a command made (#978)
+
+## 1.50.0 (2026-11-08)
+
+### Features
+
+- **adapters:** Antigravity's Auto runs what its persona's tools allow (#416)
+
+### Fixes
+
+- **app:** Antigravity's copy says what runs with no card, and what decides it (#416, #794)
+
+## 1.49.1 (2026-11-08)
+
+### Fixes
+
+- **remote:** ask the host to stop a turn Postbox gives up on, and resume only once it has (#965)
+
+## 1.49.0 (2026-11-08)
+
+### Features
+
+- **adapters:** Always allow on a Codex card saves Codex's own rule (#324)
+
+### Fixes
+
+- **adapters:** start each Codex offer with its rule, so the card's disclosure reads whole (#324)
+- **adapters:** a Codex rule only for a program that reads, none on a host card, real hosts (#324)
+- **adapters:** no Codex offer without Web, a host only in Auto, the name checked once (#324)
+- **adapters:** pipx and poetry are subcommand tools, and dlx runs the next program (#324)
+- **adapters:** a Codex rule runs outside its sandbox, so Always allow offers less and says so (#324)
+- **adapters:** no Always allow for a tool that runs a program its options name (#324)
+- **adapters:** no Always allow for a tool's option as its second word (#324)
+- **adapters:** give a Codex persona in Auto with web.fetch network in its sandbox (#324)
+
 ## 1.48.0 (2026-11-08)
 
 ### Features

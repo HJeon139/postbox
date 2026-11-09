@@ -1,12 +1,13 @@
 // A per-scenario chain limit for the UAT runner (#508, designs/508/testing-strategy.md, delivery.md’s phase 1): since
-// #541 there is no pair limit, so a wake card comes only past the chain backstop (HOP_LIMIT, 50), which no 8-step phase
-// reaches. A scenario says `- chain-limit: 3` in its header, the runner starts its Postbox with POSTBOX_CHAIN_LIMIT=3,
+// #541 there is no pair limit, so a wake card comes only past the chain backstop (HOP_LIMIT, 1,000 since #1035), which no
+// 8-step phase reaches. A scenario says `- chain-limit: 3` in its header, the runner starts its Postbox with POSTBOX_CHAIN_LIMIT=3,
 // and shared/limits.mjs reads it as HOP_LIMIT when it’s set: the fourth wake in a chain raises the card, and the
 // triggers read which wake it came at. tests/process/chain-limit.test.mjs starts a Postbox under the variable.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
+import * as limits from '../shared/limits.mjs';
 import { chainLimit, DEFAULT_HOP_LIMIT, HOP_LIMIT } from '../shared/limits.mjs';
 import { selectPhases } from '../tools/uat/phases.mjs';
 import { chainLimitEnv, parseScenario, stepCap } from '../tools/uat/scenario.mjs';
@@ -15,21 +16,25 @@ import { ROUND_TWO, room, T0 } from './delivery-fixture.mjs';
 
 const s = (n) => T0 + n * 1000;
 
-test('shared/limits.mjs: the chain limit is 50 unless POSTBOX_CHAIN_LIMIT lowers it, to a whole number from 1 to 50', () => {
-  assert.equal(DEFAULT_HOP_LIMIT, 50);
+test('shared/limits.mjs: the default chain limit is 1,000, and POSTBOX_CHAIN_LIMIT sets it to a whole number from 1 to 10,000', () => {
+  assert.equal(DEFAULT_HOP_LIMIT, 1000);
+  assert.equal(limits.MAX_HOP_LIMIT, 10000);
   assert.equal(HOP_LIMIT, DEFAULT_HOP_LIMIT, 'the tests run without the variable');
-  for (const unset of [undefined, '', '  ']) assert.equal(chainLimit(unset), 50, JSON.stringify(unset));
+  for (const unset of [undefined, '', '  ']) assert.equal(chainLimit(unset), 1000, JSON.stringify(unset));
   assert.equal(chainLimit('3'), 3);
   assert.equal(chainLimit(' 12 '), 12);
   assert.equal(chainLimit('50'), 50);
-  // The setting exists so tests can lower the limit; a shell can’t turn principle 6’s backstop off by raising it.
-  for (const high of ['51', '100000'])
+  assert.equal(chainLimit('51'), 51, 'past the old backstop of 50');
+  assert.equal(chainLimit('1000'), 1000);
+  assert.equal(chainLimit('10000'), 10000, 'it can raise the default (#1035)');
+  // Never past the maximum, so a shell can’t turn principle 6’s backstop off by raising it.
+  for (const high of ['10001', '100000'])
     assert.throws(
       () => chainLimit(high),
-      (e) => e.message.includes('POSTBOX_CHAIN_LIMIT') && e.message.includes(`“${high}”`),
+      (e) => e.message === `POSTBOX_CHAIN_LIMIT takes a whole number from 1 to 10,000, not “${high}”.`,
       high,
     );
-  for (const bad of ['0', '-1', '2.5', '3x', 'abc', 'Infinity', '1e2'])
+  for (const bad of ['0', '-1', '2.5', '3x', 'abc', 'Infinity', '1e2', '10,000'])
     assert.throws(
       () => chainLimit(bad),
       (e) => e.message.includes('POSTBOX_CHAIN_LIMIT') && e.message.includes(`“${bad}”`),
@@ -45,8 +50,10 @@ test('a scenario’s `- chain-limit: 3` is read, and a bad value is refused rath
   const s3 = parseScenario(md('- chain-limit: 3'));
   assert.deepEqual(s3.agents, ['researcher', 'critic']);
   assert.equal(s3.summary, 'A summary.');
-  for (const bad of ['0', 'three', '2.5', '51', '501'])
-    assert.throws(() => parseScenario(md(`- chain-limit: ${bad}`)), /chain-limit takes a whole number from 1 to 50\b/, bad);
+  assert.equal(parseScenario(md('- chain-limit: 51')).chainLimit, 51, 'past the old backstop of 50 (#1035)');
+  assert.equal(parseScenario(md('- chain-limit: 10000')).chainLimit, 10000);
+  for (const bad of ['0', 'three', '2.5', '10001', '100000'])
+    assert.throws(() => parseScenario(md(`- chain-limit: ${bad}`)), /chain-limit takes a whole number from 1 to 10,000, not/, bad);
 });
 
 test('the runner passes the scenario’s chain limit to its Postbox as POSTBOX_CHAIN_LIMIT, and nothing without one', () => {

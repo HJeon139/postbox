@@ -108,7 +108,9 @@ test('#572: scrolling 1,000 replies on light costs about what it does on dark to
   test.info().annotations.push({ type: 'measured', description: said });
   expect(cost.dark, 'the trace recorded the work it measures').toBeGreaterThan(0);
   // Light still draws each icon with its rim, from a file of its own, and every one of them is there.
-  const files = await page.evaluate(() => [...new Set([...document.querySelectorAll('.react-icon')].map((n) => getComputedStyle(n).backgroundImage))]);
+  const files = await page.evaluate(() => [
+    ...new Set([...document.querySelectorAll('.react-btn')].map((n) => getComputedStyle(n, '::before').backgroundImage)),
+  ]);
   expect(files, 'one file per reaction').toHaveLength(5);
   for (const f of files) {
     const url = f.match(/url\("(.+)"\)/)?.[1] ?? '';

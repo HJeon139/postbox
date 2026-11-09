@@ -649,6 +649,9 @@ export class AntigravityCliAdapter {
       POSTBOX_MCP_URL: ctx.mcpUrl,
       POSTBOX_AGY_MODE: persona?.permissionMode ?? 'auto',
       POSTBOX_AGY_FOLDERS: JSON.stringify([cwd, ...addDirs]),
+      // What Auto lets run without a card, and whether a publishing tool is refused (agy-auto.mjs, #416).
+      POSTBOX_AGY_TOOLS: JSON.stringify(Array.isArray(persona?.tools) ? persona.tools : []),
+      POSTBOX_AGY_PUBLISH: setupOf(persona).canPublish ? '1' : '',
     };
     const env = hookConfirmed ? { ...this.env, ...hookVars } : this.env;
     return new Promise((resolve, reject) => {

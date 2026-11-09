@@ -163,7 +163,7 @@ Before any code, **a design document gets critic’s read and one peer’s** (ru
   - a reviewer with blocking findings ends with one mention of the author, and one that approves mentions no one;
   - there is no separate “ready for confirmation”: the author runs the UAT phase itself and attaches the run folder.
 
-  Each is one reply wake. Since #541 (v0.44.7) there’s no pair limit, and a chain waits for the person only past 50 wakes. This replaces room rule 4’s “the person starts each round”.
+  Each is one reply wake. Since #541 (v0.44.7) there’s no pair limit, and a chain waits for the person only past 50 wakes (1,000 by default since #1035, and each room can set its own). This replaces room rule 4’s “the person starts each round”.
 - **Every finding** names file, line and commit (room rule 3). UAT reports name the run folder and its cost.
 - **Every developer works in its own worktree,** and a reviewer checks out the SHAs the author names in its own, never in `postbox-ctx` (room rule 2).
 - **Questions go to the person as choice or form blocks,** not `AskUserQuestion` (#521).
