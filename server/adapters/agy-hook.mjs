@@ -12,7 +12,7 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CARD_WAIT_MS } from '../permission-cards.mjs';
 import { autoAllows, inGit, personaAllows, personaOf, publishingCall } from './agy-auto.mjs';
@@ -165,7 +165,9 @@ function decideRead(args, { roots, readFolders, cwd, home }) {
   const paths = pathArgs(args);
   if (!paths.length || paths.some((p) => typeof p !== 'string')) return { decision: 'ask', toolName: 'Read', input: { file_path: '' } };
   const agyDirs = AGY_READABLE.map((d) => realTarget(join(home, '.gemini', 'antigravity-cli', d), '/'));
-  const readable = readFolders.map((f) => realTarget(f, cwd)).filter(Boolean);
+  // Saved as real paths (read-folders.mjs), so compared as saved, as inReadFolder does: resolved again, one later
+  // replaced by a link would lead where the link does (#1074).
+  const readable = readFolders.filter((f) => isAbsolute(f));
   const dirs = /** @type {string[]} */ ([...roots, ...readable, ...agyDirs]);
   const outside = /** @type {string[]} */ (paths).find((p) => !leadsInto(p, dirs, { cwd, home }));
   return outside === undefined ? { decision: 'allow' } : { decision: 'ask', toolName: 'Read', input: { file_path: outside.trim() } };
