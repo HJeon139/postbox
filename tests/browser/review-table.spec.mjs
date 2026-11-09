@@ -92,6 +92,13 @@ for (const width of [375, 1280]) {
         .poll(() => room.calls.find((m) => m.kind === 'event' && m.event.blockId === blockId)?.event.values.comments, { message: 'the agent gets the comment' })
         .toEqual([{ line: 9, text: 'Center the cost.' }]);
     });
+  });
+}
+
+// #1098: a renamed header with its delimiter unchanged.
+for (const width of [375, 1280]) {
+  test.describe(`renamed, at ${width} px`, () => {
+    test.use(width === 375 ? { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {});
 
     test(`#1098 a renamed header with its delimiter unchanged: the delimiter comes after the new header, so the numbers read in order (${width} px)`, async ({
       page,
@@ -104,14 +111,12 @@ for (const width of [375, 1280]) {
       await viewRadio(block, 'Lines').click();
       await block.locator('[aria-label="Changes"]').getByRole('radio', { name: 'Diff v1 → v2', exact: true }).click();
       const table = block.locator('.md-table');
-      const rows = await table
-        .locator('tr')
-        .evaluateAll((trs) =>
-          trs.map((tr) => ({
-            text: (tr.textContent ?? '').replace(/\s+/g, ' ').trim(),
-            line: /** @type {HTMLElement | null} */ (tr.querySelector('.g-mark'))?.dataset.line ?? null,
-          })),
-        );
+      const rows = await table.locator('tr').evaluateAll((trs) =>
+        trs.map((tr) => ({
+          text: (tr.textContent ?? '').replace(/\s+/g, ' ').trim(),
+          line: /** @type {HTMLElement | null} */ (tr.querySelector('.g-mark'))?.dataset.line ?? null,
+        })),
+      );
       const at = (s) => rows.findIndex((r) => r.text.includes(s));
       expect.soft(at('|---|---|'), 'the delimiter right after the new header').toBe(at('Price') + 1);
       expect.soft(at('Cost'), 'and the old header before the new one').toBeLessThan(at('Price'));
