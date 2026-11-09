@@ -27,6 +27,9 @@ export const HOOK_PROMPTS = Object.freeze({ promptTool: true, promptHook: true }
 
 const WRITE_TOOLS = new Set(['write_file', 'write_to_file', 'edit_file', 'replace_file_content', 'multi_replace_file_content']);
 const READ_TOOLS = new Set(['read_file', 'view_file', 'list_dir', 'find_by_name', 'grep_search']);
+// agy’s own folders a model reads with no card: its MCP tools’ schemas and its notes (agy-tools.mjs’s AGY_FILE), and
+// its builtin skills and guide, which a model read unprompted in a UAT: a card nobody can usefully judge (#1074).
+const AGY_READABLE = ['mcp', 'brain', 'builtin'];
 const SUBAGENT_TOOLS = new Set(['invoke_subagent', 'define_subagent', 'send_message', 'manage_subagents', 'manage_task']);
 // A command that names Antigravity’s plugin, this hook or agy’s settings: always a card, flagged.
 const PROTECTED_CMD = /\.agents\b|agy-hook\.mjs\b|\.gemini[\\/]antigravity-cli\b/i;
@@ -161,7 +164,7 @@ function decideWrite(name, args, { mode, roots, cwd, scriptPath, home }) {
 function decideRead(args, { roots, readFolders, cwd, home }) {
   const paths = pathArgs(args);
   if (!paths.length || paths.some((p) => typeof p !== 'string')) return { decision: 'ask', toolName: 'Read', input: { file_path: '' } };
-  const agyDirs = [join(home, '.gemini', 'antigravity-cli', 'mcp'), join(home, '.gemini', 'antigravity-cli', 'brain')].map((d) => realTarget(d, '/'));
+  const agyDirs = AGY_READABLE.map((d) => realTarget(join(home, '.gemini', 'antigravity-cli', d), '/'));
   const readable = readFolders.map((f) => realTarget(f, cwd)).filter(Boolean);
   const dirs = /** @type {string[]} */ ([...roots, ...readable, ...agyDirs]);
   const outside = /** @type {string[]} */ (paths).find((p) => !leadsInto(p, dirs, { cwd, home }));
