@@ -51,12 +51,14 @@ test('#672: a real shell’s banner and another probe’s markers are ignored; o
 test('#672: a shell past the time limit fails, and its whole process group is killed', { skip, timeout: 10_000 }, async () => {
   const pidFile = join(dir, 'child.pid');
   const sh = shell('slow', `sleep 30 &\necho $! > '${pidFile}'\nwait`);
+  // A limit the shell can always reach its child by, even on a loaded host, so the pid file is there to read.
+  const limit = 1500;
   const t0 = Date.now();
-  const r = await probeLoginPath({ shell: sh, timeoutMs: 300 });
+  const r = await probeLoginPath({ shell: sh, timeoutMs: limit });
   const took = Date.now() - t0;
   assert.equal(r.ok, false);
   assert.ok(!r.ok && r.why.length > 0);
-  assert.ok(took < 300 + 1500, `took ${took} ms`);
+  assert.ok(took < limit + 1500, `took ${took} ms`);
   assert.ok(existsSync(pidFile), 'the shell started its child');
   const child = Number(readFileSync(pidFile, 'utf8'));
   started.push(child);

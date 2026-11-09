@@ -198,6 +198,27 @@ test('#672: the login shell is asked again at most once per daemon start', async
   }
 });
 
+test('#672: a re-probe that fails keeps the first probe’s PATH, so a CLI it found is still found', async () => {
+  let probes = 0;
+  const s = setup({
+    probeLoginPath: async () => (++probes === 1 ? { ok: true, entries: ['/late/bin'], ms: 1 } : { ok: false, why: 'the shell timed out.' }),
+    findPrograms: findsLate([]),
+  });
+  try {
+    const c = await hello(s);
+    c.send('start', startMsg('t1', { harness: 'kiro-cli' }));
+    assert.equal((await c.msgs.next('error')).code, 'no-harness');
+    assert.equal(probes, 2, 'the miss asked again, and that probe failed');
+    c.send('start', startMsg('t2'));
+    await c.msgs.next('started');
+    const record = JSON.parse(readFileSync(s.p.turn('t2', TURN_FILES.start), 'utf8'));
+    assert.equal(record.program, '/late/bin/claude', 'claude is still found on the first probe’s PATH');
+    assert.match(record.env.PATH, /^\/late\/bin/);
+  } finally {
+    s.done();
+  }
+});
+
 /** A temp home with an executable `name` in each of `dirs` (under it). */
 function hostWith(dirs, name) {
   const home = tempDir('pblp-');
