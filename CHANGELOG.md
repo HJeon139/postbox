@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.55.1 (2026-11-09)
+
+### Fixes
+
+- **remote:** a background task's stop text uses the shared invisible set and a whole-pair cut
+
 ## 1.55.0 (2026-11-09)
 
 ### Features
