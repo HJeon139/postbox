@@ -320,7 +320,9 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
    room, 71 px at 1,280 px and 91 px at 375 px. Only where the browser can (cv-skip, app/js/view-skip.mjs).
    Skipping contains layout and paint, which makes the item the box a fixed descendant is placed in. So an item with
    one is never skipped: a review or an app full screen, and an app's check frame, off screen on purpose. */
-.transcript.cv-skip > .item { content-visibility: auto; contain-intrinsic-size: auto 71px; }
+/* Skipping clips each item’s paint to its box, so a focus ring on a control flush with the item’s edge, a reaction
+   button, gets 4 px of room past it. */
+.transcript.cv-skip > .item { content-visibility: auto; contain-intrinsic-size: auto 71px; overflow-clip-margin: 4px; }
 @media (max-width: 600px) { .transcript.cv-skip > .item { contain-intrinsic-size: auto 91px; } }
 .transcript.cv-skip > .item:has(.rv-full, .app-full.fullscreen, .check-frame) { content-visibility: visible; }
 .col { width: 100%; max-width: 760px; margin: 0 auto; }
