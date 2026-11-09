@@ -98,3 +98,23 @@ test('#1126 offline, a failed send still waits for the connection, and isn’t s
   await expect.poll(() => (app.rt.s.threads[thread.id].queue ?? []).length).toBe(1);
   releases.get(worker.id)?.();
 });
+
+test('#1126 a send that keeps failing while the stream is open is tried a few times, then waits for the connection', async ({ page }) => {
+  await page.clock.install();
+  const { worker } = await busyAgent(page);
+  let posts = 0;
+  await page.route('**/api/threads/*/messages', (route) => {
+    posts++;
+    return route.abort('connectionreset');
+  });
+  allowPageError(page, /ERR_CONNECTION_RESET|NetworkError|Failed to load resource/, { times: 50 });
+  await page.locator('#composer-input').fill(`@${worker.handle} never gets through`);
+  await page.locator('#composer-input').press('Enter');
+  await expect(page.locator('.composer .queued').filter({ hasText: 'never gets through' })).toBeVisible();
+  // Past every retry’s delay, and far past: the first try and four more, then nothing until the connection changes.
+  await page.clock.runFor(120_000);
+  await expect.poll(() => posts).toBe(5);
+  await expect(page.locator('.composer .queued').filter({ hasText: 'never gets through' })).toBeVisible();
+  await page.unroute('**/api/threads/*/messages');
+  releases.get(worker.id)?.();
+});
