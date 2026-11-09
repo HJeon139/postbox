@@ -1,6 +1,6 @@
 // #338: Always allow on an Antigravity read card outside its folders saves the file’s folder as readable for that
-// conversation (se.readDirs), Antigravity’s workspace as the person decided on 27 October 2026. Only the hook’s read
-// branch reads that list: a readable folder is never one Antigravity may edit with no card, and it isn’t --add-dir.
+// conversation (se.readDirs), Antigravity’s workspace as the person decided on 27 October 2026. Only Postbox’s answer to
+// a read card reads that list: a readable folder is never one Antigravity may edit with no card, and it isn’t --add-dir.
 // No Always allow for /, the home folder, a folder that holds it, or a dot-folder in it (where credentials live),
 // each judged on the real path, nor on a host turn’s card. The design is sprint4/338-packet-r1.md v2.
 
@@ -65,13 +65,14 @@ test('#338 no Always allow for /, home, a dot-folder in home or inside one, a li
   assert.equal(readFolderOffer({ ...agy, input: { file_path: join(notes, 'a.md') }, home: join(notes, 'inner') }), null, 'a folder that holds home');
 });
 
-// The hook’s list is the turn’s start, so a folder removed mid-turn would still be read there with no card (#1074): a
-// read there asks Postbox, which answers it from the session as it is now (inReadFolder).
+// The hook’s environment is the turn’s start, so a folder removed mid-turn would still be read there with no card
+// (#1074): the hook has no list of readable folders, and a read there asks Postbox, which answers it from the session as
+// it is now (inReadFolder).
 test('#1074 a read in a readable folder asks Postbox, and an edit there asks too', () => {
   const { home, ws, notes } = aHome();
   const event = (name, args) => ({ toolCall: { name, args } });
   for (const mode of ['auto', 'acceptEdits', 'ask']) {
-    const opts = { mode, folders: [ws], readFolders: [notes], cwd: ws, home };
+    const opts = { mode, folders: [ws], cwd: ws, home };
     const file_path = join(notes, 'a.md');
     assert.deepEqual(decideAgyTool(event('view_file', { AbsolutePath: file_path }), opts), { decision: 'ask', toolName: 'Read', input: { file_path } }, mode);
     assert.equal(decideAgyTool(event('write_to_file', { TargetFile: join(notes, 'b.md'), CodeContent: 'x' }), opts).decision, 'ask', mode);
@@ -79,7 +80,7 @@ test('#1074 a read in a readable folder asks Postbox, and an edit there asks too
   }
 });
 
-// The hook’s list is the turn’s start, so a folder allowed later in the turn is judged by inReadFolder alone (#1074).
+// The hook has no list of readable folders, so a read card into one is judged by inReadFolder alone (#1074).
 test('#1074 a read card naming a second path outside a readable folder still asks, with no Always allow', () => {
   const { home, ws, notes } = aHome();
   const args = { Path: join(notes, 'a.md'), SearchPath: join(home, '.ssh') };
@@ -91,10 +92,10 @@ test('#1074 a read card naming a second path outside a readable folder still ask
   assert.equal(inReadFolder(rt, 's1', { tool: 'Read', input: { file_path: join(notes, 'a.md') } }), true, 'one path there needs no card');
 });
 
-test('#338 the hook’s variables carry the readable folders apart from the folders it may work in', () => {
-  const vars = agyHookVars({ mcpUrl: 'http://127.0.0.1:1/mcp', persona: { permissionMode: 'auto' }, cwd: '/w', addDirs: ['/a'], readDirs: ['/r'] });
+test('#1074 the hook’s variables carry the folders it may work in, and no readable ones', () => {
+  const vars = agyHookVars({ mcpUrl: 'http://127.0.0.1:1/mcp', persona: { permissionMode: 'auto' }, cwd: '/w', addDirs: ['/a'] });
   assert.deepEqual(JSON.parse(vars.POSTBOX_AGY_FOLDERS), ['/w', '/a']);
-  assert.deepEqual(JSON.parse(vars.POSTBOX_AGY_READ), ['/r']);
+  assert.equal(Object.hasOwn(vars, 'POSTBOX_AGY_READ'), false, 'the turn’s start would be stale by the next read');
 });
 
 test('#338 Always allow on the card saves the folder for the conversation, and the next read there has no card', async () => {
@@ -140,7 +141,6 @@ test('#338 Always allow on the card saves the folder for the conversation, and t
   assert.equal(results[0].decision, 'allow');
   assert.deepEqual(rt.s.sessions[se.id].readDirs, [notes]);
   assert.deepEqual(rt.s.sessions[se.id].addDirs ?? [], [], 'not a folder it may work in');
-  const next = { ...env, POSTBOX_AGY_READ: JSON.stringify(rt.s.sessions[se.id].readDirs) };
   let asks = 0;
   const counted = async (url, init) => {
     asks++;
@@ -148,7 +148,7 @@ test('#338 Always allow on the card saves the folder for the conversation, and t
   };
   // The next turn’s read, while that turn runs, as its hook asks.
   adapter.next.push(async () => {
-    results.push(await runAgyHook(read, { cwd: ws, env: next, home, fetchImpl: /** @type {any} */ (counted) }));
+    results.push(await runAgyHook(read, { cwd: ws, env, home, fetchImpl: /** @type {any} */ (counted) }));
   });
   rt.sendMessage(t.id, { text: 'read them again' });
   for (let i = 0; i < 200 && results.length < 2; i++) await sleep(5);

@@ -1,8 +1,8 @@
 // Folders an agent may read in one conversation, from Always allow on a read card (#338): Antigravity’s workspace for
 // reads, as the person decided on 27 October 2026. They’re kept on the session as readDirs, apart from addDirs, the
-// folders it may work in: Antigravity’s hook reads readDirs only in its read branch, so a readable folder is never one
-// it may edit with no card, and it isn’t passed as --add-dir. Claude Code keeps its own offer (harness first), Codex
-// makes no read cards, and a host card has none, since the list is this computer’s.
+// folders it may work in: only inReadFolder reads readDirs, answering a read card Antigravity’s hook sends with no card,
+// so a readable folder is never one it may edit with no card, and it isn’t passed as --add-dir. Claude Code keeps its
+// own offer (harness first), Codex makes no read cards, and a host card has none, since the list is this computer’s.
 
 import { realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, relative, sep } from 'node:path';
@@ -100,8 +100,8 @@ export function inReadFolder(rt, sessionId, { tool, input, hostPrompt = null }) 
 }
 
 /**
- * Saves a readable folder for the conversation, read at once by inReadFolder and by the hook from its next turn, built from the pending session (#796’s class), so
- * a write still held behind a commit isn’t lost. One already listed adds nothing.
+ * Saves a readable folder for the conversation, read at once by inReadFolder, built from the pending session (#796’s
+ * class), so a write still held behind a commit isn’t lost. One already listed adds nothing.
  * @param {any} rt @param {string} sessionId @param {string} dir
  */
 export function addReadFolder(rt, sessionId, dir) {

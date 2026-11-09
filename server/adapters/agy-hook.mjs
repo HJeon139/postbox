@@ -96,13 +96,12 @@ function protectedAt(at, { scriptPath, home }) {
  * Classifies one Antigravity tool call for the persona’s mode: 'allow', 'deny' (with reason), or 'ask' (with the
  * Claude Code toolName and input that Postbox’s permission card expects).
  * @param {any} event
- * @param {{ mode?: string, folders?: string[], readFolders?: string[], cwd?: string, scriptPath?: string, home?: string, tools?: string[], canPublish?: boolean }} [opts]
- *   tools and canPublish: the persona’s (agy-auto.mjs, personaOf, #416); readFolders: folders it may only read (#338),
- *   which the read branch counts and an edit or Auto’s routine calls never do
+ * @param {{ mode?: string, folders?: string[], cwd?: string, scriptPath?: string, home?: string, tools?: string[], canPublish?: boolean }} [opts]
+ *   tools and canPublish: the persona’s (agy-auto.mjs, personaOf, #416)
  */
 export function decideAgyTool(
   event,
-  { mode = 'ask', folders = [], readFolders = [], cwd = process.cwd(), scriptPath = HOOK_SCRIPT, home = homedir(), tools = [], canPublish = false } = {},
+  { mode = 'ask', folders = [], cwd = process.cwd(), scriptPath = HOOK_SCRIPT, home = homedir(), tools = [], canPublish = false } = {},
 ) {
   const name = String(event?.toolCall?.name ?? '').trim();
   const args = event?.toolCall?.args && typeof event.toolCall.args === 'object' ? event.toolCall.args : {};
@@ -204,17 +203,7 @@ function resolveHookContext(event, cwd, env) {
       mcpUrl = '';
     }
   }
-  return { mode, folders, readFolders: jsonList(env.POSTBOX_AGY_READ), mcpUrl };
-}
-
-/** A JSON list of paths from the environment, or none. @param {string | undefined} raw */
-function jsonList(raw) {
-  try {
-    const list = JSON.parse(raw || '[]');
-    return Array.isArray(list) ? list.filter((x) => typeof x === 'string') : [];
-  } catch {
-    return [];
-  }
+  return { mode, folders, mcpUrl };
 }
 
 /**
@@ -250,8 +239,8 @@ async function evaluateHook(stdinText, { cwd = process.cwd(), env = process.env,
   } catch {
     return { decision: 'deny', reason: 'Postbox’s Antigravity hook received invalid JSON on stdin.' };
   }
-  const { mode, folders, readFolders, mcpUrl } = resolveHookContext(event, cwd, env);
-  const check = decideAgyTool(event, { mode, folders, readFolders, cwd, scriptPath, home, ...personaOf(env) });
+  const { mode, folders, mcpUrl } = resolveHookContext(event, cwd, env);
+  const check = decideAgyTool(event, { mode, folders, cwd, scriptPath, home, ...personaOf(env) });
   if (check.decision === 'allow' || check.decision === 'deny') return check;
   if (!mcpUrl) return { decision: 'deny', reason: 'Postbox’s MCP URL is missing, so the hook couldn’t ask for permission.' };
   const requestId = `agy-hook-${randomUUID()}`;

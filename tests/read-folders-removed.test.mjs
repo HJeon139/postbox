@@ -69,7 +69,7 @@ async function aTurn(rt, adapter, t, during) {
 
 /** The hook as the turn runs it: its environment from the turn’s start, its cards asked of this runtime’s /mcp. */
 function hookOf(rt, se, ctx, cwd, home) {
-  const env = agyHookVars({ mcpUrl: 'http://127.0.0.1:1/mcp', persona: ctx.persona, cwd, addDirs: ctx.addDirs, readDirs: ctx.readDirs ?? [] });
+  const env = agyHookVars({ mcpUrl: 'http://127.0.0.1:1/mcp', persona: ctx.persona, cwd, addDirs: ctx.addDirs });
   const fetchImpl = async (/** @type {string} */ _url, /** @type {any} */ init) => ({
     ok: true,
     status: 200,

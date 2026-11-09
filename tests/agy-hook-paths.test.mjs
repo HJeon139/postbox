@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { decideAgyTool, isProtectedPath, runAgyHook } from '../server/adapters/agy-hook.mjs';
 import { describePermission } from '../server/adapters/claude-permission.mjs';
+import { inReadFolder } from '../server/read-folders.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const READS = ['read_file', 'view_file', 'list_dir', 'find_by_name', 'grep_search'];
@@ -97,15 +98,19 @@ test('#1074 a readable folder later replaced by a link to ~/.ssh allows nothing 
   const { home, ws, ssh } = aHome();
   const saved = join(home, 'shared');
   symlinkSync(ssh, saved);
-  const res = decide('read_file', { Path: join(saved, 'id_rsa') }, { mode: 'ask', folders: [ws], readFolders: [saved], cwd: ws, home });
+  const res = decide('read_file', { Path: join(saved, 'id_rsa') }, { mode: 'ask', folders: [ws], cwd: ws, home });
   assert.equal(res.decision, 'ask');
+  // Postbox answers it, comparing where the read leads with the folder as saved, not resolved again.
+  const sessions = { s1: { personaId: 'p1', readDirs: [saved] } };
+  const rt = { s: { sessions }, store: { pending: { session: (id) => sessions[id] } }, persona: () => ({ backend: 'antigravity-cli' }) };
+  assert.equal(inReadFolder(rt, 's1', { tool: res.toolName, input: res.input }), false, 'a card, not a read through the link');
 });
 
 test('#1074 a .. after a link climbs from where the link leads, as the file system does', () => {
   const { home, ws, out, notes, ssh } = aHome();
   symlinkSync(join(ssh, 'sub'), join(notes, 'sublink'));
   symlinkSync(join(out, 'sub'), join(ws, 'sublink'));
-  const opts = { mode: 'auto', folders: [ws], readFolders: [notes], cwd: ws, home };
+  const opts = { mode: 'auto', folders: [ws], cwd: ws, home };
   assert.equal(decide('read_file', { Path: `${notes}/sublink/../id_rsa` }, opts).decision, 'ask', 'notes/sublink/.. is ~/.ssh');
   assert.equal(decide('read_file', { Path: 'sublink/../secret.txt' }, opts).decision, 'ask', 'ws/sublink/.. is outside');
   assert.equal(decide('write_file', { Path: `${ws}/sublink/../secret.txt` }, opts).decision, 'ask');

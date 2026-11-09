@@ -725,8 +725,6 @@ export class Runtime {
       rules: { allow: [...(se0.rules?.allow ?? [])], ask: [...(se0.rules?.ask ?? [])], deny: [...(se0.rules?.deny ?? [])] },
       /** Folders the person added for this conversation (#66), passed as --add-dir / additionalDirectories. */
       addDirs: [...(se0.addDirs ?? [])],
-      /** Folders it may only read in this conversation, from Always allow on a read card (#338, read-folders.mjs). */
-      readDirs: [...(se0.readDirs ?? [])],
       /** The adapter says how to name a subagent from its id (a prompt’s agent id), so its prompt names it. */
       subagentNames(fn) {
         turn.subagentName = fn;
