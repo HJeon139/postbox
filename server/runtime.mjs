@@ -1220,9 +1220,10 @@ export class Runtime {
       }
       return;
     }
-    for (const h of ex.silent ? held : queue.batchPending(this, held, se.threadId))
-      this.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
-    if (!held.length && !ex.silent) this.drainQueues(se.id, turn.threadId);
+    // Send now sends only your message, and the queue waits for that turn’s end. After a plain Stop the first turn takes
+    // its thread’s queue, in arrival order, as a turn’s normal end does (#733, #1040).
+    if (ex.silent) for (const h of held) this.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
+    else this.takePending(se, { pending: held, threadId: turn.threadId }, true);
   }
 
   /**
