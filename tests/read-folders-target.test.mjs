@@ -4,7 +4,7 @@
 // turn with no second card, by the session’s list as it is now, not as the turn started with it.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -23,6 +23,9 @@ function aHome() {
   const designs = join(ws, 'designs');
   for (const d of [ws, notes, `${notes}-old`, designs, join(home, '.ssh')]) mkdirSync(d, { recursive: true });
   for (const f of [join(notes, 'a.md'), join(notes, 'b.md'), join(`${notes}-old`, 'a.md'), join(designs, 'a.md'), join(home, 'top.md')]) writeFileSync(f, 'x');
+  writeFileSync(join(home, '.ssh', 'id_ed25519'), 'key');
+  // A link in the notes folder to a key in ~/.ssh, as one already there might be.
+  symlinkSync(join(home, '.ssh', 'id_ed25519'), join(notes, 'keys'));
   return { home, ws, notes, designs };
 }
 
@@ -94,4 +97,14 @@ test('#338 a saved folder allows nothing outside it, nor for another backend', a
   assert.equal(sibling.cards, 1, 'a folder whose name only starts with it still asks');
   const other = await readAfterSaving({ home, ws, dir: notes, file: join(notes, 'b.md'), backend: 'claude-code' });
   assert.equal(other.cards, 1, 'Claude Code keeps its own rules');
+});
+
+// critic’s P2 on a3b3b0c1: a file is judged by where it leads, as the hook judges it, not by the folder holding the link.
+test('#338 a link in a saved folder to a key in ~/.ssh still asks, and offers nothing', async () => {
+  const { home, ws, notes } = aHome();
+  const link = join(notes, 'keys');
+  const { result, cards } = await readAfterSaving({ home, ws, dir: notes, file: link });
+  assert.equal(cards, 1, 'a card, since the file it reads is in ~/.ssh');
+  assert.equal(result.allow, false);
+  assert.equal(offerFor(link, home), null, 'and no Always allow for ~/.ssh');
 });
