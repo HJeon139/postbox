@@ -152,7 +152,7 @@ export async function reattach(rts, sessionId) {
     // for the person. One listed as ended, or interrupted and gone, can’t, and a moved one waits anyway (autoResume’s
     // hostOf check).
     const mayRun = stillThere && !moved;
-    interrupted(rts, sessionId, whyNotAttached(now.handle, persona, { listed: Boolean(listed), moved }), { unkilled: mayRun });
+    interrupted(rts, sessionId, whyNotAttached(now.handle, persona, { listed: Boolean(listed), moved }), { unkilled: mayRun, noBackend: unregistered });
     // Its cards, kept for the attach, can’t be answered now (#965).
     endOrphanCards(rts, [r.turn]);
     return;
@@ -181,9 +181,9 @@ function whyNotAttached(handle, persona, { listed, moved }) {
 /**
  * A turn that was on a host and is gone: Interrupted, and resumed once the host is back, unless `unkilled` says its
  * process there may still run, so it waits for the person (resume.unkilled, as turns-end.mjs keeps it for #872).
- * @param {RemoteTurns} rts @param {string} sessionId @param {string} why @param {{ unkilled?: boolean }} [o]
+ * @param {RemoteTurns} rts @param {string} sessionId @param {string} why @param {{ unkilled?: boolean, noBackend?: boolean }} [o]
  */
-export function interrupted(rts, sessionId, why, { unkilled = false } = {}) {
+export function interrupted(rts, sessionId, why, { unkilled = false, noBackend = false } = {}) {
   const rt = rts.rt;
   const se = rt.s.sessions[sessionId];
   if (!se?.remoteTurn) return;
@@ -200,9 +200,11 @@ export function interrupted(rts, sessionId, why, { unkilled = false } = {}) {
     error: message,
     remote: { state: 'interrupted', hostId: se.remoteTurn.hostId },
   });
-  /** @type {{ why: string, at: number, unkilled?: boolean }} */
+  /** @type {{ why: string, at: number, unkilled?: boolean, noBackend?: boolean }} */
   const resume = { why: 'interrupted', at: rts.now() };
   if (unkilled) resume.unkilled = true;
+  // Its backend isn’t registered here, so it can’t resume until it is: the hint says so (#965, resumeHint).
+  if (noBackend) resume.noBackend = true;
   updateRemote(rts, sessionId, { state: 'interrupted', at: rts.now(), resume });
   rt.updateSession(sessionId, {
     state: 'failed',

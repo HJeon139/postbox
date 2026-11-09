@@ -3,6 +3,7 @@
 // asked before the restart are asked again; archive, delete and removing the host give up on what waits to attach
 // or to resume.
 
+import { registeredAdapter } from './placement.mjs';
 import { needHost, releaseHost } from './turns-need.mjs';
 import { endCard, openCards } from './turns-prompts.mjs';
 import { interrupted, reattach, whenBack } from './turns-resume.mjs';
@@ -34,7 +35,12 @@ export function restore(rts) {
       rts.restoring.set(r.turn, se.id);
       needHost(rts, r.hostId);
       void reattach(rts, se.id);
-    } else if (r.state === 'interrupted' && r.resume) whenBack(rts, r.hostId);
+    } else if (r.state === 'interrupted' && r.resume) {
+      // A turn that waited for its backend (#965): once it’s registered, it waits only for the host, as any other.
+      if (r.resume.noBackend && registeredAdapter(rts.rt, rts.rt.personaFor(se)))
+        updateRemote(rts, se.id, { resume: { why: r.resume.why, at: r.resume.at, ...(r.resume.unkilled ? { unkilled: true } : {}) } });
+      whenBack(rts, r.hostId);
+    }
   }
 }
 
