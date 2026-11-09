@@ -65,6 +65,12 @@ test('#521 when the CLI’s prompt closes, the question’s call ends, and a lat
   assert.equal(answer.behavior, 'deny');
   const q = questionOf(s);
   assert.equal(s.store.item(s.t.id, q.id).answered, false, 'the block stays asking');
+  // No call holds it any more, so the answer goes as an event, which starts the agent’s next turn.
+  let heard = false;
+  s.next.push(async (c) => {
+    heard = true;
+    c.text('ok');
+  });
   await s.rt.act(s.t.id, q.id, 'choose', { selected: [q.block.options[0].id] });
-  assert.equal(s.store.item(s.t.id, q.id).answer.read, false, 'not taken as read: no call holds it, so it goes as an event');
+  await until(() => heard);
 });

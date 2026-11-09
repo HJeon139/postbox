@@ -1860,8 +1860,8 @@ export class Runtime {
   // ── Permission prompts: server/permission-cards.mjs ──────────────────────────────────
 
   requestPermission(sessionId, req) {
-    // Claude Code’s AskUserQuestion asks as choice blocks, on every path that asks: server/ask-question.mjs (#521).
-    const questions = req.tool === QUESTION_TOOL ? questionBlocks(req.input) : null;
+    // Claude Code’s AskUserQuestion asks as choice blocks, here on this computer: server/ask-question.mjs (#521).
+    const questions = req.tool === QUESTION_TOOL && !req.hostPrompt ? questionBlocks(req.input) : null;
     return questions ? askQuestions(this, sessionId, req, questions) : requestPermission(this, sessionId, req);
   }
   askPerson(sessionId, req) {
