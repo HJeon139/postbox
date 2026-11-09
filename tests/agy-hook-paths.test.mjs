@@ -199,3 +199,10 @@ test('#1074 a ~user path may be anyone’s home, so a file call naming one asks,
   }
   assert.equal(decide('run_command', { CommandLine: 'cat ~root/.ssh/x' }, { mode: 'auto', folders: [ws], cwd: ws, home }).decision, 'ask', 'Auto agrees');
 });
+
+test('#1074 a ~user path asks even where, read from this home, it leads into the folders', () => {
+  const { home, ws } = aHome();
+  const opts = { mode: 'auto', folders: [ws], cwd: ws, home };
+  assert.equal(decide('read_file', { Path: '~root/ws/a.txt' }, opts).decision, 'ask', 'root’s home isn’t this one');
+  assert.equal(decide('write_file', { Path: '~root/ws/a.txt' }, opts).decision, 'ask');
+});
