@@ -218,12 +218,14 @@ export function mountWork(threadId, { turnId = null, at = null, gitWatch = null 
 
   /** An item that opens: its summary row, and a body built only when open. */
   function item(id, cls, summaryRow, body) {
+    // What it was built as: a copy rebuilt by a held refill fires its own toggle, which must not undo the press (#1010).
+    const built = opened.has(id);
     const d = h(
       `details.work-item${cls ? `.${cls}` : ''}`,
       {
-        open: opened.has(id),
+        open: built,
         ontoggle: () => {
-          if (d.open === opened.has(id)) return;
+          if (d.open === built) return;
           if (d.open) opened.add(id);
           else opened.delete(id);
           paint();
@@ -662,14 +664,15 @@ export function mountWorkPane(threadId) {
       h(
         'div.wc-turns',
         shown.map(({ t, line }) => {
+          const built = openTurns.has(t.id);
           const d = h(
             'details.wc-turn',
             {
               id: `wturn-${t.id}`,
               class: t.id === target ? 'is-target' : '',
-              open: openTurns.has(t.id),
+              open: built,
               ontoggle: () => {
-                if (d.open === openTurns.has(t.id)) return;
+                if (d.open === built) return;
                 if (d.open) openTurns.add(t.id);
                 else openTurns.delete(t.id);
                 paint();
