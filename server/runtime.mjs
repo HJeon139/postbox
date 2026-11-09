@@ -474,8 +474,8 @@ export class Runtime {
     const q =
       busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now(), seq: arrival() } : null;
     if (q) updateThread(this, threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
-    // Send now is a change of course: background jobs keep running, each with its own Stop (#129).
-    else for (const { se } of busy) this.stop(se.id, { silent: true, jobs: 'keep', sendNow: true });
+    // Send now is a change of course (stopForSendNow), also for one already exiting from a plain Stop (#1040).
+    else if (sendNow) for (const { se } of targets) queue.stopForSendNow(this, se.id);
     const sent = q ? { queued: q } : this.postAndDeliver(threadId, { text, attachments }, targets);
     // A card waiting to wake one of them is stale now (#439), whether this went at once or waits in the queue. It
     // retires after, so the wake you never allowed goes behind your message rather than ahead of it.
