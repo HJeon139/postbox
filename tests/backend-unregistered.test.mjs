@@ -215,6 +215,16 @@ test('#874 a backend name from the data is clipped in the reason', async () => {
   check(failedIn(f, f.t.id)[0].error);
 });
 
+test('#874 a backend name from the data loses every character that hides or reorders text, not only Cc and Cf', async () => {
+  const hidden = ['\udc00', '\u3164', '\u034f', '\ufe0f', '\u{e0041}', '\u200b', '\u202e', '\ud800']; // each surrogate alone
+  const f = setup();
+  unregister(f, f.b, `é${hidden.join('')}日"<&`);
+  queued(f);
+  f.rt.drainAll();
+  await settle(f.rt);
+  assert.match(failedIn(f, f.t.id)[0].error, /^@beta’s turn didn’t start: “é日"<&” isn’t available on this computer\./);
+});
+
 test('#874 a handle from the data is clipped in the reason too, and a backend named like an object key isn’t looked up', async () => {
   const f = setup();
   unregister(f, f.b, 'constructor');
