@@ -124,6 +124,19 @@ test('Send now during a plain Stop’s exit leaves the person’s other queued m
   );
 });
 
+test('a Send now from the API during a plain Stop’s exit sends only that message; the wake runs next', async () => {
+  const f = await stoppedBeta();
+  f.rt.agentWake(f.alpha.id, 'beta', 'Wake W from alpha.');
+  // The page’s composer never sends sendNow; the route takes it, so the rule is the same as the queue’s Send now.
+  f.rt.sendMessage(f.t.id, { text: '@beta change of plan', sendNow: true });
+  f.busy.release();
+  await settle(f.rt);
+  assert.deepEqual(turnsAfterFirst(f), [
+    ['conversation', ['@beta change of plan']],
+    ['conversation', ['Wake W from alpha.']],
+  ]);
+});
+
 test('after a Stop, a held notice behind the person’s message keeps the queued wake behind it', async () => {
   const f = await stoppedBeta();
   f.rt.sendMessage(f.t.id, { text: '@beta after the stop' });
