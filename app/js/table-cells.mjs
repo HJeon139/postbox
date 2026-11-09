@@ -20,7 +20,10 @@ function columnWords(col) {
 
 /** @param {{ id?: string, label?: string } | undefined} col */
 function namesYearOrId(col) {
-  const words = columnWords(col);
+  // A note or punctuation after the name doesn’t change what it names: “Year (FY)”, “Year:”, “ID #”.
+  const words = columnWords(col)
+    .replace(/\s*\([^)]*\)\s*$/, '')
+    .replace(/[\s:#*.]+$/, '');
   return ENDS_IN_NAME.test(words) && !AMOUNT_OF_NAME.test(words);
 }
 
