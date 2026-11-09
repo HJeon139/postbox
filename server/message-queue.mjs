@@ -26,8 +26,8 @@ function postUserMessage(rt, threadId, q) {
   return { item, message };
 }
 
-// The person's Edit, Cancel and Send now aim at an entry they see, so it's found in the published queue; the queue
-// written back is the pending one, so a wake queued meanwhile behind a held commit stays (#796).
+// The person's Edit and Cancel aim at an entry they see, so it's found in the published queue; the queue written back
+// is the pending one, so a wake queued meanwhile behind a held commit stays (#796). Send now is below.
 export function editQueued(rt, threadId, queueId, text) {
   if (queuedIn(rt.thread(threadId), queueId).kind === 'wake') throw httpError(409, 'An agent’s message can’t be edited. Remove it instead.');
   updateThread(rt, threadId, (t) => ({ queue: (t.queue ?? []).map((q) => (q.id === queueId ? { ...q, text: String(text) } : q)) }));
@@ -41,8 +41,10 @@ export function cancelQueued(rt, threadId, queueId) {
     rt.tellAgent(q.fromSessionId, `The person removed your message (“${clip(q.text, 120)}”) before it was answered. Carry on without it.`);
 }
 
+// Send now finds the entry in the pending queue: a turn that ended behind a held commit may have drained it already,
+// while the page still shows it queued, and sending it again would deliver it twice (#1007). Gone, it's refused.
 export function sendQueuedNow(rt, threadId, queueId) {
-  const q = queuedIn(rt.thread(threadId), queueId);
+  const q = queuedIn(rt.store.pending.thread(threadId) ?? {}, queueId);
   updateThread(rt, threadId, (t) => ({ queue: (t.queue ?? []).filter((x) => x.id !== queueId) }));
   for (const id of q.sessionIds) rt.stop(id, { silent: true, jobs: 'keep', sendNow: true });
   if (q.kind === 'wake') return deliverWake(rt, threadId, q);
