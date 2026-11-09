@@ -62,3 +62,14 @@ test('#836 a column of years shows a fraction with its separators', () => {
 test('#836 a number column that names no year or id keeps its separators', () => {
   assert.equal(fmtCell(12345, { id: 'cites', label: 'Citations' }), '12,345');
 });
+
+test('#844 a year or id label with a note or punctuation after it shows as written', () => {
+  assert.equal(fmtCell(2026, { id: 'y', label: 'Year (FY)' }), '2026');
+  assert.equal(fmtCell(2026, { id: 'y', label: 'Year:' }), '2026');
+  assert.equal(fmtCell(2026, { id: 'y', label: 'Year*' }), '2026');
+  assert.equal(fmtCell(12345, { id: 'n', label: 'ID #' }), '12345');
+});
+
+test('#844 an amount per year with a unit after it keeps its separators', () => {
+  assert.equal(fmtCell(1234567, { id: 'rev', label: 'Revenue per year (USD)' }), '1,234,567');
+});
