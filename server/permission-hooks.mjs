@@ -72,6 +72,13 @@ const FLAGGED = new RegExp(String.raw`(?<![\w-])(--?${NAMED}\s+)(?!-)${VALUE}`, 
 // lint-allow regex: built from VALUE, WORD and NAMED, the constants just above.
 const HEADER = new RegExp(String.raw`(?<![\w-])(${NAMED}:[ \t]*)${VALUE}|\b(authorization:[ \t]*(?:[a-z][\w-]*[ \t]+)?)${WORD}`, 'gi');
 const COOKIE = /\b(cookie:[ \t]*)[^'"]+/gi;
+// A quoted Authorization header’s credential, every parameter of it (Digest’s response=, SigV4’s Signature=), to the
+// quote that opened the header, past an escaped one, or to the end of the text when it never closes. Unquoted, HEADER
+// ends it at a word.
+const AUTH_QUOTED = /(["'])((?:[\w-]*-)?authorization:[ \t]*(?:[a-z][\w-]*[ \t]+)?)(?:(?!\1)[^\\]|\\.)+/gi;
+// curl’s -u and --user: what follows the user’s colon, quoted (to its closing quote) or not (to the end of the word).
+const USER_QUOTED = /(?<![\w-])((?:-u[ \t]*|--user(?:[ \t]+|=))(["'])[^'":]*:)(?:(?!\2)[^\\]|\\.)+/g;
+const USER_BARE = /(?<![\w-])((?:-u[ \t]*|--user(?:[ \t]+|=))[^\s'":]*:)[^\s'"&;|<>()`]+/g;
 // lint-allow regex: built from NAMED, the constant just above.
 const JSON_FIELD = new RegExp(String.raw`(\\"${NAMED}\\"\s*:\s*\\")[^"\\]*|("${NAMED}"\s*:\s*")(?:[^"\\]|\\.)*`, 'gi');
 const SIGNED = /([?&](?:sig|signature|auth|x-amz-signature|x-amz-credential|x-goog-signature|x-goog-credential)=)[^\s'"&;|<>()`#]+/gi;
@@ -89,7 +96,11 @@ const keptName = (_match, name, other) => `${name ?? other}…`;
 
 /** `text`, cut to MAX_SCAN and marked, with the credentials found in it replaced by an ellipsis. @param {string} text */
 function redacted(text) {
-  const kept = NAME_PATTERNS.reduce((s, pattern) => s.replace(pattern, keptName), marked(text.slice(0, MAX_SCAN)));
+  const quoted = marked(text.slice(0, MAX_SCAN))
+    .replace(AUTH_QUOTED, (_m, quote, name) => `${quote}${name}…`)
+    .replace(USER_QUOTED, (_m, name) => `${name}…`)
+    .replace(USER_BARE, keptName);
+  const kept = NAME_PATTERNS.reduce((s, pattern) => s.replace(pattern, keptName), quoted);
   return BARE.reduce((s, pattern) => s.replace(pattern, '…'), kept);
 }
 
