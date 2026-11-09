@@ -88,6 +88,7 @@ const PENDING = {
   'apps.mjs': ['showApp', 'updateApp'], // show_app and update_app of an app the turn may have just shown
   'block-show.mjs': ['showBlock', 'showBlock', 'showBlock', 'shownAgain'], // show_block of an app or a block id the turn may have just shown
   'blocks.mjs': ['shownBy'], // update_block of a block the turn just showed
+  'catch-up.mjs': ['moveMarkers'], // the conversation of a topic an item moved in, maybe opened behind a held commit, whose sessions' markers move (#1041)
   'held-session.mjs': ['heldSession'], // a delivery to a session just made behind a held commit waits until it's published (#796's class in sessions)
   'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
@@ -115,8 +116,14 @@ const PENDING = {
     'endTurn',
     'endTurn',
     'endTurn',
+    // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
+    'stop',
     'recordStopped',
     'turnExited',
+    // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).
+    'endJob',
+    'endJob',
+    'endJob',
     'runningProgress',
     'setJobStep',
     'settleJobs',
@@ -152,7 +159,7 @@ const PENDING = {
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
   'topic-open.mjs': ['startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'], // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637)
-  'wake-cards.mjs': ['declinedAdd', 'openCard'], // a declined add, so a mention asks no more (#693); another wake’s held hop card, so a second isn’t made
+  'wake-cards.mjs': ['lastAddAnswer', 'openCard'], // a declined add, so a mention asks no more (#693), and its lift by the person’s add (#789); another wake’s held hop card, so a second isn’t made
   'write-intent.mjs': ['stillOpen'], // the turn’s own lines, and the person’s held Stop on one
 };
 

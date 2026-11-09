@@ -6,6 +6,7 @@ import { positionOf } from '../shared/item-index.mjs';
 import { READING } from '../shared/limits.mjs';
 import { keepFor, leftOut, mentions } from './catch-up-keep.mjs';
 import { clip } from './helpers.mjs';
+import { pendingSessionsIn } from './session-write.mjs';
 import { reactionLines, threadLines } from './thread-summary.mjs';
 import { heldFor } from './wake-cards.mjs';
 
@@ -43,6 +44,21 @@ export function catchUp(rt, se, exclude = []) {
   rt.updateSession(se.id, { givenMentions: kept.filter(whole).map((e) => e.item.id) });
   const where = t?.kind === 'room' ? 'this room' : t?.kind === 'topic' ? 'this thread' : 'this conversation';
   return `[Postbox] ${root ? `${root}\n\n` : ''}What happened in ${where} since your last turn${left.length ? ` ${leftOut(kept, left, items, se.handle)}` : ''}:\n\n${kept.map((e) => e.line).join('\n\n')}`;
+}
+
+/**
+ * An item brought forward to the end of its thread (bringForward): a session whose catch-up marker was the item now
+ * reads on from the stub, where the item was, so what came after it isn’t skipped. In the conversation the marker is
+ * seenItem. A topic or side thread has no members, and its marker is seenIn for that thread on the conversation’s
+ * sessions (threadCatchUp, #1041). Pending, so a marker a catch-up just wrote behind a held commit moves too (#956).
+ * Moved from server/runtime.mjs.
+ * @param {any} rt @param {string} threadId @param {string} id  the item moved @param {string} stubId  the stub in its place
+ */
+export function moveMarkers(rt, threadId, id, stubId) {
+  const conv = rt.lineage(threadId, (/** @type {string} */ x) => rt.store.pending.thread(x)).at(-1);
+  const marker = (/** @type {any} */ se) => (threadId === conv ? se.seenItem : se.seenIn?.[threadId]);
+  const onStub = (/** @type {any} */ now) => (threadId === conv ? { seenItem: stubId } : { seenIn: { ...(now.seenIn ?? {}), [threadId]: stubId } });
+  for (const se of pendingSessionsIn(rt, conv)) if (marker(se) === id) rt.updateSession(se.id, onStub);
 }
 
 /**
