@@ -107,6 +107,23 @@ test('#120 the turn states read in words in the transcript: Sign-in needed and I
     );
 });
 
+// #965’s P3, the integrator’s case: a turn whose backend isn’t registered here, and that the host still lists as
+// running, may still run there. Its hint says so and promises nothing, even with both marks, as #1050’s first head
+// saved it (the server now saves only resume.unkilled for it).
+test('#965 an unregistered agent’s turn that may still run on the host says it waits for you, not that it resumes', async ({ page }) => {
+  const { rt } = s.app;
+  const before = rt.s.sessions[s.ses.porter.id].remoteTurn;
+  rt.updateSession(s.ses.porter.id, { remoteTurn: { ...before, resume: { why: 'interrupted', at: before.resume.at, unkilled: true, noBackend: true } } });
+  try {
+    await open(page);
+    const alert = item(page, s.items.unregistered).getByRole('alert');
+    await expect.soft(alert).toContainText(`${UNREGISTERED}. It may still be running on host.example.com, so it waits for you.`);
+    await expect.soft(alert).not.toContainText('resumes on its own');
+  } finally {
+    rt.updateSession(s.ses.porter.id, { remoteTurn: before });
+  }
+});
+
 test('#120 a replayed reply shows once, with its name, and a Kiro host warning stays out of the conversation', async ({ page }) => {
   await open(page);
   const { replaced, replay } = s.items;

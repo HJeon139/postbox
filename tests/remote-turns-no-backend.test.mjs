@@ -9,12 +9,12 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { restarted, rig, settled, sleep, startUp, until } from './remote-turns-helpers.mjs';
 
 /**
- * A Postbox restarted during @coder’s turn on a host that has no record of it, with its backend registered or not;
- * `moved` puts the agent on this computer since, so a turn whose backend is here still waits, for the person.
- * @param {{ backend: boolean, moved?: boolean }} o
+ * A Postbox restarted during @coder’s turn on a host, with its backend registered or not. The host has no record of the
+ * turn unless `welcome` says otherwise; `moved` puts the agent on this computer since, so its turn waits for the person.
+ * @param {{ backend: boolean, moved?: boolean, welcome?: 'missing' | 'running' }} o
  */
-async function gaveUp({ backend, moved = false }) {
-  const { store, d } = restarted({ welcome: 'missing' });
+async function gaveUp({ backend, moved = false, welcome = /** @type {'missing' | 'running'} */ ('missing') }) {
+  const { store, d } = restarted({ welcome });
   const r = rig({ store, d });
   if (moved) r.store.emit('persona', { ...r.rt.persona(r.se().personaId), remote: null });
   if (!backend) r.rt.adapters = new AdapterRegistry();
@@ -30,6 +30,20 @@ test('#965 a turn given up because its backend isn’t registered is marked noBa
   assert.equal(missing.r.se().remoteTurn.resume?.noBackend, true);
   const moved = await gaveUp({ backend: true, moved: true });
   assert.equal(moved.r.se().remoteTurn.resume?.noBackend, undefined, 'given up because the agent moved, with its backend here');
+});
+
+// The integrator’s case on #1050: the mark says the missing backend is all that holds the turn, since the hint then
+// promises it resumes on its own. One that may still run there waits for the person (#872), and a moved agent’s isn’t
+// resumed on its own either, so neither is marked, though its backend is missing too.
+test('#965 a turn that may still run on the host, or whose agent moved, isn’t marked noBackend, though its backend is missing', async () => {
+  const running = await gaveUp({ backend: false, welcome: 'running' });
+  assert.deepEqual(
+    { unkilled: running.r.se().remoteTurn.resume?.unkilled, noBackend: running.r.se().remoteTurn.resume?.noBackend },
+    { unkilled: true, noBackend: undefined },
+    'it waits for the person, as it may still be running there',
+  );
+  const moved = await gaveUp({ backend: false, moved: true });
+  assert.equal(moved.r.se().remoteTurn.resume?.noBackend, undefined, 'the agent moved, so it waits for the person');
 });
 
 test('#965 a restart with the backend registered again clears the mark; one with it still missing keeps it', async () => {
