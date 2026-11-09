@@ -10,7 +10,7 @@ import { appReceipt } from './app-check-status.mjs';
 import { notYours } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
-import { httpError } from './helpers.mjs';
+import { httpError, refuseArchived } from './helpers.mjs';
 import { hostTool } from './host-tool.mjs';
 import { newId } from './store.mjs';
 
@@ -114,6 +114,7 @@ export function appEvent(rt, appId, action, values, { hold = false, now = Date.n
   if (app.retired) throw httpError(409, `${app.title} was retired, so it can’t send messages.`);
   const r = buildEvent({ type: 'app', id: appId, title: app.title }, action, values);
   if (!r.ok) throw httpError(422, r.error);
+  refuseArchived(rt, app.sessionId);
   const items = rt.store.items(app.threadId);
   const card = items.find((x) => x.kind === 'appsend' && x.appId === appId && x.status === 'open');
   // Sends you allowed on a card don’t count against the next minute.
@@ -165,6 +166,7 @@ export function resolveAppSend(rt, threadId, itemId, action, { now = Date.now() 
   if (it?.kind !== 'appsend' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
   if (action !== 'allow' && action !== 'deny') throw httpError(400, 'An app’s request takes “allow” or “deny”.');
   const allow = action === 'allow';
+  if (allow) refuseArchived(rt, it.sessionId);
   rt.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined', answeredAt: now });
   const owner = rt.s.sessions[it.sessionId];
   releaseNeed(rt, owner, itemId);

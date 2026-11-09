@@ -39,3 +39,13 @@ export function queuedIn(t, queueId) {
   if (!q) throw httpError(404, 'That queued message was already sent or removed.');
   return q;
 }
+
+/**
+ * An archived session can’t hear the person (deliver refuses it), so what they answer or send for it is refused before
+ * anything is recorded, and the block or card still asks once the conversation is restored (#848).
+ * @param {any} rt @param {string} sessionId
+ */
+export function refuseArchived(rt, sessionId) {
+  const se = rt.s.sessions[sessionId];
+  if (se?.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
+}
