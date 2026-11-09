@@ -92,8 +92,9 @@ const PENDING = {
   'ledger.mjs': ['entries', 'recordPublishes', 'recordPublishes'], // the ledger reads back its own entries; the turn’s blocks and apps
   'lint-delivery.mjs': ['sendLint'], // the apps the turn showed, still being checked
   // The queue a drain takes from and the queued messages a deleted session's release posts: a wake or a message
-  // queued behind a held commit is in them (#796).
-  'message-queue.mjs': ['releaseQueued', 'drainQueue', 'takePending'],
+  // queued behind a held commit is in them (#796). Send now aims at an entry the person sees, but a turn ending behind
+  // a held commit may have drained it already, and sending it again would deliver it twice (#1007).
+  'message-queue.mjs': ['sendQueuedNow', 'releaseQueued', 'drainQueue', 'takePending'],
   'permission-cards.mjs': ['recordDenial'], // the same refused call, once
   'permission-expiry.mjs': ['tellExpired'], // the card a turn’s end just expired, told about once (#721)
   'permission-prompt.mjs': ['permission'], // the card the call waits on
