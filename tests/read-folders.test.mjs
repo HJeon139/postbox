@@ -12,7 +12,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { decideAgyTool, runAgyHook } from '../server/adapters/agy-hook.mjs';
 import { agyHookVars } from '../server/adapters/antigravity-cli.mjs';
 import { handleMcp } from '../server/mcp.mjs';
-import { readFolderOffer } from '../server/read-folders.mjs';
+import { inReadFolder, readFolderOffer } from '../server/read-folders.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { tempDir } from './temp-dirs.mjs';
@@ -74,6 +74,17 @@ test('#338 a readable folder lets the hook read there, and nothing else: an edit
     assert.equal(decideAgyTool(event('write_to_file', { TargetFile: join(notes, 'b.md'), CodeContent: 'x' }), opts).decision, 'ask', mode);
     assert.equal(decideAgyTool(event('view_file', { AbsolutePath: join(home, '.ssh', 'id_ed25519') }), opts).decision, 'ask', mode);
   }
+});
+
+// The hook’s list is the turn’s start, so a folder allowed later in the turn is judged by inReadFolder alone (#1074).
+test('#1074 a read card naming a second path outside a readable folder still asks, with no Always allow', () => {
+  const { home, ws, notes } = aHome();
+  const args = { Path: join(notes, 'a.md'), SearchPath: join(home, '.ssh') };
+  const card = decideAgyTool({ toolCall: { name: 'grep_search', args } }, { mode: 'ask', folders: [ws], cwd: ws, home });
+  const rt = { s: { sessions: { s1: { personaId: 'p1', readDirs: [notes] } } }, persona: () => ({ backend: 'antigravity-cli' }) };
+  assert.equal(inReadFolder(rt, 's1', { tool: card.toolName, input: card.input }), false, 'answered with no card');
+  assert.equal(readFolderOffer({ ...agy, input: card.input, home }), null, 'an offer for one folder would allow both');
+  assert.equal(inReadFolder(rt, 's1', { tool: 'Read', input: { file_path: join(notes, 'a.md') } }), true, 'one path there needs no card');
 });
 
 test('#338 the hook’s variables carry the readable folders apart from the folders it may work in', () => {

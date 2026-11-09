@@ -38,6 +38,12 @@ test('#1074 a read naming a project file and a second path outside the folders g
   }
 });
 
+test('#1074 a read naming two paths outside the folders names both on its card', () => {
+  const { home, ws, notes, ssh } = aHome();
+  const res = decide('grep_search', { Path: join(notes, 'a.md'), SearchPath: ssh }, { mode: 'ask', folders: [ws], cwd: ws, home });
+  assert.deepEqual(res, { decision: 'ask', toolName: 'Read', input: { file_path: join(notes, 'a.md'), paths: [join(notes, 'a.md'), ssh] } });
+});
+
 test('#1074 a write naming a project file and a second path is refused or asks by the second', () => {
   const { home, ws, out } = aHome();
   const opts = { mode: 'auto', folders: [ws], cwd: ws, home };
