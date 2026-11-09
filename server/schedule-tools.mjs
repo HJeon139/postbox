@@ -4,6 +4,7 @@
 // session's own pending wakes, and cancels as the person's Cancel does (Runtime.cancelSchedule): the schedule line reads
 // canceled, and no turn starts.
 
+import { PENDING_WAKES } from '../shared/limits.mjs';
 import { echoedId } from './helpers.mjs';
 
 /** cancel_wake { id }, the tool, for the session rt.toolsFor made it for. @param {any} rt @param {string} sessionId @param {{ id?: unknown }} args */
@@ -18,6 +19,13 @@ export function cancelWake(rt, sessionId, { id } = {}) {
 
 /** schedule_wake { in_minutes, note }, the tool, for the session rt.toolsFor made it for. @param {any} rt @param {string} sessionId @param {{ in_minutes?: any, note?: any }} args */
 export function scheduleWakeTool(rt, sessionId, { in_minutes, note }) {
+  // Pending: not yet fired. A running one is its turn, and a fired one is gone from schedules (#362).
+  const pending = Object.values(rt.s.schedules).filter((sc) => sc.sessionId === sessionId && !sc.running).length;
+  if (pending >= PENDING_WAKES)
+    return {
+      ok: false,
+      message: `You have ${pending} pending wakes, the most one agent can have, so this one wasn’t scheduled. Cancel one you no longer need with cancel_wake to free a place.`,
+    };
   const sc = rt.schedule(sessionId, { inMs: Math.round((+in_minutes || 1) * 60000), note });
   return { ok: true, message: `You’ll be woken at ${new Date(sc.at).toISOString()}. Its id is ${sc.id}, for cancel_wake.` };
 }
