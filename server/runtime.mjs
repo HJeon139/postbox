@@ -1310,12 +1310,13 @@ export class Runtime {
    * @param {{ by?: 'you' | null }} [opts]
    */
   endJob(sessionId, jobId, state, detail = null, { by = null } = {}) {
-    const se = this.s.sessions[sessionId];
+    // Pending, so a job ended or kept behind a held commit is seen (#957).
+    const se = this.store.pending.session(sessionId);
     const job = se?.jobs?.find((j) => j.id === jobId);
     if (!se || !job) return;
     // Work says how it ended too: its turn may have ended thinking it was still running (#164).
     this.ledger.jobUpdate(job, { state, by });
-    this.updateSession(sessionId, { jobs: se.jobs.filter((j) => j.id !== jobId) });
+    this.updateSession(sessionId, (s) => ({ jobs: (s.jobs ?? []).filter((j) => j.id !== jobId) }));
     if (this.keptPoll && !this.keptJobs().length) {
       clearInterval(this.keptPoll);
       this.keptPoll = null;
@@ -1330,11 +1331,11 @@ export class Runtime {
       );
     // The last job kept running has ended: the progress steps held running with it (stop) stall now, as they would have
     // when its turn ended, or when the turn running now ends (stallSteps).
-    const now = this.s.sessions[sessionId];
+    const now = this.store.pending.session(sessionId);
     const held = now?.heldSteps;
     if ((job.kept || detail === KEEP_LOST) && held && !(now.jobs ?? []).some((j) => j.kept)) {
       this.updateSession(sessionId, { heldSteps: null });
-      const problems = this.turns.has(sessionId) ? [] : this.stallSteps({ threadId: held.threadId }, this.s.sessions[sessionId]);
+      const problems = this.turns.has(sessionId) ? [] : this.stallSteps({ threadId: held.threadId }, this.store.pending.session(sessionId));
       if (problems.length)
         this.tellAgent(
           sessionId,

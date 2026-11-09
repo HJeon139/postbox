@@ -117,6 +117,10 @@ const PENDING = {
     'endTurn',
     'recordStopped',
     'turnExited',
+    // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).
+    'endJob',
+    'endJob',
+    'endJob',
     'runningProgress',
     'setJobStep',
     'settleJobs',

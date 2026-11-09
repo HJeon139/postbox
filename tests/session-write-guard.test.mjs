@@ -39,7 +39,7 @@ const FROM_PUBLISHED = {
   'permission-cards.mjs': ['resolveDenial'], // allowOnce: Allow once on a denial card
   'permissions-panel.mjs': ['changePermissionFolder', 'changePermissionFolder'], // addDirs: a folder removed, or added
   'remote/turns-shared.mjs': ['updateRemote'], // remoteTurn: a host turn's state
-  'runtime.mjs': ['recordJob', 'recordJob', 'endJob', 'rememberDiagrams'], // jobs (a job recorded, kept, ended) and diagramsLinted
+  'runtime.mjs': ['recordJob', 'recordJob', 'rememberDiagrams'], // jobs (a job recorded, kept) and diagramsLinted
   'session-run.mjs': ['setSessionRun'], // personaSnapshot: a model or effort set for the session
   'side-threads.mjs': ['recordAgentMessage'], // agentMessages: the last messages between two agents
   'thread-summary.mjs': ['threadCatchUp', 'reactionLines'], // seenIn and reactionsTold: catch-up markers per thread
@@ -52,8 +52,6 @@ const FROM_PUBLISHED = {
 const DECIDED_PUBLISHED = {
   'permission-cards.mjs': ['resolveDenial'], // allowOnce, also built from the published session (FROM_PUBLISHED)
   'remote/turns-shared.mjs': ['updateRemote'], // remoteTurn, the same
-  // heldSteps: whether a kept job is still running, read after endJob's own held write of jobs
-  'runtime.mjs': ['endJob'],
 };
 
 /** A published read of a session: `rt.s.sessions[id]`, `state.sessions`, `rt.session(id)`. */
