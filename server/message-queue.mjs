@@ -130,7 +130,10 @@ export function takePending(rt, se, turn, drain) {
   const next = groups.shift();
   if (next) {
     const where = next.threadId ?? se.threadId;
-    if (!groups.length && drain && (plainMessage(next.message) || next.message.messages)) {
+    // A later group in this thread keeps the queue behind it, so a wake never jumps ahead of it; one in another thread
+    // doesn't (#733).
+    const later = groups.some((g) => (g.threadId ?? se.threadId) === where);
+    if (!later && drain && (plainMessage(next.message) || next.message.messages)) {
       const t = rt.store.pending.thread(where);
       if (t?.queue?.length) {
         const ready = readyGroups(rt, t, drain === 'wakes');
@@ -143,7 +146,23 @@ export function takePending(rt, se, turn, drain) {
     rt.deliver(se.id, next.message, { summarizeTo: next.summarizeTo, threadId: next.threadId });
     const t = rt.turns.get(se.id);
     if (t) t.pending.push(...groups);
+    else holdRest(rt, se, groups);
   } else if (drain) rt.drainQueues(se.id, turn.threadId, drain === 'wakes');
+}
+
+/**
+ * The rest of what waited, when its first group started no turn (#733): each takes deliver's held path, in order (an
+ * Undo window, writes closed, a session behind a held commit). Shutting down, none can wait, so the drop is logged.
+ */
+function holdRest(rt, se, groups) {
+  if (!groups.length) return;
+  if (rt.closing) {
+    const kinds = [...new Set(groups.map((g) => g.message.kind))].join(', ');
+    const n = groups.length === 1 ? '1 waiting delivery' : `${groups.length} waiting deliveries`;
+    console.warn(`@${se.handle}’s turn ended as Postbox shut down: ${n} (${kinds}) undelivered.`);
+    return;
+  }
+  for (const g of groups) rt.deliver(se.id, g.message, { summarizeTo: g.summarizeTo, threadId: g.threadId });
 }
 
 export function batchPending(rt, pending, threadId) {
