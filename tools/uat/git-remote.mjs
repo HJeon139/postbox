@@ -34,10 +34,14 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, wr
 import { join, resolve, sep } from 'node:path';
 import { js } from '../browser.mjs';
 
-/** What every git in the run reads: no transport but local paths. */
+/**
+ * What every git in the run reads: no transport but local paths, and no credential helper. An empty helper empties the
+ * list the person’s config built, osxkeychain on a Mac, so `git credential fill` hands out nothing of theirs.
+ */
 export const GUARD = [
   ['protocol.allow', 'never'],
   ['protocol.file.allow', 'always'],
+  ['credential.helper', ''],
 ];
 /** An https remote nothing listens on, refused at once: the preflight’s probe, and the tests’. */
 export const UNREACHABLE = 'https://127.0.0.1:9/uat/none.git';
