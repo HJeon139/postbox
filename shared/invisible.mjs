@@ -5,7 +5,7 @@
 // inherent vowels, the unassigned specials U+FFF0 to U+FFF8, and the tag block and the rest of U+E0000 to U+E0FFF,
 // assigned or not), and the line and paragraph separators (Zl, Zp), which break a line where none shows. A
 // right-to-left override can make a command, or a name, read as another one. ZWNJ, ZWJ and VS16 are among them: a
-// caller that takes one takes it out itself (hiddenInFolder, and hidesName in server/upload-name.mjs).
+// caller that takes one takes it out itself (hiddenInFolder, and hides in server/upload-name.mjs).
 
 /** Each such character, for replace(). It’s global, so test() would keep its place between calls: ask hasInvisible. */
 export const INVISIBLE = /[\p{Cf}\p{Bidi_Control}\p{Default_Ignorable_Code_Point}\p{Zl}\p{Zp}]/gu;

@@ -17,9 +17,10 @@ const JOINER = '\u200d';
 const SHOWS_AS_EMOJI = /\p{Emoji}$/u;
 const JOINS_AFTER = /(?:\p{Emoji}|\p{L}|\p{M})$/u;
 
-// A flag such as England’s, Scotland’s or Wales’s (#1067): 🏴, tag characters, then CANCEL TAG. It’s kept whole; a tag
-// character anywhere else hides text, so it’s replaced. The group keeps each flag in split()’s result, at odd places.
-const TAG_FLAG = /(\u{1f3f4}[\u{e0020}-\u{e007e}]+\u{e007f})/u;
+// England’s, Scotland’s and Wales’s flags (#1067): 🏴, the tag letters gbeng, gbsct or gbwls, then CANCEL TAG, the only
+// tag sequences that are emoji. Each is kept whole. Any other run of tag characters, after 🏴 or not, is hidden text,
+// so each is replaced. The group keeps each flag in split()’s result, at odd places.
+const TAG_FLAG = /(\u{1f3f4}\u{e0067}\u{e0062}(?:\u{e0065}\u{e006e}\u{e0067}|\u{e0073}\u{e0063}\u{e0074}|\u{e0077}\u{e006c}\u{e0073})\u{e007f})/u;
 
 /**
  * Whether the character at `at` would hide or reorder a file’s name as it’s shown: a control character, a lone
