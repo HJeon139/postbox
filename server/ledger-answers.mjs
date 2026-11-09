@@ -5,6 +5,7 @@ import { diffRows, hunks, MAX_DIFF_ROWS } from '../shared/work.mjs';
 import { fail, known, sameSnap } from './ledger-io.mjs';
 import { onHost } from './ledger-remote.mjs';
 import { newId } from './store.mjs';
+import { archived } from './work-archive-read.mjs';
 
 /**
  * One entry of a conversation's work as the page has it: what was published, never an entry still held behind a commit
@@ -14,15 +15,34 @@ import { newId } from './store.mjs';
 const published = (ledger, convId, id) => ledger.s.work?.[convId]?.find((e) => e.id === id);
 
 /**
+ * An entry the archive pass moved out of the state, by its id (#305, A4), read published as the hot path is: the
+ * summary in the state names the file (I6). Null when no archived turn moved it, so each answer refuses it as it
+ * refuses an id it doesn’t know; a file that can’t be read is the helper’s 410. Cost: one lookup through the work
+ * index, then one blob read and parse.
+ * @param {import('./ledger.mjs').Ledger} ledger @param {string} convId @param {string} id
+ */
+async function archivedEntry(ledger, convId, id) {
+  try {
+    return (await archived(ledger.s, ledger.blobs, convId, { entryId: id })).entry;
+  } catch (e) {
+    if (e?.status === 404) return null;
+    throw e;
+  }
+}
+
+/** The entry as the page has it: published, else archived. @param {import('./ledger.mjs').Ledger} ledger @param {string} convId @param {string} id */
+const shown = async (ledger, convId, id) => published(ledger, convId, id) ?? (await archivedEntry(ledger, convId, id));
+
+/**
  * A file’s diff: what all the agents’ turns left (against before their first change), or one change’s. Rows are
  * hunks from shared/work.mjs, at most MAX_DIFF_ROWS.
  * @param {import('./ledger.mjs').Ledger} ledger @param {string} convId @param {string} fileId @param {string|null} [changeId]
  */
 export async function fileDiff(ledger, convId, fileId, changeId = null) {
-  const f = published(ledger, convId, fileId);
+  const f = await shown(ledger, convId, fileId);
   if (f?.kind === 'edit') throw onHost(f);
   if (f?.kind !== 'file') throw fail(404, 'That file isn’t in this conversation’s work.');
-  const c = changeId ? published(ledger, convId, changeId) : null;
+  const c = changeId ? await shown(ledger, convId, changeId) : null;
   if (changeId && (c?.kind !== 'change' || c.fileId !== fileId)) throw fail(404, 'That change isn’t in this conversation’s work.');
   const a = c ? c.before : f.before;
   const b = c ? c.after : f.after;
@@ -35,7 +55,7 @@ export async function fileDiff(ledger, convId, fileId, changeId = null) {
 
 /** A command’s output, as text. @param {import('./ledger.mjs').Ledger} ledger @param {string} convId @param {string} entryId */
 export async function output(ledger, convId, entryId) {
-  const e = published(ledger, convId, entryId);
+  const e = await shown(ledger, convId, entryId);
   if (e?.kind !== 'command') throw fail(404, 'That command isn’t in this conversation’s work.');
   if (!e.output?.sha256) return '';
   return (await ledger.blobs.get(e.output.sha256)).toString('utf8');
@@ -47,9 +67,11 @@ export async function output(ledger, convId, entryId) {
  */
 /** @param {import('./ledger.mjs').Ledger} ledger @param {string} convId @param {string} fileId */
 export async function restore(ledger, convId, fileId) {
-  const f = published(ledger, convId, fileId); // the person aims it at the file as the Work view shows it
+  const hot = published(ledger, convId, fileId); // the person aims it at the file as the Work view shows it
+  const f = hot ?? (await archivedEntry(ledger, convId, fileId));
   if (f?.kind === 'edit') throw onHost(f);
-  if (f?.kind !== 'file') throw fail(404, 'That file isn’t in this conversation’s work.');
+  // A file entry has no turn, so it never leaves the state: only a hot one is put back, as its entry is patched.
+  if (f?.kind !== 'file' || f !== hot) throw fail(404, 'That file isn’t in this conversation’s work.');
   if (!known(f.before)) throw fail(409, `Postbox didn’t keep a copy of ${f.rel} from before: it was ${f.before?.big ? 'larger than 4 MB' : 'unreadable'}.`);
   if (sameSnap(f.before, f.after)) throw fail(409, `${f.rel} is already as it was before.`);
   const now = await ledger.capture(await ledger.io.read(f.path));
