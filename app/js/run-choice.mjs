@@ -2,6 +2,7 @@
 // permissions panel (app/js/permissions.mjs, which re-exports both) and the persona sheet use too. Moved out of
 // permissions.mjs.
 
+import { HOOKS_LATER, KEPT_WHY } from '/shared/mode-when.mjs';
 import { api, busy, client, sessionsOf } from './client.mjs';
 import { fill, h } from './dom.mjs';
 import { EFFORT_NAMES, modelsFor } from './sheets.mjs';
@@ -16,6 +17,24 @@ export const MODES = [
   ['acceptEdits', 'Accept edits', 'It edits files in its folders freely, and asks before running commands.'],
   ['bypass', 'Run everything', 'It never asks. Use it only in a folder you can lose.'],
 ];
+
+/**
+ * What /mode says a mode change did for this session (#67, #1030): its running turn changed now, perhaps without the
+ * hooks it never loaded; or Postbox keeps its mode (shared/mode-when.mjs, KEPT_WHY); or it applies from its next turn.
+ * @param {any} se @param {string} name @param {{ now: string[], kept?: string[], hooksLater?: string[] }} r
+ */
+function modeStatus(se, name, r) {
+  const hooks = r.hooksLater?.includes(se.id) ? `, ${HOOKS_LATER}` : '';
+  if (r.now.includes(se.id)) return `${se.handle} uses ${name}, in every conversation, from now: its running turn changed too${hooks}.`;
+  if (r.kept?.includes(se.id)) return `${se.handle} uses ${name}, in every conversation, from its next turn, or now if you stop it: ${KEPT_WHY}`;
+  return runStatus(se, name, false, ', in every conversation');
+}
+
+/** What /model and /effort say: now, on a running turn that changed, else from its next turn. */
+function runStatus(se, name, now, scope = ' in this conversation') {
+  if (now) return `${se.handle} uses ${name}${scope}, from now: its running turn changed too.`;
+  return `${se.handle} uses ${name}${scope}, from its next turn${busy(se) ? '; Claude Code can’t change a turn that’s running' : ''}.`;
+}
 
 /**
  * /mode, /model and /effort (#67): segmented choices for one agent in a conversation, without a turn. The mode is the
@@ -46,11 +65,7 @@ export function openRunChoice(kind, { threadId, sessionId = null }) {
     try {
       const r =
         kind === 'mode' ? await api('/api/permissions/mode', { personaId: se.personaId, mode: id }) : await api(`/api/sessions/${se.id}/run`, { [kind]: id });
-      const now = kind === 'mode' ? r.now.includes(se.id) : r.now;
-      const scope = kind === 'mode' ? ', in every conversation' : ' in this conversation';
-      status = now
-        ? `${se.handle} uses ${name}${scope}, from now: its running turn changed too.`
-        : `${se.handle} uses ${name}${scope}, from its next turn${busy(se) ? '; Claude Code can’t change a turn that’s running' : ''}.`;
+      status = kind === 'mode' ? modeStatus(se, name, r) : runStatus(se, name, r.now);
       say(status);
     } catch (e) {
       toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' });

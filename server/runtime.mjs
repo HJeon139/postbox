@@ -611,6 +611,8 @@ export class Runtime {
       sessionId,
       // The backend it started on: a persona changed mid-turn reaches the next turn, not this one (#220).
       backend: persona?.backend ?? 'mock',
+      // And the mode: the person’s hooks load at its start in some modes only, and stay as they loaded (#806, #1030).
+      mode: persona?.permissionMode ?? 'auto',
       threadId: where,
       promptFirst: firstPromptSection(message, where !== se.threadId),
       segment: null,
