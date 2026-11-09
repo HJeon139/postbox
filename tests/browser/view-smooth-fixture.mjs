@@ -34,7 +34,7 @@ export async function readingAtTop(app, page, title) {
   await expect(page.locator(`.transcript[data-thread="${conv.id}"] > .item`)).toHaveCount(1000, { timeout: 15_000 });
   await still(page);
   // Straight to the top, so the view reads. A wheel turn up used to come first; on CI’s delayed shard it didn’t make the
-  // view read within 15 s (ebe964fd), and the wheel case still turns the wheel itself. The top is held for 30 frames
+  // view read within 15 s (#712a), and the wheel case still turns the wheel itself. The top is held for 30 frames
   // before the jump. The mode is read in the page, not by a locator: Playwright’s locator check run in the frame after
   // the scroll held up the page’s next frame 3.9 s on the build host (0.6 s with skipping off), and over 15 s on CI’s
   // delayed shard, so the view never heard the scroll (#959).
@@ -52,7 +52,7 @@ export async function readingAtTop(app, page, title) {
     status: 'done',
   });
   // With the server’s events late and ten of these rooms at once, the reply took over 5 s to reach the page. In CI’s
-  // late shard the pill didn’t show in 15 s on every head from d4f3ebdb: the message says whether the reply had come,
+  // late shard the pill didn’t show in 15 s, again and again (#712a): the message says whether the reply had come,
   // and how the view read, so the next run names the cause.
   const state = () =>
     page.evaluate((key) => {
