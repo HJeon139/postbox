@@ -1,0 +1,297 @@
+{
+  "about": "What Claude Code 2.1.319 (Haiku, -p --output-format stream-json, --permission-mode auto, --permission-prompt-tool <a recording MCP server>) sent to its permission prompt tool for AskUserQuestion, recorded 9 November 2026 (#521), with the answer sent back and the tool result the agent then got. Manual mode sent the same shape; in bypassPermissions, with no prompt tool, the tool isn't offered.",
+  "prompts": [
+    {
+      "run": "one-auto",
+      "tool_name": "AskUserQuestion",
+      "input": {
+        "questions": [
+          {
+            "question": "Which color do you prefer?",
+            "header": "Color",
+            "options": [
+              {
+                "label": "Red",
+                "description": "Choose Red"
+              },
+              {
+                "label": "Green",
+                "description": "Choose Green"
+              },
+              {
+                "label": "Blue",
+                "description": "Choose Blue"
+              }
+            ],
+            "multiSelect": false
+          }
+        ]
+      },
+      "tool_use_id": "toolu_bdrk_01NSW6DgvtEKjymLBE3BaP5t",
+      "answered": {
+        "behavior": "allow",
+        "updatedInput": {
+          "questions": [
+            {
+              "question": "Which color do you prefer?",
+              "header": "Color",
+              "options": [
+                {
+                  "label": "Red",
+                  "description": "Choose Red"
+                },
+                {
+                  "label": "Green",
+                  "description": "Choose Green"
+                },
+                {
+                  "label": "Blue",
+                  "description": "Choose Blue"
+                }
+              ],
+              "multiSelect": false
+            }
+          ],
+          "answers": {
+            "Which color do you prefer?": "Blue"
+          }
+        }
+      },
+      "toolResult": {
+        "content": "Your questions have been answered: \"Which color do you prefer?\"=\"Blue\". You can now continue with these answers in mind."
+      }
+    },
+    {
+      "run": "two-auto",
+      "tool_name": "AskUserQuestion",
+      "input": {
+        "questions": [
+          {
+            "question": "Which color?",
+            "header": "Color",
+            "options": [
+              {
+                "label": "Red",
+                "description": "Red"
+              },
+              {
+                "label": "Green",
+                "description": "Green"
+              },
+              {
+                "label": "Blue",
+                "description": "Blue"
+              }
+            ],
+            "multiSelect": false
+          },
+          {
+            "question": "Which fruits?",
+            "header": "Fruits",
+            "options": [
+              {
+                "label": "Apple",
+                "description": "Apple"
+              },
+              {
+                "label": "Pear",
+                "description": "Pear"
+              },
+              {
+                "label": "Plum",
+                "description": "Plum"
+              }
+            ],
+            "multiSelect": true
+          }
+        ]
+      },
+      "tool_use_id": "toolu_bdrk_01WMUtRgY3uQmgSA3fE6oeQn",
+      "answered": {
+        "behavior": "allow",
+        "updatedInput": {
+          "questions": [
+            {
+              "question": "Which color?",
+              "header": "Color",
+              "options": [
+                {
+                  "label": "Red",
+                  "description": "Red"
+                },
+                {
+                  "label": "Green",
+                  "description": "Green"
+                },
+                {
+                  "label": "Blue",
+                  "description": "Blue"
+                }
+              ],
+              "multiSelect": false
+            },
+            {
+              "question": "Which fruits?",
+              "header": "Fruits",
+              "options": [
+                {
+                  "label": "Apple",
+                  "description": "Apple"
+                },
+                {
+                  "label": "Pear",
+                  "description": "Pear"
+                },
+                {
+                  "label": "Plum",
+                  "description": "Plum"
+                }
+              ],
+              "multiSelect": true
+            }
+          ],
+          "answers": {
+            "Which color?": "Blue",
+            "Which fruits?": "Plum"
+          }
+        }
+      },
+      "toolResult": {
+        "content": "Your questions have been answered: \"Which color?\"=\"Blue\", \"Which fruits?\"=\"Plum\". You can now continue with these answers in mind."
+      }
+    },
+    {
+      "run": "multi-auto",
+      "tool_name": "AskUserQuestion",
+      "input": {
+        "questions": [
+          {
+            "question": "Which fruits?",
+            "header": "Fruits",
+            "options": [
+              {
+                "label": "Apple",
+                "description": "Apple"
+              },
+              {
+                "label": "Pear",
+                "description": "Pear"
+              },
+              {
+                "label": "Plum",
+                "description": "Plum"
+              }
+            ],
+            "multiSelect": true
+          }
+        ]
+      },
+      "tool_use_id": "toolu_bdrk_01Cyh8AZw5pwDaC8MbQaCngB",
+      "answered": {
+        "behavior": "allow",
+        "updatedInput": {
+          "questions": [
+            {
+              "question": "Which fruits?",
+              "header": "Fruits",
+              "options": [
+                {
+                  "label": "Apple",
+                  "description": "Apple"
+                },
+                {
+                  "label": "Pear",
+                  "description": "Pear"
+                },
+                {
+                  "label": "Plum",
+                  "description": "Plum"
+                }
+              ],
+              "multiSelect": true
+            }
+          ],
+          "answers": {
+            "Which fruits?": "Pear, Plum"
+          }
+        }
+      },
+      "toolResult": {
+        "content": "Your questions have been answered: \"Which fruits?\"=\"Pear, Plum\". You can now continue with these answers in mind."
+      }
+    },
+    {
+      "run": "deny-auto",
+      "tool_name": "AskUserQuestion",
+      "input": {
+        "questions": [
+          {
+            "question": "Which color do you prefer?",
+            "header": "Color",
+            "options": [
+              {
+                "label": "Red",
+                "description": "Choose red"
+              },
+              {
+                "label": "Green",
+                "description": "Choose green"
+              },
+              {
+                "label": "Blue",
+                "description": "Choose blue"
+              }
+            ],
+            "multiSelect": false
+          }
+        ]
+      },
+      "tool_use_id": "toolu_bdrk_01GDhTJLi9pBff2CUU5fvMfQ",
+      "answered": {
+        "behavior": "deny",
+        "message": "The person dismissed the question."
+      },
+      "toolResult": {
+        "content": "The person dismissed the question.",
+        "is_error": true
+      }
+    }
+  ],
+  "deniedResult": {
+    "about": "The deny-auto turn's result line, trimmed to these fields: the CLI lists the dismissed AskUserQuestion in permission_denials.",
+    "line": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "permission_denials": [
+        {
+          "tool_name": "AskUserQuestion",
+          "tool_use_id": "toolu_bdrk_01GDhTJLi9pBff2CUU5fvMfQ",
+          "tool_input": {
+            "questions": [
+              {
+                "question": "Which color do you prefer?",
+                "header": "Color",
+                "options": [
+                  {
+                    "label": "Red",
+                    "description": "Choose red"
+                  },
+                  {
+                    "label": "Green",
+                    "description": "Choose green"
+                  },
+                  {
+                    "label": "Blue",
+                    "description": "Choose blue"
+                  }
+                ],
+                "multiSelect": false
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

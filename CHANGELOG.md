@@ -2,6 +2,57 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.54.0 (2026-11-09)
+
+### Features
+
+- **tools:** a --strict cited-commits run fails on a token that isn't an object
+- **tools:** check that every commit a note or pr body cites is on github
+
+### Fixes
+
+- **composer:** keep a draft's attachments over a switch, as its text is
+- **permissions:** an edit that changes nothing is a plain allow
+- **blocks:** an all-strings options error's example id starts with a letter or digit (#951)
+- **message-queue:** Send now finds its entry in the pending queue, and refuses one already sent
+- **remote:** #1043's smaller points: probe exit, its clock, sign-in PATH, looked text (#1066)
+- **security:** dataset titles and the picker's names keep ZWJ, ZWNJ and VS16, with hidesName
+- **security:** a host's stored short name is kept unchecked when a change leaves it alone
+- **app:** a reply arriving while you read up counts on the pill without reading layout (#1047)
+- **security:** one surrogate-safe cut for every clip, and names and titles kept before the checks
+- **security:** refuse hidden characters in a short name and dataset title, mark them in the picker
+
+## 1.53.1 (2026-11-09)
+
+### Fixes
+
+- **blocks:** a late answer to an AskUserQuestion tells the agent its question and labels (#521)
+- **blocks:** a question whose wait ends mid-turn lets go of the running turn's need (#521)
+- **blocks:** an AskUserQuestion's block holds its call's id, and a host keeps the card (#521)
+- **blocks:** AskUserQuestion asks as choice blocks, and the answers are its result (#521)
+
+## 1.53.0 (2026-11-09)
+
+### Features
+
+- **adapters:** Always allow on an Antigravity read card makes its folder readable (#338)
+
+### Fixes
+
+- **wake-cards:** the declined-add trigger counts only mentions before the decline was lifted (#789)
+- **queue:** break a clock tie by arrival, so same-millisecond messages keep their order (#733)
+- **permissions:** judge a read by the file it leads to, not the link's folder (#338)
+- **permissions:** offer the folder a read card is about, and read a saved one at once (#338)
+- **queue:** a shutdown’s log counts the first waiting delivery too (#733)
+- **runtime:** stop settles a turn’s steps from the pending session
+- **runtime:** endJob decides on held steps from the pending session
+- **catch-up:** an item brought forward in a topic thread moves seenIn to its stub
+- **runtime:** bringForward moves catch-up markers held behind a commit
+- **wake-cards:** mark a declined add lifted when the person adds that agent
+- **queue:** fold the thread’s queue into the next turn whatever other threads wait
+- **adapters:** start the read card's offer with its folder, so the card reads whole (#338)
+- **adapters:** judge a read card's folder by its true case (#338)
+
 ## 1.52.1 (2026-11-09)
 
 ### Fixes

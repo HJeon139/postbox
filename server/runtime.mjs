@@ -20,6 +20,7 @@ import { retireApp } from './app-retire.mjs';
 import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { appCheck, appEvent, appFile, appQuery, appState, fixEnded, needAppSend, registerApp, resolveAppSend, showApp, updateApp } from './apps.mjs';
 import { restoreArchives } from './archive-lifecycle.mjs';
+import { askQuestions, QUESTION_TOOL, questionBlocks } from './ask-question.mjs';
 import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
@@ -176,7 +177,8 @@ export class Runtime {
     this.configDir = claudeConfigDir !== undefined ? claudeConfigDir : this.home === homedir() ? process.env.CLAUDE_CONFIG_DIR || null : null;
     this.blobs = blobs ?? null;
     this.narrator = narrator ?? null;
-    this.permissionWaits = new Map(); // permission item id → { resolve, threadId, sessionId, timer }
+    // A permission card’s item id, or an AskUserQuestion block’s (`question`, server/ask-question.mjs) → its call’s wait.
+    this.permissionWaits = new Map(); // item id → { resolve, threadId, sessionId, timer, question? }
     this.mirrors = new Map(); // attached session id → { tail, timer, agentItem, steps }
     this.turns = new Map(); // sessionId → live turn
     // sessionId → a stopped turn whose process hasn’t exited yet, and what waits for it: { turn, held, silent } (#126)
@@ -1867,7 +1869,9 @@ export class Runtime {
   // ── Permission prompts: server/permission-cards.mjs ──────────────────────────────────
 
   requestPermission(sessionId, req) {
-    return requestPermission(this, sessionId, req);
+    // Claude Code’s AskUserQuestion asks as choice blocks, here on this computer: server/ask-question.mjs (#521).
+    const questions = req.tool === QUESTION_TOOL && !req.hostPrompt ? questionBlocks(req.input) : null;
+    return questions ? askQuestions(this, sessionId, req, questions) : requestPermission(this, sessionId, req);
   }
   askPerson(sessionId, req) {
     return askPerson(this, sessionId, req);

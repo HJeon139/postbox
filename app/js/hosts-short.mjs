@@ -40,12 +40,14 @@ export function shortField(ed) {
 }
 
 /**
- * The short name to save, checked: { short } when it changed, nothing when it didn’t, or the error it’s refused with,
+ * The short name to save: nothing when it didn’t change, else checked: { short }, or the error it’s refused with,
  * which goes under the field. @param {{ short: string }} d @param {any} host
  * @returns {{ patch: { short?: string }, error: string }}
  */
 export function shortPatch(d, host) {
+  // Unchanged, it isn’t checked or sent: one stored before #1052’s check refused hidden characters is kept (#1052).
+  if (d.short.trim() === (host.short ?? '')) return { patch: {}, error: '' };
   const r = checkShortName(d.short);
   if (!r.ok) return { patch: {}, error: r.error };
-  return { patch: r.value === (host.short ?? '') ? {} : { short: r.value }, error: '' };
+  return { patch: { short: r.value }, error: '' };
 }
