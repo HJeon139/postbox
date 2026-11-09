@@ -1,10 +1,10 @@
 // `- seed: git-remote` (#305, #296): a remote the run’s agents can commit and push to over and over, that is nothing
 // but a bare repository in the run’s own folder, gone when the run stops. What keeps an agent’s ordinary pushes and
 // PRs on this computer:
-// - every git that Postbox and its agents run gets GIT_ALLOW_PROTOCOL=file, which git applies over any config file,
-//   per-protocol settings included, and protocol.allow=never with only file allowed, from the environment
-//   (GIT_CONFIG_COUNT) and again from the workspace’s own .git/config. So an https, ssh or git:// remote is refused
-//   before anything leaves this computer;
+// - every git the agents run, and every git of Postbox’s but its own push (below), gets GIT_ALLOW_PROTOCOL=file,
+//   which git applies over any config file, per-protocol settings included, and protocol.allow=never with only file
+//   allowed, from the environment (GIT_CONFIG_COUNT) and again from the workspace’s own .git/config. So an https,
+//   ssh or git:// remote is refused before anything leaves this computer;
 // - git reads the run’s own config, not the person’s: GIT_CONFIG_GLOBAL is a file in the run’s folder that holds only a
 //   test identity, and GIT_CONFIG_NOSYSTEM drops the system’s, such as Homebrew’s. So no pushInsteadOf, insteadOf,
 //   include, hook or credential helper of theirs touches an agent’s push;
@@ -170,12 +170,12 @@ export function preflightRemote(workspace, dir, env) {
 }
 
 /**
- * What the tester is told of the remote, for a `- seed: git-remote` run: where it is, and that nothing else can be
- * reached. @param {{ seed: string|null }} scenario @param {string} dir
+ * What the tester is told of the remote, for a `- seed: git-remote` run: where it is, and that no network remote can
+ * be reached. @param {{ seed: string|null }} scenario @param {string} dir
  */
 export function remoteNote(scenario, dir) {
   if (scenario.seed !== 'git-remote') return '';
-  return `\n\nThis run’s remote is the folder ${remotePaths(dir).remote}, a bare repository the run made and removes at its end. The project folder’s origin points at it, and so does the project’s repository in Settings, where Postbox makes a push you asked for itself. Every git here is refused any other remote, and the gh on the agent’s PATH is a fake.`;
+  return `\n\nThis run’s remote is the folder ${remotePaths(dir).remote}, a bare repository the run made and removes at its end. The project folder’s origin points at it, and so does the project’s repository in Settings, where Postbox makes a push you asked for itself. Every git here is refused any network remote (a folder on this computer isn’t refused), and the gh on the agent’s PATH is a fake.`;
 }
 
 /**
