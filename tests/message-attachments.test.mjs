@@ -122,3 +122,50 @@ test('#1067 a project file sent without a path is refused with a 422, and nothin
     );
   assert.deepEqual(store.state.items[t.id] ?? [], [], 'nothing posted');
 });
+
+// #1067: each stored name, as an old record could hold it, and the name the message shows. Quotes, < and & are text,
+// since the chip shows the name through h(); a NUL, a new line, a lone surrogate, a tag character, or a VS16 or ZWJ
+// that shows or joins nothing is “_”, a flag stays whole, and a name cleaned is cut at 200 characters as an upload’s
+// is. A name with nothing to clean is kept as stored.
+const STORED = [
+  ['a"<&b.txt', 'a"<&b.txt'],
+  ['a\u0000b.txt', 'a_b.txt'],
+  ['a\nb\r.txt', 'a_b_.txt'],
+  ['a\ud800b.txt', 'a_b.txt'],
+  ['a\udc00.txt', 'a_.txt'],
+  ['a\u{e0041}b.txt', 'a_b.txt'],
+  ['\ufe0fa.txt', '_a.txt'],
+  ['❤a\ufe0f.txt', '❤a_.txt'],
+  ['a \u200d.txt', 'a _.txt'],
+  ['🏴\u{e0067}\u{e0062}\u{e0077}\u{e006c}\u{e0073}\u{e007f} ❤\ufe0f.txt', '🏴\u{e0067}\u{e0062}\u{e0077}\u{e006c}\u{e0073}\u{e007f} ❤\ufe0f.txt'],
+  [`${'a'.repeat(250)}${RLO}.txt`, 'a'.repeat(200)],
+  [`a/b${RLO}.txt`, 'a_b_.txt'],
+  ['a/b.txt', 'a/b.txt'],
+];
+
+test('#1067 a stored name with a quote, <, &, NUL, lone surrogate or tag character is shown cleaned, and the record kept', async () => {
+  const { rt, store, t } = setup();
+  for (const [i, [name]] of STORED.entries()) store.emit('file', { id: `f${i}`, name, type: 'text/plain', size: 1, sha256: SHA, at: 1, inCorpus: false });
+  const attachments = STORED.map((_, i) => ({ kind: 'file', fileId: `f${i}` }));
+  const { item } = rt.sendMessage(t.id, { text: '@beta read these', attachments });
+  const shown = store.state.items[t.id].find((x) => x.id === item.id).attachments.map((a) => a.name);
+  const kept = STORED.map(([, name]) => name);
+  assert.deepEqual(shown, kept);
+  for (const [i, [name]] of STORED.entries()) assert.equal(store.state.files[`f${i}`].name, name, 'the stored record isn’t rewritten');
+  await settle(rt);
+});
+
+test('#1067 a project file’s path with a NUL, a new line or a lone surrogate is refused, and one with a quote, < or & is kept', async () => {
+  const { rt, store, t } = room();
+  const { item } = rt.sendMessage(t.id, { text: '@beta read this', attachments: [{ kind: 'project-file', path: 'notes/a"<&b.md' }] });
+  assert.deepEqual(store.state.items[t.id].find((x) => x.id === item.id).attachments, [{ kind: 'project-file', path: 'notes/a"<&b.md' }]);
+  await settle(rt);
+  const before = store.state.items[t.id].length;
+  for (const path of ['notes/a\u0000b.md', 'notes/a\nb.md', 'notes/a\ud800b.md', 'notes/a\udc00.md', 'notes/a\u{e0041}b.md'])
+    assert.throws(
+      () => rt.sendMessage(t.id, { text: '@beta read this', attachments: [{ kind: 'project-file', path }] }),
+      (e) => e.status === 422 && /can’t be attached/.test(e.message),
+      JSON.stringify(path),
+    );
+  assert.equal(store.state.items[t.id].length, before, 'nothing posted');
+});

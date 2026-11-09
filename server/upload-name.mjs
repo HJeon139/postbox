@@ -8,25 +8,61 @@ import { partEnd } from '../shared/text-parts.mjs';
 /** The longest name kept, in UTF-16 code units. */
 const NAME_MAX = 200;
 
-// VS16, the emoji presentation selector: ❤️ and 🏳️‍🌈 hold it, and lost it to “_”. A host path still refuses it.
+// VS16, the emoji presentation selector, and ZWJ: ❤️, 🏳️‍🌈 and 👨‍👩‍👧 are made with them, and ZWJ also shapes words in
+// Indic scripts, such as a Devanagari half form or an older Malayalam chillu. A host path still refuses VS16.
 const EMOJI_STYLE = '\ufe0f';
+const JOINER = '\u200d';
+// What each may follow (#1067): VS16 a character it shows as an emoji; ZWJ an emoji, a letter or a mark, VS16 and a
+// virama among the marks. A character is at most two code units, so the two before it are enough to read.
+const SHOWS_AS_EMOJI = /\p{Emoji}$/u;
+const JOINS_AFTER = /(?:\p{Emoji}|\p{L}|\p{M})$/u;
+
+// A flag such as England’s, Scotland’s or Wales’s (#1067): 🏴, tag characters, then CANCEL TAG. It’s kept whole; a tag
+// character anywhere else hides text, so it’s replaced. The group keeps each flag in split()’s result, at odd places.
+const TAG_FLAG = /(\u{1f3f4}[\u{e0020}-\u{e007e}]+\u{e007f})/u;
 
 /**
- * Whether one character (a code point, or a lone surrogate) would hide or reorder a file’s name as it’s shown: a
- * control character, a lone surrogate, or one a project’s folder refuses as hidden (shared/invisible.mjs), except
- * VS16. So ZWNJ, which joins letters, and ZWJ and VS16, which emoji are made with, pass. A message’s project file is
- * held to it too (server/message-attachments.mjs).
- * @param {string} c
+ * Whether the character at `at` would hide or reorder a file’s name as it’s shown: a control character, a lone
+ * surrogate, one a project’s folder refuses as hidden (shared/invisible.mjs), or a ZWJ, except a VS16 or a ZWJ where
+ * it shows or joins what’s before it. ZWNJ, which joins letters, passes anywhere.
+ * @param {string} text @param {string} c  the character @param {number} at  where it is in text
  */
-export const hidesName = (c) => c !== EMOJI_STYLE && (hasControl(c) || hiddenInFolder(c));
+function hides(text, c, at) {
+  const before = text.slice(Math.max(0, at - 2), at);
+  if (c === EMOJI_STYLE) return !SHOWS_AS_EMOJI.test(before);
+  if (c === JOINER) return !JOINS_AFTER.test(before);
+  return hasControl(c) || hiddenInFolder(c);
+}
+
+/** One part of a name, outside a flag, with each character that hides it as “_”. @param {string} part */
+const shownPart = (part) => part.replace(/./gsu, (c, at) => (hides(part, c, at) ? '_' : c));
 
 /**
- * The name to keep for an upload: each \, / and character that hidesName is “_”, and it’s cut at NAME_MAX, never
- * between the halves of a surrogate pair. An empty name is “file”.
+ * A name as it shows: each character that would hide or reorder it is “_”, and each flag is kept whole. A message’s
+ * project file is held to it too, and refused rather than changed (server/message-attachments.mjs).
+ * @param {string} name
+ */
+export const shownName = (name) =>
+  name
+    .split(TAG_FLAG)
+    .map((part, i) => (i % 2 ? part : shownPart(part)))
+    .join('');
+
+/**
+ * The name to keep for an upload: cut at NAME_MAX, never between the halves of a surrogate pair, then each \, / and
+ * character that hides it is “_”. It’s cut first, so a flag the cut ends inside isn’t kept as one. An empty name is
+ * “file”.
  * @param {string} sent  the header, decoded
  * @returns {string}
  */
 export function uploadName(sent) {
-  const shown = Array.from(sent, (c) => (c === '\\' || c === '/' || hidesName(c) ? '_' : c)).join('');
-  return shown.slice(0, partEnd(shown, NAME_MAX)) || 'file';
+  const cut = sent.slice(0, partEnd(sent, NAME_MAX));
+  return shownName(cut.replace(/[\\/]/g, '_')) || 'file';
 }
+
+/**
+ * A stored upload’s name, as a message or the corpus shows it (#1067). One stored before #991 may hold a character that
+ * hides it, and is shown cleaned as an upload’s is; the record keeps what was stored.
+ * @param {string} name
+ */
+export const storedName = (name) => (shownName(name) === name ? name : uploadName(name));

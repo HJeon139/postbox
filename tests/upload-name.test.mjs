@@ -68,6 +68,7 @@ const CASES = [
   ['a \u200d.txt', 'a _.txt'],
   ['क्\u200dष.txt', 'क्\u200dष.txt'],
   ['ന്\u200d.txt', 'ന്\u200d.txt'],
+  ['ه\u200d.txt', 'ه\u200d.txt'],
 ];
 
 test('#991 an upload’s name keeps what shows, and has each control, invisible or bidi character as “_”', async () => {
