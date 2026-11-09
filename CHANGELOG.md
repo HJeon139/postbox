@@ -2,6 +2,30 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.54.1 (2026-11-09)
+
+### Fixes
+
+- **queue:** an API Send now marks a plain Stop’s exit silent too, through one stopForSendNow (#1040)
+- **queue:** Send now during a plain Stop’s exit marks the exit silent, so it goes alone (#1040)
+- **queue:** after a Stop, the first turn takes its thread's queued wakes (#1040)
+- **uat:** a teardown that fails after a failed preflight keeps the preflight's reason
+- **uat:** the guard blanks git's askpass, so a terminal's sign-in gives an agent's git no password
+- **server:** echoedId cuts with partEnd, so an echoed id never ends on half a pair (#895)
+- **server:** cut the ids update_block and retire_app echo in their refusals to 40 characters
+- **files:** keep hidesName for the callers that read one character at a time
+- **files:** keep only England's, Scotland's and Wales's flags whole
+- **files:** stored upload names are cleaned where they're read, and tag flags stay whole
+- **blocks:** the reaction count leaves the accessibility tree, and an unproved rule goes (#1068)
+- **tests:** flag connector tool ids, keep recordings' plugins public, print no path from the scan
+- **work:** a ref line's flag takes its own spaces, so a run of spaces splits one way (#1032)
+- **work:** read git push's ref lines with spaces and tabs only, in linear time (#1032)
+- **uat:** the git-remote preflight probes outside the workspace, and a failed one removes the remote
+- **security:** take every default-ignorable code point and line separator into the invisible set
+- **uat:** the guard empties git's credential helpers, so no run's git hands out the person's
+- **blocks:** an app review draws its app's check result as the transcript does (#857)
+- **blocks:** show a number field's range before any submit
+
 ## 1.54.0 (2026-11-09)
 
 ### Features
