@@ -14,7 +14,12 @@
 //
 // Each path a commit adds, copies or renames is checked by its name as well, as a name is published as surely as what
 // the file holds (#785): a binary file’s, and a file added empty or renamed with no line changed, which adds no line.
-// The names come from `git show --name-only -z`, which writes each one whole and unquoted, ended by a zero byte.
+// The names come from `git show --name-status -z`, which writes each one whole and unquoted, ended by a zero byte, and
+// lists every file the commit touches, in the order `git show --name-only` does: a finding in a file whose name is
+// private names the file by its place there, never by its name.
+//
+// What it prints reaches CI’s public log, so no message holds a path or a line of a diff (#905): a finding names its
+// kind, its commit, its file and its line, and an error names what failed and how git ended, never what git printed.
 //
 // Each commit’s message, subject, body and trailers, is checked with the same checker. Its author and committer names
 // and emails aren’t: each commit’s author is a real person’s GitHub identity, by design.
@@ -28,11 +33,27 @@ import { isEntry } from './lint-lib.mjs';
 import { checkContentPrivacy, checkFilePrivacy, checkPathPrivacy, isBinary } from './privacy-check.mjs';
 
 /**
- * A private string, and where it was added: a commit’s file, or its message when the path is null.
- * @typedef {{ sha: string, path: string | null, violation: string }} Finding
+ * A private string, and where it was added: a commit’s file and its place among the commit’s files, from 1, or its
+ * message when the path and the place are null.
+ * @typedef {{ sha: string, path: string | null, place: number | null, violation: string }} Finding
+ * @typedef {{ status: string, path: string }} Listed a file git lists for a commit, by its status (“A”, “R100”, …)
  * @typedef {{ commits: (range: string) => string[], show: (sha: string) => string, message: (sha: string) => string,
- *   names: (sha: string) => string[] }} GitReader
+ *   names: (sha: string) => Listed[] }} GitReader
  */
+
+// The statuses of a file a commit adds, copies or renames, whose name it publishes.
+const NAMED = /^[ACR]/;
+
+/**
+ * Each path’s place in a commit’s list of files, from 1: git’s list first, then any file the diff holds that it
+ * doesn’t, which git’s own output never has.
+ * @param {string[]} paths
+ * @returns {(path: string) => number}
+ */
+function placesIn(paths) {
+  const order = [...new Set(paths)];
+  return (path) => order.indexOf(path) + 1;
+}
 
 /**
  * Checks each commit of a range, oldest first: its message, the names of the paths it adds, copies or renames, and the
@@ -47,16 +68,20 @@ export function scanCommits(range, git) {
   const result = { commits: 0, files: 0, lines: 0, binary: 0, findings: /** @type {Finding[]} */ ([]) };
   for (const sha of git.commits(range)) {
     result.commits++;
-    for (const violation of checkContentPrivacy(git.message(sha))) result.findings.push({ sha, path: null, violation });
+    for (const violation of checkContentPrivacy(git.message(sha))) result.findings.push({ sha, path: null, place: null, violation });
+    const shown = git.show(sha);
     let parsed;
     try {
-      parsed = parseAddedLines(git.show(sha));
+      parsed = parseAddedLines(shown);
     } catch (error) {
       throw new Error(`commit ${sha.slice(0, 7)}: ${/** @type {Error} */ (error).message}`);
     }
     result.binary += parsed.binary;
-    for (const path of new Set([...git.names(sha), ...parsed.files.keys()])) {
-      for (const violation of checkPathPrivacy(path)) result.findings.push({ sha, path, violation });
+    const listed = git.names(sha);
+    const placeOf = placesIn([...listed.map(({ path }) => path), ...parsed.files.keys()]);
+    const named = listed.filter(({ status }) => NAMED.test(status)).map(({ path }) => path);
+    for (const path of new Set([...named, ...parsed.files.keys()])) {
+      for (const violation of checkPathPrivacy(path)) result.findings.push({ sha, path, place: placeOf(path), violation });
     }
     for (const [path, added] of parsed.files) {
       if (isBinary(Buffer.from(added.join('\n')))) {
@@ -66,7 +91,7 @@ export function scanCommits(range, git) {
       result.files++;
       result.lines += added.length;
       const lineOf = newFileLine(parsed.ranges.get(path) ?? []);
-      for (const violation of checkFilePrivacy(path, added.join('\n'), lineOf)) result.findings.push({ sha, path, violation });
+      for (const violation of checkFilePrivacy(path, added.join('\n'), lineOf)) result.findings.push({ sha, path, place: placeOf(path), violation });
     }
   }
   return result;
@@ -85,13 +110,14 @@ function newFileLine(ranges) {
 
 /**
  * One finding as the tool reports it: “<short sha> <path>: <violation>”, or “<short sha> message: …”. Every finding in a
- * file whose name is private, its text’s as well as its name’s, prints “a file’s name” in place of the path, as the name
- * is what’s private (#784); `git show --stat` on the commit lists its files.
+ * file whose name is private, its text’s as well as its name’s, prints “file <n> of git show --name-only” in place of
+ * the path, as the name is what’s private (#784): its place in the list that command prints for the commit (#905), with
+ * --remerge-diff for a merge.
  * @param {Finding} finding
  */
-export function formatFinding({ sha, path, violation }) {
+export function formatFinding({ sha, path, place, violation }) {
   let where = path ?? 'message';
-  if (path !== null && checkPathPrivacy(path).length > 0) where = 'a file’s name';
+  if (path !== null && checkPathPrivacy(path).length > 0) where = `file ${place} of git show --name-only`;
   return `${sha.slice(0, 7)} ${where}: ${violation}`;
 }
 
@@ -117,9 +143,27 @@ function commitMessage(raw) {
 // automatic merge.
 const SHOW_OPTIONS = ['--format=', ...DIFF_OPTIONS, '--text', '--remerge-diff'];
 
-// For `git show`, the paths a commit adds, copies or renames, by their new names, with the same renames, root and
-// merges as SHOW_OPTIONS: one name per zero byte, with no quoting.
-const NAME_OPTIONS = ['--format=', '--name-only', '-z', '--diff-filter=ACR', '-M', '--no-relative', '--remerge-diff'];
+// For `git show`, every file a commit touches, by its status and its path, a rename’s new one too, with the same
+// renames, root and merges as SHOW_OPTIONS: one field per zero byte, with no quoting.
+const NAME_OPTIONS = ['--format=', '--name-status', '-z', '-M', '--no-relative', '--remerge-diff'];
+
+/**
+ * The files `git show --name-status -z` lists for a commit, in its order: each one’s status, and its path, a rename’s
+ * or a copy’s new one. Each field ends in a zero byte, and a rename or a copy, whose status starts with “R” or “C”, has
+ * two paths, the old one first.
+ * @param {string} output
+ * @returns {Listed[]}
+ */
+export function listedFiles(output) {
+  const fields = output.split('\0');
+  const files = [];
+  for (let at = 0; fields[at]; ) {
+    const paths = /^[RC]/.test(fields[at]) ? 2 : 1;
+    files.push({ status: fields[at], path: fields[at + paths] });
+    at += paths + 1;
+  }
+  return files;
+}
 
 // The oldest git whose `git show` has --remerge-diff (git 2.36’s release notes).
 const MIN_GIT = [2, 36, 0];
@@ -142,6 +186,26 @@ export function gitVersionProblem(output) {
   return `git ${version.join('.')} is too old: the scan needs git ${MIN_GIT.join('.')} or later, for --remerge-diff.`;
 }
 
+/** What a message about git’s failing ends with, unless it says something better. */
+const SEE_GIT = 'Run the scan where you can see what git says.';
+
+/**
+ * Runs git and returns what it printed. When git fails, the error says what the scan couldn’t do, how git ended, and
+ * what to do next, never what git printed: git’s own messages can name a path, such as the repository’s (#905).
+ * @param {string[]} args
+ * @param {import('node:child_process').ExecFileSyncOptionsWithStringEncoding} options
+ * @param {string} doing what the scan was doing, as “can’t …” finishes it
+ * @param {string} [next] what to do next
+ */
+function runGit(args, options, doing, next = SEE_GIT) {
+  try {
+    return execFileSync('git', args, options);
+  } catch (error) {
+    const { status, code } = /** @type {{ status?: number | null, code?: string }} */ (error);
+    throw new Error(`can’t ${doing}: git ended with ${status ?? code}. ${next}`);
+  }
+}
+
 /**
  * The commits of a range, their diffs and their messages, from real git, run at the top of the repository the current
  * folder is in.
@@ -149,30 +213,23 @@ export function gitVersionProblem(output) {
  */
 function realGit() {
   const options = { encoding: /** @type {const} */ ('utf8'), maxBuffer: 512 * 1024 * 1024, stdio: /** @type {const} */ ('pipe') };
-  let top;
-  try {
-    top = execFileSync('git', ['rev-parse', '--show-toplevel'], options).trim();
-  } catch (error) {
-    throw new Error(`can’t find the repository. git said: ${String(/** @type {{ stderr?: string }} */ (error).stderr ?? '').trim()}`);
-  }
+  const top = runGit(['rev-parse', '--show-toplevel'], options, 'find the repository').trim();
   const atTop = { ...options, cwd: top };
+  /** @param {string} sha */
+  const commit = (sha) => `commit ${sha.slice(0, 7)}’s`;
   return {
     commits(range) {
-      let out;
-      try {
-        out = execFileSync('git', ['rev-list', '--reverse', '--end-of-options', range], atTop);
-      } catch (error) {
-        const said = String(/** @type {{ stderr?: string }} */ (error).stderr ?? '').trim();
-        throw new Error(`can’t list the commits in ${range}. Fetch the base first, or check the range. git said: ${said}`);
-      }
+      const out = runGit(
+        ['rev-list', '--reverse', '--end-of-options', range],
+        atTop,
+        `list the commits in ${range}`,
+        'Fetch the base first, or check the range.',
+      );
       return out.split('\n').filter(Boolean);
     },
-    show: (sha) => execFileSync('git', ['show', ...SHOW_OPTIONS, sha], atTop),
-    names: (sha) =>
-      execFileSync('git', ['show', ...NAME_OPTIONS, sha], atTop)
-        .split('\0')
-        .filter(Boolean),
-    message: (sha) => commitMessage(execFileSync('git', ['cat-file', 'commit', sha], atTop)),
+    show: (sha) => runGit(['show', ...SHOW_OPTIONS, sha], atTop, `read ${commit(sha)} diff`),
+    names: (sha) => listedFiles(runGit(['show', ...NAME_OPTIONS, sha], atTop, `list ${commit(sha)} files`)),
+    message: (sha) => commitMessage(runGit(['cat-file', 'commit', sha], atTop, `read ${commit(sha)} message`)),
   };
 }
 

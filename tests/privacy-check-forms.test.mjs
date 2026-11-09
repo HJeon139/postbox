@@ -3,7 +3,7 @@
 // at run time, so this file’s own text holds none and the tree test checks it like any other.
 
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { checkContentPrivacy, checkFilePrivacy } from '../tools/privacy-check.mjs';
 
@@ -141,4 +141,112 @@ test('a recording’s placeholder home is allowed in its joined deltas only as a
 test('an installation id of zeros with white space in it is the scrubbed placeholder', () => {
   assert.deepEqual(checkContentPrivacy(json({ installationId: '0000 0000' })), []);
   assert.deepEqual(checkContentPrivacy(json({ installationId: '0000 0001' })), ['installationId at line 1']);
+});
+
+/** A claude.ai connector’s tool id, as Claude Code names it: each character a server name can’t hold becomes “_”. */
+const connectorTool = (name, tool = 'search') => `${connectorServer(name)}__${tool}`;
+
+/** A claude.ai connector’s server, as a tool id or a permission rule names it, built here as the rule flags one. */
+const connectorServer = (name) => ['mcp', `claude_ai_${name}`].join('__');
+
+test('privacy checker flags the tool id of a claude.ai connector a person named, but not a directory connector’s (#905)', () => {
+  assert.deepEqual(checkContentPrivacy(json({ tools: [connectorTool('Alice_Trip_Planner')] })), ['connector tool id at line 1']);
+  assert.deepEqual(checkContentPrivacy(escaped({ tools: [connectorTool('Alice_Trip_Planner')] })), ['connector tool id at line 1'], 'escaped');
+  assert.deepEqual(checkContentPrivacy(`allow ${connectorTool('Alice_Trip_Planner', '*')}`), ['connector tool id at line 1'], 'a rule for all its tools');
+  const directory = [
+    ['Box', 'upload_file'],
+    ['Claude_Docs', 'read'],
+    ['Gmail', 'send'],
+    ['Google_Calendar', 'list_events'],
+    ['Google_Drive', 'search_files'],
+    ['Linear', 'create_issue'],
+    ['Notion', 'notion-search'],
+    ['Slack', 'slack_create_canvas'],
+  ];
+  for (const [name, tool] of directory) assert.deepEqual(checkContentPrivacy(json({ tools: [connectorTool(name, tool)] })), [], name);
+  assert.deepEqual(checkContentPrivacy(`allow ${connectorTool('Gmail', '*')}`), [], 'a rule for all of a directory connector’s tools');
+  assert.deepEqual(checkContentPrivacy(`deny ${connectorServer('Gmail')}`), [], 'a directory connector, by its server');
+});
+
+test('a tool id that only starts with a directory connector’s name, or differs in case, is flagged (#905)', () => {
+  for (const id of [
+    connectorTool('Google_Drive_Personal'),
+    connectorTool('Gmail-Personal'),
+    connectorTool('Gmail', '_Alice__send'),
+    connectorTool('Gmail', 'send__Alice'),
+    connectorTool('gmail'),
+    connectorTool('Gmail', 'send_'),
+    connectorServer('Gmailer'),
+  ]) {
+    assert.deepEqual(checkContentPrivacy(`tool ${id}`), ['connector tool id at line 1'], id);
+  }
+});
+
+test('a hostile connector name in a tool id is flagged, and the finding holds no part of it (#905)', () => {
+  const hostile = `Alice"<&\0${['', 'Users', 'alice', 'x'].join('/')}`;
+  const found = checkContentPrivacy(`x\n${connectorTool(hostile)}`);
+  assert.ok(found.includes('connector tool id at line 2'), found.join('; '));
+  for (const finding of found) for (const part of ['Ali', 'lic', '"<&', 'Use']) assert.ok(!finding.includes(part), finding);
+});
+
+/**
+ * The recordings beside the four above whose inits list plugins and connectors: Postbox’s host init, and the delivery
+ * spike’s runs (#905).
+ */
+const DELIVERY_ROUTES = 'tests/fixtures/delivery-routes';
+const RECORDINGS = [
+  'tests/fixtures/claude-code/host-mcp-init.jsonl',
+  ...readdirSync(new URL(`../${DELIVERY_ROUTES}`, import.meta.url))
+    .filter((name) => name.endsWith('.jsonl'))
+    .map((name) => `${DELIVERY_ROUTES}/${name}`),
+];
+
+/**
+ * Plugins whose names are public: Anthropic’s own, from its public plugin marketplaces and claude.ai’s built-in skills,
+ * and “sample”, the made-up plugin the tests name.
+ */
+const PUBLIC_PLUGINS = ['anthropic-skills', 'cowork-plugin-management', 'design', 'engineering', 'pdf-viewer', 'sample'];
+
+/** claude.ai’s directory connectors (tools/privacy-check.mjs), as an init names their servers. */
+const DIRECTORY = ['Claude Docs', 'Gmail', 'Google Calendar', 'Google Drive'];
+
+/** MCP servers that name no one’s setup: Postbox’s, the recording’s made-up project server, and the scrubbed one. */
+const PUBLIC_SERVERS = new Set(['postbox', 'probe', 'sanitized_mcp']);
+
+/** Whether a name is a public plugin’s, by the prefix each kind of name puts before it. @param {string} name @param {(plugin: string) => string} prefix */
+const ofPublicPlugin = (name, prefix) => PUBLIC_PLUGINS.some((plugin) => name.startsWith(prefix(plugin)));
+
+/** How many names of each kind an init holds that aren’t on a public list, so a failure prints no name (#784). */
+function privateNames(init) {
+  const commands = [...(init.skills ?? []), ...(init.slash_commands ?? [])];
+  const server = (name) =>
+    PUBLIC_SERVERS.has(name) || DIRECTORY.some((connector) => name === `claude.ai ${connector}`) || ofPublicPlugin(name, (p) => `plugin:${p}:`);
+  const tool = (name) =>
+    /^[A-Z][A-Za-z]+$/.test(name) ||
+    name.startsWith('mcp__postbox__') ||
+    DIRECTORY.some((connector) => name.startsWith(`${connectorServer(connector.replaceAll(' ', '_'))}__`)) ||
+    ofPublicPlugin(name, (p) => `mcp__plugin_${p}_`);
+  return {
+    servers: (init.mcp_servers ?? []).filter((entry) => !server(entry.name ?? entry)).length,
+    plugins: (init.plugins ?? []).filter((plugin) => !PUBLIC_PLUGINS.includes(plugin.name ?? plugin)).length,
+    commands: commands.filter((command) => !BUILT_IN_COMMANDS.has(command) && !ofPublicPlugin(command, (p) => `${p}:`)).length,
+    agents: (init.agents ?? []).filter((agent) => !BUILT_IN_AGENTS.has(agent) && !ofPublicPlugin(agent, (p) => `${p}:`)).length,
+    tools: (init.tools ?? []).filter((name) => !tool(name)).length,
+  };
+}
+
+test('the other recorded Claude Code inits name only public plugins, connectors, skills and tools (#905)', () => {
+  let inits = 0;
+  for (const path of RECORDINGS) {
+    committed(path)
+      .split('\n')
+      .forEach((line, i) => {
+        if (!line.includes('"init"')) return;
+        const event = JSON.parse(line);
+        if (event.subtype !== 'init') return;
+        inits++;
+        assert.deepEqual(privateNames(event), { servers: 0, plugins: 0, commands: 0, agents: 0, tools: 0 }, `${path}:${i + 1}`);
+      });
+  }
+  assert.equal(inits, 15, 'the recordings hold 15 inits');
 });
