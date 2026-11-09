@@ -148,8 +148,10 @@ function findReviewFile(rt, threadId, itemId, name, sha256) {
  * sandboxed page does), measured in Chromium and Firefox. A token in the URL per frame would keep them apart, and was
  * declined: agents name these URLs in the code they write. So a site open in the same browser can embed a name it
  * guesses and learn whether the person’s media folder has that file, and its size (an image’s width and height, or a
- * load’s timing). It can’t read the bytes: the route sends no open CORS header. The folder holds what agents copy
- * there to show in apps, and the route serves only files inside it with an image’s extension (server/served-files.mjs).
+ * load’s timing). It can’t read the bytes through any script API, since the route sends no open CORS header; but
+ * without CORP the response does reach that site’s renderer process, so a speculative-execution read where site isolation is
+ * weak can’t be ruled out. The folder holds what agents copy there to show in apps, and the route serves only files
+ * inside it with an image’s extension (server/served-files.mjs).
  * Chromium’s Local Network Access checks also refuse a public site’s request to 127.0.0.1 unless the person allows it.
  */
 export const SAME_ORIGIN_ONLY = Object.freeze({ 'cross-origin-resource-policy': 'same-origin' });
