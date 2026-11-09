@@ -15,7 +15,7 @@ import { homedir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CARD_WAIT_MS } from '../permission-cards.mjs';
-import { autoAllows, inGit, personaAllows, personaOf, publishingCall } from './agy-auto.mjs';
+import { autoAllows, intoGit, personaAllows, personaOf, publishingCall } from './agy-auto.mjs';
 import { inside, leadsInto, PATH_FIELDS, pathArgs, readingsOf, realTarget } from './agy-paths.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
@@ -117,11 +117,7 @@ export function decideAgyTool(
   const isProtected = (p) => isProtectedPath(p, { cwd, scriptPath, home });
   // In Auto, Postbox approves routine calls and what the persona’s tools allow (agy-auto.mjs, #416); a command naming
   // Antigravity’s files asks.
-  if (
-    mode === 'auto' &&
-    !PROTECTED_CMD.test(command) &&
-    (autoAllows(name, args, { roots, cwd, home, isProtected, realTarget }) || personaAllows(name, args, tools))
-  )
+  if (mode === 'auto' && !PROTECTED_CMD.test(command) && (autoAllows(name, args, { roots, cwd, home, isProtected }) || personaAllows(name, args, tools)))
     return { decision: 'allow' };
   if (mcp) {
     if (server === 'postbox_postbox') return { decision: 'allow' };
@@ -151,7 +147,7 @@ function decideWrite(name, args, { mode, roots, cwd, scriptPath, home }) {
   if (!paths.length || paths.some((p) => isProtectedPath(p, { cwd, scriptPath, home })))
     return { decision: 'deny', reason: 'Postbox doesn’t allow editing Antigravity’s plugin, hook or settings files.' };
   // In Auto, an edit in .git asks: its config and hooks could name a program the routine git commands would run.
-  const gitEdit = (/** @type {string} */ p) => mode === 'auto' && readingsOf(p, cwd, home).some((at) => inGit(at) || inGit(realTarget(at, '/')));
+  const gitEdit = (/** @type {string} */ p) => mode === 'auto' && intoGit(p, cwd, home);
   const asks = /** @type {string[]} */ (paths).find((p) => !leadsInto(p, roots, { cwd, home }) || gitEdit(p));
   if (!asks && (mode === 'auto' || mode === 'acceptEdits')) return { decision: 'allow' };
   return { decision: 'ask', toolName: name.startsWith('write') ? 'Write' : 'Edit', input: { file_path: String(asks ?? paths[0]).trim() } };

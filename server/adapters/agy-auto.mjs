@@ -21,8 +21,9 @@
 // diff.external, gpg.program). No MCP tool outside Postbox is approved here: what one does can’t be read from its name.
 
 import { lstatSync } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
+import { join } from 'node:path';
 import { splitCommand } from '../../shared/command-chains.mjs';
+import { leadsInto, readingsOf, realTarget } from './agy-paths.mjs';
 import { isPublishingTool } from './setup.mjs';
 
 /**
@@ -145,7 +146,6 @@ export function words(part) {
   return out;
 }
 
-const inside = (target, dir) => target === dir || target.startsWith(`${dir}${sep}`);
 /**
  * Whether a path is in a .git folder, where an edit could name a program for git to run. Without case: macOS’s file
  * system ignores it, so .GIT/config is .git/config there (#423’s review).
@@ -156,22 +156,26 @@ export const inGit = (p) =>
     .some((s) => s.toLowerCase() === '.git');
 
 /**
+ * Whether a path leads into a .git folder, as written or where it leads, every way it may be read (readingsOf): an
+ * edit there asks in Auto, by the hook’s edit rules and by a routine command’s alike.
+ * @param {string} raw @param {string} cwd @param {string} home
+ */
+export const intoGit = (raw, cwd, home) => readingsOf(raw, cwd, home).some((at) => inGit(at) || inGit(realTarget(at, '/')));
+
+/**
  * Whether a word, read as a path, stays in the agent’s folders. Every operand and option value is read as one, a grep
  * pattern or an echo too: one that starts at / or ~, or climbs out with .., makes the command a card. A glob only in
  * the last segment, and none for a write, since it could match a link that leads out; a write never into .git.
  */
-function staysIn(word, { roots, cwd, home, isProtected, realTarget }, write) {
-  let p = word;
-  if (p.startsWith('~')) {
-    if (p !== '~' && !p.startsWith('~/')) return false;
-    p = join(home, p.slice(1));
-  }
+function staysIn(word, { roots, cwd, home, isProtected }, write) {
+  // An empty word, as grep’s "" pattern, names the folder itself; ~user is another person’s home.
+  const p = word || '.';
+  if (p.startsWith('~') && p !== '~' && !p.startsWith('~/')) return false;
   const segments = p.split('/');
   if (GLOB.test(p) && (write || segments.slice(0, -1).some((s) => GLOB.test(s)))) return false;
-  const abs = resolve(cwd, p);
-  const real = realTarget(abs, cwd);
-  if (!real || !roots.some((r) => inside(real, r)) || isProtected(abs)) return false;
-  return !(write && (inGit(abs) || inGit(real)));
+  // Where it leads as the file system resolves it, so a .. after a link climbs from where the link leads (#1074).
+  if (!leadsInto(p, roots, { cwd, home }) || isProtected(p)) return false;
+  return !(write && intoGit(p, cwd, home));
 }
 
 /**
@@ -237,7 +241,7 @@ function routineWords(w, where) {
 /**
  * Whether Postbox runs this command without a card in Auto: every part routine, every path in the agent’s folders.
  * @param {string} command
- * @param {{ roots: string[], cwd: string, home: string, isProtected: (p: string) => boolean, realTarget: (p: string, base: string) => string|null }} where
+ * @param {{ roots: string[], cwd: string, home: string, isProtected: (p: string) => boolean }} where
  */
 export function routineCommand(command, where) {
   const parts = splitCommand(command).map(words);
@@ -262,7 +266,7 @@ export function publicFetch(url) {
 /**
  * Whether Auto runs this Antigravity tool call without a card. File reads and edits keep the hook’s own rules.
  * @param {string} name @param {any} args
- * @param {{ roots: string[], cwd: string, home: string, isProtected: (p: string) => boolean, realTarget: (p: string, base: string) => string|null }} where
+ * @param {{ roots: string[], cwd: string, home: string, isProtected: (p: string) => boolean }} where
  */
 export function autoAllows(name, args, where) {
   switch (name) {
