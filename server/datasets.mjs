@@ -4,19 +4,20 @@
 
 import { realpath, stat } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
-import { hasInvisible } from '../shared/invisible.mjs';
 import { LIMITS, limitText } from '../shared/limits.mjs';
 import { parseDataset } from './corpus.mjs';
 import { clip } from './helpers.mjs';
 import { readCapped } from './read-capped.mjs';
+import { hidesName } from './upload-name.mjs';
 
 const DATASET_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 /**
- * Whether a dataset’s title holds a control character, a lone surrogate, or one that shows as nothing or reorders
- * text (hasInvisible, shared/invisible.mjs), joiners too, as an asset’s name does: the corpus lists it as a title (#1052).
+ * Whether a dataset’s title holds a character that would hide or reorder it where the corpus lists it: a control
+ * character, a lone surrogate, or one that shows as nothing or reorders text (#1052). ZWJ, ZWNJ and VS16 pass, as in a
+ * display name (hidesName, server/upload-name.mjs): they join letters in Hindi and Persian, and make 👩‍💻 and ❤️.
  * @param {string} s
  */
-const unseenTitle = (s) => /[\p{Cc}\p{Cs}]/u.test(s) || hasInvisible(s);
+const unseenTitle = (s) => Array.from(s).some(hidesName);
 const TITLE_MESSAGE =
   'A dataset’s title can’t hold control characters, characters that reorder text or show as nothing (such as U+202E or U+200B), or half of a surrogate pair. Call add_dataset again with a title without them.';
 /** Where a project’s datasets live: Postbox’s own folder in the project (#47). @param {string} folder */

@@ -4,22 +4,22 @@
 
 import { readdir, realpath, stat } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
-import { INVISIBLE } from '../shared/invisible.mjs';
 import { httpError } from './helpers.mjs';
+import { hidesName } from './upload-name.mjs';
 
 /**
- * A name as the picker shows it: each control character, lone surrogate, or character that shows as nothing or
- * reorders text (INVISIBLE, shared/invisible.mjs) is the replacement mark, as the permissions panel marks a hook’s
- * text (server/permission-hooks.mjs). @param {string} name
+ * A name as the picker shows it: each character that would hide or reorder it (hidesName, server/upload-name.mjs: a
+ * control character, a lone surrogate, or one that shows as nothing or reorders text) is the replacement mark, as the
+ * permissions panel marks a hook’s text (server/permission-hooks.mjs). ZWJ, ZWNJ and VS16 show, as in a display name,
+ * so ❤️.txt and 👩‍💻.txt show whole. @param {string} name
  */
-export const markedName = (name) => name.replace(/[\p{Cc}\p{Cs}]/gu, '\uFFFD').replace(INVISIBLE, '\uFFFD');
+export const markedName = (name) => Array.from(name, (c) => (hidesName(c) ? '\uFFFD' : c)).join('');
 
 /**
  * The characters markedName marks in a name, once each, as U+XXXX: the picker’s title for its row says what each
  * mark stands for. @param {string} name
  */
-const hiddenIn = (name) =>
-  [...new Set(Array.from(name).filter((c) => markedName(c) !== c))].map((c) => `U+${c.codePointAt(0)?.toString(16).toUpperCase().padStart(4, '0')}`);
+const hiddenIn = (name) => [...new Set(Array.from(name).filter(hidesName))].map((c) => `U+${c.codePointAt(0)?.toString(16).toUpperCase().padStart(4, '0')}`);
 
 /**
  * The entries of a folder in a project, sub relative to its root: never outside it, even through symbolic links.
