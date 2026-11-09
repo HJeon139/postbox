@@ -61,23 +61,32 @@ export function tidyPath(raw) {
   return `${root}${kept.join(sep)}${trailing}` || '.';
 }
 
+/** A ~ path’s home: ~ alone, or ~ and a name, as ~root/.ssh names root’s, whose home Postbox can’t know (#1074). */
+const TILDE = /^~[^\\/]*/;
+/** Whether a path starts at another person’s home by name, as ~root/.ssh does: ~ and a name, not ~ or ~/. */
+const othersHome = (/** @type {string} */ p) => (TILDE.exec(p.trim())?.[0].length ?? 0) > 1;
+
 /**
  * The places a path may name, absolute but with its .. kept for realTarget: from cwd, and for one that starts with ~,
- * from home too, since whether agy expands ~ is unproved (#1074). A call is allowed only when every one is, and
- * refused when any is protected.
+ * from home too, since whether agy expands ~ is unproved (#1074). A ~user path is read from this home as well, as it
+ * may name it, so one protected there is refused. A call is allowed only when every one is, and refused when any is
+ * protected.
  * @param {string} raw @param {string} cwd @param {string} home
  */
 export function readingsOf(raw, cwd, home) {
   const p = raw.trim();
   const fromCwd = isAbsolute(p) ? p : `${cwd}${sep}${p}`;
-  return /^~(?:$|[\\/])/.test(p) ? [fromCwd, `${home}${p.slice(1)}`] : [fromCwd];
+  const tilde = TILDE.exec(p);
+  return tilde ? [fromCwd, `${home}${p.slice(tilde[0].length)}`] : [fromCwd];
 }
 
 /**
- * Whether a path leads into one of the folders, by its real path, every way it may be read (readingsOf).
+ * Whether a path leads into one of the folders, by its real path, every way it may be read (readingsOf). A ~user path
+ * never does: its home could be anywhere, so it asks, as Auto’s routine commands refuse one (agy-auto.mjs, staysIn).
  * @param {string} raw @param {string[]} dirs @param {{ cwd: string, home: string }} where
  */
 export const leadsInto = (raw, dirs, { cwd, home }) =>
+  !othersHome(raw) &&
   readingsOf(raw, cwd, home).every((at) => {
     const real = realTarget(at, '/');
     return dirs.some((d) => inside(real, d));
