@@ -159,7 +159,8 @@ function decideWrite(name, args, { mode, roots, cwd, scriptPath, home }) {
 
 /**
  * A read: with no card when every path it names leads into the agent’s folders, its readable ones or agy’s own (#1074),
- * else a card about the first that doesn’t.
+ * else a card about the first that doesn’t, naming in paths every one that doesn’t when there are more, so allowing it
+ * allows what the card shows (read-folders.mjs’s readPaths).
  */
 function decideRead(args, { roots, readFolders, cwd, home }) {
   const paths = pathArgs(args);
@@ -169,8 +170,9 @@ function decideRead(args, { roots, readFolders, cwd, home }) {
   // replaced by a link would lead where the link does (#1074).
   const readable = readFolders.filter((f) => isAbsolute(f));
   const dirs = /** @type {string[]} */ ([...roots, ...readable, ...agyDirs]);
-  const outside = /** @type {string[]} */ (paths).find((p) => !leadsInto(p, dirs, { cwd, home }));
-  return outside === undefined ? { decision: 'allow' } : { decision: 'ask', toolName: 'Read', input: { file_path: outside.trim() } };
+  const outside = /** @type {string[]} */ (paths).filter((p) => !leadsInto(p, dirs, { cwd, home })).map((p) => p.trim());
+  if (!outside.length) return { decision: 'allow' };
+  return { decision: 'ask', toolName: 'Read', input: { file_path: outside[0], ...(outside.length > 1 ? { paths: outside } : {}) } };
 }
 
 function buildOverwrite(check, args, updatedInput, { cwd, scriptPath, home }) {
