@@ -8,10 +8,11 @@ import { httpError } from './helpers.mjs';
 import { hidesName, uploadName } from './upload-name.mjs';
 
 /**
- * The attachments to store and deliver. A file attachment whose upload is known has that upload’s name, type and size;
- * one whose upload isn’t is kept, as before, with its name cleaned as an upload’s is. A project file is attached by its
- * path, which is refused when it holds a character that hidesName: replacing one would point the agent at another file,
- * or at none.
+ * The attachments to store and deliver, each with only what Postbox knows of it. A file attachment whose upload is known
+ * has that upload’s name, type and size; one whose upload isn’t (removed while the message was written) keeps only its
+ * kind, its fileId and its name, cleaned as an upload’s is, since the agent’s prompt prints a type beside the name. A
+ * project file keeps only its kind and path, so no fileId sent beside it makes its chip open another upload; the path is
+ * refused when it holds a character that hidesName: replacing one would point the agent at another file, or at none.
  * @param {any} rt @param {unknown} list  what the request sent
  * @returns {any[]}
  */
@@ -26,7 +27,7 @@ function projectFile(a) {
   const shown = Array.from(path, (c) => (hidesName(c) ? '_' : c)).join('');
   if (shown !== path)
     throw httpError(422, `“${shown}” can’t be attached: its name holds a control or invisible character, such as a bidi control. Rename it first.`);
-  return a;
+  return { kind: 'project-file', path };
 }
 
 /** @param {any} rt @param {any} a */
@@ -36,5 +37,5 @@ function upload(rt, a) {
     const f = files[a.fileId];
     return { kind: 'file', fileId: f.id, name: f.name, type: f.type, size: f.size };
   }
-  return { ...a, name: uploadName(String(a.name ?? '')) };
+  return { kind: 'file', fileId: a.fileId, name: uploadName(String(a.name ?? '')) };
 }
