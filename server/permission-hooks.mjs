@@ -66,16 +66,16 @@ const WORD = String.raw`[^\s'"&;|<>()\x60]+`;
 const NAMED = String.raw`[\w\uFFFD-]*(?:key|token|secret|password)[\w\uFFFD-]*`;
 const USERINFO = /\b([a-z][\w+.-]*:\/\/)[^\s/?#@'"<>&;|()`]+(?=@)/gi;
 // lint-allow regex: built from VALUE and NAMED, the constants just above.
-const ASSIGNED = new RegExp(String.raw`(?<![\w-])(${NAMED}=)${VALUE}`, 'gi');
+const ASSIGNED = new RegExp(String.raw`(?<![\w\uFFFD-])(${NAMED}=)${VALUE}`, 'gi');
 // lint-allow regex: built from VALUE and NAMED, the constants just above.
-const FLAGGED = new RegExp(String.raw`(?<![\w-])(--?${NAMED}\s+)(?!-)${VALUE}`, 'gi');
+const FLAGGED = new RegExp(String.raw`(?<![\w\uFFFD-])(--?${NAMED}\s+)(?!-)${VALUE}`, 'gi');
 // lint-allow regex: built from VALUE, WORD and NAMED, the constants just above.
-const HEADER = new RegExp(String.raw`(?<![\w-])(${NAMED}:[ \t]*)${VALUE}|\b(authorization:[ \t]*(?:[a-z][\w-]*[ \t]+)?)${WORD}`, 'gi');
+const HEADER = new RegExp(String.raw`(?<![\w\uFFFD-])(${NAMED}:[ \t]*)${VALUE}|\b(authorization:(?:[ \t]+(?:[a-z][\w-]*[ \t]+)?)?)${WORD}`, 'gi');
 const COOKIE = /\b(cookie:[ \t]*)[^'"]+/gi;
 // A quoted Authorization header’s credential, every parameter of it (Digest’s response=, SigV4’s Signature=), to the
 // quote that opened the header, past an escaped one, or to the end of the text when it never closes. Unquoted, HEADER
 // ends it at a word.
-const AUTH_QUOTED = /(["'])((?:[\w-]*-)?authorization:[ \t]*(?:[a-z][\w-]*[ \t]+)?)(?:(?!\1)[^\\]|\\.)+/gi;
+const AUTH_QUOTED = /(["'])((?:[\w-]*-)?authorization:(?:[ \t]+(?:[a-z][\w-]*[ \t]+)?)?)(?:(?!\1)[^\\]|\\.)+/gi;
 // curl’s -u and --user: what follows the user’s colon, quoted (to its closing quote) or not (to the end of the word).
 const USER_QUOTED = /(?<![\w-])((?:-u[ \t]*|--user(?:[ \t]+|=))(["'])[^'":]*:)(?:(?!\2)[^\\]|\\.)+/g;
 const USER_BARE = /(?<![\w-])((?:-u[ \t]*|--user(?:[ \t]+|=))[^\s'":]*:)[^\s'"&;|<>()`]+/g;
