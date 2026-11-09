@@ -54,3 +54,33 @@ test('the report says which agent tried what, and says nothing when none did', a
     /\*\*Agents tried to reach GitHub, and the run’s guard refused it:\*\* @developer `gh api user` \(gh has no login \(HTTP 401\)\); @developer `git ls-remote https:\/\/github\.com\/example\/repo\.git` \(git is refused https\)\./,
   );
 });
+
+// From critic’s read of #1112. gh’s three wordings under the run’s refused token, as `gh api user`, `gh pr list` and
+// `gh auth status` print them (gh 2.102.0, recorded on a Mac under the guard’s environment).
+const ghPrList = 'HTTP 401: Bad credentials (https://api.github.com/graphql)\nTry authenticating with:  gh auth login -h github.com';
+const ghStatus =
+  'Exit code 1\ngithub.com\n  X Failed to log in to github.com using token (GH_TOKEN)\n  - Active account: true\n  - The token in GH_TOKEN is invalid.';
+
+test('a refused call counts when a pipe hides its exit code, and gh auth status’s wording counts too', () => {
+  const tried = githubAttempts([
+    call('gh pr list 2>&1 | head -5', ghPrList, false),
+    call('git push origin main 2>&1 | tail -3', "fatal: transport 'https' not allowed", false),
+    call('gh auth status', ghStatus, true),
+  ]);
+  assert.deepEqual(
+    tried.map((a) => a.what),
+    ['gh has no login (HTTP 401)', 'git is refused https', 'gh has no login (HTTP 401)'],
+  );
+});
+
+test('another service’s 401, or a 401 a command printed, isn’t gh’s', () => {
+  const chained = call('grep -n 401 notes.md && gh nope', 'Exit code 1\n3: answers HTTP 401\nunknown command "nope" for "gh"', true);
+  const tests = call('npm test', 'Exit code 1\nnot ok 3 - the client answers HTTP 401: Bad credentials when the key is wrong', true);
+  const curl = call('curl -sf https://api.example.com/me', 'Exit code 22\ncurl: (22) The requested URL returned error: 401', true);
+  assert.deepEqual(githubAttempts([chained, tests, curl]), []);
+});
+
+test('a run that keeps the person’s GitHub (`- github: real`) has no guard, so the report says nothing of one', () => {
+  assert.deepEqual(githubSection(streams, { github: 'real' }), []);
+  assert.equal(githubSection(streams, {}).length, 2);
+});
