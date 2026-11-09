@@ -33,13 +33,25 @@ test('#362: a reply exactly at the limit wakes the agent it mentions, with every
   );
 });
 
-test('#362: a reply one character past the limit wakes no one, and the agent is told how long it was and to send less', async () => {
-  const text = reply(LIMIT + 1);
-  const { woke, told, store, t } = await mention(text);
-  assert.equal(woke.length, 0, 'beta wasn’t woken');
-  const note = told.find((x) => /Your mention of @beta woke no one/.test(x));
-  assert.ok(note, JSON.stringify(told));
-  assert.match(note, /up to 50,000 characters, and this one has 50,001, so nothing was sent\. Send less\./);
+test('#362: a reply one character past the limit wakes no one; the conversation says so, and the agent gets one turn to hand off with wake_agent', async () => {
+  // No markup in this one, so no lint notice takes the agent's next turn.
+  const text = `@beta check “this” & "quoted" \u0000 \uD800 ${'x'.repeat(LIMIT + 1)}`.slice(0, LIMIT + 1);
+  const { store, rt, adapter, t, alpha, beta } = setup();
+  adapter.next.push(async (c) => c.text(text));
+  // Its turn on the notice is long again: it isn't woken a second time, so a long reply can't loop.
+  adapter.next.push(async (c) => c.text(text));
+  rt.sendMessage(t.id, { text: '@alpha go' });
+  await settle(rt);
+  assert.equal(adapter.calls.filter((c) => c.sessionId === beta.id).length, 0, 'beta wasn’t woken');
+  const alphaTurns = adapter.calls.filter((c) => c.sessionId === alpha.id);
+  assert.equal(alphaTurns.length, 2, 'alpha got exactly one more turn');
+  const notice = JSON.stringify(alphaTurns[1].message);
+  assert.match(notice, /Your mention of @beta woke no one/);
+  assert.match(notice, /your reply has 50,001 characters, past the 50,000 a hand-off can send, so nothing was sent\./);
+  assert.match(notice, /wake_agent/);
+  const lines = store.items(t.id).filter((x) => x.kind === 'voice' && /woke no one/.test(x.text));
+  assert.equal(lines.length, 2, 'a line for each refused hand-off, so the person sees why beta never started');
+  assert.match(lines[0].text, /^@alpha’s mention of @beta woke no one: its reply has 50,001 characters, past the 50,000 a hand-off can send\.$/);
   // The reply itself is still in the conversation, as the agent wrote it, with no wake marked on it.
   const posted = store.items(t.id).find((x) => x.kind === 'agent' && x.text === text);
   assert.ok(posted, 'the reply was posted');
