@@ -122,6 +122,7 @@ export function daemonSetup({ home = hostHome('pbd-'), onRemoved = () => {}, env
       liveGroups: (g) => g,
     },
     findPrograms: async () => structuredClone(FOUND),
+    probeLoginPath: async () => ({ ok: false, why: 'the test runs no login shell' }),
     // A harness that ends on SIGINT: the runner records it.
     kill(target, signal) {
       kills.push([target, signal]);

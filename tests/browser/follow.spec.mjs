@@ -263,15 +263,21 @@ test('#410 ⌃J brings a block into view when something grows between its scroll
   expect(await inView(page, ask.id), 'scrolled away from the block').toBe(false);
   // The block grows in a task right after ⌃J’s scroll, before the scroll’s event, past the room the transcript holds
   // below it: in CI, the page grew by 20 px there, as an app’s check gave way to its frame.
+  // The jump (jumpTo, #712) sets the page's scrollTop, so the growth follows the first scrollTop set after ⌃J.
   await page.evaluate((grows) => {
-    const scroll = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = function (o) {
-      Element.prototype.scrollIntoView = scroll;
-      scroll.call(this, o);
-      setTimeout(() => {
-        /** @type {HTMLElement} */ (document.querySelector(`[data-key="${grows}"]`)).style.paddingBottom = '60px';
-      });
-    };
+    const s = /** @type {Element} */ (document.scrollingElement);
+    const top = /** @type {PropertyDescriptor} */ (Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop'));
+    Object.defineProperty(s, 'scrollTop', {
+      configurable: true,
+      get: () => top.get?.call(s),
+      set(y) {
+        delete (/** @type {any} */ (s).scrollTop);
+        top.set?.call(s, y);
+        setTimeout(() => {
+          /** @type {HTMLElement} */ (document.querySelector(`[data-key="${grows}"]`)).style.paddingBottom = '60px';
+        });
+      },
+    });
   }, ask.id);
   await page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
   await page.keyboard.press('Control+j');

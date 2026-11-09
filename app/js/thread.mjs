@@ -19,6 +19,7 @@ import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint, placeholderFor } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
 import { failedCallout } from './failed-actions.mjs';
+import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
 import { focusUntouched } from './pane-focus.mjs';
 import { denialBlock, permissionBlock, toolAskBlock } from './permission-cards.mjs';
@@ -511,13 +512,7 @@ function movedLine(it, ctx) {
             type: 'button',
             // The name starts with the words on the button, so saying what you see presses it (WCAG 2.5.3).
             'aria-label': `Go to it: ${it.title}`,
-            onclick: (e) => {
-              const box = /** @type {HTMLElement} */ (e.currentTarget).closest('.transcript');
-              const node = box?.querySelector(`:scope > [data-key="${CSS.escape(it.itemId)}"]`);
-              if (!(node instanceof HTMLElement)) return;
-              node.scrollIntoView({ block: 'center' });
-              (node.querySelector('button:not([disabled]), input, textarea, select') ?? node).focus({ preventScroll: true });
-            },
+            onclick: (e) => goToItem(e, it.itemId),
           },
           'Go to it',
         )
@@ -835,7 +830,9 @@ export function mountComposer(threadId, { side = false } = {}) {
       attachments.push(chip);
       paintAtt();
       try {
-        Object.assign(chip, { fileId: (await uploadFile(f)).id, uploading: false });
+        // The name the upload kept (#991): a character that would hide or reorder it is “_” there.
+        const { id, name, size, type } = await uploadFile(f);
+        Object.assign(chip, { fileId: id, name, size, type, uploading: false });
       } catch (e) {
         attachments = attachments.filter((x) => x !== chip);
         toast({ title: `Couldn’t attach ${f.name}`, text: e.message, level: 'blocking' });

@@ -32,10 +32,11 @@ function scriptedPage(facts, { views = [[READING]], frame = null } = {}) {
       }
       if (expr.includes('const before =')) return note('restore');
       if (expr.includes('requestAnimationFrame')) return note('settled');
-      if (expr.includes('scrollIntoView')) {
+      // The runner scrolls through the page’s own jumpTo (#712a).
+      if (expr.includes('view-jump.mjs')) {
         note('scroll');
         // A shot finds its item gone; a click finds its control.
-        return expr.includes("block: 'start'") ? false : { x: 10, y: 10 };
+        return expr.includes('"start"') ? false : { x: 10, y: 10 };
       }
       // Where the app’s frame is, and whether it has loaded.
       if (expr.includes('getBoundingClientRect')) return { x: 0, y: 0 };
@@ -118,7 +119,7 @@ test('an app is brought to the middle of the view to read or click it, since one
     frameOf: async () => null,
   };
   await driver(page).appInside('it_app');
-  assert.ok(exprs.some((e) => /scrollIntoView\(\{ block: 'center' \}\)/.test(e)));
+  assert.ok(exprs.some((e) => /\.jumpTo\(n, "center"\)/.test(e)));
 });
 
 test('a telemetry click is recorded as a runner click before it scrolls what it clicks into view', async () => {

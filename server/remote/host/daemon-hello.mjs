@@ -3,6 +3,7 @@
 
 import { HOST_DEFAULTS, PROTOCOL_VERSION, REMOTE_LIMITS } from '../../../shared/remote-protocol.mjs';
 import { tokenMatches } from './daemon-files.mjs';
+import { findWithLogin, welcomeLoginPath } from './daemon-login.mjs';
 import { fail, send } from './daemon-reply.mjs';
 import { checkIdle, scan } from './daemon-scan.mjs';
 
@@ -52,12 +53,13 @@ export async function hello(d, c, m) {
   d.driver = c;
   c.ready = true;
   d.settings = { ...HOST_DEFAULTS, ...(m.settings ?? {}) };
-  d.programs = await d.findPrograms({ home: d.home, settings: d.settings });
-  if (c.closed) return;
+  await findWithLogin(d);
+  if (c.closed || !d.programs) return;
   checkLinger(d);
   const turns = await scan(d);
   const allProblems = [...d.programs.problems, ...[...d.problems].map(([code, text]) => ({ code, message: text }))].slice(0, REMOTE_LIMITS.problems);
-  await send(c, 'welcome', { version: PROTOCOL_VERSION, home: d.home, node: d.programs.node, harnesses: d.programs.harnesses, problems: allProblems, turns });
+  const { node, harnesses } = d.programs;
+  await send(c, 'welcome', { version: PROTOCOL_VERSION, home: d.home, node, harnesses, problems: allProblems, turns, loginPath: welcomeLoginPath(d) });
   checkIdle(d);
   await d.brk.hello?.((type, body) => send(c, type, body));
 }
