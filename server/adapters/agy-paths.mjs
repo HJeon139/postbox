@@ -45,6 +45,23 @@ export function pathArgs(args) {
 }
 
 /**
+ * A path as a card names it: its . segments and doubled separators dropped, which never change where it leads, so a
+ * run of ./ can’t push the call’s other paths off the card (#1074). Its .. stay: after a link, one climbs from where
+ * the link leads (realTarget), so dropping one with the segment before it could name another place.
+ * @param {string} raw
+ */
+export function tidyPath(raw) {
+  const p = raw.trim();
+  const root = isAbsolute(p) ? parse(p).root : '';
+  const kept = p
+    .slice(root.length)
+    .split(sep)
+    .filter((s) => s && s !== '.');
+  const trailing = kept.length && p.endsWith(sep) ? sep : '';
+  return `${root}${kept.join(sep)}${trailing}` || '.';
+}
+
+/**
  * The places a path may name, absolute but with its .. kept for realTarget: from cwd, and for one that starts with ~,
  * from home too, since whether agy expands ~ is unproved (#1074). A call is allowed only when every one is, and
  * refused when any is protected.

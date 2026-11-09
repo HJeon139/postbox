@@ -16,7 +16,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CARD_WAIT_MS } from '../permission-cards.mjs';
 import { autoAllows, intoGit, personaAllows, personaOf, publishingCall } from './agy-auto.mjs';
-import { inside, leadsInto, PATH_FIELDS, pathArgs, readingsOf, realTarget } from './agy-paths.mjs';
+import { inside, leadsInto, PATH_FIELDS, pathArgs, readingsOf, realTarget, tidyPath } from './agy-paths.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
 export const HOOK_SCRIPT = fileURLToPath(import.meta.url);
@@ -150,7 +150,7 @@ function decideWrite(name, args, { mode, roots, cwd, scriptPath, home }) {
   const gitEdit = (/** @type {string} */ p) => mode === 'auto' && intoGit(p, cwd, home);
   const asks = /** @type {string[]} */ (paths).find((p) => !leadsInto(p, roots, { cwd, home }) || gitEdit(p));
   if (!asks && (mode === 'auto' || mode === 'acceptEdits')) return { decision: 'allow' };
-  return { decision: 'ask', toolName: name.startsWith('write') ? 'Write' : 'Edit', input: { file_path: String(asks ?? paths[0]).trim() } };
+  return { decision: 'ask', toolName: name.startsWith('write') ? 'Write' : 'Edit', input: { file_path: tidyPath(String(asks ?? paths[0])) } };
 }
 
 /**
@@ -166,7 +166,7 @@ function decideRead(args, { roots, readFolders, cwd, home }) {
   // replaced by a link would lead where the link does (#1074).
   const readable = readFolders.filter((f) => isAbsolute(f));
   const dirs = /** @type {string[]} */ ([...roots, ...readable, ...agyDirs]);
-  const outside = /** @type {string[]} */ (paths).filter((p) => !leadsInto(p, dirs, { cwd, home })).map((p) => p.trim());
+  const outside = /** @type {string[]} */ (paths).filter((p) => !leadsInto(p, dirs, { cwd, home })).map(tidyPath);
   if (!outside.length) return { decision: 'allow' };
   return { decision: 'ask', toolName: 'Read', input: { file_path: outside[0], ...(outside.length > 1 ? { paths: outside } : {}) } };
 }
@@ -179,7 +179,7 @@ function buildOverwrite(check, args, updatedInput, { cwd, scriptPath, home }) {
     if (check.toolName !== 'Read' && isProtectedPath(updatedInput.file_path, { cwd, scriptPath, home })) return 'denied';
     if (updatedInput.file_path === check.input.file_path) return null;
     // Back in the field the card was about, of the paths the call names (#1074).
-    const named = (/** @type {string} */ k) => typeof args?.[k] === 'string' && args[k].trim() === check.input.file_path;
+    const named = (/** @type {string} */ k) => typeof args?.[k] === 'string' && tidyPath(args[k]) === check.input.file_path;
     const key = PATH_FIELDS.find(named) ?? PATH_FIELDS.find((k) => k in (args ?? {})) ?? 'Path';
     return { ...args, [key]: updatedInput.file_path };
   }
