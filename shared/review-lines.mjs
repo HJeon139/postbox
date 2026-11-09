@@ -17,11 +17,14 @@ import { displayCloser } from './math.mjs';
  *
  * depth is how many quotes the group is inside. Table and list units are in the order their rows and
  * items render (tr and li in document order). hidden rows render as nothing: a table's delimiter
- * row, a fence's markers, and the old text of a list item's changed continuation line. rows are all
- * of a table's or list's rows, in order, for drawing it line by line if it doesn't render as expected.
+ * row a diff changed, a fence's markers, and the old text of a list item's changed continuation line. rows are all
+ * of a table's or list's rows, in order, for drawing it line by line if it doesn't render as expected. A table's sep
+ * is its unchanged delimiter row, a line an agent can comment on like any other, so it's a target of its own, drawn
+ * as a row between the header and the body (#835); null when a diff changed it.
  * @typedef {{ type: 'line', depth: number, unit: Unit }
  *   | { type: 'code', depth: number, lang: string, units: Unit[], hidden: Row[] }
- *   | { type: 'table' | 'list', depth: number, source: string, units: Unit[], hidden: Row[], rows: Row[] }} Group
+ *   | { type: 'table', depth: number, source: string, units: Unit[], sep: Unit | null, hidden: Row[], rows: Row[] }
+ *   | { type: 'list', depth: number, source: string, units: Unit[], hidden: Row[], rows: Row[] }} Group
  */
 
 /**
@@ -119,8 +122,9 @@ function delimiterAfter(rows, i) {
 }
 
 // The first row heads the table and the delimiter follows it, whatever the diff put between them;
-// every other row is a body row, in order. A diff that changed the delimiter has two, and the second
-// is hidden too. Without a diff, a later row of dashes is content, as in renderMarkdown.
+// every other row is a body row, in order. An unchanged delimiter is the table's sep. A diff that
+// changed the delimiter has two, both hidden, so each shows as its source. Without a diff, a later
+// row of dashes is content, as in renderMarkdown.
 /**
  * @param {Row[]} rows
  * @param {number} sep
@@ -129,10 +133,11 @@ function delimiterAfter(rows, i) {
  */
 function tableGroup(rows, sep, depth) {
   const changed = rows[sep].kind !== 'same';
-  const hidden = rows.filter((r, k) => k === sep || (k > sep && changed && r.kind !== 'same' && TABLE_SEP.test(r.t)));
-  const shown = rows.filter((r) => !hidden.includes(r));
+  const delimiters = rows.filter((r, k) => k === sep || (k > sep && changed && r.kind !== 'same' && TABLE_SEP.test(r.t)));
+  const shown = rows.filter((r) => !delimiters.includes(r));
   const source = [shown[0], rows[sep], ...shown.slice(1)].map((r) => r.t).join('\n');
-  return { type: 'table', depth, source, units: shown.map(rowUnit), hidden, rows };
+  if (changed) return { type: 'table', depth, source, units: shown.map(rowUnit), sep: null, hidden: delimiters, rows };
+  return { type: 'table', depth, source, units: shown.map(rowUnit), sep: rowUnit(rows[sep]), hidden: [], rows };
 }
 
 // One unit per item, in the order the items render (li in document order); blank and continuation lines

@@ -625,6 +625,8 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .rv-u.mod > .g-abs::before, .rv-u.mod > :first-child > .g-abs::before { content: "±"; position: absolute; left: 6px; color: var(--good); font-weight: 700; }
 .rv-u.del > .g-abs::before, .rv-u.del > :first-child > .g-abs::before { content: "−"; position: absolute; left: 6px; color: var(--alert-ink); font-weight: 700; }
 .rv-thread-row > td { padding: 0; border: 0; }
+/* A table's delimiter row shows its source, dim, as a line of the draft that can take a comment (#835). */
+.rv-doc .md-table td.rv-src { font-family: var(--mono); font-size: 12px; color: var(--dim); padding-top: 2px; padding-bottom: 2px; }
 .md .md-table td.rv-gut { width: 0; padding: 5px 0; border: 0; }
 /* Cells start at the top, level with their row's gutter mark, so a tall row still reads from its first line. */
 .rv-doc .rv-block .md-table th, .rv-doc .rv-block .md-table td { vertical-align: top; }
