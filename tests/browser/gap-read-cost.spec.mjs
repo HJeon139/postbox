@@ -2,7 +2,8 @@
 // you’re at the end, and a read with a layout pending lays out the whole page (#1047). A reply that arrived while you
 // read higher up read it at once (grew() → showJump()), before the frame’s own layout, so each reply cost a layout of
 // its own: in the person’s Firefox profile, 12 of about 130 ms in one 1.28 s task. Chromium’s trace marks a layout
-// that script forced with the script’s stack; here none may come from Postbox’s own code during the burst.
+// that script forced with the script’s stack. Here none may read the gap to the end, and only a few, follow()’s,
+// may come from anywhere else in Postbox’s own code during the burst.
 
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, frames, settled, startPostbox, synced } from './postbox.mjs';
@@ -87,6 +88,9 @@ test(`#1047 ${BURST} replies arriving one a frame while you read higher up force
       .reduce((sum, [, n]) => sum + n, 0);
   expect.soft(of('gapOf'), `layouts the gap to the end forced over ${BURST} replies`).toBe(0);
   expect.soft(of('follow'), `layouts follow() forced over ${BURST} replies`).toBeLessThanOrEqual(15);
+  // And little else: a read added anywhere else in the burst, the pill’s render say, shows here.
+  const all = Object.values(forced).reduce((sum, n) => sum + n, 0);
+  expect.soft(all, `layouts Postbox forced over ${BURST} replies`).toBeLessThanOrEqual(20);
   // Each reply’s frame lays out once, with a few more as the page settles. A pill written after the frame’s layout
   // lays it out again, once a reply: about 100 layouts in all.
   expect.soft(layouts, `layouts over ${BURST} replies`).toBeLessThanOrEqual(BURST + 25);
