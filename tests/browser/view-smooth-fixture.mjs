@@ -68,7 +68,7 @@ export async function readingAtTop(app, page, title) {
         transcripts: document.querySelectorAll('.transcript').length,
       };
     }, reply.id);
-  // CI’s report on 039a38ee: when the 15 s ran out the pill was there, unhidden, saying 1 new, with the reply on the
+  // On CI (#712a): when the 15 s ran out the pill was there, unhidden, saying 1 new, with the reply on the
   // page, read just after. The reply had arrived late, in the delayed shard: wait for it, then for its pill.
   await expect(page.locator(`[data-key="${reply.id}"]`), 'the reply to reach the page').toBeAttached({ timeout: 45_000 });
   await expect(page.locator('.jump'))
