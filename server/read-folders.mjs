@@ -35,7 +35,8 @@ function offerable(dir, home) {
   if (dir === sep || dir === home) return false;
   if (home.startsWith(dir + sep)) return false;
   const inHome = relative(home, dir);
-  if (inHome.startsWith('..') || isAbsolute(inHome)) return true;
+  // Outside home is .. or ../…, never ..notes, a dot-folder in it (#1074).
+  if (inHome === '..' || inHome.startsWith(`..${sep}`) || isAbsolute(inHome)) return true;
   return !inHome.split(sep)[0].startsWith('.');
 }
 
