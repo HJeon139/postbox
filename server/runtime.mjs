@@ -1220,8 +1220,10 @@ export class Runtime {
       }
       return;
     }
-    // Send now sends only your message, and the queue waits for that turn’s end. After a plain Stop the first turn takes
-    // its thread’s queue, in arrival order, as a turn’s normal end does (#733, #1040).
+    // A silent exit (Send now, which sends only your message, and archive, erase, side threads, host admin and the
+    // like) delivers what was held as it is, and the queue waits for that turn’s end. Any other Stop, the person’s, a
+    // store outage’s or a hung host turn’s, gives the first turn its thread’s queue, in arrival order, as a turn’s
+    // normal end does (#733, #1040).
     if (ex.silent) for (const h of held) this.deliver(se.id, h.message, { summarizeTo: h.summarizeTo, threadId: h.threadId });
     else this.takePending(se, { pending: held, threadId: turn.threadId }, true);
   }
