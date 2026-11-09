@@ -84,11 +84,14 @@ test('#120 the turn states read in words in the transcript: Sign-in needed and I
   await expect
     .soft(item(page, unkilled).getByRole('alert'))
     .toContainText('Check it there, then resume @keeper. It may still be running on host.example.com, so it waits for you.');
-  // #909: an agent whose backend isn’t registered here says why its turn can’t be followed, and what to do, and that it
-  // waits for you, since the turn may still be running there.
+  // #909: an agent whose backend isn’t registered here says why its turn can’t be followed, and what to do. #965’s P3:
+  // its hint says it waits for the backend and resumes on its own after that, not once the host is back.
   await expect
     .soft(item(page, unregistered).getByRole('alert'))
-    .toContainText(`Interrupted on host.example.com · ${UNREGISTERED}. It may still be running on host.example.com, so it waits for you.`);
+    .toContainText(
+      `Interrupted on host.example.com · ${UNREGISTERED}. It waits for its backend on this computer. Install it and restart Postbox, and it resumes on its own.`,
+    );
+  await expect.soft(item(page, unregistered).getByRole('alert')).not.toContainText('once host.example.com is back');
   await expect.soft(item(page, hung).locator('.stopped-tag')).toHaveText(HUNG);
   await expect
     .soft(item(page, lost).getByRole('alert'))
