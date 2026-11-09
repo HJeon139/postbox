@@ -336,8 +336,8 @@ export class Runtime {
     const st = { id: newId('it'), kind: 'moved', at: now, itemId: id, ...stub, ...carriedList(items[i]).stub };
     this.store.emit('item.move', { threadId, id, stub: st, patch: { ...patch, ...carriedList(items[i]).item, at: now, movedAt: now } });
     // A session whose catch-up marker was the item now reads on from the stub, where the item was, so what came
-    // after it isn’t skipped.
-    for (const se of this.sessionsIn(threadId)) if (se.seenItem === id) this.updateSession(se.id, { seenItem: st.id });
+    // after it isn’t skipped. Pending, so a marker a catch-up just wrote behind a held commit moves too (#956).
+    for (const se of pendingSessionsIn(this, threadId)) if (se.seenItem === id) this.updateSession(se.id, { seenItem: st.id });
     return true;
   }
   updateSession(id, patch) {

@@ -52,9 +52,8 @@ const FROM_PUBLISHED = {
 const DECIDED_PUBLISHED = {
   'permission-cards.mjs': ['resolveDenial'], // allowOnce, also built from the published session (FROM_PUBLISHED)
   'remote/turns-shared.mjs': ['updateRemote'], // remoteTurn, the same
-  // seenItem: the sessions whose catch-up marker was the moved item; heldSteps: whether a kept job is still running,
-  // read after endJob's own held write of jobs
-  'runtime.mjs': ['bringForward', 'endJob'],
+  // heldSteps: whether a kept job is still running, read after endJob's own held write of jobs
+  'runtime.mjs': ['endJob'],
 };
 
 /** A published read of a session: `rt.s.sessions[id]`, `state.sessions`, `rt.session(id)`. */
