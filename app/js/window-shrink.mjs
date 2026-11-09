@@ -161,6 +161,8 @@ export function dropBottom(w, px) {
  * @param {any} w the window @param {number} i
  */
 export function recenter(w, i) {
+  // An island rejoins through a fragment, which takes it off the page for a moment and so drops its focus.
+  const active = document.activeElement;
   for (let k = w.from; k < w.to; k++) w.drop(k);
   [w.from, w.to] = w.openRange(i);
   w.below.before(w.above);
@@ -170,6 +172,7 @@ export function recenter(w, i) {
   for (const k of islands.filter((k) => k >= w.to).reverse()) w.below.after(/** @type {HTMLElement} */ (w.islands.get(k)));
   w.mountRun(w.from, w.to, w.below);
   w.paintSpacers();
+  if (active instanceof HTMLElement && active.isConnected && document.activeElement !== active) active.focus({ preventScroll: true });
 }
 
 /**
@@ -187,6 +190,9 @@ function indexAt(w, px) {
   return lo;
 }
 
+/** Item i’s rect; it’s mounted, as the range’s first or last item. @param {any} w the window @param {number} i */
+const mountedAt = (w, i) => /** @type {HTMLElement} */ (w.nodes.get(w.entry.ids[i])).getBoundingClientRect();
+
 /**
  * A scroll that left the view past the margin of both of the range’s edges, so growing from an edge would show blank
  * spacer until enough scroll events walk the range over: the range moves to the item under the middle of the view,
@@ -194,13 +200,15 @@ function indexAt(w, px) {
  */
 export function leap(w) {
   const reach = w.viewH() * MARGIN;
-  const rangeTop = w.above.getBoundingClientRect().bottom;
-  const rangeBottom = w.below.getBoundingClientRect().top;
+  // From the mounted items, not the spacers: an empty spacer is hidden, and a hidden element’s rect is all zeros.
+  const rangeTop = mountedAt(w, w.from).top;
+  const rangeBottom = mountedAt(w, w.to - 1).bottom;
   if (rangeBottom >= -reach && rangeTop <= w.viewH() + reach) return false;
   const box = /** @type {Element} */ (w.inPanel ? w.el.parentElement : document.scrollingElement);
   const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight <= 2;
   const mid = (w.inPanel ? box.getBoundingClientRect().top : 0) + box.clientHeight / 2;
-  const i = indexAt(w, mid - /** @type {HTMLElement} */ (w.el.firstElementChild).getBoundingClientRect().top);
+  const itemsTop = rangeTop - w.spanOf(0, w.from) - (w.from > 0 ? w.gap : 0);
+  const i = indexAt(w, mid - itemsTop);
   recenter(w, i);
   // The items drew at their real heights, not the estimates the spacers stood in with, so the view goes where you were.
   const node = w.nodes.get(w.entry.ids[i]);

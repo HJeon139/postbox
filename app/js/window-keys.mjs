@@ -3,11 +3,25 @@
 // (focus on nothing in particular, not in a field or on a control), the window takes them itself: the range moves to
 // the first or the newest item, and the view goes there at once.
 
-/** Whether a key press is the page’s own Home or End, not a field’s or a control’s. @param {KeyboardEvent} e */
+/** Where the last click or touch was: Home and End belong to the scroll container it was in. @type {Element | null} */
+let lastDown = null;
+document.addEventListener('pointerdown', (e) => (lastDown = e.target instanceof Element ? e.target : null), true);
+
+/** Whether el sits in a scroll container of its own, below the page: a side panel, a table, a dialog. @param {Element} el */
+function inOtherScroller(el) {
+  for (let n = /** @type {Element | null} */ (el); n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+    const overflow = getComputedStyle(n).overflowY;
+    if ((overflow === 'auto' || overflow === 'scroll') && n.scrollHeight > n.clientHeight) return true;
+  }
+  return false;
+}
+
+/** Whether a key press is the page’s own Home or End, not a field’s, a control’s or another scroll container’s. @param {KeyboardEvent} e */
 const pageEdgeKey = (e) =>
   (e.key === 'Home' || e.key === 'End') &&
   !(e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) &&
-  (e.target === document.body || e.target === document.documentElement);
+  (e.target === document.body || e.target === document.documentElement) &&
+  !(lastDown && inOtherScroller(lastDown));
 
 /**
  * The range moves to the first or the newest item, and the view to the top or the end.

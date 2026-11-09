@@ -264,7 +264,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
      */
     scrollToEnd: (smooth) => {
       const last = itemsOf(threadId).at(-1);
-      const away = !!win && !!last && !nodes.has(last.id);
+      const away = !!win && !!last && win.to < win.total;
       if (away) win?.reach(last.id);
       return view.scrollToEnd(smooth && !away);
     },

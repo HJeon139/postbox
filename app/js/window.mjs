@@ -301,7 +301,8 @@ class TranscriptWindow {
   reach(id) {
     const i = this.indexOf.get(id);
     if (i === undefined || !this.el.isConnected) return null;
-    if (!this.nodes.has(id)) recenter(this, i);
+    // Outside the range, kept or not: an island kept for its focus is reached by moving the range to it.
+    if (i < this.from || i >= this.to) recenter(this, i);
     return this.nodes.get(id) ?? null;
   }
   destroy() {
