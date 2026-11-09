@@ -10,6 +10,8 @@ export function httpError(status, message) {
 }
 /** s cut to n characters with an ellipsis, never inside a surrogate pair (partEnd, #1052). */
 export const clipText = (s, n) => (s.length > n ? `${s.slice(0, partEnd(s, n - 1))}…` : s);
+/** An id an agent sent, cut to 40 characters, for a refusal that names it: a reply never echoes one whole (#895). @param {unknown} id */
+export const echoedId = (id) => String(id ?? '').slice(0, 40);
 export const clip = (s, n = 200) => {
   const t = toPlainText(s);
   return t.length > n ? t.slice(0, partEnd(t, n - 1)) + '…' : t;
