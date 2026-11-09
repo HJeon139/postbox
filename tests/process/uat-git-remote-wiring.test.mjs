@@ -4,7 +4,7 @@
 // of its own and system config is off, so nothing here reads your config.
 
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, afterEach, describe, test } from 'node:test';
@@ -54,6 +54,19 @@ describe('the runner seeds the remote and checks it', () => {
     const { GIT_ALLOW_PROTOCOL: _a, GIT_CONFIG_COUNT: _b, ...open } = r.env;
     assert.throws(() => preflightRun(scenario, r.workspace, r.dir, open));
     assert.equal(existsSync(remotePaths(r.dir).remote), false, 'remote.git is gone');
+  });
+
+  test('a teardown that fails doesn’t hide why the preflight stopped the run', () => {
+    const r = run();
+    const { GIT_ALLOW_PROTOCOL: _a, GIT_CONFIG_COUNT: _b, ...open } = r.env;
+    // A run folder that can’t be written: the teardown can’t keep remote.json, so it throws.
+    chmodSync(r.dir, 0o555);
+    try {
+      assert.throws(() => preflightRun(scenario, r.workspace, r.dir, open), /git in the run isn’t refused an https remote/);
+    } finally {
+      // Before afterEach removes the folder.
+      chmodSync(r.dir, 0o755);
+    }
   });
 });
 

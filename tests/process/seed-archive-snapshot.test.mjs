@@ -54,6 +54,16 @@ test('the seed tool refuses a folder that already holds a store, and leaves its 
   assert.equal(readFileSync(join(out, 'snapshot.json'), 'utf8'), '{"kept":true}\n');
 });
 
+test('a folder holding only a store’s event log, and no snapshot yet, is refused too', () => {
+  // A store before its first snapshot is an events- file alone (server/store.mjs), as critic’s read of #1111 found.
+  const out = tempDir('pb-test-seed-archive-events-');
+  writeFileSync(join(out, 'events-0001.jsonl'), '{"kept":true}\n');
+  const into = run('tools/seed-archive-snapshot.mjs', '--items', '10', '--out', out);
+  assert.notEqual(into.status, 0);
+  assert.match(into.stderr, /already holds a store/);
+  assert.ok(!existsSync(join(out, 'snapshot.json')), 'nothing seeded beside it');
+});
+
 test('the seed tool refuses a missing folder or a count that isn’t a whole number, and writes nothing', () => {
   const out = tempDir('pb-test-seed-archive-bad-');
   const bad = run('tools/seed-archive-snapshot.mjs', '--items', '1e3', '--out', out);
