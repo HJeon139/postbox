@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.54.2 (2026-11-09)
+
+### Fixes
+
+- **apps:** an app's send in an archived conversation is refused before it's recorded (#848)
+- **blocks:** an answer in an archived conversation is refused before it's recorded (#848)
+
 ## 1.54.1 (2026-11-09)
 
 ### Fixes
