@@ -127,6 +127,8 @@ export function parseScenario(md) {
     // `- seed-diagrams: 6` (#701): with `- seed: big-room`, that many of its agent replies end in a Mermaid diagram.
     seedDiagrams: seedDiagramsOf(meta['seed-diagrams'], meta.seed),
     gh: meta.gh === 'none' ? 'none' : 'yes',
+    // Every run’s agents are kept off the person’s real GitHub; only `- github: real` hands it to them (github-guard.mjs).
+    github: meta.github === 'real' ? 'real' : 'none',
     telemetry: meta.telemetry === 'manual' ? 'manual' : 'runner',
     summary: lines.filter((l) => l && !l.startsWith('#') && !/^- [\w-]+: /.test(l)).join('\n'),
     steps: count(meta.steps),
