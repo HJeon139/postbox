@@ -12,7 +12,7 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { homedir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CARD_WAIT_MS } from '../permission-cards.mjs';
 import { autoAllows, intoGit, personaAllows, personaOf, publishingCall } from './agy-auto.mjs';
@@ -127,7 +127,7 @@ export function decideAgyTool(
   }
   if (SUBAGENT_TOOLS.has(name)) return { decision: 'allow' };
   if (WRITE_TOOLS.has(name)) return decideWrite(name, args, { mode, roots, cwd, scriptPath, home });
-  if (READ_TOOLS.has(name)) return decideRead(args, { roots, readFolders, cwd, home });
+  if (READ_TOOLS.has(name)) return decideRead(args, { roots, cwd, home });
   if (name === 'run_command') {
     const summary = String(args.toolSummary ?? '').trim();
     const warn = PROTECTED_CMD.test(command) ? 'Touches Antigravity’s plugin, hook or settings' : '';
@@ -155,18 +155,17 @@ function decideWrite(name, args, { mode, roots, cwd, scriptPath, home }) {
 }
 
 /**
- * A read: with no card when every path it names leads into the agent’s folders, its readable ones or agy’s own (#1074),
- * else a card about the first that doesn’t, naming in paths every one that doesn’t when there are more, so allowing it
- * allows what the card shows (read-folders.mjs’s readPaths).
+ * A read: with no card when every path it names leads into the agent’s folders or agy’s own (#1074), else a card about
+ * the first that doesn’t, naming in paths every one that doesn’t when there are more, so allowing it allows what the
+ * card shows (read-folders.mjs’s readPaths). A read in a folder saved as readable asks too: Postbox answers it with no
+ * card from the session as it is now (inReadFolder), where the hook’s environment is the turn’s start, so a folder
+ * removed mid-turn would still be read (#1074).
  */
-function decideRead(args, { roots, readFolders, cwd, home }) {
+function decideRead(args, { roots, cwd, home }) {
   const paths = pathArgs(args);
   if (!paths.length || paths.some((p) => typeof p !== 'string')) return { decision: 'ask', toolName: 'Read', input: { file_path: '' } };
   const agyDirs = AGY_READABLE.map((d) => realTarget(join(home, '.gemini', 'antigravity-cli', d), '/'));
-  // Saved as real paths (read-folders.mjs), so compared as saved, as inReadFolder does: resolved again, one later
-  // replaced by a link would lead where the link does (#1074).
-  const readable = readFolders.filter((f) => isAbsolute(f));
-  const dirs = /** @type {string[]} */ ([...roots, ...readable, ...agyDirs]);
+  const dirs = /** @type {string[]} */ ([...roots, ...agyDirs]);
   const outside = /** @type {string[]} */ (paths).filter((p) => !leadsInto(p, dirs, { cwd, home })).map(tidyPath);
   if (!outside.length) return { decision: 'allow' };
   return { decision: 'ask', toolName: 'Read', input: { file_path: outside[0], ...(outside.length > 1 ? { paths: outside } : {}) } };
