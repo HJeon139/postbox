@@ -47,6 +47,12 @@ export function sendQueuedNow(rt, threadId, queueId) {
   const q = queuedIn(rt.store.pending.thread(threadId) ?? {}, queueId);
   updateThread(rt, threadId, (t) => ({ queue: (t.queue ?? []).filter((x) => x.id !== queueId) }));
   for (const id of q.sessionIds) rt.stop(id, { silent: true, jobs: 'keep', sendNow: true });
+  // A plain Stop still exiting: stop() finds no turn to stop, so mark its exit silent here, and what it holds goes as
+  // it is, this message alone, not folded with the queue (#1040).
+  for (const id of q.sessionIds) {
+    const ex = rt.exiting.get(id);
+    if (ex) ex.silent = true;
+  }
   if (q.kind === 'wake') return deliverWake(rt, threadId, q);
   return rt.postAndDeliver(
     threadId,
