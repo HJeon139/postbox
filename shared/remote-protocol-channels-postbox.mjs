@@ -32,6 +32,7 @@ import {
   checkExit,
   checkFiles,
   checkItems,
+  checkLoginPath,
   checkRequest,
   checkSettings,
 } from './remote-protocol-parts.mjs';
@@ -118,7 +119,7 @@ export const POSTBOX_CHANNELS = {
   'daemon-to-postbox': {
     /** The reply to a good hello. */
     welcome: (m) =>
-      fields(m, 'welcome', ['version', 'home', 'node', 'harnesses', 'problems', 'turns']) ||
+      fields(m, 'welcome', ['version', 'home', 'node', 'harnesses', 'problems', 'turns'], ['loginPath']) ||
       int(m.version, 'welcome.version', 1, 1_000_000) ||
       hostPath(m.home, 'welcome.home') ||
       fields(m.node, 'welcome.node', ['path', 'version']) ||
@@ -127,11 +128,12 @@ export const POSTBOX_CHANNELS = {
       list(m.harnesses, 'welcome.harnesses', HARNESSES.length, (h, i) => {
         const at = `welcome.harnesses[${i}]`;
         return (
-          fields(h, at, ['name', 'path', 'version', 'looked']) ||
+          fields(h, at, ['name', 'path', 'version', 'looked'], ['fromLogin']) ||
           oneOf(h.name, `${at}.name`, HARNESSES) ||
           (h.path === null ? '' : hostPath(h.path, `${at}.path`)) ||
           (h.version === null ? '' : str(h.version, `${at}.version`, 200)) ||
-          list(h.looked, `${at}.looked`, REMOTE_LIMITS.looked, (p, j) => hostPath(p, `${at}.looked[${j}]`))
+          list(h.looked, `${at}.looked`, REMOTE_LIMITS.looked, (p, j) => hostPath(p, `${at}.looked[${j}]`)) ||
+          opt(h.fromLogin, (n) => int(n, `${at}.fromLogin`, 0, REMOTE_LIMITS.looked))
         );
       }) ||
       unique(
@@ -143,6 +145,7 @@ export const POSTBOX_CHANNELS = {
         const at = `welcome.problems[${i}]`;
         return fields(p, at, ['code', 'message']) || id(p.code, `${at}.code`) || str(p.message, `${at}.message`, REMOTE_LIMITS.messageChars, 1);
       }) ||
+      opt(m.loginPath, checkLoginPath) ||
       list(m.turns, 'welcome.turns', REMOTE_LIMITS.turns, (t, i) => {
         const at = `welcome.turns[${i}]`;
         return (

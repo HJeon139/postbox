@@ -1,7 +1,9 @@
 // Finding the programs a host runs (#120, the design’s “The daemon”, “Finding programs”): node for the runners, and
 // each harness’s CLI. A configured path (hello.settings’ nodePath, claudePath, kiroPath, codexPath) is used as given,
-// and only it; otherwise the daemon looks on its PATH, then in the folders each CLI’s documented installers use, since
-// `ssh host command` runs a non-interactive shell that often doesn’t read the profile that puts them on PATH.
+// and only it; otherwise the daemon looks on its login shell’s PATH (login-path.mjs, #672), then its own PATH, then in
+// the folders each CLI’s documented installers use, since `ssh host command` runs a non-interactive shell that often
+// doesn’t read the profile that puts them on PATH. A harness’s fromLogin says how many of the first folders it looked
+// in came from the login shell.
 //
 // Where each installer puts its program, as documented:
 // - Claude Code’s native installer “manages the launcher at `~/.local/bin/claude`” (code.claude.com/docs/en/setup,
@@ -22,6 +24,7 @@ import { execFile as nodeExecFile } from 'node:child_process';
 import { constants, promises as fsp } from 'node:fs';
 import { versionIn } from '../../../shared/cli-version.mjs';
 import { checkHostPath } from '../../../shared/remote-settings.mjs';
+import { mergePath } from './login-path.mjs';
 
 /** The oldest Node a runner runs on (the design’s “Finding programs”). */
 export const NODE_MAJOR = 22;
@@ -38,7 +41,7 @@ export const HARNESS_PROGRAMS = Object.freeze({
 });
 
 /**
- * @typedef {{ name: string, path: string | null, version: string | null, looked: string[] }} HarnessFound
+ * @typedef {{ name: string, path: string | null, version: string | null, looked: string[], fromLogin?: number }} HarnessFound
  * @typedef {{ code: string, message: string }} Problem
  * @typedef {{ node: { path: string, version: string }, harnesses: HarnessFound[], problems: Problem[] }} Programs
  * @typedef {(file: string, args: string[], opts: { timeout: number, maxBuffer: number, env?: NodeJS.ProcessEnv },
@@ -72,6 +75,11 @@ export async function searchFolders(home, pathVar, listDir) {
     '/usr/bin',
     '/home/linuxbrew/.linuxbrew/bin',
   ];
+  return hostFolders(dirs);
+}
+
+/** The folders, without a / at their end, that are host paths, once each. @param {string[]} dirs */
+function hostFolders(dirs) {
   return [...new Set(dirs.map((d) => d.replace(/\/+$/, '')).filter((d) => d && checkHostPath(d, 'folder').ok))];
 }
 
@@ -90,8 +98,10 @@ export function compareVersions(a, b) {
  * Finds node and the harnesses.
  * @param {{ home: string, settings: Record<string, any>, env?: NodeJS.ProcessEnv, execFile?: ExecFile,
  *   isExecutable?: (path: string) => Promise<boolean>, listDir?: (dir: string) => Promise<string[]>,
- *   execPath?: string, nodeVersion?: string }} opts
+ *   execPath?: string, nodeVersion?: string, loginPath?: string[] }} opts
  *   execPath and nodeVersion: the Node running the daemon, which runs the runners unless nodePath says otherwise.
+ *   loginPath: the login shell’s PATH entries, looked in first, and on the PATH each `--version` runs with, since a
+ *   CLI npm installed runs node from its PATH.
  * @returns {Promise<Programs>}
  */
 export async function findPrograms({
@@ -103,13 +113,15 @@ export async function findPrograms({
   listDir = (dir) => fsp.readdir(dir),
   execPath = process.execPath,
   nodeVersion = process.version,
+  loginPath = [],
 }) {
   /** @type {Problem[]} */
   const problems = [];
+  const runEnv = loginPath.length ? { ...env, PATH: mergePath(loginPath, env.PATH) } : env;
   const version = (path) =>
     new Promise((resolve) => {
       try {
-        execFile(path, ['--version'], { timeout: VERSION_TIMEOUT_MS, maxBuffer: 64 * 1024, env }, (err, stdout) =>
+        execFile(path, ['--version'], { timeout: VERSION_TIMEOUT_MS, maxBuffer: 64 * 1024, env: runEnv }, (err, stdout) =>
           resolve(err ? { error: err.message } : { version: versionIn(String(stdout)) }),
         );
       } catch (e) {
@@ -137,22 +149,25 @@ export async function findPrograms({
       message: `Node ${node.version} at ${node.path} is older than ${NODE_MAJOR}, which Postbox’s runners need. Install Node ${NODE_MAJOR} or later, or set nodePath.`,
     });
 
-  const folders = await searchFolders(home, env.PATH, listDir);
+  const login = hostFolders(loginPath);
+  const folders = hostFolders([...login, ...(await searchFolders(home, env.PATH, listDir))]);
   const harnesses = await Promise.all(
     Object.entries(HARNESS_PROGRAMS).map(async ([name, { program, setting }]) => {
       const configured = settings[setting];
       const candidates = configured ? [configured] : folders.map((d) => `${d}/${program}`);
       /** @type {string[]} */
       const looked = [];
+      // The login shell’s folders come first, so the first of looked are theirs.
+      const fromLogin = () => (configured ? 0 : Math.min(looked.length, login.length));
       for (const path of candidates) {
         if (looked.length < LOOKED_MAX) looked.push(path);
         if (!(await isExecutable(path))) continue;
         const r = /** @type {{ version?: string | null, error?: string }} */ (await version(path));
         if (r.error) problems.push({ code: 'version-failed', message: `${path} --version failed: ${r.error.slice(0, 500)}` });
-        return { name, path, version: r.version ?? null, looked };
+        return { name, path, version: r.version ?? null, looked, fromLogin: fromLogin() };
       }
       if (configured) problems.push({ code: 'not-found', message: `${configured} (${setting}) isn’t an executable file on this host.` });
-      return { name, path: null, version: null, looked };
+      return { name, path: null, version: null, looked, fromLogin: fromLogin() };
     }),
   );
   return { node, harnesses, problems: problems.slice(0, 32) };
