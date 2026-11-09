@@ -9,10 +9,11 @@ import { decodePath, TYPES } from './served-files.mjs';
 /**
  * The sandbox page a request’s path asks for, with the headers it’s sent with, or null for any other path.
  * @param {{ state: { apps: Record<string, any> } }} store @param {string} origin  the listener’s
+ * @param {string} ancestor  the origin the request came to, from its checked Host: the one page that may frame it (#992)
  * @param {string} path @param {URL} url
  * @returns {{ html: string, headers: Record<string, string> } | null}
  */
-export function sandboxRoute(store, origin, path, url) {
+export function sandboxRoute(store, origin, ancestor, path, url) {
   if (!path.startsWith('/sandbox/')) return null;
   const theme = url.searchParams.get('theme') === 'light' ? 'light' : 'dark';
   const m = path.match(/^\/sandbox\/app\/([^/]+)\/(\d+)$/);
@@ -20,14 +21,14 @@ export function sandboxRoute(store, origin, path, url) {
     const app = store.state.apps[decodePath(m[1])];
     const v = app?.versions[+m[2] - 1];
     if (!v) throw httpError(404, 'That app version doesn’t exist.');
-    const page = sandboxPage({ origin, app, version: v, theme, check: url.searchParams.has('check') });
+    const page = sandboxPage({ origin, ancestor, app, version: v, theme, check: url.searchParams.has('check') });
     return {
       html: page.html,
       headers: { 'content-type': TYPES['.html'], 'content-security-policy': page.csp, 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
     };
   }
   if (path === '/sandbox/mermaid') {
-    const page = mermaidPage({ origin, theme });
+    const page = mermaidPage({ origin, ancestor, theme });
     return { html: page.html, headers: { 'content-type': TYPES['.html'], 'content-security-policy': page.csp, 'cache-control': 'no-store' } };
   }
   return null;

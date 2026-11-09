@@ -139,8 +139,18 @@ function findReviewFile(rt, threadId, itemId, name, sha256) {
 /**
  * The header that keeps a stored file to Postbox’s own page (#780, #820): a page on another site can’t embed it, as an
  * image or a no-cors request, to learn whether it loaded, its size or its timing. Every route that serves a stored
- * file’s bytes sends it (a file, an app’s data file, a review’s image, a command’s output), except /media/<name>: an
- * app’s sandboxed frame loads its images from there, and its origin is opaque, so same-origin would block them.
+ * file’s bytes sends it (a file, an app’s data file, a review’s image, a command’s output), except /media/<name>.
+ *
+ * /media/<name> sends no Cross-Origin-Resource-Policy, by decision (#992). An app’s sandboxed frame loads its images
+ * from there, and its origin is opaque: same-origin and same-site both refuse an opaque origin, so either would block
+ * every app image, and cross-origin is what no header already means. Nor can the server tell the frame’s request from
+ * another site’s: both come as Sec-Fetch-Site cross-site, mode no-cors, dest image (Firefox adds Origin: null, as any
+ * sandboxed page does), measured in Chromium and Firefox. A token in the URL per frame would keep them apart, and was
+ * declined: agents name these URLs in the code they write. So a site open in the same browser can embed a name it
+ * guesses and learn whether the person’s media folder has that file, and its size (an image’s width and height, or a
+ * load’s timing). It can’t read the bytes: the route sends no open CORS header. The folder holds what agents copy
+ * there to show in apps, and the route serves only files inside it with an image’s extension (server/served-files.mjs).
+ * Chromium’s Local Network Access checks also refuse a public site’s request to 127.0.0.1 unless the person allows it.
  */
 export const SAME_ORIGIN_ONLY = Object.freeze({ 'cross-origin-resource-policy': 'same-origin' });
 

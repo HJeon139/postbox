@@ -248,7 +248,7 @@ export async function start({
     }
 
     // Sandbox frames: agent apps and Mermaid diagrams (server/sandbox-routes.mjs).
-    const sandbox = sandboxRoute(store, origin, path, url);
+    const sandbox = sandboxRoute(store, origin, `http://${host}`, path, url);
     if (sandbox) return raw(res, 200, sandbox.html, sandbox.headers);
     let m;
 
