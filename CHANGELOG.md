@@ -2,6 +2,12 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.55.2 (2026-11-09)
+
+### Fixes
+
+- **composer:** a send that failed while the stream is open is sent again shortly (#1126)
+
 ## 1.55.1 (2026-11-09)
 
 ### Fixes
