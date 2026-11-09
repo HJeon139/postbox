@@ -11,7 +11,7 @@ import { fitChoiceOptions } from './choice-layout.mjs';
 import { client } from './client.mjs';
 import { codeBox, copyControls, showFilename } from './code-block.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
-import { formFields } from './form-field.mjs';
+import { formField } from './form-field.mjs';
 import { startProgressClock, tickProgress } from './progress-clock.mjs';
 import { renderReview } from './review.mjs';
 import { fmtCell } from './table-cells.mjs';
@@ -267,7 +267,7 @@ const RENDER = {
     const [hd, titleId] = head(b);
     const grid = h('div.form-grid');
     // rerender is set below, once the form’s node is built.
-    formFields(b, item, grid, { vals, d, done, rerender: () => rerender() });
+    for (const f of b.fields) grid.append(formField(f, { itemId: item.id, vals, d, done, rerender: () => rerender() }));
     const node = h(
       'div',
       { class: done ? 'answered' : '', 'aria-labelledby': titleId },
