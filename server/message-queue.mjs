@@ -1,6 +1,6 @@
 // Queued messages, their controls and delivery order; one session still runs at most one turn (#228).
 import { clip, httpError, queuedIn } from './helpers.mjs';
-import { combineMessages, latestMessage, plainMessage, readyGroups } from './queue-batch.mjs';
+import { byArrival, combineMessages, latestMessage, plainMessage, readyGroups } from './queue-batch.mjs';
 import { deliverWake } from './side-threads.mjs';
 import { pendingThreads, updateThread } from './thread-write.mjs';
 
@@ -103,7 +103,7 @@ function takeBatches(rt, threadId, groups) {
 function queuedMessages(rt, threadId, entries, cache = new Map()) {
   return entries.flatMap((q) => {
     if (q.kind !== 'wake') {
-      if (!cache.has(q)) cache.set(q, postUserMessage(rt, threadId, q).message);
+      if (!cache.has(q)) cache.set(q, { ...postUserMessage(rt, threadId, q).message, seq: q.seq });
       return [cache.get(q)];
     }
     const target = rt.s.sessions[q.sessionIds[0]];
@@ -111,7 +111,7 @@ function queuedMessages(rt, threadId, entries, cache = new Map()) {
       deliverWake(rt, threadId, q);
       return [];
     }
-    const message = { kind: 'agent', from: `@${q.from}`, text: q.text, itemId: q.itemId, at: q.at };
+    const message = { kind: 'agent', from: `@${q.from}`, text: q.text, itemId: q.itemId, at: q.at, seq: q.seq };
     return [latestMessage(rt, threadId, message)];
   });
 }
@@ -130,20 +130,40 @@ export function takePending(rt, se, turn, drain) {
   const next = groups.shift();
   if (next) {
     const where = next.threadId ?? se.threadId;
-    if (!groups.length && drain && (plainMessage(next.message) || next.message.messages)) {
+    // A later group in this thread keeps the queue behind it, so a wake never jumps ahead of it; one in another thread
+    // doesn't (#733).
+    const later = groups.some((g) => (g.threadId ?? se.threadId) === where);
+    if (!later && drain && (plainMessage(next.message) || next.message.messages)) {
       const t = rt.store.pending.thread(where);
       if (t?.queue?.length) {
         const ready = readyGroups(rt, t, drain === 'wakes');
         for (const batch of takeBatches(rt, where, ready)) {
           if (batch.sessionIds[0] !== se.id) deliverBatch(rt, where, batch.sessionIds, batch.messages);
-          else next.message = combineMessages([...(next.message.messages ?? [next.message]), ...batch.messages].sort((a, b) => (a.at ?? 0) - (b.at ?? 0)));
+          else next.message = combineMessages([...(next.message.messages ?? [next.message]), ...batch.messages].sort(byArrival));
         }
       }
     }
     rt.deliver(se.id, next.message, { summarizeTo: next.summarizeTo, threadId: next.threadId });
     const t = rt.turns.get(se.id);
     if (t) t.pending.push(...groups);
+    else holdRest(rt, se, next, groups);
   } else if (drain) rt.drainQueues(se.id, turn.threadId, drain === 'wakes');
+}
+
+/**
+ * The rest of what waited, when its first group started no turn (#733): each takes deliver's held path, in order (an
+ * Undo window, writes closed, a session behind a held commit), as the first did. Shutting down, deliver holds nothing,
+ * the first group included, so the drop of all of them is logged.
+ */
+function holdRest(rt, se, next, groups) {
+  if (rt.closing) {
+    const lost = [next, ...groups];
+    const kinds = [...new Set(lost.map((g) => g.message.kind))].join(', ');
+    const n = lost.length === 1 ? '1 waiting delivery' : `${lost.length} waiting deliveries`;
+    console.warn(`@${se.handle}’s turn ended as Postbox shut down: ${n} (${kinds}) undelivered.`);
+    return;
+  }
+  for (const g of groups) rt.deliver(se.id, g.message, { summarizeTo: g.summarizeTo, threadId: g.threadId });
 }
 
 export function batchPending(rt, pending, threadId) {

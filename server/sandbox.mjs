@@ -4,7 +4,8 @@
 // opaque origin: it can’t read Postbox’s storage, cookies or DOM. Its content-security policy allows
 // inline script and style (the agent’s code), the kit and vendored libraries from /kit/, images from
 // /media/ or data: URLs, and nothing else — no fetch, no websockets, no forms, no nested frames.
-// The only way out is postMessage to Postbox, which handles it through the bridge.
+// The only way out is postMessage to Postbox, which handles it through the bridge. Only Postbox’s own page may frame
+// it (frame-ancestors, #992).
 
 import { readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -18,8 +19,16 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
  * gets an opaque origin and may run scripts, nothing more. It’s sent by the server rather than set on the iframe
  * because some embedded browsers (the Claude desktop app’s browser pane) refuse to load frames that carry the
  * attribute. The host’s bridge only answers frames whose origin is opaque, so a page without it never runs.
+ *
+ * Its last directive names the one page that may frame it (#992): Postbox’s, at the origin the request came to
+ * (`ancestor`, 127.0.0.1 or localhost on Postbox’s port, from the Host header the server checked). Postbox frames
+ * these pages only by relative URLs, so its page and their frames always share that origin, in every embedder: the
+ * page in a browser, in the Claude desktop app’s browser pane, and in view_app’s capture. The two spellings are
+ * different origins, so naming both would let a page at one frame the other’s sandbox. It names the origin rather than
+ * 'self', since this page’s own origin is opaque. `origin` is the listener’s, which agents name images by.
+ * @param {string} origin @param {string} ancestor
  */
-export function csp(origin) {
+export function csp(origin, ancestor) {
   return [
     'sandbox allow-scripts',
     "default-src 'none'",
@@ -36,6 +45,7 @@ export function csp(origin) {
     "worker-src 'none'",
     "form-action 'none'",
     "base-uri 'none'",
+    `frame-ancestors ${ancestor}`,
   ].join('; ');
 }
 
@@ -132,8 +142,8 @@ function versionSyntaxErrors(version) {
   return syntaxCache.get(version);
 }
 
-/** The page for one version of an agent-written app. */
-export function sandboxPage({ origin, app, version, theme, check }) {
+/** The page for one version of an agent-written app. `ancestor`: the origin of the page that may frame it (csp). */
+export function sandboxPage({ origin, ancestor, app, version, theme, check }) {
   // The kit can’t import /shared/ (the page loads no files), so the limits it enforces come with the page.
   const init = {
     appId: app.id,
@@ -157,11 +167,11 @@ ${check ? `<script>${inline('kit/check-layout.js', '</script')}</script>\n<scrip
 ${version.code}
 </body>
 </html>`;
-  return { html, csp: csp(origin) };
+  return { html, csp: csp(origin, ancestor) };
 }
 
-/** A page that renders one Mermaid diagram, sent to it by postMessage. */
-export function mermaidPage({ origin, theme }) {
+/** A page that renders one Mermaid diagram, sent to it by postMessage. `ancestor` as for sandboxPage. */
+export function mermaidPage({ origin, ancestor, theme }) {
   const html = `<!doctype html>
 <html lang="en" data-theme="${theme}" class="pb-sandbox pb-diagram">
 <head>
@@ -173,5 +183,5 @@ ${css()}
 <script>${inline('kit/diagram.js', '</script')}</script>
 </body>
 </html>`;
-  return { html, csp: csp(origin) };
+  return { html, csp: csp(origin, ancestor) };
 }

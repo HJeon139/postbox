@@ -170,7 +170,10 @@ function declinedThenMentioned(f) {
       const after = items.slice(i + 1);
       const askedAgain = after.some((x) => x.kind === 'hop' && x.join && x.to === card.to);
       const mention = new RegExp(`(^|[^\\w@])@${escapeRegExp(card.to)}(?![\\w-])`);
-      const said = after.find((x) => x.kind === 'agent' && typeof x.text === 'string' && mention.test(x.text));
+      // The person adding that agent themselves lifts the decline (#789, `lifted` is when): a mention after it rightly
+      // reaches the agent with no card, so only one before it counts.
+      const standing = (x) => !card.lifted || (x.at ?? 0) < card.lifted;
+      const said = after.find((x) => x.kind === 'agent' && typeof x.text === 'string' && mention.test(x.text) && standing(x));
       if (said && !askedAgain)
         out.push({
           at: said.at ?? null,

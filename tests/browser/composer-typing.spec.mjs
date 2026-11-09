@@ -16,6 +16,9 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// The trace's DOM snapshots, taken around each action, read every element's scroll position, and in Chromium each read
+// inside an item skipped by content-visibility (#712) lays that item out: they'd be counted as the page's layouts.
+test.use({ trace: { mode: 'retain-on-failure', snapshots: false } });
 
 const TEXT = 'The observation is the only outside evidence in the loop, so it keeps the plan grounded. ';
 

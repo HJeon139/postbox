@@ -13,3 +13,18 @@ export const INVISIBLE = /[\p{Cf}\p{Bidi_Control}\u115f\u1160\u3164\uffa0\u{e000
 
 /** Whether text holds one of INVISIBLE’s characters. search() starts at the beginning every time. @param {string} s */
 export const hasInvisible = (s) => s.search(INVISIBLE) !== -1;
+
+// A control character (C0, DEL or C1), NUL included: none belongs in a folder’s path.
+const CONTROL = /\p{Cc}/u;
+/** Whether text holds a control character. @param {string} s */
+export const hasControl = (s) => CONTROL.test(s);
+
+// A lone surrogate (Cs) isn’t text. The characters that change how a path displays, or display as nothing, are the
+// ones an asset name refuses (INVISIBLE), except ZWNJ and ZWJ (U+200C, U+200D): they join letters in some scripts and
+// in emoji, and the folder exists under the name the person gave it (#547). VS16 (U+FE0F) is refused, so a path with
+// ❤️ or 🏳️‍🌈 is, ZWJ or not. A path on a host is checked so too. An upload’s name has each such character replaced,
+// but keeps VS16, since it’s only shown (server/upload-name.mjs, #991).
+const SURROGATE = /\p{Cs}/u;
+const JOINERS = /[\u200c\u200d]/gu;
+/** Whether a folder's path holds a character that isn't text, or one that hides or reorders what it shows. @param {string} s */
+export const hiddenInFolder = (s) => SURROGATE.test(s) || hasInvisible(s.replace(JOINERS, ''));

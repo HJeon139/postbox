@@ -2,6 +2,7 @@
 // streams are recorded, and what the scenario sets.
 
 import { gitRemoteEnv } from './git-remote.mjs';
+import { noGithubEnv } from './github-guard.mjs';
 import { chainLimitEnv } from './scenario.mjs';
 import * as tm from './telemetry-run.mjs';
 
@@ -18,6 +19,7 @@ export const runEnv = ({ gate, paths, scenario, dir, opt, faults }) => ({
   POSTBOX_CODEX_RECORD: paths.codexStreams,
   ...tm.telemetryEnv(scenario, dir, opt),
   ...chainLimitEnv(scenario), // the scenario’s `- chain-limit:` (#508), for the Postbox this run starts and restarts
+  ...noGithubEnv(scenario, dir), // every run’s agents have no gh login and no network git, unless `- github: real` says so
   ...gitRemoteEnv(scenario, dir), // `- seed: git-remote`’s guards (#305), so no git or gh in the run reaches anything real
   ...faults?.env,
 });

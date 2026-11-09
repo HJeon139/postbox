@@ -25,7 +25,7 @@ import { showBlock } from './block-show.mjs';
 import { act, answerDelivered, unreadAnswer, updateBlock } from './blocks.mjs';
 import { bringToConversation } from './bring.mjs';
 import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } from './card-needs.mjs';
-import { catchUp, pointerIfSeen } from './catch-up.mjs';
+import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
 import { DELETE_UNDO_MS } from './delete-undo.mjs';
@@ -39,6 +39,7 @@ import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } fr
 import { Ledger } from './ledger.mjs';
 import { sendLint } from './lint-delivery.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
+import { sentAttachments } from './message-attachments.mjs';
 import * as queue from './message-queue.mjs';
 import { alwaysFor } from './permission-always.mjs';
 import {
@@ -62,7 +63,9 @@ import {
   setPermissionMode,
 } from './permissions-panel.mjs';
 import { checkEffort, checkSetup, handleOf } from './persona-checks.mjs';
+import { arrival } from './queue-batch.mjs';
 import { readCapped } from './read-capped.mjs';
+import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
@@ -121,7 +124,7 @@ import { openTopic, startTopic } from './topic-open.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { workEvents } from './turn-work.mjs';
-import { closeOrphanCards, retireStale } from './wake-cards.mjs';
+import { closeOrphanCards, liftDecline, retireStale } from './wake-cards.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { httpError } from './helpers.mjs';
@@ -337,9 +340,7 @@ export class Runtime {
     const now = Date.now();
     const st = { id: newId('it'), kind: 'moved', at: now, itemId: id, ...stub, ...carriedList(items[i]).stub };
     this.store.emit('item.move', { threadId, id, stub: st, patch: { ...patch, ...carriedList(items[i]).item, at: now, movedAt: now } });
-    // A session whose catch-up marker was the item now reads on from the stub, where the item was, so what came
-    // after it isn’t skipped.
-    for (const se of this.sessionsIn(threadId)) if (se.seenItem === id) this.updateSession(se.id, { seenItem: st.id });
+    moveMarkers(this, threadId, id, st.id);
     return true;
   }
   updateSession(id, patch) {
@@ -416,6 +417,7 @@ export class Runtime {
       seenItem: null,
     });
     updateThread(this, threadId, (x) => ({ members: [...x.members, se.id], kind: x.kind === 'thread' && x.members.length > 0 ? 'room' : x.kind }));
+    liftDecline(this, threadId, p.handle); // the person added it: a decline of adding it here no longer holds (#789)
     return se;
   }
 
@@ -426,6 +428,7 @@ export class Runtime {
     const t = this.thread(threadId);
     if (this.store.pending.thread(threadId)?.deleting) throw httpError(409, 'This conversation is being deleted. Undo it first.');
     text = String(text).slice(0, 50000);
+    attachments = sentAttachments(this, attachments);
     if (!text.trim() && !attachments.length) throw httpError(400, 'Write a message or attach a file first.');
     const mentioned = parseMentions(text, this.handles())
       .map((h) => this.personaByHandle(h))
@@ -468,7 +471,8 @@ export class Runtime {
     refuseUnregisteredSend(this, woken);
     // Messages to a busy agent wait in the queue unless you choose Send now.
     const busy = targets.filter(({ se }) => this.turns.has(se.id));
-    const q = busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now() } : null;
+    const q =
+      busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now(), seq: arrival() } : null;
     if (q) updateThread(this, threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
     // Send now is a change of course: background jobs keep running, each with its own Stop (#129).
     else for (const { se } of busy) this.stop(se.id, { silent: true, jobs: 'keep', sendNow: true });
@@ -558,14 +562,14 @@ export class Runtime {
     if (this.turns.has(sessionId)) {
       // Agent-to-agent messages and events wait for the current turn to end.
       const t = this.turns.get(sessionId);
-      t.pending.push({ message: { ...message, at: message.at ?? Date.now() }, summarizeTo, threadId });
+      t.pending.push({ message: { ...message, at: message.at ?? Date.now(), seq: message.seq ?? arrival() }, summarizeTo, threadId });
       return;
     }
     // A stopped turn’s process is still exiting: the next turn waits for it, so a session never runs two (#126). An answer
     // held here isn’t read yet: it’s read when the turn it starts begins.
     const exiting = this.exiting.get(sessionId);
     if (exiting) {
-      exiting.held.push({ message: { ...message, at: message.at ?? Date.now() }, summarizeTo, threadId });
+      exiting.held.push({ message: { ...message, at: message.at ?? Date.now(), seq: message.seq ?? arrival() }, summarizeTo, threadId });
       return;
     }
     // Shutting down: a new CLI would outlive Postbox. A message you sent waits in the queue (turnExited).
@@ -721,6 +725,8 @@ export class Runtime {
       rules: { allow: [...(se0.rules?.allow ?? [])], ask: [...(se0.rules?.ask ?? [])], deny: [...(se0.rules?.deny ?? [])] },
       /** Folders the person added for this conversation (#66), passed as --add-dir / additionalDirectories. */
       addDirs: [...(se0.addDirs ?? [])],
+      /** Folders it may only read in this conversation, from Always allow on a read card (#338, read-folders.mjs). */
+      readDirs: [...(se0.readDirs ?? [])],
       /** The adapter says how to name a subagent from its id (a prompt’s agent id), so its prompt names it. */
       subagentNames(fn) {
         turn.subagentName = fn;
@@ -1111,7 +1117,8 @@ export class Runtime {
     // Progress steps running as you keep its jobs running may follow one of them: they run on with it (#129).
     if (keep.length) this.updateSession(sessionId, { heldSteps: { threadId: turn.threadId, keys: this.runningProgress(turn.threadId, sessionId) } });
     // Its progress steps still running show as stalled, as at any turn’s end (#98); you stopped it, so no lint turn.
-    const se = this.s.sessions[sessionId];
+    // Pending, so the heldSteps just written holds its steps behind a held commit too (#1042).
+    const se = this.store.pending.session(sessionId);
     if (se) this.stallLeftRunning(turn, se, by === 'shutdown' ? 'shutdown' : by === 'hung' ? 'hung' : 'stopped');
     if (turn.remote) this.remote.stopped(turn, { by, why });
     // A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
@@ -1208,7 +1215,7 @@ export class Runtime {
     // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI.
     if (this.closing) {
       for (const h of held.filter((x) => x.message.kind === 'user')) {
-        const q = { id: newId('q'), text: h.message.text ?? '', attachments: h.message.attachments ?? [], sessionIds: [se.id], at: Date.now() };
+        const q = { id: newId('q'), text: h.message.text ?? '', attachments: h.message.attachments ?? [], sessionIds: [se.id], at: Date.now(), seq: arrival() };
         updateThread(this, h.threadId ?? se.threadId, (t) => ({ queue: [...(t.queue ?? []), q] }));
       }
       return;
@@ -1313,12 +1320,13 @@ export class Runtime {
    * @param {{ by?: 'you' | null }} [opts]
    */
   endJob(sessionId, jobId, state, detail = null, { by = null } = {}) {
-    const se = this.s.sessions[sessionId];
+    // Pending, so a job ended or kept behind a held commit is seen (#957).
+    const se = this.store.pending.session(sessionId);
     const job = se?.jobs?.find((j) => j.id === jobId);
     if (!se || !job) return;
     // Work says how it ended too: its turn may have ended thinking it was still running (#164).
     this.ledger.jobUpdate(job, { state, by });
-    this.updateSession(sessionId, { jobs: se.jobs.filter((j) => j.id !== jobId) });
+    this.updateSession(sessionId, (s) => ({ jobs: (s.jobs ?? []).filter((j) => j.id !== jobId) }));
     if (this.keptPoll && !this.keptJobs().length) {
       clearInterval(this.keptPoll);
       this.keptPoll = null;
@@ -1333,11 +1341,11 @@ export class Runtime {
       );
     // The last job kept running has ended: the progress steps held running with it (stop) stall now, as they would have
     // when its turn ended, or when the turn running now ends (stallSteps).
-    const now = this.s.sessions[sessionId];
+    const now = this.store.pending.session(sessionId);
     const held = now?.heldSteps;
     if ((job.kept || detail === KEEP_LOST) && held && !(now.jobs ?? []).some((j) => j.kept)) {
       this.updateSession(sessionId, { heldSteps: null });
-      const problems = this.turns.has(sessionId) ? [] : this.stallSteps({ threadId: held.threadId }, this.s.sessions[sessionId]);
+      const problems = this.turns.has(sessionId) ? [] : this.stallSteps({ threadId: held.threadId }, this.store.pending.session(sessionId));
       if (problems.length)
         this.tellAgent(
           sessionId,
@@ -1869,7 +1877,8 @@ export class Runtime {
     return askPerson(this, sessionId, req);
   }
   alwaysFor(se, req) {
-    return alwaysFor(this, se, req);
+    // A read outside an Antigravity agent’s folders offers its folder as readable (#338); otherwise as before.
+    return readCardAlways(this, se, req) ?? alwaysFor(this, se, req);
   }
   readsRules(backend) {
     return readsRules(this, backend);
@@ -1881,6 +1890,8 @@ export class Runtime {
     return resolvePermission(this, threadId, itemId, action, values);
   }
   allowAlways(threadId, it, asked) {
+    // A readable folder is saved for the conversation, then the card is answered as any Always allow (#338).
+    if (it.always?.readDir && !it.remote) addReadFolder(this, it.sessionId, it.always.readDir);
     return allowAlways(this, threadId, it, asked);
   }
   recordDenial(turn, d) {

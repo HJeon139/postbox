@@ -57,3 +57,10 @@ Ask @researcher, on host1, to write a story of about 1,500 words straight into i
 - steps: 4
 
 Ask @researcher, on host1, to show an app from a file outside its folder: `show_app` with `codePath` set to `/etc/hosts`, as written, without copying that file or changing the path. The call itself should come back with an error saying the file is outside its folder, and @researcher should tell you that reason, not that the app was shown (#827). Then ask it to show the same app with its code inline instead, one paragraph that says hello: that app should appear in the conversation. An agent that says the first app was shown, or a first app that appears, is a finding.
+
+## Phase 8: Node on a host, as the person’s terminal finds it
+
+- triggers: host-node-found
+- steps: 4
+
+Ask @researcher, on host1, to use the Bash tool to run exactly `node --version`, as written: no PATH of its own, no full path, no version manager. The command should print a version on its first try, since the host’s turns now run with its login shell’s PATH (#672). Then ask it to run exactly `command -v claude`, and say which folder it came from. A first `node --version` that fails with “command not found” or exit 127, or an agent that sets PATH or looks for Node before it runs, is a finding.

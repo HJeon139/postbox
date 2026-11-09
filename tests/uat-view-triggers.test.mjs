@@ -86,6 +86,8 @@ test('observe records the diagram and document-query probes before any screensho
           calls.push('queries');
           return { origin: 1, sessionEvents: 0, scanCount: 0, scans: [], byId: 0, items: 1 };
         }
+        // The skipped-items probe also runs (tests/uat-skip-probe.test.mjs); this stand-in shows it no conversation.
+        if (!expr.includes('/sandbox/mermaid')) return null;
         calls.push('probe');
         return { sinceLoad: 9000, requested: 0, full: false, frames: [{ key: 'it_a', loaded: false, inView: false }] };
       },
@@ -161,4 +163,28 @@ test('on samples recorded in Chromium, diagram-deferred fires on #701’s lazy f
   const recorded = JSON.parse(readFileSync(new URL('fixtures/uat/diagram-probe-samples.json', import.meta.url), 'utf8'));
   assert.equal(run(recorded.lazy).length, 1);
   assert.deepEqual(run(recorded.eager), []);
+});
+
+// items-skipped (#712a): the run read a long room with most of its items skipped, on Chromium samples.
+const skipSamples = JSON.parse(readFileSync(new URL('./fixtures/uat/skip-probe-samples.json', import.meta.url), 'utf8'));
+const skippedRun = (skipped) => VIEW_TRIGGERS['items-skipped'].run({ probes: { skipped } });
+
+test('items-skipped fires on a long room with most of its items skipped, and says how many', () => {
+  const [hit] = skippedRun(skipSamples.on);
+  assert.match(hit.evidence, /1176 of the conversation’s 1200 items/);
+});
+
+test('items-skipped stays silent with the rule off, on a room of 1,000 or fewer, unsettled, or unsupported', () => {
+  assert.deepEqual(skippedRun(skipSamples.off), []);
+  const on = skipSamples.on[0];
+  assert.deepEqual(skippedRun([{ ...on, items: 1000, skipped: 990 }]), [], 'a room of 1,000 is not long');
+  assert.deepEqual(skippedRun([{ ...on, items: 1002, skipped: 501 }]), [], 'exactly half is not most');
+  assert.deepEqual(skippedRun([{ ...on, settled: false }]), [], 'unsettled');
+  assert.deepEqual(skippedRun([{ ...on, supported: false, skipped: null }]), [], 'the browser can’t say');
+  assert.deepEqual(skippedRun([]), []);
+});
+
+test('items-skipped can tell only from a run that recorded the probe', () => {
+  assert.equal(VIEW_TRIGGERS['items-skipped'].recorded({ probes: {} }), false);
+  assert.equal(VIEW_TRIGGERS['items-skipped'].recorded({ probes: { skipped: [] } }), true);
 });

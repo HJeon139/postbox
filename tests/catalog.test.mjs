@@ -164,13 +164,13 @@ test('every sandbox page is served with a sandbox policy, so it never runs with 
   const { csp, mermaidPage, sandboxPage } = await import('../server/sandbox.mjs');
   const app = { id: 'a1', title: 'T', versions: [{ v: 1, code: '<p>hi</p>', permissions: [] }], current: 1 };
   for (const page of [
-    sandboxPage({ origin: 'http://x', app, version: app.versions[0], theme: 'dark', check: false }),
-    mermaidPage({ origin: 'http://x', theme: 'light' }),
+    sandboxPage({ origin: 'http://x', ancestor: 'http://x', app, version: app.versions[0], theme: 'dark', check: false }),
+    mermaidPage({ origin: 'http://x', ancestor: 'http://x', theme: 'light' }),
   ]) {
     assert.match(page.csp, /^sandbox allow-scripts;/);
     assert.ok(!/allow-same-origin/.test(page.csp));
   }
-  assert.match(csp('http://x'), /connect-src 'none'/);
+  assert.match(csp('http://x', 'http://x'), /connect-src 'none'/);
 });
 
 test('#180: Postbox’s own media moves to the page’s origin, so a page opened at either spelling loads it', async () => {
