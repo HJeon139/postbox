@@ -73,3 +73,28 @@ test('#844 a year or id label with a note or punctuation after it shows as writt
 test('#844 an amount per year with a unit after it keeps its separators', () => {
   assert.equal(fmtCell(1234567, { id: 'rev', label: 'Revenue per year (USD)' }), '1,234,567');
 });
+
+// Review of #1065: a label that starts with the singular name is still a name, a hyphen separates words, and a label
+// that says nothing of a year, an id or an amount leaves it to the id.
+for (const [label, id, v, want] of [
+  ['Year founded', 'f', 2024, '2024'],
+  ['Year built', 'b', 1999, '1999'],
+  ['Year of birth', 'b', 1984, '1984'],
+  ['ID number', 'n', 12345, '12345'],
+  ['Fiscal-year', 'fy', 2024, '2024'],
+  ['Paper-ID', 'p', 12345, '12345'],
+  ['FY', 'year', 2024, '2024'],
+  ['#', 'id', 12345, '12345'],
+])
+  test(`#844 “${label}” over the id “${id}” shows ${v} as written`, () => {
+    assert.equal(fmtCell(v, { id, label }), want);
+  });
+
+for (const [label, v, want] of [
+  ['IDs found', 12345, '12,345'],
+  ['Revenue (per year)', 1234567, '1,234,567'],
+  ['Years active', 12345, '12,345'],
+])
+  test(`#844 “${label}” keeps ${v}’s separators`, () => {
+    assert.equal(fmtCell(v, { id: 'n', label }), want);
+  });
