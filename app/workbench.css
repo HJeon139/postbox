@@ -1008,7 +1008,9 @@ html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size
 .app-note, .app-error { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--dim); background: var(--panel); }
 .app-note .i, .app-error .i { color: var(--accent); margin-top: 1px; }
 .app-error { flex-wrap: wrap; align-items: center; border-top: 1px solid var(--line); border-bottom: 0; }
-.check-frame { position: fixed; left: -20000px; top: 0; height: 900px; border: 0; visibility: hidden; }
+/* On screen but unseen: Chromium skips resize events in a frame that’s hidden, and ResizeObserver in one off screen,
+   and the check resizes its frames to catch the handlers that break then (#819). */
+.check-frame { position: fixed; left: 0; top: 0; height: 900px; border: 0; opacity: 0; pointer-events: none; z-index: -1; }
 
 /* Review */
 .rv-doc .tx { white-space: pre-wrap; word-break: break-word; }

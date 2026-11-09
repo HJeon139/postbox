@@ -55,12 +55,9 @@
       resolveReady({ state: init.check ? null : (m.state ?? null), theme: m.theme, appId: init.appId });
     } else if (m.type === 'theme') {
       document.documentElement.dataset.theme = m.theme;
-      for (const fn of listeners.theme)
-        try {
-          fn(m.theme);
-        } catch (err) {
-          report(err);
-        }
+      // Each listener runs in a microtask of its own, so one that throws stops no other, and its error reaches the
+      // window’s error handler below with the line it happened on (#819).
+      for (const fn of listeners.theme) queueMicrotask(() => fn(m.theme));
     } else if (m.type === 'reply') {
       const p = pending.get(m.id);
       if (!p) return;
