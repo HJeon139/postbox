@@ -153,14 +153,12 @@ async function backUnderPointer(page, width) {
   await page.mouse.move(rest.x, rest.y);
   await expect(f, 'live under the pointer').toHaveClass(/\blive\b/);
   // Far away in one scroll, and back in another, well within the 1.5 s before a far app unloads.
-  const away = await page.evaluate(() => {
-    const d = 4 * innerHeight;
-    scrollBy(0, d);
-    return d;
-  });
+  await page.evaluate(() => scrollBy(0, 4 * innerHeight));
   await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
   await expect(f, 'not live while far away').not.toHaveClass(/\blive\b/);
-  await page.evaluate((d) => scrollBy(0, -d), away);
+  // Back by where the frame now is, not by the same distance: with the transcript’s items off screen skipped (#712a),
+  // the items passed on the way draw at their real sizes, so the same scroll back can leave the frame off the pointer.
+  await f.evaluate((n, top) => scrollBy(0, n.getBoundingClientRect().top - top), b.y);
   await expect(f, 'still loaded: it came back before unloading').toHaveAttribute('data-sized', '1');
   await expect(f, 'live again under the resting pointer').toHaveClass(/\blive\b/);
 }

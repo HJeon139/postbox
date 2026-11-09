@@ -27,7 +27,7 @@
 // on a host: `- host: researcher` names it, `- host-triggers: …` replace its triggers then, and the text under a
 // `### On a host` heading replaces the phase’s text then (tools/uat/hosts-scenario.mjs).
 
-import { DEFAULT_HOP_LIMIT } from '../../shared/limits.mjs';
+import { MAX_HOP_LIMIT } from '../../shared/limits.mjs';
 import { filesOf } from './fixtures.mjs';
 import { expectsOf } from './picture-choice.mjs';
 import { judgeOf } from './visual-judge.mjs';
@@ -127,11 +127,14 @@ export function parseScenario(md) {
     // `- seed-diagrams: 6` (#701): with `- seed: big-room`, that many of its agent replies end in a Mermaid diagram.
     seedDiagrams: seedDiagramsOf(meta['seed-diagrams'], meta.seed),
     gh: meta.gh === 'none' ? 'none' : 'yes',
+    // Every run’s agents are kept off the person’s real GitHub; only `- github: real` hands it to them (github-guard.mjs).
+    github: meta.github === 'real' ? 'real' : 'none',
     telemetry: meta.telemetry === 'manual' ? 'manual' : 'runner',
     summary: lines.filter((l) => l && !l.startsWith('#') && !/^- [\w-]+: /.test(l)).join('\n'),
     steps: count(meta.steps),
     // `- chain-limit: 3` (#508): the chain limit the run’s Postbox enforces (POSTBOX_CHAIN_LIMIT, shared/limits.mjs), so a
-    // phase reaches the wake card in a few wakes rather than the backstop’s 50. Mistyped, it’s refused, not run as 50.
+    // phase reaches the wake card in a few wakes rather than the default of 1,000. Mistyped, it’s refused, not run as
+    // the default of 1,000.
     chainLimit: chainLimitOf(meta['chain-limit']),
     // `- measure-key-frame: on` (#508, PF-1): with `- seed: big-room`, the run measures the room’s key-to-frame times and
     // writes the report to its folder, as --measure-key-frame does to the path it names (tools/uat/key-frame-run.mjs).
@@ -174,10 +177,10 @@ export const DEFAULT_STEPS = 15;
 /** The steps a phase with triggers gets unless it says otherwise: the P0 run hit each fix within about 10 turns. */
 export const PHASE_STEPS = 8;
 
-/** A whole number from 1 to 500, or null. */
-const count = (v) => {
+/** A whole number from 1 to max (500 unless given), or null. @param {unknown} v @param {number} [max] */
+const count = (v, max = 500) => {
   const n = Number(String(v ?? '').trim());
-  return Number.isInteger(n) && n >= 1 && n <= 500 ? n : null;
+  return Number.isInteger(n) && n >= 1 && n <= max ? n : null;
 };
 
 /**
@@ -192,11 +195,11 @@ function seedDiagramsOf(spec, seed) {
   return n;
 }
 
-/** The chain limit a scenario asks for, which can only lower the backstop: 1 to 50, null for none. @param {string|undefined} spec */
+/** The chain limit a scenario asks for, the server’s default for its run: 1 to 10,000 (#1035), null for none. @param {string|undefined} spec */
 function chainLimitOf(spec) {
   if (spec === undefined) return null;
-  const n = count(spec);
-  if (!n || n > DEFAULT_HOP_LIMIT) throw new Error(`- chain-limit takes a whole number from 1 to ${DEFAULT_HOP_LIMIT}, not “${String(spec).trim()}”.`);
+  const n = count(spec, MAX_HOP_LIMIT);
+  if (!n) throw new Error(`- chain-limit takes a whole number from 1 to ${MAX_HOP_LIMIT.toLocaleString('en-US')}, not “${String(spec).trim()}”.`);
   return n;
 }
 

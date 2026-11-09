@@ -112,6 +112,8 @@ test('#26 ⋯ › Add an agent… by keyboard, then Escape, returns focus to ⋯
   await page.keyboard.press('Enter');
   await focusIs(page, 'menuitem: Rename…');
   await page.keyboard.press('ArrowDown');
+  await focusIs(page, /^menuitem: Wake chain limit…/); // beside Rename…: the other setting of the room itself (#1035)
+  await page.keyboard.press('ArrowDown');
   await focusIs(page, /^menuitem: Add an agent…/);
   await page.keyboard.press('Enter');
   await expect(dialog(page)).toBeVisible();

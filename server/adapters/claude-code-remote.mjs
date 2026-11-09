@@ -14,6 +14,7 @@
 //   mapper (the reply is rebuilt whole), nothing is sent to it, and no fallback starts another.
 // server/adapters/claude-code.mjs runs the turn; this module holds what only a host needs.
 
+import { lookedText } from '../../shared/remote-protocol.mjs';
 import { olderThan } from '../../shared/versions.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
 import { checkRemoteContext } from './adapter.mjs';
@@ -58,7 +59,7 @@ export function remoteClaudeProblem(welcome, settings = {}) {
   if (!welcome) return 'Postbox hasn’t heard from the host’s daemon yet, so it can’t tell which Claude Code is there.';
   const h = (Array.isArray(welcome.harnesses) ? welcome.harnesses : []).find((x) => x?.name === 'claude-code');
   if (!h?.path) {
-    const looked = h?.looked?.length ? ` It looked in ${h.looked.join(', ')}.` : '';
+    const looked = h?.looked?.length ? ` It looked in ${lookedText(h)}.` : '';
     return `Claude Code isn’t installed on the host.${looked} Install it there, or set claudePath in the host’s settings.`;
   }
   const need = settings.denyPrompts ? DENY_PROMPTS_MIN : REMOTE_CLAUDE_MIN;

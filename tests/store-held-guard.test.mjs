@@ -52,7 +52,7 @@ const PUBLISHED = {
 /** Direct reads of state.items, state.work or state.apps: published reads. */
 const DIRECT = {
   'apps.mjs': ['appCheck', 'appEvent', 'appState', 'appQuery', 'appFile', 'appOf'], // HTTP answers to the page about an app, and appOf for read_message and the host snapshot (#516's S1): a read tool and what it sends
-  'index.mjs': ['start', 'route'], // /api/state and startup
+  'index.mjs': ['start'], // /api/state and startup
   'item-lines.mjs': ['describeItem', 'describeItem'], // a read tool’s app line
   'ledger-git.mjs': ['gitState'], // the Work view’s git state: an answer to the page
   'ledger-answers.mjs': ['published'], // the Work view’s diff and output, answers to the page
@@ -69,6 +69,7 @@ const DIRECT = {
   'room-delivery.mjs': ['itemsOf'], // the same
   'room-unverified.mjs': ['uncheckedThreads'], // the same
   'runtime.mjs': ['expireStaleCommands'], // at startup
+  'sandbox-routes.mjs': ['sandboxRoute'], // an app version’s sandbox page: an HTTP answer to the page
   'telemetry-record.mjs': ['blockRow', 'workOf'], // a run’s record, after it
   'telemetry-report.mjs': ['liveFacts', 'liveFacts'], // the same
   'tool-ask.mjs': ['settleToolAsks'], // only the thread ids; each thread is read through store.pending
@@ -137,6 +138,8 @@ const PENDING = {
   // left, so a stream holds one patch, not one per chunk, a held compaction counts, and a held note is given. A delivery reads its session pending too (runtime.mjs
   // deliver, twice): the last summary's givenMentions and seenItem, and a notice, held, are seen, not given again or lost (#506). Whether a thread has a persona's session already
   // reads its pending members and sessions, so a second mention behind a held commit finds the session the first made.
+  // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035).
+  'room-chain-limit.mjs': ['roomChainLimit'],
   'session-write.mjs': ['updateSession', 'pendingSessionsIn', 'pendingSessionsIn'],
   'subagent-end.mjs': ['withUrgent'],
   'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'],

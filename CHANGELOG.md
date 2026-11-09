@@ -2,6 +2,83 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.52.0 (2026-11-09)
+
+### Features
+
+- **app:** set a room’s wake chain limit from its menu (#1035)
+- **wakes:** a room’s own wake chain limit, 1,000 by default (#1035)
+- **uat:** items-skipped, the run read a long room with most items skipped, in phase 5 (#712a)
+- **transcript:** a jump makes its target the anchor, kept until you scroll (#712a)
+- **transcript:** the browser skips the layout and paint of transcript items off screen (#712a)
+
+### Fixes
+
+- **backends:** read a local CLI's version as a host's daemon does
+- **blocks:** the reaction row in six elements, each button drawing its icon and count
+- **app:** a skipped item's paint keeps 4 px past its box, for a focus ring at its edge
+- **app:** at 767 px or narrower the transcript keeps the room held below its newest message
+- **files:** an attachment keeps only what Postbox knows of it
+- **files:** an upload’s name keeps VS16, so an emoji in it stays whole
+- **files:** a message’s file attachment takes its upload’s name, type and size
+- **remote:** a host setting that’s now refused stops its link, saying why, instead of exiting
+- **remote:** refuse hidden characters in host paths, and replace them in upload names
+- **app:** an app's item drawn near the view looks again for the frame under a resting pointer
+- **app:** landed() leaves the jump to you once input of yours has come during it
+- **app:** the jump to the end is ended once it lands there
+- **app:** a move up of 24 px or less is the browser's, whether or not the page got shorter
+- **app:** the browser's move up counts only as far as what the page lost, and 24 px more
+- **app:** a move up the browser makes as the page gets shorter keeps the view following
+- **app:** heard() leaves the browser's clamp to the end alone
+- **app:** the view follows the end only when you went down to it
+- **app:** a scroll heard() took in releases a jump's pin, as one that moved does
+- **app:** an item two draws hold is let go when the last one is
+- **app:** the Tab check walks to the next stop, not every focusable on the page
+- **app:** a scroll of yours heard before its event still follows the end
+- **app:** the transcript's own hold doesn't take the view to the end for you
+- **app:** only the main pane skips items off screen
+- **app:** a jump to an item ends the smooth jump to the end
+- **transcript:** only input that can scroll the page stops the smooth jump to the end
+- **transcript:** while following, only the room below the newest message is held (#712a)
+- **transcript:** the smooth jump to the end goes the rest of the way unless you did anything (#712a)
+- **transcript:** a jump to the newest message goes to the end, and the view follows (#712a)
+- **transcript:** a message appended while following is drawn at its real size at once (#712a)
+- **transcript:** the view hears each skipped item's first draw, not only its own size (#712a)
+- **transcript:** the pill stays smooth over skipped items, then goes the rest of the way (#712a)
+- **uat:** rows-skipped, from a probe of the items skipped, sampled before any screenshot (#712a)
+- **transcript:** a jumped-to item stays drawn until painted, so a deep target stays drawn (#712a)
+- **transcript:** an item with a full-screen review or app, or a check frame, isn't skipped (#712a)
+- **uat:** shotItem leaves the jump where it lands, below the top bar, so it stays pinned (#712a)
+- **transcript:** the Work list's jump to an item goes through jumpTo (#712a)
+- **transcript:** a jump measures its target drawn, and centers it below the top bar (#712a)
+- **uat:** the runner's scrolls to an item go through the page's jumpTo (#712a)
+- **transcript:** Alt+arrow between items focuses without scrolling, then jumps (#712a)
+- **transcript:** Show in sources jumps through jumpTo (#712a)
+- **transcript:** the side line's jump to its card goes through jumpTo (#712a)
+- **transcript:** ⌃J and a needs ring jump to the ask through jumpTo (#712a)
+- **transcript:** Go to it and a retired app's link jump through jumpTo (#712a)
+
+## 1.51.1 (2026-11-09)
+
+### Fixes
+
+- **app:** a press on a folded reply's summary builds its list before it opens
+- **app:** build a reply’s folded steps only when its list opens
+
+## 1.51.0 (2026-11-08)
+
+### Features
+
+- **adapters:** Kiro's Auto runs what its persona's Tools allow, with .kiro and .git guarded (#136)
+
+## 1.50.1 (2026-11-08)
+
+### Fixes
+
+- **ledger:** pushes that landed before a command failed, at most 100 (#978)
+- **ledger:** a tag pushed isn't the push's branch (#978)
+- **ledger:** one push entry for each push a command made (#978)
+
 ## 1.50.0 (2026-11-08)
 
 ### Features

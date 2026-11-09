@@ -38,6 +38,7 @@ import { keptGroupsOf, keptJobs, pollKept, stopJob, stopKeptJobs, watchKept } fr
 import { Ledger } from './ledger.mjs';
 import { sendLint } from './lint-delivery.mjs';
 import { wakeMentions } from './mention-wakes.mjs';
+import { sentAttachments } from './message-attachments.mjs';
 import * as queue from './message-queue.mjs';
 import { alwaysFor } from './permission-always.mjs';
 import {
@@ -425,6 +426,7 @@ export class Runtime {
     const t = this.thread(threadId);
     if (this.store.pending.thread(threadId)?.deleting) throw httpError(409, 'This conversation is being deleted. Undo it first.');
     text = String(text).slice(0, 50000);
+    attachments = sentAttachments(this, attachments);
     if (!text.trim() && !attachments.length) throw httpError(400, 'Write a message or attach a file first.');
     const mentioned = parseMentions(text, this.handles())
       .map((h) => this.personaByHandle(h))

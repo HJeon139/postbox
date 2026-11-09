@@ -71,7 +71,7 @@ test('all five reactions show beside “Reply in thread”, without hovering, an
 test('yours is highlighted, with no count while it’s yours alone, and clicking again takes it back', async ({ page }) => {
   await reaction(page, 'Good').click();
   await expect(reaction(page, 'Good')).toHaveAttribute('aria-pressed', 'true');
-  await expect(reaction(page, 'Good').locator('.react-count')).toHaveCount(0);
+  await expect(reaction(page, 'Good'), 'no count').not.toHaveAttribute('data-count', /./);
   await reaction(page, 'Good').click();
   await expect(reaction(page, 'Good')).toHaveAttribute('aria-pressed', 'false');
 });
@@ -80,12 +80,13 @@ test('#418 one made only by an agent shows a count; yours stays distinct and rai
   await criticReacts(page, '🚩');
   await expect(reaction(page, 'Flag this'), 'not yours').toHaveAttribute('aria-pressed', 'false');
   await expect(reaction(page, 'Flag this'), 'but made').toHaveClass(/\bmade\b/);
-  await expect(reaction(page, 'Flag this').locator('.react-count'), 'one agent reacted').toHaveText('1');
+  await expect(reaction(page, 'Flag this'), 'one agent reacted').toHaveAttribute('data-count', '1');
   await reaction(page, 'Flag this').click();
   await expect(reaction(page, 'Flag this')).toHaveAttribute('aria-pressed', 'true');
-  await expect(reaction(page, 'Flag this').locator('.react-count')).toHaveText('2');
-  const box = async (sel) => (await reaction(page, 'Flag this').locator(sel).boundingBox()) ?? { x: 0 };
-  expect((await box('.react-count')).x, 'the count is to the right of the icon').toBeGreaterThan((await box('.react-icon')).x);
+  await expect(reaction(page, 'Flag this')).toHaveAttribute('data-count', '2');
+  // The button draws the icon before its content and the count after it, so the count is right of the icon.
+  const drawn = (which) => reaction(page, 'Flag this').evaluate((el, w) => getComputedStyle(el, w).content, which);
+  expect([await drawn('::before'), await drawn('::after')], 'the icon, then the count').toEqual(['""', '"2"']);
 });
 
 test('who reacted shows in a hover card, on hover and on keyboard focus, and in the button’s name', async ({ page }) => {

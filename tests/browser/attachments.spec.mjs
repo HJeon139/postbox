@@ -3,7 +3,8 @@
 //   keyboard;
 // - an image the server doesn’t show inline (SVG) keeps the file chip;
 // - a file dropped on a topic thread’s panel attaches to the panel’s composer, not the conversation’s;
-// - a file dropped on the conversation, with the panel open, still attaches to the conversation’s composer.
+// - a file dropped on the conversation, with the panel open, still attaches to the conversation’s composer;
+// - a file whose name holds a right-to-left override shows the name the upload kept, with it replaced (#991).
 // Drops are synthetic DragEvents carrying a real DataTransfer with a File, dispatched on the element under the point a
 // person would drop on. They bubble through the real DOM to the app’s own listeners, which then upload through the
 // app’s own path (POST /api/files); a real drag needs files on disk and a drag the browser started. Each test has a
@@ -126,4 +127,19 @@ test('#48 a file dropped on a topic thread’s panel attaches to its composer, a
   await expect(page.getByRole('menuitem', { name: /^Upload from computer/ }), 'the panel’s plus menu says where to drop files').toContainText(
     'Or drop files on this thread',
   );
+});
+
+test('#991 a file whose name holds a right-to-left override shows the name Postbox kept, in the composer and once sent', async ({ page }) => {
+  const { t } = conversation('Hidden name');
+  await page.goto(`${app.origin}/#/t/${t.id}`);
+  await synced(page, app);
+  await drop(page, '.main .transcript', 'svg', 'report\u202efdp.svg');
+  const chip = chips(page, '.main');
+  await expect(chip.filter({ hasText: 'uploading' }), 'uploaded').toHaveCount(0);
+  await expect.soft(chip, 'the composer’s chip has the upload’s name, the override replaced').toContainText('report_fdp.svg');
+  await expect.soft(chip).not.toContainText('\u202e');
+  await page.locator('.main .composer').getByRole('button', { name: 'Send', exact: true }).click();
+  const sent = page.locator('.transcript .me-card .attachments .att');
+  await expect.soft(sent, 'the sent message’s chip has it too').toContainText('report_fdp.svg');
+  await expect.soft(sent).not.toContainText('\u202e');
 });

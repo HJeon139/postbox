@@ -1,11 +1,11 @@
 // What tests/uat/e2e/scenarios/hostwakes.md relies on in the real wake logic (server/side-threads.mjs): a message from
 // the person clears the count of wakes in a row, so a hand-off right after it goes though a card waits. Since #492 there
-// is no pair limit, so a card comes only from the chain limit (HOP_LIMIT), and a hand-off between two agents after the
+// is no pair limit, so a card comes only from the chain limit (the room's, 3 here, #1035), and a hand-off between two agents after the
 // person’s message goes too: the scenario’s phases, built on the pair card, need reworking for that (#492).
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { HOP_LIMIT } from '../shared/limits.mjs';
+import { updateThread } from '../server/thread-write.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
 /** The fixture's room with @gamma, and a card from @alpha's wake of @beta past the chain limit, left open (phase 1). */
@@ -18,8 +18,9 @@ async function cardOpen() {
     await settle(f.rt);
     return r;
   };
+  updateThread(f.rt, f.t.id, { chainLimit: 3 });
   // All while the chain runs: one that ends starts the count again (#492).
-  for (let i = 0; i < HOP_LIMIT; i++) f.rt.agentWake(...(i % 2 ? [f.beta.id, 'alpha'] : [f.alpha.id, 'beta']), `hand-off ${i + 1}`);
+  for (let i = 0; i < 3; i++) f.rt.agentWake(...(i % 2 ? [f.beta.id, 'alpha'] : [f.alpha.id, 'beta']), `hand-off ${i + 1}`);
   assert.equal((await wake(f.alpha, 'beta')).waiting, true, 'the wake past the chain limit raised the card');
   return { ...f, gamma, wake };
 }

@@ -5,14 +5,15 @@
 
 import { HANDLE, HANDLE_SHAPE, HOP_LIMIT } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
+import { roomChainLimit } from './room-chain-limit.mjs';
 import { newId } from './store.mjs';
 import { pendingThreads, updateThread } from './thread-write.mjs';
 import { askToAdd, askToWake, closeHop, closeOwnCard, dropHeld, retireStale } from './wake-cards.mjs';
 
 export { resolveHop } from './wake-cards.mjs';
-// Agent wakes in a row, without you, before the next waits for your Allow (shared/limits.mjs: wake_agent’s description
-// on a host names it too).
-export { HOP_LIMIT };
+// The server’s default chain limit, 1,000 unless POSTBOX_CHAIN_LIMIT sets another; a room can set its own (#1035), which
+// roomChainLimit reads.
+export { HOP_LIMIT, roomChainLimit };
 
 // ── Agents waking agents ───────────────────────────────────────────────────────────
 
@@ -23,7 +24,8 @@ export const SUMMARY_WAKES_NO_ONE = 'A summary for the conversation wakes no one
  * An agent wakes another (#110, #228, #372): by an @-mention in what it said (itemId, that message) or by wake_agent. It
  * reaches the persona’s one session in the conversation, which answers there; a busy one takes the wake when its turn
  * ends, as any message to a busy agent waits. A persona the conversation doesn’t have needs the
- * person: a card asks to add it. After HOP_LIMIT wakes in a row without you, the next one waits for your confirm.
+ * person: a card asks to add it. After the room’s chain limit of wakes in a row without you (1,000 unless the person set
+ * another, #1035), the next one waits for your confirm.
  */
 
 export function agentWake(
@@ -58,7 +60,7 @@ export function agentWake(
   const card = { text, replyIn: at === parent.id ? null : at, fromTurnId, itemId };
   if (!target) return askToAdd(rt, from, parent, p, card, { prose });
   // No limit between two agents (#492): the room shows the chain’s count, with a hint to Stop past CHAIN_HINT.
-  if (!confirmed && (parent.hops ?? 0) >= HOP_LIMIT) return askToWake(rt, from, parent, p, card);
+  if (!confirmed && (parent.hops ?? 0) >= roomChainLimit(rt, parent.id)) return askToWake(rt, from, parent, p, card);
   const hop = (parent.hops ?? 0) + 1;
   updateThread(rt, parent.id, { hops: hop });
   // A mention is already the waker’s message there, so the wake’s number in the chain (#114, telemetry) goes on the

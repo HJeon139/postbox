@@ -1,6 +1,7 @@
-// POSTBOX_CHAIN_LIMIT (#508, tests/uat-chain-limit.test.mjs): a Postbox started under it enforces that chain limit and
-// tells agents that number; without it, the backstop of 50 (#541); with a value that isn’t a whole number from 1 to 50, it
-// refuses to start. Each case is a process of its own, since the module reads the variable once, when it loads.
+// POSTBOX_CHAIN_LIMIT (#508, tests/uat-chain-limit.test.mjs): the server’s default chain limit. A Postbox started under
+// it enforces that limit in a room with none of its own, and tells agents that number; a room set to its own (#1035)
+// keeps it. Without the variable, the default is 1,000 (#1035); with a value that isn’t a whole number from 1 to 10,000,
+// it refuses to start. Each case is a process of its own, since the module reads the variable once, when it loads.
 
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -39,33 +40,65 @@ function node(args, env, { input } = {}) {
   });
 }
 
-// Three wakes between two agents, then a fourth: what the limit does with it, as a line of JSON.
+// Wakes between two agents in a room with nothing set (four), and in a room set to 8 (nine): what the limit does with
+// each, as a line of JSON.
 const CHAIN = `
 import { HOP_LIMIT } from './shared/limits.mjs';
 import { TOOL_DEFS } from './shared/mcp-tools.mjs';
+import { updateThread } from './server/thread-write.mjs';
 import { setup } from './tests/side-threads-fixture.mjs';
 const f = setup();
-const results = [];
-for (let i = 0; i < 4; i++) {
-  const [from, to] = i % 2 ? [f.beta, 'alpha'] : [f.alpha, 'beta'];
-  results.push(f.rt.agentWake(from.id, to, 'hand-off ' + (i + 1)));
-}
-const card = f.store.items(f.t.id).find((x) => x.kind === 'hop') ?? null;
-const told = TOOL_DEFS.find((d) => d.name === 'wake_agent').description.match(/After (\\d+) agent wakes in one chain/)?.[1];
-console.log(JSON.stringify({ HOP_LIMIT, waiting: results.map((r) => r.waiting === true), n: card?.n ?? null, told }));
+const own = f.rt.createThread({ projectId: 'p1', title: 'Own', personaIds: [f.a.id, f.b.id] });
+updateThread(f.rt, own.id, { chainLimit: 8 });
+const wakes = (threadId, n) => {
+  const [alpha, beta] = f.rt.sessionsIn(threadId);
+  const results = [];
+  for (let i = 0; i < n; i++) {
+    const [from, to] = i % 2 ? [beta, 'alpha'] : [alpha, 'beta'];
+    results.push(f.rt.agentWake(from.id, to, 'hand-off ' + (i + 1)).waiting === true);
+  }
+  return { waiting: results, n: f.store.items(threadId).find((x) => x.kind === 'hop')?.n ?? null };
+};
+const told = TOOL_DEFS.find((d) => d.name === 'wake_agent').description.match(/the room’s chain limit of agent wakes in one chain \\(([\\d,]+) unless the person set another\\)/)?.[1];
+console.log(JSON.stringify({ HOP_LIMIT, unset: wakes(f.t.id, 4), own: wakes(own.id, 9), told }));
 process.exit(0);
 `;
+const goes = (n) => Array(n).fill(false);
 
-test('under POSTBOX_CHAIN_LIMIT=3 the fourth wake in a chain waits on a card numbered 4, and wake_agent says 3', async () => {
+test('under POSTBOX_CHAIN_LIMIT=3 an unset room’s fourth wake waits on a card numbered 4, a room set to 8 asks at its ninth, and wake_agent says 3', async () => {
   const r = await node(['--input-type=module', '-e', CHAIN], { POSTBOX_CHAIN_LIMIT: '3' });
   assert.equal(r.code, 0, r.err);
-  assert.deepEqual(JSON.parse(r.out.trim()), { HOP_LIMIT: 3, waiting: [false, false, false, true], n: 4, told: '3' });
+  assert.deepEqual(JSON.parse(r.out.trim()), {
+    HOP_LIMIT: 3,
+    unset: { waiting: [...goes(3), true], n: 4 },
+    own: { waiting: [...goes(8), true], n: 9 },
+    told: '3',
+  });
 });
 
-test('without the variable the backstop is 50: four wakes all go', async () => {
+test('without the variable the default is 1,000: four wakes all go in an unset room, and wake_agent says 1,000', async () => {
   const r = await node(['--input-type=module', '-e', CHAIN], {});
   assert.equal(r.code, 0, r.err);
-  assert.deepEqual(JSON.parse(r.out.trim()), { HOP_LIMIT: 50, waiting: [false, false, false, false], n: null, told: '50' });
+  assert.deepEqual(JSON.parse(r.out.trim()), {
+    HOP_LIMIT: 1000,
+    unset: { waiting: goes(4), n: null },
+    own: { waiting: [...goes(8), true], n: 9 },
+    told: '1,000',
+  });
+});
+
+test('POSTBOX_CHAIN_LIMIT can set the default as high as 10,000, but no higher', async () => {
+  for (const limit of ['1000', '10000']) {
+    const r = await node(['--input-type=module', '-e', CHAIN], { POSTBOX_CHAIN_LIMIT: limit });
+    assert.equal(r.code, 0, `${limit}: ${r.err}`);
+    assert.equal(JSON.parse(r.out.trim()).HOP_LIMIT, Number(limit));
+  }
+  const r = await node([join(ROOT, 'server', 'index.mjs'), '--port', '0', '--data', join(dir, 'data-high'), '--fresh'], {
+    POSTBOX_CHAIN_LIMIT: '10001',
+    POSTBOX_BACKENDS: 'mock',
+  });
+  assert.notEqual(r.code, 0);
+  assert.match(r.err, /POSTBOX_CHAIN_LIMIT takes a whole number from 1 to 10,000, not “10001”/);
 });
 
 test('a Postbox started with a bad POSTBOX_CHAIN_LIMIT refuses to start, and says what it takes', async () => {

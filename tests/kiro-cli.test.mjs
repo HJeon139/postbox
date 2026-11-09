@@ -200,7 +200,7 @@ test('the rules: Postbox’s tools allowed, reads in its folders, edits only wit
     edits.find((r) => r.capability === 'fs_write'),
     { capability: 'fs_write', match: folders, effect: 'allow' },
   );
-  assert.ok(!edits.some((r) => r.effect === 'deny'), 'ticked tools and publishing aren’t denied');
+  assert.ok(!edits.some((r) => r.effect === 'deny' && r.capability !== 'fs_write'), 'ticked tools and publishing aren’t denied (#136: .kiro, .git are)');
 
   // Servers turned off are denied with your setup. Isolated denies every server but Postbox’s, which covers them,
   // and a server a managed install adds to the agent file by itself.
@@ -208,7 +208,7 @@ test('the rules: Postbox’s tools allowed, reads in its folders, edits only wit
   assert.deepEqual(host.at(-1), { capability: 'mcp', match: ['slack/*'], effect: 'deny' });
   const isolated = kiroRules({ persona: { tools: ['shell', 'web.fetch'], canPublish: true, usesHostSetup: false, mcpOff: ['slack'] }, folders });
   assert.deepEqual(
-    isolated.filter((r) => r.effect === 'deny'),
+    isolated.filter((r) => r.effect === 'deny' && r.capability === 'mcp'),
     [{ capability: 'mcp', match: ['*/*'], exclude: ['postbox/*'], effect: 'deny' }],
   );
 });

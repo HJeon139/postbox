@@ -129,8 +129,11 @@ export function resumeHint(se) {
     return Array.isArray(h?.settings?.signInCheck) && h.settings.signInCheck.length
       ? `Postbox resumes it on its own once ${name}’s sign-in check passes.`
       : 'Resume it once you’ve signed in.';
-  // One whose process there may still run isn’t resumed on its own (resume.unkilled: #872, and #909’s reattach).
+  // One whose process there may still run isn’t resumed on its own (resume.unkilled: #872, and #909’s reattach),
+  // whatever else holds it.
   if (r.resume.unkilled) return `It may still be running on ${name}, so it waits for you.`;
+  // One held only by its backend, which isn’t registered here, waits for it (resume.noBackend, #965).
+  if (r.resume.noBackend) return 'It waits for its backend on this computer. Install it and restart Postbox, and it resumes on its own.';
   // AUTO_RESUMES in server/remote/turns.mjs.
   return (r.autoResumes ?? 0) < 3
     ? `Postbox resumes it on its own once ${name} is back, or you can now.`

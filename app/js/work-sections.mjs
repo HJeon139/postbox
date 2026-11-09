@@ -8,6 +8,7 @@ import { retiredApp } from '/shared/work-list.mjs';
 import { client } from './client.mjs';
 import { h, icon, plural, timeOf } from './dom.mjs';
 import { navigate, openWork, paneHref, route, setPaneFull } from './ui.mjs';
+import { jumpTo } from './view-jump.mjs';
 
 export const dur = (ms) => (ms ? formatDuration(ms) : '');
 /** A host’s name now (it may have been renamed since), else as the ledger kept it (#120). */
@@ -228,7 +229,7 @@ function showItem(conv, p) {
   requestAnimationFrame(() => {
     const el = /** @type {HTMLElement|null} */ (document.querySelector(`.transcript [data-key="${CSS.escape(p.itemId)}"]`));
     el?.setAttribute('tabindex', '-1');
-    el?.scrollIntoView({ block: 'center' });
+    if (el) jumpTo(el);
     el?.focus({ preventScroll: true });
   });
 }

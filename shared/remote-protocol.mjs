@@ -107,6 +107,7 @@ import {
 import { hostPaths, socketPathFits, validateExitRecord, validateRunnerRecord, validateStartRecord } from './remote-protocol-files.mjs';
 import { createLineReader, createMessageReader } from './remote-protocol-framing.mjs';
 import { CHANNEL_NAMES, encode, encodedBytes, message, messageTypes, parseLine, VALIDATORS, validateMessage } from './remote-protocol-messages.mjs';
+import { lookedText } from './remote-protocol-parts.mjs';
 
 export {
   ATTACHMENTS_DIR,
@@ -123,6 +124,7 @@ export {
   HOST_DEFAULTS,
   HOST_ENFORCED,
   hostPaths,
+  lookedText,
   MESSAGE_FILE,
   message,
   messageTypes,
