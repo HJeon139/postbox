@@ -20,6 +20,15 @@ function picked(it) {
   return [...labels, ...(other ? [other] : [])].join(', ');
 }
 
+/** The agent’s reply after `it`, in the same turn, or undefined. @param {any[]} items @param {number} i */
+const replyAfter = (items, i, it) =>
+  items
+    .slice(i + 1)
+    .find((x) => x.kind === 'agent' && x.threadId === it.threadId && x.handle === it.handle && x.turnId === it.turnId && String(x.text ?? '').trim());
+
+/** Whether the run shows a question taking the old path, as a permission card. @param {any[]} items */
+const oldPath = (items) => items.some((it) => it.kind === 'permission' && it.tool === QUESTION_TOOL);
+
 /** @type {Record<string, { issue: number, says: string, recorded: (f: any) => boolean, run: (f: any) => { at: number|null, evidence: string }[] }>} */
 export const ASK_QUESTION_TRIGGERS = {
   'question-answered-in-turn': {
@@ -28,17 +37,47 @@ export const ASK_QUESTION_TRIGGERS = {
     recorded: (f) => !!f.state,
     run: (f) => {
       const items = itemsUnderTest(f);
-      if (items.some((it) => it.kind === 'permission' && it.tool === QUESTION_TOOL)) return [];
+      if (oldPath(items)) return [];
       return items.flatMap((it, i) => {
         if (!answeredQuestion(it)) return [];
-        const reply = items
-          .slice(i + 1)
-          .find((x) => x.kind === 'agent' && x.threadId === it.threadId && x.handle === it.handle && x.turnId === it.turnId && String(x.text ?? '').trim());
+        const reply = replyAfter(items, i, it);
         if (!reply) return [];
         return [
           {
             at: Number.isFinite(it.answer.at) ? it.answer.at : null,
             evidence: `@${it.handle} asked “${clip(it.block.prompt, 80)}”, the person picked “${clip(picked(it), 60)}”, and its reply in the same turn said: “${clip(reply.text.trim(), 100)}”`,
+          },
+        ];
+      });
+    },
+  },
+  'questions-answered-in-turn': {
+    issue: 521,
+    says: 'two questions of one AskUserQuestion call showed one after the other, the person answered both, one with several picks, and the agent went on in the same turn',
+    recorded: (f) => !!f.state,
+    run: (f) => {
+      const items = itemsUnderTest(f);
+      if (oldPath(items)) return [];
+      // The answered questions of each turn, in order: a call’s questions show one at a time in the same turn.
+      /** @type {Map<string, number[]>} */
+      const byTurn = new Map();
+      items.forEach((it, i) => {
+        if (!answeredQuestion(it)) return;
+        const k = `${it.threadId}\u0000${it.handle}\u0000${it.turnId}`;
+        byTurn.set(k, [...(byTurn.get(k) ?? []), i]);
+      });
+      return [...byTurn.values()].flatMap((at) => {
+        const asked = at.map((i) => items[i]);
+        const several = asked.some((it) => (it.answer.values?.selected?.length ?? 0) >= 2);
+        if (asked.length < 2 || !several) return [];
+        const last = asked.at(-1);
+        const reply = replyAfter(items, at.at(-1), last);
+        if (!reply) return [];
+        const answers = asked.map((it) => `“${clip(it.block.prompt, 50)}”: “${clip(picked(it), 40)}”`).join('; ');
+        return [
+          {
+            at: Number.isFinite(last.answer.at) ? last.answer.at : null,
+            evidence: `@${last.handle} asked ${asked.length} questions in one turn (${answers}), and its reply in that turn said: “${clip(reply.text.trim(), 100)}”`,
           },
         ];
       });
