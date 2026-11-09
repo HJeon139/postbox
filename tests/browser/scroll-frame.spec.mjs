@@ -113,7 +113,7 @@ test('#357 a scroll up, then a change in the same frame, isn’t taken for a cla
   expect(at, 'the view stays where you scrolled it, not back at the end').toBeLessThan(end - 200);
 });
 
-// critic’s P1 on #959: a resize heard before your scroll’s event takes that scroll in (heard()), so by the event the
+// #712a: a resize heard before your scroll’s event takes that scroll in (heard()), so by the event the
 // scroll looks like the transcript’s own. Your scroll down to the end must still follow it.
 test('#341 a scroll down to the end, with a resize heard before its event, follows the end', async ({ page }) => {
   const { t } = room('Scroll to the end, then a resize');
@@ -132,7 +132,7 @@ test('#341 a scroll down to the end, with a resize heard before its event, follo
   expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'at the end you scrolled to, it follows').toBe('following');
 });
 
-// critic’s P3 on #959: a jump pins its item until you scroll; a scroll of yours that a resize heard first is yours too.
+// #712a: a jump pins its item until you scroll; a scroll of yours that a resize heard first is yours too.
 test('#341 a scroll up after a jump, with a resize heard before its event, lets the jump’s item go', async ({ page }) => {
   const { t } = room('Jump, then a scroll heard first');
   await open(page, t);
@@ -174,7 +174,7 @@ test('#712a following, a move up the browser makes as the page gets shorter keep
   expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'it still follows').toBe('following');
 });
 
-// researcher’s Mac trace of view-skipped-append.spec.mjs:24 in Firefox: following, Firefox moved the view up 18 px with
+// A Mac trace of view-skipped-append.spec.mjs’s first case in Firefox (#712a): following, Firefox moved the view up 18 px with
 // the page’s height unchanged, and the room opened reading. A move up that small is the browser’s, loss or not.
 test('#712a following, a move up of 18 px the browser makes with the page’s height unchanged keeps the view following', async ({ page }) => {
   const { t } = room('Following, 18 px up');
@@ -189,7 +189,7 @@ test('#712a following, a move up of 18 px the browser makes with the page’s he
   expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'it still follows').toBe('following');
 });
 
-// critic’s P2 on #959: the browser’s move is tied to what the page lost; your scroll isn’t. Following, you scroll up
+// #712a: the browser’s move is tied to what the page lost; your scroll isn’t. Following, you scroll up
 // 300 px in the same task as an item at the end goes, 100 px shorter: that’s you, and the view reads.
 test('#712a following, a scroll up of yours as the page gets shorter in the same frame reads where you went', async ({ page }) => {
   const { t } = room('Following, a scroll up as the page shrinks');
@@ -215,7 +215,7 @@ test('#341 two resizes before the scroll event take an unheard scroll once, not 
   // Scroll up by 240 px and, before its scroll event, have the transcript hear two resizes: the first takes the unheard
   // scroll into the anchor, and the second must find nothing left to take.
   // What you read is the item across the middle once the scroll lands: two frames on, it’s where the scroll put it. An
-  // item above it drawing taller moves scrollY but not the item (researcher’s Mac trace: 24 px in Firefox); taking the
+  // item above it drawing taller moves scrollY but not the item (a Mac trace: 24 px in Firefox); taking the
   // scroll in twice would move the item 240 px.
   const shift = await page.evaluate(async () => {
     const s = /** @type {Element} */ (document.scrollingElement);

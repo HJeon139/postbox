@@ -96,7 +96,7 @@ test('the sheet lists servers from config and the last init, with their status; 
       { name: 'postbox', status: 'connected', source: 'dynamic' },
       { name: 'search', status: 'needs-auth', source: 'user' },
       { name: 'claude.ai Google Drive', status: 'connected', source: 'claudeai' },
-      { name: 'plugin:forge:forge', status: 'weird', source: 'plugin' },
+      { name: 'plugin:sample:sample', status: 'weird', source: 'plugin' },
     ],
     off: ['gone'],
   });
@@ -104,16 +104,16 @@ test('the sheet lists servers from config and the last init, with their status; 
     { name: 'search', scope: 'user', status: 'needs-auth', off: false },
     { name: 'docs', scope: 'project', status: 'not-started', off: false },
     { name: 'claude.ai Google Drive', scope: 'claude.ai', status: 'connected', off: false },
-    { name: 'plugin:forge:forge', scope: 'plugin', status: 'failed', off: false },
+    { name: 'plugin:sample:sample', scope: 'plugin', status: 'failed', off: false },
     { name: 'gone', scope: 'unknown', status: 'not-started', off: true },
   ]);
 });
 
 // host-mcp-init.jsonl holds two real init events (claude 2.1.296, claude-haiku-5-5, outside the repo, the person’s
 // setup without --strict-mcp-config, Postbox’s server passed with --mcp-config but not running), cut down to
-// their model, tools and mcp_servers, with a private connector left out:
+// their model, tools and mcp_servers, with a private connector left out and a private plugin renamed “sample” (#905):
 //   1. with the person’s plugins and claude.ai connectors, and a project server (“probe”, approved, not running);
-//   2. the same, with probe, claude.ai Google Drive and plugin:forge:forge in deniedMcpServers, and every deny
+//   2. the same, with probe, claude.ai Google Drive and plugin:sample:sample in deniedMcpServers, and every deny
 //      list in --disallowedTools (the publishing tools; with #5’s, the outside-agent and unticked tools too).
 const fixture = (name) =>
   readFileSync(new URL(`fixtures/claude-code/${name}.jsonl`, import.meta.url), 'utf8')
@@ -124,10 +124,10 @@ const fixture = (name) =>
 test('a real init with your setup loads your servers and connectors, and deniedMcpServers removes a turned-off one', () => {
   const [mine, denied] = fixture('host-mcp-init');
   const names = (i) => i.mcp_servers.map((s) => s.name);
-  for (const n of ['postbox', 'probe', 'claude.ai Google Drive', 'claude.ai Claude Docs', 'plugin:forge:forge']) assert.ok(names(mine).includes(n), n);
-  assert.ok(mine.tools.some((t) => t.startsWith('mcp__plugin_forge_forge__')));
-  for (const n of ['probe', 'claude.ai Google Drive', 'plugin:forge:forge']) assert.ok(!names(denied).includes(n), `${n} is gone`);
-  assert.ok(!denied.tools.some((t) => /^mcp__(plugin_forge_forge|claude_ai_Google_Drive)__/.test(t)), 'and so are its tools');
+  for (const n of ['postbox', 'probe', 'claude.ai Google Drive', 'claude.ai Claude Docs', 'plugin:sample:sample']) assert.ok(names(mine).includes(n), n);
+  assert.ok(mine.tools.some((t) => t.startsWith('mcp__plugin_sample_sample__')));
+  for (const n of ['probe', 'claude.ai Google Drive', 'plugin:sample:sample']) assert.ok(!names(denied).includes(n), `${n} is gone`);
+  assert.ok(!denied.tools.some((t) => /^mcp__(plugin_sample_sample|claude_ai_Google_Drive)__/.test(t)), 'and so are its tools');
   assert.ok(names(denied).includes('postbox') && names(denied).includes('claude.ai Claude Docs'), 'the rest still load');
 });
 
@@ -147,7 +147,7 @@ test('the publishing deny list holds once connectors and plugin servers load, an
     'mcp__claude_ai_Google_Drive__update_file',
   ]);
   // Read-only and local tools stay: the connector’s reads, and a plugin’s local memory.
-  for (const t of ['mcp__claude_ai_Claude_Docs__read', 'mcp__claude_ai_Google_Drive__search_files', 'mcp__plugin_forge_forge__memory_save', 'Read'])
+  for (const t of ['mcp__claude_ai_Claude_Docs__read', 'mcp__claude_ai_Google_Drive__search_files', 'mcp__plugin_sample_sample__memory_save', 'Read'])
     assert.ok(mine.tools.includes(t) && !isPublishingTool(t), t);
   for (const t of TOOL_DEFS) assert.ok(!isPublishingTool(`mcp__postbox__${t.name}`), t.name);
   // With --disallowedTools passed, Claude Code removed them all.

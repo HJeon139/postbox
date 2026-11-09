@@ -7,7 +7,8 @@ const count = (/** @type {number} */ n) => n.toLocaleString('en-US');
 
 /**
  * Where a part of text that would end at `end` ends. One earlier when `end` falls between the two halves of a
- * surrogate pair, so the character goes whole into the next part.
+ * surrogate pair, so the character goes whole into the next part, or a lone first half at the end goes with it. Every
+ * cut of text to a length ends here too, so it never leaves half of a pair, which shows as nothing or a box (#1052).
  * @param {string} text @param {number} end
  */
 export function partEnd(text, end) {

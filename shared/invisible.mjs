@@ -1,15 +1,14 @@
-// Characters that change how text around them displays, or that display as nothing (#704, #817): every format
+// Characters that change how text around them displays, or that display as nothing (#704, #817, #1049): every format
 // character (Cf: zero-width ones, soft hyphens, word joiners, invisible operators, tag characters, U+FEFF), the bidi
-// marks, embeddings, overrides and isolates, the Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), the combining
-// grapheme joiner (U+034F) and the variation selectors (U+FE00 to U+FE0F), which are marks rather than format
-// characters, and the whole tag block (U+E0000 to U+E007F), whose unassigned code points aren’t Cf. A right-to-left
-// override can make a command, or a name, read as another one.
+// marks, embeddings, overrides and isolates, every default-ignorable code point (the Hangul fillers, the combining
+// grapheme joiner, the variation selectors, VS17 to VS256 included, the Mongolian free variation selectors, the Khmer
+// inherent vowels, the unassigned specials U+FFF0 to U+FFF8, and the tag block and the rest of U+E0000 to U+E0FFF,
+// assigned or not), and the line and paragraph separators (Zl, Zp), which break a line where none shows. A
+// right-to-left override can make a command, or a name, read as another one. ZWNJ, ZWJ and VS16 are among them: a
+// caller that takes one takes it out itself (hiddenInFolder, and hides in server/upload-name.mjs).
 
-/**
- * Each such character, for replace(). It’s global, so test() would keep its place between calls: ask hasInvisible.
- * The two marks are alternatives of their own: in one class with other characters, Biome reads them as combining.
- */
-export const INVISIBLE = /[\p{Cf}\p{Bidi_Control}\u115f\u1160\u3164\uffa0\u{e0000}-\u{e007f}]|\u034f|[\ufe00-\ufe0f]/gu;
+/** Each such character, for replace(). It’s global, so test() would keep its place between calls: ask hasInvisible. */
+export const INVISIBLE = /[\p{Cf}\p{Bidi_Control}\p{Default_Ignorable_Code_Point}\p{Zl}\p{Zp}]/gu;
 
 /** Whether text holds one of INVISIBLE’s characters. search() starts at the beginning every time. @param {string} s */
 export const hasInvisible = (s) => s.search(INVISIBLE) !== -1;
@@ -23,7 +22,8 @@ export const hasControl = (s) => CONTROL.test(s);
 // ones an asset name refuses (INVISIBLE), except ZWNJ and ZWJ (U+200C, U+200D): they join letters in some scripts and
 // in emoji, and the folder exists under the name the person gave it (#547). VS16 (U+FE0F) is refused, so a path with
 // ❤️ or 🏳️‍🌈 is, ZWJ or not. A path on a host is checked so too. An upload’s name has each such character replaced,
-// but keeps VS16, since it’s only shown (server/upload-name.mjs, #991).
+// but keeps VS16 and ZWJ where they make an emoji or a word, and a tag flag whole, since it’s only shown
+// (server/upload-name.mjs, #991, #1067).
 const SURROGATE = /\p{Cs}/u;
 const JOINERS = /[\u200c\u200d]/gu;
 /** Whether a folder's path holds a character that isn't text, or one that hides or reorders what it shows. @param {string} s */

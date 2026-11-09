@@ -5,8 +5,10 @@
 // At most this many pushes from one command: each is a Work entry, and the command’s own text sets how many
 // reports there are (server/AGENTS.md: arrays are capped at the boundary).
 const MAX_PUSHES = 100;
-// A ref git push reports as sent: a new one, or old..new, then `src -> dst`. Rejected and up-to-date ones aren’t.
-const SENT_REF = /^\s*[*+\-!= ]?\s*(\[new [a-z]+\]|[0-9a-f]{7,64}\.\.\.?[0-9a-f]{7,64})\s+(\S+)\s+->\s+(\S+)/gm;
+// A ref git push reports as sent: a new one, or old..new, then `src -> dst`. Rejected and up-to-date ones aren’t. One
+// line each, so only spaces and tabs between its parts: \s would take newlines, and rescan blank lines (#1032). git’s
+// space flag is the leading run itself, and any other flag takes its own spaces, so a run of spaces splits one way only.
+const SENT_REF = /^[ \t]*(?:[*+\-!=][ \t]*)?(\[new [a-z]+\]|[0-9a-f]{7,64}\.\.\.?[0-9a-f]{7,64})[ \t]+([^\s]+)[ \t]+->[ \t]+([^\s]+)/gm;
 
 /**
  * The pushes in git push’s output: each `To <remote>` line starts one, and holds the refs it sent up to the next.

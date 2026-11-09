@@ -1,5 +1,5 @@
 // The environment of the Postbox a UAT run starts (tools/uat/run-env.mjs): a `- seed: git-remote` run carries its
-// guard, so no git or gh in it reaches anything real (#305). The integrator’s read of #1001 found nothing tested that
+// guard, so its git reaches no network remote and its gh is a fake (#305). The integrator’s read of #1001 found nothing tested that
 // the guard reaches Postbox at all.
 
 import assert from 'node:assert/strict';

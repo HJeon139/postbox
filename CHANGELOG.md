@@ -2,6 +2,50 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.54.1 (2026-11-09)
+
+### Fixes
+
+- **queue:** an API Send now marks a plain Stop’s exit silent too, through one stopForSendNow (#1040)
+- **queue:** Send now during a plain Stop’s exit marks the exit silent, so it goes alone (#1040)
+- **queue:** after a Stop, the first turn takes its thread's queued wakes (#1040)
+- **uat:** a teardown that fails after a failed preflight keeps the preflight's reason
+- **uat:** the guard blanks git's askpass, so a terminal's sign-in gives an agent's git no password
+- **server:** echoedId cuts with partEnd, so an echoed id never ends on half a pair (#895)
+- **server:** cut the ids update_block and retire_app echo in their refusals to 40 characters
+- **files:** keep hidesName for the callers that read one character at a time
+- **files:** keep only England's, Scotland's and Wales's flags whole
+- **files:** stored upload names are cleaned where they're read, and tag flags stay whole
+- **blocks:** the reaction count leaves the accessibility tree, and an unproved rule goes (#1068)
+- **tests:** flag connector tool ids, keep recordings' plugins public, print no path from the scan
+- **work:** a ref line's flag takes its own spaces, so a run of spaces splits one way (#1032)
+- **work:** read git push's ref lines with spaces and tabs only, in linear time (#1032)
+- **uat:** the git-remote preflight probes outside the workspace, and a failed one removes the remote
+- **security:** take every default-ignorable code point and line separator into the invisible set
+- **uat:** the guard empties git's credential helpers, so no run's git hands out the person's
+- **blocks:** an app review draws its app's check result as the transcript does (#857)
+- **blocks:** show a number field's range before any submit
+
+## 1.54.0 (2026-11-09)
+
+### Features
+
+- **tools:** a --strict cited-commits run fails on a token that isn't an object
+- **tools:** check that every commit a note or pr body cites is on github
+
+### Fixes
+
+- **composer:** keep a draft's attachments over a switch, as its text is
+- **permissions:** an edit that changes nothing is a plain allow
+- **blocks:** an all-strings options error's example id starts with a letter or digit (#951)
+- **message-queue:** Send now finds its entry in the pending queue, and refuses one already sent
+- **remote:** #1043's smaller points: probe exit, its clock, sign-in PATH, looked text (#1066)
+- **security:** dataset titles and the picker's names keep ZWJ, ZWNJ and VS16, with hidesName
+- **security:** a host's stored short name is kept unchecked when a change leaves it alone
+- **app:** a reply arriving while you read up counts on the pill without reading layout (#1047)
+- **security:** one surrogate-safe cut for every clip, and names and titles kept before the checks
+- **security:** refuse hidden characters in a short name and dataset title, mark them in the picker
+
 ## 1.53.1 (2026-11-09)
 
 ### Fixes

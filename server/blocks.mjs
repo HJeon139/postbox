@@ -9,7 +9,7 @@ import { LIMITS } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
 import { answerQuestion, lateAnswer, waitingQuestion } from './ask-question.mjs';
 import { releaseNeed } from './card-needs.mjs';
-import { clip, clipText, httpError, refuseArchived } from './helpers.mjs';
+import { clip, clipText, echoedId, httpError, refuseArchived } from './helpers.mjs';
 import { REACT, toggleReaction } from './reactions.mjs';
 import { keepReviewThreads } from './review-comments.mjs';
 import { revisedFiles } from './review-files.mjs';
@@ -264,7 +264,7 @@ function shownBy(rt, sessionId, id, threadId, se) {
  * @param {any} _rt @param {string} _sessionId @param {string} id
  */
 function notShown(_rt, _sessionId, id) {
-  return { ok: false, message: `There’s no block with id ${id} to update. Use show_block to add it.` };
+  return { ok: false, message: `There’s no block with id ${echoedId(id)} to update. Use show_block to add it.` };
 }
 
 /**

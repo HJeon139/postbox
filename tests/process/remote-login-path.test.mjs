@@ -67,10 +67,15 @@ test('#672: a shell past the time limit fails, and its whole process group is ki
   assert.equal(alive(child), false, `the shell’s child ${child} outlived the probe`);
 });
 
-test('#672: a real shell that prints no markers, or exits non-zero, fails with a reason', { skip, timeout: 10_000 }, async () => {
+test('#672: a real shell that prints no markers, or exits non-zero with none, fails with a reason', { skip, timeout: 10_000 }, async () => {
   const none = await probeLoginPath({ shell: shell('none', 'echo /login/bin:/usr/bin') });
   assert.equal(none.ok, false);
-  const failed = await probeLoginPath({ shell: shell('fails', 'eval "$2"\nexit 3') });
+  const failed = await probeLoginPath({ shell: shell('fails', 'exit 3') });
   assert.equal(failed.ok, false);
   assert.ok(!failed.ok && failed.why.includes('3'), !failed.ok ? failed.why : '');
+});
+
+test('#1066: a real shell that prints its PATH, then exits 3 as an rc’s exit trap would, keeps that PATH', { skip, timeout: 10_000 }, async () => {
+  const trapped = await probeLoginPath({ shell: shell('trapped', 'eval "$2"\nexit 3') });
+  assert.equal(trapped.ok, true, !trapped.ok ? trapped.why : '');
 });

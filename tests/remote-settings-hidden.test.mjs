@@ -13,9 +13,10 @@ import { hostPath } from '../shared/remote-protocol-checks.mjs';
 import { checkHostPath, checkHostSettings } from '../shared/remote-settings.mjs';
 
 /** The refusals, naming the path as checkHostPath’s `what`. @param {string} what */
-const control = (what) => `${what} can’t contain control characters, such as a new line.`;
+const control = (what) => `${what} can’t contain control characters, such as a new line. Type the path again rather than paste it.`;
 /** @param {string} what */
-const hidden = (what) => `${what} can’t contain invisible characters, such as a zero-width space or a bidi control, or a lone surrogate.`;
+const hidden = (what) =>
+  `${what} can’t contain invisible characters, such as a zero-width space or a bidi control, or a lone surrogate. Type the path again rather than paste it.`;
 const CONTROL = control('folder');
 const HIDDEN = hidden('folder');
 
