@@ -43,7 +43,7 @@ import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
 import { watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
-import { uploadName } from './upload-name.mjs';
+import { storedName, uploadName } from './upload-name.mjs';
 import { startViewApp } from './view-app/view-app.mjs';
 import { viewOf } from './view-app/view-of.mjs';
 
@@ -141,7 +141,7 @@ export async function start({
   // reconnect when this computer wakes (#120).
   const stopWake = startHosts(rt, hosts, wake);
   for (const f of Object.values(store.state.files))
-    if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
+    if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: storedName(f.name), author: 'Your file', year: null });
   if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
   // Datasets agents loaded (#47) come back from their projects’ .postbox/datasets/.
   await rt.reloadDatasets();
@@ -396,7 +396,7 @@ export async function start({
       const f = store.state.files[body.fileId];
       if (!f) throw httpError(404, 'That file doesn’t exist.');
       if (!/^text\/|\.txt$|\.md$/i.test(f.type + ' ' + f.name)) throw httpError(422, 'Only plain-text and Markdown files can be added to the corpus for now.');
-      corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
+      corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: storedName(f.name), author: 'Your file', year: null });
       corpus.reindex();
       store.emit('file', { ...f, inCorpus: true });
       return send(res, 200, { ok: true, corpus: corpus.stats() });

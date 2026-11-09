@@ -1,4 +1,4 @@
-// #338, from the integrator’s review of #1033: a read card about a folder (Antigravity’s list_dir, grep_search and
+// #338: a read card about a folder (Antigravity’s list_dir, grep_search and
 // find_by_name send it as file_path) offers that folder, not the one holding it, so the person isn’t asked about a
 // wider one and a listing just under home gets an offer. And a folder saved with Always allow is read in the same
 // turn with no second card, by the session’s list as it is now, not as the turn started with it.
@@ -99,7 +99,7 @@ test('#338 a saved folder allows nothing outside it, nor for another backend', a
   assert.equal(other.cards, 1, 'Claude Code keeps its own rules');
 });
 
-// critic’s P2 on a3b3b0c1: a file is judged by where it leads, as the hook judges it, not by the folder holding the link.
+// #338: a file is judged by where it leads, as the hook judges it, not by the folder holding the link.
 test('#338 a link in a saved folder to a key in ~/.ssh still asks, and offers nothing', async () => {
   const { home, ws, notes } = aHome();
   const link = join(notes, 'keys');

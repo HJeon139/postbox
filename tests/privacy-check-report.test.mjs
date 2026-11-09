@@ -25,6 +25,7 @@ const SECRETS = {
   uid: { text: JSON.stringify({ uid: 501 }), found: 'uid', secret: '501' },
   utilization: { text: JSON.stringify({ utilization: 0.13 }), found: 'utilization', secret: '0.13' },
   connector: { text: JSON.stringify({ name: 'claude.ai Alice Trip Diary' }), found: 'connector name', secret: 'Alice Trip Diary' },
+  'connector tool id': { text: ['mcp', 'claude_ai_Alice_Trip_Diary__search'].join('__'), found: 'connector tool id', secret: 'Alice_Trip_Diary' },
 };
 
 /** The parts of a value a printed line must not hold: each run of three characters in it. @param {string} value */
@@ -66,7 +67,7 @@ test('a finding in a commit’s message, or in a file’s name, prints no part o
   const printed = scanCommits('main..HEAD', git).findings.map(formatFinding);
   assert.equal(printed.length, 2);
   for (const line of printed) holdsNone(line, value, 'email');
-  assert.deepEqual(printed, ['fefefe0 message: email at line 3', 'fefefe0 a file’s name: email in the file name']);
+  assert.deepEqual(printed, ['fefefe0 message: email at line 3', 'fefefe0 file 1 of git show --name-only: email in the file name']);
 });
 
 test('checkContentPrivacy reports the kind and the line, and no part of the value (#784)', () => {
@@ -106,7 +107,7 @@ test('a file whose name is private prints no part of its name in any of its find
   const lines = [`mail ${SECRETS.email.text}`, home];
   const git = { commits: () => ['fefefe0123456789'], show: () => diff(newFile(name, lines)), message: () => 'x\n', names: () => [] };
   const printed = scanCommits('main..HEAD', git).findings.map(formatFinding);
-  const where = 'fefefe0 a file’s name';
+  const where = 'fefefe0 file 1 of git show --name-only';
   assert.deepEqual(printed, [`${where}: email in the file name`, `${where}: home path at line 2`, `${where}: email at line 1`]);
   for (const line of printed) for (const value of [name, home]) holdsNone(line, value, 'a private name with private text');
 });

@@ -34,10 +34,16 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, wr
 import { join, resolve, sep } from 'node:path';
 import { js } from '../browser.mjs';
 
-/** What every git in the run reads: no transport but local paths. */
+/**
+ * What every git in the run reads: no transport but local paths, no credential helper and no askpass. An empty helper
+ * empties the list the person’s config built, osxkeychain on a Mac, and an empty askPass sets aside a global
+ * core.askPass, so `git credential fill` hands out nothing of theirs. noGithubEnv blanks GIT_ASKPASS and SSH_ASKPASS too.
+ */
 export const GUARD = [
   ['protocol.allow', 'never'],
   ['protocol.file.allow', 'always'],
+  ['credential.helper', ''],
+  ['core.askPass', ''],
 ];
 /** An https remote nothing listens on, refused at once: the preflight’s probe, and the tests’. */
 export const UNREACHABLE = 'https://127.0.0.1:9/uat/none.git';

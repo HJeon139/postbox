@@ -4,6 +4,7 @@
 // from what was actually sent: an app’s own summary is kept apart, as a quote from the app (#51).
 
 import { LIMITS, limitText } from './limits.mjs';
+import { numberRange } from './number-range.mjs';
 import { commentErrors } from './review-comments.mjs';
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,63}$/;
@@ -176,18 +177,10 @@ function checkField(f, raw) {
       // Plain decimal only: Number() would also read “0x10” as 16 and “1e3” as 1000.
       const t = String(raw).replace(/,/g, '').trim();
       const n = typeof raw === 'number' ? raw : /^[-+]?(\d+\.?\d*|\.\d+)$/.test(t) ? Number(t) : Number.NaN;
-      const hasMin = typeof f.min === 'number',
-        hasMax = typeof f.max === 'number';
-      const range =
-        hasMin && hasMax
-          ? `Enter a number from ${fmtNum(f.min)} to ${fmtNum(f.max)}.`
-          : hasMin
-            ? `Enter a number of at least ${fmtNum(f.min)}.`
-            : hasMax
-              ? `Enter a number no more than ${fmtNum(f.max)}.`
-              : 'Enter a number.';
+      // The same words as the hint under the field (#822).
+      const range = numberRange(f).error;
       if (!Number.isFinite(n)) return { error: range };
-      if ((hasMin && n < f.min) || (hasMax && n > f.max)) return { error: range };
+      if ((typeof f.min === 'number' && n < f.min) || (typeof f.max === 'number' && n > f.max)) return { error: range };
       if (typeof f.step === 'number' && f.step > 0 && Math.abs((n - (f.min ?? 0)) / f.step - Math.round((n - (f.min ?? 0)) / f.step)) > 1e-9)
         return { error: `Use steps of ${fmtNum(f.step)}.` };
       return { value: n };

@@ -2,6 +2,26 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.54.0 (2026-11-09)
+
+### Features
+
+- **tools:** a --strict cited-commits run fails on a token that isn't an object
+- **tools:** check that every commit a note or pr body cites is on github
+
+### Fixes
+
+- **composer:** keep a draft's attachments over a switch, as its text is
+- **permissions:** an edit that changes nothing is a plain allow
+- **blocks:** an all-strings options error's example id starts with a letter or digit (#951)
+- **message-queue:** Send now finds its entry in the pending queue, and refuses one already sent
+- **remote:** #1043's smaller points: probe exit, its clock, sign-in PATH, looked text (#1066)
+- **security:** dataset titles and the picker's names keep ZWJ, ZWNJ and VS16, with hidesName
+- **security:** a host's stored short name is kept unchecked when a change leaves it alone
+- **app:** a reply arriving while you read up counts on the pill without reading layout (#1047)
+- **security:** one surrogate-safe cut for every clip, and names and titles kept before the checks
+- **security:** refuse hidden characters in a short name and dataset title, mark them in the picker
+
 ## 1.53.1 (2026-11-09)
 
 ### Fixes
