@@ -9,6 +9,7 @@ const clip = (s, n) => {
 const base = (path) => String(path ?? '').replace(/^.*\//, '');
 /** As much of a detail as a card keeps (permission-cards.mjs’s writeOf). */
 const DETAIL_MAX = 4000;
+const NO_PATH = 'This call’s path isn’t text, or it names none, so Postbox can’t say where it reads.';
 /** A string clipped to n characters by its middle, with a … there, so its start and its end, a file’s name, both show. */
 const clipMiddle = (s, n) => (s.length > n ? `${s.slice(0, Math.ceil((n - 1) / 2))}…${s.slice(s.length - Math.floor((n - 1) / 2))}` : s);
 
@@ -25,8 +26,10 @@ function pathLines(paths) {
 /** What a tool call would do, for the permission card: a short summary and the detail. */
 export function describePermission(name, input = {}) {
   const i = input ?? {};
-  // Its paths, not file_path again, which repeats the first.
+  // Its paths, not file_path again, which repeats the first; or, as Antigravity’s hook sends for a path that’s a list
+  // or a number, or for none, that it can’t name one (#1074).
   if (name === 'Read' && Array.isArray(i.paths) && i.paths.length) return { summary: 'use Read', detail: pathLines(i.paths) };
+  if (name === 'Read' && i.file_path === '') return { summary: 'use Read', detail: NO_PATH };
   switch (name) {
     case 'Bash':
       return { summary: i.description ? `run a command: ${clip(i.description, 80)}` : 'run a command', detail: String(i.command ?? '') };
