@@ -108,3 +108,24 @@ test('after a Stop, a slash command run during the exit is its own turn, and the
     ['conversation', ['Wake W from alpha.']],
   ]);
 });
+
+test('after writes close and stop the turn, the first turn once they reopen takes the wake queued in its thread too', async () => {
+  const f = setup();
+  const busy = held();
+  f.adapter.next.push(busy.step);
+  f.rt.sendMessage(f.t.id, { text: '@beta start' });
+  await sleep(5);
+  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending from gamma.' });
+  f.rt.agentWake(f.alpha.id, 'beta', 'Wake W from alpha.');
+  // Writes close: the outage stops the running turn, and what waited behind it is held for its exit (store-outage.mjs).
+  f.store.fail(Object.assign(new Error('disk sync refused'), { code: 'EIO' }));
+  await settle(f.rt);
+  assert.ok(f.rt.exiting.has(f.beta.id), 'the outage stopped the turn, which is exiting');
+  busy.release();
+  await settle(f.rt);
+  f.store.writable = true; // writes reopen, as Retry does, and the status listeners run what waited
+  f.store.cause = null;
+  f.store.tellStatus();
+  await settle(f.rt);
+  assert.deepEqual(turnsAfterFirst(f), [['conversation', ['Pending from gamma.', 'Wake W from alpha.']]]);
+});
