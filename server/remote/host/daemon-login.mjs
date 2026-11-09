@@ -32,7 +32,9 @@ export async function findWithLogin(d) {
 export async function reprobe(d) {
   d.reprobed ??= (async () => {
     await loginEntries(d);
-    d.loginPath = await d.probeLoginPath();
+    // A re-probe that fails keeps the first probe’s PATH: losing it would lose every CLI found there, for good.
+    const again = await d.probeLoginPath();
+    if (again.ok || !d.loginPath?.ok) d.loginPath = again;
     await findWithLogin(d);
   })();
   await d.reprobed;
