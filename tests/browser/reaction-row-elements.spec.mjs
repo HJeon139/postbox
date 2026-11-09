@@ -1,7 +1,8 @@
-// The reaction row in six elements (scrum-master’s fix 3, from the person’s Firefox profiles): the five buttons, always
+// The reaction row in six elements (#1060, from the person’s Firefox profiles): the five buttons, always
 // shown (#320), each drawing its own icon and count, so a row adds 6 elements to every item, not 11. In a 300-item room
 // on main the rows were 3,300 of 7,850 elements, 42%, which something that searches every element on each key (a
-// browser extension, in the maintainer’s profile) pays for. The icons are the colored PNGs, kept in forced colors.
+// browser extension, in the maintainer’s profile) pays for. The icons are the colored PNGs, and they paint in forced
+// colors too, checked by what is painted rather than by a property (#1068).
 
 import { expect, test } from '@playwright/test';
 import { toggleReaction } from '../../server/reactions.mjs';
@@ -38,6 +39,14 @@ failOnPageErrors(test);
 
 const row = (page) => page.locator(`.transcript > [data-key="${message.id}"] .react-row`);
 const button = (page, name) => row(page).getByRole('button', { name: new RegExp(`^${name}\\b`) });
+/** The button as painted, and as painted with one pseudo-element hidden: they differ only if that part paints. */
+async function paints(page, loc, which) {
+  const shown = await loc.screenshot({ animations: 'disabled' });
+  await page.addStyleTag({ content: `.react-btn${which} { visibility: hidden !important; }` });
+  const hidden = await loc.screenshot({ animations: 'disabled' });
+  await page.evaluate(() => document.querySelector('style:last-of-type')?.remove());
+  return !shown.equals(hidden);
+}
 /** A pseudo-element’s computed style, by property. */
 const pseudo = (loc, which, prop) => loc.evaluate((el, [w, p]) => getComputedStyle(el, w).getPropertyValue(p), [which, prop]);
 
@@ -70,14 +79,32 @@ for (const width of [375, 1280])
       await expect(good, 'no count where nobody reacted').not.toHaveAttribute('data-count', /./);
     });
 
+    test('a count from another is painted beside the icon, and kept out of what a screen reader reads', async ({ page }) => {
+      toggleReaction(app.rt, thread.id, message.id, '🚩', { id: critic.id, handle: 'judge' });
+      await synced(page, app);
+      const flag = button(page, 'Flag this');
+      await expect(flag).toHaveAttribute('data-count', '1');
+      expect(await paints(page, flag, '::after'), 'the count paints').toBe(true);
+      // The button’s name already says how many; the drawn count stays out of the tree, as its aria-hidden span did.
+      expect(await flag.ariaSnapshot()).not.toMatch(/: "1"/);
+    });
+
     for (const theme of ['dark', 'light'])
-      test(`the icons still show in forced colors, on ${theme}`, async ({ page }) => {
+      test(`the icon paints in forced colors, on ${theme}`, async ({ page }) => {
+        await page.emulateMedia({ forcedColors: 'active' });
+        await page.evaluate((t) => {
+          document.documentElement.dataset.theme = t;
+        }, theme);
+        expect(await paints(page, button(page, 'Good'), '::before'), 'the icon paints').toBe(true);
+      });
+
+    for (const theme of ['dark', 'light'])
+      test(`in forced colors the icon is the theme’s own, on ${theme}`, async ({ page }) => {
         await page.emulateMedia({ forcedColors: 'active' });
         await page.evaluate((t) => {
           document.documentElement.dataset.theme = t;
         }, theme);
         const good = button(page, 'Good');
-        expect(await pseudo(good, '::before', 'forced-color-adjust'), 'the icon keeps its own colors').toBe('none');
         expect(await pseudo(good, '::before', 'background-image')).toMatch(theme === 'light' ? /reaction-approve-rim/ : /reaction-approve-64/);
       });
   });
