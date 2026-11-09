@@ -41,14 +41,17 @@ function offerable(dir, home) {
 
 /**
  * The folder a read card is about, by its real path, or null: the path itself when it’s a folder, as Antigravity’s
- * list_dir, grep_search and find_by_name send one, else the file’s folder.
+ * list_dir, grep_search and find_by_name send one, else the folder of the file it leads to, so a link to ~/.ssh/id_rsa
+ * is judged as ~/.ssh. A file that doesn’t exist yet is judged by its folder.
  * @param {any} input
  */
 function folderOf(input) {
   const path = typeof input?.file_path === 'string' ? input.file_path.trim() : '';
   if (!isAbsolute(path)) return null;
-  const isFolder = statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
-  return real(isFolder ? path : dirname(path));
+  const target = real(path);
+  if (!target) return real(dirname(path));
+  const isFolder = statSync(target, { throwIfNoEntry: false })?.isDirectory() ?? false;
+  return isFolder ? target : dirname(target);
 }
 
 /** Whether a card is one this module answers: a read on this computer by an Antigravity agent. */
@@ -78,6 +81,8 @@ export function inReadFolder(rt, sessionId, { tool, input, hostPrompt = null }) 
   const se = rt.s.sessions[sessionId];
   const backend = se ? rt.persona(se.personaId)?.backend : undefined;
   if (!se?.readDirs?.length || !answersRead({ backend, tool, hostId: hostPrompt?.hostId ?? null })) return false;
+  // Where the read leads, so a link in a saved folder to ~/.ssh isn’t inside it. A saved folder passed the offer’s
+  // checks, so it never holds home or a dot-folder in it.
   const dir = folderOf(input);
   if (!dir) return false;
   return se.readDirs.some((/** @type {string} */ saved) => dir === saved || dir.startsWith(saved + sep));
