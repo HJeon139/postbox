@@ -113,3 +113,38 @@ for (const width of [375, 1280]) {
     });
   });
 }
+
+// #1101: closing is the other direction of the same press. The held refill rebuilt an open item open before its old
+// toggle ran, so the press left it open.
+for (const width of [375, 1280]) {
+  test.describe(`closing, at ${width} px`, () => {
+    test.use(width === 375 ? { viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } : {});
+
+    test(`a press held on an open turn’s row while the Work list refills closes the turn, at ${width} px`, async ({ page }) => {
+      await paneAtTurn(page);
+      await page.locator(`#wturn-s-${TURN}`).hover();
+      await page.mouse.down();
+      await refillWork(page);
+      await page.mouse.up();
+      await expect(page.locator(`#wturn-${TURN}`), 'the turn, closed').not.toHaveAttribute('open', '');
+      await refillWork(page);
+      await expect(page.locator(`#wturn-${TURN}`), 'and it stays closed through the next refill').not.toHaveAttribute('open', '');
+    });
+
+    test(`a press held on an open command in a turn’s view while it refills closes the command, at ${width} px`, async ({ page }) => {
+      await paneAtTurn(page);
+      await page.locator(`#wc-open-${TURN}`).click();
+      const summary = page.locator(`.pane-full #wsum-${COMMAND}`);
+      const item = page.locator(`.pane-full details.work-item:has(#wsum-${COMMAND})`);
+      await summary.click();
+      await expect(item, 'the command, opened first').toHaveAttribute('open', '');
+      await summary.hover();
+      await page.mouse.down();
+      await refillWork(page);
+      await page.mouse.up();
+      await expect(item, 'the command, closed').not.toHaveAttribute('open', '');
+      await refillWork(page);
+      await expect(item, 'and it stays closed through the next refill').not.toHaveAttribute('open', '');
+    });
+  });
+}
