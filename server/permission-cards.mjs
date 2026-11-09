@@ -9,6 +9,7 @@ import { changeHostRule } from './host-rules.mjs';
 import { editedInput, MAX_EDIT_INPUT, MAX_REASON } from './permission-edit.mjs';
 import { closeCard, dismissPermission } from './permission-expiry.mjs';
 import { addAllowRule, rulesFor, takeBackRule } from './permission-rules.mjs';
+import { inReadFolder } from './read-folders.mjs';
 import { requestAdapter } from './remote/placement.mjs';
 import { gated } from './store-outage.mjs';
 import { draftOf, isWriteCall, whereOf } from './write-guard.mjs';
@@ -47,6 +48,8 @@ export async function requestPermission(rt, sessionId, req) {
   // A write outside Postbox the person already settled runs without a card (#112), as does a call they asked for (#296).
   const settled = rt.s.sessions[sessionId] ? await settledCall(rt, sessionId, req) : null;
   if (settled) return settled;
+  // A read in a folder the conversation saved as readable, earlier in this turn too (#338).
+  if (inReadFolder(rt, sessionId, req)) return { allow: true };
   return rt.askPerson(sessionId, req);
 }
 

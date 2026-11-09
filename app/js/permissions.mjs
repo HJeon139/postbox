@@ -23,6 +23,14 @@ export { MODES, openRunChoice } from './run-choice.mjs';
 
 const S = () => client.state;
 
+/** What a folder in the panel is to the agent: where it works, the project’s, read only (#338), or where it came from. */
+function folderLabel(f) {
+  if (f.source === 'folder') return 'Where it works';
+  if (f.source === 'project') return 'The project’s folder';
+  if (f.source === 'read') return 'Read only, in this conversation';
+  return `From ${SOURCE[f.source]}`;
+}
+
 const SOURCE = {
   user: 'your user settings',
   project: 'the project’s shared settings',
@@ -469,8 +477,8 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
             'li',
             icon('folder', 'dim'),
             h('span.mono.grow.perm-path', f.path),
-            h('span.small.dim', f.source === 'folder' ? 'Where it works' : f.source === 'project' ? 'The project’s folder' : `From ${SOURCE[f.source]}`),
-            f.source === 'conversation'
+            h('span.small.dim', folderLabel(f)),
+            f.source === 'conversation' || f.source === 'read'
               ? h(
                   'button.btn.sm.ghost',
                   {
@@ -478,7 +486,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
                     'aria-label': `Remove ${f.path}`,
                     onclick: () =>
                       change(
-                        () => api('/api/permissions/folders', { sessionId: current, path: f.path, remove: true }),
+                        () => api('/api/permissions/folders', { sessionId: current, path: f.path, remove: true, read: f.source === 'read' }),
                         `Removed ${f.path} from this conversation.`,
                       ),
                   },
