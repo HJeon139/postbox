@@ -12,7 +12,7 @@ import { test } from 'node:test';
 import { nameProblem } from '../server/assets.mjs';
 import { fullPath, sessionFolder } from '../server/folder-path.mjs';
 import { readHookFile } from '../server/permission-hooks.mjs';
-import { hidesName, uploadName } from '../server/upload-name.mjs';
+import { shownName, uploadName } from '../server/upload-name.mjs';
 import { checkHostPath } from '../shared/remote-settings.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -54,7 +54,7 @@ const folderRefused = (folder) => {
 const hostRefused = (path) => {
   const r = checkHostPath(path, 'folder');
   if (r.ok) return false;
-  assert.equal(r.error, `folder ${FOLDER_HIDDEN.slice('A folder’s path '.length)}`, name(path));
+  assert.equal(r.error, `folder ${FOLDER_HIDDEN.slice('A folder’s path '.length)} Type the path again rather than paste it.`, name(path));
   return true;
 };
 /** A hook’s matcher and command as the Permissions panel gets them. @param {string} mark */
@@ -103,7 +103,7 @@ test('#1049 an upload’s name has each default-ignorable character and line or 
 });
 
 test('#1049 a project file whose path holds a default-ignorable character or a separator is refused when attached', () => {
-  for (const c of NEW) assert.equal(hidesName(c), true, name(c));
+  for (const c of NEW) assert.notEqual(shownName(`notes/a${c}b.md`), `notes/a${c}b.md`, name(c));
 });
 
 test('#1049 a hook’s text shows each default-ignorable character as a replacement mark, and a separator as a space', async () => {
@@ -127,11 +127,12 @@ test('#1049 ZWNJ, ZWJ and VS16 are taken exactly where they were, and a format c
       folder: !folderRefused(`/tmp/a${c}b`),
       hostPath: !hostRefused(`/srv/a${c}b`),
       upload: uploadName(`a${c}b.txt`) === `a${c}b.txt`,
-      projectFile: !hidesName(c),
+      projectFile: shownName(`notes/a${c}b.md`) === `notes/a${c}b.md`,
       hook: matcher === `Ba${c}sh`,
       refusedFolderShown: !sessionShowsEscape(c),
     };
   }
   const only = (folder, upload) => ({ asset: false, folder, hostPath: folder, upload, projectFile: upload, hook: false, refusedFolderShown: false });
-  assert.deepEqual(taken, { ZWNJ: only(true, true), ZWJ: only(true, true), VS16: only(false, true), 'U+FFF9': only(false, false) });
+  // Since #1067 an upload’s name and a project file’s path keep VS16 only after an emoji, so not between a and b.
+  assert.deepEqual(taken, { ZWNJ: only(true, true), ZWJ: only(true, true), VS16: only(false, false), 'U+FFF9': only(false, false) });
 });
