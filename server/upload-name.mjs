@@ -9,13 +9,20 @@ import { partEnd } from '../shared/text-parts.mjs';
 const NAME_MAX = 200;
 
 /**
- * The name to keep for an upload: each \, /, control character, lone surrogate or character a project’s folder refuses
- * as hidden (shared/invisible.mjs, so ZWNJ and ZWJ stay, joining letters and emoji) is “_”, and it’s cut at NAME_MAX,
- * never between the halves of a surrogate pair. An empty name is “file”.
+ * Whether one character (a code point, or a lone surrogate) would hide or reorder a file’s name as it’s shown: a
+ * control character, a lone surrogate, or one a project’s folder refuses as hidden (shared/invisible.mjs, so ZWNJ and
+ * ZWJ pass, joining letters and emoji). A message’s project file is held to it too (server/message-attachments.mjs).
+ * @param {string} c
+ */
+export const hidesName = (c) => hasControl(c) || hiddenInFolder(c);
+
+/**
+ * The name to keep for an upload: each \, / and character that hidesName is “_”, and it’s cut at NAME_MAX, never
+ * between the halves of a surrogate pair. An empty name is “file”.
  * @param {string} sent  the header, decoded
  * @returns {string}
  */
 export function uploadName(sent) {
-  const shown = Array.from(sent, (c) => (c === '\\' || c === '/' || hasControl(c) || hiddenInFolder(c) ? '_' : c)).join('');
+  const shown = Array.from(sent, (c) => (c === '\\' || c === '/' || hidesName(c) ? '_' : c)).join('');
   return shown.slice(0, partEnd(shown, NAME_MAX)) || 'file';
 }

@@ -17,7 +17,7 @@ function room() {
   s.store.emit('file', { id: 'f1', name: 'report_fdp.exe', type: 'application/x-msdownload', size: 5, sha256: SHA, at: 1, inCorpus: false });
   return s;
 }
-const forged = { kind: 'file', fileId: 'f1', name: `report${RLO}fdp.exe`, type: 'application/pdf', size: 1 };
+const forged = { kind: 'file', fileId: 'f1', name: `report${RLO}fdp.exe`, type: 'application/pdf', size: 1, path: '/etc/passwd' };
 const KEPT = { kind: 'file', fileId: 'f1', name: 'report_fdp.exe', type: 'application/x-msdownload', size: 5 };
 
 test('#991 a file attachment is stored with its upload’s name, type and size, not the ones the message sent', async () => {
@@ -49,12 +49,27 @@ test('#991 a message queued behind a busy agent holds its file’s upload name t
   await settle(rt);
 });
 
-test('#991 a file attachment whose upload isn’t known is kept, as before, with its name cleaned as an upload’s', async () => {
+test('#991 a file attachment whose upload isn’t known is kept, as before, with its name cleaned as an upload’s, or “file”', async () => {
   const { rt, store, t } = room();
   const sent = { kind: 'file', fileId: 'gone', name: `a${RLO}b.txt`, type: 'text/plain', size: 3 };
-  const { item } = rt.sendMessage(t.id, { text: '@beta read this', attachments: [sent] });
-  assert.deepEqual(store.state.items[t.id].find((i) => i.id === item.id).attachments, [{ ...sent, name: 'a_b.txt' }]);
+  const unnamed = { kind: 'file', fileId: 'gone' };
+  const { item } = rt.sendMessage(t.id, { text: '@beta read this', attachments: [sent, unnamed] });
+  assert.deepEqual(store.state.items[t.id].find((i) => i.id === item.id).attachments, [
+    { ...sent, name: 'a_b.txt' },
+    { ...unnamed, name: 'file' },
+  ]);
   await settle(rt);
+});
+
+test('#991 attachments that aren’t a list of objects are refused with a 422, and nothing is posted', () => {
+  const { rt, store, t } = room();
+  for (const attachments of ['report.exe', { kind: 'file', fileId: 'f1' }, null, [null], ['f1']])
+    assert.throws(
+      () => rt.sendMessage(t.id, { text: '@beta read this', attachments }),
+      (e) => e.status === 422 && e.message === 'attachments is a list of files, each an object.',
+      JSON.stringify(attachments),
+    );
+  assert.deepEqual(store.state.items[t.id] ?? [], [], 'nothing posted');
 });
 
 test('#991 a project file is attached by its path, and one whose path holds a bidi or invisible character is refused', async () => {
