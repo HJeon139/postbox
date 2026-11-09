@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, test } from 'node:test';
 import { NO_TOKEN, remotePaths, seedGitRemote } from '../../tools/uat/git-remote.mjs';
@@ -114,6 +114,18 @@ describe('the run checks the guard before Postbox starts', () => {
     assert.throws(() => preflightRun({ seed: null }, dir, dir, open), /git in the agent’s shell isn’t refused an https remote/);
   });
 
+  test('a computer with no gh at all has no login to reach, and the run goes on', () => {
+    const { dir, env } = agentEnv({});
+    // A shell that skips the profile, with only git on PATH: a login shell could bring an installed gh back.
+    const bin = join(dir, 'only-git');
+    mkdirSync(bin);
+    symlinkSync(sh('/bin/sh', ['-c', 'command -v git'], process.env).stdout.trim(), join(bin, 'git'));
+    const shell = join(dir, 'shell');
+    writeFileSync(shell, `#!/bin/sh\nPATH=${bin}; export PATH\nexec /bin/sh -c "$2"\n`);
+    chmodSync(shell, 0o755);
+    assert.doesNotThrow(() => preflightRun({ seed: null }, dir, dir, { ...env, SHELL: shell }));
+  });
+
   test('a `- github: real` run isn’t held to it', () => {
     const { dir, env } = agentEnv({ github: 'real' });
     assert.doesNotThrow(() => preflightRun({ seed: null, github: 'real' }, dir, dir, env));
@@ -130,5 +142,7 @@ describe('the run checks the guard before Postbox starts', () => {
     const env = { ...personEnv(), ...runEnv({ gate: { env: {} }, paths, scenario, dir, opt: { telemetry: 'no' }, faults: null }) };
     assert.doesNotThrow(() => preflightRun(scenario, workspace, dir, env));
     assert.equal(env.PATH.split(':')[0], remotePaths(dir).bin);
+    const fromFile = sh('/bin/sh', ['-c', `. '${remotePaths(dir).envFile}'; printf %s "$GH_TOKEN"`], { ...env, GH_TOKEN: '' });
+    assert.equal(fromFile.stdout, NO_TOKEN, 'the file the agent’s shell sources after its profile keeps gh off the keychain');
   });
 });

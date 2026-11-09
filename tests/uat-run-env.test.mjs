@@ -19,6 +19,7 @@ test('a git-remote run’s Postbox gets the guard, the fake gh first, the agent�
   assert.equal(e.GIT_CONFIG_VALUE_0, 'never');
   assert.ok(e.PATH.startsWith('/r/bin:'), e.PATH);
   assert.equal(e.GH_CONFIG_DIR, '/r/gh-config');
+  assert.equal(e.GH_TOKEN, NO_TOKEN, 'empty, gh would go to the keychain');
   assert.equal(e.CLAUDE_ENV_FILE, '/r/agent-env.sh');
   assert.equal(e.SSH_AUTH_SOCK, '');
   assert.equal(e.GIT_CONFIG_GLOBAL, '/r/gitconfig', 'the person’s own ~/.gitconfig: hooks, credential helpers, insteadOf');
