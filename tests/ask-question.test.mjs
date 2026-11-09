@@ -123,7 +123,9 @@ test('#521 the Other text is the answer, and dismissing denies the call and show
   const two = s.ask(inputOf('two-auto'));
   await until(() => s.questions().length === 2, 'the next turn’s first question');
   s.rt.act(s.t.id, s.questions()[1].id, 'dismiss', {});
-  assert.deepEqual(await two, { behavior: 'deny', message: 'The person dismissed the question.' });
+  const dismissed = await two;
+  assert.equal(dismissed.behavior, 'deny');
+  assert.equal(dismissed.message, 'The person dismissed the question. Not shown to them: “Which fruits?”.');
   await until(() => !s.rt.turns.size, 'the turn to end');
   assert.equal(s.questions().length, 2, 'the second question was never shown');
 });

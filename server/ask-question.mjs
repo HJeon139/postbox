@@ -72,26 +72,45 @@ function choiceOf(q) {
 export async function askQuestions(rt, sessionId, req, blocks) {
   /** @type {Record<string, string>} */
   const answers = {};
-  for (const block of blocks) {
+  for (const [i, block] of blocks.entries()) {
     const got = await askOne(rt, sessionId, block, req.toolUseId ?? null);
-    if (got.dismissed) return { allow: false, message: DISMISSED };
-    if (!got.values) return { allow: false, message: stillOpen(got.message, answers) };
+    const unasked = blocks.slice(i + 1);
+    if (got.dismissed) return { allow: false, message: [DISMISSED, answeredText(answers), unaskedText(unasked)].filter(Boolean).join(' ') };
+    if (!got.values) return { allow: false, message: stillOpen(got.message, answers, unasked) };
     answers[block.prompt] = answerText(block, got.values);
   }
   return { allow: true, updatedInput: { ...req.input, answers } };
 }
 
 /** The chosen labels in the options’ order, then the Other text, joined with “, ” as Claude Code joins several. */
-function answerText(block, { selected = [], other }) {
+export function answerText(block, { selected = [], other }) {
   const chosen = block.options.filter((o) => selected.includes(o.id)).map((o) => o.label);
   return [...chosen, ...(other ? [other] : [])].join(', ');
 }
 
 /** Why the call ends unanswered, what was answered before it, and that the question stays open. */
-function stillOpen(why, answers) {
+function stillOpen(why, answers, unasked) {
+  return [why ?? 'The turn ended before the person answered.', answeredText(answers), STILL_OPEN, unaskedText(unasked)].filter(Boolean).join(' ');
+}
+
+/** What the person answered before the call ended, or ''. @param {Record<string, string>} answers */
+function answeredText(answers) {
   const before = Object.entries(answers).map(([q, a]) => `“${q}”: ${a}`);
-  const said = before.length ? ` They had answered ${before.join('; ')}.` : '';
-  return `${why ?? 'The turn ended before the person answered.'}${said} ${STILL_OPEN}`;
+  return before.length ? `They had answered ${before.join('; ')}.` : '';
+}
+
+/** The call’s questions the person never saw, or ''. @param {any[]} unasked  their blocks */
+function unaskedText(unasked) {
+  return unasked.length ? `Not shown to them: ${unasked.map((b) => `“${b.prompt}”`).join(', ')}.` : '';
+}
+
+/**
+ * What a late answer to a question block says to the agent (#521): the question and the labels, since Postbox made
+ * the block’s and the options’ ids and the agent never saw them. @param {any} block @param {any} values
+ * @param {boolean} dismissed
+ */
+export function lateAnswer(block, values, dismissed) {
+  return { text: block.prompt, answer: dismissed ? null : answerText(block, values) };
 }
 
 /**

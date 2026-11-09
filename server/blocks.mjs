@@ -7,7 +7,7 @@ import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mj
 import { buildEvent } from '../shared/events.mjs';
 import { LIMITS } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
-import { answerQuestion, waitingQuestion } from './ask-question.mjs';
+import { answerQuestion, lateAnswer, waitingQuestion } from './ask-question.mjs';
 import { releaseNeed } from './card-needs.mjs';
 import { clip, clipText, httpError } from './helpers.mjs';
 import { REACT, toggleReaction } from './reactions.mjs';
@@ -67,8 +67,10 @@ export function act(rt, threadId, itemId, action, values, revision) {
   rt.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
   const se = rt.s.sessions[it.sessionId];
   releaseNeed(rt, se, itemId);
+  // A question whose call has gone gets its answer as an event, with its question and labels in words (#521).
+  const event = it.question ? { ...r.event, question: lateAnswer(it.block, r.event.values, dismissed) } : r.event;
   if (asked) answerQuestion(rt, itemId, dismissed ? null : r.event.values);
-  else if (se) rt.deliver(se.id, { kind: 'event', event: r.event, blockItemId: itemId }, { threadId });
+  else if (se) rt.deliver(se.id, { kind: 'event', event, blockItemId: itemId }, { threadId });
   return { ok: true, voice: r.voice };
 }
 

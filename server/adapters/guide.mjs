@@ -273,6 +273,9 @@ export function formatMessage(message, pathOf = () => null) {
   return [body, facts, lint, message.context?.length ? `${BACKGROUND}\n\n${message.context.join('\n\n')}` : ''].filter(Boolean).join('\n\n');
 }
 
+/** A late answer to an AskUserQuestion, in words. @param {{ text: string, answer: string | null }} q */
+const lateQuestion = (q) => `It answers your AskUserQuestion “${q.text}”: ${q.answer === null ? 'the person dismissed it' : `the person chose “${q.answer}”`}.`;
+
 const BACKGROUND = '[Postbox] Background for this turn: what waited for it and what happened since your last one. The request above is your task.';
 
 function formatBody(message, pathOf) {
@@ -288,6 +291,8 @@ function formatBody(message, pathOf) {
     case 'event':
       return [
         `[Postbox] ${message.event.from ? `@${message.event.from} reviewed your` : 'The person acted in'} block “${message.event.blockId}”${message.event.revision ? ` (revision ${message.event.revision})` : ''}: ${message.event.action}\n${JSON.stringify(message.event.values ?? {})}`,
+        // A late answer to an AskUserQuestion (#521): Postbox made the block, so its ids mean nothing to the agent.
+        message.event.question ? lateQuestion(message.event.question) : '',
         // A review’s comments, as the history gives them (#179): “line 12, col 5–23 “the quoted text”: the comment”.
         isReview(message.event)
           ? message.event.values.comments

@@ -61,7 +61,7 @@ These come from one day that showed four gaps: a push with no word to the review
 - **#416:** gemini isn’t in Auto.
 - **#338:** both gemini and gpt read files outside the project.
 - **A resend after a failed turn** can repeat a prompt the backend already saved; Codex and Antigravity logs both show the prompt saved before any output. The design labels every resend, so nothing more is needed here.
-- **Asking the person a question:** use Postbox’s choice and form blocks, not Claude Code’s `AskUserQuestion`, until #521 is fixed.
+- **Asking the person a question:** Postbox’s choice and form blocks, or Claude Code’s `AskUserQuestion`, which Postbox shows as a choice block per question and answers in the same turn (#521). On a host, `AskUserQuestion` still shows a permission card (#1059), so use the blocks there.
 
 ## Where rooms should keep rules like these
 
