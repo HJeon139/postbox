@@ -61,8 +61,13 @@ export function preflightRun(scenario, workspace, dir, env) {
     try {
       preflightRemote(workspace, dir, env);
     } catch (e) {
-      // The run’s stop doesn’t exist yet, so nothing else would remove the remote this run seeded.
-      tearDownRemote(dir, () => {});
+      // The run’s stop doesn’t exist yet, so nothing else would remove the remote this run seeded. The preflight’s reason
+      // is what stops the run: a teardown that fails too only adds that the remote is still there.
+      try {
+        tearDownRemote(dir, () => {});
+      } catch (left) {
+        throw new Error(`${e.message} The run’s remote couldn’t be removed either: ${left.message}`, { cause: e });
+      }
       throw e;
     }
   } else if (scenario.github !== 'real') preflightNoGithub(env);
