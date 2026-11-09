@@ -2,8 +2,8 @@
 // and offers no Open or Attach, a link inside it opens as a folder, and a folder that won’t open (it became a link out
 // since it was listed) says why above the list, which stays, with its Up. On a project whose folder, in the spec’s
 // temp folder, holds the links. Moved from tools/checks/folder-picker.mjs (#303). A file whose name holds a
-// right-to-left override is listed with it marked, its row’s title naming it, and attaches by its real path, and a folder whose name holds an
-// isolate heads the list marked once opened (#1052).
+// right-to-left override is listed with it marked, its row’s title naming it, and sending it is refused (#1046), and a
+// folder whose name holds an isolate heads the list marked once opened (#1052).
 
 import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -110,7 +110,7 @@ test('#28 a folder that won’t open says why above the list, which stays, with 
   }
 });
 
-test('#1052 a file whose name reorders text is listed with the character marked, and attaches by its real path', async ({ page }) => {
+test('#1052 a file whose name reorders text is listed with the character marked, and sending it is refused', async ({ page }) => {
   await picker(page);
   await expect(row(page, 'a\uFFFDb.txt'), 'listed with the override marked').toHaveCount(1);
   await expect(list(page).locator('.grow', { hasText: '\u202E' }), 'nowhere shown as it is').toHaveCount(0);
@@ -118,18 +118,19 @@ test('#1052 a file whose name reorders text is listed with the character marked,
   await expect(row(page, 'a\uFFFDb.txt'), 'its title names what the mark stands for').toHaveAttribute('title', 'Contains U+202E');
   await expect(row(page, 'notes.txt'), 'a name shown as it is has no title').not.toHaveAttribute('title');
   await button(page, 'Attach a\uFFFDb.txt').click();
-  // The attachment is the file as it is on disk. #1046 refuses sending one whose path holds such a character; until
-  // it lands, the message carries it.
+  // The attachment is the file as it is on disk, and #1046 refuses sending one whose path holds such a character:
+  // replacing it would point the agent at another file, or at none.
+  allowPageError(page, /status of 422/);
   await page.locator('.main .composer').getByRole('button', { name: 'Send', exact: true }).click();
-  await expect
-    .poll(() =>
-      app.store
-        .items(threadId)
-        .filter((i) => i.kind === 'user')
-        .flatMap((i) => i.attachments ?? [])
-        .map((a) => [a.kind, a.path]),
-    )
-    .toEqual([['project-file', REVERSED]]);
+  const refused = page.locator('.toast', { hasText: 'Your message didn’t send' });
+  await expect(refused, 'the refusal, as the server gives it').toContainText(
+    '“a_b.txt” can’t be attached: its name holds a control or invisible character, such as a bidi control. Rename it first.',
+  );
+  await synced(page, app);
+  expect(
+    app.store.items(threadId).filter((i) => i.kind === 'user'),
+    'nothing was sent',
+  ).toEqual([]);
 });
 
 test('#1052 a folder whose name holds a bidi isolate is listed, and heads the list once opened, with it marked', async ({ page }) => {
