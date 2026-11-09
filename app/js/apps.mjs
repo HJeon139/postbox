@@ -104,13 +104,17 @@ addEventListener('message', async (e) => {
         if (refused) return reply(null, refused);
       }
       try {
+        // One after another per app (#934), so the limit counts, and the server stores, in the order the app sent.
         // Without per-frame activation (see SNAPSHOTS), every send waits for you on a card.
-        const r = await api(`/api/apps/${encodeURIComponent(rec.appId)}/event`, {
-          action: m.action,
-          values: m.values,
-          hold: !SNAPSHOTS || overLimit(rec.appId),
+        const r = await inOrder(rec.appId, async () => {
+          const sent = await api(`/api/apps/${encodeURIComponent(rec.appId)}/event`, {
+            action: m.action,
+            values: m.values,
+            hold: !SNAPSHOTS || overLimit(rec.appId),
+          });
+          if (!sent.held) countSent(rec.appId);
+          return sent;
         });
-        if (!r.held) countSent(rec.appId);
         reply(r);
       } catch (err) {
         reply(null, err.message);
@@ -165,6 +169,21 @@ addEventListener('message', async (e) => {
 const SNAPSHOTS = typeof MessageEvent !== 'undefined' && 'userActivation' in MessageEvent.prototype;
 const NOT_ACTIVATED = 'Postbox sends an app’s message only right after the person clicks or presses a key in the app.';
 const NOT_ENTERED = 'Postbox refused this app’s message: the app took the keyboard without the person clicking or tabbing into it.';
+
+/** Each app’s last send, so the next starts once it has an answer (#934). @type {Map<string, Promise<unknown>>} */
+const sendChains = new Map();
+/**
+ * Runs an app’s send after the one before it has an answer, failed or not, so one that fails holds back none after
+ * it. O(1) per send: one promise kept per app. @param {string} appId @param {() => Promise<any>} send
+ */
+function inOrder(appId, send) {
+  const run = (sendChains.get(appId) ?? Promise.resolve()).then(send);
+  sendChains.set(
+    appId,
+    run.catch(() => {}),
+  );
+  return run;
+}
 
 /** @type {{ frame: HTMLIFrameElement, at: number } | null} the app frame a Tab key press is moving focus into */
 let tabbing = null;
