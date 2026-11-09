@@ -256,5 +256,42 @@
         "is_error": true
       }
     }
-  ]
+  ],
+  "deniedResult": {
+    "about": "The deny-auto turn's result line, trimmed to these fields: the CLI lists the dismissed AskUserQuestion in permission_denials.",
+    "line": {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "permission_denials": [
+        {
+          "tool_name": "AskUserQuestion",
+          "tool_use_id": "toolu_bdrk_01GDhTJLi9pBff2CUU5fvMfQ",
+          "tool_input": {
+            "questions": [
+              {
+                "question": "Which color do you prefer?",
+                "header": "Color",
+                "options": [
+                  {
+                    "label": "Red",
+                    "description": "Choose red"
+                  },
+                  {
+                    "label": "Green",
+                    "description": "Choose green"
+                  },
+                  {
+                    "label": "Blue",
+                    "description": "Choose blue"
+                  }
+                ],
+                "multiSelect": false
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
 }

@@ -6,10 +6,11 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { test } from 'node:test';
+import { mock, test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { canUseTool } from '../server/adapters/sdk-permission.mjs';
 import { STILL_OPEN } from '../server/ask-question.mjs';
+import { CARD_WAIT_MS } from '../server/permission-cards.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 
@@ -96,7 +97,10 @@ test('#521 two questions show one block at a time, and a multi-select answer is 
   const asked = s.ask(input);
   await until(() => s.questions().length === 1, 'the first question');
   assert.equal(s.questions()[0].block.prompt, 'Which color?');
-  s.choose(s.questions()[0], ['Green']);
+  const first = s.questions()[0];
+  s.choose(first, ['Green']);
+  assert.notEqual(s.se().needs?.itemId, first.id, 'answered, the first no longer needs the person');
+  assert.equal(s.store.item(s.t.id, first.id).answer.read, true, 'the agent has its answer, in the call’s result');
   await until(() => s.questions().length === 2, 'the second question, after the first is answered');
   const fruits = s.questions()[1];
   assert.equal(fruits.block.prompt, 'Which fruits?');
@@ -169,6 +173,7 @@ test('#521 a turn stopped while a question waits tells the agent it stays open, 
   s.rt.stop(s.se().id);
   const answer = await asked;
   assert.equal(answer.behavior, 'deny');
+  assert.ok(answer.message.startsWith('You stopped the agent.'), `the agent hears why it ended, as a stopped card’s call does: ${answer.message}`);
   assert.ok(answer.message.includes(STILL_OPEN), `the agent hears the question is still open: ${answer.message}`);
   assert.ok(answer.message.includes('“Which color?”: Red'), `and what the person already answered: ${answer.message}`);
   await until(() => !s.rt.turns.size, 'the turn to end');
@@ -189,4 +194,45 @@ test('#521 a question past the catalog’s limits keeps today’s permission car
   const card = s.items().find((i) => i.kind === 'permission' && i.status === 'open');
   s.rt.act(s.t.id, card.id, 'deny', {});
   assert.equal((await asked).behavior, 'deny');
+});
+
+test('#521 a question on a host keeps today’s permission card', async () => {
+  const s = setup();
+  let asked;
+  s.adapter.next.push(async (c) => {
+    asked = s.rt.requestPermission(s.se().id, {
+      tool: 'AskUserQuestion',
+      summary: 'use AskUserQuestion',
+      input: inputOf('one-auto'),
+      hostPrompt: { hostId: 'h1', turn: 'ht1', id: 'p1' },
+    });
+    await asked;
+    c.text('Done.');
+  });
+  s.rt.sendMessage(s.t.id, { text: 'Ask me.' });
+  await until(() => s.items().some((i) => i.kind === 'permission' && i.status === 'open'), 'the host prompt’s card');
+  assert.equal(s.questions().length, 0, 'no question block');
+  s.rt.act(s.t.id, s.items().find((i) => i.kind === 'permission' && i.status === 'open').id, 'deny', {});
+  assert.equal((await asked).allow, false);
+});
+
+test('#521 a question nobody answers within CARD_WAIT_MS stays open, and the agent hears one thing: don’t ask again', async () => {
+  const s = setup();
+  // The question’s timer is armed when its block shows, so the clock is faked from before the ask; the wait for the
+  // block polls without timers.
+  mock.timers.enable({ apis: ['setTimeout'] });
+  let answer;
+  try {
+    const asked = s.ask(inputOf('one-auto'));
+    for (let i = 0; i < 2000 && s.questions().length === 0; i++) await new Promise((r) => setImmediate(r));
+    assert.equal(s.questions().length, 1, 'the question');
+    mock.timers.tick(CARD_WAIT_MS);
+    answer = await asked;
+  } finally {
+    mock.timers.reset();
+  }
+  assert.equal(answer.behavior, 'deny');
+  assert.ok(answer.message.includes(STILL_OPEN), answer.message);
+  assert.ok(!/ask again if/i.test(answer.message), `no “ask again” beside “don’t ask it again”: ${answer.message}`);
+  assert.equal(s.store.item(s.t.id, s.questions()[0].id).answered, false, 'the block stays asking');
 });
