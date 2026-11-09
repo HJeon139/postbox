@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.53.1 (2026-11-09)
+
+### Fixes
+
+- **blocks:** a late answer to an AskUserQuestion tells the agent its question and labels (#521)
+- **blocks:** a question whose wait ends mid-turn lets go of the running turn's need (#521)
+- **blocks:** an AskUserQuestion's block holds its call's id, and a host keeps the card (#521)
+- **blocks:** AskUserQuestion asks as choice blocks, and the answers are its result (#521)
+
 ## 1.53.0 (2026-11-09)
 
 ### Features
