@@ -35,7 +35,7 @@ test('#1032 blank lines after a To line are read in linear time', () => {
   }
 });
 
-// critic’s P1 on d2d569be: the flag class held a space, so a long line of spaces split three ways before failing.
+// #1032: a flag class that held a space let a long line of spaces split three ways before failing.
 test('#1032 one line of 100,000 spaces after a To line is read in linear time', () => {
   const out = `${TO}${' '.repeat(100_000)}\n`;
   const t0 = performance.now();
