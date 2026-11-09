@@ -8,6 +8,7 @@ import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { decideAgyTool, isProtectedPath, runAgyHook } from '../server/adapters/agy-hook.mjs';
+import { describePermission } from '../server/adapters/claude-permission.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const READS = ['read_file', 'view_file', 'list_dir', 'find_by_name', 'grep_search'];
@@ -149,4 +150,40 @@ test('#1074 a read naming a path that isn’t a string next to a project file as
   const { home, ws } = aHome();
   const res = decide('grep_search', { Path: join(ws, 'a.txt'), SearchPath: 42 }, { mode: 'auto', folders: [ws], cwd: ws, home });
   assert.deepEqual(res, { decision: 'ask', toolName: 'Read', input: { file_path: '' } });
+});
+
+test('#1074 a read card names every outside path on a line of its own, however long the first', () => {
+  const { home, ws, out, ssh } = aHome();
+  const opts = { mode: 'ask', folders: [ws], cwd: ws, home };
+  const dots = decide('grep_search', { Path: `${out}/${'./'.repeat(1100)}secret.txt`, SearchPath: ssh }, opts);
+  assert.deepEqual(describePermission('Read', dots.input).detail.split('\n'), [join(out, 'secret.txt'), ssh], 'its ./ runs dropped');
+  const deep = decide('grep_search', { Path: `${out}/${'sub/'.repeat(1100)}secret.txt`, SearchPath: ssh }, opts);
+  const { detail } = describePermission('Read', deep.input);
+  const [first, second] = detail.split('\n');
+  assert.ok(detail.length <= 4000, 'within what the card keeps');
+  assert.equal(second, ssh);
+  assert.ok(first.startsWith(`${out}/sub/`) && first.includes('…') && first.endsWith('/sub/secret.txt'), 'the long one clipped, with a mark');
+});
+
+test('#1074 a write card names its path with its ./ runs dropped', () => {
+  const { home, ws, out } = aHome();
+  const res = decide('write_file', { Path: `${out}/${'./'.repeat(1100)}x.txt` }, { mode: 'ask', folders: [ws], cwd: ws, home });
+  assert.deepEqual(res, { decision: 'ask', toolName: 'Write', input: { file_path: join(out, 'x.txt') } });
+});
+
+test('#1074 an edited path on a card about a tidied path goes back in that path’s field', async () => {
+  const { home, ws, out } = aHome();
+  const args = { Path: join(ws, 'a.txt'), SearchPath: `${out}/./secret.txt` };
+  /** @type {any} */
+  let asked = null;
+  const fetchImpl = async (_url, { body }) => {
+    const rpc = JSON.parse(body);
+    asked = rpc.params.arguments.input;
+    const text = JSON.stringify({ behavior: 'allow', updatedInput: { file_path: join(out, 'other.txt') } });
+    return { ok: true, status: 200, json: async () => ({ jsonrpc: '2.0', id: rpc.id, result: { content: [{ type: 'text', text }] } }) };
+  };
+  const env = { POSTBOX_MCP_URL: 'http://127.0.0.1:1/mcp', POSTBOX_AGY_MODE: 'ask', POSTBOX_AGY_FOLDERS: JSON.stringify([ws]) };
+  const res = await runAgyHook(JSON.stringify({ toolCall: { name: 'grep_search', args } }), { cwd: ws, env, home, fetchImpl: /** @type {any} */ (fetchImpl) });
+  assert.deepEqual(asked, { file_path: join(out, 'secret.txt') });
+  assert.deepEqual(res, { decision: 'allow', overwrite: { ...args, SearchPath: join(out, 'other.txt') } });
 });
