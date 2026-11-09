@@ -20,6 +20,6 @@ export const runEnv = ({ gate, paths, scenario, dir, opt, faults }) => ({
   ...tm.telemetryEnv(scenario, dir, opt),
   ...chainLimitEnv(scenario), // the scenario’s `- chain-limit:` (#508), for the Postbox this run starts and restarts
   ...noGithubEnv(scenario, dir), // every run’s agents have no gh login and no network git, unless `- github: real` says so
-  ...gitRemoteEnv(scenario, dir), // `- seed: git-remote`’s guards (#305): the run’s git reaches no network remote, and its gh is a fake
+  ...gitRemoteEnv(scenario, dir), // `- seed: git-remote`’s guards (#305): the agents’ git reaches no network remote, and their gh is a fake
   ...faults?.env,
 });
