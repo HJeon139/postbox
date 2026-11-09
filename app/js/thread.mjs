@@ -239,7 +239,12 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   const updateText = (id, force = false) => {
     const it = itemsOf(threadId)[placeIn(threadId, id)]; // undefined when it's gone, as find() gave
     const node = nodes.get(id);
-    if (!it || !node) return;
+    if (!it) return;
+    // A reply the window hasn’t mounted, while you read higher up, is still heard as it streams (#866).
+    if (!node) {
+      if (!force) announceStreaming(it.id, it.text, it.status !== 'streaming', it.handle);
+      return;
+    }
     const box = node.querySelector(':scope > .md');
     if (!box) {
       rerender(id);
@@ -253,7 +258,16 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
   return {
     el,
     settle: view.settle,
-    scrollToEnd: view.scrollToEnd,
+    /**
+     * To the end. If the window has moved away from the newest item (#866), it’s mounted first, and the view goes there
+     * at once: a smooth scroll would cross a blank spacer. @param {boolean} [smooth]
+     */
+    scrollToEnd: (smooth) => {
+      const last = itemsOf(threadId).at(-1);
+      const away = !!win && !!last && !nodes.has(last.id);
+      if (away) win?.reach(last.id);
+      return view.scrollToEnd(smooth && !away);
+    },
     setJump: view.setJump,
     destroy() {
       off();

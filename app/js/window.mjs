@@ -3,18 +3,19 @@
 // (window-heights.mjs), so opening it builds a bounded number of items however long it is. It grows toward a spacer
 // as you scroll (W1), and past its ceiling unmounts what’s furthest from the view (W2). An item with focus stays
 // mounted where it is, between spacers of its own, until focus leaves it; an item’s open
-// details come back when it’s mounted again. It’s behind a flag until search (W4) and screen-reader support (W5)
-// land, since find-in-page can’t see items that aren’t on the page.
+// details come back when it’s mounted again. It’s on by default for a conversation over its ceiling (the person’s
+// choice of 8 Nov); find-in-page, select-all and print see only what’s mounted, and search (W4) covers the rest.
 //
-//   localStorage.setItem('pb-window', 'on')    turns it on in this browser
+//   localStorage.setItem('pb-window', 'off')    turns it off in this browser
 
 import { h } from './dom.mjs';
 import { restoreDetails } from './rerender-state.mjs';
 import { holdView } from './view-jump.mjs';
 import { holdSkipping } from './view-skip.mjs';
 import { createHeights } from './window-heights.mjs';
+import { edgeKeys } from './window-keys.mjs';
 import { CEILING, CHUNK, FLOOR, MARGIN } from './window-limits.mjs';
-import { drop, dropBottom, dropTop, fill, gapBefore, paintSpacers, pinned, recenter, rejoin, release, shrink } from './window-shrink.mjs';
+import { drop, dropBottom, dropTop, fill, gapBefore, leap, paintSpacers, pinned, recenter, rejoin, release, shrink } from './window-shrink.mjs';
 
 const FLAG = 'pb-window';
 // Rough first estimates by kind, in px, from prep-712’s 1,000-item room at 1280 px (median 71 px); a kind’s own
@@ -67,6 +68,7 @@ export function createWindow(o) {
 
 /** Every window on the page, so a jump to an item can find the one that holds it. @type {Set<TranscriptWindow>} */
 const live = new Set();
+edgeKeys(live);
 
 /**
  * The node for an item a window holds, mounting the range around it first if it’s off the page; null when no window
@@ -210,6 +212,8 @@ class TranscriptWindow {
     this.raf = 0;
     if (!this.el.isConnected) return;
     this.release();
+    // A scroll far past both edges (the scrollbar dragged, Home, End) moves the range there at once.
+    if (leap(this)) return holdView(this.el);
     const reach = this.viewH() * MARGIN;
     if (this.from > 0 && this.above.getBoundingClientRect().bottom > -reach) this.growUp();
     if (this.to < this.total && this.below.getBoundingClientRect().top < this.viewH() + reach) {
@@ -255,6 +259,8 @@ class TranscriptWindow {
     this.mountRun(this.from, this.to, this.below);
     this.paintSpacers();
     requestAnimationFrame(() => {
+      // Torn down before its first frame (a room switch, a resync): nothing to listen for.
+      if (!live.has(this)) return;
       this.gap = Number.parseFloat(getComputedStyle(this.el).rowGap) || 0;
       this.paintSpacers();
       this.scroller().addEventListener('scroll', this.scrolled, { passive: true });
