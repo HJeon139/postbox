@@ -11,6 +11,9 @@ const SMALL = 500;
 // expect’s 5 s (5,000 items timed out at load 17 on the build host). And no less than many times the window’s CEILING
 // (240, window-limits.mjs): a room at or below it mounts whole, and the bounded-range case would pass with no window.
 const LARGE = 3000;
+// Over the ceiling, for the window off: the smallest room the window would hold, so mounting it whole syncs within
+// expect’s 5 s on CI’s runners, where 500 mounted whole didn’t (window-default.spec.mjs has the same).
+const OFF = 300;
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
@@ -19,7 +22,7 @@ const rooms = {};
 test.beforeAll(async () => {
   app = await startPostbox('window-w1');
   const projectId = Object.values(app.rt.s.projects)[0].id;
-  for (const count of [SMALL, LARGE]) {
+  for (const count of [OFF, SMALL, LARGE]) {
     const t = app.rt.createThread({ projectId, title: `${count} items`, personaIds: [] });
     seedBigRoom(app.store, t.id, { count });
     rooms[count] = t.id;
@@ -62,9 +65,10 @@ test('#866 with the window on, a 5,000-item room holds about as many elements as
 
 for (const on of [false, true])
   test(`#866 with the window ${on ? 'on' : 'off'}, a message sent into the open room appears at the end`, async ({ page }) => {
-    await open(page, SMALL, on);
+    const count = on ? SMALL : OFF;
+    await open(page, count, on);
     const text = `A new message, window ${on ? 'on' : 'off'}`;
-    app.store.emit('item.add', { threadId: rooms[SMALL], item: { id: `it_new_${on}`, at: Date.now(), kind: 'user', text } });
+    app.store.emit('item.add', { threadId: rooms[count], item: { id: `it_new_${on}`, at: Date.now(), kind: 'user', text } });
     await synced(page, app);
     await expect(page.locator('#main > .item').last(), 'the newest item is the message').toContainText(text);
     await expect(page.locator('#main > .item').last()).toBeInViewport();
