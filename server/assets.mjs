@@ -36,10 +36,10 @@ function refuse(code, message) {
 
 /**
  * What a name can’t hold (#704), besides INVISIBLE’s characters (shared/invisible.mjs, which takes in every format
- * character, the bidi controls, the variation selectors and the Hangul fillers): a backslash; a control character, C0,
- * DEL or C1 (Cc); a line or paragraph separator (Zl, Zp); a lone surrogate (Cs), which isn’t text; the blank braille
- * pattern (U+2800), which shows as nothing; and the noncharacters U+FFFE and U+FFFF. Each can hide or reorder what the
- * page shows of a name, or isn’t a character at all.
+ * character, the bidi controls and every default-ignorable code point, ZWNJ, ZWJ and VS16 included, #1049): a
+ * backslash; a control character, C0, DEL or C1 (Cc); a line or paragraph separator (Zl, Zp); a lone surrogate (Cs),
+ * which isn’t text; the blank braille pattern (U+2800), which shows as nothing; and the noncharacters U+FFFE and
+ * U+FFFF. Each can hide or reorder what the page shows of a name, or isn’t a character at all.
  */
 const HIDDEN = /[\\\p{Cc}\p{Zl}\p{Zp}\p{Cs}\u2800\ufffe\uffff]/u;
 
