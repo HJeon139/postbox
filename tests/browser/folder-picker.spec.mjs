@@ -18,6 +18,8 @@ let away;
 let threadId;
 /** A file’s name that reads as “ab.txt” reordered: a, a right-to-left override, then b.txt. */
 const REVERSED = 'a\u202Eb.txt';
+/** A file’s name an emoji’s ZWJ holds, which shows whole, as a display name does. */
+const CODER = '👩\u200D💻.txt';
 test.beforeAll(async () => {
   app = await startPostbox('folder-picker');
   // The project’s folder, and a folder beside it that its links lead to.
@@ -27,6 +29,7 @@ test.beforeAll(async () => {
   await mkdir(away);
   await writeFile(join(root, 'notes.txt'), 'notes');
   await writeFile(join(root, REVERSED), 'reversed');
+  await writeFile(join(root, CODER), 'coder');
   await mkdir(join(root, 'in\u2066side'));
   await writeFile(join(root, 'docs', 'guide.md'), '# Guide');
   await writeFile(join(away, 'secret.txt'), 'not for the picker');
@@ -117,6 +120,8 @@ test('#1052 a file whose name reorders text is listed with the character marked,
   await expect(row(page, 'a\uFFFDb.txt').getByRole('button')).toHaveAccessibleName('Attach a\uFFFDb.txt');
   await expect(row(page, 'a\uFFFDb.txt'), 'its title names what the mark stands for').toHaveAttribute('title', 'Contains U+202E');
   await expect(row(page, 'notes.txt'), 'a name shown as it is has no title').not.toHaveAttribute('title');
+  await expect(row(page, CODER), 'an emoji’s ZWJ shows whole, unmarked').toHaveCount(1);
+  await expect(row(page, CODER)).not.toHaveAttribute('title');
   await button(page, 'Attach a\uFFFDb.txt').click();
   // The attachment is the file as it is on disk, and #1046 refuses sending one whose path holds such a character:
   // replacing it would point the agent at another file, or at none.

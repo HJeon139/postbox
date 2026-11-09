@@ -7,7 +7,7 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { badgeOf, checkShortName, REMOVED_BADGE, SHORT_MAX } from '../shared/host-badge.mjs';
-import { FINE, HOSTILE } from './hidden-chars-fixture.mjs';
+import { FINE, HOSTILE, JOINED } from './hidden-chars-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 test('an agent whose host was removed gets a fixed word, not a cut of “a removed host”', () => {
@@ -74,6 +74,13 @@ test('#1052 a short name with a control character, one that hides or reorders te
   assert.deepEqual(
     Object.entries(HOSTILE).map(([what, c]) => [what, checkShortName(`a${c}b`)]),
     Object.keys(HOSTILE).map((what) => [what, { ok: false, error: UNSEEN_ERROR }]),
+  );
+});
+
+test('#1052 a short name refuses ZWJ, ZWNJ and VS16 too, which a display name keeps', () => {
+  assert.deepEqual(
+    Object.entries(JOINED).map(([what, s]) => [what, checkShortName(s).ok]),
+    Object.keys(JOINED).map((what) => [what, false]),
   );
 });
 

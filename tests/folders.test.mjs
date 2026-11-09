@@ -6,13 +6,13 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { listFolder, markedName } from '../server/folders.mjs';
-import { FINE, HOSTILE } from './hidden-chars-fixture.mjs';
+import { FINE, JOINED, SHOWN_HIDDEN } from './hidden-chars-fixture.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 test('#1052 a name that hides or reorders text is shown with each such character marked', () => {
   assert.deepEqual(
-    Object.entries(HOSTILE).map(([what, c]) => [what, markedName(`a${c}${c}b`)]),
-    Object.keys(HOSTILE).map((what) => [what, 'a\uFFFD\uFFFDb']),
+    Object.entries(SHOWN_HIDDEN).map(([what, c]) => [what, markedName(`a${c}${c}b`)]),
+    Object.keys(SHOWN_HIDDEN).map((what) => [what, 'a\uFFFD\uFFFDb']),
   );
   assert.equal(markedName('😀'), '😀', 'a whole pair is one character, shown as it is');
   for (const s of FINE) assert.equal(markedName(s), s);
@@ -53,4 +53,17 @@ test('#1052 an entry whose shown name is marked lists the code points it hides, 
     ],
   );
   assert.equal('hidden' in entries[1], false);
+});
+
+test('#1052 a name with ZWJ, ZWNJ or VS16 shows whole, as a display name does, with nothing listed as hidden', async () => {
+  const root = tempDir('pb-folders-');
+  for (const name of Object.values(JOINED)) await writeFile(join(root, `${name}.txt`), 'x');
+  await writeFile(join(root, '\u2764\uFE0F\u202E.txt'), 'x');
+  const { entries } = await listFolder({ folder: root }, '');
+  const byName = Object.fromEntries(entries.map((e) => [e.name, [e.shown, e.hidden]]));
+  assert.deepEqual(
+    Object.entries(JOINED).map(([what, name]) => [what, byName[`${name}.txt`]]),
+    Object.entries(JOINED).map(([what, name]) => [what, [`${name}.txt`, undefined]]),
+  );
+  assert.deepEqual(byName['\u2764\uFE0F\u202E.txt'], ['\u2764\uFE0F\uFFFD.txt', ['U+202E']], 'an override beside VS16 is still marked');
 });
