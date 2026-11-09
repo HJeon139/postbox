@@ -2,6 +2,19 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.52.1 (2026-11-09)
+
+### Fixes
+
+- **remote:** mark a turn as waiting for its backend only when nothing else holds it (#965)
+- **uat:** keep every run's agents off the person's real GitHub
+- **personas:** the Undo-during-purge tests wait for the slow forget, not a fixed time (#1039)
+- **sandbox:** let only Postbox’s page frame the app and Mermaid sandbox pages
+- **remote:** the Interrupted hint says a turn waits for its backend, not for its host (#965)
+- **remote:** a host turn's PATH holds the daemon's own Node folder after the login shell's (#672)
+- **remote:** a failed re-probe keeps the first PATH; a host's status carries loginPath (#672)
+- **remote:** run host turns with the login shell's PATH (#672, #474)
+
 ## 1.52.0 (2026-11-09)
 
 ### Features
