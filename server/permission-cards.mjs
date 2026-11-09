@@ -1,6 +1,7 @@
 // Permission cards and refusal cards: a call that waits for your answer, and a call Claude Code refused without asking.
 // Runtime keeps a one-line method for each, so its callers and tests don’t change.
 
+import { isDeepStrictEqual } from 'node:util';
 import { adapterOf } from './adapters/adapter.mjs';
 import { POSTBOX_TIMEOUT_MS } from './adapters/setup.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
@@ -174,6 +175,10 @@ export function resolvePermission(rt, threadId, itemId, action, values = {}) {
     return rt.allowAlways(threadId, it, asked);
   } else if (action === 'edit') {
     const input = editedInput(it, values);
+    // An edit that changes nothing is a plain allow (#979), so the call runs with its own input. Only an identical one:
+    // the same keys with the same values of the same types, in any order, since the tool reads an object, not its text.
+    // Any other change, a space inside a command included, stays an edit with its updatedInput.
+    if (isDeepStrictEqual(input, it.input)) return resolvePermission(rt, threadId, itemId, 'allow');
     rt.addItem(threadId, { kind: 'voice', text: `Allowed with your edit: ${asked}` });
     rt.settlePermission(
       itemId,
