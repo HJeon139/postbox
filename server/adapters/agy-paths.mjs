@@ -38,7 +38,11 @@ export const PATH_FIELDS = Object.freeze(['Path', 'TargetFile', 'AbsolutePath', 
  * judged (#1074). A blank one names nothing; a value that isn’t a string is kept, so the call is judged unreadable.
  * @param {any} args @returns {unknown[]}
  */
-export const pathArgs = (args) => PATH_FIELDS.map((k) => args?.[k]).filter((v) => v !== undefined && v !== null && !(typeof v === 'string' && !v.trim()));
+export function pathArgs(args) {
+  const named = (/** @type {unknown} */ v) => v !== undefined && v !== null;
+  const blank = (/** @type {unknown} */ v) => typeof v === 'string' && !v.trim();
+  return PATH_FIELDS.map((k) => args?.[k]).filter((v) => named(v) && !blank(v));
+}
 
 /**
  * The places a path may name, absolute but with its .. kept for realTarget: from cwd, and for one that starts with ~,
