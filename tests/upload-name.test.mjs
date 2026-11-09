@@ -53,6 +53,11 @@ test('#991 an upload’s name keeps what shows, and has each control, invisible 
   for (const [name, kept] of CASES) assert.equal(await uploaded(encodeURIComponent(name)), kept, JSON.stringify(name));
 });
 
+test('an upload with an empty name, or none, is kept as “file”', async () => {
+  assert.equal(await uploaded(''), 'file');
+  assert.equal(await uploaded(encodeURIComponent('')), 'file');
+});
+
 test('#991 an upload’s name sent unencoded, with a C1 control in the header, has it as “_”', async () => {
   assert.equal(await uploaded('a\u0085b.txt'), 'a_b.txt');
 });
