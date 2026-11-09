@@ -70,7 +70,7 @@ export function fakeClock(t0 = 1_760_000_000_000) {
 /**
  * A daemon over a temp home, with fake runners.
  * @param {{ token?: string | null, same?: boolean, clock?: ReturnType<typeof fakeClock>, onIdle?: () => void, settings?: object, uid?: number, spawn?: any, broker?: any,
- *   log?: (line: string) => void, sameProcess?: (r: any) => boolean | Promise<boolean>, answer?: (turn: string) => boolean, pollMs?: number,
+ *   log?: (line: string) => void, sameProcess?: (r: any) => boolean | Promise<boolean>, answer?: (turn: string) => boolean, pollMs?: number, stopGraceMs?: number,
  *   env?: Record<string, string>, findPrograms?: (o: any) => Promise<any>, probeLoginPath?: () => Promise<any> }} [o]
  *   spawn: the daemon’s own spawn, for the sign-in check (the runners are launchRunner’s, faked here). broker: in place
  *   of the daemon’s own. sameProcess: in place of the fake one that answers `same`, such as proc.mjs’s own over fake facts.
@@ -91,6 +91,7 @@ export function setup({
   sameProcess,
   answer,
   pollMs = 10,
+  stopGraceMs = 5000,
   findPrograms = async () => structuredClone(PROGRAMS_FOUND),
   probeLoginPath = async () => ({ ok: false, why: 'the test’s host has no login shell' }),
 } = {}) {
@@ -143,7 +144,7 @@ export function setup({
     log,
     onIdle,
     pollMs,
-    stopGraceMs: 5000,
+    stopGraceMs,
     ...(uid === undefined ? {} : { uid }),
     ...(spawn ? { spawn } : {}),
     ...(broker ? { broker } : {}),
