@@ -95,6 +95,23 @@ describe('an agent’s git reaches no network remote', () => {
     assert.doesNotMatch(fill(agentEnv({}).env).stdout, /password=/);
   });
 
+  // From critic’s read of #1109: a terminal such as VS Code’s sets GIT_ASKPASS, which the agents inherit, and git asks
+  // it for a password when no helper answers. This askpass answers every prompt with a made-up password.
+  for (const source of ['GIT_ASKPASS', 'SSH_ASKPASS', 'core.askPass']) {
+    test(`git hands an agent no password from an askpass the person’s ${source} names`, () => {
+      const person = tempDir('postbox-uat-github-askpass-home-');
+      const askpass = join(person, 'askpass');
+      writeFileSync(askpass, `#!/bin/sh\necho ${TOKEN}\n`);
+      chmodSync(askpass, 0o755);
+      if (source === 'core.askPass') writeFileSync(join(person, '.gitconfig'), `[core]\n\taskPass = ${askpass}\n`);
+      const theirs = source === 'core.askPass' ? {} : { [source]: askpass };
+      const ask = 'protocol=https\nhost=github.com\n\n';
+      const fill = (env) => spawnSync('git', ['credential', 'fill'], { env: { ...env, HOME: person }, input: ask, encoding: 'utf8', timeout: 20_000 });
+      assert.match(fill({ ...personEnv(), ...theirs }).stdout, new RegExp(`password=${TOKEN}`), 'the control: the person’s own git gets it');
+      assert.doesNotMatch(fill(agentEnv({}, { ...personEnv(), ...theirs }).env).stdout, /password=/);
+    });
+  }
+
   test('a push to a local path still lands', () => {
     const remote = join(tempDir('postbox-uat-github-bare-'), 'remote.git');
     sh('git', ['init', '-q', '--bare', '-b', 'main', remote], personEnv());
