@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { buildIndex, search, semanticStub, tokenize } from '../shared/bm25.mjs';
-import { finishedSentences, formatDuration, parseMentions, plainText, spokenSentences } from '../shared/text.mjs';
+import { clip, finishedSentences, formatDuration, parseMentions, plainText, spokenSentences } from '../shared/text.mjs';
 import { isSafeUrl } from '../shared/urls.mjs';
 
 test('mentions: known handles only, in order, not in code or emails', () => {
@@ -137,4 +137,27 @@ test('the semantic stub finds related words, scored 0 to 1', () => {
   assert.ok(semanticStub('we should die of that roar which lies on the other side of silence', 'hope after loss') > 0);
   assert.equal(semanticStub('nothing related here', 'hope'), 0);
   assert.equal(semanticStub('half agony, half hope', 'hope'), 1);
+});
+
+// A cut ends before a character, never inside the surrogate pair of one past U+FFFF, which would leave a lone half
+// that shows as nothing or a box (#1052). clip keeps n - 1 units and adds the ellipsis.
+const PAIR = '\u{1F600}';
+test('#1052 clip ends before an emoji whose pair the cut would split', () => {
+  assert.equal(clip(`ab${PAIR}cd`, 4), 'ab…');
+  assert.equal(clip(PAIR, 1), '…', 'a cut of no units leaves only the ellipsis');
+});
+
+test('#1052 clip keeps an emoji that ends right at the cut, and text within the limit', () => {
+  assert.equal(clip(`a${PAIR}cd`, 4), `a${PAIR}…`);
+  assert.equal(clip(`ab${PAIR}`, 4), `ab${PAIR}`);
+});
+
+test('#1052 clip drops a lone first half already at the cut, and leaves one before it as it was', () => {
+  assert.equal(clip('ab\uD83Dcd', 4), 'ab…');
+  assert.equal(clip('a\uD83Dbcd', 4), 'a\uD83Db…');
+});
+
+test('#1052 clip of nothing is nothing', () => {
+  assert.equal(clip('', 4), '');
+  assert.equal(clip(undefined, 4), '');
 });

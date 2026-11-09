@@ -18,6 +18,7 @@ import { describeStop, notOnHost, stopNoteEl } from './composer-host.mjs';
 import { fitDraft } from './composer-size.mjs';
 import { addressLine, addressSig, commandHint, placeholderFor } from './composer-to.mjs';
 import { $, ago, dayOf, fill, h, icon, plural, syncList, timeOf, trusted } from './dom.mjs';
+import { draftAttachments } from './draft-attachments.mjs';
 import { failedCallout } from './failed-actions.mjs';
 import { goToItem } from './go-to-item.mjs';
 import { focusComposer, hopBlock } from './hop-card.mjs';
@@ -732,7 +733,9 @@ export function mountComposer(threadId, { side = false } = {}) {
   // / and ! (#67) live in a conversation’s own composer, not in a thread panel’s.
   const commands = !side && !topic;
   const key = `pb-draft-${threadId}`;
-  let attachments = [];
+  // The draft’s files are kept with its text (#849): the list is the thread’s, shared by each composer mounted for it.
+  const draft = draftAttachments(threadId);
+  const attachments = draft.list();
   let mention = null; // { start, query, index }
   const ta = h('textarea', {
     id: side ? 'side-input' : 'composer-input',
@@ -827,17 +830,15 @@ export function mountComposer(threadId, { side = false } = {}) {
   async function addFiles(files) {
     for (const f of files) {
       const chip = { kind: 'file', name: f.name, size: f.size, type: f.type, uploading: true };
-      attachments.push(chip);
-      paintAtt();
+      draft.add(chip);
       try {
         // The name the upload kept (#991): a character that would hide or reorder it is “_” there.
         const { id, name, size, type } = await uploadFile(f);
-        Object.assign(chip, { fileId: id, name, size, type, uploading: false });
+        draft.update(chip, { fileId: id, name, size, type, uploading: false });
       } catch (e) {
-        attachments = attachments.filter((x) => x !== chip);
+        draft.remove(chip);
         toast({ title: `Couldn’t attach ${f.name}`, text: e.message, level: 'blocking' });
       }
-      paintAtt();
     }
   }
   function paintAtt() {
@@ -853,10 +854,7 @@ export function mountComposer(threadId, { side = false } = {}) {
             {
               type: 'button',
               'aria-label': `Remove ${a.name ?? a.path}`,
-              onclick: () => {
-                attachments = attachments.filter((x) => x !== a);
-                paintAtt();
-              },
+              onclick: () => draft.remove(a),
             },
             icon('x', 'i-sm'),
           ),
@@ -884,8 +882,7 @@ export function mountComposer(threadId, { side = false } = {}) {
           icon: 'folder',
           run: () =>
             openFolderPicker(t.projectId, (path) => {
-              attachments.push({ kind: 'project-file', path });
-              paintAtt();
+              draft.add({ kind: 'project-file', path });
               focusComposer();
             }),
         },
@@ -1136,8 +1133,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     );
     if (ok) {
       ta.value = '';
-      attachments = [];
-      paintAtt();
+      draft.clear();
       save();
       autosize();
     }
@@ -1568,10 +1564,12 @@ export function mountComposer(threadId, { side = false } = {}) {
     );
   }
   paint();
+  paintAtt();
   autosize();
   const off = client.on((ch) => {
     if (['thread', 'session', 'connection', 'outbox', 'load', 'persona', 'host'].includes(ch.type)) paint();
   });
+  const unwatch = draft.watch(paintAtt);
   return {
     el,
     focus: () => ta.focus(),
@@ -1584,6 +1582,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     },
     destroy() {
       off();
+      unwatch();
       unlisten();
     },
   };

@@ -2,6 +2,7 @@
 // (persona.remote = { hostId }). Which backends run here, which can run on a host, and the checks a persona’s
 // placement passes when it’s made or changed. The runtime (server/runtime.mjs) calls these with itself first.
 
+import { lookedText } from '../../shared/remote-protocol.mjs';
 import { clipText, httpError } from '../helpers.mjs';
 
 /** A harness’s name for the person, and the host setting that names its path (shared/remote-settings.mjs). */
@@ -66,7 +67,7 @@ function checkHarness(rt, h, backend) {
   const found = w.harnesses.find((/** @type {any} */ x) => x?.name === backend);
   if (found?.path) return;
   const [label, setting] = HARNESS_LABELS[backend] ?? [backend, 'its path'];
-  const looked = found?.looked?.length ? ` Postbox’s daemon looked in ${found.looked.join(', ')}.` : '';
+  const looked = found?.looked?.length ? ` Postbox’s daemon looked in ${lookedText(found)}.` : '';
   throw httpError(
     422,
     `${label} isn’t installed on ${h.name}, so this agent can’t run there.${looked} Install it there, or set ${setting} in the host’s settings.`,

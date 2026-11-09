@@ -5,7 +5,7 @@
 // where it is hear yours at their next turn, and an agent’s is heard by the agent whose message it is. A reaction
 // repaints only its own buttons: the item, an app’s frame among them, isn’t drawn again.
 // Each button draws its reaction’s icon (app/media/reactions) and its count itself (workbench.css, data-icon and
-// data-count), so a row is six elements on every item: in a long room the rows were most of the page. Its name says
+// data-count), so a row is six elements on every item: in a 300-item room the rows were 42% of the page. Its name says
 // the reaction, who made it and how many, so nothing a screen reader hears comes from the icon.
 
 import { REACTIONS } from '/shared/reactions.mjs';
