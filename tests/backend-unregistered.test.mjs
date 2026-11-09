@@ -270,3 +270,23 @@ test('#874 a host turn reattached for an unregistered backend is Interrupted onc
   assert.equal(failed.length, 1, 'one, for the first');
   assert.equal(failed[0].remote?.state, 'interrupted');
 });
+
+test('#874 moving an agent whose stored backend name hides text shows that name stripped and clipped, here or to a host', () => {
+  const f = setup();
+  unregister(f, f.b, `é\u202e\u{e0041}<b>"&${'x'.repeat(200)}`);
+  const h = f.rt.addHost({ name: 'host.example.com' });
+  for (const remote of [null, { hostId: h.id }]) {
+    assert.throws(
+      () => f.rt.updatePersona(f.b.id, { remote }),
+      (e) => {
+        assert.equal(e.status, 422);
+        const name = e.message.match(/“(.*?)”/s)?.[1] ?? '';
+        assert.ok(name.startsWith('é<b>"&x'), name);
+        assert.ok(name.length <= 40, `${name.length} characters`);
+        assert.doesNotMatch(e.message, /[\u202e\u{e0041}]/u);
+        return true;
+      },
+      JSON.stringify(remote),
+    );
+  }
+});
