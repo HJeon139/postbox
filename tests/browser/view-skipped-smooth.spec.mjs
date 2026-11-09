@@ -194,7 +194,9 @@ test('a wheel up during the jump is you reading: the view stays where you turned
 
 // A click or a key that can’t scroll the page doesn’t stop the jump, so it isn’t you reading: starting a reply while
 // the jump runs leaves it to go the rest of the way and follow (app/js/view-smooth.mjs). Two cases, so a click and a
-// key are told apart: a click into the composer, and typing into it after a focus that no input made.
+// key are told apart: a click into the composer, and typing into it after a focus that no input made. The items are
+// taller than their estimates, so the page grows under the jump and its glide ends short of the end, and only
+// smoothEnded() takes it the rest of the way (#1069): at their usual size the glide reaches the end on its own here.
 for (const [how, act] of /** @type {const} */ ([
   ['a click into the composer', (page) => page.locator('#composer-input').click()],
   [
@@ -206,6 +208,9 @@ for (const [how, act] of /** @type {const} */ ([
   ],
 ]))
   test(`${how} during the jump isn’t you reading: it still ends following at the end`, async ({ page }) => {
+    await page.addInitScript((rule) => {
+      addEventListener('DOMContentLoaded', () => document.head.append(Object.assign(document.createElement('style'), { textContent: rule })));
+    }, '.transcript .item { line-height: 2 !important }');
     await readingAtTop(page, `Smooth jump, then ${how}`);
     await jump(page);
     await expect.poll(() => page.evaluate(() => scrollY), { message: 'the jump to be on its way' }).toBeGreaterThan(2000);
