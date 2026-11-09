@@ -208,3 +208,11 @@ test('in a diff, a changed delimiter or fence marker is kept, so the block can s
     ['del', 'del'],
   );
 });
+
+test('#1098 a table says how many of its units head it: one, or two when a diff renamed the header', () => {
+  const [plain] = diff(' | a | b |', ' |---|---|', ' | 1 | 2 |');
+  const [renamed] = diff('-| a | b |', '+| a | c |', ' |---|---|', ' | 1 | 2 |');
+  if (plain.type !== 'table' || renamed.type !== 'table') return assert.fail('expected table groups');
+  assert.equal(plain.head, 1);
+  assert.equal(renamed.head, 2);
+});

@@ -60,6 +60,9 @@ export async function reviewRoom(name) {
       if (message.kind === 'user' && message.text.endsWith('review')) ctx.tools.show_block({ block });
       if (message.kind === 'user' && message.text.endsWith('revise'))
         ctx.tools.update_block({ block: { ...block, revision: 2, content: `${DRAFT}\n\nOne more line.`, previous: DRAFT } });
+      // A revision that renames the table’s Cost column, leaving its delimiter as it was (#1098).
+      if (message.kind === 'user' && message.text.endsWith('rename'))
+        ctx.tools.update_block({ block: { ...block, revision: 2, content: DRAFT.replace('| Name | Cost |', '| Name | Price |'), previous: DRAFT } });
       // As the UAT’s agent revised (#248): with previous, and no revision of its own, which is optional.
       const again = /revise (\d+)$/.exec(message.kind === 'user' ? message.text : '');
       if (message.kind === 'user' && message.text.endsWith('file')) ctx.tools.update_block({ block: { id: block.id, outcome: 'Filed as #418.' } });
