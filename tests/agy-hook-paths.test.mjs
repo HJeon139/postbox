@@ -67,6 +67,13 @@ test('#1074 a ~ path is judged as the home folder too, since whether agy expands
   assert.equal(decide('read_file', { Path: '~notes/a.md' }, opts).decision, 'allow', 'a name that only starts with ~ is a file in the project');
 });
 
+test('#1074 a bare ~ is the home folder too, so listing it asks', () => {
+  const { home, ws } = aHome();
+  const opts = { mode: 'auto', folders: [ws], cwd: ws, home };
+  assert.deepEqual(decide('list_dir', { DirectoryPath: '~' }, opts), { decision: 'ask', toolName: 'Read', input: { file_path: '~' } });
+  assert.equal(decide('run_command', { CommandLine: 'ls ~' }, opts).decision, 'ask', 'a routine command’s ~ too');
+});
+
 test('#1074 a ~ path that leads into the folders read either way needs no card', () => {
   const { home, ws } = aHome();
   assert.equal(decide('read_file', { Path: '~/ws/a.txt' }, { mode: 'ask', folders: [ws], cwd: ws, home }).decision, 'allow');
