@@ -2,7 +2,7 @@
 // and offers no Open or Attach, a link inside it opens as a folder, and a folder that won’t open (it became a link out
 // since it was listed) says why above the list, which stays, with its Up. On a project whose folder, in the spec’s
 // temp folder, holds the links. Moved from tools/checks/folder-picker.mjs (#303). A file whose name holds a
-// right-to-left override is listed with it marked, and attaches by its real path, and a folder whose name holds an
+// right-to-left override is listed with it marked, its row’s title naming it, and attaches by its real path, and a folder whose name holds an
 // isolate heads the list marked once opened (#1052).
 
 import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
@@ -115,6 +115,8 @@ test('#1052 a file whose name reorders text is listed with the character marked,
   await expect(row(page, 'a\uFFFDb.txt'), 'listed with the override marked').toHaveCount(1);
   await expect(list(page).locator('.grow', { hasText: '\u202E' }), 'nowhere shown as it is').toHaveCount(0);
   await expect(row(page, 'a\uFFFDb.txt').getByRole('button')).toHaveAccessibleName('Attach a\uFFFDb.txt');
+  await expect(row(page, 'a\uFFFDb.txt'), 'its title names what the mark stands for').toHaveAttribute('title', 'Contains U+202E');
+  await expect(row(page, 'notes.txt'), 'a name shown as it is has no title').not.toHaveAttribute('title');
   await button(page, 'Attach a\uFFFDb.txt').click();
   // The attachment is the file as it is on disk. #1046 refuses sending one whose path holds such a character; until
   // it lands, the message carries it.

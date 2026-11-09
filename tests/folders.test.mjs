@@ -39,3 +39,18 @@ test('#1052 the picker’s list keeps each file’s real name and path, and show
   );
   assert.deepEqual([inner.path, inner.shownPath], ['in\u2066side', 'in\uFFFDside'], 'the folder it’s in, as the picker heads it');
 });
+
+test('#1052 an entry whose shown name is marked lists the code points it hides, once each, and others have none', async () => {
+  const root = tempDir('pb-folders-');
+  await writeFile(join(root, 'a\u202Eb\u202E\u200Bc\u{E0041}\u0007.txt'), 'x');
+  await writeFile(join(root, 'plain😀.txt'), 'x');
+  const { entries } = await listFolder({ folder: root }, '');
+  assert.deepEqual(
+    entries.map((e) => [e.name, e.hidden]),
+    [
+      ['a\u202Eb\u202E\u200Bc\u{E0041}\u0007.txt', ['U+202E', 'U+200B', 'U+E0041', 'U+0007']],
+      ['plain😀.txt', undefined],
+    ],
+  );
+  assert.equal('hidden' in entries[1], false);
+});

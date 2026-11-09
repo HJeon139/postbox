@@ -210,6 +210,31 @@ test('#47: datasets are loaded again after a restart, from where they were', asy
   assert.equal(corpus.search('vitamin', { books: ['claims'] }).length, 1);
 });
 
+test('#1052: a dataset title kept before titles were checked, which the check refuses, is the dataset’s id after a restart', async () => {
+  const first = await setup();
+  await writeFile(join(first.dsDir, 'claims.jsonl'), jsonl([{ id: 'c1', text: 'Vitamin D reduces fractures.' }]));
+  await writeFile(join(first.dsDir, 'notes.jsonl'), jsonl([{ id: 'n1', text: 'A note.' }]));
+  assert.equal((await first.tools.add_dataset({ id: 'claims', path: 'claims.jsonl' })).ok, true);
+  assert.equal((await first.tools.add_dataset({ id: 'notes', path: 'notes.jsonl', title: 'Field notes' })).ok, true);
+  // As an older Postbox kept it, with a right-to-left override in its title.
+  first.store.emit('dataset', { ...first.store.state.datasets.claims, title: 'fdp.\u202Etxt' });
+  const corpus = new Corpus();
+  const rt = new Runtime({
+    store: first.store,
+    adapters: new AdapterRegistry().register({ name: 'mock', deliver: async () => {} }),
+    corpus,
+    config: { origin: 'http://127.0.0.1:1', imageOrigins: [] },
+  });
+  assert.equal(await rt.reloadDatasets(), 2);
+  assert.deepEqual(
+    corpus.stats().books.map((b) => [b.id, b.title]),
+    [
+      ['claims', 'claims'],
+      ['notes', 'Field notes'],
+    ],
+  );
+});
+
 test('#351: corpus_search returns 1 to 50 results whatever k says, and reads at most 50 book ids', async () => {
   const { rt, corpus, tools } = await setup();
   corpus.addRecords('many', parseDataset(jsonl(Array.from({ length: 120 }, (_, i) => ({ id: `r${i}`, text: `Whale sighting number ${i}.` })))), {

@@ -18,3 +18,10 @@ test('#1052 clip and clipText keep an emoji the cut doesn’t split, and text wi
   assert.equal(clipText(`${'a'.repeat(7)}${PAIR}bb`, 10), `${'a'.repeat(7)}${PAIR}…`);
   assert.equal(clipText(`a${PAIR}`, 10), `a${PAIR}`);
 });
+
+test('#1052 clip and clipText drop a lone first half already at the cut, and cut nothing to nothing', () => {
+  assert.equal(clip('ab\uD83Dcd', 4), 'ab…');
+  assert.equal(clipText('ab\uD83Dcd', 4), 'ab…');
+  assert.equal(clip('', 4), '');
+  assert.equal(clipText('', 4), '');
+});

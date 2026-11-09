@@ -100,3 +100,10 @@ test('#1052 the runtime refuses a host’s short name with a Hangul filler, and 
   );
   assert.equal(rt.s.hosts[h.id].short, 'gpu');
 });
+
+test('#1052 a short name stored before it was checked, which the check refuses, gives way to the destination’s badge', () => {
+  assert.equal(badgeOf({ name: 'me@dev-box', short: 'a\u202Eb' }), 'dev-box');
+  assert.equal(badgeOf({ name: 'me@dev-box', short: 'ab\u3164' }), 'dev-box');
+  assert.equal(badgeOf({ name: 'me@dev-box', short: 'gpu' }), 'gpu', 'one the check keeps still shows');
+  assert.equal(badgeOf({ name: 'me@dev-box', short: '' }), 'dev-box', 'an empty one is unset');
+});
