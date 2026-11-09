@@ -14,6 +14,7 @@ import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { startProgressClock, tickProgress } from './progress-clock.mjs';
 import { renderReview } from './review.mjs';
 import { fmtCell } from './table-cells.mjs';
+import { scrollFrame } from './table-scroll.mjs';
 
 const drafts = new Map(); // item id → local, unsent input
 const draft = (id, init) => {
@@ -484,7 +485,7 @@ const RENDER = {
       { tabindex: '0', role: 'region', 'aria-label': `${b.title ?? 'Table'}, scrolls`, style: d.expanded ? { maxHeight: 'none' } : {} },
       table,
     );
-    const node = h('div', { 'aria-labelledby': titleId }, hd, wrap, status);
+    const node = h('div', { 'aria-labelledby': titleId }, hd, scrollFrame(wrap), status);
     return node;
   },
 
