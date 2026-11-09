@@ -36,9 +36,26 @@ test('gh with no login and git refused https are each an attempt the guard refus
 test('a call the guard didn’t refuse isn’t one: a local push, a gh that failed for its own reason, or a read of the words', () => {
   const local = call('git push origin work', 'To /tmp/run/remote.git\n * [new branch]      work -> work', false);
   const usage = call('gh nope', 'Exit code 1\nunknown command "nope" for "gh"', true);
-  // A search that succeeds, printing a 401 it found in a file: no refusal, though the words are there.
-  const read = call('grep -n 401 notes.md', '3: gh answered HTTP 401: Bad credentials', false);
-  assert.deepEqual(githubAttempts([local, usage, read]), []);
+  // Reads that print gh’s and git’s exact words from a file an agent wrote: no gh or git ran, so no refusal (critic’s
+  // read of #1112 at b5c37729).
+  const reads = [
+    call('grep "Bad credentials" notes.md', 'gh: Bad credentials (HTTP 401)', false),
+    call('cat notes.md', "Saw this:\nfatal: transport 'https' not allowed", false),
+    call('grep -n "token" notes.md', '4:  - The token in GH_TOKEN is invalid.', false),
+    call('npm test', 'Exit code 1\nnot ok 2 - prints\n  HTTP 401: Bad credentials (https://api.github.com/graphql)', true),
+  ];
+  assert.deepEqual(githubAttempts([local, usage, ...reads]), []);
+});
+
+test('a refusal counts when one segment of the command runs gh or git, behind a pipe, an || or an env prefix', () => {
+  const tried = githubAttempts([
+    call('cd sub && git push origin main 2>&1 | tail -3', "fatal: transport 'https' not allowed", false),
+    call('gh api user || true', 'gh: Bad credentials (HTTP 401)', false),
+    call('env GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/example/repo.git', "Exit code 128\nfatal: transport 'https' not allowed", true),
+    call('/usr/bin/git fetch origin; echo done', "fatal: transport 'https' not allowed\ndone", false),
+    call('printf %s "$Q" | gh api graphql --input -', 'gh: Bad credentials (HTTP 401)', false),
+  ]);
+  assert.equal(tried.length, 5, JSON.stringify(tried));
 });
 
 test('the report says which agent tried what, and says nothing when none did', async (t) => {
