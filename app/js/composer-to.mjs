@@ -2,10 +2,11 @@
 // message wakes the agents it @-mentions, and only them (#107); one that @-mentions no one goes to the next speaker,
 // and one that names an agent without its @ may not reach it (#134).
 
-import { CHAIN_HINT } from '/shared/limits.mjs';
+import { chainHintAt } from '/shared/limits.mjs';
 import { parseMentions, unaddressed } from '/shared/text.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { handles } from './agent-markdown.mjs';
+import { countText, roomChainLimit } from './chain-limit.mjs';
 import { S, sessionsOf } from './client.mjs';
 import { h } from './dom.mjs';
 
@@ -31,15 +32,20 @@ export function nextSpeaker(threadId) {
 
 /**
  * How many agent wakes have chained since your last message, once that reaches CHAIN_HINT, with a hint to Stop agents
- * going nowhere (#492): there’s no limit between two agents, and the chain limit is further off. The count is the
- * conversation’s, in its topic and side threads too.
+ * going nowhere (#492): there’s no limit between two agents, and the chain limit is further off. The count and the
+ * limit are the conversation’s, in its topic and side threads too, and in a room set below CHAIN_HINT the hint shows
+ * from its limit, so it never names a count past it (#1035).
  * @param {string} threadId
  */
 function chainLine(threadId) {
   const t = S().threads[threadId];
   const n = (t?.kind === 'topic' || t?.kind === 'side' ? S().threads[t.parentId] : t)?.hops ?? 0;
-  if (n < CHAIN_HINT) return null;
-  return h('span.chain', `Agents have woken each other ${n} times since your last message. If they’re going nowhere, Stop them.`);
+  const { limit } = roomChainLimit(threadId);
+  if (n < chainHintAt(limit)) return null;
+  return h(
+    'span.chain',
+    `Agents have woken each other ${countText(n)} times since your last message, of the room’s limit of ${countText(limit)}. If they’re going nowhere, Stop them.`,
+  );
 }
 
 /** The agent a draft names without its @ (“critic: …”), when the message wouldn’t reach it: the UAT tester’s rule. */

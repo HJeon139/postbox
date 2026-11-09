@@ -2,6 +2,13 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.51.1 (2026-11-09)
+
+### Fixes
+
+- **app:** a press on a folded reply's summary builds its list before it opens
+- **app:** build a reply’s folded steps only when its list opens
+
 ## 1.51.0 (2026-11-08)
 
 ### Features

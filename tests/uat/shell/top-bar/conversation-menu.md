@@ -11,6 +11,7 @@ Conversations need to be renamed, grown into rooms and deleted without leaving t
 ## Expected functionality
 
 - Rename… opens the [rename sheet](../../sheets/rename.md).
+- Wake chain limit… opens the [wake chain limit dialog](../../sheets/wake-chain-limit.md); it says the room’s limit, such as “1,000 wakes in a row, the default” (#1035).
 - Add an agent… opens the [new-agent sheet](../../sheets/new-agent.md) joined to this conversation; a direct message becomes a room.
 - Permissions… opens the [permissions panel](../permissions-panel.md) for the agent the composer replies to; in a room, it offers the others.
 - Under Agent (or Agents, in a room), one line per agent: its @name, then its backend, model, effort and state as text, with full model ids (“@indexer · Claude Code · claude-sonnet-5-5 · not the model you set: claude-opus-5-5 · medium effort · idle”). Choosing one opens its persona (#60). A mock agent says “mock” after its name (#12).

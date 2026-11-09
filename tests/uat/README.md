@@ -84,6 +84,7 @@ Screenshots are regenerated with `node tools/shoot-uat.mjs` (all) or `ONLY=rail,
   - [New agent sheet](sheets/new-agent.md)
   - [New conversation and New room](sheets/new-conversation-and-room.md)
   - [Rename](sheets/rename.md)
+  - [Wake chain limit](sheets/wake-chain-limit.md)
   - [Delete conversation](sheets/delete-conversation.md)
   - [Delete session](sheets/delete-session.md)
   - [Attach a Claude Code session](sheets/attach-session.md)

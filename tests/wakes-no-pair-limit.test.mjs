@@ -1,12 +1,13 @@
 // #492: two agents waking each other in turn stopped after a hand-off and its answer (PAIR_LIMIT, #372), which stopped
 // ordinary hand-offs 8 times in one working room, against 2 for a limit of 6 (E2’s replay, posted on #492). The person
 // decided there’s no pair limit: the room shows how many wakes have chained since your last message, with a hint to
-// Stop once it reaches CHAIN_HINT. The chain limit (HOP_LIMIT) stays only as a backstop, at 50 rather than 10, until a
-// supervisor agent watches the room (#538).
+// Stop once it reaches CHAIN_HINT. The chain limit stays only as a backstop, at 50 rather than 10, until a supervisor
+// agent watches the room (#538); since #1035 it’s 1,000 by default, and each room can set its own.
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CHAIN_HINT, HOP_LIMIT } from '../shared/limits.mjs';
+import { updateThread } from '../server/thread-write.mjs';
+import { CHAIN_HINT, DEFAULT_HOP_LIMIT } from '../shared/limits.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 
@@ -33,14 +34,15 @@ test('#492 two agents trading hand-offs past the old pair limit get no card: eac
   );
 });
 
-test('#492 the chain limit still holds: past HOP_LIMIT wakes in a row, the next waits for you', async () => {
+test('#492 the chain limit still holds: past the room’s limit of wakes in a row, the next waits for you', async () => {
   const f = setup();
-  chain(f, HOP_LIMIT);
+  updateThread(f.rt, f.t.id, { chainLimit: 5 });
+  chain(f, 5);
   assert.equal(f.rt.agentWake(f.alpha.id, 'beta', 'one more').waiting, true);
   await settle(f.rt);
 });
 
-test('#492 a chain past the old limit of 10 raises no card: the backstop is 50', async () => {
+test('#492 a chain past the old limit of 10 raises no card: the backstop is 1,000 since #1035', async () => {
   const f = setup();
   chain(f, 25);
   await settle(f.rt);
@@ -48,11 +50,12 @@ test('#492 a chain past the old limit of 10 raises no card: the backstop is 50',
     f.store.items(f.t.id).filter((x) => x.kind === 'hop'),
     [],
   );
-  assert.equal(HOP_LIMIT, 50);
+  assert.equal(DEFAULT_HOP_LIMIT, 1000);
 });
 
 test('#492 the Stop hint comes after fewer wakes than the chain limit, and wake_agent names no pair limit', () => {
-  assert.ok(CHAIN_HINT > 2 && CHAIN_HINT < HOP_LIMIT, `CHAIN_HINT is ${CHAIN_HINT}`);
+  // Against the default only: a room may set its own limit below the hint’s count (#1035).
+  assert.ok(CHAIN_HINT > 2 && CHAIN_HINT < DEFAULT_HOP_LIMIT, `CHAIN_HINT is ${CHAIN_HINT}`);
   assert.doesNotMatch(TOOL_DEFS.find((d) => d.name === 'wake_agent').description, /between the same two agents/);
 });
 
