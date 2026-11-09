@@ -4,11 +4,13 @@
 // lowercase hex token with a letter a–f in it (a number such as 33554432 isn’t a commit). A token git resolves to a
 // commit must be reachable from origin/main, or from the pull request’s own head when it reads a body: reachable from
 // some other branch isn’t enough, since branches get deleted. A token that isn’t an object is reported as one and
-// doesn’t fail the check, nor does one that names a tree or a blob. It prints one line per cited token and a summary.
+// doesn’t fail the check, since bodies cite other hashes too (a body’s sha256 prefix, an asset id); with --strict it
+// fails, which catches a head never pushed from another clone. A tree or a blob doesn’t fail. It prints one line per
+// cited token and a summary.
 //
 //   node tools/cited-commits.mjs designs/some-note.md     a Markdown file
 //   node tools/cited-commits.mjs --pr 1057                a pull request’s body, against its head too
-//   add --no-fetch to check against what was fetched last
+//   add --no-fetch to check against what was fetched last, and --strict to fail on a token that isn’t an object
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -79,9 +81,9 @@ function readSource(source, gh) {
 /**
  * Checks the commits `source` cites, printing with `log`, and returns the exit code. git runs in `cwd` with `env`.
  * @param {{ file?: string, pr?: number }} source
- * @param {{ cwd?: string, env?: NodeJS.ProcessEnv, fetch?: boolean, gh?: (args: string[]) => any, log?: (line: string) => void }} [o]
+ * @param {{ cwd?: string, env?: NodeJS.ProcessEnv, fetch?: boolean, strict?: boolean, gh?: (args: string[]) => any, log?: (line: string) => void }} [o]
  */
-export function citedCommits(source, { cwd, env, fetch = true, gh = ghJson, log = console.log } = {}) {
+export function citedCommits(source, { cwd, env, fetch = true, strict = false, gh = ghJson, log = console.log } = {}) {
   const o = { cwd, env };
   const name = source.file ?? `#${source.pr}`;
   /** @param {string} why */
@@ -113,7 +115,7 @@ export function citedCommits(source, { cwd, env, fetch = true, gh = ghJson, log 
   } catch (e) {
     return error(/** @type {Error} */ (e).message.split('\n')[0]);
   }
-  const exit = counts.unreachable ? EXIT.fail : EXIT.pass;
+  const exit = counts.unreachable || (strict && counts.unknown) ? EXIT.fail : EXIT.pass;
   const tally = Object.entries(counts).map(([key, n]) => `${key}=${n}`);
   log(`cited-commits ${read.label} ${tally.join(' ')} -> ${exit === EXIT.pass ? 'PASS' : 'FAIL'}`);
   return exit;
@@ -122,9 +124,10 @@ export function citedCommits(source, { cwd, env, fetch = true, gh = ghJson, log 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const fetch = !args.includes('--no-fetch');
-  const rest = args.filter((a) => a !== '--no-fetch');
+  const strict = args.includes('--strict');
+  const rest = args.filter((a) => a !== '--no-fetch' && a !== '--strict');
   const pr = rest[0] === '--pr' ? Number(rest[1]) : null;
-  const usage = 'Usage: node tools/cited-commits.mjs [--no-fetch] <file.md> | --pr <pull request number>';
+  const usage = 'Usage: node tools/cited-commits.mjs [--no-fetch] [--strict] <file.md> | --pr <pull request number>';
   if (pr !== null && (!Number.isInteger(pr) || pr <= 0 || rest.length !== 2)) {
     console.error(usage);
     process.exit(EXIT.error);
@@ -133,5 +136,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.error(usage);
     process.exit(EXIT.error);
   }
-  process.exit(citedCommits(pr === null ? { file: rest[0] } : { pr }, { fetch }));
+  process.exit(citedCommits(pr === null ? { file: rest[0] } : { pr }, { fetch, strict }));
 }
