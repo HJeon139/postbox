@@ -132,6 +132,25 @@ export function failOnPageErrors(test) {
 }
 
 /**
+ * Until a conversation’s transcript shows its newest item, which with the transcript window on (#866) is the end of
+ * the range it mounts, not the whole room. For a spec of a long room as it opens by default.
+ * @param {import('@playwright/test').Page} page @param {{ store: any }} app @param {string} threadId @param {number} [timeout]
+ */
+export async function newestShown(page, app, threadId, timeout = 30_000) {
+  const last = app.store.items(threadId).at(-1).id;
+  await expect(page.locator(`.transcript[data-thread="${threadId}"] > [data-key="${last}"]`)).toBeAttached({ timeout });
+}
+
+/**
+ * The two ways a long room can be open, for a cost counted per item (#866): as it opens by default, with the
+ * transcript window mounting only the items around the view, and whole, where a cost per item shows at its full size.
+ */
+export const ROOM_MODES = /** @type {const} */ (['window on', 'whole room']);
+/** Opens the page’s next room in that mode: call it before the page loads. @param {import('@playwright/test').Page} page @param {(typeof ROOM_MODES)[number]} mode */
+export const openAs = (page, mode) =>
+  page.addInitScript((off) => (off ? localStorage.setItem('pb-window', 'off') : localStorage.removeItem('pb-window')), mode === 'whole room');
+
+/**
  * Mounts every item of a long conversation, with the transcript window off (#866): for a spec of the path the window
  * replaces, such as #712a’s skipped items or a cost counted over a whole room. The window is on by default for a room
  * over its ceiling (window-default.spec.mjs).

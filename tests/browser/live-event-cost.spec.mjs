@@ -7,7 +7,7 @@
 // thread events arrive, and Chromium counts the layout work they cost.
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, frames, settled, startPostbox, synced, wholeRoom } from './postbox.mjs';
+import { failOnPageErrors, frames, newestShown, openAs, ROOM_MODES, settled, startPostbox, synced } from './postbox.mjs';
 
 // No DOM snapshots in the trace: Playwright snapshots the whole page around each action, each poll of synced() too,
 // and on CI’s runners snapshotting the 1,000-item room took longer than the waits (85 s at a tenth of the CPU, against
@@ -23,8 +23,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
-// Every item mounted, the window off: this spec is of the whole-room path (postbox.mjs, wholeRoom).
-wholeRoom(test);
+// With the window on, as a long room opens by default (#866): the cost and the leak are the person’s.
 
 const ITEMS = 1000;
 const DIAGRAM = '\n\n```mermaid\ngraph TD\n  A --> B\n```\n';
@@ -74,7 +73,7 @@ async function seeded(page) {
   }
   await page.addInitScript(countWork);
   await page.goto(`${app.origin}/#/t/${t.id}`);
-  await expect(page.locator(`.transcript[data-thread="${t.id}"] > [data-key]`)).toHaveCount(ITEMS, { timeout: 30_000 });
+  await newestShown(page, app, t.id);
   await synced(page, app);
   await settled(page);
   return { t, sa, sb };
@@ -236,49 +235,53 @@ test('#622: the ring and the words that follow an agent sit on one line, in a tu
   await expect.poll(following, { message: 'and after one' }).toEqual([{ item: block.id, ring: 'tool', words: '· calling tools' }]);
 });
 
-test('#622: a session event in a 1,000-item room rebuilds the rings that show it, not one per reply', async ({ page }) => {
-  test.setTimeout(180_000);
-  const { t, sa } = await seeded(page);
-  const STATES = ['think', 'tool', 'gen', 'needs'];
-  const session = await perEvent(page, 8, (i) => app.rt.updateSession(sa.id, { state: STATES[i % 4], ctx: 20 + i, currentStep: `Step ${i}` }));
-  test.info().annotations.push({ type: 'measured', description: `per session event: ${JSON.stringify(session)}` });
-  expect.soft(session.rings, `ring SVGs built per session event, in the whole page, not one per reply (${JSON.stringify(session)})`).toBeLessThanOrEqual(20);
-  expect.soft(session.activity, 'activity lists taken out per session event').toBe(0);
-  // The ring beside the maker’s latest reply follows it; the 249 beside its earlier replies rest, as the words beside
-  // its name show only on the latest.
-  app.rt.updateSession(sa.id, { state: 'think', ctx: 33 });
-  const rings = page.locator(`.transcript[data-thread="${t.id}"] .who pb-ring[data-session="${sa.id}"]`);
-  await expect.soft(rings.last()).toHaveAttribute('state', 'think');
-  await expect.soft(rings.last()).toHaveAttribute('ctx', '33');
-  await expect.soft(rings.nth(0)).toHaveAttribute('state', 'rest');
-  await expect.soft(rings.nth(0).locator('svg[role=img]')).toHaveAttribute('aria-label', `${sa.handle}`);
-  expect.soft(await rings.evaluateAll((rs) => rs.filter((r) => r.getAttribute('state') !== 'rest').length), 'rings showing the live state').toBe(1);
-  // A ring says where its agent runs, so a change in the host’s status draws the rings that say it, not every reply’s.
-  app.store.emit('host', { id: 'ho_live', name: 'box.example.com' });
-  app.store.emit('persona', { ...app.store.state.personas[sa.personaId], remote: { hostId: 'ho_live' } });
-  await synced(page, app);
-  await frames(page);
-  const STATUS = ['connected', 'reconnecting'];
-  const host = await perEvent(page, 6, (i) => app.store.emit('host.status', { id: 'ho_live', status: { state: STATUS[i % 2] } }));
-  test.info().annotations.push({ type: 'measured', description: `per host event: ${JSON.stringify(host)}` });
-  await expect.soft(rings.last().locator('svg[role=img]')).toHaveAttribute('aria-label', /on box\.example\.com, reconnecting/);
-  expect.soft(host.rings, `ring SVGs built per host event, in the whole page, not one per reply (${JSON.stringify(host)})`).toBeLessThanOrEqual(20);
-});
+for (const mode of ROOM_MODES)
+  test(`#622: a session event in a 1,000-item room rebuilds the rings that show it, not one per reply, ${mode}`, async ({ page }) => {
+    await openAs(page, mode);
+    test.setTimeout(180_000);
+    const { t, sa } = await seeded(page);
+    const STATES = ['think', 'tool', 'gen', 'needs'];
+    const session = await perEvent(page, 8, (i) => app.rt.updateSession(sa.id, { state: STATES[i % 4], ctx: 20 + i, currentStep: `Step ${i}` }));
+    test.info().annotations.push({ type: 'measured', description: `per session event: ${JSON.stringify(session)}` });
+    expect.soft(session.rings, `ring SVGs built per session event, in the whole page, not one per reply (${JSON.stringify(session)})`).toBeLessThanOrEqual(20);
+    expect.soft(session.activity, 'activity lists taken out per session event').toBe(0);
+    // The ring beside the maker’s latest reply follows it; the 249 beside its earlier replies rest, as the words beside
+    // its name show only on the latest.
+    app.rt.updateSession(sa.id, { state: 'think', ctx: 33 });
+    const rings = page.locator(`.transcript[data-thread="${t.id}"] .who pb-ring[data-session="${sa.id}"]`);
+    await expect.soft(rings.last()).toHaveAttribute('state', 'think');
+    await expect.soft(rings.last()).toHaveAttribute('ctx', '33');
+    await expect.soft(rings.nth(0)).toHaveAttribute('state', 'rest');
+    await expect.soft(rings.nth(0).locator('svg[role=img]')).toHaveAttribute('aria-label', `${sa.handle}`);
+    expect.soft(await rings.evaluateAll((rs) => rs.filter((r) => r.getAttribute('state') !== 'rest').length), 'rings showing the live state').toBe(1);
+    // A ring says where its agent runs, so a change in the host’s status draws the rings that say it, not every reply’s.
+    app.store.emit('host', { id: 'ho_live', name: 'box.example.com' });
+    app.store.emit('persona', { ...app.store.state.personas[sa.personaId], remote: { hostId: 'ho_live' } });
+    await synced(page, app);
+    await frames(page);
+    const STATUS = ['connected', 'reconnecting'];
+    const host = await perEvent(page, 6, (i) => app.store.emit('host.status', { id: 'ho_live', status: { state: STATUS[i % 2] } }));
+    test.info().annotations.push({ type: 'measured', description: `per host event: ${JSON.stringify(host)}` });
+    await expect.soft(rings.last().locator('svg[role=img]')).toHaveAttribute('aria-label', /on box\.example\.com, reconnecting/);
+    expect.soft(host.rings, `ring SVGs built per host event, in the whole page, not one per reply (${JSON.stringify(host)})`).toBeLessThanOrEqual(20);
+  });
 
-test('#622: a session event in a 1,000-item room looks up the status words that can change, not every one', async ({ page }) => {
-  test.setTimeout(180_000);
-  const { t, sa, sb } = await seeded(page);
-  const session = await perEvent(page, 6, (i) => app.rt.updateSession(sa.id, { state: i % 2 ? 'tool' : 'think', ctx: 20 + i }));
-  test.info().annotations.push({ type: 'measured', description: `per session event: ${JSON.stringify(session)}` });
-  expect.soft(session.words, 'status words looked up per session event').toBeLessThanOrEqual(10);
-  // The words still follow: on the maker’s latest reply only, and gone once it rests; the checker’s beside its own.
-  const words = (se) => page.locator(`.transcript[data-thread="${t.id}"] .who-state[data-session="${se.id}"]`);
-  app.rt.updateSession(sa.id, { state: 'think' });
-  app.rt.updateSession(sb.id, { state: 'tool' });
-  await expect.soft(words(sa).last()).toHaveText('· thinking');
-  await expect.soft(words(sb).last()).toHaveText('· calling tools');
-  expect.soft(await words(sa).evaluateAll((ws) => ws.filter((w) => w.textContent).length), 'words showing for the maker').toBe(1);
-  app.rt.updateSession(sa.id, { state: 'idle' });
-  await expect.soft(words(sa).last()).toHaveText('');
-  await expect.soft(words(sb).last()).toHaveText('· calling tools');
-});
+for (const mode of ROOM_MODES)
+  test(`#622: a session event in a 1,000-item room looks up the status words that can change, not every one, ${mode}`, async ({ page }) => {
+    await openAs(page, mode);
+    test.setTimeout(180_000);
+    const { t, sa, sb } = await seeded(page);
+    const session = await perEvent(page, 6, (i) => app.rt.updateSession(sa.id, { state: i % 2 ? 'tool' : 'think', ctx: 20 + i }));
+    test.info().annotations.push({ type: 'measured', description: `per session event: ${JSON.stringify(session)}` });
+    expect.soft(session.words, 'status words looked up per session event').toBeLessThanOrEqual(10);
+    // The words still follow: on the maker’s latest reply only, and gone once it rests; the checker’s beside its own.
+    const words = (se) => page.locator(`.transcript[data-thread="${t.id}"] .who-state[data-session="${se.id}"]`);
+    app.rt.updateSession(sa.id, { state: 'think' });
+    app.rt.updateSession(sb.id, { state: 'tool' });
+    await expect.soft(words(sa).last()).toHaveText('· thinking');
+    await expect.soft(words(sb).last()).toHaveText('· calling tools');
+    expect.soft(await words(sa).evaluateAll((ws) => ws.filter((w) => w.textContent).length), 'words showing for the maker').toBe(1);
+    app.rt.updateSession(sa.id, { state: 'idle' });
+    await expect.soft(words(sa).last()).toHaveText('');
+    await expect.soft(words(sb).last()).toHaveText('· calling tools');
+  });

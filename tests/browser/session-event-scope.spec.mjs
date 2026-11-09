@@ -7,7 +7,7 @@
 
 import { expect, test } from '@playwright/test';
 import { SCANS } from '../../tools/uat/doc-query-probe.mjs';
-import { failOnPageErrors, frames, startPostbox, synced, wholeRoom } from './postbox.mjs';
+import { failOnPageErrors, frames, newestShown, startPostbox, synced } from './postbox.mjs';
 
 // No trace: its snapshots walk the whole page around each action, which a 10,000-item room makes slow.
 test.use({ trace: 'off' });
@@ -20,8 +20,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
-// Every item mounted, the window off: this spec is of the whole-room path (postbox.mjs, wholeRoom).
-wholeRoom(test);
+// With the window on, as a long room opens by default (#866): the cost and the leak are the person’s.
 
 const confirm = { id: 'ok1', type: 'confirm', version: 1, fallback: 'Ship it?', statement: 'Ship it to main?', confirmLabel: 'Ship it' };
 
@@ -38,7 +37,7 @@ async function seeded(page, n, width = 1280) {
   await page.setViewportSize({ width, height: 800 });
   await page.goto(`${app.origin}/#/t/${t.id}`);
   // The items first: a room this size takes longer to load than synced()'s wait.
-  await expect(page.locator('#main .item')).toHaveCount(n + 1, { timeout: 90_000 });
+  await newestShown(page, app, t.id, 90_000);
   await synced(page, app);
   return { t, se };
 }

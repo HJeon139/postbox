@@ -3,7 +3,7 @@
 // end. Taking the anchor (#88) used to read one per reply above the middle of the view.
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, settled, startPostbox, synced, wholeRoom } from './postbox.mjs';
+import { failOnPageErrors, newestShown, openAs, ROOM_MODES, settled, startPostbox, synced } from './postbox.mjs';
 
 // Tracing is off: Playwright's trace snapshots walk every node of the page each action, and on a room of 1,000 items
 // or more under content-visibility that takes longer than the test (view-skipped.spec.mjs).
@@ -18,8 +18,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
-// Every item mounted, the window off: this spec is of the whole-room path (postbox.mjs, wholeRoom).
-wholeRoom(test);
+// With the window on, as a long room opens by default (#866): the cost and the leak are the person’s.
 
 const REPLIES = 1000;
 
@@ -34,7 +33,7 @@ async function seeded(page, name) {
   await page.addInitScript(countRects);
   await page.goto(`${app.origin}/#/t/${t.id}`);
   await synced(page, app);
-  await expect(page.locator(`.transcript[data-thread="${t.id}"] [data-key]`)).toHaveCount(REPLIES);
+  await newestShown(page, app, t.id);
   await settled(page);
   return t;
 }
@@ -61,16 +60,18 @@ const rectsFor = (page, dy) =>
     dy,
   );
 
-test('#572: a scroll event near the end of 1,000 replies reads a few rects, not one per reply above', async ({ page }) => {
-  await seeded(page, 'anchor');
-  // Up from the end, so the view isn’t stuck there and each scroll takes the anchor.
-  await rectsFor(page, -2000);
-  await settled(page);
-  const reads = [];
-  for (let i = 0; i < 5; i++) reads.push(await rectsFor(page, -100));
-  test.info().annotations.push({ type: 'measured', description: `rects per scroll event: ${reads.join(', ')}` });
-  expect(Math.max(...reads), `rects read per scroll event: ${reads.join(', ')}`).toBeLessThanOrEqual(40);
-});
+for (const mode of ROOM_MODES)
+  test(`#572: a scroll event near the end of 1,000 replies reads a few rects, not one per reply above, ${mode}`, async ({ page }) => {
+    await openAs(page, mode);
+    await seeded(page, mode === 'whole room' ? 'anchor-whole' : 'anchor');
+    // Up from the end, so the view isn’t stuck there and each scroll takes the anchor.
+    await rectsFor(page, -2000);
+    await settled(page);
+    const reads = [];
+    for (let i = 0; i < 5; i++) reads.push(await rectsFor(page, -100));
+    test.info().annotations.push({ type: 'measured', description: `rects per scroll event: ${reads.join(', ')}` });
+    expect(Math.max(...reads), `rects read per scroll event: ${reads.join(', ')}`).toBeLessThanOrEqual(40);
+  });
 
 /** Wheels down from the top in 800 px steps, tracing it, and returns the trace’s total ms per event name. */
 async function traced(page, steps) {
@@ -93,31 +94,33 @@ async function traced(page, steps) {
 // made each repaint of a scroll lay out, commit and map the images of every one, about 35 times dark’s cost.
 const COMPOSITING = ['Layerize', 'ProxyImpl::Commit', 'DiscardableImageMap::Generate'];
 
-test('#572: scrolling 1,000 replies on light costs about what it does on dark to lay out and commit', async ({ page }) => {
-  test.setTimeout(180_000);
-  await seeded(page, 'icons');
-  /** @type {Record<string, number>} */
-  const cost = {};
-  for (const theme of /** @type {const} */ (['dark', 'light'])) {
-    await page.emulateMedia({ colorScheme: theme });
-    // Read in the page, not with a locator: a locator's check that misses takes an aria snapshot of the page, and on
-    // 1,000 skipped items that lays each one out, seconds the theme's change then waits behind (#712a).
-    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe(theme);
-    const ms = await traced(page, 60);
-    cost[theme] = Math.round(COMPOSITING.reduce((sum, name) => sum + (ms[name] ?? 0), 0));
-  }
-  const said = `${COMPOSITING.join(' + ')}: light ${cost.light} ms, dark ${cost.dark} ms`;
-  test.info().annotations.push({ type: 'measured', description: said });
-  expect(cost.dark, 'the trace recorded the work it measures').toBeGreaterThan(0);
-  // Light still draws each icon with its rim, from a file of its own, and every one of them is there.
-  const files = await page.evaluate(() => [
-    ...new Set([...document.querySelectorAll('.react-btn')].map((n) => getComputedStyle(n, '::before').backgroundImage)),
-  ]);
-  expect(files, 'one file per reaction').toHaveLength(5);
-  for (const f of files) {
-    const url = f.match(/url\("(.+)"\)/)?.[1] ?? '';
-    expect(url, 'the rimmed copy').toMatch(/-rim-72\.png$/);
-    expect((await page.request.get(url)).ok(), `${url} loads`).toBe(true);
-  }
-  expect(cost.light, said).toBeLessThanOrEqual(3 * cost.dark + 50);
-});
+for (const mode of ROOM_MODES)
+  test(`#572: scrolling 1,000 replies on light costs about what it does on dark to lay out and commit, ${mode}`, async ({ page }) => {
+    await openAs(page, mode);
+    test.setTimeout(180_000);
+    await seeded(page, mode === 'whole room' ? 'icons-whole' : 'icons');
+    /** @type {Record<string, number>} */
+    const cost = {};
+    for (const theme of /** @type {const} */ (['dark', 'light'])) {
+      await page.emulateMedia({ colorScheme: theme });
+      // Read in the page, not with a locator: a locator's check that misses takes an aria snapshot of the page, and on
+      // 1,000 skipped items that lays each one out, seconds the theme's change then waits behind (#712a).
+      await expect.poll(() => page.evaluate(() => document.documentElement.dataset.theme)).toBe(theme);
+      const ms = await traced(page, 60);
+      cost[theme] = Math.round(COMPOSITING.reduce((sum, name) => sum + (ms[name] ?? 0), 0));
+    }
+    const said = `${COMPOSITING.join(' + ')}: light ${cost.light} ms, dark ${cost.dark} ms`;
+    test.info().annotations.push({ type: 'measured', description: said });
+    expect(cost.dark, 'the trace recorded the work it measures').toBeGreaterThan(0);
+    // Light still draws each icon with its rim, from a file of its own, and every one of them is there.
+    const files = await page.evaluate(() => [
+      ...new Set([...document.querySelectorAll('.react-btn')].map((n) => getComputedStyle(n, '::before').backgroundImage)),
+    ]);
+    expect(files, 'one file per reaction').toHaveLength(5);
+    for (const f of files) {
+      const url = f.match(/url\("(.+)"\)/)?.[1] ?? '';
+      expect(url, 'the rimmed copy').toMatch(/-rim-72\.png$/);
+      expect((await page.request.get(url)).ok(), `${url} loads`).toBe(true);
+    }
+    expect(cost.light, said).toBeLessThanOrEqual(3 * cost.dark + 50);
+  });
