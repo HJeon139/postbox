@@ -90,7 +90,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
       const left = facts.state ? waitingOnYou(facts.state, facts.threads ?? []) : [];
       return left.length ? [`**Left waiting on you:** ${left.map((w) => w.what).join('; ')}.`, ''] : [];
     })(),
-    ...githubSection(facts.streams ?? []), // an agent that tried to reach GitHub, refused by the run’s guard (#1072)
+    ...githubSection(facts.streams ?? [], scenario), // an agent that tried to reach GitHub, refused by the run’s guard (#1072)
     // A targeted run says first which fixes it reached, and which it didn’t test.
     ...coverageSection(coverage, { rechecked }),
     ...unverifiedSection(findings),
