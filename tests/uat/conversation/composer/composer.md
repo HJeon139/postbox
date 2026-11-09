@@ -21,6 +21,7 @@ Where you write to agents; it must say who will answer.
 - Messages typed offline are sent when the connection returns.
 - Files attach from + (Upload from computer), by pasting, or by dropping them. A file dropped anywhere in the conversation attaches to its composer; a file dropped on an open topic or side thread panel attaches to the panel’s composer, and only there.
 - A sent image the server shows inline (PNG, JPEG, GIF or WebP) appears as a thumbnail with its name and size ([screenshot](../../screenshots/image-attachment.png)). The thumbnail is a link: click it, or Tab to it and press Enter, and the full image opens in a new tab. Every other file, an SVG included, is a file chip that downloads.
+- A file’s chip, in the composer and once sent, shows the name the upload kept: a control, invisible or bidi character in it is “_”, so “report” + U+202E + “fdp.exe” never reads as reportexe.pdf (#991).
 
 ## Steps to reproduce
 
@@ -28,9 +29,9 @@ Where you write to agents; it must say who will answer.
 2. In “Corpus planning”, send several messages while @indexer works. Open its mail button in the Agents section, edit one message, remove another, and use Send now.
 
 **Pass if:** The composer stays its normal height plus one waiting line, whose count opens the queue; the mail count follows the queue; the bounded dialog edits and acts on one message at a time; and queued messages are delivered when @indexer finishes or at once with Send now.
-3. In “Corpus explorer”, drag a PNG screenshot and an SVG from your desktop onto the transcript, and send.
+3. In “Corpus explorer”, drag a PNG screenshot and an SVG from your desktop onto the transcript, and send. Then send a file whose name you gave a right-to-left override (U+202E) before its extension.
 
-**Pass if:** Both attach to the composer before you send. The PNG shows as a thumbnail with its name and size, and the image doesn’t jump while it loads; Tab to it and press Enter, and the full image opens in a new tab. The SVG shows as a file chip.
+**Pass if:** Both attach to the composer before you send. The PNG shows as a thumbnail with its name and size, and the image doesn’t jump while it loads; Tab to it and press Enter, and the full image opens in a new tab. The SVG shows as a file chip. The renamed file’s chip, in the composer and in the sent message, has “_” where the override was.
 4. Choose Reply in thread under a message, so the topic thread panel opens. Drag a file onto the panel’s replies, then another onto the conversation beside it. Open the panel’s + menu.
 
 **Pass if:** The first file attaches only to the panel’s composer, and the second only to the conversation’s. The panel’s + menu says “Or drop files on this thread”.
@@ -41,7 +42,7 @@ Where you write to agents; it must say who will answer.
 
 **Pass if:** The hint asks “Did you mean @critic?”, and its click makes the draft “@critic: what’s your biggest concern?”. With the @, it says “Wakes @critic, not @researcher (last speaker)”. Each thread’s composer says “Replying to @x”.
 
-`npx playwright test attachments` covers steps 3 and 4 with a drawn PNG and SVG, `npx playwright test commands` covers step 5, and `npx playwright test composer-address` covers step 6.
+`npx playwright test attachments` covers steps 3 and 4 with a drawn PNG and SVG, and an SVG named with the override, `npx playwright test commands` covers step 5, and `npx playwright test composer-address` covers step 6.
 
 ## Related
 

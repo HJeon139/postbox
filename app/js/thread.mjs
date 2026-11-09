@@ -835,7 +835,9 @@ export function mountComposer(threadId, { side = false } = {}) {
       attachments.push(chip);
       paintAtt();
       try {
-        Object.assign(chip, { fileId: (await uploadFile(f)).id, uploading: false });
+        // The name the upload kept (#991): a character that would hide or reorder it is “_” there.
+        const { id, name, size, type } = await uploadFile(f);
+        Object.assign(chip, { fileId: id, name, size, type, uploading: false });
       } catch (e) {
         attachments = attachments.filter((x) => x !== chip);
         toast({ title: `Couldn’t attach ${f.name}`, text: e.message, level: 'blocking' });

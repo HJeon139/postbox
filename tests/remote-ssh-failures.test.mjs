@@ -68,7 +68,7 @@ test('a missing launcher and an installed launcher that cannot start are distinc
 });
 
 test('only what Postbox can’t fix by waiting stops the retries', () => {
-  for (const kind of ['sign-in', 'host-key', 'not-installed', 'could-not-start', 'version', 'bad-token', 'busy', 'no-node']) {
+  for (const kind of ['sign-in', 'host-key', 'not-installed', 'could-not-start', 'version', 'bad-token', 'busy', 'no-node', 'settings']) {
     assert.ok(Object.hasOwn(FAILURE_KINDS, kind), kind);
     assert.equal(retries(kind), false, kind);
   }
