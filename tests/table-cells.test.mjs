@@ -1,7 +1,7 @@
 // How a table block shows a cell (app/js/table-cells.mjs). A number column groups its digits, as an amount should,
-// but a column whose label names a year or an id shows its whole numbers as written (#836). Only a label that is the
-// name alone or ends with it counts: one where the name is followed by more words, or comes after a word such as
-// “per”, “by” or “of”, labels an amount (#844).
+// but a column whose label names a year or an id shows its whole numbers as written (#836). The name ending the label
+// counts, and so does the singular starting it when no amount follows. A plural followed by more words, or a name after
+// a word such as “per”, “by”, “of” or a slash, labels an amount (#844).
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -115,6 +115,7 @@ for (const [label, v, want] of [
   ['Year-end revenue', 1234567, '1,234,567'],
   ['Year-to-date sales', 1234567, '1,234,567'],
   ['Year 1 revenue', 1234567, '1,234,567'],
+  ['Year 1', 1234567, '1,234,567'],
   ['ID count', 12345, '12,345'],
   ['Revenue / year', 1234567, '1,234,567'],
   ['Revenue/year', 1234567, '1,234,567'],
