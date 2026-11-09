@@ -21,8 +21,9 @@ export const hasControl = (s) => CONTROL.test(s);
 
 // A lone surrogate (Cs) isn’t text. The characters that change how a path displays, or display as nothing, are the
 // ones an asset name refuses (INVISIBLE), except ZWNJ and ZWJ (U+200C, U+200D): they join letters in some scripts and
-// in emoji, and the folder exists under the name the person gave it (#547). A path on a host is checked so too, and an
-// upload’s name has each such character replaced (#991).
+// in emoji, and the folder exists under the name the person gave it (#547). VS16 (U+FE0F) is refused, so a path with
+// ❤️ or 🏳️‍🌈 is, ZWJ or not. A path on a host is checked so too. An upload’s name has each such character replaced,
+// but keeps VS16, since it’s only shown (server/upload-name.mjs, #991).
 const SURROGATE = /\p{Cs}/u;
 const JOINERS = /[\u200c\u200d]/gu;
 /** Whether a folder's path holds a character that isn't text, or one that hides or reorders what it shows. @param {string} s */

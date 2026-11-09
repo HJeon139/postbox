@@ -8,13 +8,17 @@ import { partEnd } from '../shared/text-parts.mjs';
 /** The longest name kept, in UTF-16 code units. */
 const NAME_MAX = 200;
 
+// VS16, the emoji presentation selector: ❤️ and 🏳️‍🌈 hold it, and lost it to “_”. A host path still refuses it.
+const EMOJI_STYLE = '\ufe0f';
+
 /**
  * Whether one character (a code point, or a lone surrogate) would hide or reorder a file’s name as it’s shown: a
- * control character, a lone surrogate, or one a project’s folder refuses as hidden (shared/invisible.mjs, so ZWNJ and
- * ZWJ pass, joining letters and emoji). A message’s project file is held to it too (server/message-attachments.mjs).
+ * control character, a lone surrogate, or one a project’s folder refuses as hidden (shared/invisible.mjs), except
+ * VS16. So ZWNJ, which joins letters, and ZWJ and VS16, which emoji are made with, pass. A message’s project file is
+ * held to it too (server/message-attachments.mjs).
  * @param {string} c
  */
-export const hidesName = (c) => hasControl(c) || hiddenInFolder(c);
+export const hidesName = (c) => c !== EMOJI_STYLE && (hasControl(c) || hiddenInFolder(c));
 
 /**
  * The name to keep for an upload: each \, / and character that hidesName is “_”, and it’s cut at NAME_MAX, never
