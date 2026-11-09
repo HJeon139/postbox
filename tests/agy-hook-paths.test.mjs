@@ -206,3 +206,10 @@ test('#1074 a ~user path asks even where, read from this home, it leads into the
   assert.equal(decide('read_file', { Path: '~root/ws/a.txt' }, opts).decision, 'ask', 'root’s home isn’t this one');
   assert.equal(decide('write_file', { Path: '~root/ws/a.txt' }, opts).decision, 'ask');
 });
+
+test('#1074 a read card for a path that isn’t a string says so, where it would name none', () => {
+  const { home, ws } = aHome();
+  const res = decide('grep_search', { Path: join(ws, 'a.txt'), SearchPath: ['~/.ssh/id_rsa'] }, { mode: 'ask', folders: [ws], cwd: ws, home });
+  assert.deepEqual(res, { decision: 'ask', toolName: 'Read', input: { file_path: '' } });
+  assert.match(describePermission('Read', res.input).detail, /isn’t text/);
+});
