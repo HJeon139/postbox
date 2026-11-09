@@ -524,6 +524,13 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .block-placeholder { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; }
 
 .tbl-wrap { max-height: min(80vh, 560px); overflow: auto; border-top: 1px solid var(--line); }
+/* A table wider than its block fades the side with more columns past it, clear of the scrollbars, with a soft edge in
+   the border color, so the cue shows even where a gap between columns meets the edge (#1000). */
+.tbl-scroll { position: relative; }
+.tbl-scroll::before, .tbl-scroll::after { content: ''; position: absolute; top: 0; bottom: var(--sb-bottom, 0px); width: 32px; z-index: 2; pointer-events: none; opacity: 0; transition: opacity .15s ease-in-out; }
+.tbl-scroll::before { left: 0; background: linear-gradient(to right, var(--line-strong), transparent 3px), linear-gradient(to right, var(--panel) 15%, transparent); }
+.tbl-scroll::after { right: var(--sb-right, 0px); background: linear-gradient(to left, var(--line-strong), transparent 3px), linear-gradient(to left, var(--panel) 15%, transparent); }
+.tbl-scroll.more-left::before, .tbl-scroll.more-right::after { opacity: 1; }
 table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl th { position: sticky; top: 0; z-index: 1; background: var(--panel); text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
   color: var(--dim); font-weight: 600; padding: 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
