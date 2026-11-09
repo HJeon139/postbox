@@ -48,12 +48,17 @@ export function catchUp(rt, se, exclude = []) {
 
 /**
  * An item brought forward to the end of its thread (bringForward): a session whose catch-up marker was the item now
- * reads on from the stub, where the item was, so what came after it isn’t skipped. Pending, so a marker a catch-up just
- * wrote behind a held commit moves too (#956). Moved from server/runtime.mjs.
+ * reads on from the stub, where the item was, so what came after it isn’t skipped. In the conversation the marker is
+ * seenItem. A topic or side thread has no members, and its marker is seenIn for that thread on the conversation’s
+ * sessions (threadCatchUp, #1041). Pending, so a marker a catch-up just wrote behind a held commit moves too (#956).
+ * Moved from server/runtime.mjs.
  * @param {any} rt @param {string} threadId @param {string} id  the item moved @param {string} stubId  the stub in its place
  */
 export function moveMarkers(rt, threadId, id, stubId) {
-  for (const se of pendingSessionsIn(rt, threadId)) if (se.seenItem === id) rt.updateSession(se.id, { seenItem: stubId });
+  const conv = rt.lineage(threadId, (/** @type {string} */ x) => rt.store.pending.thread(x)).at(-1);
+  const marker = (/** @type {any} */ se) => (threadId === conv ? se.seenItem : se.seenIn?.[threadId]);
+  const onStub = (/** @type {any} */ now) => (threadId === conv ? { seenItem: stubId } : { seenIn: { ...(now.seenIn ?? {}), [threadId]: stubId } });
+  for (const se of pendingSessionsIn(rt, conv)) if (marker(se) === id) rt.updateSession(se.id, onStub);
 }
 
 /**
