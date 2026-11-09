@@ -113,7 +113,6 @@ const PENDING = {
     'deliver',
     'text',
     'compaction',
-    'endWork',
     'endTurn',
     'endTurn',
     'endTurn',
@@ -157,6 +156,7 @@ const PENDING = {
   // open_topic just opened, held (#796).
   'thread-summary.mjs': ['threadHeader', 'threadCatchUp', 'settleThread'],
   'thread-write.mjs': ['updateThread', 'pendingThreads'], // every write of a thread that exists starts from it (#796)
+  'turn-end-work.mjs': ['endWork'], // the turn’s own reply or block, to carry its line, maybe held behind a commit
   'tool-ask.mjs': ['askForTool', 'settleToolAsks'], // a second ask for the same tool, and the sweep that settles open asks
   'view-app/consent.mjs': ['askToSee'], // an open download card, which decides whether to add another (#95)
   'topic-open.mjs': ['startTopic', 'startTopic', 'conversationOf', 'conversationOf', 'repeatOf'], // one topic per message, the item's thread and I6's check, each maybe held behind a commit (#637)
@@ -170,7 +170,7 @@ const LEDGER = {
   'ledger-remote.mjs': ['hostEdit'], // a host edit the turn is recording
   'ledger-answers.mjs': ['restore'], // restore reads back the entry it just patched
   'ledger.mjs': ['entry', 'commandEnded', 'commandEnded', 'taskEnded', 'jobUpdate', 'endTurn', 'endTurn', 'endTurn', 'recordChange'], // entries the ledger patches as the turn goes
-  'runtime.mjs': ['endWork'], // endWork’s line for the turn
+  'turn-end-work.mjs': ['endWork'], // endWork’s line for the turn
   'thread-summary.mjs': ['summarizeThread'], // the summary’s cost, patched on its entry
   'write-intent.mjs': ['madeBy', 'judged'], // the PRs this conversation made, and the judge’s cost
 };

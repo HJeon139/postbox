@@ -9,7 +9,7 @@ import { ASKING } from '../shared/catalog.mjs';
 import { COLUMN_PX, lintDiagrams, MIN_TEXT_PX, mermaidBlocks } from '../shared/diagram-lint.mjs';
 import { READING } from '../shared/limits.mjs';
 import { formatDuration, glimpseOf, parseMentions } from '../shared/text.mjs';
-import { carriedList, turnLine } from '../shared/work.mjs';
+import { carriedList } from '../shared/work.mjs';
 import { describeTool } from './adapters/claude-stream.mjs';
 import { workFolder } from './adapters/folder.mjs';
 import { listProcesses } from './adapters/process-group.mjs';
@@ -121,6 +121,7 @@ import { firstPromptSection, settleThread, turnContext } from './thread-summary.
 import { updateThread } from './thread-write.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
 import { openTopic, startTopic } from './topic-open.mjs';
+import { endWork } from './turn-end-work.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { workEvents } from './turn-work.mjs';
@@ -909,19 +910,9 @@ export class Runtime {
     };
   }
 
-  /** The turn’s work is recorded (#132), then its last reply, or its last block, gets the list that leads to it (#195). */
+  /** The turn’s work is recorded, then its last reply gets its line (server/turn-end-work.mjs). */
   endWork(turn, status) {
-    return (
-      this.ledger
-        .endTurn(turn, { status })
-        .then(() => {
-          const line = turn.work ? turnLine(this.ledger.entries(turn.work.convId), turn.id) : null;
-          const last = this.store.pending.items(turn.threadId).findLast((x) => x.turnId === turn.id && (x.kind === 'agent' || (x.kind === 'block' && x.valid)));
-          if (line && last) this.patchItem(turn.threadId, last.id, { work: line, workTurn: turn.id });
-        })
-        // Its callers don’t await it: a ledger that fails here must not become an unhandled rejection.
-        .catch((e) => console.error(`@${turn.work?.se?.handle ?? 'an agent'}’s turn work wasn’t recorded: ${e instanceof Error ? e.message : e}`))
-    );
+    return endWork(this, turn, status);
   }
 
   endTurn(turn, err) {
