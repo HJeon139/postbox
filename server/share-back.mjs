@@ -76,6 +76,19 @@ function summaryWriter(rt, t, handle) {
   return rt.personaByHandle(chosen ?? t.woke ?? '');
 }
 
+/**
+ * “Summarize back”, as its turn ends without an error: the reply goes to the conversation the topic branched from. The
+ * turn’s replies are what was sent, so they show “Sent to the conversation” and can’t be sent again (#93). Moved from
+ * server/runtime.mjs, whose endTurn calls it, to keep runtime.mjs under its ceiling.
+ * @param {any} rt @param {any} se  the session whose turn ended @param {any} turn @param {readonly any[]} items  the thread’s items
+ */
+export function postSummary(rt, se, turn, items) {
+  if (!turn.summarizeTo || !turn.said.trim()) return;
+  rt.shareText(turn.summarizeTo, { fromThreadId: turn.threadId, handle: se.handle, text: turn.said, summary: true });
+  for (const it of items)
+    if (it.turnId === turn.id && it.kind === 'agent' && it.text && !it.sharedAt) rt.patchItem(turn.threadId, it.id, { sharedAt: Date.now() });
+}
+
 /** Whether a summarize turn is running or queued in a topic or side thread. */
 export function summarizing(rt, topicId) {
   return (
