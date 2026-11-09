@@ -105,6 +105,15 @@ test('#1074 a .. after a link climbs from where the link leads, as the file syst
   assert.equal(decide('read_file', { Path: `${notes}/../notes/a.md` }, opts).decision, 'allow', 'a .. with no link is the folder’s own');
 });
 
+test('#1074 in Auto, a command’s .. after a link climbs from where the link leads, so it isn’t routine', () => {
+  const { home, ws, ssh } = aHome();
+  symlinkSync(join(ssh, 'sub'), join(ws, 'sublink'));
+  const opts = { mode: 'auto', folders: [ws], cwd: ws, home };
+  assert.equal(decide('run_command', { CommandLine: 'cat sublink/../id_rsa' }, opts).decision, 'ask', 'ws/sublink/.. is ~/.ssh');
+  assert.equal(decide('run_command', { CommandLine: 'cp a.txt sublink/../x' }, opts).decision, 'ask', 'a write there too');
+  assert.equal(decide('run_command', { CommandLine: 'cat ../ws/a.txt' }, opts).decision, 'allow', 'a .. with no link is the folder’s own');
+});
+
 test('#1074 an edited path on a card goes back in the field the card was about', async () => {
   const { home, ws, out } = aHome();
   const args = { Path: join(ws, 'a.txt'), SearchPath: join(out, 'secret.txt') };
