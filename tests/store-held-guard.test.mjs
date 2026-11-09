@@ -115,6 +115,8 @@ const PENDING = {
     'endTurn',
     'endTurn',
     'endTurn',
+    // Stop's session as its own write of heldSteps left it, so Keep running's steps run on behind a held commit (#1042).
+    'stop',
     'recordStopped',
     'turnExited',
     // A job's end: the list it leaves, whether a kept job still runs to hold the steps, and the steps to stall (#957).

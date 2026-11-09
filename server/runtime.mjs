@@ -1108,7 +1108,8 @@ export class Runtime {
     // Progress steps running as you keep its jobs running may follow one of them: they run on with it (#129).
     if (keep.length) this.updateSession(sessionId, { heldSteps: { threadId: turn.threadId, keys: this.runningProgress(turn.threadId, sessionId) } });
     // Its progress steps still running show as stalled, as at any turn’s end (#98); you stopped it, so no lint turn.
-    const se = this.s.sessions[sessionId];
+    // Pending, so the heldSteps just written holds its steps behind a held commit too (#1042).
+    const se = this.store.pending.session(sessionId);
     if (se) this.stallLeftRunning(turn, se, by === 'shutdown' ? 'shutdown' : by === 'hung' ? 'hung' : 'stopped');
     if (turn.remote) this.remote.stopped(turn, { by, why });
     // A process that never exits mustn’t hold the session for good: after a while, the next turn starts anyway.
