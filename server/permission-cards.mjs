@@ -137,6 +137,13 @@ export function settlePermission(rt, itemId, status, message, answer = {}, patch
   if (!w) return false;
   clearTimeout(w.timer);
   rt.permissionWaits.delete(itemId);
+  // A question (server/ask-question.mjs, #521) isn’t a card: its block stays asking, and its call hears why it ended.
+  if (w.question) {
+    // No call waits on it now, so it isn’t what the running turn needs; once the turn ends it counts as an asking block.
+    releaseNeed(rt, rt.s.sessions[w.sessionId], itemId, 'tool');
+    w.resolve({ message });
+    return true;
+  }
   // The refusal below reaches a call nobody reads once the turn has ended, so an expiry also tells the agent (#721).
   closeCard(rt, w.threadId, itemId, w.sessionId, { status, answeredAt: Date.now(), ...patch });
   w.resolve(status.startsWith('allowed') ? { allow: true, ...answer } : { allow: false, message: message ?? 'The request expired when the turn ended.' });
@@ -231,8 +238,9 @@ export function recordDenial(rt, turn, d) {
   const se = rt.s.sessions[turn.sessionId];
   if (!se) return;
   const key = String(d.toolUseId ?? '');
-  // Once per call, and never for a call the person answered on a permission card.
-  if (key && rt.store.pending.items(turn.threadId).some((it) => (it.kind === 'denial' || it.kind === 'permission') && it.toolUseId === key)) return;
+  // Once per call, and never for a call the person answered on a permission card or as a question (#521).
+  if (key && rt.store.pending.items(turn.threadId).some((it) => (it.kind === 'denial' || it.kind === 'permission' || it.question) && it.toolUseId === key))
+    return;
   // On a host, a refusal’s Always would save its rule on this computer: Allow once and Leave stay.
   const rules = { ...rulesFor(String(d.tool ?? ''), d.input ?? {}), ...(turn.remote ? { always: null } : {}) };
   const detail = d.tool === 'Bash' ? String(d.input?.command ?? '') : JSON.stringify(d.input ?? {}, null, 2);

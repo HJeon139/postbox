@@ -31,6 +31,9 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
     return { kind: 'hop', itemId: it.id, text: `@${se.handle} wants to ${it.join ? 'add' : 'wake'} @${it.to}`, ...where };
   if (it.kind === 'permission' && it.sessionId === se.id && it.status === 'open' && rt.permissionWaits.has(it.id))
     return { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}`, ...where };
+  // An AskUserQuestion’s block (#521) needs the person while its call waits, mid-turn too, as a permission card does.
+  if (it.kind === 'block' && it.sessionId === se.id && !it.answered && rt.permissionWaits.get(it.id)?.question)
+    return { kind: 'block', itemId: it.id, text: it.block.title ?? clip(it.block.prompt ?? it.block.fallback, 120), ...where };
   if (it.sessionId !== se.id || (!turnIds.includes(it.turnId) && it.id !== keep)) return null;
   // A failed reply waits for its Retry while you haven't moved past its turn, so a wake's release finds it again;
   // one the person dismissed (#883) doesn't.
