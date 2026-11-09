@@ -134,6 +134,11 @@ export function settlePermission(rt, itemId, status, message, answer = {}, patch
   if (!w) return false;
   clearTimeout(w.timer);
   rt.permissionWaits.delete(itemId);
+  // A question (server/ask-question.mjs, #521) isn’t a card: its block stays asking, and its call hears why it ended.
+  if (w.question) {
+    w.resolve({ message });
+    return true;
+  }
   // The refusal below reaches a call nobody reads once the turn has ended, so an expiry also tells the agent (#721).
   closeCard(rt, w.threadId, itemId, w.sessionId, { status, answeredAt: Date.now(), ...patch });
   w.resolve(status.startsWith('allowed') ? { allow: true, ...answer } : { allow: false, message: message ?? 'The request expired when the turn ended.' });
