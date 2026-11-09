@@ -3,7 +3,7 @@
 // destination stays in the badge’s tooltip and the agent’s panel. The server checks a name with checkShortName, and
 // the page draws the badge with badgeOf.
 
-import { hasInvisible } from './invisible.mjs';
+import { hasControl, hasInvisible } from './invisible.mjs';
 
 /** The most characters a host’s short name has, so its badge stays compact. */
 export const SHORT_MAX = 8;
@@ -13,7 +13,7 @@ export const SHORT_MAX = 8;
  * such as U+200B (zero width space), U+3164 (a Hangul filler) or U+202E (right-to-left override): hasInvisible’s set,
  * shared/invisible.mjs, with no joiner allowed, as in an asset’s name (#1052). @param {string} s
  */
-const unseen = (s) => /[\p{Cc}\p{Cs}]/u.test(s) || hasInvisible(s);
+const unseen = (s) => hasControl(s) || /\p{Cs}/u.test(s) || hasInvisible(s);
 
 /** The badge of an agent whose host was removed: a fixed word, since there’s no machine to name. */
 export const REMOVED_BADGE = 'removed';
