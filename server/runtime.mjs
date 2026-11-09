@@ -120,7 +120,7 @@ import { openTopic, startTopic } from './topic-open.mjs';
 import { askedAgain, askedOf, replyMarks, wokeOf } from './turn-marks.mjs';
 import { settleStoppedSteps, settleSubagentSteps } from './turn-steps.mjs';
 import { workEvents } from './turn-work.mjs';
-import { closeOrphanCards, retireStale } from './wake-cards.mjs';
+import { closeOrphanCards, liftDecline, retireStale } from './wake-cards.mjs';
 
 export { AgentFileError } from './agent-files.mjs';
 export { httpError } from './helpers.mjs';
@@ -414,6 +414,7 @@ export class Runtime {
       seenItem: null,
     });
     updateThread(this, threadId, (x) => ({ members: [...x.members, se.id], kind: x.kind === 'thread' && x.members.length > 0 ? 'room' : x.kind }));
+    liftDecline(this, threadId, p.handle); // the person added it: a decline of adding it here no longer holds (#789)
     return se;
   }
 
