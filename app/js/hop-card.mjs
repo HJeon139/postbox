@@ -1,7 +1,9 @@
-// The wake-limit card (#108): after 50 agent wakes in one chain (#320, #492), the next one waits for your Allow. The same
-// card asks to add an agent the conversation doesn’t have, when another agent wakes it (#228). And focusComposer, which
-// it and the transcript use, so the two modules don't import each other.
+// The wake-limit card (#108): after the room’s chain limit of agent wakes in one chain (#320, #492), 1,000 unless the
+// person set another (#1035), the next one waits for your Allow. The same card asks to add an agent the conversation
+// doesn’t have, when another agent wakes it (#228). And focusComposer, which it and the transcript use, so the two
+// modules don't import each other.
 
+import { countText } from './chain-limit.mjs';
 import { api } from './client.mjs';
 import { $, h, icon } from './dom.mjs';
 import { toast } from './ui.mjs';
@@ -13,7 +15,9 @@ function whyAsked(it) {
   if (it.join) return `${it.from} wants to wake ${it.to}, which isn’t in this conversation. Added, it joins with a note on why, and gets the message.`;
   // A card the pair limit raised, before #492 removed it, as the conversation keeps it.
   if (it.pair) return `${it.from} and ${it.to} have woken each other ${it.pair} times in a row, so the next one waits for you.`;
-  return `That would be agent wake ${it.n} in this chain, past the limit of ${it.n - 1}, so it waits for you.`;
+  // The limit the card was raised under (#1035); a card from before kept none, and was raised at the one before its number.
+  const limit = it.limit ?? it.n - 1;
+  return `That would be agent wake ${countText(it.n)} in this chain, past the limit of ${countText(limit)}, so it waits for you.`;
 }
 
 export function hopBlock(it, ctx) {

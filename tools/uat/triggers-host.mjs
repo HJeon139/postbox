@@ -8,6 +8,7 @@ import { triesOf, triesWith } from './host-installs.mjs';
 import { agentTurns, hostIdOf, itemsUnderTest, labelOf, onHost, placeOf, remoteStream, remoteTurns, toolUses } from './remote-facts.mjs';
 import { HOSTWAKE_TRIGGERS } from './triggers-hostwakes.mjs';
 import { HUNG_TRIGGERS } from './triggers-hung.mjs';
+import { PATH_TRIGGERS } from './triggers-path.mjs';
 import { QUEUED_TRIGGERS } from './triggers-queued.mjs';
 
 const MINUTE = 60_000;
@@ -320,4 +321,5 @@ export const HOST_TRIGGERS = {
   ...HUNG_TRIGGERS,
   // An app call a host refused, told to its agent in the call (#827).
   ...QUEUED_TRIGGERS,
+  ...PATH_TRIGGERS,
 };

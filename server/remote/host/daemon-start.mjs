@@ -5,9 +5,10 @@
 import { randomBytes } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { dirname, posix } from 'node:path';
-import { ATTACHMENTS_DIR, DIR_MODE, FILE_MODE, socketPathFits, TURN_FILES, validateStartRecord } from '../../../shared/remote-protocol.mjs';
+import { ATTACHMENTS_DIR, DIR_MODE, FILE_MODE, lookedText, socketPathFits, TURN_FILES, validateStartRecord } from '../../../shared/remote-protocol.mjs';
 import { RUNNER_START_POLL_MS } from './daemon-constants.mjs';
 import { exists, runnerAlive, writeAtomic } from './daemon-files.mjs';
+import { reprobe, turnEnv } from './daemon-login.mjs';
 import { fail, send } from './daemon-reply.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
@@ -107,9 +108,8 @@ async function startTurn(d, c, m) {
  * @param {Daemon} d @param {any} m @param {FailStart} failStart
  */
 async function checkStart(d, m, failStart) {
-  const harness = d.programs?.harnesses.find((h) => h.name === m.harness);
-  if (!harness?.path)
-    return failStart('no-harness', `${m.harness} isn’t installed on this host. The daemon looked in ${harness?.looked.join(', ') || 'no folders'}.`);
+  const harness = await findHarness(d, m.harness);
+  if (!harness?.path) return failStart('no-harness', `${m.harness} isn’t installed on this host. The daemon looked in ${lookedText(harness)}.`);
   const node = d.programs?.node.path ?? process.execPath;
   const dir = d.p.turn(m.turn);
   if (!socketPathFits(d.p.turn(m.turn, TURN_FILES.socket)))
@@ -119,10 +119,21 @@ async function checkStart(d, m, failStart) {
   const agents = m.agentFile ? await kiroAgents(d, m.env) : null;
   if (agents && 'error' in agents) return failStart('start-failed', agents.error);
   if (!(await workFolder(d, m, failStart))) return;
-  const record = { turn: m.turn, harness: m.harness, program: harness.path, argv: m.argv, env: m.env, stdin: m.stdin, folder: m.folder };
+  const record = { turn: m.turn, harness: m.harness, program: harness.path, argv: m.argv, env: turnEnv(d, m.env), stdin: m.stdin, folder: m.folder };
   const checked = validateStartRecord(record);
   if (!checked.ok) return failStart('start-failed', checked.error);
   return { node, dir, agents, record };
+}
+
+/**
+ * The harness the last hello found, else the one found once the login shell is asked again (daemon-login.mjs).
+ * @param {Daemon} d @param {string} name
+ */
+async function findHarness(d, name) {
+  const found = () => d.programs?.harnesses.find((h) => h.name === name);
+  if (found()?.path) return found();
+  await reprobe(d);
+  return found();
 }
 
 /**

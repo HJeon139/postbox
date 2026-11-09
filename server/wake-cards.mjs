@@ -6,13 +6,18 @@
 import { HELD_WAKES } from '../shared/limits.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { clip, httpError } from './helpers.mjs';
+import { roomChainLimit } from './room-chain-limit.mjs';
 import { updateThread } from './thread-write.mjs';
 
-/** The card for a wake past the limit (#108), which waits for the person’s Allow. */
+/**
+ * The card for a wake past the room’s chain limit (#108), which waits for the person’s Allow. It keeps the limit it was
+ * raised under (#1035): the room’s may change before the person answers, and the wake’s number doesn’t say it.
+ */
 export function askToWake(rt, from, parent, p, wake) {
   const open = openCard(rt, parent);
   if (open) return holdOnCard(rt, open, parent, from, p, wake);
   const n = (parent.hops ?? 0) + 1;
+  const limit = roomChainLimit(rt, parent.id);
   // The card shows reason as a preview; text is the whole message, delivered when you allow it (#108).
   const it = rt.addItem(parent.id, {
     kind: 'hop',
@@ -23,10 +28,15 @@ export function askToWake(rt, from, parent, p, wake) {
     ...wake,
     status: 'open',
     n,
+    limit,
   });
   needsCard(rt, from, parent, it, `@${from.handle} wants to wake @${p.handle}`);
   rt.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, `That would be agent wake ${n} since your last message.`);
-  return { ok: false, waiting: true, message: `Waiting for the person to allow waking @${p.handle}.` };
+  return {
+    ok: false,
+    waiting: true,
+    message: `Waiting for the person to allow waking @${p.handle}: this room’s chain limit is ${limit.toLocaleString('en-US')}.`,
+  };
 }
 
 /**

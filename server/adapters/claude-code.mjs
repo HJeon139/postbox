@@ -32,6 +32,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
+import { versionIn } from '../../shared/cli-version.mjs';
 import { claudeArgs } from './claude-code-args.mjs';
 import { attachmentPaths, CLAUDE_CODE_CAPABILITIES, checkRemoteClaude, hostTurns, remoteGuide, remoteSaid, remoteTurn } from './claude-code-remote.mjs';
 import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
@@ -63,7 +64,7 @@ export function claudeVersion(bin = findClaude()) {
     p.on('error', () => resolve(null));
     p.on('close', (code) => {
       clearTimeout(timer);
-      resolve(code === 0 ? out.trim().split(/\s/)[0] || 'unknown' : null);
+      resolve(code === 0 ? (versionIn(out) ?? 'unknown') : null);
     });
   });
 }

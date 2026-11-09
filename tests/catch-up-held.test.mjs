@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { catchUp } from '../server/catch-up.mjs';
+import { updateThread } from '../server/thread-write.mjs';
 import { HOP_LIMIT } from '../shared/limits.mjs';
 import { settle, setup } from './side-threads-fixture.mjs';
 import { heldStore } from './stop-reply-fixture.mjs';
@@ -38,10 +39,11 @@ test('#693 a message held for another agent isn’t named in this one’s catch-
   assert.doesNotMatch(catchUp(f.rt, f.store.state.sessions[f.alpha.id]) ?? '', /is held on/);
 });
 
-/** A card from @beta's wake of @alpha past the chain limit, left open, with `n` more wakes of @alpha held on it. */
+/** A card from @beta's wake of @alpha past the room's chain limit of 3, left open, with `n` more wakes of @alpha held on it. */
 function wakeLimitCard(n) {
   const f = setup();
-  for (let i = 0; i < HOP_LIMIT; i++) f.rt.agentWake(...(i % 2 ? [f.alpha.id, 'beta'] : [f.beta.id, 'alpha']), `hand-off ${i + 1}`);
+  updateThread(f.rt, f.t.id, { chainLimit: 3 });
+  for (let i = 0; i < 3; i++) f.rt.agentWake(...(i % 2 ? [f.alpha.id, 'beta'] : [f.beta.id, 'alpha']), `hand-off ${i + 1}`);
   f.rt.agentWake(f.beta.id, 'alpha', 'The card’s own wake.');
   for (let i = 0; i < n; i++) f.rt.agentWake(f.beta.id, 'alpha', `Held ${i + 1}.`);
   return f;

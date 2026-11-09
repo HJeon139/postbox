@@ -6,6 +6,9 @@ import { h, icon } from './dom.mjs';
 import { jobRows, runningNote } from './reply-stop.mjs';
 import { kiroStep } from './thread-host.mjs';
 
+/** Each list’s steps, which its first open builds; a live step changes them. */
+const stepsOf = /** @type {WeakMap<HTMLElement, any[]>} */ (new WeakMap());
+
 /**
  * The parts of an agent reply its steps decide: a notice, the folded list of steps, and the running jobs’ rows.
  * @param {any} it  the agent item @returns {[any, HTMLElement | null, HTMLElement | null]}
@@ -14,8 +17,7 @@ export function activityParts(it) {
   const [notice, steps] = kiroStep(it);
   const total = steps.reduce((a, s) => a + (s.ms ?? 0), 0);
   const list = steps.length
-    ? h(
-        'details.activity',
+    ? foldedList(
         h(
           'summary',
           icon('right', 'i-sm'),
@@ -23,23 +25,67 @@ export function activityParts(it) {
           total ? ` · ${(total / 1000).toFixed(total < 10000 ? 1 : 0)} s in tools` : '',
           runningNote(it, steps),
         ),
-        stepTree(steps),
+        steps,
       )
     : null;
   return [notice, list, jobRows(it, steps)];
 }
 
 /**
+ * A folded list holds its summary and the steps’ labels as text, not the steps (#1028): most lists are never opened,
+ * and in a long room their steps were most of the page’s elements. The text sits in the details, so it’s hidden with
+ * them and Find still finds a step, opening them in Chromium. The first open builds the steps, and they stay built.
+ * @param {HTMLElement} summary @param {any[]} steps
+ */
+function foldedList(summary, steps) {
+  const text = h('div.steps-folded', steps.map((s) => s.label).join('\n'));
+  const list = h(
+    'details.activity',
+    {
+      ontoggle: () => {
+        if (list.open) buildSteps(list);
+      },
+    },
+    summary,
+    text,
+  );
+  // A click or key on the summary builds before the browser opens the list, so no frame shows the text open. Find opens
+  // it with no click, and its toggle builds then.
+  summary.addEventListener('click', () => buildSteps(list));
+  stepsOf.set(list, steps);
+  return list;
+}
+
+/**
+ * Builds a list’s steps in place of their text, once. A list a redraw opens again is built at once
+ * (rerender-state.mjs), so a thought expanded in it can be expanded again. @param {HTMLElement} list
+ */
+export function buildSteps(list) {
+  list.querySelector(':scope > .steps-folded')?.replaceWith(stepTree(stepsOf.get(list) ?? []));
+}
+
+/**
  * Moves the summary’s words and the steps into the list already drawn, so it keeps its open state and the summary its
- * focus. An expanded thought stays expanded, and a focused one keeps focus.
+ * focus. A list still folded takes the steps’ text, and stays unbuilt.
  * @param {HTMLDetailsElement} old @param {HTMLElement} next
  */
-function moveSteps(old, next) {
+function moveInto(old, next) {
   /** @type {HTMLElement} */ (old.querySelector(':scope > summary')).replaceChildren(
     .../** @type {HTMLElement} */ (next.querySelector(':scope > summary')).childNodes,
   );
-  const tree = /** @type {HTMLElement} */ (old.querySelector(':scope > ul.steps'));
-  const fresh = /** @type {HTMLElement} */ (next.querySelector(':scope > ul.steps'));
+  const steps = stepsOf.get(next) ?? [];
+  stepsOf.set(old, steps);
+  const tree = /** @type {HTMLElement | null} */ (old.querySelector(':scope > ul.steps'));
+  if (tree) moveSteps(tree, steps);
+  else old.querySelector(':scope > .steps-folded')?.replaceWith(/** @type {HTMLElement} */ (next.querySelector(':scope > .steps-folded')));
+}
+
+/**
+ * Builds a built list’s steps again in its place. An expanded thought stays expanded, and a focused one keeps focus.
+ * @param {HTMLElement} tree  the list’s ul.steps @param {any[]} steps
+ */
+function moveSteps(tree, steps) {
+  const fresh = stepTree(steps);
   const opened = new Set([...tree.querySelectorAll('details.step-text[open]')].map((d) => /** @type {HTMLElement} */ (d).dataset.stepId));
   const focused = tree.contains(document.activeElement) ? document.activeElement?.closest('details.step-text')?.getAttribute('data-step-id') : null;
   for (const d of fresh.querySelectorAll('details.step-text')) if (opened.has(/** @type {HTMLElement} */ (d).dataset.stepId)) d.setAttribute('open', '');
@@ -68,7 +114,7 @@ export function paintActivity(node, it) {
   // with steps, so they go after the list.
   const before = oldJobs ?? node.querySelector(':scope > .md');
   if (list && !oldList && !before) return false;
-  if (oldList && list) moveSteps(oldList, list);
+  if (oldList && list) moveInto(oldList, list);
   else if (list) node.insertBefore(list, before);
   else oldList?.remove();
   if (oldJobs && jobs) oldJobs.replaceWith(jobs);

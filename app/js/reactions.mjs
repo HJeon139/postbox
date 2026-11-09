@@ -4,7 +4,9 @@
 // card (hover-content.mjs), on hover and on keyboard focus, and the button’s name says it too. The agents answering
 // where it is hear yours at their next turn, and an agent’s is heard by the agent whose message it is. A reaction
 // repaints only its own buttons: the item, an app’s frame among them, isn’t drawn again.
-// Each reaction is drawn with its icon (app/media/reactions), and its emoji is the icon’s text.
+// Each button draws its reaction’s icon (app/media/reactions) and its count itself (workbench.css, data-icon and
+// data-count), so a row is six elements on every item: in a long room the rows were most of the page. Its name says
+// the reaction, who made it and how many, so nothing a screen reader hears comes from the icon.
 
 import { REACTIONS } from '/shared/reactions.mjs';
 import { api, client, itemIn } from './client.mjs';
@@ -18,8 +20,6 @@ const DRAWN = new Map([
   ['❓', 'unclear'],
   ['✅', 'done'],
 ]);
-/** A reaction’s icon, which says its emoji to a screen reader. workbench.css draws it, from the theme’s file. */
-const drawn = (emoji) => h('span.react-icon', { role: 'img', 'aria-label': emoji, dataset: { icon: DRAWN.get(emoji) } });
 /** The act that reacts: server/reactions.mjs, REACT. */
 const REACT = '@react';
 
@@ -42,19 +42,16 @@ function buttons(it, threadId) {
   return REACTIONS.map(([emoji, label]) => {
     const names = reactors(it, emoji);
     const yours = names[0] === 'you';
-    return h(
-      'button.react-btn',
-      {
-        type: 'button',
-        class: names.length ? 'made' : '',
-        'aria-pressed': String(yours),
-        'aria-label': `${label}${names.length ? `, from ${who(names)}, ${names.length} reaction${names.length === 1 ? '' : 's'}` : ''}: ${yours ? 'take yours back' : 'react'}`,
-        dataset: { emoji },
-        onclick: () => react(threadId, it.id, emoji),
-      },
-      drawn(emoji),
-      names.length > 1 || (names.length === 1 && !yours) ? h('span.react-count', { 'aria-hidden': 'true' }, String(names.length)) : null,
-    );
+    // The count shows from 1 when others reacted; yours alone has none.
+    const counted = names.length > 1 || (names.length === 1 && !yours);
+    return h('button.react-btn', {
+      type: 'button',
+      class: names.length ? 'made' : '',
+      'aria-pressed': String(yours),
+      'aria-label': `${label}${names.length ? `, from ${who(names)}, ${names.length} reaction${names.length === 1 ? '' : 's'}` : ''}: ${yours ? 'take yours back' : 'react'}`,
+      dataset: { emoji, icon: DRAWN.get(emoji), ...(counted ? { count: String(names.length) } : {}) },
+      onclick: () => react(threadId, it.id, emoji),
+    });
   });
 }
 

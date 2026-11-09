@@ -1,9 +1,10 @@
-// The wake-limit card (#108, #320): after HOP_LIMIT agent wakes in a row without you, the next one waits for your Allow,
-// and the card says the limit the server keeps, not a number of its own. The pair limit between two agents (#372) is
-// gone since #492 (tests/browser/wake-chain.spec.mjs).
+// The wake-limit card (#108, #320): after the room’s chain limit of agent wakes in a row without you, the next one waits
+// for your Allow, and the card says the limit it was raised under, which the room keeps (#1035), not a number of its own.
+// The pair limit between two agents (#372) is gone since #492 (tests/browser/wake-chain.spec.mjs).
 
 import { expect, test } from '@playwright/test';
-import { HOP_LIMIT } from '../../server/side-threads.mjs';
+import { updateThread } from '../../server/thread-write.mjs';
+import { DEFAULT_HOP_LIMIT } from '../../shared/limits.mjs';
 import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
 
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
@@ -16,6 +17,12 @@ let heldRoom;
 let retiredRoom;
 /** @type {any} */
 let closedRoom;
+/** @type {any} */
+let defaultRoom;
+/** @type {any} */
+let midRoom;
+/** @type {any} */
+let oldCardRoom;
 
 test.beforeAll(async () => {
   app = await startPostbox('wake-limit');
@@ -24,11 +31,16 @@ test.beforeAll(async () => {
   const personas = ['waker', 'woken'].map((handle) => rt.createPersona({ handle, backend: 'mock', permissionMode: 'auto', tools: [] }));
   room = rt.createThread({ projectId: 'pr_wakes', title: 'Wakes', personaIds: personas.map((p) => p.id) });
   const waker = rt.sessionsIn(room.id).find((se) => se.handle === 'waker');
-  /** HOP_LIMIT wakes of woken, allowed so the mock agents' answers don't reach the limit first, then one past it. */
+  /**
+   * The room’s limit of 3 (#1035), then 3 wakes of woken, allowed so the mock agents' answers don't reach the limit
+   * first, then one past it.
+   */
   const pastLimit = (se) => {
-    for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(se.id, 'woken', `check ${i + 1}`, { confirmed: true });
-    rt.agentWake(se.id, 'woken', `check ${HOP_LIMIT + 1}`);
+    updateThread(rt, se.threadId, { chainLimit: 3 });
+    for (let i = 0; i < 3; i++) rt.agentWake(se.id, 'woken', `check ${i + 1}`, { confirmed: true });
+    rt.agentWake(se.id, 'woken', 'check 4');
   };
+  const wakerIn = (t) => rt.sessionsIn(t.id).find((se) => se.handle === 'waker');
   pastLimit(waker);
   // A card waits, and a third agent's hand-off that needs one of its own is held on it (#439).
   const other = rt.createPersona({ handle: 'other', backend: 'mock', permissionMode: 'auto', tools: [] });
@@ -46,20 +58,52 @@ test.beforeAll(async () => {
   const cw = rt.sessionsIn(closedRoom.id).find((se) => se.handle === 'waker');
   pastLimit(cw);
   rt.archive(cw.id);
+  // A room with nothing set, past the default of 1,000 (#1035): its count set directly, rather than 1,000 wakes.
+  defaultRoom = rt.createThread({ projectId: 'pr_wakes', title: 'Default', personaIds: personas.map((p) => p.id) });
+  updateThread(rt, defaultRoom.id, { hops: 1000 });
+  rt.agentWake(wakerIn(defaultRoom).id, 'woken', 'check 1,001');
+  // At 20 wakes the room is set to 5, so the next asks: its card says 5, not the 20 its number would give (#1035).
+  midRoom = rt.createThread({ projectId: 'pr_wakes', title: 'Mid-chain', personaIds: personas.map((p) => p.id) });
+  oldCardRoom = rt.createThread({ projectId: 'pr_wakes', title: 'Old card', personaIds: personas.map((p) => p.id) });
+  for (const t of [midRoom, oldCardRoom]) {
+    updateThread(rt, t.id, { hops: 20, chainLimit: 5 });
+    rt.agentWake(wakerIn(t).id, 'woken', 'check 21');
+  }
+  // A card raised before #1035 kept no limit: it says the one before its number, as it always did. Without a card,
+  // the test says so on its assertion.
+  const old = store.items(oldCardRoom.id).find((x) => x.kind === 'hop');
+  if (old) rt.patchItem(oldCardRoom.id, old.id, { limit: undefined });
 });
 test.afterAll(async () => {
   await app?.stop();
 });
 failOnPageErrors(test);
 
-test('the card waits after the limit’s wakes, and says the limit the server keeps', async ({ page }) => {
-  expect(HOP_LIMIT, 'raised from 3 (#320), and to 50 as a backstop (#492)').toBe(50);
+test('the card waits after the room’s limit of wakes, and says that limit', async ({ page }) => {
   await page.goto(`${app.origin}/#/t/${room.id}`);
   await synced(page, app);
   const card = page.locator('.transcript .block').filter({ hasText: 'Let waker wake woken?' });
   await expect(card).toBeVisible();
-  await expect(card).toContainText(`That would be agent wake ${HOP_LIMIT + 1} in this chain, past the limit of ${HOP_LIMIT}, so it waits for you.`);
+  await expect(card).toContainText('That would be agent wake 4 in this chain, past the limit of 3, so it waits for you.');
   await expect(card.getByRole('button', { name: 'Let waker wake woken' })).toBeEnabled();
+});
+
+test('#1035 in a room with nothing set, the card comes after the default of 1,000 wakes', async ({ page }) => {
+  expect(DEFAULT_HOP_LIMIT, 'raised from 3 (#320), to 50 (#492), and to 1,000 (#1035)').toBe(1000);
+  await page.goto(`${app.origin}/#/t/${defaultRoom.id}`);
+  await synced(page, app);
+  const card = page.locator('.transcript .block').filter({ hasText: 'Let waker wake woken?' });
+  await expect(card).toContainText('That would be agent wake 1,001 in this chain, past the limit of 1,000, so it waits for you.');
+});
+
+test('#1035 the card says the limit it was raised under, not one from its number, and an older card keeps its number’s', async ({ page }) => {
+  await page.goto(`${app.origin}/#/t/${midRoom.id}`);
+  await synced(page, app);
+  const card = page.locator('.transcript .block').filter({ hasText: 'Let waker wake woken?' });
+  await expect(card).toContainText('That would be agent wake 21 in this chain, past the limit of 5, so it waits for you.');
+  await page.goto(`${app.origin}/#/t/${oldCardRoom.id}`);
+  await synced(page, app);
+  await expect(card).toContainText('That would be agent wake 21 in this chain, past the limit of 20, so it waits for you.');
 });
 
 test('a wake held on the waiting card shows on it until you answer, and goes when you allow it (#439)', async ({ page }) => {

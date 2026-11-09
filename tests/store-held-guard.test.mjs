@@ -144,6 +144,8 @@ const PENDING = {
   // left, so a stream holds one patch, not one per chunk, a held compaction counts, and a held note is given. A delivery reads its session pending too (runtime.mjs
   // deliver, twice): the last summary's givenMentions and seenItem, and a notice, held, are seen, not given again or lost (#506). Whether a thread has a persona's session already
   // reads its pending members and sessions, so a second mention behind a held commit finds the session the first made.
+  // The room’s chain limit, which decides whether a wake waits, maybe set behind a held commit (#1035).
+  'room-chain-limit.mjs': ['roomChainLimit'],
   'session-write.mjs': ['updateSession', 'pendingSessionsIn', 'pendingSessionsIn'],
   'subagent-end.mjs': ['withUrgent'],
   'side-threads.mjs': ['agentWake', 'agentWake', 'agentWake', 'endChain', 'endChain', 'archiveForks', 'bumpSideLink', 'bumpSideLink'],

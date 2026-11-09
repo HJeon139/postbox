@@ -13,6 +13,7 @@ import { attached, fail, toPostbox } from './daemon-reply.mjs';
 import { armSweep, checkIdle, scan } from './daemon-scan.mjs';
 import { stopTurn } from './daemon-stop.mjs';
 import { defaultWriteRunner, writeHeld } from './daemon-write.mjs';
+import { probeLoginPath as defaultProbeLoginPath } from './login-path.mjs';
 import { hostVersion } from './paths.mjs';
 import * as defaultProc from './proc.mjs';
 import { findPrograms as defaultFindPrograms } from './programs.mjs';
@@ -38,6 +39,9 @@ export function createDaemon(opts) {
     p: hostPaths(o.home, o.version),
     settings: { ...HOST_DEFAULTS },
     programs: null,
+    loginPath: null,
+    loginProbe: null,
+    reprobed: null,
     conns: new Set(),
     driver: null,
     ids: 0,
@@ -82,6 +86,7 @@ function withDefaults({
   proc = defaultProc,
   writeRunner = defaultWriteRunner,
   findPrograms = (o) => defaultFindPrograms(o),
+  probeLoginPath = () => defaultProbeLoginPath(),
   kill = (pid, signal) => process.kill(pid, signal),
   log = (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),
   onIdle = () => {},
@@ -109,6 +114,7 @@ function withDefaults({
     proc,
     writeRunner,
     findPrograms,
+    probeLoginPath,
     kill,
     log,
     onIdle,

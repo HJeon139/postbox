@@ -1,6 +1,7 @@
 // The kiro-cli binary, its version, and the models it offers, in Postbox’s spelling (server/adapters/kiro-cli.mjs runs it).
 
 import { spawn } from 'node:child_process';
+import { versionIn } from '../../shared/cli-version.mjs';
 
 /** The kiro-cli binary: POSTBOX_KIRO_BIN, then the PATH. */
 export const findKiro = (env = process.env) => env.POSTBOX_KIRO_BIN || 'kiro-cli';
@@ -17,7 +18,7 @@ export function kiroVersion(bin = findKiro()) {
     p.on('error', () => resolve(null));
     p.on('close', (code) => {
       clearTimeout(timer);
-      resolve(code === 0 ? out.trim().split(/\s+/).at(-1) || 'unknown' : null);
+      resolve(code === 0 ? (versionIn(out) ?? 'unknown') : null);
     });
   });
 }

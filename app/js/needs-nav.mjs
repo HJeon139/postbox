@@ -6,6 +6,7 @@
 import { conversationOf, needsOrder, needsYouNow, whereNeeds } from '/shared/needs.mjs';
 import { client, hrefOf, liveSessions } from './client.mjs';
 import { navigate, route, toast } from './ui.mjs';
+import { jumpTo } from './view-jump.mjs';
 
 const S = () => client.state;
 const frame = () => new Promise((r) => requestAnimationFrame(() => r(undefined)));
@@ -31,7 +32,7 @@ export async function focusItem(itemId) {
   await frame();
   await frame();
   node = find() ?? node;
-  node.scrollIntoView({ block: 'center' });
+  jumpTo(node);
   // Tell its transcript now, as its scroll event would a frame later: what grows in between (an app’s check giving way to
   // its frame) would read as the view having stopped short of the end, and be held there, the item under the composer (#410).
   const scroller = node.parentElement?.parentElement;

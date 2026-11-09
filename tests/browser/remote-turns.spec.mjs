@@ -84,11 +84,14 @@ test('#120 the turn states read in words in the transcript: Sign-in needed and I
   await expect
     .soft(item(page, unkilled).getByRole('alert'))
     .toContainText('Check it there, then resume @keeper. It may still be running on host.example.com, so it waits for you.');
-  // #909: an agent whose backend isn’t registered here says why its turn can’t be followed, and what to do, and that it
-  // waits for you, since the turn may still be running there.
+  // #909: an agent whose backend isn’t registered here says why its turn can’t be followed, and what to do. #965’s P3:
+  // its hint says it waits for the backend and resumes on its own after that, not once the host is back.
   await expect
     .soft(item(page, unregistered).getByRole('alert'))
-    .toContainText(`Interrupted on host.example.com · ${UNREGISTERED}. It may still be running on host.example.com, so it waits for you.`);
+    .toContainText(
+      `Interrupted on host.example.com · ${UNREGISTERED}. It waits for its backend on this computer. Install it and restart Postbox, and it resumes on its own.`,
+    );
+  await expect.soft(item(page, unregistered).getByRole('alert')).not.toContainText('once host.example.com is back');
   await expect.soft(item(page, hung).locator('.stopped-tag')).toHaveText(HUNG);
   await expect
     .soft(item(page, lost).getByRole('alert'))
@@ -102,6 +105,23 @@ test('#120 the turn states read in words in the transcript: Sign-in needed and I
     .toHaveText(
       /^stopper · Stopping on host\.example\.com: Postbox asked it to stop, and waits for the host to confirm\. It may still run there until then\.$/,
     );
+});
+
+// #965’s P3, the integrator’s case: a turn whose backend isn’t registered here, and that the host still lists as
+// running, may still run there. Its hint says so and promises nothing, even with both marks, as #1050’s first head
+// saved it (the server now saves only resume.unkilled for it).
+test('#965 an unregistered agent’s turn that may still run on the host says it waits for you, not that it resumes', async ({ page }) => {
+  const { rt } = s.app;
+  const before = rt.s.sessions[s.ses.porter.id].remoteTurn;
+  rt.updateSession(s.ses.porter.id, { remoteTurn: { ...before, resume: { why: 'interrupted', at: before.resume.at, unkilled: true, noBackend: true } } });
+  try {
+    await open(page);
+    const alert = item(page, s.items.unregistered).getByRole('alert');
+    await expect.soft(alert).toContainText(`${UNREGISTERED}. It may still be running on host.example.com, so it waits for you.`);
+    await expect.soft(alert).not.toContainText('resumes on its own');
+  } finally {
+    rt.updateSession(s.ses.porter.id, { remoteTurn: before });
+  }
 });
 
 test('#120 a replayed reply shows once, with its name, and a Kiro host warning stays out of the conversation', async ({ page }) => {
