@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.54.3 (2026-11-09)
+
+### Fixes
+
+- **backends:** clip the backend name in placement's other refusals too
+- **permissions:** an Authorization scheme only after a space, and marks in the lookbehinds
+- **permissions:** hide a quoted Authorization header's every parameter, and curl -u's password
+- **backends:** strip every hiding character from a backend name in a reason
+- **permissions:** the hooks panel hides more credential shapes
+
 ## 1.54.2 (2026-11-09)
 
 ### Fixes
