@@ -3,15 +3,21 @@
 // It owns that state for one transcript, holds the anchor through changes in size (#88, #297, #341), and publishes what
 // it is on the transcript as data-view-* (publish, view-publish.mjs). Moved from thread.mjs’s mountTranscript (#531).
 
+import { browserMoved, inSight, measure } from './view-box.mjs';
 /**
  * @typedef {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, unseen: number, stuck: boolean,
- *   anchor: { key: string, at: number } | null, dead: boolean, shown: number, lastTop: number, seenTop: number,
- *   held: { end: number, last: number, width: number }, jump: ((n: number) => void) | null, bound: any, size: string,
- *   sizes: ResizeObserver, changes: MutationObserver, changed?: boolean, noted?: number }} View
+ *   anchor: { key: string, at: number } | null, pinned: boolean, smoothing: boolean, dead: boolean, shown: number,
+ *   lastTop: number, seenTop: number, heardYou: boolean, held: { end: number, last: number, width: number },
+ *   jump: ((n: number) => void) | null, bound: any, size: string, sizes: ResizeObserver, changes: MutationObserver,
+ *   changed?: boolean, noted?: number }} View
  */
 import { onlyRemoves } from './view-changes.mjs';
 import { atEnd, box, findAnchor, gapOf, viewTop } from './view-geometry.mjs';
+import { register, unregister } from './view-jump.mjs';
+import { newView } from './view-new.mjs';
 import { publish } from './view-publish.mjs';
+import { DRAWN, drawNewest, skipOffscreen } from './view-skip.mjs';
+import { halt, landed, smoothEnded, whenSmoothEnds } from './view-smooth.mjs';
 
 // The pill floats just above the composer. It shows only while the end is further below than that, so what it
 // floats over is never the working rows or the end of the last message (#91).
@@ -36,34 +42,28 @@ function seen(v) {
   v.unseen = 0;
   showJump(v, null);
 }
+// Smoothly only in the main pane, with motion allowed, and where the browser says when a scroll ends: follow() holds
+// off while it runs, and smoothEnded() goes the rest of the way (#712a).
 /** @param {View} v @param {boolean} [smooth] */
 function scrollToEnd(v, smooth = false) {
   v.stuck = true;
+  v.pinned = false;
   const s = box(v);
-  if (s && smooth && !v.inPanel && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+  v.smoothing = !!s && smooth && !v.inPanel && 'onscrollend' in window && !atEnd(s);
+  if (v.smoothing && matchMedia('(prefers-reduced-motion: reduce)').matches) v.smoothing = false;
+  if (v.smoothing) {
+    whenSmoothEnds((stoppedByYou) => smoothEnded(v, stoppedByYou));
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
-  else if (s) s.scrollTop = s.scrollHeight;
+  } else if (s) s.scrollTop = s.scrollHeight;
   seen(v);
 }
-// While stuck, what comes after the newest message shrinking (a working row going, a card getting shorter once
-// answered, the composer) would shorten the page and pull everything down, under your pointer, just as a card
-// that needs you arrives. Instead the transcript keeps its height, until the next message or a new width.
-/** @param {View} v */
-function lastItem(v) {
-  for (let n = v.el.lastElementChild; n; n = n.previousElementSibling) {
-    if (n instanceof HTMLElement && n.dataset.key) return n;
-  }
-  return null;
-}
-/** @param {View} v @param {Element} s */
-const measure = (v, s) => ({
-  end: s.scrollHeight,
-  last: (lastItem(v)?.getBoundingClientRect().top ?? 0) - viewTop(v, s) + s.scrollTop,
-  width: v.el.clientWidth,
-});
+// While stuck, what comes after the newest message shrinking (a working row going, a card answered, the composer)
+// would pull everything down under your pointer. So the transcript keeps that room below its newest message (--held,
+// its bottom padding) until the next message or a new width: not its whole height, which skipped items drawn later
+// would leave as a gap (#712a).
 /** @param {View} v */
 function release(v) {
-  if (v.el.style.minHeight) v.el.style.minHeight = '';
+  if (v.el.style.getPropertyValue('--held')) v.el.style.removeProperty('--held');
 }
 // After anything changes size: back to the bottom while stuck, else keep what you were reading in place.
 /** @param {View} v */
@@ -71,8 +71,11 @@ function follow(v) {
   noteEnd(v);
   const s = box(v);
   if (!s || v.dead) return;
-  // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back.
-  if (v.stuck && s.scrollTop < v.lastTop - 1 && !atEnd(s)) {
+  // You scrolled up in this frame, before its scroll event: that counts, so don’t pull you back. Unless the move is the
+  // browser’s, keeping what’s on screen still as skipped items above draw shorter than their estimates, as Firefox does
+  // (#712a): that move is tied to what the page lost, and a scroll of yours isn’t.
+  const up = v.lastTop - s.scrollTop;
+  if (v.stuck && up > 1 && !atEnd(s) && !browserMoved(v, s, up)) {
     v.stuck = false;
     v.anchor = findAnchor(v);
     // The anchor is taken where the view now is, so that scroll is heard: heard() below mustn’t take it in again.
@@ -81,9 +84,12 @@ function follow(v) {
   if (v.stuck) {
     const now = measure(v, s);
     if (now.width !== v.held.width) release(v);
-    else if (now.end < v.held.end && Math.abs(now.last - v.held.last) < 1 && v.held.end > s.clientHeight)
-      v.el.style.minHeight = `${v.el.getBoundingClientRect().height + v.held.end - now.end}px`;
-    if (!atEnd(s)) s.scrollTop = s.scrollHeight;
+    else if (now.end < v.held.end && Math.abs(now.last - v.held.last) < 1 && v.held.end > s.clientHeight) {
+      const heldNow = Number.parseFloat(v.el.style.getPropertyValue('--held')) || 0;
+      v.el.style.setProperty('--held', `${heldNow + v.held.end - now.end}px`);
+    }
+    // A smooth jump to the end is on its way there: snapping now would end it in one frame (#712a).
+    if (!atEnd(s) && !v.smoothing) s.scrollTop = s.scrollHeight;
     v.held = measure(v, s);
   } else {
     heard(v, s);
@@ -103,8 +109,13 @@ function heard(v, s) {
   const unheard = s.scrollTop - v.lastTop;
   if (!v.anchor || Math.abs(unheard) < 1) return;
   if (sizeOf(s) !== v.size) return;
+  // A move up that leaves the view at the end is the browser clamping it to an end that came up as what’s below
+  // shrank, never you: a scroll up doesn’t reach the end (onScroll’s rule). The anchor holds (#712a).
+  if (unheard < 0 && atEnd(s)) return;
   v.anchor = { key: v.anchor.key, at: v.anchor.at - unheard };
   v.lastTop = s.scrollTop;
+  // Its event then looks like the transcript’s own scroll: onScroll still counts it as one the transcript didn’t make.
+  v.heardYou = true;
 }
 // Only your own scrolling unsticks the view: content growing never scrolls, and the browser doesn’t anchor
 // (overflow-anchor is off), so the view moving up means you moved it, by wheel, keys or a drag, even over an app.
@@ -112,16 +123,20 @@ function heard(v, s) {
 function onScroll(v) {
   const s = box(v);
   if (!s) return;
+  landed(v, s);
   // The event for a scroll the transcript made itself, holding what you read in place, comes in a later frame, maybe
   // after what’s above has moved again: hold it in place again before taking the anchor there, or you lose your place
   // (#297).
   const moved = s.scrollTop !== v.lastTop;
-  // A box that changed size since the last scroll event (full screen and back, the window) can clamp the view to its
-  // new end. That isn’t you: the view doesn’t start following, and keeps your place for when the box is back, as heard()
-  // doesn’t take it in (#837). A clamp only moves the view up from where the last scroll event saw it (holding the
-  // anchor through the resize may already have moved lastTop there); reaching the end by moving down is you.
-  const clamped = sizeOf(s) !== v.size && s.scrollTop < v.seenTop;
-  if (atEnd(s) && (v.stuck || !clamped)) {
+  // Reaching the end follows it only when you went there: by a scroll the transcript didn’t make (moved, or one heard()
+  // took in first), and down from where the last scroll event saw the view (seenTop; holding the anchor may already
+  // have moved lastTop). A clamp of the view to an end that came up only moves it up: the box grew (full screen and
+  // back, the window, #837), or what’s below shrank, as items around the view draw at their real sizes (#712a). The
+  // transcript’s own hold of your place can move it down to the end, but it isn’t a scroll the transcript didn’t make.
+  const yours = moved || v.heardYou;
+  v.heardYou = false;
+  const youReachedEnd = yours && s.scrollTop > v.seenTop;
+  if (atEnd(s) && (v.stuck || youReachedEnd)) {
     if (!v.stuck) v.held = measure(v, s);
     v.stuck = true;
   } else if (s.scrollTop < v.lastTop) v.stuck = false;
@@ -130,8 +145,12 @@ function onScroll(v) {
   v.lastTop = s.scrollTop;
   v.seenTop = s.scrollTop;
   v.size = sizeOf(s);
-  if (v.stuck || (clamped && atEnd(s))) return;
+  if (yours) v.pinned = false;
+  // Reading at the end, the view was put there, by a clamp or by its own hold, not by you: keep the anchor you read at.
+  if (v.stuck || atEnd(s)) return;
   if (!moved) holdAnchor(v);
+  // Our own hold after a jump: the target stays the anchor while what’s between it and the middle draws (#712).
+  if (v.pinned) return;
   v.anchor = findAnchor(v);
 }
 /** @param {View} v @param {() => void} scrolled @param {() => void} resized */
@@ -142,6 +161,8 @@ function bind(v, scrolled, resized) {
   v.bound.addEventListener('scroll', scrolled, { passive: true });
   addEventListener('resize', resized);
   v.sizes.observe(v.el);
+  // An item's first draw can grow inside the height held while stuck, unseen by v.sizes (view-skip.mjs, DRAWN).
+  v.el.addEventListener(DRAWN, resized, true);
   // What’s around it changing moves the end too: the composer, the panel’s height, the thread’s root above. A shrink
   // there clamps the view like one in the transcript, so its changes are noted the same way (#360). The panel’s
   // composer isn’t beside the transcript: it’s in the panel’s foot, under the scroll box.
@@ -200,11 +221,24 @@ function changed(v, records) {
   v.noted ||= requestAnimationFrame(() => (v.noted = 0));
   noteEnd(v);
 }
+/**
+ * An item drawn again whole, as a finished reply is: it may come out shorter, and the page may grow back before the
+ * frame (#297), so the note is taken now, while it’s short. Once per redraw, not per streamed delta (#903).
+ * @param {View} v
+ */
+function redrawn(v) {
+  v.changed = true;
+  noteEnd(v);
+}
 // What arrived counts as unseen when the view isn’t on the newest message, including when follow() finds you
 // scrolled up in this frame, before its scroll event told the transcript (#341).
 /** @param {View} v */
 function grew(v) {
-  if (v.stuck) follow(v);
+  // Following, the new message is drawn at its real size at once, so the view goes to the end once (#712a).
+  if (v.stuck) {
+    drawNewest(v.el);
+    follow(v);
+  }
   if (!v.stuck) {
     v.unseen++;
     showJump(v, box(v));
@@ -212,29 +246,29 @@ function grew(v) {
 }
 
 /**
- * A view’s state as it starts: following, unless it comes back from a rebuild while reading (was). Its observers are
- * added by mountView.
- * @param {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, was?: { anchor: any, unseen: number } }} o
- * @returns {View}
+ * After a jump has put item where it was sent: it’s the anchor, kept until you scroll (#712, view-jump.mjs).
+ * @param {View} v @param {HTMLElement} item
  */
-function newView({ el, inPanel, nodes, was }) {
-  return /** @type {any} */ ({
-    el,
-    inPanel,
-    nodes,
-    unseen: was?.unseen ?? 0,
-    stuck: !was,
-    anchor: was?.anchor ?? null,
-    dead: false,
-    shown: -1,
-    lastTop: 0,
-    held: { end: 0, last: 0, width: 0 },
-    jump: null,
-    bound: null,
-    size: '',
-    seenTop: 0,
-  });
+function pin(v, item) {
+  const s = box(v);
+  if (!s || v.dead) return;
+  v.stuck = atEnd(s);
+  v.pinned = !v.stuck;
+  if (v.stuck) v.held = measure(v, s);
+  v.anchor = { key: /** @type {string} */ (item.dataset.key), at: item.getBoundingClientRect().top - viewTop(v, s) };
+  v.lastTop = s.scrollTop;
+  if (gapOf(s) <= PILL_ROOM) seen(v);
+  showJump(v, s);
+  publish(v);
 }
+/** What view-jump.mjs needs of a view. @param {View} v */
+const jumpable = (v) => ({
+  box: () => box(v),
+  seen: () => inSight(v),
+  halt: () => halt(v),
+  pin: (/** @type {HTMLElement} */ item) => pin(v, item),
+});
+
 /**
  * The view of one transcript.
  * @param {{ el: HTMLElement, inPanel: boolean, nodes: Map<string, HTMLElement>, was?: { anchor: any, unseen: number } }} o
@@ -256,6 +290,10 @@ export function mountView({ el, inPanel, nodes, was }) {
   const resized = () => follow(v);
   const scrolled = thenPublish(() => onScroll(v));
   v.sizes = new ResizeObserver(resized);
+  // Only the main pane skips: with skipping on, the side panel fails #837’s two near-end cases at 1280 px
+  // (work-pane-thread.spec.mjs). The likely cause, not proven: going full screen and back changes the box’s width, and
+  // its items in view draw at the new width over the frames after, clamping the view again once the size is seen.
+  if (!inPanel) skipOffscreen(el);
   // A change that makes the transcript shorter while stuck (a held height released, an app’s check giving way to its
   // frame) pulls the view up to the page’s new end. That isn’t you, but its scroll event can come after the page grew
   // back, and read as you scrolling up (#297). So note where the view is, if it’s at the new end: a wheel turn moves it
@@ -263,17 +301,13 @@ export function mountView({ el, inPanel, nodes, was }) {
   v.changes = new MutationObserver((records) => changed(v, records));
   v.changes.observe(el, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
   publish(v);
+  register(el, jumpable(v));
   return {
     settle: () => settle(v, scrolled, resized),
     scrollToEnd: thenPublish((/** @type {boolean} */ smooth) => scrollToEnd(v, smooth)),
     grew: thenPublish(() => grew(v)),
     rebuilt: thenPublish(() => rebuilt(v)),
-    // An item drawn again whole, as a finished reply is: it may come out shorter, and the page may grow back before
-    // the frame (#297), so the note is taken now, while it’s short. Once per redraw, not per streamed delta (#903).
-    redrawn: () => {
-      v.changed = true;
-      noteEnd(v);
-    },
+    redrawn: () => redrawn(v),
     release: () => release(v),
     setJump: (/** @type {(n: number) => void} */ fn) => (v.jump = fn),
     /** An item moved to the end (item.move): if it was the anchor, its stub holds the place. */
@@ -287,9 +321,11 @@ export function mountView({ el, inPanel, nodes, was }) {
     },
     destroy() {
       v.dead = true;
+      unregister(el);
       v.sizes.disconnect();
       v.changes.disconnect();
       v.bound?.removeEventListener('scroll', scrolled);
+      el.removeEventListener(DRAWN, resized, true);
       removeEventListener('resize', resized);
     },
   };
