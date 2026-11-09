@@ -55,13 +55,11 @@ export function updateHost(rt, id, { name, short, settings } = {}) {
       409,
       `${h.name} can’t be renamed while agents’ turns run there or wait to go on there: they’d carry on on ${h.name} while new ones went to ${dest}. Stop them or let them finish, then rename it.`,
     );
-  const { short: was, ...rest } = h;
-  const next = {
-    ...rest,
-    name: dest,
-    ...(short === undefined ? shortOf(was) : shortOf(short)),
-    settings: checked(checkHostSettings(settings ?? {}, h.settings)),
-  };
+  const { short: _was, ...rest } = h;
+  // A short name not in the patch is kept as stored, unchecked: one kept before #1052’s check refused hidden
+  // characters (🖥️, ❤️) would otherwise block every change to its host. The badge doesn’t show it (badgeOf).
+  const kept = short === undefined ? h : { ...rest, ...shortOf(short) };
+  const next = { ...kept, name: dest, settings: checked(checkHostSettings(settings ?? {}, h.settings)) };
   rt.store.emit('host', next);
   const enforced = HOST_ENFORCED.some((k) => JSON.stringify(h.settings?.[k]) !== JSON.stringify(next.settings?.[k]));
   // Renamed: the manager drops the old link now, if nothing needs it, and the next use dials the new destination.

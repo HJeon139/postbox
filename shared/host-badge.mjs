@@ -3,11 +3,17 @@
 // destination stays in the badge’s tooltip and the agent’s panel. The server checks a name with checkShortName, and
 // the page draws the badge with badgeOf.
 
+import { hasControl, hasInvisible } from './invisible.mjs';
+
 /** The most characters a host’s short name has, so its badge stays compact. */
 export const SHORT_MAX = 8;
 
-/** Control characters, and invisible format ones such as U+200B (zero width space) and U+202E (right-to-left override). */
-const UNSEEN = /[\p{Cc}\p{Cf}]/u;
+/**
+ * Whether a short name holds a control character, a lone surrogate, or one that shows as nothing or reorders text,
+ * such as U+200B (zero width space), U+3164 (a Hangul filler) or U+202E (right-to-left override): hasInvisible’s set,
+ * shared/invisible.mjs, with no joiner allowed, as in an asset’s name (#1052). @param {string} s
+ */
+const unseen = (s) => hasControl(s) || /\p{Cs}/u.test(s) || hasInvisible(s);
 
 /** The badge of an agent whose host was removed: a fixed word, since there’s no machine to name. */
 export const REMOVED_BADGE = 'removed';
@@ -21,7 +27,7 @@ export const REMOVED_BADGE = 'removed';
 export function checkShortName(v) {
   if (typeof v !== 'string') return { ok: false, error: 'A host’s short name is text.' };
   const s = v.trim();
-  if (UNSEEN.test(s)) return { ok: false, error: 'A short name can’t contain control or invisible characters, such as a new line or a zero width space.' };
+  if (unseen(s)) return { ok: false, error: 'A short name can’t contain control or invisible characters, such as a new line or a zero width space.' };
   const n = Array.from(s).length;
   if (n > SHORT_MAX) return { ok: false, error: `That short name is ${n} characters; the most is ${SHORT_MAX}.` };
   return { ok: true, value: s };
@@ -31,11 +37,12 @@ export function checkShortName(v) {
  * The badge for a host: its short name, or the first part of its machine’s name cut to SHORT_MAX characters
  * (user@dev-box.corp.example.com is “dev-box”). An IP address keeps its end, where addresses on one network differ,
  * without an IPv6 address’s zone (%en0, or %25en0 as a URL writes it). A host that was removed is REMOVED_BADGE.
+ * A short name kept before checkShortName refused hidden characters, which it now refuses, counts as unset (#1052).
  * @param {{ name?: string, short?: string, removed?: boolean } | null | undefined} host
  */
 export function badgeOf(host) {
   if (host?.removed) return REMOVED_BADGE;
-  if (host?.short) return host.short;
+  if (host?.short && checkShortName(host.short).ok) return host.short;
   const machine = String(host?.name ?? '')
     .replace(/^.*@/, '')
     .replace(/^\[(.*)\]$/, '$1')
