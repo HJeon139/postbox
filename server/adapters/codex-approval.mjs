@@ -1,6 +1,7 @@
 // Map Codex app-server approval requests onto Postbox permissions and MCP elicitation responses.
 
 import { draftOf } from '../write-guard.mjs';
+import { codexAlwaysOffer } from './codex-always.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
 /** Map Codex app-server approval requests onto Postbox permissions and MCP elicitation responses. */
@@ -48,15 +49,38 @@ export async function codexApproval(ctx, msg) {
     });
     return answer?.allow ? { action: 'accept', content: {} } : { action: 'decline' };
   }
-  const isCommand = msg.method === 'item/commandExecution/requestApproval';
-  const isFile = msg.method === 'item/fileChange/requestApproval';
-  if (isCommand || isFile) {
-    const summary = isFile ? 'change files' : 'run a command';
-    const detail =
-      [p.command ?? p.reason ?? p.networkApprovalContext?.host ?? p.grantRoot, p.cwd ? `Working directory: ${p.cwd}` : null].filter(Boolean).join('\n\n') ||
-      summary;
-    const answer = await ctx.askPermission({ tool: isFile ? 'Edit' : 'Bash', summary, detail, toolUseId: p.itemId, suppressAlways: true });
-    return { decision: answer?.allow ? 'accept' : 'decline' };
-  }
+  if (msg.method === 'item/commandExecution/requestApproval' || msg.method === 'item/fileChange/requestApproval') return changeApproval(ctx, msg);
   throw new Error(`Unsupported Codex app-server request: ${msg.method ?? 'unknown'}`);
+}
+
+/** A command or file change the sandbox stopped. @param {any} ctx @param {any} msg */
+async function changeApproval(ctx, msg) {
+  const p = msg.params ?? {};
+  const isFile = msg.method === 'item/fileChange/requestApproval';
+  const summary = isFile ? 'change files' : 'run a command';
+  const detail =
+    [p.command ?? p.reason ?? p.networkApprovalContext?.host ?? p.grantRoot, p.cwd ? `Working directory: ${p.cwd}` : null].filter(Boolean).join('\n\n') ||
+    summary;
+  // Always allow saves Codex’s own rule, exactly as Codex proposed it, for a command only (#324): an amendment never
+  // goes back on a file change’s answer.
+  const offer = isFile ? null : codexAlwaysOffer(p, ctx.persona);
+  const answer = await ctx.askPermission({
+    tool: isFile ? 'Edit' : 'Bash',
+    summary,
+    detail,
+    toolUseId: p.itemId,
+    suppressAlways: !offer,
+    ...(offer ? { suggestions: offer } : {}),
+  });
+  return { decision: decisionOf(answer) };
+}
+
+/**
+ * Codex’s decision for a command or file card’s answer: the amendment Always allow chose, as Codex proposed it, or a
+ * plain accept or decline. @param {{ allow?: boolean, updatedPermissions?: any[] } | null | undefined} answer
+ */
+function decisionOf(answer) {
+  if (!answer?.allow) return 'decline';
+  const chosen = (answer.updatedPermissions ?? []).find((u) => u?.type === 'codex');
+  return chosen ? chosen.decision : 'accept';
 }

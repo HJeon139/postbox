@@ -103,20 +103,18 @@ test('#358 the Gemini boilerplate picks the Antigravity CLI’s preferred Gemini
   await expect.soft(dialog.getByLabel('Instructions'), 'its prompt').toHaveValue(/^# Gemini\n/);
 });
 
-test('the Antigravity CLI’s Auto says Postbox approves routine actions itself, and what still asks with a card', async ({ page }) => {
+test('the Antigravity CLI’s Auto says it works like Run everything for its tools, and what still asks with a card (#416)', async ({ page }) => {
   await personas(page);
   await page.locator('.dialog').getByRole('button', { name: 'New agent', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'New agent' });
   await dialog.getByRole('radiogroup', { name: 'Boilerplate' }).getByRole('radio', { name: 'Gemini', exact: true }).click();
   const field = dialog.locator('.field').filter({ has: page.getByRole('radiogroup', { name: 'Permissions' }) });
   await field.getByRole('radio', { name: 'Auto', exact: true }).click();
-  await expect(field.locator('.help')).toHaveText(/^Antigravity’s Auto: Postbox approves routine actions itself/);
-  await expect(field.locator('.help')).toContainText('or a write outside Postbox, such as a new issue or a comment');
-  await expect(field.locator('.help')).toContainText(
-    'It asks with a card before anything else, such as rm, git commit, npm test, curl, a web search, a fetch with a query, an MCP tool,',
-  );
+  await expect(field.locator('.help')).toHaveText(/^Antigravity’s Auto: agy’s own Auto isn’t available on this account, so Auto works like Run everything/);
+  await expect(field.locator('.help')).toContainText('Nothing judges those calls');
+  await expect(field.locator('.help')).toContainText('A tool on Postbox’s publishing list is refused unless the agent can publish.');
   await field.getByRole('radio', { name: 'Accept edits', exact: true }).click();
-  await expect(field.locator('.help')).not.toContainText('Postbox approves routine actions itself');
+  await expect(field.locator('.help')).not.toContainText('works like Run everything');
 });
 
 /** The Skills checklist’s row for one skill. */

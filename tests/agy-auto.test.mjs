@@ -210,15 +210,14 @@ test('Auto allows public fetches without a query or fragment; a search, a query,
   assert.equal(publicFetch('https://example.com/a?'), true, 'an empty query carries nothing');
 });
 
-test('Auto approves no MCP tool outside Postbox by rule: each asks, for the reviewer or the card (#416, #112); permission_prompt is denied', () => {
+test('In Auto an MCP tool outside Postbox that doesn’t publish runs (#416); in Ask me and Accept edits each asks; permission_prompt is denied', () => {
   const { call } = workspace();
-  assert.deepEqual(call('call_mcp_tool', { ServerName: 'github', ToolName: 'get_issue', Arguments: { number: 1 } }), {
-    decision: 'ask',
-    toolName: 'mcp__github__get_issue',
-    input: { number: 1 },
-  });
+  // Option A (#416): Antigravity’s Auto works like Run everything for its persona’s tools; a publishing tool is refused
+  // without “Can publish” (tests/agy-auto-persona.test.mjs).
+  assert.deepEqual(call('call_mcp_tool', { ServerName: 'github', ToolName: 'get_issue', Arguments: { number: 1 } }), { decision: 'allow' });
+  assert.deepEqual(call('call_mcp_tool', { ServerName: 'github', ToolName: 'create_issue', Arguments: { title: 'Hi' } }), { decision: 'allow' });
   assert.deepEqual(call('read_resource', { ServerName: 'docs', Uri: 'docs://a' }), { decision: 'allow' });
-  for (const mode of ['auto', 'ask', 'acceptEdits'])
+  for (const mode of ['ask', 'acceptEdits'])
     assert.deepEqual(call('call_mcp_tool', { ServerName: 'github', ToolName: 'create_issue', Arguments: { title: 'Hi' } }, mode), {
       decision: 'ask',
       toolName: 'mcp__github__create_issue',
@@ -285,15 +284,16 @@ test('the hook in Auto allows a routine command without asking Postbox, and asks
   assert.deepEqual(asked, ['git push', 'git status']);
 });
 
-test('the persona sheet says Auto on Antigravity is Postbox’s own approval, and what still asks', () => {
+test('the persona sheet says Antigravity’s Auto works like Run everything for its tools, what nothing judges, and what still asks (#416)', () => {
   const help = (id) => modeHelp('antigravity-cli', /** @type {any} */ (PERMISSIONS.find(([m]) => m === id)));
-  assert.match(help('auto'), /^Antigravity’s Auto: Postbox approves routine actions itself, since agy’s own Auto isn’t available on this account/);
   assert.match(
     help('auto'),
-    /It asks with a card before anything else, such as rm, git commit, npm test, curl, a web search, a fetch with a query, an MCP tool, edits in \.git, edits outside its folders, or a write outside Postbox/,
+    /^Antigravity’s Auto: agy’s own Auto isn’t available on this account, so Auto works like Run everything for the tools you give it/,
   );
-  assert.doesNotMatch(help('auto'), /searches the web/);
-  // It doesn’t name a command as routine that could run what a script says (#423’s review).
-  assert.doesNotMatch(/everyday commands there \(([^)]*)\)/.exec(help('auto'))?.[1] ?? 'missing npm', /npm|commit/);
+  assert.match(help('auto'), /Nothing judges those calls, and with Shell a command can reach \.git or Antigravity’s own settings/);
+  assert.match(help('auto'), /Without Shell or Web, .* asks with a card before the rest/);
+  // #794: a public fetch runs with no card even without Web (autoAllows, publicFetch), so the text says so.
+  assert.match(help('auto'), /Without Shell or Web, .*fetches public pages/);
+  assert.match(help('auto'), /A tool on Postbox’s publishing list is refused unless the agent can publish/);
   assert.notEqual(help('auto'), help('acceptEdits'));
 });

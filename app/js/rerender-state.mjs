@@ -1,6 +1,8 @@
 // Keeps native element state while the transcript is drawn again, outside thread.mjs at its size ceiling (#488):
 // which details are open, and where the keyboard and the caret were (#739).
 
+import { buildSteps } from './activity-paint.mjs';
+
 /** A stable key for the raw block, activity list, or one expandable thought. @param {HTMLElement} details */
 function detailsKey(details) {
   if (details.matches('details.raw')) return 'raw';
@@ -28,6 +30,8 @@ export function replaceTranscriptItem(old, next, view) {
   const state = detailsState(old);
   old?.replaceWith(next);
   if (old) view?.redrawn();
+  // An activity list opened again is built first, so the thoughts it held expanded are there to expand (#1028).
+  if (state.get('activity') === true) for (const list of next.querySelectorAll('details.activity')) buildSteps(/** @type {HTMLElement} */ (list));
   for (const details of next.querySelectorAll('details.raw, details.activity, details.step-text')) {
     const key = detailsKey(/** @type {HTMLElement} */ (details));
     if (key && state.has(key)) /** @type {HTMLDetailsElement} */ (details).open = state.get(key) === true;

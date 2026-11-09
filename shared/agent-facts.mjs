@@ -17,7 +17,11 @@ export const BACKENDS = [
   ['claude-code', 'Claude Code', 'Runs the claude CLI you’re signed in to.'],
   ['agent-sdk', 'Agent SDK', 'Runs the Claude Agent SDK in Postbox’s server.'],
   ['kiro-cli', 'Kiro CLI', 'Runs the kiro-cli you’re signed in to. It can’t ask you: what would need asking is refused.'],
-  ['antigravity-cli', 'Antigravity CLI', 'Runs the agy CLI you’re signed in to, with Gemini models. It can’t ask you: what would need asking is refused.'],
+  [
+    'antigravity-cli',
+    'Antigravity CLI',
+    'Runs the agy CLI you’re signed in to, with Gemini models. With agy 1.4.7 or newer, it asks you with a card; before that, what would need asking is refused.',
+  ],
   ['codex', 'Codex', 'Runs the Codex app-server with your local Codex sign-in and configuration.'],
   ['mock', 'Mock agent', 'Scripted replies for trying Postbox out.'],
 ];
@@ -34,17 +38,17 @@ export const PERMISSIONS = [
 ];
 const BACKEND_MODES = /** @type {Record<string, Record<string, string>>} */ ({
   'kiro-cli': {
-    auto: 'Kiro has no safety check, so this is Ask me: it reads in its folders and runs a few read-only commands, such as git status, and refuses the rest.',
+    auto: 'Kiro has no Auto of its own, so Auto runs what the tools you give it allow, with nothing judging the calls: with Shell, any command; with Web, any search or fetch; any MCP tool that doesn’t publish; and edits in its folders, but not in their .kiro or .git. Anything else is refused, since it can’t ask you.',
     ask: 'It reads in its folders and runs a few read-only commands, such as git status, and refuses the rest: it can’t ask you.',
     acceptEdits: 'It edits files in its folders freely, and refuses commands that would need asking.',
   },
   'antigravity-cli': {
-    auto: 'Antigravity’s Auto: Postbox approves routine actions itself, since agy’s own Auto isn’t available on this account. It reads and edits in its folders, runs everyday commands there (ls, grep, find, git status, git diff, git add), reads issues and pull requests with gh, and fetches public pages without asking. It asks with a card before anything else, such as rm, git commit, npm test, curl, a web search, a fetch with a query, an MCP tool, edits in .git, edits outside its folders, or a write outside Postbox, such as a new issue or a comment.',
+    auto: 'Antigravity’s Auto: agy’s own Auto isn’t available on this account, so Auto works like Run everything for the tools you give it. With Shell, it runs any command without asking; with Web, any search or fetch; and any MCP tool that doesn’t publish. Nothing judges those calls, and with Shell a command can reach .git or Antigravity’s own settings, which edits can’t. Without Shell or Web, it still runs everyday reads, git status and diff, and gh reads, and fetches public pages, with no card, and asks with a card before the rest. A tool on Postbox’s publishing list is refused unless the agent can publish.',
     ask: 'It reads in its folders, and asks with a card before edits, commands, reads outside its folders, and web fetches.',
     acceptEdits: 'It reads and edits files in its folders freely, and asks with a card before commands, edits outside its folders, and web fetches.',
   },
   codex: {
-    auto: 'Codex’s Auto: Codex’s own reviewer approves or denies what its sandbox stops, including writes through MCP tools and gh, instead of asking you. Its workspace-write sandbox, with network access off, still applies: this isn’t Run everything.',
+    auto: 'Codex’s Auto: Codex’s own reviewer approves or denies what its sandbox stops, including writes through MCP tools and gh, instead of asking you. Its workspace-write sandbox still applies, with network access on if the agent may fetch the web, and off if it may not: this isn’t Run everything.',
     ask: 'Codex uses a read-only sandbox. It requests approval before a command can go beyond it.',
     acceptEdits: 'Codex uses a workspace-write sandbox with network access off; requests outside it need approval.',
     bypass: 'Codex runs with full filesystem and network access and no approval prompts.',
