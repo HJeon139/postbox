@@ -36,7 +36,7 @@ test('#338 an Antigravity read outside its folders offers its folder, named on t
   const { home, notes } = aHome();
   const offer = readFolderOffer({ ...agy, input: { file_path: join(notes, 'a.md') }, home });
   assert.deepEqual(offer, {
-    lines: [{ text: `Always allow ${notes} for reading files, in this conversation`, rule: notes }],
+    lines: [{ text: `Always allow ${notes} for this agent to read, in this conversation`, rule: notes }],
     readDir: notes,
   });
 });
@@ -116,7 +116,7 @@ test('#338 Always allow on the card saves the folder for the conversation, and t
     const asked = runAgyHook(read, { cwd: ws, env, home, fetchImpl: /** @type {any} */ (fetchMcp) });
     await sleep(10);
     const card = store.items(t.id).find((i) => i.kind === 'permission' && i.status === 'open');
-    assert.equal(card.always?.lines[0].text, `Always allow ${notes} for reading files, in this conversation`);
+    assert.equal(card.always?.lines[0].text, `Always allow ${notes} for this agent to read, in this conversation`);
     await rt.act(t.id, card.id, 'always', {});
     results.push(await asked);
   });
