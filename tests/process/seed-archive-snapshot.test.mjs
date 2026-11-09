@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -33,13 +33,25 @@ test('the seeded snapshot is the store’s own, with the room’s work, and the 
   assert.equal(rows.length, 8, m.stdout);
   assert.match(rows[0], /today \(nothing archived\)$/);
   assert.match(rows[0], / 0% smaller/);
+  // Every policy archives something of a room with work, so each saves: 0% would mean it archived nothing (#1031).
+  const savings = rows.slice(1).map((l) => Number(/ (-?\d+)% smaller/.exec(l)?.[1]));
   assert.ok(
-    rows.slice(1).every((l) => !/ -\d+% smaller/.test(l)),
-    'no policy makes the snapshot larger',
+    savings.every((s) => s > 0),
+    `every archive policy makes the snapshot smaller: ${savings.join(', ')}`,
   );
   assert.match(m.stdout, /^I4: \d+ turns, of which turns with an entry left open hold \d+\.\d\d MB of \d+\.\d\d MB of work$/m);
   assert.doesNotMatch(m.stdout, /hold 0\.00 MB/, 'the seed has open turns');
   assert.match(m.stdout, /^A2: a turn's work is \d+ KB at most, \d+\.\d KB at the median \(\d+ turns\)$/m);
+});
+
+test('the seed tool refuses a folder that already holds a store, and leaves its snapshot as it was', () => {
+  // Its one guard against seeding into a Postbox’s real data (#1031).
+  const out = tempDir('pb-test-seed-archive-store-');
+  writeFileSync(join(out, 'snapshot.json'), '{"kept":true}\n');
+  const into = run('tools/seed-archive-snapshot.mjs', '--items', '10', '--out', out);
+  assert.notEqual(into.status, 0);
+  assert.match(into.stderr, /already holds a store\. Give --out a new or empty folder\./);
+  assert.equal(readFileSync(join(out, 'snapshot.json'), 'utf8'), '{"kept":true}\n');
 });
 
 test('the seed tool refuses a missing folder or a count that isn’t a whole number, and writes nothing', () => {
