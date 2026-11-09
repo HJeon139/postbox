@@ -145,6 +145,21 @@ test('Postbox shutting down as the turn ends: what waited in another thread is l
   assert.deepEqual(turnsAfterFirst(f), [], 'no turn starts while shutting down');
   const said = warn.mock.calls.map((c) => String(c.arguments[0]));
   assert.ok(
+    said.some((s) => s.includes('@beta') && s.includes('2 waiting deliveries') && s.includes('agent')),
+    `the drop is logged, the first group counted with the rest: ${JSON.stringify(said)}`,
+  );
+});
+
+test('Postbox shutting down as the turn ends, with one delivery waiting: that one is logged too', async (t) => {
+  const f = busyWithTopic();
+  f.rt.deliver(f.beta.id, { kind: 'agent', from: '@gamma', text: 'Pending in conversation.' });
+  const warn = t.mock.method(console, 'warn', () => {});
+  f.rt.closing = true;
+  f.busy.release();
+  await settle(f.rt);
+  assert.deepEqual(turnsAfterFirst(f), [], 'no turn starts while shutting down');
+  const said = warn.mock.calls.map((c) => String(c.arguments[0]));
+  assert.ok(
     said.some((s) => s.includes('@beta') && s.includes('1 waiting delivery') && s.includes('agent')),
     `the drop is logged: ${JSON.stringify(said)}`,
   );
