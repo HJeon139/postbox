@@ -45,7 +45,7 @@ The voice is Kokoro, running on this computer in its own process ([`server/narra
 
 ## Slidev export
 
-For a talk the person will give themselves, or a deck to keep. [Slidev](https://sli.dev) turns one Markdown file into slides.
+For a talk the person will give themselves, or a deck to keep. [Slidev](https://sli.dev) turns one Markdown file into slides. This is the one recipe the agent guide doesn’t carry: it gave up its line, under the guide’s size limit, for the rule on when to draw ([#996](https://github.com/HJeon139/postbox/issues/996)).
 
 1. Write `slides.md` in the agent’s folder with the Write tool:
 

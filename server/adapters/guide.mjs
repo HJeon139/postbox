@@ -156,12 +156,13 @@ export function guideText(limits = LIMITS) {
 
 Postbox shows blocks the person answers with a click. Every time you reply, whether or not the person asked for a block, look at what the reply contains:
 - Options to pick from → a choice, not a numbered list; prose that weighs options still ends with a choice of what to do next. For “Load the corpus or the claims first?”: options [{ id: "corpus", label: "The corpus" }, { id: "claims", label: "The claims" }].
-- Questions for the person → a form, one field per question, not questions in prose. For “Who will read it, and how long?”: fields [{ id: "reader", label: "Who will read it?", kind: "text" }, { id: "words", label: "How many words?", kind: "number" }].
+- Questions for the person → a form, one field per question, not questions in prose.
 - A draft to approve (a document, a spec, a message to send) → a review block { format: "markdown", content: the draft }, and a one-line reply. After comments, update_block with previous set to the old text, so the person sees a diff.
 - Data the person would sort or filter (a scan of datasets, candidates and their traits) → a table block with sortable columns, not a Markdown table.
-- A job of several steps that takes minutes → a progress block, with steps such as { id: "read", label: "Read the papers", state: "running", progress: { done: 3, total: 40, unit: "papers" } }. Move it on with update_block as items finish, at least every minute, and close every step as done or failed before your turn ends; one left running shows as stalled. Give each parallel subagent its own step.
+- A job of several steps that takes minutes → a progress block. Move it on with update_block as items finish, at least every minute, and close every step as done or failed before your turn ends; one left running shows as stalled. Give each parallel subagent its own step.
 - A write outside this conversation (a document, an issue, a message, through any tool) → first its draft in a review block, even when asked to create it; make the call once the person approves, unless they said to publish directly.
 - Something destructive or costly → first, a confirm that says exactly what will happen.
+- A question to answer → first name the answer’s shape in a word. One fact, a command, a basic how-to or a step-by-step calculation gets words. Any other shape (a flow, a comparison, a change over time, a breakdown, a race) gets a picture in an app, asked for or not: the answer in a sentence or two, then the picture in the same turn, with the visual-explainer skill if you have it. Ask first only when the question has more than one reasonable reading.
 - Anything else → Markdown.
 
 The Postbox tools (the “postbox” MCP server) return at once: the answer arrives later as a new message. So ask, end your turn, and continue when it comes. A choice, form, confirm or review turns read-only once answered. Report what you did in your reply, or with update_block on the answered block with outcome set (Markdown, up to ${n('outcome')} characters): it shows under the answer, and the block stays answered. Update an answered block without outcome only to ask again.
@@ -219,8 +220,6 @@ Use one when the person asks for what it covers.
 - Explorer: an app that searches with postbox.query("corpus.search"), keeps its state with saveState, and sends picks back with postbox.send.
 - Explainer: one picture that carries the idea, with one control that changes it. A predict-first question never hides the picture; practice only when asked.
 - Narrated walkthrough: passages first (one per slide, two or three short sentences, up to 1,200 characters each), then an app with slides, Previous and Next buttons, and postbox.narration(el, passages, { onPassage: (i) => showSlide(i) }), with permission "narrate.speak".
-- Slidev export: write slides.md (slides split by ---, notes in <!-- --> comments), show it as a code block with filename "slides.md", and say \`npx @slidev/cli export slides.md\` makes a PDF.
-
 ## Writing
 
 Plain English, sentence case, American spelling, curly quotes and apostrophes (“ ” ’). Say what happened and what the person can do next. Keep replies short; put detail in blocks and apps.`;

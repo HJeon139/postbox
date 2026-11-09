@@ -78,10 +78,24 @@ The principles behind the rules: [Larkin & Simon 1987](https://mechanism.ucsd.ed
   | Didn’t ask (5 briefs) | on | 26 of 33 | 4 | 3 |
 
   - Postbox’s guide already tells every agent to write an app when one explains better than prose, so the skill-off runs measure the guide, and the difference is the skill’s.
+  - Since [#996](https://github.com/HJeon139/postbox/issues/996), the guide decides whether to draw and the skill keeps how: the agent names the answer’s shape, words go to one fact, a command, a basic how-to or a step-by-step calculation, and any other shape gets a picture after a sentence or two of answer. The counts here are from before that rule, so they’re its baseline.
   - Unasked, the skill changed one brief: the book shelf drew first in 5 of 6 runs with it and 0 of 3 without. A question that reads as a decision (“Where should we start?”, “Where did the time go?”) never got a picture first, with or without it.
   - It changes what agents draw more than whether: Mermaid diagrams were 12 of 44 first visuals without the skill and 2 of 109 with it.
   - The new scenarios, four runs each with the skill and four without, on November 8: the controls got words in all 16 runs, with or without it, so the skill doesn’t make agents draw where words are right. Which subscriptions to cancel drew in the first reply in 3 of 4 with the skill (landed, mostly, mostly) and 1 of 4 without. Whether two adds at once can lose one never drew in 8: a question about the person’s own code got words and code, skill or not.
   - Every judged run now records this: the report’s “Picture or words” line and run.json’s `picture` (`tools/uat/picture-choice.mjs`). `- expects: picture` or `- expects: words` says which the first message should get. Count runs from run.json’s `picture.met` by scenario, skill on and off: the unasked scenarios (`everyday-shelf`, `everyday-tests`, `everyday-subs-cancel`, `everyday-pantry-race`) and #206’s two controls, where words are right (`control-subs-total`, `control-pantry-start`), each with a `-base` twin.
+- **The guide’s rule, measured on November 9, 2026** ([#996](https://github.com/HJeon139/postbox/issues/996)): 48 UAT runs, four per condition, against the pass bar set before the change. No run crashed or stopped at its budget.
+
+  | The person didn’t ask, on | Drew in the first reply, skill on | Verdict | Drew in the first reply, skill off | Verdict |
+  |---|---|---|---|---|
+  | The book shelf | 4 of 4 | 2.00 | 4 of 4 | 2.00 |
+  | Which tests | 4 of 4 | 3.00 | 4 of 4 | 2.50 |
+  | Which subscriptions to cancel | 4 of 4 | 2.75 | 4 of 4 | 2.50 |
+  | Whether two adds can lose one | 4 of 4 | 2.50 | 1 of 4 | 2.00, one run |
+
+  - The controls got words in all 16 runs, skill on or off, and each agent gave the answer.
+  - With the skill, all four questions pass. Without it, the question about the person’s own code still gets words in 3 of 4, so that one row fails the bar. Every agent loads the skill by default, and all 16 unasked runs with it loaded it.
+  - These verdicts are the tester’s, as the customer, which ran more lenient than the maintainer on November 6.
+  - Not measured: the sleep and running and codebase split questions, which have no scenario on main, and the side-by-side judge below.
 - **Not done:**
   - #206’s side-by-side preference, an app against a text answer to the same question, “preferred over text in 7 or more of 10 pairs”, hasn’t been run. It needs a judge shown both answers.
   - The takeaway test, now on a text-hidden screenshot with the floor’s new lines, hasn’t been rerun against the maintainer’s verdicts. Until it agrees about as well as people agree with each other (κ about 0.45 to 0.6), it informs a person’s judgment and doesn’t replace it.

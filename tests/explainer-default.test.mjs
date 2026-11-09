@@ -33,6 +33,20 @@ test('the guide says a picture that explains draws the things, not labeled boxes
   assert.ok(explainer && !/Mermaid/.test(explainer), explainer);
 });
 
+// Agents drew almost exactly when they loaded the visual-explainer skill, so the choice was made before the skill ran
+// (#983). The guide reaches every agent on every backend, so it decides whether to draw, and the skill keeps how (#996).
+test('the guide decides when to draw: name the shape, words for what has none, answer then picture, ask only when ambiguous', () => {
+  const rule = guideText()
+    .split('\n')
+    .find((line) => line.startsWith('- A question to answer'));
+  assert.ok(rule, 'The guide has no rule for when to draw.');
+  assert.match(rule, /name the answer’s shape in a word/);
+  assert.match(rule, /One fact, a command, a basic how-to or a step-by-step calculation gets words/);
+  assert.match(rule, /Any other shape .* gets a picture in an app, asked for or not/);
+  assert.match(rule, /the answer in a sentence or two, then the picture in the same turn/);
+  assert.match(rule, /Ask first only when the question has more than one reasonable reading/);
+});
+
 test('the demo and UAT researcher explain with a picture when they explain visually, and add practice only on request', () => {
   for (const p of [researcher(DEMO_PERSONAS), researcher(uatPersonas)]) {
     assert.equal(p.description, 'Reads papers and explains them with a picture you can change.');
