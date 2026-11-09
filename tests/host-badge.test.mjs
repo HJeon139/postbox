@@ -8,6 +8,7 @@ import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { badgeOf, checkShortName, REMOVED_BADGE, SHORT_MAX } from '../shared/host-badge.mjs';
 import { FINE, HOSTILE } from './hidden-chars-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 test('an agent whose host was removed gets a fixed word, not a cut of “a removed host”', () => {
   assert.equal(badgeOf({ name: 'a removed host', removed: true }), REMOVED_BADGE);
@@ -106,4 +107,34 @@ test('#1052 a short name stored before it was checked, which the check refuses, 
   assert.equal(badgeOf({ name: 'me@dev-box', short: 'ab\u3164' }), 'dev-box');
   assert.equal(badgeOf({ name: 'me@dev-box', short: 'gpu' }), 'gpu', 'one the check keeps still shows');
   assert.equal(badgeOf({ name: 'me@dev-box', short: '' }), 'dev-box', 'an empty one is unset');
+});
+
+test('#1052 a host whose short name was stored before the check refused it can still be renamed and change settings', async (t) => {
+  const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
+  const dir = tempDir('host-badge-old-');
+  const old = await new Store(dir).load();
+  // As an earlier Postbox kept them: VS16, an emoji with it, and a Hangul filler.
+  const stored = { '🖥️': 'ho_old1', '❤️': 'ho_old2', 'ab\u3164': 'ho_old3' };
+  for (const [short, id] of Object.entries(stored)) old.emit('host', { id, name: `me@${id}`, short, settings: {}, createdAt: 1 });
+  await old.close();
+  const store = await new Store(dir).load();
+  t.after(() => store.close());
+  const rt = new Runtime({
+    store,
+    adapters: new AdapterRegistry().register({ name: 'mock', deliver: async () => {} }),
+    corpus,
+    config: { origin: 'http://127.0.0.1:1', imageOrigins: [] },
+  });
+  for (const [short, id] of Object.entries(stored)) {
+    assert.equal(rt.updateHost(id, { settings: { forwardAgent: true } }).short, short, `${short}: a change to its settings keeps it`);
+    assert.equal(rt.s.hosts[id].settings.forwardAgent, true, `${short}: and saves the settings`);
+    assert.equal(rt.updateHost(id, { name: `me@${id}-renamed` }).short, short, `${short}: a rename keeps it`);
+    assert.equal(rt.s.hosts[id].name, `me@${id}-renamed`);
+  }
+  assert.throws(
+    () => rt.updateHost('ho_old1', { short: 'gp\uFE0Fu' }),
+    (e) => e.status === 422 && e.message === UNSEEN_ERROR,
+    'a new short name is still checked',
+  );
+  assert.equal(rt.s.hosts.ho_old1.short, '🖥️', 'and the refused one isn’t kept');
 });
