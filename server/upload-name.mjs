@@ -35,6 +35,15 @@ function hides(text, c, at) {
   return hasControl(c) || hiddenInFolder(c);
 }
 
+/**
+ * Whether one character, read alone, would hide or reorder a name: a control character, a lone surrogate, or one a
+ * project’s folder refuses as hidden, except VS16, since alone it can’t tell whether it shows an emoji (ZWNJ and ZWJ
+ * pass hiddenInFolder). For a caller that checks a name one character at a time: a dataset’s title
+ * (server/datasets.mjs) and the project picker’s marks (server/folders.mjs), from #1052.
+ * @param {string} c  one code point, or a lone surrogate
+ */
+export const hidesName = (c) => c !== EMOJI_STYLE && (hasControl(c) || hiddenInFolder(c));
+
 /** One part of a name, outside a flag, with each character that hides it as “_”. @param {string} part */
 const shownPart = (part) => part.replace(/./gsu, (c, at) => (hides(part, c, at) ? '_' : c));
 

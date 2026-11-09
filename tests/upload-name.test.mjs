@@ -11,6 +11,7 @@ import { fakeRequest, NAVIGATION } from './fake-http.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 process.env.POSTBOX_BACKENDS = 'mock';
+const { hidesName } = await import('../server/upload-name.mjs');
 const { start } = await import('../server/index.mjs');
 
 const PORT = 4491;
@@ -130,4 +131,10 @@ test('#1067 a file added to the corpus under a raw stored name is titled with th
   await pb.close();
   pb = await open();
   assert.equal(titleOf(pb.rt.corpus, r.json.id), 'notes_txt.exe.txt', 'after a restart');
+});
+
+test('#1067 hidesName still reads one character alone, for #1052’s per-character callers: VS16, ZWJ and ZWNJ pass', () => {
+  const hidden = ['\u0000', '\u0085', '\u202e', '\u2066', '\u200b', '\ufeff', '\u3164', '\u034f', '\u{e0041}', '\u{e007f}', '\ud800', '\udc00'];
+  for (const c of hidden) assert.equal(hidesName(c), true, JSON.stringify(c));
+  for (const c of ['a', 'é', '日', '"', '<', '&', '🏴', '\ufe0f', '\u200d', '\u200c']) assert.equal(hidesName(c), false, JSON.stringify(c));
 });
