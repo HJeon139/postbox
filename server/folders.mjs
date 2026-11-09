@@ -15,6 +15,13 @@ import { httpError } from './helpers.mjs';
 export const markedName = (name) => name.replace(/[\p{Cc}\p{Cs}]/gu, '\uFFFD').replace(INVISIBLE, '\uFFFD');
 
 /**
+ * The characters markedName marks in a name, once each, as U+XXXX: the picker’s title for its row says what each
+ * mark stands for. @param {string} name
+ */
+const hiddenIn = (name) =>
+  [...new Set(Array.from(name).filter((c) => markedName(c) !== c))].map((c) => `U+${c.codePointAt(0)?.toString(16).toUpperCase().padStart(4, '0')}`);
+
+/**
  * The entries of a folder in a project, sub relative to its root: never outside it, even through symbolic links.
  * @param {any} project @param {string} sub
  */
@@ -33,7 +40,16 @@ export async function listFolder(project, sub) {
     // A symbolic link that leads out of the folder is marked, so the picker says so instead of opening it (#28).
     const to = e.isSymbolicLink() ? await realpath(full).catch(() => null) : null;
     const outside = !!to && to !== root && !to.startsWith(root + sep);
-    list.push({ name: e.name, shown: markedName(e.name), path: relative(root, full), dir: s.isDirectory(), size: s.size, ...(outside ? { outside } : {}) });
+    const hidden = hiddenIn(e.name);
+    list.push({
+      name: e.name,
+      shown: markedName(e.name),
+      ...(hidden.length ? { hidden } : {}),
+      path: relative(root, full),
+      dir: s.isDirectory(),
+      size: s.size,
+      ...(outside ? { outside } : {}),
+    });
   }
   list.sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1));
   const path = relative(root, target);

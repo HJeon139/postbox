@@ -13,7 +13,7 @@ Attach project files by reference without uploading.
 - Browses the project’s root folder only; Up, Open, Attach.
 - From the permissions panel it’s “Add a folder”: it lists folders only, with Add on each and “Add this folder” for the one you’re in (#66). Escape closes the picker and leaves the panel open.
 - Opens with focus on the first entry, and Open moves focus to the first entry of that folder. Escape returns focus to the + button (#26).
-- A name with a control character, or one that reorders text or shows as nothing (such as a right-to-left override), shows each such character as the replacement mark (�), in the list, in its button’s name and in the folder line at the top; Attach, Open and Add still use the file’s real path (#1052).
+- A name with a control character, or one that reorders text or shows as nothing (such as a right-to-left override), shows each such character as the replacement mark (�), in the list, in its button’s name and in the folder line at the top; Attach, Open and Add still use the file’s real path. Pointing at such a row shows its title, which names each character the marks stand for, such as “Contains U+202E” (#1052).
 
 ## Steps to reproduce
 

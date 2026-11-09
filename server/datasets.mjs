@@ -97,7 +97,9 @@ export async function reloadDatasets(rt) {
     try {
       if (!folder) throw new Error('its project has no folder now');
       const { text } = await datasetFile(folder, ds.path);
-      rt.corpus.addRecords(ds.id, parseDataset(text), { title: ds.title, author: ds.author });
+      // A title kept before add_dataset checked titles, which the check refuses, is the dataset’s id (#1052).
+      const title = unseenTitle(String(ds.title ?? '')) ? ds.id : ds.title;
+      rt.corpus.addRecords(ds.id, parseDataset(text), { title, author: ds.author });
       n++;
     } catch (e) {
       console.warn(`Couldn’t load the dataset “${ds.id}” again: ${e.message}`);

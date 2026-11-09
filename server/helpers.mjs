@@ -3,22 +3,16 @@
 import { timingSafeEqual } from 'node:crypto';
 import { SENDING } from '../shared/limits.mjs';
 import { toPlainText } from '../shared/markdown.mjs';
+import { partEnd } from '../shared/text-parts.mjs';
 
 export function httpError(status, message) {
   return Object.assign(new Error(message), { status, userMessage: message });
 }
-/**
- * The first n UTF-16 units of s, or one fewer when the last would be the first half of a surrogate pair: a cut there
- * would leave a lone surrogate, which shows as nothing or a box (#1052). @param {string} s @param {number} n
- */
-const head = (s, n) => {
-  const last = s.charCodeAt(n - 1);
-  return s.slice(0, last >= 0xd800 && last <= 0xdbff ? n - 1 : n);
-};
-export const clipText = (s, n) => (s.length > n ? `${head(s, n - 1)}…` : s);
+/** s cut to n characters with an ellipsis, never inside a surrogate pair (partEnd, #1052). */
+export const clipText = (s, n) => (s.length > n ? `${s.slice(0, partEnd(s, n - 1))}…` : s);
 export const clip = (s, n = 200) => {
   const t = toPlainText(s);
-  return t.length > n ? head(t, n - 1) + '…' : t;
+  return t.length > n ? t.slice(0, partEnd(t, n - 1)) + '…' : t;
 };
 /** Code in a fence longer than any run of backticks in it. */
 export const fenced = (code, language = '') => {

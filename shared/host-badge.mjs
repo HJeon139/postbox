@@ -37,11 +37,12 @@ export function checkShortName(v) {
  * The badge for a host: its short name, or the first part of its machine’s name cut to SHORT_MAX characters
  * (user@dev-box.corp.example.com is “dev-box”). An IP address keeps its end, where addresses on one network differ,
  * without an IPv6 address’s zone (%en0, or %25en0 as a URL writes it). A host that was removed is REMOVED_BADGE.
+ * A short name kept before checkShortName refused hidden characters, which it now refuses, counts as unset (#1052).
  * @param {{ name?: string, short?: string, removed?: boolean } | null | undefined} host
  */
 export function badgeOf(host) {
   if (host?.removed) return REMOVED_BADGE;
-  if (host?.short) return host.short;
+  if (host?.short && checkShortName(host.short).ok) return host.short;
   const machine = String(host?.name ?? '')
     .replace(/^.*@/, '')
     .replace(/^\[(.*)\]$/, '$1')

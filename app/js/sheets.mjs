@@ -1167,6 +1167,8 @@ export function openFolderPicker(projectId, onPick, { folders = false } = {}) {
           .map((e) =>
             h(
               'li',
+              // Which character each mark in the name stands for, as the server lists them (#1052).
+              { title: e.hidden && `Contains ${e.hidden.join(', ')}` },
               icon(e.outside ? 'link' : e.dir ? 'folder' : 'file', 'dim'),
               h('span.grow', e.name),
               // A link out of the project’s folder can’t be opened or picked, and says so (#28).
