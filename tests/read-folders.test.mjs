@@ -52,7 +52,7 @@ test('#338 the offer’s text starts with “Always allow <its folder>”, as th
 test('#338 no Always allow for /, home, a dot-folder in home or inside one, a link to one, a host card, or another backend', () => {
   const { home, notes } = aHome();
   const none = (file, extra = {}) => assert.equal(readFolderOffer({ ...agy, input: { file_path: file }, home, ...extra }), null, file);
-  none('/etc');
+  none('/postbox-no-such-file.md'); // a file just under /, whose folder is /
   none(join(home, 'top.md'));
   none(join(home, '.ssh', 'id_ed25519'));
   none(join(home, '.config', 'gh', 'hosts.yml'));

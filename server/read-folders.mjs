@@ -4,7 +4,7 @@
 // it may edit with no card, and it isn’t passed as --add-dir. Claude Code keeps its own offer (harness first), Codex
 // makes no read cards, and a host card has none, since the list is this computer’s.
 
-import { realpathSync } from 'node:fs';
+import { realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, relative, sep } from 'node:path';
 import { httpError } from './helpers.mjs';
 
@@ -40,23 +40,51 @@ function offerable(dir, home) {
 }
 
 /**
- * The card’s Always allow for a read outside the agent’s folders, or null for none: the file’s folder, by its real
+ * The folder a read card is about, by its real path, or null: the path itself when it’s a folder, as Antigravity’s
+ * list_dir, grep_search and find_by_name send one, else the file’s folder.
+ * @param {any} input
+ */
+function folderOf(input) {
+  const path = typeof input?.file_path === 'string' ? input.file_path.trim() : '';
+  if (!isAbsolute(path)) return null;
+  const isFolder = statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
+  return real(isFolder ? path : dirname(path));
+}
+
+/** Whether a card is one this module answers: a read on this computer by an Antigravity agent. */
+const answersRead = ({ backend, tool, hostId }) => !hostId && READ_FOLDER_BACKENDS.has(String(backend)) && tool === 'Read';
+
+/**
+ * The card’s Always allow for a read outside the agent’s folders, or null for none: the folder it’s about, by its real
  * path, so a link to a dot-folder is judged by where it leads.
  * @param {{ backend?: string, tool: unknown, input: any, hostId?: string | null, home: string }} req
  * @returns {{ lines: { text: string, rule: string }[], readDir: string } | null}
  */
 export function readFolderOffer({ backend, tool, input, hostId = null, home }) {
-  if (hostId || !READ_FOLDER_BACKENDS.has(String(backend)) || tool !== 'Read') return null;
-  const file = typeof input?.file_path === 'string' ? input.file_path.trim() : '';
-  if (!isAbsolute(file)) return null;
-  const dir = real(dirname(file));
+  if (!answersRead({ backend, tool, hostId })) return null;
+  const dir = folderOf(input);
   const realHome = real(home);
   if (!dir || !realHome || !offerable(dir, realHome)) return null;
   return { lines: [{ text: `Always allow ${dir} for reading files, in this conversation`, rule: dir }], readDir: dir };
 }
 
 /**
- * Saves a readable folder for the conversation, from its next turn, built from the pending session (#796’s class), so
+ * Whether a read card needs no asking, since its folder is in one the conversation saved as readable: by the session as
+ * it is now, so a folder allowed earlier in the turn counts at once, where the hook’s list is the turn’s start (#338).
+ * O(folders saved), at most MAX_READ_DIRS.
+ * @param {any} rt @param {string} sessionId @param {{ tool: unknown, input?: any, hostPrompt?: { hostId: string } | null }} req
+ */
+export function inReadFolder(rt, sessionId, { tool, input, hostPrompt = null }) {
+  const se = rt.s.sessions[sessionId];
+  const backend = se ? rt.persona(se.personaId)?.backend : undefined;
+  if (!se?.readDirs?.length || !answersRead({ backend, tool, hostId: hostPrompt?.hostId ?? null })) return false;
+  const dir = folderOf(input);
+  if (!dir) return false;
+  return se.readDirs.some((/** @type {string} */ saved) => dir === saved || dir.startsWith(saved + sep));
+}
+
+/**
+ * Saves a readable folder for the conversation, read at once by inReadFolder and by the hook from its next turn, built from the pending session (#796’s class), so
  * a write still held behind a commit isn’t lost. One already listed adds nothing.
  * @param {any} rt @param {string} sessionId @param {string} dir
  */
