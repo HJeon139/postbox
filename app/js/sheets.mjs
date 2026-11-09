@@ -1142,7 +1142,7 @@ export function openFolderPicker(projectId, onPick, { folders = false } = {}) {
       if (r.error) throw new Error(r.error);
       problem.hidden = true;
       problem.replaceChildren();
-      where.textContent = `${r.root}${r.path ? '/' + r.path : ''}`;
+      where.textContent = `${r.root}${r.shownPath ? '/' + r.shownPath : ''}`;
       const pick = (path) => {
         dlg.close();
         onPick(path);
@@ -1162,6 +1162,8 @@ export function openFolderPicker(projectId, onPick, { folders = false } = {}) {
           : null,
         ...r.entries
           .filter((e) => !folders || e.dir)
+          // Each name as the server marks it, so a character that hides or reorders it shows (#1052); e.path is real.
+          .map((e) => ({ ...e, name: e.shown }))
           .map((e) =>
             h(
               'li',
