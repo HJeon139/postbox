@@ -102,7 +102,31 @@ test('#927: an Authorization header hides its credential under any scheme, or no
   assert.equal(await shownText(`curl -H "Authorization: token ${GH}" -d @-`), 'curl -H "Authorization: token …" -d @-');
   assert.equal(await shownText(`curl -H "authorization:${SK}"<in`), 'curl -H "authorization:…"<in');
   assert.equal(await shownText('curl -H Authorization:abc123;ok'), 'curl -H Authorization:…;ok');
-  assert.equal(await shownText('curl -H "Proxy-Authorization: Basic abc&def"'), 'curl -H "Proxy-Authorization: Basic …&def"');
+  assert.equal(await shownText('curl -H "Proxy-Authorization: Basic abc&def"'), 'curl -H "Proxy-Authorization: Basic …"');
+});
+
+test('#927: a quoted Authorization header with parameters hides all of them, to the quote that ends the header', async () => {
+  const digest = 'curl -H "Authorization: Digest username=\\"u\\", response=\\"abc\\"" -H "Accept: */*" https://x';
+  assert.equal(await shownText(digest), 'curl -H "Authorization: Digest …" -H "Accept: */*" https://x');
+  const sigv4 = `curl -H 'Authorization: AWS4-HMAC-SHA256 Credential=${AWS}/2020/us/s3/aws4_request, SignedHeaders=host;x-amz-date, Signature=deadbeef' -s`;
+  assert.equal(await shownText(sigv4), "curl -H 'Authorization: AWS4-HMAC-SHA256 …' -s");
+  assert.equal(await shownText('curl -H \'authorization: Digest a="<&", r="x"\' ok'), "curl -H 'authorization: Digest …' ok");
+  assert.equal(await shownText('curl -H "Authorization: Basic a\0b" ok'), 'curl -H "Authorization: Basic …" ok');
+  assert.equal(await shownText('curl -H "Authorization: Basic abc\nnext line'), 'curl -H "Authorization: Basic …', 'a quote that never closes hides the rest');
+});
+
+test('#927: curl’s -u and --user hide the password after the user’s colon, quoted or not, and keep the user', async () => {
+  assert.equal(await shownText('curl -u user:S3CRET https://x'), 'curl -u user:… https://x');
+  assert.equal(await shownText('curl -uadmin:pw&&ok'), 'curl -uadmin:…&&ok');
+  assert.equal(await shownText('curl --user "me:p w<&" -s'), 'curl --user "me:…" -s');
+  assert.equal(await shownText("curl --user='me:p\"w' -s"), "curl --user='me:…' -s");
+  assert.equal(await shownText('curl -u :token https://x'), 'curl -u :… https://x');
+  assert.equal(await shownText('curl --user=me:pw -u me:p:w --user "me:p:w" x'), 'curl --user=me:… -u me:… --user "me:…" x');
+});
+
+test('#927: a -u or --user with no colon, and -u inside another word, are listed exactly as written', async () => {
+  const cmd = 'sudo -u root cmd --user alice; ls -lu x:y; tool --users a:b; pkg-ufoo:bar; pkg-u"a:b"';
+  assert.equal(await shownText(cmd), cmd);
 });
 
 test('#927: a header named like a key, token, secret or password hides its value, quoted or not', async () => {
