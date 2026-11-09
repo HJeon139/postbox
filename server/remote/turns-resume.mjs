@@ -152,7 +152,10 @@ export async function reattach(rts, sessionId) {
     // for the person. One listed as ended, or interrupted and gone, can’t, and a moved one waits anyway (autoResume’s
     // hostOf check).
     const mayRun = stillThere && !moved;
-    interrupted(rts, sessionId, whyNotAttached(now.handle, persona, { listed: Boolean(listed), moved }), { unkilled: mayRun, noBackend: unregistered });
+    // Marked only when the missing backend is all that holds it, since the hint then promises it resumes on its own
+    // (#965): one that may still run waits for the person, and so does a moved agent’s.
+    const onlyBackend = unregistered && !mayRun && !moved;
+    interrupted(rts, sessionId, whyNotAttached(now.handle, persona, { listed: Boolean(listed), moved }), { unkilled: mayRun, noBackend: onlyBackend });
     // Its cards, kept for the attach, can’t be answered now (#965).
     endOrphanCards(rts, [r.turn]);
     return;
