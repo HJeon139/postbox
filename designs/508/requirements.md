@@ -77,6 +77,8 @@ flowchart TD
 
 ## 5. Large rooms
 
+**Proposed for revision 13 (`1155-revision.md` §3, #1155, draft):** PF-1 becomes absolute (100 ms p95 at a million items, in Firefox and Chromium, on the reference Mac), PF-8 becomes required, and PF-10 (element budget), PF-11 (start-up) and PF-12 (store at any size) are added. Until it is decided, the rows below stand.
+
 | Id | Requirement | Check | Sources |
 |---|---|---|---|
 | PF-1 | A large room is as responsive as a small one: typing and painting cost about the same whatever the room’s size. | Key-to-frame p95 within 10% of a small room’s, in rooms the big-room seed generates at 1× (1,000 items), 4× and 10×; Safari’s idle painting no higher (not measured in sprint 3, which measures Chromium only). | #305; D508 Why and “Decided” (budget is parity, the person’s choice) |

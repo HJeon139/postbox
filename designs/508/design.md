@@ -464,7 +464,7 @@ Decided (8.5): any change to an item reaches the agents it concerns, as `notify`
 
 ## 10. Browser
 
-**Decided 2 November 2026: client-side virtualization comes first.** The page keeps an open conversation's items in memory, as today, and mounts only those near the view, anchored by the view state (B1b). The window below, which pages items from the server (B1a's positions, B2's items API, B3), waits until a measurement on a large room shows virtualization alone misses PF-1. The view state, interactive state across unmounting (#494) and the search box for PF-8 apply to both. (`execution-plan.md`, “Where it stands”.)
+**Proposed for revision 13 (`1155-revision.md`, #1155, draft):** viewport rendering with one screen of overscan replaces the window below, the page fetches items by range now, and B1a, B2 and B3 come back as its steps R4 and R5. Until that revision is decided, the 2 November decision stands. **Decided 2 November 2026: client-side virtualization comes first.** The page keeps an open conversation's items in memory, as today, and mounts only those near the view, anchored by the view state (B1b). The window below, which pages items from the server (B1a's positions, B2's items API, B3), waits until a measurement on a large room shows virtualization alone misses PF-1. The view state, interactive state across unmounting (#494) and the search box for PF-8 apply to both. (`execution-plan.md`, “Where it stands”.)
 
 - **State:** thread headers, app headers, sessions and open records for every conversation. Items only for open conversations.
 - **The window** is one contiguous range of items per open conversation:
@@ -521,6 +521,8 @@ It needs no state, so it runs the same on a copy, and its counts don’t change 
 | `receiptsKeep`, closed receipts kept | 50,000 | Whether MS-1’s window covers a room’s recent weeks | From rooms’ receipt rates |
 | Commit round trip: added latency per streamed chunk and per `commit` at dispatch, with its `fsync`, against today’s store | Not set | Turn-start time and streamed-text lag on a copy of this room | Measured in step 1a before anything else moves. 4.2 to 4.6 ms per `fsync` on the developer’s Mac |
 | Stream retention: entries kept in `events` before trimming | Not set | Browsers that needed `resync` after a reconnect | From rooms’ event rates and typical reconnect gaps |
+
+**Proposed for revision 13 (`1155-revision.md` §3, §8):** PF-1 becomes absolute, under 100 ms p95 for every interaction at a million items in Firefox and Chromium, with an element budget (PF-10) and a start-up budget (PF-11). Until that revision is decided, the budget below stands.
 
 **Budget (PF-1, decided):** key-to-frame p95 within 10% of a small room’s, and Safari’s idle painting no higher, in rooms the big-room seed generates at 1× (1,000 items), 4× and 10×, as `requirements.md` says. Copies of real rooms aren’t measured this sprint.
 
