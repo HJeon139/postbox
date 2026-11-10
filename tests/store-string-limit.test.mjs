@@ -54,6 +54,11 @@ test('#1180 a state whose JSON passes the string limit is snapshotted, and a res
   await store.snapshot();
   const files = await fs.readdir(dir);
   assert.ok(files.includes('snapshot.json'), 'the snapshot is written');
+  const text = await fs.readFile(join(dir, 'snapshot.json'), 'utf8');
+  assert.match(text.slice(0, 80), /^\{"postbox":"snapshot","format":2\}\n/, 'past the limit, it’s written as lines');
+  // An older Postbox reads snapshot.json with one JSON.parse, and refuses to start on any error but ENOENT
+  // (store-recover.mjs before #1180): so on this file it stops, rather than starting empty.
+  assert.throws(() => JSON.parse(text), SyntaxError);
   const again = await opened(t, await image(t, dir), { io: cappedIo() });
   assert.deepEqual(structuredClone(again.state.items), before.items, 'every item comes back');
   assert.equal(again.state.seq, before.seq);
@@ -102,4 +107,83 @@ test('#1180 an old snapshot written across lines, as a hand-made one can be, sti
   const store = await opened(t, dir);
   assert.equal(store.state.seq, 2);
   assert.deepEqual(structuredClone(store.state.threads.one), old.threads.one);
+});
+
+test('#1180 a state that fits is snapshotted as lines too, which an older Postbox refuses rather than starting empty', async (t) => {
+  // C5, the person’s choice on #1155: always the line format, so a snapshot never stops the server for its whole
+  // JSON.stringify. An older Postbox reads snapshot.json with one JSON.parse and refuses to start on any error but
+  // ENOENT (store-recover.mjs before #1180): so on this file it stops, rather than starting empty.
+  const dir = await folder(t);
+  const store = await opened(t, dir);
+  fill(store);
+  await store.flush();
+  const before = structuredClone(store.state);
+  await store.snapshot();
+  const text = await fs.readFile(join(dir, 'snapshot.json'), 'utf8');
+  assert.match(text.slice(0, 80), /^\{"postbox":"snapshot","format":2\}\n/, 'a state that fits is written as lines');
+  assert.throws(() => JSON.parse(text), SyntaxError);
+  const again = await opened(t, await image(t, dir));
+  assert.deepEqual(structuredClone(again.state), before);
+});
+
+test('#1180 an item holding U+2028 and U+2029 survives a line-format snapshot', async (t) => {
+  // readline also ends a line at U+2028 and U+2029, which JSON.stringify leaves as they are (critic, on #1194): the
+  // snapshot splits on the newline byte alone, as the replay does.
+  const dir = await folder(t);
+  const store = await opened(t, dir, { io: cappedIo() });
+  fill(store);
+  store.emit('item.add', { threadId: 'one', item: { id: 'it_sep', kind: 'user', at: 1, text: 'a\u2028b\u2029c' } });
+  await store.flush();
+  const before = structuredClone(store.state);
+  capStringify(t);
+  await store.snapshot();
+  const again = await opened(t, await image(t, dir), { io: cappedIo() });
+  assert.deepEqual(structuredClone(again.state.items), before.items);
+});
+
+/** A line-format snapshot of a room past the limit, in its own folder, and its text. */
+async function lineSnapshot(t) {
+  const dir = await folder(t);
+  const store = await opened(t, dir, { io: cappedIo() });
+  fill(store);
+  await store.flush();
+  capStringify(t);
+  await store.snapshot();
+  const copy = await image(t, dir);
+  return { copy, text: await fs.readFile(join(copy, 'snapshot.json'), 'utf8') };
+}
+
+test('#1180 a line-format snapshot cut at a line boundary is refused, not loaded as a smaller state', async (t) => {
+  const { copy, text } = await lineSnapshot(t);
+  const cut = text.indexOf('\n', Math.floor(text.length / 2)) + 1;
+  await fs.writeFile(join(copy, 'snapshot.json'), text.slice(0, cut));
+  await assert.rejects(opened(t, copy, { io: cappedIo() }), /Couldn’t read the snapshot/);
+});
+
+test('#1180 a snapshot that’s only the header line is refused, not loaded as an empty state', async (t) => {
+  const { copy, text } = await lineSnapshot(t);
+  await fs.writeFile(join(copy, 'snapshot.json'), text.slice(0, text.indexOf('\n') + 1));
+  await assert.rejects(opened(t, copy, { io: cappedIo() }), /Couldn’t read the snapshot/);
+});
+
+test('#1180 an empty snapshot.json, or one shorter than the header, is refused', async (t) => {
+  for (const text of ['', '{"postbox":"snap']) {
+    const dir = await folder(t);
+    await fs.writeFile(join(dir, 'snapshot.json'), text);
+    await assert.rejects(opened(t, dir), /Couldn’t read the snapshot/, JSON.stringify(text));
+  }
+});
+
+test('#1180 a line-format snapshot with an item’s line missing, a line past its end, or no last newline is refused', async (t) => {
+  const { copy, text } = await lineSnapshot(t);
+  const lines = text.split('\n'); // the header, the body, the end line, then '' after the last newline
+  const damaged = {
+    'an item’s line missing': lines.filter((_, i) => i !== lines.findIndex((l) => l.startsWith('["i",'))).join('\n'),
+    'a line past its end': `${text}${lines[2]}\n`,
+    'no last newline': text.slice(0, -1),
+  };
+  for (const [what, damage] of Object.entries(damaged)) {
+    await fs.writeFile(join(copy, 'snapshot.json'), damage);
+    await assert.rejects(opened(t, copy, { io: cappedIo() }), /Couldn’t read the snapshot/, what);
+  }
 });
