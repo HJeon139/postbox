@@ -6,28 +6,34 @@
 
 import { writeAll } from './store-commit.mjs';
 import { snapshotFailed, snapshotSucceeded } from './store-retry.mjs';
-import { snapshotLines } from './store-snapshot-lines.mjs';
+import { oneValue, snapshotLines } from './store-snapshot-lines.mjs';
 
 const PIECE = 1 << 20; // the snapshot’s text goes to the disk in pieces this long
 
 /**
- * Writes the state to snapshot.json atomically: a temporary file, written as lines in pieces of about 1 MB (one write of
+ * Writes the state to snapshot.json atomically: a temporary file, written in pieces of about 1 MB (one write of
  * the whole text converts it to bytes in one go, which blocked the loop for about half the snapshot’s time, #508’s
  * storage design, “Snapshots and pruning”), fsynced, then renamed over the snapshot. The caller syncs the folder.
  * @param {{ io: typeof import('node:fs/promises'), at: (name: string) => string, state: any, retiring?: boolean }} store
+ * @param {{ forOlder?: boolean }} [options] one JSON value, for tools/snapshot-for-older.mjs, rather than lines
  */
-export async function writeSnapshot(store) {
+export async function writeSnapshot(store, { forOlder = false } = {}) {
   const path = store.at('snapshot.json');
   const tmp = `${path}.${process.pid}.tmp`;
+  // As lines (store-snapshot-lines.mjs, #1180), always: no string holds the whole state, so no size of it fails, and
+  // the write yields every PIECE rather than stopping the server for one JSON.stringify (C5, the person’s choice on
+  // #1155). One JSON value only for tools/snapshot-for-older.mjs, which a Postbox from before #1180 reads.
+  const one = forOlder ? oneValue(store.state) : '';
+  if (one === null) throw new Error('The state is too big for one JSON value: past V8’s string limit, only lines can hold it.');
   const fh = await store.io.open(tmp, 'w');
   try {
-    // As lines (store-snapshot-lines.mjs, #1180): no string holds the whole state, so no size of it fails here. The
-    // lines run into a buffer that goes out in pieces of PIECE, as one text did, and a piece never splits a surrogate
-    // pair (gpt’s finding).
-    let text = '';
-    for (const line of snapshotLines(store.state)) {
-      text += `${line}\n`;
-      while (text.length >= PIECE) text = await writePiece(fh, text, tmp);
+    // Either way the text goes out in pieces of PIECE, and a piece never splits a surrogate pair (gpt’s finding).
+    let text = one;
+    if (!forOlder) {
+      for (const line of snapshotLines(store.state)) {
+        text += `${line}\n`;
+        while (text.length >= PIECE) text = await writePiece(fh, text, tmp);
+      }
     }
     while (text.length) text = await writePiece(fh, text, tmp);
     await fh.sync();
