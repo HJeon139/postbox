@@ -69,8 +69,11 @@ const USERINFO = /\b([a-z][\w+.-]*:\/\/)[^\s/?#@'"<>&;|()`]+(?=@)/gi;
 const ASSIGNED = new RegExp(String.raw`(?<![\w\uFFFD-])(${NAMED}=)${VALUE}`, 'gi');
 // lint-allow regex: built from VALUE and NAMED, the constants just above.
 const FLAGGED = new RegExp(String.raw`(?<![\w\uFFFD-])(--?${NAMED}\s+)(?!-)${VALUE}`, 'gi');
-// lint-allow regex: built from VALUE, WORD and NAMED, the constants just above.
-const HEADER = new RegExp(String.raw`(?<![\w\uFFFD-])(${NAMED}:(?!\d)[ \t]*)${VALUE}|\b(authorization:(?:[ \t]+(?:[a-z][\w-]*[ \t]+)?)?)${WORD}`, 'gi');
+// What follows the colon in host:port, so a host named like a token (token-gate:8088) isn’t read as a header: at most
+// five digits, then the end of the word or a path. A value that only starts with digits is still hidden.
+const PORT = String.raw`\d{1,5}(?:[/\s'"&;|<>()\x60]|$)`;
+// lint-allow regex: built from VALUE, WORD, NAMED and PORT, the constants just above.
+const HEADER = new RegExp(String.raw`(?<![\w\uFFFD-])(${NAMED}:(?!${PORT})[ \t]*)${VALUE}|\b(authorization:(?:[ \t]+(?:[a-z][\w-]*[ \t]+)?)?)${WORD}`, 'gi');
 // A Cookie header's cookies: quoted, to the quote that opened it (COOKIE_QUOTED); unquoted, to the end of its shell
 // word, past an escaped space or ;, so the command after it stays shown.
 const COOKIE_QUOTED = /(["'])((?:[\w-]*-)?cookie:[ \t]*)(?:(?!\1)[^\\]|\\.)+/gi;

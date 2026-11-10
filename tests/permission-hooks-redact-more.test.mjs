@@ -45,3 +45,13 @@ test('#927: an unquoted Cookie header hides its cookies only to the end of its w
   // Quoted, it still hides to the quote that closes the header, past spaces and ;.
   assert.equal(await shownText("curl -H 'Cookie: a=1; b=2' x && ok"), "curl -H 'Cookie: …' x && ok");
 });
+
+test('#927: an unspaced header value that starts with a digit is hidden, unless it’s a port', async () => {
+  assert.equal(await shownText('curl -H X-Api-Key:9f8a7bS3CRET x'), 'curl -H X-Api-Key:… x');
+  assert.equal(await shownText('curl -H "X-Auth-Token:1234S3CRET" x'), 'curl -H "X-Auth-Token:…" x');
+  assert.equal(await shownText('tool token:9f8a7bS3CRET'), 'tool token:…');
+  assert.equal(await shownText('curl -H X-Api-Key:123456789 x'), 'curl -H X-Api-Key:… x', 'all digits, too long for a port');
+  // A port ends where a word does, or at the / of a path.
+  const ports = 'curl http://token-gate:8088/hook; redis-cli -h token-cache:6379 ping; tool "token-cache:6379"; tool token-cache:6379';
+  assert.equal(await shownText(ports), ports);
+});
