@@ -53,6 +53,12 @@ test('#1150 widening the pane beside a long room restyles what reads its width, 
     await handle.press('ArrowLeft');
     await expect(handle).toHaveAttribute('aria-valuenow', '456');
   });
+  // Both readers still take the new width: the pane, and the conversation column’s room beside it.
+  const widths = await page.evaluate(() => [
+    /** @type {HTMLElement} */ (document.querySelector('.rpane')).getBoundingClientRect().width,
+    getComputedStyle(/** @type {HTMLElement} */ (document.querySelector('.app > .main'))).marginRight,
+  ]);
+  expect(widths, 'the pane’s width and the column’s margin beside it').toEqual([456, '456px']);
   test.info().annotations.push({ type: 'measured', description: JSON.stringify({ total, widening }) });
   // On main a new width restyled every element Chromium wasn’t skipping off screen, and Firefox all of them.
   expect(widening, `elements restyled widening the pane, of ${total}`).toBeLessThan(200);
