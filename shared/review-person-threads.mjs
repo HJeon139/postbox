@@ -1,7 +1,7 @@
 // The person’s submitted comments as review threads (#1143), pure, so the server writes them and the page can draw an
 // old answer’s comments the same way. Moved out of server/review-person.mjs.
 
-import { PERSON } from './review-comments.mjs';
+import { author, PERSON } from './review-comments.mjs';
 
 /**
  * The block with the person’s comments added, each a thread of its own, or a reply in the thread it names; the
@@ -49,4 +49,25 @@ export function answerThreads(it) {
   if ((it.reviews ?? []).some((r) => r.person && r.revision === revision)) return it;
   const made = personReview(it, a.values, revision);
   return made ? { ...it, block: made.block, reviews: made.reviews } : it;
+}
+
+/**
+ * A review stored before the author rule (#1143) may hold a comment whose author isn’t `you` or an @handle, such as
+ * the demo’s mock writing “You”. Only the block’s own agent could write one, through show_block or update_block
+ * (review_block always wrote its @handle), so each reads as that agent’s: never as the person’s. The item as it is
+ * when every author fits, so a review written since costs one pass over its comments.
+ * @param {any} it  the block item
+ */
+export function ownedAuthors(it) {
+  const fits = (c) => {
+    /** @type {string[]} */
+    const errs = [];
+    author(c.author, 'author', errs);
+    return errs.length === 0;
+  };
+  const threads = it.block.threads ?? [];
+  if (threads.every((t) => t.comments.every(fits))) return it;
+  const own = `@${it.handle}`;
+  const owned = threads.map((t) => ({ ...t, comments: t.comments.map((c) => (fits(c) ? c : { ...c, author: own })) }));
+  return { ...it, block: { ...it.block, threads: owned } };
 }

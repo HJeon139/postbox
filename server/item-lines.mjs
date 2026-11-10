@@ -3,6 +3,7 @@
 
 import { READING } from '../shared/limits.mjs';
 import { authorName, commentAt } from '../shared/review-comments.mjs';
+import { ownedAuthors } from '../shared/review-person-threads.mjs';
 import { appCheckText } from './app-check-status.mjs';
 import { closedText } from './blocks.mjs';
 import { clipText, fenced } from './helpers.mjs';
@@ -31,7 +32,8 @@ function blockContent(it) {
     case 'review':
       if (b.format === 'app') out.push(`It reviews the app ${b.appId}.`);
       else out.push(b.format === 'code' ? `${b.filename ? `${b.filename}:\n` : ''}${fenced(b.content ?? '', b.language)}` : String(b.content ?? ''));
-      for (const th of b.threads ?? [])
+      // An old author outside the rule reads as the block’s agent’s, never the person’s (#1143), so it can be sent back.
+      for (const th of ownedAuthors(it).block.threads ?? [])
         out.push(`Comments on ${commentAt(th)} (${th.status}):\n${lines(th.comments.map((c) => `${authorName(c.author)}: ${c.text}`))}`);
       break;
     case 'card':

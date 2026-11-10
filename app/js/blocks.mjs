@@ -5,7 +5,7 @@
 import './md-images.mjs';
 import { ASKING } from '/shared/catalog.mjs';
 import { renderMarkdown } from '/shared/markdown.mjs';
-import { answerThreads } from '/shared/review-person-threads.mjs';
+import { answerThreads, ownedAuthors } from '/shared/review-person-threads.mjs';
 import { onPageOrigin } from '/shared/urls.mjs';
 import { asDrawn, closing } from './block-close.mjs';
 import { fitChoiceOptions } from './choice-layout.mjs';
@@ -554,7 +554,8 @@ const RENDER = {
   // A review answered before #1143 holds the person’s comments only in its answer: drawn as the threads its next
   // update makes them, read-only here, so nothing is written on a read.
   review: (_b, item, ctx) => {
-    const shown = answerThreads(item);
+    // An old author outside the rule draws as the block’s agent’s, as agents read it, never as the person’s.
+    const shown = ownedAuthors(answerThreads(item));
     return renderReview(shown.block, shown, ctx, { draft, seen, renderBlock, head, staleNote, submit, errLine, outcomeLine });
   },
   app(_b) {
