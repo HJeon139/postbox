@@ -2,6 +2,40 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.58.3 (2026-11-10)
+
+### Fixes
+
+- **backends:** refuse a long agy prompt only when the system does
+- **work:** read a background command's output file from the real /tmp too
+- **codex:** the failed step gives Codex's own reason, bounded (#1162)
+- **codex:** the tools-down note reaches every kind of turn, and skips a command (#1162)
+- **remote:** moving an agent off a silent host drains what waited for its attach (#1135)
+- **remote:** a message waits for an attach only while the agent still runs on that host (#1135)
+- **permissions:** find curl after a subshell, a backtick or a quote
+- **permissions:** hide a header value that starts with a digit, and keep ports
+- **uat:** a git-remote run blanks the terminal's askpass itself
+- **backends:** guard a local Kiro turn's stdin, and say what agy's refusal counted
+- **composer:** a send that keeps failing with the stream open goes on being tried, and says so
+- **backends:** send Kiro a long prompt on stdin, and refuse one agy can't take
+- **work:** read a background command's output file only from the agent's or the backend's folders
+- **review:** an old review's outcome reads its off-rule authors as its agent's (#1143)
+- **review:** an old review's off-rule author reads as its agent's, so a submit still lands (#1143)
+- **codex:** only a listed entry of Codex's failed servers is Postbox's; the note says where (#1162)
+- **mock:** the demo's critic replies in the person's threads, not as "You" (#1143)
+- **permissions:** hide curl's bundled -u, -U and --proxy-user passwords, and stop two over-cuts
+- **review:** a review comment authored @you, in any case, reads as the person's (#1143)
+- **review:** refuse a submitted reply in a thread the review doesn't have (#1143)
+- **review:** the person's refused submit says what they can do, not to resolve some (#1143)
+- **codex:** show when Codex refuses a turn for Postbox's server, and tell the next turn (#1162)
+- **review:** tell the agent to resolve the person's threads once it has handled them (#1143)
+- **review:** a review comment's author is an agent's @handle or the person's you (#1143)
+- **app:** the transcript holds the room below its newest message with its own margin (#1150)
+- **remote:** a drain reads one busy rule, busyFor, so it waits for an attach too (#1135)
+- **review:** refuse a shown review with a comment in the person's name (#1143)
+- **review:** keep the person's submitted comments on the block as threads
+- **remote:** a message for an agent whose host turn waits to be attached waits in the queue (#1135)
+
 ## 1.58.2 (2026-11-10)
 
 ### Fixes
