@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft r2, after critic's first read (two P2s and three P3s on r1), for the person's decisions (“Choices for the person”). Nothing here is built. |
+| **Status** | Draft r3, after critic's reads of r1 and r2, for the person's decisions (“Choices for the person”). Nothing here is built. |
 | **Revises** | `designs/508/design.md`, revision 12: §3 (G1), §5 (Architecture), §6.3, §10 (Browser), §11 (the PF-1 budget), §14 (Rollout, track B) and §18 (Decisions). `designs/508/requirements.md`: §5 (Large rooms) and Storage. `designs/508/storage-design.md`: §6.9 (S2's trigger). Where this file and those differ, this file wins until they are edited to match. |
 | **The target** | Approved by the person on 10 November 2026 (`sprint4/perf-principles-approved.md`; #1155). Every interaction paints within 100 ms, p95, from input to the next paint, in a conversation of a million items, in Firefox and Chromium, on the person's Mac. The page draws what can be seen plus a screen either side, never the whole conversation. |
 | **Not in it** | The doc changes to `intent.md`, `architecture.md`, `engineering-practices.md`, `review-guide.md` and `developing.md` (items 1 to 6 of #1155). Those are one docs PR after this revision is decided. |
@@ -274,7 +274,7 @@ Each step ships alone, with a spec that fails first on `main` and the full brows
 | R0 | #1075, the window | — | merged, or at its last round |
 | R1 | The docs PR, #1155's items 1 to 6 | this revision decided | the light gate |
 | R2 | The budget spec (#1166), gating opening and elements above 10,000 items | R0 | #1150's and #1151's cases on commits before their fixes |
-| R3 | #1180: the line-based snapshot and replay, with C5 decided | — | a state past the string limit snapshots and loads; a segment over the limit replays; `main`'s reader refuses the new file rather than starting empty |
+| R3 | #1180: the line-based snapshot and replay, with C5 decided | — | a state past the string limit snapshots and loads; a segment over the limit replays; under C5(a), a state that fits is written in today's format and `main`'s reader loads it; a line-format file makes `main`'s reader refuse to start rather than start empty |
 | R4 | B1a positions everywhere, and B2: the items API, filtered stream, watermarks and generations; `/api/state` without items; needs and open asks from the server | R0 | B2's specs in `design.md` §14; start-up at 30,000 items under the C4 budget |
 | R5 | Viewport rendering on the window: the range rule, heights by id, pinned items in the budget | R4 | the element count and switch time at 100,000 items; PF-3's 13 scroll specs |
 | R6 | Long items windowed: activity steps, reviews, tables | R5 | elements with one 2,000-step tool run in view |
@@ -314,13 +314,14 @@ Each choice below changes what the person sees or what they pay for. Every other
 - (b) At most 2 s.
 - (c) Parity with a 1,000-item room, measured on each run, like PF-1's old relative budget.
 
-**C5. Going back to an older Postbox, which first breaks at R3 (#1180), not R7.** #1180 writes `snapshot.json` as lines. An older build reads it with one `JSON.parse` (`server/store-recover.mjs:62` on `main`) and refuses to start, with “Couldn't read the snapshot”. It fails closed: nothing starts empty or is overwritten. Every clone run without `--data` shares `~/.postbox`, so an older clone stops starting the moment #1180 merges. R7's sharded folder is a second break of the same kind. This one is asked now, with R3.
-- (a) **Recommended.** Accept it.
-  - #1180's PR carries a `BREAKING CHANGE` footer and a release note: an older build refuses this folder.
-  - A case shows `main`'s reader refusing the new file rather than starting empty.
-  - A tool rebuilds an old-format `snapshot.json` for going back, and refuses above the string limit (about 68,000 seeded items), since past it no single-string snapshot can exist.
-  - Older clones run with their own `--data` folder.
-- (b) Also keep writing an old-format `snapshot.json` beside the new one, until R7. Not possible past V8's string limit, so it helps only rooms under about 68,000 seeded items, and doubles each snapshot's cost.
+**C5. Going back to an older Postbox, which first breaks at R3 (#1180), not R7.** An older build reads `snapshot.json` with one `JSON.parse` (`server/store-recover.mjs:62` on `main`), so a line-format snapshot makes it refuse to start, with “Couldn't read the snapshot”. It fails closed: nothing starts empty or is overwritten. Every clone run without `--data` shares `~/.postbox`. R7's sharded folder is a second break of the same kind, asked again then. This one is asked now, with R3.
+- (a) **Recommended (critic's).** No break while the state fits.
+  - #1180 writes today's single-string `snapshot.json` while `JSON.stringify` succeeds, and the line format only when it throws `RangeError`, past about 68,000 seeded items. Its reader already loads both.
+  - **Cost:** an older build breaks only for a room already past the limit, which an older build can't load anyway. Nothing breaks today, so #1180 needs no `BREAKING CHANGE` footer yet.
+  - **The catch:** the writer has two paths, each with its own test, and a room switches format once, near the limit. Below it, the snapshot still builds one large string, as it does today.
+- (b) Accept the break now.
+  - #1180 always writes the line format, with a `BREAKING CHANGE` footer and a release note. A tool rebuilds an old-format snapshot for going back, refusing past the limit.
+  - **Cost:** every older clone on `~/.postbox` stops starting the day #1180 merges, though the old format could still hold the state. Older clones need their own `--data` folder.
 
 ## 11. Tests owed, failing first
 
