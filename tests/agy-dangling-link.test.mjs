@@ -2,7 +2,7 @@
 // written (#1134): a write there would create the target, wherever it points, so one outside the agent’s folders asks.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { decideAgyTool } from '../server/adapters/agy-hook.mjs';
@@ -62,4 +62,23 @@ test('#1134 a dangling link whose target runs through another link is judged whe
   // ws/first → ws/alias/out.txt, which doesn’t exist: read as written it’s inside, but it lands in ~/outdir.
   symlinkSync(join(ws, 'alias', 'out.txt'), join(ws, 'first'));
   assert.equal(decide('write_to_file', { TargetFile: join(ws, 'first') }, { mode: 'auto', folders: [ws], cwd: ws, home }).decision, 'ask');
+});
+
+test('#1134 a link target with a leading space is read as the file system reads it, not trimmed', () => {
+  const { home, ws } = aHome();
+  symlinkSync(home, join(ws, ' foo'));
+  symlinkSync(' foo/out-space.txt', join(ws, 'sp'));
+  // Trimmed, the target would read as ws/foo/out-space.txt, inside; it leads through the link named “ foo”, to home.
+  assert.equal(decide('write_to_file', { TargetFile: join(ws, 'sp') }, { mode: 'auto', folders: [ws], cwd: ws, home }).decision, 'ask');
+  writeFileSync(join(ws, 'sp'), 'x');
+  assert.ok(existsSync(join(home, 'out-space.txt')), 'the write really lands outside');
+});
+
+test('#1134 a link target of only spaces names a file, so it’s followed there', () => {
+  const { home, ws } = aHome();
+  symlinkSync(join(home, 'out-blank.txt'), join(ws, '  '));
+  symlinkSync('  ', join(ws, 'bl'));
+  assert.equal(decide('write_to_file', { TargetFile: join(ws, 'bl') }, { mode: 'auto', folders: [ws], cwd: ws, home }).decision, 'ask');
+  writeFileSync(join(ws, 'bl'), 'x');
+  assert.ok(existsSync(join(home, 'out-blank.txt')), 'the write really lands outside');
 });
