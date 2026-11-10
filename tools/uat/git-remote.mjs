@@ -5,6 +5,7 @@
 //   which git applies over any config file, per-protocol settings included, and protocol.allow=never with only file
 //   allowed, from the environment (GIT_CONFIG_COUNT) and again from the workspace’s own .git/config. So an https,
 //   ssh or git:// remote is refused before anything leaves this computer;
+// - git lfs doesn’t read GIT_ALLOW_PROTOCOL, so the git-lfs first on the run’s PATH refuses (#1125);
 // - git reads the run’s own config, not the person’s: GIT_CONFIG_GLOBAL is a file in the run’s folder that holds only a
 //   test identity, and GIT_CONFIG_NOSYSTEM drops the system’s, such as Homebrew’s. So no pushInsteadOf, insteadOf,
 //   include, hook or credential helper of theirs touches an agent’s push;
@@ -23,6 +24,8 @@
 // - undo it: `env -u GIT_ALLOW_PROTOCOL git push …`, `GIT_ALLOW_PROTOCOL=https git push …`, or `env -i`, then
 //   `git -c protocol.allow=always …`. In Ask me or Accept edits that command comes to a card first; in Auto, the
 //   harness decides;
+// - ask for a password past the credential guard on purpose: `git -c credential.helper=… credential fill`, setting
+//   GIT_ASKPASS for one command, `git credential-<helper> get`, or the real git-lfs by its full path;
 // - skip git: with GH_TOKEN unset, a real gh called by its full path still reads the person’s sign-in from the keychain
 //   (`gh auth token`), since HOME and the keyring are theirs, and `curl` with that token reaches GitHub;
 // - a file push can reach a bare repository outside the run’s folder, and nothing refuses `--host` for this seed: the
