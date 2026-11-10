@@ -41,6 +41,14 @@ async function painted(page, n) {
   return !marked.equals(plain);
 }
 
+/** Opens another conversation, once the page has heard of it, and waits for the reviews to leave the page. */
+async function switchAway(page) {
+  const other = app.rt.createThread({ projectId: Object.values(app.rt.s.projects)[0].id, title: 'Elsewhere', personaIds: [drafter.id] });
+  await synced(page, app);
+  await page.goto(`${app.origin}/#/t/${other.id}`);
+  await expect(page.locator('.rv-preview .md'), 'the other conversation drawn').toHaveCount(0);
+}
+
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
 /** @type {any} */
@@ -111,9 +119,7 @@ test('#1151 opening a room of eight commented reviews builds the comment highlig
   expect(await painted(page, index), 'the revision’s quote paints').toBe(true);
 
   // To another conversation and back: the reviews draw again, and their quotes paint again.
-  const other = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: 'Elsewhere', personaIds: [drafter.id] });
-  await page.goto(`${app.origin}/#/t/${other.id}`);
-  await expect(page.locator('.rv-preview .md')).toHaveCount(0);
+  await switchAway(page);
   await page.goto(`${app.origin}/#/t/${thread.id}`);
   await expect(page.locator('.rv-preview .md')).toHaveCount(REVIEWS);
   await expect.poll(() => page.evaluate(() => CSS.highlights.get('rv-quote')?.size ?? 0), { message: 'one mark per review after the switch' }).toBe(REVIEWS);
