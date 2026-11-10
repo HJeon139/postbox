@@ -123,6 +123,24 @@ describe('an agent’s git reaches no network remote', () => {
   });
 });
 
+describe('a git-remote run with real GitHub', () => {
+  // #1109's last P3: a `- seed: git-remote` run with `- github: real` gets no noGithubEnv, so the askpass blanks were
+  // only ever there; git-remote's own guard has to blank them, as its header says `git credential fill` hands out nothing.
+  for (const source of ['GIT_ASKPASS', 'SSH_ASKPASS']) {
+    test(`a git-remote run with real GitHub hands an agent no password from the person’s ${source}`, () => {
+      const person = tempDir('postbox-uat-github-real-askpass-home-');
+      const askpass = join(person, 'askpass');
+      writeFileSync(askpass, `#!/bin/sh\necho ${TOKEN}\n`);
+      chmodSync(askpass, 0o755);
+      const ask = 'protocol=https\nhost=github.com\n\n';
+      const fill = (env) => spawnSync('git', ['credential', 'fill'], { env: { ...env, HOME: person }, input: ask, encoding: 'utf8', timeout: 20_000 });
+      const theirs = { ...personEnv(), [source]: askpass };
+      assert.match(fill(theirs).stdout, new RegExp(`password=${TOKEN}`), 'the control: the person’s own git gets it');
+      assert.doesNotMatch(fill(agentEnv({ seed: 'git-remote', github: 'real' }, theirs).env).stdout, /password=/);
+    });
+  }
+});
+
 describe('the run checks the guard before Postbox starts', () => {
   test('it passes on the environment the runner gives Postbox', () => {
     const { dir, env } = agentEnv({});

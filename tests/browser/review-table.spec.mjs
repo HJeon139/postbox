@@ -90,7 +90,7 @@ for (const width of [375, 1280]) {
       await block.getByRole('button', { name: 'Submit review', exact: true }).click();
       await expect
         .poll(() => room.calls.find((m) => m.kind === 'event' && m.event.blockId === blockId)?.event.values.comments, { message: 'the agent gets the comment' })
-        .toEqual([{ line: 9, text: 'Center the cost.' }]);
+        .toEqual([{ line: 9, text: 'Center the cost.', threadId: 'you-1-1' }]);
     });
   });
 }

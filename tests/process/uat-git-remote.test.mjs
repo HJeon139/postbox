@@ -98,9 +98,10 @@ describe('no git in the run reaches a real remote', () => {
 });
 
 describe('what the guard is, and gh', () => {
-  test('the guard is GIT_ALLOW_PROTOCOL=file, protocol.allow=never with only file allowed, and no credential helper or askpass', () => {
+  test('the guard is GIT_ALLOW_PROTOCOL=file, protocol.allow=never with only file allowed, no credential helper or askpass, and no inherited GIT_CONFIG_PARAMETERS', () => {
     assert.deepEqual(guardEnv(), {
       GIT_ALLOW_PROTOCOL: 'file',
+      GIT_CONFIG_PARAMETERS: '',
       GIT_CONFIG_COUNT: '4',
       GIT_CONFIG_KEY_0: 'protocol.allow',
       GIT_CONFIG_VALUE_0: 'never',

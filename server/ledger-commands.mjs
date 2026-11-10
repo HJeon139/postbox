@@ -151,3 +151,14 @@ async function leftBranch(ledger, cmd, root, before, after) {
   for (const x of ledger.entries(conv))
     if (x.kind === 'commit' && !x.left && gone.some((s) => s.startsWith(x.sha) || x.sha.startsWith(s))) ledger.patch(conv, x.id, { left: true });
 }
+
+/**
+ * How a background command that ended after its turn shows (#164, #519): stopped or failed as told; ended when its
+ * process went away on its own, which says it finished though not with what exit; otherwise unknown.
+ * @param {string} state
+ */
+export function endedAs(state) {
+  if (state === 'stopped' || state === 'failed') return state;
+  if (state === 'done') return 'ended';
+  return 'unknown';
+}

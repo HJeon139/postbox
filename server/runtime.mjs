@@ -71,6 +71,7 @@ import { readMessage } from './read-message.mjs';
 import { addHost, host, removeHost, setProjectHostFolder, updateHost } from './remote/host-admin.mjs';
 import { describeHostInstall, hostStatus, installHost, retryHost, watchHosts } from './remote/host-status.mjs';
 import {
+  drainMovedOff,
   hereFolder,
   localBackends,
   notHere,
@@ -472,8 +473,9 @@ export class Runtime {
     // And the agent you reply to, as the mentioned ones above.
     const woken = targets.map(({ se }) => this.persona(se.personaId));
     refuseUnregisteredSend(this, woken);
-    // Messages to a busy agent wait in the queue unless you choose Send now.
-    const busy = targets.filter(({ se }) => this.turns.has(se.id));
+    // Messages to a busy agent wait in the queue unless you choose Send now, as for one whose host turn waits to be
+    // attached again after a restart (#1135).
+    const busy = targets.filter(({ se }) => this.turns.has(se.id) || this.remote.awaitsAttach(se.id));
     const q =
       busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now(), seq: arrival() } : null;
     if (q) updateThread(this, threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
@@ -525,6 +527,16 @@ export class Runtime {
   /** Once Postbox listens after a restart: what waited in the queues goes now, a wake or a message of yours (#228). */
   drainAll() {
     return queue.drainAll(this);
+  }
+
+  /**
+   * Whether a session can’t take a delivery now, so what’s queued for it waits: a turn running, a stopped one still
+   * exiting (#126), or a host turn from before a restart waiting to be attached again (#1135). The one rule a wake and
+   * a drain read; sendMessage reads it without exiting, which is #1136’s.
+   * @param {string} sessionId
+   */
+  busyFor(sessionId) {
+    return this.turns.has(sessionId) || this.exiting.has(sessionId) || this.remote.awaitsAttach(sessionId);
   }
 
   /**
@@ -730,8 +742,6 @@ export class Runtime {
       rules: { allow: [...(se0.rules?.allow ?? [])], ask: [...(se0.rules?.ask ?? [])], deny: [...(se0.rules?.deny ?? [])] },
       /** Folders the person added for this conversation (#66), passed as --add-dir / additionalDirectories. */
       addDirs: [...(se0.addDirs ?? [])],
-      /** Folders it may only read in this conversation, from Always allow on a read card (#338, read-folders.mjs). */
-      readDirs: [...(se0.readDirs ?? [])],
       /** The adapter says how to name a subagent from its id (a prompt’s agent id), so its prompt names it. */
       subagentNames(fn) {
         turn.subagentName = fn;
@@ -2457,6 +2467,7 @@ export class Runtime {
     this.store.emit('persona', next);
     // A card that asked for a tool now on answers itself, wherever it was turned on (#237).
     if (patch.tools !== undefined) settleToolAsks(this, next);
+    drainMovedOff(this, id);
     return next;
   }
 

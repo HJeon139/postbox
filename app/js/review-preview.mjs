@@ -241,31 +241,53 @@ function codeIndent(pre, lines, n) {
   return Math.max(0, (lines[n - 1] ?? '').length - code.length);
 }
 
-/** Each review’s marked ranges, painted as one highlight. @type {Map<string, Range[]>} */
+/** Each review’s marked ranges, all in one highlight. @type {Map<string, Range[]>} */
 const marked = new Map();
+/**
+ * The one highlight every review’s marks go in, built and set once (#1151). Each review adds and removes only its own
+ * ranges, so drawing a room of reviews costs what their ranges do, not reviews × all ranges.
+ * @type {Highlight | null}
+ */
+let quotes = null;
+const canMark = () => !!globalThis.CSS?.highlights && typeof Highlight !== 'undefined';
+/** The highlight, made and set the first time a review marks text. */
+function highlight() {
+  if (!quotes) {
+    quotes = new Highlight();
+    CSS.highlights.set('rv-quote', quotes);
+  }
+  return quotes;
+}
+/** A review’s marks leave the highlight. @param {string} id */
+function unmark(id) {
+  for (const r of marked.get(id) ?? []) quotes?.delete(r);
+  marked.delete(id);
+}
+/**
+ * Reviews whose ranges wait to be added. A block is drawn before it’s on the page, and Firefox never paints a range
+ * added while it was off the page (the integrator’s read of #1159), so they’re added a frame later, all at once.
+ */
+const toAdd = new Set();
+function addMarks() {
+  const h = highlight();
+  for (const id of toAdd) for (const r of marked.get(id) ?? []) h.add(r);
+  toAdd.clear();
+}
 /** Marks the text each comment on a selection is on (CSS Custom Highlight; ::highlight(rv-quote) in workbench.css). */
 function mark(id, ranges) {
-  if (!globalThis.CSS?.highlights || typeof Highlight === 'undefined') return;
+  if (!canMark()) return;
   // A block is drawn before it’s on the page, so a range off the page may be one about to be: only a long list of
   // them, from reviews no longer shown, is cleared.
-  if (marked.size > 50) for (const [k, v] of marked) if (k !== id && !v[0]?.startContainer.isConnected) marked.delete(k);
+  if (marked.size > 50) for (const [k, v] of marked) if (k !== id && !v[0]?.startContainer.isConnected) unmark(k);
+  unmark(id);
   marked.set(id, ranges);
-  paintMarks();
-}
-/** The highlight, from every review’s ranges still marked. */
-function paintMarks() {
-  CSS.highlights.set('rv-quote', new Highlight(...[...marked.values()].flat()));
+  toAdd.add(id);
+  if (toAdd.size === 1) requestAnimationFrame(addMarks);
 }
 // Going to another conversation draws it in the same task, so a frame later a range off the page is one from a review
 // no longer shown. Its ranges hold its text, and so its old page: they go then, not only past 50 reviews (#945).
 addEventListener('hashchange', () =>
   requestAnimationFrame(() => {
-    let gone = false;
-    for (const [k, v] of marked)
-      if (!v[0]?.startContainer.isConnected) {
-        marked.delete(k);
-        gone = true;
-      }
-    if (gone && globalThis.CSS?.highlights && typeof Highlight !== 'undefined') paintMarks();
+    for (const [k, v] of marked) if (!v[0]?.startContainer.isConnected) unmark(k);
   }),
 );
