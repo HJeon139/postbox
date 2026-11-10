@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { dirname, posix } from 'node:path';
 import { ATTACHMENTS_DIR, DIR_MODE, FILE_MODE, lookedText, socketPathFits, TURN_FILES, validateStartRecord } from '../../../shared/remote-protocol.mjs';
-import { claudeRefusal } from './daemon-claude.mjs';
+import { claudeJudged } from './daemon-claude.mjs';
 import { RUNNER_START_POLL_MS } from './daemon-constants.mjs';
 import { exists, runnerAlive, writeAtomic } from './daemon-files.mjs';
 import { reprobe, turnEnv } from './daemon-login.mjs';
@@ -112,10 +112,10 @@ async function checkStart(d, m, failStart) {
   let harness = await findHarness(d, m.harness);
   if (m.harness === 'claude-code') {
     // The claude found now, against the bar the start carries and the daemon’s own floor (#1084). It may have looked
-    // again and found another, so the start runs the one d.programs holds now.
-    const refusal = await claudeRefusal(d, harness, m.need);
-    if (refusal) return failStart(harness?.path ? 'start-failed' : 'no-harness', refusal);
-    harness = d.programs?.harnesses.find((x) => x.name === m.harness) ?? harness;
+    // again and found another: the start runs the one that was judged.
+    const judged = await claudeJudged(d, harness, m.need);
+    if (judged.problem) return failStart(harness?.path ? 'start-failed' : 'no-harness', judged.problem);
+    harness = judged.harness;
   }
   if (!harness?.path) return failStart('no-harness', `${m.harness} isn’t installed on this host. The daemon looked in ${lookedText(harness)}.`);
   const node = d.programs?.node.path ?? process.execPath;

@@ -25,25 +25,27 @@ export function claudeBar(need) {
 }
 
 /**
- * Why the claude found can’t run this start, in the laptop’s words, or null if it can. A missing one has been looked
- * for again already (findHarness). One below the bar or of no known version has its --version read again, once, and
- * what it said replaces its entry in d.programs, so the next turn needn’t read it.
+ * The claude this start runs on, judged in the laptop’s words: `problem` is why it can’t, or null, and `harness` the
+ * entry that was judged, which the start spawns (#1084). A missing one has been looked for again already
+ * (findHarness). One below the bar or of no known version has its --version read again, once, and what it said
+ * replaces its entry in d.programs, so the next turn needn’t read it. If that still refuses and the host’s settings
+ * don’t name the path, the programs are looked for again (reprobe, rate-limited), since the path the hello found may
+ * be gone, or hold an old claude while a new one is elsewhere on the PATH.
  * @param {Daemon} d @param {HarnessFound | undefined} h  claude-code’s entry in d.programs @param {ClaudeNeed} [need]  start.need
+ * @returns {Promise<{ problem: string | null, harness: HarnessFound | undefined }>}
  */
-export async function claudeRefusal(d, h, need) {
+export async function claudeJudged(d, h, need) {
   const bar = claudeBar(need);
   const cached = claudeProblem(h, bar);
-  if (!cached || !h?.path) return cached;
+  if (!cached || !h?.path) return { problem: cached, harness: h };
   const loginPath = d.loginPath?.ok ? d.loginPath.entries : [];
   const read = await d.readVersion({ path: h.path, loginPath });
   const fresh = { ...h, version: 'version' in read ? read.version : null };
   if (d.programs) d.programs.harnesses = d.programs.harnesses.map((x) => (x === h ? fresh : x));
   const still = claudeProblem(fresh, bar);
-  // The path the hello found may be gone, or hold an old claude while a new one is elsewhere on the PATH: unless the
-  // host’s settings name the path, look for it again (reprobe, rate-limited) and judge what that finds (#1084 review).
-  if (!still || d.settings?.claudePath) return still;
+  if (!still || d.settings?.claudePath) return { problem: still, harness: fresh };
   await reprobe(d);
   const again = d.programs?.harnesses.find((x) => x.name === 'claude-code');
-  if (!again?.path || again.path === fresh.path) return still;
-  return claudeProblem(again, bar);
+  if (!again?.path || again.path === fresh.path) return { problem: still, harness: fresh };
+  return { problem: claudeProblem(again, bar), harness: again };
 }
