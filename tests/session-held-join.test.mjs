@@ -52,7 +52,7 @@ test('two @-mentions of the same new agent behind a held commit make one session
   await f.store.close();
 });
 
-test('an @-mention of an agent whose session is being deleted behind a held commit makes it a new session, as with nothing held', async () => {
+test('an @-mention of an agent whose session was deleted behind a held commit makes it a new session, as with nothing held', async () => {
   const f = await heldRoom();
   const release = await f.hold();
   f.rt.deleteSession(f.alpha.id);
@@ -61,11 +61,8 @@ test('an @-mention of an agent whose session is being deleted behind a held comm
   await settle(f.rt);
   const alphas = sessionsOfPersona(f.store, f.a.id);
   assert.deepEqual(
-    alphas.map((x) => [x.id === f.alpha.id, Boolean(x.deleting)]),
-    [
-      [true, true],
-      [false, false],
-    ],
+    alphas.map((x) => x.id === f.alpha.id),
+    [false],
   );
   assert.deepEqual(
     f.adapter.calls.filter((c) => c.handle === 'alpha').map((c) => [c.sessionId === f.alpha.id, c.message.text]),

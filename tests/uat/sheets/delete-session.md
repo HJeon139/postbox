@@ -10,12 +10,12 @@ Removing one agent from a room keeps the room readable.
 
 ## Expected functionality
 
-- In a room, the agent leaves and its messages stay marked “(deleted)”; alone, the conversation goes; 10 seconds of Undo.
+- In a room, the agent leaves and its messages stay marked “(deleted)”; alone, the conversation goes. It goes at once after the confirm, and the confirm says it can’t be undone (designs/rooms-at-scale.md, “Delete”).
 - It offers Cancel and Delete session, not Archive instead: an agent’s session is archived only with its conversation (#320).
 
 ## Steps to reproduce
 
 1. Run the demo (`node tools/demo.mjs --port 4180`) and open <http://127.0.0.1:4180/> while it plays; keep the tab open.
-2. Delete @researcher’s session in “Corpus planning”, then Undo.
+2. Delete @researcher’s session in “Corpus planning”.
 
-**Pass if:** Undo restores the session.
+**Pass if:** The confirm lists what goes and says it can’t be undone, and after it @researcher’s row is gone at once, with no Undo.

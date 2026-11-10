@@ -29,7 +29,6 @@ import { keptTurns, nextNeed, noticeNeed, releaseNeed, stateFor, TURN_TIED } fro
 import { catchUp, moveMarkers, pointerIfSeen } from './catch-up.mjs';
 import { blockProblems, diagramProblems, formatLint, introducedTerms, lintMessage, personSaid, rawHtmlProblems, termProblems } from './checks.mjs';
 import { addDataset, reloadDatasets } from './datasets.mjs';
-import { DELETE_UNDO_MS } from './delete-undo.mjs';
 import { emptyReply, endedWithoutReply } from './empty-reply.mjs';
 import { checkedSnapshot, folderOrNone, placedFolder, sessionFolder } from './folder-path.mjs';
 import { heldSession } from './held-session.mjs';
@@ -118,7 +117,7 @@ import {
 import { newId } from './store.mjs';
 import { heldTurn, STORE_STOPPED, saveBackendState, watchStore, whenWritable } from './store-outage.mjs';
 import { endSubagent, notUrgent } from './subagent-end.mjs';
-import { conversationDeleting, discardHeld, eraseThreads, releaseHeld } from './thread-erase.mjs';
+import { eraseThreads } from './thread-erase.mjs';
 import { firstPromptSection, settleThread, turnContext } from './thread-summary.mjs';
 import { updateThread } from './thread-write.mjs';
 import { askForTool, settleToolAsks } from './tool-ask.mjs';
@@ -165,8 +164,6 @@ export class Runtime {
     // While the store can’t be written, no turn runs or starts, and what would write waits (ST-3, server/store-outage.mjs).
     /** @type {(() => void)[]} */
     this.storeWait = [];
-    /** @type {Map<string, Promise<void>>} a persona’s purge runs, chained one at a time (persona-delete.mjs) */
-    this.personaPurges = new Map();
     /** @type {Map<string, Record<string, any>>} a backend’s state saved meanwhile, per session, merged (saveBackendState) */
     this.backendWait = new Map();
     watchStore(this);
@@ -192,9 +189,7 @@ export class Runtime {
     /** @type {NodeJS.Timeout|null} */
     this.keptPoll = null; // checks on the background jobs Postbox kept running (#129)
     this.viewing = new Map(); // threadId → last time a browser said it was open
-    this.timers = new Map(); // scheduleId or deletion → timeout
-    /** @type {Map<string, [any, any][]>} what deliver held for a session in its Undo window (#597), in arrival order */
-    this.heldForUndo = new Map();
+    this.timers = new Map(); // scheduleId → timeout
     this.lints = new Map(); // agent turn id → its lint turn, gathering: { sessionId, kind, ended, sent, problems, timer }
     this.spawnShell = spawnShell ?? undefined;
     this.shellRuns = new Map(); // command item id → { stop, kill, done, flush, stopped, closing }
@@ -245,11 +240,7 @@ export class Runtime {
     );
   }
   personaByHandle(handle) {
-    return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired && !p.deleting);
-  }
-  /** Whether a persona being deleted holds this name: it keeps it until its Undo window ends, so Undo never makes two (#208). */
-  deletingHandle(handle) {
-    return Object.values(this.s.personas).some((p) => p.deleting && p.handle.toLowerCase() === String(handle).toLowerCase());
+    return Object.values(this.s.personas).find((p) => p.handle.toLowerCase() === String(handle).toLowerCase() && !p.retired);
   }
   thread(id) {
     const t = this.s.threads[id];
@@ -262,7 +253,7 @@ export class Runtime {
     return se;
   }
   sessionsIn(threadId) {
-    return (this.s.threads[threadId]?.members ?? []).map((id) => this.s.sessions[id]).filter((x) => x && !x.deleting);
+    return (this.s.threads[threadId]?.members ?? []).map((id) => this.s.sessions[id]).filter(Boolean);
   }
   /**
    * The other agents in a turn’s conversation, with their roles, for the guide: the room tells each agent who else is
@@ -389,8 +380,6 @@ export class Runtime {
     if (existing) return existing;
     const p = this.persona(personaId);
     if (!p) throw httpError(404, 'That agent doesn’t exist.');
-    // It would outlive its persona, and a turn there would make its memory again (#208).
-    if (p.deleting) throw httpError(409, `@${p.handle} is being deleted. Undo that first to add it to a conversation.`);
     const se = this.putSession({
       id: newId('se'),
       personaId,
@@ -430,7 +419,6 @@ export class Runtime {
   /** You send a message: @mentions wake agents (joining them to the thread); otherwise the last speaker replies. */
   sendMessage(threadId, { text = '', attachments = [], sendNow = false } = {}) {
     const t = this.thread(threadId);
-    if (this.store.pending.thread(threadId)?.deleting) throw httpError(409, 'This conversation is being deleted. Undo it first.');
     text = String(text).slice(0, 50000);
     attachments = sentAttachments(this, attachments);
     if (!text.trim() && !attachments.length) throw httpError(400, 'Write a message or attach a file first.');
@@ -504,7 +492,7 @@ export class Runtime {
     const out = [];
     for (const id of [...ids].slice(0, 10)) {
       const t = this.s.threads[id];
-      if (!t || t.deleting || id === threadId || root(id) !== root(threadId)) continue;
+      if (!t || id === threadId || root(id) !== root(threadId)) continue;
       const what = t.kind === 'side' ? 'side thread' : t.kind === 'topic' ? 'topic thread' : 'conversation';
       out.push(`[Postbox] The person’s message links to the ${what} “${t.title}” (thread ${id}). Read it with read_conversation with thread: "${id}".`);
     }
@@ -562,13 +550,6 @@ export class Runtime {
     if (heldSession(this, sessionId, () => this.deliver(sessionId, message, { summarizeTo, threadId }))) return;
     const se = this.store.pending.session(sessionId) ?? this.session(sessionId); // a summary's or a notice's write held (#506)
     if (se.archived) throw httpError(409, `@${se.handle}’s session is archived. Restore it first.`);
-    // An agent being deleted, or in a conversation being deleted (#725), starts no turn in its Undo window: every path
-    // that delivers comes through here, so one check covers them all (#597 review). What arrives is held, not dropped:
-    // Undo delivers it in order, the purge drops it with the session (critic). Queued messages wait in the queue (R1).
-    if (se.deleting || conversationDeleting(this, se.threadId)) {
-      this.heldForUndo.set(sessionId, [...(this.heldForUndo.get(sessionId) ?? []), [message, { summarizeTo, threadId }]]);
-      return;
-    }
     message = prepareScheduledRetry(this, message, se.threadId);
     // As it was asked, for Retry (askedOf).
     const asked = { message, summarizeTo, threadId };
@@ -1205,7 +1186,7 @@ export class Runtime {
     if (se.state === 'stopping' || se.currentStep === 'Stopping')
       this.updateSession(se.id, { state: se.state === 'stopping' ? 'idle' : se.state, currentStep: stoppedBy, finishedAt: Date.now(), sideTurn: null });
     else if (se.sideTurn) this.updateSession(se.id, { sideTurn: null });
-    const held = se.archived || se.deleting ? [] : ex.held;
+    const held = se.archived ? [] : ex.held;
     // Shutting down: your messages wait in their thread’s queue, which a restart keeps, rather than starting a CLI.
     if (this.closing) {
       for (const h of held.filter((x) => x.message.kind === 'user')) {
@@ -1643,7 +1624,7 @@ export class Runtime {
     const own = this.lineage(threadId);
     const root = own.at(-1);
     const rest = Object.values(this.s.threads)
-      .filter((t) => !t.deleting && !own.includes(t.id) && this.lineage(t.id).at(-1) === root)
+      .filter((t) => !own.includes(t.id) && this.lineage(t.id).at(-1) === root)
       .map((t) => t.id);
     return [...own, ...rest];
   }
@@ -1958,8 +1939,7 @@ export class Runtime {
    * @param {string} threadId @param {{ sessionId: string, text: string }} req
    */
   runAgentCommand(threadId, { sessionId, text }) {
-    const t = this.thread(threadId);
-    if (t.deleting) throw httpError(409, 'This conversation is being deleted. Undo it first.');
+    this.thread(threadId);
     const line = String(text ?? '')
       .trim()
       .slice(0, 50000);
@@ -2007,8 +1987,7 @@ export class Runtime {
    * @param {string} threadId @param {string} command
    */
   async runShellCommand(threadId, command) {
-    const t = this.thread(threadId);
-    if (t.deleting) throw httpError(409, 'This conversation is being deleted. Undo it first.');
+    this.thread(threadId);
     const line = String(command ?? '').trim();
     if (!line) throw httpError(422, 'Write a command after the !.');
     if (line.length > 10000) throw httpError(422, 'A command is limited to 10,000 characters.');
@@ -2217,7 +2196,7 @@ export class Runtime {
     if (!cs) throw httpError(404, 'That Claude Code session wasn’t found. It may have been deleted.');
     if (!cs.cwd) throw httpError(422, 'That session doesn’t say which folder it ran in, so Postbox can’t resume it.');
     const folder = sessionFolder(cs.cwd);
-    if (Object.values(this.s.sessions).some((se) => se.backendState?.claudeSessionId === claudeSessionId && !se.deleting))
+    if (Object.values(this.s.sessions).some((se) => se.backendState?.claudeSessionId === claudeSessionId))
       throw httpError(409, 'That session is already attached.');
     if (!this.s.projects[projectId]) throw httpError(404, 'That project doesn’t exist.');
     const base =
@@ -2227,7 +2206,7 @@ export class Runtime {
         .replace(/^[^a-z]+/, '')
         .slice(0, 20) || 'terminal';
     let name = base.length >= 2 ? base : `cc-${base}`;
-    for (let n = 2; this.personaByHandle(name) || this.deletingHandle(name); n++) name = `${base.slice(0, 20)}-${n}`;
+    for (let n = 2; this.personaByHandle(name); n++) name = `${base.slice(0, 20)}-${n}`;
     const p = this.createPersona({
       handle: name,
       backend: 'claude-code',
@@ -2266,17 +2245,17 @@ export class Runtime {
     this.mirrors.set(sessionId, { tail: new TranscriptTail(file), timer, agentItem: null, steps: [] });
   }
 
-  /** Deletions whose Undo window was still open when the server stopped: finish them on time, or now if overdue. */
-  rearmDeletions() {
-    const wait = (until) => Math.max(0, until - Date.now());
-    for (const se of Object.values(this.s.sessions))
-      if (se.deleting) this.timers.set(`del:${se.id}`, setTimeout(() => this.purgeSession(se.id), wait(se.deleting)).unref());
-    for (const t of Object.values(this.s.threads))
-      if (t.deleting) this.timers.set(`delt:${t.id}`, setTimeout(() => this.purgeThread(t.id), wait(t.deleting)).unref());
+  /**
+   * Deletes an older Postbox left pending in its Undo window, which is gone: each finishes now, as a delete does.
+   * Delete is just delete (designs/rooms-at-scale.md, “Delete”).
+   */
+  finishLeftDeletes() {
+    for (const se of Object.values(this.s.sessions)) if (se.deleting && this.s.sessions[se.id]) this.deleteSession(se.id);
+    for (const t of Object.values(this.s.threads)) if (t.deleting && this.s.threads[t.id]) this.deleteThread(t.id);
   }
 
   rearmMirrors() {
-    for (const se of Object.values(this.s.sessions)) if (se.backendState?.attached && !se.deleting && !se.archived) this.mirror(se.id);
+    for (const se of Object.values(this.s.sessions)) if (se.backendState?.attached && !se.archived) this.mirror(se.id);
   }
 
   stopMirrors() {
@@ -2288,7 +2267,7 @@ export class Runtime {
     const m = this.mirrors.get(sessionId);
     const se = this.s.sessions[sessionId];
     if (!m) return;
-    if (!se || se.deleting) {
+    if (!se) {
       clearInterval(m.timer);
       this.mirrors.delete(sessionId);
       return;
@@ -2393,7 +2372,6 @@ export class Runtime {
   }) {
     handle = handleOf(handle);
     if (this.personaByHandle(handle)) throw httpError(409, `@${handle} already exists. Pick another name.`);
-    if (this.deletingHandle(handle)) throw httpError(409, `@${handle} is being deleted. Undo that, or wait 10 seconds for the name to be free.`);
     if (!this.adapters.names().includes(backend)) throw httpError(422, notHere(this, backend));
     if (!PERMISSION_MODES.includes(permissionMode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
     checkEffort(effort);
@@ -2546,7 +2524,7 @@ export class Runtime {
     };
   }
 
-  // ── Session lifecycle: archive, restore, delete with undo ─────────────────────────
+  // ── Session lifecycle: archive, restore, delete ─────────────────────────────────
 
   archive(sessionId) {
     this.stop(sessionId, { silent: true });
@@ -2600,67 +2578,60 @@ export class Runtime {
     for (const t of threads) updateThread(this, t.id, (x) => (x.archived ? { archived: false } : null));
   }
 
-  /** Deletes after DELETE_UNDO_MS unless undone. The persona always stays. */
+  /**
+   * Deletes a session at once: its turn stops, its wakes and queued messages go, and if it was alone in its conversation,
+   * the conversation goes with it. In a room it leaves, and its past messages stay, marked deleted. The persona stays.
+   * There is no Undo window, so nothing is held for it (designs/rooms-at-scale.md, “Delete”; #604, #599).
+   */
   deleteSession(sessionId) {
+    const se = this.session(sessionId);
     this.stop(sessionId, { silent: true });
     // A turn of one on a host, waiting to be attached again or to resume, is neither, as deleting a conversation does.
     this.remote.cancel(sessionId);
-    const se = this.session(sessionId);
-    const until = Date.now() + DELETE_UNDO_MS;
-    this.updateSession(sessionId, { deleting: until });
     dropWakes(this, se, 'removed');
-    clearTimeout(this.timers.get(`del:${sessionId}`));
-    this.timers.set(
-      `del:${sessionId}`,
-      // Unref’d, like every runtime timer: the HTTP server keeps the process alive, and a test shouldn’t wait.
-      setTimeout(() => this.purgeSession(sessionId), DELETE_UNDO_MS).unref(),
-    );
-    return { until, handle: se.handle };
+    // The person’s messages queued for it leave the queue (#427).
+    queue.releaseQueued(this, sessionId);
+    // Background jobs Postbox kept running for it would run on with no record (#129).
+    this.stopKeptJobs([sessionId], 'Its session was deleted.').catch((e) => console.error(`Couldn’t stop a deleted session’s jobs: ${e.message}`));
+    const t = this.store.pending.thread(se.threadId); // a member that joined behind a held commit keeps its room (#796)
+    const others = (t?.members ?? []).filter((id) => id !== sessionId && this.store.pending.session(id));
+    if (t && !others.length) {
+      // Its own conversation goes with it, as deleting the conversation does: every thread under it, with its sessions
+      // and apps (#320).
+      eraseThreads(this, t.kind === 'topic' || t.kind === 'side' ? [t.id] : this.archiveScope(t.id).map((x) => x.id), 'Its session was deleted.', [sessionId]);
+    } else if (t) {
+      const gone = t.members.filter((id) => !others.includes(id)); // it, and any member whose session is gone; a held join stays
+      updateThread(this, t.id, (x) => ({
+        members: x.members.filter((id) => !gone.includes(id)),
+        lastSpeaker: x.lastSpeaker === sessionId ? (others[0] ?? null) : x.lastSpeaker,
+      }));
+      for (const it of this.store.pending.items(t.id)) if (it.sessionId === sessionId) this.patchItem(t.id, it.id, { deletedAgent: true });
+      this.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle });
+    }
+    if (this.s.sessions[sessionId]) this.store.emit('remove', { kind: 'session', id: sessionId });
+    return { handle: se.handle };
   }
 
   /**
-   * Deletes a whole conversation or room: every session in it, its apps, and its topic and side threads.
-   * Like deleting a session, it waits DELETE_UNDO_MS for Undo first. The personas stay.
+   * Deletes a whole conversation or room at once: every session in it, its apps, and its topic and side threads. The
+   * personas stay. There is no Undo window (designs/rooms-at-scale.md, “Delete”).
    */
   deleteThread(threadId) {
     const t = this.thread(threadId);
     if (t.kind === 'topic' || t.kind === 'side') throw httpError(409, 'Delete the conversation it belongs to instead.');
-    const until = Date.now() + DELETE_UNDO_MS;
+    const scope = this.archiveScope(threadId);
     // A turn of one on a host, waiting to be attached again or to resume, is neither (#120).
-    for (const x of this.archiveScope(threadId))
+    for (const x of scope)
       for (const se of this.sessionsIn(x.id)) {
         this.stop(se.id, { silent: true });
         this.remote.cancel(se.id);
       }
-    updateThread(this, threadId, { deleting: until });
-    clearTimeout(this.timers.get(`delt:${threadId}`));
-    this.timers.set(`delt:${threadId}`, setTimeout(() => this.purgeThread(threadId), DELETE_UNDO_MS).unref());
-    return { until, title: t.title };
-  }
-
-  undoDeleteThread(threadId) {
-    clearTimeout(this.timers.get(`delt:${threadId}`));
-    this.timers.delete(`delt:${threadId}`);
-    updateThread(this, threadId, { deleting: null }); // a thread that doesn’t exist: archiveScope answers 404
-    // Its stopped turns skipped the drain (a silent stop): what its queues held goes now, as after a session’s Undo.
-    for (const x of this.archiveScope(threadId)) this.drainQueue(x.id);
-    // …and what reached its agents in the window (deliver held it), in the order it came (#725).
-    for (const x of this.archiveScope(threadId)) for (const se of this.sessionsIn(x.id)) releaseHeld(this, se.id);
-  }
-
-  purgeThread(threadId) {
-    this.timers.delete(`delt:${threadId}`);
-    // Nothing durable can happen while writes are closed: the purge waits for them to reopen (and Retry re-arms it
-    // from the recovered state too; a second run finds nothing deleting). See gated() in store-outage.mjs.
-    if (!this.store.writable) return whenWritable(this, () => this.purgeThread(threadId), { owner: `delt:${threadId}` });
-    const t = this.s.threads[threadId];
-    if (!t?.deleting) return;
-    // Everything under it, a side thread of a topic thread too, and their sessions with them (#320).
     eraseThreads(
       this,
-      this.archiveScope(threadId).map((x) => x.id),
+      scope.map((x) => x.id),
       'Its conversation was deleted.',
     );
+    return { title: t.title };
   }
 
   stopMirrorFor(sessionId) {
@@ -2676,52 +2647,6 @@ export class Runtime {
       .slice(0, 120);
     if (!name) throw httpError(422, 'A conversation needs a name.');
     return updateThread(this, threadId, { title: name });
-  }
-
-  undoDelete(sessionId) {
-    const se = this.session(sessionId);
-    // Its persona’s delete would take it again (persona-delete.mjs): Undo that instead.
-    if (this.s.personas[se.personaId]?.deleting) throw httpError(409, `@${se.handle} is being deleted. Undo that first.`);
-    clearTimeout(this.timers.get(`del:${sessionId}`));
-    this.timers.delete(`del:${sessionId}`);
-    this.updateSession(sessionId, { deleting: null });
-    // What the drain held back while it was being deleted goes now (#427, R1): Undo releases a hold, so it drains.
-    // From its conversation: a retired fork’s session lives in a topic, where archiveScope refuses (#597 review).
-    const conv = this.lineage(se.threadId).at(-1);
-    if (this.s.threads[conv]) for (const x of this.archiveScope(conv)) this.drainQueue(x.id);
-    // …and what reached it while it was being deleted (deliver held it), in the order it came.
-    releaseHeld(this, sessionId);
-  }
-
-  purgeSession(sessionId) {
-    this.timers.delete(`del:${sessionId}`);
-    if (!this.store.writable) return whenWritable(this, () => this.purgeSession(sessionId), { owner: `del:${sessionId}` }); // as purgeThread
-    const se = this.s.sessions[sessionId];
-    discardHeld(this, sessionId, se?.deleting ? 'was deleted' : 'had a stale purge');
-    if (!se?.deleting) return;
-    // A turn it still has would run on for a session that’s gone: stop it first (#597 review).
-    if (this.turns.has(sessionId)) this.stop(sessionId, { silent: true });
-    // The person’s messages queued for it leave the queue now, not at delete, so Undo found them untouched (#427).
-    queue.releaseQueued(this, sessionId);
-    // Background jobs Postbox kept running for it would run on with no record (#129).
-    this.stopKeptJobs([sessionId], 'Its session was deleted.').catch((e) => console.error(`Couldn’t stop a deleted session’s jobs: ${e.message}`));
-    const t = this.store.pending.thread(se.threadId); // a member that joined behind a held commit keeps its room (#796)
-    const others = (t?.members ?? []).filter((id) => id !== sessionId && this.store.pending.session(id));
-    if (t && !others.length) {
-      // Its own conversation goes with it, as deleting the conversation does: every thread under it, with its sessions
-      // and apps (#320).
-      eraseThreads(this, t.kind === 'topic' || t.kind === 'side' ? [t.id] : this.archiveScope(t.id).map((x) => x.id), 'Its session was deleted.', [sessionId]);
-    } else if (t) {
-      // In a room: it leaves, and its past messages stay, marked deleted.
-      const gone = t.members.filter((id) => !others.includes(id)); // it, and any member whose session is gone; a held join stays
-      updateThread(this, t.id, (x) => ({
-        members: x.members.filter((id) => !gone.includes(id)),
-        lastSpeaker: x.lastSpeaker === sessionId ? (others[0] ?? null) : x.lastSpeaker,
-      }));
-      for (const it of this.store.pending.items(t.id)) if (it.sessionId === sessionId) this.patchItem(t.id, it.id, { deletedAgent: true });
-      this.addItem(t.id, { kind: 'system', variant: 'left', to: se.handle });
-    }
-    if (this.s.sessions[sessionId]) this.store.emit('remove', { kind: 'session', id: sessionId });
   }
 
   // ── Scheduled wake-ups ─────────────────────────────────────────────────────────────

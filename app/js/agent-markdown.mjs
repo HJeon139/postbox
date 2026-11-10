@@ -9,7 +9,7 @@ import { writeMarkdown } from './md-patch.mjs';
 const S = () => client.state;
 export const handles = () =>
   Object.values(S().personas)
-    .filter((p) => !p.retired && !p.deleting)
+    .filter((p) => !p.retired)
     .map((p) => p.handle);
 const glossaryOf = (threadId) => {
   const t = S().threads[threadId];

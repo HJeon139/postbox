@@ -6,7 +6,7 @@ import { isMock, mockMarker } from './agent-facts.mjs';
 import { agentMenuLines } from './agent-menu-lines.mjs';
 import { agentsSection } from './agents.mjs';
 import { chainLimitDesc, openChainLimit } from './chain-limit.mjs';
-import { api, busy, client, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
+import { busy, client, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { fill, h, icon, syncList } from './dom.mjs';
 import { installLine } from './install-line.mjs';
 import { nextNeedsYou } from './needs-nav.mjs';
@@ -18,7 +18,7 @@ import { confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRena
 import './store-line.mjs';
 import { recordingBadge, telemetryItems } from './telemetry.mjs';
 import { liveMembers, topbarSig } from './topbar-sig.mjs';
-import { closeWork, navigate, openMenu, openWork, route, toast, undoToast } from './ui.mjs';
+import { closeWork, navigate, openMenu, openWork, route } from './ui.mjs';
 
 export { installLine, liveMembers, railHidden, toggleRail };
 
@@ -448,14 +448,6 @@ function conversationMenu(anchor, shown) {
     ],
     { label: `Actions for ${t.title}` },
   );
-}
-
-export function afterDelete(se, until) {
-  undoToast({
-    text: `Deleted ${se.handle}’s session “${S().threads[se.threadId]?.title ?? ''}”`,
-    until,
-    onUndo: () => api(`/api/sessions/${se.id}/undo-delete`, {}).catch((e) => toast({ title: 'Too late to undo', text: e.message })),
-  });
 }
 
 export { mountThreads } from './threads-page.mjs';

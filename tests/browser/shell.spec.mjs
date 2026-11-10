@@ -79,7 +79,6 @@ test('deleting a one-to-one conversation’s only agent leaves the conversation,
   await page.locator('.rail .agent-row .agent-btn').first().click();
   await page.locator('.backdrop .dialog.quick').getByRole('button', { name: 'Delete session…' }).click();
   await page.locator('.dialog').getByRole('button', { name: 'Delete session', exact: true }).click();
-  // Before, `#/` went back to the last conversation, this one, for the 10 s until it was erased.
   await expect(page).toHaveURL(/#\/t\//);
   await expect(page).not.toHaveURL(new RegExp(`#/t/${doomed.id}`));
 });

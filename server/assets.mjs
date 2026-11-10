@@ -116,8 +116,6 @@ const SAY = {
   notFound: (id) => `There’s no asset ${id} in this conversation. list_assets gives each asset’s id.`,
   noId: () => 'Name the asset by its id. list_assets gives each asset’s id.',
   noConversation: () => 'This conversation was deleted, and its assets with it, so nothing can be written to it. Nothing was published.',
-  deleting: () =>
-    'This conversation is being deleted, so nothing can be written to it. Nothing was published; if the person restores it with Undo, write again.',
   nameTaken: (holder) => `The name “${holder.name}” is taken in this conversation, by asset ${holder.id}.`,
   tooManyAssets: (count) => `A conversation holds at most ${ASSETS.roomAssets} assets, and this one has ${count}.`,
   tooManyVersions: (id) => `An asset keeps at most ${ASSETS.assetVersions} versions, and ${id} has them all.`,
@@ -182,13 +180,11 @@ function repeatOf(look, asset, req) {
 }
 
 /**
- * Refuses a write to a room whose conversation is gone or being deleted (the flag deleting a conversation sets, and
- * Undo clears): checked in the commit, so a write can’t make a room index again after its conversation’s erase.
+ * Refuses a write to a room whose conversation is gone: checked in the commit, so a write can’t make a room index again after its conversation’s erase.
  */
 function checkRoom(state, req) {
   const thread = own(state.threads, req.room);
   if (!thread) refuse('no-conversation', SAY.noConversation());
-  if (thread.deleting) refuse('deleting', SAY.deleting());
 }
 
 /**

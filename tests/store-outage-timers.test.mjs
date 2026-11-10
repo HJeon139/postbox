@@ -1,14 +1,12 @@
 // Runtime timers and pollers while the store is closed (#508’s storage design, “When a write fails (ST-3)”; the 1b
 // invariants, I1; the integrator’s review of #598): a timer whose callback writes or kills does nothing while writes are
-// closed, and Retry re-arms every timer from the recovered state, so a deletion whose Undo window ended during the
-// outage still purges, once, after writes reopen (the integrator’s repro, three kinds). A poller skips its tick while
+// closed, and Retry re-arms every timer from the recovered state. A poller skips its tick while
 // closed and consumes nothing: a mirrored terminal’s typed lines and a kept job’s end are recorded after Retry. A thread
 // settled while closed makes no summarizer call. A real Postbox (start({ listen: false })) on a data folder.
 
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
-import { deletePersona, purgePersona } from '../server/persona-delete.mjs';
 import { settleThread } from '../server/thread-summary.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -57,38 +55,6 @@ async function room(handle) {
   await rt.store.flush();
   return { p, t, se };
 }
-
-test('a deletion whose Undo window ends while the store is closed purges once after Retry, for a thread, a session and a persona (the integrator’s repro)', async () => {
-  const thread = await room('tdel');
-  const session = await room('sdel');
-  const persona = await room('pdel');
-  rt.deleteThread(thread.t.id);
-  rt.deleteSession(session.se.id);
-  deletePersona(rt, persona.p.id);
-  // Their Undo windows end now (the stored time is what a re-arm reads), and the store fails before the purges fire.
-  const over = Date.now() - 1;
-  rt.putThread({ ...rt.s.threads[thread.t.id], deleting: over });
-  rt.updateSession(session.se.id, { deleting: over });
-  rt.store.emit('persona', { ...rt.s.personas[persona.p.id], deleting: over });
-  await rt.store.flush();
-  rt.store.fail(eio());
-  // The windows end while writes are closed: each purge fires, and must do nothing it can’t save.
-  rt.purgeThread(thread.t.id);
-  rt.purgeSession(session.se.id);
-  await purgePersona(rt, persona.p.id);
-  assert.ok(rt.s.threads[thread.t.id], 'the thread is still in memory: nothing was erased unsaved');
-  assert.ok(rt.s.sessions[session.se.id], 'the session too');
-  assert.ok(rt.s.personas[persona.p.id] && !rt.s.personas[persona.p.id].purging, 'the persona too, not marked purging');
-  await rt.store.reload();
-  assert.equal(rt.store.writable, true);
-  await until(() => !rt.s.threads[thread.t.id], 'the thread to be purged after Retry');
-  await until(() => !rt.s.sessions[session.se.id], 'the session to be purged after Retry');
-  await until(() => !rt.s.personas[persona.p.id], 'the persona to be purged after Retry');
-  assert.ok(!rt.timers.has(`delt:${thread.t.id}`) && !rt.timers.has(`del:${session.se.id}`) && !rt.timers.has(`delp:${persona.p.id}`), 'no timer left');
-  // Durable: the next load has none of them.
-  await rt.store.flush();
-  assert.ok(rt.store.state.seq <= rt.store.status.savedThrough, 'the purges are on disk');
-});
 
 test('a mirrored terminal’s poll is skipped while the store is closed, so what was typed is read, once, after Retry', async () => {
   const { t, se } = await room('mirror');
@@ -174,45 +140,8 @@ test('a thread settled while the store is closed makes no summarizer call; one s
   await rt.store.flush();
 });
 
-test('an overdue purge re-armed at Retry waits for writes to reopen while reconciliation is still held, then runs exactly once (critic’s and gpt’s condition)', async () => {
-  const thread = await room('tdel2');
-  const session = await room('sdel2');
-  const persona = await room('pdel2');
-  rt.deleteThread(thread.t.id);
-  rt.deleteSession(session.se.id);
-  deletePersona(rt, persona.p.id);
-  const over = Date.now() - 1;
-  rt.putThread({ ...rt.s.threads[thread.t.id], deleting: over });
-  rt.updateSession(session.se.id, { deleting: over });
-  rt.store.emit('persona', { ...rt.s.personas[persona.p.id], deleting: over });
-  await rt.store.flush();
-  let removes = 0;
-  const off = rt.store.subscribe((ev) => {
-    if (ev.type === 'remove' && ev.data?.kind === 'persona' && ev.data.id === persona.p.id) removes++;
-  });
-  const reconciling = deferred();
-  let holds = 0;
-  rt.store.onReload(() => (holds++ === 0 ? reconciling.promise : Promise.resolve())); // the first Retry’s reconciliation is held
-  rt.store.fail(eio());
-  rt.purgeThread(thread.t.id);
-  rt.purgeSession(session.se.id);
-  await purgePersona(rt, persona.p.id);
-  const retry = rt.store.reload();
-  await sleep(60); // the re-armed, overdue timers have fired by now, into a store that is still reconciling
-  assert.equal(rt.store.writable, false, 'still reconciling');
-  assert.ok(rt.s.threads[thread.t.id] && rt.s.sessions[session.se.id] && rt.s.personas[persona.p.id], 'nothing purged while writes are closed');
-  reconciling.resolve();
-  await retry;
-  await until(() => !rt.s.threads[thread.t.id] && !rt.s.sessions[session.se.id] && !rt.s.personas[persona.p.id], 'the three purges after writes reopened');
-  await sleep(30);
-  assert.equal(removes, 1, 'the persona was removed exactly once');
-  off();
-  await rt.store.flush();
-});
-
-test('a callback held across an outage and Retry applies nothing to the old history: the kept-job poll, the summarizer, the persona purge', async () => {
+test('a callback held across an outage and Retry applies nothing to the old history: the kept-job poll and the summarizer', async () => {
   const { t, se } = await room('held');
-  const persona = await room('pheld');
   // The kept-job poll, held in its process listing.
   rt.updateSession(se.id, {
     jobs: [{ id: 'j2', sessionId: se.id, label: 'bg', command: 'sleep 9', kept: true, pgid: 99998, groups: [{ pgid: 99998, command: null }] }],
@@ -232,15 +161,8 @@ test('a callback held across an outage and Retry applies nothing to the old hist
     return { text: 'Late summary', costUsd: 0 };
   };
   rt.config.summaryDelayMs = 1;
-  // The persona purge, held in an adapter’s forget.
-  const forget = deferred();
-  rt.adapters.register({ name: 'memory', forget: () => forget.promise, async deliver() {} });
-  deletePersona(rt, persona.p.id);
-  rt.store.emit('persona', { ...rt.s.personas[persona.p.id], deleting: Date.now() - 1 });
-  await rt.store.flush();
   const poll = rt.pollKept();
   settleThread(rt, topicId);
-  const purge = purgePersona(rt, persona.p.id);
   await sleep(20); // each is now past its entry check, awaiting
   const epoch = rt.store.epoch;
   rt.store.fail(eio());
@@ -248,13 +170,10 @@ test('a callback held across an outage and Retry applies nothing to the old hist
   assert.notEqual(rt.store.epoch, epoch, 'another history');
   listing.resolve();
   call.resolve();
-  forget.resolve();
   await poll;
-  await purge;
   await sleep(30);
   assert.equal(rt.s.sessions[se.id].jobs?.[0]?.kept, true, 'the held poll ended nothing against the new history');
   assert.equal(rt.store.items(t.id).find((i) => i.id === root.id)?.threadSummary, undefined, 'the held summary was not written');
-  await until(() => !rt.s.personas[persona.p.id], 'the persona purge, re-run against the current state');
   await rt.pollKept();
   assert.notEqual(rt.s.sessions[se.id].jobs?.[0]?.kept, true, 'the next tick ends the job');
   delete rt.summarize;

@@ -142,7 +142,7 @@ test('V6: the dialog keeps Tab inside, closes on Escape, and gives focus back to
   ).toBeFocused();
 });
 
-test('R1, V6: while its agent is being deleted the dialog says so; at the purge it closes and focus goes to the composer', async ({ page }) => {
+test('V6: deleting its agent closes the dialog at once, posts what was queued, and focus goes to the composer', async ({ page }) => {
   const { thread, sessions } = await busyRoom(page, 2);
   app.rt.sendMessage(thread.id, { text: `@${sessions[0].handle} about to go` });
   await synced(page, app);
@@ -150,16 +150,9 @@ test('R1, V6: while its agent is being deleted the dialog says so; at the purge 
   app.rt.deleteSession(sessions[0].id);
   await synced(page, app);
   await settled(page);
-  await expect(dialog.getByRole('status'), 'announced: Undo keeps them').toContainText('Undo keeps these queued');
-  await expect(dialog.getByText('about to go'), 'still queued in the Undo window').toBeVisible();
-  await expect(page.locator('#main .item').filter({ hasText: 'about to go' })).toHaveCount(0);
-  clearTimeout(app.rt.timers.get(`del:${sessions[0].id}`));
-  app.rt.purgeSession(sessions[0].id);
-  await synced(page, app);
-  await settled(page);
   await expect(dialog).toBeHidden();
   await expect(page.locator('#composer-input')).toBeFocused();
-  // Not lost: at the purge the queue posts it to the conversation, waking no one (server/message-queue.mjs).
+  // Not lost: the queue posts it to the conversation, waking no one (server/message-queue.mjs).
   await expect(page.locator('#main .item').filter({ hasText: 'about to go' })).toHaveCount(1);
 });
 

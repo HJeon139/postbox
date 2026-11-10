@@ -29,7 +29,7 @@ import { projectsTab } from './projects-tab.mjs';
 import { placeField, saveRefused } from './sheets-place.mjs';
 import { appearance, connect } from './sheets-settings.mjs';
 import { skillsField } from './skills-field.mjs';
-import { keepFocus, navigate, openDialog, toast, undoToast } from './ui.mjs';
+import { keepFocus, navigate, openDialog, say, toast } from './ui.mjs';
 
 export { EFFORT_NAMES, MCP_SCOPE, MCP_STATUS, MODELS, modeHelp };
 
@@ -620,7 +620,7 @@ export function openNewAgent({ threadId = null, projectId: pid = null, preset = 
  * it a room; { room: true } starts with that intent and asks for at least two.
  */
 export function openNewThread(projectId, { room = false } = {}) {
-  const personas = Object.values(S().personas).filter((p) => !p.retired && !p.deleting);
+  const personas = Object.values(S().personas).filter((p) => !p.retired);
   const picked = new Set(room ? [] : personas.slice(0, 1).map((p) => p.id));
   const title = h('input.input', { id: 'nt-title', placeholder: room ? 'What will the room work on?' : 'What’s it about?' });
   const list = h('div.chips', { role: 'group', 'aria-label': 'Agents' });
@@ -704,7 +704,7 @@ export function confirmDeleteThread(threadId) {
         h('span.label', 'This stays'),
         h('ul.what-goes', li(true, 'The personas and their other sessions'), li(true, `Files in ${S().projects[t.projectId]?.folder ?? 'the project folder'}`)),
       ),
-      h('p.small.dim', 'You’ll have 10 seconds to undo.'),
+      h('p.small.dim', 'It goes at once. This can’t be undone.'),
     ],
     foot: [
       h('button.btn', { type: 'button', onclick: () => dlg.close() }, 'Cancel'),
@@ -714,14 +714,10 @@ export function confirmDeleteThread(threadId) {
           type: 'button',
           onclick: () =>
             api(`/api/threads/${threadId}`, null, 'DELETE')
-              .then((r) => {
+              .then(() => {
                 dlg.close();
                 navigate(`#/p/${t.projectId}`);
-                undoToast({
-                  text: `Deleted “${t.title}”`,
-                  until: r.until,
-                  onUndo: () => api(`/api/threads/${threadId}/undo-delete`, {}).catch((e) => toast({ title: 'Too late to undo', text: e.message })),
-                });
+                say(`Deleted “${t.title}”`);
               })
               .catch((e) => toast({ title: 'Couldn’t delete it', text: e.message, level: 'blocking' })),
         },
@@ -791,7 +787,7 @@ export function confirmDelete(se) {
           li(true, `Files in ${S().projects[t?.projectId]?.folder ?? 'the project folder'}`),
         ),
       ),
-      h('p.small.dim', 'You’ll have 10 seconds to undo.'),
+      h('p.small.dim', 'It goes at once. This can’t be undone.'),
     ],
     foot: [
       h('button.btn', { type: 'button', onclick: () => dlg.close() }, 'Cancel'),
@@ -802,9 +798,8 @@ export function confirmDelete(se) {
           onclick: async () => {
             dlg.close();
             try {
-              const r = await api(`/api/sessions/${se.id}`, undefined, 'DELETE');
-              const { afterDelete } = await import('./shell.mjs');
-              afterDelete(se, r.until);
+              await api(`/api/sessions/${se.id}`, undefined, 'DELETE');
+              say(`Deleted ${se.handle}’s session`);
               if (location.hash.includes(se.threadId) && !room) (await import('./last-place.mjs')).leave(se.threadId);
             } catch (e) {
               toast({ title: 'Couldn’t delete', text: e.message, level: 'blocking' });
@@ -855,7 +850,7 @@ export function openSettings(tab = 'appearance', personaId = null) {
     fill(panel, ...{ appearance: () => appearance(paint), personas, projects: () => projectsTab(paint), hosts: () => [hostsPanel()], connect }[cur]());
   };
   const personas = () => {
-    const list = Object.values(S().personas).filter((p) => !p.deleting);
+    const list = Object.values(S().personas);
     const editing = personaId && S().personas[personaId];
     // Between the list and a persona’s form, focus goes to the form’s first field, and back to its Edit button.
     if (editing)

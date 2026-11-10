@@ -94,19 +94,15 @@ test('acceptance 8: folders are 0700 and files 0600; recording is refused when t
   g.stop();
 });
 
-test('acceptance 8: deleting the conversation deletes its telemetry folder after Undo’s window; Undo keeps it; Delete recordings keeps saved reports', async () => {
+test('acceptance 8: Delete recordings keeps saved reports, and deleting the conversation deletes its telemetry folder at once', async () => {
   const f = await flaggedRoom();
   const { id } = await report(f);
   saveReport(f.rt, f.t.id, id, { hash: draftView(f.rt, f.t.id, id).hash });
   const dir = join(f.data, 'telemetry', f.t.id);
-  f.rt.deleteThread(f.t.id);
-  f.rt.undoDeleteThread(f.t.id);
-  assert.ok(existsSync(join(dir, 'recording')), 'Undo kept it');
   deleteRecordings(f.rt, f.t.id);
   assert.ok(!existsSync(join(dir, 'recording', 'turns.jsonl')));
   assert.ok(existsSync(join(dir, 'reports', id, 'report.json')), 'saved reports stay');
   f.rt.deleteThread(f.t.id);
-  f.rt.purgeThread(f.t.id);
   assert.ok(!existsSync(dir), 'gone with the conversation');
   f.stop();
 });
@@ -207,7 +203,6 @@ test('review 2: saved reports go with their conversation after Delete recordings
   const dir = join(f.data, 'telemetry', f.t.id);
   assert.ok(existsSync(join(dir, 'reports', id)));
   f.rt.deleteThread(f.t.id);
-  f.rt.purgeThread(f.t.id);
   assert.ok(!existsSync(dir));
   mkdirSync(join(f.data, 'telemetry', 'th_gone', 'reports', 'rep_x'), { recursive: true });
   assert.ok(sweep(f.rt).includes('th_gone'));

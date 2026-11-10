@@ -353,7 +353,7 @@ test('Delete session… in the panel opens its confirmation, and there’s no Ar
   await expect(page.locator('.dialog', { hasText: 'Delete indexer’s session?' }), 'the confirmation').toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.locator('.dialog', { hasText: 'Delete indexer’s session?' })).toHaveCount(0);
-  expect(app.store.state.sessions[sessionIn(shelf, 'indexer').id].deleting ?? false, 'Escape didn’t delete it').toBe(false);
+  expect(app.store.state.sessions[sessionIn(shelf, 'indexer').id], 'Escape didn’t delete it').toBeTruthy();
 });
 
 // ── A topic thread ──────────────────────────────────────────────────────────────────────

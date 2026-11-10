@@ -297,16 +297,11 @@ test('#372: agents wake each other in the conversation, with no side thread or l
   assert.equal(store.state.sessions[alpha.id].agentMessages[0].other, 'beta');
 });
 
-test('deleting a session can be undone within the window', async () => {
+test('deleting a session removes it at once, with no Undo window', async () => {
   const { rt, store, t } = setup();
   const se = rt.sessionsIn(t.id)[0];
-  const { until } = rt.deleteSession(se.id);
-  assert.ok(until > Date.now());
-  assert.ok(store.state.sessions[se.id].deleting);
-  rt.undoDelete(se.id);
-  assert.equal(store.state.sessions[se.id].deleting, null);
-  rt.deleteSession(se.id);
-  rt.purgeSession(se.id);
+  assert.deepEqual(rt.deleteSession(se.id), { handle: se.handle });
+  assert.equal(rt.timers.size, 0, 'nothing waits to finish it');
   assert.equal(store.state.sessions[se.id], undefined);
   assert.equal(store.state.threads[t.id], undefined, 'its own thread goes with it');
 });
@@ -318,7 +313,6 @@ test('deleting an agent in a room keeps its messages, marked deleted', async () 
   await settle(rt);
   const beta = rt.sessionsIn(t.id).find((x) => x.handle === 'beta');
   rt.deleteSession(beta.id);
-  rt.purgeSession(beta.id);
   assert.ok(store.state.threads[t.id]);
   assert.ok(
     store
@@ -736,28 +730,22 @@ test('moving a persona from the mock to a real backend gives it the default mode
   assert.throws(() => rt.updatePersona(a.id, { backend: 'nope' }), /isn’t available/);
 });
 
-test('deleting a conversation removes its sessions, apps and threads after the undo window, and can be undone', () => {
+test('deleting a conversation removes its sessions, apps and threads at once', () => {
   const { rt, store, t } = setup();
   const se = rt.sessionsIn(t.id)[0];
-  const r = rt.deleteThread(t.id);
-  assert.ok(r.until > Date.now());
-  assert.ok(store.state.threads[t.id].deleting);
-  rt.undoDeleteThread(t.id);
-  assert.equal(store.state.threads[t.id].deleting, null);
-  rt.deleteThread(t.id);
-  rt.purgeThread(t.id);
+  assert.deepEqual(rt.deleteThread(t.id), { title: t.title });
   assert.equal(store.state.threads[t.id], undefined);
   assert.equal(store.state.sessions[se.id], undefined);
   assert.ok(store.state.personas[se.personaId], 'the persona stays');
-  for (const k of rt.timers.keys()) clearTimeout(rt.timers.get(k));
 });
 
-test('a conversation being deleted takes no new messages', () => {
-  const { rt, store, t } = setup();
+test('a deleted conversation takes no new messages', () => {
+  const { rt, t } = setup();
   rt.deleteThread(t.id);
-  assert.throws(() => rt.sendMessage(t.id, { text: 'still there?' }), /being deleted/);
-  assert.equal(store.items(t.id).length, 0);
-  for (const k of rt.timers.keys()) clearTimeout(rt.timers.get(k));
+  assert.throws(
+    () => rt.sendMessage(t.id, { text: 'still there?' }),
+    (e) => e.status === 404,
+  );
 });
 
 test('a message to an archived agent is refused before anything is posted', () => {
@@ -819,12 +807,11 @@ test('archiving a conversation covers a side thread under a topic thread, and it
   assert.equal(store.state.sessions[deep.id].archived, false);
 });
 
-test('deletions still pending when the server stopped finish after a restart', async () => {
+test('a delete an older Postbox left in its Undo window finishes at start', () => {
   const { rt, store, t } = setup();
   const se = rt.sessionsIn(t.id)[0];
-  store.emit('thread', { ...store.state.threads[t.id], deleting: Date.now() - 1 });
-  rt.rearmDeletions();
-  await sleep(5);
+  store.emit('thread', { ...store.state.threads[t.id], deleting: Date.now() + 5000 });
+  rt.finishLeftDeletes();
   assert.equal(store.state.threads[t.id], undefined);
   assert.equal(store.state.sessions[se.id], undefined);
 });

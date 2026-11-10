@@ -41,15 +41,14 @@ async function busyBeta(f) {
 
 const textsTo = (f, handle) => f.adapter.calls.filter((c) => c.handle === handle).map((c) => (c.message.messages ?? [c.message]).map((m) => m.text));
 
-test('your queued message edited behind a held commit is posted as edited when its agent’s deletion is purged', async () => {
+test('your queued message edited behind a held commit is posted as edited when its agent is deleted', async () => {
   const f = await heldRoom();
   const b = await busyBeta(f);
   const { queued } = f.rt.sendMessage(f.t.id, { text: '@beta After the tests.' });
-  f.rt.deleteSession(f.beta.id);
   await f.store.flush();
   const release = await f.hold();
   f.rt.editQueued(f.t.id, queued.id, '@beta After the tests, edited.');
-  f.rt.purgeSession(f.beta.id);
+  f.rt.deleteSession(f.beta.id);
   await release();
   b.release();
   await settle(f.rt);
@@ -84,19 +83,6 @@ test('a chain of wakes that ends behind a held commit starts its count again', a
   await settle(f.rt);
   await release();
   assert.equal(f.store.state.threads[f.t.id].hops, 0);
-  await f.store.close();
-});
-
-test('a wake queued behind a held commit keeps its chain’s count when the conversation’s delete stops the turns', async () => {
-  const f = await heldRoom();
-  const b = await busyBeta(f);
-  const release = await f.hold();
-  f.rt.agentWake(f.alpha.id, 'beta', 'First.');
-  f.rt.deleteThread(f.t.id);
-  b.release();
-  await settle(f.rt);
-  await release();
-  assert.equal(f.store.state.threads[f.t.id].hops, 1);
   await f.store.close();
 });
 

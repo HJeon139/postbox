@@ -96,14 +96,3 @@ test('a change that doesn’t turn the asked tool on leaves the card open', asyn
   assert.equal(store.state.sessions[one.se.id].needs?.kind, 'toolask');
   assert.equal(notices(adapter, one.se).length, 0);
 });
-
-test('a card in a conversation you’re deleting is answered, but no turn starts there', async () => {
-  const { store, rt, adapter, a } = setup();
-  const one = await asked(rt, adapter, a, 'One');
-  rt.deleteThread(one.t.id);
-  rt.updatePersona(a.id, { tools: ['corpus.search', 'shell'] });
-  await settle(rt);
-  assert.equal(store.items(one.t.id).find((i) => i.kind === 'toolask').status, 'on');
-  assert.equal(notices(adapter, one.se).length, 0, 'the agent isn’t woken there');
-  assert.equal(rt.turns.size, 0);
-});

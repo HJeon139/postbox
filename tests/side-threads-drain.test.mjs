@@ -101,13 +101,3 @@ test('#228: after a failed turn, a wake waiting for the agent goes, and your mes
   answering.release();
   await settle(rt);
 });
-
-test('#228: Add on a card while the agent’s session here is being removed is refused, so Undo can’t leave two', () => {
-  const { store, rt, t, alpha, beta } = setup();
-  rt.deleteSession(beta.id);
-  rt.agentWake(alpha.id, 'beta', 'Are you there?');
-  const card = store.items(t.id).find((i) => i.kind === 'hop' && i.join);
-  assert.throws(() => rt.resolveHop(t.id, card.id, true), /@beta is being removed from this conversation/);
-  rt.undoDelete(beta.id);
-  assert.equal(rt.sessionsIn(t.id).filter((x) => x.handle === 'beta').length, 1);
-});

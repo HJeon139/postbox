@@ -133,7 +133,7 @@ export function deleteRecordings(rt, threadId) {
 /** The recording folder a turn in this thread writes to, or null when its conversation isn’t recording. */
 export function recordingDir(rt, threadId) {
   const conv = convOf(rt, threadId);
-  if (!conv?.recording?.on || conv.deleting) return null;
+  if (!conv?.recording?.on) return null;
   try {
     return recFolder(rt, conv.id);
   } catch {

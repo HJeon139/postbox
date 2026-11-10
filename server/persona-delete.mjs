@@ -1,107 +1,42 @@
-// Deleting a persona (#208, decided 27 October 2026): its sessions go with it, as deleting each would take them, and
-// once the Undo window has passed, so does what it remembered: each backend forgets it (an adapter’s forget, such as
-// the Claude adapters’ memory folders). Undo brings back the persona, the sessions this delete took and its memory.
-// A new persona with the same name starts clean, since memory is kept by id.
+// Deleting a persona (#208): its sessions go with it, as deleting each would take them, then the persona, and each
+// backend forgets what it remembered (an adapter’s forget, such as the Claude adapters’ memory folders). It happens at
+// once: there is no Undo window (designs/rooms-at-scale.md, “Delete”). A new persona with the same name starts clean,
+// since memory is kept by id.
 
-import { DELETE_UNDO_MS } from './delete-undo.mjs';
 import { httpError } from './helpers.mjs';
-import { whenWritable } from './store-outage.mjs';
 
 /**
- * Starts deleting a persona: its sessions now, with their own Undo, and the persona when the window ends.
+ * Deletes a persona, its sessions and its memory.
  * @param {any} rt @param {string} id
- * @returns {{ until: number, handle: string }}
+ * @returns {{ handle: string, forgotten: Promise<void> }}  forgotten settles once every backend has forgotten it
  */
 export function deletePersona(rt, id) {
   const p = rt.persona(id);
   if (!p) throw httpError(404, 'That agent doesn’t exist.');
-  if (p.deleting) return { until: p.deleting, handle: p.handle };
-  // Only those not already being deleted on their own, so Undo here doesn’t bring back one deleted before.
-  const took = Object.values(rt.s.sessions).filter((se) => se.personaId === id && !se.deleting);
-  for (const se of took) rt.deleteSession(se.id);
-  const until = Date.now() + DELETE_UNDO_MS;
-  rt.store.emit('persona', { ...p, deleting: until, deletingSessions: took.map((se) => se.id) });
-  clearTimeout(rt.timers.get(`delp:${id}`));
-  rt.timers.set(`delp:${id}`, setTimeout(() => purgePersona(rt, id), DELETE_UNDO_MS).unref());
-  return { until, handle: p.handle };
-}
-
-/** Undo: the persona stays, with the sessions its delete took. @param {any} rt @param {string} id */
-export function undoDeletePersona(rt, id) {
-  const p = rt.persona(id);
-  if (!p?.deleting || p.purging) throw httpError(409, 'It’s too late to undo: that agent is already deleted.');
-  clearTimeout(rt.timers.get(`delp:${id}`));
-  rt.timers.delete(`delp:${id}`);
-  const { deleting: _d, deletingSessions: _s, ...kept } = p;
-  // The persona first: a session’s Undo is refused while its persona is being deleted (rt.undoDelete).
-  rt.store.emit('persona', kept);
-  for (const sid of p.deletingSessions ?? []) if (rt.s.sessions[sid]?.deleting) rt.undoDelete(sid);
-}
-
-/**
- * Purges a persona whose Undo window ended, one run at a time per persona: a run in its forget when Retry completes
- * and the purge the reload re-arms are chained, never concurrent (critic’s and gpt’s read of S2: the epoch check
- * after a forget can’t stop a second forget from starting beside the first). The later run then finds the persona as
- * the earlier left it; every step is safe to repeat.
- * @param {any} rt @param {string} id
- */
-export function purgePersona(rt, id) {
-  const chains = rt.personaPurges;
-  const run = (chains.get(id) ?? Promise.resolve())
-    .catch(() => {})
-    .then(() => purgeOnce(rt, id))
-    .finally(() => {
-      if (chains.get(id) === run) chains.delete(id);
-    });
-  chains.set(id, run);
-  return run;
-}
-
-/**
- * One purge run. The end of the window: it’s marked purging first, so an Undo while a backend forgets it says it’s too
- * late rather than bringing back a persona with its sessions gone. Then every session it has goes, not only those its
- * delete took (one deleted on its own before, or restored meanwhile), so none is left with no persona; each backend
- * forgets it; and the persona is removed. A purge a restart cut short starts again from the top (rearmPersonaDeletes).
- * @param {any} rt @param {string} id
- */
-async function purgeOnce(rt, id) {
-  rt.timers.delete(`delp:${id}`);
-  // Nothing durable can happen while writes are closed: the purge waits for them to reopen (store-outage.mjs, gated()).
-  if (!rt.store.writable) return whenWritable(rt, () => purgePersona(rt, id), { owner: `delp:${id}` });
-  const epoch = rt.store.epoch;
-  const p = rt.s.personas[id];
-  if (!p?.deleting) return;
-  // Not when it’s already purging: a restart can cut a purge short, and each step below is safe to repeat.
-  if (!p.purging) rt.store.emit('persona', { ...p, purging: true });
-  for (const { id: sid } of Object.values(rt.s.sessions).filter((x) => x.personaId === id)) {
-    // Read again each time: purging one can erase others, as its conversation goes with it, side threads too.
-    const se = rt.s.sessions[sid];
-    if (!se) continue;
-    if (!se.deleting) rt.deleteSession(sid);
-    rt.purgeSession(sid);
+  for (const { id: sid } of Object.values(rt.s.sessions).filter((se) => se.personaId === id)) {
+    // Read again each time: deleting one can erase others, as its conversation goes with it, side threads too.
+    if (rt.s.sessions[sid]) rt.deleteSession(sid);
   }
+  rt.store.emit('remove', { kind: 'persona', id });
+  return { handle: p.handle, forgotten: forget(rt, p) };
+}
+
+/**
+ * Each backend forgets the persona. A memory that can’t be removed stays on disk, and the server log says where; the
+ * persona is gone either way. @param {any} rt @param {any} p
+ */
+async function forget(rt, p) {
   for (const name of rt.adapters.names()) {
     const adapter = rt.adapters.get(name);
     if (typeof adapter.forget !== 'function') continue;
-    // A memory that can’t be removed stays on disk, and the server log says where; the persona goes either way.
-    await adapter.forget(p).catch((e) => console.error(`Postbox couldn’t remove @${p.handle}’s memory (${name}): ${e.message}`));
-    // The store may have closed, or Retry installed another history, during that removal: no further destructive
-    // step runs against it; the purge runs again against the current state once writes are open (each step is safe
-    // to repeat).
-    // A new epoch: Retry reinstalled the state and re-armed delp:, its one owner now (S1), so this run ends here. Closed
-    // on the same epoch: it defers, owned by delp:, so a later reload drops it in favor of the re-arm.
-    if (rt.store.epoch !== epoch) return;
-    if (!rt.store.writable) return whenWritable(rt, () => purgePersona(rt, id), { owner: `delp:${id}` });
+    await adapter.forget(p).catch((/** @type {any} */ e) => console.error(`Postbox couldn’t remove @${p.handle}’s memory (${name}): ${e.message}`));
   }
-  rt.store.emit('remove', { kind: 'persona', id });
 }
 
 /**
- * Deletes still pending when Postbox stopped (engineering-practices.md: re-arm timers from stored state, #24): each
- * finishes when its window ends, or now if it’s over. index.mjs calls this beside rt.rearmDeletions().
- * @param {any} rt
+ * Deletes an older Postbox left pending in its Undo window, which is gone: each finishes now. index.mjs calls this
+ * beside rt.finishLeftDeletes(). @param {any} rt
  */
-export function rearmPersonaDeletes(rt) {
-  for (const p of Object.values(rt.s.personas))
-    if (p.deleting) rt.timers.set(`delp:${p.id}`, setTimeout(() => purgePersona(rt, p.id), Math.max(0, p.deleting - Date.now())).unref());
+export function finishLeftPersonaDeletes(rt) {
+  for (const p of Object.values(rt.s.personas)) if (p.deleting) deletePersona(rt, p.id);
 }

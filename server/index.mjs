@@ -27,7 +27,7 @@ import { liveStreams } from './live-streams.mjs';
 import { handleMcp } from './mcp.mjs';
 import { Narrator, narrationInstalled } from './narration/narrator.mjs';
 import { pageState } from './page-state.mjs';
-import { rearmPersonaDeletes } from './persona-delete.mjs';
+import { finishLeftPersonaDeletes } from './persona-delete.mjs';
 import { createProject, setPushUrl } from './projects.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { settleInterrupted } from './restart-sweep.mjs';
@@ -132,8 +132,9 @@ export async function start({
   for (const [threadId, list] of Object.entries(store.state.items))
     for (const it of list) if (it.status === 'streaming') rt.patchItem(threadId, it.id, { status: 'stopped' });
   rt.rearmSchedules();
-  rt.rearmDeletions();
-  rearmPersonaDeletes(rt);
+  // Delete is immediate now: a delete an older Postbox left in its Undo window finishes.
+  rt.finishLeftDeletes();
+  finishLeftPersonaDeletes(rt);
   rt.expireStalePermissions();
   rt.expireStaleCommands();
   rt.ledger.expireStale();
@@ -302,10 +303,6 @@ export async function start({
     if (path === '/api/threads' && req.method === 'POST') return send(res, 201, rt.createThread(body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteThread(m[1]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, patchThread(rt, m[1], body));
-    if ((m = path.match(/^\/api\/threads\/([^/]+)\/undo-delete$/)) && req.method === 'POST') {
-      rt.undoDeleteThread(m[1]);
-      return send(res, 200, { ok: true });
-    }
     // A whole conversation, with its side and topic threads (#101).
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/(archive|restore)$/)) && req.method === 'POST') {
       if (m[2] === 'archive') return send(res, 200, { ok: true, archived: rt.archiveThread(m[1]) });

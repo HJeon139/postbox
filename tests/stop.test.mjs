@@ -875,7 +875,6 @@ test('#129: deleting a session for good stops the jobs Postbox kept running for 
   await sleep(10);
   procs.push(shellRow(4242, 'job bgD'));
   rt.deleteSession(se.id);
-  rt.purgeSession(se.id);
   await sleep(5);
   assert.deepEqual(k.sent, [[-4242, 'SIGINT']]);
 });

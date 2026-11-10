@@ -19,7 +19,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 // Each one a follow-up to break, as #312 says. Remove a cycle here once it’s gone, and its files from the override.
 const CYCLES = [
   ['app/js/permissions.mjs', 'app/js/run-choice.mjs', 'app/js/sheets.mjs'],
-  ['server/persona-delete.mjs', 'server/scheduled-wakes.mjs', 'server/store-outage.mjs'],
+  ['server/scheduled-wakes.mjs', 'server/store-outage.mjs'],
   ['server/store-commit.mjs', 'server/store-recover.mjs', 'server/store-retry.mjs', 'server/store-snapshot.mjs'],
   ['server/telemetry-sweep.mjs', 'server/telemetry.mjs'],
 ];

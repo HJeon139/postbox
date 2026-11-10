@@ -1189,7 +1189,7 @@ export function mountComposer(threadId, { side = false } = {}) {
     const t = thread();
     const conv = t?.kind === 'side' || t?.kind === 'topic' ? t.parentId : threadId;
     return Object.values(S().threads)
-      .filter((x) => x.parentId === conv && (x.kind === 'side' || x.kind === 'topic') && x.id !== threadId && !x.deleting)
+      .filter((x) => x.parentId === conv && (x.kind === 'side' || x.kind === 'topic') && x.id !== threadId)
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   }
   function candidates() {
@@ -1200,7 +1200,7 @@ export function mountComposer(threadId, { side = false } = {}) {
         .map((x) => ({ thread: x }));
     const members = new Set(sessionsOf(threadId).map((x) => x.personaId));
     return Object.values(S().personas)
-      .filter((p) => !p.retired && !p.deleting && p.handle.toLowerCase().startsWith(mention.query))
+      .filter((p) => !p.retired && p.handle.toLowerCase().startsWith(mention.query))
       .sort((a, b) => members.has(b.id) - members.has(a.id) || a.handle.localeCompare(b.handle))
       .slice(0, 6)
       .map((p) => ({ p, se: sessionsOf(threadId).find((x) => x.personaId === p.id) }));
