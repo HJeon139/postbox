@@ -105,5 +105,5 @@ test('#1143: an off-rule author sent back is refused with what to do instead', a
   const threads = [{ id: 'c1', status: 'resolved', line: 4, comments: [{ author: 'You', text: 'Cut it.' }] }];
   const r = s.update({ ...draft, content: `${DRAFT}\nMore.`, threads });
   assert.equal(r.ok, false);
-  assert.match(r.message, /send stored comments back as read_message shows them, or leave them out/);
+  assert.match(r.message, /a stored comment goes back as read_message shows it/);
 });

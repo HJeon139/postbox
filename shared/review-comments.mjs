@@ -28,7 +28,7 @@ export const authorName = (author) => (author === PERSON ? 'You' : author);
 export const author = (v, path, errs) => {
   const handle = typeof v === 'string' && v[0] === '@' ? v.slice(1) : '';
   const ok = v === PERSON || (HANDLE.test(handle) && handle.toLowerCase() !== PERSON);
-  if (!ok) errs.push(`${path} must be an agent’s @handle, such as @critic: send stored comments back as read_message shows them, or leave them out.`);
+  if (!ok) errs.push(`${path} must be an agent’s @handle, such as @critic; a stored comment goes back as read_message shows it.`);
 };
 
 const ENCODER = new TextEncoder();
