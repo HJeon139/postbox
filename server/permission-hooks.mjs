@@ -70,15 +70,38 @@ const ASSIGNED = new RegExp(String.raw`(?<![\w\uFFFD-])(${NAMED}=)${VALUE}`, 'gi
 // lint-allow regex: built from VALUE and NAMED, the constants just above.
 const FLAGGED = new RegExp(String.raw`(?<![\w\uFFFD-])(--?${NAMED}\s+)(?!-)${VALUE}`, 'gi');
 // lint-allow regex: built from VALUE, WORD and NAMED, the constants just above.
-const HEADER = new RegExp(String.raw`(?<![\w\uFFFD-])(${NAMED}:[ \t]*)${VALUE}|\b(authorization:(?:[ \t]+(?:[a-z][\w-]*[ \t]+)?)?)${WORD}`, 'gi');
-const COOKIE = /\b(cookie:[ \t]*)[^'"]+/gi;
+const HEADER = new RegExp(String.raw`(?<![\w\uFFFD-])(${NAMED}:(?!\d)[ \t]*)${VALUE}|\b(authorization:(?:[ \t]+(?:[a-z][\w-]*[ \t]+)?)?)${WORD}`, 'gi');
+// A Cookie header's cookies: quoted, to the quote that opened it (COOKIE_QUOTED); unquoted, to the end of its shell
+// word, past an escaped space or ;, so the command after it stays shown.
+const COOKIE_QUOTED = /(["'])((?:[\w-]*-)?cookie:[ \t]*)(?:(?!\1)[^\\]|\\.)+/gi;
+const COOKIE = /\b(cookie:[ \t]*)(?:[^\s'"\\;&|<>()`]|\\.)+/gi;
 // A quoted Authorization header’s credential, every parameter of it (Digest’s response=, SigV4’s Signature=), to the
 // quote that opened the header, past an escaped one, or to the end of the text when it never closes. Unquoted, HEADER
 // ends it at a word.
 const AUTH_QUOTED = /(["'])((?:[\w-]*-)?authorization:(?:[ \t]+(?:[a-z][\w-]*[ \t]+)?)?)(?:(?!\1)[^\\]|\\.)+/gi;
-// curl’s -u and --user: what follows the user’s colon, quoted (to its closing quote) or not (to the end of the word).
-const USER_QUOTED = /(?<![\w-])((?:-u[ \t]*|--user(?:[ \t]+|=))(["'])[^'":]*:)(?:(?!\2)[^\\]|\\.)+/g;
-const USER_BARE = /(?<![\w-])((?:-u[ \t]*|--user(?:[ \t]+|=))[^\s'":]*:)[^\s'"&;|<>()`]+/g;
+// curl’s -u, --user, -U and --proxy-user: what follows the user’s colon, quoted (to its closing quote) or not (to the end
+// of the word), unless the colon starts a URL’s //. In a curl command, a bundle of short flags ending in u or U too
+// (-su), which another command’s (ls -lu) isn’t.
+const USER_FLAG = String.raw`-[uU][ \t]*|--(?:proxy-)?user(?:[ \t]+|=)`;
+const CURL_BUNDLE = String.raw`-[a-zA-Z]+[uU][ \t]*`;
+/** The two patterns for a user's password after one of `flag`. @param {string} flag */
+const userPatterns = (flag) => [
+  // lint-allow regex: built from USER_FLAG or CURL_BUNDLE, the constants just above.
+  new RegExp(String.raw`(?<![\w-])((?:${flag})(["'])[^'":]*:)(?!//)(?:(?!\2)[^\\]|\\.)+`, 'g'),
+  // lint-allow regex: built from USER_FLAG or CURL_BUNDLE, the constants just above.
+  new RegExp(String.raw`(?<![\w-])((?:${flag})[^\s'":]*:)(?!//)[^\s'"&;|<>()\x60]+`, 'g'),
+];
+const [USER_QUOTED, USER_BARE] = userPatterns(USER_FLAG);
+const [BUNDLE_QUOTED, BUNDLE_BARE] = userPatterns(CURL_BUNDLE);
+/** Whether the command a match at `at` sits in runs curl: the text back to the last ;, &, | or new line names it. */
+const CURL_RUNS = /(?:^|[\s/])curl\s/;
+const SEPARATOR = /[;&|\n]/;
+const inCurl = (text, at) => CURL_RUNS.test(text.slice(0, at).split(SEPARATOR).at(-1) ?? '');
+/** text with curl's bundled -u flags' passwords hidden, where the command they’re in runs curl. @param {string} text */
+const curlBundles = (text) =>
+  text
+    .replace(BUNDLE_QUOTED, (m, name, _q, at) => (inCurl(text, at) ? `${name}…` : m))
+    .replace(BUNDLE_BARE, (m, name, at, whole) => (inCurl(whole, at) ? `${name}…` : m));
 // lint-allow regex: built from NAMED, the constant just above.
 const JSON_FIELD = new RegExp(String.raw`(\\"${NAMED}\\"\s*:\s*\\")[^"\\]*|("${NAMED}"\s*:\s*")(?:[^"\\]|\\.)*`, 'gi');
 const SIGNED = /([?&](?:sig|signature|auth|x-amz-signature|x-amz-credential|x-goog-signature|x-goog-credential)=)[^\s'"&;|<>()`#]+/gi;
@@ -99,8 +122,10 @@ function redacted(text) {
   const quoted = marked(text.slice(0, MAX_SCAN))
     .replace(AUTH_QUOTED, (_m, quote, name) => `${quote}${name}…`)
     .replace(USER_QUOTED, (_m, name) => `${name}…`)
-    .replace(USER_BARE, keptName);
-  const kept = NAME_PATTERNS.reduce((s, pattern) => s.replace(pattern, keptName), quoted);
+    .replace(USER_BARE, keptName)
+    .replace(COOKIE_QUOTED, (_m, quote, name) => `${quote}${name}…`);
+  const bundled = curlBundles(quoted);
+  const kept = NAME_PATTERNS.reduce((s, pattern) => s.replace(pattern, keptName), bundled);
   return BARE.reduce((s, pattern) => s.replace(pattern, '…'), kept);
 }
 
