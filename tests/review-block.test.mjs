@@ -72,7 +72,7 @@ test('#179: the person’s comment on a selection reaches the agent with its lin
   assert.equal(ev.kind, 'event');
   for (const [i, c] of [ranged, { line: 4, text: 'Cut it.' }].entries()) assert.deepEqual(ev.event.values.comments[i], { ...c, threadId: `you-1-${i + 1}` });
   const said = formatMessage(ev);
-  assert.match(said, /\n- line 3, col 5–19 “the quoted text”: Say which text\.\n- line 4: Cut it\.$/);
+  assert.match(said, /\n- line 3, col 5–19 “the quoted text”: Say which text\.\n- line 4: Cut it\.\n/);
 });
 
 test('#179: the history and read_message give a comment’s line, columns and quote', async () => {
