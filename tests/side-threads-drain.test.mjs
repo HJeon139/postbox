@@ -1,6 +1,6 @@
 // What waits in a queue with one session per agent (#228), the conversation’s since wakes go there (#372): every item whose agent is free goes, in order for each
 // agent; a restart sends what waited across it; a removed agent gets no wake, and its waker hears why; after a failed
-// turn only agents’ wakes go, while the person’s messages wait for them to see the failure.
+// turn nothing waiting for the agent goes, an agent’s wake nor the person’s message, until the person acts (#1146).
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -72,7 +72,7 @@ test('#228: removing an agent drops the wakes queued for it, and their agents he
   );
 });
 
-test('#228: after a failed turn, a wake waiting for the agent goes, and your message ahead of it waits for you', async () => {
+test('#1146: after a failed turn, neither a wake waiting for the agent nor your message ahead of it goes', async () => {
   const { store, rt, adapter, t, alpha, beta } = setup();
   const failing = held();
   adapter.next.push(async (c) => {
@@ -84,21 +84,17 @@ test('#228: after a failed turn, a wake waiting for the agent goes, and your mes
   // In the conversation’s queue: your message for @alpha, then @beta’s wake for it.
   assert.ok(rt.sendMessage(t.id, { text: '@alpha and then this' }).queued);
   rt.agentWake(beta.id, 'alpha', 'A question for you.');
-  const answering = held();
-  adapter.next.push(answering.step);
   failing.release();
   await sleep(20);
-  assert.ok(adapter.calls.some((x) => x.sessionId === alpha.id && x.message.text === 'A question for you.'));
-  assert.equal(
-    adapter.calls.some((x) => x.message.text === '@alpha and then this'),
-    false,
-    'your message went after a failure',
+  assert.deepEqual(
+    adapter.calls.filter((x) => x.sessionId === alpha.id).map((x) => x.message.text),
+    ['@alpha a long job'],
+    'something waiting went after a failure',
   );
   assert.deepEqual(
     store.state.threads[t.id].queue.map((q) => q.text),
-    ['@alpha and then this'],
+    ['@alpha and then this', 'A question for you.'],
   );
-  answering.release();
   await settle(rt);
 });
 
