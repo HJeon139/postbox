@@ -78,6 +78,9 @@ test('a send that keeps failing with the stream open is tried every 30 s on its 
   // Send now doesn’t wait for the next try.
   await slow.getByRole('button', { name: 'Send now' }).click();
   await expect.poll(() => posts, { message: 'Send now tries at once' }).toBe(7);
+  // And the next try is a full 30 s after it, not when the one it replaced was due, 25 s later.
+  await page.clock.runFor(28_000);
+  expect(posts, 'no try before its 30 s').toBe(7);
 
   // Once a try gets through, it goes with nothing from the person.
   await page.unroute(POSTS);
