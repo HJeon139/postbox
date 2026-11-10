@@ -20,7 +20,7 @@
 // still reads the keychain’s token, in a run that isn’t a git-remote one, whose project has a repository set.
 
 import { spawnSync } from 'node:child_process';
-import { guardEnv, NO_TOKEN, preflightRemote, remotePaths, tearDownRemote, UNREACHABLE } from './git-remote.mjs';
+import { CREDENTIALS_GUARDED, guardEnv, NO_TOKEN, preflightRemote, remotePaths, tearDownRemote, UNREACHABLE } from './git-remote.mjs';
 
 /**
  * The environment that takes the person’s GitHub away from a run’s Postbox and its agents, or nothing when the scenario
@@ -52,10 +52,11 @@ export function noGithubEnv(scenario, dir) {
  */
 function preflightNoGithub(env) {
   const stop = (what) => new Error(`${what}, so the run stops before any agent turn.`);
-  const probe = `t=$(gh auth token 2>/dev/null); s=$?; if [ "$s" = 127 ] || [ "$t" = ${NO_TOKEN} ]; then echo gh-guarded; fi; t=; GIT_TERMINAL_PROMPT=0 git ls-remote ${UNREACHABLE} 2>&1`;
+  const probe = `t=$(gh auth token 2>/dev/null); s=$?; if [ "$s" = 127 ] || [ "$t" = ${NO_TOKEN} ]; then echo gh-guarded; fi; t=; ${CREDENTIALS_GUARDED}; GIT_TERMINAL_PROMPT=0 git ls-remote ${UNREACHABLE} 2>&1`;
   const out = spawnSync(env.SHELL || '/bin/sh', ['-lic', probe], { env, encoding: 'utf8', timeout: 20_000 }).stdout ?? '';
   // 127 is no gh at all. No line means another token, or a shell that never got that far.
   if (!/^gh-guarded$/m.test(out)) throw stop('gh in the agent’s shell can still reach a GitHub login');
+  if (!/^credentials-guarded$/m.test(out)) throw stop('git in the agent’s shell can still hand out a password');
   if (!/transport 'https' not allowed/.test(out)) throw stop(`git in the agent’s shell isn’t refused an https remote (it said: ${out.trim().slice(-200)})`);
 }
 

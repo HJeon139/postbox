@@ -1,31 +1,58 @@
 // Where an Antigravity file call’s paths lead, for its PreToolUse hook (agy-hook.mjs). Moved from agy-hook.mjs, which
 // is at its size ceiling (designs/architecture.md, “Module and function size”).
 
-import { realpathSync } from 'node:fs';
+import { lstatSync, readlinkSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, parse, resolve, sep } from 'node:path';
 
 /**
  * Resolves a path as the file system does, one segment at a time through the real path of each one that exists, so
  * symlinks can’t escape a folder, and a .. after a link climbs from where the link leads, not lexically (#1074). The
- * part that doesn’t exist yet is kept as written.
+ * part that doesn’t exist yet is kept as written. Only the path agy names is trimmed, and a blank one names nothing.
  */
 export function realTarget(rawPath, baseDir = process.cwd()) {
   if (typeof rawPath !== 'string' || !rawPath.trim()) return null;
-  const raw = rawPath.trim();
-  let cur = realOr(isAbsolute(raw) ? parse(raw).root : resolve(baseDir));
-  for (const segment of raw.split(sep)) {
+  return walk(rawPath.trim(), baseDir, { followed: 0 });
+}
+
+/**
+ * Walks a path exactly as written, spaces included, since a link’s target is never trimmed by the file system (#1134).
+ * @param {string} path @param {string} baseDir @param {{ followed: number }} links counted for the whole path
+ */
+function walk(path, baseDir, links) {
+  let cur = realOr(isAbsolute(path) ? parse(path).root : resolve(baseDir), links);
+  for (const segment of path.split(sep)) {
+    if (links.followed > MAX_LINKS) break; // gave up: the kernel fails the whole path, so nothing after it counts
     if (!segment || segment === '.') continue;
-    cur = segment === '..' ? dirname(cur) : realOr(join(cur, segment));
+    cur = segment === '..' ? dirname(cur) : realOr(join(cur, segment), links);
   }
   return cur;
 }
 
-/** A path’s real path, or the path itself when it doesn’t exist (or can’t be read), so it’s judged as written. */
-function realOr(p) {
+/** How many links one path may follow before the walk gives up. Like the kernel’s own limit, it counts the whole path (#1134). */
+const MAX_LINKS = 40;
+
+/**
+ * A path’s real path. One that doesn’t exist yet, as a file about to be written, is kept as written, unless it is a
+ * link whose target doesn’t exist: then it’s where the link leads, since a write through it creates that target, wherever
+ * it points (#1134). A chain of such links is followed to its end; past MAX_LINKS, as a loop goes, it gives up as the
+ * outside path “/”, so it asks.
+ * @param {string} p @param {{ followed: number }} links
+ */
+function realOr(p, links) {
   try {
     return realpathSync(p);
   } catch {
-    return p; // doesn’t exist yet, as a file about to be written: nothing to follow
+    let link;
+    try {
+      link = lstatSync(p).isSymbolicLink() ? readlinkSync(p) : null;
+    } catch {
+      link = null;
+    }
+    if (link === null) return p; // doesn’t exist yet, and isn’t a link: nothing to follow
+    links.followed += 1;
+    if (links.followed > MAX_LINKS) return parse(p).root;
+    // The target is walked as any path is, so a link on its way is followed too; p’s own folder is already real.
+    return walk(link, dirname(p), links);
   }
 }
 

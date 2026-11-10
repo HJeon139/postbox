@@ -2,6 +2,92 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.58.3 (2026-11-10)
+
+### Fixes
+
+- **backends:** refuse a long agy prompt only when the system does
+- **work:** read a background command's output file from the real /tmp too
+- **codex:** the failed step gives Codex's own reason, bounded (#1162)
+- **codex:** the tools-down note reaches every kind of turn, and skips a command (#1162)
+- **remote:** moving an agent off a silent host drains what waited for its attach (#1135)
+- **remote:** a message waits for an attach only while the agent still runs on that host (#1135)
+- **permissions:** find curl after a subshell, a backtick or a quote
+- **permissions:** hide a header value that starts with a digit, and keep ports
+- **uat:** a git-remote run blanks the terminal's askpass itself
+- **backends:** guard a local Kiro turn's stdin, and say what agy's refusal counted
+- **composer:** a send that keeps failing with the stream open goes on being tried, and says so
+- **backends:** send Kiro a long prompt on stdin, and refuse one agy can't take
+- **work:** read a background command's output file only from the agent's or the backend's folders
+- **review:** an old review's outcome reads its off-rule authors as its agent's (#1143)
+- **review:** an old review's off-rule author reads as its agent's, so a submit still lands (#1143)
+- **codex:** only a listed entry of Codex's failed servers is Postbox's; the note says where (#1162)
+- **mock:** the demo's critic replies in the person's threads, not as "You" (#1143)
+- **permissions:** hide curl's bundled -u, -U and --proxy-user passwords, and stop two over-cuts
+- **review:** a review comment authored @you, in any case, reads as the person's (#1143)
+- **review:** refuse a submitted reply in a thread the review doesn't have (#1143)
+- **review:** the person's refused submit says what they can do, not to resolve some (#1143)
+- **codex:** show when Codex refuses a turn for Postbox's server, and tell the next turn (#1162)
+- **review:** tell the agent to resolve the person's threads once it has handled them (#1143)
+- **review:** a review comment's author is an agent's @handle or the person's you (#1143)
+- **app:** the transcript holds the room below its newest message with its own margin (#1150)
+- **remote:** a drain reads one busy rule, busyFor, so it waits for an attach too (#1135)
+- **review:** refuse a shown review with a comment in the person's name (#1143)
+- **review:** keep the person's submitted comments on the block as threads
+- **remote:** a message for an agent whose host turn waits to be attached waits in the queue (#1135)
+
+## 1.58.2 (2026-11-10)
+
+### Fixes
+
+- **adapters:** a path’s links are counted once for the whole walk (#1134)
+- **adapters:** a link’s target is walked as written, never trimmed (#1134)
+- **adapters:** a dangling link’s target is walked as any path is, through its own links (#1134)
+- **adapters:** a dangling link in a path is followed to its target, not kept as written (#1134)
+
+## 1.58.1 (2026-11-10)
+
+### Fixes
+
+- **adapters:** a slash command or re-attach leaves the tools-down note for the next turn (#1161)
+- **review:** add comment quotes to the highlight a frame after they're drawn (#1151)
+- **review:** the comment highlight is built once, and each review adds only its own marks (#1151)
+- **adapters:** show when Postbox's server fails in an init, and tell the agent next turn (#1161)
+
+## 1.58.0 (2026-11-10)
+
+### Features
+
+- **app:** the transcript window is on by default for long conversations (#866)
+- **app:** behind the flag, a jump to an item off the page mounts it first (#866, W3)
+- **app:** behind the flag, the window unmounts what's furthest from the view (#866, W2)
+- **app:** behind a flag, a long conversation mounts only the items around the view (#866, W1)
+
+### Fixes
+
+- **app:** an island follows its redrawn node, and keeps its focus when it rejoins the range (#866)
+- **app:** an island moved to the end leaves no stray stub on the page (#866)
+- **app:** the window grows just after the frame's layout, so a reply arriving forces none (#1047)
+- **app:** a far jump takes the conversation's top from where the spacer sits on the page (#866)
+- **app:** a far jump reads the range from its items, leaves other scrollers their keys (#866)
+- **app:** the window follows a far scroll, Home, End and Jump to latest, and lets go cleanly (#866)
+- **app:** the window tells the view directly, and a rebuild keeps your place and skipping (#866)
+- **app:** the window keeps the browser's skipping off, and tells the view when it scrolls (#866)
+
+## 1.57.1 (2026-11-10)
+
+### Fixes
+
+- **server:** export stillThere for its test, and key the cache on nanoseconds
+- **review:** drop the oldest kept draft before saving a new one (#1144)
+- **work:** a kept background job that ends on its own reads as ended, not unknown (#519)
+- **review:** forget a kept draft once its review is answered, and keep at most 20 (#1144)
+- **server:** read a served file from the handle that was checked
+- **review:** keep the text a review's drafts were written on (#1144)
+- **review:** keep a review's draft comments over a reload (#1144)
+- **permissions:** a read in a readable folder is judged from the pending session (#1074)
+- **adapters:** the agy hook leaves a read in a readable folder to Postbox (#1074)
+
 ## 1.57.0 (2026-11-10)
 
 ### Features

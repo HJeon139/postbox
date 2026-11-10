@@ -3,7 +3,7 @@
 // lint-allow-file quotes: this is read by models, and straight quotes mark literal values in it.
 
 import { factsText, runsWith } from '../../shared/agent-facts.mjs';
-import { LIMITS, limitText, PALETTES } from '../../shared/limits.mjs';
+import { LIMITS, limitText, PALETTES, REVIEW_THREADS_OPEN } from '../../shared/limits.mjs';
 import { commentAt } from '../../shared/review-comments.mjs';
 import { formatLint } from '../checks.mjs';
 import { formatQueuedMessages } from './queued-messages.mjs';
@@ -303,6 +303,10 @@ function formatBody(message, pathOf) {
         // Another agent’s review (#133): its comments are on the block now, and the person still decides.
         message.event.from
           ? 'Each comment is on the block now, by its threadId. Revise with update_block, and keep each one in the block’s threads? with status “resolved” once you’ve handled it. The block still waits on the person.'
+          : '',
+        // The person’s review (#1143): their comments are threads now, and they can’t resolve one, so the agent does.
+        !message.event.from && isReview(message.event) && message.event.values.comments.some((c) => c?.threadId)
+          ? `Each comment is on the block now, by its threadId, and only you can resolve it: once you’ve handled one, keep it in update_block’s threads? with status: "resolved". Up to ${REVIEW_THREADS_OPEN} can be open at once.`
           : '',
         // From an app (#51): what Postbox counted, and the app’s own summary, which the person didn’t write.
         message.event.sent ? `What Postbox counted in it: ${message.event.sent}` : '',

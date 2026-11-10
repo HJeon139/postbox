@@ -16,9 +16,19 @@ export const COMMAND_WORDS = {
   denied: 'Refused',
   stopped: 'Stopped',
   background: 'Running in the background',
+  ended: 'Ended, its exit not reported',
   unknown: 'Didn’t report how it ended',
 };
-export const GLYPH = { running: 'running', done: 'done', failed: 'failed', denied: 'failed', stopped: 'failed', background: 'running', unknown: 'unknown' };
+export const GLYPH = {
+  running: 'running',
+  done: 'done',
+  failed: 'failed',
+  denied: 'failed',
+  stopped: 'failed',
+  background: 'running',
+  ended: 'done',
+  unknown: 'unknown',
+};
 
 /**
  * Every command in s, the view’s summary, as items that open on their output.
