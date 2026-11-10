@@ -49,8 +49,14 @@ test('#362: a reply one character past the limit wakes no one; the conversation 
   assert.match(notice, /Your mention of @beta woke no one/);
   assert.match(notice, /your reply has 50,001 characters, past the 50,000 a hand-off can send, so nothing was sent\./);
   assert.match(notice, /wake_agent/);
-  const lines = store.items(t.id).filter((x) => x.kind === 'voice' && /woke no one/.test(x.text));
+  const lines = store.items(t.id).filter((x) => /woke no one/.test(x.text ?? ''));
   assert.equal(lines.length, 2, 'a line for each refused hand-off, so the person sees why beta never started');
+  // Postbox's lines, never the person's: beta would read a voice line as `You: …`, words the person never said.
+  assert.deepEqual(
+    lines.map((x) => `${x.kind}/${x.variant}`),
+    ['system/send-refused', 'system/send-refused'],
+  );
+  assert.doesNotMatch(String(rt.describeItem(lines[0]) ?? ''), /^You:/, 'no agent hears it as the person');
   assert.match(lines[0].text, /^@alpha’s mention of @beta woke no one: its reply has 50,001 characters, past the 50,000 a hand-off can send\.$/);
   // The reply itself is still in the conversation, as the agent wrote it, with no wake marked on it.
   const posted = store.items(t.id).find((x) => x.kind === 'agent' && x.text === text);

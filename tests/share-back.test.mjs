@@ -22,7 +22,7 @@ async function summarized(text) {
   await settle(rt);
   const shared = store.items(t.id).filter((x) => x.kind === 'shared');
   const reply = store.items(threadId).find((x) => x.kind === 'agent' && x.text === text);
-  return { shared, reply, store, threadId };
+  return { shared, reply, store, threadId, rt };
 }
 
 test('#362: a summary exactly at the limit is posted in the conversation as written', async () => {
@@ -39,12 +39,16 @@ test('#362: a summary exactly at the limit is posted in the conversation as writ
 
 test('#362: a summary one character past the limit isn’t posted, and the thread says why and what to do', async () => {
   const text = summary(LIMIT + 1);
-  const { shared, reply, store, threadId } = await summarized(text);
+  const { shared, reply, store, threadId, rt } = await summarized(text);
   assert.deepEqual(shared, [], 'nothing was posted in the conversation');
   assert.ok(reply, 'the summary stays in the thread');
   assert.equal(reply.sharedAt, undefined, 'so it isn’t marked sent');
-  const why = store.items(threadId).findLast((x) => x.kind === 'voice');
+  const why = store.items(threadId).findLast((x) => /up to 50,000 characters/.test(x.text ?? ''));
   assert.match(why?.text ?? '', /up to 50,000 characters, and this one has 50,001/);
   assert.match(why.text, /Summarize back/);
+  // Postbox's line, never the person's: an agent would read a voice line as `You: …`, an instruction they gave.
+  assert.equal(why.kind, 'system');
+  assert.equal(why.variant, 'send-refused');
+  assert.doesNotMatch(String(rt.describeItem(why) ?? ''), /^You:/, 'no agent hears it as the person');
   assert.equal(store.state.threads[threadId].summaryPending, null, 'Summarize back works again');
 });
