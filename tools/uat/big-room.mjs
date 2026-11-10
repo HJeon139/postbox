@@ -152,14 +152,17 @@ function addDiagrams(items, n) {
   }
 }
 
-/** The agent replies to change, n of them spread evenly after the landmarks. @param {any[]} items @param {number} n */
+/**
+ * The agent replies to change, n of them spread evenly after the landmarks, skipping one an earlier option already
+ * changed, such as a diagram: a review there would replace it. @param {any[]} items @param {number} n @param {string} what
+ */
 function spread(items, n, what) {
   const first = 6; // after the landmarks
   const stride = Math.floor((items.length - first) / Math.max(n, 1));
   const at = [];
   for (let k = 0; k < n; k++) {
     const from = Math.max((at.at(-1) ?? first - 1) + 1, first + k * stride);
-    const i = items.findIndex((it, j) => j >= from && it.kind === 'agent');
+    const i = items.findIndex((it, j) => j >= from && it.kind === 'agent' && !MERMAID_FENCE.test(it.text));
     if (i < 0) throw new Error(`The big room has too few agent replies for ${n} ${what}.`);
     at.push(i);
   }
@@ -200,6 +203,9 @@ function addReviews(items, n) {
     items[i] = { ...rest, kind: 'block', valid: true, block, ...approvedOnce(block, it.at).item };
   }
 }
+
+/** A reply addDiagrams gave a diagram. */
+const MERMAID_FENCE = /```mermaid\n/;
 
 /** The seed of the work’s own random stream, apart from the items’, so the items are the same with work or without. */
 const WORK_SEED = 305;
