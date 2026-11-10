@@ -140,8 +140,13 @@ for (const mode of ROOM_MODES)
     const fromShort = await threadsAfter(short);
     const fromLong = await threadsAfter(long);
     test.info().annotations.push({ type: 'measured', description: JSON.stringify({ fromShort, fromLong }) });
-    // Kept, the Threads page after the long room holds about that room’s nodes more than after the short one.
-    expect(fromLong.atThreads - fromShort.atThreads, `live nodes at Threads: ${JSON.stringify({ fromShort, fromLong })}`).toBeLessThan(
-      (fromLong.atRoom - fromShort.atRoom) * 0.1,
-    );
+    // Kept, the Threads page after the long room holds about that room’s nodes more than after the short one. Read
+    // again until it drops, as the case above does: with the window on, the first read came before the room let go
+    // in 2 to 4 runs of 8 (the integrator’s review of #1075: 1,928 nodes, then 473 on the next read).
+    await expect
+      .poll(async () => (await liveNodes(cdp)) - fromShort.atThreads, {
+        message: `live nodes at Threads: ${JSON.stringify({ fromShort, fromLong })}`,
+        timeout: 5000,
+      })
+      .toBeLessThan((fromLong.atRoom - fromShort.atRoom) * 0.1);
   });
