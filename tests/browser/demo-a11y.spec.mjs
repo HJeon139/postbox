@@ -41,6 +41,9 @@ const AT_ONCE = Math.min(VARIANTS.length, Number(process.env.POSTBOX_A11Y_AT_ONC
 const MEANT = [
   /Cannot read properties of undefined \(reading 'map'\)/,
   /Failed to load resource: .*(503|ERR_INCOMPLETE_CHUNKED_ENCODING|ERR_CONNECTION_REFUSED)/,
+  // The same two in Firefox’s words: brokenMapApp’s rows.map, and the stream while the server is offline.
+  /can't access property "map", \w+ is undefined/,
+  /Firefox can’t establish a connection to the server at .*\/api\//,
 ];
 /**
  * The exceptions a page throws and the errors it logs from now on, except those MEANT while inScene() says it’s on
@@ -102,6 +105,9 @@ async function drawn(page) {
           ...document
             .getAnimations()
             .filter((a) => a.playState === 'running' && a.effect?.getTiming().iterations !== Infinity)
+            // Firefox doesn’t advance an animation in an item content-visibility skips; a fade in a skipped item doesn’t
+            // change axe’s result here (#1197).
+            .filter((a) => /** @type {any} */ (a.effect)?.target?.checkVisibility({ contentVisibilityAuto: true }) !== false)
             .map((a) => `an animation running: ${/** @type {any} */ (a).animationName ?? /** @type {any} */ (a).transitionProperty}`),
         ]),
       { message: 'apps checked, math rendered and animations ended', timeout: 15_000 },
