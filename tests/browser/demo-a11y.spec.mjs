@@ -105,7 +105,8 @@ async function drawn(page) {
           ...document
             .getAnimations()
             .filter((a) => a.playState === 'running' && a.effect?.getTiming().iterations !== Infinity)
-            // Firefox doesn’t advance an animation in an item content-visibility skips, and axe checks only what’s drawn.
+            // Firefox doesn’t advance an animation in an item content-visibility skips; a fade in a skipped item doesn’t
+            // change axe’s result here (#1197).
             .filter((a) => /** @type {any} */ (a.effect)?.target?.checkVisibility({ contentVisibilityAuto: true }) !== false)
             .map((a) => `an animation running: ${/** @type {any} */ (a).animationName ?? /** @type {any} */ (a).transitionProperty}`),
         ]),
