@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft r3, after critic's reads of r1 and r2, for the person's decisions (“Choices for the person”). Nothing here is built. |
+| **Status** | Draft r4: the person's answers of 10 November are written in (“Choices for the person”). C1 to C4 are decided; C5 is pending the person's confirmation. Nothing here is built. |
 | **Revises** | `designs/508/design.md`, revision 12: §3 (G1), §5 (Architecture), §6.3, §10 (Browser), §11 (the PF-1 budget), §14 (Rollout, track B) and §18 (Decisions). `designs/508/requirements.md`: §5 (Large rooms) and Storage. `designs/508/storage-design.md`: §6.9 (S2's trigger). Where this file and those differ, this file wins until they are edited to match. |
 | **The target** | Approved by the person on 10 November 2026 (`sprint4/perf-principles-approved.md`; #1155). Every interaction paints within 100 ms, p95, from input to the next paint, in a conversation of a million items, in Firefox and Chromium, on the person's Mac. The page draws what can be seen plus a screen either side, never the whole conversation. |
 | **Not in it** | The doc changes to `intent.md`, `architecture.md`, `engineering-practices.md`, `review-guide.md` and `developing.md` (items 1 to 6 of #1155). Those are one docs PR after this revision is decided. |
@@ -68,7 +68,7 @@ It also says where #305's read side fits (§7), what the budget spec gates (§8)
 |---|---|---|---|
 | PF-1 | Every interaction paints within 100 ms, p95, from input to the next paint, in a conversation of a million items, in Firefox and Chromium, on the reference Mac. The interactions are a key in the composer, a new message arriving while following, a one-screen scroll, opening or switching to a conversation, and opening or closing a pane. | The budget spec at 1,000, 100,000 and 1,000,000 items. | Key-to-frame within 10% of a small room's, up to 10,000 items |
 | PF-10 (new) | The page holds at most about 5,000 elements, whatever the room's size. A long item counts its mounted part, not its whole. | The spec counts mounted elements after each measure, and the lag log (#1145) reports the count. | — |
-| PF-11 (new) | Start-up doesn't grow with the rooms' items: Postbox starts, and draws the first room, in a time set by the number of conversations, not their lengths (Choice C4 sets the number). | The spec times start-up at each size. | Not stated |
+| PF-11 (new) | Start-up doesn't grow with the rooms' items: Postbox starts, and draws the first room, in a time set by the number of conversations, not their lengths: at most 1 s, p95, at any size, on the reference Mac (C4, decided). | The spec times start-up at each size. | Not stated |
 | PF-12 (new) | No size of a room stops the store from writing its snapshot, loading at start, or answering a read. A write costs in proportion to what it changes. | Store cases at past the string limit (#1180), then at a million items. | Not stated |
 | PF-8 | The person can find a message by its words in a long room. Since the page no longer mounts the room, this is required, not conditional. | A word in an item far outside the mounted range is found, and opens at it. | “Needed only if loading less of the room breaks find-in-page” |
 
@@ -101,7 +101,7 @@ Each item gets an estimated height before it is ever mounted.
 - **Once mounted:** its height is measured by ResizeObserver and kept by `id` and revision, in a map bounded by the loaded range.
 - **The scrollbar:** spacer heights are the sum of the estimates and measurements, so the scrollbar is roughly right without mounting anything. That's the same mechanism the window's stubs use today (`712a-skipped-items.md`).
 - **When a measurement corrects an estimate,** the view state re-anchors (B1b), so what you're reading doesn't move (PF-3).
-- **The thumb can shift** by the error of the estimates above the view. Choice C2 is about that.
+- **The thumb can shift** by the error of the estimates above the view. The person accepted that with gray placeholders (C2, decided).
 - **Geometry is read before any write, once a frame.** ResizeObserver entries give the sizes, not `offsetHeight` reads after a write.
 
 ### 4.3 The element budget
@@ -146,8 +146,9 @@ Each long item uses the same range rule as the transcript, inside its own scroll
 ### 5.2 Jumping and finding
 
 - **A jump** replaces the loaded range with the page around the target (PF-4, as `design.md` §10 says). That covers an `m=` link, Next needs you, an open ask, a search hit, or Jump to latest from far back.
-- **Dragging the scrollbar far** fetches the page at the position the thumb implies. Positions are dense, so `n` maps to a scroll offset within the estimates' error. Until the page arrives, the spacers keep their heights and the view shows placeholders (Choice C2).
-- **Finding a message (PF-8):** the browser's find-in-page sees only mounted text, so Postbox's own search goes to the server, and a hit is a jump. Choice C1 is how the person opens it.
+- **Dragging the scrollbar far** fetches the page at the position the thumb implies. Positions are dense, so `n` maps to a scroll offset within the estimates' error. Until the page arrives, the spacers keep their heights and the view shows gray placeholders at those heights (C2, decided).
+- **Finding a message (PF-8):** the browser's find-in-page sees only mounted text, so Postbox's own search goes to the server, and a hit is a jump. It's opened from the existing search in the conversation's top bar (`searchButton` in `app/js/search-dialog.mjs`, “Search this conversation…”), with no new box and no shortcut (C1, decided).
+  - **What changes in that search:** today it searches an index the page builds from the items it holds (`indexFor` in `app/js/transcript-search.mjs`, #866 W4). Once the page holds only a range, that index can't see the room, so the field sends its query to the server and shows the server's hits, with the same snippets and the same jump. The field, its results list and its keyboard behavior don't change.
   - The server's index can't be built per query at a million items. `shared/bm25.mjs` builds its index in O(items), and revision 12 built it on demand.
   - So the index is kept per block (§6.2), updated when a block changes, and searched block by block. A query costs O(blocks × terms) plus the hits read.
   - T-S3 measures it at a million items before it gates.
@@ -255,11 +256,11 @@ So the read side's server half goes ahead now. It doesn't depend on what the pag
   - the longest task around each measure;
   - start-up.
 - **The sizes:** 1,000, 100,000 and 1,000,000 items on the big-room seed, with reviews, apps and long tool runs in the room's shape.
-- **When it fails:** past 100 ms p95 (PF-1), past about 5,000 elements (PF-10), or past the start-up budget (PF-11, Choice C4).
+- **When it fails:** past 100 ms p95 (PF-1), past about 5,000 elements (PF-10), or past the start-up budget of 1 s p95 at any size (PF-11, C4, decided).
 - **When it runs, and what gates where,** to match #1166 and #1185 as decided:
   - **On each PR** that touches `app/`, `server/store*`, or a reader the held-view guard lists: 1,000 and 10,000 items. An every-size run took 21 minutes in #1185, against #1166's ceiling of about 10.
   - **What gates there:** in CI, only the element count, and only once `main` passes it (#1185 keeps the spec off CI until then). Times gate only on the reference Mac's headed run, never on CI or the build host, whose load swings.
-  - **Nightly:** 100,000 and 1,000,000 items (Choice C3, where).
+  - **Nightly:** 100,000 and 1,000,000 items, on the build host, in both browsers (C3, decided).
   - **When 100,000 moves onto every PR:** once start-up is bounded, at R4, since until then a 100,000-item room doesn't open (#1180).
 - **The probes:** both browsers have Event Timing, `performance.now`, `requestAnimationFrame` and the lag log, so each measure runs in both. Critic's conditions on #1166's r3 stand:
   - a key whose entry outlasts two frame gaps is “not measured”, never a time;
@@ -274,12 +275,12 @@ Each step ships alone, with a spec that fails first on `main` and the full brows
 | R0 | #1075, the window | — | merged, or at its last round |
 | R1 | The docs PR, #1155's items 1 to 6 | this revision decided | the light gate |
 | R2 | The budget spec (#1166), gating opening and elements above 10,000 items | R0 | #1150's and #1151's cases on commits before their fixes |
-| R3 | #1180: the line-based snapshot and replay, with C5 decided | — | a state past the string limit snapshots and loads; a segment over the limit replays; under C5(a), a state that fits is written in today's format and `main`'s reader loads it; a line-format file makes `main`'s reader refuse to start rather than start empty |
+| R3 | #1180's fix (#1194): the line-based snapshot and replay, as C5 is confirmed | — | a state past the string limit snapshots and loads; a segment over the limit replays; a line-format file makes `main`'s reader refuse to start rather than start empty; if C5's confirmation is canceled instead, a state that fits is written in today's format and `main`'s reader loads it |
 | R4 | B1a positions everywhere, and B2: the items API, filtered stream, watermarks and generations; `/api/state` without items; needs and open asks from the server | R0 | B2's specs in `design.md` §14; start-up at 30,000 items under the C4 budget |
 | R5 | Viewport rendering on the window: the range rule, heights by id, pinned items in the budget | R4 | the element count and switch time at 100,000 items; PF-3's 13 scroll specs |
 | R6 | Long items windowed: activity steps, reviews, tables | R5 | elements with one 2,000-step tool run in view |
 | R7 | The store's blocks, index and hot set; S2's manifest; readers behind range reads, by the guard's inventory | R3 | a million-item conversation snapshots, restarts and answers a range read; memory under the hot set's bound; T-S1, T-S2 |
-| R8 | Server search, indexed per block (PF-8) | R7 | a word far outside the range is found and opens, within 100 ms at a million items (T-S3) |
+| R8 | Server search, indexed per block, behind the existing top-bar search (PF-8, C1) | R7 | a word far outside the range is found and opens, within 100 ms at a million items (T-S3) |
 | R9 | The million-item run, nightly | R7, R8 | the spec at 1,000,000 items in both browsers |
 
 **Why this order:** R2 and R3 are each small, and remove a risk the person meets today. R4 is what ends start-up's growth for the page, and the page's half doesn't wait on the store's. R7 is the largest step, and it waits on nothing in R4 to R6.
@@ -290,38 +291,36 @@ Each step ships alone, with a spec that fails first on `main` and the full brows
 - **S2's 50 ms trigger** is dropped (§6.2).
 - **A1b and A2 are unchanged.** A2's records remove the last cross-room readers in §6.3. Until then, those readers run on the server.
 
-## 10. Choices for the person
+## 10. Choices for the person, and the person's answers
 
-Each choice below changes what the person sees or what they pay for. Every other choice in this revision is technical, for critic and scrum-master.
+The person answered all five on 10 November 2026, in scrum-master's form. Each choice changes what the person sees or what they pay for; every other choice in this revision is technical, for critic and scrum-master. The options weighed are kept below each answer.
 
-**C1. How you open Postbox's search, now that ⌘F/Ctrl+F finds only what's on screen.**
-- (a) **Recommended.** A search box in the conversation, as #508 already planned for PF-8 (`design.md` §10), with no new keyboard shortcut, since you asked this sprint to drop the search shortcut. ⌘F stays the browser's, finding only mounted text.
-- (b) Postbox takes over ⌘F inside a conversation and opens its own search. Find-in-page stays reachable from the browser's menu. This brings back a search shortcut, which you asked to drop.
-- (c) No Postbox search, only the browser's find. Not recommended: a message off screen can't be found by its words at all.
+**C1. How the person opens Postbox's search, now that ⌘F/Ctrl+F finds only what's on screen. Decided: Postbox's own search, through the existing top-bar search, with no new box and no shortcut.**
+- **The person's note:** “we already have a search box at the top bar. Please don't add a new search box.” So the existing “Search this conversation” field in the top bar sends its query to the server (§5.2). Nothing new is drawn in the conversation.
+- *Weighed:* (a) Postbox's search with no new shortcut, chosen, amended by the note. (b) Postbox takes over ⌘F inside a conversation, which brings back a shortcut the person asked to drop. (c) The browser's find only, which can't find a message off screen.
 
-**C2. What you see while a far part of a long conversation loads, for example after dragging the scrollbar to the top.**
-- (a) **Recommended.** Gray placeholders at the right heights, filled in when the page of items arrives. The scrollbar thumb may shift slightly as estimated heights are measured, but what you're reading never moves.
-- (b) The view waits at the old position until the items arrive, then jumps. There's no placeholder, but the drag feels stuck on a slow fetch.
-- (c) Exact heights by measuring every item off screen. The thumb never shifts, but it costs a pass over every item, which the target forbids. Not recommended.
+**C2. What the person sees while a far part of a conversation loads. Decided: gray placeholders at the right heights.**
+- They fill in when the items arrive. The scrollbar thumb can shift slightly as estimated heights are measured, but what's being read never moves.
+- *Weighed:* (b) the view waits, then jumps, which feels stuck on a slow fetch. (c) Exact heights for every item, a pass over every item the target rules out.
 
-**C3. Where the million-item run happens nightly.** CI runs Chromium only (#670), and a nightly million-item run in both browsers costs runner time.
-- (a) **Recommended.** On the build host, nightly, both browsers, with the results posted to the nightly issue. The reference Mac's headed run, which gates times, is run on each PR that touches what §8 lists, as its Mac check, not on every merge. No paid runner time.
-- (b) In CI, nightly, both browsers. It needs Firefox added to CI and pays runner minutes each night.
-- (c) Weekly instead of nightly, on the build host.
+**C3. Where the nightly runs at 100,000 and 1,000,000 items happen. Decided: on the build host, in both browsers.**
+- Results go to the nightly issue. The reference Mac's headed run, which gates times, is the Mac check on each PR that touches what §8 lists. No paid runner time.
+- *Weighed:* (b) In CI, which needs Firefox there (#670) and runner minutes each night. (c) Weekly, which lets a regression sit up to a week.
 
-**C4. The start-up budget, from opening Postbox to the first room drawn.** The target's 100 ms is for interactions, and start-up isn't one.
-- (a) **Recommended.** At most 1 s at any size, p95, on the reference Mac. That's today's start-up at 1,000 items, 0.7 to 0.8 s (table 1).
-- (b) At most 2 s.
-- (c) Parity with a 1,000-item room, measured on each run, like PF-1's old relative budget.
+**C4. The start-up budget, from opening Postbox to the first room drawn. Decided: at most 1 s, p95, at any size, on the reference Mac.**
+- That's today's start-up at 1,000 items (0.7 to 0.8 s, table 1), so R4 must load only headers at start.
+- *Weighed:* (b) at most 2 s. (c) Parity with a 1,000-item room, which drifts with its baseline.
 
-**C5. Going back to an older Postbox, which first breaks at R3 (#1180), not R7.** An older build reads `snapshot.json` with one `JSON.parse` (`server/store-recover.mjs:62` on `main`), so a line-format snapshot makes it refuse to start, with “Couldn't read the snapshot”. It fails closed: nothing starts empty or is overwritten. Every clone run without `--data` shares `~/.postbox`. R7's sharded folder is a second break of the same kind, asked again then. This one is asked now, with R3.
-- (a) **Recommended (critic's).** No break while the state fits.
-  - #1180 writes today's single-string `snapshot.json` while `JSON.stringify` succeeds, and the line format only when it throws `RangeError`, past about 68,000 seeded items. Its reader already loads both.
-  - **Cost:** an older build breaks only for a room already past the limit, which an older build can't load anyway. Nothing breaks today, so #1180 needs no `BREAKING CHANGE` footer yet.
-  - **The catch:** the writer has two paths, each with its own test, and a room switches format once, near the limit. Below it, the snapshot still builds one large string, as it does today.
-- (b) Accept the break now.
-  - #1180 always writes the line format, with a `BREAKING CHANGE` footer and a release note. A tool rebuilds an old-format snapshot for going back, refusing past the limit.
-  - **Cost:** every older clone on `~/.postbox` stops starting the day #1180 merges, though the old format could still hold the state. Older clones need their own `--data` folder.
+**C5. The snapshot format once #1180's fix (#1194) merges. The person's answer: always the new line format now. Pending the person's confirmation**, which scrum-master asked for because it isn't the option recommended here.
+- **What it means:**
+  - snapshots stop Postbox for under 8 ms instead of about 0.26 s at the person's size, measured on the reference Mac (tester's probe; lead-state's table on #1155);
+  - an older build that uses `~/.postbox` refuses to start on that folder, with “Couldn't read the snapshot”, and loses nothing;
+  - #1194 carries a `BREAKING CHANGE` footer and a release note;
+  - a case shows `main`'s reader refusing the new file rather than starting empty;
+  - a tool rebuilds an old-format snapshot for going back, refusing past about 68,000 seeded items.
+- **The background:** an older build reads `snapshot.json` with one `JSON.parse` (`server/store-recover.mjs:62` on `main`). R7's sharded folder is a second break of the same kind, asked again then.
+- *Weighed:* the recommended option was to keep today's single-string snapshot while `JSON.stringify` succeeds, switching to lines only on `RangeError`. That breaks no older build until a room passes the limit, at the cost of two writer paths and a stall of about 0.26 s at the person's size, roughly 0.65 s near the limit (estimated).
+- **If the person cancels the confirmation,** that recommended option stands, and the R3 row's first case applies instead of the refusal case.
 
 ## 11. Tests owed, failing first
 
