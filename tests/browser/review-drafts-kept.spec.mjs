@@ -120,3 +120,36 @@ test('#1144 a draft written on revision 2 follows its line into revision 3, whos
   // Its text is gone from revision 3, so it’s marked, as on a page left open; read from the first draft, it was unmarked.
   await expect.poll(() => placed(r.block, 'Name it.'), { message: 'marked as its text changed' }).toEqual({ marked: [26], tags: ['Its text changed'] });
 });
+
+test('#1144 a review answered while the page was away has its kept draft forgotten on the next load', async ({ page }) => {
+  const r = await room.withReview(page, 'Elsewhere');
+  await drawn(r.block, 'Preview');
+  await commentOn(page, r.block, 'low', 'Say how low.');
+  await expect.poll(() => kept(page), { message: 'the draft is kept' }).toHaveLength(1);
+  await page.goto('about:blank');
+  // Answered in another tab: the server has it, and this page's storage still has the draft.
+  room.app.rt.act(r.thread.id, r.itemOf().id, 'submit', { verdict: 'approve', comments: [] }, 1);
+  await room.idle();
+  await page.goto(`${room.app.origin}/#/t/${r.thread.id}`);
+  await synced(page, room.app);
+  await expect(r.block).toBeVisible();
+  await expect.poll(() => kept(page), { message: 'forgotten once the review shows answered' }).toEqual([]);
+});
+
+test('#1144 at most 20 review drafts are kept, the oldest dropped first, never the one being written', async ({ page }) => {
+  await page.goto(`${room.app.origin}/`);
+  await synced(page, room.app);
+  const left = await page.evaluate(async () => {
+    const store = await import('/app/js/review-draft-store.mjs');
+    const draft = (text) => ({ comments: [{ line: 1, text }], verdict: 'comment', on: 'one line' });
+    for (let i = 1; i <= 22; i++) store.keepReviewDraft(`it_r${i}`, 1, draft(`note ${i}`));
+    // Writing an old one again makes it the newest.
+    store.keepReviewDraft('it_r3', 1, draft('note 3, again'));
+    return Object.keys(localStorage)
+      .filter((k) => k.startsWith('pb-review-draft-'))
+      .map((k) => k.slice('pb-review-draft-'.length))
+      .sort();
+  });
+  const want = ['it_r3', ...Array.from({ length: 19 }, (_, i) => `it_r${i + 4}`)].sort();
+  expect(left).toEqual(want);
+});
