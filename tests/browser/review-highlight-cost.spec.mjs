@@ -22,6 +22,25 @@ const review = (n) => ({
   ],
 });
 
+/**
+ * Whether the comment highlight paints on the nth review’s text: its preview drawn with the highlight and without it
+ * differ. `.size` alone counts ranges that Firefox never paints, as when they were added before the block was on the
+ * page (the integrator’s read of #1159).
+ * @param {import('@playwright/test').Page} page @param {number} n
+ */
+async function painted(page, n) {
+  const md = page.locator('.rv-preview .md').nth(n);
+  const marked = await md.screenshot();
+  await page.evaluate(() => {
+    const w = /** @type {any} */ (window);
+    w.pbQuotes = CSS.highlights.get('rv-quote');
+    CSS.highlights.delete('rv-quote');
+  });
+  const plain = await md.screenshot();
+  await page.evaluate(() => CSS.highlights.set('rv-quote', /** @type {any} */ (window).pbQuotes));
+  return !marked.equals(plain);
+}
+
 /** @type {Awaited<ReturnType<typeof startPostbox>>} */
 let app;
 /** @type {any} */
@@ -76,6 +95,8 @@ test('#1151 opening a room of eight commented reviews builds the comment highlig
   test.info().annotations.push({ type: 'measured', description: `Highlight built ${counts.built}, set ${counts.set}` });
   expect(counts.built, 'the highlight is built once, not once per review').toBeLessThanOrEqual(1);
   expect(counts.set, 'and set once').toBeLessThanOrEqual(1);
+  expect(await painted(page, 0), 'the first review’s quote paints').toBe(true);
+  expect(await painted(page, REVIEWS - 1), 'and the last one’s').toBe(true);
 
   // A revised review draws again: its old marks leave the highlight, so it still holds one per review.
   rt.sendMessage(thread.id, { text: '@drafter revise' });
@@ -85,4 +106,16 @@ test('#1151 opening a room of eight commented reviews builds the comment highlig
   await expect
     .poll(() => page.evaluate(() => CSS.highlights.get('rv-quote')?.size ?? 0), { message: 'one mark per review, not the old ones too' })
     .toBe(REVIEWS);
+  const revised = page.locator('.rv-preview .md').filter({ hasText: 'One more line.' });
+  const index = await revised.evaluate((el) => [...document.querySelectorAll('.rv-preview .md')].indexOf(el));
+  expect(await painted(page, index), 'the revision’s quote paints').toBe(true);
+
+  // To another conversation and back: the reviews draw again, and their quotes paint again.
+  const other = rt.createThread({ projectId: Object.values(rt.s.projects)[0].id, title: 'Elsewhere', personaIds: [drafter.id] });
+  await page.goto(`${app.origin}/#/t/${other.id}`);
+  await expect(page.locator('.rv-preview .md')).toHaveCount(0);
+  await page.goto(`${app.origin}/#/t/${thread.id}`);
+  await expect(page.locator('.rv-preview .md')).toHaveCount(REVIEWS);
+  await expect.poll(() => page.evaluate(() => CSS.highlights.get('rv-quote')?.size ?? 0), { message: 'one mark per review after the switch' }).toBe(REVIEWS);
+  expect(await painted(page, 0), 'after a room switch, a quote paints').toBe(true);
 });
