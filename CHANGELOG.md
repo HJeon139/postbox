@@ -2,6 +2,15 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.58.1 (2026-11-10)
+
+### Fixes
+
+- **adapters:** a slash command or re-attach leaves the tools-down note for the next turn (#1161)
+- **review:** add comment quotes to the highlight a frame after they're drawn (#1151)
+- **review:** the comment highlight is built once, and each review adds only its own marks (#1151)
+- **adapters:** show when Postbox's server fails in an init, and tell the agent next turn (#1161)
+
 ## 1.58.0 (2026-11-10)
 
 ### Features
