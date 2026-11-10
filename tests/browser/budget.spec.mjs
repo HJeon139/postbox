@@ -141,7 +141,8 @@ async function openRoom(size, browser) {
   seedBigRoom(app.store, small.id, { count: 20 });
   const big = app.rt.createThread({ projectId, title: `${size.toLocaleString('en-US')} items`, personaIds: [] });
   const seeding = Date.now();
-  seedBigRoom(app.store, big.id, { count: size, work: true });
+  // One review with a comment on a selection per 100 items, so a room switch builds the review highlight (#1151).
+  seedBigRoom(app.store, big.id, { count: size, work: true, reviews: Math.max(1, Math.round(size / 100)) });
   const seedMs = Date.now() - seeding;
   // Inside headless Chromium’s 1280 × 720 window: what lies outside it is never presented, so a key typed in a
   // composer below it gets no Event Timing entry until some other change presents a frame (tools/key-frame-stats.mjs,
@@ -196,7 +197,9 @@ async function measureOpening(room) {
     await still(page, 30_000);
     counts.push(await page.evaluate(() => document.getElementsByTagName('*').length));
   }
-  report(room, 'opening', TIMES_GATE, { ...timedVerdict(times), firstMs }, since);
+  // The reviews’ quotes are marked: the switches built the highlight #1151 measures.
+  const marks = await page.evaluate(() => /** @type {any} */ (globalThis.CSS)?.highlights?.get('rv-quote')?.size ?? 0);
+  report(room, 'opening', TIMES_GATE, { ...timedVerdict(times), firstMs, marks }, since);
   report(room, 'mounted elements', true, elementsVerdict(Math.max(...counts)), since);
 }
 

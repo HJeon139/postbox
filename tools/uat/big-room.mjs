@@ -63,8 +63,10 @@ function idOf(i, count) {
 /**
  * The room’s items, oldest first, and its landmarks’ ids. handles: the agents in it; the mention is of the first.
  * diagrams: how many agent replies, spread evenly through the room, end in a Mermaid diagram (#701’s UAT trigger,
- * `- seed-diagrams:`). None by default, so the rooms the key-press tool measures don’t change.
- * @param {{ count?: number, start?: number, seed?: number, handles?: string[], diagrams?: number }} [opts]
+ * `- seed-diagrams:`). None by default, so the rooms the key-press tool measures don’t change. reviews: how many agent
+ * replies, spread the same way, are review blocks with a comment on a selection, which a room switch marks with the
+ * review highlight (#1151, the budget spec); none by default either.
+ * @param {{ count?: number, start?: number, seed?: number, handles?: string[], diagrams?: number, reviews?: number }} [opts]
  */
 export function bigRoomItems({
   count = 1000,
@@ -72,6 +74,7 @@ export function bigRoomItems({
   seed = 508,
   handles = ['researcher', 'critic', 'developer'],
   diagrams = 0,
+  reviews = 0,
 } = {}) {
   const rnd = random(seed);
   const step = Math.floor((5 * DAY_MS) / count);
@@ -110,6 +113,7 @@ export function bigRoomItems({
   const others = handles.length > 1 ? handles.slice(1) : handles;
   for (let i = items.length; i < count; i++) items.push(filler(rnd, i, at(i), others, at(i) < start + DAY_MS, count));
   addDiagrams(items, diagrams);
+  addReviews(items, reviews);
   // The first day's last item, for bigroom.md phase 1's window-paged-back (#531): reading at it or above, you paged
   // back to the room's start.
   landmarks.firstDayLast = items.findLast((it) => it.at < start + DAY_MS).id;
@@ -145,6 +149,55 @@ function addDiagrams(items, n) {
     if (at < 0) throw new Error(`The big room has too few agent replies for ${n} diagrams.`);
     items[at] = { ...items[at], text: `${items[at].text}\n\n\`\`\`mermaid\nflowchart TD\n  D${k}a[Plan] --> D${k}b[Ship]\n\`\`\`\n` };
     last = at;
+  }
+}
+
+/** The agent replies to change, n of them spread evenly after the landmarks. @param {any[]} items @param {number} n */
+function spread(items, n, what) {
+  const first = 6; // after the landmarks
+  const stride = Math.floor((items.length - first) / Math.max(n, 1));
+  const at = [];
+  for (let k = 0; k < n; k++) {
+    const from = Math.max((at.at(-1) ?? first - 1) + 1, first + k * stride);
+    const i = items.findIndex((it, j) => j >= from && it.kind === 'agent');
+    if (i < 0) throw new Error(`The big room has too few agent replies for ${n} ${what}.`);
+    at.push(i);
+  }
+  return at;
+}
+
+/**
+ * n agent replies become answered review blocks, each with one comment on a selection of its text, so its Preview
+ * marks the quote with the review highlight. The reply’s id, time and agent stay, so the room’s other items don’t move.
+ * @param {any[]} items @param {number} n
+ */
+function addReviews(items, n) {
+  for (const [k, i] of spread(items, n, 'reviews').entries()) {
+    const it = items[i];
+    const block = {
+      id: `plan-${k}`,
+      type: 'review',
+      version: 1,
+      title: `plan-${k}.md`,
+      fallback: `Plan ${k}`,
+      format: 'markdown',
+      content: `# Plan ${k}\n\nShip the release train on Tuesday.\n`,
+      // “release train” on line 3, columns 10 to 22.
+      threads: [
+        {
+          id: `t${k}`,
+          line: 3,
+          col: 10,
+          endLine: 3,
+          endCol: 22,
+          quote: 'release train',
+          status: 'open',
+          comments: [{ author: `@${it.handle}`, text: 'Which train?' }],
+        },
+      ],
+    };
+    const { text: _, ...rest } = it;
+    items[i] = { ...rest, kind: 'block', valid: true, block, ...approvedOnce(block, it.at).item };
   }
 }
 
