@@ -97,6 +97,9 @@ const PENDING = {
   // a held commit may have drained it already, and sending it again would deliver it twice (#1007).
   'message-queue.mjs': ['sendQueuedNow', 'releaseQueued', 'drainQueue', 'takePending'],
   'permission-cards.mjs': ['recordDenial'], // the same refused call, once
+  // Whether an agent is held after a failure, which decides whether what waits for it goes: the failed turn's own
+  // write of its state may be held behind a commit (#1146).
+  'queue-batch.mjs': ['heldAfterFailure'],
   'permission-expiry.mjs': ['tellExpired'], // the card a turn’s end just expired, told about once (#721)
   'permission-prompt.mjs': ['permission'], // the card the call waits on
   'remote/turns-end.mjs': ['stoppedHung'], // the hung host turn’s own replies

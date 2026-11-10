@@ -1,14 +1,30 @@
 // Queue batches keep per-agent order and thread boundaries; later turns can supersede a waker’s old request (#374).
 import { positionOf } from '../shared/item-index.mjs';
 
-/** @param {any} rt @param {any} thread @param {boolean} wakesOnly */
-export function readyGroups(rt, thread, wakesOnly) {
+/**
+ * Whether an agent's last reply failed and no turn has run since (#1146, the person's choice): what waits for it in the
+ * queues, the person's messages and other agents' wakes alike, is held until the person writes to it or retries the
+ * reply. A turn's start ends the hold; one that doesn't move on (a lint pass, an app check) keeps the failed reply as
+ * its need, so the hold is back at its end. Dismiss ends it too. From the pending session, as a held commit may hold the
+ * failure's own write.
+ * @param {any} rt @param {string} sessionId
+ */
+export function heldAfterFailure(rt, sessionId) {
+  return (rt.store.pending.session(sessionId) ?? rt.s.sessions[sessionId])?.state === 'failed';
+}
+
+/**
+ * What can go from a thread's queue, by agent, in order for each. release: an agent held after a failure that the
+ * person's message releases now (heldAfterFailure).
+ * @param {any} rt @param {any} thread @param {string | null} [release]
+ */
+export function readyGroups(rt, thread, release = null) {
   const blocked = new Set();
   const groups = new Map();
+  const held = (/** @type {string} */ id) => id !== release && heldAfterFailure(rt, id);
   for (const q of thread.queue ?? []) {
-    if (wakesOnly && q.kind !== 'wake') continue;
     // An agent being deleted gets nothing in its Undo window: its messages wait for Undo or the purge (#427, R1).
-    const free = !q.sessionIds.some((id) => blocked.has(id) || rt.turns.has(id) || rt.exiting.has(id) || rt.s.sessions[id]?.deleting);
+    const free = !q.sessionIds.some((id) => blocked.has(id) || rt.turns.has(id) || rt.exiting.has(id) || rt.s.sessions[id]?.deleting || held(id));
     if (!free) {
       for (const id of q.sessionIds) blocked.add(id);
       continue;

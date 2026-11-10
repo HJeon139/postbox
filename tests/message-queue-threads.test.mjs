@@ -36,7 +36,7 @@ test('a wake queued in a turn’s thread joins that turn when another thread’s
   ]);
 });
 
-test('after a failed reply, a wake queued in the next turn’s thread joins it past another thread’s pending message', async () => {
+test('after a failed reply, what was delivered while it ran goes, and a wake queued in its thread waits for the person (#1146)', async () => {
   const f = setup();
   const root = f.rt.addItem(f.t.id, { kind: 'agent', sessionId: f.alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
   const topic = f.rt.startTopic(f.t.id, root.id).threadId;
@@ -55,9 +55,13 @@ test('after a failed reply, a wake queued in the next turn’s thread joins it p
   fail();
   await settle(f.rt);
   assert.deepEqual(turnsAfterFirst(f), [
-    ['conversation', ['Pending in conversation.', 'Queued from alpha in conversation.']],
+    ['conversation', ['Pending in conversation.']],
     ['topic', ['Pending in topic.']],
   ]);
+  assert.deepEqual(
+    f.store.state.threads[f.t.id].queue.map((q) => q.text),
+    ['Queued from alpha in conversation.'],
+  );
 });
 
 test('a queued wake stays behind a later pending message in its thread that can’t join', async () => {

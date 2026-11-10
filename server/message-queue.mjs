@@ -98,10 +98,11 @@ export function drainAll(rt) {
   for (const t of Object.values(rt.s.threads)) if (t.queue?.length && !t.deleting) rt.drainQueue(t.id);
 }
 
-export function drainQueue(rt, threadId, wakesOnly = false) {
+/** @param {any} rt @param {string} threadId @param {string | null} [release]  an agent held after a failure, released now */
+export function drainQueue(rt, threadId, release = null) {
   const t = rt.store.pending.thread(threadId);
   if (!t?.queue?.length) return;
-  const groups = readyGroups(rt, t, wakesOnly);
+  const groups = readyGroups(rt, t, release);
   for (const batch of takeBatches(rt, threadId, groups)) deliverBatch(rt, threadId, batch.sessionIds, batch.messages);
 }
 
@@ -150,7 +151,7 @@ export function takePending(rt, se, turn, drain) {
     if (!later && drain && (plainMessage(next.message) || next.message.messages)) {
       const t = rt.store.pending.thread(where);
       if (t?.queue?.length) {
-        const ready = readyGroups(rt, t, drain === 'wakes');
+        const ready = readyGroups(rt, t);
         for (const batch of takeBatches(rt, where, ready)) {
           if (batch.sessionIds[0] !== se.id) deliverBatch(rt, where, batch.sessionIds, batch.messages);
           else next.message = combineMessages([...(next.message.messages ?? [next.message]), ...batch.messages].sort(byArrival));
@@ -161,7 +162,7 @@ export function takePending(rt, se, turn, drain) {
     const t = rt.turns.get(se.id);
     if (t) t.pending.push(...groups);
     else holdRest(rt, se, next, groups);
-  } else if (drain) rt.drainQueues(se.id, turn.threadId, drain === 'wakes');
+  } else if (drain) rt.drainQueues(se.id, turn.threadId);
 }
 
 /**
@@ -194,10 +195,25 @@ export function batchPending(rt, pending, threadId) {
   return groups;
 }
 
-export function drainQueues(rt, sessionId, threadId, wakesOnly = false) {
-  const ids = new Set(wakesOnly ? [] : [threadId]);
-  for (const t of pendingThreads(rt)) if (t.queue?.some((q) => q.sessionIds.includes(sessionId) && (!wakesOnly || q.kind === 'wake'))) ids.add(t.id);
-  for (const id of ids) rt.drainQueue(id, wakesOnly);
+export function drainQueues(rt, sessionId, threadId) {
+  const ids = new Set([threadId]);
+  for (const t of waitingFor(rt, sessionId)) ids.add(t.id);
+  for (const id of ids) rt.drainQueue(id);
+}
+
+const waitingFor = (rt, sessionId) => pendingThreads(rt).filter((t) => t.queue?.some((q) => q.sessionIds.includes(sessionId)));
+
+/**
+ * The person's message to an agent held after a failure, queued in threadId, releases what waited for it (#1146): the
+ * other threads' first, so their entries lead its turn and the queue the message is in goes last, with it at the end. A
+ * thread that waits behind that turn goes at its end, as after any turn.
+ * @param {any} rt @param {string} sessionId @param {string} threadId
+ */
+export function releaseAfterFailure(rt, sessionId, threadId) {
+  const ids = waitingFor(rt, sessionId)
+    .map((t) => t.id)
+    .filter((id) => id !== threadId);
+  for (const id of [...ids, threadId]) rt.drainQueue(id, sessionId);
 }
 
 export function rememberStoppedMessages(rt, sessionId, message) {

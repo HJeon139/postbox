@@ -176,7 +176,7 @@ test('#228: a summary isn’t written while an agent replies in the thread, and 
   assert.equal(store.item(t.id, reply.id).threadSummary, undefined);
 });
 
-test('#228: a wake waiting for a busy agent that’s stopped goes unanswered, and its agent hears so; one behind a failed turn goes', async () => {
+test('#228: a wake waiting for a busy agent that’s stopped goes unanswered, and its agent hears so', async () => {
   const { rt, adapter, t, alpha, beta } = setup();
   const h = held();
   adapter.next.push(h.step);
@@ -194,17 +194,7 @@ test('#228: a wake waiting for a busy agent that’s stopped goes unanswered, an
   rt.sendMessage(t.id, { text: '@alpha anything?' });
   await settle(rt);
   assert.match(context(adapter.calls.at(-1)), /@beta was stopped before it answered your message \(“One question\.”\)\. Wake it again/);
-  const failing = held();
-  adapter.next.push(async (c) => {
-    await failing.step(c);
-    throw new Error('API 500');
-  });
-  rt.sendMessage(t.id, { text: '@beta another job' });
-  await sleep(5);
-  rt.agentWake(alpha.id, 'beta', 'Second question.');
-  failing.release();
-  await settle(rt);
-  assert.equal(adapter.calls.find((x) => x.message.text === 'Second question.')?.sessionId, beta.id, 'the wake was lost when the turn failed');
+  // One behind a failed turn waits for the person instead (#1146): tests/message-queue-failed.test.mjs.
 });
 
 test('#228: another agent hears of new messages in a thread once, and not of the thread it answers in', async () => {

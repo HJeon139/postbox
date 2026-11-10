@@ -244,8 +244,8 @@ function comesFirst(need, at, best) {
 /**
  * Dismiss a failed reply (#883): the person won't retry it, so it stops being a need, keeps its error text and its
  * `failed` status (Retry still works on it), and nothing runs. Its need goes to whatever else waits, as when a card is
- * answered: the failed turn's own asks count, since no new turn starts to decide them, unlike Retry. A second Dismiss,
- * from a double click or another tab, changes nothing.
+ * answered: the failed turn's own asks count, since no new turn starts to decide them, unlike Retry. What the failure
+ * held in the queues goes (#1146). A second Dismiss, from a double click or another tab, changes nothing.
  * @param {any} rt @param {string} threadId @param {string} itemId
  */
 export function dismissFailed(rt, threadId, itemId) {
@@ -255,5 +255,7 @@ export function dismissFailed(rt, threadId, itemId) {
   if (it.dismissed) return { ok: true };
   rt.patchItem(threadId, itemId, { dismissed: true });
   releaseNeed(rt, rt.s.sessions[it.sessionId], itemId);
+  // What waited for it while the failure held it now goes, as after any turn, unless another failure still holds it (#1146).
+  rt.drainQueues(it.sessionId, threadId);
   return { ok: true };
 }

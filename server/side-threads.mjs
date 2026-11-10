@@ -5,7 +5,7 @@
 
 import { HANDLE, HANDLE_SHAPE, HOP_LIMIT } from '../shared/limits.mjs';
 import { clip, httpError, tooLongToSend } from './helpers.mjs';
-import { arrival } from './queue-batch.mjs';
+import { arrival, heldAfterFailure } from './queue-batch.mjs';
 import { roomChainLimit } from './room-chain-limit.mjs';
 import { newId } from './store.mjs';
 import { pendingThreads, updateThread } from './thread-write.mjs';
@@ -75,13 +75,21 @@ export function agentWake(
   rt.recordAgentMessage(from.id, 'to', p.handle, text);
   rt.recordAgentMessage(target.id, 'from', from.handle, text);
   // The woken agent answers from its session in the conversation (#110). Busy, it takes the wake when its turn ends,
-  // from the queue where it was sent, where the person sees it and can cancel it (#228).
-  const waits = rt.turns.has(target.id) || rt.exiting.has(target.id);
+  // from the queue where it was sent, where the person sees it and can cancel it (#228). Held after its reply failed,
+  // it takes it once the person writes to it or retries (#1146).
+  const failed = heldAfterFailure(rt, target.id);
+  const waits = rt.turns.has(target.id) || rt.exiting.has(target.id) || failed;
   const wake = wakeEntry(from, target, text, it.id);
   if (waits) updateThread(rt, at, (t) => ({ queue: [...(t.queue ?? []), wake] }));
   else deliverWake(rt, at, wake);
   // itemId: the message the wake went out as, so a turn’s further mentions reuse it rather than post it again.
-  return { ok: true, itemId: it.id, message: waits ? `Woke @${p.handle}: it’s busy, so it answers when its current turn ends.` : `Woke @${p.handle}.` };
+  return { ok: true, itemId: it.id, message: wokeMessage(p.handle, waits, failed) };
+}
+
+/** What wake_agent tells the waker. @param {string} handle @param {boolean} waits @param {boolean} failed */
+function wokeMessage(handle, waits, failed) {
+  if (failed) return `Woke @${handle}: its last reply failed, so it answers once the person retries it or writes to it.`;
+  return waits ? `Woke @${handle}: it’s busy, so it answers when its current turn ends.` : `Woke @${handle}.`;
 }
 
 /**

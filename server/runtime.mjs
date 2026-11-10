@@ -63,7 +63,7 @@ import {
   setPermissionMode,
 } from './permissions-panel.mjs';
 import { checkEffort, checkSetup, handleOf } from './persona-checks.mjs';
-import { arrival } from './queue-batch.mjs';
+import { arrival, heldAfterFailure } from './queue-batch.mjs';
 import { readCapped } from './read-capped.mjs';
 import { addReadFolder, readCardAlways } from './read-folders.mjs';
 import { readMessage } from './read-message.mjs';
@@ -469,14 +469,22 @@ export class Runtime {
     // And the agent you reply to, as the mentioned ones above.
     const woken = targets.map(({ se }) => this.persona(se.personaId));
     refuseUnregisteredSend(this, woken);
-    // Messages to a busy agent wait in the queue unless you choose Send now.
+    // Messages to a busy agent wait in the queue unless you choose Send now. So do those to one held after a failure,
+    // behind what waited for it, which they release (#1146).
     const busy = targets.filter(({ se }) => this.turns.has(se.id));
+    const held = targets.filter(({ se }) => heldAfterFailure(this, se.id));
     const q =
-      busy.length && !sendNow ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now(), seq: arrival() } : null;
+      (busy.length || held.length) && !sendNow
+        ? { id: newId('q'), text, attachments, sessionIds: targets.map(({ se }) => se.id), at: Date.now(), seq: arrival() }
+        : null;
     if (q) updateThread(this, threadId, (x) => ({ queue: [...(x.queue ?? []), q] }));
     // Send now is a change of course (stopForSendNow), also for one already exiting from a plain Stop (#1040).
     else if (sendNow) for (const { se } of targets) queue.stopForSendNow(this, se.id);
-    const sent = q ? { queued: q } : this.postAndDeliver(threadId, { text, attachments }, targets);
+    if (q) for (const { se } of held) queue.releaseAfterFailure(this, se.id, threadId);
+    // Sent with what it released, it doesn't wait: the page would say it does, until the agent finishes.
+    let sent = {};
+    if (!q) sent = this.postAndDeliver(threadId, { text, attachments }, targets);
+    else if (busy.length) sent = { queued: q };
     // A card waiting to wake one of them is stale now (#439), whether this went at once or waits in the queue. It
     // retires after, so the wake you never allowed goes behind your message rather than ahead of it.
     for (const { se } of targets) retireStale(this, threadId, se, 'you wrote to it', { byPerson: true });
@@ -526,11 +534,11 @@ export class Runtime {
 
   /**
    * Sends what can go from a thread’s queue: every item whose agents are free, in order for each agent, so one waiting
-   * for a busy agent holds back nothing for another (#228). wakesOnly: only agents’ wakes, after a failed turn, when
-   * your own messages wait for you to see the failure.
+   * for a busy agent holds back nothing for another (#228), and none for an agent held after a failure (#1146) goes.
+   * release: an agent held after a failure that your message releases now.
    */
-  drainQueue(threadId, wakesOnly = false) {
-    return queue.drainQueue(this, threadId, wakesOnly);
+  drainQueue(threadId, release = null) {
+    return queue.drainQueue(this, threadId, release);
   }
 
   // ── Turns ──────────────────────────────────────────────────────────────────────────
@@ -1003,9 +1011,9 @@ export class Runtime {
       const wakes = turn.said.trim() && !err.remote && se.remoteTurn?.state !== 'lost';
       const woke = wakes ? this.wakeMentions(se, turn, `(This reply failed before it finished: ${message} It may be cut off.)\n\n${turn.said}`) : [];
       if (woke.length || turn.woken.length) this.patchItem(turn.threadId, target, { wokeOnFailure: [...new Set([...turn.woken, ...woke])] });
-      // A wake that waited for this turn still goes: with no forks, it was promised an answer (#228). Your own
-      // queued messages wait, as before, for you to see the failure.
-      this.takePending(se, turn, 'wakes');
+      // What was delivered while it ran, such as your answer to a block, still goes. What waits in the queues for it,
+      // your messages and other agents' wakes alike, is held until you write to it or retry (#1146, heldAfterFailure).
+      this.takePending(se, turn, true);
       return;
     }
     // An app-check turn that ended without a new version: show the app with a note, or crashed (#964), not wait forever.
@@ -1066,8 +1074,7 @@ export class Runtime {
   }
 
   /**
-   * What waited for a turn that ended: the next message, with the rest behind it; with none, the queues (drain), or
-   * only agents’ wakes waiting there (drain: 'wakes').
+   * What waited for a turn that ended: the next message, with the rest behind it; with none, the queues (drain).
    */
   takePending(se, turn, drain) {
     return queue.takePending(this, se, turn, drain);
@@ -1086,8 +1093,8 @@ export class Runtime {
    * The queues waiting on this session: the thread its turn was in, and any other (its conversation, a side thread)
    * whose next message is for it. A session answers in more than one thread now (#110).
    */
-  drainQueues(sessionId, threadId, wakesOnly = false) {
-    return queue.drainQueues(this, sessionId, threadId, wakesOnly);
+  drainQueues(sessionId, threadId) {
+    return queue.drainQueues(this, sessionId, threadId);
   }
 
   /**
