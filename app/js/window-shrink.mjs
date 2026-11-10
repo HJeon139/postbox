@@ -201,7 +201,27 @@ export function recenter(w, i) {
   for (const k of islands.filter((k) => k >= w.to).reverse()) w.below.after(/** @type {HTMLElement} */ (w.islands.get(k)));
   w.mountRun(w.from, w.to, w.below);
   w.paintSpacers();
+  refocus(active);
+}
+
+/**
+ * Gives focus back to what had it before an island went through a fragment, if it’s on the page again and lost it.
+ * @param {Element | null} active
+ */
+export function refocus(active) {
   if (active instanceof HTMLElement && active.isConnected && document.activeElement !== active) active.focus({ preventScroll: true });
+}
+
+/**
+ * Item `old` was drawn again as `next` (thread.mjs, rerender): the sizes observer and an island’s place follow the new
+ * node, so the spacers measure what’s on the page, and a release takes it off when focus leaves. Before, an island
+ * kept the old node, and its release left the new one on the page, out of the range, to show twice later (#1075).
+ * O(islands), a few at most. @param {any} w the window @param {HTMLElement} old @param {HTMLElement} next
+ */
+export function replaced(w, old, next) {
+  w.sizes.unobserve(old);
+  w.sizes.observe(next);
+  for (const [i, node] of w.islands) if (node === old) w.islands.set(i, next);
 }
 
 /**

@@ -174,9 +174,11 @@ class TranscriptWindow {
   }
   /** Mounts items [a, b) before `before`, in order. @param {number} a @param {number} b @param {Node} before */
   mountRun(a, b, before) {
+    const active = document.activeElement; // an island that rejoins through the fragment drops its focus
     const frag = document.createDocumentFragment();
     for (let i = a; i < b; i++) frag.append(this.islands.has(i) ? this.rejoin(i) : this.fresh(i));
     this.el.insertBefore(frag, before);
+    windowShrink.refocus(active);
   }
   /** Item i, rendered from the state, with the details it had open when it left. @param {number} i */
   fresh(i) {

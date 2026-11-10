@@ -42,6 +42,7 @@ import { viewAskBlock } from './view-ask-card.mjs';
 import { mountView } from './view-state.mjs';
 import { welcome } from './welcome.mjs';
 import { createWindow } from './window.mjs';
+import { replaced as replacedNode } from './window-shrink.mjs';
 import { workList } from './work-list.mjs';
 
 export { focusComposer } from './hop-card.mjs';
@@ -128,6 +129,7 @@ export function mountTranscript(threadId, { inPanel = false } = {}) {
     const n = render(list[i], list[i - 1]);
     replaceTranscriptItem(old, n, view);
     nodes.set(id, n);
+    if (old && win) replacedNode(win, old, n);
     back();
   };
   const mountAt = (/** @type {any[]} */ list, /** @type {number} */ i) => {
