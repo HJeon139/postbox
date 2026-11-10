@@ -13,5 +13,6 @@ export const tooLongForArg = (prompt) => Buffer.byteLength(prompt) > ARG_PROMPT_
 export function promptTooLong(prompt, backend) {
   if (!tooLongForArg(prompt)) return null;
   const kb = (n) => Math.ceil(n / 1000);
-  return `This message is ${kb(Buffer.byteLength(prompt))} KB, past the ${kb(ARG_PROMPT_MAX)} KB ${backend} can take as its prompt. Send it in parts, or point the agent at a file that holds the rest.`;
+  // The prompt is more than the person's message: the catch-up and queued messages come with it (critic, #1190).
+  return `This turn’s prompt came to ${kb(Buffer.byteLength(prompt))} KB, past the ${kb(ARG_PROMPT_MAX)} KB ${backend} can take. It holds your message, the room’s catch-up and any queued messages: send a shorter message, or point the agent at a file that holds the rest.`;
 }

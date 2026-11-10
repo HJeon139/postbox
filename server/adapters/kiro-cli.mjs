@@ -429,7 +429,8 @@ export class KiroCliAdapter {
           reject(new Error(`Couldn’t start the Kiro CLI (${this.bin}): ${e.message}`));
           return;
         }
-        if (stdin && !attach) child.stdin.end(prompt);
+        // kiro exiting before it reads the prompt (EPIPE) ends its turn, not Postbox, as claude-code.mjs guards it.
+        if (stdin && !attach) child.stdin.on('error', () => {}).end(prompt);
         let stderr = '';
         const c = child;
         const exited = new Promise((r) => {
