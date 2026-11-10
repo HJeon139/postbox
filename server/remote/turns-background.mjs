@@ -4,18 +4,19 @@
 // subtype (background_tasks_changed). After its result, while one is listed, the turn isn’t quiet, up to
 // QUIET.backgroundMax from when each task was first listed; past that it’s stopped as hung, naming the task.
 
-import { INVISIBLE } from '../../shared/invisible.mjs';
 import { QUIET } from '../../shared/limits.mjs';
 import { partEnd } from '../../shared/text-parts.mjs';
+import { hides } from '../upload-name.mjs';
 
 // How a result line, and a system event’s line, look on stdout: Claude Code writes a system event’s type first.
 const RESULT_TYPE = JSON.stringify({ type: 'result' }).slice(1, -1);
 const SYSTEM_START = JSON.stringify({ type: 'system' }).slice(0, -1);
 /** How much of a task’s description the stop text quotes: the agent wrote it. */
 const NAME_CHARS = 80;
-// Control characters and lone surrogates (Cs, which the u flag reads one at a time); with INVISIBLE
-// (shared/invisible.mjs, #1049), every character that would change how the note reads.
-const UNPRINTABLE = /[\p{Cc}\p{Cs}]/gu;
+// Each character that would change how the note reads, as an upload's name is read (hides, server/upload-name.mjs):
+// control characters, lone surrogates and INVISIBLE, except a ZWJ or VS16 that joins or shows an emoji (#1132).
+/** The task's name with each such character as a space. @param {string} name */
+const shownName = (name) => name.replace(/./gsu, (c, at, s) => (hides(s, c, at) ? ' ' : c));
 
 /**
  * Takes in a stdout line: whether the model has sent its result, and the open background tasks. The wait counts only
@@ -84,7 +85,7 @@ export function waitingOnBackground(live, now) {
 export function backgroundStopText(live) {
   const first = oldest(live);
   if (!live.resultSent || !first) return null;
-  const name = first.name.replace(UNPRINTABLE, ' ').replace(INVISIBLE, ' ').replace(/\s+/g, ' ').trim();
+  const name = shownName(first.name).replace(/\s+/g, ' ').trim();
   const clipped = name.length > NAME_CHARS ? `${name.slice(0, partEnd(name, NAME_CHARS - 1))}…` : name;
   const hours = QUIET.backgroundMax / 3_600_000;
   return `Stopped: a background task (${clipped || 'unnamed'}) ran past ${hours} h with no output`;

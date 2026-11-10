@@ -25,10 +25,11 @@ const TAG_FLAG = /(\u{1f3f4}\u{e0067}\u{e0062}(?:\u{e0065}\u{e006e}\u{e0067}|\u{
 /**
  * Whether the character at `at` would hide or reorder a file’s name as it’s shown: a control character, a lone
  * surrogate, one a project’s folder refuses as hidden (shared/invisible.mjs), or a ZWJ, except a VS16 or a ZWJ where
- * it shows or joins what’s before it. ZWNJ, which joins letters, passes anywhere.
+ * it shows or joins what’s before it. ZWNJ, which joins letters, passes anywhere. A background task’s name in its stop
+ * text is read the same way (server/remote/turns-background.mjs, #1132).
  * @param {string} text @param {string} c  the character @param {number} at  where it is in text
  */
-function hides(text, c, at) {
+export function hides(text, c, at) {
   const before = text.slice(Math.max(0, at - 2), at);
   if (c === EMOJI_STYLE) return !SHOWS_AS_EMOJI.test(before);
   if (c === JOINER) return !JOINS_AFTER.test(before);
