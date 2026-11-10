@@ -22,10 +22,12 @@ export const authorName = (author) => (author === PERSON ? 'You' : author);
 /**
  * The catalog’s rule for a review thread comment’s author (#1143): PERSON or an agent’s @handle, so no other name
  * reads as the person’s, such as “You”, or as no one’s. Only the person’s answer writes PERSON: show_block refuses it.
+ * The page shows a handle without its @, so @you, in any case, would read as the person too.
  * @type {import('./schema.mjs').Rule}
  */
 export const author = (v, path, errs) => {
-  const ok = v === PERSON || (typeof v === 'string' && v[0] === '@' && HANDLE.test(v.slice(1)));
+  const handle = typeof v === 'string' && v[0] === '@' ? v.slice(1) : '';
+  const ok = v === PERSON || (HANDLE.test(handle) && handle.toLowerCase() !== PERSON);
   if (!ok) errs.push(`${path} must be an agent’s @handle, such as @critic.`);
 };
 
