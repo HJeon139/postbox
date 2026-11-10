@@ -12,7 +12,7 @@ import { clip, clipText, echoedId, httpError, refuseArchived } from './helpers.m
 import { stampSteps } from './progress-steps.mjs';
 import { REACT, toggleReaction } from './reactions.mjs';
 import { revisedFiles } from './review-files.mjs';
-import { personAnswer, revisedReview } from './review-person.mjs';
+import { ownedAuthors, personAnswer, revisedReview } from './review-person.mjs';
 import { resolveToolAsk } from './tool-ask.mjs';
 import { resolveViewAsk } from './view-app/consent.mjs';
 import { stopRequested } from './write-intent.mjs';
@@ -247,7 +247,9 @@ function recordOutcome(rt, sessionId, block, { se, threadId }) {
   const { where, existing } = shownBy(rt, sessionId, id, threadId(), se());
   if (!existing) return notShown(rt, sessionId, id);
   if (block.type !== undefined && block.type !== existing.block.type) return { ok: false, message: 'An update can’t change a block’s type.' };
-  const v = validateBlock({ ...existing.block, outcome: block.outcome }, { imageOrigins: rt.config.imageOrigins });
+  // An old review’s off-rule authors read as its agent’s (#1143), so its outcome isn’t refused for them.
+  const owned = ownedAuthors(existing).block;
+  const v = validateBlock({ ...owned, outcome: block.outcome }, { imageOrigins: rt.config.imageOrigins });
   if (!v.ok) return { ok: false, message: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
   // Nor under a dismissal: the person said the block isn’t needed, so there’s no answer to report on.
   if (existing.closed?.by === 'person' || (existing.closed && !existing.answer))
@@ -259,7 +261,7 @@ function recordOutcome(rt, sessionId, block, { se, threadId }) {
   const { id: _id, outcome, revision: _revision, ...sent } = block;
   const differ = Object.keys(sent).filter((k) => JSON.stringify(sent[k]) !== JSON.stringify(existing.block[k]));
   // Not a new revision: the draft the person answered is unchanged, and an answered block can’t be answered again.
-  rt.patchItem(where, existing.id, { block: { ...existing.block, outcome }, updatedAt: Date.now() });
+  rt.patchItem(where, existing.id, { block: { ...owned, outcome }, updatedAt: Date.now() });
   return {
     ok: true,
     message: `Recorded the outcome under the person’s answer to ${id}; it stays answered.${differ.length ? ` Your other changes (${differ.join(', ')}) weren’t applied: an answered block keeps the question the person answered. To ask again, update it without outcome.` : ''}`,
