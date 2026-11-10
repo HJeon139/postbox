@@ -101,12 +101,31 @@ test('mounted elements pass at the budget and fail past it; a count that was nev
   assert.equal(elementsVerdict(null).verdict, 'not measured');
 });
 
-test('a key timed at more than twice the longest frame gap had its frame unpresented, so it can’t be a time', () => {
-  // Frames ran every 20 ms or less, yet the keys read 0.7 to 2 s: the composer’s frames weren’t presented.
-  assert.equal(unpresented([700, 1200, 2000, 16], 20, 16), 3);
-  assert.equal(unpresented([16, 24, 40], 20, 16), 0);
-  // A long task shows in both, so a slow key under it is a time.
-  assert.equal(unpresented([180, 200], 135, 16), 0);
+test('a key whose entry runs over the budget and on to the next key’s start had its frame unpresented', () => {
+  // Keys 50 ms apart, the last one the planted key. Chromium’s full headless mode ran each entry on to a later paint.
+  const keys = [{ at: 0 }, { at: 50 }, { at: 100 }, { at: 150 }];
+  const held = [
+    { name: 'keydown', startTime: 0, duration: 700 },
+    { name: 'keydown', startTime: 50, duration: 30 },
+    { name: 'keydown', startTime: 100, duration: 50 },
+    { name: 'keydown', startTime: 150, duration: 64 },
+  ];
+  // The first runs past the next key, and over the budget.
+  assert.equal(unpresented(keys, held), 1);
+  // Over the budget and ending exactly at the next key’s start counts too.
+  assert.equal(unpresented([{ at: 0 }, { at: 120 }], [{ name: 'keydown', startTime: 0, duration: 120 }]), 1);
+  // A 60 ms key typed every 50 ms runs past the next key but came in time: a time, within the budget.
+  assert.equal(unpresented([{ at: 0 }, { at: 50 }], [{ name: 'keydown', startTime: 0, duration: 60 }]), 0);
+  // A slow scroll at 10,000 items, 80 ms, that ends before the next press 150 ms later: a time, not a held frame.
+  const scrolls = [{ at: 0 }, { at: 150 }, { at: 300 }];
+  const slow = [
+    { name: 'keydown', startTime: 0, duration: 80 },
+    { name: 'keydown', startTime: 150, duration: 96 },
+    { name: 'keydown', startTime: 300, duration: 64 },
+  ];
+  assert.equal(unpresented(scrolls, slow), 0);
+  // Over the budget but ending before the next press: a slow time, which fails the budget as a time.
+  assert.equal(unpresented([{ at: 0 }, { at: 300 }], [{ name: 'keydown', startTime: 0, duration: 150 }]), 0);
 });
 
 test('entries are in key order up to the planted key: none that started before it arrives after its own', () => {
