@@ -1,5 +1,7 @@
 import { agentSkills } from './agent-plugin.mjs';
+import { POSTBOX_SERVER } from './setup.mjs';
 import { POSTBOX_SKILLS, postboxSkillsOn } from './skill-config.mjs';
+import { toolsDown } from './tools-down.mjs';
 
 /**
  * Gives this turn’s app-server Postbox’s skills (agent-plugin.mjs) as an extra skills root, which that process holds
@@ -41,4 +43,26 @@ export async function openCodexThread(ctx, request, { sourceThreadId, fork, cwd,
     ctx.saveState(cleared);
     return { opened: await start(), fresh: true };
   }
+}
+
+// Codex refuses a thread whose required MCP server can’t start (checked with codex-cli 0.167.0, 10 Nov): thread/start
+// answers -32603, “… required MCP servers failed to initialize: postbox: handshaking with MCP server failed: …”, with
+// several hundred characters of transport detail after it, and sends no startupStatus for the server (#1162).
+// lint-allow regex: its only variable part is POSTBOX_SERVER, a constant (“postbox”).
+const REQUIRED_FAILED = new RegExp(`required MCP servers failed to initialize:[\\s\\S]*?(?:^|[\\s;,])${POSTBOX_SERVER}:`);
+
+/**
+ * When Codex refused the thread because Postbox’s server didn’t start, a failed step and an error that says so;
+ * any other error as it was.
+ * @param {any} ctx @param {any} err
+ */
+export function codexRefusal(ctx, err) {
+  if (!REQUIRED_FAILED.test(String(err?.message ?? ''))) return err;
+  toolsDown(ctx, 'Codex couldn’t start Postbox’s tool server, which it needs, so it didn’t start the turn.', { ran: false });
+  return Object.assign(
+    new Error('Postbox’s tools didn’t load: Codex couldn’t start Postbox’s tool server, so it didn’t start this turn. Retry to try again.'),
+    {
+      cause: err,
+    },
+  );
 }
