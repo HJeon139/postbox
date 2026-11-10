@@ -96,19 +96,24 @@ export async function* fileLines(io, path) {
   const fh = await io.open(path, 'r');
   try {
     const buf = Buffer.alloc(CHUNK);
-    let carry = Buffer.alloc(0);
+    // The start of a line that runs on past the chunks read so far, each piece copied once, since buf is read into
+    // again; joined once, at its newline, so a long line reads in linear time, not a growing copy per chunk (#1180).
+    let pieces = [];
     for (;;) {
       const { bytesRead } = await fh.read(buf, 0, CHUNK, null);
       if (!bytesRead) break;
-      const chunk = Buffer.concat([carry, buf.subarray(0, bytesRead)]);
+      const chunk = buf.subarray(0, bytesRead);
       let start = 0;
-      for (let nl = chunk.indexOf(10, start); nl !== -1; nl = chunk.indexOf(10, start)) {
-        yield { line: chunk.toString('utf8', start, nl), terminated: true };
+      for (let nl = chunk.indexOf(10); nl !== -1; nl = chunk.indexOf(10, start)) {
+        const rest = chunk.subarray(start, nl);
+        const bytes = pieces.length ? Buffer.concat([...pieces, rest]) : rest;
+        pieces = [];
+        yield { line: bytes.toString('utf8'), terminated: true };
         start = nl + 1;
       }
-      carry = chunk.subarray(start);
+      if (start < bytesRead) pieces.push(Buffer.from(chunk.subarray(start)));
     }
-    if (carry.length) yield { line: carry.toString('utf8'), terminated: false };
+    if (pieces.length) yield { line: Buffer.concat(pieces).toString('utf8'), terminated: false };
   } finally {
     await fh.close();
   }
@@ -130,7 +135,7 @@ export function parseSnapshotText(text) {
 
 /** Builds a state from format-2 lines after the header, and refuses one that ends before its end line, or runs past it. */
 function lineReader() {
-  const state = Object.create(null);
+  const state = {};
   let count = 0;
   let ended = false;
   return {
@@ -173,16 +178,25 @@ export function snapshotBytes(state) {
   return bytes;
 }
 
-/** Puts one format-2 line into the state. Maps are made without a prototype, so no key reaches Object’s. */
+/**
+ * Puts one format-2 line into the state, as JSON.parse of the one-value format would have: plain objects, each key set
+ * as an own property, so a key named __proto__ is data and never reaches Object’s (ownState then makes the collections
+ * map()s, as for that format).
+ */
 function place(state, entry, n) {
   if (!Array.isArray(entry)) throw new Error(`line ${n} of the snapshot isn’t a snapshot line`);
   const [op, key, ...rest] = entry;
-  if (op === 'v') state[key] = rest[0];
-  else if (op === 'm') state[key] = Object.create(null);
-  else if (op === 'A') state[key] = [];
+  if (op === 'v') own(state, key, rest[0]);
+  else if (op === 'm') own(state, key, {});
+  else if (op === 'A') own(state, key, []);
   else if (op === 'I') state[key].push(rest[0]);
-  else if (op === 'e') state[key][rest[0]] = rest[1];
-  else if (op === 'a') state[key][rest[0]] = [];
+  else if (op === 'e') own(state[key], rest[0], rest[1]);
+  else if (op === 'a') own(state[key], rest[0], []);
   else if (op === 'i') state[key][rest[0]].push(rest[1]);
   else throw new Error(`line ${n} of the snapshot has an unknown kind, ${JSON.stringify(op)}`);
+}
+
+/** Sets an own, enumerable property, as JSON.parse does for every key, __proto__ included. */
+function own(obj, key, value) {
+  Object.defineProperty(obj, key, { value, writable: true, enumerable: true, configurable: true });
 }
