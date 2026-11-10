@@ -46,7 +46,7 @@ const counted = (page) =>
     items: document.querySelectorAll('#main > .item').length,
   }));
 
-test('#866 with the window on, a 5,000-item room holds about as many elements as a 500-item one, and shows its newest item', async ({ page }) => {
+test('#866 with the window on, a 3,000-item room holds about as many elements as a 500-item one, and shows its newest item', async ({ page }) => {
   await open(page, SMALL, true);
   const small = await counted(page);
   await open(page, LARGE, true);
