@@ -2,8 +2,9 @@
 // made-up helper, askpass or .netrc that prints a fake secret, and each checked against the person's own git first.
 
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { gitRemoteEnv, guardEnv, preflightRemote, remotePaths, seedGitRemote } from '../../tools/uat/git-remote.mjs';
@@ -79,4 +80,43 @@ test('#1125: a git-remote run’s preflight stops one whose agent shell would st
   // Without the env file, the agent's shell keeps what it inherited: here, an askpass.
   const { CLAUDE_ENV_FILE: _f, ...noFile } = env;
   assert.throws(() => preflightRemote(workspace, dir, { ...noFile, GIT_ASKPASS: '/bin/true' }), STOPS);
+});
+
+const hasLfs = spawnSync('git', ['lfs', 'version'], { encoding: 'utf8' }).status === 0;
+
+test('#1125: git lfs in a git-remote run sends nothing, though lfs.url names an http server the .netrc has a login for', {
+  skip: !hasLfs && 'git lfs isn’t installed',
+}, async () => {
+  const base = person();
+  const seen = [];
+  const server = createServer((req, res) => {
+    seen.push(req.headers.authorization ?? null);
+    res.writeHead(401, { 'lfs-authenticate': 'Basic realm="x"' });
+    res.end();
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    writeFileSync(join(base.HOME, '.netrc'), `machine 127.0.0.1 login person password ${SECRET}\n`);
+    const { dir, env } = remoteRun(base);
+    const repo = join(dir, 'workspace');
+    const git = (args, e = env) => new Promise((r) => execFile('git', args, { cwd: repo, env: e, timeout: 30_000 }, (err) => r(err ? 1 : 0)));
+    // Set up as the person would, with their own git lfs: one file in LFS, and lfs.url at the server.
+    for (const args of [
+      ['lfs', 'install', '--local'],
+      ['lfs', 'track', '*.bin'],
+      ['config', 'lfs.url', `http://127.0.0.1:${server.address().port}/lfs`],
+      ['config', 'lfs.locksverify', 'false'],
+    ])
+      await git(args, base);
+    writeFileSync(join(repo, 'a.bin'), 'bytes');
+    await git(['add', '.gitattributes', 'a.bin'], base);
+    await git(['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'x'], base);
+    assert.notEqual(await git(['lfs', 'push', '--all', 'origin']), 0, 'the run’s git lfs refuses');
+    assert.deepEqual(seen, [], 'no request reached the server');
+    // The control: the person's own git lfs, outside the run, sends the login.
+    await git(['lfs', 'push', '--all', 'origin'], base);
+    assert.ok(seen.length > 0, 'the control reached it');
+  } finally {
+    server.close();
+  }
 });
