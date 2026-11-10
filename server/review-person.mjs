@@ -85,10 +85,12 @@ export function ownComments(existing, block) {
 }
 
 /** What the agent is told of comments ownComments left out. @param {number} n @param {string} handle */
-export const droppedText = (n, handle) =>
-  n
-    ? ` ${n} comment${n === 1 ? ' in another name wasn’t' : 's in another name weren’t'} added: update_block adds comments only as @${handle}. The person’s come from their answer, and another agent’s from review_block.`
-    : '';
+export function droppedText(n, handle) {
+  if (!n) return '';
+  let what = `${n} comments in another name weren’t`;
+  if (n === 1) what = '1 comment in another name wasn’t';
+  return ` ${what} added: update_block adds comments only as @${handle}. The person’s come from their answer, and another agent’s from review_block.`;
+}
 
 /**
  * The submitted comment that replies in a thread the review doesn’t have, which only a hand-built answer sends, or
