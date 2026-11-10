@@ -98,7 +98,7 @@ test('#1146: Dismiss ends the hold, and what waited goes in send order', async (
   await settle(rt);
 });
 
-test('#1146: the person’s message releases what waited in another thread first, and its own thread’s queue after', async () => {
+test('#1146: the person’s message releases the failure: its own thread’s queue goes first, another thread’s after that turn', async () => {
   const { store, rt, adapter, t, alpha, beta } = setup();
   const root = rt.addItem(t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
   const topic = rt.startTopic(t.id, root.id).threadId;
@@ -122,10 +122,42 @@ test('#1146: the person’s message releases what waited in another thread first
   assert.deepEqual(
     turns.map((x) => [x.thread === topic ? 'topic' : 'conversation', x.message.text]),
     [
-      ['topic', '@beta T1'],
       ['conversation', '@beta P3'],
+      ['topic', '@beta T1'],
     ],
   );
+});
+
+test('#1146: a wake waiting in another thread doesn’t hold the person’s message again once its turn ends', async () => {
+  const { store, rt, adapter, t, alpha, beta } = setup();
+  const root = rt.addItem(t.id, { kind: 'agent', sessionId: alpha.id, handle: 'alpha', text: 'A topic.', status: 'done' });
+  const topic = rt.startTopic(t.id, root.id).threadId;
+  const failing = held();
+  adapter.next.push(async (c) => {
+    await failing.step(c);
+    throw new Error('API 500');
+  });
+  rt.sendMessage(t.id, { text: '@beta a long job' });
+  await sleep(5);
+  rt.agentWake(alpha.id, 'beta', 'TW1: a question in the topic.', { replyIn: topic });
+  failing.release();
+  await sleep(20);
+  assert.deepEqual(
+    store.state.threads[topic].queue.map((q) => q.text),
+    ['TW1: a question in the topic.'],
+    'the wake is held after the failure',
+  );
+  rt.sendMessage(t.id, { text: '@beta P3' });
+  await settle(rt);
+  const turns = adapter.calls.filter((x) => x.sessionId === beta.id).slice(1);
+  assert.deepEqual(
+    turns.map((x) => [x.thread === topic ? 'topic' : 'conversation', JSON.stringify(x.message).includes('TW1') ? 'TW1' : x.message.text]),
+    [
+      ['conversation', '@beta P3'],
+      ['topic', 'TW1'],
+    ],
+  );
+  assert.deepEqual(store.state.threads[topic].queue ?? [], [], 'nothing left waiting');
 });
 
 test('#1146: a wake sent to the agent after its failure waits in the queue with the rest', async () => {
