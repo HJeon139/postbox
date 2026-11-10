@@ -210,7 +210,7 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   ctx.state.codexThreadId = id;
   ctx.saveState({ codexThreadId: id, fork: null, forkFrom: null });
   const note = `[Postbox] ${FRESH_START_TEXT}\n\n`;
-  const inputText = formatMessage({ ...turnMessage, text: down + (fresh ? note : '') + turnMessage.text }, attachmentPaths(ctx, ctx.remote?.turn));
+  const inputText = down + formatMessage(fresh ? { ...turnMessage, text: note + turnMessage.text } : turnMessage, attachmentPaths(ctx, ctx.remote?.turn));
   const started = await request('turn/start', {
     threadId: id,
     input: [{ type: 'text', text: inputText }],

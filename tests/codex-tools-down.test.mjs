@@ -89,3 +89,41 @@ test('#1162 the next Codex turn is told first that Postbox’s tools didn’t lo
   await adapter.deliver({}, { kind: 'user', text: 'Once more.' }, ctx);
   assert.doesNotMatch(inputOf(seen[2]), told, 'and only once');
 });
+
+// formatMessage reads message.text only for some kinds, so the note goes in front of what it returns.
+for (const [kind, message] of [
+  ['a person’s message', { kind: 'user', text: 'Try again.' }],
+  ['an agent’s message', { kind: 'agent', from: 'reviewer', text: 'Try again.' }],
+  ['a wake-up', { kind: 'wake', note: 'Try again.' }],
+  ['a block event', { kind: 'event', event: { blockId: 'b1', action: 'submit', values: {} } }],
+  ['a lint turn', { kind: 'lint', text: 'Try again.', problems: [] }],
+  ['an app’s failed check', { kind: 'app-check', appId: 'a1', problems: [] }],
+  ['a notice', { kind: 'notice', text: 'Try again.' }],
+  ['a queue of messages', { kind: 'user', messages: [{ kind: 'user', text: 'Try again.' }] }],
+]) {
+  test(`#1162 ${kind} is told first that Postbox’s tools didn’t load`, async () => {
+    const ctx = context();
+    Object.assign(ctx.state, { postboxToolsDown: 'refused' });
+    const seen = [];
+    const adapter = new CodexAdapter({ spawnImpl: () => fakeAppServer(seen) });
+    await adapter.deliver({}, message, ctx);
+    assert.match(inputOf(seen), told);
+    assert.equal(ctx.state.postboxToolsDown, null, 'and it’s told once');
+  });
+}
+
+// A command is the whole prompt (#67), and a re-attach sends the agent nothing (#120).
+for (const [what, message] of [
+  ['a slash command', { kind: 'user', text: '/review', slash: true }],
+  ['a re-attached turn', { kind: 'user', text: '', attach: 'host-turn-1' }],
+]) {
+  test(`#1162 ${what} isn’t prefixed, and the note waits for the next turn`, async () => {
+    const ctx = context();
+    Object.assign(ctx.state, { postboxToolsDown: 'ran' });
+    const seen = [];
+    const adapter = new CodexAdapter({ spawnImpl: () => fakeAppServer(seen) });
+    await adapter.deliver({}, message, ctx);
+    assert.doesNotMatch(inputOf(seen), /\[Postbox\] In your last turn/);
+    assert.equal(ctx.state.postboxToolsDown, 'ran', 'the note is still owed');
+  });
+}
