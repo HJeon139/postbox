@@ -50,6 +50,8 @@ test('#1144 a draft comment follows its line into a revision made while the page
   // A revision with previous opens on its diff, in Lines.
   await expect(block.locator('.rv-line').first()).toBeVisible();
   await expect(block.locator('.rv-thread', { hasText: 'Say how low.' }), 'the draft is back on the new revision').toHaveCount(1);
+  // Its line is the same in the new text, so it followed it from previous, unmarked.
+  await expect(block.locator('.rv-thread', { hasText: 'Say how low.' }).getByText('Its line changed'), 'not marked moved').toHaveCount(0);
 });
 
 test('#1144 submitting forgets the kept drafts', async ({ page }) => {
