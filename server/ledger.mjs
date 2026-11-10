@@ -41,7 +41,7 @@ import { describeTool } from './adapters/claude-stream.mjs';
 import { fileDiff, output, restore } from './ledger-answers.mjs';
 import { commandSeen, commandStarted, endedAs, folderWatch, turnEnded } from './ledger-commands.mjs';
 import { clip, gitState, pushed, recordCommit, recordLandedPushes, recordPushes, rootOf, runGit, tracked } from './ledger-git.mjs';
-import { known, memoryBlobs, nodeIo, sameSnap } from './ledger-io.mjs';
+import { known, memoryBlobs, nodeIo, outputFileAt, sameSnap } from './ledger-io.mjs';
 import { hostEdit, hostFolder, hostOf } from './ledger-remote.mjs';
 import { newId } from './store.mjs';
 
@@ -412,9 +412,10 @@ export class Ledger {
           const code = exit ? Number(exit[1]) : null;
           const state = /kill|stop/i.test(status) ? 'stopped' : status === 'completed' && (code ?? 0) === 0 ? 'done' : 'failed';
           let output = e.output ?? null;
-          // A host’s output file is on the host; the path names nothing here.
-          if (outputFile && isAbsolute(outputFile) && !w.host) {
-            const tail = await this.io.readTail(outputFile, MAX_OUTPUT_BYTES).catch(() => null);
+          // A host’s output file is on the host; the path names nothing here. Here, it’s read only where outputFileAt allows.
+          const at = outputFile && isAbsolute(outputFile) && !w.host ? await outputFileAt(this.io, w, outputFile) : null;
+          if (at) {
+            const tail = await this.io.readTail(at, MAX_OUTPUT_BYTES).catch(() => null);
             if (tail) output = { ...(await this.keepOutput(tail.bytes)), cut: tail.cut };
           }
           this.patch(w.convId, cmdId, { state, exit: code, ms: this.now() - e.startedAt, output, endedInBackground: true });
