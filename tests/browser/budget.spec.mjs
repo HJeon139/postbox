@@ -15,7 +15,7 @@
 import { execFileSync } from 'node:child_process';
 import { cpus, loadavg } from 'node:os';
 import { expect, test } from '@playwright/test';
-import { entriesArrive, idleFor, paced } from '../../tools/budget-pace.mjs';
+import { idleFor, paced } from '../../tools/budget-pace.mjs';
 import { busy, installProbe, SLOW_KEY_ID, SLOW_KEY_MS, startFrames, stopFrames, THRESHOLD_MS, untilOpen, untilShown } from '../../tools/budget-probe.mjs';
 import { elementsVerdict, gapCalibrated, gapVerdict, keyTimes, timedVerdict } from '../../tools/budget-stats.mjs';
 import { calibrated } from '../../tools/key-frame-stats.mjs';
@@ -38,8 +38,14 @@ const OPENS = 5;
 const PLANTED_TASK_MS = 150;
 const TEXT = 'the release train leaves on time ';
 
-// Tracing is off: Playwright’s trace snapshot walks the page each action, which would be measured too.
-test.use({ trace: 'off' });
+// Tracing is off: Playwright’s trace snapshot walks the page each action, which would be measured too. Chromium runs
+// as its headless shell, as PF-1’s tool does (tools/browser.mjs): its full headless mode, the config’s, presents no
+// frame for a key typed into the composer until something else on the page changes, so Event Timing gave every key
+// the time to that change, 1 to 2 s here, against 24 ms p95 in the shell. Firefox keeps its own.
+test.use({
+  trace: 'off',
+  channel: async ({ browserName }, use) => use(browserName === 'chromium' ? 'chromium-headless-shell' : undefined),
+});
 
 /**
  * @typedef {{ measure: string, size: number, gates: boolean, verdict: string } & Record<string, any>} Line
@@ -91,6 +97,25 @@ const recorded = (page) => page.evaluate(() => /** @type {any} */ (window).__bud
 const twoFrames = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 const blur = (page) => page.evaluate(() => /** @type {HTMLElement | null} */ (document.activeElement)?.blur());
 
+/**
+ * Presses the planted slow key and waits for its Event Timing entry, and gives its place in the probe’s keys. Entries
+ * come in the order their frames were presented, so once its entry is in, every earlier input’s is too, however busy
+ * the page was: a key that’s still without one had none, rather than one that hadn’t arrived.
+ * @param {import('@playwright/test').Page} page
+ */
+async function plantedKey(page) {
+  await page.evaluate((id) => document.body.append(Object.assign(document.createElement('button'), { id, textContent: 'Budget probe' })), SLOW_KEY_ID);
+  const index = (await recorded(page)).keys.length;
+  await page.locator(`#${SLOW_KEY_ID}`).press('a');
+  const reported = async () => {
+    const rec = await recorded(page);
+    return calibrated([rec.keys[index]?.at ?? Number.POSITIVE_INFINITY], rec.entries, SLOW_KEY_MS);
+  };
+  await expect.poll(reported, { message: `Event Timing to report the planted ${SLOW_KEY_MS} ms key`, timeout: 30_000 }).toBe(true);
+  await page.evaluate((id) => document.getElementById(id)?.remove(), SLOW_KEY_ID);
+  return index;
+}
+
 /** Starts a size’s Postbox, with its big room, a short room to switch from, and a page with the probe in it. */
 async function openRoom(size, browser) {
   const app = await startPostbox(`budget-${size}`);
@@ -101,7 +126,10 @@ async function openRoom(size, browser) {
   const seeding = Date.now();
   seedBigRoom(app.store, big.id, { count: size, work: true });
   const seedMs = Date.now() - seeding;
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  // Inside headless Chromium’s 1280 × 720 window: what lies outside it is never presented, so a key typed in a
+  // composer below it gets no Event Timing entry until some other change presents a frame (tools/key-frame-stats.mjs,
+  // outsideWindow). At the config’s 900 px the composer sat at 824 px, and every key read as 0.1–0.7 s.
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   await page.addInitScript(installProbe, { threshold: THRESHOLD_MS, slowMs: SLOW_KEY_MS, slowId: SLOW_KEY_ID });
   return { app, page, big, small, newest: app.store.items(big.id).at(-1).id, size, seedMs, lines: [] };
 }
@@ -116,15 +144,8 @@ async function calibrate(room) {
   await expect(page.locator('#main > .item').last(), `the page to start within ${OPEN_CAP_MS / 1000} s`).toBeVisible({ timeout: OPEN_CAP_MS });
   report(room, 'start-up', false, { ms: Date.now() - started, verdict: 'reported' }, since);
   await still(page, 30_000);
-  await page.evaluate((id) => document.body.append(Object.assign(document.createElement('button'), { id, textContent: 'Budget probe' })), SLOW_KEY_ID);
-  const before = (await recorded(page)).keys.length;
-  await page.locator(`#${SLOW_KEY_ID}`).press('a');
-  await twoFrames(page);
-  await entriesArrive();
-  const rec = await recorded(page);
-  const slow = rec.keys.slice(before).map((/** @type {any} */ k) => k.at);
-  expect(calibrated(slow, rec.entries, SLOW_KEY_MS), `Event Timing reported the planted ${SLOW_KEY_MS} ms key`).toBe(true);
-  await page.evaluate((id) => document.getElementById(id)?.remove(), SLOW_KEY_ID);
+  // Event Timing reports in this browser: the planted key gets its entry.
+  await plantedKey(page);
   await page.evaluate(startFrames);
   await idleFor(1000);
   const idle = await page.evaluate(stopFrames);
@@ -174,9 +195,11 @@ async function measureKeys(room, { name, keys, warmup, everyMs }) {
   await paced(keys.length, everyMs, (i) => page.keyboard.press(keys[i]));
   await twoFrames(page);
   const frames = await page.evaluate(stopFrames);
-  await entriesArrive();
+  // The planted key ends the run: its entry comes after every measured key’s, and bounds the last one’s.
+  const planted = await plantedKey(page);
   const rec = await recorded(page);
-  const { values, unmeasured } = keyTimes(rec.keys.slice(from + warmup), rec.entries, THRESHOLD_MS);
+  const { values, unmeasured } = keyTimes(rec.keys.slice(from + warmup, planted + 1), rec.entries, THRESHOLD_MS);
+  values.pop();
   report(room, name, TIMES_GATE, { ...timedVerdict(values, { unmeasured }), unmeasured }, since);
   report(room, `longest task, ${name}`, TIMES_GATE, gapVerdict(frames.gaps, frames.lengthMs), since);
 }

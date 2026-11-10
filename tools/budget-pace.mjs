@@ -5,9 +5,6 @@
 
 const sleep = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
 
-/** Event Timing reports an entry only after the frame that showed its input; this is long enough for the last one. */
-const ENTRIES_ARRIVE_MS = 500;
-
 /**
  * Runs each step at its own time, everyMs apart from the first, however long a step takes, so a slow page isn’t
  * given more time between inputs than a fast one.
@@ -20,9 +17,6 @@ export async function paced(count, everyMs, step) {
     await step(i);
   }
 }
-
-/** Until the Event Timing entries of the inputs just made have arrived. */
-export const entriesArrive = () => sleep(ENTRIES_ARRIVE_MS);
 
 /** Lets the page sit idle for ms, as the frame probe’s calibration measures it. @param {number} ms */
 export const idleFor = (ms) => sleep(ms);
