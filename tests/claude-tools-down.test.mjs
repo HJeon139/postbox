@@ -142,3 +142,16 @@ test('#1161 the Agent SDK: the next turn is told first that Postbox’s tools di
   await adapter.deliver({}, { kind: 'user', text: 'Once more.' }, ctx);
   assert.doesNotMatch(String(sdk.calls[2].prompt), told, 'and only once');
 });
+
+test('#1161 another server failing, with Postbox’s connected, isn’t Postbox’s tools failing', () => {
+  const [hostInit] = fixture('host-mcp-init');
+  const init = { ...hostInit, mcp_servers: hostInit.mcp_servers.map((s) => (s.name === 'postbox' ? { ...s, status: 'connected' } : s)) };
+  assert.ok(
+    init.mcp_servers.some((s) => s.name !== 'postbox' && s.status === 'failed'),
+    'the recorded init has others failed',
+  );
+  const ctx = fakeCtx();
+  createStreamMapper(ctx, { now: () => 1000 }).push(init);
+  assert.ok(!ctx.calls.activity.some((a) => a.label === 'Postbox’s tools didn’t load'));
+  assert.equal(ctx.calls.saved.postboxToolsDown, undefined, 'and nothing is saved for the next turn');
+});

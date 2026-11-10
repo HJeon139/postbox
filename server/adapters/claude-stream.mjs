@@ -4,7 +4,7 @@
 
 import { appendGlimpseSource, glimpseOf } from '../../shared/text.mjs';
 import { contentBlocks } from './claude-content.mjs';
-import { commandsOf } from './claude-init.mjs';
+import { commandsOf, postboxServerStatus } from './claude-init.mjs';
 import { replyText } from './claude-reply.mjs';
 import { addTokens, forkOf, resultTokens, sessionTotals, turnCost } from './claude-usage.mjs';
 
@@ -471,13 +471,13 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       if (e.subtype === 'init') {
         st.sessionId = e.session_id ?? st.sessionId;
         st.model = e.model ?? st.model;
-        // The MCP servers that loaded, with their status, for the persona sheet (#59), and the model and effort
-        // the turn runs with (#60).
+        // MCP servers with their status, for the persona sheet (#59); the model and effort the turn runs with (#60).
         ctx.reported?.({
           ...(Array.isArray(e.mcp_servers) ? { mcpServers: e.mcp_servers } : {}),
           ...(e.model ? { model: e.model } : {}),
           ...(effort ? { effort } : {}),
         });
+        postboxServerStatus(ctx, e.mcp_servers); // Postbox’s own server failed: shown, and told next turn (#1161)
         // Its skills and commands, for the composer’s / menu (#67).
         if (Array.isArray(e.slash_commands)) ctx.commands?.(commandsOf(e));
         status({ state: 'think', currentStep: 'Thinking' });

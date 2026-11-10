@@ -1,4 +1,7 @@
-// What Claude Code’s init says, moved out of claude-stream.mjs.
+// What Claude Code’s init says: its commands, moved out of claude-stream.mjs, and whether Postbox’s own MCP server
+// failed to start (#1161). The Agent SDK’s init is the same.
+
+import { POSTBOX_SERVER } from './setup.mjs';
 
 /**
  * An init’s skills and commands (#67): `slash_commands` lists both, by name, `skills` says which are skills, and
@@ -13,4 +16,21 @@ export function commandsOf(init) {
   return strings(init?.slash_commands)
     .filter((n) => !terminal.has(n))
     .map((name) => (skills.has(name) ? { name, skill: true } : { name }));
+}
+
+/**
+ * A failed step, and a note saved for the next turn, when an init lists Postbox’s server as failed.
+ * @param {any} ctx @param {unknown} servers  the init’s mcp_servers
+ */
+export function postboxServerStatus(ctx, servers) {
+  const ours = Array.isArray(servers) ? servers.find((s) => s?.name === POSTBOX_SERVER) : null;
+  if (ours?.status !== 'failed') return;
+  ctx.activity?.({
+    id: 'postbox-tools-down',
+    label: 'Postbox’s tools didn’t load',
+    state: 'failed',
+    ms: 0,
+    detail: 'Postbox’s tool server didn’t start for this turn (its status was “failed”), so the turn had none of Postbox’s tools.',
+  });
+  ctx.saveState?.({ postboxToolsDown: true });
 }
