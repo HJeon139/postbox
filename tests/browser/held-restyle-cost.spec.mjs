@@ -9,7 +9,7 @@
 // on the fix, which would hide what the hold costs. That a new message does clear the hold is checked on its own.
 
 import { expect, test } from '@playwright/test';
-import { failOnPageErrors, startPostbox, synced } from './postbox.mjs';
+import { failOnPageErrors, startPostbox, synced, wholeRoom } from './postbox.mjs';
 import { bigRoom, still } from './view-skipped-fixture.mjs';
 
 // Tracing is off: Playwright’s trace snapshot walks the page each action, which restyles it too.
@@ -22,6 +22,8 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// The cost is counted over a whole room, every item mounted, as on main before the window (#866).
+wholeRoom(test);
 
 /** The elements Chromium restyled while `run` ran, and until the page held still after. */
 async function restyledOver(page, run) {
