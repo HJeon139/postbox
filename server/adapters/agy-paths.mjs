@@ -9,13 +9,13 @@ import { dirname, isAbsolute, join, parse, resolve, sep } from 'node:path';
  * symlinks can’t escape a folder, and a .. after a link climbs from where the link leads, not lexically (#1074). The
  * part that doesn’t exist yet is kept as written.
  */
-export function realTarget(rawPath, baseDir = process.cwd()) {
+export function realTarget(rawPath, baseDir = process.cwd(), hops = 0) {
   if (typeof rawPath !== 'string' || !rawPath.trim()) return null;
   const raw = rawPath.trim();
-  let cur = realOr(isAbsolute(raw) ? parse(raw).root : resolve(baseDir));
+  let cur = realOr(isAbsolute(raw) ? parse(raw).root : resolve(baseDir), hops);
   for (const segment of raw.split(sep)) {
     if (!segment || segment === '.') continue;
-    cur = segment === '..' ? dirname(cur) : realOr(join(cur, segment));
+    cur = segment === '..' ? dirname(cur) : realOr(join(cur, segment), hops);
   }
   return cur;
 }
@@ -27,7 +27,7 @@ const MAX_LINKS = 40;
  * A path’s real path. One that doesn’t exist yet, as a file about to be written, is kept as written, unless it is a
  * link whose target doesn’t exist: then it’s where the link leads, since a write through it creates that target, wherever
  * it points (#1134). A chain of such links is followed to its end; a loop gives up as the outside path “/”, so it asks.
- * @param {string} p
+ * @param {string} p @param {number} [hops]
  */
 function realOr(p, hops = 0) {
   try {
@@ -41,7 +41,8 @@ function realOr(p, hops = 0) {
     }
     if (link === null) return p; // doesn’t exist yet, and isn’t a link: nothing to follow
     if (hops >= MAX_LINKS) return parse(p).root;
-    return realOr(resolve(realOr(dirname(p), hops + 1), link), hops + 1);
+    // The target is walked as any path is, so a link on its way is followed too; p’s own folder is already real.
+    return realTarget(link, dirname(p), hops + 1) ?? p;
   }
 }
 
