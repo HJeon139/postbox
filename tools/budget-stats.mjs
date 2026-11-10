@@ -9,8 +9,6 @@ import { keyDurations, percentile, summarize } from './key-frame-stats.mjs';
 export const BUDGET_MS = 100;
 /** #1155’s page-wide element budget. */
 export const ELEMENT_BUDGET = 5000;
-/** A frame loop that ran less often than this, in ms per frame, didn’t watch the page (a hidden or stopped page). */
-const MIN_FRAME_EVERY_MS = 50;
 /** An idle page’s median frame gap, in ms: about 60 frames a second, give or take a loaded machine. */
 const IDLE_GAP = { min: 10, max: 25 };
 
@@ -48,15 +46,17 @@ export function timedVerdict(values, { unmeasured = 0, budget = BUDGET_MS } = {}
 }
 
 /**
- * The longest gap between frames while a measure ran: an upper bound on the longest task in it. Too few frames for
- * its length means the loop didn’t watch the page, and the measure is unmeasured.
+ * The longest gap between frames while a measure ran: an upper bound on the longest task in it. The loop’s gaps must
+ * cover the measure, to within one budget: a loop that stopped, as on a hidden page, leaves the rest of the measure
+ * unwatched, and the measure is unmeasured. A long task still counts, as one long gap.
  * @param {number[]} gaps  in ms  @param {number} lengthMs  how long the measure ran
  * @param {number} [budget]
  */
 export function gapVerdict(gaps, lengthMs, budget = BUDGET_MS) {
   const longest = gaps.length ? Math.max(...gaps) : null;
-  const tooFew = gaps.length === 0 || gaps.length < lengthMs / MIN_FRAME_EVERY_MS;
-  return { frames: gaps.length, longest, verdict: verdictOf(longest, budget, tooFew) };
+  const watched = gaps.reduce((sum, gap) => sum + gap, 0);
+  const unwatched = gaps.length === 0 || watched < lengthMs - budget;
+  return { frames: gaps.length, longest, watchedMs: watched, verdict: verdictOf(longest, budget, unwatched) };
 }
 
 /**
