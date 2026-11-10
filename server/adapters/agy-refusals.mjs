@@ -1,3 +1,4 @@
+import { promptTooLong } from './arg-prompt.mjs';
 // What Postbox tells an Antigravity agent, and the person, about the calls agy refuses headless when the PreToolUse
 // hook isn’t running (server/adapters/antigravity-cli.mjs, “Permissions”).
 
@@ -39,3 +40,13 @@ const MODE_REFUSES = {
 /** @param {string | undefined} mode the persona’s permission mode */
 export const refusalOf = (mode = 'auto') =>
   `Antigravity asks before this, and can’t ask you from Postbox, so it was refused. ${MODE_REFUSES[/** @type {keyof typeof MODE_REFUSES} */ (mode)] ?? MODE_REFUSES.auto} Run everything allows it.`;
+
+/**
+ * The prompt agy is given, or a refusal before it starts: agy takes a prompt only as --print=…, one argument, which
+ * Linux refuses past 128 KiB (#362, arg-prompt.mjs). @param {string} prompt
+ */
+export function agyPrompt(prompt) {
+  const why = promptTooLong(prompt, 'the Antigravity CLI');
+  if (why) throw new Error(why);
+  return prompt;
+}

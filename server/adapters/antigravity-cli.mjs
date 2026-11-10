@@ -56,7 +56,7 @@ import { TOOL_DEFS } from '../../shared/mcp-tools.mjs';
 import { AGY_CAPABILITIES } from './agy-capabilities.mjs';
 import { agyHookCommand, agySupportsHooks, confirmAgyHook, HOOK_SCRIPT } from './agy-hook.mjs';
 import { agyPlugin, agySkillFiles, excludeFile, excludePlugin, PLUGIN_DIR, writeAgyPlugin } from './agy-plugin.mjs';
-import { clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
+import { agyPrompt, clip, HEADLESS_NOTE, HOOK_NOTE, LOOKING_NOTE, refusalFollowUp, refusalOf } from './agy-refusals.mjs';
 import { AGY_SERVER, ALLOW_POSTBOX, agySettingsFile, allowPostbox } from './agy-settings.mjs';
 import { toolOf } from './agy-tools.mjs';
 import { describeTool } from './claude-stream.mjs';
@@ -659,7 +659,7 @@ export class AntigravityCliAdapter {
     const persona = ctx.persona;
     const model = agyModel(persona, this.models);
     const effort = agyEffort(model, effortOf(persona));
-    const args = agyArgs({ persona, model, effort, sessionId, prompt, addDirs, hookConfirmed });
+    const args = agyArgs({ persona, model, effort, sessionId, prompt: agyPrompt(prompt), addDirs, hookConfirmed });
     const mapper = createAgyMapper(ctx, { effort, resumed: sessionId, wrote });
     const hookVars = agyHookVars({ mcpUrl: ctx.mcpUrl, persona, cwd, addDirs, readDirs: ctx.readDirs ?? [] });
     const env = hookConfirmed ? { ...this.env, ...hookVars } : this.env;
