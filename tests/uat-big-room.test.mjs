@@ -246,3 +246,22 @@ test('seeding a run’s data folder with another count writes that many items, a
     rmSync(data, { recursive: true, force: true });
   }
 });
+
+test('with reviews, that many agent replies become answered reviews, each with a comment on a quote of its own text (#1151)', () => {
+  const plain = bigRoomItems({ count: 1000, handles: HANDLES });
+  const seeded = bigRoomItems({ count: 1000, handles: HANDLES, reviews: 10 });
+  assert.deepEqual(
+    seeded.items.map((it) => it.id),
+    plain.items.map((it) => it.id),
+    'the same items, in the same order',
+  );
+  const reviews = seeded.items.filter((it) => it.kind === 'block' && it.block.id.startsWith('plan-'));
+  assert.equal(reviews.length, 10);
+  for (const it of reviews) {
+    const [t] = it.block.threads;
+    const line = it.block.content.split('\n')[t.line - 1];
+    assert.equal(line.slice(t.col - 1, t.endCol), t.quote, 'the quote is the text at its columns');
+    assert.equal(t.comments[0].author, `@${it.handle}`, 'its own agent’s comment');
+    assert.equal(it.answered, true, 'answered, so nothing in the room is left asking');
+  }
+});
