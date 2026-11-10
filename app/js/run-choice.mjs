@@ -2,6 +2,7 @@
 // permissions panel (app/js/permissions.mjs, which re-exports both) and the persona sheet use too. Moved out of
 // permissions.mjs.
 
+import { BACKEND_NAMES } from '/shared/agent-facts.mjs';
 import { HOOKS_LATER, KEPT_WHY } from '/shared/mode-when.mjs';
 import { api, busy, client, sessionsOf } from './client.mjs';
 import { fill, h } from './dom.mjs';
@@ -33,7 +34,10 @@ function modeStatus(se, name, r) {
 /** What /model and /effort say: now, on a running turn that changed, else from its next turn. */
 function runStatus(se, name, now, scope = ' in this conversation') {
   if (now) return `${se.handle} uses ${name}${scope}, from now: its running turn changed too.`;
-  return `${se.handle} uses ${name}${scope}, from its next turn${busy(se) ? '; Claude Code can’t change a turn that’s running' : ''}.`;
+  // Named for the agent’s own backend, as modeSaid does (#1094), not Claude Code for every agent.
+  const backend = S().personas[se.personaId]?.backend;
+  const which = BACKEND_NAMES[backend] ?? 'its backend';
+  return `${se.handle} uses ${name}${scope}, from its next turn${busy(se) ? `; ${which} can’t change a turn that’s running` : ''}.`;
 }
 
 /**
