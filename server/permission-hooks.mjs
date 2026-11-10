@@ -97,7 +97,7 @@ const userPatterns = (flag) => [
 const [USER_QUOTED, USER_BARE] = userPatterns(USER_FLAG);
 const [BUNDLE_QUOTED, BUNDLE_BARE] = userPatterns(CURL_BUNDLE);
 /** Whether the command a match at `at` sits in runs curl: the text back to the last ;, &, | or new line names it. */
-const CURL_RUNS = /(?:^|[\s/])curl\s/;
+const CURL_RUNS = /(?:^|[\s/(`'"])curl\s/;
 const SEPARATOR = /[;&|\n]/;
 const inCurl = (text, at) => CURL_RUNS.test(text.slice(0, at).split(SEPARATOR).at(-1) ?? '');
 /** text with curl's bundled -u flags' passwords hidden, where the command they’re in runs curl. @param {string} text */

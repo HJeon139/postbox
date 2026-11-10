@@ -55,3 +55,13 @@ test('#927: an unspaced header value that starts with a digit is hidden, unless 
   const ports = 'curl http://token-gate:8088/hook; redis-cli -h token-cache:6379 ping; tool "token-cache:6379"; tool token-cache:6379';
   assert.equal(await shownText(ports), ports);
 });
+
+test('#927: a curl inside a command substitution, a subshell or a quoted script hides a bundled -u password', async () => {
+  assert.equal(await shownText('x=$(curl -su u:S3CRET x)'), 'x=$(curl -su u:… x)');
+  assert.equal(await shownText('x=`curl -su u:S3CRET x`'), 'x=`curl -su u:… x`');
+  assert.equal(await shownText('(curl -su u:S3CRET x)'), '(curl -su u:… x)');
+  assert.equal(await shownText('bash -c "curl -su u:S3CRET x"'), 'bash -c "curl -su u:… x"');
+  assert.equal(await shownText("sh -c 'curl -su u:S3CRET x'"), "sh -c 'curl -su u:… x'");
+  const others = '(xcurl -su a:b); "curly -su c:d"';
+  assert.equal(await shownText(others), others, 'a command that only contains curl in its name');
+});
