@@ -85,7 +85,7 @@ import {
 import { RemoteTurns } from './remote/turns.mjs';
 import { replySegment, stepTaken, wordsSegment } from './reply-segment.mjs';
 import { reviewBlock } from './review-comments.mjs';
-import { cancelWake } from './schedule-tools.mjs';
+import { cancelWake, scheduleWakeTool } from './schedule-tools.mjs';
 import {
   armWake,
   cancelWakeSchedule,
@@ -99,7 +99,7 @@ import {
 } from './scheduled-wakes.mjs';
 import { setSessionRun } from './session-run.mjs';
 import { pendingSessionsIn, tellAgent, updateSession } from './session-write.mjs';
-import { clearSummaryPending, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
+import { clearSummaryPending, postSummary, shareText, shareToConversation, summarizeBack, summarizing } from './share-back.mjs';
 import { runShell } from './shell.mjs';
 import {
   agentWake,
@@ -952,13 +952,7 @@ export class Runtime {
     if (turn.checkpoint && !err)
       for (const it of items)
         if (it.turnId === turn.id && (it.kind === 'agent' || it.kind === 'block')) this.patchItem(turn.threadId, it.id, { checkpoint: turn.checkpoint });
-    // “Summarize back”: the reply goes to the conversation the topic branched from. The turn’s replies are what
-    // was sent, so they show “Sent to the conversation” and can’t be sent again (#93).
-    if (turn.summarizeTo && !err && turn.said.trim()) {
-      this.shareText(turn.summarizeTo, { fromThreadId: turn.threadId, handle: se.handle, text: turn.said, summary: true });
-      for (const it of items)
-        if (it.turnId === turn.id && it.kind === 'agent' && it.text && !it.sharedAt) this.patchItem(turn.threadId, it.id, { sharedAt: Date.now() });
-    }
+    if (!err) postSummary(this, se, turn, items);
     // Posted or not, the summary isn’t pending any more, so Summarize back works again, unless one waits behind this
     // turn (#225). Any turn ending clears one a restart left behind, too.
     this.clearSummaryPending(turn.threadId, turn);
@@ -2887,10 +2881,7 @@ export class Runtime {
         });
         return { ok: true, message: 'Proposed. The person decides whether to create it.' };
       },
-      schedule_wake({ in_minutes, note }) {
-        const sc = rt.schedule(sessionId, { inMs: Math.round((+in_minutes || 1) * 60000), note });
-        return { ok: true, message: `You’ll be woken at ${new Date(sc.at).toISOString()}. Its id is ${sc.id}, for cancel_wake.` };
-      },
+      schedule_wake: (args) => scheduleWakeTool(rt, sessionId, args),
       cancel_wake: (args) => cancelWake(rt, sessionId, args),
       wake_agent: (args) => wakeAgent(rt, sessionId, args),
       open_topic: (args) => openTopic(rt, sessionId, args),
