@@ -99,6 +99,13 @@ export function guardEnv() {
   return env;
 }
 
+// git lfs doesn't read GIT_ALLOW_PROTOCOL: its transfers go to lfs.url over http(s) or ssh, with a .netrc login or the
+// ssh agent (#1125). In a git-remote run, the git-lfs first on PATH refuses, so git's lfs hooks and filters do too.
+const FAKE_GIT_LFS = `#!/bin/sh
+echo "git lfs is off in this UAT run: it would reach a network remote past the run's guard." >&2
+exit 1
+`;
+
 // The fake gh: each call is one JSON line of its arguments, and `gh pr create` answers with a link that goes nowhere.
 const FAKE_GH = `#!/usr/bin/env node
 const { appendFileSync } = require('node:fs');
@@ -152,6 +159,8 @@ export function seedGitRemote(workspace, dir) {
   writeFileSync(join(workspace, '.gitignore'), '.claude/\n__pycache__/\n*.pyc\n');
   writeFileSync(join(p.bin, 'gh'), FAKE_GH);
   chmodSync(join(p.bin, 'gh'), 0o755);
+  writeFileSync(join(p.bin, 'git-lfs'), FAKE_GIT_LFS);
+  chmodSync(join(p.bin, 'git-lfs'), 0o755);
   writeFileSync(p.ghCalls, '');
   writeFileSync(p.envFile, agentEnvFile(p));
   // The run’s own global config, in place of the person’s: only an identity for the agents’ commits.
