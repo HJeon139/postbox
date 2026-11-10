@@ -2,6 +2,16 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.58.4 (2026-11-10)
+
+### Fixes
+
+- **uat:** the credential preflight reads the last of every credential helper, site ones too
+- **uat:** a git-remote run's git lfs refuses, since it goes around the guard
+- **uat:** the preflight checks the credential guard, without running a helper
+- **uat:** the agent's env file puts the whole git guard back after its profile
+- **uat:** the guard blanks an inherited GIT_CONFIG_PARAMETERS
+
 ## 1.58.3 (2026-11-10)
 
 ### Fixes
