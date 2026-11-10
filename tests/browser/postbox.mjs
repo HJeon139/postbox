@@ -86,11 +86,12 @@ export const windowWidth = (page) => /** @type {{ width: number }} */ (page.view
  * Waits until the page has applied the server’s events up to its store’s seq now. A change made on the server
  * reaches the page over its event stream, which nothing orders with the test’s next step (POSTBOX_STREAM_LAG shows it).
  * @param {import('@playwright/test').Page} page  @param {{ store: { state: { seq: number } } }} app
+ * @param {number} [timeout] how long to wait, 5 s unless a spec sends a burst
  */
-export async function synced(page, app) {
+export async function synced(page, app, timeout = 5000) {
   const seq = app.store.state.seq;
   await expect
-    .poll(() => page.evaluate(() => import('/app/js/client.mjs').then(({ client }) => client.seq)), { message: `the page to hear event ${seq}` })
+    .poll(() => page.evaluate(() => import('/app/js/client.mjs').then(({ client }) => client.seq)), { message: `the page to hear event ${seq}`, timeout })
     .toBeGreaterThanOrEqual(seq);
 }
 

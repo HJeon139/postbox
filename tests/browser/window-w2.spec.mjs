@@ -121,7 +121,9 @@ test('#866 a room that grows while you follow it stays bounded, with its newest 
   const burst = `it_grow_${Date.now()}`;
   for (let i = 0; i < 300; i++)
     app.store.emit('item.add', { threadId: room, item: { id: `${burst}_${i}`, at: Date.now(), kind: 'user', text: `Line ${i} of a burst` } });
-  await synced(page, app);
+  // 300 messages at once: CI’s runners took over expect’s 5 s to hear them all, twice (#1075’s CI), so 15 s, as
+  // gap-read-cost allows a burst.
+  await synced(page, app, 15_000);
   await settled(page);
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   await settled(page);
