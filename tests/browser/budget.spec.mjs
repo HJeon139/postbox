@@ -6,8 +6,9 @@
 //   npm run budget                                   every size, in the configured browser
 //   POSTBOX_BUDGET_SIZES=1000 npm run budget         one size
 //
-// What gates where (#1166’s Done when, decided 10 Nov): on CI only the element count fails a run, and every time is
-// reported; elsewhere, as on the reference Mac, the times gate too. At 100,000 items only the opening and the element
+// What gates where (#1166’s Done when, decided 10 Nov): the element count fails a run anywhere; the times fail it only
+// in the reference Mac’s run (POSTBOX_BUDGET_REFERENCE=1), and are reported elsewhere. No CI job runs it yet: one at
+// 1,000 and 10,000 items starts once main passes the element count. At 100,000 items only the opening and the element
 // count run, since no build opens a room that size in a bounded time until the page fetches by range (B1 to B3).
 // Each measure is “pass”, “fail” or “not measured”, and only “pass” passes (tools/budget-stats.mjs). Every measure is
 // recorded first and the size’s last test checks them all, so one past its budget doesn’t stop the others.
@@ -29,8 +30,11 @@ const TIMED_UP_TO = 10_000;
 const UNTIMED = 'only the opening and the element count run at this size, until the page fetches by range';
 /** An opening slower than this fails as over it, and the size’s other measures don’t run. */
 const OPEN_CAP_MS = 120_000;
-/** On CI only what doesn’t depend on the machine gates (#1166, 4a). */
-const TIMES_GATE = !process.env.CI;
+/**
+ * Times gate only on the reference Mac’s run, which sets POSTBOX_BUDGET_REFERENCE=1 (#1166, 4a); everywhere else they’re
+ * reported, so a run on a loaded build host doesn’t read as a regression. The element count gates everywhere.
+ */
+const TIMES_GATE = !!process.env.POSTBOX_BUDGET_REFERENCE;
 const KEYS = { warmup: 10, measured: 40, everyMs: 50 };
 const MESSAGES = { count: 20, everyMs: 300 };
 const SCROLLS = { count: 20, everyMs: 150 };
@@ -267,10 +271,18 @@ for (const size of SIZES) {
       // Seeding 100,000 items takes about a minute on its own, past the default 30 s for a hook.
       test.setTimeout(15 * 60_000);
       room = await openRoom(size, browser);
-      test.info().annotations.push({
-        type: 'run',
-        description: JSON.stringify({ commit: commit(), browser: browserName, version: browser.version(), headed: HEADED, size, seedMs: room.seedMs }),
+      const run = JSON.stringify({
+        commit: commit(),
+        browser: browserName,
+        version: browser.version(),
+        headed: HEADED,
+        reference: TIMES_GATE,
+        size,
+        seedMs: room.seedMs,
       });
+      test.info().annotations.push({ type: 'run', description: run });
+      // On the console too, since the list reporter doesn’t print annotations.
+      console.log(`budget-run: ${run}`);
     });
     test.afterAll(async () => {
       await room?.page.close();

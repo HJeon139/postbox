@@ -9,8 +9,11 @@ import { keyDurations, percentile, summarize } from './key-frame-stats.mjs';
 export const BUDGET_MS = 100;
 /** #1155’s page-wide element budget. */
 export const ELEMENT_BUDGET = 5000;
-/** An idle page’s median frame gap, in ms: about 60 frames a second, give or take a loaded machine. */
-const IDLE_GAP = { min: 10, max: 25 };
+/**
+ * An idle page’s median frame gap, in ms: from a 240 Hz display’s 4.2 ms to a loaded 60 Hz one’s 25. The reference
+ * Mac’s display runs at 120 Hz, 8.3 ms. Each rule after it reads the run’s own gaps, never an assumed 16.7 ms.
+ */
+const IDLE_GAP = { min: 4, max: 25 };
 
 /** @typedef {'pass' | 'fail' | 'not measured'} Verdict */
 
