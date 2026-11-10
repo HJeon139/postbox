@@ -19,7 +19,7 @@ export function toolsDown(ctx, detail, { ran = true } = {}) {
 const NOTE = {
   ran: '[Postbox] In your last turn, Postbox’s tool server didn’t start, so you had none of Postbox’s tools, and nothing you meant to show, send or read through them happened. Postbox starts the server again for this turn: if you meant to use one of its tools, do it now.\n\n',
   refused:
-    '[Postbox] In your last turn, Postbox’s tool server didn’t start, so the turn didn’t run and you never got its message. Postbox starts the server again for this turn.\n\n',
+    '[Postbox] In your last turn, Postbox’s tool server didn’t start, so the turn didn’t run and you never got its message: read_conversation has it. Postbox starts the server again for this turn.\n\n',
 };
 
 /** The note for this turn when Postbox’s tools didn’t load last turn, cleared so it’s told once; else ''. @param {any} ctx */

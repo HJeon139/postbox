@@ -47,9 +47,10 @@ export async function openCodexThread(ctx, request, { sourceThreadId, fork, cwd,
 
 // Codex refuses a thread whose required MCP server can’t start (checked with codex-cli 0.167.0, 10 Nov): thread/start
 // answers -32603, “… required MCP servers failed to initialize: postbox: handshaking with MCP server failed: …”, with
-// several hundred characters of transport detail after it, and sends no startupStatus for the server (#1162).
+// several hundred characters of transport detail after it, and sends no startupStatus for the server (#1162). Only
+// an entry of that list counts, at its start or after “; ”, not “postbox:” inside another server’s detail.
 // lint-allow regex: its only variable part is POSTBOX_SERVER, a constant (“postbox”).
-const REQUIRED_FAILED = new RegExp(`required MCP servers failed to initialize:[\\s\\S]*?(?:^|[\\s;,])${POSTBOX_SERVER}:`);
+const REQUIRED_FAILED = new RegExp(`required MCP servers failed to initialize: (?:[^;]*; )*${POSTBOX_SERVER}:`);
 
 /**
  * When Codex refused the thread because Postbox’s server didn’t start, a failed step and an error that says so;
