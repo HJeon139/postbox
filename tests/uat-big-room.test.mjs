@@ -265,3 +265,9 @@ test('with reviews, that many agent replies become answered reviews, each with a
     assert.equal(it.answered, true, 'answered, so nothing in the room is left asking');
   }
 });
+
+test('diagrams and reviews together each come out as asked: a review never replaces a diagram (#1151)', () => {
+  const { items } = bigRoomItems({ count: 1000, handles: HANDLES, diagrams: 10, reviews: 10 });
+  assert.equal(items.filter((it) => MERMAID.test(it.text ?? '')).length, 10, 'every diagram is still there');
+  assert.equal(items.filter((it) => it.kind === 'block' && it.block.id.startsWith('plan-')).length, 10, 'and every review');
+});
