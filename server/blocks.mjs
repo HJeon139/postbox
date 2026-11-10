@@ -11,8 +11,8 @@ import { releaseNeed } from './card-needs.mjs';
 import { clip, clipText, echoedId, httpError, refuseArchived } from './helpers.mjs';
 import { stampSteps } from './progress-steps.mjs';
 import { REACT, toggleReaction } from './reactions.mjs';
-import { keepReviewThreads } from './review-comments.mjs';
 import { revisedFiles } from './review-files.mjs';
+import { personAnswer, revisedReview } from './review-person.mjs';
 import { resolveToolAsk } from './tool-ask.mjs';
 import { resolveViewAsk } from './view-app/consent.mjs';
 import { stopRequested } from './write-intent.mjs';
@@ -65,20 +65,24 @@ export function act(rt, threadId, itemId, action, values, revision) {
   const r = dismissed ? dismissal(it.block, current) : buildEvent(it.block, action, values, { revision: current });
   if (!r.ok) throw Object.assign(httpError(422, r.error), { fieldErrors: r.fieldErrors });
   refuseArchived(rt, it.sessionId);
+  // A review’s comments become the person’s threads on it, in the one write that records the answer (#1143).
+  const theirs = locks && !dismissed ? personAnswer(rt, it, r.event, current) : null;
+  const ev = theirs?.event ?? r.event;
   // An AskUserQuestion’s block (#521): the answer is its call’s result, so the agent has it now, and no event goes.
   const asked = waitingQuestion(rt, itemId);
   // read: whether the agent has had the answer in a turn yet. Until then an update can’t reopen the block.
   if (locks)
     rt.patchItem(threadId, itemId, {
       answered: true,
-      answer: { action, values: r.event.values, voice: r.voice, at: Date.now(), revision: current, read: asked },
+      answer: { action, values: ev.values, voice: r.voice, at: Date.now(), revision: current, read: asked },
+      ...theirs?.patch,
       ...(dismissed ? { closed: { by: 'person', at: Date.now() } } : {}),
     });
   rt.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
   const se = rt.s.sessions[it.sessionId];
   releaseNeed(rt, se, itemId);
   // A question whose call has gone gets its answer as an event, with its question and labels in words (#521).
-  const event = it.question ? { ...r.event, question: lateAnswer(it.block, r.event.values, dismissed) } : r.event;
+  const event = it.question ? { ...ev, question: lateAnswer(it.block, r.event.values, dismissed) } : ev;
   if (asked) answerQuestion(rt, itemId, dismissed ? null : r.event.values);
   else if (se) rt.deliver(se.id, { kind: 'event', event, blockItemId: itemId }, { threadId });
   return { ok: true, voice: r.voice };
@@ -138,16 +142,17 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   if (kind === 'outcome') return recordOutcome(rt, sessionId, block, { se, threadId });
   const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
   if (!v.ok) return { ok: false, message: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
-  const { where, existing } = shownBy(rt, sessionId, v.block.id, threadId(), se());
-  if (!existing) return notShown(rt, sessionId, v.block.id);
-  if (existing.block.type !== v.block.type) return { ok: false, message: 'An update can’t change a block’s type.' };
+  const { where, existing: found } = shownBy(rt, sessionId, v.block.id, threadId(), se());
+  if (!found) return notShown(rt, sessionId, v.block.id);
+  if (found.block.type !== v.block.type) return { ok: false, message: 'An update can’t change a block’s type.' };
   const now = Date.now();
   // Any other update asks again, so it reopens a block you already answered. Not over an answer the agent hasn’t
   // read (#123): the person would see it vanish, and the agent would never learn what it erased.
-  if (existing.answered && existing.answer?.read === false) return rt.unreadAnswer(sessionId, where, existing);
-  // Another agent’s comments stay on a review its revision leaves them off (#133), and count toward its threads.
+  if (found.answered && found.answer?.read === false) return rt.unreadAnswer(sessionId, where, found);
+  // The person’s and other agents’ threads stay on a review, and its agent comments only as itself (#133, #1143).
+  const { existing, reviews, note, ...revised } = revisedReview(found, v.block);
+  v.block = revised.block;
   if (v.block.type === 'review') {
-    v.block = keepReviewThreads(existing, v.block);
     const kept = validateBlock(v.block, { imageOrigins: rt.config.imageOrigins });
     if (!kept.ok) return { ok: false, message: `The update wasn’t applied: with the reviewers’ threads it leaves out, which stay, ${kept.errors.join(' ')}` };
   }
@@ -157,22 +162,22 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   if (existing.answered && !newFiles) {
     const differ = unseenAware(v.block, existing.block).filter((k) => k !== 'outcome');
     if (differ.length > 0 && !existing.closed && differ.every((k) => UNSEEN.has(k) || k === STATUS)) {
-      if (differ.length) rt.patchItem(where, existing.id, { block: { ...v.block, outcome: existing.block.outcome }, updatedAt: now });
+      if (differ.length) rt.patchItem(where, existing.id, { block: { ...v.block, outcome: existing.block.outcome }, updatedAt: now, ...reviews });
       // The images are the ones it already holds (no newFiles), so their blobs stay.
       if (given.files) given.held = true;
       return {
         ok: true,
-        message: `${differ.length ? `Updated the ${differ.join(', ')} of ${v.block.id}` : `Nothing in ${v.block.id} changed`}; it stays answered, since nothing the person would answer changed. To ask again, change what it asks.`,
+        message: `${differ.length ? `Updated the ${differ.join(', ')} of ${v.block.id}` : `Nothing in ${v.block.id} changed`}; it stays answered, since nothing the person would answer changed. To ask again, change what it asks.${note}`,
       };
     }
   }
   const kept = ASKING.has(v.block.type) && !existing.answered && !newFiles ? keptWaiting(rt, where, existing, v.block, now) : null;
   if (kept) {
     if (given.files) given.held = true;
-    return kept;
+    return { ...kept, message: kept.message + note };
   }
   /** @type {Record<string, any>} */
-  const patch = { block: v.block, answered: false, answer: null, closed: null, revision: (existing.revision ?? 1) + 1, updatedAt: now, ...files };
+  const patch = { block: v.block, answered: false, answer: null, closed: null, revision: (existing.revision ?? 1) + 1, updatedAt: now, ...files, ...reviews };
   if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
   // Asking again belongs to this turn, so its end shows the person this agent needs them (#69).
   if (ASKING.has(v.block.type) && turn) patch.turnId = turn.id;
@@ -180,13 +185,13 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   if (given.files) given.held = true;
   if (!followsConversation(v.block)) {
     rt.patchItem(where, existing.id, patch);
-    return { ok: true, message: `Updated block ${v.block.id}.` };
+    return { ok: true, message: `Updated block ${v.block.id}.${note}` };
   }
   // It asks again, so it comes to the newest point, where the person will look for it (#92). Text the turn writes
   // next goes after it, when it’s in the turn’s own thread.
   if (where === threadId()) endSegment();
   const moved = rt.bringForward(where, existing.id, { what: 'block', title: blockTitle(v.block) }, patch);
-  return { ok: true, message: `Updated block ${v.block.id}${moved ? '; it asks again at the newest point in the conversation' : ''}.` };
+  return { ok: true, message: `Updated block ${v.block.id}${moved ? '; it asks again at the newest point in the conversation' : ''}.${note}` };
 }
 
 /**

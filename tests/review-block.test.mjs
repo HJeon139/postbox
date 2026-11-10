@@ -70,7 +70,7 @@ test('#179: the person’s comment on a selection reaches the agent with its lin
   const { adapter } = await answered({ verdict: 'request_changes', comments: [ranged, { line: 4, text: 'Cut it.' }] });
   const ev = adapter.calls.at(-1).message;
   assert.equal(ev.kind, 'event');
-  assert.deepEqual(ev.event.values.comments, [ranged, { line: 4, text: 'Cut it.' }]);
+  for (const [i, c] of [ranged, { line: 4, text: 'Cut it.' }].entries()) assert.deepEqual(ev.event.values.comments[i], { ...c, threadId: `you-1-${i + 1}` });
   const said = formatMessage(ev);
   assert.match(said, /\n- line 3, col 5–19 “the quoted text”: Say which text\.\n- line 4: Cut it\.$/);
 });
@@ -228,14 +228,14 @@ test('#133: a reviewer’s thread sent back keeps its words, takes its status, a
   assert.deepEqual(item().block.threads, [{ ...th, comments: [...th.comments, mineSaid] }]);
 });
 
-test('#133: a revision that would push a reviewer’s kept thread past 200 threads is refused, and drops nothing', async () => {
+test('#133: a revision that would push a reviewer’s kept thread past 200 open threads is refused, and drops nothing', async () => {
   const { rt, mine, theirs, item } = await shown();
   rt.toolsFor(theirs.id).review_block({ blockId: 'plan', comments: [ranged] });
   await settle(rt);
-  const own = Array.from({ length: 200 }, (_, i) => ({ id: `r${i}`, status: 'open', line: 1, comments: [{ author: 'You', text: 'x' }] }));
+  const own = Array.from({ length: 200 }, (_, i) => ({ id: `r${i}`, status: 'open', line: 1, comments: [{ author: '@researcher', text: 'x' }] }));
   const r = rt.toolsFor(mine.id).update_block({ block: { ...draft, revision: 2, threads: own } });
   assert.equal(r.ok, false);
-  assert.match(r.message, /threads has more than 200 items/);
+  assert.match(r.message, /up to 200 open threads/);
   assert.deepEqual(
     item().block.threads.map((x) => x.id),
     ['critic-1'],

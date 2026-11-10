@@ -130,6 +130,15 @@ export const REVIEW_IMAGES = Object.freeze({
   reviewImageSide: 8192,
 });
 
+/**
+ * A review block’s threads (#1143): at most REVIEW_THREADS_OPEN open at once, so resolving one frees its place, and
+ * REVIEW_THREADS_MAX open and resolved, holding at most REVIEW_THREADS_BYTES of comment text in UTF-8, so one review
+ * can’t carry megabytes into every snapshot. Past either of the last two, a new review block takes the text so far.
+ */
+export const REVIEW_THREADS_OPEN = 200;
+export const REVIEW_THREADS_MAX = 1000;
+export const REVIEW_THREADS_BYTES = 2 * 1024 * 1024;
+
 /** The most characters in the whole-sentence glimpse shown while an agent works (#478). */
 export const GLIMPSE_CHARS = 160;
 /** The most streamed text inspected to find that glimpse, bounding work on each update (#478). */
