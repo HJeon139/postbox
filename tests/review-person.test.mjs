@@ -265,3 +265,39 @@ test('#1143: a submit that replies in a thread the review doesn’t have is refu
   assert.equal(item().answered, false);
   assert.equal(item().block.threads, undefined);
 });
+
+/** A review stored before the author rule, with a thread its agent wrote in the person’s name, as the demo’s mock did. */
+async function legacy() {
+  const s = await shown();
+  const threads = [
+    {
+      id: 'c1',
+      status: 'open',
+      line: 4,
+      comments: [
+        { author: 'You', text: 'Cut it.' },
+        { author: '@critic', text: 'Done.' },
+      ],
+    },
+  ];
+  s.rt.patchItem(s.t.id, s.item().id, { block: { ...s.item().block, threads } });
+  return s;
+}
+
+test('#1143: a review stored with an author outside the rule still takes the person’s submit, its comment named for its agent', async () => {
+  const s = await legacy();
+  s.rt.act(s.t.id, s.item().id, 'submit', { verdict: 'request_changes', comments: [{ line: 3, text: 'And this.' }] }, 1);
+  await settle(s.rt);
+  const authors = s.item().block.threads.flatMap((t) => t.comments.map((c) => c.author));
+  assert.deepEqual(authors, ['@critic', '@critic', 'you'], 'the old “You” was its agent’s words, so it reads as its agent’s');
+});
+
+test('#1143: a review stored with an author outside the rule can still be revised', async () => {
+  const s = await legacy();
+  const r = s.update({ ...draft, content: `${DRAFT}\nMore.` });
+  assert.equal(r.ok, true, r.message);
+  assert.deepEqual(
+    s.item().block.threads[0].comments.map((c) => c.author),
+    ['@critic', '@critic'],
+  );
+});
