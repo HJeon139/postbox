@@ -6,7 +6,7 @@
 // by an older one after the hello is spawned until the next hello reads it, which saves a --version per turn.
 
 import { claudeProblem, REMOTE_CLAUDE_MIN } from '../../../shared/remote-claude.mjs';
-import { compareVersions } from './programs.mjs';
+import { olderThan } from '../../../shared/versions.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('../../../shared/remote-claude.mjs').ClaudeNeed} ClaudeNeed */
 /** @typedef {import('./programs.mjs').HarnessFound} HarnessFound */
@@ -18,7 +18,8 @@ import { compareVersions } from './programs.mjs';
 export function claudeBar(need) {
   /** @type {ClaudeNeed} */
   const floor = { min: REMOTE_CLAUDE_MIN, why: 'remote' };
-  if (need && compareVersions(need.min, floor.min) > 0) return need;
+  // The one comparison the refusal itself uses, so the bar and the words can’t disagree.
+  if (need && olderThan(floor.min, need.min) === true) return need;
   return floor;
 }
 

@@ -70,9 +70,9 @@ export function checkAgentFile(v) {
   return n > REMOTE_LIMITS.fileBytes ? `start.agentFile.text is ${n} bytes; the limit is ${REMOTE_LIMITS.fileBytes}.` : '';
 }
 
-/** The longest start.need.min, and its shape: a dotted version of up to four numbers. */
+/** The longest start.need.min, and its shape: three numbers, as olderThan compares (versions.mjs). */
 const NEED_MIN_CHARS = 32;
-const NEED_MIN_RE = /^\d+(\.\d+){0,3}$/;
+const NEED_MIN_RE = /^\d+\.\d+\.\d+$/;
 
 /**
  * start.need (#1084): the oldest claude a claude-code start runs on, and why, for the daemon’s check and its words.

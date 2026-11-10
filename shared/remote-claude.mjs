@@ -44,12 +44,5 @@ export function claudeProblem(h, need) {
   return null;
 }
 
-/**
- * Why a remote turn can’t start on the claude a welcome lists, or null if it can (claudeProblem, for these settings).
- * @param {any} welcome  the daemon’s latest welcome  @param {{ denyPrompts?: boolean }} [settings]  the host’s
- */
-export function remoteClaudeProblem(welcome, settings = {}) {
-  if (!welcome) return 'Postbox hasn’t heard from the host’s daemon yet, so it can’t tell which Claude Code is there.';
-  const h = (Array.isArray(welcome.harnesses) ? welcome.harnesses : []).find((x) => x?.name === 'claude-code');
-  return claudeProblem(h, claudeNeed(settings));
-}
+/** A remote turn before the host’s daemon has said which claude it has (#1084: the claude itself is the daemon’s check). */
+export const NO_WELCOME_YET = 'Postbox hasn’t heard from the host’s daemon yet, so it can’t tell which Claude Code is there.';

@@ -43,7 +43,7 @@ import { hostMemoryRoot } from './remote-turn.mjs';
 import { effortOf, fromContext, recorderFor } from './setup.mjs';
 
 export { claudeArgs } from './claude-code-args.mjs';
-export { CLAUDE_CODE_CAPABILITIES, DENY_PROMPTS_MIN, REMOTE_CLAUDE_MIN, remoteClaudeProblem } from './claude-code-remote.mjs';
+export { CLAUDE_CODE_CAPABILITIES, DENY_PROMPTS_MIN, REMOTE_CLAUDE_MIN } from './claude-code-remote.mjs';
 
 /** The claude binary: POSTBOX_CLAUDE_BIN, then the native installer’s location, then the PATH. */
 export function findClaude(env = process.env) {
@@ -247,7 +247,7 @@ export class ClaudeCodeAdapter {
         reject(
           new Error(
             remote
-              ? `Claude Code couldn’t run on the host: ${e.message}`
+              ? onHost(e.message)
               : e.code === 'ENOENT'
                 ? 'Claude Code isn’t installed, or isn’t on the PATH. Install it, or set POSTBOX_CLAUDE_BIN.'
                 : `Claude Code couldn’t start: ${e.message}`,
@@ -289,4 +289,13 @@ export class ClaudeCodeAdapter {
       child.stdin.end(prompt);
     });
   }
+}
+
+/**
+ * A remote start’s failure as the person reads it: the daemon’s refusal of the claude it found already says “Claude
+ * Code …” (shared/remote-claude.mjs, #1084), so it goes as it is; anything else says where it failed.
+ * @param {string} message
+ */
+function onHost(message) {
+  return message.startsWith('Claude Code ') ? message : `Claude Code couldn’t run on the host: ${message}`;
 }

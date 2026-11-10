@@ -15,7 +15,7 @@
 //   mapper (the reply is rebuilt whole), nothing is sent to it, and no fallback starts another.
 // server/adapters/claude-code.mjs runs the turn; this module holds what only a host needs.
 
-import { claudeNeed, remoteClaudeProblem } from '../../shared/remote-claude.mjs';
+import { claudeNeed, NO_WELCOME_YET } from '../../shared/remote-claude.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
 import { checkRemoteContext } from './adapter.mjs';
 import { hostShim, hostWaitMax, startAttachments } from './remote-turn.mjs';
@@ -43,7 +43,7 @@ export const CLAUDE_CODE_CAPABILITIES = Object.freeze({
 });
 
 // The minimums and the words for a claude that can’t run a turn are shared with the host’s daemon (#1084).
-export { DENY_PROMPTS_MIN, REMOTE_CLAUDE_MIN, remoteClaudeProblem } from '../../shared/remote-claude.mjs';
+export { DENY_PROMPTS_MIN, REMOTE_CLAUDE_MIN } from '../../shared/remote-claude.mjs';
 
 /**
  * Refuses a turn before anything starts on the host: a remote context without the runtime’s turn ID or Postbox’s
@@ -55,7 +55,7 @@ export { DENY_PROMPTS_MIN, REMOTE_CLAUDE_MIN, remoteClaudeProblem } from '../../
 export function checkRemoteClaude(remote, attach) {
   checkRemoteContext(remote, { attach });
   if (attach) return;
-  if (!(remote.welcome ?? remote.link?.welcome)) throw new Error(remoteClaudeProblem(null) ?? '');
+  if (!(remote.welcome ?? remote.link?.welcome)) throw new Error(NO_WELCOME_YET);
 }
 
 /**
