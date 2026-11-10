@@ -127,6 +127,39 @@ test('#1074 a .. after a link inside the workspace asks when its plain reading l
   assert.equal(decide('view_file', { AbsolutePath: `${ws}/a/../inside.txt` }, { mode: 'ask', folders: [ws], cwd: ws, home }).decision, 'allow');
 });
 
+test('#1074 in Auto, an edit whose plain reading is in .git asks, though a link hides it from the file system’s', () => {
+  const { home, ws } = aHome();
+  mkdirSync(join(ws, 'x', 'y', 'z'), { recursive: true });
+  mkdirSync(join(ws, '.git'));
+  symlinkSync(join(ws, 'x', 'y', 'z'), join(ws, 'a'));
+  symlinkSync(join(ws, '.git'), join(ws, 'g'));
+  // Read as text, a/../g/config is g/config, which is .git/config; the file system reads x/y/g/config.
+  const opts = { mode: 'auto', folders: [ws], cwd: ws, home };
+  assert.equal(decide('write_to_file', { TargetFile: `${ws}/a/../g/config` }, opts).decision, 'ask', 'an edit');
+  assert.equal(decide('run_command', { CommandLine: 'touch a/../g/config' }, opts).decision, 'ask', 'a routine write');
+  assert.equal(decide('run_command', { CommandLine: 'cp a.txt a/../g/config' }, opts).decision, 'ask', 'a copy there');
+});
+
+test('#1074 a write whose plain reading is agy’s own settings is refused, though a link hides it from the file system’s', () => {
+  const { home, ws } = aHome();
+  const agy = join(home, '.gemini', 'antigravity-cli');
+  mkdirSync(join(ws, 'x', 'y', 'z'), { recursive: true });
+  symlinkSync(join(ws, 'x', 'y', 'z'), join(ws, 'a'));
+  symlinkSync(agy, join(ws, 'agy'));
+  for (const mode of ['ask', 'acceptEdits', 'auto'])
+    assert.equal(decide('write_to_file', { TargetFile: `${ws}/a/../agy/settings.json` }, { mode, folders: [ws], cwd: ws, home }).decision, 'deny', mode);
+  // The agent’s folder is home: the write would otherwise be inside it, and allowed in Accept edits and Auto.
+  mkdirSync(join(home, 'x', 'y'), { recursive: true });
+  symlinkSync(join(home, 'x', 'y'), join(home, 'a'));
+  symlinkSync(agy, join(home, 'l'));
+  for (const mode of ['acceptEdits', 'auto'])
+    assert.equal(
+      decide('write_to_file', { TargetFile: `${home}/a/../l/settings.json` }, { mode, folders: [home], cwd: home, home }).decision,
+      'deny',
+      `home, ${mode}`,
+    );
+});
+
 test('#1074 in Auto, a command’s .. after a link climbs from where the link leads, so it isn’t routine', () => {
   const { home, ws, ssh } = aHome();
   symlinkSync(join(ssh, 'sub'), join(ws, 'sublink'));
