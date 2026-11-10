@@ -85,10 +85,11 @@ const OPEN_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants
 
 /**
  * Whether the file open is still the one servedFile checked at path (#362): path still resolves to itself, so no
- * folder on it became a link, and names the very file open (device and inode), as agent-files.mjs checks (#780).
+ * folder on it became a link, and names the very file open (device and inode), as agent-files.mjs checks (#780). The
+ * inode is the only check that catches a folder swapped and swapped back between the open and here; exported for its test.
  * @param {import('node:fs').BigIntStats} opened @param {string} path
  */
-async function stillThere(opened, path) {
+export async function stillThere(opened, path) {
   if ((await realpath(path).catch(() => null)) !== path) return false;
   const at = await lstat(path, { bigint: true }).catch(() => null);
   return !!at && at.dev === opened.dev && at.ino === opened.ino;
@@ -106,7 +107,7 @@ async function openedFile(path) {
   try {
     const st = await fh.stat({ bigint: true });
     if (!st.isFile() || !(await stillThere(st, path))) throw httpError(404, 'Not found.');
-    return { fh, mtime: Number(st.mtimeMs) };
+    return { fh, mtime: st.mtimeNs };
   } catch (e) {
     await fh.close();
     throw e;
