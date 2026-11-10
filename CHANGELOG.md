@@ -2,6 +2,36 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.56.1 (2026-11-10)
+
+### Fixes
+
+- **kiro:** show when Postbox's tool server fails to start, and tell the agent next turn (#489)
+- **server:** a refused mention or summary is posted as a system line (#362)
+- **server:** a refused hand-off is posted, and its agent gets one turn to send it
+- **server:** mentions and summaries keep the send limit, and wakes cap at 20
+- **tests:** the remote rig's work root is a temp folder of its own (#823)
+- **adapters:** .git and agy’s settings judge both readings of a path, through realReadings (#1074)
+- **permissions:** /mode names the busy agent's own backend, not Claude Code (#1030)
+- **adapters:** a path’s .. is judged as text too, so a link can’t hide a climb out (#1074)
+- **permissions:** a read card for a path that isn’t text says so, not an empty file_path (#1074)
+- **adapters:** a file call naming a ~user path asks, and is refused where it may be agy’s (#1074)
+- **permissions:** a read card shows each path on a line of its own, tidied and clipped (#1074)
+- **adapters:** Auto’s routine commands judge a path as the hook’s file calls do (#1074)
+- **permissions:** a read card names every outside path, and each must be readable (#1074)
+- **permissions:** a read card's Always allow says the folder is the agent's
+- **permissions:** a folder in home named ..something is a dot-folder, never offered
+- **adapters:** agy hook compares readable folders as Postbox saved them
+- **adapters:** agy reads its own builtin skills and guide with no card
+- **adapters:** agy hook judges a ~ path as the home folder too
+- **adapters:** agy hook judges every path a file call names, not only the first
+- **adapters:** agy hook follows a link before a .. in a path, as the file system does
+- **apps:** load each check frame at its own width, and fire its resize inside the frame
+- **permissions:** say why a running turn keeps its mode, and what its hooks do
+- **apps:** resize each check frame and change its theme while the app loads
+- **tests:** a gate run's tests write temp files only in its own temp folder
+- **tests:** an install test's pause ends at a limit, and runs as root
+
 ## 1.56.0 (2026-11-10)
 
 ### Features
