@@ -4,10 +4,6 @@
 
 import { turnLine } from '../shared/work.mjs';
 
-/**
- * The turn’s work is recorded (#132), then its last reply, or its last block, gets the list that leads to it (#195).
- * @param {any} rt  the runtime @param {any} turn @param {string} status
- */
 /** How a turn ended, for its work: done, stopped by Stop (an abort), or failed. @param {any} err */
 export function endedAs(err) {
   if (!err) return 'done';
@@ -15,6 +11,10 @@ export function endedAs(err) {
   return 'failed';
 }
 
+/**
+ * The turn’s work is recorded (#132), then its last reply, or its last block, gets the list that leads to it (#195).
+ * @param {any} rt  the runtime @param {any} turn @param {string} status
+ */
 export function endWork(rt, turn, status) {
   return (
     rt.ledger
