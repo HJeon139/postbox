@@ -73,7 +73,7 @@ export function hooksSection({ persona: p, hooks, running = [], hooksRunning = [
     { id: 'perm-hooks' },
     h('h3.label', {}, 'Hooks before tool calls'),
     found ? h('ul.list-rows', {}, rows) : noneNote(hooks),
-    found || p.host ? h('p.help', {}, runsNote(p, running, hooksRunning)) : null,
+    found || p.host ? h('p.help.perm-hooks-runs', {}, runsNote(p, running, hooksRunning)) : null,
     ...errors,
     p.usesHostSetup ? null : h('p.help', {}, 'It’s isolated, so it doesn’t read the hooks in your user settings.'),
     h(

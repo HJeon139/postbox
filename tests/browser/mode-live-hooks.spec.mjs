@@ -132,7 +132,7 @@ test('#1030 Ask me to Auto live: each panel says the running turn changed, and t
   const dialog = await openPanel(page);
   await dialog.locator('[aria-label="Mode"] button', { hasText: 'Auto' }).click();
   await expect.soft(dialog.locator('.perm-status')).toHaveText(`drafter is in Auto mode now, in its running turn too, ${HOOKS_LATER}.`);
-  await expect.soft(dialog.locator('#perm-hooks p.help').first()).toHaveText(notYet('drafter', 'Auto'));
+  await expect.soft(dialog.locator('#perm-hooks p.perm-hooks-runs')).toHaveText(notYet('drafter', 'Auto'));
   await page.keyboard.press('Escape');
   const choice = await slashMode(page, 'Run everything');
   await expect
@@ -151,16 +151,16 @@ test('#1030 Auto to Ask me on the Agent SDK: the panel says Postbox keeps the mo
   await open(page, 'keeper');
   let dialog = await openPanel(page);
   // In Auto, its running turn loaded the hooks, so the note says nothing of a next turn.
-  await expect.soft(dialog.locator('#perm-hooks p.help').first()).toHaveText(`In Auto mode, these run in keeper’s Postbox turns too. ${ON_TAIL}`);
+  await expect.soft(dialog.locator('#perm-hooks p.perm-hooks-runs')).toHaveText(`In Auto mode, these run in keeper’s Postbox turns too. ${ON_TAIL}`);
   await dialog.locator('[aria-label="Mode"] button', { hasText: 'Ask me' }).click();
   await expect.soft(dialog.locator('.perm-status')).toHaveText(`keeper is in Ask me mode from its next turn, or now if you stop it: ${KEPT}`);
-  await expect.soft(dialog.locator('#perm-hooks p.help').first()).toHaveText(stillRun('keeper', 'Ask me'));
+  await expect.soft(dialog.locator('#perm-hooks p.perm-hooks-runs')).toHaveText(stillRun('keeper', 'Ask me'));
   await page.keyboard.press('Escape');
   // Once the turn ends, its hooks have gone with it.
   release.get('keeper')?.();
   await expect.poll(() => Object.values(app.rt.s.sessions).some((x) => x.threadId === threads.keeper && app.rt.turns.has(x.id))).toBe(false);
   dialog = await openPanel(page);
-  await expect.soft(dialog.locator('#perm-hooks p.help').first()).toHaveText(dontRun('keeper', 'Ask me'));
+  await expect.soft(dialog.locator('#perm-hooks p.perm-hooks-runs')).toHaveText(dontRun('keeper', 'Ask me'));
 });
 
 test('#1030 Auto, then Run everything live, then Ask me: each panel says the turn keeps its mode until it ends, and why', async ({ page }) => {
@@ -192,7 +192,7 @@ test('#1030 Auto to Ask me on the CLI: the panel keeps Claude Code’s reason, a
   const dialog = await openPanel(page);
   await dialog.locator('[aria-label="Mode"] button', { hasText: 'Ask me' }).click();
   await expect.soft(dialog.locator('.perm-status')).toHaveText('cli is in Ask me mode from its next turn: Claude Code can’t change a turn that’s running.');
-  await expect.soft(dialog.locator('#perm-hooks p.help').first()).toHaveText(stillRun('cli', 'Ask me'));
+  await expect.soft(dialog.locator('#perm-hooks p.perm-hooks-runs')).toHaveText(stillRun('cli', 'Ask me'));
   await page.keyboard.press('Escape');
   const choice = await slashMode(page, 'Accept edits');
   await expect
