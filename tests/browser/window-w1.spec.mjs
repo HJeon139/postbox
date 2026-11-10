@@ -35,7 +35,9 @@ failOnPageErrors(test);
 async function open(page, count, on) {
   await page.addInitScript((flag) => (flag ? localStorage.setItem('pb-window', 'on') : localStorage.setItem('pb-window', 'off')), on);
   await page.goto(`${app.origin}/#/t/${rooms[count]}`);
-  await synced(page, app);
+  // A room mounted whole, with the window off, can take CI’s loaded runners past expect’s 5 s to hear (#1075’s CI),
+  // so 15 s, as gap-read-cost and window-w2’s burst allow.
+  await synced(page, app, 15_000);
   await expect(page.locator('#main .item').last()).toBeVisible();
   await settled(page);
 }
@@ -69,7 +71,7 @@ for (const on of [false, true])
     await open(page, count, on);
     const text = `A new message, window ${on ? 'on' : 'off'}`;
     app.store.emit('item.add', { threadId: rooms[count], item: { id: `it_new_${on}`, at: Date.now(), kind: 'user', text } });
-    await synced(page, app);
+    await synced(page, app, 15_000);
     await expect(page.locator('#main > .item').last(), 'the newest item is the message').toContainText(text);
     await expect(page.locator('#main > .item').last()).toBeInViewport();
   });
