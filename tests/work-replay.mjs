@@ -21,7 +21,7 @@ export function memIo(initial = {}) {
     readNow: read,
     read: async (p) => read(p),
     realPath: async (p) => p,
-    tempRoot: async () => '/tmp',
+    tempRoots: () => ['/tmp'],
     readTail: async (p) => {
       if (!fs.has(p)) throw new Error('ENOENT');
       return { bytes: fs.get(p), cut: false };

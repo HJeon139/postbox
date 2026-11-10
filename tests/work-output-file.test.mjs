@@ -4,16 +4,20 @@
 // links followed first.
 
 import assert from 'node:assert/strict';
+import { mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { Ledger } from '../server/ledger.mjs';
+import { nodeIo, outputFileAt } from '../server/ledger-io.mjs';
 import { Store } from '../server/store.mjs';
+import { tempDir } from './temp-dirs.mjs';
 import { fakeGit, memIo } from './work-replay.mjs';
 
 const FOLDER = '/work/proj';
 /** A ledger over files in memory, where `links` maps a path to where it resolves. */
 function ledgerWith(files, links = {}) {
   const store = new Store(null);
-  const io = { ...memIo(files), realPath: async (p) => links[p] ?? p, tempRoot: async () => '/scratch' };
+  const io = { ...memIo(files), realPath: async (p) => links[p] ?? p, tempRoots: () => ['/scratch'] };
   const ledger = new Ledger({ store, io, git: fakeGit([]), now: () => 1000 });
   store.emit('thread', { id: 'th_1', kind: 'thread', members: [] });
   return { store, ledger };
@@ -64,4 +68,65 @@ test('#362: the agent’s own folder and the project’s each count, when they d
   const files = { '/agents/dev/run.log': 'agent', [`${FOLDER}/run.log`]: 'project' };
   assert.equal((await outputOf(files, '/agents/dev/run.log', {}, '/agents/dev')).fromFile, true, 'the agent’s folder');
   assert.equal((await outputOf(files, `${FOLDER}/run.log`, {}, '/agents/dev')).fromFile, true, 'the project’s folder');
+});
+
+// On the real filesystem, with nodeIo. Claude Code writes output files under the real /tmp, and Node’s temp folder can
+// be somewhere else, as it is on a Mac. Each folder is a fresh name made here, so nothing else in /tmp matters.
+const REAL_TMP = { skip: process.platform === 'win32' ? 'Windows has no /tmp' : false };
+
+/** Moves Node’s temp folder away from /tmp for one test, as a Mac has it, and returns it. @param {any} t */
+function nodeTempElsewhere(t) {
+  const before = process.env.TMPDIR;
+  const elsewhere = tempDir('node-temp-');
+  t.after(() => {
+    if (before === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = before;
+  });
+  process.env.TMPDIR = elsewhere;
+  return elsewhere;
+}
+
+/** Writes a file, making its folders. Returns its path. @param {string} path */
+function fileAt(path) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, 'output');
+  return path;
+}
+
+test('#362: a background output file in a backend’s folder under the real /tmp is read', REAL_TMP, async (t) => {
+  const elsewhere = nodeTempElsewhere(t);
+  for (const root of ['/tmp', elsewhere]) {
+    const file = fileAt(join(tempDir('claude-output-', root), 'slug', 'tasks', 'b_a.output'));
+    assert.equal(await outputFileAt(nodeIo, {}, file), realpathSync(file), file);
+  }
+});
+
+test('#362: under the real /tmp, only what’s inside a backend’s own real folder is read', REAL_TMP, async (t) => {
+  const elsewhere = nodeTempElsewhere(t);
+  const secret = fileAt(join(elsewhere, 'secrets', 'id_rsa'));
+  const backend = tempDir('claude-output-', '/tmp');
+  const linkedFolder = `${backend}-linked`;
+  const looseFile = `${backend}.log`;
+  t.after(() => rmSync(linkedFolder, { force: true }));
+  t.after(() => rmSync(looseFile, { force: true }));
+  symlinkSync(dirname(secret), linkedFolder);
+  writeFileSync(looseFile, 'not in a folder');
+  const linkOut = join(backend, 'out.output');
+  symlinkSync(secret, linkOut);
+  const claudette = fileAt(join(tempDir('claudette-output-', '/tmp'), 'x.output'));
+  const project = join(elsewhere, 'project');
+  const projectSibling = fileAt(join(elsewhere, 'projectx', 'a.log'));
+  mkdirSync(project);
+  const work = { folder: project, projectFolder: project };
+
+  const refused = {
+    'a link out of the folder': linkOut,
+    'a claude-* folder that’s a link': join(linkedFolder, 'id_rsa'),
+    'a claudette folder': claudette,
+    'a file, not a folder, named claude-*': looseFile,
+    'a path that climbs out with ..': `${backend}/../${claudette.slice('/tmp/'.length)}`,
+    'a sibling of the project': projectSibling,
+    'a system file': '/etc/hosts',
+  };
+  for (const [what, path] of Object.entries(refused)) assert.equal(await outputFileAt(nodeIo, work, path), null, what);
 });

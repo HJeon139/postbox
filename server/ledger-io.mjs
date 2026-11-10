@@ -37,8 +37,11 @@ export const nodeIo = {
   },
   /** Where a path leads, through links. */
   realPath: (path) => realpath(path),
-  /** The temp folder, through links: a backend keeps its own folder there, such as Claude Code's claude-<uid>. */
-  tempRoot: () => realpath(tmpdir()),
+  /**
+   * Where a backend may keep its own folder, such as Claude Code’s claude-<uid>: Node’s temp folder, and off Windows the
+   * real /tmp, where Claude Code writes even on a Mac, whose Node temp folder is under /var/folders.
+   */
+  tempRoots: () => (process.platform === 'win32' ? [tmpdir()] : [tmpdir(), '/tmp']),
   /** The last `max` bytes of a file, and whether earlier ones were cut. */
   async readTail(path, max) {
     const fh = await open(path, 'r');
@@ -95,6 +98,20 @@ export const fail = (status, message) => Object.assign(new Error(message), { sta
 // The folder a backend keeps under the temp folder: Claude Code's claude or claude-<uid>.
 const BACKEND_TEMP = /^claude(?:-[^/\\]*)?$/;
 
+/** Each folder through its links, or null where it has none or can’t be resolved. @param {any} io @param {any[]} folders */
+const realFolders = (io, folders) => Promise.all(folders.map((f) => (f ? io.realPath(f).catch(() => null) : null)));
+
+/**
+ * Whether `real` is inside a backend’s own folder directly under `temp`. Both have no links left, so that folder isn’t a
+ * link, and a file with a backend’s name isn’t a folder.
+ * @param {string} real @param {string | null} temp
+ */
+function inBackendFolder(real, temp) {
+  if (!temp || !real.startsWith(temp + sep)) return false;
+  const [folder, ...inside] = real.slice(temp.length + 1).split(sep);
+  return inside.length > 0 && BACKEND_TEMP.test(folder);
+}
+
 /**
  * Where a background command's output file may be read from (#362): the backend's stream names the path, and Work shows
  * what's there to the person, so it's read only when it leads, through links, into the agent's folder, the project's,
@@ -105,8 +122,8 @@ const BACKEND_TEMP = /^claude(?:-[^/\\]*)?$/;
 export async function outputFileAt(io, w, path) {
   const real = await io.realPath(path).catch(() => null);
   if (!real) return null;
-  const roots = await Promise.all([w.folder, w.projectFolder].map((f) => (f ? io.realPath(f).catch(() => null) : null)));
+  const roots = await realFolders(io, [w.folder, w.projectFolder]);
   if (roots.some((root) => root && real.startsWith(root + sep))) return real;
-  const temp = await io.tempRoot().catch(() => null);
-  return temp && real.startsWith(temp + sep) && BACKEND_TEMP.test(real.slice(temp.length + 1).split(sep)[0]) ? real : null;
+  const temps = await realFolders(io, io.tempRoots());
+  return temps.some((temp) => inBackendFolder(real, temp)) ? real : null;
 }
