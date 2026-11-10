@@ -8,6 +8,7 @@ import { $, h, icon } from './dom.mjs';
 import './focus-clear.mjs';
 import { hoverContent } from './hover-content.mjs';
 import './keys.mjs';
+import { startLagLog } from './lag-log.mjs';
 import { goHome, lastIn, latestIn, remember } from './last-place.mjs';
 import { notify } from './notify-toast.mjs';
 import { mountPane } from './pane.mjs';
@@ -186,6 +187,8 @@ try {
   else {
     connect();
     render();
+    // After the first paint, so the lag log costs the page’s start nothing (#821).
+    requestAnimationFrame(() => setTimeout(startLagLog, 0));
   }
 } catch (e) {
   root.replaceChildren(h('div', { style: { padding: '24px' } }, h('h1.title', 'Postbox couldn’t start'), h('p', e.message)));
