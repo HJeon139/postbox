@@ -2,7 +2,7 @@
 // not when the view moves (#341; the view’s rules are #508’s design, “Browser”). In the frame between:
 // - a reply that lands right after you scroll up is counted as unseen, so Jump to latest shows;
 // - a scroll down while you’re reading back isn’t taken back when something resizes in that frame. #341 saw it about once
-//   in 45 to 90 runs. The resize must change the transcript's height: a 1 px padding on a reply doesn't (its margins
+//   in 45 to 90 runs. The resize must change the transcript’s height: a 1 px padding on a reply doesn’t (its margins
 //   absorb it), which is why this spec passed on main before. 40 px grows the transcript every time.
 // Each test has a conversation of its own.
 
@@ -71,7 +71,7 @@ test('#341 a scroll down while reading back isn’t taken back by a resize in th
   await page.mouse.wheel(0, -1200);
   await settled(page);
   // In an animation frame, as focus-clear.mjs scrolls: scroll down 120 px, then make a reply above the view taller. The
-  // frame's scroll steps have run already, so the ResizeObserver runs before the scroll event tells the transcript the
+  // frame’s scroll steps have run already, so the ResizeObserver runs before the scroll event tells the transcript the
   // view moved.
   const { before, grew } = await page.evaluate(
     () =>
@@ -93,14 +93,14 @@ test('#341 a scroll down while reading back isn’t taken back by a resize in th
   expect(end, 'the view stays where the scroll put it, plus what grew above').toBeGreaterThanOrEqual(before + 120 + grew - 1);
 });
 
-// #357's review found it (fixed in a0b13bf5): while following, a change to the transcript notes where the view is, so a
-// clamp at the page's new end isn't read as a scroll up (#297). Noting it anywhere else would take a scroll up made in the
+// #357’s review found it (fixed in a0b13bf5): while following, a change to the transcript notes where the view is, so a
+// clamp at the page’s new end isn’t read as a scroll up (#297). Noting it anywhere else would take a scroll up made in the
 // same frame, before its scroll event, for a clamp, and pull the view back to the end.
 test('#357 a scroll up, then a change in the same frame, isn’t taken for a clamp and pulled back to the end', async ({ page }) => {
   const { t } = room('Scroll up, then a change');
   await open(page, t);
   const end = await page.evaluate(() => scrollY);
-  // In one task, before the scroll event: scroll up 240 px, then restyle the newest reply, which the transcript's
+  // In one task, before the scroll event: scroll up 240 px, then restyle the newest reply, which the transcript’s
   // MutationObserver notes (a microtask) and its ResizeObserver then follows.
   await page.evaluate(() => {
     scrollBy(0, -240);
@@ -113,6 +113,99 @@ test('#357 a scroll up, then a change in the same frame, isn’t taken for a cla
   expect(at, 'the view stays where you scrolled it, not back at the end').toBeLessThan(end - 200);
 });
 
+// #712a: a resize heard before your scroll’s event takes that scroll in (heard()), so by the event the
+// scroll looks like the transcript’s own. Your scroll down to the end must still follow it.
+test('#341 a scroll down to the end, with a resize heard before its event, follows the end', async ({ page }) => {
+  const { t } = room('Scroll to the end, then a resize');
+  await open(page, t);
+  await page.mouse.move(640, 400);
+  await page.mouse.wheel(0, -300);
+  await settled(page);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'reading, a little way up').toBe('reading');
+  // In one task, before the scroll event: to the end, then a resize the transcript hears first.
+  await page.evaluate(() => {
+    const s = /** @type {Element} */ (document.scrollingElement);
+    s.scrollTop = s.scrollHeight;
+    dispatchEvent(new Event('resize'));
+  });
+  await settled(page);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'at the end you scrolled to, it follows').toBe('following');
+});
+
+// #712a: a jump pins its item until you scroll; a scroll of yours that a resize heard first is yours too.
+test('#341 a scroll up after a jump, with a resize heard before its event, lets the jump’s item go', async ({ page }) => {
+  const { t } = room('Jump, then a scroll heard first');
+  await open(page, t);
+  const key = await page.evaluate(async () => {
+    const { jumpTo } = await import('/app/js/view-jump.mjs');
+    const items = document.querySelectorAll('#main > [data-key]');
+    const item = /** @type {HTMLElement} */ (items[12]);
+    jumpTo(item);
+    return item.dataset.key;
+  });
+  await settled(page);
+  await page.evaluate(() => {
+    scrollBy(0, -300);
+    dispatchEvent(new Event('resize'));
+  });
+  await settled(page);
+  const anchor = await page.locator('#main.transcript').getAttribute('data-view-anchor');
+  expect(anchor, 'the anchor is taken where you scrolled, not the item you jumped to').not.toBe(key);
+});
+
+// Firefox, as skipped items above draw shorter than their estimates, moves the view up to keep what’s on screen still
+// (#712a; Linux Firefox with shorter items, and the Mac): the page got shorter, and the move up isn’t you. Here, while
+// following: an item above shrinks 40 px, the view moves up 56 px, and a resize is heard before the scroll event.
+test('#712a following, a move up the browser makes as the page gets shorter keeps the view following', async ({ page }) => {
+  const { t } = room('Following, the page shorter');
+  await open(page, t);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode')).toBe('following');
+  await page.evaluate(() => {
+    const items = document.querySelectorAll('#main > [data-key]');
+    const above = /** @type {HTMLElement} */ (items[items.length - 6]);
+    const s = /** @type {Element} */ (document.scrollingElement);
+    const at = s.scrollTop;
+    above.style.marginTop = '-40px';
+    // Up by what the page lost and 16 px more, as Linux Firefox went 20 px past (59 against 39).
+    s.scrollTop = at - 56;
+    dispatchEvent(new Event('resize'));
+  });
+  await settled(page);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'it still follows').toBe('following');
+});
+
+// A Mac trace of view-skipped-append.spec.mjs’s first case in Firefox (#712a): following, Firefox moved the view up 18 px with
+// the page’s height unchanged, and the room opened reading. A move up that small is the browser’s, loss or not.
+test('#712a following, a move up of 18 px the browser makes with the page’s height unchanged keeps the view following', async ({ page }) => {
+  const { t } = room('Following, 18 px up');
+  await open(page, t);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode')).toBe('following');
+  await page.evaluate(() => {
+    const s = /** @type {Element} */ (document.scrollingElement);
+    s.scrollTop -= 18;
+    dispatchEvent(new Event('resize'));
+  });
+  await settled(page);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'it still follows').toBe('following');
+});
+
+// #712a: the browser’s move is tied to what the page lost; your scroll isn’t. Following, you scroll up
+// 300 px in the same task as an item at the end goes, 100 px shorter: that’s you, and the view reads.
+test('#712a following, a scroll up of yours as the page gets shorter in the same frame reads where you went', async ({ page }) => {
+  const { t } = room('Following, a scroll up as the page shrinks');
+  await open(page, t);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode')).toBe('following');
+  await page.evaluate(() => {
+    const items = document.querySelectorAll('#main > [data-key]');
+    const last = /** @type {HTMLElement} */ (items[items.length - 1]);
+    last.style.marginBottom = '-100px';
+    scrollBy(0, -300);
+    dispatchEvent(new Event('resize'));
+  });
+  await settled(page);
+  expect(await page.locator('#main.transcript').getAttribute('data-view-mode'), 'it reads where you scrolled').toBe('reading');
+});
+
 test('#341 two resizes before the scroll event take an unheard scroll once, not twice', async ({ page }) => {
   const { t } = room('Two resizes, one unheard scroll');
   await open(page, t);
@@ -121,17 +214,26 @@ test('#341 two resizes before the scroll event take an unheard scroll once, not 
   await settled(page);
   // Scroll up by 240 px and, before its scroll event, have the transcript hear two resizes: the first takes the unheard
   // scroll into the anchor, and the second must find nothing left to take.
-  const moved = await page.evaluate(async () => {
+  // What you read is the item across the middle once the scroll lands: two frames on, it’s where the scroll put it. An
+  // item above it drawing taller moves scrollY but not the item (a Mac trace: 24 px in Firefox); taking the
+  // scroll in twice would move the item 240 px.
+  const shift = await page.evaluate(async () => {
     const s = /** @type {Element} */ (document.scrollingElement);
-    const before = s.scrollTop;
-    s.scrollTop = before - 240;
+    s.scrollTop -= 240;
+    const items = [...document.querySelectorAll('#main > [data-key]')];
+    const mid = innerHeight / 2;
+    const item = items.find((n) => {
+      const r = n.getBoundingClientRect();
+      return r.top <= mid && r.bottom > mid;
+    });
+    const at = item?.getBoundingClientRect().top ?? 0;
     dispatchEvent(new Event('resize'));
     dispatchEvent(new Event('resize'));
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    return before - s.scrollTop;
+    return { found: !!item, by: Math.round((item?.getBoundingClientRect().top ?? 0) - at) };
   });
-  expect(moved, 'the view stays where the scroll put it').toBeGreaterThanOrEqual(239);
-  expect(moved).toBeLessThanOrEqual(241);
+  expect(shift.found, 'an item across the middle').toBe(true);
+  expect(Math.abs(shift.by), `what you read moved ${shift.by} px`).toBeLessThanOrEqual(2);
 });
 
 test('#341 following, a scroll up the transcript hasn’t heard of, then a resize: the view stays where the scroll put it', async ({ page }) => {

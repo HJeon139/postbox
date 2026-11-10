@@ -9,7 +9,7 @@ import { targetScript } from './app-target.mjs';
 import { review } from './driver-review.mjs';
 import { keeper, shots } from './driver-shots.mjs';
 import { pressKey } from './keys.mjs';
-import { byText, ITEM } from './selectors.mjs';
+import { byText, ITEM, JUMP, THREAD_LINK } from './selectors.mjs';
 
 // The answers to Stop’s question about background jobs, in the decision’s words (#126), with “Stop them too” for more
 // than one job. Written against fix/p0-stop’s ask row before it merged; if its buttons change, change them here.
@@ -40,11 +40,11 @@ export function driver(page, hooks = {}) {
    */
   async function clickAt(findExpr, what) {
     runnerClick();
-    const r = await ev(`(() => {
+    const r = await ev(`(async () => {
       const el = ${findExpr};
       if (!el) return null;
       const at = el.getBoundingClientRect();
-      if (!el.contains(document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2))) el.scrollIntoView({ block: 'center' });
+      if (!el.contains(document.elementFromPoint(at.left + at.width / 2, at.top + at.height / 2))) ${JUMP('el', 'center')};
       const b = el.getBoundingClientRect();
       return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
     })()`);
@@ -68,7 +68,7 @@ export function driver(page, hooks = {}) {
    */
   async function appContext(key) {
     // Apps far off screen are unloaded: bring it into view, and give its frame a moment to load.
-    await ev(`${ITEM(key)}?.scrollIntoView({ block: 'center' })`);
+    await ev(`(async () => { const n = ${ITEM(key)}; if (n) ${JUMP('n', 'center')}; })()`);
     for (let i = 0; i < 20 && !(await ev(`!!${ITEM(key)}?.querySelector('.appframe iframe')`)); i++) await sleep(200);
     await sleep(800);
     // Playwright reaches into the frame wherever Chromium runs it, in the page’s process or a sandboxed one of its own.
@@ -113,7 +113,7 @@ export function driver(page, hooks = {}) {
         `[...document.querySelectorAll('.dialog button.chip')].map((b) => [b.textContent.trim(), b.getAttribute('aria-pressed') === 'true'])`,
       );
       for (const [label, on] of chips) {
-        const want = handles.some((handle) => label.split(/\s+/).includes(`@${handle}`));
+        const want = handles.some((handle) => label.split(/\s+/).includes(handle));
         if (want !== on) await clickAt(byText('document.querySelector(".dialog")', 'button.chip', label), `${label} in the sheet`);
       }
       await clickAt(byText('document.querySelector(".dialog")', 'button.send', 'Start'), 'the Start button');
@@ -129,10 +129,7 @@ export function driver(page, hooks = {}) {
     /** “Reply in thread” under a message, then a message in the thread panel. */
     async replyInThread(key, text) {
       // “Reply in thread”, or “N replies” once the thread exists: either opens it in the panel.
-      await clickAt(
-        `(${ITEM(key)}?.querySelector('.msg-actions a.replies') ?? ${byText(ITEM(key), '.msg-actions button', 'Reply in thread')})`,
-        'Reply in thread under that message',
-      );
+      await clickAt(THREAD_LINK(key), 'Reply in thread under that message');
       await page.waitFor(`!!document.getElementById('side-input')`, { label: 'the thread panel' });
       await typeInto(`document.getElementById('side-input')`, text, 'the thread reply box');
       await press('Enter');
@@ -203,7 +200,7 @@ export function driver(page, hooks = {}) {
       try {
         await clickAt(`document.querySelector('[aria-label="Settings"]')`, 'the Settings button');
         await clickAt(byText('document.querySelector(".dialog")', '[role=tab], button', 'Personas'), 'the Personas tab');
-        await clickAt(`document.querySelector(${js(`.dialog [aria-label="Edit @${h}"]`)})`, `Edit @${h}`);
+        await clickAt(`document.querySelector(${js(`.dialog [aria-label="Edit ${h}"]`)})`, `Edit ${h}`);
         await page.waitFor(`!!document.getElementById('pe-d')`, { label: 'the persona editor' });
         await sleep(300);
         const editor = await read();
@@ -239,7 +236,7 @@ export function driver(page, hooks = {}) {
       runnerClick();
       const ctx = await appContext(key);
       if (!ctx) throw new Error('Couldn’t reach inside that app.');
-      await ev(`${ITEM(key)}.scrollIntoView({ block: 'center' })`);
+      await ev(`(async () => ${JUMP(ITEM(key), 'center')})()`);
       await sleep(200);
       const fresh = await appContext(key);
       const r = await inApp(fresh, targetScript(text));
@@ -314,7 +311,7 @@ export function driver(page, hooks = {}) {
      */
     async agentPanel(handle, set = {}) {
       await clickAt(
-        `[...document.querySelectorAll('.agent-btn')].find((b) => b.offsetParent !== null && b.textContent.includes(${js(`@${handle}`)}))`,
+        `[...document.querySelectorAll('.agent-btn')].find((b) => b.offsetParent !== null && b.querySelector('.name b')?.textContent === ${js(handle)})`,
         `@${handle}’s row in the Agents section`,
       );
       await page.waitFor(`!!document.querySelector('.dialog [role=radiogroup], .dialog [role=switch]')`, { label: 'the quick panel' });
@@ -353,7 +350,7 @@ export function driver(page, hooks = {}) {
       if (view === 'work') {
         if (!(await ev(`document.getElementById('work-button')?.getAttribute('aria-pressed') === 'true'`)))
           await clickAt(`document.getElementById('work-button')`, 'the Work button');
-      } else if (key) await clickAt(byText(ITEM(key), 'a, button', 'thread'), 'the item’s thread link');
+      } else if (key) await clickAt(THREAD_LINK(key), 'the item’s thread link');
       await sleep(600);
       return ev(`(() => {
         const size = (sel) => { const n = document.querySelector(sel); const b = n?.getBoundingClientRect(); return b && b.height ? { w: Math.round(b.width), h: Math.round(b.height) } : null; };

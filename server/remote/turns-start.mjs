@@ -6,12 +6,15 @@
 import { randomUUID } from 'node:crypto';
 import { defaultHostSettings } from '../../shared/remote-settings.mjs';
 import { offersBring } from '../bring.mjs';
+import { hostRulesOf } from '../host-rules.mjs';
 import { asksByPrompt } from '../permission-prompt.mjs';
 import { noteScheduledTurn } from '../scheduled-wakes.mjs';
 import { wokeOf } from '../turn-marks.mjs';
 import { carryAttachments } from './attachments.mjs';
 import { listen, needHost, releaseHost } from './turns-need.mjs';
 import { continueAs, keepOrigin } from './turns-origin.mjs';
+import { claimShown } from './turns-prompts.mjs';
+import { replaying } from './turns-replay.mjs';
 import { signInCheck } from './turns-resume.mjs';
 import { abortError, OFFSET_SAVE_MS, updateRemote, whyLine } from './turns-shared.mjs';
 import { sendSnapshot } from './turns-snapshot.mjs';
@@ -38,6 +41,9 @@ export function begin(rts, turn, hostId, adapter) {
     current: null,
     work: caps?.work ?? 'events',
     signInError: caps?.signInError ?? null,
+    backgroundTasks: caps?.backgroundTasks ?? null,
+    background: null,
+    resultSent: false,
     lastEvent: rts.now(),
     signIn: false,
     exit: undefined,
@@ -48,6 +54,8 @@ export function begin(rts, turn, hostId, adapter) {
     started: false,
     startSent: false,
     origin: null,
+    replay: null,
+    ceilings: new Map(),
   };
   turn.remote = live;
   rts.live.set(turn.sessionId, live);
@@ -71,18 +79,7 @@ export async function prepare(rts, turn, ctx, message) {
   const attach = typeof message.attach === 'string' ? message.attach : null;
   // Read now, so a message over the limits is refused before anything is asked of the host (attachments.mjs).
   const attachments = attach ? [] : await carryAttachments(message, ctx.pathOf);
-  // A host renamed while turns still run over its old link: nothing new starts there, and nothing falls back to it.
-  let welcome;
-  let link;
-  try {
-    // Stop ends a wait for an install of this version there at once (#464-b2b); the install goes on.
-    welcome = await hosts.ensureWelcome(live.hostId, { signal: ctx.signal });
-    link = hosts.link(live.hostId);
-  } catch (e) {
-    if (ctx.signal.aborted) throw abortError();
-    throw renamedBusy(rts, e, live.hostId, se) ?? e;
-  }
-  if (ctx.signal.aborted) throw abortError();
+  const { welcome, link } = await welcomeOf(rts, hosts, live, ctx, se);
   live.link = trackAcks(rts, live, listen(rts, live.hostId) ?? link);
   if (!attach) await warnSignIn(rts, turn, ctx, se, host);
   const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId] ?? null;
@@ -106,6 +103,8 @@ export async function prepare(rts, turn, ctx, message) {
     // As server/mcp.mjs offers permission_prompt only to a backend that asks through it, so does the shim (shimArgs).
     asksByPrompt: asksByPrompt(rt, turn.sessionId),
     attachments,
+    // What the person always allowed for this persona on this host, from a card (host-rules.mjs): its own, no other host’s.
+    allow: hostRulesOf(rt, persona.id, live.hostId),
   };
   if (attach) attachTo(rts, live, se, turn, attach, remote);
   else {
@@ -116,6 +115,26 @@ export async function prepare(rts, turn, ctx, message) {
   if (!resume) return message;
   const line = whyLine(resume.why, host.name);
   return message.slash === true ? message : { ...message, context: [line, ...(message.context ?? [])] };
+}
+
+/**
+ * The host’s welcome and link for a turn’s start. A host renamed while turns still run over its old link: nothing new
+ * starts there, and nothing falls back to it.
+ * @param {RemoteTurns} rts @param {any} hosts @param {Live} live @param {any} ctx @param {any} se
+ */
+async function welcomeOf(rts, hosts, live, ctx, se) {
+  let welcome;
+  let link;
+  try {
+    // Stop ends a wait for an install of this version there at once (#464-b2b); the install goes on.
+    welcome = await hosts.ensureWelcome(live.hostId, { signal: ctx.signal });
+    link = hosts.link(live.hostId);
+  } catch (e) {
+    if (ctx.signal.aborted) throw abortError();
+    throw renamedBusy(rts, e, live.hostId, se) ?? e;
+  }
+  if (ctx.signal.aborted) throw abortError();
+  return { welcome, link };
 }
 
 /**
@@ -162,9 +181,13 @@ function attachTo(rts, live, se, turn, attach, remote) {
   live.attach = true;
   adopt(rts, live, attach);
   live.started = true;
+  // Read again from the start: the prompts that came meanwhile wait for the replay (turns-replay.mjs).
+  replaying(live);
   remote.attach = { turn: attach };
   if (rts.restoring.delete(attach)) releaseHost(rts, live.hostId);
   updateRemote(rts, se.id, { state: 'running', rtTurn: turn.id, at: rts.now() });
+  // Before the prompts that came meanwhile: a card shown before the restart still holds its call.
+  claimShown(rts, live, attach);
   for (const m of rts.early.get(attach) ?? []) rts.onHostMessage(live.hostId, m);
   rts.early.delete(attach);
 }
@@ -233,6 +256,8 @@ function trackAcks(rts, live, link) {
           if (ok && msg?.type === 'ack' && live.hostTurns.has(msg.turn)) offsetAt(rts, live, msg.turn, msg.upTo);
           // Written to a channel that had its welcome: it may be on the host from now on, confirmed or not.
           if (ok && msg?.type === 'start' && msg.turn === live.current) live.startSent = true;
+          // A read of out.jsonl, after the start or a reconnect: until it has caught up, lines may still be on their way.
+          if (ok && msg?.type === 'read' && msg.log !== 'in' && msg.turn === live.current) replaying(live);
           return ok;
         };
       const v = Reflect.get(target, prop, target);

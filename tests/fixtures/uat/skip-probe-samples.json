@@ -1,0 +1,29 @@
+{
+  "recorded": "Chromium (Playwright), 04 Nov 2026, from tests/browser/skip-probe.spec.mjs's room of 1200 items at 1,280 × 800: 'on' sampled once the page held still, 'off' after removing the transcript's cv-skip class in the page.",
+  "on": [
+    {
+      "step": 1,
+      "at": 1,
+      "origin": 1793823746172,
+      "thread": "th_4JFZTs9v",
+      "items": 1200,
+      "skipped": 1176,
+      "supported": true,
+      "gated": true,
+      "settled": true
+    }
+  ],
+  "off": [
+    {
+      "step": 2,
+      "at": 2,
+      "origin": 1793823746172,
+      "thread": "th_4JFZTs9v",
+      "items": 1200,
+      "skipped": 0,
+      "supported": true,
+      "gated": false,
+      "settled": true
+    }
+  ]
+}

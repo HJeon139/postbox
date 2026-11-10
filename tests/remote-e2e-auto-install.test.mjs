@@ -4,8 +4,7 @@
 // starts on the new version, and no failure reaches the thread. Nothing starts a process or opens a connection.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -18,6 +17,7 @@ import { createFakeDaemon, FAKE_TOKEN } from './fake-daemon.mjs';
 import { fakeSsh } from './fake-ssh.mjs';
 import { until, VERSION } from './remote-hosts-fixtures.mjs';
 import { installs, NOT_INSTALLED } from './remote-hosts-update-fixtures.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
 const never = () => {
@@ -65,7 +65,7 @@ function hostWithoutVersion(d, { hang = false } = {}) {
 function postbox({ hang = false } = {}) {
   const d = createFakeDaemon({ autoEnd: false });
   const host = hostWithoutVersion(d, { hang });
-  const dataDir = mkdtempSync(join(tmpdir(), 'pbe-auto-'));
+  const dataDir = tempDir('pbe-auto-');
   const store = new Store(null);
   const claude = new ClaudeCodeAdapter({ bin: 'claude', workRoot: '/tmp/pb-remote-never', spawnImpl: never, kill: never, listProcesses: async () => never() });
   /** @type {Runtime} */
@@ -88,7 +88,6 @@ function postbox({ hang = false } = {}) {
   const done = async () => {
     await rt.stopTurns({ graceMs: 50 });
     hosts.close();
-    rmSync(dataDir, { recursive: true, force: true });
   };
   return { rt, store, d, host, hosts, hostId: h.id, threadId: thread.id, done };
 }

@@ -5,8 +5,9 @@
 import { promises as fsp, watch } from 'node:fs';
 import { encodedBytes, REMOTE_LIMITS, TURN_FILES } from '../../../shared/remote-protocol.mjs';
 import { READ_CHUNK } from './daemon-constants.mjs';
-import { readExit, runnerAlive, sizeOf } from './daemon-files.mjs';
+import { readExit, sizeOf } from './daemon-files.mjs';
 import { fail, send } from './daemon-reply.mjs';
+import { followerEnds, forgetSilence, turnRunning, unkilled } from './daemon-running.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').Conn} Conn */
 /** @typedef {import('./daemon-constants.mjs').Follower} Follower */
@@ -185,10 +186,10 @@ async function run(fl) {
     let exit = await readExit(d, turn);
     let over = Boolean(exit);
     if (!over) {
-      // Interrupted: the runner doesn’t answer twice running, or isn’t the one runner.json names.
-      if (d.dead.has(turn) || !(await runnerAlive(d, turn))) misses++;
+      // Interrupted: not running (daemon-running.mjs) twice in a row, or found dead.
+      if (!(await turnRunning(d, turn))) misses++;
       else misses = 0;
-      if (d.dead.has(turn) || misses >= 2) {
+      if (followerEnds({ dead: d.dead.has(turn), misses })) {
         exit = await readExit(d, turn);
         over = true;
       }
@@ -207,7 +208,12 @@ async function run(fl) {
       await send(c, 'caught-up', { turn, log: which, size: quiet ? fl.from : fl.lineStart });
     }
     if (over) {
-      if (which === 'out') await send(c, 'ended', { turn, exit, size: (await d.cleanup.deletedSize(turn)) ?? (await sizeOf(fl.path)) });
+      if (exit) forgetSilence(d, turn);
+      if (which === 'out') {
+        const size = (await d.cleanup.deletedSize(turn)) ?? (await sizeOf(fl.path));
+        // Its process may still run there, so the laptop leaves its resume to the person (#872).
+        await send(c, 'ended', { turn, exit, size, ...(!exit && unkilled(d, turn) ? { unkilled: true } : {}) });
+      }
       if (exit) d.cleanup.turnEnded(turn).catch((e) => d.log(`Cleaning turn ${turn} failed: ${e.message}`));
       return;
     }

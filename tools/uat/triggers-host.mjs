@@ -7,6 +7,9 @@ import { ASKING } from '../../shared/catalog.mjs';
 import { triesOf, triesWith } from './host-installs.mjs';
 import { agentTurns, hostIdOf, itemsUnderTest, labelOf, onHost, placeOf, remoteStream, remoteTurns, toolUses } from './remote-facts.mjs';
 import { HOSTWAKE_TRIGGERS } from './triggers-hostwakes.mjs';
+import { HUNG_TRIGGERS } from './triggers-hung.mjs';
+import { PATH_TRIGGERS } from './triggers-path.mjs';
+import { QUEUED_TRIGGERS } from './triggers-queued.mjs';
 
 const MINUTE = 60_000;
 const hostRun = (f) => Boolean(f.hosts?.hosts?.length);
@@ -151,6 +154,34 @@ function askedAt(f, t) {
   return Number.isFinite(asked?.at) ? asked.at : null;
 }
 
+/**
+ * #464-b3: on a host whose Postbox folder the tester removed (fault remove-postbox), Postbox installed it again by
+ * itself with a new token, once, after the removal, and a turn that started after that finished there.
+ * @param {any} f
+ */
+function reinstalled(f) {
+  const recs = remoteTurns(f);
+  return (f.hosts?.faults ?? [])
+    .filter((x) => x.fault === 'remove-postbox')
+    .flatMap((x) => {
+      const id = hostIdOf(f, x.label);
+      const after = [...triesOf(f, id)].flatMap(([version, tries]) =>
+        [...tries].filter(([startedAt, outcomes]) => startedAt > x.at && outcomes.has('reinstalled')).map(([, outcomes]) => ({ version, outcomes })),
+      );
+      if (after.length !== 1) return [];
+      const { version, outcomes } = after[0];
+      const at = /** @type {number} */ (outcomes.get('reinstalled'));
+      const t = agentTurns(f).find((t) => t.status === 'done' && recs.get(t.turnId)?.hostId === id && (t.at ?? 0) > at);
+      if (!t) return [];
+      return [
+        {
+          at: t.at,
+          evidence: `${x.label}: its folder removed, Postbox installed ${version} there again with a new token, then @${t.handle} finished a turn there.`,
+        },
+      ];
+    });
+}
+
 /** @type {Record<string, { issue: number, says: string, recorded: (f: any) => boolean, run: (f: any) => { at: number|null, evidence: string }[] }>} */
 export const HOST_TRIGGERS = {
   'turn-on-each-place': {
@@ -272,6 +303,12 @@ export const HOST_TRIGGERS = {
     recorded: hostRun,
     run: (f) => (hostRun(f) ? expiredNoNeed(f) : []),
   },
+  'host-reinstalled': {
+    issue: 464,
+    says: 'Postbox installed itself again with a new token, once, on a host whose Postbox folder was removed, and a turn then ran there',
+    recorded: hostRun,
+    run: reinstalled,
+  },
   'host-turn-waited-install': {
     issue: 464,
     says: 'the first turn on a host with an older Postbox waited while Postbox installed its own version there, then finished',
@@ -280,4 +317,9 @@ export const HOST_TRIGGERS = {
   },
   // A hand-off between machines while a wake card waits (tests/uat/e2e/scenarios/hostwakes.md).
   ...HOSTWAKE_TRIGGERS,
+  // A host runner hung past the silence ceiling, killed and resumed (#872).
+  ...HUNG_TRIGGERS,
+  // An app call a host refused, told to its agent in the call (#827).
+  ...QUEUED_TRIGGERS,
+  ...PATH_TRIGGERS,
 };

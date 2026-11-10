@@ -48,7 +48,7 @@ async function room(page) {
 const mailButton = (page, se) =>
   page
     .locator('.agent-row')
-    .filter({ hasText: `@${se.handle}` })
+    .filter({ hasText: `${se.handle}` })
     .getByRole('button', { name: /queued for/ });
 
 /** The store events a repaint listens to, each sent while something is focused. */
@@ -81,13 +81,13 @@ test('F1: every repainting view keeps focus on the same node through session, th
     r,
     page
       .locator('.agent-row')
-      .filter({ hasText: `@${r.se.handle}` })
+      .filter({ hasText: `${r.se.handle}` })
       .locator('.agent-btn'),
     'the agent row',
   );
   await focusSurvives(page, r, mailButton(page, r.se), 'the mail button');
   await mailButton(page, r.se).click();
-  const dialog = page.getByRole('dialog', { name: new RegExp(`queued for @${r.se.handle}`) });
+  const dialog = page.getByRole('dialog', { name: new RegExp(`queued for ${r.se.handle}`) });
   await focusSurvives(page, r, dialog.getByRole('button', { name: /^Send now: message 2 of 2/ }), 'the dialog’s second Send now');
 });
 
@@ -108,7 +108,7 @@ for (const action of ['Cancel', 'Save'])
   test(`F1: Edit, then ${action}, puts focus back on that message’s Edit`, async ({ page }) => {
     const r = await room(page);
     await mailButton(page, r.se).click();
-    const dialog = page.getByRole('dialog', { name: new RegExp(`queued for @${r.se.handle}`) });
+    const dialog = page.getByRole('dialog', { name: new RegExp(`queued for ${r.se.handle}`) });
     await dialog.getByRole('button', { name: /^Edit message 2 of 2/ }).click();
     await dialog.getByRole('textbox', { name: 'Edit the queued message' }).fill(`@${r.se.handle} second follow-up, edited`);
     await dialog.getByRole('button', { name: action, exact: true }).click();
@@ -118,7 +118,7 @@ for (const action of ['Cancel', 'Save'])
 test('Escape in the editor leaves the editor and keeps the draft; a second Escape closes the dialog', async ({ page }) => {
   const r = await room(page);
   await mailButton(page, r.se).click();
-  const dialog = page.getByRole('dialog', { name: new RegExp(`queued for @${r.se.handle}`) });
+  const dialog = page.getByRole('dialog', { name: new RegExp(`queued for ${r.se.handle}`) });
   await dialog.getByRole('button', { name: /^Edit message 1 of 2/ }).click();
   const editor = dialog.getByRole('textbox', { name: 'Edit the queued message' });
   await editor.fill('A draft I mean to keep');
@@ -133,7 +133,7 @@ test('Escape in the editor leaves the editor and keeps the draft; a second Escap
 test('F1: when another row leaves the queue, focus stays on the row that had it (syncList moved it)', async ({ page }) => {
   const r = await room(page);
   await mailButton(page, r.se).click();
-  const dialog = page.getByRole('dialog', { name: new RegExp(`queued for @${r.se.handle}`) });
+  const dialog = page.getByRole('dialog', { name: new RegExp(`queued for ${r.se.handle}`) });
   const second = dialog.getByRole('button', { name: /^Edit message 2 of 2/ });
   await second.focus();
   await second.evaluate((el) => {
@@ -149,7 +149,7 @@ test('F1: when another row leaves the queue, focus stays on the row that had it 
 test('F1: Remove on message 1 of 2 keeps focus in the dialog, on the same action of the row that takes its place', async ({ page }) => {
   const r = await room(page);
   await mailButton(page, r.se).click();
-  const dialog = page.getByRole('dialog', { name: new RegExp(`queued for @${r.se.handle}`) });
+  const dialog = page.getByRole('dialog', { name: new RegExp(`queued for ${r.se.handle}`) });
   await dialog.getByRole('button', { name: /^Remove queued message 1 of 2/ }).click();
   await synced(page, app);
   await expect(dialog.getByRole('button', { name: /^Remove queued message 1 of 1/ })).toBeFocused();

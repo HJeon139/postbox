@@ -30,11 +30,11 @@ async function sheet(page, handle) {
 test('Delete… asks first, and Undo keeps the agent and its session', async ({ page }) => {
   const p = await sheet(page, 'gamma');
   await page.getByRole('button', { name: 'Delete…' }).click();
-  const ask = page.getByRole('alertdialog', { name: 'Delete @gamma?' });
+  const ask = page.getByRole('alertdialog', { name: 'Delete gamma?' });
   await expect(ask).toContainText('What it remembered: its own memory, in every project');
   await expect(ask).toContainText('Other agents, and their memory');
-  await ask.getByRole('button', { name: 'Delete @gamma' }).click();
-  const toast = page.locator('#toasts-bottom .toast', { hasText: 'Deleted @gamma' });
+  await ask.getByRole('button', { name: 'Delete gamma' }).click();
+  const toast = page.locator('#toasts .toast', { hasText: 'Deleted gamma' });
   await expect(toast).toBeVisible();
   await expect.poll(() => Boolean(app.store.state.personas[p.id]?.deleting)).toBe(true);
   await toast.getByRole('button', { name: /Undo/ }).click();
@@ -47,15 +47,15 @@ test('Delete… asks first, and Undo keeps the agent and its session', async ({ 
 test('once the window has passed, the agent is gone from Settings › Personas', async ({ page }) => {
   const p = await sheet(page, 'delta');
   await page.getByRole('button', { name: 'Delete…' }).click();
-  await page.getByRole('alertdialog', { name: 'Delete @delta?' }).getByRole('button', { name: 'Delete @delta' }).click();
-  await expect(page.locator('#toasts-bottom .toast', { hasText: 'Deleted @delta' })).toBeVisible();
+  await page.getByRole('alertdialog', { name: 'Delete delta?' }).getByRole('button', { name: 'Delete delta' }).click();
+  await expect(page.locator('#toasts .toast', { hasText: 'Deleted delta' })).toBeVisible();
   // The sheet goes back to its list, which leaves it out while it’s being deleted, and after.
   const list = page.locator('.dialog .list-rows');
-  await expect(list).toContainText('@librarian');
-  await expect(list).not.toContainText('@delta');
+  await expect(list).toContainText('librarian');
+  await expect(list).not.toContainText('delta');
   await purgePersona(app.rt, p.id);
   expect(app.store.state.personas[p.id]).toBeUndefined();
   await page.evaluate(() => import('/app/js/sheets.mjs').then((m) => m.openSettings('personas')));
-  await expect(page.locator('.dialog .list-rows').last()).toContainText('@librarian');
-  await expect(page.locator('.dialog .list-rows').last()).not.toContainText('@delta');
+  await expect(page.locator('.dialog .list-rows').last()).toContainText('librarian');
+  await expect(page.locator('.dialog .list-rows').last()).not.toContainText('delta');
 });

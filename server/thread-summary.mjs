@@ -7,10 +7,10 @@ import { positionOf } from '../shared/item-index.mjs';
 import { READING } from '../shared/limits.mjs';
 import { keepFor, leftOut, mentions } from './catch-up-keep.mjs';
 import { clipText } from './helpers.mjs';
+import { SUMMARY_MODEL } from './summary-model.mjs';
 
 /** How long a thread stays quiet after a reply before its summary is written. */
 export const SUMMARY_DELAY_MS = 5000;
-export const SUMMARY_MODEL = 'haiku';
 const SUMMARY_TIMEOUT_MS = 60000;
 const SAID = (i) => (i.kind === 'user' || i.kind === 'agent') && i.text && i.status !== 'failed';
 
@@ -30,8 +30,10 @@ export function firstPromptSection(message, inThread) {
 
 export function turnContext(rt, se, where, message, slash) {
   if (slash) return message;
-  const thread = where === se.threadId ? null : (threadCatchUp(rt, se, where, message.itemId) ?? threadHeader(rt, where));
-  const room = rt.catchUp(se, message.itemId);
+  // Every message the turn delivers, each of a batch, is read in full there, so no summary gives it again (#506).
+  const given = (message.messages ?? [message]).map((/** @type {any} */ m) => m.itemId).filter(Boolean);
+  const thread = where === se.threadId ? null : (threadCatchUp(rt, se, where, given) ?? threadHeader(rt, where));
+  const room = rt.catchUp(se, given);
   const prior = [room, ...(message.context ?? [])].filter(Boolean);
   const direct = message.kind === 'user' || message.kind === 'agent' || message.kind === 'event';
   if (!thread || !direct) return prior.length || thread ? { ...message, context: [...prior, thread].filter(Boolean) } : message;
@@ -41,7 +43,7 @@ export function turnContext(rt, se, where, message, slash) {
 
 /** The header that makes a topic or historical side thread the place this turn must answer. */
 export function threadHeader(rt, threadId) {
-  const t = rt.s.threads[threadId];
+  const t = rt.store.pending.thread(threadId); // where the turn answers, as deliver chose it: maybe a topic just opened (#796)
   if (t?.kind !== 'topic' && t?.kind !== 'side') return null;
   const where = `${t.kind === 'topic' ? 'the thread' : 'the side thread'} “${t.title}” (thread ${t.id})`;
   return `[Postbox] You’re answering in ${where}.`;
@@ -53,10 +55,11 @@ const THREAD_ITEMS = 20;
 /**
  * What a turn in a topic or side thread catches up on there: the message a topic thread is on, the first time, and
  * what was said in the thread since this agent last took part in it. null when there’s nothing.
- * @param {any} rt @param {any} se @param {string} threadId  where the turn speaks @param {string|null} excludeId  the message it answers
+ * @param {any} rt @param {any} se @param {string} threadId  where the turn speaks @param {string[]} [exclude]  the messages it answers
  */
-export function threadCatchUp(rt, se, threadId, excludeId) {
-  const t = rt.s.threads[threadId];
+export function threadCatchUp(rt, se, threadId, exclude = []) {
+  // The thread as deliver chose it, maybe a topic just opened, held (#796); what was said there is what was published.
+  const t = rt.store.pending.thread(threadId);
   if (t?.kind !== 'topic' && t?.kind !== 'side') return null;
   const items = rt.store.items(threadId);
   const seen = se.seenIn?.[threadId];
@@ -67,7 +70,7 @@ export function threadCatchUp(rt, se, threadId, excludeId) {
   // THREAD_ITEMS and CATCH_UP_CHARS, and a line saying what was left out and how to read it in this thread.
   const entries = items
     .slice(at + 1)
-    .filter((i) => i.id !== excludeId && i.sessionId !== se.id)
+    .filter((i) => !exclude.includes(i.id) && i.sessionId !== se.id)
     .map((item) => ({ item, line: rt.describeItem(item, se, mentions(item, se.handle) ? READING.mention : READING.item) }))
     .filter((e) => e.line);
   const kept = keepFor(entries, se.handle, THREAD_ITEMS);
@@ -153,17 +156,18 @@ const timers = new WeakMap();
 
 /**
  * A turn ended in a topic or side thread: once the thread has been quiet for a while, its summary is written. Each new
- * reply starts the wait again.
+ * reply starts the wait again. The wait is rt.config.setTimer's when a test gives one, as a lint's is (lint-delivery.mjs).
  * @param {any} rt @param {string} threadId
  */
 export function settleThread(rt, threadId) {
-  const t = rt.s.threads[threadId];
+  const t = rt.store.pending.thread(threadId); // a topic opened behind a held commit settles too (#796)
   const summarize = summarizerOf(rt, threadId);
   if ((t?.kind !== 'topic' && t?.kind !== 'side') || !summarize) return;
   if (!timers.has(rt)) timers.set(rt, new Map());
   const map = timers.get(rt);
   clearTimeout(map.get(threadId));
-  const timer = setTimeout(() => {
+  const setTimer = rt.config.setTimer ?? setTimeout;
+  const timer = setTimer(() => {
     map.delete(threadId);
     if (!rt.store.writable) return; // no paid call whose summary couldn’t be saved; the next turn’s end settles again
     summarizeThread(rt, threadId, summarize).catch(() => {});

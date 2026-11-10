@@ -9,23 +9,35 @@
 // here shows in the CLI’s /permissions, and the reverse.
 
 import { BACKEND_NAMES } from '/shared/agent-facts.mjs';
+import { HOOKS_LATER, KEPT_WHY } from '/shared/mode-when.mjs';
 import { decide } from '/shared/permission-match.mjs';
 import { api, client, sessionsOf } from './client.mjs';
 import { fill, h, icon } from './dom.mjs';
 import { checkField } from './hosts-parts.mjs';
+import { hooksSection } from './permission-hooks.mjs';
+import { mcpSection } from './permission-mcp.mjs';
 import { MODES } from './run-choice.mjs';
-import { capsOf, MCP_SCOPE, MCP_STATUS, modeHelp, openFolderPicker } from './sheets.mjs';
+import { capsOf, modeHelp, openFolderPicker } from './sheets.mjs';
 import { keepFocus, openDialog, say, toast } from './ui.mjs';
 
 export { MODES, openRunChoice } from './run-choice.mjs';
 
 const S = () => client.state;
 
+/** What a folder in the panel is to the agent: where it works, the project’s, read only (#338), or where it came from. */
+function folderLabel(f) {
+  if (f.source === 'folder') return 'Where it works';
+  if (f.source === 'project') return 'The project’s folder';
+  if (f.source === 'read') return 'Read only, in this conversation';
+  return `From ${SOURCE[f.source]}`;
+}
+
 const SOURCE = {
   user: 'your user settings',
   project: 'the project’s shared settings',
   local: 'this folder’s local settings',
   conversation: 'this conversation',
+  host: 'Postbox, for its host',
   tools: 'the persona’s Tools',
   publishing: '“Can publish outside Postbox” is off',
   writes: 'Postbox’s check on writes outside it',
@@ -50,12 +62,52 @@ const EXAMPLES = ['Bash(npm test)', 'WebFetch(https://example.com/x)', 'Read(src
  * For an agent on a host (#120): the rules listed are this computer’s files, and its Claude Code reads the host’s.
  * @param {any} view  permissionsView’s
  */
+/** What a backend that doesn’t read Claude Code’s rules or MCP config honors instead (the Kiro CLI, #117). */
+function backendNote(p) {
+  const intro = `${p.handle} runs on ${BACKEND_NAMES[p.backend] ?? p.backend}, which doesn’t read Claude Code’s rules or MCP servers.`;
+  if (p.backend === 'codex')
+    return `${intro} Ask me uses read-only; Auto uses workspace-write, with network on if it may fetch the web, and Codex’s reviewer judges what the sandbox stops; Accept edits uses workspace-write with network off; Run everything has full access and no approval prompts. Of its Tools, only Web counts, for network in Auto. Always allow on its card saves a Codex rule: a matching command then runs outside Codex’s sandbox, with no card, in every Codex session on this computer.`;
+  // Antigravity’s Auto runs what its Tools allow (#416), so they decide there, and its mode decides in the others.
+  if (p.backend === 'antigravity-cli')
+    return `${intro} In Auto its Tools decide what runs with no card, and in Ask me and Accept edits its mode decides what asks first.`;
+  if (capsOf(p.backend).tools === 'none') return `${intro} Its mode decides what it may do.`;
+  return `${intro} Its mode and its Tools decide what it may do.`;
+}
+
+/**
+ * What a change of mode says: now, in its running turn too, or from its next turn, and why: Postbox keeps a running
+ * turn’s mode where its hooks or Run everything would outlast the new one (kept), and some backends can’t change a
+ * running turn. A turn that switched live into a mode with hooks runs without them until it ends (#1030).
+ * @param {any} r  setPermissionMode’s answer
+ */
+function modeSaid(p, name, r, running) {
+  if (r.now.length) return `${p.handle} is in ${name} mode now, in its running turn too${r.hooksLater?.length ? `, ${HOOKS_LATER}` : ''}.`;
+  if (r.kept?.length) return `${p.handle} is in ${name} mode from its next turn, or now if you stop it: ${KEPT_WHY}`;
+  if (running) return `${p.handle} is in ${name} mode from its next turn: ${BACKEND_NAMES[p.backend] ?? 'its backend'} can’t change a turn that’s running.`;
+  return `${p.handle} is in ${name} mode from its next turn.`;
+}
+
+/** Which rule decides a call, in words: a deny, ask or allow rule, or, when none covers it, the mode. */
+function verdictOf(v, part, mode, handle) {
+  const rule = h('code', v.rule);
+  if (v.decision === 'deny') return [h('b', 'Refused'), ' by the deny rule ', rule, ` from ${SOURCE[v.source]}`, part, '.'];
+  if (v.decision === 'ask') return [h('b', 'Asks you'), ': the ask rule ', rule, ` from ${SOURCE[v.source]}`, part, '.'];
+  if (v.decision === 'allow') return [h('b', 'Runs'), ': the allow rule ', rule, ` from ${SOURCE[v.source]}.`];
+  const outcome = { outcome: '', runs: 'it runs', asks: `${handle} asks you`, decides: 'auto mode’s safety check decides, and asks you if it can’t' }[
+    v.outcome
+  ];
+  return ['No rule covers it', part, `, so ${mode} mode decides: `, h('b', outcome ?? ''), '.'];
+}
+
+/** Where a listed rule comes from, in words: a host rule names its host. @param {{ source: string, host?: string }} r */
+const fromOf = (r) => (r.source === 'host' ? `Postbox, for ${r.host}` : SOURCE[r.source]);
+
 function hostNote({ persona: p, readsRules }) {
   if (!readsRules || !p.host) return null;
   const user = p.usesHostSetup ? ', and your ~/.claude/settings.json there' : '';
   return h(
     'p.help',
-    `@${p.handle} runs on ${p.host}, where Claude Code reads the agent folder’s settings files there${user}, not the ones listed here from this computer. Its mode, its Tools and this conversation’s rules still apply.`,
+    `${p.handle} runs on ${p.host}, where Claude Code reads the agent folder’s settings files there${user}, not the ones listed here from this computer. Its mode, its Tools, this conversation’s rules and what you always allowed from its cards there still apply.`,
   );
 }
 
@@ -139,25 +191,21 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
                       void load();
                     },
                   },
-                  `@${se.handle}`,
+                  se.handle,
                 ),
               ),
             ),
           )
         : null,
       status ? h('p.small.perm-status', { role: 'status' }, status) : null,
-      view.real ? hostNote(view) : h('p.help', `@${p.handle} is a mock agent. Modes, rules and folders apply to Claude Code and Agent SDK agents.`),
+      view.real ? hostNote(view) : h('p.help', `${p.handle} is a mock agent. Modes, rules and folders apply to Claude Code and Agent SDK agents.`),
       // A backend that doesn’t read Claude Code’s rules or MCP config (the Kiro CLI, #117) shows only what it honors.
-      view.real && !view.readsRules
-        ? h(
-            'p.help',
-            `@${p.handle} runs on ${BACKEND_NAMES[p.backend] ?? p.backend}, which doesn’t read Claude Code’s rules or MCP servers. ${p.backend === 'codex' ? 'Ask me uses read-only; Auto and Accept edits share workspace-write with network off; Run everything has full access and no approval prompts. The per-agent Tools checklist is unavailable.' : capsOf(p.backend).tools === 'none' ? 'Its mode decides what it may do.' : 'Its mode and its Tools decide what it may do.'}`,
-          )
-        : null,
+      view.real && !view.readsRules ? h('p.help', backendNote(p)) : null,
       view.real ? modeSection(p) : null,
       view.readsRules ? rulesSection() : null,
       view.real ? folderSection() : null,
-      view.real && view.readsRules ? mcpSection(p) : null,
+      view.real && view.readsRules ? hooksSection(view, SOURCE) : null,
+      view.real && view.readsRules ? mcpSection(p, mcp, change) : null,
       view.real && view.readsRules ? effectiveSection(p) : null,
     ];
   }
@@ -179,12 +227,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
               onclick: () =>
                 change(
                   () => api('/api/permissions/mode', { personaId: p.id, mode: id }),
-                  (r) =>
-                    r.now.length
-                      ? `@${p.handle} is in ${name} mode now, in its running turn too.`
-                      : view.running.length
-                        ? `@${p.handle} is in ${name} mode from its next turn: ${BACKEND_NAMES[p.backend] ?? 'its backend'} can’t change a turn that’s running.`
-                        : `@${p.handle} is in ${name} mode from its next turn.`,
+                  (r) => modeSaid(p, name, r, view.running.length > 0),
                 ),
             },
             name,
@@ -193,13 +236,13 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
       ),
       // Some backends read the modes their own way (the Kiro and Antigravity CLIs can’t ask; Codex maps them to its
       // sandbox), so the modes read as the persona sheet says (#117).
-      h('span.help', `${modeHelp(p.backend, mode)} The mode is @${p.handle}’s, in every conversation.`),
+      h('span.help', `${modeHelp(p.backend, mode)} The mode is ${p.handle}’s, in every conversation.`),
     );
   }
 
-  /** Every rule, by behavior, each with its source and whether Postbox may remove it. */
-  function allRules() {
-    /** @type {Record<'deny'|'ask'|'allow', { rule: string, source: string, root?: string, removable: boolean }[]>} */
+  /** Every rule, by behavior, each with its source and whether Postbox may remove it; forDecide: only those that apply. */
+  function allRules(forDecide = false) {
+    /** @type {Record<'deny'|'ask'|'allow', { rule: string, source: string, root?: string, removable: boolean, hostId?: string, host?: string }[]>} */
     const out = { deny: [], ask: [], allow: [] };
     for (const f of view.files)
       for (const b of /** @type {const} */ (['deny', 'ask', 'allow']))
@@ -207,6 +250,10 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
     if (view.conversation)
       for (const b of /** @type {const} */ (['deny', 'ask', 'allow']))
         for (const rule of view.conversation[b]) out[b].push({ rule, source: 'conversation', removable: true });
+    // Always allow on a host’s card (#120): kept by Postbox for that host, and sent with each turn there. Only the current
+    // host’s decide a call; another host’s are listed so they can be removed.
+    for (const r of view.hostRules ?? [])
+      if (r.current || !forDecide) out.allow.push({ rule: r.rule, source: 'host', hostId: r.hostId, host: r.host, removable: true });
     for (const x of view.tools) if (!x.on) for (const rule of x.rules) out.deny.push({ rule, source: 'tools', removable: false });
     for (const rule of view.publishing) out.deny.push({ rule, source: 'publishing', removable: false });
     for (const rule of view.writes?.rules ?? []) out.ask.push({ rule, source: 'writes', unless: view.writes.unless, removable: false });
@@ -225,13 +272,13 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
         h(
           'li',
           h('code.perm-rule', r.rule),
-          h('span.small.dim.grow', `from ${SOURCE[r.source]}`),
+          h('span.small.dim.grow', `from ${fromOf(r)}`),
           r.removable && view.real
             ? h(
                 'button.btn.sm.ghost',
                 {
                   type: 'button',
-                  'aria-label': `Remove the ${b} rule ${r.rule} from ${SOURCE[r.source]}`,
+                  'aria-label': `Remove the ${b} rule ${r.rule} from ${fromOf(r)}`,
                   onclick: () =>
                     change(
                       () =>
@@ -240,9 +287,10 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
                           behavior: b,
                           rule: r.rule,
                           where: r.source === 'conversation' ? 'conversation' : r.source,
+                          ...(r.source === 'host' ? { hostId: r.hostId } : {}),
                           remove: true,
                         }),
-                      `Removed ${r.rule} from ${SOURCE[r.source]}. It applies from @${p.handle}’s next turn.`,
+                      `Removed ${r.rule} from ${fromOf(r)}. It applies from ${p.handle}’s next turn.`,
                     ),
                 },
                 icon('x', 'i-sm'),
@@ -267,7 +315,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
                   onclick: () =>
                     change(
                       () => api(`/api/personas/${p.id}`, { tools: [...new Set([...(S().personas[p.id]?.tools ?? []), x.id])] }, 'PATCH'),
-                      `Ticked ${x.id} for @${p.handle}. It applies from its next turn; the mode still decides each call.`,
+                      `Ticked ${x.id} for ${p.handle}. It applies from its next turn; the mode still decides each call.`,
                     ),
                 },
                 `Tick ${x.id}`,
@@ -284,7 +332,9 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
           );
       }
       // Writes outside Postbox (#112): many rules with one cause, and what lets a call through without asking.
-      if (b === 'ask' && view.writes?.rules.length) rows.push(writesRow(view.writes), requestedRow(p, change));
+      if (b === 'ask' && view.writes?.rules.length) rows.push(writesRow(view.writes));
+      // In Auto the harness decides writes (harness first), but when it asks about one you asked for, this still applies.
+      if (b === 'ask' && (view.writes?.rules.length || p.permissionMode === 'auto')) rows.push(requestedRow(p, change));
       if (b === 'allow')
         rows.push(h('li', h('code.perm-rule', 'mcp__postbox'), h('span.small.dim.grow', `from ${SOURCE.postbox}: they only show things here`)));
       return h(
@@ -395,7 +445,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
                   if (!r) return toast({ title: 'Write the rule first', text: 'Name an MCP server or tool, such as mcp__github.' });
                   void change(
                     () => api('/api/permissions/rules', { ...target(), behavior: draft.behavior, rule: r, where: draft.where }),
-                    `Added ${r} to ${SOURCE[draft.where]}. It applies from @${p.handle}’s next turn.`,
+                    `Added ${r} to ${SOURCE[draft.where]}. It applies from ${p.handle}’s next turn.`,
                   ).then(() => {
                     draft.pattern = '';
                     paint();
@@ -423,7 +473,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
     const add = (p) =>
       change(
         () => api('/api/permissions/folders', { sessionId: current, path: p }),
-        (r) => `@${view.persona.handle} may work in ${r.path} from its next turn.`,
+        (r) => `${view.persona.handle} may work in ${r.path} from its next turn.`,
       );
     return section(
       'Folders',
@@ -434,8 +484,8 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
             'li',
             icon('folder', 'dim'),
             h('span.mono.grow.perm-path', f.path),
-            h('span.small.dim', f.source === 'folder' ? 'Where it works' : f.source === 'project' ? 'The project’s folder' : `From ${SOURCE[f.source]}`),
-            f.source === 'conversation'
+            h('span.small.dim', folderLabel(f)),
+            f.source === 'conversation' || f.source === 'read'
               ? h(
                   'button.btn.sm.ghost',
                   {
@@ -443,7 +493,7 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
                     'aria-label': `Remove ${f.path}`,
                     onclick: () =>
                       change(
-                        () => api('/api/permissions/folders', { sessionId: current, path: f.path, remove: true }),
+                        () => api('/api/permissions/folders', { sessionId: current, path: f.path, remove: true, read: f.source === 'read' }),
                         `Removed ${f.path} from this conversation.`,
                       ),
                   },
@@ -476,83 +526,15 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
     );
   }
 
-  function mcpSection(p) {
-    const off = new Set(S().personas[p.id]?.mcpOff ?? []);
-    const body2 = !p.usesHostSetup
-      ? h('span.help', 'It’s isolated, so only Postbox’s own server loads.')
-      : mcp === null
-        ? h('span.help', 'Looking for your MCP servers…')
-        : !Array.isArray(mcp)
-          ? h('p.err', icon('warn'), `Couldn’t list your MCP servers: ${mcp.error}`)
-          : !mcp.length
-            ? h('span.help', 'None found in your Claude Code setup. Postbox’s own server always loads.')
-            : h(
-                'ul.list-rows',
-                mcp.map((m, i) =>
-                  h(
-                    'li',
-                    h(
-                      'span.check',
-                      {
-                        id: `perm-mcp-${i}`,
-                        role: 'checkbox',
-                        tabindex: '0',
-                        'aria-checked': String(!off.has(m.name)),
-                        'data-server': m.name,
-                        onclick: () => {
-                          const next = new Set(off);
-                          if (next.has(m.name)) next.delete(m.name);
-                          else next.add(m.name);
-                          void change(
-                            () => api(`/api/personas/${p.id}`, { mcpOff: [...next] }, 'PATCH'),
-                            `${m.name} is ${next.has(m.name) ? 'off' : 'on'} for @${p.handle} from its next turn.`,
-                          );
-                        },
-                        onkeydown: (e) => {
-                          if (e.key === ' ' || e.key === 'Enter') {
-                            e.preventDefault();
-                            e.currentTarget.click();
-                          }
-                        },
-                      },
-                      h('span.box'),
-                      h('span.mono', m.name),
-                    ),
-                    h('span.small.dim.grow', [MCP_STATUS[m.status] ?? m.status, MCP_SCOPE[m.scope]].filter(Boolean).join(' · ')),
-                  ),
-                ),
-              );
-    return h('section.perm-sec', { id: 'perm-mcp' }, h('h3.label', 'MCP servers'), body2);
-  }
-
   function effectiveSection(p) {
     const out = h('div.perm-verdict', { role: 'status', 'aria-live': 'polite' });
     const show = () => {
       const call = draft.call.trim();
       if (!call) return fill(out, h('span.small.dim', `Try ${EXAMPLES.join(', ')}.`));
-      const v = decide({ call, rules: allRules(), mode: p.permissionMode, cwd: view.folder ?? '/', home: view.home });
+      const v = decide({ call, rules: allRules(true), mode: p.permissionMode, cwd: view.folder ?? '/', home: view.home });
       const part = v.part ? h('span', ' (for ', h('code', v.part), ')') : null;
       const mode = MODES.find(([id]) => id === v.mode)?.[1] ?? v.mode;
-      const verdict =
-        v.decision === 'deny'
-          ? [h('b', 'Refused'), ' by the deny rule ', h('code', v.rule), ` from ${SOURCE[v.source]}`, part, '.']
-          : v.decision === 'ask'
-            ? [h('b', 'Asks you'), ': the ask rule ', h('code', v.rule), ` from ${SOURCE[v.source]}`, part, '.']
-            : v.decision === 'allow'
-              ? [h('b', 'Runs'), ': the allow rule ', h('code', v.rule), ` from ${SOURCE[v.source]}.`]
-              : [
-                  'No rule covers it',
-                  part,
-                  `, so ${mode} mode decides: `,
-                  h(
-                    'b',
-                    { outcome: '', runs: 'it runs', asks: `@${p.handle} asks you`, decides: 'auto mode’s safety check decides, and asks you if it can’t' }[
-                      v.outcome
-                    ] ?? '',
-                  ),
-                  '.',
-                ];
-      fill(out, h('p', ...verdict));
+      fill(out, h('p', ...verdictOf(v, part, mode, p.handle)));
     };
     show();
     return section(
@@ -585,7 +567,8 @@ export function openPermissions({ threadId = null, sessionId = null, personaId =
   const section = (title, ...children) => h('section.perm-sec', h('h3.label', title), ...children);
 
   const se0 = current ? S().sessions[current] : null;
-  const title = se0 ? `@${se0.handle}’s permissions` : personaId ? `@${S().personas[personaId]?.handle ?? 'agent'}’s permissions` : 'Permissions';
+  const whose = se0?.handle ?? (personaId ? (S().personas[personaId]?.handle ?? 'agent') : null);
+  const title = whose ? `${whose}’s permissions` : 'Permissions';
   openDialog({
     title,
     sub: t ? `In “${t.title}”` : 'Its rules, in the folder of its latest conversation',
@@ -629,12 +612,12 @@ function requestedRow(p, change) {
     checkField({
       id: 'perm-requested',
       label: 'Writes you asked for run without a card',
-      help: `In Auto mode, a write outside Postbox that you asked @${p.handle} for runs without a card: one a confirm you confirmed shows word for word, or one your message asks for, as a quick check by Claude Haiku finds. That check sends the call and your message to Anthropic. Each such write leaves a line in the conversation with Stop, five at most a turn. Only plain pushes, gh creates, comments and edits, and tools that create or edit can pass; deletes, merges, force pushes, your own ask rules and Ask me mode always ask.`,
+      help: `In Auto mode, when Claude Code asks about a write outside Postbox that you asked ${p.handle} for, it runs without a card: one a confirm you confirmed shows word for word, or one your message asks for, as a quick check by Claude Haiku finds. That check sends the call and your message to Anthropic. Each such write leaves a line in the conversation with Stop, five at most a turn. Only plain pushes, gh creates, comments and edits, and tools that create or edit can pass; deletes, merges, force pushes, your own ask rules and Ask me mode always ask.`,
       on: p.allowRequested !== false,
       onToggle: (on) =>
         change(
           () => api(`/api/personas/${p.id}`, { allowRequested: on }, 'PATCH'),
-          on ? `Calls you ask @${p.handle} for run without a card.` : `Every call that comes to Postbox asks you first, even one you asked for.`,
+          on ? `Calls you ask ${p.handle} for run without a card.` : `Every call that comes to Postbox asks you first, even one you asked for.`,
         ),
     }),
   );

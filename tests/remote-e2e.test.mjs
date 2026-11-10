@@ -2,12 +2,11 @@
 // its links and ssh.mjs’s sessions, and the real Claude Code adapter and remote process, over tests/fake-ssh.mjs’s
 // spawn wired to tests/fake-daemon.mjs. The stream is the recorded Claude Code turn the fake daemon replays
 // (tests/fixtures/claude-code/permission-allow.jsonl, claude 2.1.296 on this computer: no stream recorded on a host
-// exists yet). The host’s token is in a temp data folder, as install.mjs writes it. Nothing starts a process or opens
-// a connection.
+// exists yet); a prompt comes after its call’s recorded line, as the CLI asks (callLines, #353). The host’s token is in
+// a temp data folder, as install.mjs writes it. Nothing starts a process or opens a connection.
 
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { AdapterRegistry } from '../server/adapters/adapter.mjs';
@@ -19,6 +18,7 @@ import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { createFakeDaemon, FAKE_TOKEN, FIXTURE_PROMPT, fixtureLines } from './fake-daemon.mjs';
 import { fakeSsh } from './fake-ssh.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const VERSION = '0.10.0';
 const HOST = 'host.example.com';
@@ -50,7 +50,7 @@ function forbidden() {
  * writes its token, and places a Claude Code persona on it; a later one (a restart) finds them in the store.
  * @param {{ store?: Store, d?: ReturnType<typeof createFakeDaemon>, dataDir?: string }} [o]
  */
-function postbox({ store = new Store(null), d = createFakeDaemon({ autoEnd: false }), dataDir = mkdtempSync(join(tmpdir(), 'pbe-')) } = {}) {
+function postbox({ store = new Store(null), d = createFakeDaemon({ autoEnd: false, callLines: true }), dataDir = tempDir('pbe-') } = {}) {
   const ssh = fakeSsh({ daemon: d });
   const f = forbidden();
   const claude = new ClaudeCodeAdapter({
@@ -143,7 +143,6 @@ test('#120 e2e: a remote Claude Code turn streams the host’s lines, shows its 
     assert.deepEqual(p.f.calls, [], 'nothing ran on this computer');
   } finally {
     await p.done();
-    rmSync(p.dataDir, { recursive: true, force: true });
   }
 });
 
@@ -157,7 +156,6 @@ async function inOneGo() {
     return replies(ref).map((i) => [i.status, i.text]);
   } finally {
     await ref.done();
-    rmSync(ref.dataDir, { recursive: true, force: true });
   }
 }
 
@@ -220,7 +218,6 @@ test('#120 e2e: Postbox restarts mid-turn, attaches to the turn still on the hos
     assert.deepEqual(second.f.calls, []);
   } finally {
     await second?.done();
-    rmSync(dataDir, { recursive: true, force: true });
   }
 });
 
@@ -241,7 +238,6 @@ test('#120 e2e: a persona whose host was removed is refused with a reason, and n
     assert.equal(p.ssh.calls.length, 1, 'nor on any host: no session after the removal’s');
   } finally {
     await p.done();
-    rmSync(p.dataDir, { recursive: true, force: true });
   }
 });
 
@@ -270,6 +266,5 @@ test('#120 e2e: a change to a setting the daemon enforces reaches a connected ho
     assert.equal(p.se().remoteTurn.state, 'done');
   } finally {
     await p.done();
-    rmSync(p.dataDir, { recursive: true, force: true });
   }
 });

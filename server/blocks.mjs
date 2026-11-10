@@ -2,15 +2,19 @@
 // agent has read it (answerDelivered, #123), update_block, and its refusal over an answer the agent hasn’t read
 // (unreadAnswer). Moved out of server/runtime.mjs; Runtime keeps one-line methods that call these.
 
+import { updateKind } from '../shared/block-updates.mjs';
 import { ASKING, followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
 import { LIMITS } from '../shared/limits.mjs';
 import { formatDuration } from '../shared/text.mjs';
+import { answerQuestion, lateAnswer, waitingQuestion } from './ask-question.mjs';
 import { releaseNeed } from './card-needs.mjs';
-import { clip, clipText, httpError } from './helpers.mjs';
+import { clip, clipText, echoedId, httpError, refuseArchived } from './helpers.mjs';
 import { REACT, toggleReaction } from './reactions.mjs';
 import { keepReviewThreads } from './review-comments.mjs';
+import { revisedFiles } from './review-files.mjs';
 import { resolveToolAsk } from './tool-ask.mjs';
+import { resolveViewAsk } from './view-app/consent.mjs';
 import { stopRequested } from './write-intent.mjs';
 
 export const CATCH_UP_CHARS = 16000;
@@ -27,6 +31,7 @@ export function act(rt, threadId, itemId, action, values, revision) {
   if (it.kind === 'denial') return rt.resolveDenial(threadId, itemId, action);
   if (it.kind === 'appsend') return rt.resolveAppSend(threadId, itemId, action);
   if (it.kind === 'toolask') return resolveToolAsk(rt, threadId, itemId, action);
+  if (it.kind === 'viewask') return resolveViewAsk(rt, threadId, itemId, action);
   if (it.kind === 'allowedcall') return stopRequested(rt, threadId, itemId, action);
   if (it.kind !== 'block' || !it.valid) throw httpError(409, 'This block can’t be acted on.');
   if (it.closed?.by === 'agent')
@@ -50,17 +55,23 @@ export function act(rt, threadId, itemId, action, values, revision) {
   const dismissed = locks && action === 'dismiss';
   const r = dismissed ? dismissal(it.block, current) : buildEvent(it.block, action, values, { revision: current });
   if (!r.ok) throw Object.assign(httpError(422, r.error), { fieldErrors: r.fieldErrors });
+  refuseArchived(rt, it.sessionId);
+  // An AskUserQuestion’s block (#521): the answer is its call’s result, so the agent has it now, and no event goes.
+  const asked = waitingQuestion(rt, itemId);
   // read: whether the agent has had the answer in a turn yet. Until then an update can’t reopen the block.
   if (locks)
     rt.patchItem(threadId, itemId, {
       answered: true,
-      answer: { action, values: r.event.values, voice: r.voice, at: Date.now(), revision: current, read: false },
+      answer: { action, values: r.event.values, voice: r.voice, at: Date.now(), revision: current, read: asked },
       ...(dismissed ? { closed: { by: 'person', at: Date.now() } } : {}),
     });
   rt.addItem(threadId, { kind: 'voice', text: r.voice, blockItemId: itemId });
   const se = rt.s.sessions[it.sessionId];
   releaseNeed(rt, se, itemId);
-  if (se) rt.deliver(se.id, { kind: 'event', event: r.event, blockItemId: itemId }, { threadId });
+  // A question whose call has gone gets its answer as an event, with its question and labels in words (#521).
+  const event = it.question ? { ...r.event, question: lateAnswer(it.block, r.event.values, dismissed) } : r.event;
+  if (asked) answerQuestion(rt, itemId, dismissed ? null : r.event.values);
+  else if (se) rt.deliver(se.id, { kind: 'event', event, blockItemId: itemId }, { threadId });
   return { ok: true, voice: r.voice };
 }
 
@@ -108,9 +119,14 @@ export function unreadAnswer(rt, sessionId, threadId, it, outcome = false) {
  * update_block { block }, for the session’s turn. Its closure in Runtime.toolsFor read turn, se(), threadId() and
  * endSegment(), so they come as parameters.
  */
-export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endSegment }) {
-  if (block && typeof block === 'object' && Object.hasOwn(block, 'withdraw')) return withdraw(rt, sessionId, block, { se, threadId });
-  if (block && typeof block === 'object' && typeof block.outcome === 'string') return recordOutcome(rt, sessionId, block, { se, threadId });
+/**
+ * @param {{ files?: import('./review-files.mjs').ReviewFile[], held?: boolean }} [given]  a review’s images, read for this
+ *   update (#780); held is set once the item holds them, so keptIfShown keeps their blobs (#828)
+ */
+export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endSegment }, given = {}) {
+  const kind = updateKind(block);
+  if (kind === 'withdraw') return withdraw(rt, sessionId, block, { se, threadId });
+  if (kind === 'outcome') return recordOutcome(rt, sessionId, block, { se, threadId });
   const v = validateBlock(block, { imageOrigins: rt.config.imageOrigins });
   if (!v.ok) return { ok: false, message: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
   const { where, existing } = shownBy(rt, sessionId, v.block.id, threadId(), se());
@@ -126,23 +142,33 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
     const kept = validateBlock(v.block, { imageOrigins: rt.config.imageOrigins });
     if (!kept.ok) return { ok: false, message: `The update wasn’t applied: with the reviewers’ threads it leaves out, which stay, ${kept.errors.join(' ')}` };
   }
-  // One that changes only what the person can’t see (its fallback) asks nothing new, so an answered block stays
-  // answered, and an outcome can follow (#286).
-  if (existing.answered) {
-    const differ = changedKeys(v.block, existing.block).filter((k) => k !== 'outcome');
-    if (differ.length > 0 && !existing.closed && differ.every((k) => UNSEEN.has(k))) {
+  // One that changes only what the person can’t see (its fallback), or only whether a review’s threads are resolved
+  // (#901), asks nothing new, so an answered block stays answered, and an outcome can follow (#286).
+  const { files, newFiles } = reviewImages(v.block, existing, given.files);
+  if (existing.answered && !newFiles) {
+    const differ = unseenAware(v.block, existing.block).filter((k) => k !== 'outcome');
+    if (differ.length > 0 && !existing.closed && differ.every((k) => UNSEEN.has(k) || k === STATUS)) {
       if (differ.length) rt.patchItem(where, existing.id, { block: { ...v.block, outcome: existing.block.outcome }, updatedAt: now });
+      // The images are the ones it already holds (no newFiles), so their blobs stay.
+      if (given.files) given.held = true;
       return {
         ok: true,
-        message: `${differ.length ? `Updated the ${differ.join(', ')} of ${v.block.id}` : `Nothing in ${v.block.id} changed`}; it stays answered, since nothing the person sees changed. To ask again, change what it asks.`,
+        message: `${differ.length ? `Updated the ${differ.join(', ')} of ${v.block.id}` : `Nothing in ${v.block.id} changed`}; it stays answered, since nothing the person would answer changed. To ask again, change what it asks.`,
       };
     }
   }
+  const kept = ASKING.has(v.block.type) && !existing.answered && !newFiles ? keptWaiting(rt, where, existing, v.block, now) : null;
+  if (kept) {
+    if (given.files) given.held = true;
+    return kept;
+  }
   /** @type {Record<string, any>} */
-  const patch = { block: v.block, answered: false, answer: null, closed: null, revision: (existing.revision ?? 1) + 1, updatedAt: now };
+  const patch = { block: v.block, answered: false, answer: null, closed: null, revision: (existing.revision ?? 1) + 1, updatedAt: now, ...files };
   if (v.block.type === 'progress') Object.assign(patch, stampSteps(existing, v.block, now));
   // Asking again belongs to this turn, so its end shows the person this agent needs them (#69).
   if (ASKING.has(v.block.type) && turn) patch.turnId = turn.id;
+  // Both ways below write the patch, and with it the images, onto the item (#828).
+  if (given.files) given.held = true;
   if (!followsConversation(v.block)) {
     rt.patchItem(where, existing.id, patch);
     return { ok: true, message: `Updated block ${v.block.id}.` };
@@ -154,8 +180,43 @@ export function updateBlock(rt, sessionId, { block }, { turn, se, threadId, endS
   return { ok: true, message: `Updated block ${v.block.id}${moved ? '; it asks again at the newest point in the conversation' : ''}.` };
 }
 
+/**
+ * A review’s images on an update (#780): the update’s list, or the last revision’s, with what it replaces kept for
+ * the diff, and whether the person sees a different list. Not a review: nothing to keep.
+ * @param {any} block @param {any} existing @param {import('./review-files.mjs').ReviewFile[] | undefined} given
+ */
+function reviewImages(block, existing, given) {
+  if (block.type !== 'review') return { files: null, newFiles: false };
+  const files = revisedFiles(existing, given);
+  return { files, newFiles: JSON.stringify(files.files) !== JSON.stringify(existing.files ?? []) };
+}
+
 // What a block holds that the person never sees: changing it alone doesn’t ask again (#286).
 const UNSEEN = new Set(['fallback', 'version']);
+
+/**
+ * #593: an update to a block that asks and still waits, which changes nothing the person would answer (only what they can’t
+ * see, or whether a review’s threads are resolved, which shows at once), is written in place. A new revision would
+ * refuse their answer as stale and mark “Changes since you looked” over an empty diff. A withdrawn or dismissed block
+ * counts as answered, so an update to it asks again, as before.
+ * Returns the tool’s reply, or null when the update asks again.
+ * @param {any} rt @param {string} where @param {any} existing @param {any} block @param {number} now
+ */
+function keptWaiting(rt, where, existing, block, now) {
+  const differ = unseenAware(block, existing.block);
+  if (!differ.every((k) => UNSEEN.has(k) || k === STATUS)) return null;
+  if (!differ.length) return { ok: true, message: `Nothing in ${block.id} changed, so it still waits on the person as it was.` };
+  rt.patchItem(where, existing.id, { block, updatedAt: now });
+  return { ok: true, message: `Updated the ${differ.join(', ')} of ${block.id}; it still waits on the person as it was, since nothing they’d answer changed.` };
+}
+const STATUS = 'threads’ status';
+/** Whether two lists of review threads differ only in their status. @param {any[]} [a] @param {any[]} [b] */
+const sameThreads = (a = [], b = []) => JSON.stringify(a.map(({ status, ...t }) => t)) === JSON.stringify(b.map(({ status, ...t }) => t));
+/**
+ * The keys that differ between two blocks, with a change to the threads’ status alone named STATUS, which the person
+ * sees at once and doesn’t answer (#593, #901). @param {Record<string, any>} block @param {Record<string, any>} was
+ */
+const unseenAware = (block, was) => changedKeys(block, was).map((k) => (k === 'threads' && sameThreads(block.threads, was.threads) ? STATUS : k));
 
 /** The keys whose values differ between two blocks. @param {Record<string, any>} a @param {Record<string, any>} b */
 const changedKeys = (a, b) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k]));
@@ -208,7 +269,7 @@ function shownBy(rt, sessionId, id, threadId, se) {
  * @param {any} _rt @param {string} _sessionId @param {string} id
  */
 function notShown(_rt, _sessionId, id) {
-  return { ok: false, message: `There’s no block with id ${id} to update. Use show_block to add it.` };
+  return { ok: false, message: `There’s no block with id ${echoedId(id)} to update. Use show_block to add it.` };
 }
 
 /**

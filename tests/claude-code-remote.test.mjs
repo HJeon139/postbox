@@ -203,14 +203,20 @@ test('#120: a turn the person started in a side or topic thread (ctx.remote.brin
 });
 
 test('Claude Code says how it runs on a remote host; the Agent SDK and the mock can’t', () => {
-  // Only the remote shape: left out, the rest reads as forking, reading rules and Claude’s models (adapter.mjs).
+  // The remote shape, and that its agent sees images (view_app, #95): left out, the rest reads as forking, reading
+  // rules and Claude’s models (adapter.mjs).
   assert.deepEqual(CLAUDE_CODE_CAPABILITIES, {
+    images: true,
+    // It loads Postbox’s skills and yours, so the persona sheet lists them (#207).
+    skills: true,
     remote: {
       stdin: 'file',
       // The one variable it sets on a host: a resume after an interrupted turn goes on with it (D2).
       env: ['CLAUDE_CODE_RESUME_INTERRUPTED_TURN'],
       server: 'mcp-config',
       work: 'events',
+      // After its result, a wait on a background task lists it, and prints nothing else (#847).
+      backgroundTasks: 'background_tasks_changed',
       signInError: { type: 'result', is_error: true, error: 'authentication_failed' },
     },
   });

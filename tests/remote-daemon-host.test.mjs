@@ -8,7 +8,8 @@ import { dirname, join } from 'node:path';
 import { Duplex, PassThrough } from 'node:stream';
 import { test } from 'node:test';
 import { EXIT, HOST_ENTRY, main } from '../server/remote/host/daemon.mjs';
-import { findPrograms, parseVersion } from '../server/remote/host/programs.mjs';
+import { findPrograms } from '../server/remote/host/programs.mjs';
+import { versionIn } from '../shared/cli-version.mjs';
 import { encode, hostPaths, message, PROTOCOL_VERSION, TURN_FILES } from '../shared/remote-protocol.mjs';
 import { readMessages } from './fake-daemon.mjs';
 import { attachOnce, fakeClock, hello, makeTurn, setup, TOKEN, VERSION, waitFor } from './remote-daemon-setup.mjs';
@@ -82,7 +83,7 @@ test('the socket: a relayed Postbox is served, and a shim goes to the broker, wh
     s.daemon.accept(/** @type {any} */ (b.sock));
     const got = [];
     b.fromDaemon.on('data', (d) => got.push(String(d)));
-    b.toDaemon.write(`${JSON.stringify({ type: 'hello', token: TOKEN, turn: 't1' })}\n`);
+    b.toDaemon.write(`${JSON.stringify({ type: 'hello', token: TOKEN, turn: 't1', shim: 'k'.repeat(32) })}\n`);
     await new Promise((r) => b.fromDaemon.on('end', r));
     // A turn it didn’t start has no token of its own, and the host’s isn’t a shim’s (#120), so it’s refused there.
     assert.match(got.join(''), /"type":"error","code":"bad-token".*turn t1’s, in its folder on this host/);
@@ -222,9 +223,9 @@ test('findPrograms: configured paths, then the PATH and install folders; version
       found.problems.map((p) => p.code),
       ['old-node', 'not-found'],
     );
-    assert.equal(parseVersion('codex-cli 0.50.0\n'), '0.50.0');
-    assert.equal(parseVersion('kiro-cli 1.2.3-beta.1'), '1.2.3-beta.1');
-    assert.equal(parseVersion(''), null);
+    assert.equal(versionIn('codex-cli 0.50.0\n'), '0.50.0');
+    assert.equal(versionIn('kiro-cli 1.2.3-beta.1'), '1.2.3-beta.1');
+    assert.equal(versionIn(''), null);
   } finally {
     rmSync(home, { recursive: true, force: true });
   }

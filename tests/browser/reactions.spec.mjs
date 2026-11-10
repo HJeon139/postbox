@@ -71,7 +71,7 @@ test('all five reactions show beside “Reply in thread”, without hovering, an
 test('yours is highlighted, with no count while it’s yours alone, and clicking again takes it back', async ({ page }) => {
   await reaction(page, 'Good').click();
   await expect(reaction(page, 'Good')).toHaveAttribute('aria-pressed', 'true');
-  await expect(reaction(page, 'Good').locator('.react-count')).toHaveCount(0);
+  await expect(reaction(page, 'Good'), 'no count').not.toHaveAttribute('data-count', /./);
   await reaction(page, 'Good').click();
   await expect(reaction(page, 'Good')).toHaveAttribute('aria-pressed', 'false');
 });
@@ -80,26 +80,27 @@ test('#418 one made only by an agent shows a count; yours stays distinct and rai
   await criticReacts(page, '🚩');
   await expect(reaction(page, 'Flag this'), 'not yours').toHaveAttribute('aria-pressed', 'false');
   await expect(reaction(page, 'Flag this'), 'but made').toHaveClass(/\bmade\b/);
-  await expect(reaction(page, 'Flag this').locator('.react-count'), 'one agent reacted').toHaveText('1');
+  await expect(reaction(page, 'Flag this'), 'one agent reacted').toHaveAttribute('data-count', '1');
   await reaction(page, 'Flag this').click();
   await expect(reaction(page, 'Flag this')).toHaveAttribute('aria-pressed', 'true');
-  await expect(reaction(page, 'Flag this').locator('.react-count')).toHaveText('2');
-  const box = async (sel) => (await reaction(page, 'Flag this').locator(sel).boundingBox()) ?? { x: 0 };
-  expect((await box('.react-count')).x, 'the count is to the right of the icon').toBeGreaterThan((await box('.react-icon')).x);
+  await expect(reaction(page, 'Flag this')).toHaveAttribute('data-count', '2');
+  // The button draws the icon before its content and the count after it, so the count is right of the icon.
+  const drawn = (which) => reaction(page, 'Flag this').evaluate((el, w) => getComputedStyle(el, w).content, which);
+  expect([await drawn('::before'), await drawn('::after')], 'the icon, then the count').toEqual(['""', '"2" / ""']);
 });
 
 test('who reacted shows in a hover card, on hover and on keyboard focus, and in the button’s name', async ({ page }) => {
   await criticReacts(page, '👍');
   await reaction(page, 'Good').click();
-  await expect(reaction(page, 'Good')).toHaveAccessibleName(/you and @judge/);
+  await expect(reaction(page, 'Good')).toHaveAccessibleName(/you and judge/);
   await reaction(page, 'Good').hover();
-  await expect(page.locator('.hovercard'), 'on hover').toContainText('You and @judge');
+  await expect(page.locator('.hovercard'), 'on hover').toContainText('You and judge');
   await page.mouse.move(5, 5);
   await expect(page.locator('.hovercard')).toHaveCount(0, { timeout: 5_000 });
   await reaction(page, 'Not good').focus();
   await page.keyboard.press('Shift+Tab');
   await expect(reaction(page, 'Good')).toBeFocused();
-  await expect(page.locator('.hovercard'), 'on keyboard focus').toContainText('You and @judge');
+  await expect(page.locator('.hovercard'), 'on keyboard focus').toContainText('You and judge');
   // Enter on it reacts, as on any button: it doesn’t pin the card instead.
   await page.keyboard.press('Enter');
   await expect(reaction(page, 'Good')).toHaveAttribute('aria-pressed', 'false');
@@ -146,4 +147,14 @@ test('axe finds nothing wrong with a message’s reactions, made or not', async 
   expect(violations.found).toEqual([]);
   // A run that passed no rule checked nothing.
   expect(violations.passed, 'rules that ran and passed').toBeGreaterThan(3);
+});
+
+test('the reactions sit left of “Reply in thread”, the side a thread opens on (#378)', async ({ page }) => {
+  const reply = item(page).getByRole('button', { name: 'Reply in thread' });
+  await item(page).hover();
+  await expect(reply).toBeVisible();
+  const row = await item(page).locator('.react-row').boundingBox();
+  const thread = await reply.boundingBox();
+  if (!row || !thread) throw new Error('The reactions and the thread button aren’t both laid out');
+  expect(row.x + row.width, 'the reactions end before the thread button starts').toBeLessThanOrEqual(thread.x);
 });

@@ -31,6 +31,7 @@ const PLACED = {
   'adapters/kiro-cli-models.mjs': 2, // kills a CLI probe: no store
   'adapters/mock.mjs': 1, // the mock’s pacing: no store
   'adapters/process-group.mjs': 4, // SIGKILL after a Stop’s grace: Stop is allowed while closed
+  'ask-question.mjs': 1, // a question’s CARD_WAIT_MS, expireWait: gated (#521)
   'kept-jobs.mjs': 1, // pollKept: skips its tick while closed
   'lint-delivery.mjs': 5, // an injected setTimer before a lint turn: a start, held by heldTurn while closed
   'live-streams.mjs': 2, // sends frames: reads
@@ -43,6 +44,7 @@ const PLACED = {
   'remote/hosts-requests.mjs': 2, // request timeouts on a host link: no store
   'remote/hosts-status.mjs': 1, // a host’s heard-from timer: connection status, no store
   'remote/hosts-update.mjs': 2, // an install’s ssh timeouts, passed to installHost: no store
+  'view-app/browser.mjs': 3, // view_app’s download time limit, its idle browser’s close, and a capture’s or close’s own limit (#95): no store
   'remote/hosts.mjs': 3, // a reconnect’s timer: no store
   'remote/install.mjs': 5, // a wait and an injected timeout: no store
   'remote/link.mjs': 7, // passes an injected setTimer through to a host link: no store
@@ -50,6 +52,7 @@ const PLACED = {
   'remote/process.mjs': 1, // a nextTick that starts or reads a host turn’s process after spawn returns: messages to a host, no store
   'remote/ssh-connection.mjs': 6, // a reconnect timer, and the kill, welcome and exit timers of an ssh child: no store
   'remote/ssh-reconnect.mjs': 4, // reconnect timers: no store
+  'remote/turns-replay.mjs': 1, // a host prompt’s ceiling on its wait for the read (#353): ends that wait as turn-work.mjs’s does, memory only
   'remote/turns-resume.mjs': 1, // a microtask resumes turns waiting on a host: a start, held by heldTurn while closed
   'remote/turns-snapshot.mjs': 1, // flushes conversation snapshots to hosts: reads
   'remote/turns.mjs': 5, // tick: stops a hung host turn (the outage’s stop ended the turns); a sign-in resume’s start is held
@@ -59,7 +62,8 @@ const PLACED = {
   'scheduled-wakes.mjs': 1, // armWake: cleared and re-armed at Retry; the start is held
   'shell.mjs': 1, // SIGKILL after a Stop’s grace: Stop is allowed while closed
   'telemetry.mjs': 1, // sweeps its own folder: no store
-  'thread-summary.mjs': 2, // an abort; settleThread skips while closed
+  'thread-summary.mjs': 5, // an abort; settleThread's quiet wait, through an injected setTimer as lint-delivery's, skips while closed
+  'turn-work.mjs': 1, // a permission prompt’s wait for its call’s line (#353): memory only, no store
   'write-intent.mjs': 1, // an abort: no store
 };
 
@@ -102,7 +106,7 @@ async function sites(dir, rel = '') {
 }
 
 /** Files whose row says the callback is gated: each must carry the rule in its source, so it can’t be dropped silently. */
-const GATED = ['kept-jobs.mjs', 'permission-cards.mjs', 'persona-delete.mjs', 'runtime.mjs', 'thread-summary.mjs'];
+const GATED = ['ask-question.mjs', 'kept-jobs.mjs', 'permission-cards.mjs', 'persona-delete.mjs', 'runtime.mjs', 'thread-summary.mjs'];
 const RULE = /\bstore\.writable\b|\bwhenWritable\(|\bgated\(/;
 
 test('every file whose timers table row says “gated” checks the store, defers through whenWritable or runs through gated()', async () => {

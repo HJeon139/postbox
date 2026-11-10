@@ -13,7 +13,7 @@ import { contextPercent, createStreamMapper, describePermission, describeTool, f
 import { CodexAdapter } from '../server/adapters/codex.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
 import { KiroCliAdapter } from '../server/adapters/kiro-cli.mjs';
-import { deniedTools, OUTSIDE_TOOLS, PUBLISHING_TOOLS, REAL_BACKEND_TOOLS, TOOL_RULES, WRITE_TOOLS } from '../server/adapters/setup.mjs';
+import { deniedTools, OUTSIDE_TOOLS, PUBLISHING_TOOLS, REAL_BACKEND_TOOLS, TOOL_RULES } from '../server/adapters/setup.mjs';
 import { TOOL_DEFS } from '../shared/mcp-tools.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
@@ -631,7 +631,7 @@ test('#66: a conversation’s rules and added folders reach both backends', () =
   const allowed = args.indexOf('--allowedTools');
   assert.deepEqual(args.slice(allowed, allowed + 4), ['--allowedTools', 'mcp__postbox', 'Bash(rm a)', 'Bash(npm test:*)']);
   assert.deepEqual(args.slice(args.indexOf('--disallowedTools'), args.indexOf('--disallowedTools') + 2), ['--disallowedTools', 'WebFetch']);
-  assert.deepEqual(JSON.parse(args[args.indexOf('--settings') + 1]).permissions, { ask: [...WRITE_TOOLS, 'Bash(npm publish:*)'] });
+  assert.deepEqual(JSON.parse(args[args.indexOf('--settings') + 1]).permissions, { ask: ['Bash(npm publish:*)'] });
   assert.deepEqual(args.slice(args.indexOf('--add-dir'), args.indexOf('--add-dir') + 2), ['--add-dir', '/data']);
   const opts = sdkOptions({
     persona,
@@ -646,24 +646,24 @@ test('#66: a conversation’s rules and added folders reach both backends', () =
   });
   assert.deepEqual(opts.allowedTools, ['Bash(npm test:*)']);
   assert.deepEqual(opts.disallowedTools, ['WebFetch']);
-  assert.deepEqual(opts.settings.permissions, { ask: [...WRITE_TOOLS, 'Bash(npm publish:*)'] });
+  assert.deepEqual(opts.settings.permissions, { ask: ['Bash(npm publish:*)'] });
   assert.deepEqual(opts.additionalDirectories, ['/data']);
-  // No conversation rules: only the asks for writes outside Postbox (#112), and none in bypass.
+  // No conversation rules: in Auto, no asks at all (harness first); in Ask me, the asks for writes outside (#112).
   const plain = claudeArgs({ persona, sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g' });
-  assert.deepEqual(JSON.parse(plain[plain.indexOf('--settings') + 1]).permissions, { ask: WRITE_TOOLS });
+  assert.equal(JSON.parse(plain[plain.indexOf('--settings') + 1]).permissions, undefined);
   const bypass = claudeArgs({ persona: { ...persona, permissionMode: 'bypass' }, sessionId: 's', resume: false, mcpUrl: 'u', guide: 'g' });
   assert.equal(JSON.parse(bypass[bypass.indexOf('--settings') + 1]).permissions, undefined);
 });
 
 test('#66: the SDK adapter’s live control changes a running query’s mode, and says when it couldn’t', async () => {
   const modes = [];
-  const ok = liveControl({ setPermissionMode: async (m) => modes.push(m) });
+  const ok = liveControl({ setPermissionMode: async (m) => modes.push(m) }, 'acceptEdits');
   assert.equal(await ok.setPermissionMode('ask'), true);
   assert.deepEqual(modes, ['default']);
   // The SDK documents setPermissionMode for streaming input only; a string prompt may refuse it.
-  const refused = liveControl({ setPermissionMode: async () => Promise.reject(new Error('Only available in streaming input mode')) });
+  const refused = liveControl({ setPermissionMode: async () => Promise.reject(new Error('Only available in streaming input mode')) }, 'acceptEdits');
   assert.equal(await refused.setPermissionMode('ask'), false);
-  assert.equal(await liveControl({}).setPermissionMode('ask'), false);
+  assert.equal(await liveControl({}, 'acceptEdits').setPermissionMode('ask'), false);
 });
 
 test('a refusal only the result lists (a deny rule in settings) takes its reason from the tool’s error', () => {
@@ -834,10 +834,10 @@ test('every combination of the setup choices reaches both backends', () => {
       const args = claudeArgs({ ...base, persona });
       const sources = usesHostSetup === false ? 'project,local' : 'user,project,local';
       assert.equal(after(args, '--setting-sources'), sources, label);
-      assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default', permissions: { ask: WRITE_TOOLS } }, label);
+      assert.deepEqual(JSON.parse(after(args, '--settings')), { outputStyle: 'default' }, label);
       const o = sdkOptions({ ...sdkBase, persona });
       assert.deepEqual(o.settingSources, sources.split(','), label);
-      assert.deepEqual(o.settings, { outputStyle: 'default', permissions: { ask: WRITE_TOOLS } }, label);
+      assert.deepEqual(o.settings, { outputStyle: 'default' }, label);
       if (canPublish === true) {
         assert.ok(!args.includes('--disallowedTools'), label);
         assert.equal(o.disallowedTools, undefined, label);

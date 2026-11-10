@@ -68,7 +68,7 @@ const sent = (t, text) => app.store.items(t.id).filter((i) => i.kind === 'user' 
 test('#405 @alpha /compact compacts @alpha, though @beta spoke last, and sends no message', async ({ page }) => {
   const { t, seA, seB } = await room(page, 'Compact', 'beta');
   await page.keyboard.type('@alpha /compact');
-  await expect(hint(page)).toContainText('Enter runs /compact for @alpha');
+  await expect(hint(page)).toContainText('Enter runs /compact for alpha');
   await page.keyboard.press('Enter');
   await expect
     .poll(() => turns.some((x) => x.sessionId === seA.id && x.message.slash && x.message.text === '/compact'), { message: '/compact as @alpha’s turn' })
@@ -84,7 +84,7 @@ test('#405 @alpha /compact compacts @alpha, though @beta spoke last, and sends n
 test('#405 @beta /release-notes 2.1 runs @beta’s own command as its turn, though @alpha spoke last', async ({ page }) => {
   const { seA, seB } = await room(page, 'Skill', 'alpha');
   await page.keyboard.type('@beta /release-notes 2.1');
-  await expect(hint(page)).toContainText('Enter runs /release-notes as @beta’s turn');
+  await expect(hint(page)).toContainText('Enter runs /release-notes as beta’s turn');
   await page.keyboard.press('Enter');
   await expect
     .poll(() => turns.find((x) => x.sessionId === seB.id && x.message.slash)?.message.text, { message: 'the command’s turn' })
@@ -102,12 +102,12 @@ test('#405 @alpha /mode opens the mode choice for @alpha, not the last speaker',
   await room(page, 'Mode', 'beta');
   try {
     await page.keyboard.type('@alpha /mode');
-    await expect(hint(page)).toContainText('Enter runs /mode for @alpha');
+    await expect(hint(page)).toContainText('Enter runs /mode for alpha');
     await page.keyboard.press('Enter');
     await page.locator('.dialog').getByRole('radiogroup', { name: 'Permission mode' }).getByRole('radio', { name: 'Accept edits', exact: true }).click();
     await expect(page.locator('.dialog .perm-status')).toContainText('from its next turn');
     expect(store.state.personas[alpha.id].permissionMode).toBe('acceptEdits');
-    expect(store.state.personas[beta.id].permissionMode, '@beta is unchanged').toBe('ask');
+    expect(store.state.personas[beta.id].permissionMode, 'beta is unchanged').toBe('ask');
   } finally {
     for (const p of [alpha, beta]) rt.updatePersona(p.id, { permissionMode: 'ask' });
   }
@@ -116,10 +116,10 @@ test('#405 @alpha /mode opens the mode choice for @alpha, not the last speaker',
 test('#405 @alpha /release-notes, which @alpha doesn’t offer, says so and goes to @alpha as a message', async ({ page }) => {
   const { t, seA, seB } = await room(page, 'Missing', 'beta');
   await page.keyboard.type('@alpha /release-notes');
-  await expect(hint(page)).toContainText('@alpha has no /release-notes skill or command, so Enter sends this to it as a message');
+  await expect(hint(page)).toContainText('alpha has no /release-notes skill or command, so Enter sends this to it as a message');
   await page.keyboard.press('Enter');
   await expect.poll(() => sent(t, '@alpha /release-notes').length, { message: 'the message' }).toBe(1);
-  await expect.poll(() => turns.some((x) => x.sessionId === seA.id && !x.message.slash), { message: 'a message turn for @alpha' }).toBe(true);
+  await expect.poll(() => turns.some((x) => x.sessionId === seA.id && !x.message.slash), { message: 'a message turn for alpha' }).toBe(true);
   expect(
     turns.some((x) => x.sessionId === seB.id || (x.sessionId === seA.id && x.message.slash)),
     'no command ran',
@@ -129,10 +129,10 @@ test('#405 @alpha /release-notes, which @alpha doesn’t offer, says so and goes
 test('#405 @ghost /compact, a handle no agent here has, says so and goes to the last speaker as a message', async ({ page }) => {
   const { t, seA, seB } = await room(page, 'Ghost', 'beta');
   await page.keyboard.type('@ghost /compact');
-  await expect(hint(page)).toContainText('No agent @ghost here, so Enter sends this to @beta as a message');
+  await expect(hint(page)).toContainText('No agent @ghost here, so Enter sends this to beta as a message');
   await page.keyboard.press('Enter');
   await expect.poll(() => sent(t, '@ghost /compact').length, { message: 'the message' }).toBe(1);
-  await expect.poll(() => turns.some((x) => x.sessionId === seB.id && !x.message.slash), { message: 'a message turn for @beta' }).toBe(true);
+  await expect.poll(() => turns.some((x) => x.sessionId === seB.id && !x.message.slash), { message: 'a message turn for beta' }).toBe(true);
   expect(
     turns.some((x) => [seA.id, seB.id].includes(x.sessionId) && x.message.slash),
     'no command ran in this room',
@@ -142,7 +142,7 @@ test('#405 @ghost /compact, a handle no agent here has, says so and goes to the 
 test('#405 @alpha /stop with @alpha idle says @alpha isn’t working, not that nothing is', async ({ page }) => {
   await room(page, 'Stop', 'beta');
   await page.keyboard.type('@alpha /stop');
-  await expect(hint(page)).toContainText('Enter runs /stop for @alpha');
+  await expect(hint(page)).toContainText('Enter runs /stop for alpha');
   await page.keyboard.press('Enter');
-  await expect(page.locator('#live')).toHaveText('@alpha isn’t working.');
+  await expect(page.locator('#live')).toHaveText('alpha isn’t working.');
 });

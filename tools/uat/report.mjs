@@ -8,12 +8,16 @@ import { backendName } from '../../server/room-unverified.mjs';
 import { budgetNote } from './budget.mjs';
 import { agyTokens, kiroCredits, waitingOnYou } from './checks.mjs';
 import { agentsSpent } from './cost.mjs';
+import { githubSection } from './github-attempts.mjs';
+import { pictureSection } from './picture-choice.mjs';
 import { writeJsonAtomic } from './runs.mjs';
+import { firstPictureSection } from './side-by-side.mjs';
 import { countByCheck } from './telemetry-run.mjs';
 import { timingLine } from './timing.mjs';
 import { cell as esc } from './trigger-facts.mjs';
 import { coverageSection } from './triggers.mjs';
 import { mergePeopleVerdicts } from './verdicts.mjs';
+import { visualSection } from './visual-judge.mjs';
 
 /**
  * What the run spent, by whom, and what the agents ran on: the report’s first paragraph ends with it. With a run budget
@@ -86,6 +90,7 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
       const left = facts.state ? waitingOnYou(facts.state, facts.threads ?? []) : [];
       return left.length ? [`**Left waiting on you:** ${left.map((w) => w.what).join('; ')}.`, ''] : [];
     })(),
+    ...githubSection(facts.streams ?? [], scenario), // an agent that tried to reach GitHub, refused by the run’s guard (#1072)
     // A targeted run says first which fixes it reached, and which it didn’t test.
     ...coverageSection(coverage, { rechecked }),
     ...unverifiedSection(findings),
@@ -122,16 +127,10 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
           `| ${f.severity ?? '—'} | ${f.category ?? '—'} | ${esc(f.component ?? f.check)} | ${esc(f.title)} | ${esc(String(f.evidence ?? '').slice(0, 260))} | ${f.source} (step ${f.step}) | ${f.filed ? `filed #${f.filed}` : f.duplicateOf ? `duplicate of #${f.duplicateOf}` : esc(f.verdict ?? 'not reviewed')}${f.verdictBy ? ` (${f.verdictBy})` : ''}${f.note ? `: ${esc(f.note)}` : ''} |`,
       ),
     '',
-    ...(findings.some((f) => f.verdict === 'harness')
-      ? [
-          '### The harness’s own problems',
-          '',
-          'Findings a review traced to the UAT harness, not to Postbox.',
-          '',
-          ...findings.filter((f) => f.verdict === 'harness').map((f) => `- **${esc(f.title)}.** ${esc(f.note ?? '')}`),
-          '',
-        ]
-      : []),
+    ...harnessSection(findings),
+    ...visualSection(timeline),
+    ...pictureSection(scenario, dir),
+    ...firstPictureSection(facts.firstPicture),
     '## Timeline',
     '',
     ...timeline.map((t) => `${t.step}. **${t.phase}.** ${t.assessment} Next: \`${JSON.stringify(t.action)}\``),
@@ -159,6 +158,20 @@ export async function writeReport({ dir, scenario, issues, findings, timeline, s
   console.log(
     `\nReport: ${join(dir, 'report.md')} · ${caught.size} known issues caught again · ${findings.filter(isNew).length} new findings${findings.some((f) => f.unverified) ? ` · ${findings.filter((f) => f.unverified).length} checks not verified` : ''}`,
   );
+}
+
+/** The findings a review traced to the UAT harness, not to Postbox, as a report section, or nothing. @param {any[]} findings */
+function harnessSection(findings) {
+  const harness = findings.filter((f) => f.verdict === 'harness');
+  if (!harness.length) return [];
+  return [
+    '### The harness’s own problems',
+    '',
+    'Findings a review traced to the UAT harness, not to Postbox.',
+    '',
+    ...harness.map((f) => `- **${esc(f.title)}.** ${esc(f.note ?? '')}`),
+    '',
+  ];
 }
 
 /**

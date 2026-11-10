@@ -13,15 +13,15 @@
 import { BACKEND_NAMES, chipEffort, chipModel } from '/shared/agent-facts.mjs';
 import { modeWhen } from '/shared/mode-when.mjs';
 import { factsOf, isMock, mockMarker } from './agent-facts.mjs';
-import { everyMinute, hostSection, modelOptions } from './agent-host.mjs';
+import { everyMinute, hostBadge, hostSection, modelOptions } from './agent-host.mjs';
 import { agentQueueButton } from './agent-queue.mjs';
 import { toolSwitch } from './agent-tools.mjs';
 import { paintTree, subagentToggle } from './agent-tree.mjs';
 import { api, busy, client, hrefOf, itemsOf, sessionsOf, stopSession } from './client.mjs';
-import { fill, h, syncList } from './dom.mjs';
+import { fill, h, heldPaint, syncList } from './dom.mjs';
 import { openAsksEl } from './open-asks.mjs';
 import { MODES, openPermissions } from './permissions.mjs';
-import { hostLine, stopNote, turnLine } from './remote.mjs';
+import { hostLine, hostOf, stopNote, turnLine } from './remote.mjs';
 import { ringFor, stateWord } from './ring.mjs';
 import { capsOf, confirmDelete, EFFORT_NAMES, modeHelp, openSettings } from './sheets.mjs';
 import { keepFocus, navigate, openDialog, say, toast } from './ui.mjs';
@@ -69,7 +69,7 @@ export function inThreadLine(threadId) {
   const el = h('p.small.dim');
   const paint = () => {
     const said = itemsOf(threadId).filter((i) => i.kind === 'agent' && i.handle);
-    const names = [...new Set([S().threads[threadId]?.woke, ...said.map((i) => i.handle)].filter(Boolean))].map((x) => `@${x}`);
+    const names = [...new Set([S().threads[threadId]?.woke, ...said.map((i) => i.handle)].filter(Boolean))];
     const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];
     const text = list ? `${list} ${names.length > 1 ? 'are' : 'is'} in this thread.` : 'No agent is in this thread yet. @-mention one to bring it in.';
     if (el.textContent !== text) el.textContent = text;
@@ -107,7 +107,7 @@ function agentRow(se) {
       agentQueueButton(se),
     ),
     h('div.agent-asks', openAsksEl(se)),
-    h('ul.agent-subs', { id: `agent-subs-${se.id}`, 'aria-label': `Where @${se.handle} is at work, and its subagents` }),
+    h('ul.agent-subs', { id: `agent-subs-${se.id}`, 'aria-label': `Where ${se.handle} is at work, and its subagents` }),
   );
   paintRow(n, se, true);
   return n;
@@ -118,7 +118,7 @@ function paintRow(n, se, fresh = false) {
   const runs = f.mock ? '' : `${chipModel(f)} · ${chipEffort(f)}`;
   const joined = joinedWhy(se);
   // Where it runs, for an agent on a host, and how its turn there stands when that needs saying.
-  const where = hostLine(se);
+  const where = [hostLine(se), hostOf(se)?.short];
   const there = turnLine(se);
   const sig = JSON.stringify([se.handle, f.mock, se.state, runs, joined, where, there]);
   paintTree(n, se, fresh);
@@ -126,9 +126,9 @@ function paintRow(n, se, fresh = false) {
   n.dataset.sig = sig;
   fill(
     n.querySelector('.agent-btn .name'),
-    h('span', h('b', `@${se.handle}`), mockMarker(se), h('span.agent-state', ` · ${stateWord(se.state).toLowerCase()}`)),
+    h('span', h('b', se.handle), mockMarker(se), h('span.agent-state', ` · ${stateWord(se.state).toLowerCase()}`)),
     runs ? h('span.sub', runs) : null,
-    where ? h('span.sub.host-line', where) : null,
+    hostBadge(se),
     there ? h('span.sub.host-turn', there) : null,
     joined ? h('span.sub', joined) : null,
   );
@@ -140,7 +140,7 @@ function paintRow(n, se, fresh = false) {
  */
 export function joinedWhy(se) {
   if (!se.joinedBy) return null;
-  return se.joinedBy === 'you' ? 'Joined when you @-mentioned it in a side thread' : `Joined when @${se.joinedBy} woke it`;
+  return se.joinedBy === 'you' ? 'Joined when you @-mentioned it in a side thread' : `Joined when ${se.joinedBy} woke it`;
 }
 
 // ── The quick panel ─────────────────────────────────────────────────────────────────────
@@ -172,7 +172,7 @@ export function openAgentPanel(sessionId, from = null) {
   };
   const failed = (e) => toast({ title: 'That didn’t go through', text: e.message, level: 'blocking' });
 
-  const paint = () => {
+  const paint = heldPaint(body, () => {
     const se = S().sessions[sessionId];
     if (!se || se.archived) {
       dlg?.close();
@@ -181,7 +181,7 @@ export function openAgentPanel(sessionId, from = null) {
     const p = S().personas[se.personaId] ?? {};
     const f = factsOf(se);
     const mock = isMock(se);
-    fill(title, `@${se.handle}`, mockMarker(se));
+    fill(title, se.handle, mockMarker(se));
     const ctxText = se.ctx != null ? `${se.ctx}% of context used` : 'context unknown';
     fill(sub, `${stateWord(se.state)} · ${ctxText} · ${mock ? BACKEND_NAMES.mock : (BACKEND_NAMES[f.backend] ?? f.backend)}`);
     const note = stopNote(se);
@@ -201,7 +201,7 @@ export function openAgentPanel(sessionId, from = null) {
               `From its next turn, as /model and /effort set them.`,
               choice('Model', where, ...modelOptions(f), (id, name) =>
                 api(`/api/sessions/${se.id}/run`, { model: id }).then(
-                  (r) => done(`Model: ${name} for @${se.handle} in ${where}, ${r.now ? 'from now: its running turn changed too' : 'from its next turn'}.`),
+                  (r) => done(`Model: ${name} for ${se.handle} in ${where}, ${r.now ? 'from now: its running turn changed too' : 'from its next turn'}.`),
                   failed,
                 ),
               ),
@@ -214,7 +214,7 @@ export function openAgentPanel(sessionId, from = null) {
                   api(`/api/sessions/${se.id}/run`, { effort: id }).then(
                     (r) =>
                       done(
-                        `Effort: ${name.toLowerCase()} for @${se.handle} in ${where}, ${r.now ? 'from now: its running turn changed too' : 'from its next turn'}.`,
+                        `Effort: ${name.toLowerCase()} for ${se.handle} in ${where}, ${r.now ? 'from now: its running turn changed too' : 'from its next turn'}.`,
                       ),
                     failed,
                   ),
@@ -222,7 +222,7 @@ export function openAgentPanel(sessionId, from = null) {
             ),
         // The persona’s, in every conversation it’s in.
         section(
-          `For @${se.handle} everywhere`,
+          `For ${se.handle} everywhere`,
           'Its persona: every conversation it’s in, from their next turns.',
           mock ? null : modeChoice(se, p, done, failed),
           h(
@@ -261,7 +261,7 @@ export function openAgentPanel(sessionId, from = null) {
               onclick: () =>
                 stopSession(se).then(
                   // With background jobs running, Stop asks in the conversation whether to stop them too (#129): go there.
-                  (r) => (r?.ask ? handOff(() => navigate(hrefOf(se.threadId))) : done(`Stopping @${se.handle}.`)),
+                  (r) => (r?.ask ? handOff(() => navigate(hrefOf(se.threadId))) : done(`Stopping ${se.handle}.`)),
                   failed,
                 ),
             },
@@ -278,7 +278,7 @@ export function openAgentPanel(sessionId, from = null) {
                   disabled: busy(se),
                   onclick: () =>
                     api(`/api/threads/${se.threadId}/agent-command`, { sessionId: se.id, text: '/compact' }).then(
-                      () => handOff(() => say(`@${se.handle} is compacting its context.`)),
+                      () => handOff(() => say(`${se.handle} is compacting its context.`)),
                       failed,
                     ),
                 },
@@ -289,7 +289,7 @@ export function openAgentPanel(sessionId, from = null) {
         ),
       ),
     );
-  };
+  });
   /** Closes the panel (focus goes back to its row or ring), then does what the button leads to. */
   const handOff = (next) => {
     dlg?.close();
@@ -309,9 +309,9 @@ export function openAgentPanel(sessionId, from = null) {
     // The model’s choice, or for a mock agent its first tool.
     initialFocus: () => body.querySelector('[role=radiogroup] [aria-checked="true"]') ?? body.querySelector('[role=switch]'),
   });
+  // Not items: a rebuild per item forced a layout, and its open-asks button keeps itself up to date (#866). A press defers one (#898).
   const off = client.on((ch) => {
-    const mine = ch.type === 'session' ? ch.data.id === sessionId : ['item.add', 'item.patch'].includes(ch.type) ? ch.data?.threadId === first.threadId : true;
-    if (mine && ['session', 'persona', 'load', 'item.add', 'item.patch'].includes(ch.type)) paint();
+    if (ch.type === 'session' ? ch.data.id === sessionId : ['persona', 'load'].includes(ch.type)) paint();
   });
   from?.setAttribute('aria-expanded', 'true');
 }
@@ -356,13 +356,13 @@ function modeChoice(se, p, done, failed) {
   return [
     choice(
       'Permission mode',
-      `every conversation @${se.handle} is in`,
+      `every conversation ${se.handle} is in`,
       MODES.map(([id, name]) => [id, name]),
       value,
       (id, name) =>
         api('/api/permissions/mode', { personaId: se.personaId, mode: id }).then(
           // A running turn its backend can’t change keeps the old mode until it ends (#371, #381): say so, and that Stop does.
-          (r) => done(`Permission mode: ${name} for @${se.handle} in every conversation, ${modeWhen(r, se.id)}`),
+          (r) => done(`Permission mode: ${name} for ${se.handle} in every conversation, ${modeWhen(r, se.id)}`),
           failed,
         ),
     ),

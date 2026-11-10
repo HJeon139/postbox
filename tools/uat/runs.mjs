@@ -8,6 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { agentsSpent } from './cost.mjs';
+import { pictureRecord } from './picture-choice.mjs';
 import { isTargeted, parseScenario } from './scenario.mjs';
 
 /**
@@ -151,6 +152,10 @@ export function runRecord({
     cost: { agents: Math.round(agents * 100) / 100, tester: Math.round((tester.spent ?? 0) * 100) / 100, kiroCredits: null },
     coverage,
     ...(facts.timing ? { timing: facts.timing } : {}),
+    // Whether the agent drew, when and what, for a judged run (#983).
+    ...pictureRecord(scenario, dir),
+    // #995: the first picture and what it was meant to say, for the side-by-side judge, and what the intent judge spent.
+    ...(facts.firstPicture ? { firstPicture: facts.firstPicture, pictureJudges: facts.pictureJudges } : {}),
   };
 }
 
@@ -208,6 +213,10 @@ export function readRun(dir, { scenarios } = {}) {
     // Where the run’s time went (tools/uat/timing.mjs): only a live run measures it, so a recheck keeps it.
     timing: saved.timing ?? null,
     proposals: Array.isArray(findings.telemetry?.proposals) ? findings.telemetry.proposals : [],
+    // Whether the agent drew first (#983), and its first picture (#995): only a live run
+    // or tools/uat-pairs.mjs records them, so a recheck keeps them.
+    ...(saved.picture ? { picture: saved.picture } : {}),
+    ...(saved.firstPicture ? { firstPicture: saved.firstPicture, pictureJudges: saved.pictureJudges ?? null } : {}),
   };
 }
 

@@ -86,7 +86,7 @@ test.afterAll(async () => {
 });
 test.beforeEach(async () => {
   const { rt, store } = app;
-  await expect.poll(() => store.state.sessions[indexer.id].state, { message: '@indexer idle' }).toBe('idle');
+  await expect.poll(() => store.state.sessions[indexer.id].state, { message: 'indexer idle' }).toBe('idle');
   store.emit('persona', { ...initial.persona, version: personaNamed('indexer').version + 1 });
   rt.updateSession(indexer.id, { personaSnapshot: initial.snapshot });
 });
@@ -118,7 +118,7 @@ async function open(page, hash) {
 }
 
 /** An agent’s row in the sidebar, and its button. */
-const agentRow = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^@${handle}$`) }) });
+const agentRow = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^${handle}$`) }) });
 const row = (page, handle) => agentRow(page, handle).locator('.agent-btn');
 const panel = (page) => page.locator('.backdrop .dialog.quick');
 const status = (page) => page.locator('.qp .perm-status');
@@ -148,8 +148,8 @@ test('a conversation’s agents are a section in the sidebar, above Direct messa
   expect(order).toEqual(['Agents', 'Direct messages', 'Rooms']);
   const rows = (await page.locator('.rail .agent-row .agent-btn').allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim());
   expect(rows.length).toBe(2);
-  expect(rows[0]).toBe('@indexer · idle Opus 5.5 · medium effort');
-  expect(rows[1]).toMatch(/^@researcher · idle Opus 5\.5 · \w+ effort$/);
+  expect(rows[0]).toBe('indexer · idle Opus 5.5 · medium effort');
+  expect(rows[1]).toMatch(/^researcher · idle Opus 5\.5 · \w+ effort$/);
   // The list is named by its heading, and each row says it opens a dialog.
   await expect(page.locator('.rail .agent-rows')).toHaveAccessibleName('Agents');
   await expect(row(page, 'indexer')).toHaveAttribute('aria-haspopup', 'dialog');
@@ -159,7 +159,7 @@ test('Enter on a row opens its quick panel, labeled with the agent, with focus o
   await open(page, `#/t/${planning.id}`);
   await row(page, 'indexer').focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('dialog', { name: '@indexer', exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'indexer', exact: true })).toBeVisible();
   await expect(row(page, 'indexer')).toHaveAttribute('aria-expanded', 'true');
   await focusIs(page, 'radio: Opus 5.5');
   const fits = await panel(page).evaluate((p) => {
@@ -175,7 +175,7 @@ test('Enter on a row opens its quick panel, labeled with the agent, with focus o
 test('every control says whether it’s for this conversation or for the persona everywhere', async ({ page }) => {
   await open(page, `#/t/${planning.id}`);
   await quick(page, 'indexer');
-  await expect(panel(page).locator('.qp-head')).toHaveText(['In this conversation', 'For @indexer everywhere']);
+  await expect(panel(page).locator('.qp-head')).toHaveText(['In this conversation', 'For indexer everywhere']);
   // Each control’s own name carries its scope, so it’s heard on the control too.
   const names = await panel(page)
     .locator('[role=radiogroup], [role=switch]')
@@ -183,10 +183,10 @@ test('every control says whether it’s for this conversation or for the persona
   expect(names).toEqual([
     'Model, in this conversation',
     'Effort, in this conversation',
-    'Permission mode, in every conversation @indexer is in',
-    'Shell, for @indexer everywhere',
-    'Web, for @indexer everywhere',
-    'Agents outside Postbox, for @indexer everywhere',
+    'Permission mode, in every conversation indexer is in',
+    'Shell, for indexer everywhere',
+    'Web, for indexer everywhere',
+    'Agents outside Postbox, for indexer everywhere',
   ]);
   // Each switch says what turning it off means (#104).
   const help = await panel(page)
@@ -211,7 +211,7 @@ test('from the sidebar, two clicks change the model, for this conversation only'
   await synced(page, app);
   expect(app.store.state.sessions[indexer.id].personaSnapshot.model).toBe('claude-sonnet-5-5');
   expect(personaNamed('indexer').model, 'the persona’s model stayed').toBe('claude-opus-5-5');
-  await expect(status(page)).toHaveText('Model: Sonnet 5.5 for @indexer in this conversation, from its next turn.');
+  await expect(status(page)).toHaveText('Model: Sonnet 5.5 for indexer in this conversation, from its next turn.');
   await expect(group(page, 'Model').locator('[aria-checked="true"]')).toHaveText('Sonnet 5.5');
   await page.keyboard.press('Escape');
   // The row says the new setting at once.
@@ -242,7 +242,7 @@ test('from the sidebar, two clicks turn the shell off, for the persona everywher
   await shellSwitch(page).click();
   await expect(shellSwitch(page), 'the switch turns off').toHaveAttribute('aria-checked', 'false');
   expect(personaNamed('indexer').tools).not.toContain('shell');
-  await expect(status(page)).toHaveText('Shell: off for @indexer in every conversation, from their next turns.');
+  await expect(status(page)).toHaveText('Shell: off for indexer in every conversation, from their next turns.');
   // The switch says “Off” in words, not only by its look.
   await expect(shellSwitch(page)).toContainText('Off');
 });
@@ -270,17 +270,17 @@ test('by keyboard: Tab moves through the panel, Space switches, and Escape retur
     await page.keyboard.press('Tab');
     seen.push(await focused(page));
   }
-  expect(await focused(page), `Tab went: ${seen.join(' › ')}`).toBe('switch: Shell, for @indexer everywhere');
+  expect(await focused(page), `Tab went: ${seen.join(' › ')}`).toBe('switch: Shell, for indexer everywhere');
   await page.keyboard.press('Space');
   await expect(shellSwitch(page), 'Space turns the shell back on').toHaveAttribute('aria-checked', 'true');
   expect(personaNamed('indexer').tools).toContain('shell');
   // Focus stays on the switch after the panel repaints.
-  await focusIs(page, 'switch: Shell, for @indexer everywhere');
+  await focusIs(page, 'switch: Shell, for indexer everywhere');
   await page.keyboard.press('Escape');
   await expect(panel(page)).toHaveCount(0);
   // The row’s name is its words: the ring beside them is hidden from screen readers, so it isn’t read twice.
   await expect(row(page, 'indexer')).toBeFocused();
-  await expect(row(page, 'indexer')).toHaveAccessibleName('@indexer · idle Sonnet 5.5 · high effort');
+  await expect(row(page, 'indexer')).toHaveAccessibleName('indexer · idle Sonnet 5.5 · high effort');
   await expect(row(page, 'indexer')).toHaveAttribute('aria-expanded', 'false');
 });
 
@@ -301,9 +301,9 @@ test('“Rules, folders and MCP…” opens the permissions panel on the agent; 
   await button(page, 'Rules, folders and MCP…').focus();
   await page.keyboard.press('Enter');
   await expect(panel(page)).toHaveCount(0);
-  await expect(page.locator('.backdrop .dialog'), 'the permissions panel').toContainText('@indexer');
+  await expect(page.locator('.backdrop .dialog'), 'the permissions panel').toContainText('indexer');
   await page.keyboard.press('Escape');
-  await expect.poll(() => focused(page)).toMatch(/^button: @indexer/);
+  await expect.poll(() => focused(page)).toMatch(/^button: indexer/);
 });
 
 test('“Edit persona…” opens Settings › Personas on the agent', async ({ page }) => {
@@ -311,7 +311,7 @@ test('“Edit persona…” opens Settings › Personas on the agent', async ({ 
   await quick(page, 'researcher');
   await button(page, 'Edit persona…').click();
   await expect(page.locator('.backdrop .dialog [role=tab][aria-selected=true]'), 'Settings › Personas').toHaveText('Personas');
-  await expect(page.locator('.backdrop .dialog')).toContainText('@researcher');
+  await expect(page.locator('.backdrop .dialog')).toContainText('researcher');
 });
 
 test('Stop is there only while it works, Compact only on a real backend, and a mock agent has no model to change', async ({ page }) => {
@@ -324,7 +324,7 @@ test('Stop is there only while it works, Compact only on a real backend, and a m
   await expect(button(page, 'Stop'), 'Stop turns on while it works').toBeEnabled();
   await expect(button(page, 'Compact')).toBeDisabled();
   await button(page, 'Stop').click();
-  await expect(status(page)).toHaveText('Stopping @indexer.');
+  await expect(status(page)).toHaveText('Stopping indexer.');
   // While its process exits it reads “stopping” (#126), in the panel and its row, and Stop isn’t offered again.
   rt.updateSession(indexer.id, { state: 'stopping' });
   await expect(button(page, 'Stop'), 'Stop turns off while it stops').toBeDisabled();
@@ -350,9 +350,9 @@ test('Delete session… in the panel opens its confirmation, and there’s no Ar
   await quick(page, 'indexer');
   await expect(button(page, 'Archive'), 'the panel offers no Archive').toHaveCount(0);
   await button(page, 'Delete session').click();
-  await expect(page.locator('.dialog', { hasText: 'Delete @indexer’s session?' }), 'the confirmation').toBeVisible();
+  await expect(page.locator('.dialog', { hasText: 'Delete indexer’s session?' }), 'the confirmation').toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(page.locator('.dialog', { hasText: 'Delete @indexer’s session?' })).toHaveCount(0);
+  await expect(page.locator('.dialog', { hasText: 'Delete indexer’s session?' })).toHaveCount(0);
   expect(app.store.state.sessions[sessionIn(shelf, 'indexer').id].deleting ?? false, 'Escape didn’t delete it').toBe(false);
 });
 
@@ -361,7 +361,7 @@ test('Delete session… in the panel opens its confirmation, and there’s no Ar
 test('a topic thread is answered by the conversation’s own session; its panel names it in a line, with no list (#228)', async ({ page }) => {
   const { rt, store } = app;
   await open(page, `#/t/${planning.id}/side/${topic.id}`);
-  await expect(page.locator('.sp-agents p')).toHaveText('@indexer is in this thread.');
+  await expect(page.locator('.sp-agents p')).toHaveText('indexer is in this thread.');
   await expect(page.locator('.sidepanel .agent-row, .sidepanel .agents-sec'), 'the thread lists no agents').toHaveCount(0);
   const n = turns.length;
   rt.sendMessage(topic.id, { text: 'Which shelf?' });
@@ -383,7 +383,7 @@ test('a subagent at work is a child in the agent tree, with what it was asked an
     rt.sendMessage(planning.id, { text: '@indexer count the words, with a subagent' });
     await expect.poll(() => r.held, { message: 'the replay to reach its pause' }).toBe(true);
     await synced(page, app);
-    await agentRow(page, 'indexer').getByRole('button', { name: 'Show @indexer’s 2 subagents' }).click();
+    await agentRow(page, 'indexer').getByRole('button', { name: 'Show indexer’s 2 subagents' }).click();
     const subs = agentRow(page, 'indexer').locator('.agent-sub.subagent');
     // Opened (#477): the Reader, then its nested subagent; each with what it was asked and its plain step (#476).
     await expect(subs.locator('.sub-head')).toHaveText(['general-purpose · subagent: Reader', 'general-purpose · subagent in the background: Nested checker']);
@@ -402,19 +402,19 @@ test('a subagent at work is a child in the agent tree, with what it was asked an
     await expect.poll(() => store.state.sessions[indexer.id].state, { message: 'the turn to end' }).toBe('idle');
     await synced(page, app);
     await expect(subs, 'the subagents left the tree').toHaveCount(0);
-    const tree = await page
-      .locator('.turn details.activity')
-      .last()
-      .evaluate((reply) => {
-        const top = reply.querySelector(':scope > ul.steps');
-        const reader = [...(top?.children ?? [])].find((li) => li.querySelector(':scope > .step-text')?.textContent?.includes('Subagent: Reader'));
-        return {
-          said: [...(reader?.querySelectorAll(':scope > ul.steps > li.said') ?? [])].map(
-            (li) => li.querySelector('.step-text > summary, .step-text')?.textContent,
-          ),
-          nested: !!reader?.querySelector(':scope > ul.steps > li > ul.steps li.said'),
-        };
-      });
+    const list = page.locator('.turn details.activity').last();
+    await list.locator('> summary').click();
+    await expect(list.locator(':scope > ul.steps'), 'a folded list’s steps, built when it opens (#1028)').toHaveCount(1);
+    const tree = await list.evaluate((reply) => {
+      const top = reply.querySelector(':scope > ul.steps');
+      const reader = [...(top?.children ?? [])].find((li) => li.querySelector(':scope > .step-text')?.textContent?.includes('Subagent: Reader'));
+      return {
+        said: [...(reader?.querySelectorAll(':scope > ul.steps > li.said') ?? [])].map(
+          (li) => li.querySelector('.step-text > summary, .step-text')?.textContent,
+        ),
+        nested: !!reader?.querySelector(':scope > ul.steps > li > ul.steps li.said'),
+      };
+    });
     expect(tree.said[0]).toBe("general-purpose: I'll count the words in the test string with Bash to get the first result.");
     expect(tree.nested, 'the nested subagent’s narration is nested under it').toBe(true);
   } finally {
@@ -430,19 +430,19 @@ test('End on a subagent’s row, by keyboard, tells its agent and reads “endin
     rt.sendMessage(planning.id, { text: '@indexer count the words, with a subagent' });
     await expect.poll(() => r.held, { message: 'the replay to reach its pause' }).toBe(true);
     await synced(page, app);
-    await agentRow(page, 'indexer').getByRole('button', { name: 'Show @indexer’s 2 subagents' }).click();
+    await agentRow(page, 'indexer').getByRole('button', { name: 'Show indexer’s 2 subagents' }).click();
     const subs = agentRow(page, 'indexer').locator('.agent-sub.subagent');
     const ends = subs.locator('.sub-end');
     await expect(ends, 'End on each subagent').toHaveCount(2);
-    await expect(ends.nth(0)).toHaveAttribute('aria-label', 'End @indexer’s subagent ‘Reader’');
+    await expect(ends.nth(0)).toHaveAttribute('aria-label', 'End indexer’s subagent ‘Reader’');
     const first = store.state.sessions[indexer.id].subagents[0].id;
     await ends.nth(0).focus();
     await page.keyboard.press('Enter');
     await expect.poll(() => store.state.sessions[indexer.id].endingSubagents ?? [], { message: 'the subagent to be ending' }).toContain(first);
     expect(store.state.sessions[indexer.id].context.some((x) => x.startsWith('[Postbox] URGENT: the person ended your subagent'))).toBe(true);
-    await expect(page.getByRole('button', { name: 'End @indexer’s subagent ‘Nested checker’' }), 'focus on the next End').toBeFocused();
+    await expect(page.getByRole('button', { name: 'End indexer’s subagent ‘Nested checker’' }), 'focus on the next End').toBeFocused();
     await synced(page, app);
-    await expect(subs.first().locator('.sub-now'), 'the row reads ending').toHaveText('Ending: @indexer was told to stop it');
+    await expect(subs.first().locator('.sub-now'), 'the row reads ending').toHaveText('Ending: indexer was told to stop it');
   } finally {
     r.go();
   }
@@ -462,7 +462,7 @@ for (const theme of /** @type {const} */ (['light', 'dark']))
         await expect(page.locator('header.topbar pb-ring'), 'the top bar has no agent rings').toHaveCount(0);
         // Where the sidebar is hidden, the conversation’s menu names its agents, each leading to its persona.
         await page.locator('header.topbar #conversation-actions').click();
-        await expect(page.locator('.menu button.mi', { hasText: '@indexer' }), 'the menu names @indexer').toBeVisible();
+        await expect(page.locator('.menu button.mi', { hasText: 'indexer' }), 'the menu names indexer').toBeVisible();
       } finally {
         app.rt.renameThread(shelf.id, 'Index the shelf');
       }

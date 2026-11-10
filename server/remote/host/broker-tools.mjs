@@ -2,12 +2,13 @@
 // down and sent to Postbox once it’s checked and its files are read as the laptop would; and Postbox’s reply to it.
 // broker.mjs’s header says what’s written down when.
 
+import { hostUpdateRefusal } from '../../../shared/block-updates.mjs';
 import { validateBlock } from '../../../shared/catalog.mjs';
-import { encodedBytes, REMOTE_LIMITS, TOOL_ROUTES, TURN_FILES } from '../../../shared/remote-protocol.mjs';
-import { inlineAppFiles } from './broker-files.mjs';
+import { carriesBlockFiles, encodedBytes, REMOTE_LIMITS, TURN_FILES, toolRoute } from '../../../shared/remote-protocol.mjs';
+import { filesReader, withoutFiles } from './broker-files.mjs';
 import { armReadTimer, claim, detached, readLocal, settled, settleOffline } from './broker-offline.mjs';
-import { record, refusal, startOf, unrecorded, written } from './broker-records.mjs';
-import { key, QUEUED_TEXT, toShims } from './broker-state.mjs';
+import { note, record, refusal, startOf, unrecorded, written } from './broker-records.mjs';
+import { key, QUEUED_TEXT, takes, toOwner } from './broker-state.mjs';
 
 /**
  * @typedef {import('./broker-state.mjs').Broker} Broker
@@ -30,19 +31,22 @@ export async function prepare(b, turn, name, args) {
       text: 'Loading a dataset isn’t supported yet for an agent on a remote host: add_dataset reads a file on Postbox’s own computer, which this host can’t reach, so nothing was loaded.',
     };
   let out = args;
-  if (name === 'show_app' || name === 'update_app') {
+  // An app’s files, and a review block’s images (#780), are in the agent’s folder here, which Postbox can’t read.
+  const inline = filesReader(name, args);
+  if (inline) {
     const start = await startOf(b, turn);
     if (!start) return { ok: false, text: `There’s no turn ${turn} on this host.` };
-    const r = await inlineAppFiles(start.folder, args);
+    const r = await inline(start.folder, args);
     if (!r.ok) return r;
     out = r.args;
   }
   // Only what the laptop would refuse outright is refused here; an invalid show_block or show_app still goes, since
-  // the laptop shows its fallback text (server/runtime.mjs’s show_block).
-  if (name === 'update_block') {
-    const v = validateBlock(out.block);
-    if (!v.ok) return { ok: false, text: `The update was invalid and wasn’t applied: ${v.errors.join(' ')}` };
-  }
+  // the laptop shows its fallback text (server/runtime.mjs’s show_block). An outcome or a withdraw isn’t a block, and
+  // Postbox checks it against the block it names (server/blocks.mjs, #854).
+  // A review’s files aren’t the catalog’s: Postbox takes them off the block before it validates it.
+  const update = carriesBlockFiles(name, out) ? withoutFiles(out.block) : out.block;
+  const refused = name === 'update_block' ? hostUpdateRefusal(update) : null;
+  if (refused) return { ok: false, text: refused };
   if (name === 'update_app' && typeof out.code === 'string') {
     const v = validateBlock({
       id: out.id,
@@ -143,11 +147,16 @@ async function queueTool(b, k, t, result) {
   // A read with no Postbox to ask is answered at once and not journaled: a resend reads the snapshot again.
   if (detached(b, t)) return settleOffline(b, t);
   // Written down before the shim hears it, so on restart it replays.
-  t.saved = record(b, t.turn, 'tools', { op: 'call', id: t.id, name: t.name, route: t.route, args: t.args, at: t.arrived }).then(
+  // Its owner is the key’s hash, so the file never holds the shim’s key (#908).
+  t.saved = record(b, t.turn, 'tools', { op: 'call', id: t.id, name: t.name, route: t.route, args: t.args, owner: t.owner, at: t.arrived }).then(
     () => '',
     (e) => unrecorded(t.name, e),
   );
   const saved = await t.saved;
+  // The shim waits for a queued call’s answer (#827), so it gets one whatever Postbox did meanwhile: a hello can send
+  // the call on, and Postbox answer it, while its record is written. Postbox has it then, and tells its agent of its
+  // own refusal at the next turn (server/remote/turns-tools.mjs).
+  if (t.route === 'queue' && settled(t)) return result(true, QUEUED_TEXT);
   if (saved) {
     if (b.tools.get(k) === t) b.tools.delete(k);
     // A read answered offline meanwhile has been answered: one result per call.
@@ -160,6 +169,28 @@ async function queueTool(b, k, t, result) {
   b.toPostbox('tool', toolBody(t));
 }
 
+/**
+ * A call sent again, after a reconnect or by another connection: its kept answer, or a wait if it hasn’t settled. Only
+ * the shim that made it gets any of it (#908): any client with a turn’s token can name a call’s id, so another key is
+ * refused, and the call doesn’t change. A call no shim owns yet (a record an older daemon wrote) is taken by the first
+ * shim to send it, and the take is written down, so a restart doesn’t leave it for anyone again.
+ * @param {Broker} b @param {ShimConn} c @param {Tool} known @param {string | undefined} route  the call’s route as sent now
+ * @param {(ok: boolean, text: string) => void} result
+ */
+async function answerResend(b, c, known, route, result) {
+  const ownerless = known.owner === undefined;
+  if (!takes(known, c))
+    return result(false, `Call ${known.id} was made by another connection, so this one gets none of its answer. Call again under a new id.`);
+  if (ownerless) await note(b, known.turn, 'tools', { op: 'owner', id: known.id, owner: c.owner });
+  if (known.route === 'read' && known.result) return result(known.result.ok, known.result.text); // no wait on a disk
+  const saved = await known.saved;
+  if (saved) return result(false, saved);
+  const ans = answerKnown(known);
+  if (ans) return result(ans.ok, ans.text);
+  // An open read resent while disconnected: answered from the snapshot through settleOffline, which answers its shim.
+  if (route === 'read' && !b.attached() && !settled(known)) return void settleOffline(b, known);
+}
+
 /** A shim’s tool call. @param {Broker} b @param {ShimConn} c @param {string} turn @param {any} m */
 export async function call(b, c, turn, m) {
   const arrived = b.now();
@@ -169,24 +200,15 @@ export async function call(b, c, turn, m) {
     result(false, no.text);
     return c.send('error', { code: no.code, message: no.text });
   }
-  const route = TOOL_ROUTES[/** @type {keyof typeof TOOL_ROUTES} */ (m.name)];
+  const route = toolRoute(m.name, m.args);
   if (route === 'host') {
     const r = await readLocal(b, turn, m.name, m.args, false);
     return result(r.ok, r.text);
   }
   const k = key(turn, m.id);
-  // Sent again after a reconnect: return the kept answer, or wait if it hasn’t settled.
+  // Sent again: the kept answer, to its own shim only.
   const known = b.tools.get(k);
-  if (known) {
-    if (known.route === 'read' && known.result) return result(known.result.ok, known.result.text); // no wait on a disk
-    const saved = await known.saved;
-    if (saved) return result(false, saved);
-    const ans = answerKnown(known);
-    if (ans) return result(ans.ok, ans.text);
-    // An open read resent while disconnected: answered from the snapshot through settleOffline, which answers every shim.
-    if (route === 'read' && !b.attached() && !settled(known)) return void settleOffline(b, known);
-    return;
-  }
+  if (known) return answerResend(b, c, known, route, result);
   // The host can’t tell a reconnect of a few seconds from a Postbox that’s closed, so the refusal names both.
   if (route === 'ask' && !b.attached() && m.name !== 'add_dataset')
     return result(
@@ -200,7 +222,18 @@ export async function call(b, c, turn, m) {
   }
   const bytes = toolBytes(turn, m.name, r.args);
   /** @type {Tool} */
-  const t = { turn, id: m.id, name: m.name, route: /** @type {'queue' | 'ask' | 'read'} */ (route), args: r.args, replied: false, bytes, arrived };
+  const t = {
+    turn,
+    id: m.id,
+    name: m.name,
+    route: /** @type {'queue' | 'ask' | 'read'} */ (route),
+    args: r.args,
+    replied: false,
+    owner: c.owner,
+    bytes,
+    arrived,
+  };
+  // Another shim took the same id meanwhile: sent again, so answerResend decides whose it is.
   if ((await queueTool(b, k, t, result)) === 'again') return call(b, c, turn, m);
 }
 
@@ -246,6 +279,6 @@ export async function onReply(b, m, reply) {
   }
   if (t.route === 'ask' || t.route === 'read') {
     t.result = { ok: m.ok, text: m.text };
-    toShims(b, m.turn, 'result', { id: t.id, ok: m.ok, text: m.text });
+    toOwner(b, t, 'result', { id: t.id, ok: m.ok, text: m.text });
   } else if (!m.ok) b.log(`Postbox refused turn ${m.turn}’s ${t.name} (${t.id}): ${m.text}`);
 }

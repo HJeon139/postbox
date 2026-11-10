@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createConnection } from 'node:net';
 import { createMessageReader, encode, message, TURN_FILES } from '../../../shared/remote-protocol.mjs';
 import { armExpiry, watchDown } from './shim-calls.mjs';
-import { log, respond, textResult } from './shim-harness.mjs';
+import { log, queuedText, respond, textResult } from './shim-harness.mjs';
 import { deliver, settle, TIMINGS } from './shim-state.mjs';
 
 /** @typedef {import('./shim-state.mjs').Shim} Shim */
@@ -26,7 +26,7 @@ export function connect(sh) {
   }
   let hello;
   try {
-    hello = encode(message('shim-to-daemon', 'hello', { token, turn: sh.turn }));
+    hello = encode(message('shim-to-daemon', 'hello', { token, turn: sh.turn, shim: sh.key }));
   } catch (e) {
     log(`The token at ${tokenPath} isn’t one the daemon takes: ${e.message}`);
     return reconnectLater(sh);
@@ -82,12 +82,10 @@ function fromDaemon(sh, m) {
       const p = sh.pending.get(m.id);
       if (!p || (p.kind !== 'queue' && p.kind !== 'ask')) return;
       settle(sh, m.id);
-      // A queued call’s agent already has its answer; a refusal here is the daemon’s to report to Postbox.
-      if (p.kind === 'queue') {
-        if (!m.ok) log(`Postbox’s daemon refused ${p.tool} (${m.id}): ${m.text}`);
-        return;
-      }
-      respond(p.rpcId, textResult(m.text, !m.ok));
+      // A queued call taken by the daemon is answered in the shim’s words, which say it was sent and name what Postbox
+      // still checks; a refusal, in the daemon’s (#827).
+      const text = p.kind === 'queue' && m.ok ? queuedText(p.tool ?? '', p.sent ?? {}) : m.text;
+      respond(p.rpcId, textResult(text, !m.ok));
       return;
     }
     case 'permission-answer': {
@@ -116,7 +114,7 @@ function fromDaemon(sh, m) {
 /** Every asked call and prompt ends with the daemon’s refusal; a prompt is denied. @param {Shim} sh @param {{ [field: string]: any }} m */
 function refuseAll(sh, m) {
   for (const [id, p] of [...sh.pending]) {
-    if (p.kind === 'ask') {
+    if (p.kind === 'ask' || p.kind === 'queue') {
       settle(sh, id);
       respond(p.rpcId, textResult(`Postbox’s daemon on this host refused ${p.tool}: ${m.message}`, true));
     } else if (p.kind === 'permission') {

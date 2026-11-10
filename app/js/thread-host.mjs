@@ -12,13 +12,13 @@ const S = () => client.state;
 
 // ── The transcript ──────────────────────────────────────────────────────────────────────
 
-/** “@coder · Stopping on host.example.com: Postbox asked it to stop, and waits for the host to confirm.” @param {any} se */
+/** “coder · Stopping on host.example.com: Postbox asked it to stop, and waits for the host to confirm.” @param {any} se */
 function hostTurnRow(se) {
   const name = S().hosts?.[se.remoteTurn?.hostId]?.name ?? 'its host';
   return h(
     'div.host-turn.small',
     h('span.g.g-running', { 'aria-hidden': 'true' }),
-    h('b', `@${se.handle}`),
+    h('b', se.handle),
     ` · Stopping on ${name}: Postbox asked it to stop, and waits for the host to confirm. It may still run there until then.`,
   );
 }
@@ -113,10 +113,10 @@ function remoteCallout(it, f) {
     const b = e.currentTarget;
     b.disabled = true;
     api(`/api/sessions/${f.se.id}/resume`, {})
-      .then(() => say(`Resuming @${f.se.handle} on ${f.name}.`))
+      .then(() => say(`Resuming ${f.se.handle} on ${f.name}.`))
       .catch((err) => {
         b.disabled = false;
-        toast({ title: `Couldn’t resume @${f.se.handle}`, text: err.message, level: 'blocking' });
+        toast({ title: `Couldn’t resume ${f.se.handle}`, text: err.message, level: 'blocking' });
       });
   };
   return h(
@@ -125,7 +125,7 @@ function remoteCallout(it, f) {
     h('span.g.g-failed', { 'aria-hidden': 'true' }),
     h('div.grow', h('b', title), rest ? ` · ${rest}` : '', f.canResume ? ` ${resumeHint(f.se)}` : ''),
     f.canResume
-      ? h('button.btn.sm', { type: 'button', 'aria-label': `Resume @${f.se.handle} on ${f.name}`, onclick: resume }, icon('retry', 'i-sm'), 'Resume')
+      ? h('button.btn.sm', { type: 'button', 'aria-label': `Resume ${f.se.handle} on ${f.name}`, onclick: resume }, icon('retry', 'i-sm'), 'Resume')
       : null,
   );
 }
@@ -156,7 +156,7 @@ export function kiroStep(it) {
 export function jobHostNote(it) {
   const se = S().sessions[it.sessionId];
   const host = ranOnHost(se, it.turnId) ? hostOf(se) : null;
-  return host ? h('span.small.dim.job-host', `A job on a host stops with its turn. Stop @${se.handle} to stop it.`) : null;
+  return host ? h('span.small.dim.job-host', `A job on a host stops with its turn. Stop ${se.handle} to stop it.`) : null;
 }
 
 /**

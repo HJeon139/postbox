@@ -15,18 +15,21 @@ import { homedir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CARD_WAIT_MS } from '../permission-cards.mjs';
-import { autoAllows, inGit } from './agy-auto.mjs';
+import { autoAllows, inGit, personaAllows, personaOf, publishingCall } from './agy-auto.mjs';
 import { POSTBOX_SERVER } from './setup.mjs';
 
 export const HOOK_SCRIPT = fileURLToPath(import.meta.url);
 /** Outlasts Postbox’s card wait (CARD_WAIT_MS) so an unanswered card expires to deny before agy times the hook out. */
 export const HOOK_TIMEOUT_S = Math.ceil(CARD_WAIT_MS / 1000) + 60;
+/** How Antigravity asks (adapter.mjs’s capabilities): through permission_prompt, from this hook, by an id no stream line carries (#353). */
+export const HOOK_PROMPTS = Object.freeze({ promptTool: true, promptHook: true });
 
 const WRITE_TOOLS = new Set(['write_file', 'write_to_file', 'edit_file', 'replace_file_content', 'multi_replace_file_content']);
 const READ_TOOLS = new Set(['read_file', 'view_file', 'list_dir', 'find_by_name', 'grep_search']);
 const SUBAGENT_TOOLS = new Set(['invoke_subagent', 'define_subagent', 'send_message', 'manage_subagents', 'manage_task']);
 // A command that names Antigravity’s plugin, this hook or agy’s settings: always a card, flagged.
 const PROTECTED_CMD = /\.agents\b|agy-hook\.mjs\b|\.gemini[\\/]antigravity-cli\b/i;
+const PUBLISH_OFF = 'This agent can’t publish outside Postbox (its persona’s “Can publish outside Postbox” is off), so Postbox refused this tool.';
 
 /** Whether an agy version supports PreToolUse hooks (1.4.7 and newer). */
 export function agySupportsHooks(version) {
@@ -105,9 +108,14 @@ export function isProtectedPath(rawPath, { cwd = process.cwd(), scriptPath = HOO
  * Classifies one Antigravity tool call for the persona’s mode: 'allow', 'deny' (with reason), or 'ask' (with the
  * Claude Code toolName and input that Postbox’s permission card expects).
  * @param {any} event
- * @param {{ mode?: string, folders?: string[], cwd?: string, scriptPath?: string, home?: string }} [opts]
+ * @param {{ mode?: string, folders?: string[], readFolders?: string[], cwd?: string, scriptPath?: string, home?: string, tools?: string[], canPublish?: boolean }} [opts]
+ *   tools and canPublish: the persona’s (agy-auto.mjs, personaOf, #416); readFolders: folders it may only read (#338),
+ *   which the read branch counts and an edit or Auto’s routine calls never do
  */
-export function decideAgyTool(event, { mode = 'ask', folders = [], cwd = process.cwd(), scriptPath = HOOK_SCRIPT, home = homedir() } = {}) {
+export function decideAgyTool(
+  event,
+  { mode = 'ask', folders = [], readFolders = [], cwd = process.cwd(), scriptPath = HOOK_SCRIPT, home = homedir(), tools = [], canPublish = false } = {},
+) {
   const name = String(event?.toolCall?.name ?? '').trim();
   const args = event?.toolCall?.args && typeof event.toolCall.args === 'object' ? event.toolCall.args : {};
   if (!name) return { decision: 'deny', reason: 'Postbox’s Antigravity hook received no tool name.' };
@@ -116,11 +124,18 @@ export function decideAgyTool(event, { mode = 'ask', folders = [], cwd = process
   const tool = String(args.ToolName ?? '');
   if (mcp && (server === 'postbox_postbox' || server === 'postbox') && tool === 'permission_prompt')
     return { decision: 'deny', reason: 'Postbox’s permission_prompt tool is only for the PreToolUse hook.' };
+  if (!canPublish && publishingCall(name, args)) return { decision: 'deny', reason: PUBLISH_OFF };
   const roots = /** @type {string[]} */ ((folders.length ? folders : [cwd]).map((f) => realTarget(f, cwd)).filter(Boolean));
   const command = name === 'run_command' ? String(args.CommandLine ?? '') : '';
   const isProtected = (p) => isProtectedPath(p, { cwd, scriptPath, home });
-  // In Auto, Postbox approves routine calls itself (server/adapters/agy-auto.mjs); a command naming its files asks.
-  if (mode === 'auto' && !PROTECTED_CMD.test(command) && autoAllows(name, args, { roots, cwd, home, isProtected, realTarget })) return { decision: 'allow' };
+  // In Auto, Postbox approves routine calls and what the persona’s tools allow (agy-auto.mjs, #416); a command naming
+  // Antigravity’s files asks.
+  if (
+    mode === 'auto' &&
+    !PROTECTED_CMD.test(command) &&
+    (autoAllows(name, args, { roots, cwd, home, isProtected, realTarget }) || personaAllows(name, args, tools))
+  )
+    return { decision: 'allow' };
   if (mcp) {
     if (server === 'postbox_postbox') return { decision: 'allow' };
     const input = args.Arguments && typeof args.Arguments === 'object' ? args.Arguments : {};
@@ -142,7 +157,8 @@ export function decideAgyTool(event, { mode = 'ask', folders = [], cwd = process
     if (typeof raw !== 'string' || !raw.trim()) return { decision: 'ask', toolName: 'Read', input: { file_path: '' } };
     const real = realTarget(raw, cwd);
     const agyDirs = [join(home, '.gemini', 'antigravity-cli', 'mcp'), join(home, '.gemini', 'antigravity-cli', 'brain')].map((d) => realTarget(d, '/'));
-    if ([...roots, ...agyDirs].some((r) => inside(real, r))) return { decision: 'allow' };
+    const readable = readFolders.map((f) => realTarget(f, cwd)).filter(Boolean);
+    if ([...roots, ...readable, ...agyDirs].some((r) => inside(real, r))) return { decision: 'allow' };
     return { decision: 'ask', toolName: 'Read', input: { file_path: raw.trim() } };
   }
   if (name === 'run_command') {
@@ -187,7 +203,17 @@ function resolveHookContext(event, cwd, env) {
       mcpUrl = '';
     }
   }
-  return { mode, folders, mcpUrl };
+  return { mode, folders, readFolders: jsonList(env.POSTBOX_AGY_READ), mcpUrl };
+}
+
+/** A JSON list of paths from the environment, or none. @param {string | undefined} raw */
+function jsonList(raw) {
+  try {
+    const list = JSON.parse(raw || '[]');
+    return Array.isArray(list) ? list.filter((x) => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -223,8 +249,8 @@ async function evaluateHook(stdinText, { cwd = process.cwd(), env = process.env,
   } catch {
     return { decision: 'deny', reason: 'Postbox’s Antigravity hook received invalid JSON on stdin.' };
   }
-  const { mode, folders, mcpUrl } = resolveHookContext(event, cwd, env);
-  const check = decideAgyTool(event, { mode, folders, cwd, scriptPath, home });
+  const { mode, folders, readFolders, mcpUrl } = resolveHookContext(event, cwd, env);
+  const check = decideAgyTool(event, { mode, folders, readFolders, cwd, scriptPath, home, ...personaOf(env) });
   if (check.decision === 'allow' || check.decision === 'deny') return check;
   if (!mcpUrl) return { decision: 'deny', reason: 'Postbox’s MCP URL is missing, so the hook couldn’t ask for permission.' };
   const requestId = `agy-hook-${randomUUID()}`;

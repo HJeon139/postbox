@@ -5,12 +5,13 @@ import { Readable } from 'node:stream';
 /**
  * One request through the router, as Node’s server would make it.
  * @param {(req: any, res: any) => any} handle
- * @param {{ method?: string, path: string, body?: any, cookie?: string, origin?: string, host: string, remoteAddress?: string,
- *           headers?: Record<string, string> }} r
- * @returns {Promise<{ status: number, headers: Record<string, string>, text: string, json: any }>}
+ * @param {{ method?: string, path: string, body?: any, raw?: string, cookie?: string, origin?: string, host: string, remoteAddress?: string,
+ *           headers?: Record<string, string> }} r  raw: the body’s text as sent, for JSON that JSON.stringify can’t write (1e400)
+ * @returns {Promise<{ status: number, headers: Record<string, string>, text: string, json: any, bytes: Buffer }>}
  */
-export function fakeRequest(handle, { method = 'GET', path, body, cookie, origin, host, remoteAddress = '127.0.0.1', headers = {} }) {
-  const req = Readable.from(body === undefined ? [] : [Buffer.from(JSON.stringify(body))]);
+export function fakeRequest(handle, { method = 'GET', path, body, raw, cookie, origin, host, remoteAddress = '127.0.0.1', headers = {} }) {
+  const payload = raw ?? (body === undefined ? undefined : JSON.stringify(body));
+  const req = Readable.from(payload === undefined ? [] : [Buffer.from(payload)]);
   Object.assign(req, {
     method,
     url: path,
@@ -33,12 +34,13 @@ export function fakeRequest(handle, { method = 'GET', path, body, cookie, origin
       },
       end(c) {
         if (c) chunks.push(Buffer.from(c));
-        const text = Buffer.concat(chunks).toString('utf8');
+        const bytes = Buffer.concat(chunks);
+        const text = bytes.toString('utf8');
         let json = null;
         try {
           json = JSON.parse(text);
         } catch {}
-        resolve({ status: this.status, headers: this.headers, text, json });
+        resolve({ status: this.status, headers: this.headers, text, json, bytes });
       },
       destroy() {},
     };

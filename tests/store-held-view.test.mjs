@@ -212,3 +212,41 @@ test('a malformed held add (no item) is taken by the pending read as the release
   assert.doesNotThrow(() => store.pending.items('t1'));
   await done();
 });
+
+// A view is used again only while the store's version holds (store-held.mjs). release() takes its job out of heldLog
+// while a view's count of jobs it has seen stays put, so a view kept across a release would skip the next held emit.
+// The reviewer's probe on #941 (#1007): a listener reads during one release and emits behind the next, and a listener
+// on that next release reads.
+test('a pending list read during a release, then a held emit, then a later release: the later read has the emit (#1007)', async () => {
+  const { store, done } = await holding();
+  store.emit('item.add', { threadId: 't1', item: { id: 'r', kind: 'agent', text: 'Held' } });
+  store.emit('item.add', { threadId: 't2', item: { id: 'd', kind: 'user', text: 'elsewhere' } });
+  const later = [];
+  const off = store.subscribe((ev) => {
+    if (ev.type !== 'item.add') return;
+    if (ev.data.item.id === 'r') {
+      store.pending.items('t1'); // a view made with heldLog one job shorter
+      store.emit('item.patch', { threadId: 't1', id: 'r', patch: { text: 'patched' } }); // held behind d's add
+    } else if (ev.data.item.id === 'd') later.push(pend(store, 't1', 'r')?.text);
+  });
+  await done();
+  off();
+  assert.deepEqual(later, ['patched'], 'the read on d’s release has the patch held behind it');
+});
+
+test('a pending thread read during a release, then a held put, then a later release: the later read has the put (#1007)', async () => {
+  const { store, done } = await holding();
+  store.emit('thread', { id: 't1', n: 1 });
+  store.emit('thread', { id: 't2', n: 1 });
+  const later = [];
+  const off = store.subscribe((ev) => {
+    if (ev.type !== 'thread') return;
+    if (ev.data.id === 't1' && ev.data.n === 1) {
+      store.pending.thread('t1'); // a view made with heldLog one job shorter
+      store.emit('thread', { id: 't1', n: 2 }); // held behind t2's put
+    } else if (ev.data.id === 't2') later.push(store.pending.thread('t1')?.n);
+  });
+  await done();
+  off();
+  assert.deepEqual(later, [2], 'the read on t2’s release has the put held behind it');
+});

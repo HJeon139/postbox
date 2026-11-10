@@ -4,7 +4,9 @@
 // card (hover-content.mjs), on hover and on keyboard focus, and the button’s name says it too. The agents answering
 // where it is hear yours at their next turn, and an agent’s is heard by the agent whose message it is. A reaction
 // repaints only its own buttons: the item, an app’s frame among them, isn’t drawn again.
-// Each reaction is drawn with its icon (app/media/reactions), and its emoji is the icon’s text.
+// Each button draws its reaction’s icon (app/media/reactions) and its count itself (workbench.css, data-icon and
+// data-count), so a row is six elements on every item: in a 300-item room the rows were 42% of the page. Its name says
+// the reaction, who made it and how many, so nothing a screen reader hears comes from the icon.
 
 import { REACTIONS } from '/shared/reactions.mjs';
 import { api, client, itemIn } from './client.mjs';
@@ -18,8 +20,6 @@ const DRAWN = new Map([
   ['❓', 'unclear'],
   ['✅', 'done'],
 ]);
-/** A reaction’s icon, which says its emoji to a screen reader. workbench.css draws it, from the theme’s file. */
-const drawn = (emoji) => h('span.react-icon', { role: 'img', 'aria-label': emoji, dataset: { icon: DRAWN.get(emoji) } });
 /** The act that reacts: server/reactions.mjs, REACT. */
 const REACT = '@react';
 
@@ -28,13 +28,13 @@ const react = (threadId, itemId, emoji) =>
     toast({ title: 'Couldn’t react', text: e.message, level: 'blocking' }),
   );
 
-/** “you”, “@critic”, “you and @critic”, “you, @critic and @dev”. */
+/** “you”, “critic”, “you and critic”, “you, critic and dev”. */
 export const who = (names) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 
 /** Who made one reaction on an item: “you” first, then the agents, by handle. */
 export function reactors(it, emoji) {
   const rs = (it?.reactions ?? []).filter((r) => r.emoji === emoji);
-  return [...(rs.some((r) => !r.by) ? ['you'] : []), ...rs.filter((r) => r.by).map((r) => `@${r.handle}`)];
+  return [...(rs.some((r) => !r.by) ? ['you'] : []), ...rs.filter((r) => r.by).map((r) => r.handle)];
 }
 
 /** The five buttons, as an item’s reactions stand now. */
@@ -42,28 +42,28 @@ function buttons(it, threadId) {
   return REACTIONS.map(([emoji, label]) => {
     const names = reactors(it, emoji);
     const yours = names[0] === 'you';
-    return h(
-      'button.react-btn',
-      {
-        type: 'button',
-        class: names.length ? 'made' : '',
-        'aria-pressed': String(yours),
-        'aria-label': `${label}${names.length ? `, from ${who(names)}, ${names.length} reaction${names.length === 1 ? '' : 's'}` : ''}: ${yours ? 'take yours back' : 'react'}`,
-        dataset: { emoji },
-        onclick: () => react(threadId, it.id, emoji),
-      },
-      drawn(emoji),
-      names.length > 1 || (names.length === 1 && !yours) ? h('span.react-count', { 'aria-hidden': 'true' }, String(names.length)) : null,
-    );
+    // The count shows from 1 when others reacted; yours alone has none.
+    const counted = names.length > 1 || (names.length === 1 && !yours);
+    return h('button.react-btn', {
+      type: 'button',
+      class: names.length ? 'made' : '',
+      'aria-pressed': String(yours),
+      'aria-label': `${label}${names.length ? `, from ${who(names)}, ${names.length} reaction${names.length === 1 ? '' : 's'}` : ''}: ${yours ? 'take yours back' : 'react'}`,
+      dataset: { emoji, icon: DRAWN.get(emoji), ...(counted ? { count: String(names.length) } : {}) },
+      onclick: () => react(threadId, it.id, emoji),
+    });
   });
 }
 
 /**
- * Adds an item’s reactions to its actions bar, which it returns.
+ * Puts an item’s reactions first in its actions bar, which it returns: the thread button sits on the right, the side
+ * a thread opens on (#378).
  * @param {HTMLElement} bar  the item’s actions @param {HTMLElement} _node  the item @param {any} it @param {{ threadId: string }} ctx
  */
 export function reactTo(bar, _node, it, ctx) {
-  bar.append(h('span.react-row', { role: 'group', 'aria-label': 'Reactions', dataset: { reactions: it.id, thread: ctx.threadId } }, buttons(it, ctx.threadId)));
+  bar.prepend(
+    h('span.react-row', { role: 'group', 'aria-label': 'Reactions', dataset: { reactions: it.id, thread: ctx.threadId } }, buttons(it, ctx.threadId)),
+  );
   return bar;
 }
 

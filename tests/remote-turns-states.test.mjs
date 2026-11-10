@@ -32,7 +32,8 @@ test('#120 L5: a turn quiet for the host’s stallTimeout is Hung: stopped throu
   r.rt.remote.checkStalls();
   await until(() => r.d.stops.includes(turn), 'the daemon’s stop');
   await settled(r);
-  const last = new Date(Date.UTC(2026, 9, 23, 9, 0)).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+  // The last line is the call the card asked about, which the CLI writes just before it asks (#353).
+  const last = new Date(Date.UTC(2026, 9, 23, 9, 14)).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   const text = `Stopped: no output for 15 min (the last at ${last})`;
   assert.equal(r.se().remoteTurn.state, 'hung');
   assert.equal(r.se().currentStep, text);
@@ -155,6 +156,21 @@ test('#120 L5: Interrupted (no runner, no exit.json) resumes on its own once the
   r.d.end(again.turn);
   await settled(r);
   assert.equal(r.se().remoteTurn.state, 'done');
+});
+
+test('#872 Interrupted with its process there unkilled waits for the person: no resume on its own, even once the host is back', async () => {
+  const r = rig();
+  const turn = await running(r);
+  await until(() => r.se().backendState?.claudeSessionId, 'the session ID');
+  r.d.interrupt(turn, { unkilled: true });
+  await settled(r);
+  assert.equal(r.se().remoteTurn.state, 'interrupted');
+  const failed = r.store.items(r.t.id).find((i) => i.kind === 'agent' && i.status === 'failed');
+  assert.match(failed.error, new RegExp(`^Interrupted on ${escapeRegExp(HOST)}: .*process there didn’t stop`));
+  r.hosts.emit('status', r.host.id, { state: 'connected' });
+  await sleep(20);
+  assert.equal(starts(r.d).length, 1, 'not resumed beside a process that may still run');
+  assert.ok(r.se().remoteTurn.resume, 'the person can resume it');
 });
 
 // ── 5. Stop ──────────────────────────────────────────────────────────────────────────

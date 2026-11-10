@@ -3,10 +3,11 @@
 // restoration with integer validation, and zero leaked timers across reconnects and teardown.
 
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import test from 'node:test';
 import { TURN_FILES } from '../shared/remote-protocol.mjs';
-import { connectShim, fakeClock, makeBroker, makeHome, until } from './remote-broker-fixtures.mjs';
+import { connectShim, fakeClock, makeBroker, makeHome, SHIM_KEY, until } from './remote-broker-fixtures.mjs';
 
 const snap = (turn, text = 'Item 1 snapshot') => ({
   turn,
@@ -14,8 +15,13 @@ const snap = (turn, text = 'Item 1 snapshot') => ({
   threads: [{ id: 'th', items: [{ id: 'item_1', line: 'Item 1 line', text }] }],
 });
 
+/** A call record as the daemon writes it, made by the test shim (SHIM_KEY), so its result reaches that shim (#908). */
 const writeCall = (p, id, at) =>
-  writeFileSync(p, `${JSON.stringify({ op: 'call', id, name: 'read_message', route: 'read', args: { id: 'item_1' }, at })}\n`, 'utf8');
+  writeFileSync(
+    p,
+    `${JSON.stringify({ op: 'call', id, name: 'read_message', route: 'read', args: { id: 'item_1' }, owner: createHash('sha256').update(SHIM_KEY).digest('hex'), at })}\n`,
+    'utf8',
+  );
 
 test('T02: 100s deadline expiration triggers offline fallback via fake clock', async () => {
   const h = makeHome();

@@ -74,12 +74,12 @@ test('#618: choosing one agent draws its commands, not a stretch past their end'
   await expect(page.locator('[id="wsum-wc_alpha_8_0"]')).toBeFocused();
   await expect(commands(page)).toHaveCount(50);
 
-  await page.getByRole('button', { name: '@beta' }).click();
+  await page.getByRole('button', { name: 'beta' }).click();
   await expect(commands(page)).toHaveCount(10);
   await expect(commands(page).last()).toContainText('echo beta 1 4');
   await expect(more(page)).toHaveCount(0);
 
-  await page.getByRole('button', { name: '@alpha' }).click();
+  await page.getByRole('button', { name: 'alpha' }).click();
   await expect(commands(page)).toHaveCount(50);
   await expect(commands(page).last()).toContainText('echo alpha 9 7');
   await expect(page.getByRole('button', { name: /^Show 30 earlier commands · 30 not shown$/ })).toBeVisible();

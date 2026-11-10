@@ -9,7 +9,7 @@ An agent blocked by a rule shouldn’t send you to a terminal to run `/permissio
 ## Expected functionality
 
 - **Agent:** in a room, a choice of agents, starting with the one the composer replies to.
-- **Mode:** Auto, Ask me, Accept edits or Run everything. It’s the agent’s mode in every conversation. The panel says when it applies: now, on an Agent SDK turn that’s running and could change; otherwise from the agent’s next turn, since Claude Code can’t change a turn that’s running.
+- **Mode:** Auto, Ask me, Accept edits or Run everything. It’s the agent’s mode in every conversation. The panel says when it applies: now, on an Agent SDK turn that’s running and could change; otherwise from the agent’s next turn, since Claude Code can’t change a turn that’s running. On the Agent SDK, Postbox keeps a running turn’s mode rather than tighten it, since its hooks or Run everything could still approve a call without the card, and the panel says so and that Stop applies it now; a live switch from Ask me or Accept edits into Auto or Run everything says the hooks load only from its next turn ([#1030](https://github.com/HJeon139/postbox/issues/1030)).
 - **Rules:** deny, ask and allow, in Claude Code’s order, each with where it comes from:
   - your user settings (`~/.claude/settings.json`, only when the agent uses your Claude Code setup);
   - the project’s shared settings (`.claude/settings.json`): shown, never changed, since your team shares it;
@@ -23,6 +23,7 @@ An agent blocked by a rule shouldn’t send you to a terminal to run `/permissio
 - **Add a rule:** allow, ask or deny; a tool (Bash, Read, Edit, WebFetch, WebSearch, Agent, or an MCP server or tool); a pattern, with examples for that tool; and where to save it (this folder by default, this conversation only, or your user settings). The rule shows as you type it. Remove takes a rule out of a source Postbox may change.
 - **Folders:** where it works, the project’s folder, folders from your settings, and the ones added for this conversation. Add folder… opens the folder picker on the project’s folders, or takes a full path; either applies from the agent’s next turn.
 - **MCP servers:** each with its status from the agent’s latest turn, and a checkbox to turn it off for this agent.
+- **Hooks before tool calls:** each `PreToolUse` and `PermissionRequest` hook in the settings files the agent reads (your user settings only when it uses your Claude Code setup; an isolated agent says it doesn’t read them), with its event, its matcher and its command as text (values named like a key, token, secret or password, and bearer tokens, shown as …, in the matcher too), and where it comes from ([#817](https://github.com/HJeon139/postbox/issues/817), [#871](https://github.com/HJeon139/postbox/issues/871)). Both events can approve a call without the card. In Ask me or Accept edits mode, it says these don’t run in the agent’s Postbox turns in that mode, and that they run in Auto and Run everything and when you use Claude Code yourself; in Auto or Run everything mode, it says they run in the agent’s Postbox turns too, and that one that allows a call also skips your ask rules, this conversation’s included, as in your terminal ([#806](https://github.com/HJeon139/postbox/issues/806)). While a turn that started in the other kind of mode is running, it says so: in Ask me or Accept edits, that its running turn started with them and runs them until it ends; in Auto or Run everything, that its running turn started without them ([#1030](https://github.com/HJeon139/postbox/issues/1030)). For an agent on a host, it says instead that the list is this computer’s settings files and the host’s own settings aren’t shown. It always says what Postbox turns off for its turns (hooks from settings files, plugin hooks and the custom status line), that it does so in Ask me and Accept edits and that hooks run in Auto and Run everything, that it can’t list plugins’ hooks (`/hooks` in Claude Code shows them), and that hooks your organization manages always run. A file whose hooks can’t be read says why, and when none of the files can be, the panel doesn’t also say there are no hooks.
 - **Which rule decides?** Type a call, such as `Bash(npm test)`, `WebFetch(https://example.com/x)`, `Read(src/a.js)` or `mcp__github__create_issue`, and it says which rule decides, and from where, or that the mode does, and what the mode does with it. It says that Claude Code has the final say.
 - A mock agent shows its Tools only, and says modes and rules are for Claude Code and Agent SDK agents.
 - Everything works by keyboard. Escape closes the panel, or only the folder picker when one is open over it, and focus goes back to where you opened it.
@@ -30,18 +31,20 @@ An agent blocked by a rule shouldn’t send you to a terminal to run `/permissio
 
 ## Steps to reproduce
 
-1. Run `npx playwright test permissions` (`tests/browser/permissions.spec.mjs`). Every test should pass.
+1. Run `npx playwright test permissions mode-live-hooks` (`tests/browser/permissions.spec.mjs`, `tests/browser/permissions-hooks.spec.mjs` and `tests/browser/mode-live-hooks.spec.mjs`). Every test should pass.
 2. Run Postbox with real agents (`node server/index.mjs --port 4181 --data /tmp/pb-uat-real --fresh`) and open <http://127.0.0.1:4181/>, in a project whose folder you can lose. Open a conversation with a Claude Code agent, then ⋯ › Permissions….
 3. In “Which rule decides?”, type `Bash(rm -rf build)`. Add a deny rule for Bash with the pattern `rm:*`, and type the call again.
 4. In a terminal in that folder, run `claude`, then `/permissions`. Add an allow rule there, and reopen the panel.
 5. Set the mode to Accept edits, and send the agent a message.
 6. Add a folder from Add folder…, and ask the agent to list it.
-7. Open Settings › Personas › the agent › Permissions…, and press Escape.
+7. Add a `PreToolUse` hook to the folder’s `.claude/settings.json` (`{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"touch /tmp/pb-uat-hook"}]}]}}`), reopen the panel, and send the agent a message that runs a command.
+8. Open Settings › Personas › the agent › Permissions…, and press Escape.
 
 **Pass if:**
 - The call is decided by the mode first, then refused by the new rule, from this folder’s local settings.
 - The rule you added in Postbox is in the terminal’s `/permissions`, and the one you added there shows in the panel, from this folder’s local settings.
 - The agent’s next turn runs in the new mode, and can read the added folder.
+- The hook is listed with its event (`PreToolUse`), matcher and command, from the project’s shared settings, and `/tmp/pb-uat-hook` isn’t made by the agent’s turn, which is in Accept edits since step 5. In Auto or Run everything, the turn does make it (#806).
 - Escape closes the panel and leaves Settings open.
 
 ## Related

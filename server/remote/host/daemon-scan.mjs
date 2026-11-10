@@ -3,13 +3,14 @@
 
 import { promises as fsp } from 'node:fs';
 import { REMOTE_LIMITS, TURN_FILES, validateStartRecord } from '../../../shared/remote-protocol.mjs';
-import { readExit, readJson, runnerAlive, sizeOf } from './daemon-files.mjs';
+import { readExit, readJson, sizeOf } from './daemon-files.mjs';
+import { forgetSilence, turnRunning, unkilled } from './daemon-running.mjs';
 
 /** @typedef {import('./daemon-constants.mjs').Daemon} Daemon @typedef {import('./daemon-constants.mjs').TurnFound} TurnFound */
 
 /**
- * Every turn folder: a live runner (its socket answers with its turn) is running, exit.json is ended, neither is
- * interrupted. A folder without a valid start.json isn’t a turn the daemon started, and is skipped.
+ * Every turn folder: exit.json is ended, a turn daemon-running.mjs finds running is running, and one that’s neither is
+ * interrupted, and unkilled if its process was still there after the silence ceiling’s SIGKILL (#872). A folder without a valid start.json isn’t a turn the daemon started, and is skipped.
  * @param {Daemon} d @returns {Promise<TurnFound[]>}
  */
 export async function scan(d) {
@@ -34,17 +35,35 @@ async function scanTurn(d, turn) {
   }
   const start = validateStartRecord(await readJson(`${dir}/${TURN_FILES.start}`));
   if (!start.ok) return null;
-  const exit = await readExit(d, turn);
-  const state = exit ? 'ended' : !d.dead.has(turn) && (await runnerAlive(d, turn)) ? 'running' : 'interrupted';
-  // A runner may write exit.json between the two looks.
-  const exitNow = exit ?? (state === 'interrupted' ? await readExit(d, turn) : null);
+  const { state, exit } = await turnState(d, turn);
   return /** @type {TurnFound} */ ({
     turn,
     harness: start.msg.harness,
-    state: exitNow ? 'ended' : state,
+    state,
     size: (await d.cleanup.deletedSize(turn)) ?? (await sizeOf(`${dir}/${TURN_FILES.out}`)),
-    exit: exitNow,
+    exit,
+    // As the follower's ended says it, for a laptop that wasn't there for that ended (#872).
+    ...(state === 'interrupted' && unkilled(d, turn) ? { unkilled: true } : {}),
   });
+}
+
+/**
+ * A turn’s state and exit: ended with exit.json, else running or interrupted as daemon-running.mjs finds it.
+ * @param {Daemon} d @param {string} turn @returns {Promise<Pick<TurnFound, 'state' | 'exit'>>}
+ */
+async function turnState(d, turn) {
+  if (await turnRunningNow(d, turn)) return { state: 'running', exit: null };
+  // A runner may write exit.json between the two looks.
+  const exit = await readExit(d, turn);
+  if (!exit) return { state: 'interrupted', exit: null };
+  forgetSilence(d, turn);
+  return { state: 'ended', exit };
+}
+
+/** Whether the turn has no exit.json and runs. @param {Daemon} d @param {string} turn */
+async function turnRunningNow(d, turn) {
+  if (await readExit(d, turn)) return false;
+  return turnRunning(d, turn);
 }
 
 /**

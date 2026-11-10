@@ -81,5 +81,8 @@ test('#372 a woken agent is told its reply reaches the waker only by an @-mentio
     formatMessage({ kind: 'agent', from: '@alpha', text: 'Check the totals.' }),
     /^\[Postbox\] @alpha wrote to you\. Your reply posts here; it reaches @alpha only if you @-mention them/,
   );
-  assert.match(TOOL_DEFS.find((d) => d.name === 'wake_agent').description, new RegExp(`After ${HOP_LIMIT} agent wakes in one chain, the person must allow`));
+  assert.match(
+    TOOL_DEFS.find((d) => d.name === 'wake_agent').description,
+    /After the room’s chain limit of agent wakes in one chain \(1,000 unless the person set another\), the person must allow/,
+  );
 });

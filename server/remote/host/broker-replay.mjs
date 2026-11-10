@@ -11,6 +11,17 @@ import { toolBytes } from './broker-tools.mjs';
 /** @typedef {import('./broker-state.mjs').Broker} Broker */
 
 /**
+ * The shim a prompt or call record names (#353, #908): its key’s SHA-256, or null for one that sent no key (before
+ * #908), which no shim can take. A record an older daemon wrote has no owner at all (undefined), and the first shim to
+ * send it again takes it.
+ * @param {any} r
+ */
+function ownerOf(r) {
+  if (r.owner === null) return null;
+  return typeof r.owner === 'string' && /^[0-9a-f]{64}$/.test(r.owner) ? r.owner : undefined;
+}
+
+/**
  * Replays every turn folder’s records, and starts watching the held Codex turns still running.
  * @param {Broker} b @param {{ turn: string, state: string }[]} turns
  */
@@ -49,8 +60,13 @@ async function loadTurn(b, turn) {
       // A record that wouldn’t make a valid tool message is left out, never sent.
       if (validateMessage('daemon-to-postbox', { type: 'tool', ...body }).ok) {
         const arrived = Number.isSafeInteger(r.at) && r.at >= 0 ? r.at : b.now();
-        b.tools.set(k, { turn, id: r.id, name: r.name, route: r.route, args: r.args, replied: false, bytes: toolBytes(turn, r.name, r.args ?? {}), arrived });
+        const bytes = toolBytes(turn, r.name, r.args ?? {});
+        b.tools.set(k, { turn, id: r.id, name: r.name, route: r.route, args: r.args, replied: false, owner: ownerOf(r), bytes, arrived });
       }
+    } else if (r.op === 'owner') {
+      // The first shim to send an ownerless call again took it (broker-tools.mjs’s answerResend).
+      const t = b.tools.get(k);
+      if (t && t.owner === undefined) t.owner = ownerOf(r);
     } else if (r.op === 'reply') {
       const t = b.tools.get(k);
       if (t) {
@@ -64,10 +80,11 @@ async function loadTurn(b, turn) {
   for (const r of await lines(b.p.turn(turn, TURN_FILES.prompts))) {
     const k = key(turn, r.id);
     if (r.op === 'prompt' && !b.prompts.has(k)) {
-      if (validateMessage('daemon-to-postbox', { type: 'prompt', id: r.id, turn, request: r.request }).ok) {
-        const at = Number.isSafeInteger(r.at) && r.at >= 0 ? r.at : b.now();
-        b.prompts.set(k, { turn, id: r.id, request: r.request, answer: null, over: false, at, replayed: true });
-      }
+      const at = Number.isSafeInteger(r.at) && r.at >= 0 ? r.at : b.now();
+      // A record an older daemon wrote has no entry: it gets one from its own `at`, the same at every start.
+      const entry = r.entry ?? `at-${at}`;
+      if (validateMessage('daemon-to-postbox', { type: 'prompt', id: r.id, turn, entry, request: r.request }).ok)
+        b.prompts.set(k, { turn, id: r.id, entry, request: r.request, answer: null, over: false, at, owner: ownerOf(r), asked: new Set(), replayed: true });
     } else if (r.op === 'answer') {
       const q = b.prompts.get(k);
       if (q && validateMessage('daemon-to-shim', { type: 'permission-answer', id: r.id, result: r.result }).ok) q.answer = r.result;

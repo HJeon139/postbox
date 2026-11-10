@@ -81,22 +81,22 @@ test('server/discover and any other unknown method get method not found (-32601)
   assert.equal((await shim.call('tools/call', { name: 'no_such_tool', arguments: {} })).error.code, -32602);
 });
 
-test('a queued tool returns at once, and the daemon receives its call', async (t) => {
+test('a queued tool’s call reaches the daemon, and returns once the daemon has taken it', async (t) => {
   const { shim, daemon } = await setup(t);
   await daemon.connected();
   const id = shim.tool('show_block', { block: { id: 'pick', type: 'choice', version: 1, fallback: 'Pick one' } });
-  const res = await shim.response(id);
-  assert.match(textOf(res), /Sent block pick to Postbox/);
-  assert.equal(res.result.isError, undefined);
   const call = await daemon.next('call');
   assert.equal(call.name, 'show_block');
   assert.equal(call.args.block.id, 'pick');
+  daemon.send('result', { id: call.id, ok: true, text: 'Queued for Postbox.' });
+  const res = await shim.response(id);
+  assert.match(textOf(res), /Sent block pick to Postbox/);
+  assert.equal(res.result.isError, undefined);
 });
 
-test('a queued tool returns at once with no daemon, and is sent with the same ID when the daemon comes up', async (t) => {
+test('a queued tool sent with no daemon waits, and is sent with the same ID when the daemon comes up', async (t) => {
   const { shim, daemon } = await setup(t, { startDaemon: false, timings: { backoff: 20, backoffMax: 50 } });
-  const res = await shim.response(shim.tool('define_term', { term: 'shim', definition: 'The host’s MCP server.' }));
-  assert.match(textOf(res), /Sent “shim” to the glossary/);
+  const id = shim.tool('define_term', { term: 'shim', definition: 'The host’s MCP server.' });
   await daemon.start();
   const call = await daemon.next('call');
   assert.equal(call.name, 'define_term');
@@ -106,11 +106,30 @@ test('a queued tool returns at once with no daemon, and is sent with the same ID
   const again = await daemon.next('call', 1);
   assert.equal(again.id, call.id);
   daemon.send('result', { id: call.id, ok: true, text: 'Queued.' });
+  assert.match(textOf(await shim.response(id)), /Sent “shim” to the glossary/);
   await daemon.stop();
   await daemon.start();
   await daemon.next('hello', 2);
   await sleep(50);
   assert.equal(daemon.received.filter((m) => m.type === 'call').length, 2, 'an answered call isn’t sent again');
+});
+
+test('#780 a review block that carries files waits for the daemon’s answer, so a refused file reaches the agent', async (t) => {
+  const { shim, daemon } = await setup(t);
+  await daemon.connected();
+  const files = [{ name: 'figs/today.png', path: 'figs/today.png' }];
+  const id = shim.tool('show_block', { block: { id: 'fig', type: 'review', version: 1, format: 'markdown', content: 'x', fallback: 'x', files } });
+  const call = await daemon.next('call');
+  await sleep(50);
+  assert.equal(
+    shim.out.find((m) => m.id === id),
+    undefined,
+    'not “sent” before the daemon answers',
+  );
+  daemon.send('result', { id: call.id, ok: false, text: '“figs/today.png” can’t name a file: use letters, digits and - _ . (up to 64).' });
+  const res = await shim.response(id);
+  assert.equal(res.result.isError, true);
+  assert.match(textOf(res), /can’t name a file/);
 });
 
 test('an asked tool waits for the daemon’s result, and an error result is isError', async (t) => {
@@ -235,6 +254,25 @@ test('after a daemon restart, the waiting prompt is sent again with the same ID,
   daemon.send('permission-answer', { id: again.id, result: { behavior: 'allow', updatedInput: REQUEST.input } });
   assert.equal(JSON.parse(textOf(await shim.response(id))).behavior, 'allow');
   assert.equal(daemon.errors.length, 0);
+});
+
+test('#353 a prompt’s ID is random, and each hello carries this shim’s own key, the same after a reconnect', async (t) => {
+  const { shim, daemon } = await setup(t, { timings: { backoff: 20, backoffMax: 50 } });
+  shim.tool('permission_prompt', REQUEST);
+  shim.tool('permission_prompt', REQUEST);
+  const ids = [(await daemon.next('permission')).id, (await daemon.next('permission', 1)).id];
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  assert.ok(
+    ids.every((id) => UUID.test(id)),
+    `random IDs, not a counter: ${ids.join(', ')}`,
+  );
+  assert.notEqual(ids[0], ids[1]);
+  await daemon.stop();
+  await sleep(60);
+  await daemon.start();
+  const hellos = [await daemon.next('hello'), await daemon.next('hello', 1)];
+  assert.match(hellos[0].shim, /^[A-Za-z0-9_-]{32,128}$/, 'its own key');
+  assert.equal(hellos[1].shim, hellos[0].shim, 'the same key after the reconnect');
 });
 
 test('stdin ending closes the daemon link and exits 0', async (t) => {

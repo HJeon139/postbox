@@ -4,7 +4,8 @@
 
 import { ASKING } from '../shared/catalog.mjs';
 import { clip } from '../shared/text.mjs';
-import { APP_SEND_LIMIT } from './apps.mjs';
+import { APP_SEND_LIMIT } from './app-send-limits.mjs';
+import { httpError } from './helpers.mjs';
 
 /** The threads whose cards are the agent's: its own, and the side and topic threads off it. */
 const threadsOf = (rt, se) => [
@@ -30,9 +31,13 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
     return { kind: 'hop', itemId: it.id, text: `@${se.handle} wants to ${it.join ? 'add' : 'wake'} @${it.to}`, ...where };
   if (it.kind === 'permission' && it.sessionId === se.id && it.status === 'open' && rt.permissionWaits.has(it.id))
     return { kind: 'permission', itemId: it.id, text: `@${se.handle} asks to ${it.summary}`, ...where };
+  // An AskUserQuestion’s block (#521) needs the person while its call waits, mid-turn too, as a permission card does.
+  if (it.kind === 'block' && it.sessionId === se.id && !it.answered && rt.permissionWaits.get(it.id)?.question)
+    return { kind: 'block', itemId: it.id, text: it.block.title ?? clip(it.block.prompt ?? it.block.fallback, 120), ...where };
   if (it.sessionId !== se.id || (!turnIds.includes(it.turnId) && it.id !== keep)) return null;
-  // A failed reply waits for its Retry while you haven't moved past its turn, so a wake's release finds it again.
-  if (it.kind === 'agent' && it.status === 'failed') {
+  // A failed reply waits for its Retry while you haven't moved past its turn, so a wake's release finds it again;
+  // one the person dismissed (#883) doesn't.
+  if (it.kind === 'agent' && it.status === 'failed' && !it.dismissed) {
     const text = it.error ?? `@${se.handle}’s turn failed.`;
     return { kind: 'failed', itemId: it.id, text, ...where };
   }
@@ -41,6 +46,8 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
   if (it.kind === 'denial' && it.status === 'open') return { kind: 'denial', itemId: it.id, text: `A step was refused: ${it.summary}`, ...where };
   if (it.kind === 'toolask' && it.status === 'open')
     return { kind: 'toolask', itemId: it.id, text: `@${se.handle} asks you to turn on “${it.label}”`, ...where };
+  if (it.kind === 'viewask' && it.status === 'open')
+    return { kind: 'viewask', itemId: it.id, text: `@${se.handle} asks to see its app: download Chromium?`, ...where };
   return null;
 }
 
@@ -51,7 +58,7 @@ function needOf(rt, se, it, threadId, turnIds, keep) {
  * its refusals, its tool request, and last the cards that wait until answered (app sends, wake requests). Within a kind,
  * the newest. It ranks exactly the kinds a need can have, shared/needs.mjs's NEEDS_KINDS (tests/card-needs-kinds.test.mjs).
  */
-export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, denial: 3, toolask: 4, appsend: 5, hop: 5 });
+export const RANK = Object.freeze({ permission: 0, failed: 1, block: 2, denial: 3, toolask: 4, viewask: 4, appsend: 5, hop: 5 });
 
 /** The needs tied to a turn: the person moving on clears them (runtime.mjs, the turn's start). The rest wait until answered. */
 export const TURN_TIED = new Set(['failed', 'block', 'denial', 'toolask']);
@@ -121,18 +128,57 @@ export function nextNeed(rt, se, o = {}) {
 }
 
 /**
- * A new card offers itself as the agent's need: it takes it when none is set, or when it ranks ahead of the current
- * need or the same (the newest within a rank comes first, as in nextNeed). Otherwise it waits, and a release reaches
- * it. Every setter goes through here, so which card shows doesn't depend on whether it was set or released. A failed
- * turn still sets its need directly: it ends the turn, as the turn's end does. A current need of a kind RANK doesn't
- * list is kept, never replaced by default.
+ * A new card offers itself as the agent’s need: it takes it when none is set, when it is the card that already is the
+ * need (an app card’s new count), or when it ranks first by `challengerWins`, as nextNeed chooses (#711). Otherwise it
+ * waits, and a release reaches it. Every setter goes through here, so which card shows doesn’t depend on whether it was
+ * set or released. A failed turn still sets its need directly: it ends the turn, as the turn’s end does. A current need
+ * of a kind RANK doesn’t list is kept, never replaced by default.
  * @param {any} rt @param {any} se @param {any} need @param {string} state  the session's state if it takes the need
  * @returns {boolean} whether it took the need
  */
 export function offerNeed(rt, se, need, state) {
-  const cur = se.needs;
-  if (cur && !(RANK[need.kind] <= RANK[cur.kind])) return false;
+  if (!takesNeed(rt, se, need)) return false;
   rt.updateSession(se.id, { needs: need, state });
+  return true;
+}
+
+/**
+ * Whether an offered need takes the agent’s current one (offerNeed). Both cards’ times are read from pending; when
+ * either card isn’t there, rank alone decides, as before #711. On equal rank, a card that loses only for being older
+ * still takes the need when the current need’s card no longer waits (designs/508/a1b-asks.md, R8), so a dead need never
+ * keeps a live card from being flagged. @param {any} rt @param {any} se @param {any} need @returns {boolean}
+ */
+function takesNeed(rt, se, need) {
+  const cur = se.needs;
+  if (!cur) return true;
+  if (need.itemId === cur.itemId) return true;
+  if (!Object.hasOwn(RANK, cur.kind)) return false;
+  const offeredCard = rt.store.pending.item(need.threadId ?? se.threadId, need.itemId);
+  const curThreadId = cur.threadId ?? se.threadId;
+  const curCard = rt.store.pending.item(curThreadId, cur.itemId);
+  if (!offeredCard || !curCard) return RANK[need.kind] <= RANK[cur.kind];
+  const offered = { kind: need.kind, at: offeredCard.at ?? 0 };
+  const current = { kind: cur.kind, at: curCard.at ?? 0 };
+  if (challengerWins(offered, current)) return true;
+  if (RANK[need.kind] !== RANK[cur.kind]) return false;
+  const curWaits = needOf(rt, se, curCard, curThreadId, [], null) !== null;
+  return !curWaits;
+}
+
+/**
+ * Which of two of an agent’s cards comes first, the one decision nextNeed’s `comesFirst`, the restart’s `keptOrNext`
+ * and `offerNeed` all make (#711): the lower RANK wins; on equal rank the challenger wins unless it is older, so a tie
+ * on time goes to the challenger.
+ * @param {{ kind: string, at: number }} challenger  the card read later, `next`, or the card offered
+ * @param {{ kind: string, at: number }} incumbent  the best so far, or the current need
+ * @returns {boolean} whether the challenger comes first
+ */
+export function challengerWins(challenger, incumbent) {
+  const challengerRank = RANK[challenger.kind];
+  const incumbentRank = RANK[incumbent.kind];
+  if (challengerRank < incumbentRank) return true;
+  if (challengerRank > incumbentRank) return false;
+  if (challenger.at < incumbent.at) return false;
   return true;
 }
 
@@ -187,14 +233,27 @@ function runningKeep(rt, se) {
 }
 
 /**
- * Whether a card's need comes before the best so far: a kind that ranks ahead, or the same kind and the newer card.
+ * Whether a card’s need comes before the best so far, by `challengerWins`: the card read later is the challenger.
  * @param {any} need @param {number} at @param {{ at: number, need: any } | null} best
  */
 function comesFirst(need, at, best) {
   if (!best) return true;
-  const rank = RANK[need.kind];
-  const bestRank = RANK[best.need.kind];
-  if (rank !== bestRank) return rank < bestRank;
-  const sameRankNewer = at >= best.at;
-  return sameRankNewer;
+  return challengerWins({ kind: need.kind, at }, { kind: best.need.kind, at: best.at });
+}
+
+/**
+ * Dismiss a failed reply (#883): the person won't retry it, so it stops being a need, keeps its error text and its
+ * `failed` status (Retry still works on it), and nothing runs. Its need goes to whatever else waits, as when a card is
+ * answered: the failed turn's own asks count, since no new turn starts to decide them, unlike Retry. A second Dismiss,
+ * from a double click or another tab, changes nothing.
+ * @param {any} rt @param {string} threadId @param {string} itemId
+ */
+export function dismissFailed(rt, threadId, itemId) {
+  const it = rt.store.item(threadId, itemId);
+  if (it?.kind === 'agent' && it.status === 'retried') throw httpError(409, 'It was already retried; reload to see it.');
+  if (it?.kind !== 'agent' || it.status !== 'failed') throw httpError(409, 'Only a failed reply can be dismissed.');
+  if (it.dismissed) return { ok: true };
+  rt.patchItem(threadId, itemId, { dismissed: true });
+  releaseNeed(rt, rt.s.sessions[it.sessionId], itemId);
+  return { ok: true };
 }

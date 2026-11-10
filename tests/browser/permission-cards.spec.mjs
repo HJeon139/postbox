@@ -49,7 +49,7 @@ test.use({ colorScheme: 'light' });
 async function agent(page, handle) {
   const { rt } = app;
   const persona = rt.createPersona({ handle, backend: 'claude-code', permissionMode: 'auto', tools: [] });
-  const thread = rt.createThread({ projectId: 'pr_cards', title: `Cards for @${handle}`, personaIds: [persona.id] });
+  const thread = rt.createThread({ projectId: 'pr_cards', title: `Cards for ${handle}`, personaIds: [persona.id] });
   const se = rt.sessionsIn(thread.id)[0];
   scripts.set(se.id, []);
   await page.goto(`${app.origin}/#/t/${thread.id}`);
@@ -71,7 +71,7 @@ test('#237 Shell turned on from the quick panel answers the card that asked for 
   await synced(page, app);
   const turns = heard.filter((m) => m.sessionId === se.id).length;
   // Its name in the sidebar opens its quick panel, needing you or not (#320), where Shell is a switch for the persona.
-  await page.locator('.rail .agent-row .agent-btn', { has: page.locator('b', { hasText: /^@shelly$/ }) }).click();
+  await page.locator('.rail .agent-row .agent-btn', { has: page.locator('b', { hasText: /^shelly$/ }) }).click();
   await page.locator('.backdrop .dialog.quick [role=switch][aria-label^="Shell"]').click();
   await expect(ask, 'the card answered').toContainText('Turned on.');
   // textContent: the label is drawn in capitals.
@@ -105,7 +105,7 @@ test('#238 a refused chained command offers no Allow once or Always allow, and s
   await expect(chained.locator('.block-body')).toContainText(
     /Claude Code checks each part of a chained command \(joined by &&, \|\|, ;, \| or &\) against its rules on its own/,
   );
-  await expect(chained.locator('.block-body')).toContainText('ask @tester to run the parts as separate commands');
+  await expect(chained.locator('.block-body')).toContainText('ask tester to run the parts as separate commands');
   await expect(single.locator('.block-foot button')).toHaveText(['Allow once and retry', 'Always allow exactly “python -m pytest -q”', 'Leave it']);
   // The UAT runner reads these cards from the page the same way, for the allow-once scenario’s trigger (readUi).
   const facts = { threads: [thread.id], state: rt.s, ui: { denialCards: (await readUi(page)).denialCards } };
@@ -129,7 +129,7 @@ test('#281 a refused command with a * offers no rule and says why; one with env 
   await synced(page, app);
   await expect(wild.locator('.block-foot button')).toHaveText(['Leave it']);
   await expect(wild.locator('.block-body')).toContainText('Claude Code reads * in a rule as a wildcard');
-  await expect(wild.locator('.block-body')).toContainText('ask @wild to name the files instead of using *');
+  await expect(wild.locator('.block-body')).toContainText('ask wild to name the files instead of using *');
   await expect(env.locator('.block-foot button')).toHaveText(['Allow once and retry', 'Always allow exactly “env CI=1 make test”', 'Leave it']);
 });
 
@@ -147,7 +147,7 @@ test('#281 a refused command with a ) that would end its rule early offers no ru
   await synced(page, app);
   await expect(paren.locator('.block-foot button')).toHaveText(['Leave it']);
   await expect(paren.locator('.block-body')).toContainText('Claude Code would read a ) in this command as the end of its rule');
-  await expect(paren.locator('.block-body')).toContainText('ask @paren to run it without the unmatched )');
+  await expect(paren.locator('.block-body')).toContainText('ask paren to run it without the unmatched )');
 });
 
 test('#220 a permission card nobody answered for 25 hours says it expired, and how long it waited', async ({ page }) => {
@@ -180,13 +180,13 @@ test('#721 an expired card that still needs you offers Dismiss, which clears the
   rt.updateSession(se.id, { state: 'needs', needs: { kind: 'permission', itemId: stuck.id, text: '@stale asks to run git push' } });
   await page.reload();
   await synced(page, app);
-  const ring = page.getByRole('button', { name: /Go to what @stale needs/ });
-  await expect(ring, 'the room says @stale needs you').not.toHaveCount(0);
+  const ring = page.getByRole('button', { name: /Go to what stale needs/ });
+  await expect(ring, 'the room says stale needs you').not.toHaveCount(0);
   const pushCard = page.locator(`[data-key="${stuck.id}"]`);
   await expect(card(page, 'run git status?').getByRole('button'), 'a closed card it doesn’t need you for offers nothing').toHaveCount(0);
   await pushCard.getByRole('button', { name: 'Dismiss' }).click();
   await expect.poll(() => store.state.sessions[se.id].needs, { message: 'the need cleared' }).toBe(null);
-  await expect(ring, 'the room no longer says @stale needs you').toHaveCount(0);
+  await expect(ring, 'the room no longer says stale needs you').toHaveCount(0);
   await expect(pushCard.getByRole('button'), 'nothing is left to press').toHaveCount(0);
   await expect(pushCard.locator('.answered-note')).toContainText('Expired');
 });

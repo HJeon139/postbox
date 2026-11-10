@@ -1,13 +1,14 @@
 // The shell: the top bar, the rail (conversations and rooms with rings, and the open conversation’s agents), the phone
 // ring strip, the places menu, and a project with no conversation yet. There’s no overview (#320): Postbox opens one.
 
-import { installNote } from '/shared/agent-facts.mjs';
 import { renderMarkdown, toPlainText } from '/shared/markdown.mjs';
 import { isMock, mockMarker } from './agent-facts.mjs';
 import { agentMenuLines } from './agent-menu-lines.mjs';
 import { agentsSection } from './agents.mjs';
+import { chainLimitDesc, openChainLimit } from './chain-limit.mjs';
 import { api, busy, client, needsYou, sessionsOf, threadState, threadsOf, topicsOf } from './client.mjs';
 import { fill, h, icon, syncList } from './dom.mjs';
+import { installLine } from './install-line.mjs';
 import { nextNeedsYou } from './needs-nav.mjs';
 import { openPermissions } from './permissions.mjs';
 import { projectPlaces } from './places-menu.mjs';
@@ -16,9 +17,10 @@ import { ringFor, stateWord } from './ring.mjs';
 import { confirmDeleteThread, openNewAgent, openNewThread, openPalette, openRename, openSettings } from './sheets.mjs';
 import './store-line.mjs';
 import { recordingBadge, telemetryItems } from './telemetry.mjs';
+import { liveMembers, topbarSig } from './topbar-sig.mjs';
 import { closeWork, navigate, openMenu, openWork, route, toast, undoToast } from './ui.mjs';
 
-export { railHidden, toggleRail };
+export { installLine, liveMembers, railHidden, toggleRail };
 
 const S = () => client.state;
 
@@ -26,8 +28,6 @@ const S = () => client.state;
  * The top bar: the places menu, the path to the open conversation and its two views, and the global actions. The
  * agents, their rings and their quick panels are in the sidebar’s Agents section (#105, #320).
  */
-/** A conversation’s agents that are here: neither archived nor being deleted. */
-export const liveMembers = (t) => t.members.filter((id) => S().sessions[id] && !S().sessions[id].archived && !S().sessions[id].deleting).join(',');
 
 export function topbar({ title = '', threadId = null, projectId = null }) {
   const t = threadId ? S().threads[threadId] : null;
@@ -35,14 +35,14 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
   const project = pid ? S().projects[pid] : null;
   const n = needsYou().length;
   const needsIn = (id) => needsYou().filter((se) => S().threads[se.threadId]?.projectId === id).length;
-  const projects = Object.values(S().projects);
-  // The Postbox mark opens the places menu: every project, from anywhere.
+  // The Postbox mark opens the places menu: every project, from anywhere, read when it opens, since the bar isn’t
+  // rebuilt for another project’s change (#986).
   const places = (e) =>
     openMenu(
       e.currentTarget,
       [
         { heading: 'Projects' },
-        ...projectPlaces(projects, pid, needsIn, (id) => navigate(`#/p/${id}`)),
+        ...projectPlaces(Object.values(S().projects), pid, needsIn, (id) => navigate(`#/p/${id}`)),
         'hr',
         { label: 'New project…', icon: 'plus', run: () => openSettings('projects') },
       ],
@@ -141,6 +141,8 @@ export function topbar({ title = '', threadId = null, projectId = null }) {
   );
   // Who it was drawn for: main.mjs rebuilds the view when an agent joins or leaves, and only then.
   if (t) bar.dataset.members = liveMembers(t);
+  // What it was drawn from: main.mjs rebuilds it only when that changes (#986).
+  bar.dataset.sig = topbarSig({ title, threadId, projectId });
   fitter?.observe(bar);
   // Fitted once it’s on the page too: the observer’s first call waits for a frame, which a hidden tab can hold back.
   queueMicrotask(() => fitTopbar(bar));
@@ -379,7 +381,7 @@ function updateRow(n, t, active, fresh = false) {
   if (t.id === active) n.setAttribute('aria-current', 'page');
   else n.removeAttribute('aria-current');
   const named = t.kind === 'room' ? ses : main ? [main] : [];
-  const who = named.length ? named.flatMap((x, i) => [i ? ', ' : '', `@${x.handle}`, mockMarker(x)]) : '@—';
+  const who = named.length ? named.flatMap((x, i) => [i ? ', ' : '', x.handle, mockMarker(x)]) : '—';
   const word = lead ? ` · ${stateWord(lead.state).toLowerCase()}${away}` : '';
   const sig = JSON.stringify([t.title, named.map((x) => [x.handle, isMock(x)]), word, unread, ses.map((x) => x.id)]);
   if (!fresh && n.dataset.sig === sig) return;
@@ -407,28 +409,6 @@ function stripItem(x, active) {
   );
 }
 
-/** What isn’t installed, as the overview used to say (#320); null while every backend is there. */
-export function installLine() {
-  const lead = installNote(client.config ?? {});
-  if (!lead) return null;
-  return h(
-    'div.callout.warn.install-note',
-    icon('warn'),
-    h(
-      'div',
-      h('p', lead),
-      h(
-        'p.small',
-        'To run real agents, install Claude Code so ',
-        h('code', 'claude --version'),
-        ' works, or set ',
-        h('code', 'POSTBOX_CLAUDE_BIN'),
-        ' to where it is, then restart Postbox. The README’s “Run real agents” says more.',
-      ),
-    ),
-  );
-}
-
 function conversationMenu(anchor, shown) {
   // The top bar may be older than the thread: archived since, say.
   const t = S().threads[shown.id] ?? shown;
@@ -437,6 +417,7 @@ function conversationMenu(anchor, shown) {
     anchor,
     [
       { label: 'Rename…', icon: 'edit', run: () => openRename(t.id) },
+      { label: 'Wake chain limit…', icon: 'agent', desc: chainLimitDesc(t.id), run: () => openChainLimit(t.id) },
       {
         label: 'Add an agent…',
         icon: 'agent',
@@ -471,7 +452,7 @@ function conversationMenu(anchor, shown) {
 
 export function afterDelete(se, until) {
   undoToast({
-    text: `Deleted @${se.handle}’s session “${S().threads[se.threadId]?.title ?? ''}”`,
+    text: `Deleted ${se.handle}’s session “${S().threads[se.threadId]?.title ?? ''}”`,
     until,
     onUndo: () => api(`/api/sessions/${se.id}/undo-delete`, {}).catch((e) => toast({ title: 'Too late to undo', text: e.message })),
   });

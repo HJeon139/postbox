@@ -1,10 +1,10 @@
 // A shim’s connection to the daemon’s broker (#120): its hello, with its turn and that turn’s own token, then its calls,
 // prompts and the notices that a prompt ended, each handled in the order it came.
 
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { promises as fsp } from 'node:fs';
 import { encode, HOST_DEFAULTS, message, parseLine, REMOTE_LIMITS, TURN_FILES } from '../../../shared/remote-protocol.mjs';
-import { endPrompt, permission } from './broker-prompts.mjs';
+import { endFromShim, permission } from './broker-prompts.mjs';
 import { refusal } from './broker-records.mjs';
 import { CANCELED, CANCELED_MSG } from './broker-state.mjs';
 import { call } from './broker-tools.mjs';
@@ -23,6 +23,7 @@ export function shimConnection(b, { first, write, end }) {
   /** @type {ShimConn} */
   const c = {
     turn: null,
+    owner: '', // set at its hello, before anything is answered
     closed: false,
     send(type, body) {
       if (c.closed) return;
@@ -78,7 +79,7 @@ async function handle(b, c, refuse, text) {
       return permission(b, c, turn, m);
     case 'permission-expired':
     case CANCELED_MSG:
-      return endPrompt(b, turn, m.id, m.at, m.type === 'permission-expired' ? 'expired' : CANCELED);
+      return endFromShim(b, c, turn, m, m.type === 'permission-expired' ? 'expired' : CANCELED);
   }
 }
 
@@ -100,12 +101,22 @@ async function turnTokenMatches(b, turn, given) {
 /** A shim’s first message, which must be its hello. @param {Broker} b @param {ShimConn} c @param {Refuse} refuse @param {any} m */
 async function hello(b, c, refuse, m) {
   if (m.type !== 'hello') return refuse('not-ready', 'Say hello with your turn and its token first.');
+  // Every shim of this version sends its key, and a shim reaches only its own version’s daemon, so a hello without one
+  // is from older code (a checkout pulled mid-turn) or a client choosing not to say which shim it is. Either would share
+  // one owner with every other such connection, so it’s refused (#908).
+  if (typeof m.shim !== 'string')
+    return refuse(
+      'version',
+      'This shim sends no key, so it’s from an older Postbox than this host’s daemon. Install Postbox on this host again, then start the turn again.',
+    );
   // The turn’s own token, not the host’s: a shim speaks only for the turn it was started for (#120).
   if (!(await turnTokenMatches(b, m.turn, m.token))) return refuse('bad-token', `The token doesn’t match turn ${m.turn}’s, in its folder on this host.`);
   const no = await refusal(b, m.turn);
   if (no) return refuse(no.code, no.text);
   if (c.closed) return;
   c.turn = m.turn;
+  // Which shim this is, across its reconnects: its key’s hash, the only form kept or written down (#353).
+  c.owner = createHash('sha256').update(m.shim).digest('hex');
   if (!b.shims.has(m.turn)) b.shims.set(m.turn, new Set());
   b.shims.get(m.turn)?.add(c);
   c.send('welcome', { turn: m.turn, permissionWaitMax: b.settings().permissionWaitMax ?? HOST_DEFAULTS.permissionWaitMax });

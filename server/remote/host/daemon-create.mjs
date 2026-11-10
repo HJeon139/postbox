@@ -13,6 +13,7 @@ import { attached, fail, toPostbox } from './daemon-reply.mjs';
 import { armSweep, checkIdle, scan } from './daemon-scan.mjs';
 import { stopTurn } from './daemon-stop.mjs';
 import { defaultWriteRunner, writeHeld } from './daemon-write.mjs';
+import { probeLoginPath as defaultProbeLoginPath } from './login-path.mjs';
 import { hostVersion } from './paths.mjs';
 import * as defaultProc from './proc.mjs';
 import { findPrograms as defaultFindPrograms } from './programs.mjs';
@@ -27,7 +28,8 @@ import { askRunner as defaultAskRunner, launchRunner as defaultLaunchRunner, log
  *   logind: runner.mjs’s logindFacts, asked at each hello for the lingering warning and passed to launchRunner.
  *   uid: this user’s, which the token file must be owned by (-1 where there are no user IDs). onRemoved: `remove` has
  *   deleted ~/.postbox-remote and said `removed`, so the daemon exits. env: the daemon’s environment, which each runner
- *   inherits (read at each start, for KIRO_HOME).
+ *   inherits (read at each start, for KIRO_HOME). mono: a monotonic clock, which setting the time doesn’t move, for how
+ *   long a runner has been silent (daemon-running.mjs); now is the wall clock, for everything else.
  */
 export function createDaemon(opts) {
   const { broker, shim, ...o } = withDefaults(opts);
@@ -37,11 +39,17 @@ export function createDaemon(opts) {
     p: hostPaths(o.home, o.version),
     settings: { ...HOST_DEFAULTS },
     programs: null,
+    loginPath: null,
+    loginProbe: null,
+    reprobed: null,
     conns: new Set(),
     driver: null,
     ids: 0,
     acked: new Map(),
     dead: new Set(),
+    silentSince: new Map(),
+    looks: 0,
+    answeredLook: new Map(),
     killTimers: new Map(),
     shells: new Map(),
     stoppedFirst: new Set(),
@@ -69,6 +77,7 @@ function withDefaults({
   home,
   version = hostVersion(),
   now = Date.now,
+  mono = () => performance.now(),
   timers = { setTimeout: (fn, ms) => setTimeout(fn, ms).unref(), clearTimeout: (t) => clearTimeout(t) },
   spawn = nodeSpawn,
   logind = logindFacts,
@@ -77,6 +86,7 @@ function withDefaults({
   proc = defaultProc,
   writeRunner = defaultWriteRunner,
   findPrograms = (o) => defaultFindPrograms(o),
+  probeLoginPath = () => defaultProbeLoginPath(),
   kill = (pid, signal) => process.kill(pid, signal),
   log = (line) => process.stderr.write(`${new Date().toISOString()} ${line}\n`),
   onIdle = () => {},
@@ -95,6 +105,7 @@ function withDefaults({
     home,
     version,
     now,
+    mono,
     timers,
     spawn,
     logind,
@@ -103,6 +114,7 @@ function withDefaults({
     proc,
     writeRunner,
     findPrograms,
+    probeLoginPath,
     kill,
     log,
     onIdle,
@@ -162,6 +174,8 @@ function daemonApi(d) {
     scan: () => scan(d),
     /** How far Postbox has applied each turn’s out.jsonl, in this daemon’s life; `.ack` keeps it on disk. */
     acked: d.acked,
+    /** Turns whose runner is silent while its process runs, and since when (daemon-running.mjs), in this daemon’s life. */
+    silentSince: d.silentSince,
     cleanup: d.cleanup,
     /** A Postbox channel over a pair of streams, such as an ssh child’s, or PassThroughs in a test. @param {Parameters<typeof connectStreams>[1]} io */
     connect: (io) => connectStreams(d, io),

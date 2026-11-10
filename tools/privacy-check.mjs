@@ -10,8 +10,16 @@
  * - a home written as “~” and a user name, and root’s home under “/root”;
  * - a leak after a zero byte early in a file, which is then counted as binary and not read;
  * - a real account named “me” or “you” in a slug, which reads as the placeholder;
- * - UTF-16 text, read as UTF-8 with a zero byte after each ASCII character.
+ * - UTF-16 text, read as UTF-8 with a zero byte after each ASCII character;
+ * - a Bearer token shorter than 20 characters, and a token under another scheme, such as Basic;
+ * - a uid under another key, such as “user_id”, and account data under keys other than the six account fields;
+ * - a uid with no quotes on its key, as YAML (“uid: 501”) and TOML (“uid = 501”) write it, since code and tests name
+ *   uids so (a “uid: 1000” option to a function);
+ * - an account key before an “=” after anything but a line’s start, white space, “{” or “,”, such as “;”;
+ * - a connector a person named after one of claude.ai’s directory connectors, by its name or its tool ids.
  */
+
+import { joinedDeltas } from './joined-deltas.mjs';
 
 /** Placeholder user names a slashed home path may use, compared in lower case. “someone” is the tests’ made-up home. */
 const ALLOWED_USERNAMES = new Set(['me', 'you', 'user', 'someone']);
@@ -61,12 +69,58 @@ const ALL_ZEROS = /^0+(?:-0+)*$/;
 // escaped inside another string, so the value stops at a “\” too.
 const INSTALLATION_ID = /\\?"installation(?:Id|_id)\\?"\s*:\s*\\?"([^"\\]+)\\?"/g;
 
-// Account metadata keys (camelCase and snake_case), with or without a “\” before each quote.
-const ACCOUNT_FIELD = /\\?"(planType|authMode|usedPercent|plan_type|auth_mode|used_percent)\\?"/g;
+// Account metadata keys, camelCase and snake_case.
+const ACCOUNT_KEYS = 'planType|authMode|usedPercent|plan_type|auth_mode|used_percent';
+
+// An account key in quotes, with or without a “\” before each, or bare before a “:”, as YAML and a JavaScript object
+// write one, or bare before an “=” where TOML (Codex’s config.toml) puts a key: at a line’s start or after an inline
+// table’s “{” or “,”, so a code declaration such as “const x = …” isn’t one (#696). A bare key after a name character
+// is part of a longer name, and one before “==” is a comparison, not a value.
+const ACCOUNT_FIELD = new RegExp(
+  `\\\\?"(${ACCOUNT_KEYS})\\\\?"|(?<![A-Za-z0-9_$])(${ACCOUNT_KEYS})(?=\\s*:)|(?<=(?:^|[{,])[ \\t]*)(${ACCOUNT_KEYS})(?=[ \\t]*=(?!=))`,
+  'gm',
+);
+
+// A “uid” field and its number, quoted or not, with or without a “\” before each quote (#696).
+const UID_FIELD = /\\?"uid\\?"\s*:\s*\\?"?(\d+)/g;
+
+// A claude.ai connector in an init’s mcp_servers, by its “name”, with or without a “\” before each quote.
+const CLAUDE_AI_CONNECTOR = /\\?"name\\?"\s*:\s*\\?"claude\.ai ([^"\\]+)\\?"/g;
+
+/**
+ * The connectors claude.ai’s directory offers, named alike for every account, as a recorded init lists them
+ * (tests/fixtures/claude-code/host-mcp-init.jsonl) and the tests name their tools. A connector a person adds has the
+ * name they give it, which may be their own (#661), and no shape tells it from the directory’s, so every other name is
+ * flagged.
+ */
+const DIRECTORY_CONNECTORS = new Set(['Box', 'Claude Docs', 'Gmail', 'Google Calendar', 'Google Drive', 'Linear', 'Notion', 'Slack']);
+
+// A claude.ai connector’s tool id, “mcp__claude_ai_<name>__<tool>”, or a rule that names its server or all its tools,
+// and what follows the prefix: the connector’s name as Claude Code writes a server’s, each character it can’t hold
+// turned into “_”, so its name shows as surely as in mcp_servers (#905).
+const CONNECTOR_TOOL = /mcp__claude_ai_([A-Za-z0-9_-]+)/g;
+
+// A tool’s own name after its connector’s and “__”: words joined by single “_”, or none, as in a rule for all its
+// tools. A “_” at either end, or a “__”, may hide another name after a directory connector’s.
+const TOOL_NAME = /^(?:[A-Za-z0-9-]+(?:_[A-Za-z0-9-]+)*)?$/;
+
+/** The directory connectors as a tool id writes them. */
+const DIRECTORY_TOOL_PREFIXES = [...DIRECTORY_CONNECTORS].map((name) => name.replaceAll(' ', '_'));
+
+/**
+ * Whether what follows “mcp__claude_ai_” names a directory connector: its server alone, or one of its tools.
+ * @param {string} named
+ */
+function directoryTool(named) {
+  return DIRECTORY_TOOL_PREFIXES.some(
+    (connector) => named === connector || (named.startsWith(`${connector}__`) && TOOL_NAME.test(named.slice(connector.length + 2))),
+  );
+}
 
 // Anthropic API keys and GitHub tokens, at the lengths server/telemetry-secrets.mjs matches, so a placeholder such as
-// “sk-ant-...” or “ghp_xxxx” in prose isn’t one.
-const API_TOKEN = /\bsk-ant-[A-Za-z0-9_-]{20,}|\bgh[pousr]_[A-Za-z0-9]{30,}\b|\bgithub_pat_[A-Za-z0-9_]{30,}/g;
+// “sk-ant-...” or “ghp_xxxx” in prose isn’t one. A Bearer token (RFC 6750’s characters, the scheme in either case) is
+// 20 characters or more, so “Bearer token” in prose, “<token>” and a shell’s “$TOKEN” aren’t one (#696).
+const API_TOKEN = /\bsk-ant-[A-Za-z0-9_-]{20,}|\bgh[pousr]_[A-Za-z0-9]{30,}\b|\bgithub_pat_[A-Za-z0-9_]{30,}|\b[Bb]earer[ \t]+[A-Za-z0-9._~+/-]{20,}=*/g;
 
 // A rate limit’s “utilization”, how much of the account’s limit it used, and its value, with or without a “\” before
 // each quote. Only 0 says nothing.
@@ -78,7 +132,7 @@ const ZERO = /^0(?:\.0+)?$/;
 // An email address. It stops at the first character an address can’t hold, so an address with “_” and a name run on
 // after it is still the address. It starts where no address character comes before, so a long run of them with no “@”
 // is tried once, not once from each of its characters.
-const EMAIL = /(?<![a-zA-Z0-9._%+-])[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+const EMAIL = /(?<![a-zA-Z0-9._%+-])([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
 
 // A placeholder address: at a domain reserved for examples (example.com, .org or .net, or a subdomain of one), or under
 // a top-level domain reserved for examples and tests (RFC 2606).
@@ -98,7 +152,13 @@ const BOT_EMAILS = new Set(['noreply@anthropic.com', 'noreply@openai.com', 'git@
  */
 const NOT_EMAILS = new Set(['plugins.sample@test.mcp']);
 
-/** Home paths, slashed or in a slug, whose user name isn’t a placeholder. @param {string} content */
+/**
+ * A private string a rule found: its kind, the string, kept only to match a placeholder and never printed, and where in
+ * the text it starts.
+ * @typedef {{ kind: string, value: string, index: number }} Found
+ */
+
+/** Home paths, slashed or in a slug, whose user name isn’t a placeholder. @param {string} content @returns {Found[]} */
 function homePaths(content) {
   const found = [];
   const urls = [...content.matchAll(WEB_URL)].map((url) => [url.index, url.index + url[0].length]);
@@ -108,170 +168,155 @@ function homePaths(content) {
     const inUrl = urls.some(([start, end]) => match.index >= start && match.index < end);
     if (inUrl && folder !== 'Users' && folder !== 'home') continue;
     const user = name.split(/[/\\]/)[0];
-    if (!ALLOWED_USERNAMES.has(user.toLowerCase()) && !SYSTEM_HOMES.has(user)) found.push(`home path: ${path}`);
+    if (!ALLOWED_USERNAMES.has(user.toLowerCase()) && !SYSTEM_HOMES.has(user)) found.push({ kind: 'home path', value: path, index: match.index });
   }
-  for (const [slug] of content.matchAll(SLUG)) {
-    for (const [path, name] of slug.matchAll(SLUG_HOME)) {
-      if (!ALLOWED_SLUG_USERNAMES.has(name.toLowerCase())) found.push(`home path: ${path}`);
+  for (const slug of content.matchAll(SLUG)) {
+    for (const home of slug[0].matchAll(SLUG_HOME)) {
+      if (!ALLOWED_SLUG_USERNAMES.has(home[1].toLowerCase())) found.push({ kind: 'home path', value: home[0], index: slug.index + home.index });
     }
   }
   return found;
 }
 
-/** Temp folders, and Claude Code uids that aren’t all zeros. @param {string} content */
+/** Temp folders, and Claude Code uids that aren’t all zeros. @param {string} content @returns {Found[]} */
 function tempPaths(content) {
   const found = [];
-  for (const [path] of content.matchAll(TEMP_FOLDER)) found.push(`temp folder path: ${path}`);
-  for (const [name, uid] of content.matchAll(CLAUDE_UID)) {
-    if (!ALL_ZEROS.test(uid)) found.push(`claude uid: ${name}`);
-  }
-  return found;
-}
-
-/** Installation ids that aren’t all zeros. @param {string} content */
-function installationIds(content) {
-  const found = [];
-  for (const [, id] of content.matchAll(INSTALLATION_ID)) {
-    const bare = id.replace(/\s/g, '');
-    if (!ALL_ZEROS.test(bare)) found.push(`installationId: ${bare}`);
-  }
-  return found;
-}
-
-/** Account metadata keys. @param {string} content */
-function accountFields(content) {
-  const keys = [...content.matchAll(ACCOUNT_FIELD)].map(([key]) => key);
-  if (keys.length === 0) return [];
-  return [`account field: ${keys.join(', ')}`];
-}
-
-/** API keys and tokens, named by their first characters so a report doesn’t repeat the secret. @param {string} content */
-function tokens(content) {
-  return [...content.matchAll(API_TOKEN)].map(([token]) => `token: ${token.slice(0, 12)}…`);
-}
-
-/** Utilization values other than 0. @param {string} content */
-function utilizations(content) {
-  const found = [];
-  for (const [, value] of content.matchAll(UTILIZATION)) {
-    if (!ZERO.test(value)) found.push(`utilization: ${value}`);
-  }
-  return found;
-}
-
-/** Email addresses that aren’t placeholders. @param {string} content */
-function emails(content) {
-  const found = [];
-  for (const [email] of content.matchAll(EMAIL)) {
-    if (!EXAMPLE_EMAIL.test(email) && !BOT_EMAILS.has(email) && !NOT_EMAILS.has(email)) found.push(`email: ${email}`);
+  for (const match of content.matchAll(TEMP_FOLDER)) found.push({ kind: 'temp folder path', value: match[0], index: match.index });
+  for (const match of content.matchAll(CLAUDE_UID)) {
+    if (!ALL_ZEROS.test(match[1])) found.push({ kind: 'claude uid', value: match[0], index: match.index });
   }
   return found;
 }
 
 /**
- * Checks text for leaked personal data or un-sanitized environment paths: home paths with a real user name, temp
- * folders and Claude Code uids, a real Codex installation id, account metadata, API keys and tokens, a utilization
- * other than 0, and real email addresses.
- *
- * @param {string} content
- * @param {object} [options]
- * @param {boolean} [options.exemptAccountFields=false]
- * @returns {string[]} list of violations found
+ * Each match of a pattern whose first group doesn’t pass as harmless.
+ * @param {string} content @param {RegExp} pattern @param {string} kind @param {(value: string) => boolean} harmless
+ * @returns {Found[]}
  */
-export function checkContentPrivacy(content, options = {}) {
+function valuesOf(content, pattern, kind, harmless) {
+  const found = [];
+  for (const match of content.matchAll(pattern)) {
+    if (!harmless(match[1])) found.push({ kind, value: match[1], index: match.index });
+  }
+  return found;
+}
+
+/** Every match of a pattern, of one kind. @param {string} content @param {RegExp} pattern @param {string} kind @returns {Found[]} */
+function matchesOf(content, pattern, kind) {
+  return [...content.matchAll(pattern)].map((match) => ({ kind, value: match[0], index: match.index }));
+}
+
+/** Whether an address is a placeholder or no person’s. @param {string} email */
+function placeholderEmail(email) {
+  return EXAMPLE_EMAIL.test(email) || BOT_EMAILS.has(email) || NOT_EMAILS.has(email);
+}
+
+/** What every rule finds in a text. @param {string} content @returns {Found[]} */
+function privateStrings(content) {
   return [
     ...homePaths(content),
     ...tempPaths(content),
-    ...installationIds(content),
-    ...(options.exemptAccountFields ? [] : accountFields(content)),
-    ...tokens(content),
-    ...utilizations(content),
-    ...emails(content),
+    ...valuesOf(content, UID_FIELD, 'uid', (uid) => ALL_ZEROS.test(uid)),
+    ...valuesOf(content, INSTALLATION_ID, 'installationId', (id) => ALL_ZEROS.test(id.replace(/\s/g, ''))),
+    ...matchesOf(content, ACCOUNT_FIELD, 'account field'),
+    ...valuesOf(content, CLAUDE_AI_CONNECTOR, 'connector name', (name) => DIRECTORY_CONNECTORS.has(name)),
+    ...valuesOf(content, CONNECTOR_TOOL, 'connector tool id', directoryTool),
+    ...matchesOf(content, API_TOKEN, 'token'),
+    ...valuesOf(content, UTILIZATION, 'utilization', (value) => ZERO.test(value)),
+    ...valuesOf(content, EMAIL, 'email', placeholderEmail),
   ];
 }
 
-/** A recorded Codex turn that still holds account fields, filed as #660. */
-const ACCOUNT_FIELDS_660 = 'tests/fixtures/codex-app-server/resume-turn-after-failure.jsonl';
+/**
+ * The line each offset of a text is on, from 1, by a binary search of its line breaks, so a text with many findings is
+ * read once.
+ * @param {string} content
+ * @returns {(index: number) => number}
+ */
+function lineFinder(content) {
+  const breaks = [];
+  for (let at = content.indexOf('\n'); at !== -1; at = content.indexOf('\n', at + 1)) breaks.push(at);
+  return (index) => {
+    let low = 0;
+    let high = breaks.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (breaks[middle] < index) low = middle + 1;
+      else high = middle;
+    }
+    return low + 1;
+  };
+}
+
+/** A line number as it is. @param {number} line */
+const sameLine = (line) => line;
 
 /**
- * Checks one committed file, by its path from the repository’s root, with the exemptions files have.
+ * Checks text for leaked personal data or un-sanitized environment paths: home paths with a real user name, temp
+ * folders, Claude Code uids and uid fields, a real Codex installation id, account metadata, a claude.ai connector a
+ * person named or its tool ids, API keys and tokens, a utilization other than 0, and real email addresses.
+ *
+ * Each violation names its kind and its line, “email at line 3”, and never any part of what it found: CI prints them to
+ * its log, which is public and kept for 90 days, so a masked address or a token’s first characters would outlast the
+ * commit that held them (#784).
+ *
+ * @param {string} content
+ * @param {(line: number) => number} [lineOf] the line to report for a line of content, when content is part of a file
+ * @returns {string[]} list of violations found
+ */
+export function checkContentPrivacy(content, lineOf = sameLine) {
+  const lineAt = lineFinder(content);
+  return privateStrings(content).map(({ kind, index }) => `${kind} at line ${lineOf(lineAt(index))}`);
+}
+
+/** Where a violation in a file’s name says it is. */
+const IN_FILE_NAME = 'in the file name';
+
+/**
+ * Checks a committed file’s name, by its path from the repository’s root: a name is published as surely as what the
+ * file holds (#785).
+ *
+ * @param {string} path
+ * @returns {string[]} list of violations found
+ */
+export function checkPathPrivacy(path) {
+  return privateStrings(path).map(({ kind }) => `${kind} ${IN_FILE_NAME}`);
+}
+
+/**
+ * Whether a violation is in a file’s name, so that a report mustn’t print the name. @param {string} violation
+ */
+function inFileName(violation) {
+  return violation.endsWith(IN_FILE_NAME);
+}
+
+/**
+ * Checks one committed file, by its path from the repository’s root, with the placeholders its joined deltas may hold.
  *
  * @param {string} path
  * @param {string} content
+ * @param {(line: number) => number} [lineOf] the line to report for a line of content, when content is part of a file
  * @returns {string[]} list of violations found
  */
-export function checkFilePrivacy(path, content) {
-  const options = { exemptAccountFields: path === ACCOUNT_FIELDS_660 };
-  const violations = checkContentPrivacy(content, options);
+export function checkFilePrivacy(path, content, lineOf = sameLine) {
+  const violations = checkContentPrivacy(content, lineOf);
   if (!path.endsWith('.jsonl')) return violations;
   const allowed = ALLOWED_JOINED.get(path) ?? [];
   for (const stream of joinedDeltas(content)) {
-    const found = checkContentPrivacy(stream.text, options).filter((violation) => !allowed.includes(violation));
-    violations.push(...found.map((violation) => `${violation} (joined deltas from line ${stream.firstLine})`));
+    const leaks = privateStrings(stream.text).filter(
+      ({ kind, value }) => !allowed.some((placeholder) => placeholder.kind === kind && placeholder.value === value),
+    );
+    violations.push(...leaks.map(({ kind }) => `${kind} in the deltas joined from line ${lineOf(stream.firstLine)}`));
   }
   return violations;
 }
 
 /**
  * Placeholders a recorded stream’s joined deltas hold, by file: the prompt in permission-allow.jsonl names a made-up
- * project folder, “postbox”, where a home’s user name goes. Each entry is the exact violation it allows.
+ * project folder, “postbox”, where a home’s user name goes. Each entry is the kind and the exact string it allows.
  */
 const MADE_UP_HOME = ['Users', 'postbox'].join('/'); // joined at run time, so this file doesn’t hold the path itself
-const ALLOWED_JOINED = new Map([['tests/fixtures/claude-code/permission-allow.jsonl', [`home path: ${MADE_UP_HOME}`]]]);
-
-/** The delta fields a recorded stream splits its text across: tool input, reply text and thinking. */
-const DELTA_FIELDS = ['partial_json', 'text', 'thinking'];
-
-/** The text a delta carries, from the first field that holds a string, or null. @param {Record<string, unknown>} delta */
-function deltaText(delta) {
-  const field = DELTA_FIELDS.find((name) => typeof delta[name] === 'string');
-  return field === undefined ? null : delta[field];
-}
-
-/**
- * Each stream of a JSONL recording, its deltas joined in order: a value split across deltas, such as a home path cut
- * in three, is whole again. A stream is one message’s content block of one delta type. One pass over the lines, with a
- * Map from each stream to its parts, so the work is linear in the file’s size.
- *
- * @param {string} content
- * @returns {{ firstLine: number, text: string }[]}
- */
-export function joinedDeltas(content) {
-  const streams = new Map();
-  const lines = content.split('\n');
-  for (let index = 0; index < lines.length; index++) {
-    const event = parsedEvent(lines[index]);
-    const delta = event?.delta;
-    if (!delta || typeof delta !== 'object') continue;
-    const text = deltaText(delta);
-    if (text === null) continue;
-    const key = `${event.messageId}\u0000${event.index}\u0000${delta.type}`;
-    const stream = streams.get(key) ?? { firstLine: index + 1, parts: [] };
-    stream.parts.push(text);
-    streams.set(key, stream);
-  }
-  return [...streams.values()].map(({ firstLine, parts }) => ({ firstLine, text: parts.join('') }));
-}
-
-/**
- * A line’s stream event, with the message it belongs to, or null when the line isn’t one. Claude Code wraps the event
- * as { event: { index, delta }, api_message_id }; a bare event has { index, delta } at the top.
- *
- * @param {string} line
- */
-function parsedEvent(line) {
-  if (!line.includes('delta')) return null;
-  let record;
-  try {
-    record = JSON.parse(line);
-  } catch {
-    return null;
-  }
-  if (!record || typeof record !== 'object') return null;
-  const event = record.event && typeof record.event === 'object' ? record.event : record;
-  const messageId = record.api_message_id ?? record.session_id ?? '';
-  return { delta: event.delta, index: event.index ?? '', messageId };
-}
+const ALLOWED_JOINED = new Map([['tests/fixtures/claude-code/permission-allow.jsonl', [{ kind: 'home path', value: MADE_UP_HOME }]]]);
 
 /** Whether a file is binary, as git decides it: a zero byte in its first 8,000. @param {Buffer} bytes */
 export function isBinary(bytes) {
@@ -279,8 +324,8 @@ export function isBinary(bytes) {
 }
 
 /**
- * Checks each file of a tree, read by its path, whatever its size. A binary file, or one the reader can’t find, is
- * skipped and not counted.
+ * Checks each file of a tree, its name and what it holds, read by its path, whatever its size. A binary file’s name is
+ * checked, but not its bytes, and it isn’t counted; a file the reader can’t find is skipped.
  *
  * @param {string[]} paths paths from the repository’s root
  * @param {(path: string) => Buffer | null} read the file’s bytes, or null when it’s gone
@@ -291,48 +336,27 @@ export function checkFilesPrivacy(paths, read) {
   let checked = 0;
   for (const path of paths) {
     const bytes = read(path);
-    if (bytes === null || isBinary(bytes)) continue;
-    checked++;
-    const violations = checkFilePrivacy(path, bytes.toString('utf8'));
+    if (bytes === null) continue;
+    const violations = checkPathPrivacy(path);
+    if (!isBinary(bytes)) {
+      checked++;
+      violations.push(...checkFilePrivacy(path, bytes.toString('utf8')));
+    }
     if (violations.length > 0) findings.push({ path, violations });
   }
   return { checked, findings };
 }
 
-// A fixture labelled synthetic says so on its first line, after a “#” or “//” comment marker, as the delivery spike’s
-// baselines do. “SYNTHETIC” later in the line, such as inside a JSON string, isn’t a label.
-const SYNTHETIC_LABEL = /^(?:#|\/\/)\s*SYNTHETIC\b/;
-
-/** Whether a fixture’s first line labels it synthetic. @param {string} firstLine */
-export function isSyntheticLabel(firstLine) {
-  return SYNTHETIC_LABEL.test(firstLine);
-}
-
-// A “## ” heading at the start of a line, where the README’s next section begins.
-const SECTION = /^## /m;
-
-// A listed fixture: a “- ” line that starts with its path in backticks.
-const LISTED_PATH = /^- `([^`]+)`/gm;
-
 /**
- * The paths the fixtures README lists under “Synthetic fixtures”, one per “- `path`” line.
+ * The lines the tree’s privacy test (tests/process/privacy-tree.test.mjs) prints for checkFilesPrivacy’s findings, one
+ * per file. A file whose name is private is named by its place in the list of paths, from 1, so CI’s public log doesn’t
+ * repeat the name (#784).
  *
- * @param {string} readme the text of tests/fixtures/README.md
+ * @param {string[]} paths the paths checked, in the order `git ls-files` lists them
+ * @param {{ path: string, violations: string[] }[]} findings
  * @returns {string[]}
  */
-export function syntheticFixturePaths(readme) {
-  const section = readme.split(SECTION).find((part) => part.startsWith('Synthetic fixtures'));
-  if (!section) throw new Error('tests/fixtures/README.md has no “Synthetic fixtures” section');
-  return [...section.matchAll(LISTED_PATH)].map(([, path]) => path);
-}
-
-/**
- * The synthetic fixtures the README lists that the tree doesn’t hold.
- *
- * @param {string} readme the text of tests/fixtures/README.md
- * @param {(path: string) => boolean} exists whether a path from the repository’s root is in the tree
- * @returns {string[]}
- */
-export function missingSyntheticFixtures(readme, exists) {
-  return syntheticFixturePaths(readme).filter((path) => !exists(path));
+export function treeFailures(paths, findings) {
+  const named = (path, violations) => (violations.some(inFileName) ? `file ${paths.indexOf(path) + 1} of git ls-files` : path);
+  return findings.map(({ path, violations }) => `  - ${named(path, violations)}: ${violations.join('; ')}`);
 }

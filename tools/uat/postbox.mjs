@@ -7,7 +7,7 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
-import { sleep } from '../browser.mjs';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { untilGone } from './until-gone.mjs';
 
 /** Whether nothing listens on this port here. @param {number} port */
@@ -41,24 +41,26 @@ function spawnServer(pb, fresh) {
   pb.server = server;
 }
 
-/** Waits until it answers. @param {Run} pb @param {(p: string) => Promise<any>} api */
-async function ready(pb, api) {
+/** Waits until it answers, trying up to tries times. @param {Run} pb @param {(p: string) => Promise<any>} api @param {number} [tries] */
+async function ready(pb, api, tries = 80) {
   for (let i = 0; ; i++) {
     try {
       await api('/api/state');
       return;
     } catch (e) {
-      if (pb.exited !== null || i > 80) throw new Error(`Postbox didn’t start: ${e.message}`);
+      if (pb.exited !== null || i > tries) throw new Error(`Postbox didn’t start: ${e.message}`);
       await sleep(250);
     }
   }
 }
 
 /**
- * Starts Postbox and waits until it answers. `api` reads one of its routes, and refuses once it has exited.
- * @param {{ root: string, port: number, data: string, env: Record<string, string>, log: (line: string) => void }} o
+ * Starts Postbox and waits until it answers. `api` reads one of its routes, and refuses once it has exited. One that
+ * doesn’t answer within `tries` is stopped before the error reaches the caller, which may go on (#782).
+ * @param {{ root: string, port: number, data: string, env: Record<string, string>, log: (line: string) => void,
+ *   tries?: number }} o
  */
-export async function startPostbox({ root, port, data, env, log }) {
+export async function startPostbox({ root, port, data, env, log, tries = 80 }) {
   /** @type {Run} */
   const pb = { root, port, data, env, log, server: null, exited: null, origin: `http://127.0.0.1:${port}` };
   spawnServer(pb, true);
@@ -71,7 +73,12 @@ export async function startPostbox({ root, port, data, env, log }) {
     if (pb.exited !== null) throw new Error(`Postbox exited (code ${pb.exited}); see run.log.`);
     return (await fetch(pb.origin + p)).json();
   };
-  await ready(pb, api);
+  try {
+    await ready(pb, api, tries);
+  } catch (e) {
+    if (pb.server) await untilGone(pb.server);
+    throw e;
+  }
   return {
     origin: pb.origin,
     api,

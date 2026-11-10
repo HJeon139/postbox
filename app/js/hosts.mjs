@@ -21,7 +21,7 @@ const S = () => client.state;
 /**
  * The Hosts tab’s state, kept across repaints: the host being edited and the editor’s values (draft), each field’s
  * error, the form’s, whether it’s saving, the Add a host field, and the host just added, whose Install… gets focus.
- * @typedef {{ name: string, v: Record<string, any>, folders: Record<string, string> }} Draft
+ * @typedef {{ name: string, short: string, v: Record<string, any>, folders: Record<string, string> }} Draft
  * @typedef {{ root: HTMLElement, editing: string | null, draft: Draft | null, errors: Record<string, string>, formError: string,
  *   saving: boolean, addName: string, addError: string, added: string | null, paint: () => void }} Panel
  */
@@ -50,15 +50,15 @@ export function hostsPanel() {
   return root;
 }
 
-/** Live while it’s on the page; it stops listening once it’s gone (another tab, or Settings closed). @param {Panel} p */
+/**
+ * Live while it’s on the page; it stops listening once it’s gone (another tab, or Settings closed). Settings puts the
+ * panel on the page as it builds it (sheets.mjs), so any change or tick that finds it off the page finds it gone:
+ * waiting to have seen it first kept a panel left before either for good, ticking (#945).
+ * @param {Panel} p
+ */
 function listen(p) {
-  let seen = false;
   const off = client.on((ch) => {
-    if (!p.root.isConnected) {
-      if (seen) stop();
-      return;
-    }
-    seen = true;
+    if (!p.root.isConnected) return stop();
     if (ch.type === 'host.status') {
       paintStatus(p, ch.data?.id);
       syncKeepUpdated(p, ch.data?.id);
@@ -67,11 +67,7 @@ function listen(p) {
   });
   // “Last heard from” moves on with the clock.
   const tick = setInterval(() => {
-    if (!p.root.isConnected) {
-      if (seen) stop();
-      return;
-    }
-    seen = true;
+    if (!p.root.isConnected) return stop();
     for (const id of Object.keys(S().hosts ?? {})) paintStatus(p, id);
   }, 30_000);
   const stop = () => {

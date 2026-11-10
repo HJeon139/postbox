@@ -1,5 +1,5 @@
 // Postbox as an installed npm package (#157, #90):
-// - `npm pack` ships what runs (bin/, app/, server/, shared/ and the docs), with the commit it was packed from, and
+// - `npm pack` ships what runs (bin/, app/, server/, shared/, agent-plugin/ and the docs), with the commit it was packed from, and
 //   nothing of data/, uat-runs/, the tests, the tools, the designs, the mockups or the screenshots;
 // - the tarball installs into a temp prefix, and `postbox --help` and `--version` answer;
 // - `postbox --port <port>`, with HOME pointed at a temp folder, serves `/` and the build line (version and commit), and
@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, relative, sep } from 'node:path';
 import { after, before, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { buildCommitMatches } from '../build-commit.mjs';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
@@ -71,10 +72,10 @@ const running = (server) =>
     server.stderr.on('data', read);
     server.once('exit', (code) => fail(new Error(`postbox exited with ${code}:\n${out}`)));
   });
-/** The commit HEAD is at, as the build line shows it, or null outside a clone. */
+/** HEAD's full sha, or null outside a clone. The build line shows its first 7 characters (#919). */
 function headCommit() {
   try {
-    return execFileSync('git', ['-C', ROOT, 'rev-parse', '--short=7', 'HEAD'], {
+    return execFileSync('git', ['-C', ROOT, 'rev-parse', 'HEAD'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
       timeout: 10_000,
@@ -114,14 +115,16 @@ after(async () => {
   if (tmp) await rm(tmp, { recursive: true, force: true });
 });
 
-test('ships only bin/, app/, server/, shared/ and the docs, with what runs, and none of the rest', () => {
+test('ships only bin/, app/, server/, shared/, agent-plugin/ and the docs, with what runs, and none of the rest', () => {
   const files = packed.files.map((f) => f.path);
-  const allowed = new Set(['bin', 'app', 'server', 'shared', 'package.json', 'README.md', 'LICENSE', 'CHANGELOG.md']);
+  const allowed = new Set(['bin', 'app', 'server', 'shared', 'agent-plugin', 'package.json', 'README.md', 'LICENSE', 'CHANGELOG.md']);
   assert.deepEqual(
     [...new Set(files.map((f) => f.split('/')[0]))].filter((t) => !allowed.has(t)),
     [],
   );
-  for (const must of ['bin/postbox.mjs', 'app/index.html', 'server/index.mjs', 'server/home.mjs', 'app/media/favicon.svg'])
+  // agent-plugin/: the skills every Claude agent loads (server/adapters/agent-plugin.mjs).
+  const plugin = ['agent-plugin/.claude-plugin/plugin.json', 'agent-plugin/skills/visual-explainer/SKILL.md'];
+  for (const must of ['bin/postbox.mjs', 'app/index.html', 'server/index.mjs', 'server/home.mjs', 'app/media/favicon.svg', ...plugin])
     assert.ok(files.includes(must), `the package has ${must}`);
   assert.deepEqual(
     files.filter((f) => /(^|\/)(data|uat-runs|tests|tools|designs|mockups|screenshots)\//.test(f)),
@@ -156,7 +159,10 @@ test('serves the page, its media and the build line, and writes only under HOME/
     assert.ok((await page.text()).includes('<html'), 'it serves the page at /');
     assert.equal((await fetch(`${origin}/media/favicon.svg`)).status, 200, 'it serves the bundled media');
     const { config } = await fetch(`${origin}/api/state`).then((r) => r.json());
-    assert.deepEqual([config.build?.version, config.build?.commit], [version, headCommit()], 'the build line shows the version and the commit');
+    assert.equal(config.build?.version, version, 'the build line shows the version');
+    const head = headCommit();
+    if (head === null) assert.equal(config.build?.commit, null, 'outside a clone the build line shows no commit');
+    else assert.ok(buildCommitMatches(config.build?.commit, head), `the build line shows HEAD's commit: ${config.build?.commit} of ${head}`);
   } finally {
     server.kill('SIGTERM');
     await exited;

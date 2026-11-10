@@ -6,8 +6,9 @@ import { AdapterRegistry } from '../server/adapters/adapter.mjs';
 import { formatMessage } from '../server/adapters/guide.mjs';
 import { DEFAULT_MODEL as ADAPTERS_DEFAULT_MODEL } from '../server/adapters/setup.mjs';
 import { handleMcp } from '../server/mcp.mjs';
-import { DEFAULT_MODEL, HOP_LIMIT, Runtime } from '../server/runtime.mjs';
+import { DEFAULT_MODEL, Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
+import { updateThread } from '../server/thread-write.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -216,12 +217,13 @@ test('an invalid block is stored with its fallback, never rendered as given', as
   assert.equal(result.ok, false);
 });
 
-test(`after ${HOP_LIMIT} agent wakes in a row, the next one waits for your confirm`, async () => {
+test('after the room’s chain limit of agent wakes in a row, the next one waits for your confirm', async () => {
   const { rt, store, t, b } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
+  updateThread(rt, t.id, { chainLimit: 3 }); // the room’s own (#1035), so the test needn’t make 1,000 wakes
   // All while the chain runs: one that ends starts the count again (#492).
-  for (let i = 0; i < HOP_LIMIT; i++) assert.equal(rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true }).ok, true);
+  for (let i = 0; i < 3; i++) assert.equal(rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true }).ok, true);
   const r = rt.agentWake(alpha.id, 'beta', 'check again');
   assert.equal(r.waiting, true);
   const hop = store.items(t.id).find((i) => i.kind === 'hop');
@@ -240,7 +242,8 @@ test('a wake you allow delivers its whole message, not the card’s preview (#10
   const { rt, store, t, b, adapter } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
-  for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
+  updateThread(rt, t.id, { chainLimit: 3 });
+  for (let i = 0; i < 3; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
   const long = `Must fix: ${'acceptance bar, '.repeat(200)}`.slice(0, 3000);
   assert.equal(rt.agentWake(alpha.id, 'beta', long).waiting, true);
   const hop = store.items(t.id).find((i) => i.kind === 'hop');
@@ -256,7 +259,8 @@ test('a wake request stored before #108, with only a preview, still delivers tha
   const { rt, store, t, b, adapter } = setup();
   rt.ensureSession(t.id, b.id);
   const alpha = rt.sessionsIn(t.id).find((x) => x.handle === 'alpha');
-  for (let i = 0; i < HOP_LIMIT; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
+  updateThread(rt, t.id, { chainLimit: 3 });
+  for (let i = 0; i < 3; i++) rt.agentWake(alpha.id, 'beta', 'check', { confirmed: true });
   rt.agentWake(alpha.id, 'beta', 'the whole message');
   const hop = store.items(t.id).find((i) => i.kind === 'hop');
   rt.patchItem(t.id, hop.id, { text: undefined, reason: 'the preview' });
@@ -570,34 +574,6 @@ test('Stop expires an open permission card and answers no', async () => {
   await sleep(10);
   assert.equal(answer.allow, false);
   assert.equal(store.items(t.id).find((i) => i.kind === 'permission').status, 'expired');
-});
-
-test('MCP permission_prompt answers in the shape Claude Code expects', async () => {
-  const { rt, store, t, adapter } = setup();
-  let reply = null;
-  adapter.next.push(async (c) => {
-    const se = rt.sessionsIn(t.id)[0];
-    const pending = handleMcp(
-      rt,
-      se.id,
-      {
-        jsonrpc: '2.0',
-        id: 9,
-        method: 'tools/call',
-        params: { name: 'permission_prompt', arguments: { tool_name: 'Bash', input: { command: 'ls', description: 'List files' } } },
-      },
-      new URL(c.mcpUrl).searchParams.get('turn'),
-    );
-    await sleep(10);
-    const card = store.items(t.id).find((i) => i.kind === 'permission');
-    assert.equal(card.summary, 'run a command: List files');
-    rt.act(t.id, card.id, 'allow');
-    reply = await pending;
-    c.text('ok');
-  });
-  rt.sendMessage(t.id, { text: 'list' });
-  await settle(rt);
-  assert.deepEqual(JSON.parse(reply.result.content[0].text), { behavior: 'allow', updatedInput: { command: 'ls', description: 'List files' } });
 });
 
 test('personas keep a permission mode and a model; real backends default to Claude Opus 5.5', () => {
@@ -2202,7 +2178,11 @@ test('#59: the MCP servers a turn reports are kept on its session, bounded, for 
   assert.equal(ctx.folder, '/tmp');
   assert.equal(ctx.seen[0].name, 'search');
   assert.equal(rt.mcpContext(null, 'p1').folder, '/tmp');
-  assert.deepEqual(rt.mcpContext(null, null), { persona: null, folder: null, seen: [] }, 'mock sessions don’t lend their servers to a new agent');
+  assert.deepEqual(
+    rt.mcpContext(null, null),
+    { persona: null, folder: null, seen: [], skills: [] },
+    'mock sessions don’t lend their servers or skills to a new agent',
+  );
 });
 
 test('#59: a sheet that reads an init from another folder shows only the servers that load everywhere', async () => {

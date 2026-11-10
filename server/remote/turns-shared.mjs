@@ -1,7 +1,7 @@
 // What the modules of a remote turn’s life on the laptop share (#120, server/remote/turns.mjs): its timings and
 // limits, the shapes of a live turn and of a stop Postbox waits on, and the small helpers each of them uses.
 
-import { message as protocolMessage, TOOL_ROUTES } from '../../shared/remote-protocol.mjs';
+import { message as protocolMessage } from '../../shared/remote-protocol.mjs';
 
 /** @typedef {import('./turns.mjs').RemoteTurns} RemoteTurns */
 
@@ -36,12 +36,18 @@ export const clock = (at) => new Date(at).toLocaleTimeString('en-US', { hour: '2
 /**
  * One running remote turn: the runtime’s turn (`rt`) and the host turns it ran as.
  * @typedef {{ sessionId: string, hostId: string, rt: any, link: any, hostTurns: Set<string>, current: string | null,
- *   work: string, signInError: Record<string, unknown> | null, lastEvent: number, signIn: boolean,
- *   exit: { code: number | null, signal: string | null } | null | undefined, hung: { at: number, text: string } | null,
- *   offset: number, offsetSaved: number, attach: boolean, started: boolean, startSent: boolean, origin: any }} Live
- *   exit: the current host turn’s, from `ended` (null: interrupted), undefined until then; started: the daemon said
+ *   work: string, signInError: Record<string, unknown> | null, backgroundTasks: string | null,
+ *   background: { tasks: Map<string, { since: number, name: string }> } | null, resultSent: boolean, lastEvent: number, signIn: boolean,
+ *   exit: { code: number | null, signal: string | null } | null | undefined, unkilled?: boolean, hung: { at: number, text: string } | null,
+ *   offset: number, offsetSaved: number, attach: boolean, started: boolean, startSent: boolean, origin: any,
+ *   replay: { done: Promise<unknown>, end: () => void } | null,
+ *   ceilings: Map<unknown, { at: Promise<unknown>, timer: any, holds: number }> }} Live
+ *   exit: the current host turn’s, from `ended` (null: interrupted), undefined until then; unkilled: that `ended` said
+ *   its process may still run there (#872); started: the daemon said
  *   `started` (or turn-exists) for it, or it’s attached; startSent: its `start` was written to a connected link;
- *   origin: what it was asked, as se.remoteTurn.origin keeps it (turns-origin.mjs), once prepare has it
+ *   origin: what it was asked, as se.remoteTurn.origin keeps it (turns-origin.mjs), once prepare has it; replay: its
+ *   stream is being read up to where the host has it (turns-replay.mjs); ceilings: the most each prompt waiting for
+ *   that read waits, by its claim (turns-replay.mjs, replayCeiling)
  */
 
 /**
@@ -49,9 +55,6 @@ export const clock = (at) => new Date(at).toLocaleTimeString('en-US', { hour: '2
  * it may have come before the start reached the daemon (server/remote/turns.mjs, the header).
  * @typedef {{ sessionId: string, hostId: string, waiters: (() => void)[], unconfirmed: boolean }} Stop
  */
-
-/** The tools that return at once on the host (TOOL_ROUTES’ queue). */
-export const TOOL_QUEUED = new Set(Object.keys(TOOL_ROUTES).filter((k) => TOOL_ROUTES[/** @type {keyof typeof TOOL_ROUTES} */ (k)] === 'queue'));
 
 /** The line a resumed turn starts with (the design, “Resuming says why”). @param {string} why @param {string} host */
 export function whyLine(why, host) {

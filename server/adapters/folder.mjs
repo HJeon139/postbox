@@ -4,18 +4,21 @@
 
 import { mkdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { storedFolder } from '../folder-path.mjs';
 import { personaMemory } from './setup.mjs';
 
 /**
  * The agent’s folder, made if it’s missing. A folder that can’t be made fails the turn with its reason: a CLI
- * started in it would fail as ENOENT, the same code as a CLI that isn’t installed, and say so.
+ * started in it would fail as ENOENT, the same code as a CLI that isn’t installed, and say so. A persona’s folder
+ * stored before it was checked (#990), a relative one say, fails the turn too, and isn’t made: it would be made
+ * under the folder Postbox was started from (storedFolder).
  * @param {{ handle: string, folder?: string|null }} persona
  * @param {{ folder?: string|null } | null | undefined} project
  * @param {string} workRoot  where agents without a folder get one of their own
  * @returns {Promise<string>}
  */
 export async function agentFolder(persona, project, workRoot) {
-  const dir = persona.folder || project?.folder || join(workRoot, persona.handle);
+  const dir = storedFolder(persona) || project?.folder || join(workRoot, persona.handle);
   try {
     await mkdir(dir, { recursive: true });
   } catch (e) {
@@ -25,6 +28,18 @@ export async function agentFolder(persona, project, workRoot) {
     );
   }
   return dir;
+}
+
+/**
+ * The folder an agent works in as its adapter decides (folderFor), else, for one with none such as the mock, its
+ * stored folder, checked (storedFolder), else its project’s, else null. It never throws: a refusal is a rejection.
+ * @param {{ folderFor?: (persona: any, project: any) => Promise<string> } | null | undefined} adapter
+ * @param {any} persona @param {{ folder?: string|null } | null | undefined} project
+ * @returns {Promise<string|null>}
+ */
+export async function workFolder(adapter, persona, project) {
+  if (adapter?.folderFor) return adapter.folderFor(persona, project);
+  return storedFolder(persona) || project?.folder || null;
 }
 
 /**

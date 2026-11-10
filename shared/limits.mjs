@@ -3,12 +3,17 @@
 // (server/adapters/guide.mjs, the MCP tool descriptions in shared/mcp-tools.mjs) is written from here, so the number
 // an agent is told is the number Postbox enforces (#50). tests/limits.test.mjs fails when one isn’t in the guide.
 
+/** The most an app version’s intent keeps, in characters: a cut for storage, past the 16 words agents are asked for. */
+export const INTENT_CHARS = 300;
+
 /** Sizes an agent can reach. Text lengths are in characters. */
 export const LIMITS = Object.freeze({
   /** An app event’s values as JSON (postbox.send), in bytes. */
   eventBytes: 64 * 1024,
   /** An app’s code (show_app, update_app), inline or from codePath. */
   appCode: 600_000,
+  /** What an app version should leave the reader with: one sentence of at most this many words (show_app and update_app’s intent, #995). */
+  appIntentWords: 16,
   /** Data files one app version carries (show_app and update_app’s files, #54). */
   appFiles: 8,
   /** One of those data files, in bytes. */
@@ -29,6 +34,8 @@ export const LIMITS = Object.freeze({
   /** An option’s description, under its label in a choice and after it in a select (#838). */
   optionDescription: 200,
   formFields: 24,
+  /** A form field’s label (#455). */
+  fieldLabel: 120,
   /** A select field’s options. */
   selectOptions: 50,
   tableColumns: 16,
@@ -61,7 +68,22 @@ export const READING = Object.freeze({
 export const SENDING = Object.freeze({
   /** A message to another agent with wake_agent, and a post to the conversation with bring_to_conversation. */
   message: 50_000,
+  /** The handles one open_topic wakes with its first message (#650). */
+  mentions: 16,
 });
+
+/**
+ * How long a remote turn may wait in silence on a background task before it’s stopped as hung (#847). The longest a
+ * Claude Code background Bash call may run (its timeout’s maximum, 7,200,000 ms), so Postbox never stops one first.
+ */
+export const QUIET = Object.freeze({
+  backgroundMax: 2 * 60 * 60 * 1000,
+});
+
+/** A persona’s handle (Runtime.createPersona), which a handle an agent sends must match before it’s looked up (#650). */
+export const HANDLE = /^[a-z][a-z0-9_-]{1,23}$/i;
+/** What HANDLE allows, for a refusal that can’t echo what it was sent: that’s an agent’s text. */
+export const HANDLE_SHAPE = 'a handle is 2–24 letters, digits, - or _, and starts with a letter, such as “critic”';
 
 /**
  * What a conversation’s asset store holds (#516 S3, designs/architecture.md, “Assets”). A write past one is refused,
@@ -89,6 +111,25 @@ export const ASSETS = Object.freeze({
   binaryVersionsKept: 3,
 });
 
+/**
+ * Images a review block carries (#780). server/image-check.mjs refuses an image past either size limit, read from its
+ * header; the caller that takes the files refuses one past either byte limit. Each refusal names the limit.
+ */
+export const REVIEW_IMAGES = Object.freeze({
+  /** One image, in bytes. */
+  reviewImageBytes: 5 * 1024 * 1024,
+  /** Every image one revision of a review carries, in bytes. */
+  reviewImagesBytes: 20 * 1024 * 1024,
+  /** An image’s width times its height, in pixels: what a browser decodes, whatever the file’s size. 32 megapixels,
+   * 32 × 2²⁰, which is 8,192 × 4,096 (#780’s note accepts 8,192 × 4,000). */
+  reviewImagePixels: 32 * 1024 * 1024,
+  /** Files an item keeps from revisions it replaced (pastFiles), the newest first kept: so an item, and what each
+   * update writes, stays bounded however often it changes its figures. */
+  reviewPastFiles: 8,
+  /** An image’s width or height, in pixels. */
+  reviewImageSide: 8192,
+});
+
 /** The most characters in the whole-sentence glimpse shown while an agent works (#478). */
 export const GLIMPSE_CHARS = 160;
 /** The most streamed text inspected to find that glimpse, bounding work on each update (#478). */
@@ -96,36 +137,84 @@ export const GLIMPSE_SOURCE_CHARS = 2000;
 
 /**
  * Agent wakes in a row, without you, before the next waits for your Allow: a backstop against agents that never stop,
- * until a supervisor agent watches the room (#538). 3 until #320 raised it to 10, and 50 since #492.
+ * until a supervisor agent watches the room (#538). 3 until #320 raised it to 10, 50 since #492, and 1,000 since #1035,
+ * after one held wake left every agent in a room waiting about 7.5 hours. It’s the default: each room can set its own
+ * (server/room-chain-limit.mjs).
  */
-export const DEFAULT_HOP_LIMIT = 50;
+export const DEFAULT_HOP_LIMIT = 1000;
 /**
- * The chain limit POSTBOX_CHAIN_LIMIT asks for, or the default when it isn’t set (#508). The UAT runner sets it for the
- * Postbox it starts, so a scenario’s `- chain-limit: 3` reaches the card in a few wakes. It can only lower the limit: a
- * value that isn’t a whole number from 1 to 50 is refused, so a mistyped one can’t run as 50 and a shell can’t turn the
- * backstop off. Read once, when the module loads: every reader of HOP_LIMIT,
- * the one that enforces it (server/side-threads.mjs) and the one agents read (shared/mcp-tools.mjs), gets the same number.
+ * The most a room’s chain limit, or POSTBOX_CHAIN_LIMIT, can be (#1035): about a week of wakes at one a minute, so a
+ * chain that never ends still stops (designs/intent.md, principle 6).
+ */
+export const MAX_HOP_LIMIT = 10_000;
+/** A count as the person reads it: 1,000. @param {number} n */
+const count = (n) => n.toLocaleString('en-US');
+/**
+ * The server’s default chain limit, which POSTBOX_CHAIN_LIMIT sets, or DEFAULT_HOP_LIMIT when it isn’t set (#508,
+ * #1035). The UAT runner sets it for the Postbox it starts, so a scenario’s `- chain-limit: 3` reaches the card in a few
+ * wakes. A value that isn’t a whole number from 1 to MAX_HOP_LIMIT is refused, so a mistyped one can’t run as the
+ * default and a shell can’t turn the backstop off. Read once, when the module loads, so the check, the card and what
+ * agents are told (shared/mcp-tools.mjs) get the same default.
  * @param {string|undefined} value  the variable’s text
  */
 export function chainLimit(value) {
   const text = String(value ?? '').trim();
   if (!text) return DEFAULT_HOP_LIMIT;
-  if (!/^\d+$/.test(text) || Number(text) < 1 || Number(text) > DEFAULT_HOP_LIMIT)
-    throw new Error(`POSTBOX_CHAIN_LIMIT takes a whole number from 1 to ${DEFAULT_HOP_LIMIT}, not “${text}”.`);
+  if (!/^\d+$/.test(text) || Number(text) < 1 || Number(text) > MAX_HOP_LIMIT)
+    throw new Error(`POSTBOX_CHAIN_LIMIT takes a whole number from 1 to ${count(MAX_HOP_LIMIT)}, not “${text}”.`);
   return Number(text);
 }
-// The browser loads this module too (app/js/composer-to.mjs), where there is no process: it reads the default.
+// The browser loads this module too (app/js/composer-to.mjs), where there is no process: it reads the default, and the
+// page reads the server’s from /api/state.
 export const HOP_LIMIT = chainLimit(globalThis.process?.env?.POSTBOX_CHAIN_LIMIT);
+/** What a room’s own chain limit takes (#1035): the server refuses anything else with this, and the dialog shows it. */
+export const ROOM_CHAIN_LIMIT_TAKES = `A room’s wake chain limit is a whole number from 1 to ${count(MAX_HOP_LIMIT)}.`;
+/** Whether a value is a chain limit a room can have: a whole number from 1 to MAX_HOP_LIMIT, never a string. @param {unknown} v */
+export const isRoomChainLimit = (v) => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= MAX_HOP_LIMIT;
 /**
  * Agent wakes in a row, without you, after which the room shows the count with a hint to Stop agents going nowhere
  * (#492), well before the chain limit: E2’s replay found no loop past 2 wakes, and ordinary hand-offs run longer.
  */
 export const CHAIN_HINT = 6;
+/**
+ * The count the hint shows from in a room with that limit: CHAIN_HINT, or the room’s limit when it’s lower, so the hint
+ * never names a count past the limit (#1035). @param {number} limit
+ */
+export const chainHintAt = (limit) => Math.min(CHAIN_HINT, limit);
 /** Wakes held on one waiting wake card, delivered or not as the person answers it (#439); past this, they’re refused. */
 export const HELD_WAKES = 20;
 
 /** How long a remote read waits for Postbox before it is answered from the host's snapshot (#582). Kiro gives up a call after 120 s, so the answer has to be there well before. */
 export const REMOTE_READ_TIMEOUT_MS = 100_000;
+
+/**
+ * How long a permission prompt waits for its call to show in the turn’s stream before it’s refused (#353, #665). The
+ * CLI asks between a call’s tool_use line and its result, but the line and the prompt reach Postbox by different pipes
+ * (stdout, and HTTP or the host’s link), so the prompt can come first by a moment.
+ */
+export const PROMPT_CALL_WAIT_MS = 5_000;
+
+/**
+ * How long, at most, a host’s permission prompt waits for its turn’s stream to be read up to where the host has it
+ * before PROMPT_CALL_WAIT_MS starts (#353, server/remote/turns-replay.mjs), from when the prompt first came; past it,
+ * it’s refused as one whose call never showed. A daemon that hangs mid-read, or a link that keeps dropping, never says
+ * the read caught up, and the prompt would hold its request open for good. A minute reads a log of the host’s default
+ * logMaxBytes (256 MiB) at about 5 MB/s, and stays far under the 10-minute floor of the host’s stallTimeout
+ * (shared/remote-settings.mjs), so a held prompt is answered long before its turn could be judged stalled.
+ */
+export const PROMPT_REPLAY_WAIT_MS = 60_000;
+
+/**
+ * Lines a turn shows for its refused permission prompts, one per call, at most (#353, #665); past it, one line counts
+ * the rest. A flood of prompts from a command the agent runs stays a few lines.
+ */
+export const PROMPT_REFUSAL_LINES = 5;
+
+/**
+ * Permission prompts a turn holds open at once while each waits for its call’s line (#353, #665), at most; one past it
+ * is refused at once. Each held prompt is an open request, so a flood from a command the agent runs holds only a few.
+ */
+export const PROMPT_HOLDS_MAX = 8;
 
 /** @typedef {keyof typeof LIMITS} LimitName */
 

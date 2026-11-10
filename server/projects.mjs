@@ -1,17 +1,22 @@
 // Projects the person adds in Settings: a name and an existing folder, and the repository a push they ask for goes
 // to. Creating one moved out of server/index.mjs.
 
-import { stat } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { realpath, stat } from 'node:fs/promises';
+import { fullPath } from './folder-path.mjs';
 import { httpError } from './helpers.mjs';
 import { isPushUrl } from './push-on-request.mjs';
 import { newId } from './store.mjs';
 
-/** @param {any} store @param {{ name?: string, folder?: string }} body */
+/**
+ * Makes a project at an existing folder, kept by its real path (symbolic links resolved), so a check that a path is
+ * inside the project compares it plainly.
+ * @param {any} store @param {{ name?: string, folder?: unknown }} body
+ */
 export async function createProject(store, body) {
-  const folder = resolve(String(body.folder ?? ''));
-  const st = await stat(folder).catch(() => null);
-  if (!st?.isDirectory()) throw httpError(422, 'That folder doesn’t exist. Pick an existing folder for the project.');
+  const written = fullPath(body.folder);
+  const folder = await realpath(written).catch(() => null);
+  const st = folder ? await stat(folder).catch(() => null) : null;
+  if (!folder || !st?.isDirectory()) throw httpError(422, 'That folder doesn’t exist. Pick an existing folder for the project.');
   const p = { id: newId('pr'), name: String(body.name || 'New project').slice(0, 80), folder };
   store.emit('project', p);
   return p;

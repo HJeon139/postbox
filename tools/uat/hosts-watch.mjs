@@ -8,16 +8,20 @@
 //   sessions of their own, and outlive a killed CLI as children of PID 1, so neither the runner’s session nor the
 //   turn’s ID in a command line finds them. A Stop with nothing seen under its turn beforehand can’t be judged, and
 //   says so;
-// - fault(): what the tester breaks on purpose, kill-ssh, kill-daemon or restart-postbox, and what Postbox showed
-//   after, until each host it touched reads Connected again or 3 minutes pass (tools/uat/hosts-recovery.mjs); for
-//   kill-ssh, also which processes it killed.
+// - fault(): what the tester breaks on purpose, kill-ssh, kill-daemon, remove-postbox or restart-postbox, and what
+//   Postbox showed after, until each host it touched reads Connected again or 3 minutes pass
+//   (tools/uat/hosts-recovery.mjs); for kill-ssh, also which processes it killed; and stop-runner, which leaves the
+//   host connected, with the process and turn it stopped (#872).
 
 import { spawnSync } from 'node:child_process';
 import { sleep } from '../browser.mjs';
 import { localListeners, newListeners, remoteListeners, treeOf } from './hosts-probe.mjs';
 import { recovery, says } from './hosts-recovery.mjs';
 import { leftInFolder, measureOn, onHost, parseTree, SCRIPTS, stillRunning, treeScript, turnTrees } from './hosts-ssh.mjs';
+import { stopped } from './hosts-stop-runner.mjs';
 import { remoteTurns } from './remote-facts.mjs';
+
+export { stopRunner } from './hosts-stop-runner.mjs';
 
 const BUSY = new Set(['think', 'tool', 'gen']);
 const LISTENER_EVERY_MS = 60_000;
@@ -53,7 +57,7 @@ export async function sample(hr, st) {
   const busy = (h) => sessionsOf(st, h).some((se) => BUSY.has(se.state));
   for (const [handle, where] of Object.entries(hr.placement)) {
     if (where === 'local' || !busy(handle)) continue;
-    const note = (notes ?? []).find((n) => n.includes(`@${handle}’s`)) ?? null;
+    const note = (notes ?? []).find((n) => n.includes(` ${handle}’s`)) ?? null;
     hr.samples.set(`stop:${handle}`, { at: Date.now(), note, jobs: runningJobs(st, handle) });
   }
   const places = new Set(
@@ -226,7 +230,7 @@ export async function leftBy(hr, h, turn, stoppedAt, { measure = measureOn, wait
 const rowsOf = (hr, labels) =>
   hr.kit
     .ev(`[...document.querySelectorAll('.agent-rows .agent-btn')].map((b) => b.innerText.replace(/\\s+/g, ' ').trim())`)
-    .then((rows) => (rows ?? []).filter((r) => Object.entries(hr.placement).some(([h, w]) => labels.includes(w) && r.includes(`@${h}`))))
+    .then((rows) => (rows ?? []).filter((r) => Object.entries(hr.placement).some(([h, w]) => labels.includes(w) && r.split(/\s/)[0] === h)))
     .catch(() => []);
 
 /** Kills the run’s Postbox’s ssh to a host, and says which processes. @param {HostRun} hr @param {import('./hosts-run.mjs').RunHost} h */
@@ -241,35 +245,61 @@ function killSsh(hr, h) {
   return ssh.map((m) => `${m?.[1]} ${String(m?.[2]).slice(0, 160)}`);
 }
 
+/** What each fault on a host breaks, in the words the tester reads, and what the fault did to it. */
+const FAULT_WHAT = {
+  'kill-ssh': { what: (/** @type {string} */ label) => `Postbox’s ssh to ${label}`, did: 'Killed', none: 'kill' },
+  'kill-daemon': { what: (/** @type {string} */ label) => `Postbox’s daemon on ${label}`, did: 'Killed', none: 'kill' },
+  'remove-postbox': { what: (/** @type {string} */ label) => `Postbox’s folder on ${label}`, did: 'Removed', none: 'remove' },
+  'stop-runner': { what: (/** @type {string} */ label) => `runner of ${label}’s newest turn`, did: 'Stopped the', none: 'stop' },
+};
+
+/**
+ * #464-b3: stops Postbox’s programs on the host and deletes its ~/.postbox-remote, as if someone removed it there by
+ * hand, while this computer keeps the host’s token. Refused on a host that had Postbox before this run
+ * (--replace-host-install): only a host baseline() found clean, which the run’s cleanup removes anyway. 1, since the
+ * script says removed only once the folder is gone. @param {{ label: string, destination: string, replaceInstall?: boolean }} h
+ * @param {typeof onHost} [run]
+ */
+export async function removePostbox(h, run = onHost) {
+  if (h.replaceInstall) throw new Error(`remove-postbox is refused on ${h.label}: Postbox was there before this run (--replace-host-install).`);
+  const r = await run(h.destination, SCRIPTS.removeStaged);
+  if (r.code !== 0 || r.stdout.trim() !== 'removed') throw new Error(`Couldn’t remove Postbox’s folder on ${h.label}: ${r.stderr || `exit ${r.code}`}`);
+  return 1;
+}
+
 /**
  * Does one fault, and records what Postbox showed after. Returns what to tell the tester.
  * @param {HostRun} hr @param {{ fault: string, target?: string }} spec @param {{ reload: () => Promise<void> }} page
  * @param {(e: any) => void} [input]  hears a reload before it moves the view (facts.probes.inputs, #531)
+ * @param {typeof onHost} [run]  runs a script on the host; a test’s stands in for ssh
  */
-export async function fault(hr, { fault: kind, target }, page, input = () => {}) {
+export async function fault(hr, { fault: kind, target }, page, input = () => {}, run = onHost) {
   if (kind === 'restart-postbox') return restart(hr, page, input);
   const h = hr.hosts.find((x) => x.label === target);
   if (!h) throw new Error(`${kind} needs a target: ${hr.hosts.map((x) => x.label).join(' or ')}.`);
+  if (kind === 'stop-runner') return stopped(hr, h, run, FAULT_WHAT[kind]);
   const at = Date.now();
   let hit;
   /** @type {string[]} */
   let killed = [];
   if (kind === 'kill-ssh') hit = (killed = killSsh(hr, h)).length;
   else if (kind === 'kill-daemon') {
-    const r = await onHost(h.destination, SCRIPTS.killDaemon);
+    const r = await run(h.destination, SCRIPTS.killDaemon);
     if (r.code !== 0) throw new Error(`Couldn’t kill Postbox’s daemon on ${h.label}: ${r.stderr || `pkill exited ${r.code}`}`);
     hit = r.stdout.trim() === 'killed' ? 1 : 0;
-  } else throw new Error(`A fault is kill-ssh, kill-daemon or restart-postbox, not “${kind}”.`);
-  const what = kind === 'kill-ssh' ? `Postbox’s ssh to ${h.label}` : `Postbox’s daemon on ${h.label}`;
+  } else if (kind === 'remove-postbox') hit = await removePostbox(h, run);
+  else throw new Error(`A fault is kill-ssh, kill-daemon, remove-postbox, stop-runner or restart-postbox, not “${kind}”.`);
+  const words = FAULT_WHAT[kind];
+  const what = words.what(h.label);
   if (!hit) {
-    hr.record.faults.push({ fault: kind, label: h.label, at, states: [], recovered: null, shown: `There was no ${what} to kill.` });
-    return `There was no ${what} to kill, so nothing happened.`;
+    hr.record.faults.push({ fault: kind, label: h.label, at, states: [], recovered: null, shown: `There was no ${what} to ${words.none}.` });
+    return `There was no ${what} to ${words.none}, so nothing happened.`;
   }
   const r = await recovery(hr, h, at);
   const shown = says(h.label, r, await rowsOf(hr, [h.label]));
   hr.record.faults.push({ fault: kind, label: h.label, at, ...r, shown, ...(killed.length ? { killed } : {}) });
   hr.log(`fault ${kind} on ${h.label}: ${shown}`);
-  return `Killed ${what}. ${shown}`;
+  return `${words.did} ${what}. ${shown}`;
 }
 
 /**

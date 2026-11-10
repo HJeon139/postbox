@@ -55,12 +55,12 @@
       resolveReady({ state: init.check ? null : (m.state ?? null), theme: m.theme, appId: init.appId });
     } else if (m.type === 'theme') {
       document.documentElement.dataset.theme = m.theme;
-      for (const fn of listeners.theme)
-        try {
-          fn(m.theme);
-        } catch (err) {
-          report(err);
-        }
+      // Each listener runs in a microtask of its own, so one that throws stops no other, and its error reaches the
+      // window’s error handler below with the line it happened on (#819).
+      for (const fn of listeners.theme) queueMicrotask(() => fn(m.theme));
+    } else if (m.type === 'resize' && init.check) {
+      // The check’s stand-in for the resizes a live frame gets in its first second (#819); the frame keeps its width.
+      dispatchEvent(new Event('resize'));
     } else if (m.type === 'reply') {
       const p = pending.get(m.id);
       if (!p) return;
@@ -87,9 +87,9 @@
     const detail = err?.name && err?.message ? `${err.name}: ${err.message}` : String(err?.message || err);
     const message = detail + (source?.lineno ? ` (line ${source.lineno}, column ${source.colno || 1})` : '');
     errors.push(message);
-    post({ type: 'error', message });
+    post({ type: 'error', message, drawn: !!window.__pbDrawn?.drawn() }); // an app that drew keeps running (#964)
   }
-  addEventListener('error', (e) => report(e.error || e.message, e));
+  addEventListener('error', (e) => window.__pbDrawn?.harmless(e) || report(e.error || e.message, e));
   // Escape inside the app leaves Postbox’s full screen, unless the app used it (to close its own menu, say). The
   // app’s own listeners run after this one, so look once the key press has gone everywhere.
   addEventListener('keydown', (e) => {
@@ -272,7 +272,7 @@
     return (L + 0.05) / 0.0534 >= 1.05 / (L + 0.05) ? '#0b0b0b' : '#ffffff';
   }
   const style = document.createElement('style');
-  style.textContent = `.pb-chart{position:relative}.pb-chart svg{display:block;overflow:visible}.pb-chart svg text{font:11px system-ui,sans-serif;font-variant-numeric:tabular-nums}
+  style.textContent = `.pb-chart{position:relative}.pb-chart svg{display:block;overflow:visible}.pb-chart svg text{font:12px system-ui,sans-serif;font-variant-numeric:tabular-nums}
     .pb-chart-bar{display:flex;justify-content:flex-end;margin-bottom:6px}.pb-legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--dim);padding:0 0 8px}
     .pb-legend span{display:inline-flex;align-items:center;gap:6px}.pb-legend .lk{width:14px;height:2px;border-radius:2px}.pb-legend .dk{width:8px;height:8px;border-radius:50%}.pb-legend .rk{width:10px;height:10px;border-radius:2px}
     .pb-table{overflow:auto;max-height:320px}`;

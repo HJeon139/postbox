@@ -1,20 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { CODEX_CAPABILITIES, CodexAdapter, codexApproval, codexConfigArgs, createCodexMapper } from '../server/adapters/codex.mjs';
+import { CodexAdapter, codexApproval, codexConfigArgs, createCodexMapper } from '../server/adapters/codex.mjs';
 import { CODEX_ROOT, fakeAppServer } from './codex-fixture.mjs';
-
-test('Codex reports the capabilities its app-server implements', () => {
-  assert.deepEqual(CODEX_CAPABILITIES, {
-    resume: true,
-    fork: true,
-    permissions: 'none',
-    tools: 'none',
-    isolation: false,
-    promptTool: false,
-    remote: { stdin: 'held', env: [], server: 'codex-config', work: 'model-checks', signInError: null },
-  });
-});
 
 test('Codex config attaches Postbox MCP through the local HTTP endpoint', () => {
   assert.deepEqual(codexConfigArgs('http://127.0.0.1:4173/mcp?session=s1'), [
@@ -217,6 +205,9 @@ test('a turn starts and saves a Codex thread and supplies Postbox instructions',
   assert.match(seen.find((x) => x.method === 'thread/start').params.developerInstructions, /Postbox/);
   assert.equal('settings' in turn.params, false);
   assert.equal(turn.params.sandboxPolicy.type, 'workspaceWrite');
+  // Codex takes the effort only on turn/start, which sets it for that turn and the ones after; thread/start has none,
+  // so a new thread’s thread/started shows Codex’s default until the first turn applies this.
+  assert.equal(turn.params.effort, 'medium', 'the first turn of a new thread runs at the agent’s effort');
 });
 
 test('a topic thread forks Codex history at the saved completed-turn checkpoint', async () => {

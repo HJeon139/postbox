@@ -32,10 +32,12 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { launch, sleep } from './browser.mjs';
 import { parseMaxCost, runBudget } from './uat/budget.mjs';
-import { MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
+import { lastCheckPass, MID_TURN, runChecks, waitingOnYou } from './uat/checks.mjs';
 import { streamResults } from './uat/cost.mjs';
 import { driver, JOBS_ANSWERS } from './uat/driver.mjs';
 import { faultSetup } from './uat/fault-run.mjs';
+import { remoteFacts, setUpRemote } from './uat/git-remote.mjs';
+import { preflightRun } from './uat/github-guard.mjs';
 import { followEvents } from './uat/history.mjs';
 import { endHosts } from './uat/hosts-end.mjs';
 import { HOST_OPTIONS } from './uat/hosts-options.mjs';
@@ -44,16 +46,20 @@ import { afterStep, beforeStop, fault, sample } from './uat/hosts-watch.mjs';
 import { keyFrameOut, seededNote } from './uat/key-frame-run.mjs';
 import { observe as observeScreen } from './uat/observe.mjs';
 import { openIssues } from './uat/open-issues.mjs';
+import { judgePictures } from './uat/picture-judges.mjs';
 import { portFree, startPostbox } from './uat/postbox.mjs';
-import { newProbes, recordInput } from './uat/probes.mjs';
+import { recordInput } from './uat/probes.mjs';
 import { recheck } from './uat/recheck.mjs';
 import { presetFindings } from './uat/regressions.mjs';
 import { writeReport } from './uat/report.mjs';
 import { reviewFindings } from './uat/review.mjs';
-import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi, runPaths, userSetup } from './uat/run-files.mjs';
+import { endRun } from './uat/run-end.mjs';
+import { runEnv } from './uat/run-env.mjs';
+import { runFacts } from './uat/run-facts.mjs';
+import { keeper, readReceived, readStore, readStreams, readTranscripts, readUi, runPaths } from './uat/run-files.mjs';
 import { runScenario } from './uat/run-scenario.mjs';
 import { gitInfo, runRecord, runsRoot, writeJsonAtomic } from './uat/runs.mjs';
-import { chainLimitEnv, phaseCap, stepCap } from './uat/scenario.mjs';
+import { phaseCap, stepCap } from './uat/scenario.mjs';
 import { seedAgents } from './uat/seed.mjs';
 import { stepPrompt } from './uat/step-prompt.mjs';
 import { interruptAct, localRestart, STEPS } from './uat/steps.mjs';
@@ -121,6 +127,8 @@ async function main() {
   const canaries = makeWorkspace(scenario, paths, dir);
   // A phase’s `- fault:` (#508): Postbox starts with the fault launcher in front of the faulted agent’s CLI.
   const faults = faultSetup({ scenario, root: ROOT, dir, env: process.env });
+  // The run’s guards, off the person’s GitHub and `- seed: git-remote`’s (#305), checked on the very environment Postbox and its agents get.
+  preflightRun(scenario, paths.workspace, dir, { ...process.env, ...runEnv({ gate, paths, scenario, dir, opt, faults }) });
   const logLines = [];
   const log = (line) => {
     const l = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${line}`;
@@ -140,23 +148,14 @@ async function main() {
   if (!(await portFree(port))) throw new Error(`Port ${port} is in use. Pick another with --port.`);
   const { agentModels, agentEffort } = await seedAgents({ scenario, opt, root: ROOT, data: paths.data, log });
   // Ctrl-C cleans the hosts up through the page before anything stops (tools/uat/stop.mjs), with what’s there by then.
-  const run = { log };
+  const run = { log, dir };
   const stop = runStop(run);
   const signals = onStopSignal(stop, { log });
   const postbox = await startPostbox({
     root: ROOT,
     port,
     data: paths.data,
-    env: {
-      ...gate.env,
-      POSTBOX_CLAUDE_RECORD: paths.streams,
-      POSTBOX_KIRO_RECORD: paths.kiroStreams,
-      POSTBOX_AGY_RECORD: paths.agyStreams,
-      POSTBOX_CODEX_RECORD: paths.codexStreams,
-      ...tm.telemetryEnv(scenario, dir, opt),
-      ...chainLimitEnv(scenario), // the scenario’s `- chain-limit:` (#508), for the Postbox this run starts and restarts
-      ...faults?.env,
-    },
+    env: runEnv({ gate, paths, scenario, dir, opt, faults }),
     log,
   });
   const { api } = postbox;
@@ -169,26 +168,7 @@ async function main() {
   if (hr) followStatuses(hr, history.hostStates);
   const findings = new Map(); // key → finding
   const timeline = [];
-  const facts = {
-    agentModels,
-    agentEffort,
-    state: null,
-    threads: [],
-    startPersonas: [],
-    streams: [],
-    kiroStreams: [],
-    agyStreams: [],
-    codexStreams: [],
-    events: [],
-    transcripts: [],
-    console: page.logs,
-    apps: {},
-    probes: { ...newProbes(), keyFrameOn: Boolean(keyFrameOut(opt, scenario, dir)) },
-    samples: [],
-    ui: {},
-    ...userSetup(paths.workspace),
-    ...(hr ? { hosts: hr.record } : {}),
-  };
+  const facts = runFacts({ agentModels, agentEffort, page, keyFrameOn: Boolean(keyFrameOut(opt, scenario, dir)), workspace: paths.workspace, hr });
   run.keep = keeper(dir, facts, paths.workspace);
   let unwatch = () => {};
   try {
@@ -205,6 +185,7 @@ async function main() {
     log(`Conversation ${mainThread} started with @${scenario.agents.join(', @')}.`);
     // `- seed: big-room` (#508): the conversation fills with about 1,000 generated items before the tester arrives.
     scenario.summary += await seededNote(scenario, { postbox, data: paths.data, threadId: mainThread, page, log, opt, dir, facts });
+    scenario.summary += await setUpRemote(scenario, { dir, page, threadId: mainThread, log }); // `- seed: git-remote` (#305)
     const { td, tel } = await tm.startTelemetry(page, { scenario, opt, log, input: d.input });
 
     const tester = createTester({ cwd: dir, model: opt['tester-model'], budgetUsd: Number(opt.budget), log });
@@ -272,6 +253,7 @@ async function main() {
       facts.codexStreams = readStreams(paths.codexStreams);
       facts.events = history.events();
       facts.transcripts = readTranscripts(facts, paths.workspace);
+      facts.remote = remoteFacts(dir, facts); // `- seed: git-remote`’s pushes, with the ledger’s size beside them (#305)
       const telOpts = { dir, data: paths.data, workspace: paths.workspace, main: mainThread, canaries, flags: tel.flags, shown: tel.shown };
       if (tm.telemetryOn(opt)) tm.telemetryFacts(facts, { ...telOpts, startedBeforeTurns: tm.runnerRecords(scenario, opt) });
       Object.assign(facts.ui, await readUi(page));
@@ -347,7 +329,7 @@ async function main() {
       timing.at(step);
       const answer = await timing.time('tester', () => tester.step(prompt, system));
       goals.took(phase);
-      timeline.push({ step, phase: ph.title, assessment: answer.assessment, action: answer.action });
+      timeline.push({ step, phase: ph.title, assessment: answer.assessment, action: answer.action, visual: answer.visual });
       log(`step ${step} · ${answer.assessment}`);
       for (const f of answer.findings) {
         const k = `tester:${f.title.toLowerCase().replace(/\W+/g, '-').slice(0, 60)}`;
@@ -519,7 +501,7 @@ async function main() {
     if (tm.runnerRecords(scenario, opt)) await tm.finishTelemetry({ ...tel, td, dir, data: paths.data, main: mainThread, log, findings });
     await refreshFacts();
     if (hr) await endHosts(hr, dir);
-    newFindings();
+    lastCheckPass(findings, newFindings);
     // What the last action caused counts, and every phase with triggers that didn’t all happen is a coverage gap.
     await noteStale();
     goals.observe(facts, timeline.length);
@@ -532,16 +514,18 @@ async function main() {
     presetFindings(all, { root: ROOT, commit: gitInfo(ROOT).commit });
     if (facts.telemetry) facts.telemetryOut = { proposals: tm.foldLabels(all, facts.telemetry) };
     if (facts.telemetry) budget.spend('telemetry', tm.telemetryBlock(facts.telemetry, all).classifier?.costUsd);
-    Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
-    await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
-    if (opt.verify !== 'no' || opt.file !== 'no') {
-      const review = { ...REVIEW, ask: budget.verifier() };
-      await timing.time('verifier', () =>
-        reviewFindings({ ...review, dir, scenario, findings: all, timeline, log, verify: opt.verify !== 'no', file: opt.file !== 'no' }),
-      );
-      Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
-      await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
-    }
+    const verify = opt.verify !== 'no';
+    const review = { ...REVIEW, dir, scenario, findings: all, timeline, log, verify, file: opt.file !== 'no' };
+    const shoot = (label, file) => d.shotItem(keys.get(label), file);
+    await endRun({
+      report: async () => {
+        Object.assign(facts, { budget: budget.summary(), timing: timing.summary(Date.now() - started) });
+        await writeReport({ dir, scenario, issues, findings: all, timeline, started, tester, facts, logLines, coverage });
+      },
+      review: verify || review.file ? () => timing.time('verifier', () => reviewFindings({ ...review, ask: budget.verifier() })) : null,
+      // #995’s judges of the agent’s pictures, after the verifier (tools/uat/run-end.mjs).
+      judge: () => judgePictures({ scenario, dir, paths, labels, keys, timeline, facts, shoot, ask: budget.verifier(), model: opt['tester-model'], log }),
+    });
     // The run’s record for a refit (tools/uat-stats.mjs), so it needn’t parse the report.
     writeJsonAtomic(join(dir, 'run.json'), {
       ...runRecord({

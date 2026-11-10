@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { sessionTotal } from './cost.mjs';
 import { TELEMETRY_ACTION } from './telemetry-action.mjs';
 import { STOP_AFTER_MAX_S, TESTER_WAIT_S, WAIT_MAX_S } from './turns.mjs';
+import { judgePrompt, VISUAL_SCHEMA } from './visual-judge.mjs';
 
 export { unaddressed } from '../../shared/text.mjs';
 export { VERIFY_SCHEMA, verifyPrompt } from './verify-prompt.mjs';
@@ -88,6 +89,7 @@ export const SCHEMA = {
         required: ['title', 'category', 'severity', 'component', 'evidence', 'expected', 'issue'],
       },
     },
+    visual: VISUAL_SCHEMA,
     action: {
       type: 'object',
       properties: {
@@ -154,7 +156,10 @@ export const SCHEMA = {
         by: { enum: ['up', 'down', 'end', 'start'], description: 'scroll: a page up or down, or to the end or the start.' },
         pane: { enum: ['work', 'thread'], description: 'fullscreen: the view to open full screen.' },
         permissions: { type: 'boolean', description: 'settings: also open its permissions panel.' },
-        fault: { enum: ['kill-ssh', 'kill-daemon', 'restart-postbox'], description: 'fault, in a run with hosts: what to break; target is the host.' },
+        fault: {
+          enum: ['kill-ssh', 'kill-daemon', 'remove-postbox', 'stop-runner', 'restart-postbox'],
+          description: 'fault, in a run with hosts: what to break; target is the host.',
+        },
         seconds: { type: 'integer' },
         verdict: { enum: ['approve', 'request_changes', 'comment'], description: 'review: your verdict.' },
         comments: {
@@ -173,7 +178,10 @@ export const SCHEMA = {
             undo_after: { type: 'integer', description: 'conversation: press Undo this many seconds after the delete.' },
             jobs: { enum: ['stop', 'keep'], description: 'stop: how to answer if Postbox asks whether to stop background jobs too.' },
             text: { type: 'string', description: 'send_now: the message to send.' },
-            fault: { enum: ['kill-ssh', 'kill-daemon', 'restart-postbox'], description: 'fault: what to break while the agent works.' },
+            fault: {
+              enum: ['kill-ssh', 'kill-daemon', 'remove-postbox', 'stop-runner', 'restart-postbox'],
+              description: 'fault: what to break while the agent works.',
+            },
             target: { type: 'string', description: 'fault: the host, such as host1.' },
             item: { type: 'string', description: 'answer: the block to answer while the agent works, such as I7.' },
             verdict: { enum: ['approve', 'request_changes', 'comment'], description: 'answer, on a review: your verdict.' },
@@ -241,7 +249,7 @@ Each step also lists what’s waiting on you: blocks that ask you something, rev
 The run waits for the agents to finish before each step, or until something needs you while one works, such as Stop’s question about background jobs: answer it, or wait, before you give an interrupt. To act while a turn is running, give send, thread, act or review an interrupt {after, do, jobs?, text?}: once an agent is working, the run lets it work for after seconds, then does it. do is stop, to press Stop (if Postbox asks whether to stop its background jobs too, jobs answers: stop or keep); send_now, to write text and press Send now on it; or answer, to answer the block item while the agent works, as review (verdict, comments) or act (choose, button) would. Answer a draft that way while its agent is revising it, as a person reading along would.
 
 Scenario: ${scenario.title}
-${scenario.summary}`;
+${scenario.summary}${judgePrompt(scenario)}`;
 }
 
 /**

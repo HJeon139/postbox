@@ -3,8 +3,7 @@
 // These import only what was there before the tools, so each fails without them.
 
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { endedWithoutReply, noteAnswer } from '../server/empty-reply.mjs';
@@ -14,6 +13,7 @@ import { Store } from '../server/store.mjs';
 import { TOOL_ROUTES, validateMessage } from '../shared/remote-protocol.mjs';
 import { rig, running, settled, until } from './remote-turns-helpers.mjs';
 import { settle, setup, sleep } from './side-threads-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
 
 const NAMES = ['list_assets', 'read_asset', 'write_asset', 'rename_asset', 'delete_asset', 'restore_asset'];
 
@@ -70,12 +70,9 @@ test('#516 S3b: on a host, each asset tool crosses to Postbox and waits for its 
 });
 
 test('#516 S3b: an agent on a host writes and reads an asset through Postbox, with text only', async (ctx) => {
-  const dir = mkdtempSync(join(tmpdir(), 'pb-asset-host-'));
+  const dir = tempDir('pb-asset-host-');
   const store = await new Store(dir).load();
-  ctx.after(async () => {
-    await store.close();
-    rmSync(dir, { recursive: true, force: true });
-  });
+  ctx.after(() => store.close());
   const r = rig({ store });
   const turn = await running(r);
   const answer = async (name, args) => {
@@ -94,13 +91,53 @@ test('#516 S3b: an agent on a host writes and reads an asset through Postbox, wi
   await settled(r);
 });
 
-test('#516 S3b: a read the host sends again is read again, whole, and no part of an asset is kept in the session', async (ctx) => {
-  const dir = mkdtempSync(join(tmpdir(), 'pb-asset-resend-'));
+test('#700: on a host, while the store is closed, the asset writes are refused with the cause, store nothing, and the reads answer', async (ctx) => {
+  const dir = tempDir('pb-asset-host-closed-');
   const store = await new Store(dir).load();
-  ctx.after(async () => {
-    await store.close();
-    rmSync(dir, { recursive: true, force: true });
-  });
+  ctx.after(() => store.close());
+  const r = rig({ store });
+  const turn = await running(r);
+  const answer = async (name, args) => {
+    const id = r.d.tool(turn, name, args);
+    await until(() => r.d.replies.some((x) => x.id === id), `${name}’s reply`);
+    return r.d.replies.find((x) => x.id === id);
+  };
+  const made = await answer('write_asset', { name: 'notes.md', text: 'kept' });
+  const id = /asset (as_\w+)/.exec(made.text)?.[1];
+  const files = () => readdirSync(join(dir, 'assets'), { recursive: true }).sort();
+  const before = files();
+  assert.equal(before.length, 2, 'the one file written while open, and its folder');
+  // Closed without telling the status listeners, so the turn keeps running: the state the gate itself guards.
+  const cause = 'Postbox can’t write its event log (EIO): disk sync refused.';
+  store.writable = false;
+  store.cause = Object.assign(new Error(cause), { code: 'EIO' });
+  for (const [name, args] of [
+    ['write_asset', { name: 'new.md', text: 'never stored' }],
+    ['write_asset', { id, base: 1, text: 'never stored either' }],
+    ['rename_asset', { id, base: 1, name: 'renamed.md' }],
+    ['delete_asset', { id, base: 1 }],
+    ['restore_asset', { id, base: 1, version: 1 }],
+  ]) {
+    const refused = await answer(name, args);
+    assert.deepEqual([refused.ok, refused.text], [false, cause], name);
+    assert.doesNotMatch(refused.text, /couldn’t confirm/, `${name}: refused by the gate, not by the commit after a put`);
+  }
+  assert.deepEqual(files(), before, 'no bytes were stored');
+  assert.equal(store.state.assets[id].versions.length, 1);
+  assert.match((await answer('read_asset', { id })).text, /kept/);
+  assert.match((await answer('list_assets', {})).text, /notes\.md/);
+  store.writable = true;
+  store.cause = null;
+  const again = await answer('write_asset', { id, base: 1, text: 'after reopening' });
+  assert.equal(again.ok, true, again.text);
+  r.d.end(turn);
+  await settled(r);
+});
+
+test('#516 S3b: a read the host sends again is read again, whole, and no part of an asset is kept in the session', async (ctx) => {
+  const dir = tempDir('pb-asset-resend-');
+  const store = await new Store(dir).load();
+  ctx.after(() => store.close());
   const r = rig({ store });
   const turn = await running(r);
   const repliesTo = (/** @type {string} */ id) => r.link.sent.filter((m) => m.type === 'reply' && m.id === id);

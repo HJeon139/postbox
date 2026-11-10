@@ -8,7 +8,8 @@ import { describeTool, isQuietTool } from './claude-stream.mjs';
 import { codexApproval } from './codex-approval.mjs';
 import { codexMcpApprovalConfig, postboxMcpApprovalArgs } from './codex-mcp-policy.mjs';
 import { findCodex } from './codex-models.mjs';
-import { attachmentPaths, CODEX_REMOTE, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
+import { networkOn } from './codex-network.mjs';
+import { attachmentPaths, CODEX_CAPABILITIES, createCodexHost, interruptReached, pickUp, remoteEnd, spawnRemoteCodex } from './codex-remote.mjs';
 import { openCodexThread } from './codex-thread.mjs';
 import { codexContextPercent } from './context-usage.mjs';
 import { agentFolder } from './folder.mjs';
@@ -18,20 +19,8 @@ import { AUTO_MODEL, effortOf, POSTBOX_SERVER, recorderFor } from './setup.mjs';
 import { codexWork } from './work-calls.mjs';
 
 export { codexModels, codexVersion, findCodex } from './codex-models.mjs';
-export { codexRemoteConfigArgs, createCodexRebuild, INTERRUPT_REACH_MS, interruptedError } from './codex-remote.mjs';
+export { CODEX_CAPABILITIES, codexRemoteConfigArgs, createCodexRebuild, INTERRUPT_REACH_MS, interruptedError } from './codex-remote.mjs';
 export { codexApproval };
-
-// Codex always reads your own Codex configuration and MCP servers: there’s no Isolated mode (isolation: false). On a
-// remote host (#120), it runs as CODEX_REMOTE says (server/adapters/codex-remote.mjs).
-export const CODEX_CAPABILITIES = Object.freeze({
-  resume: true,
-  fork: true,
-  permissions: 'none',
-  tools: 'none',
-  isolation: false,
-  promptTool: false,
-  remote: CODEX_REMOTE,
-});
 
 /** A local folder’s real path, or the folder as given if it can’t be resolved: Codex refuses a writable root with a symlink in its path. */
 const realFolder = (dir) => realpath(dir).catch(() => dir);
@@ -39,17 +28,23 @@ const realFolder = (dir) => realpath(dir).catch(() => dir);
 /**
  * The sandbox and approvals for a turn. In Auto, Codex’s own reviewer (approvalsReviewer auto_review) approves or
  * denies what the sandbox stops, as Claude Code’s classifier does, instead of asking the person; Codex keeps a reviewer
- * for later turns, so every other mode names the person.
+ * for later turns, so every other mode names the person. In Auto, a persona that may fetch the web has network access
+ * in its sandbox, so a networked command isn’t stopped there (#324, the person’s decision of 25 October 2026).
  */
 export function codexPermissions(persona, cwd) {
   const mode = persona?.permissionMode ?? 'auto';
-  const sandboxPolicy =
-    mode === 'bypass'
-      ? { type: 'dangerFullAccess' }
-      : mode === 'ask'
-        ? { type: 'readOnly' }
-        : { type: 'workspaceWrite', ...(cwd ? { writableRoots: [cwd] } : {}), networkAccess: false };
-  return { sandboxPolicy, approvalPolicy: mode === 'bypass' ? 'never' : 'on-request', approvalsReviewer: mode === 'auto' ? 'auto_review' : 'user' };
+  return {
+    sandboxPolicy: sandboxOf(persona, mode, cwd),
+    approvalPolicy: mode === 'bypass' ? 'never' : 'on-request',
+    approvalsReviewer: mode === 'auto' ? 'auto_review' : 'user',
+  };
+}
+
+/** A mode’s sandbox. @param {any} persona @param {string} mode @param {string} [cwd] */
+function sandboxOf(persona, mode, cwd) {
+  if (mode === 'bypass') return { type: 'dangerFullAccess' };
+  if (mode === 'ask') return { type: 'readOnly' };
+  return { type: 'workspaceWrite', ...(cwd ? { writableRoots: [cwd] } : {}), networkAccess: networkOn(persona) };
 }
 
 /**

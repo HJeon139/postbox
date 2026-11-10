@@ -12,7 +12,7 @@
 import { expect, test } from '@playwright/test';
 import { failOnPageErrors, synced } from './postbox.mjs';
 import { axe } from './remote-hosts.mjs';
-import { HUNG, startRemoteTurns } from './remote-turns.mjs';
+import { HUNG, startRemoteTurns, UNREGISTERED } from './remote-turns.mjs';
 
 /** @type {Awaited<ReturnType<typeof startRemoteTurns>>} */
 let s;
@@ -30,8 +30,8 @@ async function open(page) {
   await expect(item(page, s.items.signin).getByRole('alert'), 'the room’s replies').toBeVisible();
 }
 /** An agent’s row in the sidebar’s Agents, and its ring there. */
-const row = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^@${handle}$`) }) });
-const ring = (page, handle) => row(page, handle).getByRole('img', { name: new RegExp(`^@${handle}: `) });
+const row = (page, handle) => page.locator('.rail .agent-row').filter({ has: page.locator('.agent-btn b', { hasText: new RegExp(`^${handle}$`) }) });
+const ring = (page, handle) => row(page, handle).getByRole('img', { name: new RegExp(`^${handle}: `) });
 /** A transcript item, by the item the seed made. */
 const item = (page, it) => page.locator(`.transcript [data-key="${it.id}"]`);
 
@@ -56,7 +56,7 @@ test('#120 each ring’s label says where its agent runs and the connection, not
       .soft(ring(page, 'builder'))
       .toHaveAttribute(
         'aria-label',
-        /^@builder: Idle, (?:\d+% of context used|context unknown); on build\.example\.com, disconnected \(working\), last heard from 40 min ago$/,
+        /^builder: Idle, (?:\d+% of context used|context unknown); on build\.example\.com, disconnected \(working\), last heard from 40 min ago$/,
       );
     await expect.soft(ring(page, 'coder')).toHaveAttribute('aria-label', /; on host\.example\.com, connected, last heard from 2 min ago$/);
   });
@@ -71,7 +71,7 @@ test('#120 each ring’s label says where its agent runs and the connection, not
 
 test('#120 the turn states read in words in the transcript: Sign-in needed and Interrupted with Resume, hung, Lost', async ({ page }) => {
   await open(page);
-  const { signin, interrupted, hung, lost } = s.items;
+  const { signin, interrupted, unkilled, unregistered, hung, lost } = s.items;
   await expect
     .soft(item(page, signin).getByRole('alert'))
     .toHaveText(/^Sign-in needed on host\.example\.com · Sign in there, then resume @coder\. Resume it once you’ve signed in\.\s*Resume$/);
@@ -80,6 +80,18 @@ test('#120 the turn states read in words in the transcript: Sign-in needed and I
     .toHaveText(
       /^Interrupted on host\.example\.com · The agent’s process there ended without finishing its turn\. It was interrupted again after Postbox resumed it, so it waits for you\.\s*Resume$/,
     );
+  // #872: a turn whose process there didn’t stop when it was killed isn’t resumed on its own, and the hint says so.
+  await expect
+    .soft(item(page, unkilled).getByRole('alert'))
+    .toContainText('Check it there, then resume @keeper. It may still be running on host.example.com, so it waits for you.');
+  // #909: an agent whose backend isn’t registered here says why its turn can’t be followed, and what to do. #965’s P3:
+  // its hint says it waits for the backend and resumes on its own after that, not once the host is back.
+  await expect
+    .soft(item(page, unregistered).getByRole('alert'))
+    .toContainText(
+      `Interrupted on host.example.com · ${UNREGISTERED}. It waits for its backend on this computer. Install it and restart Postbox, and it resumes on its own.`,
+    );
+  await expect.soft(item(page, unregistered).getByRole('alert')).not.toContainText('once host.example.com is back');
   await expect.soft(item(page, hung).locator('.stopped-tag')).toHaveText(HUNG);
   await expect
     .soft(item(page, lost).getByRole('alert'))
@@ -91,8 +103,25 @@ test('#120 the turn states read in words in the transcript: Sign-in needed and I
   await expect
     .soft(page.locator('.host-turns'))
     .toHaveText(
-      /^@stopper · Stopping on host\.example\.com: Postbox asked it to stop, and waits for the host to confirm\. It may still run there until then\.$/,
+      /^stopper · Stopping on host\.example\.com: Postbox asked it to stop, and waits for the host to confirm\. It may still run there until then\.$/,
     );
+});
+
+// #965’s P3, the integrator’s case: a turn whose backend isn’t registered here, and that the host still lists as
+// running, may still run there. Its hint says so and promises nothing, even with both marks, as #1050’s first head
+// saved it (the server now saves only resume.unkilled for it).
+test('#965 an unregistered agent’s turn that may still run on the host says it waits for you, not that it resumes', async ({ page }) => {
+  const { rt } = s.app;
+  const before = rt.s.sessions[s.ses.porter.id].remoteTurn;
+  rt.updateSession(s.ses.porter.id, { remoteTurn: { ...before, resume: { why: 'interrupted', at: before.resume.at, unkilled: true, noBackend: true } } });
+  try {
+    await open(page);
+    const alert = item(page, s.items.unregistered).getByRole('alert');
+    await expect.soft(alert).toContainText(`${UNREGISTERED}. It may still be running on host.example.com, so it waits for you.`);
+    await expect.soft(alert).not.toContainText('resumes on its own');
+  } finally {
+    rt.updateSession(s.ses.porter.id, { remoteTurn: before });
+  }
 });
 
 test('#120 a replayed reply shows once, with its name, and a Kiro host warning stays out of the conversation', async ({ page }) => {
@@ -101,10 +130,10 @@ test('#120 a replayed reply shows once, with its name, and a Kiro host warning s
   const scouts = page
     .locator('.transcript .item')
     .filter({ visible: true })
-    .filter({ hasText: /I read the README|@scout/ });
-  await expect.soft(scouts, 'one reply from @scout').toHaveCount(1);
+    .filter({ hasText: /I read the README|scout/ });
+  await expect.soft(scouts, 'one reply from scout').toHaveCount(1);
   await expect.soft(item(page, replaced), 'the replaced part doesn’t show').toBeHidden();
-  await expect.soft(item(page, replay).locator('.who'), 'it names its speaker').toContainText('@scout');
+  await expect.soft(item(page, replay).locator('.who'), 'it names its speaker').toContainText('scout');
   await expect.soft(item(page, replay).getByRole('note', { name: 'Other users on the host can read this message' })).toHaveCount(0);
   // The setup warning isn’t folded into the steps, and isn’t counted as a tool.
   await expect.soft(item(page, replay).locator('details.activity summary')).toHaveText('Read 1 file · 0.0 s in tools');
@@ -138,7 +167,7 @@ test('#120 Resume calls the runtime’s resume, which starts with why the last t
   const { rt, store } = s.app;
   await open(page);
   const before = s.delivered.length;
-  const resume = page.getByRole('button', { name: 'Resume @coder on host.example.com', exact: true });
+  const resume = page.getByRole('button', { name: 'Resume coder on host.example.com', exact: true });
   await resume.click();
   await expect.poll(() => s.delivered.length, { message: 'the resumed turn' }).toBeGreaterThan(before);
   const d = /** @type {(typeof s.delivered)[number]} */ (s.delivered.at(-1));

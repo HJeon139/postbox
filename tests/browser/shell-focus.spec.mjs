@@ -78,17 +78,17 @@ test('#26 new agent: Space on a Tools checkbox keeps focus on it', async ({ page
   await expect(box).toBeFocused();
 });
 
-test('#26 new room: Enter on the @indexer chip keeps focus on it', async ({ page }) => {
+test('#26 new room: Enter on the indexer chip keeps focus on it', async ({ page }) => {
   await open(page, `#/p/${threadNamed('Corpus planning').projectId}`);
   await page.getByRole('button', { name: 'New room' }).click();
   await expect(dialog(page)).toBeVisible();
-  const chip = page.locator('.d-body .chips button', { hasText: '@indexer' });
+  const chip = page.locator('.d-body .chips button', { hasText: 'indexer' });
   await chip.focus();
   await page.keyboard.press('Enter');
-  await focusIs(page, 'button: @indexer');
+  await focusIs(page, 'button: indexer');
   await expect(chip).toHaveAttribute('aria-pressed', 'true');
   await page.keyboard.press('Enter');
-  await focusIs(page, 'button: @indexer');
+  await focusIs(page, 'button: indexer');
   await expect(chip).toHaveAttribute('aria-pressed', 'false');
 });
 
@@ -111,6 +111,8 @@ test('#26 ⋯ › Add an agent… by keyboard, then Escape, returns focus to ⋯
   await actions(page).focus();
   await page.keyboard.press('Enter');
   await focusIs(page, 'menuitem: Rename…');
+  await page.keyboard.press('ArrowDown');
+  await focusIs(page, /^menuitem: Wake chain limit…/); // beside Rename…: the other setting of the room itself (#1035)
   await page.keyboard.press('ArrowDown');
   await focusIs(page, /^menuitem: Add an agent…/);
   await page.keyboard.press('Enter');

@@ -14,6 +14,7 @@
 //   mapper (the reply is rebuilt whole), nothing is sent to it, and no fallback starts another.
 // server/adapters/claude-code.mjs runs the turn; this module holds what only a host needs.
 
+import { lookedText } from '../../shared/remote-protocol.mjs';
 import { olderThan } from '../../shared/versions.mjs';
 import { remoteSpawn } from '../remote/process.mjs';
 import { checkRemoteContext } from './adapter.mjs';
@@ -25,15 +26,18 @@ export { attachmentPaths } from './remote-turn.mjs';
 /**
  * What this backend can do, for the runtime and the UI (#117). Left out, it forks, reads rules and offers Claude’s
  * models. On a remote host (#120), the message goes in a file, the one variable it sets is the resume of an interrupted
- * turn (D2), Postbox’s server goes in --mcp-config, a quiet tool call still prints tool_progress, and a sign-in that ran
+ * turn (D2), Postbox’s server goes in --mcp-config, a quiet tool call still prints tool_progress, a wait on a background task lists it (#847), and a sign-in that ran
  * out ends the turn with an authentication_failed result.
  */
 export const CLAUDE_CODE_CAPABILITIES = Object.freeze({
+  images: true,
+  skills: true,
   remote: Object.freeze({
     stdin: 'file',
     env: Object.freeze(['CLAUDE_CODE_RESUME_INTERRUPTED_TURN']),
     server: 'mcp-config',
     work: 'events',
+    backgroundTasks: 'background_tasks_changed',
     signInError: Object.freeze({ type: 'result', is_error: true, error: 'authentication_failed' }),
   }),
 });
@@ -55,7 +59,7 @@ export function remoteClaudeProblem(welcome, settings = {}) {
   if (!welcome) return 'Postbox hasn’t heard from the host’s daemon yet, so it can’t tell which Claude Code is there.';
   const h = (Array.isArray(welcome.harnesses) ? welcome.harnesses : []).find((x) => x?.name === 'claude-code');
   if (!h?.path) {
-    const looked = h?.looked?.length ? ` It looked in ${h.looked.join(', ')}.` : '';
+    const looked = h?.looked?.length ? ` It looked in ${lookedText(h)}.` : '';
     return `Claude Code isn’t installed on the host.${looked} Install it there, or set claudePath in the host’s settings.`;
   }
   const need = settings.denyPrompts ? DENY_PROMPTS_MIN : REMOTE_CLAUDE_MIN;

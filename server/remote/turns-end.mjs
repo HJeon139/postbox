@@ -3,7 +3,8 @@
 // sees.
 
 import { needHost, releaseHost } from './turns-need.mjs';
-import { endCard, openCards } from './turns-prompts.mjs';
+import { endOrphanCards } from './turns-prompts.mjs';
+import { caughtUp } from './turns-replay.mjs';
 import { whenBack } from './turns-resume.mjs';
 import { mayBeOnHost, ON_HOST, remoteError, unconfirmed, updateRemote } from './turns-shared.mjs';
 import { offsetAt } from './turns-start.mjs';
@@ -27,7 +28,7 @@ export function ended(rts, turn, err) {
   // Postbox is shutting down: the turn goes on on the host, and is attached again after the restart.
   if (rt.closing || !se?.remoteTurn || se.remoteTurn.rtTurn !== turn.id) return err;
   // Its cards nobody waits on (shown before a restart, not sent again) can’t be answered now.
-  for (const t of live.hostTurns) for (const card of openCards(rts, t)) if (!rt.permissionWaits.has(card.it.id)) endCard(rts, card, 'expired', '', rts.now());
+  endOrphanCards(rts, live.hostTurns);
   if (live.hung) return err;
   return endedHow(rts, live, se, err);
 }
@@ -47,6 +48,14 @@ function endedHow(rts, live, se, err) {
     if (unended) askStop(rts, se.id, live.hostId, /** @type {string} */ (live.current), { unconfirmed: unconfirmed(live) });
     rts.checkedAt.delete(se.id);
     return remoteError(`Sign-in needed on ${name}. Sign in there, then resume @${se.handle}.`, { state: 'signin', hostId: live.hostId });
+  }
+  if (live.exit === null && live.unkilled) {
+    // Its process there may still run (#872): resuming would run a second agent beside it, so the person resumes it.
+    updateRemote(rts, se.id, { state: 'interrupted', at: rts.now(), resume: { why: 'interrupted', at: rts.now(), unkilled: true } });
+    return remoteError(
+      `Interrupted on ${name}: the agent stopped answering, and its process there didn’t stop when it was killed. Check it there, then resume @${se.handle}.`,
+      { state: 'interrupted', hostId: live.hostId },
+    );
   }
   if (live.exit === null) {
     updateRemote(rts, se.id, { state: 'interrupted', at: rts.now(), resume: { why: 'interrupted', at: rts.now() } });
@@ -88,6 +97,9 @@ export function stopped(rts, turn, { by, why } = {}) {
       mayBeOnHost(live) &&
       askStop(rts, se.id, live.hostId, live.current, { send: false, unconfirmed: unconfirmed(live), byPerson: by === 'you' }),
   );
+  // Its cards nobody waits on can’t be answered now (#800). A shutdown keeps them: the turn goes on on the host and is
+  // attached again after the restart.
+  if (by !== 'shutdown') endOrphanCards(rts, live.hostTurns);
   // Its process ends through the adapter (its child hears `ended`), but the turn is over here: what comes for it now
   // is refused, as a stopped turn’s calls are on the laptop (#126).
   forget(rts, live);
@@ -118,4 +130,6 @@ function forget(rts, live) {
   for (const t of live.hostTurns) if (rts.byTurn.get(t) === live) rts.byTurn.delete(t);
   rts.dirty.delete(live.sessionId);
   releaseHost(rts, live.hostId);
+  // A prompt still waiting for the replay waits only its bound now, and is refused: its turn is over here.
+  caughtUp(live);
 }

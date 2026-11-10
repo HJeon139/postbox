@@ -4,16 +4,52 @@
 
 import { followsConversation, validateBlock } from '../shared/catalog.mjs';
 import { buildEvent } from '../shared/events.mjs';
+import { INTENT_CHARS, LIMITS } from '../shared/limits.mjs';
+import { wordCount } from '../shared/text.mjs';
 import { appReceipt } from './app-check-status.mjs';
 import { notYours } from './app-retire.mjs';
+import { APP_HOLD_MAX, APP_SEND_LIMIT, APP_SEND_WINDOW_MS } from './app-send-limits.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
-import { httpError } from './helpers.mjs';
+import { httpError, refuseArchived } from './helpers.mjs';
+import { hostTool } from './host-tool.mjs';
 import { newId } from './store.mjs';
 
 /** @typedef {import('./agent-files.mjs').AppFile} AppFile */
 
-/** App check problems that are warnings: the app is shown, with notes, and the agent is told. */
-const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small', 'dashes-too-fine', 'only-error']);
+/**
+ * App check problems that are warnings: the app is shown, with notes, and the agent is told. Text under 12 px holds a
+ * version back at 1000 × 680, as the critique’s floor does (#997): agents shipped the labels this flagged when it was a
+ * warning. At 375 px it stays a warning: an SVG scaled to fit a narrow pane draws its labels small.
+ */
+const APP_WARNINGS = new Set(['marks-too-small', 'text-too-small-375', 'dashes-too-fine', 'only-error']);
+
+/**
+ * What a version should leave the reader with, as the agent said it (#995), or '' when it said nothing: a missing or
+ * malformed intent never refuses an app, and a very long one is cut for storage.
+ */
+const intentOf = (v) => (typeof v === 'string' ? v.trim().slice(0, INTENT_CHARS) : '');
+
+/**
+ * The receipt’s note on an intent past its word limit, or ''. It’s flagged, not refused: the app is the work, and the
+ * agent can say it shorter with update_app. @param {unknown} v
+ */
+function intentNote(v) {
+  const n = typeof v === 'string' ? wordCount(v) : 0; // before the storage cut, so a very long one reports its length
+  return n > LIMITS.appIntentWords ? ` Its intent has ${n} words: say it in at most ${LIMITS.appIntentWords} with update_app.` : '';
+}
+
+/**
+ * An app block as show_block takes it, with its intent trimmed and cut as show_app’s is, or dropped when it isn’t
+ * text, so the catalog never refuses an app for its intent. @param {any} block
+ */
+export function withAppIntent(block) {
+  if (block?.type !== 'app' || !Object.hasOwn(block, 'intent')) return block;
+  const { intent, ...rest } = block;
+  return intentOf(intent) ? { ...rest, intent: intentOf(intent) } : rest;
+}
+
+/** A receipt with the intent’s note, when there is one. @param {any} r @param {unknown} intent */
+export const withIntentNote = (r, intent) => (r.ok && intentNote(intent) ? { ...r, message: r.message + intentNote(intent) } : r);
 
 // ── Apps ───────────────────────────────────────────────────────────────────────────
 
@@ -30,12 +66,14 @@ export function appCheck(rt, appId, { version, problems = [] }) {
     rt.store.emit('app', { ...app, check: { status: 'passed', attempt: app.check.attempt, problems: [] } });
     return { status: 'passed' };
   }
-  if (clean.some((p) => p.code === 'script-error')) {
+  // A script error goes back to the agent once, like any blocking problem (#964); after that, or with no agent to
+  // tell, the version shows as crashed.
+  if (clean.some((p) => p.code === 'script-error') && (app.check.attempt > 0 || !rt.s.sessions[app.sessionId])) {
     rt.store.emit('app', { ...app, check: { status: 'crashed', attempt: app.check.attempt, problems: clean } });
     return { status: 'crashed' };
   }
   // Problems the agent can’t fix (the frame never answered, or a check of Postbox’s threw) are shown as a note, not
-  // sent back. Warnings (marks or text too small, an app showing only an error) don’t hold the app back: it’s shown
+  // sent back. Warnings (marks or dashes too small, an app showing only an error) don’t hold the app back: it’s shown
   // with notes, and the agent hears of them through the lint pipeline, unless it’s already fixing the app.
   const fixable = clean.filter((p) => p.code !== 'no-answer' && p.code !== 'check-error');
   const blocking = fixable.filter((p) => !APP_WARNINGS.has(p.code));
@@ -59,15 +97,10 @@ export function appCheck(rt, appId, { version, problems = [] }) {
   return { status: 'note' };
 }
 
-// An app writes lines in your voice, and each one starts an agent turn, so its sends are limited (#38). The
-// browser accepts a send only right after a click or key press in that app (app/js/apps.mjs); here, where a
-// script calling the API lands too, an app gets APP_SEND_LIMIT sends per APP_SEND_WINDOW_MS. More wait on
-// a card for you to allow or not, and nothing is dropped silently: the app is told its send is waiting.
-// The browser keeps the same limit (SEND_LIMIT in app/js/app-send-card.mjs), and the agent guide says so.
-export const APP_SEND_LIMIT = 5;
-export const APP_SEND_WINDOW_MS = 60_000;
-/** Sends one card holds; past that, a send is refused with a reason. */
-export const APP_HOLD_MAX = 20;
+/** The status of an app whose agent’s app-check turn ended without a new version: crashed if its script threw (#964). */
+export const fixEnded = (app) => (app.check.problems?.some((p) => p.code === 'script-error') ? 'crashed' : 'note');
+
+// An app’s sends are limited (#38): server/app-send-limits.mjs says how, and why.
 
 /**
  * An event an app sends in your voice. Within the limit, it goes to the agent; past it (or when the browser
@@ -81,6 +114,7 @@ export function appEvent(rt, appId, action, values, { hold = false, now = Date.n
   if (app.retired) throw httpError(409, `${app.title} was retired, so it can’t send messages.`);
   const r = buildEvent({ type: 'app', id: appId, title: app.title }, action, values);
   if (!r.ok) throw httpError(422, r.error);
+  refuseArchived(rt, app.sessionId);
   const items = rt.store.items(app.threadId);
   const card = items.find((x) => x.kind === 'appsend' && x.appId === appId && x.status === 'open');
   // Sends you allowed on a card don’t count against the next minute.
@@ -119,7 +153,7 @@ export function needAppSend(rt, app, itemId, waiting) {
   // A later event of a card that isn't the need changes nothing: the card isn't new, so it doesn't offer itself again.
   if (waiting !== 1 && se.needs?.itemId !== itemId) return;
   const text = `${app.title} wants to send ${waiting === 1 ? '1 message' : `${waiting} messages`} for you`;
-  const took = offerNeed(rt, se, { kind: 'appsend', itemId, text }, rt.turns.has(se.id) ? se.state : 'needs');
+  const took = offerNeed(rt, se, { kind: 'appsend', itemId, text, ...rt.awayFrom(se, app.threadId) }, rt.turns.has(se.id) ? se.state : 'needs');
   // Only the first event is noticed: behind another need it isn't yet, and is when it becomes the need (card-needs.mjs).
   if (waiting !== 1) return;
   rt.patchItem(app.threadId, itemId, { notifiedAt: took ? Date.now() : null });
@@ -132,6 +166,7 @@ export function resolveAppSend(rt, threadId, itemId, action, { now = Date.now() 
   if (it?.kind !== 'appsend' || it.status !== 'open') throw httpError(409, 'That request was already answered.');
   if (action !== 'allow' && action !== 'deny') throw httpError(400, 'An app’s request takes “allow” or “deny”.');
   const allow = action === 'allow';
+  if (allow) refuseArchived(rt, it.sessionId);
   rt.patchItem(threadId, itemId, { status: allow ? 'allowed' : 'declined', answeredAt: now });
   const owner = rt.s.sessions[it.sessionId];
   releaseNeed(rt, owner, itemId);
@@ -197,7 +232,7 @@ export function registerApp(rt, sessionId, block, itemId, threadId = rt.s.sessio
     sessionId,
     itemId,
     title: block.title ?? 'App',
-    versions: [{ v: 1, code: block.code, permissions: block.permissions ?? [], files, at: Date.now(), summary: '' }],
+    versions: [{ v: 1, code: block.code, permissions: block.permissions ?? [], files, at: Date.now(), summary: '', intent: intentOf(block.intent) }],
     current: 1,
     state: null,
     check: { status: 'pending', attempt: 0, problems: [] },
@@ -214,13 +249,13 @@ export function appOf(rt, it) {
  * show_app: an app is a block of type app (showBlock, server/block-show.mjs), and an id the session already holds is a
  * new version (updateApp). @param {import('./runtime.mjs').Runtime} rt @param {string} sessionId
  * @param {any} tools  the turn's tools as toolsFor made them
- * @param {{ id?: string, title?: string, code: string, permissions?: string[], fallback?: string }} args
+ * @param {{ id?: string, title?: string, code: string, permissions?: string[], fallback?: string, intent?: string }} args
  * @param {{ files?: AppFile[] }} [given]  data files Postbox read from the agent’s folders (#54); never from the call
  */
-export function showApp(rt, sessionId, tools, { id, title, code, permissions = [], fallback }, given = {}) {
+export function showApp(rt, sessionId, tools, { id, title, code, permissions = [], fallback, intent }, given = {}) {
   const blockId = id ?? newId('app');
   const existing = rt.store.pending.app(blockId);
-  if (existing?.sessionId === sessionId) return tools.update_app({ id: blockId, code, permissions, title }, given);
+  if (existing?.sessionId === sessionId) return tools.update_app({ id: blockId, code, permissions, title, intent }, given);
   return tools.show_block(
     {
       block: {
@@ -231,6 +266,8 @@ export function showApp(rt, sessionId, tools, { id, title, code, permissions = [
         fallback: fallback ?? `${title ?? 'An app'}: open Postbox to use it.`,
         code,
         permissions,
+        // As the agent said it: show_block trims it, cuts it and flags a long one, for every way an app is shown.
+        ...(intent !== undefined && { intent }),
       },
     },
     given,
@@ -240,10 +277,10 @@ export function showApp(rt, sessionId, tools, { id, title, code, permissions = [
 /**
  * @param {any} rt  the Runtime @param {string} sessionId @param {any} turn  the turn the tools act for, or null
  * @param {() => string} threadId  where the turn speaks @param {() => void} endSegment  ends the reply so far
- * @param {{ id: string, code: string, permissions?: string[], title?: string, summary?: string }} args
- * @param {{ files?: AppFile[] }} [given]  as for show_app; a version without them keeps the last one’s
+ * @param {{ id: string, code: string, permissions?: string[], title?: string, summary?: string, intent?: string }} args
+ * @param {{ files?: AppFile[] }} [given]  as for show_app; a version without them keeps the last one’s, as one without an intent does
  */
-export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code, permissions, title, summary = '' }, given = {}) {
+export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code, permissions, title, summary = '', intent }, given = {}) {
   const app = rt.store.pending.app(id);
   if (!app || app.sessionId !== sessionId) return notYours(rt, sessionId, id);
   const v = validateBlock({ id, type: 'app', version: 1, fallback: 'x', code, permissions: permissions ?? app.versions[app.current - 1].permissions });
@@ -256,6 +293,7 @@ export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code,
       permissions: v.block.permissions ?? [],
       files: given.files ?? app.versions[app.current - 1].files ?? [],
       summary: String(summary ?? '').slice(0, 300),
+      intent: intentOf(intent) || (app.versions[app.current - 1].intent ?? ''),
       at: Date.now(),
     },
   ];
@@ -275,27 +313,5 @@ export function updateApp(rt, sessionId, turn, threadId, endSegment, { id, code,
     if (app.threadId === threadId()) endSegment();
     moved = rt.bringForward(app.threadId, app.itemId, { what: 'app', title: next.title, v: versions.length }, turn ? { turnId: turn.id } : {});
   }
-  return appReceipt(next, `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.`);
-}
-
-/** Host tools that apps (through the bridge) and agents can use, if granted. */
-export function hostTool(rt, tool, args = {}) {
-  switch (tool) {
-    case 'corpus.search': {
-      const q = String(args.query ?? '').slice(0, 200);
-      const mode = ['both', 'lexical', 'semantic'].includes(args.mode) ? args.mode : 'both';
-      // k and books come from an agent or an app: 1 to 50 results, and the first 50 book ids (#351).
-      const k = Math.max(1, Math.min(50, Math.floor(+args.k || 12)));
-      return rt.corpus.search(q, { mode, k, books: Array.isArray(args.books) ? args.books.slice(0, 50) : undefined });
-    }
-    case 'corpus.read':
-      return rt.corpus.read(String(args.id ?? ''));
-    case 'corpus.stats':
-      return rt.corpus.stats();
-    case 'narrate.speak':
-      if (!rt.narrator) throw httpError(503, 'Narration isn’t installed here. Run npm install to add Kokoro, then restart Postbox.');
-      return rt.narrator.speak(args);
-    default:
-      throw httpError(404, `There’s no host tool called “${tool}”.`);
-  }
+  return withIntentNote(appReceipt(next, `App ${id} is now v${versions.length}${moved ? ', shown at the newest point in the conversation' : ''}.`), intent);
 }

@@ -164,16 +164,16 @@ Postbox shows blocks the person answers with a click. Every time you reply, whet
 - Something destructive or costly → first, a confirm that says exactly what will happen.
 - Anything else → Markdown.
 
-The Postbox tools (the “postbox” MCP server) return at once: the answer arrives later as a new message. So ask, end your turn, and continue when it comes. The answer names the block and its revision. A choice, form, confirm or review turns read-only once answered. Report what you did in your reply, or with update_block on the answered block with outcome set (Markdown, up to ${n('outcome')} characters): it shows under the answer, and the block stays answered. Update an answered block without outcome only to ask again.
+The Postbox tools (the “postbox” MCP server) return at once: the answer arrives later as a new message. So ask, end your turn, and continue when it comes. A choice, form, confirm or review turns read-only once answered. Report what you did in your reply, or with update_block on the answered block with outcome set (Markdown, up to ${n('outcome')} characters): it shows under the answer, and the block stays answered. Update an answered block without outcome only to ask again.
 
 ## Blocks
 
 Every block has id (letters, digits, - _ . :; one block per id in a conversation), type, version: 1, title?, and fallback: plain text (up to ${n('fallback')} characters) the person can answer in chat if the block can’t be shown. Long text is Markdown, with a prompt or statement up to ${n('prompt')} characters; labels are plain text.
 - choice: options [{ id, label, description? (up to ${n('optionDescription')} characters, shown under the label) }] (1–${n('choiceOptions')}), prompt?, multiple?, max?, other?: { label, placeholder? }, submitLabel?, outcome?. Answer: "choose", { selected: [ids], other? }.
-- form: fields (up to ${n('formFields')}) [{ id, label, kind: "text" | "longtext" | "number" | "select" | "toggle" | "date", required?, placeholder?, help?, min?, max?, step?, maxLength?, options? [{ id, label, description? }] (select only, up to ${n('selectOptions')}), default? }], prompt?, submitLabel?, outcome?. Answer: "submit", { [fieldId]: value }.
+- form: fields (up to ${n('formFields')}) [{ id, label (≤ ${n('fieldLabel')} characters), kind: "text" | "longtext" | "number" | "select" | "toggle" | "date", required?, placeholder?, help?, min?, max?, step?, maxLength?, options? [{ id, label, description? }] (select only, up to ${n('selectOptions')}), default? }], prompt?, submitLabel?, outcome?. Answer: "submit", { [fieldId]: value }.
 - confirm: statement, confirmLabel (the action, such as “Delete 23 frames”), cancelLabel?, outcome?. Answer: "confirm" or "cancel".
 - review: format "markdown" | "code" | "app", content (up to ${n('longText')} characters) or appId, previous?, threads?, language?, filename?, outcome?. Answer: "submit", { verdict: "comment" | "approve" | "request_changes", comments: [{ line? | anchor?, text }] }.
-- progress: steps (up to ${n('progressSteps')}) [{ id, label, state: "pending" | "running" | "done" | "failed", detail?, progress?: { done, total, unit? }, percent?: 0–100, eta? }]. Postbox shows when it last changed and times each step.
+- progress: steps (up to ${n('progressSteps')}) [{ id, label, state: "pending" | "running" | "done" | "failed", detail?, progress?: { done, total, unit? }, percent?: 0–100, eta? }].
 - table: columns (up to ${n('tableColumns')}) [{ id, label, kind?: "text" | "number", sortable? }], rows (up to ${n('tableRows')}) [{ id, cells: { [columnId]: value } }], rowAction?: { id, label }. Answer: the rowAction id, { rowId }.
 - card: body? (up to ${n('cardBody')} characters), facts? (up to ${n('cardFacts')}) [{ label, value }], actions? (up to ${n('cardActions')}) [{ id, label }]. Answer: the action id.
 - image: src (https, from an allowed origin), alt, caption?.
@@ -183,11 +183,11 @@ Every block has id (letters, digits, - _ . :; one block per id in a conversation
 
 Postbox renders headings, lists, tables, links (https only), \`code\`, fenced code, \`\`\`mermaid diagrams, and math with $…$ or $$…$$. Raw HTML shows as text, except \`<details><summary>Answer</summary> … </details>\`, which hides an exercise’s answer until the person opens it.
 
-Diagrams are scaled to a 728 px column, so a wide one becomes unreadable. Keep about five boxes side by side: draw longer chains top to bottom (flowchart TD), keep labels to a few words, put lists in the text, and split anything over about 15 boxes.
+A picture that explains draws what things are or do, not labeled boxes: draw it in an app, with shapes, icons and marks whose size or position carry the values. Keep Mermaid for a quick sketch; a lint flags one too wide to read.
 
 ## Apps
 
-When a tool explains better than prose (an explorer, simulator, exercise), write one with show_app { id, title, code, permissions?, fallback? }. Change it with update_app, not a new app; retire a wrong or replaced one with retire_app { id, reason, replacedBy? }, not a pointer version. code: one HTML document, inline <script> and <style>, up to ${n('appCode')} characters; for a large one, codePath. Data: files [{ name?, path }] (up to ${n('appFiles')}, ${n('appFileBytes')} each), read with postbox.file(name). add_dataset loads searchable JSONL from .postbox/datasets/ (up to ${n('datasetBytes')}); searches name it in books. No network: no fetch, external scripts or fonts. Use var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw colors, for light and dark, and Postbox’s classes btn (sm, ghost), chip, pill, field, label, input, select, dim, small, mono. Prefix your own classes (lab-row): Postbox styles names like bar. In charts:
+When a tool explains better than prose (an explorer, a simulator), write one with show_app { id, title, intent (one sentence of ≤ ${n('appIntentWords')} words: what it should leave the reader with), code, permissions?, fallback? }. Change it with update_app, not a new app; retire a wrong or replaced one with retire_app { id, reason, replacedBy? }. code: one HTML document, inline <script> and <style>, up to ${n('appCode')} characters; for a large one, codePath. Data: files [{ name?, path }] (up to ${n('appFiles')}, ${n('appFileBytes')} each), read with postbox.file(name). add_dataset loads searchable JSONL from .postbox/datasets/ (up to ${n('datasetBytes')}); searches name it in books. No network: no fetch, external scripts or fonts. Use var(--token) colors (--text, --dim, --bg, --panel, --line, --accent…), never raw ones, and Postbox’s classes btn (sm, primary, ghost), seg, chip, pill, field, label, input, select, dim, small, mono. Pick one of a few options with a seg or chips (aria-pressed), not btns toggling ghost. At most one btn primary; ghost only for a minor action in text; links only for reading. Prefix your classes (lab-row). In charts:
 ${PALETTES.map((p) => `- ${p.name} for ${p.for}: ${p.when}.`).join('\n')}
 
 The global postbox gives you:
@@ -196,28 +196,28 @@ The global postbox gives you:
   - "corpus.search" with { query, k?, mode?: "both" | "lexical" | "semantic", books?: [ids] } returns [{ id, book, title, author, year, chapter, text, lexical: { score, terms } | null, semantic: number | null }]
   - "corpus.read" with { id } returns one, without scores
   - "corpus.stats" returns { books: [{ id, title, author, year, passages, chapters }], passages }
-- postbox.send(action, values, summary) sends you one event, only from the person’s click or key press; summary is the app’s words, not theirs. Up to 5 a minute; more wait for the person. An event carries up to ${n('eventBytes')} of JSON (more rejects), so hand over many items by id.
+- postbox.send(action, values, summary) sends you one event, only from the person’s click or key press; summary is the app’s words, not theirs. Up to 5 a minute; more wait for the person. An event carries up to ${n('eventBytes')} of JSON, so hand over many items by id.
 - postbox.saveState(obj) and postbox.restoreState() keep state over reloads and versions
 - postbox.load("d3" | "katex" | "mermaid") loads a bundled library
 - postbox.charts.line / scatter / stacked / heatmap / table(el, spec) draw charts with a Table view
 - postbox.on("theme", fn) to redraw canvas or SVG on a theme change
 
-Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before showing an app, Postbox checks it in a narrow and a wide window (375 and 1280 px) for layout, accessibility and script errors; fix what it reports with update_app. Read the version’s check via read_message.
+Don’t autofocus: Postbox stops an app that keeps taking the keyboard. Before showing an app, Postbox checks it in a narrow and a wide window (375 and 1280 px); fix what it reports with update_app. Look with view_app before you’re done.
 
 ## Working with others
 
-- You see all of the conversation; read “[Postbox]” notes first. read_conversation reads it or a topic thread; read_message { id }, cut items.
+- You see the room; read “[Postbox]” notes first. read_conversation reads it or a topic (open_topic opens one); read_message { id }, cut items.
 - One session each, topic threads too: busy ones reply later; only the person adds agents.
 - Writing @handle wakes that agent; to name one, omit @.
 - define_term a term the first time you use it, so later mentions link to it.
 - Files the conversation keeps go in its assets: list_assets, read_asset, and write_asset from the base version you read (rename, delete and restore too).
-- Use bring_to_conversation only when the person asks to put something in the main chat.
+- Use bring_to_conversation only when the person asks for it.
 
 ## Recipes
 
 Use one when the person asks for what it covers.
 - Explorer: an app that searches with postbox.query("corpus.search"), keeps its state with saveState, and sends picks back with postbox.send.
-- Explainer with practice: Markdown with a \`\`\`mermaid diagram and math, define_term for new terms, then a small practice app.
+- Explainer: one picture that carries the idea, with one control that changes it. A predict-first question never hides the picture; practice only when asked.
 - Narrated walkthrough: passages first (one per slide, two or three short sentences, up to 1,200 characters each), then an app with slides, Previous and Next buttons, and postbox.narration(el, passages, { onPassage: (i) => showSlide(i) }), with permission "narrate.speak".
 - Slidev export: write slides.md (slides split by ---, notes in <!-- --> comments), show it as a code block with filename "slides.md", and say \`npx @slidev/cli export slides.md\` makes a PDF.
 
@@ -273,6 +273,9 @@ export function formatMessage(message, pathOf = () => null) {
   return [body, facts, lint, message.context?.length ? `${BACKGROUND}\n\n${message.context.join('\n\n')}` : ''].filter(Boolean).join('\n\n');
 }
 
+/** A late answer to an AskUserQuestion, in words. @param {{ text: string, answer: string | null }} q */
+const lateQuestion = (q) => `It answers your AskUserQuestion “${q.text}”: ${q.answer === null ? 'the person dismissed it' : `the person chose “${q.answer}”`}.`;
+
 const BACKGROUND = '[Postbox] Background for this turn: what waited for it and what happened since your last one. The request above is your task.';
 
 function formatBody(message, pathOf) {
@@ -288,6 +291,8 @@ function formatBody(message, pathOf) {
     case 'event':
       return [
         `[Postbox] ${message.event.from ? `@${message.event.from} reviewed your` : 'The person acted in'} block “${message.event.blockId}”${message.event.revision ? ` (revision ${message.event.revision})` : ''}: ${message.event.action}\n${JSON.stringify(message.event.values ?? {})}`,
+        // A late answer to an AskUserQuestion (#521): Postbox made the block, so its ids mean nothing to the agent.
+        message.event.question ? lateQuestion(message.event.question) : '',
         // A review’s comments, as the history gives them (#179): “line 12, col 5–23 “the quoted text”: the comment”.
         isReview(message.event)
           ? message.event.values.comments

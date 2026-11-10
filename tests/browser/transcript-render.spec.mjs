@@ -159,9 +159,9 @@ async function scheduledWake(page, room, an, idle) {
   await idle();
   await synced(page, app);
   const last = async () => (await senders(page, room.id)).at(-1);
-  await expect.poll(last, { message: 'the scheduled turn’s sender line' }).toMatch(/^@analyst.*woken by a scheduled wake/);
+  await expect.poll(last, { message: 'the scheduled turn’s sender line' }).toMatch(/^analyst.*woken by a scheduled wake/);
   await frames(page);
-  expect(await last(), 'and it held').toMatch(/^@analyst.*woken by a scheduled wake/);
+  expect(await last(), 'and it held').toMatch(/^analyst.*woken by a scheduled wake/);
 }
 
 test('#135 a later turn of the same agent has its own sender line with its time and what woke it, and wakes from two turns each have one', async ({ page }) => {
@@ -187,8 +187,8 @@ test('#135 a later turn of the same agent has its own sender line with its time 
   await test.step('the next turn has its own sender line, its time and what woke it; one turn’s two items share one', async () => {
     await expect.poll(async () => (await senders(page, room.id)).length).toBeGreaterThanOrEqual(4);
     const [, second, one, two] = (await senders(page, room.id)).slice(-4);
-    expect(second).toMatch(/^@analyst.*woken by @reviewer.*\[time\]$/);
-    expect([one, two]).toEqual([expect.stringMatching(/^@analyst.*\[time\]$/), '']);
+    expect(second).toMatch(/^analyst.*woken by reviewer.*\[time\]$/);
+    expect([one, two]).toEqual([expect.stringMatching(/^analyst.*\[time\]$/), '']);
   });
   await test.step('a turn a scheduled wake started says so on its sender line', () => scheduledWake(page, room, an, idle));
   await test.step('two wakes from two turns each have a sender line in the conversation, and one turn’s two share it', async () => {
@@ -206,6 +206,6 @@ test('#135 a later turn of the same agent has its own sender line with its time 
       });
     await expect(page.locator(`.transcript[data-thread="${room.id}"] .md p`, { hasText: 'And the names.' })).toBeVisible();
     const wakes = (await senders(page, room.id)).slice(-3);
-    expect(wakes).toEqual([expect.stringMatching(/^@analyst/), expect.stringMatching(/^@analyst/), '']);
+    expect(wakes).toEqual([expect.stringMatching(/^analyst/), expect.stringMatching(/^analyst/), '']);
   });
 });

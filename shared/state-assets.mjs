@@ -7,8 +7,8 @@
 // (server/assets.mjs): { count, ids, names, files, bytes, ops }. `names` maps a live asset’s name key to its id;
 // `files` maps each hash the room’s unpruned versions keep to { n, size }, n being how many keep it; `bytes` is the sum
 // of those sizes; `ops` maps an op key to its version. All are records with only their own keys (#352), and each
-// handler reads what it needs before it changes anything, so an event with missing data throws with the state as it
-// was (#609).
+// handler reads and checks what it needs before it changes anything, so an event with missing or wrong-typed data
+// throws with the state as it was (#609, #702).
 
 const map = () => Object.create(null);
 
@@ -61,7 +61,7 @@ function keep(index, sha, size, by) {
  */
 function putAsset(s, d) {
   const { id, room, name, created } = d;
-  if (!id || !room || !name) throw new Error('An asset event names its id, room and name.');
+  if (!id || !room || typeof name !== 'string' || !name) throw new Error('An asset event names its id, its room and its name as text.');
   const was = own(assetsOf(s), id);
   const index = indexOf(s, room);
   if (!was) {
@@ -84,6 +84,7 @@ function addVersion(s, d) {
   const asset = own(assetsOf(s), d.id);
   const { version, prunes = [], released = [] } = d;
   if (!asset || version?.v !== asset.versions.length + 1) throw new Error(`An asset version is the next one of an asset this state has, not “${d.id}”.`);
+  if (!Array.isArray(prunes) || !Array.isArray(released)) throw new Error('An asset version lists the versions it prunes and the hashes it releases.');
   const index = indexOf(s, asset.room);
   const wasLive = isLive(asset);
   asset.versions.push(version);

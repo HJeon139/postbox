@@ -2,10 +2,11 @@
 // message wakes the agents it @-mentions, and only them (#107); one that @-mentions no one goes to the next speaker,
 // and one that names an agent without its @ may not reach it (#134).
 
-import { CHAIN_HINT } from '/shared/limits.mjs';
+import { chainHintAt } from '/shared/limits.mjs';
 import { parseMentions, unaddressed } from '/shared/text.mjs';
 import { mockMarker } from './agent-facts.mjs';
 import { handles } from './agent-markdown.mjs';
+import { countText, roomChainLimit } from './chain-limit.mjs';
 import { S, sessionsOf } from './client.mjs';
 import { h } from './dom.mjs';
 
@@ -31,15 +32,20 @@ export function nextSpeaker(threadId) {
 
 /**
  * How many agent wakes have chained since your last message, once that reaches CHAIN_HINT, with a hint to Stop agents
- * going nowhere (#492): there’s no limit between two agents, and the chain limit is further off. The count is the
- * conversation’s, in its topic and side threads too.
+ * going nowhere (#492): there’s no limit between two agents, and the chain limit is further off. The count and the
+ * limit are the conversation’s, in its topic and side threads too, and in a room set below CHAIN_HINT the hint shows
+ * from its limit, so it never names a count past it (#1035).
  * @param {string} threadId
  */
 function chainLine(threadId) {
   const t = S().threads[threadId];
   const n = (t?.kind === 'topic' || t?.kind === 'side' ? S().threads[t.parentId] : t)?.hops ?? 0;
-  if (n < CHAIN_HINT) return null;
-  return h('span.chain', `Agents have woken each other ${n} times since your last message. If they’re going nowhere, Stop them.`);
+  const { limit } = roomChainLimit(threadId);
+  if (n < chainHintAt(limit)) return null;
+  return h(
+    'span.chain',
+    `Agents have woken each other ${countText(n)} times since your last message, of the room’s limit of ${countText(limit)}. If they’re going nowhere, Stop them.`,
+  );
 }
 
 /** The agent a draft names without its @ (“critic: …”), when the message wouldn’t reach it: the UAT tester’s rule. */
@@ -49,9 +55,9 @@ const named = (threadId, draft) => unaddressed(draft, handles(), { lastSpeaker: 
 export const addressSig = (threadId, draft) => JSON.stringify([parseMentions(draft, handles()), named(threadId, draft)]);
 
 /**
- * The hint’s first part. A draft that @-mentions agents: “Wakes @critic, not @researcher (last speaker)”, since the
+ * The hint’s first part. A draft that @-mentions agents: “Wakes critic, not researcher (last speaker)”, since the
  * agent it would otherwise go to isn’t woken, and reads it at its next turn (#107). Otherwise “Did you mean @critic?”,
- * a button that adds the @, when the draft opens with an agent’s name and “:” or “,”; then “Replying to @researcher”,
+ * a button that adds the @, when the draft opens with an agent’s name and “:” or “,”; then “Replying to researcher”,
  * in a room or a topic or side thread. Then, once agents have chained enough wakes, how many (chainLine, #492).
  * @param {string} threadId @param {string} draft @param {{ room: boolean, addAt: () => void }} opts
  */
@@ -59,12 +65,12 @@ export function addressLine(threadId, draft, { room, addAt }) {
   const next = nextSpeaker(threadId);
   const wakes = parseMentions(draft, handles());
   if (wakes.length) {
-    const not = next && !wakes.includes(next.handle) ? [', not ', h('b', `@${next.handle}`), next.last ? ' (last speaker)' : ''] : [];
+    const not = next && !wakes.includes(next.handle) ? [', not ', h('b', next.handle), next.last ? ' (last speaker)' : ''] : [];
     return [
       h(
         'span.wakes',
         'Wakes ',
-        wakes.flatMap((x, i) => [i ? ', ' : '', h('b', `@${x}`)]),
+        wakes.flatMap((x, i) => [i ? ', ' : '', h('b', x)]),
         ...not,
       ),
       chainLine(threadId),
@@ -73,7 +79,7 @@ export function addressLine(threadId, draft, { room, addAt }) {
   const name = named(threadId, draft);
   return [
     name ? h('button.btn.sm.ghost.did-you-mean', { type: 'button', onclick: addAt }, 'Did you mean ', h('b', `@${name}`), '?') : null,
-    room && next ? h('span', 'Replying to ', h('b', `@${next.handle}`), mockMarker(next.agent), next.last ? ' (last speaker)' : '') : null,
+    room && next ? h('span', 'Replying to ', h('b', next.handle), mockMarker(next.agent), next.last ? ' (last speaker)' : '') : null,
     chainLine(threadId),
   ];
 }
@@ -87,11 +93,21 @@ export function addressLine(threadId, draft, { room, addAt }) {
 export function commandHint(r, threadId) {
   if (r?.missing === 'agent') {
     const next = nextSpeaker(threadId);
-    return h('span', 'No agent ', h('b', `@${r.handle}`), ' here, so Enter sends this', next ? [' to ', h('b', `@${next.handle}`)] : null, ' as a message');
+    return h('span', 'No agent ', h('b', `@${r.handle}`), ' here, so Enter sends this', next ? [' to ', h('b', next.handle)] : null, ' as a message');
   }
   if (!r?.named) return null;
-  const who = h('b', `@${r.named.handle}`);
+  const who = h('b', r.named.handle);
   if (r.missing) return h('span', who, ' has no ', h('span.mono', `/${r.name}`), ' skill or command, so Enter sends this to it as a message');
   const hint = r.hint ? [' ', h('span.mono.dim', r.hint)] : null;
   return h('span', 'Enter runs ', h('span.mono', `/${r.name}`), hint, r.own ? ' for ' : ' as ', who, r.own ? '' : '’s turn');
+}
+
+/**
+ * The composer’s placeholder: a topic thread’s reply, a side thread to join, or whom a message goes to.
+ * @param {{ topic: boolean, side: boolean, members: any[], last: any }} where
+ */
+export function placeholderFor({ topic, side, members, last }) {
+  if (topic) return 'Reply in thread';
+  if (side) return 'Join this side thread…';
+  return `${members.length > 1 ? 'Reply to' : 'Message'} ${(last ?? members[0])?.handle ?? 'an agent'}`;
 }

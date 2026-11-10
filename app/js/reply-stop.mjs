@@ -73,3 +73,14 @@ export function runningNote(it, steps) {
   if (it.status !== 'stopped' && running.some((s) => !s.job)) return ' · running';
   return running.some((s) => s.job) ? ' · background work running' : '';
 }
+
+/**
+ * What Stop says once it’s done, for an agent with background jobs: that its reply had already ended, or that it
+ * stopped with its jobs or without them. @param {any} se @param {any} r  Stop’s answer @param {'stop' | 'keep'} jobs
+ * @param {boolean} one  whether it has one job
+ */
+export function stoppedSaid(se, r, jobs, one) {
+  if (r?.ended) return `${se.handle}’s reply had already ended.`;
+  if (jobs === 'keep') return `Stopped ${se.handle}. ${one ? 'Its background job keeps' : 'Its background jobs keep'} running.`;
+  return `Stopped ${se.handle} and ${one ? 'its background job' : 'its background jobs'}.`;
+}

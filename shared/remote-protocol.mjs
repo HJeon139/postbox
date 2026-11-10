@@ -38,14 +38,16 @@
 //   the laptop; the token holder already runs any argv as the host’s user, so a list here would protect nothing.
 // - `welcome` gives the daemon’s home folder, so Postbox can build absolute paths (the default `~/postbox-work/<handle>`
 //   folder, the shim’s path for `--mcp-config`) without the host’s shell expanding `~`. It also lists every turn folder
-//   it found, with its state, so a restarted Postbox knows what to replay.
+//   it found, with its state, so a restarted Postbox knows what to replay, and `unkilled: true` on an interrupted one,
+//   as its `ended` says it (#872).
 // - Offsets are byte offsets into out.jsonl (or in.jsonl, `log: 'in'`, for rebuilding a Codex turn). A `line` carries
 //   its own offset and `next`, the offset just past its \n; `ack.upTo` and a later `read.from` are a `next`. A last line
 //   with no \n is sent only once the turn has ended, with `next` equal to the file’s size. A line over
 //   REMOTE_LIMITS.streamLineBytes, or whose `line` message would encode to over lineBytes, is sent with `cut: true` and
 //   empty text, so the stream moves on and the adapter can say a line was lost.
 // - `ended` follows a turn’s last line on a `read` that’s following it, once per `read`; `exit` is null for an
-//   interrupted turn (no live runner and no exit.json).
+//   interrupted turn (no live runner and no exit.json), and `unkilled: true` says its runner hung past the silence
+//   ceiling and its process was still there after its SIGKILL, so it isn’t resumed on its own (#872).
 // - `caught-up` follows a `read`’s first pass, once per `read`: it has sent every line the log had when that pass
 //   reached the file’s end, and `size` is the offset past the last of them (the file’s size then, less a last line
 //   still without its \n). A peer rebuilding from both logs (Codex) knows from it when it has seen what was there.
@@ -84,6 +86,7 @@
 import { utf8Bytes } from './remote-protocol-checks.mjs';
 import {
   ATTACHMENTS_DIR,
+  carriesBlockFiles,
   DIR_MODE,
   ERROR_CODES,
   FILE_MODE,
@@ -99,14 +102,17 @@ import {
   STDIN_KINDS,
   TOOL_ROUTES,
   TURN_FILES,
+  toolRoute,
 } from './remote-protocol-constants.mjs';
 import { hostPaths, socketPathFits, validateExitRecord, validateRunnerRecord, validateStartRecord } from './remote-protocol-files.mjs';
 import { createLineReader, createMessageReader } from './remote-protocol-framing.mjs';
 import { CHANNEL_NAMES, encode, encodedBytes, message, messageTypes, parseLine, VALIDATORS, validateMessage } from './remote-protocol-messages.mjs';
+import { lookedText } from './remote-protocol-parts.mjs';
 
 export {
   ATTACHMENTS_DIR,
   CHANNEL_NAMES,
+  carriesBlockFiles,
   createLineReader,
   createMessageReader,
   DIR_MODE,
@@ -118,6 +124,7 @@ export {
   HOST_DEFAULTS,
   HOST_ENFORCED,
   hostPaths,
+  lookedText,
   MESSAGE_FILE,
   message,
   messageTypes,
@@ -131,6 +138,7 @@ export {
   socketPathFits,
   TOOL_ROUTES,
   TURN_FILES,
+  toolRoute,
   utf8Bytes,
   VALIDATORS,
   validateExitRecord,

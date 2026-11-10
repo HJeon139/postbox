@@ -16,6 +16,9 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => app?.stop());
 failOnPageErrors(test);
+// The trace's DOM snapshots, taken around each action, read every element's scroll position, and in Chromium each read
+// inside an item skipped by content-visibility (#712) lays that item out: they'd be counted as the page's layouts.
+test.use({ trace: { mode: 'retain-on-failure', snapshots: false } });
 
 const TEXT = 'The observation is the only outside evidence in the loop, so it keeps the plan grounded. ';
 
@@ -80,7 +83,7 @@ test('#641: an empty composer stays one line when its placeholder wraps', async 
   // A 24-letter handle, the longest a name can be, makes the placeholder wrap in a phone’s width. The empty box keeps one
   // line, as it did when script sized it, rather than growing to fit the placeholder.
   const input = await seeded(page, 'librarian-of-long-names1', 375);
-  await expect(input).toHaveAttribute('placeholder', 'Message @librarian-of-long-names1');
+  await expect(input).toHaveAttribute('placeholder', 'Message librarian-of-long-names1');
   const height = () => input.evaluate((el) => Math.round(el.getBoundingClientRect().height));
   const empty = await height();
   await input.pressSequentially('a');

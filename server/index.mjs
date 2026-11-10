@@ -5,20 +5,18 @@
 //
 // The same as the postbox command (bin/postbox.mjs), which reads the flags and finds the data folder (server/home.mjs).
 
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
-import { extname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gzipSync } from 'node:zlib';
 import { AdapterRegistry } from './adapters/adapter.mjs';
-import { mcpServerList, yourMcpServers } from './adapters/mcp-config.mjs';
 import { MockAdapter } from './adapters/mock.mjs';
 import { PROBES, registerBackends } from './backends.mjs';
 import { INLINE_TYPES } from './blobs.mjs';
 import { buildInfo } from './build-info.mjs';
+import { dismissFailed } from './card-needs.mjs';
 import { Corpus } from './corpus.mjs';
 import { openDataFolder } from './data-folder.mjs';
 import { listFolder } from './folders.mjs';
@@ -33,38 +31,27 @@ import { rearmPersonaDeletes } from './persona-delete.mjs';
 import { createProject, setPushUrl } from './projects.mjs';
 import { hostManagerFor, startHosts, stopHosts } from './remote/serve.mjs';
 import { settleInterrupted } from './restart-sweep.mjs';
+import { SAME_ORIGIN_ONLY, servedReviewFile } from './review-files.mjs';
+import { patchThread } from './room-chain-limit.mjs';
 import { httpError, Runtime } from './runtime.mjs';
-import { mermaidPage, sandboxPage } from './sandbox.mjs';
+import { sandboxRoute } from './sandbox-routes.mjs';
 import { seed, toBoilerplate } from './seed.mjs';
-import { decodePath, mediaPath, servedFile } from './served-files.mjs';
+import { decodePath, file, mediaPath, servedFile } from './served-files.mjs';
 import { sessionRoute } from './session-routes.mjs';
+import { setupRoute } from './setup-routes.mjs';
 import { isLoopback } from './shell.mjs';
 import { newId } from './store.mjs';
 import { watchTelemetry } from './telemetry.mjs';
 import { telemetryRoute } from './telemetry-routes.mjs';
+import { storedName, uploadName } from './upload-name.mjs';
+import { startViewApp } from './view-app/view-app.mjs';
+import { viewOf } from './view-app/view-of.mjs';
 
 /** The routes that stop an agent’s turn, a background job or a `!` command: allowed while the store is closed, as Stop must be. */
 const STOP_ROUTE = /^\/api\/(sessions\/[^/]+\/(stop|jobs\/[^/]+\/stop)|threads\/[^/]+\/shell\/[^/]+\/stop)$/;
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
-const TYPES = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.json': 'application/json',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.gif': 'image/gif',
-  '.webp': 'image/webp',
-  '.avif': 'image/avif',
-  '.woff2': 'font/woff2',
-  '.txt': 'text/plain; charset=utf-8',
-  '.md': 'text/markdown; charset=utf-8',
-};
 const STATIC = {
   '/app/': join(ROOT, 'app'),
   '/shared/': join(ROOT, 'shared'),
@@ -80,6 +67,9 @@ const BUNDLED_MEDIA = join(ROOT, 'app', 'media');
 // archive it unpacked, could put an HTML page or a scripted SVG there, and on Postbox’s origin it would carry the page’s
 // token cookie. It goes without the open CORS header, too, which would let another site’s script read it.
 const MEDIA_HEADERS = { 'content-security-policy': "sandbox; default-src 'none'; style-src 'unsafe-inline'" };
+// A command’s output from the work ledger (#132) is text the page reads, never a page, and it stays on Postbox’s own
+// origin (#820).
+const OUTPUT_HEADERS = { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff', ...SAME_ORIGIN_ONLY };
 
 /**
  * @param {{ port?: number, dataDir?: string, fresh?: boolean, demo?: boolean, quiet?: boolean, claudeHome?: string, listen?: boolean,
@@ -130,6 +120,8 @@ export async function start({
   // The hosts’ links (#120), made on first use (server/remote/serve.mjs).
   const hosts = hostManagerFor(given, () => rt, dataDir, config.build.version);
   const rt = new Runtime({ store, adapters, corpus, config, blobs, narrator, spawnShell, hosts });
+  // view_app’s browser, downloaded only after the person agrees (#95; designs/architecture.md, “Agents see their app”).
+  startViewApp(rt, { dataDir, origin: () => `http://127.0.0.1:${/** @type {any} */ (server.address())?.port ?? port}` });
   // Recording conversations for telemetry, and its 30-day sweep (designs/telemetry-persona.md, R7, R11).
   watchTelemetry(rt);
   const firstReal = ['claude-code', 'agent-sdk', 'kiro-cli', 'antigravity-cli', 'codex'].find((b) => adapters.runsHere(b)) ?? 'mock';
@@ -149,7 +141,7 @@ export async function start({
   // reconnect when this computer wakes (#120).
   const stopWake = startHosts(rt, hosts, wake);
   for (const f of Object.values(store.state.files))
-    if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
+    if (f.inCorpus) corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: storedName(f.name), author: 'Your file', year: null });
   if (Object.values(store.state.files).some((f) => f.inCorpus)) corpus.reindex();
   // Datasets agents loaded (#47) come back from their projects’ .postbox/datasets/.
   await rt.reloadDatasets();
@@ -256,31 +248,10 @@ export async function start({
         return file(res, await servedFile(dir, path.slice(prefix.length)), prefix === '/kit/' ? { 'access-control-allow-origin': '*' } : {}, req);
     }
 
-    // Sandbox frames: agent apps and Mermaid diagrams. Each is its own page with a strict policy and,
-    // because the iframe is sandboxed without allow-same-origin, an opaque origin.
+    // Sandbox frames: agent apps and Mermaid diagrams (server/sandbox-routes.mjs).
+    const sandbox = sandboxRoute(store, origin, `http://${host}`, path, url);
+    if (sandbox) return raw(res, 200, sandbox.html, sandbox.headers);
     let m;
-    if ((m = path.match(/^\/sandbox\/app\/([^/]+)\/(\d+)$/))) {
-      const app = store.state.apps[decodePath(m[1])];
-      const v = app?.versions[+m[2] - 1];
-      if (!v) throw httpError(404, 'That app version doesn’t exist.');
-      const page = sandboxPage({
-        origin,
-        app,
-        version: v,
-        theme: url.searchParams.get('theme') === 'light' ? 'light' : 'dark',
-        check: url.searchParams.has('check'),
-      });
-      return raw(res, 200, page.html, {
-        'content-type': TYPES['.html'],
-        'content-security-policy': page.csp,
-        'cache-control': 'no-store',
-        'x-content-type-options': 'nosniff',
-      });
-    }
-    if (path === '/sandbox/mermaid') {
-      const page = mermaidPage({ origin, theme: url.searchParams.get('theme') === 'light' ? 'light' : 'dark' });
-      return raw(res, 200, page.html, { 'content-type': TYPES['.html'], 'content-security-policy': page.csp, 'cache-control': 'no-store' });
-    }
 
     if (path === '/mcp') {
       if (req.method !== 'POST') return raw(res, 405, 'Use POST for MCP requests.', { allow: 'POST' });
@@ -289,12 +260,9 @@ export async function start({
     }
 
     if (path === '/api/state' && req.method === 'GET') return send(res, 200, pageState({ store, rt, adapters, origin, demo, real, config, corpus }));
-    // The MCP servers a persona would load, with their status (#59): names, scopes and statuses only, never config.
-    if (path === '/api/mcp-servers' && req.method === 'GET') {
-      const { persona, folder, seen } = rt.mcpContext(url.searchParams.get('personaId'), url.searchParams.get('projectId'));
-      const found = await yourMcpServers(folder, { home: claudeHome });
-      return send(res, 200, { folder, servers: mcpServerList({ found, seen, off: persona?.mcpOff ?? [] }) });
-    }
+    // What a persona would load, for its sheet: its MCP servers and skills (server/setup-routes.mjs).
+    const setupDid = await setupRoute(rt, path, req.method, url, claudeHome);
+    if (setupDid) return send(res, setupDid.status, setupDid.body);
     // The permissions panel (#66): one agent’s mode, rules with their sources, folders and tools.
     if (path === '/api/permissions' && req.method === 'GET') {
       const q = (k) => url.searchParams.get(k) || null;
@@ -305,7 +273,7 @@ export async function start({
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/files\/([^/]+)\/diff$/)) && req.method === 'GET')
       return send(res, 200, await rt.workDiff(m[1], m[2], url.searchParams.get('change')));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/work\/commands\/([^/]+)\/output$/)) && req.method === 'GET')
-      return raw(res, 200, await rt.workOutput(m[1], m[2]), { 'content-type': 'text/plain; charset=utf-8', 'x-content-type-options': 'nosniff' });
+      return raw(res, 200, await rt.workOutput(m[1], m[2]), OUTPUT_HEADERS);
     // A data file an app’s version carries (#54), for the app’s postbox.file(name). Text, never run as a page.
     if ((m = path.match(/^\/api\/apps\/([^/]+)\/files\/([^/]+)$/)) && req.method === 'GET')
       return raw(res, 200, await rt.appFile(decodePath(m[1]), decodePath(m[2]), Number(url.searchParams.get('v')) || undefined), {
@@ -313,7 +281,14 @@ export async function start({
         'x-content-type-options': 'nosniff',
         'content-security-policy': "sandbox; default-src 'none'",
         'cache-control': 'no-store',
+        ...SAME_ORIGIN_ONLY,
       });
+    // A review’s image (#780): only a file on that item, by its name and SHA-256; every miss is the same 404.
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/files\/([^/]+)$/)) && req.method === 'GET') {
+      const served = await servedReviewFile(rt, decodePath(m[1]), decodePath(m[2]), decodePath(m[3]), url.searchParams.get('sha') ?? '');
+      if (!served) throw httpError(404, 'That file doesn’t exist.');
+      return raw(res, 200, served.bytes, served.headers);
+    }
     if (path === '/api/stream' && req.method === 'GET') {
       if (Date.now() < offlineUntil) {
         res.writeHead(503, { 'retry-after': '1' });
@@ -326,7 +301,7 @@ export async function start({
 
     if (path === '/api/threads' && req.method === 'POST') return send(res, 201, rt.createThread(body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'DELETE') return send(res, 200, rt.deleteThread(m[1]));
-    if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, rt.renameThread(m[1], body.title));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)$/)) && req.method === 'PATCH') return send(res, 200, patchThread(rt, m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/undo-delete$/)) && req.method === 'POST') {
       rt.undoDeleteThread(m[1]);
       return send(res, 200, { ok: true });
@@ -340,6 +315,7 @@ export async function start({
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/messages$/)) && req.method === 'POST') return send(res, 201, rt.sendMessage(m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/view$/)) && req.method === 'POST') {
       rt.view(m[1]);
+      viewOf(rt).noteWindow(body);
       return send(res, 200, { ok: true });
     }
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/queue\/([^/]+)$/)) && req.method === 'PATCH') {
@@ -359,6 +335,7 @@ export async function start({
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/summarize$/)) && req.method === 'POST') return send(res, 200, rt.summarizeBack(m[1], body));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/diagram$/)) && req.method === 'POST')
       return send(res, 200, rt.diagramCheck(m[1], m[2], body));
+    if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/dismiss$/)) && req.method === 'POST') return send(res, 200, dismissFailed(rt, m[1], m[2]));
     if ((m = path.match(/^\/api\/threads\/([^/]+)\/items\/([^/]+)\/retry$/)) && req.method === 'POST') {
       await rt.retry(m[1], m[2]);
       return send(res, 200, { ok: true });
@@ -412,13 +389,14 @@ export async function start({
         'content-security-policy': "sandbox; default-src 'none'",
         'content-disposition': `${inline ? 'inline' : 'attachment'}; filename="${f.name.replace(/[^\w.-]/g, '_')}"`,
         'cache-control': 'private, max-age=31536000, immutable',
+        ...SAME_ORIGIN_ONLY,
       });
     }
     if (path === '/api/corpus' && req.method === 'POST') {
       const f = store.state.files[body.fileId];
       if (!f) throw httpError(404, 'That file doesn’t exist.');
       if (!/^text\/|\.txt$|\.md$/i.test(f.type + ' ' + f.name)) throw httpError(422, 'Only plain-text and Markdown files can be added to the corpus for now.');
-      corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: f.name, author: 'Your file', year: null });
+      corpus.addBook(f.id, (await blobs.get(f.sha256)).toString('utf8'), { title: storedName(f.name), author: 'Your file', year: null });
       corpus.reindex();
       store.emit('file', { ...f, inCorpus: true });
       return send(res, 200, { ok: true, corpus: corpus.stats() });
@@ -462,10 +440,7 @@ export async function start({
   }
 
   async function upload(req) {
-    const name =
-      decodePath(String(req.headers['x-filename'] ?? 'file'))
-        .replace(/[\\/]/g, '_')
-        .slice(0, 200) || 'file';
+    const name = uploadName(decodePath(String(req.headers['x-filename'] ?? 'file')));
     const chunks = [];
     let size = 0;
     for await (const c of req) {
@@ -503,6 +478,7 @@ export async function start({
     // After the turns, whose Stop goes to their hosts over these links (#120).
     await stopHosts(hosts, stopWake);
     narrator?.stop();
+    await viewOf(rt).close();
     if (server.listening) await new Promise((ok) => server.close(ok));
     await store.close(); // flushes, and releases the data folder’s lock for the next Postbox
   }
@@ -532,44 +508,6 @@ function appHeaders(config) {
     'referrer-policy': 'no-referrer',
     'x-content-type-options': 'nosniff',
   };
-}
-
-// Static files carry an ETag, so a reload revalidates cheaply (304) instead of downloading everything,
-// and text is gzipped when the browser accepts it. Both are cached in memory by path and modification time.
-const staticCache = new Map();
-/** @param {import('node:http').ServerResponse} res @param {string} path @param {Record<string, string>} [headers] @param {import('node:http').IncomingMessage|null} [req] */
-async function file(res, path, headers = {}, req = null) {
-  let st;
-  try {
-    st = await stat(path);
-  } catch {
-    throw httpError(404, 'Not found.');
-  }
-  if (!st.isFile()) throw httpError(404, 'Not found.');
-  let entry = staticCache.get(path);
-  if (!entry || entry.mtime !== st.mtimeMs) {
-    const data = await readFile(path);
-    const type = TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream';
-    const compressible = /^(text\/|application\/json|image\/svg)/.test(type) && data.length > 1024;
-    entry = { mtime: st.mtimeMs, data, type, etag: `"${createHash('sha1').update(data).digest('base64url')}"`, gz: compressible ? gzipSync(data) : null };
-    staticCache.set(path, entry);
-  }
-  const base = {
-    'content-type': entry.type,
-    'cache-control': 'no-cache',
-    etag: entry.etag,
-    'x-content-type-options': 'nosniff',
-    vary: 'accept-encoding',
-    ...headers,
-  };
-  if (req?.headers['if-none-match'] === entry.etag) {
-    res.writeHead(304, base);
-    res.end();
-    return;
-  }
-  const gzip = entry.gz && /\bgzip\b/.test(req?.headers['accept-encoding'] ?? '');
-  res.writeHead(200, { ...base, ...(gzip ? { 'content-encoding': 'gzip' } : {}) });
-  res.end(gzip ? entry.gz : entry.data);
 }
 
 function raw(res, status, body, headers = {}) {

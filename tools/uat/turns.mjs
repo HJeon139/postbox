@@ -74,7 +74,9 @@ export async function settle({ api, d, threadsUnderTest, facts, midTurnChecks, o
       .flatMap((t) => st.threads[t]?.members ?? [])
       .map((id) => st.sessions[id])
       .filter(Boolean);
-    const working = sessions.filter((se) => ['think', 'tool', 'gen'].includes(se.state));
+    // A session with a card open waits on the person, whatever its state says: a parallel call of the same turn puts it
+    // back to `tool` while the card still waits, and the turn can’t end until the tester answers it (the gitpush run).
+    const working = sessions.filter((se) => ['think', 'tool', 'gen'].includes(se.state) && !se.needs);
     const checking = Object.values(st.apps).some((a) => ids.includes(a.threadId) && ['pending', 'fixing'].includes(a.check?.status));
     const thinking = working.filter((se) => se.state !== 'gen').map((se) => se.handle);
     if (thinking.length) facts.samples.push({ busy: thinking, rows: (await d.working()).length });

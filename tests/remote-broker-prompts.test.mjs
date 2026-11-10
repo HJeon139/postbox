@@ -21,7 +21,9 @@ test('a prompt crosses to Postbox, its answer reaches the shim, and again when t
     await s.next('welcome');
     s.send('permission', { id: 'p1', request: REQUEST });
     await until(() => k.sent.length, 'the prompt');
-    assert.deepEqual(k.sent[0], { type: 'prompt', id: 'p1', turn: 't1', request: REQUEST });
+    const { entry } = k.sent[0];
+    assert.ok(typeof entry === 'string' && entry !== 'p1', 'the daemon’s own entry for it');
+    assert.deepEqual(k.sent[0], { type: 'prompt', id: 'p1', turn: 't1', entry, request: REQUEST });
     assert.deepEqual(
       lines(h.p.turn('t1', TURN_FILES.prompts)).map((x) => x.op),
       ['prompt'],
@@ -100,7 +102,7 @@ test('a prompt the shim expired or the harness canceled ends: Postbox hears prom
     const again = makeBroker(h);
     await again.b.load([{ turn: 't1', state: 'running' }]);
     assert.deepEqual(await again.hello(), [
-      { type: 'prompt', id: 'p3', turn: 't1', request: REQUEST },
+      { type: 'prompt', id: 'p3', turn: 't1', entry: k.sent.find((m) => m.type === 'prompt' && m.id === 'p3').entry, request: REQUEST },
       { type: 'prompt-expired', id: 'p2', turn: 't1', at: 222, reason: 'canceled' },
     ]);
     assert.deepEqual(
@@ -161,7 +163,10 @@ async function afterUnrecordedEnd(h, clock, opts, file, wait) {
   const s2 = connectShim(again.b, 't1');
   await s2.next('welcome');
   s2.send('permission', { id: 'p2', request: REQUEST });
-  await sleep(20);
+  // The broker takes p2 back after reading the turn's state, which a loaded machine can take longer than a fixed wait
+  // to do (#843); until then p2 is still only replayed, and the tick would end it too.
+  const p2 = () => again.b.pending.prompts.find((q) => q.id === 'p2');
+  await until(() => p2()?.replayed === false, 'p2’s shim to send it again');
   await clock.tick(wait);
   await until(() => again.sent.length, 'p1’s expiry');
   assert.deepEqual(
@@ -229,6 +234,43 @@ test('an expiry the broker can’t write down still ends the prompt, unanswerabl
     writeFileSync(file, before);
     await k.b.close();
     await afterUnrecordedEnd(h, clock, opts, file, wait);
+  } finally {
+    await h.done();
+  }
+});
+
+test('#353 a prompt’s entry is the daemon’s own: a second shim reusing a waiting id is that prompt, and one in the request changes nothing', async () => {
+  const h = makeHome();
+  try {
+    h.turn('t1');
+    const k = makeBroker(h);
+    const s = connectShim(k.b, 't1');
+    await s.next('welcome');
+    s.send('permission', { id: 'p1', request: REQUEST });
+    await until(() => k.sent.length, 'the prompt');
+    const first = k.sent[0].entry;
+    // A second shim connection, a command the agent ran, asks under the waiting prompt’s id, then names its entry.
+    const other = connectShim(k.b, 't1');
+    await other.next('welcome');
+    other.send('permission', { id: 'p1', request: REQUEST });
+    other.send('permission', { id: 'p2', request: { ...REQUEST, entry: first } });
+    await until(() => k.sent.length === 2, 'the second prompt');
+    await sleep(10);
+    assert.deepEqual(
+      k.sent.map((m) => [m.id, m.entry === first]),
+      [
+        ['p1', true],
+        ['p2', false],
+      ],
+      'the same id is the same prompt; a new one gets an entry of the daemon’s, whatever its request says',
+    );
+    // A restarted daemon reads each entry back from its record.
+    const again = makeBroker(h);
+    await again.b.load([{ turn: 't1', state: 'running' }]);
+    assert.deepEqual(
+      (await again.hello()).map((m) => [m.id, m.entry]),
+      k.sent.map((m) => [m.id, m.entry]),
+    );
   } finally {
     await h.done();
   }

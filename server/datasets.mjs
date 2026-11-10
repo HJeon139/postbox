@@ -8,8 +8,18 @@ import { LIMITS, limitText } from '../shared/limits.mjs';
 import { parseDataset } from './corpus.mjs';
 import { clip } from './helpers.mjs';
 import { readCapped } from './read-capped.mjs';
+import { hidesName } from './upload-name.mjs';
 
 const DATASET_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+/**
+ * Whether a dataset’s title holds a character that would hide or reorder it where the corpus lists it: a control
+ * character, a lone surrogate, or one that shows as nothing or reorders text (#1052). ZWJ, ZWNJ and VS16 pass, as in a
+ * display name (hidesName, server/upload-name.mjs): they join letters in Hindi and Persian, and make 👩‍💻 and ❤️.
+ * @param {string} s
+ */
+const unseenTitle = (s) => Array.from(s).some(hidesName);
+const TITLE_MESSAGE =
+  'A dataset’s title can’t hold control characters, characters that reorder text or show as nothing (such as U+202E or U+200B), or half of a surrogate pair. Call add_dataset again with a title without them.';
 /** Where a project’s datasets live: Postbox’s own folder in the project (#47). @param {string} folder */
 const datasetDir = (folder) => join(folder, '.postbox', 'datasets');
 
@@ -25,6 +35,7 @@ export async function addDataset(rt, sessionId, { id, path, title } = {}) {
   const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId];
   const name = String(id ?? '');
   if (!DATASET_ID.test(name)) return { ok: false, message: 'A dataset id is letters, digits, - and _ (up to 64), such as “scifact-abstracts”.' };
+  if (unseenTitle(String(title ?? ''))) return { ok: false, message: TITLE_MESSAGE };
   const taken = rt.corpus.stats().books.find((b) => b.id === name);
   if (taken && !taken.dataset) return { ok: false, message: `“${name}” is a book in the corpus. Pick another id.` };
   if (!project?.folder)
@@ -87,7 +98,9 @@ export async function reloadDatasets(rt) {
     try {
       if (!folder) throw new Error('its project has no folder now');
       const { text } = await datasetFile(folder, ds.path);
-      rt.corpus.addRecords(ds.id, parseDataset(text), { title: ds.title, author: ds.author });
+      // A title kept before add_dataset checked titles, which the check refuses, is the dataset’s id (#1052).
+      const title = unseenTitle(String(ds.title ?? '')) ? ds.id : ds.title;
+      rt.corpus.addRecords(ds.id, parseDataset(text), { title, author: ds.author });
       n++;
     } catch (e) {
       console.warn(`Couldn’t load the dataset “${ds.id}” again: ${e.message}`);

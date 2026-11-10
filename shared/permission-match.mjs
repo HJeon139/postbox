@@ -82,7 +82,11 @@ function globRegex(pattern) {
   let src = '';
   for (let i = 0; i < pattern.length; i++) {
     const c = pattern[i];
-    if (c === '*' && pattern[i + 1] === '*') {
+    // A backslash makes the next character itself, as in gitignore and Claude Code’s path rules (\[id\] is [id]).
+    if (c === '\\' && i + 1 < pattern.length) {
+      i++;
+      src += pattern[i] === '*' ? '\\*' : escapeRe(pattern[i]); // escapeRe leaves * to the cases below
+    } else if (c === '*' && pattern[i + 1] === '*') {
       i++;
       if (pattern[i + 1] === '/') {
         i++;

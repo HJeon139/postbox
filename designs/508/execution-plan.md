@@ -37,7 +37,7 @@ The “rearchitecture-508” room closed on 2 November 2026. This section record
 
 **Decided in the room, not yet in `design.md`:**
 - **Client-side virtualization first, the server window later.** The page keeps a conversation's data in memory and draws only the items near the view, anchored by B1b's explicit view state. B1a (positions), B2 (the items API) and B3 (the server window) wait until a measurement on a large room shows virtualization isn't enough for PF-1. Virtualization needs no change to A1, since needs-you and open asks still read the whole state in memory. (The person, 2 November.)
-- **#305 is parked** behind the integrator's answer on slice order (#615's comment of 2 November). It cuts the state the page loads (old turns' work and activity), not the number of messages drawn.
+- **#305 is in sprint 4.** It was parked on 3 November until a large-room measurement after virtualization (#615, the integrator’s answer on the slice order); on 6 November the person brought it into sprint 4. It cuts the state the page loads (old turns’ work and activity), not the number of messages drawn. Its design is draft 10 (`designs/305-archive-turns.md`, #615), approved as draft 9 on 7 November.
 - **A1 is split,** as the integrator asked on #608: PR 1 is merged (#630); A1b was to be the ask-only reducer with its first producer; after the integrator’s review of #781 it is one tie rule (`a1b-asks.md`), and the rest of A1, #594’s case included, moves to A2. #633 is merged. A2 to A4 follow it.
 - **The process now in force:** rules 19 to 21 (`room-rules.md`); critic's adversarial pass in a fresh subagent on every pull request; authors read `designs/review-guide.md` (#659); the author's UAT run for changes that touch a conversation surface; the person approves pushes, not reply texts; a rebase with no code change keeps its sign-off.
 
@@ -51,7 +51,7 @@ The “rearchitecture-508” room closed on 2 November 2026. This section record
 | A1b, client-side virtualization, the flaky epoch-token test | their own issues, linked from #508 | gpt, engineer, open |
 | The lag hotfix branch `fix/chunk-snapshot` | abandoned (#560: v1.3.0's fixes cured the lag) | none |
 
-**Decisions still open:** #544 (P0 Kiro), #538 (a supervisor agent), #564 (split and priority), and #305's slice order (the integrator's).
+**Decisions still open:** #544 (P0 Kiro), #538 (a supervisor agent), #564 (split and priority). #305’s switch is decided: on as soon as its step 3 merges (the person, 7 November).
 
 ## Waves
 
@@ -163,7 +163,7 @@ Before any code, **a design document gets critic’s read and one peer’s** (ru
   - a reviewer with blocking findings ends with one mention of the author, and one that approves mentions no one;
   - there is no separate “ready for confirmation”: the author runs the UAT phase itself and attaches the run folder.
 
-  Each is one reply wake. Since #541 (v0.44.7) there’s no pair limit, and a chain waits for the person only past 50 wakes. This replaces room rule 4’s “the person starts each round”.
+  Each is one reply wake. Since #541 (v0.44.7) there’s no pair limit, and a chain waits for the person only past 50 wakes (1,000 by default since #1035, and each room can set its own). This replaces room rule 4’s “the person starts each round”.
 - **Every finding** names file, line and commit (room rule 3). UAT reports name the run folder and its cost.
 - **Every developer works in its own worktree,** and a reviewer checks out the SHAs the author names in its own, never in `postbox-ctx` (room rule 2).
 - **Questions go to the person as choice or form blocks,** not `AskUserQuestion` (#521).

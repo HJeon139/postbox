@@ -141,3 +141,41 @@ test('the laptop’s wake reconnects at once and starts the backoff over', async
   assert.equal(r.state, 'idle');
   assert.deepEqual(spawned.at(-1).kills, ['SIGTERM']);
 });
+
+test('#991 a session that can’t be made, such as over a stored setting ssh-args.mjs refuses, stops for the person with why; retry makes one', async () => {
+  const clock = fakeClock();
+  const daemon = createFakeDaemon();
+  let refuse = true;
+  let opened = 0;
+  const r = createReconnector({
+    open: () => {
+      opened++;
+      if (refuse) throw new TypeError('claudePath can’t contain invisible characters, such as a zero-width space or a bidi control, or a lone surrogate.');
+      return connection({ spawn: fakeSsh({ daemon }).spawn });
+    },
+    needed: () => true,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+  const failures = [];
+  r.on('failure', (f) => failures.push(f));
+  r.need();
+  assert.equal(r.state, 'stopped');
+  assert.equal(failures.length, 1);
+  assert.equal(failures[0].kind, 'settings');
+  assert.equal(failures[0].retry, false);
+  assert.match(failures[0].message, /claudePath can’t contain invisible characters/);
+  assert.match(failures[0].next, /host’s settings/);
+  assert.equal(r.failure, failures[0]);
+  assert.deepEqual(clock.pending(), [], 'no retry of its own');
+  r.need();
+  r.wake();
+  assert.equal(opened, 1, 'need and wake leave it for the person');
+  refuse = false;
+  r.retry();
+  await flush();
+  await flush();
+  assert.equal(r.state, 'open');
+  assert.equal(opened, 2);
+  r.dispose();
+});

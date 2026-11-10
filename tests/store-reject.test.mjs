@@ -1,8 +1,8 @@
 // An event the shared reducer rejects (#609, #610; designs/508/609-reducer-throw.md): the store numbers it, writes it
 // and holds it as rejected, so numbering never skips, no throw closes the store or crashes the writer, and every load
 // gives the same result. The rejected events here are an unknown type, which is a programming error, and a step patch
-// on an activity with no steps, which is a data error; both throw before they change anything (the reducer's contract,
-// tests/state-reject-contract.test.mjs). The held store is tests/stop-reply-fixture.mjs's.
+// on an activity with no steps or a malformed turn.archive (#305), which are data errors; each throws before it changes
+// anything (the reducer's contract, tests/state-reject-contract.test.mjs). The held store is tests/stop-reply-fixture.mjs's.
 
 import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
@@ -174,6 +174,23 @@ test('a data error, a step patch on an activity with no steps, is rejected the s
   assert.equal(again.lost, null);
   assert.equal(again.rejected?.count, 1);
   await again.close();
+});
+
+test('a malformed turn.archive is rejected: listeners hear only the stand-in, and the state keeps the turn’s entries', () => {
+  const store = new Store(null);
+  store.emit('work.add', { convId: 'c', entry: { id: 'w', turnId: 'tu', kind: 'command', command: 'npm test' } });
+  const heard = [];
+  store.subscribe((ev) => heard.push(ev));
+  const malformed = { convId: 'c', turnId: 'tu', sha256: 'a'.repeat(64), summary: { kind: 'turn-archive' }, items: [] };
+  assert.throws(
+    () => store.emit('turn.archive', malformed),
+    (e) => rejected(e) && /A turn\.archive event needs/.test(String(e.cause?.message ?? e.cause ?? e.message)),
+  );
+  assert.deepEqual(heard, [{ seq: 2, type: 'rejected', data: {} }]);
+  assert.deepEqual(
+    store.state.work.c.map((e) => e.id),
+    ['w'],
+  );
 });
 
 test('the page: a rejection tells every stream to resync, its stand-in carries nothing, and a backlog from before it resyncs', async () => {

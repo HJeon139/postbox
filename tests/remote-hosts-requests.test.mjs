@@ -116,7 +116,8 @@ test('hosts: install keeps the token, so the host links and connects; forget clo
     assert.equal(what.destination, 'host.example.com');
     assert.match(what.text, /Install Postbox’s host program on host\.example\.com\?/);
     const r = await s.mgr.install('h1');
-    assert.deepEqual(r, { token: FAKE_TOKEN, installed: true, version: VERSION });
+    // tokenChanged (#464-b3): false, since this computer had no token for the host before.
+    assert.deepEqual(r, { token: FAKE_TOKEN, installed: true, version: VERSION, tokenChanged: false });
     // Installed, it connects for its welcome, though nothing needs it.
     await until(() => s.mgr.status('h1').state === 'connected', 'connected after the install');
     const welcome = await s.mgr.ensureWelcome('h1');

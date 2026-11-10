@@ -15,9 +15,13 @@ import { childrenOf, chromiumMissing, isChromium, running } from './chrome.mjs';
 const skip = await chromiumMissing();
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-// How long the run may take to start Chromium and load its page, and Chromium to exit after it, on a busy computer.
+// How long the run may take to start Chromium and load its page, and Chromium to exit after it, on a busy computer:
+// helpers took longer than 15 s to exit at a load average of 150 (#493). Both cost time only when a test fails.
 const READY_MS = 60_000;
-const GONE_MS = 15_000;
+const GONE_MS = 60_000;
+// How long close() may take with a Chromium that won’t answer: its own 2 s wait, then the kill. It keeps its own bound,
+// well under GONE_MS, so a close() that ignored its wait would still fail.
+const CLOSE_MS = 15_000;
 /** Every run and Chromium process a test saw, to stop any that a failing test left. @type {number[]} */
 const seen = [];
 
@@ -85,7 +89,7 @@ test('a Chromium that won’t close is killed after the wait close() gives it, w
   process.kill(browser, 'SIGSTOP');
   const started = Date.now();
   await page.close(2000);
-  assert.ok(Date.now() - started < GONE_MS, `close() resolved after ${Date.now() - started} ms`);
+  assert.ok(Date.now() - started < CLOSE_MS, `close() resolved after ${Date.now() - started} ms`);
   await gone([browser, ...helpers]);
   assert.deepEqual([browser, ...helpers].filter(running), [], 'Chromium and its helpers are gone');
 });

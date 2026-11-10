@@ -10,10 +10,12 @@
 // - The turn’s own token comes from its folder (TURN_FILES.shimToken, which the daemon writes as the turn starts),
 //   read on each connect, never from arguments or the environment, which other users can read through /proc. The
 //   daemon takes no other token from a shim, and refuses a call from a turn that has ended.
-// - A `queue` tool (TOOL_ROUTES) returns at once, connected or not: the call waits here until the daemon answers it
-//   with `result`, and is sent again, with the same ID, after each reconnect. Its text says it was sent, not what
-//   the laptop would say: the laptop’s text depends on its state (an id already taken, a block it refuses), which the
-//   shim can’t know, so it never claims a block was shown.
+// - A `queue` tool (TOOL_ROUTES) waits for the daemon’s `result`, which comes once the daemon has checked the call and
+//   recorded it, whether Postbox is connected or not (#827). A refusal returns as the tool’s error, in the daemon’s
+//   words. A call taken gets text that says it was sent, not what the laptop would say: the laptop’s text depends on
+//   its state (an id already taken, a block it refuses), which the shim can’t know, so it never claims a block was
+//   shown, and Postbox tells the agent of its own refusal at its next turn. The call is sent again, with the same ID,
+//   after each reconnect, and fails if the daemon hasn’t taken it within TIMINGS.unreachable.
 // - An `ask` or `host` tool waits for the daemon’s `result`, sent again after a reconnect. It fails with an error
 //   that says why if the daemon stays unreachable for TIMINGS.unreachable, or doesn’t answer in TIMINGS.askMax.
 // - permission_prompt sends `permission` and waits for `permission-answer`, however many times the daemon restarts.
@@ -23,8 +25,11 @@
 //   it sends a progress notification every TIMINGS.progress if the call carried a progress token, with a value that
 //   goes up by one each time, as MCP requires (“Progress”). Claude Code’s per-server `timeout` is what lets the call
 //   last; the progress only backs up its idle window (the plan’s C1).
-// - IDs are a counter with a prefix for this process, so a shim the harness restarts within a turn can’t reuse an
-//   ID the daemon still holds for that turn: a prompt’s or call’s identity is (turn, ID).
+// - A call’s ID and a prompt’s ID are random (randomUUID), so a shim the harness restarts within a turn can’t reuse an
+//   ID the daemon still holds for that turn, and another client of the turn can’t guess one: a prompt’s or call’s
+//   identity is (turn, ID). Each hello carries this process’s own random key, which the daemon requires: it sends a
+//   call’s result, and a prompt’s answer, only to the connections of the shim that made it, and only that shim may end
+//   its prompt (#353, #908).
 // - `server/discover` (Kiro CLI tries it first), like any method it doesn’t serve, gets “method not found”, so the
 //   client goes on to `initialize` at once. Batches aren’t accepted: MCP 2025-06-18 removed them.
 // - Shutdown is the client’s: when stdin ends, it closes the daemon link and exits 0 (MCP “Lifecycle”, stdio).

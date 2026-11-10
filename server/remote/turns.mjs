@@ -24,12 +24,17 @@
 //   (capabilities.remote.work), no step running; time while the link is down doesn’t count. A hung turn is stopped
 //   (the daemon sends SIGINT, then SIGKILL), and says so with the last line’s time.
 // - Resuming (D2): after Interrupted, the turn resumes on its own once the host is back, with
-//   ctx.remote.resumeInterrupted; after Sign-in needed, only when the host’s signInCheck passes, and with no check it
-//   waits for the person (resume()). Either way the resumed turn starts with a line saying why the last one stopped.
+//   ctx.remote.resumeInterrupted: not while its agent’s backend isn’t registered here (#909), and never for one whose
+//   process there may still run (resume.unkilled: killed and still there, #872, or left to end on its own after a
+//   restart, #909), which waits for the person. After Sign-in needed, only when the host’s signInCheck passes, and
+//   with no check it waits for the person (resume()). Either way the resumed turn starts with a line saying why the
+//   last one stopped.
 //   Before a new turn on a host with a signInCheck, the check runs, and a failure is a warning, not a refusal.
 // - After a Postbox restart, a turn that was running is attached again (ctx.remote.attach) once the host’s welcome
 //   lists it, and replayed from the start into a fresh mapper; the partial reply from before is marked replaced. One
-//   the welcome doesn’t list is Interrupted.
+//   the welcome doesn’t list is Interrupted, and so is one whose agent moved off the host or whose backend isn’t
+//   registered here (#874, #909). One the welcome lists as running there, or as interrupted with its process unkilled
+//   (#872), is asked to stop, and the person’s Resume on that host waits until the daemon confirms it (#965).
 // - A turn attached again, or resumed, is delivered as a notice, but ends as the turn it continues would have: its
 //   kind, thread, summary target, sender line and request for Retry are kept with it (se.remoteTurn.origin, written
 //   when it starts), and checked when they’re read back (turns-origin.mjs).

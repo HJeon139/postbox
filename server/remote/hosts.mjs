@@ -44,10 +44,11 @@ import { EventEmitter } from 'node:events';
 import { connectNow, disconnected, dropLink, dropRenamed, ensureWelcome, isRenamed, linkOf, need, release } from './hosts-links.mjs';
 import { removeFromHost, signInCheck } from './hosts-requests.mjs';
 import { hostOf, statusOf, tokenOf, update } from './hosts-status.mjs';
-import { installNow, maybeUpdate, setKeepUpdated, supersedeTry, track, WITHDRAWN } from './hosts-update.mjs';
+import { installNow, maybeUpdate, setKeepUpdated, supersedeTry, track } from './hosts-update.mjs';
 import { describeInstall, forgetToken } from './install.mjs';
 import { removeRecord } from './install-record.mjs';
 import { SshFailure } from './ssh.mjs';
+import { WITHDRAWN } from './update-withdrawn.mjs';
 
 export { IDLE_GRACE_MS } from './hosts-links.mjs';
 export { CHECK_WAIT_MS, REMOVE_CONFIRM_MS } from './hosts-requests.mjs';

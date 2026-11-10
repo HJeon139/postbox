@@ -22,8 +22,11 @@
 // - Permissions: a headless run can’t ask, and Kiro treats every ask as a deny (kiro.dev/docs/permissions). So
 //   there is no permission card: a refused call shows as a denied step, and the agent says what happened. Claude
 //   Code rule syntax (the permissions panel, Allow once, a conversation’s rules) doesn’t reach Kiro.
-//   - ask and auto: Kiro’s defaults, plus reads in the agent’s folders. Kiro has no auto classifier.
-//   - acceptEdits: also writes in the agent’s folders.
+//   - ask: Kiro’s defaults, plus reads in the agent’s folders.
+//   - auto: Kiro has no Auto of its own, so, as #416’s option A, what the persona’s Tools allow (shell, web, MCP tools)
+//     and edits in its folders, with nothing judging them (#136). The denies still hold, since Kiro reads deny over allow.
+//   - acceptEdits: also writes in the agent’s folders. In it and auto, writes to each folder’s .kiro and .git are
+//     denied: Kiro starts the MCP servers a .kiro/settings/mcp.json names, and a .git/config can name a program.
 //   - bypass: --trust-all-tools. Deny rules still hold.
 // - Tools: the persona’s unticked Tools and the publishing tools become deny rules (kiroRules).
 // - Setup (#57): a persona that uses your setup runs with your Kiro home (KIRO_HOME, else ~/.kiro), so your steering,
@@ -49,18 +52,15 @@ import { agentFolder } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { KIRO_TOOL_RULES, kiroAgent } from './kiro-cli-agent.mjs';
 import { findKiro, kiroModel, postboxModel } from './kiro-cli-models.mjs';
-import { attachmentPaths, KIRO_REMOTE, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
+import { attachmentPaths, KIRO_CAPABILITIES, kiroRemoteSpawn } from './kiro-cli-remote.mjs';
 import { kiroError, kiroExitError, overSizeLimit, SIZE_LIMIT_START_TEXT } from './kiro-errors.mjs';
 import { listProcesses, stopOnAbort, stopTurn } from './process-group.mjs';
 import { effortOf, modelOf, recorderFor, setupOf } from './setup.mjs';
 
 export { KIRO_PUBLISHING, KIRO_TOOL_RULES, kiroAgent, kiroRules } from './kiro-cli-agent.mjs';
 export { findKiro, kiroModel, kiroModels, kiroVersion, modelIds, postboxModel } from './kiro-cli-models.mjs';
-export { kiroRemoteEnv } from './kiro-cli-remote.mjs';
+export { KIRO_CAPABILITIES, kiroRemoteEnv } from './kiro-cli-remote.mjs';
 export { kiroExitError as exitError } from './kiro-errors.mjs';
-
-/** What this backend can do, for the runtime and the UI (#117), on a remote host too (KIRO_REMOTE). The adapter adds the models it found. */
-export const KIRO_CAPABILITIES = Object.freeze({ resume: true, fork: false, permissions: 'none', tools: 'deny-list', promptTool: false, remote: KIRO_REMOTE });
 
 /**
  * The CLI arguments for one turn. Pure, so the tests can check them.

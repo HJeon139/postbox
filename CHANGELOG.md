@@ -2,6 +2,846 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.56.0 (2026-11-10)
+
+### Features
+
+- **app:** the page records keys and clicks 500 ms slow in its lag log (#821)
+
+### Fixes
+
+- **shell:** the shared stack never pushes out the notice it just added (#444)
+- **shell:** a live Undo isn't pushed out by an ordinary notice in the shared stack (#444)
+- **blocks:** a resolved thread on an answered review leaves it answered (#901)
+- **shell:** put delete notices in the shared stack
+- **apps:** a send's turn of 5 s starts when it starts, so a slow burst keeps its order (#934)
+- **review:** the delimiter row follows the last header row of a diff (#1098)
+- **app:** an open item a press closes across a held refill stays closed (#1010)
+- **apps:** a send with no answer holds back the next only for its turn of 5 s (#934)
+- **apps:** an app's sends go one after another, so they're stored in the order it sent them (#934)
+- **app:** a press on the Work pane or the Threads page holds its repaint until it ends
+- **review:** number a table's delimiter row in Lines and let it take a comment
+
+## 1.55.3 (2026-11-09)
+
+### Fixes
+
+- **blocks:** a year or id ends the label, or starts it with no amount after (#1065 round 4)
+- **blocks:** a singular year or id anywhere names the column, and a silent label defers to the id
+- **blocks:** read a year or id column's name past a note or punctuation after it
+- **blocks:** keep separators in an amount column over a year or an id
+
+## 1.55.2 (2026-11-09)
+
+### Fixes
+
+- **composer:** a send that failed while the stream is open is sent again shortly (#1126)
+
+## 1.55.1 (2026-11-09)
+
+### Fixes
+
+- **remote:** a background task's stop text uses the shared invisible set and a whole-pair cut
+
+## 1.55.0 (2026-11-09)
+
+### Features
+
+- **uat:** a run's report names each call to GitHub its guard refused
+
+### Fixes
+
+- **uat:** a call counts as an attempt only when one segment of its command runs gh or git
+- **uat:** the GitHub line reads gh's and git's own wording, and skips a run with no guard
+- **blocks:** a wide table fades the side that has more columns to scroll to
+
+## 1.54.3 (2026-11-09)
+
+### Fixes
+
+- **backends:** clip the backend name in placement's other refusals too
+- **permissions:** an Authorization scheme only after a space, and marks in the lookbehinds
+- **permissions:** hide a quoted Authorization header's every parameter, and curl -u's password
+- **backends:** strip every hiding character from a backend name in a reason
+- **permissions:** the hooks panel hides more credential shapes
+
+## 1.54.2 (2026-11-09)
+
+### Fixes
+
+- **apps:** an app's send in an archived conversation is refused before it's recorded (#848)
+- **blocks:** an answer in an archived conversation is refused before it's recorded (#848)
+
+## 1.54.1 (2026-11-09)
+
+### Fixes
+
+- **queue:** an API Send now marks a plain Stop’s exit silent too, through one stopForSendNow (#1040)
+- **queue:** Send now during a plain Stop’s exit marks the exit silent, so it goes alone (#1040)
+- **queue:** after a Stop, the first turn takes its thread's queued wakes (#1040)
+- **uat:** a teardown that fails after a failed preflight keeps the preflight's reason
+- **uat:** the guard blanks git's askpass, so a terminal's sign-in gives an agent's git no password
+- **server:** echoedId cuts with partEnd, so an echoed id never ends on half a pair (#895)
+- **server:** cut the ids update_block and retire_app echo in their refusals to 40 characters
+- **files:** keep hidesName for the callers that read one character at a time
+- **files:** keep only England's, Scotland's and Wales's flags whole
+- **files:** stored upload names are cleaned where they're read, and tag flags stay whole
+- **blocks:** the reaction count leaves the accessibility tree, and an unproved rule goes (#1068)
+- **tests:** flag connector tool ids, keep recordings' plugins public, print no path from the scan
+- **work:** a ref line's flag takes its own spaces, so a run of spaces splits one way (#1032)
+- **work:** read git push's ref lines with spaces and tabs only, in linear time (#1032)
+- **uat:** the git-remote preflight probes outside the workspace, and a failed one removes the remote
+- **security:** take every default-ignorable code point and line separator into the invisible set
+- **uat:** the guard empties git's credential helpers, so no run's git hands out the person's
+- **blocks:** an app review draws its app's check result as the transcript does (#857)
+- **blocks:** show a number field's range before any submit
+
+## 1.54.0 (2026-11-09)
+
+### Features
+
+- **tools:** a --strict cited-commits run fails on a token that isn't an object
+- **tools:** check that every commit a note or pr body cites is on github
+
+### Fixes
+
+- **composer:** keep a draft's attachments over a switch, as its text is
+- **permissions:** an edit that changes nothing is a plain allow
+- **blocks:** an all-strings options error's example id starts with a letter or digit (#951)
+- **message-queue:** Send now finds its entry in the pending queue, and refuses one already sent
+- **remote:** #1043's smaller points: probe exit, its clock, sign-in PATH, looked text (#1066)
+- **security:** dataset titles and the picker's names keep ZWJ, ZWNJ and VS16, with hidesName
+- **security:** a host's stored short name is kept unchecked when a change leaves it alone
+- **app:** a reply arriving while you read up counts on the pill without reading layout (#1047)
+- **security:** one surrogate-safe cut for every clip, and names and titles kept before the checks
+- **security:** refuse hidden characters in a short name and dataset title, mark them in the picker
+
+## 1.53.1 (2026-11-09)
+
+### Fixes
+
+- **blocks:** a late answer to an AskUserQuestion tells the agent its question and labels (#521)
+- **blocks:** a question whose wait ends mid-turn lets go of the running turn's need (#521)
+- **blocks:** an AskUserQuestion's block holds its call's id, and a host keeps the card (#521)
+- **blocks:** AskUserQuestion asks as choice blocks, and the answers are its result (#521)
+
+## 1.53.0 (2026-11-09)
+
+### Features
+
+- **adapters:** Always allow on an Antigravity read card makes its folder readable (#338)
+
+### Fixes
+
+- **wake-cards:** the declined-add trigger counts only mentions before the decline was lifted (#789)
+- **queue:** break a clock tie by arrival, so same-millisecond messages keep their order (#733)
+- **permissions:** judge a read by the file it leads to, not the link's folder (#338)
+- **permissions:** offer the folder a read card is about, and read a saved one at once (#338)
+- **queue:** a shutdown’s log counts the first waiting delivery too (#733)
+- **runtime:** stop settles a turn’s steps from the pending session
+- **runtime:** endJob decides on held steps from the pending session
+- **catch-up:** an item brought forward in a topic thread moves seenIn to its stub
+- **runtime:** bringForward moves catch-up markers held behind a commit
+- **wake-cards:** mark a declined add lifted when the person adds that agent
+- **queue:** fold the thread’s queue into the next turn whatever other threads wait
+- **adapters:** start the read card's offer with its folder, so the card reads whole (#338)
+- **adapters:** judge a read card's folder by its true case (#338)
+
+## 1.52.1 (2026-11-09)
+
+### Fixes
+
+- **remote:** mark a turn as waiting for its backend only when nothing else holds it (#965)
+- **uat:** keep every run's agents off the person's real GitHub
+- **personas:** the Undo-during-purge tests wait for the slow forget, not a fixed time (#1039)
+- **sandbox:** let only Postbox’s page frame the app and Mermaid sandbox pages
+- **remote:** the Interrupted hint says a turn waits for its backend, not for its host (#965)
+- **remote:** a host turn's PATH holds the daemon's own Node folder after the login shell's (#672)
+- **remote:** a failed re-probe keeps the first PATH; a host's status carries loginPath (#672)
+- **remote:** run host turns with the login shell's PATH (#672, #474)
+
+## 1.52.0 (2026-11-09)
+
+### Features
+
+- **app:** set a room’s wake chain limit from its menu (#1035)
+- **wakes:** a room’s own wake chain limit, 1,000 by default (#1035)
+- **uat:** items-skipped, the run read a long room with most items skipped, in phase 5 (#712a)
+- **transcript:** a jump makes its target the anchor, kept until you scroll (#712a)
+- **transcript:** the browser skips the layout and paint of transcript items off screen (#712a)
+
+### Fixes
+
+- **backends:** read a local CLI's version as a host's daemon does
+- **blocks:** the reaction row in six elements, each button drawing its icon and count
+- **app:** a skipped item's paint keeps 4 px past its box, for a focus ring at its edge
+- **app:** at 767 px or narrower the transcript keeps the room held below its newest message
+- **files:** an attachment keeps only what Postbox knows of it
+- **files:** an upload’s name keeps VS16, so an emoji in it stays whole
+- **files:** a message’s file attachment takes its upload’s name, type and size
+- **remote:** a host setting that’s now refused stops its link, saying why, instead of exiting
+- **remote:** refuse hidden characters in host paths, and replace them in upload names
+- **app:** an app's item drawn near the view looks again for the frame under a resting pointer
+- **app:** landed() leaves the jump to you once input of yours has come during it
+- **app:** the jump to the end is ended once it lands there
+- **app:** a move up of 24 px or less is the browser's, whether or not the page got shorter
+- **app:** the browser's move up counts only as far as what the page lost, and 24 px more
+- **app:** a move up the browser makes as the page gets shorter keeps the view following
+- **app:** heard() leaves the browser's clamp to the end alone
+- **app:** the view follows the end only when you went down to it
+- **app:** a scroll heard() took in releases a jump's pin, as one that moved does
+- **app:** an item two draws hold is let go when the last one is
+- **app:** the Tab check walks to the next stop, not every focusable on the page
+- **app:** a scroll of yours heard before its event still follows the end
+- **app:** the transcript's own hold doesn't take the view to the end for you
+- **app:** only the main pane skips items off screen
+- **app:** a jump to an item ends the smooth jump to the end
+- **transcript:** only input that can scroll the page stops the smooth jump to the end
+- **transcript:** while following, only the room below the newest message is held (#712a)
+- **transcript:** the smooth jump to the end goes the rest of the way unless you did anything (#712a)
+- **transcript:** a jump to the newest message goes to the end, and the view follows (#712a)
+- **transcript:** a message appended while following is drawn at its real size at once (#712a)
+- **transcript:** the view hears each skipped item's first draw, not only its own size (#712a)
+- **transcript:** the pill stays smooth over skipped items, then goes the rest of the way (#712a)
+- **uat:** rows-skipped, from a probe of the items skipped, sampled before any screenshot (#712a)
+- **transcript:** a jumped-to item stays drawn until painted, so a deep target stays drawn (#712a)
+- **transcript:** an item with a full-screen review or app, or a check frame, isn't skipped (#712a)
+- **uat:** shotItem leaves the jump where it lands, below the top bar, so it stays pinned (#712a)
+- **transcript:** the Work list's jump to an item goes through jumpTo (#712a)
+- **transcript:** a jump measures its target drawn, and centers it below the top bar (#712a)
+- **uat:** the runner's scrolls to an item go through the page's jumpTo (#712a)
+- **transcript:** Alt+arrow between items focuses without scrolling, then jumps (#712a)
+- **transcript:** Show in sources jumps through jumpTo (#712a)
+- **transcript:** the side line's jump to its card goes through jumpTo (#712a)
+- **transcript:** ⌃J and a needs ring jump to the ask through jumpTo (#712a)
+- **transcript:** Go to it and a retired app's link jump through jumpTo (#712a)
+
+## 1.51.1 (2026-11-09)
+
+### Fixes
+
+- **app:** a press on a folded reply's summary builds its list before it opens
+- **app:** build a reply’s folded steps only when its list opens
+
+## 1.51.0 (2026-11-08)
+
+### Features
+
+- **adapters:** Kiro's Auto runs what its persona's Tools allow, with .kiro and .git guarded (#136)
+
+## 1.50.1 (2026-11-08)
+
+### Fixes
+
+- **ledger:** pushes that landed before a command failed, at most 100 (#978)
+- **ledger:** a tag pushed isn't the push's branch (#978)
+- **ledger:** one push entry for each push a command made (#978)
+
+## 1.50.0 (2026-11-08)
+
+### Features
+
+- **adapters:** Antigravity's Auto runs what its persona's tools allow (#416)
+
+### Fixes
+
+- **app:** Antigravity's copy says what runs with no card, and what decides it (#416, #794)
+
+## 1.49.1 (2026-11-08)
+
+### Fixes
+
+- **remote:** ask the host to stop a turn Postbox gives up on, and resume only once it has (#965)
+
+## 1.49.0 (2026-11-08)
+
+### Features
+
+- **adapters:** Always allow on a Codex card saves Codex's own rule (#324)
+
+### Fixes
+
+- **adapters:** start each Codex offer with its rule, so the card's disclosure reads whole (#324)
+- **adapters:** a Codex rule only for a program that reads, none on a host card, real hosts (#324)
+- **adapters:** no Codex offer without Web, a host only in Auto, the name checked once (#324)
+- **adapters:** pipx and poetry are subcommand tools, and dlx runs the next program (#324)
+- **adapters:** a Codex rule runs outside its sandbox, so Always allow offers less and says so (#324)
+- **adapters:** no Always allow for a tool that runs a program its options name (#324)
+- **adapters:** no Always allow for a tool's option as its second word (#324)
+- **adapters:** give a Codex persona in Auto with web.fetch network in its sandbox (#324)
+
+## 1.48.0 (2026-11-08)
+
+### Features
+
+- **uat:** seed the big room’s turns and work, and write its snapshot
+- **uat:** gitpush's Auto case is a scenario of its own, gitpush-auto
+- **uat:** the gitpush scenario, many commits and pushes in Ask me and in Auto
+- **uat:** a throwaway git remote for a run, that nothing real can be reached past
+
+### Fixes
+
+- **uat:** gitpush's push pattern keeps its two kinds of option apart
+- **cards:** tell the agent a request the person's stop withdrew wasn't refused (#853)
+- **server:** read a refused folder of an agent on a host as none, here
+- **server:** keep the folder of an agent on a host as written, so its sheet saves
+- **server:** say where an attached Claude Code session ran when its folder is refused
+- **deps:** skip onnxruntime-node's CUDA download in the repository's .npmrc
+- **server:** let a fixed sheet’s folder reach a session that snapshotted a bad one
+- **security:** say in the hooks panel that a running hook's allow skips ask rules
+- **security:** keep the person's hooks in auto, and turn them off only in ask me and accept edits
+- **remote:** a host card that waits on nothing ends when Postbox stops following its turn (#800)
+- **security:** a turn that loaded hooks doesn't switch live into a mode that turns them off
+- **server:** check agents.json whole before seeding any of its agents
+- **server:** refuse a stored bad folder with a 409 everywhere it’s read
+- **server:** check a persona’s folder as a project’s folder is checked
+- **uat:** a git-remote run reads its own git config, and its preflight runs on runEnv
+- **uat:** gitpush's push pattern takes git's own options, and Always allow's own push doesn't count
+- **uat:** GIT_ALLOW_PROTOCOL=file, a preflight before Postbox starts, and the agent's env file
+- **apps:** a review's new body no longer sweeps apps that aren't on the page yet (#930)
+- **uat:** setUpRemote fails closed, and a git-remote run blanks SSH_AUTH_SOCK
+- **apps:** an app review's old bodies leave the near set, so the page stops looking (#930)
+- **apps:** look under the pointer only near an app, and let go of a view’s apps when it goes (#930)
+- **uat:** a session with a card open isn't working, whatever its state says
+- **uat:** gitpush changes one line of notes.md in Accept edits
+- **uat:** gitpush asks for each commit as its own calls too, and gives the twenty pushes 16 steps
+- **uat:** gitpush asks for each push as its own call, and the runner sets the project's repository
+
+## 1.47.0 (2026-11-08)
+
+### Features
+
+- **tools:** signoff-checks fails a head that lacks CodeQL or any required check
+
+### Fixes
+
+- **tools:** signoff-checks errors on empty rules and lets a queued rerun replace a failure
+- **agents:** a mouse press holds the quick panel's repaint without pointer events
+- **tools:** signoff-checks reads CodeQL as pending while any check run still runs
+- **agents:** a press in the quick panel holds its repaint until it ends
+
+## 1.46.0 (2026-11-08)
+
+### Features
+
+- **apps:** hold back a label cut off by its SVG or a box that doesn't scroll
+- **apps:** check the contrast of SVG labels against the shape under them
+- **apps:** hold back text under 12 px at 1000 x 680, naming the smallest labels
+- **apps:** hold back a figure of boxes holding their names, or a box holding a sentence
+- **apps:** hold back a version whose title or figure is below the first view
+- **apps:** name each element the app check reports, by a selector and its text
+
+### Fixes
+
+- **apps:** judge a label only where it shows, and see shapes that ignore the pointer
+- **apps:** boxes in a few sizes are a diagram's, not a chart's bars
+- **apps:** a contrast or text-size measure that throws reports check-error
+- **apps:** an accent strip down a box's edge doesn't make it a frame
+- **apps:** a chart's marks, a label's backing and a legend's frame aren't text in boxes
+- **apps:** judge an SVG label by what's behind most of it, not a hairline through it
+- **kit:** set kbd at 12 px in apps
+- **apps:** leave an SVG label unjudged when the check can't measure what's behind it
+- **kit:** set the kit's labels, table heads and chart text in apps at 12 px
+
+## 1.45.0 (2026-11-08)
+
+### Features
+
+- **uat:** the arena shows a person no repeats, and every intent keeps to 16 words
+- **apps:** an app’s intent is at most 16 words, and a longer one is flagged
+- **uat:** the side-by-side judge compares two pictures, not a picture and words
+- **uat:** a blind page calibrates the side-by-side judge against the maintainer
+- **uat:** a judge compares a run’s first picture with a words-only answer
+- **uat:** the visual judge compares each app’s takeaway with the agent’s intent
+- **apps:** show_app and update_app take the picture’s one-sentence intent
+
+### Fixes
+
+- **uat:** a run with no first picture isn’t saved as one for good
+- **apps:** every way of showing an app flags a long intent once, with its true length
+- **uat:** no repeats in the arena hold across pages, not only within one
+- **uat:** one failed judge call can’t lose the calibration key
+- **uat:** a calibration page’s saved picks belong to that page
+- **apps:** show_block takes an app block’s intent as show_app does
+- **uat:** the calibration page has a content security policy
+- **guide:** corpus.search’s result names author and year again
+- **uat:** each picture judge reads only what it’s shown, from a folder of its own
+- **uat:** a picture judge that throws can’t stop a run before its report
+- **uat:** the picture judges run after the verifier, so they can’t spend its reserve
+- **uat:** the side-by-side judge sees the finished app, not its check at work
+- **uat:** a recheck keeps a run’s picture choice and its pair of answers
+- **uat:** the words answer starts from the run’s first files, not the agent’s
+
+## 1.44.4 (2026-11-08)
+
+### Fixes
+
+- **remote:** give a shim's calls random ids
+- **remote:** refuse a shim's hello that carries no key
+- **remote:** let only the shim that asked a prompt end it
+- **remote:** send a tool call's result only to the shim that made it
+
+## 1.44.3 (2026-11-08)
+
+### Fixes
+
+- **permissions:** a file rule escapes the characters Claude Code reads as a pattern
+- **permissions:** Always allow on a file saves a rule that names it from the root
+- **app:** a review's Preview hears selections through one page listener, held weakly (#945)
+- **app:** a project's Threads page lets the room you left go (#945)
+- **app:** a review's marked text is let go of a frame after you go to another conversation (#945)
+- **app:** the Hosts panel stops listening and ticking once it's off the page, seen or not (#945)
+- **integration:** onMachines reports the test's own failure, and teardown ends what it started first
+
+## 1.44.2 (2026-11-08)
+
+### Fixes
+
+- **sessions:** viewing a conversation clears the unread its agents counted behind a held commit
+- **sessions:** a turn stopped behind a held commit ends idle once it exits, not stopping
+- **catch-up:** a message a summary gives in full reaches the agent once, the person's too
+- **sessions:** a session write and a new agent's turn start from the session as held writes leave it
+- **threads:** every thread write starts from the thread as held writes leave it
+
+## 1.44.1 (2026-11-08)
+
+### Fixes
+
+- **app:** the places menu reads the projects when it opens (#986)
+- **projects:** refuse the shared invisible characters in a folder; check an asset name's first
+- **app:** rebuild the top bar only when what it shows changes (#986)
+- **assets:** refuse C1, bidi and other hidden characters in a new asset's name
+- **files:** send Cross-Origin-Resource-Policy: same-origin on three stored-byte routes
+- **projects:** refuse an empty or relative folder when creating a project
+- **telemetry:** check a session.patch's own public flag before keeping it
+
+## 1.44.0 (2026-11-08)
+
+### Features
+
+- **permissions:** Always allow on a host card, kept by Postbox and sent in the host turn's settings
+- **permissions:** harness first: in Auto, Postbox adds no ask rules of its own for writes
+
+### Fixes
+
+- **remote:** one field for a host turn that may still run, and its hint says it waits
+- **remote:** only a host turn listed running waits for the person
+- **remote:** a listed host turn whose backend wasn't registered waits for the person
+- **remote:** interrupt a host turn whose backend isn't registered after a restart
+- **permissions:** a host's kept Always allow settles a write, and the card names the asking host
+- **permissions:** the panel keeps "Writes you asked for" in Auto, where it still applies
+
+## 1.43.0 (2026-11-08)
+
+### Features
+
+- **uat:** record whether the agent chose a picture or words
+
+### Fixes
+
+- **uat:** read the picture measure's log through lines()
+- **uat:** a run whose agent never replied is unknown, not words
+
+## 1.42.0 (2026-11-08)
+
+### Features
+
+- **uat:** trigger host-queued-refused, and remotehosts phase 7 (#827)
+
+### Fixes
+
+- **remote:** answer a queued call once its record is written, whatever Postbox did (#827)
+- **remote:** a queued call on a host waits for the daemon, so a refusal reaches its agent (#827)
+- **uat:** resolve a session's working folder before naming its Claude Code transcript (#932)
+
+## 1.41.2 (2026-11-08)
+
+### Fixes
+
+- **apps:** a retired app's item keeps to the message column
+
+## 1.41.1 (2026-11-08)
+
+### Fixes
+
+- **apps:** don't report the ResizeObserver loop warning as an app error
+
+## 1.41.0 (2026-11-08)
+
+### Features
+
+- **apps:** the app check reports a choice shown by toggling .ghost
+- **apps:** add a primary button variant for agent apps
+- **uat:** fault stop-runner, trigger host-hung-killed, and remotehosts phase 6 (#872)
+
+### Fixes
+
+- **agents:** the guide says which control is for a choice and which for an action
+- **uat:** phase 6 hangs the runner while a long reply is written (#872)
+- **uat:** stop-runner also matches a runner under the resolved home folder (#872)
+- **remote:** say a host turn ended unkilled in the daemon's welcome too (#872)
+- **remote:** crossing looks at a silent host runner keep the newer one's verdict (#872)
+- **remote:** keep a host runner's silence in its turn folder across daemon restarts (#872)
+- **remote:** a silent host runner's process check stands for 5 s, but not at the ceiling (#872)
+- **remote:** kill a host runner hung past the silence ceiling before its turn ends (#872)
+
+## 1.40.1 (2026-11-08)
+
+### Fixes
+
+- **apps:** send a script error in the pre-display check back to the agent once
+- **apps:** keep an app that has drawn running after a script error
+- **tests:** a browser spec's Postbox removes its folder when its start or its close fails
+- **tests:** the host UAT and view_app stop tests use tempDir
+- **tests:** the push, runner shot and unhandled rejection process tests use tempDir
+- **tests:** the bench signal and lint process tests use tempDir
+- **tests:** the host integration tests and the host UAT tests use tempDir
+- **tests:** the remote e2e tests and the host manager fixture use tempDir
+- **tests:** the remote attachment and cleanup tests make their folders with tempDir
+- **tests:** the app browser, persona delete and steering tests use tempDir
+- **tests:** the asset tools fixture and wiring tests use tempDir
+- **tests:** the archive, prompt claim and asset privacy tests use tempDir
+- **tests:** the review route, prototype key and runtime route tests use tempDir
+- **tests:** the epoch, server token and served files tests use tempDir
+- **tests:** the wake-owner, persona outage and store gate tests use tempDir
+- **tests:** the store outage tests make their data folders with tempDir
+- **tests:** tempDir removes its folders when the test file's process exits
+
+## 1.40.0 (2026-11-08)
+
+### Features
+
+- **skills:** the visual-explainer draws one step's cause close up (VE9)
+- **skills:** the visual-explainer's first state shows the idea (VE13)
+- **app:** search the conversation from the top bar's button, and jump to a hit (#866)
+
+### Fixes
+
+- **app:** the top bar clips its overflow, so it never widens a phone's page (#866)
+- **skills:** the visual-explainer sizes from a frame that can start 0 wide
+- **thread:** a box that changed size and clamped the view to its end doesn't start following
+- **app:** holders of drawn elements hold them weakly, so leaving a room lets its page go (#866)
+- **check:** fail the gate on what test and test:integration leave in its temp folder
+- **agents:** the quick panel repaints for its session, persona and a reload, not each item
+
+## 1.39.3 (2026-11-07)
+
+### Fixes
+
+- **catalog:** the string-options error's example is a valid option itself (#455)
+- **remote:** a host asks hostUpdateRefusal before sending an update_block, in one place (#854)
+- **remote:** a host's shim refuses an invalid update_block in the call, as Postbox would (#854)
+- **catalog:** string options get one error with an option's shape, and the docs name it (#455)
+- **catalog:** options with no id aren't reported as duplicates of "undefined" (#552)
+- **remote:** a host's daemon queues an outcome or withdraw update_block for Postbox (#854)
+
+## 1.39.2 (2026-11-07)
+
+### Fixes
+
+- **app:** go to a new conversation once the page has it (#926)
+
+## 1.39.1 (2026-11-07)
+
+### Fixes
+
+- **needs:** rank an offered card against the need as nextNeed does
+
+## 1.39.0 (2026-11-07)
+
+### Features
+
+- **adapters:** Antigravity, Kiro and Codex leave out the skills a persona turned off
+- **personas:** choose which skills each agent loads
+- **adapters:** Antigravity, Kiro and Codex agents load the visual-explainer skill too
+- **adapters:** every Claude agent loads Postbox's visual-explainer skill by default
+
+## 1.38.0 (2026-11-07)
+
+### Features
+
+- **server:** view_app shows an agent its app as the person first sees it
+
+### Fixes
+
+- **app:** the view report reads the conversation's width without a document query
+- **server:** view_app starts up in one call, keeping start() under its ceiling
+- **app:** view_app shows a check's note as the person sees it
+- **server:** view_app's pictures stay out of the project's commits
+- **server:** view_app's browser can't hang a call or outlive a stop
+- **server:** view_app asks again a week after Not now
+- **app:** view_app's picture is as wide as the app the person sees
+
+## 1.37.1 (2026-11-07)
+
+### Fixes
+
+- **remote:** a host answers a permission prompt only on the connection that sent it
+- **permissions:** a host’s permission prompt counts only for a call its stream showed
+- **permissions:** a permission prompt counts only for a call the stream showed, once
+
+## 1.37.0 (2026-11-07)
+
+### Features
+
+- **hosts:** show each host as a short badge in the agents list
+- **app:** show agent names without the @
+
+### Fixes
+
+- **uat:** staging matches the runs folder by its real path too
+- **tests:** check's first signal goes to the stage's whole process group
+- **runtime:** don’t let a subagent’s step split an agent’s words
+- **runtime:** start a reply’s words anew after a tool call when others spoke
+- **hosts:** refuse invisible characters in a host’s short name
+- **hosts:** name a removed host’s badge, and drop an IPv6 zone
+- **runtime:** keep a reply’s words in one part while others write
+- **runtime:** place a reply’s words where the agent wrote them
+- **threads:** put reactions left of the thread button
+- **tests:** the remote pipeline's machine folder goes through tempdir
+- **tests:** a second ctrl-c or a sighup ends the gate and removes its run folder
+- **tests:** the gate's temp sweep never makes a hard-linked file outside writable
+- **uat:** a postbox that fails to start is stopped before the error reaches its caller
+- **uat:** the run's postbox sleeps with node's timers, not through the browser module
+- **uat:** staging forgets only its own gone worktrees, never prunes the checkout
+
+## 1.36.4 (2026-11-07)
+
+### Fixes
+
+- **app:** Reply in thread’s own focus timer leaves focus the person moved (#887)
+- **app:** open a topic thread’s panel when its event lands after its address
+
+## 1.36.3 (2026-11-07)
+
+### Fixes
+
+- **app:** the view notes a shrink at once for a removal-only batch and a whole redraw (#903)
+- **app:** the view's change watcher reads the page at most once a frame
+- **lint:** lint-ternary and lint-caps compare with upstream/main when it is newer
+- **hooks:** the hook names lint-ternary, and npm run hooks says what it changes
+- **lint:** lint-ternary lets a pure move of an old nested ternary through
+- **lint:** lint-ternary honors a line-level lint-allow ternary with a reason
+
+## 1.36.2 (2026-11-07)
+
+### Fixes
+
+- **remote:** only a result holds off the stall stop, and each task keeps its own 2 h (#847)
+- **remote:** a listed background task holds off the stall stop for up to 2 h (#847)
+- **permissions:** name PermissionRequest hooks in the panel, with each hook's event
+- **permissions:** hide credentials in hook matchers, as in their commands
+
+## 1.36.1 (2026-11-07)
+
+### Fixes
+
+- **server:** refuse a topic-thread send to an unavailable agent before it joins
+- **server:** refuse requests about an unregistered backend with a 422
+- **server:** fail a turn for an unregistered backend with a reason and Retry
+
+## 1.36.0 (2026-11-07)
+
+### Features
+
+- **state:** apply turn.archive, a public event nothing emits yet
+- **uat:** the failed-reply-dismissed trigger (#883)
+- **threads:** Dismiss a failed reply without running it again (#883)
+
+### Fixes
+
+- **threads:** after Dismiss, focus stays on the control that's left (#883)
+
+## 1.35.6 (2026-11-07)
+
+### Fixes
+
+- **assets:** a rename of a deleted asset is refused, and says to restore it first
+- **state:** the asset handlers check their payload before changing anything
+- **assets:** a rename or delete retried without an op is a repeat, and another agent's is stale
+
+## 1.35.5 (2026-11-07)
+
+### Fixes
+
+- **thread:** a redraw of the conversation keeps focus and the caret where you were typing
+- **blocks:** an update that changes nothing the person sees leaves a waiting block as it was
+
+## 1.35.4 (2026-11-07)
+
+### Fixes
+
+- **tests:** flag a bare account key before "=" only where toml puts a key
+- **tests:** clear the recording person's plugins and own skills from two claude code inits
+- **tests:** the commit scan checks the name of every path a commit adds, copies or renames
+- **tests:** the commit scan masks a private file name in every finding in that file
+- **tests:** the privacy checks print a finding's kind, file and line, never what they found
+- **tests:** the tree test and the commit scan check the names of the files they read
+- **tests:** the privacy check flags bearer tokens, uid fields and bare or toml account fields
+- **tests:** clear recorded inits' connectors and plugins, and flag a connector a person named
+- **tests:** clear the recorded codex resume turn's account metadata and drop its privacy exemption
+
+## 1.35.3 (2026-11-07)
+
+### Fixes
+
+- **blocks:** a chosen option's description reads on its chip in the light theme (#873)
+
+## 1.35.2 (2026-11-07)
+
+### Fixes
+
+- **adapters:** count open_topic among Postbox’s quiet tools
+- **uat:** find a message’s thread link by its class, not by the word “thread”
+- **server:** open_topic says whether it posted its message, and by which id
+- **server:** cap open_topic’s mentions and check each handle’s shape first
+- **server:** import SUMMARY_MODEL from its own module, out of the catch-up cycle
+- **remote:** the follower ends a turn through followerEnds, and the design says so (#738)
+- **remote:** log a silent host runner as not answering as its runner (#738)
+- **remote:** time a silent host runner on a monotonic clock
+- **remote:** keep a silent host runner running while its process lives
+
+## 1.35.1 (2026-11-07)
+
+### Fixes
+
+- **skills:** the visual explainer also loads on questions about how code is put together
+- **skills:** the visual explainer loads on everyday asks about code and data
+
+## 1.35.0 (2026-11-06)
+
+### Features
+
+- **uat:** a scenario can put the person’s own files in the workspace
+
+### Fixes
+
+- **app:** choices are fitted in one pass, so a room's choices cost one layout, not one each
+- **app:** timeOf and dayOf format with one Intl.DateTimeFormat each, made once
+
+## 1.34.1 (2026-11-06)
+
+### Fixes
+
+- **skills:** a chart whose marks carry the values counts as drawn
+- **agents:** a predict-first question sits beside the picture, never in front of it
+
+## 1.34.0 (2026-11-06)
+
+### Features
+
+- **uat:** the customer judges the visual, with `- judge: visual`
+
+### Fixes
+
+- **agents:** a picture that explains draws the things, not labeled boxes
+- **uat:** the customer's relationship check applies where the idea is a dependence
+- **skills:** VE11 applies only where the idea is a relationship between variables
+
+## 1.33.0 (2026-11-06)
+
+### Features
+
+- **security:** the permissions panel names the PreToolUse hooks Postbox turns off (#817)
+
+### Fixes
+
+- **security:** the hook list hides values named like credentials, and bearer tokens (#817)
+- **security:** an Agent SDK turn started in bypass keeps it until it ends or is stopped (#817)
+- **security:** the hook list marks every format character, filler, tag and variation selector (#817)
+- **security:** the hooks panel doesn’t say there are none when no file could be read (#817)
+- **security:** the hooks panel says a host agent’s list is this computer’s settings (#817)
+- **security:** the hook list marks bidi and zero-width characters like control characters (#817)
+- **security:** Postbox’s own settings turn off hooks and mods in every mode but bypass (#817)
+
+## 1.32.1 (2026-11-06)
+
+### Fixes
+
+- **agents:** the researcher's picture is for visual explanations, with predict-first kept
+- **mock:** the demo explainer shows a picture with a control, and practice only on request
+- **skills:** list all twelve content shapes in the visual-explainer run
+- **agents:** an explainer is a picture with a control, and practice only on request
+
+## 1.32.0 (2026-11-06)
+
+### Features
+
+- **uat:** window-paged-back, reading at the big room's first day (#531)
+- **uat:** the view probe, each transcript's view each step before any screenshot (#531)
+- **checks:** view-moved, the view moving or changing mode with no input between (#531)
+
+### Fixes
+
+- **uat:** the runner's last check pass decides the run's unverified rows
+- **checks:** view-moved tallies each transcript's pairs, and says when it compared none
+- **checks:** view-moved reads the runner's moves as inputs, and says when the probe saw nothing
+- **checks:** view-moved spans unsettled samples, keys each finding, says when it checked nothing
+- **uat:** the view probe escapes the last anchor it splices into page code
+- **checks:** view-moved reads each transcript's previous sample from a map
+
+## 1.31.0 (2026-11-06)
+
+### Features
+
+- **review:** Lines draws a review's attached figures as Preview does (#780)
+- **uat:** triggers and a scenario for a review that shows two figures, here and on a host (#780)
+- **review:** show_block's description says a review can carry images from the agent's folder (#780)
+- **remote:** a review block shown from a remote host carries its images (#780)
+- **review:** Preview shows a review's attached images from the item's route (#780)
+- **server:** the item's route serves a review's image, same-origin only (#780)
+- **review:** show_block and update_block keep a review's images with each revision (#780)
+- **review:** read an attached image's type and size from its header bytes (#780)
+- **review:** an image target resolves to a file attached to the block, by exact key (#780)
+
+### Fixes
+
+- **remote:** a host app's data file record keeps only its name, SHA-256 and size (#780)
+- **review:** release a call's staged blobs when a later put fails, and 404 a gone blob (#780)
+- **review:** a call's review images are kept only when an item took them (#828)
+- **test:** #780's swap and blob specs remove their temp folders, as main now checks (#780)
+- **remote:** a host's review call with files waits for Postbox's answer (#780)
+- **review:** a refused review call never removes bytes an ordinary put has in flight (#780)
+- **review:** refuse files on a review's withdraw or outcome (#780)
+- **review:** keep at most 8 replaced files on a review item (#780)
+- **review:** keep a review's images only when its block is shown or updated (#780)
+- **review:** check every file before storing any, and keep the header's filename whole (#780)
+- **server:** agentFile reads the file it opened and checked, not a link swapped in after (#780)
+
+## 1.30.0 (2026-11-06)
+
+### Features
+
+- **tools:** a server bench measures the snapshot stall, /api/state, streaming and startup by size
+- **tools:** the snapshot-stall bench writes through the server's writeSnapshot and seeds --items
+
+### Fixes
+
+- **tools:** the server bench checks its streamed reply landed, and the stall bench its seeded room
+- **tools:** the server bench checks each startup replayed its log, and reports the measured count
+- **tools:** the server bench writes its report whole, and a stop waits for the write
+- **tools:** the snapshot stall bench refuses --items with --snapshot or --data
+- **tools:** the snapshot stall bench refuses a missing or unparsable --snapshot or --data
+- **tools:** the server report no longer says the reducer finds a streamed item by a scan
+- **tools:** the server bench stops on SIGINT or SIGTERM after the size in progress cleans up
+
+## 1.29.0 (2026-11-06)
+
+### Features
+
+- **uat:** the runner turns host1's consent on for the phase that removes Postbox there (#464)
+- **uat:** fault remove-postbox, trigger host-reinstalled, and remotehosts phase 5 (#464)
+- **app:** the host's card says when Postbox was installed there again with a new token (#464)
+- **remote:** an install that made a new token says tokenChanged, recorded reinstalled (#464)
+
+### Fixes
+
+- **uat:** a fault's verb sits beside its noun, and fault() takes the host's runner (#464)
+- **app:** the card says reinstalled for a day after it, not on every connect after (#464)
+- **uat:** remove-postbox refuses a pre-existing install, and says why it failed (#464)
+- **app:** the card says reinstalled only while the host is connected (#464)
+- **remote:** Install… repairs an unreadable token here, and reinstalled needs a new install (#464)
+
 ## 1.28.1 (2026-11-06)
 
 ### Fixes

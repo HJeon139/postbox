@@ -183,12 +183,32 @@ test('the sweep removes a dead run’s read-only folder, and its chmod walk neve
   assert.equal(fs.statSync(target).mode & 0o777, 0o500, 'the link’s target keeps its mode');
 });
 
+test('removing a run folder leaves a file outside it, hard-linked in, as read-only as it was', (t) => {
+  const { root, deps } = scratch(t);
+  const outside = join(root, 'outside-file');
+  fs.writeFileSync(outside, 'x');
+  fs.chmodSync(outside, 0o444);
+  const run = gateRunDir(deps).open();
+  fs.linkSync(outside, join(run.path, 'linked'));
+  run.close();
+  assert.equal(fs.existsSync(run.path), false, 'the run folder is gone');
+  assert.equal(fs.statSync(outside).mode & 0o777, 0o444, 'the file outside keeps its mode (#815)');
+});
+
 test('a run folder is made under the system temp folder, named for the gate’s pid', (t) => {
   const { tmp, deps } = scratch(t);
   const run = gateRunDir(deps).open();
   t.after(() => run.close());
   assert.match(run.path, new RegExp(`^${tmp}/pb-gate-${process.pid}-[A-Za-z0-9]{6}$`));
   assert.equal(fs.lstatSync(run.path).isDirectory(), true);
+});
+
+test('a run folder lists what is in it, for the check’s leftovers (#922)', (t) => {
+  const { deps } = scratch(t);
+  const run = gateRunDir(deps).open();
+  t.after(() => run.close());
+  fs.writeFileSync(join(run.path, 'x'), '');
+  assert.deepEqual(run.list(), ['x']);
 });
 
 test('closing a run removes its folder, a read-only one inside it too', (t) => {

@@ -35,7 +35,8 @@ function threadOf(t) {
         'div.c',
         h(
           'span.meta',
-          h('b', c.author),
+          // An agent’s comment is stored with its handle as @handle; it shows the name alone.
+          h('b', c.author.replace(/^@/, '')),
           i === 0 ? h('span.status-tag', { class: resolved ? 'ok' : 'open' }, resolved ? [icon('check', 'i-sm'), 'Resolved'] : 'Open') : null,
           i === 0 ? quoted(t.quote) : null,
         ),
@@ -148,7 +149,7 @@ export function reviewersOf(item, b) {
   }
   const said = [...by].map(([handle, r]) => {
     const on = r.revision !== revisionOf(item, b) ? `, on v${r.revision}` : '';
-    return `${plural(r.n, 'comment')} from @${handle}${r.verdict ? ` (${VERDICTS[r.verdict] ?? r.verdict})` : ''}${on}`;
+    return `${plural(r.n, 'comment')} from ${handle}${r.verdict ? ` (${VERDICTS[r.verdict] ?? r.verdict})` : ''}${on}`;
   });
   return said.length ? h('span.rv-reviewers', ' · ', said.join(' · ')) : null;
 }

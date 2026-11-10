@@ -31,6 +31,18 @@ export { attachmentPaths } from './remote-turn.mjs';
  */
 export const KIRO_REMOTE = Object.freeze({ stdin: 'file', env: Object.freeze(['KIRO_HOME']), server: 'agent-file', work: 'open-tool-call', signInError: null });
 
+/** What this backend can do, for the runtime and the UI (#117), on a remote host too (KIRO_REMOTE). The adapter adds the models it found. */
+export const KIRO_CAPABILITIES = Object.freeze({
+  resume: true,
+  fork: false,
+  permissions: 'none',
+  tools: 'deny-list',
+  promptTool: false,
+  // Postbox’s skills only, as skill resources in the turn’s agent file (kiro-cli-agent.mjs): the sheet lists those (#207).
+  skills: 'postbox',
+  remote: KIRO_REMOTE,
+});
+
 /**
  * The variables that say which Kiro home a persona runs with on a remote host: none with your setup (the daemon finds
  * the host’s own, from its KIRO_HOME or ~/.kiro, and puts the agent file there), or KIRO_HOME set to one of Postbox’s

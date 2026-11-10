@@ -12,11 +12,13 @@
 
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { switchesLive } from '../../shared/hook-modes.mjs';
 import { withAskRules } from '../permission-rules.mjs';
-import { commandsOf, createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
+import { createStreamMapper, forkPointMissing, resultError, windowFor } from './claude-stream.mjs';
 import { agentFolder, memoryRootFor } from './folder.mjs';
 import { FRESH_START_TEXT, formatMessage, turnGuide } from './guide.mjs';
 import { listProcesses, stopJobUnder, stopTurn } from './process-group.mjs';
+import { listCommands } from './sdk-commands.mjs';
 import { canUseTool as sdkCanUseTool } from './sdk-permission.mjs';
 import { deniedTools, effortOf, fromContext, HOST_SOURCES, ISOLATED_SOURCES, modelOf, postboxServer, settingsFor, setupOf, writeRules } from './setup.mjs';
 
@@ -37,8 +39,9 @@ export async function loadAgentSdk() {
 /**
  * @param {{ persona: any, cwd: string, addDirs?: string[], sessionId: string, resume: boolean, mcpUrl: string, guide: string,
  *           abortController: AbortController, canUseTool?: Function, fork?: any, allowOnce?: string[],
- *           rules?: { allow?: string[], ask?: string[], deny?: string[] }, memoryDir?: string|null }} turn
+ *           rules?: { allow?: string[], ask?: string[], deny?: string[] }, memoryDir?: string|null, plugins?: string[] }} turn
  *   rules: the ones the person made for this conversation only (#66), passed every turn. memoryDir: the persona’s own (#208).
+ *   plugins: plugin folders to load, Postbox’s own (agent-plugin.mjs).
  */
 export function sdkOptions({
   persona,
@@ -54,6 +57,7 @@ export function sdkOptions({
   allowOnce = [],
   rules = {},
   memoryDir = null,
+  plugins = [],
 }) {
   const mode = persona.permissionMode in MODES ? persona.permissionMode : 'auto';
   const setup = setupOf(persona);
@@ -89,6 +93,8 @@ export function sdkOptions({
     thinking: { type: 'adaptive', display: 'summarized' },
     forwardSubagentText: true,
     systemPrompt: { type: 'preset', preset: 'claude_code', append: guide },
+    // Postbox’s skills, beside the person’s own.
+    plugins: plugins.map((path) => ({ type: /** @type {const} */ ('local'), path })),
     permissionMode: MODES[mode],
     ...(mode === 'bypass' ? { allowDangerouslySkipPermissions: true } : { canUseTool }),
     abortController,
@@ -99,14 +105,15 @@ export function sdkOptions({
  * What the person can change while a turn runs: the permission mode (#66), the model and the effort (#67), with the
  * running query’s setPermissionMode, setModel and applyFlagSettings({ effortLevel }). The SDK documents them for
  * streaming input only, and Postbox sends a turn’s prompt as one string, so each change is tried, and resolves to
- * whether it took effect now; if not, it applies from the next turn, since all three are passed with every turn.
- * @param {any} q  the running query
+ * whether it took effect now; if not, it applies from the next turn, since all three are passed with every turn. A turn
+ * that loaded the person’s hooks keeps its mode rather than switch into one that turns them off (switchesLive, #806).
+ * @param {any} q  the running query  @param {string} [started]  the Postbox mode the turn started in
  */
-export function liveControl(q) {
+export function liveControl(q, started = 'auto') {
   return {
     /** @param {string} mode  one of Postbox’s modes */
     async setPermissionMode(mode) {
-      if (typeof q?.setPermissionMode !== 'function' || !Object.hasOwn(MODES, mode)) return false;
+      if (!switchesLive(started, mode) || typeof q?.setPermissionMode !== 'function' || !Object.hasOwn(MODES, mode)) return false;
       try {
         await q.setPermissionMode(MODES[/** @type {keyof typeof MODES} */ (mode)]);
         return true;
@@ -137,28 +144,6 @@ export function liveControl(q) {
   };
 }
 
-/**
- * The SDK’s supportedCommands() (name, description, argumentHint), marked as skills where init says so, and without
- * the ones bound to a terminal. It’s a control request, which the SDK documents for streaming input only: if it
- * fails, init’s list stands.
- * @param {any} q @param {any} init @param {any} ctx
- */
-export function listCommands(q, init, ctx) {
-  if (typeof q?.supportedCommands !== 'function' || !ctx.commands) return;
-  const skills = new Set(
-    commandsOf(init)
-      .filter((c) => c.skill)
-      .map((c) => c.name),
-  );
-  const terminal = new Set(Array.isArray(init?.terminal_slash_commands) ? init.terminal_slash_commands : []);
-  Promise.resolve()
-    .then(() => q.supportedCommands())
-    .then(
-      (list) => Array.isArray(list) && ctx.commands(list.filter((c) => !terminal.has(c?.name)).map((c) => (skills.has(c?.name) ? { ...c, skill: true } : c))),
-      () => {},
-    );
-}
-
 /** Where a forked session starts: the branch point’s checkpoint, or the latest point of the session it forks. */
 export function sdkForkPoint(state) {
   if (state.fork?.sdkSessionId) return state.fork;
@@ -169,7 +154,7 @@ export function sdkForkPoint(state) {
 export class AgentSdkAdapter {
   name = 'agent-sdk';
   // It asks through canUseTool (sdk-permission.mjs), never through permission_prompt (#220).
-  capabilities = { promptTool: false };
+  capabilities = { promptTool: false, images: true, skills: true };
 
   /**
    * @param {{ sdk: { query: Function }, workRoot: string, spawnImpl?: typeof spawn, kill?: import('./process-group.mjs').KillFn,
@@ -262,7 +247,7 @@ export class AgentSdkAdapter {
     try {
       const q = this.sdk.query({ prompt, options });
       // A background job’s own Stop, while the CLI waits for it.
-      ctx.control?.({ ...liveControl(q), stopJob: (job) => stopJobUnder(child, job, procs) });
+      ctx.control?.({ ...liveControl(q, persona.permissionMode ?? 'auto'), stopJob: (job) => stopJobUnder(child, job, procs) });
       for await (const m of q) {
         mapper.push(m);
         // The skills and commands with their descriptions and argument hints (#67), once the session is up; init’s

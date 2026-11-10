@@ -3,7 +3,7 @@
 // (server/remote/host/) serves the same list, so an agent on another host sees exactly these tools and limits.
 // So this file imports only node: modules and shared/, as host code must (#120); tests/host-imports.test.mjs checks it.
 
-import { HOP_LIMIT, limitText as n, PALETTES, READING, SENDING } from './limits.mjs';
+import { HOP_LIMIT, limitText as n, PALETTES, READING, REVIEW_IMAGES, SENDING } from './limits.mjs';
 import { ASSET_TOOLS } from './mcp-tools-assets.mjs';
 import { REACTIONS } from './reactions.mjs';
 import { COMMENT_MAX, MAX_COMMENTS, QUOTE_MAX, VERDICTS } from './review-comments.mjs';
@@ -38,7 +38,7 @@ const REVIEW_BLOCK_DEF = {
 export const TOOL_DEFS = [
   {
     name: 'show_block',
-    description: `Show a catalog block (choice, form, table, progress, card, confirm, image, code, review) in the conversation. Its id names that one block in this conversation: showing an id you already showed is refused, so change a block with update_block, or pick a new id. Returns at once; the person’s answer arrives later as a message. The person can also dismiss a choice, form, confirm or review without answering it: you get the action “dismiss”, and it no longer waits on them. To push, or to create, comment on or edit a PR or issue with gh, show a confirm whose statement holds the exact command in code, as you’ll run it: once the person confirms, that command runs without asking them again. Limits: a fallback up to ${n('fallback')} characters, a prompt or statement up to ${n('prompt')}, choice options 1–${n('choiceOptions')}, form fields up to ${n('formFields')}, select options up to ${n('selectOptions')}, table columns up to ${n('tableColumns')} and rows up to ${n('tableRows')}, progress steps up to ${n('progressSteps')}, a card body up to ${n('cardBody')} characters with up to ${n('cardFacts')} facts and ${n('cardActions')} actions, code and review content up to ${n('longText')} characters.`,
+    description: `Show a catalog block (choice, form, table, progress, card, confirm, image, code, review) in the conversation. Its id names that one block in this conversation: showing an id you already showed is refused, so change a block with update_block, or pick a new id. Returns at once; the person’s answer arrives later as a message. The person can also dismiss a choice, form, confirm or review without answering it: you get the action “dismiss”, and it no longer waits on them. To push, or to create, comment on or edit a PR or issue with gh, show a confirm whose statement holds the exact command in code, as you’ll run it: once the person confirms, that command runs without asking them again. A choice’s or a select’s options are [{ id, label, description? }], never strings. Limits: a fallback up to ${n('fallback')} characters, a prompt or statement up to ${n('prompt')}, choice options 1–${n('choiceOptions')}, form fields up to ${n('formFields')} with labels up to ${n('fieldLabel')} characters, select options up to ${n('selectOptions')}, table columns up to ${n('tableColumns')} and rows up to ${n('tableRows')}, progress steps up to ${n('progressSteps')}, a card body up to ${n('cardBody')} characters with up to ${n('cardFacts')} facts and ${n('cardActions')} actions, code and review content up to ${n('longText')} characters. A Markdown review can carry images from your folder: files [{ name?, path }], where path is where the file is and name, if you give one, is a plain file name with no folder in it, such as chart.png (up to ${n('appFiles')}, PNG, JPEG, GIF or WebP, up to ${REVIEW_IMAGES.reviewImageBytes / 1024 / 1024} MB each and ${REVIEW_IMAGES.reviewImagesBytes / 1024 / 1024} MB together, or about 12 MB together from an agent on a remote host), shown where its content names one by name or path, as ![Chart](figs/chart.png); update_block with files replaces them.`,
     inputSchema: { type: 'object', properties: { block: blockSchema }, required: ['block'] },
   },
   {
@@ -49,12 +49,13 @@ export const TOOL_DEFS = [
   REVIEW_BLOCK_DEF,
   {
     name: 'show_app',
-    description: `Show an app you wrote (HTML with inline script and style, up to ${n('appCode')} characters) in a sandbox with no network. Send its code inline, or as codePath, a file in your folder, which Postbox reads under the same limit; never post to Postbox from a script. files: up to ${n('appFiles')} data files from your folder, [{ name?, path }], up to ${n('appFileBytes')} each; the app reads one as text with await postbox.file(name). Images load from data: URLs, or from <origin>/media/<name> for a file you copy into the folder $POSTBOX_MEDIA names (never into Postbox’s own folder). It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them). One send carries up to ${n('eventBytes')} of JSON; a larger one rejects inside the app, so send ids for many items. Chart colors: ${PALETTES.map((p) => `${p.name} for ${p.for}`).join('; ')}. Returns the saved appId, version and pending browser check; read_message { id: appId } reads the recorded check later.`,
+    description: `Show an app you wrote (HTML with inline script and style, up to ${n('appCode')} characters) in a sandbox with no network. Send its code inline, or as codePath, a file in your folder, which Postbox reads under the same limit; never post to Postbox from a script. files: up to ${n('appFiles')} data files from your folder, [{ name?, path }], up to ${n('appFileBytes')} each; the app reads one as text with await postbox.file(name). Images load from data: URLs, or from <origin>/media/<name> for a file you copy into the folder $POSTBOX_MEDIA names (never into Postbox’s own folder). It can call postbox.query(tool, args) for tools in permissions that you also hold, and postbox.send(action, values, summary) right after the person clicks or presses a key in it (up to 5 a minute; more wait for the person to allow them). One send carries up to ${n('eventBytes')} of JSON; a larger one rejects inside the app, so send ids for many items. Chart colors: ${PALETTES.map((p) => `${p.name} for ${p.for}`).join('; ')}. intent: one sentence of at most ${n('appIntentWords')} words, what the picture should leave the reader with; Postbox keeps it with the version, and a longer one is flagged. Returns the saved appId, version and pending browser check; read_message { id: appId } reads the recorded check later.`,
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string' },
         title: { type: 'string' },
+        intent: { type: 'string', description: `One sentence of at most ${n('appIntentWords')} words: what the picture should leave the reader with.` },
         code: { type: 'string' },
         codePath: { type: 'string', description: 'A file in your folder with the app’s code, in place of code.' },
         files: { type: 'array', items: FILE_SCHEMA, description: 'Data files from your folder that the app reads with postbox.file(name).' },
@@ -71,6 +72,7 @@ export const TOOL_DEFS = [
       type: 'object',
       properties: {
         id: { type: 'string' },
+        intent: { type: 'string', description: 'What this version should leave the reader with, in one sentence; without it, the last one’s.' },
         code: { type: 'string' },
         codePath: { type: 'string', description: 'A file in your folder with the new code, in place of code.' },
         files: { type: 'array', items: FILE_SCHEMA },
@@ -92,6 +94,16 @@ export const TOOL_DEFS = [
         replacedBy: { type: 'string', description: 'The id of the app or block that replaces it.' },
       },
       required: ['id', 'reason'],
+    },
+  },
+  {
+    name: 'view_app',
+    description:
+      'See an app you or another agent showed in this conversation, as the person first sees it: inline in the conversation, at the size of their Postbox window (1000 × 680 when no tab is open), in their theme, at its current version. Returns a picture, and saves it in your folder under .postbox/view. Look before you call an app done: the pre-display check catches what it measures, not a layout that’s simply wrong. The first time, Postbox asks the person whether to download the browser it renders with; end your turn then, and you’ll hear their answer.',
+    inputSchema: {
+      type: 'object',
+      properties: { appId: { type: 'string', description: 'The appId show_app or update_app returned.' } },
+      required: ['appId'],
     },
   },
   {
@@ -141,19 +153,23 @@ export const TOOL_DEFS = [
   },
   {
     name: 'wake_agent',
-    description: `Wake another agent with a message, up to ${count(SENDING.message)} characters. Your message posts where you are, the conversation or a topic thread, and the agent answers there from its one session in this conversation; its reply wakes you only if it @-mentions you. If it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After ${HOP_LIMIT} agent wakes in one chain, the person must allow the next one; while that waits, a further one is held and goes with their answer.`,
+    description: `Wake another agent with a message, up to ${count(SENDING.message)} characters. Your message posts where you are, the conversation or a topic thread, and the agent answers there from its one session in this conversation; its reply wakes you only if it @-mentions you. If it’s busy, it answers when its current turn ends. Waking an agent that isn’t in this conversation asks the person to add it. After the room’s chain limit of agent wakes in one chain (${count(HOP_LIMIT)} unless the person set another), the person must allow the next one; while that waits, a further one is held and goes with their answer.`,
     inputSchema: { type: 'object', properties: { handle: { type: 'string' }, message: { type: 'string' } }, required: ['handle', 'message'] },
   },
   {
     name: 'open_topic',
     // lint-allow thread: read_conversation's parameter of that name.
-    description: `Open a topic thread from a message in your conversation, by its item id, or find the topic thread it has, and optionally post a first message there, up to ${count(SENDING.message)} characters. Each agent in mentions is woken in the topic thread, as wake_agent wakes it, and answers there; one message serves them all. The topic thread opens beside the message in the page. A message in a topic thread can’t start another one: reply in that topic thread. The reply gives the topic thread’s id, which read_conversation { thread } reads.`,
+    description: `Open a topic thread from a message in your conversation, by its item id, or find the topic thread it has, and optionally post a first message there, up to ${count(SENDING.message)} characters. Each agent in mentions is woken in the topic thread, as wake_agent wakes it, and answers there; one message serves them all. The topic thread opens beside the message in the page. A message in a topic thread can’t start another one: reply in that topic thread. The reply gives the topic thread’s id, which read_conversation { thread } reads, and says whether your message was posted, by its id.`,
     inputSchema: {
       type: 'object',
       properties: {
         itemId: { type: 'string', description: 'The id (it_…) of the message the topic thread is about, in your conversation.' },
         message: { type: 'string', description: 'A first message to post in the topic thread, in Markdown.' },
-        mentions: { type: 'array', items: { type: 'string' }, description: 'The handles of agents to wake there with that message.' },
+        mentions: {
+          type: 'array',
+          items: { type: 'string' },
+          description: `The handles of agents to wake there with that message, up to ${SENDING.mentions}.`,
+        },
       },
       required: ['itemId'],
     },
@@ -195,7 +211,8 @@ export const TOOL_DEFS = [
     inputSchema: {
       type: 'object',
       // What Claude Code sends (tests/fixtures/claude-code/permission-prompts.json), and the suggestions and agent id
-      // its prompt types document (PermissionRequestHookInput’s permission_suggestions), should a version send them.
+      // its prompt types document (PermissionRequestHookInput’s permission_suggestions). Postbox takes neither from a
+      // prompt (#353): who asks comes from the stream, and Always allow is Postbox’s own rule for the stream’s call.
       properties: {
         tool_name: { type: 'string' },
         input: { type: 'object' },
@@ -239,7 +256,11 @@ export const TOOL_DEFS = [
       properties: {
         id: { type: 'string', description: 'The dataset’s id: letters, digits, - and _, such as scifact-abstracts.' },
         path: { type: 'string', description: 'The file, relative to the project’s .postbox/datasets/.' },
-        title: { type: 'string' },
+        title: {
+          type: 'string',
+          description:
+            'The title the corpus lists it under; without one, its id. Plain text, cut past 200 characters, with no control characters or ones that reorder text or show as nothing.',
+        },
       },
       required: ['id', 'path'],
     },

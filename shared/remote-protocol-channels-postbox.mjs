@@ -32,6 +32,7 @@ import {
   checkExit,
   checkFiles,
   checkItems,
+  checkLoginPath,
   checkRequest,
   checkSettings,
 } from './remote-protocol-parts.mjs';
@@ -118,7 +119,7 @@ export const POSTBOX_CHANNELS = {
   'daemon-to-postbox': {
     /** The reply to a good hello. */
     welcome: (m) =>
-      fields(m, 'welcome', ['version', 'home', 'node', 'harnesses', 'problems', 'turns']) ||
+      fields(m, 'welcome', ['version', 'home', 'node', 'harnesses', 'problems', 'turns'], ['loginPath']) ||
       int(m.version, 'welcome.version', 1, 1_000_000) ||
       hostPath(m.home, 'welcome.home') ||
       fields(m.node, 'welcome.node', ['path', 'version']) ||
@@ -127,11 +128,12 @@ export const POSTBOX_CHANNELS = {
       list(m.harnesses, 'welcome.harnesses', HARNESSES.length, (h, i) => {
         const at = `welcome.harnesses[${i}]`;
         return (
-          fields(h, at, ['name', 'path', 'version', 'looked']) ||
+          fields(h, at, ['name', 'path', 'version', 'looked'], ['fromLogin']) ||
           oneOf(h.name, `${at}.name`, HARNESSES) ||
           (h.path === null ? '' : hostPath(h.path, `${at}.path`)) ||
           (h.version === null ? '' : str(h.version, `${at}.version`, 200)) ||
-          list(h.looked, `${at}.looked`, REMOTE_LIMITS.looked, (p, j) => hostPath(p, `${at}.looked[${j}]`))
+          list(h.looked, `${at}.looked`, REMOTE_LIMITS.looked, (p, j) => hostPath(p, `${at}.looked[${j}]`)) ||
+          opt(h.fromLogin, (n) => int(n, `${at}.fromLogin`, 0, REMOTE_LIMITS.looked))
         );
       }) ||
       unique(
@@ -143,15 +145,16 @@ export const POSTBOX_CHANNELS = {
         const at = `welcome.problems[${i}]`;
         return fields(p, at, ['code', 'message']) || id(p.code, `${at}.code`) || str(p.message, `${at}.message`, REMOTE_LIMITS.messageChars, 1);
       }) ||
+      opt(m.loginPath, checkLoginPath) ||
       list(m.turns, 'welcome.turns', REMOTE_LIMITS.turns, (t, i) => {
         const at = `welcome.turns[${i}]`;
         return (
-          fields(t, at, ['turn', 'harness', 'state', 'size', 'exit']) ||
+          fields(t, at, ['turn', 'harness', 'state', 'size', 'exit'], ['unkilled']) ||
           turnId(t.turn, `${at}.turn`) ||
           oneOf(t.harness, `${at}.harness`, HARNESSES) ||
           oneOf(t.state, `${at}.state`, TURN_STATES) ||
           int(t.size, `${at}.size`, 0, Number.MAX_SAFE_INTEGER) ||
-          (t.state === 'ended' ? checkExit(t.exit, `${at}.exit`) : t.exit === null ? '' : `${at}.exit must be null unless the turn has ended.`)
+          turnEnd(t, at)
         );
       }),
     /** { turn }: the runner is up and runner.json is written. */
@@ -174,11 +177,13 @@ export const POSTBOX_CHANNELS = {
       turnId(m.turn, 'caught-up.turn') ||
       oneOf(m.log, 'caught-up.log', LOGS) ||
       int(m.size, 'caught-up.size', 0, Number.MAX_SAFE_INTEGER),
-    /** { turn, exit, size }: after the turn’s last line; exit is null for an interrupted turn. */
+    /** { turn, exit, size, unkilled? }: after the turn’s last line; exit is null for an interrupted turn. unkilled: its
+     * runner hung past the silence ceiling and its process was still there after its SIGKILL, so it may still run (#872). */
     ended: (m) =>
-      fields(m, 'ended', ['turn', 'exit', 'size']) ||
+      fields(m, 'ended', ['turn', 'exit', 'size'], ['unkilled']) ||
       turnId(m.turn, 'ended.turn') ||
       (m.exit === null ? '' : checkExit(m.exit, 'ended.exit')) ||
+      opt(m.unkilled, (v) => (typeof v === 'boolean' ? '' : 'ended.unkilled must be true or false.')) ||
       int(m.size, 'ended.size', 0, Number.MAX_SAFE_INTEGER),
     /** { turn, id, name, args }: a shim tool call for Postbox; id is the shim’s, unique only within the turn. */
     tool: (m) =>
@@ -187,9 +192,15 @@ export const POSTBOX_CHANNELS = {
       id(m.id, 'tool.id') ||
       (Object.hasOwn(TOOL_ROUTES, m.name) && TOOL_ROUTES[m.name] !== 'host' ? '' : `tool.name “${clip(m.name)}” isn’t a tool Postbox answers.`) ||
       obj(m.args, 'tool.args'),
-    /** { id, turn, request }: a permission prompt waiting in the shim; id is the shim’s, unique only within the turn. */
+    /** { id, turn, request, entry? }: a permission prompt waiting in the shim; id is the shim’s, unique only within the
+     * turn. entry is the daemon’s own ID for its record of the prompt, which no shim chooses, the same in every resend:
+     * Postbox knows a resend by it (#353). */
     prompt: (m) =>
-      fields(m, 'prompt', ['id', 'turn', 'request']) || id(m.id, 'prompt.id') || turnId(m.turn, 'prompt.turn') || checkRequest(m.request, 'prompt.request'),
+      fields(m, 'prompt', ['id', 'turn', 'request'], ['entry']) ||
+      id(m.id, 'prompt.id') ||
+      turnId(m.turn, 'prompt.turn') ||
+      opt(m.entry, (v) => id(v, 'prompt.entry')) ||
+      checkRequest(m.request, 'prompt.request'),
     /** { id, turn, at, reason? }: nobody can answer it any more: the host denied it at permissionWaitMax (`expired`,
      * the default), or the harness canceled the call (`canceled`). */
     'prompt-expired': (m) =>
@@ -210,3 +221,17 @@ export const POSTBOX_CHANNELS = {
     error: (m) => checkError(m),
   },
 };
+
+/**
+ * A welcome turn’s exit, and its unkilled: as ended’s, its process may still run there, so only an interrupted turn
+ * has one (#872). @param {any} t @param {string} at
+ */
+function turnEnd(t, at) {
+  if (t.unkilled !== undefined) {
+    const bad = bool(t.unkilled, `${at}.unkilled`);
+    if (bad) return bad;
+    if (t.state !== 'interrupted') return `${at}.unkilled is only for an interrupted turn.`;
+  }
+  if (t.state === 'ended') return checkExit(t.exit, `${at}.exit`);
+  return t.exit === null ? '' : `${at}.exit must be null unless the turn has ended.`;
+}

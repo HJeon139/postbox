@@ -10,9 +10,14 @@
 
 import { stat } from 'node:fs/promises';
 import { isAbsolute, resolve } from 'node:path';
+import { asksForWrites, switchesLive } from '../shared/hook-modes.mjs';
+import { workFolder } from './adapters/folder.mjs';
 import { PUBLISHING_TOOLS, setupOf, TOOL_RULES, writeRules } from './adapters/setup.mjs';
 import { httpError } from './helpers.mjs';
+import { changeHostRule, hostRuleList } from './host-rules.mjs';
+import { readHooks } from './permission-hooks.mjs';
 import { BEHAVIORS, changeRule, cleanRule, readRules, settingsFiles } from './permission-rules.mjs';
+import { requestAdapter } from './remote/placement.mjs';
 
 /**
  * What a persona may do without asking. auto (the default): Claude Code’s safety classifier approves routine
@@ -33,8 +38,8 @@ export async function panelTarget(rt, { sessionId = null, personaId = null, proj
   const persona = se ? rt.personaFor(se) : personaId ? rt.persona(personaId) : null;
   if (!persona) throw httpError(404, 'That agent doesn’t exist.');
   const project = rt.s.projects[se ? rt.s.threads[se.threadId]?.projectId : (projectId ?? '')] ?? rt.latestProject(persona.id) ?? null;
-  const adapter = rt.adapters.get(persona.backend);
-  const folder = adapter?.folderFor ? await adapter.folderFor(persona, project) : persona.folder || project?.folder || null;
+  const adapter = requestAdapter(rt, persona.handle, persona);
+  const folder = await workFolder(adapter, persona, project);
   return { se, persona, project, folder };
 }
 /** The project of a persona’s latest conversation, for the panel opened from the persona editor. */
@@ -48,7 +53,8 @@ export function latestProject(rt, personaId) {
 /**
  * Everything the panel shows. Rule lists carry their source: user, project, local (the settings files), conversation
  * (rt session’s), tools (the persona’s unticked Tools, as deny rules), publishing (when it may not publish outside
- * Postbox), writes (ask rules for writes outside Postbox, #112) and postbox (its own tools, always allowed).
+ * Postbox), writes (ask rules for writes outside Postbox, #112) and postbox (its own tools, always allowed). hooks
+ * lists each settings file’s PreToolUse and PermissionRequest hooks, with the same sources (#817, #871).
  * @param {any} rt @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null }} who
  */
 export async function permissionsView(rt, who) {
@@ -57,11 +63,13 @@ export async function permissionsView(rt, who) {
   // The mock shows its rules too (the Tools ones); a real backend that doesn’t read Claude Code’s shows none.
   const readsRules = !real || rt.readsRules(persona.backend);
   const { usesHostSetup, canPublish, allowRequested } = setupOf(persona);
-  const files = real && readsRules && folder ? await readRules({ folder, home: rt.home, configDir: rt.configDir, usesHostSetup }) : [];
+  const read = { folder, home: rt.home, configDir: rt.configDir, usesHostSetup };
+  const files = real && readsRules && folder ? await readRules(read) : [];
+  // The hooks there that can approve a call, which Postbox’s settings turn off in Ask me and Accept edits (#817, #871, #806).
+  const hooks = real && readsRules && folder ? await readHooks(read) : [];
   const has = new Set(persona.tools ?? []);
   const tools = Object.entries(TOOL_RULES).map(([id, rules]) => ({ id, on: has.has(id), rules }));
   const conversation = se ? { allow: [...(se.rules?.allow ?? [])], ask: [...(se.rules?.ask ?? [])], deny: [...(se.rules?.deny ?? [])] } : null;
-  const running = Object.values(rt.s.sessions).filter((x) => x.personaId === persona.id && rt.turns.has(x.id));
   return {
     persona: {
       id: persona.id,
@@ -82,7 +90,10 @@ export async function permissionsView(rt, who) {
     projectFolder: project?.folder ?? null,
     home: rt.home,
     files,
+    hooks,
     conversation,
+    // The allow rules Postbox keeps for this persona on a host (#120, host-rules.mjs), each with its host’s name.
+    hostRules: real && readsRules ? hostRuleList(rt, persona) : [],
     tools,
     publishing: canPublish ? [] : [...PUBLISHING_TOOLS],
     // Writes outside Postbox ask first (#112), except what the persona may publish, for a backend that reads rules.
@@ -91,21 +102,39 @@ export async function permissionsView(rt, who) {
       ...(folder ? [{ path: folder, source: 'folder' }] : []),
       ...(project?.folder && project.folder !== folder ? [{ path: project.folder, source: 'project' }] : []),
       ...(se?.addDirs ?? []).map((path) => ({ path, source: 'conversation' })),
+      // Folders it may only read, from Always allow on a read card (#338, read-folders.mjs).
+      ...(se?.readDirs ?? []).map((path) => ({ path, source: 'read' })),
       ...files.flatMap((f) => f.dirs.map((path) => ({ path, source: f.source }))),
     ],
-    // Agents of rt persona with a turn running now: a mode change reaches them now only where the backend allows.
+    ...runningOf(rt, persona),
+  };
+}
+
+/**
+ * The persona’s agents with a turn running now, by handle: a mode change reaches them now only where the backend
+ * allows. hooksRunning: those whose turn loaded the person’s hooks when it started (#806), which run there until it
+ * ends, whatever the mode is now; a turn that started without them runs without them (#1030).
+ * @param {any} rt @param {any} persona
+ */
+function runningOf(rt, persona) {
+  const running = Object.values(rt.s.sessions).filter((x) => x.personaId === persona.id && rt.turns.has(x.id));
+  return {
     running: running.map((x) => x.handle),
+    hooksRunning: running.filter((x) => !asksForWrites(rt.turns.get(x.id)?.mode)).map((x) => x.handle),
   };
 }
 
 /**
  * Adds or removes a rule. where: local (the default, as the CLI saves “don’t ask again”), user (the person’s own
- * settings, only for a persona that loads them) or conversation (rt session only). The project’s shared
- * settings.json is never written.
+ * settings, only for a persona that loads them), conversation (rt session only) or host (an allow rule Postbox keeps
+ * for the persona on hostId, #120). The project’s shared settings.json is never written.
  * @param {any} rt @param {{ sessionId?: string|null, personaId?: string|null, projectId?: string|null, behavior: string, rule: string,
- *           where?: string, remove?: boolean }} change
+ *           where?: string, remove?: boolean, hostId?: string|null }} change
  */
-export async function changePermissionRule(rt, { sessionId = null, personaId = null, projectId = null, behavior, rule, where = 'local', remove = false }) {
+export async function changePermissionRule(
+  rt,
+  { sessionId = null, personaId = null, projectId = null, behavior, rule, where = 'local', remove = false, hostId = null },
+) {
   if (!BEHAVIORS.includes(/** @type {any} */ (behavior))) throw httpError(422, 'A rule allows, asks or denies.');
   const clean = cleanRule(rule);
   if (!clean)
@@ -118,11 +147,17 @@ export async function changePermissionRule(rt, { sessionId = null, personaId = n
       409,
       'The project’s settings are shared with your team, so Postbox doesn’t change them. Save the rule in rt folder’s local settings, or edit .claude/settings.json yourself.',
     );
-  if (!['local', 'user', 'conversation'].includes(where))
+  if (!['local', 'user', 'conversation', 'host'].includes(where))
     throw httpError(422, 'A rule is saved in rt folder’s local settings, your user settings or rt conversation.');
   const { se, persona, folder } = await rt.panelTarget({ sessionId, personaId, projectId });
   if (persona.backend === 'mock' || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
   const b = /** @type {'allow'|'ask'|'deny'} */ (behavior);
+  // A rule Postbox keeps for the persona on a host (#120): only Always allow makes one, so only an allow rule.
+  if (where === 'host') {
+    if (b !== 'allow') throw httpError(422, 'Postbox keeps only allow rules for a host.');
+    const { changed } = changeHostRule(rt, { personaId: persona.id, hostId: String(hostId ?? ''), rule: clean, remove });
+    return { ok: true, where, changed, applies: 'next turn' };
+  }
   if (where === 'conversation') {
     if (!se) throw httpError(409, 'Open the panel from a conversation to make a rule for it only.');
     const rules = { allow: [...(se.rules?.allow ?? [])], ask: [...(se.rules?.ask ?? [])], deny: [...(se.rules?.deny ?? [])] };
@@ -148,10 +183,12 @@ export async function changePermissionRule(rt, { sessionId = null, personaId = n
 /**
  * Adds a folder rt conversation’s agent may work in, passed as --add-dir / additionalDirectories from its next
  * turn, or removes one. path is absolute, or relative to the project’s folder (from the folder picker).
- * @param {any} rt @param {{ sessionId: string, path: string, remove?: boolean }} change
+ * @param {any} rt @param {{ sessionId: string, path: string, remove?: boolean, read?: boolean }} change
  */
-export async function changePermissionFolder(rt, { sessionId, path, remove = false }) {
+export async function changePermissionFolder(rt, { sessionId, path, remove = false, read = false }) {
   const se = rt.session(sessionId);
+  // A readable folder (#338) is only ever removed here; Always allow on a read card adds it.
+  if (read) return removeReadFolder(rt, se.id, String(path ?? ''));
   const project = rt.s.projects[rt.s.threads[se.threadId]?.projectId];
   const raw = String(path ?? '').trim();
   if (!raw || raw.length > 1000) throw httpError(422, 'Pick a folder, or write its full path.');
@@ -175,21 +212,47 @@ export async function changePermissionFolder(rt, { sessionId, path, remove = fal
  * Sets a persona’s permission mode (intent.md: it reaches running conversations from their next turn). Where the
  * backend can change a running turn (the Agent SDK’s setPermissionMode), its running turns change now too.
  * @param {any} rt @param {string} personaId @param {string} mode
- * @returns {Promise<{ ok: true, now: string[], later: string[] }>}  now: the sessions whose running turn changed at once;
- *   later: those with a turn running that keeps the mode it started with until it ends (#371), which Stop applies now.
- *   Sessions, not handles: a persona has one in each conversation it’s in.
+ * @returns {Promise<{ ok: true, now: string[], later: string[], kept: string[], hooksLater: string[] }>}  now: the
+ *   sessions whose running turn changed at once; later: those with a turn running that keeps its mode until it ends
+ *   (#371), which Stop applies now; kept: those of later that could change but Postbox keeps, since the hooks the
+ *   turn loaded, or Run everything, would outlast the new mode’s card (switchesLive, #806), where the rest are kept
+ *   by a backend that can’t change a running turn; hooksLater: those of now that started without the person’s hooks
+ *   and switched into a mode that runs them, so they run without them until they end (#1030). Sessions, not handles:
+ *   a persona has one in each conversation it’s in.
  */
 export async function setPermissionMode(rt, personaId, mode) {
   const p = rt.persona(personaId);
   if (!p) throw httpError(404, 'That agent doesn’t exist.');
   if (!PERMISSION_MODES.includes(mode)) throw httpError(422, `Permissions are one of ${PERMISSION_MODES.join(', ')}.`);
   if ((p.permissionMode ?? 'auto') !== mode) rt.updatePersona(personaId, { permissionMode: mode });
+  /** @type {string[]} */
   const now = [];
+  /** @type {string[]} */
   const later = [];
+  /** @type {string[]} */
+  const kept = [];
+  /** @type {string[]} */
+  const hooksLater = [];
   for (const se of Object.values(rt.s.sessions)) {
     const turn = se.personaId === personaId ? rt.turns.get(se.id) : null;
-    if (turn?.control?.setPermissionMode && (await turn.control.setPermissionMode(mode))) now.push(se.id);
-    else if (turn) later.push(se.id);
+    if (!turn) continue;
+    const live = typeof turn.control?.setPermissionMode === 'function';
+    if (live && (await turn.control.setPermissionMode(mode))) {
+      now.push(se.id);
+      if (asksForWrites(turn.mode) && !asksForWrites(mode)) hooksLater.push(se.id);
+    } else {
+      later.push(se.id);
+      if (live && !switchesLive(turn.mode, mode)) kept.push(se.id);
+    }
   }
-  return { ok: true, now, later };
+  return { ok: true, now, later, kept, hooksLater };
+}
+
+/**
+ * Takes a readable folder out of the conversation (#338), built from the pending session (#796’s class).
+ * @param {any} rt @param {string} sessionId @param {string} dir
+ */
+function removeReadFolder(rt, sessionId, dir) {
+  rt.updateSession(sessionId, (/** @type {any} */ pending) => ({ readDirs: (pending.readDirs ?? []).filter((/** @type {string} */ d) => d !== dir) }));
+  return { ok: true, path: dir };
 }

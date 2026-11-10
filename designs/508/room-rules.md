@@ -17,7 +17,7 @@ Drop a rule once its cause is fixed, in the same change that fixes it.
 
 ## Rounds
 
-4. **Dropped 30 October 2026:** “the person starts each round”. #541 (v0.44.7) removed the pair limit, and a chain now waits for the person only past 50 wakes, so the hand-offs in `execution-plan.md`, “How the room talks”, apply to every round.
+4. **Dropped 30 October 2026:** “the person starts each round”. #541 (v0.44.7) removed the pair limit, and a chain now waits for the person only past 50 wakes (1,000 by default since #1035, and each room can set its own), so the hand-offs in `execution-plan.md`, “How the room talks”, apply to every round.
 5. **Mention an agent only when it must act next;** acknowledge with a reaction. (#331, #481)
 6. **Work in the main conversation, not in topic threads,** until #511 and #507 merge. (#504 and #507, in code: a thread’s catch-up keeps only its newest 20 items and puts the room first.) Retired with #637, which fixes #507: rule 20 applies.
 7. **No scheduled wakes for coordination** until #498 and the fix for #466 merge. (In code: they can’t be canceled, and one lost to a network drop isn’t retried.)
@@ -61,7 +61,7 @@ These come from one day that showed four gaps: a push with no word to the review
 - **#416:** gemini isn’t in Auto.
 - **#338:** both gemini and gpt read files outside the project.
 - **A resend after a failed turn** can repeat a prompt the backend already saved; Codex and Antigravity logs both show the prompt saved before any output. The design labels every resend, so nothing more is needed here.
-- **Asking the person a question:** use Postbox’s choice and form blocks, not Claude Code’s `AskUserQuestion`, until #521 is fixed.
+- **Asking the person a question:** Postbox’s choice and form blocks, or Claude Code’s `AskUserQuestion`, which Postbox shows as a choice block per question and answers in the same turn (#521). On a host, `AskUserQuestion` still shows a permission card (#1059), so use the blocks there.
 
 ## Where rooms should keep rules like these
 

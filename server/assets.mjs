@@ -7,6 +7,7 @@
 // and counts (server/asset-orphans.mjs).
 
 import { join } from 'node:path';
+import { hasInvisible } from '../shared/invisible.mjs';
 import { ASSETS } from '../shared/limits.mjs';
 import { emptyIndex, nameKey, opKey, own } from '../shared/state-assets.mjs';
 import { bytesAfter, isTextBytes, prunable } from './asset-retention.mjs';
@@ -34,18 +35,30 @@ function refuse(code, message) {
 }
 
 /**
- * What’s wrong with a name, or null: a relative path in the room, NFC, at most ASSETS.nameBytes bytes, `/` the only
- * separator, no empty, `.` or `..` part, and no backslash, NUL or control character.
+ * What a name can’t hold (#704), besides INVISIBLE’s characters (shared/invisible.mjs, which takes in every format
+ * character, the bidi controls and every default-ignorable code point, ZWNJ, ZWJ and VS16 included, #1049): a
+ * backslash; a control character, C0, DEL or C1 (Cc); a line or paragraph separator (Zl, Zp); a lone surrogate (Cs),
+ * which isn’t text; the blank braille pattern (U+2800), which shows as nothing; and the noncharacters U+FFFE and
+ * U+FFFF. Each can hide or reorder what the page shows of a name, or isn’t a character at all.
+ */
+const HIDDEN = /[\\\p{Cc}\p{Zl}\p{Zp}\p{Cs}\u2800\ufffe\uffff]/u;
+
+/** What a name with one of HIDDEN’s or INVISIBLE’s characters hears. */
+const HIDDEN_MESSAGE =
+  'An asset’s name has no backslash, control character, line or paragraph separator, lone surrogate, noncharacter, or character that shows as nothing or reorders the text, such as a zero-width space, a bidi control or a variation selector.';
+
+/**
+ * What’s wrong with a new name, or null: a relative path in the room, NFC, at most ASSETS.nameBytes bytes, `/` the only
+ * separator, no empty, `.` or `..` part, and none of HIDDEN’s or INVISIBLE’s characters, checked first so a name with
+ * one hears that, whatever else is wrong with it. A create and a rename ask; a name already stored is never checked
+ * again, so one an older Postbox took keeps loading.
  * @param {unknown} name
  */
 export function nameProblem(name) {
   if (typeof name !== 'string' || !name) return 'An asset needs a name, such as notes/plan.md.';
   const n = name.normalize('NFC');
+  if (HIDDEN.test(n) || hasInvisible(n)) return HIDDEN_MESSAGE;
   if (Buffer.byteLength(n) > ASSETS.nameBytes) return `An asset’s name is at most ${ASSETS.nameBytes} bytes.`;
-  for (const ch of n) {
-    const c = ch.codePointAt(0) ?? 0;
-    if (c < 0x20 || c === 0x7f || ch === '\\') return 'An asset’s name has no backslash or control characters.';
-  }
   if (n.startsWith('/')) return 'An asset’s name is relative to the room: it doesn’t start with /.';
   if (n.split('/').some((part) => part === '' || part === '.' || part === '..')) return 'An asset’s name has no empty, . or .. part.';
   return null;
@@ -112,6 +125,7 @@ const SAY = {
   noVersion: (id, v) => `Asset ${id} has no version ${v}.`,
   pruned: (v) => `Version ${v} was pruned under the room’s retention rule, so its bytes are gone.`,
   deleted: (id) => `Asset ${id} is deleted already.`,
+  renameDeleted: (id) => `Asset ${id} is deleted, so it can’t be renamed. Bring a version back with restore_asset first, then rename it.`,
   stale: (asset, head, base) =>
     `@${head?.author} wrote version ${asset.head} of ${asset.id} since version ${base ?? 'none'}. Read version ${asset.head}, then write again from it.`,
   budget: (total) =>
@@ -130,17 +144,41 @@ function holderOf(look, name, except = null) {
   return id && id !== except ? look.assets[id] : null;
 }
 
+/** What a delete’s version holds: no bytes. */
+const NO_BYTES = Object.freeze({ sha256: null, size: 0, isText: false });
+
+/**
+ * The version this kind’s bytes come from, at this base: a write’s own, the named version’s for a restore (undefined
+ * if there is none), the base’s for a rename, which keeps them, and none for a delete. The one place that decides it,
+ * for a repeat’s check and a new version alike; a rename or delete request carries no sha256 (#703).
+ */
+function bytesSource(asset, req, base) {
+  if (req.kind === 'restore') return versionAt(asset, req.version);
+  if (req.kind === 'rename') return versionAt(asset, base);
+  return req.kind === 'delete' ? NO_BYTES : req;
+}
+
+/** The hash of the bytes a write’s version would hold, from the base it names. */
+function bytesFrom(asset, req) {
+  return bytesSource(asset, req, req.base ?? null)?.sha256;
+}
+
 /**
  * The version that is already this write, or null (I5): one with the write’s op and author, or a head with the same
- * base, bytes and author (and name, for a rename). Durable, unlike the store’s op ids, which a snapshot drops.
+ * base, bytes and author (and name, for a rename). Durable, unlike the store’s op ids, which a snapshot drops. A
+ * retry sends the same name, so a rename compares it exactly, as stored (NFC): one that changes only its case is a
+ * new rename, not a repeat.
  */
 function repeatOf(look, asset, req) {
   const byOp = req.op && own(look.index.ops, opKey(asset.id, req.author, req.op));
   if (byOp) return versionAt(asset, byOp);
   const head = headOf(asset);
-  const bytes = req.kind === 'restore' ? versionAt(asset, req.version)?.sha256 : req.sha256;
-  if (!head || head.author !== req.author || head.base !== (req.base ?? null) || head.sha256 !== bytes) return null;
-  return req.kind !== 'rename' || nameKey(asset.name) === nameKey(req.name) ? head : null;
+  if (!head) return null;
+  const sameAuthor = head.author === req.author;
+  const sameBase = head.base === (req.base ?? null);
+  const sameBytes = head.sha256 === bytesFrom(asset, req);
+  const sameName = req.kind !== 'rename' || asset.name === req.name.normalize('NFC');
+  return sameAuthor && sameBase && sameBytes && sameName ? head : null;
 }
 
 /**
@@ -171,11 +209,10 @@ function targetOf(look, req) {
   return null;
 }
 
-/** The version a restore or rename takes its bytes from: the one named, or the head; none for a write or delete. */
+/** Where the new version’s bytes come from, at the head (I4 made it the base), checked for a restore. */
 function sourceOf(asset, req) {
-  if (req.kind === 'rename') return headOf(asset);
-  if (req.kind !== 'restore') return null;
-  const from = versionAt(asset, req.version);
+  const from = bytesSource(asset, req, asset?.head ?? null);
+  if (req.kind !== 'restore') return from;
   if (!from) refuse('no-version', SAY.noVersion(asset.id, req.version));
   if (!from.sha256) refuse('no-version', SAY.restoreDelete(req.version));
   if (from.pruned) refuse('pruned', SAY.pruned(req.version));
@@ -184,20 +221,23 @@ function sourceOf(asset, req) {
 
 /** The new version’s bytes: the write’s, an older version’s for a restore, the head’s for a rename, none for a delete. */
 function bytesOf(asset, req) {
-  if (req.kind === 'delete') return { sha256: null, size: 0, type: asset.versions.at(-1)?.type ?? null, isText: false };
-  const from = sourceOf(asset, req) ?? req;
-  return { sha256: from.sha256, size: from.size, type: from.type, isText: from.isText };
+  const from = sourceOf(asset, req);
+  const type = req.kind === 'delete' ? (asset.versions.at(-1)?.type ?? null) : from.type;
+  return { sha256: from.sha256, size: from.size, type, isText: from.isText };
 }
 
 /**
  * Checks an update against its asset, as the commit sees it: the base is the head (I4), the version bound, a delete
- * of a live asset, and a free name when it changes or a deleted asset comes back.
+ * or rename of a live asset (#707: a deleted one comes back by a restore or a write, never a rename), and a free name
+ * when it changes or a deleted asset comes back. Stale comes first: a rename from an old base of an asset another
+ * agent deleted answers who wrote since, as any stale write does.
  */
 function checkUpdate(look, asset, req) {
   const head = headOf(asset);
   if ((req.base ?? null) !== asset.head) refuse('stale', SAY.stale(asset, head, req.base));
   if (asset.versions.length >= ASSETS.assetVersions) refuse('too-many', SAY.tooManyVersions(asset.id));
   if (req.kind === 'delete' && !head?.sha256) refuse('deleted', SAY.deleted(asset.id));
+  if (req.kind === 'rename' && !head?.sha256) refuse('deleted', SAY.renameDeleted(asset.id));
   const name = req.kind === 'rename' ? req.name : asset.name;
   const comesBack = !head?.sha256 && req.kind !== 'delete';
   const holder = req.kind === 'rename' || comesBack ? holderOf(look, name, asset.id) : null;

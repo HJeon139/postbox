@@ -8,6 +8,9 @@ import { startRemote } from './remote-hosts.mjs';
 
 const MIN = 60_000;
 export const HUNG = 'Stopped: no output for 15 min (the last at 14:02)';
+/** Why a turn on a host can’t be followed when its agent’s backend isn’t registered here (#909, unregisteredWhy). */
+export const UNREGISTERED =
+  'Claude Code isn’t available to Postbox on this computer, so it can’t follow the turn on the host. Install it here and restart Postbox, or change this agent’s backend';
 
 // The welcome as the daemon sends it (shared/remote-protocol.mjs), trimmed: Claude Code and Kiro CLI found, Codex not.
 const WELCOME = {
@@ -61,7 +64,8 @@ function places(app, hosts, now) {
   const persona = (handle, hostId, backend = 'claude-code') => rt.createPersona({ handle, backend, ...(hostId ? { remote: { hostId } } : {}) });
   // coder: Sign-in needed; fixer: Interrupted; watcher: hung; stopper: stopping, unconfirmed; builder: lost,
   // Disconnected (working); idler: Disconnected (idle); tester: Reconnecting; scout: a Kiro turn’s notice and a
-  // replayed reply; cx: Codex’s default, which runs only on a host.
+  // replayed reply; porter: Interrupted after a restart with its backend not registered (#909); keeper: Interrupted
+  // with its process there unkilled (#872); cx: Codex’s default, which runs only on a host.
   const room = [
     ['coder', A],
     ['fixer', A],
@@ -71,6 +75,8 @@ function places(app, hosts, now) {
     ['idler', B],
     ['tester', C],
     ['scout', A, 'kiro-cli'],
+    ['porter', A],
+    ['keeper', A],
     ['cx', B, 'codex'],
   ].map(([handle, host, backend]) => persona(handle, host.id, backend));
   const cx = room.at(-1);
@@ -148,6 +154,74 @@ function turnStates(app, { A, B, room }, ses, now) {
 }
 
 /**
+ * The keeper’s turn, Interrupted with its process there unkilled (#872): it isn’t resumed on its own, since a resume
+ * would run beside it. Returns the reply.
+ */
+function unkilledTurn(app, { A, room }, ses, now) {
+  const { rt } = app;
+  rt.updateSession(ses.keeper.id, {
+    remoteTurn: {
+      hostId: A.id,
+      turn: 'ht_tu_unkilled',
+      offset: 0,
+      rtTurn: 'tu_unkilled',
+      threadId: room.id,
+      at: now,
+      state: 'interrupted',
+      resume: { why: 'interrupted', at: now, unkilled: true },
+      autoResumes: 0,
+    },
+  });
+  const unkilled = rt.addItem(room.id, {
+    kind: 'agent',
+    sessionId: ses.keeper.id,
+    personaId: ses.keeper.personaId,
+    handle: 'keeper',
+    turnId: 'tu_unkilled',
+    text: '',
+    status: 'failed',
+    error:
+      'Interrupted on host.example.com: the agent stopped answering, and its process there didn’t stop when it was killed. Check it there, then resume @keeper.',
+    remote: { state: 'interrupted', hostId: A.id },
+  });
+  return { unkilled };
+}
+
+/**
+ * The porter’s turn, Interrupted after a restart because its backend isn’t registered here (#909), and not resumed: the
+ * reply says why Postbox can’t follow it. Returns the reply.
+ */
+function unregisteredTurn(app, { A, room }, ses, now) {
+  const { rt } = app;
+  rt.updateSession(ses.porter.id, {
+    remoteTurn: {
+      hostId: A.id,
+      turn: 'ht_tu_unreg',
+      offset: 0,
+      rtTurn: 'tu_unreg',
+      threadId: room.id,
+      at: now,
+      state: 'interrupted',
+      // The host had no record of it (#965’s P3), so nothing may still run there: only the missing backend holds it.
+      resume: { why: 'interrupted', at: now, noBackend: true },
+      autoResumes: 0,
+    },
+  });
+  const unregistered = rt.addItem(room.id, {
+    kind: 'agent',
+    sessionId: ses.porter.id,
+    personaId: ses.porter.personaId,
+    handle: 'porter',
+    turnId: 'tu_unreg',
+    text: '',
+    status: 'failed',
+    error: `Interrupted on host.example.com: ${UNREGISTERED}.`,
+    remote: { state: 'interrupted', hostId: A.id },
+  });
+  return { unregistered };
+}
+
+/**
  * Permission cards a host ended, each a way it can end, and a `!` command run here while the agent works there.
  * Returns the command.
  */
@@ -198,6 +272,6 @@ export async function startRemoteTurns(name) {
   const at = places(app, hosts, now);
   const ses = Object.fromEntries(app.rt.sessionsIn(at.room.id).map((se) => [se.handle, se]));
   const [runner] = app.rt.sessionsIn(at.dm.id);
-  const items = { ...turnStates(app, at, ses, now), ...cards(app, at, ses, now) };
+  const items = { ...turnStates(app, at, ses, now), ...unregisteredTurn(app, at, ses, now), ...unkilledTurn(app, at, ses, now), ...cards(app, at, ses, now) };
   return { app, hosts, delivered, ...at, ses, runner, items };
 }

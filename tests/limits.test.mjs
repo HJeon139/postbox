@@ -29,18 +29,25 @@ test('every limit in shared/limits.mjs is written into the guide from the module
 
 test('the MCP tool descriptions name the limits each tool needs', () => {
   const said = (tool) => TOOL_DEFS.find((t) => t.name === tool)?.description ?? '';
-  const apps = ['eventBytes', 'appCode', 'appFiles', 'appFileBytes'];
+  const apps = ['eventBytes', 'appCode', 'appFiles', 'appFileBytes', 'appIntentWords'];
   const blocks = names.filter((n) => ![...apps, 'outcome', 'datasetBytes'].includes(n));
   for (const name of blocks) assert.ok(said('show_block').includes(limitText(name)), `show_block doesn’t name ${name}`);
   for (const name of apps) assert.ok(said('show_app').includes(limitText(name)), `show_app doesn’t name ${name}`);
   assert.ok(said('add_dataset').includes(limitText('datasetBytes')), 'add_dataset doesn’t name datasetBytes');
   assert.match(said('update_block'), new RegExp(`outcome .*up to ${limitText('outcome')} characters`));
   assert.match(said('show_app'), /64 KB/);
+  // An option is an object (#455): agents guessed strings, and { value, label } (#552).
+  assert.match(said('show_block'), /options are \[\{ id, label, description\? \}\]/);
   const count = (k) => `${k.toLocaleString('en-US')} characters`;
   for (const tool of ['read_conversation', 'read_message']) assert.ok(said(tool).includes(count(READING.item)), `${tool} doesn’t name READING.item`);
   assert.ok(said('read_message').includes(count(READING.part)), 'read_message doesn’t name READING.part');
   for (const tool of ['wake_agent', 'bring_to_conversation'])
     assert.ok(said(tool).includes(`up to ${count(SENDING.message)}`), `${tool} doesn’t name SENDING.message`);
+  assert.match(
+    JSON.stringify(TOOL_DEFS.find((t) => t.name === 'open_topic')),
+    new RegExp(`up to ${SENDING.mentions}\\b`),
+    'open_topic doesn’t name SENDING.mentions',
+  );
 });
 
 test('the catalog enforces the limits from the module', () => {
@@ -49,6 +56,7 @@ test('the catalog enforces the limits from the module', () => {
   const cases = [
     ['choiceOptions', (k) => ({ ...base, type: 'choice', options: opts(k) })],
     ['formFields', (k) => ({ ...base, type: 'form', fields: opts(k).map((o) => ({ ...o, kind: 'text' })) })],
+    ['fieldLabel', (k) => ({ ...base, type: 'form', fields: [{ id: 'f', label: 'x'.repeat(k), kind: 'text' }] })],
     ['tableRows', (k) => ({ ...base, type: 'table', columns: [{ id: 'c', label: 'C' }], rows: opts(k).map((o) => ({ id: o.id, cells: { c: 1 } })) })],
     ['cardActions', (k) => ({ ...base, type: 'card', actions: opts(k) })],
     ['progressSteps', (k) => ({ ...base, type: 'progress', steps: opts(k).map((o) => ({ ...o, state: 'pending' })) })],
@@ -89,7 +97,13 @@ function runKit(init) {
 }
 
 test('postbox.send over the limit rejects inside the app, names the limit, and posts nothing', async () => {
-  const page = sandboxPage({ origin: 'http://127.0.0.1:1', app: { id: 'ap', title: 'Explorer' }, version: { v: 1, code: '' }, theme: 'dark' });
+  const page = sandboxPage({
+    origin: 'http://127.0.0.1:1',
+    ancestor: 'http://127.0.0.1:1',
+    app: { id: 'ap', title: 'Explorer' },
+    version: { v: 1, code: '' },
+    theme: 'dark',
+  });
   const attr = page.html.match(/data-init="([^"]*)"/)?.[1] ?? '';
   const init = JSON.parse(attr.replaceAll('&quot;', '"').replaceAll('&amp;', '&'));
   assert.equal(init.limits.eventBytes, LIMITS.eventBytes);

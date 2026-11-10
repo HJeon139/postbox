@@ -135,7 +135,7 @@ export async function play({ origin, view = async () => {}, shot = async () => {
 
   // 4 · An explainer: citations, a diagram, math, a glossary term and a practice app
   const react = T('ReAct, step by step');
-  log('@researcher explains ReAct with sources, a diagram, math and an exercise.');
+  log('@researcher explains ReAct with sources, a diagram, math and the practice app the person asks for.');
   await view(`#/t/${react.id}`);
   await send(react, 'Explain ReAct with something I can try');
   await until(
@@ -345,7 +345,7 @@ export async function play({ origin, view = async () => {}, shot = async () => {
   /** @param {UI} ui */
   const panel = async (ui) => {
     // At 375 px the sidebar is hidden and nothing else opens an agent’s panel, but the panel is shown there too.
-    await ui.activate('.rail .agent-btn', '@researcher');
+    await ui.activate('.rail .agent-btn', 'researcher');
     await ui.shows('.dialog.quick');
   };
   await shot('12-agent-panel', { prepare: panel });

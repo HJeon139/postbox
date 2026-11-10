@@ -1,12 +1,17 @@
 // Permission cards and refusal cards: a call that waits for your answer, and a call Claude Code refused without asking.
 // Runtime keeps a one-line method for each, so its callers and tests don’t change.
 
+import { isDeepStrictEqual } from 'node:util';
+import { adapterOf } from './adapters/adapter.mjs';
 import { POSTBOX_TIMEOUT_MS } from './adapters/setup.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { httpError } from './helpers.mjs';
+import { changeHostRule } from './host-rules.mjs';
 import { editedInput, MAX_EDIT_INPUT, MAX_REASON } from './permission-edit.mjs';
 import { closeCard, dismissPermission } from './permission-expiry.mjs';
-import { addAllowRule, alwaysAllow, cleanRule, rulesFor, takeBackRule } from './permission-rules.mjs';
+import { addAllowRule, rulesFor, takeBackRule } from './permission-rules.mjs';
+import { inReadFolder } from './read-folders.mjs';
+import { requestAdapter } from './remote/placement.mjs';
 import { gated } from './store-outage.mjs';
 import { draftOf, isWriteCall, whereOf } from './write-guard.mjs';
 import { settledCall } from './write-intent.mjs';
@@ -21,7 +26,7 @@ export { expireStalePermissions } from './permission-expiry.mjs';
 // that would go nowhere. The card’s wait starts later, when the call arrives, so it ends a margin early, while Claude
 // Code still waits, and the no reaches the call. A minute is far more than a call takes to reach Postbox.
 const EXPIRY_MARGIN_MS = 60 * 1000;
-/** Why Always allow isn’t offered for a turn on a host (hostAlways). */
+/** Why a refusal card on a host offers no Always allow (recordDenial), nor a host card with Claude Code’s own updates. */
 const ON_HOST =
   'This agent runs on a host, and Postbox would save the rule on this computer, where that host never reads it. Allow it once, or add the rule to the agent folder’s .claude/settings.local.json on the host.';
 export const CARD_WAIT_MS = POSTBOX_TIMEOUT_MS - EXPIRY_MARGIN_MS;
@@ -31,17 +36,21 @@ export const CARD_WAIT_MS = POSTBOX_TIMEOUT_MS - EXPIRY_MARGIN_MS;
  * SDK’s `suggestions`), which Always allow returns; agentId names the subagent that asks, when one does.
  * @param {string} sessionId
  * suppressAlways is the SDK’s suppressAlwaysAllowRule: the rule Always allow would save grants more than this call.
+ * suggestions may instead be a harness’s own offer, `{ lines, updates, harness: true }`, which it saves itself (#324).
  * draft is what a write outside Postbox carries (server/write-guard.mjs’s draftOf), found from input when not given.
- * hostPrompt: on a remote turn, the prompt on the host this card answers (#120), kept on the card as `remote`.
+ * hostPrompt: on a remote turn, the prompt on the host this card answers (#120), kept on the card as `remote`, with the
+ * daemon’s entry for it (#353).
  * @param {{ tool: string, summary: string, detail?: string, toolUseId?: string|null, input?: any, suggestions?: unknown,
  *           agentId?: string|null, suppressAlways?: boolean, draft?: { field: string, text: string } | null,
- *           hostPrompt?: { hostId: string, turn: string, id: string } | null }} req
+ *           hostPrompt?: { hostId: string, turn: string, id: string, entry?: string | null } | null }} req
  * @returns {Promise<{ allow: boolean, message?: string, updatedInput?: Record<string, any>, updatedPermissions?: any[] }>}
  */
 export async function requestPermission(rt, sessionId, req) {
   // A write outside Postbox the person already settled runs without a card (#112), as does a call they asked for (#296).
   const settled = rt.s.sessions[sessionId] ? await settledCall(rt, sessionId, req) : null;
   if (settled) return settled;
+  // A read in a folder the conversation saved as readable, earlier in this turn too (#338).
+  if (inReadFolder(rt, sessionId, req)) return { allow: true };
   return rt.askPerson(sessionId, req);
 }
 
@@ -67,10 +76,20 @@ export function askPerson(
     toolUseId: toolUseId ? String(toolUseId) : null,
     // What Edit starts from; an input too large to edit here can still be allowed as it is.
     input: json && json.length <= MAX_EDIT_INPUT ? JSON.parse(json) : null,
-    always: hostAlways(rt.alwaysFor(se, { tool, input, suggestions, suppressAlways }), hostPrompt),
+    // On a host too (#120): Postbox’s own rule (the host prompt’s suggestions aren’t read), kept for that host.
+    always: rt.alwaysFor(se, { tool, input, suggestions, suppressAlways, hostId: hostPrompt?.hostId ?? null }),
     // A subagent’s prompt names it, as its refusals do: by the SDK’s agent id, or by the call the stream saw it make.
     who: whoAsked(turn, agentId, toolUseId),
-    ...(hostPrompt ? { remote: { hostId: hostPrompt.hostId, turn: hostPrompt.turn, prompt: hostPrompt.id } } : {}),
+    ...(hostPrompt
+      ? {
+          remote: {
+            hostId: hostPrompt.hostId,
+            turn: hostPrompt.turn,
+            prompt: hostPrompt.id,
+            ...(hostPrompt.entry !== undefined ? { entry: hostPrompt.entry } : {}),
+          },
+        }
+      : {}),
     status: 'open',
   });
   // The text so far is finished; the reply continues below the card.
@@ -99,27 +118,12 @@ export function expireWait(rt, itemId) {
 }
 
 /**
- * What Always allow offers on a card, or null for none:
- * - none when Claude Code says a saved rule would grant more than this call (the SDK’s suppressAlwaysAllowRule);
- * - Claude Code’s own suggestions when it sends a list (the SDK does, and an empty list means none);
- * - otherwise, for the CLI’s prompt tool, which sends no list at all (recorded), the rule Postbox makes for a refusal,
- *   which it saves where the CLI saves “don’t ask again”; but only for a backend that reads rules from a folder.
- * @param {any} rt @param {any} se @param {{ tool: unknown, input: any, suggestions: unknown, suppressAlways: boolean }} req
- */
-export function alwaysFor(rt, se, { tool, input, suggestions, suppressAlways }) {
-  if (suppressAlways) return null;
-  if (Array.isArray(suggestions)) return alwaysAllow(suggestions);
-  if (suggestions !== null && suggestions !== undefined) return null;
-  return rt.readsRules(rt.persona(se.personaId)?.backend) ? postboxAlways(String(tool ?? '').slice(0, 121), input) : null;
-}
-
-/**
  * Whether a backend reads Claude Code’s permission rules from the agent’s folder: Claude Code and the Agent SDK do;
  * the mock reads none, and the Kiro CLI has rules of its own (capabilities.permissions: 'none', #117).
  * @param {string|undefined} backend
  */
 export function readsRules(rt, backend) {
-  const adapter = backend && rt.adapters.names().includes(backend) ? rt.adapters.get(backend) : null;
+  const adapter = adapterOf(rt, backend);
   return Boolean(adapter?.folderFor) && adapter?.capabilities?.permissions !== 'none';
 }
 
@@ -134,6 +138,13 @@ export function settlePermission(rt, itemId, status, message, answer = {}, patch
   if (!w) return false;
   clearTimeout(w.timer);
   rt.permissionWaits.delete(itemId);
+  // A question (server/ask-question.mjs, #521) isn’t a card: its block stays asking, and its call hears why it ended.
+  if (w.question) {
+    // No call waits on it now, so it isn’t what the running turn needs; once the turn ends it counts as an asking block.
+    releaseNeed(rt, rt.s.sessions[w.sessionId], itemId, 'tool');
+    w.resolve({ message });
+    return true;
+  }
   // The refusal below reaches a call nobody reads once the turn has ended, so an expiry also tells the agent (#721).
   closeCard(rt, w.threadId, itemId, w.sessionId, { status, answeredAt: Date.now(), ...patch });
   w.resolve(status.startsWith('allowed') ? { allow: true, ...answer } : { allow: false, message: message ?? 'The request expired when the turn ended.' });
@@ -164,6 +175,10 @@ export function resolvePermission(rt, threadId, itemId, action, values = {}) {
     return rt.allowAlways(threadId, it, asked);
   } else if (action === 'edit') {
     const input = editedInput(it, values);
+    // An edit that changes nothing is a plain allow (#979), so the call runs with its own input. Only an identical one:
+    // the same keys with the same values of the same types, in any order, since the tool reads an object, not its text.
+    // Any other change, a space inside a command included, stays an edit with its updatedInput.
+    if (isDeepStrictEqual(input, it.input)) return resolvePermission(rt, threadId, itemId, 'allow');
     rt.addItem(threadId, { kind: 'voice', text: `Allowed with your edit: ${asked}` });
     rt.settlePermission(
       itemId,
@@ -189,37 +204,31 @@ export function resolvePermission(rt, threadId, itemId, action, values = {}) {
 }
 
 /**
- * What Always allow offers on a host turn’s card (#120): nothing. A rule Postbox saves itself goes in a folder on this
- * computer, which the host never reads, and which local agents in that project would then follow. And whether the
- * host’s Claude Code saves updatedPermissions from a --permission-prompt-tool answer isn’t documented (the SDK’s
- * canUseTool is), and the CLI sends no suggestions (tests/fixtures/claude-code/permission-prompts.json), so none is
- * offered either: Allow once stays.
- * @param {ReturnType<typeof alwaysFor>} always @param {unknown} hostPrompt
- */
-const hostAlways = (always, hostPrompt) => (hostPrompt ? null : always);
-
-/**
  * Always allow on a permission card: Claude Code’s suggestions go back as updatedPermissions, and Claude Code saves
- * them; a rule Postbox made (the CLI suggests none) Postbox saves itself, in the agent folder’s local settings.
+ * them; a rule Postbox made (the CLI suggests none) Postbox saves itself, in the agent folder’s local settings. On a host
+ * turn’s card (#120) that folder is never read, so the rule goes in Postbox’s store, for this persona on that host, and
+ * its next turn there gets it in --settings (host-rules.mjs); this call is allowed now.
  * @param {string} threadId @param {any} it @param {string} asked
  */
 export async function allowAlways(rt, threadId, it, asked) {
-  if (it.remote) throw httpError(409, ON_HOST);
   if (it.always.saves) {
     const se = rt.s.sessions[it.sessionId];
     const persona = se && rt.personaFor(se);
-    const adapter = persona && rt.adapters.get(persona.backend);
+    const adapter = persona && requestAdapter(rt, se.handle, persona);
     if (!adapter?.folderFor || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
     // A card that expired, or whose turn ended, saves nothing: check before the write, and take the rule out again
     // if it ended while the file was written (#281).
     const ended = 'The turn that asked has ended, so no rule was saved.';
     if (!rt.permissionWaits.has(it.id)) throw httpError(409, ended);
-    const { file, added, claim } = await addAllowRule(await adapter.folderFor(persona, rt.s.projects[rt.s.threads[threadId]?.projectId]), it.always.saves);
-    if (!rt.permissionWaits.has(it.id)) {
-      if (added) await takeBackRule(file, it.always.saves, claim);
-      throw httpError(409, ended);
+    if (it.remote) changeHostRule(rt, { personaId: persona.id, hostId: it.remote.hostId, rule: it.always.saves });
+    else {
+      const { file, added, claim } = await addAllowRule(await adapter.folderFor(persona, rt.s.projects[rt.s.threads[threadId]?.projectId]), it.always.saves);
+      if (!rt.permissionWaits.has(it.id)) {
+        if (added) await takeBackRule(file, it.always.saves, claim);
+        throw httpError(409, ended);
+      }
     }
-  }
+  } else if (it.remote) throw httpError(409, ON_HOST);
   rt.addItem(threadId, { kind: 'voice', text: `Always allowed (${it.always.lines.map((l) => l.rule ?? l.text).join(', ')}): ${asked}` });
   rt.settlePermission(it.id, 'allowed-always', undefined, it.always.updates ? { updatedPermissions: it.always.updates } : {});
   return { ok: true };
@@ -234,9 +243,10 @@ export function recordDenial(rt, turn, d) {
   const se = rt.s.sessions[turn.sessionId];
   if (!se) return;
   const key = String(d.toolUseId ?? '');
-  // Once per call, and never for a call the person answered on a permission card.
-  if (key && rt.store.pending.items(turn.threadId).some((it) => (it.kind === 'denial' || it.kind === 'permission') && it.toolUseId === key)) return;
-  // On a host, Always would save its rule on this computer (hostAlways): Allow once and Leave stay.
+  // Once per call, and never for a call the person answered on a permission card or as a question (#521).
+  if (key && rt.store.pending.items(turn.threadId).some((it) => (it.kind === 'denial' || it.kind === 'permission' || it.question) && it.toolUseId === key))
+    return;
+  // On a host, a refusal’s Always would save its rule on this computer: Allow once and Leave stay.
   const rules = { ...rulesFor(String(d.tool ?? ''), d.input ?? {}), ...(turn.remote ? { always: null } : {}) };
   const detail = d.tool === 'Bash' ? String(d.input?.command ?? '') : JSON.stringify(d.input ?? {}, null, 2);
   rt.addItem(turn.threadId, {
@@ -281,7 +291,7 @@ export async function resolveDenial(rt, threadId, itemId, action) {
   let note = null;
   if (action === 'always') {
     const persona = se && rt.personaFor(se);
-    const adapter = persona && rt.adapters.get(persona.backend);
+    const adapter = persona && requestAdapter(rt, se.handle, persona);
     if (!adapter?.folderFor || !rt.readsRules(persona.backend)) throw httpError(409, 'Only Claude Code and Agent SDK agents read permission rules.');
     const folder = await adapter.folderFor(persona, rt.s.projects[rt.s.threads[threadId]?.projectId]);
     const { file } = await addAllowRule(folder, it.rules.always);
@@ -319,24 +329,6 @@ function writeOf(tool, input, detail, given) {
   };
 }
 
-/**
- * Always allow for a prompt without suggestions (the CLI’s prompt tool sends none): the broader rule a refusal card
- * offers (permission-rules.mjs, rulesFor), which Postbox saves in the folder’s local settings itself.
- * @param {string} tool @param {any} input
- */
-function postboxAlways(tool, input) {
-  if (!tool || tool.length > 120) return null;
-  const r = rulesFor(tool, input && typeof input === 'object' ? input : {});
-  // A rule too long to keep, or none (a chained command, which no one rule can allow, #238), isn’t offered.
-  if (!r.always || cleanRule(r.always) !== r.always) return null;
-  return {
-    updates: null,
-    saves: r.always,
-    lines: [{ text: `Always allow ${r.always} in this folder (.claude/settings.local.json)`, rule: r.always }],
-    moved: null,
-    words: r.alwaysWords,
-  };
-}
 /** The subagent behind a prompt, from the adapter’s stream (claude-stream.mjs, who), bounded; null for the agent itself. */
 function whoAsked(turn, agentId, toolUseId) {
   const ids = { agentId: agentId ? String(agentId) : null, toolUseId: toolUseId ? String(toolUseId) : null };

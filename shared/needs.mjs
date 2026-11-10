@@ -3,7 +3,7 @@
 import { itemOf } from './item-index.mjs';
 
 /** What a session can need you for. Every one makes its ring pulse, so every one counts (#285): a refused step too. */
-export const NEEDS_KINDS = ['block', 'failed', 'hop', 'permission', 'appsend', 'denial', 'toolask'];
+export const NEEDS_KINDS = ['block', 'failed', 'hop', 'permission', 'appsend', 'denial', 'toolask', 'viewask'];
 
 /** @param {any} se */
 export const needsYouNow = (se) => !!se?.needs && NEEDS_KINDS.includes(se.needs.kind);
@@ -36,5 +36,15 @@ export function waitedSince(state, se) {
 export function needsOrder(state, sessions, here = null) {
   const at = new Map(sessions.map((se) => [se.id, waitedSince(state, se)]));
   const near = (se) => (here && conversationOf(state, whereNeeds(state, se)) === here ? 0 : 1);
-  return sessions.filter(needsYouNow).sort((a, b) => near(a) - near(b) || (at.get(a.id) ?? 0) - (at.get(b.id) ?? 0) || a.id.localeCompare(b.id));
+  return sessions.filter(needsYouNow).sort((a, b) => near(a) - near(b) || (at.get(a.id) ?? 0) - (at.get(b.id) ?? 0) || byCodeUnit(a.id, b.id));
+}
+
+/**
+ * Two ids in code-unit order, the same in every runtime: `localeCompare` depends on the runtime’s locale, and the page
+ * and the server’s room checks run needsOrder in different ones (#711). @param {string} a @param {string} b
+ */
+function byCodeUnit(a, b) {
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
 }

@@ -211,3 +211,31 @@ export function checkError(m) {
     (m.id !== undefined && m.turn === undefined ? 'error.id names a prompt or a tool call within a turn, so it comes with error.turn.' : '')
   );
 }
+
+/**
+ * welcome.loginPath (#672): what the daemon’s login shell gave, as a count of PATH entries and how long it took, never
+ * the entries; or why it gave nothing.
+ */
+export function checkLoginPath(v) {
+  if (!isObj(v) || typeof v.ok !== 'boolean') return 'welcome.loginPath must be an object with ok, true or false.';
+  if (v.ok)
+    return (
+      fields(v, 'welcome.loginPath', ['ok', 'entries', 'ms']) ||
+      int(v.entries, 'welcome.loginPath.entries', 0, 1000) ||
+      int(v.ms, 'welcome.loginPath.ms', 0, 3_600_000)
+    );
+  return fields(v, 'welcome.loginPath', ['ok', 'why']) || str(v.why, 'welcome.loginPath.why', REMOTE_LIMITS.messageChars, 1);
+}
+
+/**
+ * Where a welcome’s harness was looked for, for a message: its looked folders, the first fromLogin of them named as
+ * the login shell’s (#672). @param {{ looked?: string[], fromLogin?: number } | undefined} h
+ */
+export function lookedText(h) {
+  const looked = h?.looked ?? [];
+  if (!looked.length) return 'no folders';
+  const n = Math.min(h?.fromLogin ?? 0, looked.length);
+  if (!n) return looked.join(', ');
+  const rest = looked.slice(n);
+  return `${looked.slice(0, n).join(', ')} (from your login shell’s PATH)${rest.length ? `, then ${rest.join(', ')}` : ''}`;
+}

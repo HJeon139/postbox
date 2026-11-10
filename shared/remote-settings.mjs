@@ -5,6 +5,8 @@
 // Each check returns { ok: true, value } or { ok: false, error }, with an error a person can act on; the
 // runtime turns a refusal into a 422 where the input enters.
 
+import { hasControl, hiddenInFolder } from './invisible.mjs';
+
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
 const HOUR = 60 * MINUTE;
@@ -19,7 +21,7 @@ const MIB = 1024 * 1024;
  *   nodePath: string|null, claudePath: string|null, kiroPath: string|null, codexPath: string|null,
  *   detach: 'auto' | 'setsid', signInCheck: string[]|null,
  * }} HostSettings
- * @typedef {{ id: string, name: string, settings: HostSettings, createdAt: number }} Host
+ * @typedef {{ id: string, name: string, short?: string, settings: HostSettings, createdAt: number }} Host
  * @typedef {{ ok: true, value: any } | { ok: false, error: string }} Checked
  */
 
@@ -107,16 +109,23 @@ export function checkDestination(name) {
   return ok(s);
 }
 
+// A path pasted from elsewhere can carry these unseen, so the next step is to type it (#1067).
+const RETYPE = 'Type the path again rather than paste it.';
+
 /**
  * An absolute POSIX path on a host: a program’s path, or a project’s folder there. It’s the one rule for a host path,
  * here and in remote-protocol.mjs, so a path saved in settings is one every `hello` and `start` carries. The host uses
- * a path as given, so it must be written plainly: no empty, . or .. parts, and no trailing /.
+ * a path as given, so it must be written plainly: no empty, . or .. parts, and no trailing /. Nor any control, invisible
+ * or bidi character, as a project’s folder here (#547, #991), so the page can’t show it as another path.
  * @param {unknown} path @param {string} what  how the error names it, such as “claudePath” @returns {Checked}
  */
 export function checkHostPath(path, what) {
   if (typeof path !== 'string') return no(`${what} is a path on the host, as text.`);
   if (!path.startsWith('/')) return no(`${what} must be an absolute path on the host, starting with /. ~ isn’t expanded.`);
-  if (CONTROL.test(path)) return no(`${what} can’t contain control characters, such as a new line.`);
+  // C1 controls included, and ZWNJ and ZWJ taken, as for a project’s folder here.
+  if (hasControl(path)) return no(`${what} can’t contain control characters, such as a new line. ${RETYPE}`);
+  if (hiddenInFolder(path))
+    return no(`${what} can’t contain invisible characters, such as a zero-width space or a bidi control, or a lone surrogate. ${RETYPE}`);
   // UTF-16 code units never outnumber UTF-8 bytes, so a long string is refused without encoding it.
   if (path.length > PATH_BYTES || ENCODER.encode(path).length > PATH_BYTES)
     return no(`${what} is over ${PATH_BYTES} bytes, the most a path on the host can be.`);

@@ -36,6 +36,29 @@ export const SCRIPTS = {
   // found no Postbox there before the run, so what’s there is the run’s own. Stops it, then removes it.
   removeStaged: `pkill -KILL -u "$(id -u)" -f '${ONE}/[^ ]*/host'; rm -rf -- "$HOME/.postbox-remote"; if [ -e "$HOME/.postbox-remote" ]; then exit 1; fi; echo removed`,
   killDaemon: `pkill -KILL -u "$(id -u)" -f '${ONE}/[^ ]*/host[.]mjs serve'; s=$?; if [ "$s" -eq 0 ]; then echo killed; elif [ "$s" -eq 1 ]; then echo none; else exit "$s"; fi`,
+  // #872: the newest turn still running (a runner.json with no exit.json beside it), and SIGSTOP to its runner, so it
+  // goes silent with its process still there; only while runner.json’s PID still runs that turn’s runner. Prints
+  // the turn and “stopped <pid>”, or “none” with no such runner.
+  stopRunner: [
+    'b=',
+    'for f in "$HOME"/.postbox-remote/turns/*/runner.json; do',
+    '  [ -f "$f" ] || continue',
+    '  [ -e "$(dirname "$f")/exit.json" ] && continue',
+    '  if [ -z "$b" ] || [ "$f" -nt "$b" ]; then b=$f; fi',
+    'done',
+    'if [ -z "$b" ]; then echo none; exit 0; fi',
+    `p=$(sed -n 's/.*"pid":\\([0-9]*\\).*/\\1/p' "$b" | head -n 1)`,
+    'if [ -z "$p" ]; then echo "runner.json has no PID: $b" >&2; exit 3; fi',
+    't=$(basename "$(dirname "$b")")',
+    // Its runner as the daemon starts it, `<node> <runner.mjs> <turn>`: a command line that only names one isn’t it.
+    'a=$(ps -p "$p" -o args=) || { echo none; exit 0; }',
+    // Under $HOME or its resolved folder: where $HOME is a symlink, the daemon’s runners name the resolved one.
+    'r=$(cd "$HOME/.postbox-remote" && pwd -P) || r="$HOME/.postbox-remote"',
+    'case "$a" in *" $HOME/.postbox-remote/"*"/server/remote/host/runner.mjs $t") ;; *" $r/"*"/server/remote/host/runner.mjs $t") ;; *) echo none; exit 0 ;; esac',
+    'kill -STOP "$p" || exit 4',
+    'echo "turn $t"',
+    'echo "stopped $p"',
+  ].join('\n'),
   // Each turn’s runner (its PID, from runner.json), then this user’s processes with their parents, groups, sessions
   // and start times: what turnTrees and stillRunning read.
   tree: [

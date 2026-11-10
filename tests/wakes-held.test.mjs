@@ -4,12 +4,12 @@
 
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { HOP_LIMIT } from '../shared/limits.mjs';
+import { updateThread } from '../server/thread-write.mjs';
 import { TOOL_ROUTES } from '../shared/remote-protocol.mjs';
 import { held, settle, setup } from './side-threads-fixture.mjs';
 
 /**
- * The fixture's room with @gamma, and a card from @alpha's wake of @beta past the chain limit (HOP_LIMIT), left open.
+ * The fixture's room with @gamma, and a card from @alpha's wake of @beta past the room's chain limit, 3 here, left open.
  * While it waits the count stays at the limit, so any other agent's wake needs a card too. Until #492 this was the
  * pair limit's card, after a hand-off and its answer.
  */
@@ -22,8 +22,9 @@ async function cardOpen() {
     await settle(f.rt);
     return r;
   };
+  updateThread(f.rt, f.t.id, { chainLimit: 3 }); // the room's own (#1035), so the test needn't make 1,000 wakes
   // All while the chain runs: one that ends starts the count again (#492).
-  for (let i = 0; i < HOP_LIMIT; i++) f.rt.agentWake(...(i % 2 ? [f.beta.id, 'alpha'] : [f.alpha.id, 'beta']), `hand-off ${i + 1}`);
+  for (let i = 0; i < 3; i++) f.rt.agentWake(...(i % 2 ? [f.beta.id, 'alpha'] : [f.alpha.id, 'beta']), `hand-off ${i + 1}`);
   assert.equal((await wake(f.alpha, 'beta')).waiting, true, 'the wake past the chain limit raised the card');
   const card = f.store.items(f.t.id).find((x) => x.kind === 'hop' && x.status === 'open');
   return { ...f, gamma, wake, card };

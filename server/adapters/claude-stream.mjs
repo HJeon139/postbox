@@ -12,7 +12,7 @@ export { describePermission } from './claude-permission.mjs';
 // Postbox’s own UI tools show up in the thread as what they make, so they aren’t listed as activity;
 // nor is Claude Code loading tool definitions. They still name the step on the agent’s ring.
 const QUIET =
-  /^(?:mcp__postbox__(?:show_block|update_block|review_block|show_app|update_app|retire_app|define_term|propose_agent|schedule_wake|cancel_wake|wake_agent|bring_to_conversation|permission_prompt|read_conversation|read_message|react)|ToolSearch|SubagentHandback)$/;
+  /^(?:mcp__postbox__(?:show_block|update_block|review_block|show_app|update_app|retire_app|define_term|propose_agent|schedule_wake|cancel_wake|wake_agent|open_topic|bring_to_conversation|permission_prompt|read_conversation|read_message|react)|ToolSearch|SubagentHandback)$/;
 /** Whether a tool call shows as what it makes rather than as a step (the Kiro CLI adapter shares this). */
 export const isQuietTool = (name) => QUIET.test(String(name ?? ''));
 // How Postbox answers a call the person declined on a permission card (server/runtime.mjs): that’s their
@@ -272,16 +272,16 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
     if (!who) status({ state: 'tool' });
   };
   // The work ledger (#132) gets each call once, with its whole input, as soon as it’s known: before the tool runs,
-  // so the file it changes can still be read as it was.
+  // so the file it changes can still be read as it was. An assistant message’s input is final, even an empty one.
   const used = (id, t) => {
     if (st.used.has(id)) return;
     st.used.add(id);
-    ctx.toolUse?.({ id, name: t.name, input: t.input ?? {}, who: t.who });
+    ctx.toolUse?.({ id, name: t.name, input: t.input ?? {}, who: t.who, ...(t.parent ? { parent: t.parent } : {}) });
   };
-  const labelTool = (id, input) => {
+  const labelTool = (id, input, final = false) => {
     const t = st.tools.get(id);
     if (!t) return;
-    if (input && Object.keys(input).length) {
+    if (input && (final || Object.keys(input).length)) {
       t.input = input;
       used(id, t);
     }
@@ -417,7 +417,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       for (const b of contentBlocks(e.message?.content))
         if (b.type === 'tool_use') {
           startTool(b.id, b.name, b.input, by);
-          labelTool(b.id, b.input);
+          labelTool(b.id, b.input, true);
         } else if (b.type === 'text') narrate(b.text, by);
         else if (b.type === 'thinking') thought(b.thinking, by);
     const sub = st.subagents.get(parent);
@@ -581,7 +581,7 @@ export function createStreamMapper(ctx, { contextWindow = 200_000, now = Date.no
       for (const b of contentBlocks(m.content)) {
         if (b.type === 'tool_use' || b.type === 'server_tool_use' || b.type === 'mcp_tool_use') {
           startTool(b.id, b.name, b.input);
-          labelTool(b.id, b.input);
+          labelTool(b.id, b.input, true);
         } else if (b.type === 'thinking' && b.thinking && !st.thoughtMessages.has(m.id)) {
           // Without partial messages, thinking arrives whole.
           thought(b.thinking);

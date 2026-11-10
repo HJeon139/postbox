@@ -1,7 +1,7 @@
 // The Threads page: a project's threads, newest first.
 
 import { client, hrefOf, sessionsOf, topicsOf } from './client.mjs';
-import { ago, fill, h, plural } from './dom.mjs';
+import { ago, fill, h, heldPaint, plural } from './dom.mjs';
 import { ringFor } from './ring.mjs';
 import { doing, sideActive } from './side-line.mjs';
 
@@ -14,7 +14,8 @@ const S = () => client.state;
 
 export function mountThreads(projectId) {
   const el = h('main.threads-view', { id: 'main', tabindex: '-1' });
-  const paint = () => {
+  // A press holds the repaint until it ends, so its click lands on the card it started on (#1010).
+  const paint = heldPaint(el, () => {
     const project = S().projects[projectId];
     const rows = [...topicsOf(projectId).map(topicRow), ...sidesOf(projectId).map(sideRow)].sort((a, b) => b.last - a.last);
     fill(
@@ -37,7 +38,7 @@ export function mountThreads(projectId) {
             'No threads yet. To start one, choose Reply in thread under any message in a conversation. When an agent wakes another, their side thread shows here too.',
           ),
     );
-  };
+  });
   paint();
   const off = client.on((ch) => {
     if (['thread', 'session', 'load', 'remove', 'item.patch'].includes(ch.type)) paint();
@@ -53,7 +54,7 @@ function topicRow(t) {
   // Who is in it: the conversation’s agents that answer there from their one session (#228), with the thread’s unread.
   const handles = new Set([t.woke, ...(S().items[t.id] ?? []).filter((x) => x.kind === 'agent').map((x) => x.handle)]);
   const ses = sessionsOf(t.parentId).filter((x) => !x.archived && handles.has(x.handle));
-  const who = ses.map((x) => `@${x.handle}`).join(', ') || 'no agent';
+  const who = ses.map((x) => x.handle).join(', ') || 'no agent';
   return {
     t,
     kind: 'Topic thread',
@@ -68,7 +69,7 @@ function topicRow(t) {
 function sideRow(t) {
   const link = (S().items[t.parentId] ?? []).find((x) => x.kind === 'sidelink' && x.sideThreadId === t.id);
   const at = sideActive(t.id);
-  const state = at ? `@${at.handle} ${doing(at)}` : 'idle';
+  const state = at ? `${at.handle} ${doing(at)}` : 'idle';
   // Its pair’s rings: their sessions in the conversation answer there (#110). Their unread is the conversation’s.
   const pair = (t.pair ?? '').split('|');
   const ses = at ? [at] : sessionsOf(t.parentId).filter((x) => !x.archived && pair.includes(x.handle));

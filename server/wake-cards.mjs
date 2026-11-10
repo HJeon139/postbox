@@ -6,12 +6,18 @@
 import { HELD_WAKES } from '../shared/limits.mjs';
 import { offerNeed, releaseNeed } from './card-needs.mjs';
 import { clip, httpError } from './helpers.mjs';
+import { roomChainLimit } from './room-chain-limit.mjs';
+import { updateThread } from './thread-write.mjs';
 
-/** The card for a wake past the limit (#108), which waits for the person’s Allow. */
+/**
+ * The card for a wake past the room’s chain limit (#108), which waits for the person’s Allow. It keeps the limit it was
+ * raised under (#1035): the room’s may change before the person answers, and the wake’s number doesn’t say it.
+ */
 export function askToWake(rt, from, parent, p, wake) {
   const open = openCard(rt, parent);
   if (open) return holdOnCard(rt, open, parent, from, p, wake);
   const n = (parent.hops ?? 0) + 1;
+  const limit = roomChainLimit(rt, parent.id);
   // The card shows reason as a preview; text is the whole message, delivered when you allow it (#108).
   const it = rt.addItem(parent.id, {
     kind: 'hop',
@@ -22,10 +28,15 @@ export function askToWake(rt, from, parent, p, wake) {
     ...wake,
     status: 'open',
     n,
+    limit,
   });
   needsCard(rt, from, parent, it, `@${from.handle} wants to wake @${p.handle}`);
   rt.notify('blocking', from, `Let @${from.handle} wake @${p.handle}?`, `That would be agent wake ${n} since your last message.`);
-  return { ok: false, waiting: true, message: `Waiting for the person to allow waking @${p.handle}.` };
+  return {
+    ok: false,
+    waiting: true,
+    message: `Waiting for the person to allow waking @${p.handle}: this room’s chain limit is ${limit.toLocaleString('en-US')}.`,
+  };
 }
 
 /**
@@ -64,14 +75,29 @@ export function askToAdd(rt, from, parent, p, wake, { prose = false } = {}) {
 
 /**
  * Whether the person’s last answer to adding `handle` to the conversation was no (#693), read from its cards, so a
- * restart keeps it: a later Add lifts it. A card retiring forks declined (side-threads.mjs, archiveForks, before #693)
- * isn’t the person’s answer. O(items in the conversation), once per mention of an agent it doesn’t have.
+ * restart keeps it: a later Add lifts it, an Allow on a card or the person’s own add (liftDecline, #789). A card
+ * retiring forks declined (side-threads.mjs, archiveForks, before #693) isn’t the person’s answer. O(items in the
+ * conversation), once per mention of an agent it doesn’t have.
  */
 function declinedAdd(rt, conv, handle) {
-  const answered = (x) => x.kind === 'hop' && x.join && x.to === handle && (x.status === 'allowed' || x.status === 'declined');
-  const last = rt.store.pending.items(conv).findLast(answered);
-  return last?.status === 'declined' && !rt.s.sessions[last.fromSessionId]?.retiredFork;
+  const last = lastAddAnswer(rt, conv, handle);
+  return last?.status === 'declined' && !last.lifted && !rt.s.sessions[last.fromSessionId]?.retiredFork;
 }
+
+/**
+ * The person added `handle` to the conversation themselves (#789): an @-mention, a new agent, a proposal accepted. Its
+ * last decline is marked lifted, so a prose mention once it’s removed asks again, as after an Allow on a card. Every new
+ * session passes here (ensureSession); after an Allow the last answer is already yes.
+ * @param {any} rt @param {string} conv @param {string} handle
+ */
+export function liftDecline(rt, conv, handle) {
+  const last = lastAddAnswer(rt, conv, handle);
+  if (last?.status === 'declined' && !last.lifted) rt.patchItem(conv, last.id, { lifted: Date.now() });
+}
+
+/** The newest add card for `handle` the person answered, read pending, so an answer held behind a commit counts (#796). */
+const lastAddAnswer = (rt, conv, handle) =>
+  rt.store.pending.items(conv).findLast((x) => x.kind === 'hop' && x.join && x.to === handle && (x.status === 'allowed' || x.status === 'declined'));
 
 /** One request at a time: the card waiting for the person, if there is one. */
 const openCard = (rt, parent) => rt.store.pending.items(parent.id).find((x) => x.kind === 'hop' && x.status === 'open') ?? null;
@@ -123,7 +149,7 @@ export function resolveHop(rt, threadId, itemId, allow) {
   rt.addItem(threadId, { kind: 'voice', text: voice });
   const from = rt.s.sessions[it.fromSessionId];
   releaseNeed(rt, from, itemId);
-  rt.putThread({ ...rt.s.threads[threadId], hops: 0 });
+  updateThread(rt, threadId, { hops: 0 });
   // Added: it joins with a note on why, as an agent the person adds does, and the wake goes on (#228).
   const p = it.join && allow ? rt.personaByHandle(it.to) : null;
   if (p) {

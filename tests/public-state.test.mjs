@@ -34,6 +34,8 @@ const TYPES = [
   'asset.version',
   'asset.erase',
   'asset.released',
+  // An old turn leaving the state (#305): its summary entry and its replies’ step counts, none of the moved detail.
+  'turn.archive',
 ];
 
 test('the event table has exactly the known types, each with a handler and a public flag, all public today', () => {

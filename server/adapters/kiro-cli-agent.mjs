@@ -1,8 +1,10 @@
 // The custom agent Kiro runs for one turn, moved out of kiro-cli.mjs: its prompt notes and its permission rules.
 
 import { realpathSync } from 'node:fs';
+import { agentSkills } from './agent-plugin.mjs';
 import { SIZE_LIMIT_NOTE } from './kiro-errors.mjs';
 import { POSTBOX_SERVER, setupOf } from './setup.mjs';
+import { postboxSkillsOn } from './skill-config.mjs';
 
 /**
  * MCP tools that publish outside Postbox, as Kiro’s `server/tool` match patterns, where `*` is any text: the verb
@@ -46,7 +48,17 @@ export function kiroRules({ persona, folders, resolve = true }) {
     { capability: 'mcp', match: [`${POSTBOX_SERVER}/*`], effect: 'allow' },
   ];
   if (dirs.length) rules.push({ capability: 'fs_read', match: dirs, effect: 'allow' });
-  if (persona?.permissionMode === 'acceptEdits' && dirs.length) rules.push({ capability: 'fs_write', match: dirs, effect: 'allow' });
+  const mode = persona?.permissionMode ?? 'auto';
+  if ((mode === 'acceptEdits' || mode === 'auto') && dirs.length) {
+    rules.push({ capability: 'fs_write', match: dirs, effect: 'allow' });
+    // An edit there could become a command: Kiro starts the MCP servers a .kiro/settings/mcp.json in the working folder
+    // names, and a .git/config can name a program git runs (#136). Kiro matches these case-blind where the disk is, as
+    // macOS’s is: kiro-cli 3.1.0 refused .KIRO/settings/mcp.json and .GIT/config there too, recorded live (#136).
+    rules.push({ capability: 'fs_write', match: dirs.flatMap((d) => [`${d}/.kiro`, `${d}/.git`]), effect: 'deny' });
+  }
+  // Auto runs what the persona’s Tools allow, as #416’s option A: Kiro has no Auto of its own, and nothing judges these
+  // calls. The denies below still hold, since Kiro reads deny over allow.
+  if (mode === 'auto') rules.push(...autoAllows(has));
   for (const [id, caps] of Object.entries(KIRO_TOOL_RULES))
     if (!has.has(id)) for (const capability of caps) rules.push({ capability, match: ['*'], effect: 'deny' });
   if (!canPublish) rules.push({ capability: 'mcp', match: KIRO_PUBLISHING, effect: 'deny' });
@@ -61,6 +73,18 @@ export function kiroRules({ persona, folders, resolve = true }) {
   return rules;
 }
 
+/**
+ * Auto’s allows (#136): the ticked Tools’ capabilities, and MCP tools, whose publishing and turned-off ones a deny
+ * still refuses. @param {Set<string>} has  the persona’s ticked Tools
+ */
+function autoAllows(has) {
+  const ticked = Object.entries(KIRO_TOOL_RULES).filter(([id]) => has.has(id));
+  return [
+    ...ticked.flatMap(([, caps]) => caps.map((capability) => ({ capability, match: ['*'], effect: 'allow' }))),
+    { capability: 'mcp', match: ['*/*'], effect: 'allow' },
+  ];
+}
+
 // A live turn (kiro-cli 2.33.1) had a command refused as “The user rejected this tool call.”, and the agent told the
 // person they had declined it. Nobody was asked, so the agent is told what a refusal means here.
 const HEADLESS_NOTE =
@@ -73,11 +97,12 @@ const ISOLATED_NOTE =
 
 /**
  * The custom agent for one turn. Pure, so the tests can check it.
- * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[] }} turn
+ * @param {{ name: string, persona: any, mcpUrl?: string, shim?: { command: string, args: string[] }, guide: string, folders: string[], skills?: string | null }} turn
  *   shim: on a remote host, Postbox’s server is the host’s stdio shim, run as this command, in place of mcpUrl; the
- *   folders are then the host’s
+ *   folders are then the host’s. skills: the folder of Postbox’s skills (agentSkills in agent-plugin.mjs), or null for
+ *   none; a turn on a host has none, since the folder is on this computer
  */
-export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders }) {
+export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders, skills = shim ? null : agentSkills() }) {
   const { usesHostSetup } = setupOf(persona);
   return {
     name,
@@ -89,5 +114,11 @@ export function kiroAgent({ name, persona, mcpUrl = '', shim, guide, folders }) 
     // A local server is a command and its arguments (kiro.dev/docs/custom-agents/configuration-reference).
     mcpServers: { [POSTBOX_SERVER]: shim ? { command: shim.command, args: [...shim.args] } : { type: 'http', url: mcpUrl } },
     permissions: { rules: kiroRules({ persona, folders, resolve: !shim }) },
+    // Postbox’s skills, as a skill resource (kiro.dev/docs/custom-agents/configuration-reference), which loads a
+    // skill’s description and its body only when it’s used. Checked with kiro-cli 2.34.1: visual-explainer was listed
+    // among the session’s skills before the model ran, and the defaults an agent with no resources gets (AGENTS.md, the
+    // project’s .kiro/steering and .kiro/skills) still loaded beside it.
+    // Only the ones the persona keeps on (#207).
+    ...(skills && postboxSkillsOn(persona).length ? { resources: postboxSkillsOn(persona).map((n) => `skill://${skills}/${n}/SKILL.md`) } : {}),
   };
 }

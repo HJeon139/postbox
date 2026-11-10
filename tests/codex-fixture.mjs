@@ -27,7 +27,7 @@ export function fakeAppServer(seen, { hold = false, error = null, then = 'comple
       if (!line) continue;
       const req = JSON.parse(line);
       seen.push(req);
-      if (req.method === 'initialize') child.stdout.write(`${JSON.stringify({ id: req.id, result: {} })}\n`);
+      if (req.method === 'initialize' || req.method === 'skills/extraRoots/set') child.stdout.write(`${JSON.stringify({ id: req.id, result: {} })}\n`);
       if (req.method === 'mcpServerStatus/list')
         child.stdout.write(
           `${JSON.stringify({

@@ -5,6 +5,8 @@
 // - #89: controls you can’t see or click (control-hidden): a row of buttons clipped by Postbox’s own .bar class, and a
 //   button under an overlay. Controls in a scroll box, and a checkbox hidden for screen readers, aren’t reported.
 // - #328: syntax and runtime errors name where they happened.
+// - #971: a choice shown by dropping .ghost from the chosen button (ghost-choice); a .seg, chips, and a button beside a
+//   ghost Cancel aren’t reported.
 // Every app goes up in one conversation, which a page opened before the tests checks; each test reads what the check
 // found for its apps. Moved from tools/checks/app-check.mjs (#303).
 
@@ -89,7 +91,7 @@ const APPS = {
   // A big figure set tight over its caption, a <pre> in a box that scrolls sideways, and a badge past a button’s corner.
   tight: `<div style="padding:12px;color:var(--text)"><div style="font-size:40px;line-height:.9;font-weight:600">4,210</div><div style="font-size:12px">passages read</div>
 <div style="overflow-x:auto;margin-top:8px"><pre style="margin:0">const passages = corpus.search({ query: 'hope after loss', mode: 'both', k: 12 });</pre></div>
-<button class="btn" type="button" style="position:relative;margin-top:12px">Inbox<span style="position:absolute;top:-6px;right:-14px;background:var(--accent);color:var(--on-ink);border-radius:8px;padding:0 5px;font-size:11px">12</span></button></div>`,
+<button class="btn" type="button" style="position:relative;margin-top:12px">Inbox<span style="position:absolute;top:-6px;right:-14px;background:var(--accent);color:var(--on-ink);border-radius:8px;padding:0 5px;font-size:12px">12</span></button></div>`,
   // Sixty opaque cards stacked in one place, each of 25 lines: every line is over another, and hidden under the top card.
   cards: `<div style="position:relative;height:600px">${Array.from({ length: 60 }, (_, i) => `<div style="position:absolute;inset:0;background:var(--panel);color:var(--text);padding:8px">${Array.from({ length: 25 }, (_, j) => `Card ${i + 1}, line ${j + 1}`).join('<br>')}</div>`).join('')}</div>`,
   // Controls hidden on purpose: under an open modal dialog, a carousel’s other slides, an accordion closed at max-height: 0,
@@ -103,6 +105,15 @@ const APPS = {
 <script>document.getElementById('d').showModal();</script>`,
   // A watermark you can barely see over a button: it takes the button’s clicks.
   watermark: `<div style="position:relative;padding:12px"><button class="btn" type="button">Export</button><div class="wm" style="position:absolute;inset:0;opacity:.06;background:var(--text)"></div></div>`,
+  // #971: a choice shown by dropping .ghost from the chosen button, so the other options read as links.
+  ghostchoice: `<div style="padding:12px;display:flex;gap:6px" role="group" aria-label="Corpus">${['Novels', 'Letters', 'Essays']
+    .map((t, i) => `<button class="btn sm${i ? ' ghost' : ''}" type="button" aria-pressed="${!i}">${t}</button>`)
+    .join('')}</div>`,
+  // #971: the same choice as a .seg and as chips, and an action beside a minor one with no pressed state: all as meant.
+  choices: `<div style="padding:12px;display:flex;flex-direction:column;gap:10px;align-items:flex-start;color:var(--text)">
+<div class="seg" role="group" aria-label="Corpus"><button type="button" aria-pressed="true">Novels</button><button type="button" aria-pressed="false">Letters</button></div>
+<div style="display:flex;gap:6px" role="group" aria-label="Decade"><button class="chip" type="button" aria-pressed="true">1850s</button><button class="chip" type="button" aria-pressed="false">1860s</button></div>
+<div style="display:flex;gap:8px"><button class="btn primary" type="button">Run the search</button><button class="btn ghost" type="button">Cancel</button></div></div>`,
   // The kit’s own heatmap, 8 columns, at 375 px too.
   heatmap: `<div id="h" style="padding:8px"></div><script>postbox.charts.heatmap(document.getElementById('h'), { rows: ['Middlemarch', 'Persuasion', 'Emma'], cols: ['Grief', 'Hope', 'Money', 'The sea', 'Marriage', 'Duty', 'Faith', 'Travel'], values: [[3, 5, 8, 0, 9, 4, 2, 1], [6, 2, 4, 1, 8, 5, 3, 0], [1, 4, 6, 0, 9, 3, 2, 2]], label: 'Themes by book' });</script>`,
   // Ordinary text and controls, set tight: nothing to report.
@@ -116,7 +127,7 @@ let app;
 /** What the page logged as errors while it checked the apps. */
 const errors = [];
 test.beforeAll(async ({ browser }) => {
-  // Mermaid, KaTeX and the kit load on first use, and seventeen apps are checked at two widths.
+  // Mermaid, KaTeX and the kit load on first use, and twenty-three apps are checked at two widths.
   test.setTimeout(120_000);
   app = await startPostbox('app-check');
   const { rt } = app;
@@ -167,7 +178,7 @@ test('#328 syntax and runtime errors name where they happened', () => {
 test('#194 nowrap text in a 120 px column overflows and overlaps, and the messages name the texts, the widths and the usual fix', () => {
   expect.soft(codes('grid'), says('grid')).toEqual(expect.arrayContaining(['text-overflow', 'text-overlap']));
   const over = found('grid').find((p) => p.code === 'text-overflow')?.message ?? '';
-  expect.soft(over).toMatch(/“a long description that won’t fit” is \d+ px wide in a 120 px box/);
+  expect.soft(over).toMatch(/“a long description that won’t fit” \(div > p\) is \d+ px wide in a 120 px box/);
   expect.soft(over).toMatch(/white-space: nowrap/);
   expect.soft(over).toMatch(/minmax\(0, …\)/);
   expect.soft(found('grid').find((p) => p.code === 'text-overlap')?.message, 'text-overlap names both texts').toMatch(/drawn over “Heading”/);
@@ -217,7 +228,7 @@ test('#194 an overlap there both times the check looks is reported, and one that
     return /** @type {any} */ (window).__pbCheck.textOverlap(1280);
   });
   expect(twice.length, JSON.stringify(twice)).toBe(1);
-  expect(twice[0].message).toMatch(/“Still label” is drawn over “Stays here”/);
+  expect(twice[0].message).toMatch(/“Still label” \(p:nth-of-type\(1\)\) is drawn over “Stays here” \(p:nth-of-type\(2\)\)/);
 });
 
 // ── #327 and #89: Postbox styles and controls you can’t see or click ─────────────────────
@@ -257,3 +268,16 @@ for (const [id, what] of [
   test(`#89 ${what} pass`, () => {
     expect(clean(id), says(id)).toBe(true);
   });
+
+// ── #971: a choice shown as one button and links ───────────────────────────────────────
+
+test('#971 buttons with aria-pressed that drop .ghost for the chosen one are a ghost-choice, which says to use a .seg or chips', () => {
+  const ghost = found('ghostchoice').filter((p) => p.code === 'ghost-choice');
+  expect(ghost.length, says('ghostchoice')).toBe(1);
+  expect(ghost[0].message).toMatch(/^3 buttons with aria-pressed, such as the button “Letters”, show which is chosen by dropping \.ghost/);
+  expect(ghost[0].message).toMatch(/Make the set a \.seg of buttons or \.chip buttons, keeping aria-pressed, with no \.ghost\./);
+});
+
+test('#971 a .seg, chips with aria-pressed, and a btn primary beside a ghost Cancel pass', () => {
+  expect(clean('choices'), says('choices')).toBe(true);
+});

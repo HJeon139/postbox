@@ -36,3 +36,31 @@ Ask @critic to run `sleep 20; date >> card-check.txt` and then show the file’s
 - steps: 8
 
 Play this phase on its own, with `--phases 4 --stage-host-version <tag>`, an older release tag such as v1.16.1, beside the same two `--host`s: before the run, the runner installs that older Postbox on host1 instead of this one, as someone who updated Postbox on their laptop but not on the host has (#464), and turns on host1’s consent for Postbox to install its own version there by itself. A run with that option plays no other phase, and one without it doesn’t play this one. Send @researcher, on host1, one message asking it to run `uname -n` and tell you what it printed. That first turn finds the older Postbox there. Postbox installs its own version by itself, and the turn waits for it: its line beside @researcher says “Installing Postbox <version> on host1…”, and host1’s card in Settings › Hosts says the same. Don’t press Install…. The turn should then run there and tell you what it printed, and host1’s card should say Postbox installed that version there by itself. Once host1’s card reads Connected, send @researcher on host1 a second message asking the same; that turn should run there too. A first turn that fails, a second turn that fails, a card that never reads Connected, or Postbox installing it more than once is a finding.
+
+## Phase 5: Postbox removed from the host by hand
+
+- triggers: host-reinstalled
+- steps: 8
+
+host1 has this run’s Postbox, installed at the start, and the runner has turned on host1’s consent to keep Postbox up to date there, as the toggle in Settings › Hosts does (#464). Remove Postbox from host1 as someone might by hand (fault remove-postbox, target host1): the run stops Postbox’s programs there and deletes its folder, while this computer keeps host1’s token. host1 then reads Disconnected while nothing needs it, which is expected. Send @researcher, on host1, a message asking it to run `uname -n` and tell you what it printed: that turn finds Postbox missing there, Postbox installs it again by itself with a new token, and the turn waits for it and then runs there. Don’t press Install…. Once the turn is done, host1’s card should read Connected and say Postbox wasn’t on host1 any more, so it installed its version there again and made a new token, and that turns that ran there before are gone. A card that never reads Connected, a turn that fails, Postbox installing it more than once, or a card or line that shows a token is a finding.
+
+## Phase 6: A hung agent on a host
+
+- triggers: host-hung-killed
+- steps: 8
+
+Ask @researcher, on host1, to write a story of about 1,500 words straight into its reply, with no tools: a reply that long keeps the turn running while it’s written, where Claude Code refuses a long wait. About 3 seconds into that turn, while the reply is still coming, hang its runner (an interrupt with fault stop-runner, target host1): the run sends SIGSTOP to the turn’s runner there, so it goes silent while its process stays (#872). host1 stays Connected. Then wait up to 3 minutes (wait 180 seconds) without sending anything: past a minute of silence, host1’s daemon should kill the runner, and Postbox should show @researcher’s turn interrupted once and then resume it on its own, with no Resume from you, and the resumed turn should finish. A turn that stays working past the 3 minutes, one interrupted more than once, a turn that waits for you to resume it, or two turns of @researcher’s running at once is a finding.
+
+## Phase 7: A refused call on a host
+
+- triggers: host-queued-refused
+- steps: 4
+
+Ask @researcher, on host1, to show an app from a file outside its folder: `show_app` with `codePath` set to `/etc/hosts`, as written, without copying that file or changing the path. The call itself should come back with an error saying the file is outside its folder, and @researcher should tell you that reason, not that the app was shown (#827). Then ask it to show the same app with its code inline instead, one paragraph that says hello: that app should appear in the conversation. An agent that says the first app was shown, or a first app that appears, is a finding.
+
+## Phase 8: Node on a host, as the person’s terminal finds it
+
+- triggers: host-node-found
+- steps: 4
+
+Ask @researcher, on host1, to use the Bash tool to run exactly `node --version`, as written: no PATH of its own, no full path, no version manager. The command should print a version on its first try, since the host’s turns now run with its login shell’s PATH (#672). Then ask it to run exactly `command -v claude`, and say which folder it came from. A first `node --version` that fails with “command not found” or exit 127, or an agent that sets PATH or looks for Node before it runs, is a finding.

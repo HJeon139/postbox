@@ -152,7 +152,7 @@ test('#88 at the bottom: an app growing from 200 to 700 px leaves the view at th
   await expect(frameOf(page, key)).toBeAttached();
   await grown(page, key);
   await atTheEnd(page, 'after the app grew');
-  await expect(page.locator(`[data-key="${key}"] .who b`), 'the app’s header names the agent that wrote it').toHaveText('@critic');
+  await expect(page.locator(`[data-key="${key}"] .who b`), 'the app’s header names the agent that wrote it').toHaveText('critic');
   // The author line sits in the message column, like every other speaker line.
   const [appWho, colLeft] = await page.evaluate((k) => {
     const left = (sel) => Math.round(document.querySelector(sel)?.getBoundingClientRect().left ?? Number.NaN);
@@ -365,7 +365,7 @@ test('#83 the working row lines up with the message column, with and without the
       };
     });
   const plain = await measure();
-  expect(plain.ring, 'the ring and the @handle above share a left edge').toBe(plain.who);
+  expect(plain.ring, 'the ring and the handle above share a left edge').toBe(plain.who);
   expect(plain.workRight, 'the rows end inside the column').toBeLessThanOrEqual(plain.colRight);
   expect(plain.truncated && plain.lineRight <= plain.colRight, 'the long step truncates with an ellipsis, inside the column').toBe(true);
   const root = store.items(t.id).find((i) => i.kind === 'agent');

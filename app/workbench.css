@@ -14,6 +14,8 @@
   --accent: #d89a3a;
   --on: #d89a3a;
   --on-ink: #1b1714;
+  /* Secondary text on an --on fill (the light theme’s chosen chips, #873). */
+  --on-dim: #3d2f20;
   --good: #6fae6a;
   --alert: #e23b2e;
   --alert-ink: #f0705f;
@@ -77,6 +79,7 @@
   --accent: #93560f;
   --on: #93560f;
   --on-ink: #fffaf2;
+  --on-dim: #f6e6d1;
   --good: #3b7537;
   --alert: #c42b1f;
   --alert-ink: #a8261b;
@@ -264,7 +267,9 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 .app.no-rail, .app.rail-hidden, .app.rail-auto { grid-template-columns: minmax(0, 1fr); }
 /* rail-auto: hidden while the right pane needs its room (#7, pane-width.mjs). */
 .app.rail-hidden > .rail, .app.rail-auto > .rail { display: none; }
-.topbar { grid-column: 1 / -1; position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
+/* overflow-x: clip: a top bar too wide for the window, before fitTopbar drops a crumb, never widens the page. On a
+   phone the viewport grows to fit overflowing content, so the page lays out wider for that frame (#866, #837). */
+.topbar { grid-column: 1 / -1; overflow-x: clip; position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 12px;
   height: 48px; padding: 0 12px 0 16px; background: var(--bg); border-bottom: 1px solid var(--line); }
 .brand { font-weight: 700; letter-spacing: .02em; display: flex; align-items: center; gap: 8px; }
 .brand .mark { width: 18px; height: 18px; border: 2px solid var(--accent); border-radius: 5px; position: relative; }
@@ -306,12 +311,25 @@ pb-ring[role="button"] { cursor: pointer; border-radius: 50%; }
 
 .main { min-width: 0; display: flex; flex-direction: column; position: relative; }
 /* Messages sit at most one line apart. */
-.transcript { flex: 1; padding: 16px 24px 8px; display: flex; flex-direction: column; gap: 12px; }
+.transcript { flex: 1; padding: 16px 24px calc(8px + var(--held, 0px)); display: flex; flex-direction: column; gap: 12px; }
 /* The transcript keeps its own place (mountTranscript): on the newest message, or on what you were reading. The
    browser's own scroll anchoring is off, so every browser behaves the same and only your scrolling moves it. */
 :root:has(.transcript), .sp-body { overflow-anchor: none; }
+/* Every item stays mounted, but the browser skips the layout and paint of those off screen, each at an estimate until
+   it draws, and remembers its size once it has (#712). The estimates are the median item of a generated 1,000-item
+   room, 71 px at 1,280 px and 91 px at 375 px. Only where the browser can (cv-skip, app/js/view-skip.mjs).
+   Skipping contains layout and paint, which makes the item the box a fixed descendant is placed in. So an item with
+   one is never skipped: a review or an app full screen, and an app's check frame, off screen on purpose. */
+/* Skipping clips each item’s paint to its box, so a focus ring on a control flush with the item’s edge, a reaction
+   button, gets 4 px of room past it. */
+.transcript.cv-skip > .item { content-visibility: auto; contain-intrinsic-size: auto 71px; overflow-clip-margin: 4px; }
+@media (max-width: 600px) { .transcript.cv-skip > .item { contain-intrinsic-size: auto 91px; } }
+.transcript.cv-skip > .item:has(.rv-full, .app-full.fullscreen, .check-frame) { content-visibility: visible; }
 .col { width: 100%; max-width: 760px; margin: 0 auto; }
 .wide { width: 100%; }
+/* A retired app is one line, not a frame (#193), so its item keeps to the column, and its reactions and thread link
+   line up under it as under any message (#973). */
+.wide:has(> .app-retired) { max-width: 760px; margin-inline: auto; }
 
 /* ───────── Turns ───────── */
 
@@ -426,11 +444,17 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .btn.icon { width: 32px; padding: 0; }
 .btn.icon.sm { width: 26px; }
 .btn.send { border-color: var(--accent); }
+/* The one action a view leads with, in an app: filled, so it outranks every plain .btn beside it (#971). A choice among
+   options is a .seg or a .chip with aria-pressed, never a button that toggles .ghost. */
+.btn.primary { background: var(--on); border-color: var(--on); color: var(--on-ink); font-weight: 600; }
+.btn.primary:hover { box-shadow: inset 0 0 0 1px var(--on-ink); }
 .btn.stop { border-color: var(--line); }
 .btn.stop::before { content: ""; width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
 .btn.danger:hover { border-color: var(--alert); }
 .btn.danger .i { color: var(--alert-ink); }
 .btn[disabled], .chip[disabled] { opacity: .5; cursor: not-allowed; }
+/* An answered choice is a record: the option chosen stays at full strength, and only the others are dimmed (#873). */
+.chip[disabled].on { opacity: 1; }
 .btn.is-hover { border-color: var(--accent); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -500,6 +524,13 @@ details.activity[open] > summary .i-right { transform: rotate(90deg); }
 .block-placeholder { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); padding: 10px 12px; border: 1px dashed var(--line); border-radius: 8px; }
 
 .tbl-wrap { max-height: min(80vh, 560px); overflow: auto; border-top: 1px solid var(--line); }
+/* A table wider than its block fades the side with more columns past it, clear of the scrollbars, with a soft edge in
+   the border color, so the cue shows even where a gap between columns meets the edge (#1000). */
+.tbl-scroll { position: relative; }
+.tbl-scroll::before, .tbl-scroll::after { content: ''; position: absolute; top: 0; bottom: var(--sb-bottom, 0px); width: 32px; z-index: 2; pointer-events: none; opacity: 0; transition: opacity .15s ease-in-out; }
+.tbl-scroll::before { left: 0; background: linear-gradient(to right, var(--line-strong), transparent 3px), linear-gradient(to right, var(--panel) 15%, transparent); }
+.tbl-scroll::after { right: var(--sb-right, 0px); background: linear-gradient(to left, var(--line-strong), transparent 3px), linear-gradient(to left, var(--panel) 15%, transparent); }
+.tbl-scroll.more-left::before, .tbl-scroll.more-right::after { opacity: 1; }
 table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tbl th { position: sticky; top: 0; z-index: 1; background: var(--panel); text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
   color: var(--dim); font-weight: 600; padding: 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -546,6 +577,9 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .callout { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--alert); border-radius: 6px; background: var(--panel); }
 .callout .i, .callout .g { margin-top: 2px; color: var(--alert-ink); }
 .callout.warn { border-left-color: var(--accent); }
+/* A failed reply the person dismissed (#883): its error stays readable, without the alert’s weight. */
+.callout.quiet { border-left-color: var(--line-strong); }
+.callout.quiet .g { color: var(--dim); }
 .callout.warn .i { color: var(--accent); }
 
 /* ───────── Agent apps ───────── */
@@ -608,6 +642,8 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .rv-u.mod > .g-abs::before, .rv-u.mod > :first-child > .g-abs::before { content: "±"; position: absolute; left: 6px; color: var(--good); font-weight: 700; }
 .rv-u.del > .g-abs::before, .rv-u.del > :first-child > .g-abs::before { content: "−"; position: absolute; left: 6px; color: var(--alert-ink); font-weight: 700; }
 .rv-thread-row > td { padding: 0; border: 0; }
+/* A table's delimiter row shows its source, dim, as a line of the draft that can take a comment (#835). */
+.rv-doc .md-table td.rv-src { font-family: var(--mono); font-size: 12px; color: var(--dim); padding-top: 2px; padding-bottom: 2px; }
 .md .md-table td.rv-gut { width: 0; padding: 5px 0; border: 0; }
 /* Cells start at the top, level with their row's gutter mark, so a tall row still reads from its first line. */
 .rv-doc .rv-block .md-table th, .rv-doc .rv-block .md-table td { vertical-align: top; }
@@ -660,6 +696,7 @@ iframe.app-iframe:not(.live) { pointer-events: none; }
 .seg button[aria-pressed="true"], .seg button[aria-checked="true"] { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); font-weight: 600; }
 /* Light mode keeps its fills (#181; the person's ruling, 24 October 2026): the outline is for dark, where a fill glares. */
 :root[data-theme="light"] .chip[aria-pressed="true"], :root[data-theme="light"] .chip[aria-checked="true"], :root[data-theme="light"] .chip.on { background: var(--on); color: var(--on-ink); border-color: var(--on); box-shadow: none; }
+:root[data-theme="light"] .chip[aria-pressed="true"] .chip-desc, :root[data-theme="light"] .chip[aria-checked="true"] .chip-desc, :root[data-theme="light"] .chip.on .chip-desc { color: var(--on-dim); }
 :root[data-theme="light"] .toggle[aria-checked="true"] .track { background: var(--on); border-color: var(--on); }
 :root[data-theme="light"] .toggle[aria-checked="true"] .track::after { background: var(--on-ink); }
 :root[data-theme="light"] .seg button[aria-pressed="true"], :root[data-theme="light"] .seg button[aria-checked="true"] { background: var(--on); color: var(--on-ink); box-shadow: none; }
@@ -747,7 +784,6 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .menu.versions .mi .grow, .menu.versions .mi .d { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .toasts { position: fixed; z-index: 60; right: 16px; top: 60px; display: flex; flex-direction: column; gap: 8px; width: 340px; }
-.toasts.bottom { top: auto; bottom: 16px; left: 50%; right: auto; transform: translateX(-50%); width: auto; }
 .toast { display: flex; align-items: center; gap: 10px; padding: 10px 10px 10px 12px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; }
 .toast.plain { border-left-width: 1px; }
 .toast .t-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 13px; }
@@ -813,23 +849,26 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .react-btn:hover { border-color: var(--line); background: var(--panel); }
 .react-btn[aria-pressed="true"] { border-color: var(--accent); background: var(--mark); }
 .react-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.react-count { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--dim); }
-.react-btn[aria-pressed="true"] .react-count { color: var(--text); }
-.react-icon { display: block; flex: none; width: 20px; height: 20px; background: center / 100% no-repeat; }
-.react-icon[data-icon="approve"] { background-image: url(/media/reactions/reaction-approve-64.png); }
-.react-icon[data-icon="disapprove"] { background-image: url(/media/reactions/reaction-disapprove-64.png); }
-.react-icon[data-icon="flag"] { background-image: url(/media/reactions/reaction-flag-64.png); }
-.react-icon[data-icon="unclear"] { background-image: url(/media/reactions/reaction-unclear-64.png); }
-.react-icon[data-icon="done"] { background-image: url(/media/reactions/reaction-done-64.png); }
+/* The button draws its icon and its count itself, so a row is six elements, not eleven: in a 300-item room the rows
+   were 42% of the page (reactions.mjs). The icons are colored PNGs, which Chromium and Firefox both paint in forced
+   colors. The count’s alt text is empty: the button’s name already says how many. */
+.react-btn::before { content: ""; display: block; flex: none; width: 20px; height: 20px; background: center / 100% no-repeat; }
+.react-btn[data-count]::after { content: attr(data-count) / ""; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--dim); }
+.react-btn[aria-pressed="true"][data-count]::after { color: var(--text); }
+.react-btn[data-icon="approve"]::before { background-image: url(/media/reactions/reaction-approve-64.png); }
+.react-btn[data-icon="disapprove"]::before { background-image: url(/media/reactions/reaction-disapprove-64.png); }
+.react-btn[data-icon="flag"]::before { background-image: url(/media/reactions/reaction-flag-64.png); }
+.react-btn[data-icon="unclear"]::before { background-image: url(/media/reactions/reaction-unclear-64.png); }
+.react-btn[data-icon="done"]::before { background-image: url(/media/reactions/reaction-done-64.png); }
 /* The icons’ cream borders vanish on light: a thin rim keeps each one’s shape off the wash and the panel (at least 3:1,
    as on dark). It is drawn into a copy of each icon (tools/rim-reactions.mjs), with room around it for the rim, not as a
    filter: a filter on each of a long conversation’s thousands of icons made every scroll repaint slow (#572). */
-:root[data-theme="light"] .react-icon { width: 22.5px; height: 22.5px; margin: -1.25px; }
-:root[data-theme="light"] .react-icon[data-icon="approve"] { background-image: url(/media/reactions/reaction-approve-rim-72.png); }
-:root[data-theme="light"] .react-icon[data-icon="disapprove"] { background-image: url(/media/reactions/reaction-disapprove-rim-72.png); }
-:root[data-theme="light"] .react-icon[data-icon="flag"] { background-image: url(/media/reactions/reaction-flag-rim-72.png); }
-:root[data-theme="light"] .react-icon[data-icon="unclear"] { background-image: url(/media/reactions/reaction-unclear-rim-72.png); }
-:root[data-theme="light"] .react-icon[data-icon="done"] { background-image: url(/media/reactions/reaction-done-rim-72.png); }
+:root[data-theme="light"] .react-btn::before { width: 22.5px; height: 22.5px; margin: -1.25px; }
+:root[data-theme="light"] .react-btn[data-icon="approve"]::before { background-image: url(/media/reactions/reaction-approve-rim-72.png); }
+:root[data-theme="light"] .react-btn[data-icon="disapprove"]::before { background-image: url(/media/reactions/reaction-disapprove-rim-72.png); }
+:root[data-theme="light"] .react-btn[data-icon="flag"]::before { background-image: url(/media/reactions/reaction-flag-rim-72.png); }
+:root[data-theme="light"] .react-btn[data-icon="unclear"]::before { background-image: url(/media/reactions/reaction-unclear-rim-72.png); }
+:root[data-theme="light"] .react-btn[data-icon="done"]::before { background-image: url(/media/reactions/reaction-done-rim-72.png); }
 
 /* Sent back from a topic thread. */
 .shared-card { border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--panel); padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
@@ -894,7 +933,8 @@ html.store-down .sidepanel { padding-bottom: 44px; }
   .ringstrip a[aria-current="page"] { border-color: var(--line); background: var(--panel); color: var(--text); }
   .ringstrip a .badge { position: absolute; top: 0; right: 6px; }
   .ringstrip a span { max-width: 64px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .transcript { padding: 16px 12px 8px; }
+  /* The bottom keeps the room held below the newest message while following, as the wide rule does (#712a). */
+  .transcript { padding: 16px 12px calc(8px + var(--held, 0px)); }
   .tbl td { padding: 7px 8px; }
   .tbl th button { padding: 8px; }
   .tbl td.act { padding: 4px; }
@@ -907,7 +947,6 @@ html.store-down .sidepanel { padding-bottom: 44px; }
   .rpane { width: 100%; border-left: 0; }
   .has-panel .main { margin-right: 0; }
   .toasts { left: 12px; right: 12px; width: auto; top: 108px; }
-  .toasts.bottom { left: 12px; right: 12px; transform: none; }
   .hovercard { width: calc(100vw - 24px); left: 12px !important; }
   .menu { max-width: calc(100vw - 24px); }
   .mention-menu { width: 100%; }
@@ -937,6 +976,8 @@ html.store-down .sidepanel { padding-bottom: 44px; }
   --line: var(--stage-line); --line-strong: var(--stage-line-strong); --text: var(--stage-text); --dim: var(--stage-dim); }
 html.pb-sandbox, html.pb-sandbox body { background: var(--bg); min-height: 0; }
 html.pb-sandbox body { margin: 0; }
+/* In an app, the kit’s own small text meets the floor the app check holds it to: 12 px (#997). */
+html.pb-sandbox .label, html.pb-sandbox .tbl th, html.pb-sandbox kbd { font-size: 12px; }
 
 .skip { position: absolute; left: 8px; top: -40px; z-index: 100; padding: 6px 10px; background: var(--panel); border: 1px solid var(--accent); border-radius: 6px; }
 .skip:focus { top: 8px; }
@@ -985,8 +1026,9 @@ html.pb-sandbox body { margin: 0; }
 .app-full.fullscreen iframe.app-iframe { height: 100%; }
 @keyframes pb-full-in { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .app-full.fullscreen { animation: none; } }
-.app-note { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--dim); background: var(--panel); }
-.app-note .i { color: var(--accent); margin-top: 1px; }
+.app-note, .app-error { display: flex; gap: 8px; align-items: flex-start; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--dim); background: var(--panel); }
+.app-note .i, .app-error .i { color: var(--accent); margin-top: 1px; }
+.app-error { flex-wrap: wrap; align-items: center; border-top: 1px solid var(--line); border-bottom: 0; }
 .check-frame { position: fixed; left: -20000px; top: 0; height: 900px; border: 0; visibility: hidden; }
 
 /* Review */
@@ -998,6 +1040,8 @@ html.pb-sandbox body { margin: 0; }
 .palette .p-list { list-style: none; padding: 0; margin: 0; max-height: 50vh; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
 .palette .p-list li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px; cursor: pointer; border: 1px solid transparent; }
 .palette .p-list li[aria-selected="true"] { border-color: var(--accent); background: var(--sunk); }
+/* Search’s matched words (#866, W4): bold and underlined, in the text’s own colors. */
+.search-dialog mark { background: none; color: inherit; font-weight: 600; text-decoration: underline; }
 /* Settings’ tabs wrap onto a second row in a narrow window rather than run off it (five since Hosts, #120; #303 found the four did on a phone). */
 .tabs { display: flex; flex-wrap: wrap; gap: 0 4px; border-bottom: 1px solid var(--line); padding: 0 16px; }
 .tabs button { all: unset; cursor: pointer; padding: 8px 10px; border-bottom: 2px solid transparent; color: var(--dim); }
@@ -1224,6 +1268,9 @@ code.wc-name { font-size: 12px; }
 .agent-btn .agent-state { color: var(--dim); font-size: 12px; }
 /* Where an agent on a host runs, and how its turn there stands (#120): words that wrap, never cut off. */
 .agent-btn .name > .host-line, .agent-btn .name > .host-turn { white-space: normal; overflow-wrap: anywhere; }
+/* The host as a short badge, so a long SSH destination doesn’t fill the row; its tooltip has the whole line. */
+.host-badge { display: inline-block; max-width: 9ch; padding: 0 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--chip);
+  color: var(--text); font-size: 11px; line-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: 1px; }
 .agent-asks { padding-left: 38px; }
 .agent-asks > [hidden] { display: none; }
 /* The agent tree (#121): its turn in a side thread, and its forks there, nested under its row. */

@@ -102,13 +102,13 @@ function hunkCount(written) {
  * that ends inside a hunk: either is a diff this can’t read, and must not pass as one that adds nothing.
  *
  * @param {string} diff
- * @returns {{ files: Map<string, Added>, binary: number, deleted: { at: number, line: string }[] }} the added lines by
- *   file, how many binary files it skipped, and the “+++ /dev/null” lines of the files it deletes
+ * @returns {{ files: Map<string, Added>, binary: number, deleted: number[] }} the added lines by file, how many binary
+ *   files it skipped, and the numbers of the “+++ /dev/null” lines of the files it deletes
  */
 function readDiff(diff) {
   /** @type {Map<string, Added>} */
   const files = new Map();
-  const result = { files, binary: 0, deleted: /** @type {{ at: number, line: string }[]} */ ([]) };
+  const result = { files, binary: 0, deleted: /** @type {number[]} */ ([]) };
   /** @type {Added | null} */
   let file = null;
   // Whether the line is in a file’s header, between its “diff --git” line and its first hunk or “+++ ” line.
@@ -153,15 +153,15 @@ function readDiff(diff) {
 }
 
 /**
- * The added lines of the file a “+++ ” line names, kept in files when it adds any, or null for /dev/null, which is
- * noted in deleted.
- * @param {Map<string, Added>} files @param {string} line @param {number} at @param {{ at: number, line: string }[]} deleted
+ * The added lines of the file a “+++ ” line names, kept in files when it adds any, or null for /dev/null, whose line’s
+ * number is noted in deleted.
+ * @param {Map<string, Added>} files @param {string} line @param {number} at @param {number[]} deleted
  * @returns {Added | null}
  */
 function fileOf(files, line, at, deleted) {
   const path = newPath(line, at);
   if (path === null) {
-    deleted.push({ at, line });
+    deleted.push(at);
     return null;
   }
   const file = files.get(path) ?? { lines: [], ranges: [] };
@@ -206,22 +206,25 @@ function withAdded(files) {
 /**
  * The lines a commit’s diff adds, by file, read as readDiff reads them; a file it deletes adds none.
  * @param {string} diff
- * @returns {{ files: Map<string, string[]>, binary: number }} the added lines by file, and how many binary files it skipped
+ * @returns {{ files: Map<string, string[]>, ranges: Map<string, { start: number, end: number }[]>, binary: number }} the
+ *   added lines by file, their ranges of line numbers in the new file, and how many binary files it skipped
  */
 export function parseAddedLines(diff) {
   const { files, binary } = readDiff(diff);
-  return { files: new Map(withAdded(files).map(([path, file]) => [path, file.lines])), binary };
+  const added = withAdded(files);
+  return { files: new Map(added.map(([path, file]) => [path, file.lines])), ranges: new Map(added.map(([path, file]) => [path, file.ranges])), binary };
 }
 
 /**
  * The line ranges a `git diff -U0` adds, by file, each its first and last line, read as readDiff reads them. A diff
  * that deletes a file fails: lint-ternary asks only for added, modified and renamed files, so a “+++ /dev/null” there is
- * a diff it misread, and must not drop that file’s lines.
+ * a diff it misread, and must not drop that file’s lines. Its error, like every one here, names the line by its number
+ * only: the line may hold a path, and the scan’s errors reach CI’s public log (#905).
  * @param {string} diff
  * @returns {Map<string, { start: number, end: number }[]>}
  */
 export function addedRanges(diff) {
   const { files, deleted } = readDiff(diff);
-  if (deleted.length) throw new Error(`can’t read git’s diff at line ${deleted[0].at}: “${deleted[0].line}” names no new file`);
+  if (deleted.length) throw new Error(`can’t read git’s diff at line ${deleted[0]}: “+++ /dev/null” names no new file`);
   return new Map(withAdded(files).map(([path, file]) => [path, file.ranges]));
 }

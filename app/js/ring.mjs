@@ -5,7 +5,7 @@
 // pulses amber. With reduced motion everything holds still (see workbench.css). What moves is drawn in an
 // overlay of its own that turns and fades as one, so the page isn’t painted again each frame (#463).
 //
-//   <pb-ring name="@indexer" state="tool" ctx="62" subs="gen:22:chunker,tool:31:embedder" size="sm">
+//   <pb-ring name="indexer" state="tool" ctx="62" subs="gen:22:chunker,tool:31:embedder" size="sm">
 //
 // An agent on a host (#120) also says where it runs in its label: where="on host.example.com, connected, last heard
 // from 2 min ago" (app/js/remote.mjs), in words, since the ring’s color says only what the agent is doing.
@@ -168,7 +168,7 @@ export function ringFor(se, size = 'sm', el = null) {
     changed = true;
   };
   el.holding = true;
-  set('name', `@${se.handle}`);
+  set('name', se.handle);
   set('state', se.deleting ? 'idle' : (se.state ?? 'idle'));
   set('ctx', se.ctx != null ? String(se.ctx) : 'unknown');
   set('subs', subsAttr(se.subagents));

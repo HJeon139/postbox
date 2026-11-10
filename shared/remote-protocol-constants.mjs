@@ -93,7 +93,7 @@ export const STDIN_KINDS = Object.freeze(/** @type {const} */ (['file', 'none', 
 
 /**
  * Where each Postbox tool is answered on the host: `host` by the daemon itself (the shim’s blocking permission prompt),
- * `queue` returns at once and crosses to Postbox as a `tool`, `ask` crosses as a `tool` and the shim waits for
+ * `queue` returns once the daemon has checked and recorded it (#827) and crosses to Postbox as a `tool`, `ask` crosses as a `tool` and the shim waits for
  * Postbox’s `reply` (an error at once when Postbox isn’t connected), `read` asks Postbox when attached and falls
  * back to the snapshot when offline. Every tool in shared/mcp-tools.mjs’s TOOL_DEFS is here; tests/remote-protocol.test.mjs checks it.
  */
@@ -105,6 +105,8 @@ export const TOOL_ROUTES = Object.freeze({
   show_app: 'queue',
   update_app: 'queue',
   retire_app: 'queue',
+  // Only Postbox renders apps, and on a host its answer says it can’t show one yet (#95), so it waits for that answer.
+  view_app: 'ask',
   define_term: 'queue',
   // A second call with the same emoji takes it back, so only Postbox’s answer says which it was, and its refusals (no
   // such item, two blocks with that id) name what to fix, as review_block’s do: it waits.
@@ -136,6 +138,28 @@ export const TOOL_ROUTES = Object.freeze({
   restore_asset: 'ask',
   permission_prompt: 'host',
 });
+
+/**
+ * One call’s route, from its tool and its arguments (#780): a show_block or update_block that carries a review’s
+ * files is an `ask`, since the daemon reads those files and may refuse them, and only an answer the agent waits for
+ * says why. Every other call has its tool’s route (TOOL_ROUTES). The shim, the daemon and Postbox all go by this.
+ * @param {string} name @param {any} args @returns {string | undefined}
+ */
+export function toolRoute(name, args) {
+  if (carriesBlockFiles(name, args)) return 'ask';
+  return TOOL_ROUTES[/** @type {keyof typeof TOOL_ROUTES} */ (name)];
+}
+
+/**
+ * Whether a call is show_block or update_block with a block that names files (#780): the one test the shim’s route,
+ * the host’s broker and Postbox’s blockFiles all use, so they can’t disagree about which calls carry a review’s files.
+ * @param {string} name @param {any} args
+ */
+export function carriesBlockFiles(name, args) {
+  if (name !== 'show_block' && name !== 'update_block') return false;
+  const block = args?.block;
+  return block !== null && typeof block === 'object' && block.files !== undefined;
+}
 
 /** Codes an `error` carries. Peers branch on these, never on the message. */
 export const ERROR_CODES = Object.freeze(
@@ -185,6 +209,8 @@ export const TURN_FILES = Object.freeze({
   start: 'start.json',
   /** The runner’s Unix socket. */
   socket: 'sock',
+  /** A silent runner’s silence, kept by the daemon across its restarts: { pid, bootId, at } (#872). */
+  silence: 'silence.json',
   /** The turn’s own token, which its shims prove in their hello (#120): written by the daemon before start.json. */
   shimToken: 'shim.token',
   /** The conversation snapshot the reading tools answer from. */

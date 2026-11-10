@@ -106,8 +106,8 @@ test('#508’s delivery and bigroom scenarios parse: the big-room seed, phase 3�
   assert.equal(delivery.seed, 'big-room');
   assert.equal(bigroom.seed, 'big-room');
   assert.equal(bigroom.seedDiagrams, 6, 'phase 5 reaches #701’s diagram-deferred');
-  // Phase 5 is #701’s and #564-b1’s, so `--phases 5` runs before B1b brings phase 1’s window-paged-back.
-  assert.deepEqual(bigroom.phases[4].triggers, ['diagram-deferred', 'session-scoped']);
+  // Phase 5 is #701’s, #564-b1’s and #712a’s, so `--phases 5` runs before B1b brings phase 1’s window-paged-back.
+  assert.deepEqual(bigroom.phases[4].triggers, ['diagram-deferred', 'session-scoped', 'items-skipped']);
   assert.deepEqual(unknownTriggers({ phases: bigroom.phases.slice(4) }), []);
   assert.deepEqual([delivery.phases.length, bigroom.phases.length], [9, 5]);
   assert.deepEqual(

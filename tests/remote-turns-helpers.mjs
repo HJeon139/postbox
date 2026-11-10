@@ -143,10 +143,17 @@ export function forbidden() {
 export const corpus = { search: (q) => [{ id: 'b1:1', title: 'Found', text: `about ${q}` }], read: () => null, stats: () => ({ books: [], passages: 0 }) };
 
 /**
- * A runtime with one Claude Code persona on a host, over a fake daemon whose turns run until ended (autoEnd false).
+ * A runtime with one Claude Code persona on a host, over a fake daemon whose turns run until ended (autoEnd false),
+ * and whose prompts come after their call’s line (callLines), as the CLI asks.
  * @param {{ daemon?: object, signIn?: any, store?: Store, settings?: object, d?: any }} [o]
  */
-export function rig({ daemon = {}, signIn = null, store = new Store(null), settings = {}, d = createFakeDaemon({ autoEnd: false, ...daemon }) } = {}) {
+export function rig({
+  daemon = {},
+  signIn = null,
+  store = new Store(null),
+  settings = {},
+  d = createFakeDaemon({ autoEnd: false, callLines: true, ...daemon }),
+} = {}) {
   const hosts = fakeHosts(d, { signIn });
   const f = forbidden();
   const claude = new ClaudeCodeAdapter({
@@ -195,7 +202,7 @@ export const settled = async (r) => {
 };
 
 /** A store whose session had a turn running on the host when Postbox stopped, and a card open for its prompt. */
-export function restarted({ welcome = /** @type {'running' | 'ended' | 'missing'} */ ('running') } = {}) {
+export function restarted({ welcome = /** @type {'running' | 'ended' | 'missing' | 'interrupted' | 'unkilled'} */ ('running') } = {}) {
   const store = new Store(null);
   const d = createFakeDaemon({ autoEnd: false });
   const first = rig({ store, d });
@@ -220,6 +227,8 @@ export function restarted({ welcome = /** @type {'running' | 'ended' | 'missing'
   if (welcome !== 'missing') {
     d.addTurn('host-turn-1', { exit: welcome === 'ended' ? { code: 0, signal: null } : null });
     d.prompt('host-turn-1', FIXTURE_PROMPT, 'p-1');
+    // Interrupted while Postbox was down, its process there killed or, unkilled, still there (#872).
+    if (welcome === 'interrupted' || welcome === 'unkilled') d.interrupt('host-turn-1', { unkilled: welcome === 'unkilled' });
   }
   // The old connection is gone with the old Postbox; the new one connects as the startup in server/index.mjs runs.
   d.drop();

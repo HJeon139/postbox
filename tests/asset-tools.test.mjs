@@ -127,6 +127,47 @@ test('#516 S3b: rename, delete and restore each make a version; a deleted one re
   assert.match((await A.read_asset({ id, from: 99 })).message, /Nothing after character 4 of v4: that’s the end of it\./);
 });
 
+test('I5: a rename_asset or delete_asset retried without an op answers that it repeated, quoting the stored name', async (ctx) => {
+  const { A, B } = await assetRoom(ctx);
+  const { id } = await A.write_asset({ name: 'old.md', text: 'body' });
+  // Sent decomposed (NFD), stored and quoted NFC: the answer quotes the asset’s name, not the string sent.
+  const name = 'q"<&amp;>e\u0301.md';
+  const stored = 'q"<&amp;>\u00e9.md';
+  const repeated = (/** @type {number} */ v) =>
+    `Already published as v${v} of asset ${id}, “${stored}”; this write repeated it, so nothing new was made. To change it, write from base: ${v}.`;
+  assert.match((await A.rename_asset({ id, base: 1, name })).message, /^Renamed it as v2/);
+  assert.equal((await A.rename_asset({ id, base: 1, name })).message, repeated(2));
+  const other = await B.rename_asset({ id, base: 1, name });
+  assert.equal(other.message, `@alpha wrote version 2 of ${id} since version 1. Read version 2, then write again from it.`);
+  assert.equal(
+    (await A.rename_asset({ id, base: 1, name: 'nul\u0000.md' })).message,
+    'An asset’s name has no backslash, control character, line or paragraph separator, lone surrogate, noncharacter, or character that shows as nothing or reorders the text, such as a zero-width space, a bidi control or a variation selector.',
+  );
+  assert.equal((await A.delete_asset({ id, base: 2 })).ok, true);
+  assert.equal((await A.delete_asset({ id, base: 2 })).message, repeated(3));
+});
+
+test('rename_asset of a deleted asset is refused, saying to restore it first, whatever the new name holds (#707)', async (ctx) => {
+  const { A } = await assetRoom(ctx);
+  const { id } = await A.write_asset({ name: 'old.md', text: 'body' });
+  await A.delete_asset({ id, base: 1 });
+  const said = `Asset ${id} is deleted, so it can’t be renamed. Bring a version back with restore_asset first, then rename it.`;
+  // The refusal quotes the id, never the name an agent sent, so quotes, <, & and NUL can’t reach it.
+  for (const name of ['new.md', 'q"<&>.md', 'q&amp;.md']) {
+    const r = await A.rename_asset({ id, base: 2, name });
+    assert.deepEqual([r.ok, r.message], [false, said], name);
+  }
+  const nul = await A.rename_asset({ id, base: 2, name: 'nul\u0000.md' });
+  assert.deepEqual(
+    [nul.ok, nul.message],
+    [
+      false,
+      'An asset’s name has no backslash, control character, line or paragraph separator, lone surrogate, noncharacter, or character that shows as nothing or reorders the text, such as a zero-width space, a bidi control or a variation selector.',
+    ],
+  );
+  assert.match((await A.list_assets({})).message, new RegExp(`\\[${id}\\] old\\.md: deleted at v2 by @alpha`));
+});
+
 test('#516 S3b: a binary version gives its metadata, and a pruned one says it was pruned and can’t be restored', async (ctx) => {
   const { A, folder } = await assetRoom(ctx);
   const big = (/** @type {number} */ n) => {

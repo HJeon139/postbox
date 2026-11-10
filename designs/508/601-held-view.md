@@ -212,6 +212,6 @@ Critic’s code notes from revision 6 hold:
 
 ## Not in this change
 
-- A pending read for other state (sessions, schedules, threads): by the rule in §4, a read of one that decides a write would need one. This audit covered items, work and apps; the rest is a follow-up, and the guard doesn’t place their reads.
+- A pending read for schedules: by the rule in §4, a read of one that decides a write would need one. This audit covered items, work and apps; #796 added threads and sessions (`store.pending.thread`, `threads()` and `session()`, and `pendingSessionsIn` for a thread’s sessions), and the guard places those reads too. `server/scheduled-wakes.mjs` still reads the published schedules, a follow-up. So do some session writes, each placed in `tests/session-write-guard.test.mjs`: a field built from the published session, or a write a published read decides.
 - A held `remove` of a thread, which isn’t a list event: the pending items of a thread being removed show until the release.
 - A held emit the reducer rejects. One can be rejected today: an `item.patch` with an `activityStep`, on an item whose `activity` has no `steps`, throws in `applyItemPatch`. The pending read applies it with the same `apply`, so it throws, every time, as the release will. A failed read drops its view, so no cached view has seen part of an event, and other lists still answer (critic; a spec in `store-held-view`). The release’s own throw, and the gap it leaves in `seq`, are #610’s, the store’s to fix at numbering.

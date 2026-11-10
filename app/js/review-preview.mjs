@@ -7,22 +7,25 @@
 import { renderMarkdown } from '/shared/markdown.mjs';
 import { anchorOf, toSource, toText } from '/shared/review-comments.mjs';
 import { splitLines } from '/shared/review-diff.mjs';
+import { reviewFileKeys } from '/shared/review-files.mjs';
 import { enhanceMarkdown } from './apps.mjs';
 import { h, icon, trusted } from './dom.mjs';
+import { WeakElements } from './held-weakly.mjs';
 
 /** Each Preview’s source lines, for putting a selection back. @type {WeakMap<Element, string[]>} */
 const sources = new WeakMap();
 
 /**
  * @param {string} src  the draft
- * @param {{ id: string, done: boolean, keys: number[], composing: any, ranged: any[], threadBox: (key: any) => HTMLElement[],
+ * @param {{ item: any, threadId: string, done: boolean, keys: number[], composing: any, ranged: any[], threadBox: (key: any) => HTMLElement[],
  *   comment: (anchor: any) => void, pick: (line: number) => void }} env
- *   keys: the lines with threads or draft comments; composing: the selection being commented on, if any; ranged: the
+ *   item: the review’s item, whose attached files its images show (#780); keys: the lines with threads or draft comments; composing: the selection being commented on, if any; ranged: the
  *   threads and drafts on selections, to mark; comment: a Comment button was pressed; pick: a click chose a line
  */
 export function renderPreview(src, env) {
   const lines = splitLines(src);
-  const md = h('div.md', { html: trusted(renderMarkdown(src, { folds: false, positions: true, pageOrigin: location.origin })) });
+  const files = reviewFileKeys(env.threadId, env.item);
+  const md = h('div.md', { html: trusted(renderMarkdown(src, { folds: false, positions: true, pageOrigin: location.origin, files })) });
   // A diagram is drawn into a new element (enhanceMarkdown), so its lines go on a box around it first.
   for (const fig of md.querySelectorAll('figure.md-mermaid')) {
     const box = h('div.rv-fig', { dataset: { sl: fig.getAttribute('data-sl'), el: fig.getAttribute('data-el') } });
@@ -34,7 +37,7 @@ export function renderPreview(src, env) {
   placeThreads(md, env);
   if (!env.done) selecting(root, md, lines, env);
   mark(
-    env.id,
+    env.item.id,
     env.ranged.map((a) => rangeOf(md, lines, a)).filter((r) => r !== null),
   );
   queueMicrotask(() => enhanceMarkdown(md));
@@ -86,6 +89,16 @@ function partOf(md, node) {
   return el;
 }
 
+// The Previews you can select in, held weakly (held-weakly.mjs), with one listener for the page. Each Preview had a
+// document listener of its own, which went only at the next selection change after it left the page: until then it
+// kept its review, and so its old page, alive (#945).
+const selectable = new WeakElements();
+/** @type {WeakMap<HTMLElement, () => void>} */
+const onSelection = new WeakMap();
+document.addEventListener('selectionchange', () => {
+  for (const root of selectable) if (root.isConnected) onSelection.get(root)?.();
+});
+
 /** The Comment button beside a selection, and a click that selects nothing, which picks a line. */
 function selecting(root, md, lines, env) {
   /** @type {any} */
@@ -99,7 +112,7 @@ function selecting(root, md, lines, env) {
   );
   root.append(btn);
   const update = () => {
-    if (!root.isConnected) return document.removeEventListener('selectionchange', update);
+    if (!root.isConnected) return;
     const sel = getSelection();
     const r = sel?.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0) : null;
     const inside = r && md.contains(r.startContainer) && md.contains(r.endContainer) && !partOf(md, r.startContainer)?.matches('.rv-thread');
@@ -116,7 +129,8 @@ function selecting(root, md, lines, env) {
     const place = end?.closest('[data-sl]') ?? partOf(md, r.endContainer);
     if (place && place.nextSibling !== btn) place.after(btn);
   };
-  document.addEventListener('selectionchange', update);
+  selectable.add(root);
+  onSelection.set(root, update);
   // A click that only clears a selection, or one on text, which can be selected, stays in Preview.
   let selected = false;
   root.addEventListener('mousedown', () => {
@@ -236,5 +250,22 @@ function mark(id, ranges) {
   // them, from reviews no longer shown, is cleared.
   if (marked.size > 50) for (const [k, v] of marked) if (k !== id && !v[0]?.startContainer.isConnected) marked.delete(k);
   marked.set(id, ranges);
+  paintMarks();
+}
+/** The highlight, from every review’s ranges still marked. */
+function paintMarks() {
   CSS.highlights.set('rv-quote', new Highlight(...[...marked.values()].flat()));
 }
+// Going to another conversation draws it in the same task, so a frame later a range off the page is one from a review
+// no longer shown. Its ranges hold its text, and so its old page: they go then, not only past 50 reviews (#945).
+addEventListener('hashchange', () =>
+  requestAnimationFrame(() => {
+    let gone = false;
+    for (const [k, v] of marked)
+      if (!v[0]?.startContainer.isConnected) {
+        marked.delete(k);
+        gone = true;
+      }
+    if (gone && globalThis.CSS?.highlights && typeof Highlight !== 'undefined') paintMarks();
+  }),
+);
