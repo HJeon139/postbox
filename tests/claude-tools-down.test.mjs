@@ -90,6 +90,7 @@ function fakeSdk(linesOf) {
       const lines = linesOf(calls.length);
       calls.push({ prompt, options });
       return (async function* () {
+        if (lines instanceof Error) throw lines; // a query the SDK refuses, such as a lost session
         for (const l of lines) yield l;
       })();
     },
@@ -202,3 +203,17 @@ for (const [what, message] of [
     assert.match(String(sdk.calls[1].prompt), told, 'the next turn is told first');
   });
 }
+
+// ctx.state is the turn's snapshot (saveState doesn't change it), so a retry within the same turn, as the Agent SDK's
+// after a lost session, must not take the note a second time.
+test('#1161 the Agent SDK’s retry after a lost session carries the note once, with ctx.state a snapshot', async () => {
+  const sdk = fakeSdk((i) => (i === 0 ? new Error('No conversation found with session ID: gone') : fineTurn()));
+  const adapter = new AgentSdkAdapter({ sdk, workRoot: tempDir('pb-tools-down-sdk-retry-') });
+  const ctx = fakeCtx({ state: { sdkSessionId: '11111111-1111-4111-8111-111111111111', postboxToolsDown: 'ran' } });
+  // As the runtime gives it: saveState records, and ctx.state stays the snapshot the turn started with.
+  ctx.saveState = (p) => Object.assign(ctx.calls.saved, p);
+  await adapter.deliver({}, { kind: 'user', text: 'Try again.' }, ctx);
+  assert.equal(sdk.calls.length, 2, 'the lost session starts over once');
+  const notes = String(sdk.calls[1].prompt).split('[Postbox] In your last turn, Postbox’s tool server didn’t start').length - 1;
+  assert.equal(notes, 1, 'the note is in the retried prompt once');
+});
