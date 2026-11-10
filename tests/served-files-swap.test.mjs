@@ -4,10 +4,10 @@
 // file(), where a request's two awaits leave room for one.
 
 import assert from 'node:assert/strict';
-import { mkdir, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, open, realpath, rename, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { file, servedFile } from '../server/served-files.mjs';
+import { file, servedFile, stillThere } from '../server/served-files.mjs';
 import { tempDir } from './temp-dirs.mjs';
 
 /** A response that keeps what file() wrote. */
@@ -73,4 +73,35 @@ test('#362: a folder is no file to serve: 404, not an error from reading it', as
   const res = response();
   await assert.rejects(file(res, await servedFile(served, 'sub')), { status: 404 });
   assert.equal(res.r.status, 0, 'nothing was written');
+});
+
+test('#362: a file renamed over the one open is caught by its device and inode, though its path reads the same', async () => {
+  const { dir, served } = await folders();
+  const real = await servedFile(served, 'sub/page.txt');
+  const fh = await open(real, 'r');
+  try {
+    const opened = await fh.stat({ bigint: true });
+    assert.equal(await stillThere(opened, real), true, 'the control: nothing changed');
+    // A swap and a swap back leaves the path reading the same; only the file under it is another one.
+    await writeFile(join(dir, 'other.txt'), 'OTHER');
+    await rename(join(dir, 'other.txt'), real);
+    assert.equal(await stillThere(opened, real), false);
+  } finally {
+    await fh.close();
+  }
+});
+
+test('#362: two versions of a file a fraction of a millisecond apart are each served, not the cached older one', async () => {
+  const { served } = await folders();
+  const real = await servedFile(served, 'sub/page.txt');
+  await writeFile(real, 'version 1');
+  await utimes(real, 1000, 1000.0001);
+  const first = response();
+  await file(first, real);
+  await writeFile(real, 'version 2');
+  await utimes(real, 1000, 1000.0002);
+  const second = response();
+  await file(second, real);
+  assert.equal(String(first.r.body), 'version 1');
+  assert.equal(String(second.r.body), 'version 2');
 });
