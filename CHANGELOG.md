@@ -2,6 +2,20 @@
 
 Every release of Postbox, newest first. Written by `npm run release` from the commits since the last one.
 
+## 1.57.1 (2026-11-10)
+
+### Fixes
+
+- **server:** export stillThere for its test, and key the cache on nanoseconds
+- **review:** drop the oldest kept draft before saving a new one (#1144)
+- **work:** a kept background job that ends on its own reads as ended, not unknown (#519)
+- **review:** forget a kept draft once its review is answered, and keep at most 20 (#1144)
+- **server:** read a served file from the handle that was checked
+- **review:** keep the text a review's drafts were written on (#1144)
+- **review:** keep a review's draft comments over a reload (#1144)
+- **permissions:** a read in a readable folder is judged from the pending session (#1074)
+- **adapters:** the agy hook leaves a read in a readable folder to Postbox (#1074)
+
 ## 1.57.0 (2026-11-10)
 
 ### Features
