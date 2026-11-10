@@ -65,3 +65,17 @@ test('#1143: a review stored with an author outside the rule can still be revise
     [['resolved', ['@critic', '@critic']]],
   );
 });
+
+test('#1143: an old answered review with an author outside the rule still takes its agent’s outcome', async () => {
+  const s = await legacy();
+  s.rt.act(s.t.id, s.item().id, 'submit', { verdict: 'approve', comments: [] }, 1);
+  await settle(s.rt);
+  // Its agent reads the answer in a turn, then reports what came of it.
+  const r = await turn(s.rt, s.adapter, s.t, (tools) => tools.update_block({ block: { id: 'plan', outcome: 'Filed as #1.' } }), '@critic report it');
+  assert.equal(r.ok, true, r.message);
+  assert.equal(s.item().block.outcome, 'Filed as #1.');
+  assert.deepEqual(
+    s.item().block.threads[0].comments.map((c) => c.author),
+    ['@critic', '@critic'],
+  );
+});
