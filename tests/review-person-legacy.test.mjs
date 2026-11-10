@@ -79,3 +79,31 @@ test('#1143: an old answered review with an author outside the rule still takes 
     ['@critic', '@critic'],
   );
 });
+
+test('#1143: an agent reads an old review’s off-rule author as its own, and can send it back as read', async () => {
+  const s = await legacy();
+  const read = String(s.rt.describeItem(s.item()));
+  assert.match(read, /- @critic: Cut it\./, 'read as its agent’s');
+  assert.doesNotMatch(read, /- You: Cut it\./, 'never as the person’s');
+  const threads = [
+    {
+      id: 'c1',
+      status: 'resolved',
+      line: 4,
+      comments: [
+        { author: '@critic', text: 'Cut it.' },
+        { author: '@critic', text: 'Done.' },
+      ],
+    },
+  ];
+  const r = s.update({ ...draft, content: `${DRAFT}\nMore.`, threads });
+  assert.equal(r.ok, true, r.message);
+});
+
+test('#1143: an off-rule author sent back is refused with what to do instead', async () => {
+  const s = await legacy();
+  const threads = [{ id: 'c1', status: 'resolved', line: 4, comments: [{ author: 'You', text: 'Cut it.' }] }];
+  const r = s.update({ ...draft, content: `${DRAFT}\nMore.`, threads });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /send stored comments back as read_message shows them, or leave them out/);
+});

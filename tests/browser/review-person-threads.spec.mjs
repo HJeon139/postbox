@@ -104,3 +104,18 @@ test('#1143 an answered review stored before threads, never revised, shows its c
     .poll(() => placed(r.block, [BOLD, LOW]), { message: 'each comment on its line, once' })
     .toEqual({ marked: [3, 10], threads: [['Open'], ['Open']] });
 });
+
+test('#1143 an old review’s comment authored “You” by its agent draws as the agent’s, not the person’s', async ({ page }) => {
+  const r = await room.withReview(page, 'Old author');
+  await drawn(r.block, 'Preview');
+  const it = r.itemOf();
+  // As show_block on main could store it: a thread its agent wrote in the name “You”.
+  const threads = [{ id: 'c1', status: 'open', line: 3, comments: [{ author: 'You', text: BOLD }] }];
+  room.app.rt.patchItem(r.thread.id, it.id, { block: { ...it.block, threads } });
+  await page.reload();
+  await synced(page, room.app);
+  await viewRadio(r.block, 'Lines').click();
+  await drawn(r.block, 'Lines');
+  const thread = r.block.locator('.rv-doc .rv-thread', { hasText: BOLD });
+  await expect(thread.locator('b').first(), 'named for its agent').toHaveText('drafter');
+});
