@@ -201,7 +201,7 @@ async function startTurn(ctx, request, send, cwd, session, message) {
   const model = codexModelOf(ctx.persona);
   const fork = ctx.state.fork ?? ctx.state.forkFrom;
   const sourceThreadId = fork?.threadId ?? ctx.state.codexThreadId;
-  const down = takeToolsDown(ctx); // Postbox’s tools didn’t load last turn: told first, once (#1162)
+  const down = takeToolsDown(ctx, message); // Postbox’s tools didn’t load last turn: told first, once (#1162)
   const { opened, fresh } = await openCodexThread(ctx, request, { sourceThreadId, fork, cwd, model, openConfig }).catch((e) => {
     throw codexRefusal(ctx, e);
   });

@@ -181,7 +181,7 @@ export class AgentSdkAdapter {
     // The project’s folder, and the folders the person added for this conversation (#66).
     const addDirs = [...new Set([ctx.project?.folder, ...(ctx.addDirs ?? [])])].filter((d) => d && d !== cwd);
     const turned = turnGuide(message, { persona, session, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief });
-    const [guide, prompt] = [turned.guide, takeToolsDown(ctx) + formatMessage(turned.message, ctx.pathOf)]; // told first, once (#1161)
+    const [guide, prompt] = [turned.guide, takeToolsDown(ctx, message) + formatMessage(turned.message, ctx.pathOf)]; // told first, once (#1161)
     const resume = Boolean(ctx.state.sdkSessionId);
     const fork = resume ? null : sdkForkPoint(ctx.state);
     const sessionId = ctx.state.sdkSessionId ?? randomUUID();

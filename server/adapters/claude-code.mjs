@@ -145,7 +145,7 @@ export class ClaudeCodeAdapter {
     const cwd = remote ? remote.folder : await this.folderFor(persona, ctx.project);
     // On a host, each attachment is its copy in the folder of the host turn the message goes to.
     const turned = turnGuide(message, { persona, session, handles: ctx.handles, room: ctx.room, project: ctx.project, brief: session?.brief });
-    const down = attach ? '' : takeToolsDown(ctx); // Postbox’s tools didn’t load last turn: told first, once (#1161)
+    const down = attach ? '' : takeToolsDown(ctx, message); // Postbox’s tools didn’t load last turn: told first, once (#1161)
     const promptOn = (/** @type {string | null} */ turn) => down + formatMessage(turned.message, attachmentPaths(ctx, turn));
     const guide = remote ? remoteGuide(turned.guide, cwd, ctx.addDirs ?? []) : turned.guide;
     // The project’s folder, and the folders the person added for this conversation (#66). On a host, none: they’re
