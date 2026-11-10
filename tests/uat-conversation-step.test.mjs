@@ -138,3 +138,22 @@ test('waiting for at goes on until the clock reaches it, though a timer fires ea
   await waitUntil(900, { now: () => clock, wait: early });
   assert.deepEqual(waits, [], 'a time already reached waits for nothing');
 });
+
+test('Undo presses the newest toast for its conversation: the stack puts the newest first (#1142)', async () => {
+  // Two deletes of conversations with the same title leave two Undos; `#toasts` holds the newest first (addToast
+  // prepends), so the newest is the first that matches, not the last.
+  const button = (name) => ({ name, offsetParent: {}, textContent: 'Undo', getAttribute: () => null });
+  const toast = (name) => ({ textContent: 'Deleted “T”. Undo', querySelectorAll: () => [button(name)] });
+  const document = { querySelectorAll: () => [toast('newest'), toast('oldest')] };
+  const pressed = [];
+  const c = ctx();
+  c.d.kit.ev = async () => true;
+  c.d.kit.clickAt = async (expr, what) => {
+    if (what === 'Undo on the delete’s toast') pressed.push(new Function('document', `return ${expr}`)(document)?.name);
+  };
+  c.d.kit.page = { waitFor: async () => {} };
+  c.api = async () => ({ state: { threads: { th_1: { id: 'th_1', title: 'T', deleting: null } } } });
+  c.facts.probes.conversation = [{ do: 'delete', at: Date.now() - 3000, threadId: 'th_1', title: 'T', handles: [], until: Date.now() + 7000 }];
+  await STEPS.conversation(c, { conversation: 'undo' });
+  assert.deepEqual(pressed, ['newest']);
+});

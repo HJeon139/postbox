@@ -25,6 +25,10 @@ import { readMessage } from '../server/read-message.mjs';
 import { Runtime } from '../server/runtime.mjs';
 import { Store } from '../server/store.mjs';
 import { setup as blocksSetup, settle as settleBlocks } from './blocks-fixture.mjs';
+import { tempDir } from './temp-dirs.mjs';
+
+// Fixed paths under /tmp outlive the run and collide between users (#823); each is a temp folder of this file’s.
+const DIR_485 = tempDir('pb-test-485-');
 
 const LINES = readFileSync(new URL('fixtures/claude-code/background-moved.jsonl', import.meta.url), 'utf8')
   .split('\n')
@@ -48,11 +52,11 @@ const playing = (lines) => () => {
 function setup(lines = SILENT) {
   const store = new Store(null);
   const spawnImpl = playing(lines);
-  const adapters = new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot: '/tmp/pb-test-485/workspaces', spawnImpl }));
+  const adapters = new AdapterRegistry().register(new ClaudeCodeAdapter({ bin: 'claude', workRoot: `${DIR_485}/workspaces`, spawnImpl }));
   const corpus = { search: () => [], read: () => null, stats: () => ({ books: [], passages: 0 }) };
   const rt = new Runtime({ store, adapters, corpus, config: { origin: 'http://127.0.0.1:1', imageOrigins: [], lintSettleMs: 0 } });
-  store.emit('project', { id: 'p1', name: 'P', folder: '/tmp/pb-test-485' });
-  const p = rt.createPersona({ handle: 'critic', backend: 'claude-code', folder: '/tmp/pb-test-485' });
+  store.emit('project', { id: 'p1', name: 'P', folder: DIR_485 });
+  const p = rt.createPersona({ handle: 'critic', backend: 'claude-code', folder: DIR_485 });
   const t = rt.createThread({ projectId: 'p1', title: 'Q4 review', personaIds: [p.id] });
   return { store, rt, t, se: rt.sessionsIn(t.id)[0] };
 }

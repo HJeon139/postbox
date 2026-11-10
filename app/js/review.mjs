@@ -9,6 +9,7 @@ import { groupReviewLines, rowUnit } from '/shared/review-lines.mjs';
 import { enhanceMarkdown, mountApp } from './apps.mjs';
 import { h, icon, plural, timeOf, trusted } from './dom.mjs';
 import { reviewDraft, startComment, stopComment } from './review-draft.mjs';
+import { keepReviewDraft } from './review-draft-store.mjs';
 import { inlineMd, itemWords, words } from './review-inline.mjs';
 import { focusQuote, renderPreview } from './review-preview.mjs';
 import { withDelimiter } from './review-table.mjs';
@@ -35,6 +36,7 @@ export function renderReview(b, item, ctx, kit) {
     }
     d.on = b.content;
   }
+  if (!item.answered) keepReviewDraft(item.id, item.revision ?? 1, d);
   const rerender = () => {
     const n = renderBlock(item, ctx);
     node.replaceWith(n);

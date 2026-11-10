@@ -802,8 +802,12 @@ html.store-down .sidepanel { padding-bottom: 44px; }
 .what-goes .i { margin-top: 1px; }
 
 /* The right pane: a conversation’s side views, a thread and its Work, alone or split with a divider (pane.mjs).
-   --pane-w is its width, which pane-width.mjs sets, and the handle on its left edge changes (#86). */
+   --pane-w is its width, which pane-width.mjs sets on .app, and the handle on its left edge changes (#86). It isn’t
+   inherited, so a new width restyles .app and the two children that take it, the pane and the conversation column,
+   not every element in the conversation (#1150). A browser without @property inherits it as before. */
+@property --pane-w { syntax: '<length>'; inherits: false; initial-value: 440px; }
 .app { --pane-w: 440px; }
+.rpane, .app > .main { --pane-w: inherit; }
 .rpane { position: fixed; z-index: 25; top: 48px; right: 0; bottom: 0; width: min(var(--pane-w), 100%); background: var(--panel); border-left: 1px solid var(--line);
   display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
 .rpane[hidden] { display: none; }

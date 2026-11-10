@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { CodexAdapter, codexModelOf } from '../server/adapters/codex.mjs';
-import { fakeAppServer } from './codex-fixture.mjs';
+import { CODEX_ROOT, fakeAppServer } from './codex-fixture.mjs';
 
 test('Codex is sent only a model it runs: auto, the mock and Claude’s models name none, so Codex uses its own default (#120)', () => {
   assert.equal(codexModelOf({ model: 'gpt-5.6-terra' }), 'gpt-5.6-terra');
@@ -17,11 +17,11 @@ test('Codex is sent only a model it runs: auto, the mock and Claude’s models n
 
 test('a Codex persona with Claude’s default model (made before Postbox had Codex’s list) starts its thread and turn naming no model', async () => {
   const seen = [];
-  const adapter = new CodexAdapter({ workRoot: '/tmp/postbox-codex-test', spawnImpl: () => fakeAppServer(seen) });
+  const adapter = new CodexAdapter({ workRoot: CODEX_ROOT, spawnImpl: () => fakeAppServer(seen) });
   const reported = [];
   const ctx = {
     persona: { handle: 'critic', model: 'claude-opus-5-5', effort: 'medium', permissionMode: 'acceptEdits' },
-    project: { folder: '/tmp/postbox-codex-test/project' },
+    project: { folder: `${CODEX_ROOT}/project` },
     handles: ['critic'],
     state: {},
     signal: new AbortController().signal,
