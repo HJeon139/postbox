@@ -63,3 +63,19 @@ for (const width of [375, 1280])
     await expect(region.locator('.toast')).toHaveCount(3);
     await expect.poll(() => page.evaluate(() => window.oldestUndoStopped), { message: 'an evicted Undo stops its countdown' }).toBe(true);
   });
+
+for (const width of [375, 1280])
+  test(`#444 at ${width} px, a new notice is never the one pushed out, even behind three live Undos`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`${app.origin}/`);
+    await synced(page, app);
+    await page.evaluate(async () => {
+      const { toast, undoToast } = await import('/app/js/ui.mjs');
+      for (let n = 1; n <= 3; n++) undoToast({ text: `Deleted “Note ${n}”`, until: Date.now() + 10_000, onUndo: () => {} });
+      toast({ title: 'Your message didn’t send', level: 'blocking', timeout: 0 });
+    });
+    const region = page.getByRole('region', { name: 'Notifications' });
+    await expect(region.getByRole('alert').filter({ hasText: 'Your message didn’t send' }), 'the new alert shows').toBeVisible();
+    await expect(region.locator('.toast')).toHaveCount(3);
+    await expect(region.locator('.toast', { hasText: 'Deleted “Note 1”' }), 'the oldest Undo made room').toHaveCount(0);
+  });
