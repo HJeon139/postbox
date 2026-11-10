@@ -73,6 +73,21 @@ test('#1125: the preflight stops a run whose git would still run the person’s 
   assert.throws(() => preflightRun({ seed: null }, dir, dir, { ...withoutGuardConfig(env), HOME: askHome }), STOPS, 'a core.askPass');
 });
 
+test('#1125: the preflight stops a run whose git would still run a helper set for github.com alone', () => {
+  const base = person();
+  writeFileSync(join(base.HOME, '.gitconfig'), `[credential "https://github.com"]\n\thelper = "${HELPER}"\n`);
+  const dir = tempDir('postbox-uat-guard-rest-url-');
+  const env = { ...base, SHELL: '/bin/sh', ...noGithubEnv({ github: null }, dir) };
+  // The guard's empty helper comes last, so git clears the site's one too, though it's the more specific.
+  assert.doesNotMatch(fill(env), /password=/, 'the guard holds');
+  assert.doesNotThrow(() => preflightRun({ seed: null }, dir, dir, env), 'the control: the whole guard passes');
+  assert.match(fill(withoutGuardConfig(env)), new RegExp(`password=${SECRET}`), 'without its config, git hands it out');
+  assert.throws(() => preflightRun({ seed: null }, dir, dir, withoutGuardConfig(env)), STOPS);
+  const after = { ...env, GIT_CONFIG_PARAMETERS: `'credential.https://github.com.helper=${HELPER}'` };
+  assert.match(fill(after), new RegExp(`password=${SECRET}`), 'a site helper set after the guard answers');
+  assert.throws(() => preflightRun({ seed: null }, dir, dir, after), STOPS, 'a site helper after the guard');
+});
+
 test('#1125: a git-remote run’s preflight stops one whose agent shell would still answer with an askpass', () => {
   const { dir, env } = remoteRun({ ...person(), SHELL: '/bin/sh' });
   const workspace = join(dir, 'workspace');
