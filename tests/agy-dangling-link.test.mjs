@@ -54,3 +54,12 @@ test('#1134 unchanged: a new file, and a dangling link that stays inside, are st
   symlinkSync('later.txt', join(ws, 'inside-link'));
   assert.equal(decide('write_to_file', { TargetFile: join(ws, 'inside-link') }, opts).decision, 'allow', 'a link inside');
 });
+
+test('#1134 a dangling link whose target runs through another link is judged where that one leads', () => {
+  const { home, ws } = aHome();
+  mkdirSync(join(home, 'outdir'));
+  symlinkSync(join(home, 'outdir'), join(ws, 'alias'));
+  // ws/first → ws/alias/out.txt, which doesn’t exist: read as written it’s inside, but it lands in ~/outdir.
+  symlinkSync(join(ws, 'alias', 'out.txt'), join(ws, 'first'));
+  assert.equal(decide('write_to_file', { TargetFile: join(ws, 'first') }, { mode: 'auto', folders: [ws], cwd: ws, home }).decision, 'ask');
+});
